@@ -3,7 +3,7 @@ from __future__ import annotations
 """The DOSBox harness, and what driving it established about a DOS save.
 
 Two kinds of test live here, and both skip rather than fail on a machine that
-has neither the player's archives nor an emulator, which is what CI is.
+has no player's archives, which is what CI is.
 
 * The parts of `tools/dos/dosbox.py` that need nothing: the PPM decode, the
   colour-blind screen digest, and the instance lease.
@@ -29,7 +29,6 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from gamedata import needs_specimens  # noqa: E402
-from optin import opted_in  # noqa: E402
 
 from tools.dos import dosbox  # noqa: E402
 
@@ -965,24 +964,6 @@ def test_the_header_byte_names_more_than_one_area_so_it_is_not_the_map():
     for n in files.values():
         counts[n] = counts.get(n, 0) + 1
     assert max(counts.values()) > 1
-
-
-@pytest.mark.skipif(
-    not opted_in("WISH_DOSBOX_DRIVE"),
-    reason="set WISH_DOSBOX_DRIVE=1 to boot DOSBox; it takes about a minute",
-)
-def test_driving_the_game_one_step_moves_the_square_and_nothing_else():
-    """The obstacle-2 experiment itself, opt-in because it drives an emulator."""
-    if dosbox.missing_tools():
-        pytest.skip("needs " + ", ".join(dosbox.missing_tools()))
-    out = dosbox.one_step(load="A", before="C", after="D", turns=2)
-    bx, by, _ = out["before"]
-    ax, ay, af = out["after"]
-    assert (ax, ay) != (bx, by) or af != out["before"][2]
-    assert out["area_id"][0] == out["area_id"][1]
-    assert dosbox.POS_X in out["changed_in_struct"] + out["changed_in_array"] or (
-        dosbox.POS_Y in out["changed_in_struct"]
-    )
 
 
 # --------------------------------------------------------------------------

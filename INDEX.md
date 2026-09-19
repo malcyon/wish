@@ -11,6 +11,7 @@ What each directory in this repository is for; the API documentation is at https
 | [`ui/`](ui/README.md) | Shared widget-level helpers both GUIs use: the app icon, icon painting, the icon path data. |
 | [`tools/`](tools/README.md) | Developer scripts that ship anyway — the emulator harness, the instance pool, the disassembly and dump helpers, the code generators, and `tools.wish`/`tools.generate.genui`, which `wish` reaches into at runtime. |
 | `tests/` | The test suite, plus `gamedata.py`, which reads game data off the player's own disks so none of it is committed. |
+| `livetests/` | The tests that start an emulator or talk to a device, which the normal pytest run never collects. |
 | `docs/` | The knowledge base: numbered documents recording what is known and how it was established. |
 | [`packaging/`](packaging/README.md) | The PyInstaller entry script, the Windows console-borrowing shim, and the `.icns` generator. |
 | `assets/` | Shipped non-code files — the application icons, the `.desktop` entry, and the artist's own logo files under `assets/logo/`. |

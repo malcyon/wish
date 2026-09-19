@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """The DOS combat driver, and the one signal that says a party fought.
 
-Three kinds of test, and only the last needs an emulator.
+Two kinds of test, and neither needs an emulator.
 
 * **What the files say.** `fought()` reads experience and nothing else,
   because monsters do not kill each other -- so a rise names the party as the
@@ -11,8 +11,6 @@ Three kinds of test, and only the last needs an emulator.
 * **What the driver presses.** `fight()` is driven against a scripted stand-in
   for `Session`, so the key it sends at each screen is checked with no DOSBox
   anywhere.
-* **A driven fight**, behind `WISH_DOSBOX_DRIVE=1`: load, fight, save, and
-  assert experience rose.
 
 Nothing here is copied out of the game. The bar digests are hashes of the
 game's pixels, which is a measurement of them rather than a copy.
@@ -23,11 +21,7 @@ import pathlib
 import sys
 import time
 
-import pytest
-
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-
-from optin import opted_in  # noqa: E402
 
 from tools.dos import dosbox, dosfightrun  # noqa: E402
 
@@ -400,36 +394,6 @@ def test_no_recorded_combat_bar_is_a_strip_of_one_colour():
     pressed = {d for _, d, label in dosbox.PoolOfRadiance.COMBAT_BARS
                if label in dosbox.PoolOfRadiance.COMBAT_KEYS}
     assert not (pressed & degenerate)
-
-
-
-# --------------------------------------------------------------------------
-# A fight actually driven, which is the only thing that proves any of it
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(
-    not opted_in("WISH_DOSBOX_DRIVE"),
-    reason="set WISH_DOSBOX_DRIVE=1 to boot DOSBox; a fight takes a few minutes",
-)
-def test_a_driven_fight_raises_experience_in_the_records():
-    """Walk into a wandering fight, `fight()` it, and read the files after.
-
-    Experience rising is the assertion because it is the only field that says
-    the party did the killing. Hit points are not asserted on in either
-    direction: a fight the party wins without being touched moves none of
-    them, and a fight it stands through moves plenty.
-    """
-    if dosbox.missing_tools():
-        pytest.skip("needs " + ", ".join(dosbox.missing_tools()))
-    try:
-        dosbox.find_game()
-    except FileNotFoundError as e:
-        pytest.skip(str(e))
-    out = dosfightrun.fight_run(save="J", rounds=1)
-    run = out["runs"][0]
-    assert run.get("fight") is True, run
-    assert run["fought"] is True, run["diff"]["chars"]
 
 
 def test_a_clerics_command_bar_is_recognised_though_it_is_a_different_bar():

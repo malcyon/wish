@@ -98,6 +98,13 @@ packages = ["goldbox", "editor", "automap", "wish", "tools", "ui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `livetests/` holds the tests that start an emulator or talk to a device; a
+# run of the suite, however it is pointed, must not collect them. Setting this
+# replaces pytest's own list, so its defaults are repeated here.
+norecursedirs = [
+    "*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv",
+    "{arch}", "livetests",
+]
 # The suite is overwhelmingly independent test files, so parallel is the
 # normal way to run it -- about 7:00 sequential on twelve cores, and pushing
 # often depends on that being cheap. `--dist loadgroup` keeps every test

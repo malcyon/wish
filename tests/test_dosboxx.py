@@ -8,10 +8,8 @@ address arithmetic, the chunking that hides `MEMDUMPBIN`'s 64K wrap, the
 breakpoint and register lines the log carries, and the environment that keeps
 a GTK dialog off the user's desktop.
 
-The one test that boots DOSBox-X is opt-in behind `WISH_DOSBOXX_DRIVE=1`, like
-`tests/test_dosbox.py`'s driven run, and re-runs `docs/142-dosbox-x-debugger.md`'s
-worked example.  Everything else skips cleanly on a machine with no debugger
-build, which is what CI is.
+The test that boots DOSBox-X and re-runs `docs/142-dosbox-x-debugger.md`'s
+worked example is `livetests/test_live_dosboxx.py`.
 """
 
 
@@ -23,8 +21,6 @@ import sys
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-
-from optin import opted_in  # noqa: E402
 
 from tools.dos import dosboxx  # noqa: E402
 
@@ -565,39 +561,3 @@ def test_a_machine_with_no_debugger_build_says_so_rather_than_failing_later():
     why = dosboxx.unavailable()
     assert why is None or "not installed" in why or "no debugger" in why
 
-
-# --------------------------------------------------------------------------
-# The worked example, opt-in
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(
-    not opted_in("WISH_DOSBOXX_DRIVE"),
-    reason="set WISH_DOSBOXX_DRIVE=1 to boot DOSBox-X; it takes about four minutes",
-)
-def test_the_harness_reproduces_the_clock_tick_docs_142_recorded():
-    """Every number here is one `docs/142-dosbox-x-debugger.md` already carries.
-
-    The base address is deliberately not asserted: it is where DOS happened to
-    load that build with that config, not a finding.  What is asserted is the
-    recipe -- the array is found, the live byte agrees with the save, the
-    spurious `00 ->` hit is absorbed, and the real tick is caught.
-    """
-    if dosboxx.unavailable():
-        pytest.skip(dosboxx.unavailable())
-    try:
-        game = __import__("tools.dos.dosbox", fromlist=["dosbox"]).find_game("POOLRAD")
-    except FileNotFoundError as e:
-        pytest.skip(str(e))
-    if not (game / "SAVE" / "SAVGAMJ.DAT").is_file():
-        pytest.skip("needs the player's slot J")
-
-    out = dosboxx.clock_demo("J")
-    assert out["attached"]
-    assert out["dumped"] == 0x100000
-    assert out["votes"] > 50
-    assert out["live"] == out["in_save"]
-    assert out["absorbed"].startswith("Break(") and "old=0," in out["absorbed"]
-    old, new = out["tick"].split()[1], out["tick"].split()[3]
-    assert int(new, 16) == int(old, 16) + 1
-    assert out["after_write"] == 9

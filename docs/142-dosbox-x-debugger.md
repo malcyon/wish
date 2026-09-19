@@ -256,9 +256,8 @@ All six steps are now `python3 tools/dos/dosboxx.py clock`, which runs them
 unattended in about twenty seconds and prints what it found. It has produced
 `$39940`, 62 voting windows, 5118 of 5120 bytes equal, `39AC:000E` live `06`,
 the spurious `00 -> 06`, the tick `06 -> 07` and `2f69 462` on every run so
-far. `tests/test_dosboxx.py` asserts all of that behind `WISH_DOSBOXX_DRIVE=1`
-— everything except the base address, which is exactly the number that is not
-allowed to be a finding.
+far. `livetests/test_live_dosboxx.py` asserts all of that — everything except the
+base address, which is exactly the number that is not allowed to be a finding.
 
 ## What it cannot do
 

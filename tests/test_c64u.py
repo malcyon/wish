@@ -4,9 +4,9 @@ Every test here drives the wrapper through its `runner` seam -- a callable
 taking `(argv, binary)` -- so what is under test is the arguments it builds and
 the rules it enforces, not the device.  Nothing in this file opens a socket.
 
-The one test that wants hardware is opt-in twice over: `$C64U_HARDWARE_TESTS`
-must be set *and* a device must answer.  A pytest run must never reach out and
-touch a machine somebody is playing on, and CI has no C64 Ultimate at all.
+The one test that wants hardware is `livetests/test_live_c64u.py`: a pytest
+run of this directory must never reach out and touch a machine somebody is
+playing on, and CI has no C64 Ultimate at all.
 """
 
 import json
@@ -18,8 +18,6 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from optin import opted_in  # noqa: E402
 
 from tools.c64 import c64u  # noqa: E402
 
@@ -338,98 +336,3 @@ def test_no_device_exits_three_rather_than_one(monkeypatch, capsys):
     monkeypatch.setattr(c64u.Ultimate, "available", lambda self: False)
     assert c64u.main(["info"]) == c64u.NO_DEVICE
     assert "no C64 Ultimate answered" in capsys.readouterr().err
-
-
-# -- the one test that wants hardware ---------------------------------------
-
-
-def test_collecting_this_file_with_hardware_tests_enabled_touches_no_device(
-        tmp_path):
-    """`@pytest.mark.skipif`'s condition is evaluated once, when this file is
-    collected -- including `--collect-only` and a `-k` that selects something
-    else in the suite entirely. Setting `C64U_HARDWARE_TESTS=1` must not make
-    *collecting this file* reach out to the device, however slow, mid-game or
-    unreachable it is: `.claude/rules/commits.md` requires a whole-suite run
-    before every push, and a hang here hangs that run.
-
-    Stands in for the device with a script that only ever appends to a marker
-    file -- never a real socket -- so this is safe regardless of whether a C64
-    Ultimate is actually reachable from this machine right now.
-    """
-    marker = tmp_path / "invoked.log"
-    stub = tmp_path / "stub-c64u"
-    stub.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys\n"
-        f"open({str(marker)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
-        "print('{}')\n")
-    stub.chmod(0o755)
-
-    repo_root = pathlib.Path(c64u.__file__).resolve().parent.parent
-    env = dict(os.environ)
-    env.update({
-        "C64U_HARDWARE_TESTS": "1",
-        "C64U_CLI": str(stub),
-        "C64U_HOST": "203.0.113.1",  # TEST-NET-3: reserved, never routed
-    })
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider",
-         "-o", "addopts=", "--collect-only", "-q", str(pathlib.Path(__file__))],
-        cwd=repo_root, env=env, capture_output=True, text=True, timeout=60)
-
-    assert not marker.exists(), (
-        "collecting this file invoked the device stub -- a pytest run must "
-        "never reach out and touch a machine somebody is playing on\n"
-        + result.stdout + result.stderr)
-
-
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on", "TRUE", " On "])
-def test_an_opt_in_variable_set_to_a_true_word_is_on(monkeypatch, value):
-    """The rule behind the DOSBox, DOSBox-X and hardware opt-ins: `=true`
-    counts, the same as `=1`."""
-    monkeypatch.setenv("WISH_TEST_OPT_IN", value)
-    assert opted_in("WISH_TEST_OPT_IN")
-
-
-@pytest.mark.parametrize("value", ["", "0", "off", "no", "false", "2"])
-def test_an_opt_in_variable_set_to_anything_else_is_off(monkeypatch, value):
-    """A variable somebody exported once and forgot must not start an
-    emulator or touch a device."""
-    monkeypatch.setenv("WISH_TEST_OPT_IN", value)
-    assert not opted_in("WISH_TEST_OPT_IN")
-
-
-def test_an_opt_in_variable_that_is_not_set_is_off(monkeypatch):
-    monkeypatch.delenv("WISH_TEST_OPT_IN", raising=False)
-    assert not opted_in("WISH_TEST_OPT_IN")
-
-
-def _hardware_tests_requested() -> bool:
-    """Whether `$C64U_HARDWARE_TESTS` opts in -- the environment only.
-
-    This is what the `skipif` below evaluates, and `skipif`'s condition runs
-    once, at collection, for every run of this file: `--collect-only`, a `-k`
-    that selects something else entirely, all of it. Anything that reaches
-    the device -- even `available()`, which is a real REST call -- belongs in
-    a test body behind a runtime `pytest.skip()`, never here.
-    """
-    return opted_in("C64U_HARDWARE_TESTS")
-
-
-@pytest.mark.skipif(not _hardware_tests_requested(),
-                    reason="set C64U_HARDWARE_TESTS=1 with a device reachable")
-def test_the_raster_counter_moves_between_two_reads():
-    """The only claim worth a hardware test here: a DMA read reaches live I/O.
-    `README.md:287` in the c64u repo says DMA writes reach only RAM; two reads
-    of $D012 coming back different disproves it for reads at least.
-
-    Read-only, and it still does not run unless somebody opts in: the machine
-    is on a desk and may have somebody playing on it. The device probe itself
-    -- `available()`, a real network call -- happens here, in the test body,
-    and skips at runtime; it must never run merely from collecting this file.
-    """
-    dev = c64u.Ultimate()
-    if not dev.available():
-        pytest.skip("no C64 Ultimate answered")
-    seen = {dev.read_mem(0xD012, 1)[0] for _ in range(8)}
-    assert len(seen) > 1, f"$D012 never moved across 8 reads: {seen}"
