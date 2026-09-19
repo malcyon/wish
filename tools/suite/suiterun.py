@@ -18,7 +18,9 @@ What it does, in order, and all of it against the same checkout:
    it every test that reads game data skips.
 3. `pytest -q` in the worktree, with the repository's own virtual
    environment. `-n auto --dist loadgroup` is in `pyproject.toml`. Then the
-   whole suite once more with `gamedisks.yaml` unlinked, as CI has none.
+   whole suite once more with `gamedisks.yaml` unlinked and every variable
+   `gamedisks.yaml.example` names pointing at one path that does not exist, so
+   nothing resolves and the data-backed tests skip, as CI has no data.
 4. `ruff check .` in the worktree.
 5. `tools/generate/genui.py --check` in the worktree.
 6. If all three passed, write `~/.cache/wish/testrun/<sha>.green`,
@@ -43,6 +45,8 @@ import subprocess
 import sys
 import tempfile
 
+import yaml
+
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
@@ -61,10 +65,34 @@ def marker_dir() -> pathlib.Path:
 SUMMARY = re.compile(r"^(?:=+ )?(\d+ passed.*?)(?: =+)?$", re.MULTILINE)
 
 
-def _run(args: list[str], cwd: pathlib.Path, timeout: int) -> subprocess.CompletedProcess:
+def _run(args: list[str], cwd: pathlib.Path, timeout: int,
+         extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True,
                           timeout=timeout,
-                          env={**os.environ, "QT_QPA_PLATFORM": "offscreen"})
+                          env={**os.environ, "QT_QPA_PLATFORM": "offscreen",
+                               **(extra_env or {})})
+
+
+def no_data_env(example: pathlib.Path, absent: pathlib.Path) -> dict[str, str]:
+    """Every environment variable `example` names, each set to `absent`, a path
+    that does not exist.
+
+    A variable that is set is the only place `tools/registry/gamedisks.py`
+    looks, so with all of them pointing at nothing no lookup finds any game
+    data and every data-backed test skips, as it does on CI. Taking away
+    `gamedisks.yaml` alone stopped being enough once `/data/agent-disks`, where
+    the example's own paths point, was filled on this machine: with no registry
+    the run fell back to the example and found the data anyway.
+
+    The path must not exist rather than merely be empty, because that is what
+    CI's own lookups meet (`/data/agent-disks` is not there) and some tests ask
+    `.is_dir()` before the registry: `tests/test_cursespellslots.py` skips on
+    "no DOS archives" only when the directory is missing, and an empty one made
+    it run over the specimen tree alone and fail its measured counts.
+    """
+    entries = yaml.safe_load(example.read_text(encoding="utf-8")) or {}
+    return {row["env"]: str(absent) for row in entries.values()
+            if isinstance(row, dict) and row.get("env")}
 
 
 def resolve(sha: str) -> str:
@@ -82,7 +110,13 @@ def summary_of(pytest_output: str) -> str:
 def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
     """(all green, pytest summary line, decisive failure output)."""
     python = str(PYTHON)
-    pytest = _run([python, "-m", "pytest", "-q"], worktree, 1500)
+    no_data = no_data_env(worktree / "gamedisks.yaml.example",
+                          worktree.parent / "no-data")
+    link = worktree / "gamedisks.yaml"
+    # A machine with no registry has nothing to link, so its one run is already
+    # the CI-like one and gets the same empty environment.
+    pytest = _run([python, "-m", "pytest", "-q"], worktree, 1500,
+                  None if link.is_symlink() else no_data)
     print(pytest.stdout[-4000:], end="")
     summary = summary_of(pytest.stdout + pytest.stderr)
     if pytest.returncode != 0:
@@ -90,14 +124,14 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
                   if line.startswith(("FAILED", "ERROR"))]
         return False, summary, "\n".join(failed) or pytest.stderr[-2000:]
     # CI has no `gamedisks.yaml`, and the run above had one. Take it away and run
-    # everything again: a scoped rerun of the tests thought likely to care missed
-    # `tests/test_fleedrive.py`, which loads `tools/registry/gamedisks.py` under a second
-    # module name that the conftest fallback does not reach, and CI found it
-    # (#575).
-    link = worktree / "gamedisks.yaml"
+    # everything again, with every registry variable pointing at an empty
+    # directory: a scoped rerun of the tests thought likely to care missed
+    # `tests/test_fleedrive.py`, which loads `tools/registry/gamedisks.py` under a
+    # second module name that the conftest fallback does not reach, and CI found
+    # it (#575).
     if link.is_symlink():
         link.unlink()
-        bare = _run([python, "-m", "pytest", "-q"], worktree, 1500)
+        bare = _run([python, "-m", "pytest", "-q"], worktree, 1500, no_data)
         print("without gamedisks.yaml:", summary_of(bare.stdout + bare.stderr))
         if bare.returncode != 0:
             failed = [line for line in bare.stdout.splitlines()
