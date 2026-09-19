@@ -2,10 +2,8 @@ from __future__ import annotations
 
 """The area table, and the title key that stops it lying about Curse.
 
-The table's claims are checked against the game's own scripts where those are
-present in the `ecl-scripts` registry entry -- disassemblies produced by this project,
-not game data -- and skipped where they are not, exactly as `tests/gamedata.py`
-skips when no disk is attached.
+Rows that need the game's own scripts read them off the disks through the
+`ssb_table` and `pool_table` fixtures, and skip when no disk is attached.
 """
 
 
@@ -23,10 +21,6 @@ from goldbox.areas import (
     Arrival,
     Confidence,
 )
-from tools.registry import gamedisks
-
-SCRIPTS = gamedisks.find("ecl-scripts")
-
 
 # -- the shape of the table --------------------------------------------------
 
@@ -377,102 +371,6 @@ def test_the_label_still_falls_back_to_the_stem_for_a_shared_curse_map():
 
 def test_the_label_still_falls_back_to_candidates_with_no_area():
     assert AutomapState().area_label == "identifying..."
-
-
-# -- against the game's own scripts ------------------------------------------
-
-
-def _script_paths() -> dict[int, pathlib.Path]:
-    """`{area id: dis_POOLn__ECLxx.txt}` for whatever is present."""
-    out: dict[int, pathlib.Path] = {}
-    if SCRIPTS is None:
-        return out
-    for path in SCRIPTS.glob("dis_POOL?__ECL??.txt"):
-        m = re.fullmatch(r"dis_POOL(\d)__ECL([0-9A-F]{2})\.txt", path.name)
-        if m:
-            out[int(m.group(2), 16)] = path
-    return out
-
-
-@pytest.fixture(scope="module")
-def scripts() -> dict[int, pathlib.Path]:
-    found = _script_paths()
-    if not found:
-        # `tools/areas/eclwalk.py listing` looks like a rebuild -- it prints the
-        # same "LOADFILES 5, 5, 0" text these tests parse -- but it walks
-        # each script from its five entry points and stops wherever the walk
-        # cannot reach, not a linear sweep. Checked directly (#211): on
-        # `ECL1E` the walk reaches only 89% of the script and the missed 11%
-        # is exactly the `LOADFILES` this file's own
-        # `test_a_mapless_area_really_issues_no_loadfiles` checks for, and
-        # neither of the two dynamic areas' `[$6Exx]`-addressed `LOADFILES`
-        # is in the reached text either -- so it cannot regenerate this file
-        # honestly. A full linear ECL disassembler would; `analysis6/ecl6.py`
-        # was one, reaching 100% of every byte, and was lost with the scratch
-        # directory (#137). Rebuilding it is not this file's call to make: Donald closed
-        # that whole effort on 2026-08-31, at his own direction --
-        # `docs/115-review-the-scripts.md` -- "I don't need to see the ECL
-        # scripts. If I decide I want to see them, we can approach the issue
-        # again at that time." These five tests stay skipping until that
-        # reopens.
-        pytest.skip("needs the ecl-scripts entry; set WISH_ECL_SCRIPTS or add it "
-                    "to gamedisks.yaml. The decoder that produced the "
-                    "disassemblies is gone and rebuilding it was deliberately "
-                    "shelved -- docs/115-review-the-scripts.md")
-    return found
-
-
-def test_the_table_names_exactly_the_scripts_on_the_disks(scripts):
-    assert set(scripts) == {a.id for a in areas.AREAS}
-
-
-def test_every_disk_number_matches_the_disk_the_script_is_on(scripts):
-    """`Area.disk` is what a fasttravel writes to `$6E12`; getting it wrong makes the
-    loader sit at a disk prompt."""
-    wrong = {a.id: (a.disk, scripts[a.id].name) for a in areas.AREAS
-             if f"POOL{a.disk}__" not in scripts[a.id].name}
-    assert wrong == {}
-
-
-def test_a_mapless_area_really_issues_no_loadfiles(scripts):
-    for a in areas.AREAS:
-        text = scripts[a.id].read_text()
-        assert ("LOADFILES" in text) == a.has_map, a.ecl
-
-
-def test_every_map_the_table_claims_is_one_its_script_loads(scripts):
-    """`LOADFILES`' first operand is the *file number*; whether that number is
-    fetched as a `GEO` or a `SQRDATA` is decided at run time by `$49E6`, not by
-    the opcode -- `ECL1A` loads its overland data with `LOADFILES 5, 5, 0`.
-    So compare numbers, which is all the bytecode actually says. 255 and 127
-    mean "leave this slot alone" and a `[$6Exx]` operand is a run-time choice;
-    neither is a claim about this area."""
-    static = re.compile(r"LOADFILES (\d+), \d+, \d+")
-    for a in areas.AREAS:
-        if a.dynamic_geo:
-            continue
-        loaded = {int(n) for n in static.findall(scripts[a.id].read_text())}
-        loaded -= {255, 127}
-        claimed = {areas.geo_number(g) for g in a.geos}
-        if a.sqrdata:
-            claimed.add(int(a.sqrdata[-2:]))
-        # A script may set *another* area's map up before `NEWECL` -- `ECL07`
-        # loads `GEO03` on its way into area 5 -- so this checks the one
-        # direction that matters: nothing the table claims is absent.
-        missing = claimed - loaded
-        assert not missing, f"{a.ecl} never loads {sorted(missing)}"
-
-
-def test_the_two_dynamic_areas_are_flagged_as_such(scripts):
-    """Areas 3 and 5 issue no static `LOADFILES` for their own map: `ECL03`
-    and `ECL05` pick it with `GETTABLE ..., mapDir`. Their `GEO03`/`GEO05` is
-    inferred from the id, which is why they are PROBABLE."""
-    dynamic = {a.id for a in areas.AREAS if a.dynamic_geo}
-    assert dynamic == {3, 5}
-    for id in dynamic:
-        text = scripts[id].read_text()
-        assert re.search(r"LOADFILES \[\$6E\w\w\]", text)
-        assert f"LOADFILES {id}, " not in text
 
 
 # -- the seam with goldbox/c64_port.py ---------------------------------------
@@ -1061,11 +959,9 @@ def test_the_silver_blades_ids_are_sparse_and_must_not_be_enumerated():
 
 # -- the same reading, run against Pool of Radiance as a control -------------
 #
-# The five tests above that check `AREAS` against the scripts have skipped
-# since the `ecl-scripts` directory was lost with the rest of the scratch directory (#137). These
-# three ask the same questions of the disks directly, through the reader that
-# built the Silver Blades table -- so the Silver Blades rows are not the only
-# thing that reader has ever been believed about.
+# These tests ask of the Pool of Radiance disks the questions the Silver Blades
+# tests ask of theirs, through the reader that built the Silver Blades table, so
+# that reader is checked against a second game.
 
 
 @pytest.fixture(scope="module")

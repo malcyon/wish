@@ -133,14 +133,6 @@ codewheel:
   paths:
     - "/data/agent-disks/codewheel"
 
-ecl-scripts:
-  # The decompiled ECL event scripts of the Gold Box titles, which `tests/
-  # test_areas.py` reads. They are derived from the game's own code, so they are
-  # game data and are never committed. No path on any machine has them yet.
-  env: WISH_ECL_SCRIPTS
-  paths:
-    - "/data/agent-disks/ecl-scripts"
-
 coab-source:
   # The decompiled source of Curse of the Azure Bonds, which `tests/
   # test_coabsource.py` reads. Derived from the game's own executable, so it is
