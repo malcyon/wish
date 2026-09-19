@@ -28,9 +28,11 @@ What it does, in order, and all of it against the same checkout:
 5. The no-data pass, which behaves as CI does: `gamedisks.yaml` unlinked and
    every variable `gamedisks.yaml.example` names pointing at one path that
    does not exist. Every `tools/` module is imported in a fresh interpreter,
-   then only the test files that ask for game data or decide to skip without it
-   are run, so the pass shows nothing depends on data being present without
-   repeating the whole suite.
+   then only the test files the first pass saw reach the game data are run
+   (`tools/suite/datatouch.py`, loaded into step 4), or, when it recorded
+   nothing, the files whose source asks for game data or decides to skip
+   without it, so the pass shows nothing depends on data being present
+   without repeating the whole suite.
 6. `ruff check .` in the worktree.
 7. `tools/generate/genui.py --check` in the worktree.
 8. If all of it passed, write `~/.cache/wish/testrun/<sha>.green`,
@@ -64,6 +66,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from tools.registry import scratch  # noqa: E402
+from tools.suite import datatouch  # noqa: E402
 
 PYTHON = REPO / ".venv" / "bin" / "python"
 RUFF = REPO / ".venv" / "bin" / "ruff"
@@ -206,10 +209,18 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
     no_data = no_data_env(worktree / "gamedisks.yaml.example",
                           worktree.parent / "no-data")
     link = worktree / "gamedisks.yaml"
+    log_dir = worktree.parent / "datatouch"
+    # The first pass records which test files reach the game data, when this
+    # commit has the recorder to load: a commit older than it has no plugin for
+    # `-p` to import, and pytest would stop on the missing name. A machine with
+    # no registry has one run and no second pass to choose files for.
+    first_args = [python, "-m", "pytest", "-q"]
+    if link.is_symlink() and (worktree / "tools" / "suite" / "datatouch.py").is_file():
+        first_args += ["-p", "tools.suite.datatouch"]
     # A machine with no registry has nothing to link, so its one run is already
     # the CI-like one and gets the same empty environment.
-    pytest = _run([python, "-m", "pytest", "-q"], worktree, 1500,
-                  None if link.is_symlink() else no_data)
+    pytest = _run(first_args, worktree, 1500,
+                  {datatouch.LOG_ENV: str(log_dir)} if link.is_symlink() else no_data)
     print(pytest.stdout[-4000:], end="")
     summary = summary_of(pytest.stdout + pytest.stderr)
     if pytest.returncode != 0:
@@ -224,11 +235,15 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
         if broken:
             return (False, summary + " (a tool fails to import without data)",
                     "\n".join(broken))
-        chosen = data_deciding_tests(worktree / "tests")
+        scanned = data_deciding_tests(worktree / "tests")
+        touched = datatouch.recorded(log_dir, worktree)
+        chosen = touched or scanned
         if not chosen:
             return False, summary, "no test file asks for game data: the selection is broken"
+        how = (f"recorded; the source scan would have chosen {len(scanned)}"
+               if touched else "source scan; nothing was recorded")
         bare = _run([python, "-m", "pytest", "-q", *chosen], worktree, 1500, no_data)
-        print(f"without data, {len(chosen)} test files:",
+        print(f"without data, {len(chosen)} test files ({how}):",
               summary_of(bare.stdout + bare.stderr))
         if bare.returncode != 0:
             failed = [line for line in bare.stdout.splitlines()

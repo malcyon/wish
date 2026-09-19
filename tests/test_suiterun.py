@@ -25,7 +25,7 @@ import yaml
 
 from automap import gamedisks
 from tools.registry import scratch
-from tools.suite import suiterun
+from tools.suite import datatouch, suiterun
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 EXAMPLE = REPO / "gamedisks.yaml.example"
@@ -82,13 +82,16 @@ class _Calls(list):
         self.args = []
 
 
-def _recording(monkeypatch):
+def _recording(monkeypatch, first_writes=None):
     """Replace `_run` with one that records each pytest call's extra env, and
-    every full argument list in `.args`."""
+    every full argument list in `.args`. `first_writes` is called with the first
+    pass's extra env, as the recorder would write its log during that pass."""
     calls = _Calls()
 
     def fake(args, cwd, timeout, extra_env=None):
         if "pytest" in args:
+            if first_writes and not calls:
+                first_writes(extra_env)
             calls.append(extra_env)
             calls.args.append(list(args))
         return subprocess.CompletedProcess(args, 0, "1 passed in 0.1s\n", "")
@@ -102,7 +105,8 @@ def test_the_pass_without_the_registry_gets_the_empty_environment_and_the_first_
     calls = _recording(monkeypatch)
     suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
     first, bare = calls
-    assert first is None
+    assert set(first) == {datatouch.LOG_ENV}
+    assert set(first) & set(_variables().values()) == set()
     assert set(bare) == set(_variables().values())
     assert not (tmp_path / "wt" / "gamedisks.yaml").exists()
 
@@ -122,7 +126,7 @@ def test_the_path_is_beside_the_worktree_and_is_not_a_directory(
     skips only when it is false, so an empty directory here is not enough."""
     calls = _recording(monkeypatch)
     suiterun.run_checks(_fake_worktree(tmp_path, registry))
-    path = pathlib.Path(next(v for c in calls if c for v in c.values()))
+    path = pathlib.Path(next(iter(calls[-1].values())))
     assert not path.is_dir() and not path.exists()
     assert path.parent == tmp_path
 
@@ -131,9 +135,63 @@ def test_the_no_data_pass_runs_only_the_files_that_ask_for_data(tmp_path, monkey
     calls = _recording(monkeypatch)
     suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
     full, narrow = calls.args
-    assert full[-1] == "-q"
+    assert "-q" in full
     assert narrow[-1] == "tests/test_reads_disks.py"
     assert "tests/test_plain.py" not in narrow
+
+
+def _with_the_recorder(worktree):
+    (worktree / "tools" / "suite").mkdir()
+    (worktree / "tools" / "suite" / "datatouch.py").write_text("")
+
+
+def _log(worktree, *files):
+    directory = worktree.parent / "datatouch"
+    directory.mkdir(exist_ok=True)
+    (directory / "1.txt").write_text("".join(f"{name}\tstat\n" for name in files))
+
+
+def test_the_first_pass_loads_the_recorder_and_names_where_it_writes(tmp_path, monkeypatch):
+    calls = _recording(monkeypatch)
+    worktree = _fake_worktree(tmp_path, registry=True)
+    _with_the_recorder(worktree)
+    suiterun.run_checks(worktree)
+    first = calls.args[0]
+    assert first[first.index("-p") + 1] == "tools.suite.datatouch"
+    assert calls[0] == {datatouch.LOG_ENV: str(tmp_path / "datatouch")}
+    assert "-p" not in calls.args[1]
+
+
+def test_a_worktree_with_no_recorder_gets_no_plugin_to_load(tmp_path, monkeypatch):
+    """A commit older than the recorder has nothing for `-p` to import, and
+    pytest stops on a plugin it cannot find."""
+    calls = _recording(monkeypatch)
+    suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
+    assert all("-p" not in args for args in calls.args)
+
+
+def test_the_no_data_pass_runs_exactly_the_files_the_first_pass_recorded(
+        tmp_path, monkeypatch, capsys):
+    worktree = _fake_worktree(tmp_path, registry=True)
+    _with_the_recorder(worktree)
+    (worktree / "tests" / "test_gone.py").write_text("def test_x(): pass\n")
+    calls = _recording(monkeypatch, lambda env: _log(
+        worktree, "tests/test_plain.py", "tests/test_missing.py"))
+    green, _, _ = suiterun.run_checks(worktree)
+    assert green
+    assert calls.args[1][-1:] == ["tests/test_plain.py"]
+    assert "tests/test_reads_disks.py" not in calls.args[1]
+    out = capsys.readouterr().out
+    assert "without data, 1 test files (recorded; the source scan would have chosen 1)" in out
+
+
+def test_an_empty_log_falls_back_to_the_source_scan(tmp_path, monkeypatch, capsys):
+    worktree = _fake_worktree(tmp_path, registry=True)
+    _with_the_recorder(worktree)
+    calls = _recording(monkeypatch, lambda env: _log(worktree))
+    suiterun.run_checks(worktree)
+    assert calls.args[1][-1] == "tests/test_reads_disks.py"
+    assert "1 test files (source scan; nothing was recorded)" in capsys.readouterr().out
 
 
 def test_the_selection_takes_a_skip_a_needs_marker_or_a_data_lookup(tmp_path):
@@ -337,7 +395,7 @@ def test_a_sigterm_mid_run_removes_the_worktree_and_its_parent(clones, tmp_path,
 
 CHILD = textwrap.dedent("""
     import pathlib, sys, time
-    from tools.suite import suiterun
+    from tools.suite import datatouch, suiterun
 
     suiterun.REPO = pathlib.Path(sys.argv[1])
     suiterun.RUFF = pathlib.Path(sys.executable)
