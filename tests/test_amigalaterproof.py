@@ -1,4 +1,4 @@
-"""`tools/amigalaterproof.py`: the run harness that put `write_later` in front
+"""`tools/amiga/amigalaterproof.py`: the run harness that put `write_later` in front
 of the two later Amiga games.
 
 The run itself is in `docs/203-a-converted-later-amiga-party-in-the-running-game.md`
@@ -7,7 +7,7 @@ disks.  What can be tested is the two things the harness decides on its own,
 because both of them would spoil a run silently:
 
 * **the ordering**, which is why this tool exists rather than
-  `tools/amigalaterwrite.py --into`.  The writer's riskiest choice is a
+  `tools/amiga/amigalaterwrite.py --into`.  The writer's riskiest choice is a
   boolean chain head where `write_por` writes NULL, and a wrong head does not
   spoil one character -- the loader's file position desynchronises and every
   character *after* it is read out of the wrong bytes.  So the character
@@ -24,7 +24,7 @@ import pytest
 from gamedata import specimen_root
 
 from goldbox import amiga_later, amiga_port, dos_port
-from tools import amigalaterproof as proof
+from tools.amiga import amigalaterproof as proof
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 

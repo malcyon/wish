@@ -225,14 +225,14 @@ def test_a_party_of_one_writes_one_record_and_no_others(one_character_adf,
 def test_the_transfer_test_says_the_dialog_writes_what_the_library_writes(
         shipped_adf, tmp_path):
     """The bytes the dialog's Amiga → DOS row writes equal what
-    `tools/fromamigapor.py --to dos` writes, calling `read_por_slot`,
+    `tools/amiga/fromamigapor.py --to dos` writes, calling `read_por_slot`,
     `read_por_state` and `goldbox.dos_codec.new_dos_save_from` directly for the
     same slot -- so `#354`'s DOSBox proof stands for the dialog's own path
     too, which is the argument
     `test_c64_to_dos_direction_is_the_transfer_test` makes for the C64 row.
     """
 
-    from tools import fromamigapor
+    from tools.amiga import fromamigapor
 
     source = convert.Source.detect(shipped_adf)
     direction = _direction()

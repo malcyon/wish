@@ -35,7 +35,7 @@ sixteen bytes and no seventeenth to fill, which is
 record (CONFIRMED from the layout). Whether the C64 engine also refuses in
 words has not been read, and it cannot change the number.
 
-Nothing here needed WinUAE: `tools/amiga68k.py` reads the Amiga executables
+Nothing here needed WinUAE: `tools/amiga/amiga68k.py` reads the Amiga executables
 off the disk images, and `tools/dosovrmap.py` resolves the DOS overlays.
 
 ## The routine
@@ -216,6 +216,6 @@ the sixteenth slot.
 
 Tools: `tools/dositemcap.py` (the running-game half),
 `tools/dosovrmap.py` (DOS overlay units and disassembly),
-`tools/amiga68k.py` (the Amiga executables). Specimens:
+`tools/amiga/amiga68k.py` (the Amiga executables). Specimens:
 `WISH-SPEC-por-party-l1-intown` as the base,
 `WISH-SPEC-por-item-cap-16` and `WISH-SPEC-por-item-twenty` as the results.

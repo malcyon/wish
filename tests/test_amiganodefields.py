@@ -1,4 +1,4 @@
-"""`tools/amiganodefields.py`, and the answer it gave `#387`.
+"""`tools/amiga/amiganodefields.py`, and the answer it gave `#387`.
 
 `#387 (The Amiga Silver Blades effect node keeps a byte DOS has not got, and
 a converted character loses it)` asked what the byte at offset 1 of an Amiga
@@ -39,8 +39,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 pytest.importorskip("capstone")
 
 from tests.test_amiga68k import hunk_file, pad4, u32  # noqa: E402
-from tools import amiga68k, amiganodefields  # noqa: E402
-from tools.amiga68k import Executable  # noqa: E402
+from tools.amiga import amiga68k, amiganodefields  # noqa: E402
+from tools.amiga.amiga68k import Executable  # noqa: E402
 
 #: The record's chain-head displacement in the program built below, and the
 #: node's own `next`, so the numbers in the test are the tool's arguments.
@@ -48,7 +48,7 @@ CHAIN, NEXT = 0x96, 0x06
 
 #: Where each title keeps the effect chain in its record, and the effect
 #: node pool's descriptor in its small-data segment.  Read with
-#: `tools/amigaglobal.py`; `docs/202-the-amiga-effect-node-pad.md` §2.
+#: `tools/amiga/amigaglobal.py`; `docs/202-the-amiga-effect-node-pad.md` §2.
 TITLES = {
     "/Curse": {"disk": "curse", "chain": 0x0F2, "pool": 0x5B1E,
                "constructor": 0x00F176, "allocator": 0x02C5A0},
@@ -285,7 +285,8 @@ def _later_savegames(converted: bool = False) -> list[tuple[str, bytes]]:
     """
     from tests.gamedata import specimen_root
     from tests.test_amigalaterwrite import _DRAWERS, OURS, _verified
-    from tools import amigarecords, gamedisks
+    from tools import gamedisks
+    from tools.amiga import amigarecords
     out: list[tuple[str, bytes]] = []
     if not converted:
         for _, volume, name, data, what in amigarecords.specimens(

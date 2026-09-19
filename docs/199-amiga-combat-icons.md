@@ -10,11 +10,11 @@ the DOS record wants.
 
 Every offset below is a file offset into `/Curse` on Curse of the Azure Bonds
 disk 1 or `/Secret` on Secret of the Silver Blades disk 1, read with
-`tools/amiga68k.py`. `tools/amigaicons.py` re-takes all three measurements --
+`tools/amiga/amiga68k.py`. `tools/amigaicons.py` re-takes all three measurements --
 `--tables`, `--art`, `--census` -- and `tests/test_amigaicons.py` pins them.
-Every site named below was found with `tools/amigarecordrefs.py`, which is
+Every site named below was found with `tools/amiga/amigarecordrefs.py`, which is
 what asks "who reads this record byte" on a port where a field is `d16(An)`
-off a pointer rather than a global `tools/amigaglobal.py` could find.
+off a pointer rather than a global `tools/amiga/amigaglobal.py` could find.
 
 ## The routine
 

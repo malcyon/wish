@@ -9,7 +9,8 @@ from gamedata import specimen_root
 
 from goldbox import amiga_later, amiga_savegame, dos_savegame
 from goldbox.amiga_adf import AmigaDisk
-from tools import amigasaves, specimens
+from tools import specimens
+from tools.amiga import amigasaves
 
 
 def _fake_record(shape, name: str) -> bytes:
@@ -218,7 +219,7 @@ def test_an_engine_written_save_round_trips_square_clock_and_order(
 
 def test_the_diagnostic_tool_parses_through_the_library(tmp_path, monkeypatch):
     """The checker requests tolerant parsing from the one library parser."""
-    from tools import amigasavecheck as tool
+    from tools.amiga import amigasavecheck as tool
 
     path = tmp_path / "synthetic.dat"
     path.write_bytes(_synthetic(amiga_savegame.CURSE, ("ALPHA",)))

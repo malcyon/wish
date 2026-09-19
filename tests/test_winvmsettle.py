@@ -1,4 +1,4 @@
-"""`tools/winvmsettle.py`, which waits for the guest's screen to hold still.
+"""`tools/amiga/winvmsettle.py`, which waits for the guest's screen to hold still.
 
 No VM and no emulator: `winvm shot` is replaced by a function that writes
 whatever bytes the test wants next, so the thing under test is the only thing
@@ -16,7 +16,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import winvmsettle  # noqa: E402
+from tools.amiga import winvmsettle  # noqa: E402
 
 
 def _grabs(monkeypatch, frames: list[bytes] | None, returncode: int = 0,

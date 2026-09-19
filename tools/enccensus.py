@@ -59,9 +59,11 @@ from goldbox import amiga_later, amiga_por, amiga_port, amiga_savegame  # noqa: 
 from goldbox import dos_codec as gdos  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
 from tools import (  # noqa: E402
+    dostailcensus,
+)
+from tools.amiga import (  # noqa: E402
     amigarecords,
     amigasaves,
-    dostailcensus,
 )
 
 #: How a record is graded, by where it was found, strongest claim first.  A

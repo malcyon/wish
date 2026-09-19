@@ -1,4 +1,4 @@
-"""`tools/amiga68k.py` on executables built here, so no game code is needed.
+"""`tools/amiga/amiga68k.py` on executables built here, so no game code is needed.
 
 The two linker layouts the tool understands are each built from scratch as a
 Hunk file: a SAS/Lattice small-data program with a `jmp` table opening its
@@ -18,8 +18,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import amiga68k  # noqa: E402
-from tools.amiga68k import Executable, pc_references  # noqa: E402
+from tools.amiga import amiga68k  # noqa: E402
+from tools.amiga.amiga68k import Executable, pc_references  # noqa: E402
 
 pytest.importorskip("capstone")
 

@@ -74,7 +74,7 @@ allocator handed out.
 
 A pool descriptor is named by exactly one instruction per allocation or free,
 so the references to it are the complete list of places a node pointer can be
-born. `tools/amiganodefields.py pool` prints them: **eleven in `/Secret`, ten
+born. `tools/amiga/amiganodefields.py pool` prints them: **eleven in `/Secret`, ten
 in `/Curse`**, every one asking for `#$a` = 10 bytes, one of each being the
 descriptor's own set-up.
 
@@ -109,7 +109,7 @@ is the whole reason the tenth byte exists.
 
 ## 4. Every reader, counted
 
-`tools/amiganodefields.py fields` walks forward from **every** load of the
+`tools/amiga/amiganodefields.py fields` walks forward from **every** load of the
 record's chain-head field, marks the address registers that hold a node,
 runs to a fixed point, and prints each displacement anything touches through
 one. It over-approximates deliberately: it ignores control flow and keeps a
@@ -237,11 +237,11 @@ agent:
 ## 9. Re-running it
 
 ```sh
-tools/amiganodefields.py --adf <silver-blades-1.adf> --exe /Secret \
+tools/amiga/amiganodefields.py --adf <silver-blades-1.adf> --exe /Secret \
     pool --global 7618
-tools/amiganodefields.py --adf <silver-blades-1.adf> --exe /Secret \
+tools/amiga/amiganodefields.py --adf <silver-blades-1.adf> --exe /Secret \
     fields --chain 96 --size 10
-tools/amiganodefields.py --adf <curse-1.adf> --exe /Curse \
+tools/amiga/amiganodefields.py --adf <curse-1.adf> --exe /Curse \
     fields --chain f2 --size 10
 ```
 

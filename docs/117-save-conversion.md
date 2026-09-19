@@ -631,7 +631,7 @@ all three container writers.
 
 `goldbox.amiga_por.por_state_from_c64`, `.por_state_from_dos`, `.por_state_from_amiga`
 and `.read_por_state` are wrappers around the readers above kept for the
-Amiga's existing callers — `tools/toamigapor.py` and `tools/fromamigapor.py`
+Amiga's existing callers — `tools/amiga/toamigapor.py` and `tools/amiga/fromamigapor.py`
 among them — and `PorSaveState` is `WorldState` under its old name.
 
 **What the shape holds, and what it deliberately does not.** `title`, `area`,

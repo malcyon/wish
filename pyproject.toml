@@ -17,15 +17,15 @@ dependencies = ["pyyaml>=6.0"]
 # without them. Both were installed by hand in the `.venv` and never declared,
 # so rebuilding the environment from this file gave seven failures nobody
 # could explain (2026-09-11). `capstone` disassembles for
-# `tools/amiga68k.py` and `tools/dosdis16.py`; `pillow` draws for
+# `tools/amiga/amiga68k.py` and `tools/dosdis16.py`; `pillow` draws for
 # `tools/iconproposal.py` and fifteen others.
 #
 # **`numpy` is deliberately absent**, and adding it here would reverse a
-# decision rather than fix an omission. `tools/amigabladesjournal.py`'s
+# decision rather than fix an omission. `tools/amiga/amigabladesjournal.py`'s
 # `_ink_mask` says why: *"PIL rather than numpy on purpose. The private reader
 # needs numpy and brings it itself; nothing in this file should, because this
 # repository's virtual environment does not carry it and a test that skips is
-# not a test."* The one import of it, in `tools/amigacursewheel.py`, is
+# not a test."* The one import of it, in `tools/amiga/amigacursewheel.py`, is
 # deferred inside the function that hands a screenshot to that same private
 # reader. `#458 (The journal answerer cannot run under the project's own
 # virtual environment, because the private screen reader needs numpy)` offers

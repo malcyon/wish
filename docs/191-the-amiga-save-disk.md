@@ -10,7 +10,7 @@ and measured on 2026-09-05 in three WinUAE runs; `docs/143-winuae-debugger.md`
 §1 is the procedure and `cited/36` holds the screenshots.
 `docs/182-amiga-por-in-the-running-game.md` is the companion for the other
 route -- a copy of the player's own game disk with a slot written into its
-`save` drawer -- which still works and is what `tools/toamigapor.py --out`
+`save` drawer -- which still works and is what `tools/amiga/toamigapor.py --out`
 produces.
 
 ## 1. The prompt's default is a volume name, and that is the whole design
@@ -74,7 +74,7 @@ byte left zero, and the party arrives on its own square at its own clock --
 **What a conversion reads is disk 2 rather than disk 1.** The one thing no
 character record holds is the area's own 7680-byte ECL script, which is live on
 load, and the Amiga keeps every area's in a single `ecl.dax` on the `POOLDATA`
-volume. `tools/toamigapor.py --data-disk` names it. `--container <letter>`
+volume. `tools/amiga/toamigapor.py --data-disk` names it. `--container <letter>`
 still copies a saved game off a disk and is now an experiment rather than a
 conversion: it puts the party in somebody else's place on purpose, and the run
 says so.
@@ -89,7 +89,7 @@ boot, and choose `ADD CHARACTER TO PARTY`.
 ## 3. What the game did with one
 
 The party is the C64 specimen `por-party-twin-pair`, converted by
-`tools/toamigapor.py --c64` into slot `B`.
+`tools/amiga/toamigapor.py --c64` into slot `B`.
 
 | step | what the screen said |
 |---|---|
@@ -139,7 +139,7 @@ no trouble.
 
 ## 5. The engine changed the same 57 bytes it changes on a game disk
 
-`tools/porslotdiff.py --drawer ''` on our slot `B` against the engine's slot
+`tools/amiga/porslotdiff.py --drawer ''` on our slot `B` against the engine's slot
 `C`, over the six 288-byte records:
 
 | field | bytes differing |
@@ -186,7 +186,7 @@ disk already had `A` on it.
   by **drive** and looks in a `SAVE` drawer on it, which is where disk 3 keeps
   `SAVGAMA.PTY` and the vault. So step 3 of
   `#36 (Write an Amiga disk image, not just the character files)`'s order of
-  work -- `tools/toamiga.py` emitting a disk rather than loose `.pc` files --
+  work -- `tools/amiga/toamiga.py` emitting a disk rather than loose `.pc` files --
   needs its own measurement and cannot borrow this one. **PROBABLE**, from the
   strings; nothing has been booted.
 
@@ -210,7 +210,7 @@ winvm ssh "$ps claim -Holder por36"
 
 # Since #316 the disk on the command line is **disk 2**, whose ecl.dax the
 # area's script is read out of; the saved game is built rather than copied.
-tools/toamigapor.py $TMPDIR/por2.adf --to B \
+tools/amiga/toamigapor.py $TMPDIR/por2.adf --to B \
     --save-disk $TMPDIR/poolsave-B.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
 
@@ -225,16 +225,16 @@ winvm ssh "$ps start -Holder por36 -log -f C:\Amiga\configs\goldbox-a500.uae \
     -s floppy2=C:\Amiga\Disks\i36\poolsave-B.adf"
 
 # 55s to the code wheel, RET; 50s to the title, RET; 45s to the menu.
-tools/amigadrive.py --holder por36 keys L
-tools/amigadrive.py --holder por36 keys RET     # the default, POOLSAVE:
-tools/amigadrive.py --holder por36 keys B
+tools/amiga/amigadrive.py --holder por36 keys L
+tools/amiga/amigadrive.py --holder por36 keys RET     # the default, POOLSAVE:
+tools/amiga/amigadrive.py --holder por36 keys B
 winvm shot $TMPDIR/loaded.png
 ```
 
 Four things cost time on the way.
 
 * **`nr_floppies=3` has to be passed**, and so does `floppy2type=0`.
-  `tools/goldbox-a500.uae` ships two drives, and `-s` overrides are the way to
+  `tools/amiga/goldbox-a500.uae` ships two drives, and `-s` overrides are the way to
   a third without editing the committed config.
 * **A key pressed while a disk is loading is swallowed with no sign.** Take a
   screenshot after every step rather than batching a sequence across a load.
@@ -268,7 +268,7 @@ no figure dropped, but nobody has watched one on screen. And BRUTUS's panel
 armour class reads 9 at load and 10 after `VIEW`, both values his own record
 holds -- **which of the two the C64 itself draws is unmeasured.**
 
-`tools/toamigapor.py` remains the way to ask for a disk without the window.
+`tools/amiga/toamigapor.py` remains the way to ask for a disk without the window.
 
 **The dialog asks for the player's Amiga disk 2**, not disk 1: since `#316 (Write the Amiga Pool of Radiance saved game from the source
 save, so a converted party arrives where it was standing)` the saved game is
@@ -301,7 +301,7 @@ match is 23%, which is the background resemblance of one ECL script to another.
 is an error rather than a party arriving somewhere else.
 
 **Which disks the dialog needs depends on what it writes.** A `POOLSAVE` save
-disk -- `tools/toamigapor.py --save-disk`, and what a player is handed -- reads
+disk -- `tools/amiga/toamigapor.py --save-disk`, and what a player is handed -- reads
 disk 2 and nothing else. Writing into a copy of the game disk's own `save`
 drawer -- `--out` -- reads disk 1 as the disk being copied and still needs
 disk 2 for the script, which is what `--data-disk` is for.

@@ -68,7 +68,7 @@ TITLES = {
         "exe": "Curse",
         "dos_dir": "CURSE",
         #: Data-hunk offsets of the three tables, named `g<offset>` the way
-        #: `tools/amiga68k.py` names them in a listing.  Read out of the
+        #: `tools/amiga/amiga68k.py` names them in a listing.  Read out of the
         #: routine at file offset 0x24E42.
         "tables": {"colour": 0x0EE4, "parts": 0x1BB9, "letter": 0x1C11},
         "routine": 0x24E42,
@@ -191,7 +191,7 @@ def predicted(dos_value: int, colour_table: bytes) -> int:
 # ---------------------------------------------------------------------------
 def _images():
     """Every Amiga disk image on this machine, as `(label, bytes)`."""
-    from tools import amigasaves
+    from tools.amiga import amigasaves
     return amigasaves.images()
 
 
@@ -236,7 +236,7 @@ def find_executable(name: str) -> tuple[str, bytes] | None:
 
 def data_hunk(executable: bytes) -> int:
     """The file offset of the small-data hunk, so `g<offset>` can be read."""
-    from tools.amiga68k import Executable
+    from tools.amiga.amiga68k import Executable
     exe = Executable.parse(executable)
     for hunk in exe.hunks:
         if hunk.kind == "DATA" and hunk.file_offset is not None:
@@ -355,7 +355,7 @@ def _compare(out, key, volume, name, amiga, dos, colour) -> int:
 def report_census(out) -> int:
     """Every specimen's icon fields, against the art that is on the disks."""
     from goldbox import amiga_later, amiga_port
-    from tools import amigarecords
+    from tools.amiga import amigarecords
     art = find_art()
     if not art:
         out("no Amiga disk carries CHEAD.TLB and CBODY.TLB; set $AMIGA_DISKS")

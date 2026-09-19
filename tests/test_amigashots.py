@@ -1,6 +1,6 @@
 """Finding the emulator's screen inside a grab of the whole guest desktop.
 
-`tools/amigashots.py` cuts a 720x568 Amiga screen out of a 1920x1080 `winvm
+`tools/amiga/amigashots.py` cuts a 720x568 Amiga screen out of a 1920x1080 `winvm
 shot` by looking for WinUAE's status bar underneath it.  What it must not do is
 cut somewhere near it: a crop that is seven rows out looks like a screenshot
 and is a picture of the wrong thing, which is the failure a person reading the
@@ -20,7 +20,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import amigashots  # noqa: E402
+from tools.amiga import amigashots  # noqa: E402
 
 Image = pytest.importorskip("PIL.Image", reason="Pillow reads the grabs")
 

@@ -632,7 +632,7 @@ POOL_OF_RADIANCE_MENU = PortraitTables(
 #:
 #: **This is an art table, not a conversion table.**  Use it to find the
 #: Amiga's own picture for a menu position -- what `tools/bodychoices.py` and
-#: `tools/amigaportraitmenu.py` draw with -- and never to move a character
+#: `tools/amiga/amigaportraitmenu.py` draw with -- and never to move a character
 #: between ports.  A conversion maps position to position and resolves both
 #: ends against :func:`neutral_menu`; wiring this table into a writer is what
 #: made `#480 (An Amiga character whose body is the menu's eighth arrives on
@@ -657,7 +657,7 @@ POOL_OF_RADIANCE_MENU = PortraitTables(
 #: `22` as one repeated block where DOS's `0D` and `18` are one picture and
 #: its `22` another -- 19 distinct bodies of 21 ids on the Amiga against
 #: DOS's 20.  Rendered in menu order the twelve agree position by position
-#: on eleven of twelve.  `tools/amigaportraitmenu.py` re-derives all of it.
+#: on eleven of twelve.  `tools/amiga/amigaportraitmenu.py` re-derives all of it.
 AMIGA_POOL_OF_RADIANCE_MENU = PortraitTables(
     heads=POOL_OF_RADIANCE_MENU.heads,
     bodies=(0x01, 0x02, 0x03, 0x04, 0x07, 0x08,

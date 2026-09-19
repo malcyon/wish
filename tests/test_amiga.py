@@ -779,11 +779,12 @@ def _extracted_records() -> tuple[pathlib.Path, ...]:
     disk.  They were once extracted into a gitignored scratch directory that has
     been lost, so `$AMIGA_POR_SAVES` named nothing and thirty-one tests here
     skipped on the machine that holds every byte of the corpus -- the shape of
-    #211.  `tools/amigasaves.py` finds them again from `gamedisks.yaml`'s
+    #211.  `tools/amiga/amigasaves.py` finds them again from `gamedisks.yaml`'s
     `amiga` entry, and this unpacks them into a directory that lives as long
     as the test process.
     """
-    from tools import amigasaves, gamedisks
+    from tools import gamedisks
+    from tools.amiga import amigasaves
     if not gamedisks.candidates("amiga"):
         return ()
     tmp = tempfile.TemporaryDirectory(prefix="amiga-por-saves-")
@@ -814,7 +815,7 @@ def amiga_por_records() -> list[pathlib.Path]:
     if not found:
         pytest.skip(
             "no Amiga Pool of Radiance records: set $AMIGA_POR_SAVES, or "
-            "$AMIGA_DISKS at disks tools/amigasaves.py can read them out of")
+            "$AMIGA_DISKS at disks tools/amiga/amigasaves.py can read them out of")
     return found
 
 
@@ -1996,11 +1997,12 @@ def _later_specimens() -> tuple[pathlib.Path, ...]:
 
     None of them is a loose file on any machine: eleven are `SAVE/*.guy` on
     Amiga Curse disk 1 and the other ten are inside two saved games.
-    `tools/amigarecords.py` reads them out through `gamedisks.yaml`'s `amiga`
+    `tools/amiga/amigarecords.py` reads them out through `gamedisks.yaml`'s `amiga`
     entry, into a directory that lives as long as the test process -- so the
     files are never only in a gitignored scratch directory, which has been lost.
     """
-    from tools import amigarecords, gamedisks
+    from tools import gamedisks
+    from tools.amiga import amigarecords
     if not gamedisks.candidates("amiga"):
         return ()
     tmp = tempfile.TemporaryDirectory(prefix="amiga-later-saves-")
@@ -2070,7 +2072,8 @@ ITEM_UNPACKERS = {
 def _unpacker_rows(shape, table):
     """`(dos offset, amiga offset)` for every byte the unpacker copies."""
     from goldbox.amiga_adf import AmigaDisk
-    from tools import amiga68k, amigaunpack, gamedisks
+    from tools import gamedisks
+    from tools.amiga import amiga68k, amigaunpack
     name, start, end, size = table[shape.key]
     want = "curse" if name == "/Curse" else "silver"
     for root in gamedisks.candidates("amiga"):
@@ -2634,11 +2637,11 @@ def test_the_silver_blades_status_table_is_the_neutral_records_own_nine():
 
     The routine is at `0x196EA`: `tst.b $144(a2)`, and where that is zero
     `move.b $143(a2), d0; ext.w; ext.l; asl.l #2; lea g30fc, a0;
-    move.l (a0, d0.l), -(a7)`.  `tools/amigaenum.py` is what found it and
+    move.l (a0, d0.l), -(a7)`.  `tools/amiga/amigaenum.py` is what found it and
     what this reads it back with.
     """
     from goldbox import neutral
-    from tools import amiga68k, amigaenum
+    from tools.amiga import amiga68k, amigaenum
     exe = amiga68k.Executable.parse(_amiga_disk_file("silver", "/Secret"))
     drawn = amigaenum.table(exe, 0x30FC, len(neutral.STATUS_NAMES))
     assert _same_status_words(drawn), drawn
@@ -2656,7 +2659,7 @@ def test_the_curse_status_words_are_the_same_nine_in_its_string_library():
     "the Amiga numbers these the way DOS does" a measurement rather than an
     inference off the shift map.
     """
-    from tools import amigaenum
+    from tools.amiga import amigaenum
     blocks = amigaenum.glib_blocks(_amiga_disk_file("curse", "/DISKA/STRINGS.GLB"))
     drawn = [b.rstrip(b"\0").decode("latin1") for b in blocks[0x2C:0x2C + 9]]
     assert _same_status_words(drawn), drawn

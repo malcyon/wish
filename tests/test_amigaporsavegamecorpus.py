@@ -81,7 +81,8 @@ def corpus() -> list[tuple[str, bytes]]:
 
 @pytest.fixture(scope="module")
 def ecl_dax() -> bytes:
-    from tools import amigasaves, gamedisks
+    from tools import gamedisks
+    from tools.amiga import amigasaves
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")
@@ -297,13 +298,13 @@ def _poolsave_disk(tmp_path, names=("savgamB.dat", "savgamC.dat")):
 def test_a_save_disks_slots_are_found_in_the_root(tmp_path):
     """A `POOLSAVE` disk keeps its saved games in the root, not in a drawer.
 
-    The situation: you convert a party, `tools/toamigapor.py --save-disk`
+    The situation: you convert a party, `tools/amiga/toamigapor.py --save-disk`
     hands you a `POOLSAVE.ADF`, and you point the reader at it to see what
     went on.  It used to answer `name a saved game or an --adf image`, as
     though you had given it nothing -- because it walked for `save/savgam*`
     and a save disk has no `save` drawer.
     """
-    from tools import amigasavecheck
+    from tools.amiga import amigasavecheck
 
     disk = AmigaDisk.open(_poolsave_disk(tmp_path))
     found = sorted(path for path, _data in amigasavecheck.savegames_on(disk))
@@ -312,7 +313,7 @@ def test_a_save_disks_slots_are_found_in_the_root(tmp_path):
 
 def test_a_game_disks_save_drawer_is_still_found(tmp_path):
     """And the drawer a game disk uses keeps working."""
-    from tools import amigasavecheck
+    from tools.amiga import amigasavecheck
 
     disk = AmigaDisk.blank("poolgame")
     disk.make_dir("/save")
@@ -329,7 +330,7 @@ def test_a_game_disks_save_drawer_is_still_found(tmp_path):
 def test_a_disk_with_no_saved_game_says_so_rather_than_blaming_the_reader(
         tmp_path):
     """Naming an image and getting nothing off it is not naming no image."""
-    from tools import amigasavecheck
+    from tools.amiga import amigasavecheck
 
     disk = AmigaDisk.blank("POOLDATA")
     disk.write_file("/ecl.dax", b"not a saved game")
@@ -356,7 +357,7 @@ def test_the_sweep_says_how_wide_the_zero_argument_is(corpus):
     corpus sees at least what any one place in it sees.
     """
     from goldbox import amiga_savegame
-    from tools import amigasavecheck
+    from tools.amiga import amigasavecheck
 
     parsed = [(name, amiga_savegame.parse(data, source=name, validate=False))
               for name, data in corpus]

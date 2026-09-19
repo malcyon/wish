@@ -8,7 +8,7 @@ was holding open for specimens nobody has.
 
 Every offset here is a file offset into `/Curse` on Curse of the Azure Bonds
 disk 1 or `/Secret` on Secret of the Silver Blades disk 1, read with
-`tools/amiga68k.py`. `tools/amigaunpack.py` prints each map, and
+`tools/amiga/amiga68k.py`. `tools/amiga/amigaunpack.py` prints each map, and
 `tests/test_amiga.py` runs it against `goldbox/amiga_later.py`'s shapes, so the two
 cannot drift.
 
@@ -53,7 +53,7 @@ immediately, and none does.
 
 ## Curse: the map the unpacker writes
 
-`tools/amigaunpack.py --shape curse-of-the-azure-bonds --size 0x1ac 270a6 273ea`.
+`tools/amiga/amigaunpack.py --shape curse-of-the-azure-bonds --size 0x1ac 270a6 273ea`.
 
 | DOS | Amiga | bytes | shift | what |
 |---|---|---|---|---|
@@ -144,7 +144,7 @@ pins it so it is not smoothed back into the shift map.
 
 ## Silver Blades: the map, and the spellbook
 
-`tools/amigaunpack.py --shape secret-of-the-silver-blades --size 0x154 281a2 285b0`.
+`tools/amiga/amigaunpack.py --shape secret-of-the-silver-blades --size 0x154 281a2 285b0`.
 The four shift steps `goldbox/amiga_later.py` already carried — 0, −102, −101,
 −100, −99 — all reproduce, and the three pads are located to the byte at
 `0x095`, `0x0C7` and `0x0FD`. `sex` and `alignment` are the single-byte
@@ -260,10 +260,10 @@ after it out of the character's pack)`.
 
 ## Method, so it can be repeated
 
-The unpacker is found from the loader that calls it. `tools/amiga68k.py refs`
+The unpacker is found from the loader that calls it. `tools/amiga/amiga68k.py refs`
 on the `MON%s%s` or `ITEM%s` string finds the loader; the loader hands a
 decompressed buffer, a base offset and a destination to one routine, and that
-routine is the unpacker. `tools/amigaunpack.py` then reads it: `movmem` is
+routine is the unpacker. `tools/amiga/amigaunpack.py` then reads it: `movmem` is
 SAS/C's `(source, destination, length)`, `setmem` is `(pointer, size,
 value)`, and the byte swappers are the two globals a `u16` and a `u32` are
 handed to on the way out.

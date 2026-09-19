@@ -4,7 +4,7 @@ One WinUAE session on 2026-09-07 answered three questions that had each been
 waiting for somebody to look at a running Amiga game: whether the character
 sheet draws a portrait, what the engine does with a space in a name, and
 whether the game's own `Add Character` picker lists a `.pc` file this project
-wrote. `tools/amigashots.py` drove it and photographed every keystroke;
+wrote. `tools/amiga/amigashots.py` drove it and photographed every keystroke;
 `docs/143-winuae-debugger.md` is how the emulator is reached and
 `docs/182-amiga-por-in-the-running-game.md` §7 is the route from a cold VM to a
 loaded slot.
@@ -18,7 +18,7 @@ The disk was built the way that issue asked for -- a C64 party whose records
 carry portrait ids, so `goldbox.amiga_savegame.new_por_savegame` wrote `$49FF` = 3:
 
 ```sh
-tools/toamigapor.py $TMPDIR/por1.adf --to B --out $TMPDIR/por1-B.adf \
+tools/amiga/toamigapor.py $TMPDIR/por1.adf --to B --out $TMPDIR/por1-B.adf \
     --data-disk $TMPDIR/por2.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
 ```
@@ -120,19 +120,19 @@ and the command at the top of §1 rebuilds them.
 engine does not clear the field behind it. `goldbox.amiga_por` already stops at the
 NUL.
 
-## 3. Pools of Darkness lists what `tools/toamiga.py` writes
+## 3. Pools of Darkness lists what `tools/amiga/toamiga.py` writes
 
 `#317 (Does the Amiga game's Add Character menu list a character Wish exported
 into the pool drawer?)`.
 
-At the time this was run, `tools/toamiga.py` was the command-line half of the
+At the time this was run, `tools/amiga/toamiga.py` was the command-line half of the
 same `goldbox.amiga_pod.export_party` a `File ▸ Export ▸ Amiga…` menu item
 also called; that menu item is gone since (`#52 (File ▸ Import and File ▸
 Export for every direction the library supports)`'s 2026-09-09 ruling), and
-`tools/toamiga.py` is what exercises the writer now:
+`tools/amiga/toamiga.py` is what exercises the writer now:
 
 ```sh
-tools/toamiga.py ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \
+tools/amiga/toamiga.py ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \
     -o $TMPDIR/pcexport
 ```
 
@@ -172,7 +172,7 @@ copied**: the writer wrote the unarmoured 10 and PoD applied dexterity 18 for
 strength's 1, and `DAMAGE 1D2+3` is unarmed `1d2` plus that strength's damage
 bonus.
 
-So the drawer is the pool, and a player who runs `tools/toamiga.py` gets
+So the drawer is the pool, and a player who runs `tools/amiga/toamiga.py` gets
 characters the Amiga game offers them.
 
 **Where the disk has to be.** The `Save` drawer of **disk 3**, and disk 3 in
@@ -220,7 +220,7 @@ were listed and left; and no drawer other than `Save` on disk 3 was tried.
   the picker lists first; under WinUAE with `KEYEVENTF_EXTENDEDKEY` one `DOWN`
   moved from `TROND` to `PAINE`, so any row can be reached now.
 * **The emulator's screen is 720x568 inside a 1920x1080 grab.**
-  `tools/amigashots.py crop` cuts it out by finding WinUAE's status bar rather
+  `tools/amiga/amigashots.py crop` cuts it out by finding WinUAE's status bar rather
   than by remembering where the window sat. Kickstart's insert-disk screen is
   the one that breaks a lazy version of that search: it is white to the client
   area's last row, so "walk up while the row is light" walks seven rows into

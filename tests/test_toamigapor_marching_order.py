@@ -1,4 +1,4 @@
-"""`tools/toamigapor.py`'s `read_c64_party` hands its party to
+"""`tools/amiga/toamigapor.py`'s `read_c64_party` hands its party to
 `goldbox.amiga_por.write_por_slot`, which writes list position *n* to
 `CHRDAT<L><n+1>` -- so the list has to arrive in the order the Amiga wants,
 front of the party first.
@@ -83,7 +83,7 @@ def test_a_full_party_arrives_in_the_c64s_own_marching_order(tmp_path):
     reads BRUTUS first, per `#385`'s own measurement of this specimen --
     the C64's slots 0-5 are MALCYON, TWIN, ROLAND, LADY KATHERINE, MAGNUS,
     BRUTUS, and BRUTUS, the highest slot, is what the party sees first."""
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     disk = _c64_specimen("por-party-twin-pair")
     party = toamigapor.read_c64_party(str(disk))
@@ -96,7 +96,7 @@ def test_a_full_party_arrives_in_the_c64s_own_marching_order(tmp_path):
 def test_a_second_full_party_agrees(tmp_path):
     """A second specimen, so the first is not a coincidence of its own slot
     layout."""
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     disk = _c64_specimen("porunconscious1")
     party = toamigapor.read_c64_party(str(disk))
@@ -127,7 +127,7 @@ def test_a_party_of_one_names_the_single_survivor(tmp_path):
     then invents a garbage item)` both ask to be tried on its own: a party
     the writer sees as a list of exactly one.
     """
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     disk = _c64_specimen("por-party-twin-pair")
     solo = tmp_path / "solo.d64"
@@ -143,7 +143,7 @@ def test_a_party_of_one_from_the_front_rank_slot(tmp_path):
     """The other end: keeping slot 5 -- BRUTUS, the C64's *first* marching
     position -- alone, so a party of one is proven at both ends rather than
     only the one a bug would get right by accident."""
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     disk = _c64_specimen("por-party-twin-pair")
     solo = tmp_path / "solo.d64"

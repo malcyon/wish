@@ -11,7 +11,7 @@ produces a plausible listing from the middle of a string table, and the guess
 is what gets believed.
 """
 
-from tools import m68dis
+from tools.amiga import m68dis
 
 
 def text(words, address=0x1000):
@@ -263,7 +263,7 @@ def test_a_window_with_no_whole_word_left_is_refused_the_same_way():
     """
     import pytest
 
-    from tools.m68dis import decode
+    from tools.amiga.m68dis import decode
 
     data = bytes.fromhex("4e754e75")            # rts, rts
     assert decode(data, 2, end=4).mnemonic == "rts"

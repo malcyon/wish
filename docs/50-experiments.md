@@ -5845,7 +5845,7 @@ had been stopped on it since: "read the `.pc` loader" needs a 68000
 disassembler and there was not one in the tree. Donald's ruling on 2026-08-31
 was to rebuild it and put it in `tools/`, which is where
 `.claude/rules/documentation.md` now says a tool that regenerates an artefact
-belongs. `tools/m68dis.py` is the first one written under that rule.
+belongs. `tools/amiga/m68dis.py` is the first one written under that rule.
 
 ### The rule the tool is built around
 
@@ -5894,7 +5894,7 @@ more useful one: real silicon ignores the reserved extension bits, and an odd
 branch target is taken and then address-errors at run time rather than being
 an illegal instruction. Refusing them is what separates code from string data
 in a binary with both scattered through one hunk, and the comments in
-`tools/m68dis.py` say so in those words. The 24 remaining textual differences
+`tools/amiga/m68dis.py` say so in those words. The 24 remaining textual differences
 are capstone writing `lea.l` and `pea.l` where we write `lea` and `pea`.
 
 **The cross-check earned its keep immediately.** The first draft read

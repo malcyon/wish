@@ -19,9 +19,9 @@ right, and nothing in the writer has to change.
 |---|---|---|
 | `A` | GARWAN and five others | the game, shipped on disk 1 |
 | `F` | the same six, Amiga -> neutral -> Amiga | `goldbox.amiga_savegame.write_por_slot`, for `#109 (A save slot written onto an Amiga disk is not offered by the game's picker)` on 2026-09-01 |
-| `B` | MALCYON, TWIN, ROLAND, LADY KATHERINE, MAGNUS, BRUTUS | `tools/toamigapor.py --c64`, from the C64 specimen `por-party-twin-pair` |
+| `B` | MALCYON, TWIN, ROLAND, LADY KATHERINE, MAGNUS, BRUTUS | `tools/amiga/toamigapor.py --c64`, from the C64 specimen `por-party-twin-pair` |
 | `C` | the same six | **the engine**, saved from slot `B` in camp |
-| `D` | THRENDER GRONE | `tools/toamigapor.py --dos`, from the DOS specimen `por-item-granted` |
+| `D` | THRENDER GRONE | `tools/amiga/toamigapor.py --dos`, from the DOS specimen `por-item-granted` |
 | `E` | THRENDER GRONE | **the engine**, saved from slot `D` after the ITEMS screen was opened |
 
 Every party was put in front of `LOAD SAVED GAME`, path `SAVE/`, and the picker
@@ -105,7 +105,7 @@ is one character on one run, so PROBABLE as a rule about the engine.
 
 The whole value of a party the engine re-saved is that every difference is
 either a field it derives or a field we got wrong, and there is no third kind.
-`tools/porslotdiff.py` is the reader.
+`tools/amiga/porslotdiff.py` is the reader.
 
 **Slot `B` against slot `C`: 57 bytes of 1728 differ**, and outside the two
 live-heap fields the list is short.
@@ -204,8 +204,8 @@ the disk says whether the engine does this to a name it made itself.
 
 ## 7. Reproducing it
 
-`tools/toamigapor.py` builds the disk and `tools/amigadrive.py` types at the
-game; `tools/porslotdiff.py` reads the answer back out. The whole route from a
+`tools/amiga/toamigapor.py` builds the disk and `tools/amiga/amigadrive.py` types at the
+game; `tools/amiga/porslotdiff.py` reads the answer back out. The whole route from a
 cold VM is about four minutes of waiting and twenty keystrokes:
 
 ```sh
@@ -213,15 +213,15 @@ export SSH_ASKPASS_REQUIRE=never
 winvm acquire wish105
 ps='powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1'
 winvm ssh "$ps claim -Holder por105"
-tools/toamigapor.py $TMPDIR/por1.adf --to B --out $TMPDIR/por1-B.adf \
+tools/amiga/toamigapor.py $TMPDIR/por1.adf --to B --out $TMPDIR/por1-B.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
 winvm scp $TMPDIR/por1-B.adf 'donald@192.168.123.50:C:/Amiga/Disks/por/x.adf'
 winvm ssh "$ps start -Holder por105 -log -f C:\Amiga\configs\goldbox-a500.uae \
     -s floppy0=C:\Amiga\Disks\por\x.adf -s floppy1=C:\Amiga\Disks\por\por2.adf"
 # RET at the code wheel, RET at the title, then:
-tools/amigadrive.py --holder por105 keys L S A V E SLASH RET B
-tools/amigadrive.py --holder por105 keys V I      # sheet, then ITEMS
-tools/amigadrive.py --holder por105 shot $TMPDIR/items.png
+tools/amiga/amigadrive.py --holder por105 keys L S A V E SLASH RET B
+tools/amiga/amigadrive.py --holder por105 keys V I      # sheet, then ITEMS
+tools/amiga/amigadrive.py --holder por105 shot $TMPDIR/items.png
 ```
 
 Three things cost time on the way and are worth knowing.

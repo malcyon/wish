@@ -443,7 +443,7 @@ def entry_for(char, slot_index: int, items, icon, game: C64Container | None = No
         # `goldbox.c64_codec.read` leaves unset rather than 0 for a
         # character with no sheet portrait (#503) -- the same
         # "membership, not truthiness" rule `editor/convert.py` and
-        # `tools/toamigapor.py` already follow for this pair. Writing the
+        # `tools/amiga/toamigapor.py` already follow for this pair. Writing the
         # key as `null` sent `import_into` a value it could not put back
         # in the record.
         if f in char:

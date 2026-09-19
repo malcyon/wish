@@ -67,7 +67,7 @@ that agent said "offscreen" and forgot to say "silent".
   `sound_output=none` is **not** available -- it deadlocks Silver Blades on its
   second turn (`#331 (Amiga Silver Blades asks a journal word before it will
   adventure, so the title cannot be driven past its party menu)`), which is why
-  `tools/goldbox-a500.uae` sets `sound_output=interrupts`. Mute the VM's own
+  `tools/amiga/goldbox-a500.uae` sets `sound_output=interrupts`. Mute the VM's own
   audio device rather than the emulator's.
 
 **Check rather than assume.** `pactl list sink-inputs` names what is playing,

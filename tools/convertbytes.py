@@ -151,7 +151,7 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
         wants `/DISKB/ECL.GLB`, died with `'DISKB' is not in the root of
         'POOLDATA'` on every specimen (#536).
         """
-        from tools import amigasaves
+        from tools.amiga import amigasaves
         out: dict = {}
         first = None
         for _label, data in amigasaves.images():

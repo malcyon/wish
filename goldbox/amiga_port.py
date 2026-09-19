@@ -265,7 +265,7 @@ AMIGA_SSB_SCROLL_CHAIN = 0x042
 #: boundaries all land on a `goldbox/dos_port.py` Curse field boundary.  It
 #: opens `setmem(record, 0x1AC, 0)`, which is 428, and the monster loader at
 #: `0x26306` calls it after decompressing `MON<n>CHA` to `0x1A6` = 422 bytes.
-#: `tools/amigaunpack.py` prints the map; `docs/166-amiga-records-from-the-code.md`
+#: `tools/amiga/amigaunpack.py` prints the map; `docs/166-amiga-records-from-the-code.md`
 #: has the working.
 #:
 #:   * the pad is at Amiga **`0x0FB`**, not anywhere in `0x0F9`-`0x0FB`: the

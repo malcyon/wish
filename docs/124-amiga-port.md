@@ -4,7 +4,7 @@
 *Pool of Radiance* save disk now converts to a `.pc`, and Amiga *Pools of
 Darkness* loaded it, put it in the party and drew a sheet that matches the C64
 one field for field -- see §2.5. `goldbox/amiga_pod.py` is the whole converter and
-`tools/toamiga.py` is how it is invoked.
+`tools/amiga/toamiga.py` is how it is invoked.
 
 **Phase 4 is done for every field the character sheet shows, and the
 writer works.** Amiga Pools of Darkness **accepts a C64 Pool of Radiance
@@ -215,7 +215,7 @@ Five Amiga disks arrived on 2026-08-25 and are in the
 Bonds game disks, a Curse **save disk**, and two Secret of the Silver Blades
 disks. `goldbox/amiga_adf.py` walks them, finding the root block by scanning
 because the save disk is 1804 blocks rather than 1760, and
-`tools/amigarecords.py` is what pulls the specimens out -- twenty-one of them,
+`tools/amiga/amigarecords.py` is what pulls the specimens out -- twenty-one of them,
 none of which is a loose file on any machine.
 
 **The save disk's fourteen 288-byte `.cha` files are Pool of Radiance, not
@@ -309,7 +309,7 @@ the four character blocks embedded in the Amiga Curse saved game -- and the
 last four are what place two of the anchors, because they are a *played* party
 where the pregens are not. It is `CURSE_DELTAS` in `goldbox/amiga_port.py`, which
 reads `goldbox/dos_port.py`'s Curse table through it rather than restating
-it, and `tools/amigarecords.py` produces the specimens.
+it, and `tools/amiga/amigarecords.py` produces the specimens.
 
 | DOS | Amiga | shift | anchor |
 |---|---|---|---|
@@ -918,7 +918,7 @@ port does not predict another, which is the lesson `#108 (Amiga Curse asks
 its code wheel, so the title cannot be driven unattended)` taught on Curse.
 
 **The prompt is answered and the title is drivable, as of 2026-09-06.**
-`tools/amigabladesjournal.py` reads the challenge off the guest's screen and
+`tools/amiga/amigabladesjournal.py` reads the challenge off the guest's screen and
 types the word. The screen reader samples each Amiga pixel's own centre out
 of the capture and hands the private repository's reader a whole number of
 pixels per Amiga pixel, rather than resampling to its declared fractional
@@ -951,7 +951,7 @@ adventuring bar on 2026-09-07 with the party at `5,9 W 00:00` -- the four
 arrows (VK 0x25-0x28), the numeric keypad (0x60, 0x62, 0x64, 0x66, 0x68, 0x6B,
 0x6C), the top-row digits (0x32, 0x34, 0x36, 0x38) and `I`, `J`, `K` -- none of
 which changed the square or the facing. The presses were real and the reading
-of them was wrong: **`tools/goldbox-a500.uae` set no `joyport` line, so WinUAE
+of them was wrong: **`tools/amiga/goldbox-a500.uae` set no `joyport` line, so WinUAE
 gave Amiga port 2 its default "kbd1", which is Keyboard Layout A, which
 consumes `DIK_NUMPAD4`, `6`, `8`, `2`, `0`, `5`, `DECIMAL` and `NUMPADENTER`
 for a joystick.** Eight of the twenty keys reached that layout and no further
@@ -967,13 +967,13 @@ party in a fight, which looks enough like the game to be mistaken for one. A
 grab costs two to four seconds through `winvm shot` and a keystroke another two
 to three, so a key aimed at what the last grab showed lands after the bar has
 gone: six of one session's keystrokes went nowhere that way on 2026-09-08. What
-works from anywhere in the loop, as one `tools/amigadrive.py` call so the keys
+works from anywhere in the loop, as one `tools/amiga/amigadrive.py` call so the keys
 are about two seconds apart:
 
-    tools/amigadrive.py --holder <lane> --settle 0.2 keys ESC RET
+    tools/amiga/amigadrive.py --holder <lane> --settle 0.2 keys ESC RET
 
 `ESC` leaves the demo for the bar and `RET` takes the bar's highlighted `PLAY`.
-Then `L`, the slot letter and `B`. **Run `tools/amigabladesjournal.py` under
+Then `L`, the slot letter and `B`. **Run `tools/amiga/amigabladesjournal.py` under
 the system `python3`**, not the project's virtual environment: it reaches into
 the private code-wheel repository, which imports `numpy`, and the virtual
 environment has none -- the failure is a `ModuleNotFoundError` out of a file in
@@ -1024,7 +1024,7 @@ the joystick is compiled in and inert, and the compass in the corner of the 3D
 view is a drawing rather than a control.
 
 **What the emulator was doing to it** is in §1.11a and in
-`tools/goldbox-a500.uae`: WinUAE's default gives Amiga port 2 the numeric
+`tools/amiga/goldbox-a500.uae`: WinUAE's default gives Amiga port 2 the numeric
 keypad as a joystick, which swallowed every movement key before the Amiga saw
 it. `joyport1=none` stops that.
 
@@ -1048,7 +1048,7 @@ fixes it. Eight turns and three steps in a row afterwards, every one drawn.
 | cursor **up**, sent extended | one square forward, exactly as keypad `8` |
 
 The cursor keys need `KEYEVENTF_EXTENDEDKEY`, which is `winuae.ps1 key
-<vk> -Extended` and is what `tools/amigadrive.py` sends for `UP`, `DOWN`,
+<vk> -Extended` and is what `tools/amiga/amigadrive.py` sends for `UP`, `DOWN`,
 `LEFT` and `RIGHT`. Without it `keybd_event` hands `VK_UP` the unprefixed
 scancode `0x48`, which is `DIK_NUMPAD8` -- so before this the driver had no
 way to press a cursor key at all, and its `UP` was keypad `8` under another
@@ -1178,7 +1178,7 @@ declared list rather than by whatever happened to differ:
 | `.itm` lengths | identical to the originals, **6 of 6** |
 | `.spc` lengths | identical to the originals, **9 of 12** -- see below |
 
-Re-measured 2026-09-04 against a corpus rebuilt by `tools/amigasaves.py`. The
+Re-measured 2026-09-04 against a corpus rebuilt by `tools/amiga/amigasaves.py`. The
 mask covers 125 of the 288 offsets, so **163 bytes of every record have to
 match exactly**, and they do on all twenty.
 
@@ -1208,7 +1208,7 @@ and it is what `test_a_c64_party_converts_to_a_coherent_amiga_record` asserts.
 Watched failing with the item shift map's second step moved by one.
 
 **The specimens come out of the disks now, not out of scratch.**
-`tools/amigasaves.py` reads the twenty records back out of the images they live
+`tools/amiga/amigasaves.py` reads the twenty records back out of the images they live
 in -- six on Pool of Radiance disk 1 and fourteen on the Curse save disk -- and
 `tests/test_amiga.py` calls it when `$AMIGA_POR_SAVES` names nothing. The
 earlier corpus was extracted into gitignored scratch and was lost,
@@ -1422,7 +1422,7 @@ reads this array into memory and stores the new letter at its own index. From
 would stop offering D.
 
 **Both halves were then proved in the running game (2026-09-01).**
-`tools/porslot.py` wrote slot `F` onto that same disk with `write_por_slot`,
+`tools/amiga/porslot.py` wrote slot `F` onto that same disk with `write_por_slot`,
 which produced `"AB D F    "`. Booted, `LOAD SAVED GAME`, path `SAVE/`:
 
 ```
@@ -1538,7 +1538,7 @@ WinUAE, 2026-09-07, holder `wish28sq`; screenshots in `cited/28ssb/shots` and
 both files in `~/wish-specimens/ssb-amiga/WISH-SPEC-ssb-amiga-moved/`.
 
 **The edit is three bytes.** `WISH-SPEC-ssb-amiga-adventuring/savgamB.sav` is
-the game's own save at `3,3 S`; `tools/amigalaterslot.py --square 5,9,6` wrote
+the game's own save at `3,3 S`; `tools/amiga/amigalaterslot.py --square 5,9,6` wrote
 it back as slot C with `0x1401` 3 to 5, `0x1402` 3 to 9 and `0x1403` 4 to 6,
 and **nothing else in 7233 bytes**. The square attribute byte at `0x1405` was
 left at the value belonging to the old square, deliberately.
@@ -1600,7 +1600,7 @@ the same grade: an inference, not a probe.
 
 ### 1.16 The `.pc` loader, read (#148 (The Amiga port's tools are gone, and phase 1 still needs the disassembler), phase 1)
 
-**Phase 1 is done.** `tools/m68dis.py` was written for this and the routine was
+**Phase 1 is done.** `tools/amiga/m68dis.py` was written for this and the routine was
 read in the Amiga *Pools of Darkness* executable. The disassembler was checked
 against capstone 5.0.7 in `CS_MODE_BIG_ENDIAN | CS_MODE_M68K_000` over 100 385
 instructions of this same binary before any of the below was written down —
@@ -1658,7 +1658,7 @@ pair is real AmigaDOS and not a private loader.
   rest of the table is confirmed. Corrected on `#462 (Decode the rest of
   the Amiga Pools of Darkness .pc: 37 of 75 neutral fields have no home in it,
   so a converted character loses his spells and possessions)`, from
-  `tools/podpcregions.py`.
+  `tools/amiga/podpcregions.py`.
 * **A capacity check.** Item count plus scroll count must stay within `$78`
   (120); over that, the remaining records are read into a scratch buffer and
   thrown away and the player is shown `SCROLLS DROPPED!`.
@@ -1690,7 +1690,7 @@ comment; see `#154 (goldbox/amiga.py says 484 is the shortest record Pools of
 Darkness will read, and 404 is)`.
 
 **Two of the three `pc` literals in §1.2 were attributed to the wrong sites**,
-and `tools/m68dis.py --refs` says so — each literal is referenced exactly once
+and `tools/amiga/m68dis.py --refs` says so — each literal is referenced exactly once
 in 316 KB of code:
 
 | literal | referenced from | what that routine is |
@@ -1715,7 +1715,7 @@ and eleven block copies, at file offset `0x026000` to `0x0262DC`.
 records)`, so each instruction reads as *"Silver Blades' `hp_rolled` is Pools
 of Darkness' `0x0B8`"*.
 
-`tools/podimportmap.py` re-derives the whole map from the player's own disk
+`tools/amiga/podimportmap.py` re-derives the whole map from the player's own disk
 and `--check` compares it with `goldbox/amiga_pod.py`'s constants;
 `tests/test_podamiga.py::test_every_offset_matches_the_engines_own_silver_
 blades_importer` runs it. **51 of 51 constants match.** This is proof from the
@@ -2115,7 +2115,7 @@ undecoded; and spells are untouched.
 
 **The thing Donald asked for, run.** `LADY KATHERINE` off `PORSAVE11.D64` (scratch, deleted)
 -- a half-elf magic-user/thief the player rolled on the C64 -- converted with
-`tools/toamiga.py`, installed as `Save/TROND.pc` on a copy of disk 3, added
+`tools/amiga/toamiga.py`, installed as `Save/TROND.pc` on a copy of disk 3, added
 through `Add Character -> Pools` and viewed. The party roster drew
 `LADY KATHERINE  AC 8  HP 4`; the sheet drew everything else.
 
@@ -2176,7 +2176,7 @@ caps, starting position, the opening scene — instead of us guessing at it.
 So the deliverable is: **one OFS ADF, a `SAVE` drawer, six `.pc` files.** The
 player boots PoD normally, chooses `Add Character` → `Pools`, and picks them.
 
-**The `.pc` files exist; the ADF does not.** `tools/toamiga.py` writes a whole
+**The `.pc` files exist; the ADF does not.** `tools/amiga/toamiga.py` writes a whole
 party into a directory, and §2.5 got one of them into the game by *replacing*
 an existing file's contents on a copy of disk 3 — which is what
 `amiga/adfedit.py` (scratch, deleted) can do and all it can do. Authoring a disk, or adding
@@ -2257,12 +2257,12 @@ Ordered so the cheapest thing that could kill the approach runs first.
 | # | phase | produces | emulator? | cost | pass/fail |
 |---|---|---|---|---|---|
 | 0 | **Confirm §1 independently.** Re-extract both PoD and PoR ADFs, re-derive the file inventory and the twelve `.pc` constants. | a reproducible script in `tools/` | no | an hour | the numbers in §1 come out again |
-| 1 | ~~**Read the `.pc` loader.**~~ **DONE** (#148 (The Amiga port's tools are gone, and phase 1 still needs the disassembler)). `tools/m68dis.py` was rebuilt for it. 404 bytes, then 20 per item and 10 per effect; AmigaDOS `Open`/`Read`; the only checks are the read lengths and an `'I'` on each item. | §1.16 | no | done | run — see §1.16 |
+| 1 | ~~**Read the `.pc` loader.**~~ **DONE** (#148 (The Amiga port's tools are gone, and phase 1 still needs the disassembler)). `tools/amiga/m68dis.py` was rebuilt for it. 404 bytes, then 20 per item and 10 per effect; AmigaDOS `Open`/`Read`; the only checks are the read lengths and an `'I'` on each item. | §1.16 | no | done | run — see §1.16 |
 | 2 | ~~**The assumption test (§2.2), cases A–D.**~~ **DONE.** | A loads; **B loads too** | yes | one session | run — see §2.2 |
 | 3 | **An OFS ADF writer.** Round-trip: read every file off disk 3, rebuild an image, compare file contents byte for byte; then boot it in FS-UAE and let PoD list the twelve characters. | `goldbox/adf.py` (writer) with tests that read the player's own disks, never a committed image | yes, once | a week | PoD's `Add Character → Pools` shows all twelve names off our image |
 | 4 | ~~**Decode the `.pc` record.**~~ **Done for everything the sheet shows.** The ramp of §2.3 found the numbers; the plausible-value probe of §2.4 found the four enums, current hit points and the seventh level slot. What is left is undecoded rather than blocking: saving throws, thief skills, the class bitmask, the portrait indices and the appended item data. | `goldbox/amiga_pod.py`, plus `tests/test_amiga.py` asserting the ramp offsets, the written record and the twelve real files | yes, repeatedly | done | every named field decodes to a legal AD&D value across all twelve |
 | 5 | **Resolve the pointers.** Determine whether the `0x00`–`0x5F` addresses are re-linked on load. Two ways: read the loader (phase 1 may already answer it), or write a `.pc` with those longwords zeroed and see if PoD still loads it. | a ruling: don't-care, or must-be-plausible | yes | a session | a zeroed-pointer `.pc` loads and its sheet is unchanged |
-| 6 | ~~**The map and the writer.**~~ **DONE.** `goldbox.amiga_pod.write_pod` takes a `NeutralCharacter` — the one record every codec now shares, since #25 (One neutral character record, with a codec per format) — and `to_pc` emits the 484 bytes. `Report.unaccounted` is empty on every character of the player's own party, so there is no "template" category. `pod_write_field_disposition()` names what becomes of every neutral field, and `tests/test_amiga.py` fails if a field appears in one and not the other. | `goldbox/amiga_pod.py`, `tools/toamiga.py` | no | done | run |
+| 6 | ~~**The map and the writer.**~~ **DONE.** `goldbox.amiga_pod.write_pod` takes a `NeutralCharacter` — the one record every codec now shares, since #25 (One neutral character record, with a codec per format) — and `to_pc` emits the 484 bytes. `Report.unaccounted` is empty on every character of the player's own party, so there is no "template" category. `pod_write_field_disposition()` names what becomes of every neutral field, and `tests/test_amiga.py` fails if a field appears in one and not the other. | `goldbox/amiga_pod.py`, `tools/amiga/toamiga.py` | no | done | run |
 | 7 | ~~**End to end.**~~ **DONE**, on Pool of Radiance rather than Silver Blades, for blocker 2's reason. `LADY KATHERINE` off the player's own C64 save loaded into PoD and her sheet matches field for field — §2.5. | the thing Donald asked for | yes | done | run |
 
 Two side experiments worth naming, both cheap and neither on the critical path:
@@ -2355,7 +2355,7 @@ So nobody is surprised, and nobody tries.
    side.**~~ **Half-answered, as of 2026-09-03.** FS-UAE still has no binary
    monitor. But `docs/143-winuae-debugger.md` drives WinUAE from Linux instead
    — boot, halt, memory reads, watchpoints, breakpoints and single-stepping,
-   unattended, over `winvm` and `tools/winuae.ps1` — and that path has been run
+   unattended, over `winvm` and `tools/amiga/winuae.ps1` — and that path has been run
    for real (`#91 (Configure WinUAE in the Windows VM so an Amiga title can be driven unattended)`), reliably as far as its own §8. What it has **not** been run
    against is *Pools of Darkness* or *Secret of the Silver Blades*
    specifically — everything exercised so far is Pool of Radiance. Phase 4 of

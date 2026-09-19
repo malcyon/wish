@@ -802,7 +802,7 @@ class AmigaToDos(C64ToDos):
 POOLSAVE_FILENAME = "POOLSAVE.ADF"
 
 #: Where every Amiga Pool of Radiance area's own script lives -- one file,
-#: on disk 2, the `POOLDATA` volume. `tools/toamigapor.py`'s own `ECL_DAX`,
+#: on disk 2, the `POOLDATA` volume. `tools/amiga/toamigapor.py`'s own `ECL_DAX`,
 #: repeated here because that module is a script this one must not import.
 _ECL_DAX_PATH = "/ecl.dax"
 _ECL_GLB_PATH = "/DISKB/ECL.GLB"
@@ -838,7 +838,7 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
     character, which is what `write_por`'s report already carries by way of
     `goldbox.dos_codec.write`'s own use of `neutral.Writer.finish` (`goldbox/neutral.py`).
     `report.warnings` gets the same, plus `PorSaveReport.converted` -- the
-    place, the clock and the quest-flag count `tools/toamigapor.py` already
+    place, the clock and the quest-flag count `tools/amiga/toamigapor.py` already
     prints -- so a player reading the pane sees where the party has arrived.
 
     `icons` is each character's own `goldbox.iconparts.DosIcon`, `None`

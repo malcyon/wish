@@ -1169,7 +1169,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
 #: differ, so a new difference fails instead of being absorbed.
 #:
 #: Every value is zero and every one is measured rather than assumed: the 21
-#: specimens `tools/amigarecords.py` pulls off the disks -- eleven Curse
+#: specimens `tools/amiga/amigarecords.py` pulls off the disks -- eleven Curse
 #: `.guy` pregens, the four played Curse characters in `SAVE/savgamA.dat` and
 #: the six shipped Silver Blades characters in `SAVE/savgamA.sav` -- read 0 at
 #: all six Curse offsets in 15 of 15 and at all three Silver Blades ones in

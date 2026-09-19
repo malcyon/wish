@@ -107,7 +107,7 @@ ALIGNMENT = 0x05D
 #:
 #: CONFIRMED. The Silver Blades importer at `0x0261BA` copies that title's
 #: four bytes into exactly these four addresses, and `status` is corroborated
-#: twice over: `tools/amigaenum.py sites` finds `0x05E` indexed into a
+#: twice over: `tools/amiga/amigaenum.py sites` finds `0x05E` indexed into a
 #: nine-entry string table at `0x019250` and `0x020A2E`, in the routine that
 #: turns 0x058 into a race name and 0x059 into a class name, and the table
 #: reads Okay, Animated, tempgone, Running, Unconscious, Dying, Dead,
@@ -1003,7 +1003,7 @@ POD_WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 #: one character happens to carry it.
 #:
 #: **Most of these said "no located home" until #462 and had one all along.**
-#: The record is decoded now -- `tools/podimportmap.py` reads the engine's own
+#: The record is decoded now -- `tools/amiga/podimportmap.py` reads the engine's own
 #: Silver Blades importer and every offset is named -- so what is left is a
 #: writer that has not been extended to fill them, which is a different and
 #: smaller thing than a decode that has not happened. Each row below says
@@ -1320,7 +1320,7 @@ POD_READ_DROPPED: tuple[tuple[str, str], ...] = (
                      "merely displaced. DOS Pools of Darkness holds 0 in 12 "
                      "of 12, so nothing observable is lost"),
     ("inventory", "the item region past 404 bytes is decoded and this reader "
-                  "does not read it yet -- `tools/podpcregions.py` does. A "
+                  "does not read it yet -- `tools/amiga/podpcregions.py` does. A "
                   "converted character still arrives carrying nothing"),
     ("innate_effects", "the effect chain past the item region is decoded and "
                        "this reader does not read it yet -- see `inventory`"),

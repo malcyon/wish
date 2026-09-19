@@ -1,4 +1,4 @@
-"""`tools/amigadrive.py`'s key table, and the two settings a party walks on.
+"""`tools/amiga/amigadrive.py`'s key table, and the two settings a party walks on.
 
 No VM and no emulator: the `winvm` call is replaced, so what is under test is
 the command line the driver would have sent.  Both tests here guard something
@@ -16,10 +16,10 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import amigadrive  # noqa: E402
+from tools.amiga import amigadrive  # noqa: E402
 
 #: The WinUAE machine the Amiga titles boot on.
-CONFIG = pathlib.Path(__file__).resolve().parent.parent / "tools" / "goldbox-a500.uae"
+CONFIG = pathlib.Path(__file__).resolve().parent.parent / "tools" / "amiga" / "goldbox-a500.uae"
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-"""`tools/amigacursewheel.py`, which answers Amiga Curse's prompt and says nothing.
+"""`tools/amiga/amigacursewheel.py`, which answers Amiga Curse's prompt and says nothing.
 
 Nothing here touches the separate repository the arithmetic lives in, and
 nothing here knows a challenge or an answer -- that is the point of the tool
@@ -17,7 +17,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import amigacursewheel, gamedisks  # noqa: E402
+from tools import gamedisks  # noqa: E402
+from tools.amiga import amigacursewheel  # noqa: E402
 
 
 def test_a_winuae_capture_is_scaled_up_to_the_readers_range():

@@ -1,4 +1,4 @@
-"""`tools/toamigapor.py`: a C64 or DOS party written into an Amiga save slot.
+"""`tools/amiga/toamigapor.py`: a C64 or DOS party written into an Amiga save slot.
 
 This is the direction `#105 (Write an Amiga Pool of Radiance character, not
 just a Pools of Darkness one)` exists for, and on 2026-09-05 both halves of it
@@ -33,7 +33,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def _por_disk_1(tmp_path: pathlib.Path) -> pathlib.Path:
     """A writable copy of an Amiga Pool of Radiance disk 1, or a skip.
 
-    The images on this machine are inside `.zip`s, so `tools/amigasaves.py`'s
+    The images on this machine are inside `.zip`s, so `tools/amiga/amigasaves.py`'s
     reader is what gets at them.  The disk is identified by a `savgamA.dat` of
     Pool of Radiance's own length rather than by its file name, which differs
     between the four rips here -- and rather than by the name alone, because
@@ -42,7 +42,8 @@ def _por_disk_1(tmp_path: pathlib.Path) -> pathlib.Path:
     """
     from goldbox.amiga_adf import AmigaDisk
     from goldbox.amiga_savegame import POR_SAVEGAME_SIZE
-    from tools import amigasaves, gamedisks
+    from tools import gamedisks
+    from tools.amiga import amigasaves
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")
@@ -71,7 +72,8 @@ def _por_disk_2(tmp_path: pathlib.Path) -> pathlib.Path:
     carrying that file rather than by its name, which differs between rips.
     """
     from goldbox.amiga_adf import AmigaDisk
-    from tools import amigasaves, gamedisks
+    from tools import gamedisks
+    from tools.amiga import amigasaves
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")
@@ -142,7 +144,7 @@ def test_a_c64_party_reaches_an_amiga_slot_with_its_names_and_hit_points(
     own and nothing derives them, so a wrong offset anywhere in the
     transposition moves one.
     """
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     party = _c64_specimen("por-party-twin-pair")
     disk = _por_disk_1(tmp_path)
@@ -162,7 +164,7 @@ def test_a_c64_party_reaches_an_amiga_slot_with_its_names_and_hit_points(
 def test_a_dos_character_reaches_an_amiga_slot_with_his_two_items(tmp_path):
     """THRENDER GRONE's flail and banded mail, which the Amiga ITEMS screen
     drew as `YES FLAIL` and `YES BANDED MAIL`."""
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     where = gamedata.specimen("por-item-granted")
     disk = _por_disk_1(tmp_path)
@@ -182,7 +184,7 @@ def test_the_slot_letter_lands_in_its_own_byte_of_the_picker_list(tmp_path):
     written into `D` puts `D` at byte 3 and leaves bytes 1 and 2 alone."""
     from goldbox import amiga_savegame
     from goldbox.amiga_adf import AmigaDisk
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     party = _c64_specimen("por-party-twin-pair")
     disk = _por_disk_1(tmp_path)
@@ -211,7 +213,7 @@ def test_a_space_in_a_name_is_written_through_to_the_amiga_record(tmp_path):
     (`#385 (A C64 party converted to an Amiga disk marches in the reverse of
     its C64 order)`), and she is third in it.
     """
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     party = _c64_specimen("por-party-twin-pair")
     disk = _por_disk_1(tmp_path)
@@ -228,7 +230,7 @@ def test_a_space_in_a_name_is_written_through_to_the_amiga_record(tmp_path):
 def test_the_input_disk_is_not_written(tmp_path):
     """`--out` is required and the image named on the command line is read
     only, because the next caller's will be the player's own."""
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     party = _c64_specimen("por-party-twin-pair")
     disk = _por_disk_1(tmp_path)
@@ -251,7 +253,7 @@ def test_the_saved_game_is_the_partys_own_place_and_not_the_disks(tmp_path):
     from goldbox import amiga_savegame, c64_port, dos_savegame
     from goldbox.amiga_adf import AmigaDisk
     from goldbox.d64 import load_payload
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     party = _c64_specimen("porunconscious1")
     disk = _por_disk_1(tmp_path)
@@ -284,12 +286,12 @@ def test_the_copied_container_is_still_reachable_and_says_so(tmp_path, capsys):
     """`--container` is an experiment rather than a conversion.
 
     It puts the party in somebody else's place on purpose -- which is what
-    `tools/porslot.py` does between two Amiga slots -- so it stays, and the
+    `tools/amiga/porslot.py` does between two Amiga slots -- so it stays, and the
     run says in words that the place is not the party's.
     """
     from goldbox import amiga_savegame
     from goldbox.amiga_adf import AmigaDisk
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     party = _c64_specimen("porunconscious1")
     disk = _por_disk_1(tmp_path)
@@ -309,7 +311,7 @@ def test_the_copied_container_is_still_reachable_and_says_so(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 def test_two_sources_at_once_are_refused(tmp_path):
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     with pytest.raises(SystemExit) as caught:
         toamigapor.main([str(tmp_path / "x.adf"), "--to", "B",
@@ -319,7 +321,7 @@ def test_two_sources_at_once_are_refused(tmp_path):
 
 
 def test_no_source_at_all_is_refused(tmp_path):
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     with pytest.raises(SystemExit) as caught:
         toamigapor.main([str(tmp_path / "x.adf"), "--to", "B",
@@ -338,7 +340,7 @@ def test_a_dos_curse_party_is_refused_before_any_conversion_work(tmp_path):
     naming a size, where what was wrong was the title.  `--c64` had this check
     from the start and `--dos` did not.
     """
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     where = gamedata.specimen("curse-234-before")
     disk = _por_disk_1(tmp_path)
@@ -353,15 +355,15 @@ def test_a_dos_curse_party_is_refused_before_any_conversion_work(tmp_path):
 def test_the_input_disk_cannot_be_named_as_the_output(tmp_path):
     """A player's own disk given twice is refused before anything is written.
 
-    `tools/porslot.py` has refused this from the start and said why: the
+    `tools/amiga/porslot.py` has refused this from the start and said why: the
     player keeps their disks somewhere the script is pointed at by hand, so
     naming the same file as the source and the destination is a typo away.
-    `tools/toamigapor.py` had no such guard, and either `--out` or
+    `tools/amiga/toamigapor.py` had no such guard, and either `--out` or
     `--save-disk` would have overwritten the disk it had just read.
     """
     import hashlib
 
-    from tools import toamigapor
+    from tools.amiga import toamigapor
 
     disk = _por_disk_1(tmp_path)
     before = hashlib.sha256(disk.read_bytes()).hexdigest()

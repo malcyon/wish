@@ -32,7 +32,7 @@ character: every character is read off one file descriptor in sequence, so the
 stream would be left mid-block and **everybody after the bad one** would be read
 out of the wrong bytes. Both C64 saves keep their only item-carrying character
 last, where nothing is behind him to be corrupted, so
-`tools/amigalaterproof.py build --first <name>` moves him to the front.
+`tools/amiga/amigalaterproof.py build --first <name>` moves him to the front.
 
 ## What the games drew
 
@@ -105,7 +105,7 @@ party-panel highlight on cursor **down**, and `VIEW` then draws whoever is
 highlighted; the party menu, the adventuring bar and the sheet itself all ignore
 the key. **Amiga Curse does not do this at all** — its camp screen, party menu
 and bar all ignore cursor down — so on that title only the first character's
-sheet can be drawn with the keys `tools/winuae.ps1` has, and the five behind him
+sheet can be drawn with the keys `tools/amiga/winuae.ps1` has, and the five behind him
 were read off the party panel instead.
 
 ## The engine's own resave, which is the strongest of it
@@ -115,7 +115,7 @@ by the lists the writers **declare** —
 `goldbox.amiga_later.LATER_WRITE_UNSOURCED`, `LATER_ITEM_WRITE_UNSOURCED`,
 `LATER_EFFECT_WRITE_UNSOURCED` and `goldbox.dos_codec`'s six, mapped through the
 title's shift map — and never by whatever happened to differ.
-`tools/amigalaterproof.py diff` is the comparison.
+`tools/amiga/amigalaterproof.py diff` is the comparison.
 
 | | bytes of party block | identical | inside the declared lists | outside them |
 |---|---|---|---|---|
@@ -125,7 +125,7 @@ title's shift map — and never by whatever happened to differ.
 
 **Every block came back the length it went in**, and so did every file: 8073
 against 8073 and 15717 against 15717, with the same six people in the same
-order and the same item and effect counts. `tools/amigasavecheck.py`'s every
+order and the same item and effect counts. `tools/amiga/amigasavecheck.py`'s every
 internal check is clean on all three engine-written files, `rebuild(parse(f))
 == f` included.
 
@@ -218,7 +218,7 @@ alignment pad.
 ## Reproducing it
 
 ```sh
-tools/amigalaterproof.py build \
+tools/amiga/amigalaterproof.py build \
     --source ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \
     --into $TMPDIR/ssb-src.adf --from A --to B \
     --first 'Guy de Valois' --out $TMPDIR/ssb-first.adf
@@ -226,13 +226,13 @@ tools/amigalaterproof.py build \
 #   RET  P  L  B          -- credits, PLAY, LOAD SAVED GAME, our slot
 #   V  I  E  E            -- the sheet, ITEMS, back out twice
 #   S  D                  -- SAVE CURRENT GAME into slot D, the clean resave
-tools/amigalaterproof.py diff --ours $TMPDIR/ssb-first.adf --ours-slot B \
+tools/amiga/amigalaterproof.py diff --ours $TMPDIR/ssb-first.adf --ours-slot B \
     --theirs $TMPDIR/ssb-resaved.adf --theirs-slot D
 ```
 
-Amiga Curse is the same with `P` twice, `tools/amigacursewheel.py` for the code
+Amiga Curse is the same with `P` twice, `tools/amiga/amigacursewheel.py` for the code
 wheel, and `.dat` in place of `.sav`; Amiga Silver Blades' `BEGIN ADVENTURING`
-wants `tools/amigabladesjournal.py`, and **both of those tools need
+wants `tools/amiga/amigabladesjournal.py`, and **both of those tools need
 `/usr/bin/python3`** rather than this project's virtual environment, because
 they reach into the separate private repository and it imports `numpy`.
 `docs/124-amiga-port.md` §1.11 and §1.11a have the rest of each route, and

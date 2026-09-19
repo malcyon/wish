@@ -1,4 +1,4 @@
-"""`tools/amigacontainercheck.py`, the check that an Amiga container is built.
+"""`tools/amiga/amigacontainercheck.py`, the check that an Amiga container is built.
 
 The tool itself needs the player's C64 specimens and their Amiga disk 2;
 everything here is synthetic, so the parts that decide what the tool *says*
@@ -23,7 +23,7 @@ import textwrap
 
 import pytest
 
-from tools import amigacontainercheck as check
+from tools.amiga import amigacontainercheck as check
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 

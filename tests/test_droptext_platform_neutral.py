@@ -100,7 +100,7 @@ def test_the_c64_combat_icon_drop_names_no_file_or_byte_count():
 def test_a_c64_party_converted_to_the_amiga_names_no_platform():
     """Live reproduction of `#389`'s own finding: six of six Silver Blades
     characters, converted with the exact command the issue used
-    (`tools/amigalaterwrite.py --source .../WISH-SPEC-ssb-d-engine-resave.D64`).
+    (`tools/amiga/amigalaterwrite.py --source .../WISH-SPEC-ssb-d-engine-resave.D64`).
     """
     root = specimen_root()
     if root is None:

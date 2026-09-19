@@ -2681,7 +2681,7 @@ def test_an_adf_that_holds_no_saved_game_is_refused_and_not_guessed_at(
 
 def test_amiga_to_c64_direction_is_the_transfer_test(amiga_adf, tmp_path):
     """The bytes the dialog's Amiga row writes equal what
-    `tools/fromamigapor.py` writes, calling `goldbox.amiga_savegame.read_por_slot`,
+    `tools/amiga/fromamigapor.py` writes, calling `goldbox.amiga_savegame.read_por_slot`,
     `goldbox.dos_codec.new_save_from` and `goldbox.dos_codec.save_disk` directly for the
     same slot -- so `#353`'s VICE proof stands for this path too, which is
     the same argument `test_dos_to_c64_direction_is_the_transfer_test`
@@ -3296,7 +3296,7 @@ def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     `CHRDATA1` is BRUTUS and `CHRDATA6` is MALCYON, the C64's own marching
     order (`#385 (A C64 party converted to an Amiga disk marches in the
     reverse of its C64 order)`, closed before this row was built): this
-    direction calls `dos_codec.c64_party` exactly as `tools/toamigapor.py` does
+    direction calls `dos_codec.c64_party` exactly as `tools/amiga/toamigapor.py` does
     since that fix, so the two cannot disagree.
     """
     from test_toamigapor import _c64_specimen

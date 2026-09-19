@@ -170,7 +170,7 @@ def test_a_command_that_could_open_a_console_is_refused(command):
     **Tokenised the way `debug.cpp` tokenises.** The first six are the plain
     forms; the rest are the two ways past a guard that read the first word of
     the whole string, found in review on 2026-09-08 and both reachable through
-    the public `send()` and through `tools/winuaepipe.py send`.
+    the public `send()` and through `tools/amiga/winuaepipe.py send`.
     """
     p, guest = pipe()
     with pytest.raises(ValueError, match="console"):

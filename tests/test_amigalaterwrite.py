@@ -519,7 +519,7 @@ def test_the_engine_agrees_with_the_encumbrance_this_writer_computes():
     """The one disagreement in the whole corpus, and it is agreement.
 
     `WISH-SPEC-coab-amiga-resave/savgamD.dat` is ours -- IILANDA's item chain
-    emptied by `tools/amigalaterslot.py --strip-items 2`, which left her
+    emptied by `tools/amiga/amigalaterslot.py --strip-items 2`, which left her
     stored encumbrance at the 782 she had with three items.  This writer
     recomputes 282 from her money and her (now empty) inventory, so a round
     trip against *that* file differs by two bytes.  `savgamE.dat` is Amiga

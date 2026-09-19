@@ -33,7 +33,8 @@ SHIPPED_SAVEGAME = "/save/savgamA.dat"
 # ---------------------------------------------------------------------------
 
 def _amiga_images():
-    from tools import amigasaves, gamedisks
+    from tools import gamedisks
+    from tools.amiga import amigasaves
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")
@@ -445,7 +446,7 @@ def test_the_saved_game_parser_reads_a_built_one_and_every_check_passes(
     writer, so it agreeing is a second opinion rather than a restatement.
     """
     from goldbox import amiga_savegame
-    from tools import amigasavecheck
+    from tools.amiga import amigasavecheck
 
     state = _c64_state("porunconscious1")
     save, _report = amiga_savegame.new_por_savegame(state, "B", 6, ecl_dax)

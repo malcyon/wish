@@ -22,7 +22,7 @@ The three panels, left to right:
   is its own eighth body;
 * **what writing 33 gives him on the Amiga** -- the Amiga's art `0x18`,
   reached by indexing thirty-three bytes into a twelve-byte table.
-  `tools/amigaportraitresolve.py --out-of-range 33` is where that number comes
+  `tools/amiga/amigaportraitresolve.py --out-of-range 33` is where that number comes
   from and the resolving routine applies no range check at all.
 
 `--all` is the picture that answers a question the three panels only imply:
@@ -36,7 +36,7 @@ both.
 Every picture is rendered from a block of the player's own disk: the DOS
 panels from `BODY<n>.DAX` through the EGA palette, the Amiga panels from
 `/body.dax` on disk 2 through the thirty-two colour words the Amiga
-executable copies into its screen (`tools/amigaportraitmenu.py --palette`).
+executable copies into its screen (`tools/amiga/amigaportraitmenu.py --palette`).
 **Neither is a photograph of the running game's character sheet**, which draws
 a head above the body inside a frame, so what is compared here is the art the
 engine would fetch rather than the pixels a player would see around it.
@@ -56,14 +56,14 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import amiga_dax, portraits  # noqa: E402
-from tools import amigaportraitmenu as menu  # noqa: E402
 from tools import scratch  # noqa: E402
+from tools.amiga import amigaportraitmenu as menu  # noqa: E402
 
 #: Where the picture goes unless the caller says otherwise.
 OUT = scratch.scratch_dir("bodychoices") / "bodies.png"
 
 #: The value that reaches the Amiga's art `0x18` off the end of the menu
-#: table, from `tools/amigaportraitresolve.py --out-of-range`.
+#: table, from `tools/amiga/amigaportraitresolve.py --out-of-range`.
 PAST_THE_END = 33
 
 #: Menu position 8, one-based, which is the position the two ports disagree on.

@@ -100,7 +100,7 @@ slot or VM lane nobody is using.
    refusal suggests `Monitor` or `run_in_background: true` — neither is useful
    here: subagents have no `Monitor` tool, and `run_in_background` followed by
    ending the turn is the failure itself, not an escape from it. For a WinUAE
-   boot's 45–55 second waits, use `tools/winvmsettle.py <shot.png> --limit 150`
+   boot's 45–55 second waits, use `tools/amiga/winvmsettle.py <shot.png> --limit 150`
    in the foreground instead; for anything else, an
    `until <condition>; do sleep 5; done` loop with `timeout: 600000`.
 

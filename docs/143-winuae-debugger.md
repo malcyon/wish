@@ -61,10 +61,10 @@ costs nothing.
 | Game disk images | `C:\Amiga\Disks` — Pool of Radiance, Curse, Silver Blades, Pools of Darkness as `.adf`/`.zip` |
 | guest address | `192.168.123.50`, static — no DHCP on that libvirt network |
 | host → guest | `ssh donald@192.168.123.50`, key-only |
-| the machine config | `tools/goldbox-a500.uae`, deployed to `C:\Amiga\configs\` |
-| the guest-side driver | `tools/winuae.ps1` and `tools/winuae-send.ps1`, deployed to `C:\Amiga\` |
-| the check on the driver | `tools/winuae-lanecheck.ps1` — proves one driver cannot destroy another's run, 1.1 |
-| the check on `send` | `tools/winuae-sendcheck.ps1` — provokes the batch that dies half-way, §7 trap 7 |
+| the machine config | `tools/amiga/goldbox-a500.uae`, deployed to `C:\Amiga\configs\` |
+| the guest-side driver | `tools/amiga/winuae.ps1` and `tools/amiga/winuae-send.ps1`, deployed to `C:\Amiga\` |
+| the check on the driver | `tools/amiga/winuae-lanecheck.ps1` — proves one driver cannot destroy another's run, 1.1 |
+| the check on `send` | `tools/amiga/winuae-sendcheck.ps1` — provokes the batch that dies half-way, §7 trap 7 |
 
 **The guest's login shell is PowerShell, and it expands `$name` inside double
 quotes before anything you ran gets to see it.** `winvm ssh 'powershell
@@ -81,7 +81,7 @@ are different window stations, and the consequences are not cosmetic:
 * `AttachConsole` cannot cross the boundary either — it fails with
   `GetLastError 203` every time.
 
-`tools/winuae.ps1` exists for this one reason: every action it takes goes
+`tools/amiga/winuae.ps1` exists for this one reason: every action it takes goes
 through a scheduled task with an `Interactive` principal, which runs in
 whichever session the user is logged on to.
 
@@ -96,7 +96,7 @@ and conflating the two makes the setting that matters ambiguous.
 
 ### The ROM database, which is not the config's ROM path
 
-`tools/goldbox-a500.uae` names the Kickstart by absolute path, and that is
+`tools/amiga/goldbox-a500.uae` names the Kickstart by absolute path, and that is
 enough for a command-line run. **The GUI does not use it.** WinUAE's own
 windows resolve ROMs through a scanned database in the registry, so on a
 machine where the scan has never run, opening WinUAE tells a person there are
@@ -135,7 +135,7 @@ find more than one, naming both pids. Stop the session first.
 An SSH shell cannot leave one behind on its own: sshd ends its session's whole
 process tree when the call returns, so an emulator started from one dies with
 the call that started it. `roms` is one way to two emulators; **a second driver
-is the other**, and that one is not rare — `tools/winuae-lanecheck.ps1`'s
+is the other**, and that one is not rare — `tools/amiga/winuae-lanecheck.ps1`'s
 `hijack` round produced `fail 2 winuae64 processes after starting: 1944,9640`
 from two `start` calls a second apart.
 
@@ -252,7 +252,7 @@ PowerShell fills a positional parameter *before* a
 at `Position=1`, `winuae.ps1 key 7A` bound `cmd=[key] holder=[7A] rest=[]` and
 the keypress was refused for having no VK code.
 
-`tools/winuae-lanecheck.ps1` is the proof, and it runs against whichever copy
+`tools/amiga/winuae-lanecheck.ps1` is the proof, and it runs against whichever copy
 of the driver it is pointed at, so an older one can be watched to fail.
 Measured 2026-09-01; the round count is per row, because the rare ones need
 more of them:
@@ -475,7 +475,7 @@ Five things constrain what may go down it:
 `CFG <line>` on the same pipe reaches `cfgfile_modify`, which is the host-side
 equivalent of the Amiga-side `uae-configuration` program; nothing here uses it.
 
-**`automap.amiga.WinuaePipe` is the transport and `tools/winuaepipe.py` the
+**`automap.amiga.WinuaePipe` is the transport and `tools/amiga/winuaepipe.py` the
 command line.** `AmigaTarget` takes either transport and asks it one question,
 `halts_machine`, which decides both `halts_on_read` and whether a batch ends
 with a `g`. The console route stays: it is what every driven tool uses, and its
@@ -531,13 +531,13 @@ thousands of lines, the same flood §5's `use_debugger` paragraph describes,
 with no `use_debugger` anywhere. Measured on 2026-09-07: with `-log` the
 emulator was still a blank white window three and a half minutes in; the same
 command line without it reached the code wheel in 44 seconds. It also defeated
-`tools/winvmsettle.py` outright, because `winvm shot` grabs the whole desktop
+`tools/amiga/winvmsettle.py` outright, because `winvm shot` grabs the whole desktop
 and a scrolling console means no two grabs are ever identical. **That paragraph
 said to pass `-log` only when `send` was going to read the debugger back, and
 it is superseded**, because a run that wants both the debugger and the screen
 -- which is every driven measurement -- had no way to have them.
 
-**`gfx_api=0` is the fix, and `tools/goldbox-a500.uae` now carries it.** This VM
+**`gfx_api=0` is the fix, and `tools/amiga/goldbox-a500.uae` now carries it.** This VM
 has no accelerated renderer and WinUAE's default one cannot keep its display
 buffer locked, which is what the message is; DirectDraw can. Measured on Curse
 of the Azure Bonds, 2026-09-08, the same command line with `-log` either way:
@@ -547,7 +547,7 @@ of the Azure Bonds, 2026-09-08, the same command line with `-log` either way:
 | the emulator window | white for the whole run | the game, drawn |
 | FPS / CPU | 14.6 / 342% | **49.9 / 0%** |
 | the console | `Denise queue without lock! id=1` as fast as it prints | the drive's own `nnn%` line |
-| `tools/winvmsettle.py` | never settled in 180 s | 62, 7, 12, 16, 50, 56, 83 s |
+| `tools/amiga/winvmsettle.py` | never settled in 180 s | 62, 7, 12, 16, 50, 56, 83 s |
 
 With it, `#37 (Automap the Amiga version, not just the C64)`'s run drove Silver Blades from its title screen to a party
 standing in the world, photographing every screen, with the debugger reading
@@ -592,7 +592,7 @@ minutes.
 The only surviving caller of `activate_debugger()` is `AKS_ENTERDEBUGGER`,
 reached from the input event `SPC_ENTERDEBUGGER` (`inputevents.def:371`,
 "Activate the built-in debugger"). **It has no default binding.** Five config
-lines give it one, and `tools/goldbox-a500.uae` carries them:
+lines give it one, and `tools/amiga/goldbox-a500.uae` carries them:
 
 ```
 input.config=1
@@ -644,7 +644,7 @@ Amiga port 2**, and `kbd1` is Keyboard Layout A; `inputdevice.cpp`'s
 `joyport` line gets that default, so a game driven on the numeric keypad --
 which is how Amiga Curse and Amiga Silver Blades move a party -- receives
 nothing at all and looks as though it ignores the key.
-`tools/goldbox-a500.uae` now says `joyport0=mouse` and `joyport1=none`.
+`tools/amiga/goldbox-a500.uae` now says `joyport0=mouse` and `joyport1=none`.
 
 **And `sound_output=none` is not "silent", it is "no Paula".** Audio interrupts
 are not emulated either, and Amiga Silver Blades deadlocks on the second turn
@@ -709,13 +709,13 @@ Use it when a human is looking.
 Parsing it is not unreasonable, though, because **the console can be read back
 as text rather than scraped as pixels**: `ReadConsoleOutputCharacter` over the
 attached screen buffer returns the debugger's own output — register dumps, `m`
-hex, the `>` prompt. `tools/winuae-send.ps1` does it after every batch. The
+hex, the `>` prompt. `tools/amiga/winuae-send.ps1` does it after every batch. The
 buffer is 120x5000; read the tail around the cursor, because marshalling all
 600,000 characters is slow enough to notice.
 
 ## 7. Getting commands *in*
 
-Solved, by §7's option 1. `tools/winuae-send.ps1` is the implementation.
+Solved, by §7's option 1. `tools/amiga/winuae-send.ps1` is the implementation.
 
 The debugger reads from WinUAE's console with `ReadConsole` one character at a
 time, in line mode (`writelog.cpp`, `console_get`). So `AttachConsole` to the
@@ -823,7 +823,7 @@ Seven traps, each of which reads as "the route does not work":
    host's output does **not** help — `Write-Warning` threw the same 0x6 with
    stdout and stderr sent to a file, and `AttachConsole` resets the standard
    handles anyway, which is why the host's error text lands in WinUAE's
-   console. `tools/winuae-sendcheck.ps1` provokes it: 1 of 20 eight-line
+   console. `tools/amiga/winuae-sendcheck.ps1` provokes it: 1 of 20 eight-line
    batches died against the old driver and injector, 0 of 20 against the
    fixed pair, 0 of 20 with either half fixed alone, and 0 of 24 four-line
    batches with F11 between each from a fresh start.
@@ -923,7 +923,7 @@ neither.
 
 ## 10. Fitting it to `automap` — built, and measured
 
-`automap/amiga.py` is the backend, `tools/amigatarget.py` the command line, and
+`automap/amiga.py` is the backend, `tools/amiga/amigatarget.py` the command line, and
 `tests/test_amigatarget.py` the 35 tests. `automap/target.py` was **not**
 touched: the contract is still two methods, and everything else `AmigaTarget`
 supplies is an optional method the protocol already looks for with `getattr`.
@@ -987,7 +987,7 @@ Measured bases, both in slow memory as §5.2 predicted: `/Curse` at `$00C4E270`
 and `/Secret` at `$00C55CE0` on their own boots.
 
 `automap.amiga.MACHINES` holds the per-title offsets, and
-`tools/amigatarget.py verify` re-derives them off an ADF with no emulator at
+`tools/amiga/amigatarget.py verify` re-derives them off an ADF with no emulator at
 all. **Pool of Radiance has no row on purpose**: its Amiga build is not a
 small-data one, so the anchor finds the wrong hunk and it needs hunk 32's load
 address instead.
@@ -1177,7 +1177,7 @@ the WinUAE VM, and neither of them can tell)`:
   and neither of them can tell)` `winuae.ps1`.** The fixed copy was deployed
   into the running guest's overlay and not promoted, so it does not survive
   `winvm revert`, and the 2026-08-25 line above about golden's copies hashing
-  equal to `tools/` is no longer true. `scp tools/winuae.ps1
+  equal to `tools/` is no longer true. `scp tools/amiga/winuae.ps1
   donald@192.168.123.50:'C:/Amiga/'` after any revert, and promote deliberately
   when the overlay holds nothing else you would not want in the baseline
 
@@ -1206,7 +1206,7 @@ trap 7:
   in WinUAE's own window
 * **the fixed pair: 0 of 20 eight-line batches and 0 of 24 four-line batches
   with F11 between each**, against 1 of 20 for the old pair under
-  `tools/winuae-sendcheck.ps1`; the planted-error trap came back as
+  `tools/amiga/winuae-sendcheck.ps1`; the planted-error trap came back as
   `exit 7` with the message and line in the log
 
 **Checked on the VM itself, 2026-09-07**, for `#361 (An Amiga party cannot be

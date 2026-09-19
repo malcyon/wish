@@ -140,7 +140,7 @@ def amiga_images(gold_box_only: bool = True) -> list[pathlib.Path]:
 
 def _geo_library(data: bytes) -> dict[int, bytes]:
     """`GEO.GLB` as `{id: 1024 bytes}`. Block 0 is the index."""
-    from tools.amigaenum import glib_blocks
+    from tools.amiga.amigaenum import glib_blocks
     blocks = glib_blocks(data)
     index = blocks[0]
     count = int.from_bytes(index[:2], "big")

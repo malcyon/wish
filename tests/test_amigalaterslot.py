@@ -1,4 +1,4 @@
-"""`tools/amigalaterslot.py`, the tool that put our bytes in front of the game.
+"""`tools/amiga/amigalaterslot.py`, the tool that put our bytes in front of the game.
 
 `#28 (Decode an Amiga saved game, not just a character file)` ended on a
 WinUAE run: five saved games this project wrote were loaded by Amiga Curse and
@@ -25,7 +25,7 @@ from tests.test_amigasavegame import (  # noqa: E402
     synthetic_curse,
     synthetic_silver_blades,
 )
-from tools import amigalaterslot, amigasavecheck  # noqa: E402
+from tools.amiga import amigalaterslot, amigasavecheck  # noqa: E402
 
 
 def disk_with(path: str, data: bytes) -> AmigaDisk:

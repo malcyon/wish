@@ -10,7 +10,7 @@ repository's `coab/analysis/wheel.py`; what was missing was the reading --
 turning the frame on screen into the four numbers that function wants.
 `CLAUDE.md` keeps that arithmetic in Donald's separate private repository, and
 this reaches into it at run time and **records nothing** here -- the shape
-`tools/amigacursewheel.py` follows for the Amiga side of the same wheel
+`tools/amiga/amigacursewheel.py` follows for the Amiga side of the same wheel
 (#108, Amiga Curse asks its code wheel, so the title cannot be driven
 unattended).
 

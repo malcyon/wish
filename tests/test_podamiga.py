@@ -47,7 +47,7 @@ READ_ONLY = ("armour_class", "armour_class_base")
 def pc_bytes() -> dict[str, bytes]:
     """Every `Save/*.pc` on an Amiga disk we can see, by file name.
 
-    `tools/amigasaves.py`'s `images` is the shared discovery -- it opens
+    `tools/amiga/amigasaves.py`'s `images` is the shared discovery -- it opens
     loose `.adf` files and the Gold Box zips inside an Amiga ROM library --
     and this narrows to the `.pc` files, which its own `specimens` does not
     yield: that one keeps to the 288-byte Pool of Radiance record.
@@ -63,7 +63,8 @@ def pc_bytes() -> dict[str, bytes]:
     fallback can use one.
     """
     from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
-    from tools import amigasaves, gamedisks
+    from tools import gamedisks
+    from tools.amiga import amigasaves
 
     if not gamedisks.candidates("amiga"):
         return {}
@@ -547,7 +548,7 @@ def test_every_offset_matches_the_engines_own_silver_blades_importer():
     `#55` decoded that record -- so each instruction reads as "Silver Blades'
     *name* is at Pools of Darkness' `0xY`".
 
-    `tools/podimportmap.py` decodes the routine and compares it with this
+    `tools/amiga/podimportmap.py` decodes the routine and compares it with this
     module's constants. It is what caught two of them being wrong:
     `HP_CURRENT` was the word at 0x190 and is the byte at 0x191, and
     `PORTRAIT_BODY` was 0x0B8, which is `hp_rolled`.
@@ -557,7 +558,8 @@ def test_every_offset_matches_the_engines_own_silver_blades_importer():
     """
     capstone = pytest.importorskip("capstone")
     assert capstone
-    from tools import gamedisks, podimportmap
+    from tools import gamedisks
+    from tools.amiga import podimportmap
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disk images; set $AMIGA_DISKS")

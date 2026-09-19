@@ -1,6 +1,6 @@
-"""`tools/amigaglobal.py` on an executable built here, so no game code is needed.
+"""`tools/amiga/amigaglobal.py` on an executable built here, so no game code is needed.
 
-The tool exists because `tools/amiga68k.py refs` cannot answer the question
+The tool exists because `tools/amiga/amiga68k.py refs` cannot answer the question
 `#28 (Decode an Amiga saved game, not just a character file)` kept asking of
 `/Curse` and `/Secret`: who touches this variable, and who calls this routine.
 Both go through `d16(a4)` on a SAS/Lattice small-data program and neither
@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-# Before importing `tools.amigaglobal`, which imports capstone at module
+# Before importing `tools.amiga.amigaglobal`, which imports capstone at module
 # scope: capstone is not a declared dependency of this project, only a
 # disassembler that happens to be in the developer's own environment. Below
 # the import instead of above it, this skip never runs -- the ImportError
@@ -31,8 +31,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 pytest.importorskip("capstone")
 
 from tests.test_amiga68k import hunk_file, pad4, u32  # noqa: E402
-from tools import amiga68k, amigaglobal  # noqa: E402
-from tools.amiga68k import Executable  # noqa: E402
+from tools.amiga import amiga68k, amigaglobal  # noqa: E402
+from tools.amiga.amiga68k import Executable  # noqa: E402
 
 #: The Silver Blades party's x byte, so the numbers in the test are the ones
 #: in `docs/165-amiga-savegame.md`.

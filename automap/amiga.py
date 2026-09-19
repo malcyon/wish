@@ -71,7 +71,7 @@ than given another title's numbers, which is the same rule
 
 Nothing here writes to the player's disks and nothing claims or releases the
 Amiga lane: `winuae.ps1 claim` is the caller's, exactly as it is for
-`tools/amigadrive.py`, because a claim that ends with the process that took it
+`tools/amiga/amigadrive.py`, because a claim that ends with the process that took it
 cannot be handed between the several runs one experiment needs.
 """
 
@@ -96,7 +96,7 @@ from .target import Fix, NotConnected
 #: A child of the `wish` logger, like every other module here.
 _log = logging.getLogger("wish.automap.amiga")
 
-#: F11, the virtual key `tools/goldbox-a500.uae` binds `SPC_ENTERDEBUGGER` to.
+#: F11, the virtual key `tools/amiga/goldbox-a500.uae` binds `SPC_ENTERDEBUGGER` to.
 #: The debugger has no other way in -- `docs/143-winuae-debugger.md` §5.
 DEBUGGER_KEY = 0x7A
 
@@ -107,7 +107,7 @@ GUEST_ROOT = r"C:\Amiga"
 GUEST_DUMP = GUEST_ROOT + r"\dump"
 
 #: The Amiga's memory, as the ranges a whole-machine search has to cover, for
-#: the A500 `tools/goldbox-a500.uae` describes: 512K of chip at 0 and 512K of
+#: the A500 `tools/amiga/goldbox-a500.uae` describes: 512K of chip at 0 and 512K of
 #: slow memory at `$C00000` (`bogomem_size=2`). The game is in the second of
 #: them -- `docs/143` §5.2 -- but a search that assumed so would answer
 #: "not found" on a machine configured any other way, so both are swept and
@@ -128,12 +128,12 @@ class AmigaMachine:
     """Where one title keeps the automapper's three inputs, as offsets.
 
     Every offset is into the executable's **data hunk**, which is how
-    `tools/amiga68k.py` names a small-data global: `g57a0` is data hunk offset
+    `tools/amiga/amiga68k.py` names a small-data global: `g57a0` is data hunk offset
     `0x57a0`, and `a4` is that hunk plus `0x7FFE`. Only the base moves from
     boot to boot, so these are constants of the build and the base is measured.
 
     `anchor` and `anchor_offset` are the string the base is found by, and
-    where the executable carries it. `tools/amigatarget.py --verify` re-derives
+    where the executable carries it. `tools/amiga/amigatarget.py --verify` re-derives
     both off the player's own disk, so a different release with the string
     somewhere else is caught rather than silently misread.
 
@@ -143,7 +143,7 @@ class AmigaMachine:
     """
 
     title: str
-    #: The file in the ADF's root, as `tools/amiga68k.py --exe` wants it.
+    #: The file in the ADF's root, as `tools/amiga/amiga68k.py --exe` wants it.
     executable: str
     anchor: bytes
     anchor_offset: int
@@ -1115,10 +1115,10 @@ def glib_blocks(data: bytes) -> list[bytes]:
     tag naming what the blocks are, then `count + 1` big-endian `u32` offsets,
     block *i* being `[off[i], off[i + 1])`.
 
-    **The same six lines are in `tools/amigaenum.py`, deliberately.** Nothing
+    **The same six lines are in `tools/amiga/amigaenum.py`, deliberately.** Nothing
     under `automap/` may import `tools/` -- that is a shipped package reaching
     into a directory no wheel carries -- and a reader with no container parse
-    could not open the Amiga's maps at all. `tools/amigatarget.py` imports
+    could not open the Amiga's maps at all. `tools/amiga/amigatarget.py` imports
     *this* copy, so the two that answer this question in the automapper cannot
     drift apart.
     """

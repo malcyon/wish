@@ -29,7 +29,7 @@ specimen tree, the archives and the played DOS directory -- and its exclusions
 (an emulator instance's staged tree, and records we wrote).  The C64 half
 reads every save disk `tools/gamedisks.py` finds plus the specimen tree; the
 Amiga half reads the records out of the disk images through
-`tools/amigasaves.py` and `tools/amigarecords.py`.
+`tools/amiga/amigasaves.py` and `tools/amiga/amigarecords.py`.
 
 Reads only.  Nothing here writes anything, on any disk.
 """
@@ -63,10 +63,12 @@ from goldbox import dos_port as dl  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import (  # noqa: E402
-    amigarecords,
-    amigasaves,
     dostailcensus,
     gamedisks,
+)
+from tools.amiga import (  # noqa: E402
+    amigarecords,
+    amigasaves,
 )
 
 #: The C64 record's spellbook, both declared halves: seven bytes Pool of
@@ -341,7 +343,7 @@ def amiga_rows():
     """Pool of Radiance's 288-byte records, then Curse's and Silver Blades'.
 
     Deduplicated on the record bytes, because several rips of the same disk
-    are on this machine and `tools/amigasaves.py` proves their save drawers
+    are on this machine and `tools/amiga/amigasaves.py` proves their save drawers
     byte-identical: counting them twice would inflate every number here.
     """
     por = spells.POOL_OF_RADIANCE

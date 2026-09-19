@@ -3,9 +3,9 @@
 `#28 (Decode an Amiga saved game, not just a character file)`. Every number
 here comes from the save and load routines in the three Amiga executables --
 `/Curse` on Curse disk A, `/Secret` on Silver Blades disk A, `/program` on
-Pool of Radiance disk 1 -- read with `tools/amiga68k.py` and proved by
+Pool of Radiance disk 1 -- read with `tools/amiga/amiga68k.py` and proved by
 `goldbox.amiga_savegame`, whose parser reads every saved game through this map.
-`tools/amigasavecheck.py` is its diagnostic client: it checks the parsed save
+`tools/amiga/amigasavecheck.py` is its diagnostic client: it checks the parsed save
 against the signature scan, the variable array and the file length. Seven
 specimens, all clean: the three found saves (`CurseA`,
 `Secret 1`, `poolgame` slot A) and the four Pool of Radiance slots WinUAE was
@@ -257,7 +257,7 @@ port rather than out of DOS.
 | `$5012` | `[block2]+$fe24` | the container number, written from the same byte the file opens with |
 | `$503E` | `+$fe7c` | party size; **cleared on load** |
 
-The clock at `$49C6`-`$49CB` is read through the map by `tools/amigasavecheck.py`
+The clock at `$49C6`-`$49CB` is read through the map by `tools/amiga/amigasavecheck.py`
 and agrees with the status line on the two saves that were read on screen.
 
 ### What an in-world Silver Blades save holds, against the DOS map
@@ -322,7 +322,7 @@ about what the save routine writes, and no Curse or Silver Blades saved game
 this project wrote had ever been loaded by the game.
 
 Five slots were written onto copies of the two game disks with
-`tools/amigalaterslot.py`, each one edit of the shipped save, and every one
+`tools/amiga/amigalaterslot.py`, each one edit of the shipped save, and every one
 loaded and drew the party it holds:
 
 | title | slot | the edit | bytes | the party panel |
@@ -359,7 +359,7 @@ the whole array is identical. The two header bytes that moved are `$5079`
 engine rebuilds, and the mode-before byte.
 
 Both engine-written files parse through this page's map with every claim in
-`tools/amigasavecheck.py`'s `check` clean, including `rebuild(parse(f)) == f`.
+`tools/amiga/amigasavecheck.py`'s `check` clean, including `rebuild(parse(f)) == f`.
 
 ### The derived fields are recomputed from the item chain
 
@@ -453,10 +453,10 @@ picker)`. A fourth per-title difference.
   still reads zero there (stronger than the sweep's claim, because the
   specific write had a real chance to fire and left no trace). Everything
   else in the 2560 words is still zeroed on the strength of the sweep
-  alone. Re-take with `tools/amigazerowords.py`.
+  alone. Re-take with `tools/amiga/amigazerowords.py`.
 
 **Amiga Silver Blades past its party menu is no longer open.**
-`tools/amigabladesjournal.py` answers the `BEGIN ADVENTURING` prompt and the
+`tools/amiga/amigabladesjournal.py` answers the `BEGIN ADVENTURING` prompt and the
 game has accepted it three times out of three, on three different challenges --
 `#331 (Amiga Silver Blades asks a journal word before it will adventure, so the
 title cannot be driven past its party menu)`. It needs `/usr/bin/python3`
@@ -476,7 +476,7 @@ y, facing and both map bytes on one step.
 **And it could not be run anyway.** Nothing this project can do moves an Amiga
 Curse or Silver Blades party: twenty virtual keys were pressed at the Silver
 Blades adventuring bar on 2026-09-07 and not one changed the square or the
-facing, and `tools/winuae.ps1` sends nothing but keystrokes.
+facing, and `tools/amiga/winuae.ps1` sends nothing but keystrokes.
 `#361 (An Amiga party cannot be made to walk, because the WinUAE driver sends
 only keystrokes)` is what has to land first, and what a step would then buy is
 the wall nibbles' values and an outdoor save.
@@ -484,7 +484,7 @@ the wall nibbles' values and an outdoor save.
 ## Method, so it can be repeated
 
 The `savgam` string is referenced three times in each executable (load,
-picker, save); `tools/amiga68k.py refs` finds the referencing instructions and
+picker, save); `tools/amiga/amiga68k.py refs` finds the referencing instructions and
 `disasm` reads the routine. Curse and Silver Blades are SAS/Lattice small-data
 programs: `a4` = data hunk + `0x7FFE`, and `jsr d16(a4)` goes through a table
 of `jmp abs.l` entries at the start of the data hunk, which the tool resolves.

@@ -15,7 +15,7 @@ in `ECL<n>.DAX`; the Amiga keeps all of them in one `/ecl.dax` on disk 2, the
 player's disk 2, and this is what reads it.
 
 **The depacker is transcribed from the game's own code**, at `/program`
-hunk 27 + `$7346` (file offset `0x4887A`), read with `tools/amiga68k.py`.  It
+hunk 27 + `$7346` (file offset `0x4887A`), read with `tools/amiga/amiga68k.py`.  It
 is the ByteKiller shape: a bit stream consumed **backwards** from the end of
 the block, writing the output backwards from its end, with a trailer of three
 big-endian longwords -- the unpacked length, a checksum, and the first bit

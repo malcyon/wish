@@ -5,7 +5,7 @@ MCS6500 opcode table), not from `d6502.T`, which would restate the
 implementation. `pytest tests/test_d6502.py` runs with zero skips: this suite
 needs no game disk.
 
-The disassembler cannot refuse the way `tools/m68dis.py` can -- on a 6502, 151
+The disassembler cannot refuse the way `tools/amiga/m68dis.py` can -- on a 6502, 151
 of 256 byte values are legal opcodes with no reserved fields, so a string of
 text will decode as plausible instructions and no cross-check prevents it (see
 the module docstring). What these tests can and do pin is that every opcode

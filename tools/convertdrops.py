@@ -145,7 +145,7 @@ def sources(root: pathlib.Path, scratch: pathlib.Path):
 def amiga_game_disks(scratch: pathlib.Path) -> dict[str, pathlib.Path]:
     """One read-only game-data image for each Amiga destination title."""
     from goldbox.amiga_adf import AmigaDisk
-    from tools import amigasaves
+    from tools.amiga import amigasaves
     out: dict[str, pathlib.Path] = {}
     first: bytes | None = None
     for _label, data in amigasaves.images():

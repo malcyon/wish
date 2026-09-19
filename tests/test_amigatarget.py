@@ -334,7 +334,7 @@ def test_every_layout_names_a_width_the_reader_can_use(key):
 # -- the table against the player's own disks ---------------------------------
 #
 # The offsets above are a claim about a build, and this is what turns it back
-# into one: `tools/amigatarget.py verify` opens the executable off whichever
+# into one: `tools/amiga/amigatarget.py verify` opens the executable off whichever
 # disk the player has and checks that the anchor is where the table says, that
 # it is there exactly once, and that the globals land in the part of the data
 # hunk the loader zero-fills.  It needs no emulator.
@@ -368,7 +368,7 @@ def _adf(key: str):
 def test_the_layout_still_describes_the_build_on_the_players_disk(key):
     """A different release with the anchor somewhere else is caught here,
     rather than as a plausible wrong square on a live machine."""
-    from tools import amigatarget
+    from tools.amiga import amigatarget
     assert amigatarget.verify(amiga.MACHINES[key], _adf(key)) == []
 
 
@@ -377,7 +377,7 @@ def test_a_wrong_anchor_offset_is_what_verify_is_for(key):
     """Proves the check above can fail: move the offset by one and it must."""
     from dataclasses import replace
 
-    from tools import amigatarget
+    from tools.amiga import amigatarget
     layout = amiga.MACHINES[key]
     bad = amigatarget.verify(replace(layout,
                                      anchor_offset=layout.anchor_offset + 1),
@@ -596,7 +596,7 @@ def test_the_glib_parse_refuses_a_container_it_is_not():
 
 def test_the_automap_command_drives_the_shipped_mapper_and_draws_it(tmp_path,
                                                                     monkeypatch):
-    """`tools/amigatarget.py automap` end to end against a fake guest.
+    """`tools/amiga/amigatarget.py automap` end to end against a fake guest.
 
     What it must not do is re-derive anything: the square comes from the
     backend, the area from `ResidentGeo`, the picture from
@@ -605,7 +605,7 @@ def test_the_automap_command_drives_the_shipped_mapper_and_draws_it(tmp_path,
     twenty-minute boot.
     """
     from automap import state as mapstate
-    from tools import amigatarget
+    from tools.amiga import amigatarget
     image = _map_disk("secret-of-the-silver-blades")
     t, guest = _resident(block=amiga.load_maps(image)["GEO10"].to_bytes(),
                          extra=square(6, 9, 2))
@@ -631,7 +631,7 @@ def test_the_automap_command_drives_the_shipped_mapper_and_draws_it(tmp_path,
 def test_the_automap_command_refuses_a_disk_with_no_maps_on_it(tmp_path,
                                                                monkeypatch):
     """Rather than drawing an empty map for a party it cannot place."""
-    from tools import amigatarget
+    from tools.amiga import amigatarget
     t, _ = _resident(extra=square(6, 9, 2))
     monkeypatch.setattr(amigatarget, "connect", lambda *a, **k: t)
     with pytest.raises(SystemExit, match="GEO.GLB"):

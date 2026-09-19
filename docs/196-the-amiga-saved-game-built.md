@@ -89,7 +89,7 @@ is not an area on any port.
 
 Each block is ByteKiller-packed. `goldbox/amiga_dax.py` transcribes the routine
 at `/program` hunk 27 + `$7346` (file offset `0x4887A`), read with
-`tools/amiga68k.py`: a bit stream consumed **backwards** from the end of the
+`tools/amiga/amiga68k.py`: a bit stream consumed **backwards** from the end of the
 block, output written backwards from its end, and a trailer of three big-endian
 longwords -- unpacked length, checksum, first bit buffer.
 
@@ -117,7 +117,7 @@ carries in its script buffer, followed by zeros to 7680. Every block opens
 
 Two WinUAE runs on 2026-09-05, `docs/143-winuae-debugger.md` §1, holder
 `por316`; `cited/316` keeps only the mock-up note, not the screenshots. Both parties were written onto a
-freshly formatted `POOLSAVE` save disk with `tools/toamigapor.py --save-disk`,
+freshly formatted `POOLSAVE` save disk with `tools/amiga/toamigapor.py --save-disk`,
 which reads **only** disk 2.
 
 | | source | what the status line read |
@@ -201,7 +201,7 @@ nothing here has reached and `docs/165-amiga-savegame.md` has been corrected.
 
 **How the party got there, since there is no walk.** Every route from the
 shipped slot's `(0, 4)` to the pier crosses an event square and one of them,
-`(4, 4)`, runs `NEWECL 8` into Phlan City Hall. So `tools/porboat.py` staged
+`(4, 4)`, runs `NEWECL 8` into Phlan City Hall. So `tools/amiga/porboat.py` staged
 eight bytes of the shipped engine-written saved game -- the square to
 `(11, 2)` facing north and `$4AA7` to 255 -- and the party bought WEST
 passage from New Phlan's harbour master, walked four squares to the boat and
@@ -222,7 +222,7 @@ only square byte that moved. Two saves one step apart differ in 15 bytes of
 
 ### A converted outdoor party, in the running game
 
-`tools/toamigapor.py` built a save disk from the C64 outdoor party in
+`tools/amiga/toamigapor.py` built a save disk from the C64 outdoor party in
 `p190/C64OUT1.D64` (scratch, deleted) -- window-local (8,27) in the Wilderness Middle
 Window, clock 21:18, 13,141 of 13,141 bytes accounted for. Amiga Pool of
 Radiance loaded it and drew the overland view with the status line reading
@@ -271,7 +271,7 @@ came back exactly as written.**
 ## 7. Reproducing it
 
 ```sh
-tools/toamigapor.py $TMPDIR/por2.adf --to B --save-disk $TMPDIR/poolsave.adf \
+tools/amiga/toamigapor.py $TMPDIR/por2.adf --to B --save-disk $TMPDIR/poolsave.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-porunconscious1.d64 --provenance
 ```
 

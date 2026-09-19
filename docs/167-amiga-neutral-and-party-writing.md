@@ -7,7 +7,7 @@ it and **stops one measurement short**, which is at the end of this page.
 `docs/165-amiga-savegame.md` has the container and `docs/166-amiga-records-from-the-code.md`
 the record. Everything here is a file offset into `/Curse` on Curse of the
 Azure Bonds disk 1 or `/Secret` on Secret of the Silver Blades disk 1, read
-with `tools/amiga68k.py` and `tools/amigaenum.py`.
+with `tools/amiga/amiga68k.py` and `tools/amiga/amigaenum.py`.
 
 ## The status word: both later Amiga titles number the nine states DOS's way
 
@@ -29,7 +29,7 @@ field DOS Pool of Radiance keeps its status in at `0x10C`:
 
 Three routines agree that those are separate fields rather than one four-byte
 block: each title's record unpacker copies them **one byte at a time** where it
-uses a `movmem` for a run (`tools/amigaunpack.py`), and the panel routine below
+uses a `movmem` for a run (`tools/amiga/amigaunpack.py`), and the panel routine below
 reads each on its own.
 
 ### 1. The party panel indexes a nine-entry table with it
@@ -50,7 +50,7 @@ offset `0x4F9B8` — `Okay`, `Animated`, `tempgone`, `Running`, `Unconscious`,
 order, with DOS's own `Stoned` where `/Secret` says `Petrified`, and block 53
 is `Battle Axe`, so the run ends where it should.
 
-`tools/amigaenum.py` reads both back; `tests/test_amiga.py` asserts both.
+`tools/amiga/amigaenum.py` reads both back; `tests/test_amiga.py` asserts both.
 
 ### 2. Every constant either binary stores in the byte is inside the nine
 
@@ -224,7 +224,7 @@ byte for byte the block that came in.
 
 ### The party region
 
-`tools/amigasavecheck.py`'s `rebuild` writes a new party into a saved game. The
+`tools/amiga/amigasavecheck.py`'s `rebuild` writes a new party into a saved game. The
 party region is the **last** thing in a Curse or Silver Blades file — both
 specimens end exactly where the last block does — so the output is the header
 up to the count, the count as a `u16be`, and the blocks. Two bytes in front of

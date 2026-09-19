@@ -19,7 +19,7 @@ import functools
 
 import pytest
 
-# `tools/amigaicons.py` reaches `capstone` through `tools/amigarecordrefs.py`,
+# `tools/amigaicons.py` reaches `capstone` through `tools/amiga/amigarecordrefs.py`,
 # which imports it at module level -- so this skip must precede the import.
 # See the note in `tests/test_innateids.py`.
 pytest.importorskip("capstone")
@@ -266,7 +266,7 @@ def test_a_glib_whose_first_block_is_not_a_tile_index_is_named_too():
 
 
 def test_the_icon_menu_wraps_the_head_at_13_and_the_body_at_31():
-    """Found with `tools/amigarecordrefs.py`, and the reason 14 and 32 are
+    """Found with `tools/amiga/amigarecordrefs.py`, and the reason 14 and 32 are
     claims about the Amiga rather than borrowed from DOS.
 
     A menu that offered fifteen heads would put an `icon_head` of 14 in a
@@ -275,7 +275,7 @@ def test_the_icon_menu_wraps_the_head_at_13_and_the_body_at_31():
     measurement, not the specimens.
     """
     _disks()
-    from tools import amigarecordrefs
+    from tools.amiga import amigarecordrefs
     for key, head, body in (("curse-of-the-azure-bonds", 0x145, 0x146),
                             ("secret-of-the-silver-blades", 0xEF, 0xF0)):
         data = _executable(key)
@@ -293,7 +293,7 @@ def test_the_engine_writes_one_into_icon_dimension_at_creation():
     `mov byte es:[di+0x6C], 1`.  A constant across specimens is not a
     constant; a store in the engine is."""
     _disks()
-    from tools import amigarecordrefs
+    from tools.amiga import amigarecordrefs
     for key, at in (("curse-of-the-azure-bonds", 0xDE),
                     ("secret-of-the-silver-blades", 0x81)):
         data = _executable(key)

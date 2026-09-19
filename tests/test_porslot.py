@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""`tools/porslot.py` reading an Amiga save slot (#373).
+"""`tools/amiga/porslot.py` reading an Amiga save slot (#373).
 
 You point `porslot.py` at a *Pool of Radiance* disk to put a slot our own
 code wrote in front of the game's picker, and until this its `read_slot`
@@ -8,7 +8,7 @@ unpacked each character's `.sav`, `.itm` and `.spc` into a
 `tempfile.TemporaryDirectory` and read them back with `read_amiga_por`,
 because that reader wanted a path. `goldbox.amiga_savegame.read_por_slot` now reads
 the same three files straight off the disk's own blocks, and `read_slot`
-goes through that instead -- `#373 (tools/porslot.py reads an Amiga slot
+goes through that instead -- `#373 (tools/amiga/porslot.py reads an Amiga slot
 through a temporary directory, where goldbox.amiga.read_por_slot now reads
 the blocks)`.
 
@@ -29,7 +29,7 @@ from test_amigatoc64 import _pool_of_radiance_disk_1  # noqa: E402
 
 from goldbox import amiga_port, amiga_savegame, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
-from tools import porslot  # noqa: E402
+from tools.amiga import porslot  # noqa: E402
 
 
 @pytest.fixture(scope="module")

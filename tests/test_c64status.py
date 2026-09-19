@@ -552,7 +552,7 @@ def test_the_dos_reader_grades_the_two_bytes_above_the_field_they_sit_in():
 # False unconditionally and neither was ever set.  These build the save the
 # way `goldbox/dos_codec.py`'s own C64 reader does, through `SaveGame0.slot`
 # and `SaveGame1.roster` -- no `goldbox/amiga_*.py` module ever references
-# `SaveGame0`; the Amiga-to-C64 writer (`tools/fromamigapor.py` through
+# `SaveGame0`; the Amiga-to-C64 writer (`tools/amiga/fromamigapor.py` through
 # `dos_codec.new_save_from`) writes the two payloads directly rather than
 # through that object model.
 

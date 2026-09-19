@@ -1,4 +1,4 @@
-"""`tools/amigabladesjournal.py`, which answers Amiga Silver Blades' journal
+"""`tools/amiga/amigabladesjournal.py`, which answers Amiga Silver Blades' journal
 prompt and says nothing about it.
 
 Nothing here touches the separate repository the tables live in, and nothing
@@ -26,8 +26,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import amigabladesjournal as journal  # noqa: E402
 from tools import gamedisks  # noqa: E402
+from tools.amiga import amigabladesjournal as journal  # noqa: E402
 
 
 def _stripes(path: pathlib.Path, rows: list[int], *,

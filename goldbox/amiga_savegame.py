@@ -3,7 +3,7 @@
 Both later titles embed the party after a common big-endian variable array.
 The layouts come from their save and load routines; ``docs/165-amiga-savegame.md``
 records the byte-level evidence.  This module is the library counterpart of
-``tools/amigasavecheck.py``: it reads a whole slot and builds one from a
+``tools/amiga/amigasavecheck.py``: it reads a whole slot and builds one from a
 ``WorldState`` and neutral characters without a template.
 
 The shared map is called :class:`AmigaContainer`, because it describes the
@@ -1000,7 +1000,7 @@ def por_state_from_amiga(savgam: bytes, source: str = "") -> PorSaveState:
 #: :data:`POR_WALL_OUTDOORS` = 14.  A party bought passage from New Phlan's
 #: harbour master, sailed to the west landing and camped and saved there
 #: twice, one overland step apart, in Amiga Pool of Radiance under WinUAE;
-#: `tools/porboat.py` staged the eight bytes that put it in front of the
+#: `tools/amiga/porboat.py` staged the eight bytes that put it in front of the
 #: harbour master and the engine wrote everything else.  `#321 (An Amiga Pool
 #: of Radiance conversion refuses a party standing on the travel grid,
 #: because no outdoor Amiga saved game has ever been read)` and
@@ -1143,26 +1143,26 @@ POR_SAVGAM_UNSOURCED: tuple[tuple[int, int, str], ...] = (
 #: sweep's zero claim than "unvisited", not weaker: the specific write these
 #: rows describe had a real chance to fire and left no trace
 #: (`#446 (The Amiga saved game's zero argument rests on three of the game's
-#: twenty-nine areas)`).  Re-take with `tools/amigazerowords.py`.
+#: twenty-nine areas)`).  Re-take with `tools/amiga/amigazerowords.py`.
 POR_SAVGAM_UNVISITED: tuple[tuple[int, int, str], ...] = (
     (0x4D01, 1,
      "zeroed: no Amiga saved game here holds anything in this word, and "
      "the only script that writes it belongs to area 9 (Stojanow Gate), "
      "which no saved game here comes from. That is weaker than the sweep's "
-     "claim and #446 is where it is measured; `tools/amigazerowords.py` "
+     "claim and #446 is where it is measured; `tools/amiga/amigazerowords.py` "
      "re-takes it."),
     (0x4D20, 1,
      "zeroed: no Amiga saved game here holds anything in this word, and "
      "the only script that writes it belongs to area 14 (Kovel Mansion), "
      "which no saved game here comes from. That is weaker than the sweep's "
-     "claim and #446 is where it is measured; `tools/amigazerowords.py` "
+     "claim and #446 is where it is measured; `tools/amiga/amigazerowords.py` "
      "re-takes it."),
     (0x4D32, 1,
      "zeroed: no Amiga saved game here holds anything in this word, and "
      "the only script that writes it belongs to area 19 (Cave of "
      "Diogenes), which no saved game here comes from. That is weaker than "
      "the sweep's claim and #446 is where it is measured; "
-     "`tools/amigazerowords.py` re-takes it."),
+     "`tools/amiga/amigazerowords.py` re-takes it."),
     (0x4FC2, 1,
      "zeroed: the only script that writes this word belongs to area 7 "
      "(Valjevo Castle, the Pool). A saved game now exists from inside "
@@ -1172,7 +1172,7 @@ POR_SAVGAM_UNVISITED: tuple[tuple[int, int, str], ...] = (
      "stronger evidence for the sweep's zero claim than an unvisited area "
      "would give, not weaker: the write this word describes had a real "
      "chance to fire and left no trace. #446 is where it is measured; "
-     "`tools/amigazerowords.py` re-takes it."),
+     "`tools/amiga/amigazerowords.py` re-takes it."),
     (0x4FC3, 1,
      "zeroed: the only script that writes this word belongs to area 7 "
      "(Valjevo Castle, the Pool). A saved game now exists from inside "
@@ -1182,26 +1182,26 @@ POR_SAVGAM_UNVISITED: tuple[tuple[int, int, str], ...] = (
      "stronger evidence for the sweep's zero claim than an unvisited area "
      "would give, not weaker: the write this word describes had a real "
      "chance to fire and left no trace. #446 is where it is measured; "
-     "`tools/amigazerowords.py` re-takes it."),
+     "`tools/amiga/amigazerowords.py` re-takes it."),
     (0x4FC7, 1,
      "zeroed: no Amiga saved game here holds anything in this word, and "
      "the only scripts that write it belong to areas 3, 4, 5, 6 (Valjevo "
      "Castle) and 9 (Stojanow Gate), none of which any saved game here "
      "comes from. That is weaker than the sweep's claim and #446 is where "
-     "it is measured; `tools/amigazerowords.py` re-takes it."),
+     "it is measured; `tools/amiga/amigazerowords.py` re-takes it."),
     (0x5071, 1,
      "zeroed: no Amiga saved game here holds anything in this word, and "
      "the only scripts that write it belong to areas 3 (Valjevo Castle), "
      "13 (The Kobold Caves) and 16 (The Lizardman Keep), none of which "
      "any saved game here comes from. That is weaker than the sweep's "
-     "claim and #446 is where it is measured; `tools/amigazerowords.py` "
+     "claim and #446 is where it is measured; `tools/amiga/amigazerowords.py` "
      "re-takes it."),
     (0x5072, 1,
      "zeroed: no Amiga saved game here holds anything in this word, and "
      "the only scripts that write it belong to areas 13 (The Kobold "
      "Caves) and 16 (The Lizardman Keep), neither of which any saved game "
      "here comes from. That is weaker than the sweep's claim and #446 is "
-     "where it is measured; `tools/amigazerowords.py` re-takes it."),
+     "where it is measured; `tools/amiga/amigazerowords.py` re-takes it."),
     (0x5210, 1,
      "zeroed: the scripts that write this word belong to area 24 (Temple "
      "of Bane) and area 29 (Kuto's Well). A saved game now exists from "
@@ -1211,7 +1211,7 @@ POR_SAVGAM_UNVISITED: tuple[tuple[int, int, str], ...] = (
      "zero here; Kuto's Well is still an area no saved game here comes "
      "from. That is stronger evidence for the sweep's zero claim from the "
      "area now measured, not weaker. #446 is where it is measured; "
-     "`tools/amigazerowords.py` re-takes it."),
+     "`tools/amiga/amigazerowords.py` re-takes it."),
     (0x5211, 1,
      "zeroed: the only script that writes this word belongs to area 24 "
      "(Temple of Bane). A saved game now exists from inside that area -- "
@@ -1221,7 +1221,7 @@ POR_SAVGAM_UNVISITED: tuple[tuple[int, int, str], ...] = (
      "stronger evidence for the sweep's zero claim than an unvisited area "
      "would give, not weaker: the write this word describes had a real "
      "chance to fire and left no trace. #446 is where it is measured; "
-     "`tools/amigazerowords.py` re-takes it."),
+     "`tools/amiga/amigazerowords.py` re-takes it."),
     (0x5216, 1,
      "zeroed: the only script that writes this word belongs to area 24 "
      "(Temple of Bane). A saved game now exists from inside that area -- "
@@ -1231,7 +1231,7 @@ POR_SAVGAM_UNVISITED: tuple[tuple[int, int, str], ...] = (
      "stronger evidence for the sweep's zero claim than an unvisited area "
      "would give, not weaker: the write this word describes had a real "
      "chance to fire and left no trace. #446 is where it is measured; "
-     "`tools/amigazerowords.py` re-takes it."),
+     "`tools/amiga/amigazerowords.py` re-takes it."),
     (0x5218, 7,
      "zeroed: the only script that writes these words belongs to area 24 "
      "(Temple of Bane). A saved game now exists from inside that area -- "
@@ -1241,7 +1241,7 @@ POR_SAVGAM_UNVISITED: tuple[tuple[int, int, str], ...] = (
      "stronger evidence for the sweep's zero claim than an unvisited area "
      "would give, not weaker: the writes these words describe had a real "
      "chance to fire and left no trace. #446 is where it is measured; "
-     "`tools/amigazerowords.py` re-takes it."),
+     "`tools/amiga/amigazerowords.py` re-takes it."),
     (0x5222, 4,
      "zeroed: the only script that writes these words belongs to area 24 "
      "(Temple of Bane). A saved game now exists from inside that area -- "
@@ -1251,7 +1251,7 @@ POR_SAVGAM_UNVISITED: tuple[tuple[int, int, str], ...] = (
      "stronger evidence for the sweep's zero claim than an unvisited area "
      "would give, not weaker: the writes these words describe had a real "
      "chance to fire and left no trace. #446 is where it is measured; "
-     "`tools/amigazerowords.py` re-takes it."),
+     "`tools/amiga/amigazerowords.py` re-takes it."),
 )
 
 #: The 32 bytes of heap after each of the eight names in the character table.
@@ -1288,7 +1288,7 @@ POR_SAVGAM_MEASURED: tuple[tuple[int, int, str], ...] = (
                 "every Amiga and DOS saved game measured except our own "
                 "builds with no portrait crossed and their engine resaves, "
                 "which inherit that zero rather than choosing it -- re-run "
-                "`tools/amigasavecheck.py --sweep` for a current count "
+                "`tools/amiga/amigasavecheck.py --sweep` for a current count "
                 "(#57, #441)"),
 )
 
@@ -1411,7 +1411,7 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
                        "as reading zero in every Amiga saved game -- the "
                        "sweep finds these two words non-zero in the saved "
                        "games made on the travel grid; re-run "
-                       "`tools/amigasavecheck.py --sweep` for a current "
+                       "`tools/amiga/amigasavecheck.py --sweep` for a current "
                        "count (#441)")
 
     save[POR_POS_X] = state.x
@@ -1520,7 +1520,7 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
                            "every Amiga saved game -- the sweep finds it "
                            "non-zero in most of the saved games examined, "
                            "including the one SSI shipped; re-run "
-                           "`tools/amigasavecheck.py --sweep` for a current "
+                           "`tools/amiga/amigasavecheck.py --sweep` for a current "
                            "count (#441)")
             continue
         por_put_word(save, address, value)
@@ -1540,7 +1540,7 @@ def por_savegame_zeroes(save: bytearray, report: PorSaveReport) -> None:
         report.sources[i] = (
             "zeroed: this word reads zero in every Amiga saved game swept "
             "so far, and nothing in a C64 or DOS save corresponds to it -- "
-            "run `tools/amigasavecheck.py --sweep` to re-take the "
+            "run `tools/amiga/amigasavecheck.py --sweep` to re-take the "
             "measurement (docs/165-amiga-savegame.md, \"Still open\")")
 
 

@@ -421,7 +421,7 @@ def amiga_rows(specimen_grades: dict[str, str], problems: list[str]):
     than from a sibling file.
     """
     from goldbox import amiga_por
-    from tools import amigarecords, amigasaves
+    from tools.amiga import amigarecords, amigasaves
     seen: set[bytes] = set()
     for label, volume, name, files in amigasaves.specimens():
         record = files.get("") or next(iter(files.values()))

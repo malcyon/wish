@@ -1,6 +1,6 @@
-"""`tools/amigazerowords.py` runs against the player's own specimens.
+"""`tools/amiga/amigazerowords.py` runs against the player's own specimens.
 
-`#571 (tools/amigazerowords.py crashes on every run: a stale attribute
+`#571 (tools/amiga/amigazerowords.py crashes on every run: a stale attribute
 reference from #534's consolidation)` found this tool broken on **every**
 invocation: `amiga_por.POR_SAVEGAME_SIZE` moved to `goldbox.amiga_savegame`
 in `#534`'s consolidation and this tool's own reference at line 149 was
@@ -20,7 +20,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import amigazerowords  # noqa: E402
+from tools.amiga import amigazerowords  # noqa: E402
 
 
 def test_amiga_corpus_reads_every_saved_game_without_an_attribute_error():

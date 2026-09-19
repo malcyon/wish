@@ -507,11 +507,11 @@ def _amiga_files():
     """`/program`, `/head.dax` and `/body.dax` off the player's Amiga disks.
 
     The Amiga splits them across two disks and this machine keeps the images
-    inside zips, so the search is `tools/amigaportraitmenu.py`'s -- the same
+    inside zips, so the search is `tools/amiga/amigaportraitmenu.py`'s -- the same
     walk of `$AMIGA_DISKS` and `gamedisks.yaml` every other Amiga tool uses.
     An empty answer skips rather than fails: the disks are Donald's.
     """
-    from tools import amigaportraitmenu
+    from tools.amiga import amigaportraitmenu
     try:
         return amigaportraitmenu.amiga_files()
     except Exception:                       # no Amiga list on this machine
@@ -600,7 +600,7 @@ def test_pools_of_darkness_carries_no_creation_menu_in_its_amiga_binary():
     pair either (`goldbox.dos_port.POOLS_OF_DARKNESS`).
     """
     from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
-    from tools import amigasaves
+    from tools.amiga import amigasaves
 
     files = _amiga_files()
     if portraits.AMIGA_HEAD_DAX not in files:
@@ -676,7 +676,7 @@ def test_two_menus_that_agree_have_no_differences():
 
 
 def test_the_amiga_tool_prints_the_stored_block_and_agrees_with_it():
-    """`tools/amigaportraitmenu.py` is how the Amiga numbers are re-derived.
+    """`tools/amiga/amigaportraitmenu.py` is how the Amiga numbers are re-derived.
 
     Run against the machine's own disks with `--check`, so a release whose
     menu differs from the one read on 2026-09-08 turns this red rather than
@@ -686,7 +686,7 @@ def test_the_amiga_tool_prints_the_stored_block_and_agrees_with_it():
     import subprocess
     import sys
 
-    from tools import amigaportraitmenu
+    from tools.amiga import amigaportraitmenu
 
     text = amigaportraitmenu.literal(portraits.AMIGA_POOL_OF_RADIANCE_MENU)
     assert "0x12, 0x05, 0x1A" in text
@@ -696,7 +696,7 @@ def test_the_amiga_tool_prints_the_stored_block_and_agrees_with_it():
         pytest.skip("needs the Amiga Pool of Radiance disks; set AMIGA_DISKS")
     root = pathlib.Path(__file__).resolve().parents[1]
     done = subprocess.run(
-        [sys.executable, str(root / "tools" / "amigaportraitmenu.py"),
+        [sys.executable, str(root / "tools" / "amiga" / "amigaportraitmenu.py"),
          "--check"],
         capture_output=True, text=True, timeout=600, cwd=str(root))
     assert done.returncode == 0, done.stdout + done.stderr
@@ -710,7 +710,7 @@ def test_the_amiga_tool_prints_the_stored_block_and_agrees_with_it():
 def test_the_amiga_screen_palette_is_thirty_two_words_the_boot_code_copies():
     """The colours `#480`'s picture is drawn through, re-derived (#480).
 
-    `tools/amigaportraitmenu.py` drew the Amiga art through the EGA palette
+    `tools/amiga/amigaportraitmenu.py` drew the Amiga art through the EGA palette
     until 2026-09-10 and said in its own docstring that the colours were
     wrong, so a montage was evidence about shape and not about colour.  The
     table is the first thing in the executable's first referenced `DATA`
@@ -718,7 +718,7 @@ def test_the_amiga_screen_palette_is_thirty_two_words_the_boot_code_copies():
     open screen's colour table.  Entry 0 is black and the first sixteen are
     what a four-bitplane portrait indexes.
     """
-    from tools import amigaportraitmenu
+    from tools.amiga import amigaportraitmenu
 
     files = _amiga_files()
     if portraits.AMIGA_PROGRAM not in files:
@@ -736,7 +736,7 @@ def test_the_amiga_screen_palette_is_thirty_two_words_the_boot_code_copies():
 
 def test_a_program_with_no_colour_table_is_named_rather_than_guessed_at():
     """A release that opens its screen differently has to say so (#480)."""
-    from tools import amigaportraitmenu
+    from tools.amiga import amigaportraitmenu
 
     files = _amiga_files()
     if portraits.AMIGA_PROGRAM not in files:
@@ -762,7 +762,7 @@ def test_the_body_dos_draws_for_position_eight_is_not_on_the_amiga_disk():
     behind the picture `tools/bodychoices.py --all` draws.
     """
     from goldbox import amiga_dax
-    from tools import amigaportraitmenu
+    from tools.amiga import amigaportraitmenu
 
     files = _amiga_files()
     if portraits.AMIGA_BODY_DAX not in files:

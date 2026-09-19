@@ -89,7 +89,8 @@ def _pool_of_radiance_disk_1() -> AmigaDisk:
     fails several calls down with a 428-byte record. 288 bytes is Pool of
     Radiance's own (`goldbox.amiga_shared.deltas_for`).
     """
-    from tools import amigasaves, gamedisks
+    from tools import gamedisks
+    from tools.amiga import amigasaves
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")
@@ -190,7 +191,7 @@ def test_the_shipped_slot_reads_six_characters_and_its_saved_game(
 
 def test_reading_off_the_disk_gives_what_reading_off_a_path_gives(
         shipped_disk, tmp_path):
-    """`tools/porslot.py` reads the three files through a temporary directory
+    """`tools/amiga/porslot.py` reads the three files through a temporary directory
     because `read_amiga_por` wanted a path.  `read_por_slot` reads the blocks
     directly, and this is the check that the two ways in agree -- otherwise
     a second reader has quietly appeared to drift from the first."""

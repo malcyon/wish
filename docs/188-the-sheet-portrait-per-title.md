@@ -238,12 +238,12 @@ uses the C64 and DOS menu)` asked for it to be settled.
 Read out of the engine, 2026-09-09, off `/program` — 459,028 bytes,
 SHA-256 `b1cbbecc…`, the same file in all three `.adf` images on this
 machine. All addresses below are file offsets into it, and
-`tools/amigaportraitresolve.py` re-derives every one of them from the
+`tools/amiga/amigaportraitresolve.py` re-derives every one of them from the
 player's own disk in about a second.
 
 **The route.** The two tables sit at `0x6D68F` (fourteen heads) and `0x6D69D`
 (twelve bodies), found by the shape of the run and checked against the art
-beside them, exactly as `tools/amigaportraitmenu.py` finds them. The
+beside them, exactly as `tools/amiga/amigaportraitmenu.py` finds them. The
 executable's own `RELOC32` entries then say who refers to them, so nothing
 here rests on a search for a number: **four references, all in hunk 19, and
 all four point one byte in front of a table** — `0x6D68E` and `0x6D69C`.
@@ -295,7 +295,7 @@ and a hand-written value outside it is repaired to 1 by the first keypress.
 ### What a value past the end of the table reaches
 
 One build's adjacent data, and nothing more principled than that. Printed by
-`tools/amigaportraitresolve.py --out-of-range N`, which computes it from the
+`tools/amiga/amigaportraitresolve.py --out-of-range N`, which computes it from the
 bytes rather than from a claim:
 
 | record body byte | what the engine loads | why |
@@ -333,7 +333,7 @@ Thirty-two big-endian `0RGB` words at the start of a `DATA` hunk — file
 offset `0x008AB0` in the 459,028-byte `/program` — which the boot code copies
 one word at a time into the open screen's colour table, in a thirty-two
 iteration loop whose `lea.l` is at `0x002D1A`. A four-bitplane `.dax` block
-uses the first sixteen. CONFIRMED from the code, and `tools/
+uses the first sixteen. CONFIRMED from the code, and `tools/amiga/
 amigaportraitmenu.py --palette` re-derives the offset rather than storing it.
 
 Three of the executable's `DATA` hunks open with a run of thirty-two words

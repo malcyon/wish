@@ -4,7 +4,7 @@
 of each title's own save routine.  The synthetic tests here build a saved game
 from that map with no game data in it and read it back, so they run
 everywhere; the specimen tests read the saved games off the player's own
-disks through `tools/amigarecords.py` and `tools/amigasaves.py` and skip when
+disks through `tools/amiga/amigarecords.py` and `tools/amiga/amigasaves.py` and skip when
 no disk is on the machine.
 """
 
@@ -30,8 +30,8 @@ from goldbox.amiga_savegame import (  # noqa: E402
     rebuild,
     with_square,
 )
-from tools import amigarecords, amigasaves  # noqa: E402
-from tools.amigasavecheck import check, main, report, savegames_on  # noqa: E402
+from tools.amiga import amigarecords, amigasaves  # noqa: E402
+from tools.amiga.amigasavecheck import check, main, report, savegames_on  # noqa: E402
 
 # -- the map's own arithmetic ------------------------------------------------
 

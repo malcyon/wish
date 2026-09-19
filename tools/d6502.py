@@ -6,7 +6,7 @@ mode -- 151 of the 256 possible byte values are documented 6502 opcodes, and
 every one of those is in the table below. The 105 that are not decode as
 ``.byte $xx`` instead of the nearest instruction that fits.
 
-That is a narrower guarantee than `tools/m68dis.py` makes, and it is worth
+That is a narrower guarantee than `tools/amiga/m68dis.py` makes, and it is worth
 saying so: on a 6502, unlike the 68000, an addressing mode carries no reserved
 field a decoder could check, so a run of PETSCII text will decode as a
 plausible sequence of real instructions and nothing here can tell the
