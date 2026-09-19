@@ -30,6 +30,18 @@ curse-of-the-azure-bonds:
   glob: ["CURSE*.d64", "CURSE*.D64"]
   paths:
     - "/data/agent-disks/curse-of-the-azure-bonds"
+    # A second rip whose `CURSE4.D64` is 175531 bytes (174848 plus an error
+    # table), listed after the clean one because `find()` takes the first path
+    # that matches; `tests/test_d64_variants.py` looks in every path for an
+    # image of that size.
+    - "/data/agent-disks/curse-of-the-azure-bonds-with-docs"
+
+gateway-to-the-savage-frontier:
+  # The Gateway to the Savage Frontier C64 disk images, `GATE*.D64`.
+  env: GSF_DISKS
+  glob: ["GATE*.d64", "GATE*.D64"]
+  paths:
+    - "/data/agent-disks/gateway-to-the-savage-frontier"
 
 secret-of-the-silver-blades:
   # The Secret of the Silver Blades C64 disk images, `SILVER*.D64`.
@@ -55,29 +67,6 @@ amiga:
   env: AMIGA_DISKS
   paths:
     - "/data/agent-disks/amiga"
-
-amiga-por-saves:
-  # No data at the path yet, and the reason changed on 2026-09-04: twenty 288-byte records do
-  # exist, but not as loose files -- six in the `save/` drawer of Pool of
-  # Radiance disk 1 and fourteen in the Curse of the Azure Bonds save disk, both
-  # reachable through the `amiga` entry above. `tools/amiga/amigasaves.py` extracts
-  # them and `tests/test_amiga.py` calls it when this names nothing, so setting
-  # the variable is now for pointing at a hand-picked corpus rather than for
-  # having one at all. The old note here said none existed anywhere, which is
-  # what left thirty-one tests skipping on the machine that holds them (#211).
-  env: AMIGA_POR_SAVES
-  paths:
-    - "/data/agent-disks/amiga-por-saves"
-
-pod-saves:
-  # No data at the path yet: no exported Pools of Darkness .pc file exists on any machine
-  # yet -- #211, waiting on the same play session as amiga-por-saves.
-  # Engine-written DOS Pools of Darkness containers are not this entry's
-  # business: they are specimens under `pod-dos` in `$WISH_SPECIMENS`. This is
-  # only for an exported Amiga `.pc` file.
-  env: POD_SAVES
-  paths:
-    - "/data/agent-disks/pod-saves"
 
 por-dos-play:
   # A played, installed DOS Pool of Radiance, and Donald's own: every character
@@ -136,7 +125,8 @@ codewheel:
 coab-source:
   # The decompiled source of Curse of the Azure Bonds, which `tests/
   # test_coabsource.py` reads. Derived from the game's own executable, so it is
-  # game data and is never committed. No path on any machine has it yet.
+  # game data and is never committed. A checkout of `simeonpilgrim/coab`,
+  # laid out as `Classes/` and `engine/`.
   env: WISH_COAB_SOURCE
   paths:
     - "/data/agent-disks/coab-source"
@@ -155,3 +145,10 @@ kickstarts:
   env: WISH_KICKSTARTS
   paths:
     - "/data/agent-disks/kickstarts"
+
+game-icons:
+  # The game-icons.net archive `tests/test_licenses.py` reads: a directory
+  # holding `icons/`, which has one folder per artist.
+  env: WISH_GAME_ICONS
+  paths:
+    - "/data/agent-disks/game-icons"

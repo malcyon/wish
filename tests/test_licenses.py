@@ -20,15 +20,19 @@ import sys
 
 import pytest
 
+from tools.registry import gamedisks
 from ui import icons
 from wish import licenses
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FILE = ROOT / "THIRD_PARTY_LICENSES.md"
 
-#: Donald's archive. Not in the repository and not on CI -- it is the game
-#: artists' work, 4180 SVGs, and it is read only where it happens to be.
-ARCHIVE = pathlib.Path.home() / "Downloads" / "game-icons.net.svg" / "icons"
+#: The archive the `game-icons` registry entry names: an `icons/` directory
+#: with one folder per artist. Not in the repository and not on CI -- it is the
+#: game artists' work, 4180 SVGs, and it is read only where it happens to be.
+_GAME_ICONS = gamedisks.find("game-icons")
+ARCHIVE = (_GAME_ICONS / "icons" if _GAME_ICONS is not None
+           else pathlib.Path("/nonexistent/game-icons/icons"))
 
 #: `https://game-icons.net/1x1/<artist>/<name>.html`
 LINK = re.compile(r"https://game-icons\.net/1x1/([a-z0-9]+)/([a-z0-9-]+)\.html")
@@ -84,7 +88,8 @@ def test_font_awesome_is_credited_nowhere_now_that_nothing_draws_it():
 
 
 @pytest.mark.skipif(not ARCHIVE.is_dir(),
-                    reason="the game-icons.net archive is not on this machine")
+                    reason="the game-icons.net archive is not on this machine; set "
+                           "WISH_GAME_ICONS or add it to gamedisks.yaml")
 def test_the_artist_is_the_one_the_archive_files_the_glyph_under():
     """A wrong artist is the failure an attribution file exists to prevent.
 

@@ -134,10 +134,14 @@ def test_the_gods_never_intervene():
 
 EXT = gamedisks.find("coab-source")
 
+#: The checkout's own folders holding the C# files these tests read.
+LAYOUT = ("Classes", "engine")
+
 
 def _source(name: str) -> str:
-    path = EXT / name if EXT is not None else None
-    if path is None or not path.is_file():
+    path = next((EXT / folder / name for folder in LAYOUT
+                 if EXT is not None and (EXT / folder / name).is_file()), None)
+    if path is None:
         pytest.skip(f"needs {name} from simeonpilgrim/coab in the coab-source "
                     "entry; set WISH_COAB_SOURCE or add it to "
                     "gamedisks.yaml")

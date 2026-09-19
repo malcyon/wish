@@ -213,8 +213,7 @@ def report() -> list[tuple[str, str, str, str, bool]]:
 
     "Layer" is `$VAR` when the environment variable is what is set,
     `gamedisks.yaml` when one of its paths answered, or "none" when nothing
-    resolves -- which is correct for `amiga-por-saves` and `pod-saves` until
-    somebody plays far enough to export one (#211).
+    resolves -- which is correct for an entry whose data nobody has made yet.
     """
     rows = []
     for name in names():
