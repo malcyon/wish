@@ -20,7 +20,7 @@ to by nothing, and a converter writing zero there has a tested reason.**
 Grades follow `docs/50-experiments.md`'s scale. "The build" is the
 *Forgotten Realms: The Archives, Collection Two* copy of each title; file
 offsets are into that title's `GAME.OVR`, and `START.img` is Silver Blades'
-`START.EXE` expanded by `tools/unexepack.py`. `tools/dosspellslots.py`
+`START.EXE` expanded by `tools/dos/unexepack.py`. `tools/dos/dosspellslots.py`
 regenerates every table below in three commands per title.
 
 ## The block is indexed by the spell table's class byte
@@ -104,7 +104,7 @@ CONFIRMED.
 
 ## The same block in the other titles on this machine
 
-`tools/dosspellslots.py sites` and `census` on each:
+`tools/dos/dosspellslots.py sites` and `census` on each:
 
 | title | record | block | `FillChar` | classes in the spell table | magic-user is |
 |---|---|---|---|---|---|
@@ -123,7 +123,7 @@ magic-user), so the fourth array is Silver Blades' alone.
 
 ## Watched in the running game
 
-`tools/dosslotwatch.py`, DOSBox-X with the debugger, the played save
+`tools/dos/dosslotwatch.py`, DOSBox-X with the debugger, the played save
 `curse/SSB-D-paine-memorised` (scratch, deleted) staged with PAINE's `CHRDATD2.SAV`
 patched to `05` at `0x140` and `07` at `0x143` before the game saw it --
 DOSBox-X's `BPM` fires on change, so a byte the file holds at zero cannot

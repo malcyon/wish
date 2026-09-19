@@ -135,13 +135,13 @@ the compare is at file `0x3D7FE` and the source offset at `0x3D836`
 (`mov word ptr [bp-8], 2`); Treasures of the Savage Frontier has them at
 `0x48BEE` and `0x48C08`, Curse of the Azure Bonds at `0x3F333` and `0x3F368`.
 
-`tools/dosovrmap.py` re-reads it, and needs no expanded `START.EXE` because
+`tools/dos/dosovrmap.py` re-reads it, and needs no expanded `START.EXE` because
 `dis` only uses the image for far-call resolution — pass the title's own
 `GAME.EXE` and a start **two bytes past** the prologue, since `cmd_dis` backs up
 with `rfind(PROLOGUE, 0, start + 1)` and a three-byte pattern at `start` falls
 outside that window:
 
-    tools/dosovrmap.py dis .../DARKNESS/GAME.OVR .../DARKNESS/GAME.EXE \
+    tools/dos/dosovrmap.py dis .../DARKNESS/GAME.OVR .../DARKNESS/GAME.EXE \
         0x3D7C3 0x3D8D8
 
 **So the trim is the code's, not a preference.** Four of the six DOS titles in

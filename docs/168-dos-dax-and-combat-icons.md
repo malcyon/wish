@@ -5,9 +5,9 @@ not its own)` had to know before anything could be converted: what is inside
 `CHEAD.DAX` and `CBODY.DAX`, and how the engine turns a record's four icon
 fields into a figure on the combat screen. Read out of `GAME.OVR` (the 1.3
 build, byte-identical between `/home/donald/dos_por_play` and the archives'
-`POOLRAD`), with `tools/dosdis16.py` and `tools/dosovrmap.py` against the
+`POOLRAD`), with `tools/dos/dosdis16.py` and `tools/dos/dosovrmap.py` against the
 unpacked `START.EXE`. Grades are `docs/50-experiments.md`'s. The renders are
-under `cited/130`, and `tools/daxls.py` lists any container.
+under `cited/130`, and `tools/dos/daxls.py` lists any container.
 
 The container itself -- the index, the run-length coding -- is documented
 beside `goldbox.dos_savegame.dax_index`, and this page does not repeat it.
@@ -24,7 +24,7 @@ beside `goldbox.dos_savegame.dax_index`, and this page does not repeat it.
 | 17.. | `rows x 12` bytes, two 4-bit pixels a byte, high nibble first |
 
 Every block's length is exactly `17 + rows * 12`, which is the test
-`tools/daxls.py` uses to call a block an image.
+`tools/dos/daxls.py` uses to call a block an image.
 
 **A pixel's value is a part number, not a colour.** The census of every
 nibble in both files, and what the engine does with each:

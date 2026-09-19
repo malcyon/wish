@@ -2,7 +2,7 @@
 
 Four bytes of the DOS character record that this project had wrong, right for
 the wrong reason, or unattributed, settled by reading the game's own
-instructions rather than by counting saves. `tools/dosbyteimm.py` is the scan;
+instructions rather than by counting saves. `tools/dos/dosbyteimm.py` is the scan;
 `goldbox/dos_port.py` and `goldbox/dos_codec.py` carry the notes; the issues are
 `#305 (Two DOS record bytes have one name from Pool of Radiance and another
 from the Curse decompilation)`,
@@ -25,9 +25,9 @@ morale percentage stored halved. That is the second half of this page and
 
 ## The method: what constants the engine puts in a byte
 
-`tools/dosfieldrefs.py` counts the instructions that address a record offset
+`tools/dos/dosfieldrefs.py` counts the instructions that address a record offset
 through an `ES`-prefixed displacement. It does not say what value they write,
-and that is the question that names a field. `tools/dosbyteimm.py` adds the
+and that is the question that names a field. `tools/dos/dosbyteimm.py` adds the
 immediate.
 
 **The shape of the set of constants is the finding, not the count.** A byte the
@@ -37,7 +37,7 @@ hold. A byte it sets to `0B2h` and `0B3h` and compares against `80h` and `7Fh`
 is a bitfield with a flag in the top bit. Both readings below came out that
 way, before any save was consulted.
 
-Every limit of `tools/dosfieldrefs.py` still applies: the image is scanned as
+Every limit of `tools/dos/dosfieldrefs.py` still applies: the image is scanned as
 an undifferentiated byte stream, a displacement match does not prove the
 pointer is a character record, and an offset reached by any other addressing is
 invisible. So a count is an upper bound and an empty result is evidence rather
@@ -166,7 +166,7 @@ reads `Keep Exit` over `Modify:`, and which refuses outright unless the
 character's experience is 0, 8333, 12500 or 25000. Pools of Darkness has no
 site for the byte at all.
 
-**CONFIRMED in the running game**, `tools/dosmodifyprobe.py`, 2026-09-05. Two
+**CONFIRMED in the running game**, `tools/dos/dosmodifyprobe.py`, 2026-09-05. Two
 human fighters rolled from CREATE NEW CHARACTER and added to the party:
 
 | stage | PROBEA | PROBEB |
@@ -192,7 +192,7 @@ companion's control byte holds -- and it needed no companion and no emulator.
 The C64 port answers it, because **C64 `0x0B8` is the same field as DOS
 `0x084`, with the same encoding**, and the two engines can be read against each
 other. `tools/c64/recordsweep.py --game pool --offset 0xB8 --context` is the C64
-census and `tools/dosdis16.py` the DOS listing.
+census and `tools/dos/dosdis16.py` the DOS listing.
 
 | what happens | Pool of Radiance, C64 | Pool of Radiance, DOS |
 |---|---|---|
@@ -236,7 +236,7 @@ DOS has nothing to preserve. Both ports write `0xB2` for a berserk companion.
 ### What the records hold, both ports
 
 `tools/controlbyte.py`, 2026-09-07. The C64 half is new; the DOS half
-reproduces the counts above through `tools/dostailcensus.py`'s finder.
+reproduces the counts above through `tools/dos/dostailcensus.py`'s finder.
 
 | port | records | `$00` | `$01` | engine-driven |
 |---|---|---|---|---|

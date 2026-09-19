@@ -67,7 +67,7 @@ specimens.py check, so eight files in the tree are never verified)`).
     tools/specimens.py add dos gnomf1 \\
         DIR/halfelf-GNOMF1.CHA DIR/halfelf-GNOMF1.SPC \\
         --title "Pool of Radiance" --issue "#84 (...)" \\
-        --made-by "tools/dosgnome.py, driven under DOSBox from character creation" \\
+        --made-by "tools/dos/dosgnome.py, driven under DOSBox from character creation" \\
         --what "Rolled a gnome fighter in the game's own creation screens"
     tools/specimens.py check
     tools/specimens.py list
@@ -113,7 +113,7 @@ PLATFORMS = ("c64", "dos", "amiga")
 #: this tool took Amiga specimens at all, and both picked this same shape.
 #: `add` refuses a title that is not here rather than guessing an abbreviation.
 #: `pod` is the fourth, added for #575 so the engine-written Pools of
-#: Darkness containers a `tools/dospod.py` drive left in scratch could be
+#: Darkness containers a `tools/dos/dospod.py` drive left in scratch could be
 #: kept somewhere that is not gitignored.
 TITLE_SLUGS = {
     "Pool of Radiance": "por",

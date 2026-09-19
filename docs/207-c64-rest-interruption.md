@@ -155,7 +155,7 @@ CONFIRMED from the bytecode.
 
 **The DOS build's copy of the same script differs in exactly ten bytes, and
 two of them are these two tests.** Unpacked from `ECL2.DAX` block 20 with
-`tools/daxls.py --dump 20` — the block carries a two-byte length word in front
+`tools/dos/daxls.py --dump 20` — the block carries a two-byte length word in front
 of the script, after which both are 7677 bytes and line up address for address:
 
 | at | C64 | DOS |
@@ -240,7 +240,7 @@ writes the same byte — `docs/50-experiments.md`'s murder run watched
 
 * **The Amiga.** `ecl.dax` is on side 2 of the Amiga disks and the file name is
   in the directory, but its container index is not the DOS one
-  `tools/daxls.py` reads — every block it reports comes out with a nonsense
+  `tools/dos/daxls.py` reads — every block it reports comes out with a nonsense
   offset — and the scripts inside are packed, so a byte search for the Slums
   camping block finds nothing. Reading the Amiga's `ECL14` wants an unpacker
   this project does not have yet. The bugs entry says "very likely" for that

@@ -5,7 +5,7 @@
 its own)`: the shipped conversion writes one composed default into all six
 slots, so a DOS party of an archer, a robed mage and four fighters arrives on
 the combat floor as six identical unarmed men.  This builds the same disk
-`tools/dosdisk.py` builds and then gives every character the figure his own
+`tools/dos/dosdisk.py` builds and then gives every character the figure his own
 DOS record names, through `goldbox.iconparts.IconParts.dos_icon`.
 
     tools/dosfigures.py --folder ~/wish-specimens/... --slot C \\
@@ -20,7 +20,7 @@ that the disk holds it.  Until 2026-09-05 the wiring was not there and this
 tool wrote the six icons over the table itself; a run then proved the
 composition and not the button, which is the failure that check now catches.
 
-The DOS folder is `--folder`, or found the way `tools/dosdisk.py` finds it.
+The DOS folder is `--folder`, or found the way `tools/dos/dosdisk.py` finds it.
 The game disks come from `$POR_DISKS`, then `automap.paths.find_disks()`, and
 are read and never written; the output goes wherever `--out` says, which
 should be outside the repository.
@@ -138,8 +138,8 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
 
 
 def dosdisk_animate(disks: pathlib.Path) -> bytes:
-    """`ANIMATE00`, the way `tools/dosdisk.py` fetches it."""
-    from tools import dosdisk
+    """`ANIMATE00`, the way `tools/dos/dosdisk.py` fetches it."""
+    from tools.dos import dosdisk
 
     return dosdisk.game_files(disks)[1]
 
@@ -338,7 +338,7 @@ def main(argv=None) -> int:
 
 
 def _dos_folder() -> pathlib.Path:
-    from tools import dosdisk
+    from tools.dos import dosdisk
 
     return dosdisk.dos_folder()
 

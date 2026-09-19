@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build a *Secret of the Silver Blades* C64 save disk from a DOS save folder.
 
-The third of three: `tools/dosdisk.py` writes Pool of Radiance's
+The third of three: `tools/dos/dosdisk.py` writes Pool of Radiance's
 `SAVEDGAME0`/`SAVEDGAME1` pair and `tools/curse_of_the_azure_bonds/cursedisk.py` writes Curse of the
 Azure Bonds' single `SAVEAZURE`.  Silver Blades' container is Curse's byte for
 byte under the name `SAVEDBASH` -- one 7424-byte file at `$4B00`, eight

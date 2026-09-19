@@ -28,7 +28,7 @@ Curse of the Azure Bonds and Secret of the Silver Blades resolved through
 C64 → DOS reads a real C64 save for Curse and Silver Blades and the
 allowlisted `tests/fixtures/savedgame0.bin`/`savedgame1.bin` for Pool of
 Radiance -- `test_convert.py`'s own fixture, not a new one -- and each
-title's DOS archive tree (`tools/dosbox.find_game`, `$FR_ARCHIVES`). Every
+title's DOS archive tree (`tools/dos/dosbox.find_game`, `$FR_ARCHIVES`). Every
 `pytest.skip` below names what would be missing if this ran somewhere else.
 
 **The specimen tree files every C64 and DOS specimen under `por-c64`/
@@ -58,7 +58,8 @@ from goldbox.d64 import load_payload
 from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitError, tables_from_disks
 from goldbox.savegame import SaveGame0, SaveGame1
-from tools import dosbox, gamedisks
+from tools import gamedisks
+from tools.dos import dosbox
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
 

@@ -224,8 +224,8 @@ touching the next. Twenty would leave the binary monitor's top port one below
 **The three display bands had to move, and here is the spacing chosen and
 why.** :10-:25, the old :30-:37 and the old :40-:47 no longer had room
 between them at sixteen wide — VICE stayed at `:10` (now `:10`-`:25`),
-`tools/dosbox.py` moved from `:30` to `:50` (`:50`-`:65`), and
-`tools/dosboxx.py` moved from `:40` to `:90` (`:90`-`:105`). Each base is 40
+`tools/dos/dosbox.py` moved from `:30` to `:50` (`:50`-`:65`), and
+`tools/dos/dosboxx.py` moved from `:40` to `:90` (`:90`-`:105`). Each base is 40
 past the last, which is double the sixteen-wide band it follows: every band
 therefore has 24 numbers of headroom before the next one starts, so **the
 display bands alone would take 24 slots with no further re-space.**

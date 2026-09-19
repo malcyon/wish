@@ -38,7 +38,7 @@ for the character record and the saved game, `reports/dos-items.md` for
 the items — are lost. The
 measurements are asserted in `tests/test_dossave.py` and `tests/test_dosbox.py`,
 which read the archives from Donald's machine and skip where there are none.
-`tools/dosbox.py` is the harness that drives the game: an isolated DOSBox on
+`tools/dos/dosbox.py` is the harness that drives the game: an isolated DOSBox on
 its own X display, keystrokes through `xdotool`, and the save file as ground
 truth.
 
@@ -417,7 +417,7 @@ allows, a fighter at the hit-point and ability ceiling, a thief with all eight
 skill percentages at their column-wise maximum, and the deepest legal
 three-class combination — and `tests/test_boundary.py` runs every one through
 `goldbox.dos_codec.write`, checks the record comes back whole, and checks the
-one array width the engine's own bytes corroborate (`tools/dosarraywidth.py`'s
+one array width the engine's own bytes corroborate (`tools/dos/dosarraywidth.py`'s
 `width()`) against the declared table. It checks that every writer *takes* a
 value for every field the neutral vocabulary offers it, not that every field's
 declared width is independently proven — most of `dos_port.py`'s other array
@@ -728,7 +728,7 @@ sets `class_levels[new]` to 1 and zeroes `experience`. Counting every
 machine, five of them have **exactly one** writer of the former array, and
 Pool of Radiance has no such array at all — the same split
 `#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the
-dual-class slot)` measured on the C64. `tools/dualclassdos.py code` re-takes it.
+dual-class slot)` measured on the C64. `tools/dos/dualclassdos.py code` re-takes it.
 
 | title | array | sites | writes | readers | the write |
 |---|---|---|---|---|---|
@@ -919,7 +919,7 @@ slot number, and moving the pair off `READ_DROPPED` -- are a separate change.
 ### Counts, and which directories they cover
 
 Deduplicated on bytes, over `~/Downloads/fr-archives` **only** — the number to
-quote, because it is stable and it is what `tools/dualclassdos.py census
+quote, because it is stable and it is what `tools/dos/dualclassdos.py census
 --no-archives` can be pointed away from:
 
 | read as | distinct records | which game trees they came out of | dual-classed |
@@ -978,7 +978,7 @@ from somewhere.** This is the whole list.
 | region | size | what it is | can we produce it from a DOS save? |
 |---|---|---|---|
 | `$4D00`-`$58FF` | 3072 | twelve character slots | **yes, with work** — a field remap, `goldbox/dos_port.py` |
-| `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **yes** — the DOS item record's last 17 bytes *are* the C64's 16, unpacked; `tools.dosbox.item_to_c64` is the copy. Obstacle 3 |
+| `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **yes** — the DOS item record's last 17 bytes *are* the C64's 16, unpacked; `tools.dos.dosbox.item_to_c64` is the copy. Obstacle 3 |
 | `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
 | `$8400`-`$8753` | 852 | `ANIMATE00`, resident — code, not party state | **yes** — read the file off the player's own `POOL` disk. 852 payload bytes at load address `$1000`, byte-identical on all eight sides, and 829 of the 852 match what an engine-written save holds here on all 14 of Donald's save disks. `$8400 + 852 - 1` is `$8753`, so the boundary with the buffer below is the file's own length rather than a guess. **Not scratch**: cache slot 11 tells the engine the file is resident, so nothing reloads it — `docs/140-loaded-files-cache.md` §"Slot 11 is not lazy, because the save is carrying the file", and #122 (A converted save says ANIMATE00 is resident and carries whatever the template had there) |
 | `$8754`-`$8AFF` | 940 | bitmap buffer | **yes, as zero** — 407 non-zero bytes of a template wiped, and the result loaded, walked, fought and changed area indistinguishably from the control (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64) step 3) |
@@ -1140,7 +1140,7 @@ record with its packed bytes spread out one to a byte**:
 0x036        cursed             -> C64 +7 bit 7
 ```
 
-`tools.dosbox.item_to_c64` is that projection, and the projection is the
+`tools.dos.dosbox.item_to_c64` is that projection, and the projection is the
 evidence: applied to every record in the DOS game's own `ITEM1.DAX`-`ITEM8.DAX`
 it reproduces **157 of the 163 distinct item records on the C64 disks byte for
 byte**, packed bytes included. One wrong offset, sign or bit collapses the
@@ -1217,7 +1217,7 @@ invented.
 | region | bytes changed | from |
 |---|---|---|
 | six character slot windows `$4D00`-`$52FF` | 205 | the DOS record, field by field |
-| six inventories `$5900`-`$5EFF` | 465 | `tools.dosbox.item_to_c64` per item |
+| six inventories `$5900`-`$5EFF` | 465 | `tools.dos.dosbox.item_to_c64` per item |
 | quest flags `$4A20`-`$4AF8` | 27 | the DOS word array, narrowed to bytes |
 | party square `$49C0`-`$49C2` | 3 | file offsets 12801-12803, facing halved |
 | `SAVEDGAME1` roster | 6 | current hit points and party order |
@@ -1342,7 +1342,7 @@ game reading 21:15, and #103 (A DOS party converted to the C64 arrives at the te
    nothing but `write(to_neutral(dos))`. `Report.unaccounted` is empty for all
    24 specimens, which is the test that replaced the round trip.
 4. **The items — done.** `goldbox.dos_codec.item_to_c64` is now the single copy of the
-   projection and `tools/dosbox.py` re-exports it. Sixteen fixed C64 slots
+   projection and `tools/dos/dosbox.py` re-exports it. Sixteen fixed C64 slots
    from a DOS chain of 63-byte records, the count from `0x0C7`.
 5. **The quest flags — done.** `goldbox.dos_codec.quest_flags` reads the 217 words and
    `apply_quest_flags` writes the bytes. Every nonzero word in the window fits
@@ -1450,7 +1450,7 @@ the same `$49C3`/`$49C4` pair, window-local, `$49E6` = 0, and the area id in
 live-proven cold-boot recipe exactly, but **the conversion itself has not
 been loaded on a C64 end to end** — that run is the remaining proof for the
 outdoor shape. The indoor one has run three times, on all three of the
-player's DOS saves: `tools/dosdisk.py` builds the disk and `tools/c64/savecheck.py`
+player's DOS saves: `tools/dos/dosdisk.py` builds the disk and `tools/c64/savecheck.py`
 boots it, and the party loads, reads right on the sheet, walks and changes area
 — §"Three from-nothing disks played". (This cited `p119/`, which was the
 first run's scripts and went with the rest of the scratch directory, deleted 2026-09-18; the tools that replaced
@@ -1568,7 +1568,7 @@ finding is the colours and the picture.
 ### Three from-nothing disks played, one per DOS save (#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing))
 
 All three of the DOS saves in the player's archives were built onto a
-`D64.blank()` by `tools/dosdisk.py` and driven by `tools/c64/savecheck.py`. **The
+`D64.blank()` by `tools/dos/dosdisk.py` and driven by `tools/c64/savecheck.py`. **The
 game's own `LOAD SAVED GAME` accepted all three**, which is the check bytes
 cannot make and the shape `#109 (A save slot written onto an Amiga disk is not
 offered by the game's picker)` was.
@@ -1944,7 +1944,7 @@ graph LR
 `inventory` is "the shared sixteen-byte item shape `goldbox/items.py` reads", so
 the neutral vocabulary itself admits that one field is a port's shape. The
 value `to_neutral` sets has already been through `dos.item_to_c64`. It carries
-the 157-of-163 evidence and `tools/dosbox.py` re-exports it, so it stays;
+the 157-of-163 evidence and `tools/dos/dosbox.py` re-exports it, so it stays;
 what the drawing adds is that the exception is one field wide and stated in
 the vocabulary.
 
@@ -2471,7 +2471,7 @@ been repeated with the fix in, so its numbers are left as they were taken.
 GNOMF1, one of #84 (Roll a gnome in DOS and read the two innate effect ids
 nobody has seen)'s three: `tools/c64/c64splicechar.py` put his record into C64
 slot 5 of a copy of `PORSAVE13.D64`, `goldbox.dos_codec.new_dos_save` converted the
-disk, and `tools/dosnewsave.py` booted the result. His DOS sheet reads
+disk, and `tools/dos/dosnewsave.py` booted the result. His DOS sheet reads
 `MALE GNOME AGE 71`, `LAWFUL GOOD`, `FIGHTER`, `STR 16 INT 15 WIS 12 DEX 14
 CON 13 CHA 12`, `LEVEL 1`, `AC 10  THAC0 20  HP 6  MOVEMENT 12`, `GOLD 120`,
 `ENCUMBRANCE 120`, `STATUS OKAY` -- every one of them the number the engine's
@@ -2761,8 +2761,8 @@ And for the reverse direction, `tests/test_doswriter.py`:
 
 ## The Convert dialog's own path, in both emulators (2026-09-05)
 
-Everything above is `goldbox.dos_codec` proven through `tools/dosdisk.py` and
-`tools/dosnewsave.py`, which call `new_save` and `new_dos_save` directly. A
+Everything above is `goldbox.dos_codec` proven through `tools/dos/dosdisk.py` and
+`tools/dos/dosnewsave.py`, which call `new_save` and `new_dos_save` directly. A
 player does not: they press Convert, and the bytes come out of
 `editor.window.EditorBinding.convert` → `editor.convert.ConvertDialog` →
 `Direction.rehearse` → `Direction.write`.
@@ -2823,7 +2823,7 @@ rather than a census.
 
 ### The four runs, and what each settled
 
-`tools/dosnewsave.py` builds the save into a staged copy of the game tree,
+`tools/dos/dosnewsave.py` builds the save into a staged copy of the game tree,
 boots DOSBox, loads it through the game's own `LOAD SAVED GAME`, walks, and
 lets the engine's own `ENCAMP > SAVE` write it back. The resave is the
 oracle: what the engine fills in for itself is what a converted save never
@@ -2871,7 +2871,7 @@ lost the bonus the first time the engine looked at the character —
 `RACE_COMBAT_EFFECTS` now writes 90 and 97 for a dwarf and for a halfling.
 
 Measured again with the fix in, same party and same recipe
-(`tools/dosnewsave.py --steps 0`, resaving over the loaded slot so the
+(`tools/dos/dosnewsave.py --steps 0`, resaving over the loaded slot so the
 engine's own records could be read back — `cited/p26/issue191`):
 
 | | breath | spell | wands | paralysis | petrification | `.SPC` |
@@ -2905,7 +2905,7 @@ finding in the useful direction: they cannot be got wrong.
   player's twenty C64 save disks stands outdoors, every one reading `$49E6` =
   1, so `tools/c64/c64outdoor.py` had to make the specimen the branch could be
   driven against.
-* **And the census is re-taken rather than PROBABLE.** `tools/dossavcensus.py`
+* **And the census is re-taken rather than PROBABLE.** `tools/dos/dossavcensus.py`
   over the 21 containers that exist now gives 2407 zero across the 11 indoor
   ones -- the same figure the nine gave -- and 2402 across all 21. The words
   in the difference are **five**, not the six the older count claimed, and all

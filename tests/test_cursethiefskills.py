@@ -43,7 +43,7 @@ BLADES = "secret-of-the-silver-blades"
 
 
 def _routine(title, stem):
-    from tools import dosbox
+    from tools.dos import dosbox
 
     if not dosbox.ARCHIVES.is_dir():
         pytest.skip("needs the DOS archives; set FR_ARCHIVES")
@@ -90,7 +90,7 @@ def test_every_dos_curse_thief_record_is_the_same_constant_high():
     Two of them are this project's own writer's output and read 0, which is
     the control: they are what the tables give with no stack byte added.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     if not dosbox.ARCHIVES.is_dir():
         pytest.skip("needs the DOS archives; set FR_ARCHIVES")

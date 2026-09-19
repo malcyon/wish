@@ -446,7 +446,7 @@ Silver Blades records hold race 6, which `goldbox/dos_port.py`'s
 MORGAINE is a magic-user, and AD&D allows a half-orc to be neither. **Silver
 Blades has its own race table**: `tribble`, `elf`, `half-elf`, `dwarf`,
 `gnome`, `halfling`, `human`, `monster`, so 6 is `human`. CONFIRMED, read out
-of the title's own `START.EXE` by `tools/dosraces.py` and corroborated by Gold
+of the title's own `START.EXE` by `tools/dos/dosraces.py` and corroborated by Gold
 Box Companion's per-title data (#237 (The DOS race table is one table for four titles, and it is wrong for two of them)); it is `DosDeltas.race_numbers` now, and
 `RACE_NUMBERS` is Pool of Radiance's and Curse's only. The Amiga agrees byte
 for byte, so this was a question about the DOS table rather than about the

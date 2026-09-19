@@ -218,12 +218,12 @@ def test_conftest_binds_the_package_even_with_tools_already_in_front():
 
 
 def test_the_tool_that_was_caught_doing_it_no_longer_can():
-    """`tools/dosraces.py`, the proven culprit, no longer leaks at all.
+    """`tools/dos/dosraces.py`, the proven culprit, no longer leaks at all.
 
     An audit hook on the reproducing batch caught
     `tests/test_dosimport.py`'s own `from wish.ui_window import
     Ui_WishWindow` resolving with `tools/` at `sys.path[0]`, and
-    `tools.dosraces` was the only leaking tool loaded in that worker --
+    `tools.dos.dosraces` was the only leaking tool loaded in that worker --
     `#259 (A cold test run intermittently loses the wish package to
     tools/wish.py, and a different test fails each time)`.
 
@@ -234,12 +234,12 @@ def test_the_tool_that_was_caught_doing_it_no_longer_can():
     is fixed because it is the one that was measured causing the failure.
     """
     result = _in_a_fresh_process(
-        "from tools import dosraces  # noqa: F401\n"
+        "from tools.dos import dosraces  # noqa: F401\n"
         f"left = [p for p in sys.path if p == {str(REPO / 'tools')!r}]\n"
         "assert not left, f'tools/ left on sys.path: {left}'\n"
         "print('OK')\n")
     assert result.returncode == 0 and "OK" in result.stdout, (
-        f"tools/dosraces.py left tools/ on sys.path:\n{result.stderr}")
+        f"tools/dos/dosraces.py left tools/ on sys.path:\n{result.stderr}")
 
 
 @pytest.mark.parametrize("name", TOOLS)
@@ -255,7 +255,7 @@ def test_no_tool_leaves_tools_on_sys_path_after_import(name):
     `amigabladesjournal`, `abilitypair` and `amigalaterproof` were the last
     three still leaking, held back across two earlier passes because another
     agent owned those files at the time; `#262`'s own comment thread has the
-    full census. All three now go through the same `tools/dosraces.py`
+    full census. All three now go through the same `tools/dos/dosraces.py`
     pattern as everything else, and `tools/pathleak.py` confirms 0 of 221
     scripts leak.
     """

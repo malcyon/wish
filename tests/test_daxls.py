@@ -1,4 +1,4 @@
-"""`tools/daxls.py` reads a `.DAX` the way the DOS engine does.
+"""`tools/dos/daxls.py` reads a `.DAX` the way the DOS engine does.
 
 The container is built here from the documented format rather than read
 from the game, so nothing of the game's enters the repository; one test at
@@ -11,7 +11,7 @@ import struct
 
 import pytest
 
-from tools import daxls  # noqa: E402
+from tools.dos import daxls  # noqa: E402
 
 
 def _rle(raw: bytes) -> bytes:

@@ -131,7 +131,7 @@ def test_b_every_active_field_has_a_boundary_value():
 
 capstone = pytest.importorskip("capstone")
 
-from tools import dosarraywidth  # noqa: E402
+from tools.dos import dosarraywidth  # noqa: E402
 
 _SKIPPED_TITLES: list[str] = []
 

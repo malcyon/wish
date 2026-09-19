@@ -27,7 +27,7 @@ between the C64 record's own `portrait_head`/`portrait_body` art ids and the
 art the DOS game fetched, so a wrong table, a wrong order and a dropped byte
 are all visible.
 
-Nothing here writes to the player's archives (`tools.dosbox.Session.stage`
+Nothing here writes to the player's archives (`tools.dos.dosbox.Session.stage`
 copies the tree) and nothing opens a window on the desktop.
 """
 
@@ -48,8 +48,9 @@ from goldbox import (
 from goldbox import portraits as portrait_tables  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import dosbox, scratch  # noqa: E402
 from tools import portraitshot as shot  # noqa: E402
+from tools import scratch  # noqa: E402
+from tools.dos import dosbox  # noqa: E402
 
 #: The key the character screen answers with the next character in the party.
 #: **There is not one.**  Sixteen keys were pressed on a DOS sheet on

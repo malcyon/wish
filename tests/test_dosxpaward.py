@@ -21,7 +21,7 @@ shipped `GAME.OVR` or the shipped creature files rather than out of a save:
 * the **player records** of the corpus, where the award is zero, because it
   is a monster's field.
 
-They read the player's own archives through `tools/dosbox.find_game` and skip
+They read the player's own archives through `tools/dos/dosbox.find_game` and skip
 cleanly without them; no game bytes are in this repository, and the synthetic
 records here are built out of zeroes.
 """
@@ -37,7 +37,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import dos_port  # noqa: E402
 from goldbox import layout as c64_layout  # noqa: E402
-from tools import dosxpaward as xp  # noqa: E402
+from tools.dos import dosxpaward as xp  # noqa: E402
 
 #: The offsets this issue named, per record size.  `None` is a title with no
 #: per-hit-point rate.

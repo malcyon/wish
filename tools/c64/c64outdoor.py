@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make an engine-written C64 saved game on the travel grid, and keep it.
 
-The C64 twin of `tools/dosoutdoor.py`, and the thing
+The C64 twin of `tools/dos/dosoutdoor.py`, and the thing
 `#190 (A C64 party standing on the travel grid cannot be written into a DOS
 save)` was blocked on: **no C64 save on this machine stands outdoors.**  All
 twenty of the player's own `PORSAVE*.D64` and `NEWSAVE*.D64` are indoors --
@@ -11,7 +11,7 @@ had nothing to be driven against.
 **The party is not walked out there.**  Reaching the travel grid by playing
 means crossing New Phlan to the harbour master and buying passage, which is a
 navigation nobody has automated.  What this does instead is the same seed and
-resave `tools/dosoutdoor.py` does on the DOS side:
+resave `tools/dos/dosoutdoor.py` does on the DOS side:
 
 1. one of the player's own indoor save disks is read (never written), its
    `SAVEDGAME0` is pointed at a travel window by `goldbox.dos_codec.apply_file_cache`

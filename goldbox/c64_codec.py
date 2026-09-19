@@ -1202,7 +1202,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         # out of item or trait slots tells the player nothing, because the
         # pane never shows a warning).  This is the one case #399's own
         # measurement found reached in practice, and only by a specimen this
-        # project manufactured to exercise it (`tools/dositemcap.py`): 52 of
+        # project manufactured to exercise it (`tools/dos/dositemcap.py`): 52 of
         # 950 real characters carry exactly sixteen and none carries more,
         # and DOS Pool of Radiance refuses a seventeenth item itself --
         # watched in DOSBox, a character holding fifteen accepted a TRADE and

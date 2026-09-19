@@ -582,7 +582,7 @@ def _containers():
     for them too.  That is a fact about the format rather than a slip -- see
     `container_for`.
     """
-    from tools import dossavgam
+    from tools.dos import dossavgam
     found = dossavgam.containers()
     if not found:
         pytest.skip("needs the DOS archives; set FR_ARCHIVES")
@@ -926,7 +926,7 @@ def test_a_shipped_container_reads_as_a_party_of_six_in_a_dungeon():
 
 # --- the engine-written containers, from the specimen tree -------------------
 #
-# `tools/dospod.py` drove the game for #175 and its snapshots are the five
+# `tools/dos/dospod.py` drove the game for #175 and its snapshots are the five
 # `pod-dos` specimens in the tree at `$WISH_SPECIMENS` (#575); these run where
 # the tree is and skip everywhere else, CI included. What stands behind the
 # offsets without them is the writer in `GAME.OVR`, and #175's comment carries
@@ -953,7 +953,7 @@ def _played():
     where = root / "pod-dos" if root is not None else None
     dirs = sorted(where.glob("WISH-SPEC-*")) if where and where.is_dir() else []
     if not dirs:
-        pytest.skip("needs the Pools of Darkness specimens a tools/dospod.py "
+        pytest.skip("needs the Pools of Darkness specimens a tools/dos/dospod.py "
                     "drive left; set WISH_SPECIMENS, or see tools/specimens.py "
                     "for the pod-dos tree")
     out = {}
@@ -1014,7 +1014,7 @@ def test_a_played_clock_is_a_time_and_not_seven_arbitrary_bytes():
 #: were written by the game's own SAVE CURRENT GAME in `#249`'s driven runs.
 #: The two hall saves are flagged EDITED because experience and gold were
 #: poked into their **character records** before the run and the square into
-#: bytes 12801-12803; `tools/dostrain.py` writes no VM variable at all, so
+#: bytes 12801-12803; `tools/dos/dostrain.py` writes no VM variable at all, so
 #: the two words this section is about are the engine's.
 HALL_SPECIMENS = (("por-party-trained-c2", "F"), ("por-train-clamp", "F"))
 STREET_SPECIMEN = ("por-party-l1-intown", "E")
@@ -1031,7 +1031,7 @@ def _ecl_container(n: int) -> bytes:
     Read, never written, and never copied into the repository. Skips where
     the archives are not on this machine, which is what CI does.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     try:
         return (dosbox.find_game("POOLRAD") / f"ECL{n}.DAX").read_bytes()

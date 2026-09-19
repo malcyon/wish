@@ -6,7 +6,7 @@ this since `#10 (Finish the high-level test party)` drove twenty-nine
 level-ups through the training hall; this is the DOS half, and it is what
 every DOS measurement about a levelled character now rests on.
 
-`tools/dosladder.py` is the tool. `docs/90-specimens.md` says what is in the
+`tools/dos/dosladder.py` is the tool. `docs/90-specimens.md` says what is in the
 specimen tree; this says how the records in it were made and which numbers are
 the engine's.
 
@@ -155,7 +155,7 @@ at the 300,000 that went in -- three rungs running, including two where the
 school refused her outright. `dosladder.clamp_cap` returns None for that case
 rather than guessing.
 
-`tools/dosladder.py --audit <run>` prints the prediction against what the
+`tools/dos/dosladder.py --audit <run>` prints the prediction against what the
 engine left, one row per training, and names any that disagree.
 
 **So a rung is a boot.** Install, load, walk, train at up to four schools,
@@ -186,7 +186,7 @@ with the two classes at different levels, on a party nobody has edited since.
 
 ## What the records say about the two ports
 
-`tools/dosladder.py --audit` also prints `thac0_base` for every level the
+`tools/dos/dosladder.py --audit` also prints `thac0_base` for every level the
 engine wrote, against `goldbox/levels.py`. Fighters and clerics agree exactly.
 **Magic-users at levels 1-5 and thieves at levels 1-4 do not**: DOS stores 40,
 which is THAC0 20, where the C64's own table at `GEN $1F1F` holds 39, which is
@@ -215,7 +215,7 @@ byte)` is what it costs a converted character.
 
 ## The party the ladder made
 
-Nine boots, forty-two trainings, from the six characters `tools/dosparty.py`
+Nine boots, forty-two trainings, from the six characters `tools/dos/dosparty.py`
 rolled in the game's own creation screens.
 
 | slot | name | race | classes at the end | HP | rolled |
@@ -238,7 +238,7 @@ above describes.
 
 ## Running it
 
-    tools/dosladder.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-por-party-l1-intown \
+    tools/dos/dosladder.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-por-party-l1-intown \
         --enter 7,2,W --rungs 6 --xp 300000 --gold 20000 \
         --out $TMPDIR/ladder
 

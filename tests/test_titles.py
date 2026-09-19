@@ -84,7 +84,7 @@ def test_a_games_races_and_class_bits_are_its_titles_own_object(game, title):
 #: disagree, and why.  Every row is a code no character-generation menu
 #: offers; every code not in this table has to agree on both sides, which is
 #: what the test below asserts.  Measured for #470 on 2026-09-09: the DOS
-#: side from each executable via `tools/dosraces.py --check` (4 of 4 tables
+#: side from each executable via `tools/dos/dosraces.py --check` (4 of 4 tables
 #: reproduced), the C64 side from the three-instruction label lookup in each
 #: title's `LIBRARY`, and both against 257 C64 `MON*` records and 475 DOS
 #: records.

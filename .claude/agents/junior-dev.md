@@ -18,7 +18,7 @@ goal?**
 Qualifies:
 
 * a **port** — the fix exists in another file and needs moving. `#88` was
-  this: `tools/dosboxx.py` already had `candidate_windows`, `server_on` and
+  this: `tools/dos/dosboxx.py` already had `candidate_windows`, `server_on` and
   `uniform_colour`, and the simple harness needed them.
 * a **deduplication** — two copies of one fact, and the issue says which is
   the survivor. `#76` was this.

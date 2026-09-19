@@ -28,12 +28,12 @@ sp / sub sp, imm` before it, and the initialisation test is whether
 first read of the local.
 
 **A byte pattern is not proof that bytes are code**, the caution
-`tools/c64/d6502.py` and `tools/dosdis16.py` both carry.  What makes this one
+`tools/c64/d6502.py` and `tools/dos/dosdis16.py` both carry.  What makes this one
 sound is that the three matches sit inside three routines of identical shape,
 each reading three tables at displacements 0x60 and 0x73 apart -- the same
 geometry `tools/thiefskillcensus.py` reads the tables at -- and each storing
 eight bytes into the record offset this project has already attributed.
-`tools/dosdis16.py --game CURSE --file GAME.OVR --at 0x3b74a` prints the
+`tools/dos/dosdis16.py --game CURSE --file GAME.OVR --at 0x3b74a` prints the
 routine itself.
 
 `records` says the same thing from the other side: columns 6, 7 and 8 take no
@@ -62,7 +62,7 @@ SET_VAR2 = re.compile(rb"\xc6\x46\xfe(.)", re.S)
 #: `mov al, byte ptr [bp-2]`, where the local is read.
 GET_VAR2 = bytes.fromhex("8a46fe")
 
-#: The three DOS builds, by the stem `tools/dosbox.py` finds them under.
+#: The three DOS builds, by the stem `tools/dos/dosbox.py` finds them under.
 TITLES = (("pool-of-radiance", "POOLRAD"),
           ("curse-of-the-azure-bonds", "CURSE"),
           ("secret-of-the-silver-blades", "SECRET"))
@@ -100,11 +100,11 @@ WINDOW = 0x200
 
 def routine(title: str, stem: str) -> dict:
     """Where the title's thief-skill routine is, and what it adds."""
-    from tools import dosbox
+    from tools.dos import dosbox
 
     folder = dosbox.find_game(stem)
     if folder is None:
-        raise SystemExit(f"no {stem} directory; see tools/dosbox.py")
+        raise SystemExit(f"no {stem} directory; see tools/dos/dosbox.py")
     image = (folder / "GAME.OVR").read_bytes()
     offset = _skill_base(title)
     stores = [m.start() for m in _store_pattern(offset).finditer(image)]

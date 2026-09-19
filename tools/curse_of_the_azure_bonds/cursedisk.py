@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build a *Curse of the Azure Bonds* C64 save disk from a DOS save folder.
 
-`tools/dosdisk.py` does this for Pool of Radiance and is that title's alone:
+`tools/dos/dosdisk.py` does this for Pool of Radiance and is that title's alone:
 it writes `SAVEDGAME0`/`SAVEDGAME1` and never names a `Game`.  Curse's
 container is one 7424-byte `SAVEAZURE` at `$4B00` with eight slots, a name
 table, eight item pages, `ANIMATE00`'s picture buffer and the roster all
@@ -177,7 +177,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     """The DOS party laid out the way the C64's `VIEW` screen shows it.
 
     Every line is something a person reads straight off the running game and
-    compares.  Copied in shape from `tools/dosdisk.py`, with the memorised
+    compares.  Copied in shape from `tools/dos/dosdisk.py`, with the memorised
     count added: Curse gives the list 69 slots where Pool of Radiance gives
     81 and `goldbox/layout.py` used to give 16
     (`#268 (A character with more than sixteen memorised spells loses the

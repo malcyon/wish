@@ -7,7 +7,7 @@ supports)` -- and the one thing the flag's removal condition 5 asks for:
 *each registered direction has been loaded and walked in its emulator from a
 save the dialog's own code path wrote*.
 
-`tools/dosdisk.py` and `tools/dosnewsave.py` already prove `goldbox.dos_codec`.
+`tools/dos/dosdisk.py` and `tools/dos/dosnewsave.py` already prove `goldbox.dos_codec`.
 They are not this: they call `goldbox.dos_codec.new_save` and
 `goldbox.dos_codec.new_dos_save` directly, where a player presses Convert and the
 bytes come out of `editor.window.EditorBinding.convert` ▸
@@ -41,14 +41,14 @@ What it does, in order:
    its title -- `tools/c64/savecheck.py` for Pool of Radiance,
    `tools/curse_of_the_azure_bonds/cursecheck.py` for Curse of the Azure Bonds -- which reads the
    party panel and the `VIEW` sheets off the C64's own
-   screen memory; a DOS destination is copied into a `tools.dosbox` staged
+   screen memory; a DOS destination is copied into a `tools.dos.dosbox` staged
    game tree and loaded through the game's own `LOAD SAVED GAME`, walked,
    and saved back by `ENCAMP ▸ SAVE` so the engine's own rewrite can be
    diffed against ours.
 
 Nothing here writes to the player's disks: the C64 sides are copied into the
 pool slot by `tools.c64.session.stage_disks`, and the DOS game tree is
-`tools.dosbox.Session.stage`'s copy. `POR_HEADLESS` is the slot's own
+`tools.dos.dosbox.Session.stage`'s copy. `POR_HEADLESS` is the slot's own
 default, so no window lands on the desktop, and this module unsets
 `WAYLAND_DISPLAY` and forces `QT_QPA_PLATFORM=offscreen` before PyQt6 is
 imported for the same reason.
@@ -82,7 +82,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools.dos import dosbox  # noqa: E402
 
 
 def disks_dir(named: str | None = None) -> pathlib.Path:
@@ -294,7 +294,7 @@ def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
 def describe_dos(save: bytes) -> dict:
     """What a reader needs to believe the file is this party's own.
 
-    `tools/dosnewsave.py`'s `describe`, repeated rather than imported: that
+    `tools/dos/dosnewsave.py`'s `describe`, repeated rather than imported: that
     module's `make()` builds the save itself, which is the thing this run
     exists not to do.
     """
@@ -439,7 +439,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="where the conversion and the run's files go")
     p.add_argument("--game", default=None,
                    help="the DOS game folder, for a DOS destination "
-                        "(default: tools.dosbox.find_game())")
+                        "(default: tools.dos.dosbox.find_game())")
     p.add_argument("--disks", default=None,
                    help="the player's C64 game disks; read, never written")
     p.add_argument("--walk", default="II",

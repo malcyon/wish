@@ -49,7 +49,7 @@ import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
-# The repository root and nothing else -- see tools/dosraces.py's comment on
+# The repository root and nothing else -- see tools/dos/dosraces.py's comment on
 # why `tools/` itself never goes on sys.path: that lets tools/wish.py shadow
 # the `wish` package for whatever imports it next (#259).
 sys.path.insert(0, str(ROOT))

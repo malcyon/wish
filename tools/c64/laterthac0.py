@@ -68,7 +68,7 @@ from tools import thac0census  # noqa: E402
 CLASS_ORDER = ("cleric", "druid", "fighter", "paladin", "ranger",
                "magic-user", "thief", "monk")
 
-#: Title key -> the game directory stem `tools/dosbox.py` finds it by.  Pools
+#: Title key -> the game directory stem `tools/dos/dosbox.py` finds it by.  Pools
 #: of Darkness is not here: it keeps its root in `GAME.EXE` rather than
 #: `START.EXE`, so neither this nor `tools/thac0census.py` reaches its data
 #: segment, and it has no C64 port for its table to disagree with.
@@ -201,7 +201,7 @@ def writers(title: str) -> list[tuple[int, str, int | None]]:
     for a `char` field at a `disp8` displacement off `es:di`, which is how
     every one of these titles addresses the record.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     offset = _field(title, "thac0_base").offset
     raw = (dosbox.find_game(STEMS[title]) / "GAME.OVR").read_bytes()
@@ -225,7 +225,7 @@ def constant_compares(title: str) -> list[tuple[int, int]]:
     three engines: the only compares any of them make are `cmp al, es:[di +
     thac0_base]`, which is the rebuild loop keeping the better row.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     offset = _field(title, "thac0_base").offset
     raw = (dosbox.find_game(STEMS[title]) / "GAME.OVR").read_bytes()
@@ -280,7 +280,7 @@ def records(title: str):
 
     tree = pathlib.Path(os.environ.get(
         "WISH_SPECIMENS", pathlib.Path.home() / "wish-specimens"))
-    from tools import dosbox
+    from tools.dos import dosbox
 
     files: list[str] = []
     for folder in sorted(tree.glob("*/WISH-SPEC-*")):

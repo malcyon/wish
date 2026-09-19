@@ -111,7 +111,7 @@ def option_of(bid: int) -> tuple[int, str, int]:
 def four_bit_image(block: bytes) -> bool:
     """Whether this block is the 4-bit image every Pool of Radiance one is.
 
-    The test is the length identity `tools/daxls.py` uses: the 17-byte header
+    The test is the length identity `tools/dos/daxls.py` uses: the 17-byte header
     plus `rows * width_in_eights * 4`.  Pools of Darkness fails it -- its
     `CHEAD` blocks are 422 bytes where 10 rows of 24 pixels would be 137 --
     so its art is a different encoding and nothing below may read it as this

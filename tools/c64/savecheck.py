@@ -30,7 +30,7 @@ What it reads, in order:
   figure is drawn from -- which is the only place a converted combat icon is
   ever seen.
 
-`tools/dosdisk.py --sheet` prints the DOS side of the same comparison.
+`tools/dos/dosdisk.py --sheet` prints the DOS side of the same comparison.
 
 Nothing is written to the player's disks: `Session.attach` refuses a path
 outside the slot's own directory, and the sides and the save are copied there
@@ -200,7 +200,7 @@ def icon_bytes(disks: pathlib.Path) -> bytes:
     """The 36 bytes of the figure the game's own creation writes.
 
     Composed off the player's own disk rather than stored, the same way
-    `tools/dosdisk.py` composes it.  Once it was *the* icon a conversion
+    `tools/dos/dosdisk.py` composes it.  Once it was *the* icon a conversion
     wrote, into all six slots; since `#130 (A converted DOS party arrives
     with six identical combat figures, not its own)` each character gets his
     own instead, so this is now a **control**: a converted party none of
@@ -212,7 +212,7 @@ def icon_bytes(disks: pathlib.Path) -> bytes:
     passing an `IconParts` into `icon_evidence`, where a run that had already
     walked to an encounter died on `'IconParts' object is not subscriptable`.
     """
-    from tools import dosdisk
+    from tools.dos import dosdisk
 
     return dosdisk.game_files(disks)[0].default_icon()
 

@@ -1,0 +1,1778 @@
+#!/usr/bin/env python3
+"""A driven DOS Gold Box session: DOSBox on a private X display, unattended.
+
+The C64 side of this project drives VICE through its binary monitor.  DOS has
+no such thing -- DOSBox 0.74-3, which is what is installed here, ships no
+debugger and no scripting -- so the three primitives are the ones a headless X
+session gives you:
+
+1. **Input** is XTEST through `xdotool`, aimed at a display nobody else owns.
+   `xdotool key --window <id>`, not `windowactivate`: there is no window
+   manager under a bare `Xvfb`, so activation fails with "your windowmanager
+   claims not to support _NET_ACTIVE_WINDOW" and the keystroke is lost.
+2. **Output** is a 320x200 window capture.  `output=surface` with `scaler=none`
+   makes the DOSBox window exactly the emulated framebuffer, so a capture is
+   the VGA image pixel for pixel with no scaling to undo.
+3. **Ground truth is the save file.**  DOS writes plain files into the game's
+   `SAVE` directory, so "did that keystroke do anything" is answered by reading
+   `SAVGAM<slot>.DAT` back off the host filesystem.  Nothing here has to read
+   the screen to know what happened, and that is deliberate: an OCR that is
+   wrong once is worse than no OCR at all.
+
+Where the screen *is* needed -- "are we in camp or on the map" -- it is used as
+an opaque digest of a strip of pixels, never as text.  A digest cannot be
+misread, only unequal.
+
+**Determinism.** `settle()` waits for consecutive identical frames rather than
+sleeping a guessed interval, and every action that matters is verified by its
+effect: `save_game()` waits for the file to change on disk, and each menu step
+checks that the screen it wanted arrived before pressing the next key.  The one
+thing DOSBox will not give us is a frame counter, so a run is reproducible in
+what it produces, not cycle-exact in how long it takes.
+
+**Isolation.** Every instance owns its X display, its game tree, its DOSBox
+config and its capture directory, all under `inst/<n>/` in the `dosbox` scratch directory (`tools/scratch.py`), and the
+slot is held by an `fcntl.flock` so a crashed run frees it with no cleanup --
+the lease pattern `docs/123-parallel-sessions.md` chose for the VICE pool.  The
+player's archives are copied, never opened for writing, and nothing here reads
+or writes a user-level DOSBox configuration.  Teardown kills the process groups
+this instance started and nothing else: **never a process by name.**
+
+Run time it needs: `dosbox`, `Xvfb`, `xdotool`, and ImageMagick's `import`.
+Everything skips cleanly when they are absent.
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import hashlib
+import json
+import os
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+
+try:
+    import fcntl  # POSIX only
+except ImportError:                 # pragma: no cover - Windows
+    # The harness drives DOSBox on Linux and nothing else needs it, but the
+    # module still has to *import* everywhere: `tests/test_dosbox.py` asserts
+    # findings about a DOS save that hold on any platform, and CI runs the
+    # suite on Windows.
+    fcntl = None
+from dataclasses import dataclass
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(REPO))
+from tools import gamedisks, scratch  # noqa: E402
+
+WORK = scratch.scratch_dir("dosbox")
+INST = WORK / "inst"
+
+# The pool never takes a display anything else here uses: `tools/c64/porlaunch.sh`
+# defaults to :7 and `docs/123-parallel-sessions.md` allocates :10-:25 to VICE.
+#
+# #233 (The test suite takes the emulator displays agents need, and eight
+# slots is no longer enough) widened every pool to sixteen slots and moved
+# this one from :30 to :50: at sixteen wide, :30-:45 would have put this pool
+# on top of DOSBox-X's old :40.  50 leaves 24 numbers of headroom before the
+# next pool starts -- room to grow again past sixteen without another move.
+DISPLAY_BASE = 50
+SLOTS = 16
+
+
+# Where the player's copy of Forgotten Realms: The Archives is unpacked.
+# Read only, always: a game tree is copied into the scratch directory before DOSBox sees it.
+# The registry's `dos-archives` entry (#212, #575): `$FR_ARCHIVES` first, then
+# its search list. When nothing holds data this stays the first candidate --
+# the `$FR_ARCHIVES` value when set, even if it does not exist, so a wrong
+# setting is named in the error rather than silently ignored -- because other
+# modules call `ARCHIVES.is_dir()` and must get a path, not `None`.
+#
+# Looked up when `dosbox.ARCHIVES` is first read and not when this module is
+# imported: fifty tools import this one, and an import that asks the registry
+# stops every one of them on a checkout with no `gamedisks.yaml`, including a
+# test's fresh interpreter that never loaded `tests/conftest.py`.
+def __getattr__(name):
+    if name == "ARCHIVES":
+        return gamedisks.where("dos-archives")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _archives() -> Path:
+    """`ARCHIVES`, unless something has set it (a test pointing it away)."""
+    return globals().get("ARCHIVES") or gamedisks.where("dos-archives")
+
+TOOLS = ("dosbox", "Xvfb", "xdotool", "import")
+
+
+from goldbox import dos_codec as _por_dos  # noqa: E402
+from goldbox import dos_savegame as _sav  # noqa: E402
+
+
+class DosboxUnavailable(RuntimeError):
+    """One of dosbox, Xvfb, xdotool or ImageMagick is not installed."""
+
+
+class PoolFull(RuntimeError):
+    """Every instance slot is leased by another process."""
+
+
+class BlankCapture(RuntimeError):
+    """A capture came back a single colour, so it is showing nothing."""
+
+
+def missing_tools(tools: tuple[str, ...] = TOOLS) -> list[str]:
+    return [t for t in tools if shutil.which(t) is None]
+
+
+def require_tools(tools: tuple[str, ...] = TOOLS) -> None:
+    absent = missing_tools(tools)
+    if absent:
+        raise DosboxUnavailable("not installed: " + ", ".join(absent))
+
+
+# --------------------------------------------------------------------------
+# Finding a game tree in the archives
+# --------------------------------------------------------------------------
+
+
+def find_game(stem: str = "POOLRAD") -> Path:
+    """The DOS game directory for `stem`, inside the player's archives.
+
+    Returns the directory holding `START.EXE` -- for Pool of Radiance that is
+    `<collection>/games/POOLRAD/GAME/POOLRAD`.  Raises `FileNotFoundError` when
+    the archives are not on this machine, which is how the tests skip.
+    """
+    archives = _archives()
+    if not archives.is_dir():
+        raise FileNotFoundError(
+            f"no archives at {archives}; set FR_ARCHIVES or add the "
+            f"dos-archives entry to gamedisks.yaml")
+    for collection in sorted(archives.iterdir()):
+        games = collection / "games"
+        if not games.is_dir():
+            continue
+        for entry in sorted(games.iterdir()):
+            inner = entry / "GAME" / stem
+            if (inner / "START.EXE").is_file():
+                return inner
+    raise FileNotFoundError(f"no DOS {stem} under {archives}")
+
+
+# --------------------------------------------------------------------------
+# The instance lease
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class Slot:
+    """One leased instance: its number, its display, its directory.
+
+    The lease is an `fcntl.flock` held by this process.  The kernel drops it
+    when the process dies however it dies, so there is no stale-lock policy to
+    get wrong.
+    """
+
+    n: int
+    dir: Path
+    _fd: int
+    _xfd: int = -1
+    _display_num: int = -1
+
+    @property
+    def display(self) -> str:
+        return f":{self._display_num}"
+
+    def release(self) -> None:
+        if self._fd >= 0:
+            fcntl.flock(self._fd, fcntl.LOCK_UN)
+            os.close(self._fd)
+            self._fd = -1
+        if self._xfd >= 0:
+            fcntl.flock(self._xfd, fcntl.LOCK_UN)
+            os.close(self._xfd)
+            self._xfd = -1
+
+    def __enter__(self) -> Slot:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.release()
+
+
+def claim(note: str = "") -> Slot:
+    """Lease the first free instance slot, or raise `PoolFull`."""
+    if fcntl is None:
+        raise PoolFull("the DOSBox harness needs flock, so it is POSIX only")
+    INST.mkdir(parents=True, exist_ok=True)
+    for n in range(SLOTS):
+        d = INST / str(n)
+        d.mkdir(exist_ok=True)
+        fd = os.open(d / "lease", os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            continue
+            
+        display_num = -1
+        display_fd = -1
+        for i in range(SLOTS):
+            x = DISPLAY_BASE + i
+            xfd = os.open(f"/tmp/.wish-x11-{x}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+            try:
+                fcntl.flock(xfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if not server_on(f":{x}"):
+                    display_num = x
+                    display_fd = xfd
+                    break
+                fcntl.flock(xfd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(xfd)
+
+        if display_num == -1:
+            # The band, not the lease count, is what is exhausted here (#213):
+            # a display can be taken by something outside the pool while a slot
+            # lease still sits free, so whether the band is full does not
+            # depend on which slot asked -- raise on the spot rather than
+            # trying the next `n`, which cannot change the answer.
+            os.close(fd)
+            raise PoolFull(
+                f"the DOSBox display band :{DISPLAY_BASE}-:{DISPLAY_BASE + SLOTS - 1} is full"
+            )
+
+        os.ftruncate(fd, 0)
+        os.write(
+            fd,
+            json.dumps(
+                {"slot": n, "pid": os.getpid(), "note": note, "at": time.time(), "display": f":{display_num}"}
+            ).encode(),
+        )
+        return Slot(n=n, dir=d, _fd=fd, _xfd=display_fd, _display_num=display_num)
+    raise PoolFull(f"all {SLOTS} DOSBox slots are leased")
+
+
+# --------------------------------------------------------------------------
+# Screens
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Screen:
+    """One window capture: a binary PPM decoded to width, height and RGB."""
+
+    width: int
+    height: int
+    px: bytes
+
+    @classmethod
+    def from_ppm(cls, data: bytes) -> Screen:
+        if data[:2] != b"P6":
+            raise ValueError("not a binary PPM")
+        tok: list[bytes] = []
+        i = 2
+        while len(tok) < 3:
+            while data[i : i + 1].isspace():
+                i += 1
+            if data[i : i + 1] == b"#":
+                while data[i : i + 1] != b"\n":
+                    i += 1
+                continue
+            j = i
+            while not data[j : j + 1].isspace():
+                j += 1
+            tok.append(data[i:j])
+            i = j
+        i += 1
+        w, h, maxval = (int(t) for t in tok)
+        if maxval != 255:
+            raise ValueError(f"expected 8-bit PPM, got maxval {maxval}")
+        return cls(w, h, data[i : i + w * h * 3])
+
+    def rows(self, rect: tuple[int, int, int, int] | None = None) -> bytes:
+        x, y, w, h = rect or (0, 0, self.width, self.height)
+        return b"".join(
+            self.px[((y + dy) * self.width + x) * 3 : ((y + dy) * self.width + x + w) * 3]
+            for dy in range(h)
+        )
+
+    def digest(self, rect: tuple[int, int, int, int] | None = None) -> str:
+        """A short hash of a rectangle -- the way this module compares screens.
+
+        Comparing pixels rather than reading them is the point: a digest is
+        never *misread*, only unequal, so a wait can be driven by it safely
+        where an OCR result could not be.
+        """
+        return hashlib.sha1(self.rows(rect)).hexdigest()[:16]
+
+    def ink(self, rect: tuple[int, int, int, int] | None = None) -> str:
+        """A digest of the same rectangle's *shape*, ignoring colour.
+
+        The game recolours the command bar without changing a glyph -- it is
+        white for one frame after the party arrives somewhere and green
+        thereafter -- so `digest` says "different screen" about two screens
+        that carry the same 169 lit pixels in the same places.  Thresholding to
+        ink and paper first is what makes "am I back on the map" answerable.
+        """
+        px = self.rows(rect)
+        bits = bytes(
+            1 if px[i] + px[i + 1] + px[i + 2] > 120 else 0 for i in range(0, len(px), 3)
+        )
+        return hashlib.sha1(bits).hexdigest()[:16]
+
+    def glyphs(self, rect: tuple[int, int, int, int] | None = None) -> str:
+        """A digest of the same rectangle's shape, against its own background.
+
+        `ink` compares every pixel with one fixed threshold, and that is only
+        safe where the paper is dark.  **On the combat screen it is not**: the
+        background there is `#555555`, whose channels sum to 255 and so count
+        as ink, and the whole bar strip comes back lit.  Every combat bar then
+        hashes to the same number -- `MOVE VIEW AIM USE QUICK DONE` and
+        `CONTINUE BATTLE : YES NO` both to `02d05064ee41da5f`, which is not a
+        bar at all but the sha1 of 2240 ones.  A driver reading that table
+        pressed `QUICK` at a yes-or-no question and went on pressing it.
+
+        So the paper is not assumed, it is measured: whatever colour the strip
+        has most of.  A bar is text on a filled row, so the background always
+        wins that count by a wide margin, and everything else is a glyph.  It
+        is colour-blind in the way `ink` was meant to be -- the white-then-green
+        recolour of the world bar leaves the same pixels not-background -- and
+        it works on grey paper as well as black.
+        """
+        px = self.rows(rect)
+        counts: dict[bytes, int] = {}
+        for i in range(0, len(px), 3):
+            k = px[i:i + 3]
+            counts[k] = counts.get(k, 0) + 1
+        paper = max(counts, key=lambda k: counts[k])
+        bits = bytes(
+            0 if px[i:i + 3] == paper else 1 for i in range(0, len(px), 3)
+        )
+        return hashlib.sha1(bits).hexdigest()[:16]
+
+    def highlight_row(self, rect: tuple[int, int, int, int],
+                      row_height: int = 8, floor: int = 10) -> int | None:
+        """Which 8px-high row of `rect` the game has drawn in reverse video.
+
+        #555: DOS Curse's generic list menu (`PICK A SPELL TO MEMORIZE`,
+        Curse's roster) highlights its selected line in near-white against a
+        paper of another colour, one row to an 8px band. Counting
+        near-white pixels per band and returning the band with the most is
+        how the highlight is read rather than assumed -- measured against
+        `PALADIN'S SPELLS IN GRIMOIRE`, where 186-394 pixels lit the
+        highlighted row and 0 lit every other one, so `floor` only refuses a
+        rectangle carrying no highlight at all rather than discriminating
+        between rows.
+
+        `rect` should stay clear of a list's own border columns: reading the
+        full frame width picked up border noise that read as a highlight
+        where there was none (`cited/555/highlight-findings.md`).
+
+        Returns the row's index within `rect` (0 at its top), or `None` when
+        no band clears `floor` -- the caller's signal that the list is not
+        showing a highlight at all, which must not be misread as "found row
+        0".
+        """
+        x, y, w, h = rect
+        best_row, best_count = None, floor - 1
+        for row in range(h // row_height):
+            top = y + row * row_height
+            count = 0
+            px = self.rows((x, top, w, row_height))
+            for i in range(0, len(px), 3):
+                r, g, b = px[i], px[i + 1], px[i + 2]
+                if r > 200 and g > 200 and b > 200:
+                    count += 1
+            if count > best_count:
+                best_row, best_count = row, count
+        return best_row
+
+
+# --------------------------------------------------------------------------
+# Which window is ours, and whether anything is in it
+# --------------------------------------------------------------------------
+#
+# Three faults with one symptom, found on the DOSBox-X side (#83) and the same
+# here (#88): every screenshot comes back solid black while the game is
+# plainly drawing, `settle()` calls two identical black frames a finished
+# screen, and `load_game` reports a save that loaded perfectly as never having
+# loaded.  Both harnesses use these, so there is one copy of them.
+
+
+def has_content(screen: Screen | None) -> bool:
+    """True when a capture was taken *and* it is not one flat colour.
+
+    The two failures read the same through `uniform_colour` alone and must
+    not: it answers None both for a capture with something in it and for no
+    capture at all, because `grab()` returns None when `import` exits nonzero.
+    So `uniform_colour(grab(wid)) is None` accepted a window whose capture had
+    failed -- a real race, since `xdotool search` lists a window that can close
+    or be unmapped before `import` reaches it -- and `settle()` then ran
+    `capture(check=True)` against it and raised `CalledProcessError` instead of
+    the named refusal this exists to give.
+    """
+    return screen is not None and uniform_colour(screen) is None
+
+
+def uniform_colour(screen: Screen | None) -> tuple[int, int, int] | None:
+    """The single colour a capture is made of, or None if it has two.
+
+    A capture of the wrong window is not an error -- `import` takes it happily
+    and returns one flat colour -- so nothing downstream notices.  One colour
+    is the signature, and refusing it by name is what stops that reading as
+    "the game did nothing".
+    """
+    if screen is None:
+        return None
+    px = screen.px
+    if len(px) < 6:
+        return None
+    first = px[:3]
+    whole = len(px) - len(px) % 3
+    if px[:whole] != first * (whole // 3):
+        return None
+    return (first[0], first[1], first[2])
+
+
+def candidate_windows(ids: list[str], pids: dict[str, int | None],
+                      pid: int) -> list[str]:
+    """The windows in `ids` that process `pid` could plausibly own, best first.
+
+    Two DOSBox processes on one display leave two top-level windows with the
+    same title, the same geometry and the same `IsViewable` map state; nothing
+    about the windows themselves separates them, and only one has pixels in
+    it.  `_NET_WM_PID` does separate them, so a window that names another
+    process is dropped outright.  Windows naming no process at all are kept as
+    a fallback, for a build whose SDL does not set the property -- there the
+    caller still has to choose by content.
+
+    **Not by content alone.**  The window with pixels in it is whichever
+    process drew last, which is the intruder as often as ours: they overlap
+    exactly, `Backing Store State` is `NotUseful` and there is no compositor
+    under a bare `Xvfb`, so X keeps no contents for a window nobody can see.
+
+    **`_NET_WM_PID` is SDL2's, and DOSBox 0.74 is SDL 1.2** -- the string does
+    not appear in `libSDL-1.2.so.0` at all, where `libSDL2-2.0.so.0` carries
+    it -- so for this harness every window takes the no-pid fallback and the
+    choice is the content one.  What keeps that safe here is `boot()` refusing
+    a display something already answers on: on a display this session created,
+    the only client that can have a window is the DOSBox it started.  The
+    filter is the belt to that brace, and it goes live the day 0.74 is built
+    against SDL2.
+    """
+    mine = [w for w in ids if pids.get(w) == pid]
+    return mine or [w for w in ids if pids.get(w) is None]
+
+
+def server_on(display: str) -> bool:
+    """Whether an X server is listening on that display, by its own socket.
+
+    Not by running `xdotool`: it exits 1 both for "no windows matched" and for
+    "Can't open display", so the readiness loop that tested its status was
+    satisfied by a display that did not exist -- and never waited for anything.
+    Connecting to `/tmp/.X11-unix/X<n>` cannot be read two ways; a socket left
+    behind by a dead server refuses the connection.
+
+    Asked before `Xvfb` is started as well as after.  A second `Xvfb` on a busy
+    display does exit with "Server is already active", but it takes a moment,
+    and by then the session has already launched DOSBox against the server that
+    was already there.
+    """
+    n = display.lstrip(":").split(".")[0]
+    # `AF_UNIX` is POSIX-only and this module imports on Windows, where the
+    # tests run and DOSBox does not.  Nothing here can start a server on a
+    # platform with no X socket, so "free" is the honest answer rather than an
+    # `AttributeError` from inside a probe.
+    if not hasattr(socket, "AF_UNIX"):
+        return False
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(1.0)
+        sock.connect(f"/tmp/.X11-unix/X{n}")
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def window_pid(wid: str, env: dict[str, str]) -> int | None:
+    """`_NET_WM_PID` of a window, or None where it carries none."""
+    out = subprocess.run(["xdotool", "getwindowpid", wid],
+                         env=env, capture_output=True).stdout.strip()
+    return int(out) if out.isdigit() else None
+
+
+#: The DOS engine's generic list menu protocol, one copy rather than a
+#: private guess in each of `tools/dos/dosaddchar.py`, `tools/dos/dosparty.py`,
+#: `tools/dos/dosgnome.py`, `tools/dos/dosladder.py` and `tools/curse_of_the_azure_bonds/curseregain.py`
+#: (#555). `N`/`P` (the bar's own `NEXT`/`PREV`) turn the page and any other
+#: key picks whatever is highlighted, measured at Pool of Radiance's
+#: creation lists and DOS Curse's own roster and confirmed again at Curse's
+#: `PICK A SPELL TO MEMORIZE` grimoire (#551's second comment).
+#:
+#: **`End` and `Home` move the highlighted line one row, wrapping** -- at
+#: the grimoire, `End` from the last row of a page moved to the first, and a
+#: second `End` moved one row down from there.  This corrects the reading in
+#: `tools/dos/dosaddchar.py`'s own docstring, "`Home` and `End` move the
+#: highlight within the page", which was never wrong at the screens it was
+#: measured against but reads as jump-to-start/jump-to-end and is not: it is
+#: NEXT-ITEM/PREV-ITEM, one row at a time, at every screen this project has
+#: tried it on.
+LIST_DOWN = "End"
+LIST_UP = "Home"
+LIST_PAGE_DOWN = "n"
+LIST_PAGE_UP = "p"
+LIST_LEAVE = "Escape"
+
+
+# --------------------------------------------------------------------------
+# The session
+# --------------------------------------------------------------------------
+
+CONFIG = """\
+[sdl]
+fullscreen=false
+output=surface
+autolock=false
+usescancodes=true
+waitonerror=false
+mapperfile={dir}/mapper.map
+priority=higher,normal
+
+[dosbox]
+machine=vga
+captures={dir}/capture
+memsize=16
+
+[render]
+frameskip=0
+aspect=false
+scaler=none
+
+[cpu]
+core=auto
+cputype=auto
+cycles=fixed {cycles}
+
+[mixer]
+nosound=true
+
+[sblaster]
+sbtype=none
+
+[gus]
+gus=false
+
+[speaker]
+pcspeaker=false
+
+[joystick]
+joysticktype=none
+
+[autoexec]
+mount c {dir}/game
+c:
+cd {stem}
+{exe}
+"""
+
+
+class Session:
+    """A booted DOSBox with one DOS game in it.
+
+    Use it as a context manager; `close()` kills the processes, and only the
+    two groups this instance started.
+    """
+
+    #: What has to be on `PATH` before this class can run.  A class attribute
+    #: rather than the module constant so a subclass can narrow it: DOSBox-X's
+    #: `XSession` is this class with the launch replaced, and demanding DOSBox
+    #: 0.74 of a machine carrying only the debugger build refused it a session
+    #: over an emulator that harness never starts (#73).
+    TOOLS = TOOLS
+
+    #: What `xdotool search --name` looks for.  DOSBox 0.74 titles its window
+    #: "DOSBox 0.74-3"; `XSession` sets a title of its own and overrides this.
+    TITLE = "DOSBox"
+
+    def __init__(
+        self,
+        slot: Slot,
+        game: Path,
+        exe: str = "START.EXE",
+        cycles: int = 20000,
+        geometry: str = "800x600x24",
+    ):
+        require_tools(self.TOOLS)
+        self.slot = slot
+        self.dir = slot.dir
+        self.display = slot.display
+        self.stem = game.name
+        self.game_dir = self.dir / "game" / self.stem
+        self.exe = exe
+        self.cycles = cycles
+        self.geometry = geometry
+        self.source = game
+        self.xvfb: subprocess.Popen[bytes] | None = None
+        self.dosbox: subprocess.Popen[bytes] | None = None
+        self.window: str | None = None
+
+    # -- staging ---------------------------------------------------------
+
+    def stage(self, fresh: bool = True) -> None:
+        """Copy the game tree into the instance directory.
+
+        The archives are read only.  This is the one place that touches them
+        and it only ever reads.
+        """
+        dest = self.dir / "game"
+        assert dest.resolve().is_relative_to(WORK.resolve()), dest
+        if fresh and dest.exists():
+            shutil.rmtree(dest)
+        if not dest.exists():
+            dest.mkdir(parents=True)
+            shutil.copytree(self.source, dest / self.stem)
+            for p in (dest / self.stem).rglob("*"):
+                p.chmod(p.stat().st_mode | 0o200)
+        (self.dir / "capture").mkdir(exist_ok=True)
+        (self.dir / "shots").mkdir(exist_ok=True)
+        (self.dir / "dosbox.conf").write_text(
+            CONFIG.format(dir=self.dir, stem=self.stem, exe=self.exe, cycles=self.cycles)
+        )
+
+    @property
+    def save_dir(self) -> Path:
+        return self.game_dir / "SAVE"
+
+    def save_file(self, letter: str) -> Path:
+        return self.save_dir / f"SAVGAM{letter.upper()}.DAT"
+
+    # -- lifecycle -------------------------------------------------------
+
+    def boot(self, timeout: float = 60.0, fresh: bool = True) -> None:
+        """Stage the game and start Xvfb and DOSBox.
+
+        `fresh=False` keeps the staged tree, and with it the `SAVE` directory,
+        which is how a run gets back to the main menu: quitting the game ends
+        the autoexec, so restarting the emulator is cheaper and far more
+        deterministic than typing at a DOS prompt.
+
+        **The window is chosen by `_NET_WM_PID` and then proved to have pixels
+        in it** (#88).  A display an earlier run's DOSBox is still holding
+        carries two top-level windows with this title, and whichever is
+        underneath captures as solid black -- see `candidate_windows`.  Two
+        smaller faults fed it and are fixed here too: the readiness wait now
+        asks the X socket rather than `xdotool`'s exit status, which cannot
+        distinguish "no windows matched" from "cannot open display"; and a
+        display something already answers on is refused rather than shared,
+        which is how two DOSBoxes came to be on one display at all.
+        """
+        self.stage(fresh=fresh)
+        env = dict(os.environ, DISPLAY=self.display, SDL_AUDIODRIVER="dummy")
+        env.pop("XAUTHORITY", None)
+        # A GTK or SDL2 child prefers `WAYLAND_DISPLAY` over whatever `DISPLAY`
+        # says, so a private `Xvfb` is not a sandbox while it is set: that is
+        # how DOSBox-X's file chooser drew on the desktop of the person sitting
+        # at this machine.  DOSBox 0.74 is SDL 1.2 and has no Wayland backend,
+        # so this is the belt to that brace and costs nothing.
+        for var in ("WAYLAND_DISPLAY", "XDG_SESSION_TYPE"):
+            env.pop(var, None)
+        if server_on(self.display):
+            raise RuntimeError(
+                f"{self.display} already has an X server on it, so this "
+                f"session would share it.  A DOSBox or Xvfb from an earlier "
+                f"run is still holding the display -- two DOSBox windows with "
+                f"the same title, and `import` returns solid black for "
+                f"whichever is underneath.  Kill that run's process group."
+            )
+        self.xvfb = subprocess.Popen(
+            ["Xvfb", self.display, "-screen", "0", self.geometry, "-nolisten", "tcp"],
+            stdout=(self.dir / "xvfb.log").open("wb"),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if server_on(self.display):
+                break
+            if self.xvfb.poll() is not None:
+                why = (self.dir / "xvfb.log").read_text(errors="replace").strip()
+                self.close()
+                raise RuntimeError(
+                    f"Xvfb exited without serving {self.display}: "
+                    f"{why.splitlines()[-1] if why else 'no output'}"
+                )
+            time.sleep(0.2)
+        else:
+            self.close()
+            raise TimeoutError(f"Xvfb never came up on {self.display}")
+
+        self.dosbox = subprocess.Popen(
+            ["dosbox", "-conf", str(self.dir / "dosbox.conf"), "-noconsole"],
+            env=env,
+            stdout=(self.dir / "dosbox.log").open("wb"),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        # `_env()`, not the launch environment: it is what `capture()` and
+        # `key()` use, so the window is found and read through one view of X.
+        look = self._env()
+        pid, seen = self.dosbox.pid, {}
+        while time.time() < deadline:
+            ids = [w.decode() for w in subprocess.run(
+                ["xdotool", "search", "--name", self.TITLE],
+                env=look, capture_output=True).stdout.split()]
+            seen = {w: window_pid(w, look) for w in ids}
+            for wid in candidate_windows(ids, seen, pid):
+                if has_content(self.grab(wid)):
+                    self.window = wid
+                    break
+            else:
+                time.sleep(0.3)
+                continue
+            break
+        else:
+            self.close()
+            if not seen:
+                raise TimeoutError("DOSBox window never appeared")
+            raise BlankCapture(
+                f"no window on {self.display} titled {self.TITLE!r} both "
+                f"belongs to pid {pid} and has anything in it; the windows "
+                f"there are " + ", ".join(
+                    f"{int(w):#x} (pid {theirs})" for w, theirs in seen.items())
+            )
+        self.settle()
+
+    def close(self) -> None:
+        for p in (self.dosbox, self.xvfb):
+            if p is None or p.poll() is not None:
+                continue
+            try:
+                os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+            except ProcessLookupError:
+                continue
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+                # Reaped, not merely signalled: `boot()` now refuses a display
+                # something still answers on, so `restart()` would race its own
+                # `Xvfb` out of existence and be told the slot is somebody's.
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    p.wait(timeout=5)
+        self.dosbox = self.xvfb = None
+
+    def restart(self) -> None:
+        """Stop and start again, keeping the staged game and its saves."""
+        self.close()
+        self.boot(fresh=False)
+
+    def __enter__(self) -> Session:
+        self.boot()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    # -- input and output ------------------------------------------------
+
+    def _env(self) -> dict[str, str]:
+        return dict(os.environ, DISPLAY=self.display)
+
+    def env(self) -> dict[str, str]:
+        """The `DISPLAY`-scoped environment `_env()` builds.
+
+        Public because `tools/curse_of_the_azure_bonds/doscurse.py` drives its own `xdotool type` and
+        `import` calls against this session's window and used to reach past
+        `_env` for it (#226 (Two tools reach into tools/dos/dosbox.py's private
+        methods for want of a public seam)).
+
+        **This delegates to `_env()` rather than replacing it.**
+        `capture()`, `key()`, `grab()`, `shot()` and `boot()` all call
+        `_env()` directly, and `tools/dos/dosboxx.py`'s `XSession` overrides that
+        name -- not this one -- to swap in `debug_env()`.  Renaming the
+        method those calls dispatch through would have silently dropped that
+        override, since a subclass overriding `_env` no longer overrides
+        `env`.  **So add to what the environment contains in `_env()`, never
+        here**: this is the door callers come in at and `_env()` is the one
+        every method inside the class dispatches through, so a change made
+        here is a change the class itself never sees.
+        """
+        return self._env()
+
+    def key(self, *keys: str, gap: float = 0.35) -> None:
+        """Press keys one at a time, as X keysyms (`a`, `Up`, `Escape`)."""
+        for k in keys:
+            subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", "--window", self.window, k],
+                env=self._env(),
+                check=True,
+                capture_output=True,
+            )
+            time.sleep(gap)
+
+    def capture(self) -> Screen:
+        r = subprocess.run(
+            ["import", "-window", self.window, "-depth", "8", "ppm:-"],
+            env=self._env(),
+            check=True,
+            capture_output=True,
+        )
+        return Screen.from_ppm(r.stdout)
+
+    def grab(self, window: str | None = None) -> Screen | None:
+        """One capture of any window, or None if `import` could not take it.
+
+        `capture()` is this with `check=True` on the session's own window.
+        This form is for the moment before there is one, when several windows
+        carry the title and the choice between them is being made.
+        """
+        r = subprocess.run(
+            ["import", "-window", window or self.window, "-depth", "8", "ppm:-"],
+            env=self._env(), capture_output=True)
+        if r.returncode != 0 or not r.stdout.startswith(b"P6"):
+            return None
+        return Screen.from_ppm(r.stdout)
+
+    def shot(self, name: str, allow_blank: bool = False) -> Path:
+        """Write a PNG of the window, refusing to write one that is blank.
+
+        A screenshot of the wrong window is a file that looks like the game
+        drew nothing, which is the most expensive way for this harness to fail
+        (#88).  `allow_blank=True` is for the caller that wants the frame
+        whatever it holds -- the shot taken on the way out of a failure.
+
+        `capture()` is deliberately not guarded this way: Pool of Radiance
+        draws genuinely black frames between screens, and every `settle()` and
+        `wait_for()` polls through them.
+        """
+        if not allow_blank:
+            colour = uniform_colour(self.grab())
+            if colour is not None:
+                raise BlankCapture(
+                    f"{name}: window {int(str(self.window), 0):#x} on "
+                    f"{self.display} "
+                    f"is entirely #{colour[0]:02X}{colour[1]:02X}"
+                    f"{colour[2]:02X}, so there is nothing to write"
+                )
+        out = self.dir / "shots" / f"{name}.png"
+        subprocess.run(
+            ["import", "-window", self.window, "-depth", "8", str(out)],
+            env=self._env(),
+            check=True,
+            capture_output=True,
+        )
+        return out
+
+    def settle(self, quiet: float = 0.6, timeout: float = 30.0) -> Screen:
+        """Wait until consecutive captures stop differing, and return one.
+
+        Cheaper and far more reliable than sleeping: a screen still being drawn
+        differs from itself, and a finished one does not.
+        """
+        deadline = time.time() + timeout
+        last = self.capture()
+        stable_since = time.time()
+        while time.time() < deadline:
+            time.sleep(0.15)
+            now = self.capture()
+            if now.px == last.px:
+                if time.time() - stable_since >= quiet:
+                    return now
+            else:
+                last, stable_since = now, time.time()
+        return last
+
+    def wait_for(self, pred, timeout: float = 30.0) -> bool:
+        """Poll `pred(Screen)` until true.  Returns whether it became true."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if pred(self.capture()):
+                return True
+            time.sleep(0.25)
+        return False
+
+    def wait_until_ink(
+        self, rect: tuple[int, int, int, int], want: str, timeout: float = 30.0
+    ) -> bool:
+        return self.wait_for(lambda s: s.ink(rect) == want, timeout)
+
+    def wait_while_ink(
+        self, rect: tuple[int, int, int, int], same: str, timeout: float = 30.0
+    ) -> bool:
+        return self.wait_for(lambda s: s.ink(rect) != same, timeout)
+
+    def wait_until_glyphs(
+        self, rect: tuple[int, int, int, int], want: str, timeout: float = 30.0
+    ) -> bool:
+        return self.wait_for(lambda s: s.glyphs(rect) == want, timeout)
+
+    def wait_while_glyphs(
+        self, rect: tuple[int, int, int, int], same: str, timeout: float = 30.0
+    ) -> bool:
+        return self.wait_for(lambda s: s.glyphs(rect) != same, timeout)
+
+    def press_until_change(self, key: str, tries: int = 5,
+                           gap: float = 0.8) -> bool:
+        """Press `key` until the screen differs from before the first press.
+
+        **The first keypress after a redraw is reliably swallowed here** --
+        the same is true on the C64 (`docs/70-driving-the-game.md`) -- so a
+        caller that presses once and moves on risks acting on a key the game
+        never saw.  Lifted from `tools/dos/dosladder.py:Ladder.press_until_
+        change`, the most careful of several private copies (#555).
+        """
+        before = self.capture().digest()
+        for _ in range(tries):
+            self.key(key)
+            time.sleep(gap)
+            if self.settle(quiet=0.5, timeout=20.0).digest() != before:
+                return True
+        return False
+
+    def walk_highlight(self, rect: tuple[int, int, int, int], want: int,
+                       key: str = LIST_DOWN, timeout: float = 20.0) -> int | None:
+        """Move a list's highlight onto row `want`, reading it after each press.
+
+        **Driven by where the highlight actually is, never by counting
+        presses from an assumed start** -- `tools/c64/session.py:select_row` is
+        the C64 original and its own docstring says why a blind count
+        desynchronises: a swallowed keypress leaves a counted walk one row
+        short of where it thinks it is, and a camp screen that can open with
+        the highlight already on its last row (measured at Curse's
+        grimoire, #555) breaks the standing assumption that a list opens
+        fresh on entry 0.
+
+        `key` wraps -- `LIST_DOWN` (`End`) moved from a page's last row back
+        to its first at the grimoire -- so pressing it and re-reading the
+        highlight always reaches `want` in a finite number of presses,
+        whatever row the list opened on, as long as the key moves the
+        highlight at all. Returns the row reached, or `None` when either no
+        row is ever highlighted (`highlight_row` never answers) or twice in
+        a row the same press leaves the highlight exactly where it was --
+        the sign that the key does nothing at this screen and further
+        presses would spin until `timeout`.
+        """
+        deadline = time.time() + timeout
+        here = self.capture().highlight_row(rect)
+        stuck = 0
+        while time.time() < deadline:
+            if here == want:
+                return here
+            if here is None:
+                return None
+            self.key(key)
+            self.settle(quiet=0.5, timeout=max(1.0, min(10.0, deadline - time.time())))
+            now = self.capture().highlight_row(rect)
+            if now == here:
+                stuck += 1
+                if stuck >= 2:
+                    return None
+            else:
+                stuck = 0
+            here = now
+        return here if here == want else None
+
+    def marching_first(self, slot_letter: str, index: int,
+                       container: "_sav.DosContainer | None" = None
+                       ) -> "PoolOfRadiance":
+        """Swap the `index`-th party member to marching position 0, and reload.
+
+        **There is no key that changes which character a camp screen acts
+        on** -- sixteen keys tried on a DOS sheet moved nothing (#555's own
+        confirmation), so this is the whole route.  `_sav.swap_party_
+        entries` reorders `SAVGAM<slot_letter>.DAT`'s party table -- the
+        same reordering a player makes in camp, with no character record
+        touched -- so it has to happen while the game is down: this writes
+        the file, `restart()`s DOSBox against the same staged tree, and
+        reloads the slot.  **Nothing may call `_sav.put_character_files`
+        afterwards**: it rewrites all six entries in file order and would
+        undo the swap.
+
+        Returns a fresh `PoolOfRadiance` for the reloaded session, the way
+        `load_game` itself would be reached from a boot.
+        """
+        path = self.save_file(slot_letter)
+        data = bytearray(path.read_bytes())
+        _sav.swap_party_entries(data, 0, index, container)
+        path.write_bytes(bytes(data))
+        self.restart()
+        game = PoolOfRadiance(self)
+        game.to_main_menu()
+        game.load_game(slot_letter)
+        return game
+
+
+# --------------------------------------------------------------------------
+# Pool of Radiance, driven
+# --------------------------------------------------------------------------
+
+# Rectangles of the 320x200 frame, measured off captures rather than guessed.
+# The command bar is the bottom text row, `AREA CAST VIEW ENCAMP SEARCH LOOK`;
+# the status line is the one under the viewport, `5,2 E 10:04`.
+#
+# Both stop short of the ornate rope border -- rows 190 and 191 below the bar,
+# and the frame around the viewport.  The border recolours as the game changes
+# state, and near the ink threshold that flips pixels, so a rectangle that
+# includes any of it compares unequal to itself.
+BAR = (0, 192, 320, 7)
+STATUS = (128, 120, 128, 8)
+
+#: **The byte map is `goldbox/dos_savegame.py`'s and only its** (#76).  This
+#: harness held a second copy -- and `AREA_ID` had already drifted out of the
+#: map's units: it is the *word index* 395, which is `word_offset($49C5)`, so a
+#: reader who fixed `$49C5` on one side would never have found 395 on the
+#: other.  Re-exported, the way `item_to_c64` is, so the measurements in
+#: `tests/test_dosbox.py` keep reading them from where they were written.
+POS_X = _sav.POS_X
+POS_Y = _sav.POS_Y
+POS_FACING = _sav.POS_FACING
+AREA_ID = _sav.word_offset(_sav.AREA)
+AREA_FILE = _sav.DAX_NUMBER
+
+#: The facing byte as the *file* carries it: the C64's 0-3 doubled.
+#: `goldbox.dos_savegame.position` halves it and this harness does not, because
+#: what a driven run wants to see is the byte that moved.
+FACINGS = {i * _sav.FACING_SCALE: d for i, d in enumerate("NESW")}
+
+
+def position(save: bytes) -> tuple[int, int, int]:
+    """`(x, y, facing)` out of a `SAVGAM<slot>.DAT`, facing doubled.
+
+    `goldbox.dos_savegame.position` returns the same square with the facing in the
+    C64's 0-3; this one is the file's own byte, which is what a differential
+    between two saves is written in.
+    """
+    return save[POS_X], save[POS_Y], save[POS_FACING]
+
+
+def geo_block(save: bytes) -> int:
+    """`$49C5`, the resident `GEO` block.  **Not the area.**
+
+    Renamed from `area_id` by #278 (Three callers still read area_id as the
+    area, and it is the resident map): three call sites in this tree read the
+    old name as though it meant the party's location, and it never has. It
+    equals the area id for the twenty-four areas that load their own map,
+    which is why it read as the area for a year; in the training hall and in
+    Phlan City Hall it is New Phlan's 0 while the party is in area 11 or 8,
+    and on the travel grid it is 0 while the party is in 25, 26 or 27
+    (#257 (A DOS save made in the training hall converts as though the
+    party were in New Phlan)).  A caller that wants **where the party is**
+    wants `current_area` below.
+    """
+    return _sav.geo_block(save)
+
+
+def current_area(save: bytes) -> int:
+    """`$49F2`, the area the party is in, indoors and out.
+
+    The word the engine restores its own current-area global from on load
+    (`GAME.OVR:0x4067`-`0x4070`), and the one to index `goldbox/areas.py`
+    with.
+    """
+    return _sav.current_area(save)
+
+
+# --------------------------------------------------------------------------
+# Telling a walk from a wall from a driver that never pressed anything
+# (#341 (A DOS run reports a party that walked into another area as never
+# having walked))
+# --------------------------------------------------------------------------
+
+def judge_step(moved_ui: bool, changed: bool, *,
+               area_before: int | None = None,
+               area_after: int | None = None) -> tuple[str, str | None]:
+    """Classify one step from readings that need no monitor.
+
+    Returns `(kind, reason)`.  `kind` is one of:
+
+    * `"walked"` -- the party moved, in the area it started in or a new one;
+    * `"blocked"` -- the party tried and a wall (or a closed door, or a
+      refused command) stopped it, and `changed` is false because nothing on
+      screen moved;
+    * `"refused"` -- the driver sent no key at all, which is a driver error
+      and never a wall (`#360 (The session driver will not walk a Curse or
+      Silver Blades party in a dungeon, because it reads Pool of Radiance's
+      indoors flag)`'s `Session.walk_refused`, in this harness's own
+      vocabulary rather than a second one).
+
+    `area_before`/`area_after` take priority over `changed` when both are
+    known, because a step that crosses into another area redraws the command
+    bar before it redraws the status line -- `PoolOfRadiance.move` returns as
+    soon as the bar is back, so a digest read straight afterwards can still
+    be the departed square's, and `changed` would read false for a step that
+    in fact walked a very great distance.  Pass them whenever they come from
+    a save file rather than the screen; leave them `None` where only a
+    digest is available, as `PoolOfRadiance.status()` gives the per-step
+    loop, and the digest decides alone.
+    """
+    if not moved_ui:
+        return "refused", "the driver pressed nothing"
+    if area_before is not None and area_after is not None:
+        if area_before != area_after:
+            return "walked", None
+    if changed:
+        return "walked", None
+    return "blocked", None
+
+
+def run_walked(built: dict, resaved: dict) -> bool:
+    """Whether a run's own before/after readings prove the party moved.
+
+    `built` and `resaved` are `describe()`/`describe_dos()`-shaped dicts --
+    `tools/dos/dosnewsave.py` and `tools/convert/convertrun.py` both produce one before
+    the walk and one from the engine's own resave after it.  Both come
+    straight out of a save file's bytes, never the screen, so an area change
+    that redrew the status line late cannot be missed here the way it can be
+    in the per-step loop.
+
+    Facing is left out on purpose.  The loop above turns the party in place
+    to recover from a wall, which can leave the facing different with
+    nothing walked at all.
+    """
+    kind, _ = judge_step(
+        True,
+        tuple(built["square"][:2]) != tuple(resaved["square"][:2]),
+        area_before=built["area"], area_after=resaved["area"],
+    )
+    return kind == "walked"
+
+
+# --------------------------------------------------------------------------
+# The `.DAX` container, and the 63-byte item record inside `.ITM`
+# --------------------------------------------------------------------------
+
+#: The container reader is `goldbox/dos_savegame.py`'s (#76): one index, one
+#: run-length decode, one set of refusals.  `goldbox/` may not import from
+#: `tools/`, so the shared copy lives there and this is the re-export.
+DAX_ENTRY = _sav.DAX_ENTRY
+DaxError = _sav.DaxError
+dax_index = _sav.dax_index
+dax_unpack = _sav.dax_unpack
+dax_blocks = _sav.dax_blocks
+dax_block = _sav.dax_block
+
+
+# One item, in a `.ITM` file or an `ITEM<n>.DAX` block.  The file is
+# `count x ITEM_SIZE` with no header; the count is the character record's
+# `0x0C7`.
+ITEM_SIZE = 63
+
+# `0x000` is a length byte and `0x001`-`0x029` the **rendered inventory line**
+# -- readied column, "* " when a party member has detect magic up, the stack
+# count, then the name.  It is a cache the game rewrites whenever it draws the
+# list, so it can disagree with the fields below it and does: one specimen
+# reads "11 Darts" over a quantity of 8.  Never source a value from it.
+ITEM_TEXT = 0x000
+ITEM_TEXT_MAX = 41
+
+# `0x02A`-`0x02D` is a far pointer -- `offset:u16le, segment:u16le` -- to the
+# next item in the character's list, NULL on the last.  Live heap state: in 61
+# of the player's 66 `.ITM` files consecutive items sit exactly `0x40` apart,
+# and all 66 terminate.  Nothing to convert.
+ITEM_NEXT = 0x02A
+
+# `0x02E` onwards is the C64's own 16-byte item record with its packed bytes
+# spread out.  `goldbox.items` documents what each one means; the correspondence
+# below is what makes that documentation apply.
+ITEM_TYPE = 0x02E        # indexes ITEMS, the 128 x 16 type table -- and the
+ITEM_NAME1 = 0x02F       #   DOS ITEMS is byte-identical to the C64's in 126
+ITEM_NAME2 = 0x030       #   of its 128 records.  The class restrictions are
+ITEM_NAME3 = 0x031       #   in *that* table, not here.
+ITEM_PLUS = 0x032        # signed
+ITEM_PLUS_SAVE = 0x033   # signed; accumulates into the saving-throw roll
+ITEM_READIED = 0x034     # 0 or 1
+ITEM_HIDDEN = 0x035      # bit 0 hides name 3, bit 1 name 2, bit 2 name 1
+ITEM_CURSED = 0x036      # 0 or 1
+ITEM_WEIGHT = 0x037      # u16le, tenths of a pound
+ITEM_QUANTITY = 0x039
+ITEM_VALUE = 0x03A       # u16le, gold pieces
+ITEM_SPECIAL = 0x03C     # three bytes: charges, effect, power -- or, on a
+#                          scroll, up to three spell ids
+
+C64_ITEM_SIZE = 16
+
+
+#: The projection itself now lives in `goldbox/dos_codec.py`, because it is part of the
+#: converter rather than part of the harness that drives DOSBox.  Re-exported
+#: here so the measurements in `tests/test_dosbox.py` keep reading it from the
+#: place they were written against, and so there is one copy of it.
+item_to_c64 = _por_dos.item_to_c64
+
+
+def items(data: bytes):
+    """Yield the 63-byte records of a `.ITM` file or an `ITEM<n>.DAX` block."""
+    for i in range(len(data) // ITEM_SIZE):
+        yield data[i * ITEM_SIZE:(i + 1) * ITEM_SIZE]
+
+
+def settle_files(folder: Path, quiet: float = 0.5, timeout: float = 30.0) -> bool:
+    """Wait until nothing in `folder` has been written for `quiet` seconds.
+
+    A DOS save is seven files and the one this harness watches is not the last
+    of them, so "the save game changed" is true a few milliseconds before the
+    character records are on disk.  Returns whether it went quiet in time.
+    """
+    deadline = time.time() + timeout
+    last, since = None, time.time()
+    while time.time() < deadline:
+        now = max((p.stat().st_mtime for p in folder.glob("*") if p.is_file()),
+                  default=0.0)
+        if now != last:
+            last, since = now, time.time()
+        elif time.time() - since >= quiet:
+            return True
+        time.sleep(0.1)
+    return False
+
+
+class PoolOfRadiance:
+    """The keystroke protocol of DOS Pool of Radiance, verified by effect.
+
+    Three things about the menus that are worth writing down:
+
+    * **Saving is a camp command.** `ENCAMP` (`e`) from the map, `SAVE` (`s`)
+      in camp, then the slot letter at `SAVE WHICH GAME: A B C ... J`.
+    * **The game offers to quit right after it saves.** `QUIT TO DOS YES NO`
+      appears with the file already written; `n` declines and leaves you in
+      camp, and `Escape` returns to the map.
+    * **The camp menu's EXIT is exit to DOS**, not exit to the map.
+    """
+
+    def __init__(self, session: Session):
+        self.s = session
+        self.world_bar: str | None = None
+        #: The same bar by `Screen.glyphs`, which is what the fight compares
+        #: against.  Kept beside `world_bar` rather than replacing it: the
+        #: world and camp screens are black-papered, where the two agree on
+        #: every bar measured, and the movement and camp paths were proven
+        #: against `ink`.
+        self.world_glyphs: str | None = None
+
+    # -- screen predicates, as digests rather than text ------------------
+
+    def bar(self) -> str:
+        """The command bar, by shape.  See `Screen.ink` for why not by colour."""
+        return self.s.capture().ink(BAR)
+
+    def combat_bar(self) -> str:
+        """The command bar by `Screen.glyphs`, which a fight needs.
+
+        `ink` cannot separate one combat bar from another -- the combat
+        screen's paper is `#555555`, which is above its threshold, so the whole
+        strip reads as lit and every bar hashes the same.  See `Screen.glyphs`.
+        """
+        return self.s.capture().glyphs(BAR)
+
+    def status(self) -> str:
+        """The status line, read only once the whole frame has gone quiet.
+
+        A step that crosses into another area redraws the command bar before
+        it redraws this line -- `move()` returns as soon as the bar is back,
+        so a digest sampled immediately afterwards can still be the departed
+        square's (#341 (A DOS run reports a party that walked into another
+        area as never having walked)).  `settle()` waits for consecutive
+        frames to agree everywhere, not just in `BAR`, so by the time this
+        reads the strip the redraw the bar already promised is actually
+        done.
+        """
+        return self.s.settle().ink(STATUS)
+
+    # -- getting into the game -------------------------------------------
+
+    def to_main_menu(self, timeout: float = 120.0) -> None:
+        """Press past the title screens until the bottom bar stops changing.
+
+        The title sequence is several full-screen pictures, each dismissed by
+        a keypress, ending at `CREATE NEW CHARACTER  ...  LOAD SAVED GAME`.
+        Pressing until two consecutive settled screens agree is what tells us
+        we have arrived without reading a word of it.
+        """
+        deadline = time.time() + timeout
+        last = None
+        stable = 0
+        while time.time() < deadline:
+            self.s.key("Return")
+            d = self.s.settle().digest()
+            if d == last:
+                stable += 1
+                if stable >= 2:
+                    return
+            else:
+                stable = 0
+            last = d
+        raise TimeoutError("never reached the main menu")
+
+    def load_game(self, letter: str, timeout: float = 90.0) -> None:
+        """`LOAD SAVED GAME` -> a slot letter.  Waits for the map to appear.
+
+        The menu lists only the slots that exist -- `LOAD WHICH GAME: A B J` --
+        so asking for a letter with no file leaves the menu up and the wait
+        times out rather than silently continuing.
+        """
+        before = self.s.settle().digest()
+        self.s.key("l")
+        self.s.settle()
+        self.s.key(letter.lower())
+        if not self.s.wait_for(lambda s: s.digest() != before, timeout=timeout):
+            raise TimeoutError(f"slot {letter} never loaded")
+        screen = self.s.settle()
+        self.world_bar = screen.ink(BAR)
+        self.world_glyphs = screen.glyphs(BAR)
+
+    # -- the map ----------------------------------------------------------
+
+    def move(self, key: str, timeout: float = 20.0) -> bool:
+        """Press a movement key and wait for the map's command bar to return.
+
+        **What the key does is the game's business and not this method's.**
+        Indoors the arrows turn the party; outdoors, on the travel grid, the
+        same arrows walk it a square.  This presses the key and waits, and
+        the caller is the one that knows which of those it just asked for --
+        `step`, `turn_left` and `turn_right` are the indoor vocabulary and
+        are wrappers over this.
+
+        Public because outdoors the arrows move the party a square rather
+        than turning it, and `step`/`turn_left`/`turn_right` cannot express a
+        four-direction travel-grid route -- `tools/dos/dosoutdoorprobe.py` needs
+        the raw key (#226 (Two tools reach into tools/dos/dosbox.py's private
+        methods for want of a public seam)).
+
+        A step is not over when the frame stops changing.  **The game blanks the
+        command bar while the party moves** and redraws it a beat later, and
+        the frame is perfectly still in between -- so `settle()` returns on a
+        screen with no bar at all, and a `world` reference taken there is a bar
+        that will never be seen again.  That is what made the second save of a
+        two-save run fail to find its way out of camp.  Waiting for the bar
+        recorded at load time is what makes an action *complete*.
+
+        Returns False when it never came back, which is how a prompt the step
+        walked into -- "DO YOU WANT TO TAKE A BOAT BACK TO PHLAN?" -- is
+        noticed rather than pressed through blindly.
+        """
+        self.s.key(key)
+        self.s.settle()
+        if self.world_bar is None:
+            screen = self.s.capture()
+            self.world_bar = screen.ink(BAR)
+            self.world_glyphs = screen.glyphs(BAR)
+            return True
+        return self.s.wait_until_ink(BAR, self.world_bar, timeout)
+
+    def step(self) -> bool:
+        return self.move("Up")
+
+    def turn_left(self) -> bool:
+        return self.move("Left")
+
+    def turn_right(self) -> bool:
+        return self.move("Right")
+
+    # -- saving, which is the whole point ---------------------------------
+
+    def save_game(self, letter: str, timeout: float = 60.0) -> bytes:
+        """Encamp, save to `letter`, decline the quit, leave camp; return bytes.
+
+        Verified by effect at both ends: the save is not believed until
+        `SAVGAM<letter>.DAT` changes on disk, and camp is not believed to be
+        over until the command bar is the one that was there before encamping.
+        """
+        path = self.s.save_file(letter)
+        was = path.read_bytes() if path.is_file() else None
+
+        world = self.world_bar or self.bar()
+        self.s.key("e")
+        if not self.s.wait_while_ink(BAR, world, timeout):
+            raise TimeoutError("ENCAMP did not open the camp menu")
+        camp = self.s.settle().ink(BAR)
+
+        self.s.key("s")
+        if not self.s.wait_while_ink(BAR, camp, timeout):
+            raise TimeoutError("SAVE did not open the slot list")
+        self.s.settle()
+        self.s.key(letter.lower())
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if path.is_file() and path.read_bytes() != was:
+                break
+            time.sleep(0.3)
+        else:
+            raise TimeoutError(f"{path.name} never changed")
+        # `SAVGAM<slot>.DAT` is not the last file the save writes.  The six
+        # `CHRDAT<slot><n>.SAV` records land 1 to 11 milliseconds *after* it --
+        # measured, on both slots of three runs -- so a caller that reads the
+        # records the moment this returns is racing the game for them.  Nothing
+        # has lost that race yet, and eleven milliseconds is not a margin to
+        # rely on.
+        settle_files(self.s.save_dir, timeout=timeout)
+        data = path.read_bytes()
+
+        self.leave_camp(world)
+        return data
+
+    def leave_camp(self, world: str, tries: int = 12) -> None:
+        """Get back to the map from wherever in camp we are.
+
+        Two screens can be in the way -- the camp menu, which `Escape` leaves,
+        and `QUIT TO DOS YES NO`, which `n` declines -- and telling them apart
+        by digest turned out to be brittle, because the camp bar is captured
+        while "THE PARTY MAKES CAMP..." is still being drawn.  Alternating the
+        two keys needs no such knowledge: `n` is not a command on the map or in
+        the camp menu, and `Escape` backs out of the quit prompt as well.
+        """
+        for _ in range(tries):
+            if self.bar() == world:
+                return
+            was = self.bar()
+            self.s.key("Escape")
+            self.s.settle()
+            if self.bar() == was:
+                self.s.key("n")
+                self.s.settle()
+        self.s.shot("leave_camp_stuck", allow_blank=True)
+        raise TimeoutError("could not get back to the map from camp")
+
+    # -- the fight ---------------------------------------------------------
+    #
+    # Every digest below is `Screen.glyphs(BAR)` -- the bottom text row
+    # reduced to lit and unlit against **its own paper**, so the highlight
+    # colour and the white-then-green recolour are both discarded.
+    #
+    # Not `Screen.ink`, and the difference is this whole section's reason for
+    # existing: the combat screen's paper is `#555555`, above `ink`'s fixed
+    # threshold, so `ink` reads the entire strip as lit and every bar in a
+    # fight hashes to the sha1 of 2240 ones. A driver holding these digests
+    # and computing with `ink` matches the first row against everything --
+    # which is how `QUICK` came to be pressed at `CONTINUE BATTLE : YES NO`,
+    # over and over.  The words beside each one
+    # were read **once, by a person, off the PNG named in the comment**, and
+    # are here so the next reader knows what the number is.  Nothing in this
+    # class ever matches them: a digest cannot be misread, only unequal.
+    #
+    # What would move them: a different `machine=` or `scaler` in the DOSBox
+    # config, or a different release of the game.  Not a different host --
+    # `output=surface` with `scaler=none` is the VGA framebuffer pixel for
+    # pixel, so the same build on any machine hashes the same.  They were
+    # measured on DOSBox 0.74-3, `machine=vga`, `cycles=fixed 20000`, from the
+    # Forgotten Realms Archives Collection Two copy of `POOLRAD`.
+
+    #: How a fight's screens are told apart: the leftmost `width` pixels of the
+    #: bar row, by `Screen.glyphs`, to a label.  Tried in the order written.
+    #:
+    #: **A prefix and not the whole strip, because these bars have variants.**
+    #: What a bar carries depends on who is acting and on what is in front of
+    #: the party: a fighter is offered `MOVE VIEW AIM USE QUICK DONE` and a
+    #: cleric `MOVE VIEW AIM USE CAST TURN QUICK DONE`; goblins are met with
+    #: `COMBAT WAIT FLEE ADVANCE` and orcs, who will talk, with
+    #: `COMBAT WAIT FLEE PARLAY`.  Each of those is a different bar by any
+    #: whole-strip hash, and each one cost a run to a driver holding whole-strip
+    #: hashes.  The words they share come first, because the bar is a
+    #: left-aligned list, so the leftmost pixels are the same for every variant
+    #: and differ from every other bar.
+    #:
+    #: The whole-strip rows come first in the order because a bar caught
+    #: mid-redraw is one flat colour and has to be called `blank` rather than
+    #: matched on a prefix.
+    #:
+    #: **What would move a prefix**: `MOVE` dropping off once a character's
+    #: movement is spent, which no run has yet seen.  `fight()` gives up after a
+    #: minute at a bar it does not know, with a screenshot named for the digest,
+    #: so the day it happens the evidence to add the row is on disk -- which is
+    #: how `claim_treasure` and the PARLAY variant were added.
+    #:
+    #: **`command`'s width is `MOVE VIEW AIM`, not `MOVE VIEW AIM USE`**, since
+    #: `#340 (A level-1 party's combat bar is not in the DOS harness's table, so
+    #: a driven fight stalls for sixty seconds and then fails)`: a level-1
+    #: character with no usable item and no memorised spell draws neither `USE`
+    #: nor `CAST`, so the bar is `MOVE VIEW AIM QUICK DONE` and the 136-pixel
+    #: prefix never matched.  113 pixels is the widest measured shared by both
+    #: -- `cited/dosbox/p114/bar04_02d05064ee41da5f.png`,
+    #: `cited/dosbox/p114/command-bar-with-cast.png` and the level-1 screenshot
+    #: at `cited/52/crops/stuck.ppm` all agree up to column 113 and diverge
+    #: at 114.
+    COMBAT_BARS: tuple[tuple[int, str, str], ...] = (
+        # The bar row in one flat colour, caught mid-redraw.  The C64 side
+        # called one of these the end of a turn and starved a fight of them.
+        # cited/dosbox/p114/bar02_f399fe870112b71a.png
+        (320, "f399fe870112b71a", "blank"),
+        # `A BATTLE BEGINS...` -- a message occupying the bar row, not a bar.
+        # It is what a *surprised* encounter shows instead of the menu.
+        # cited/dosbox/p114/bar03_e5b3317d2142242d.png
+        (320, "e5b3317d2142242d", "message"),
+        # `CONTINUE BATTLE : YES NO`, asked once the fight can be called off.
+        # cited/dosbox/p114/continue-battle.png
+        (320, "c545a9ecbcaa33dc", "continue_battle"),
+        # `PRESS <ENTER>/<RETURN> TO CONTINUE`, under `THE PARTY HAS WON.  EACH
+        # CHARACTER RECEIVES 8 EXPERIENCE POINTS.`
+        # cited/dosbox/p114/bar05_f1672ba1064bf2b1.png
+        (320, "f1672ba1064bf2b1", "press_return"),
+        # `VIEW TAKE POOL SHARE EXIT` -- the treasure the fight left behind.
+        # The fight is not over here, and a driver that stopped at the win
+        # message would leave the party at this prompt for ever.
+        # cited/dosbox/p114/bar06_39afdcc0f8704784.png
+        (320, "39afdcc0f8704784", "treasure"),
+        # `YES NO`, under `THERE IS STILL TREASURE LEFT.  DO YOU WANT TO GO
+        # BACK AND CLAIM YOUR TREASURE?`, asked because the driver leaves the
+        # treasure where it lies.  cited/dosbox/p114/claim-treasure.png
+        (320, "c576b6838d2e460b", "claim_treasure"),
+        # `COMBAT WAIT FLEE` -- the first sixteen of every encounter menu.
+        # cited/dosbox/p114/bar01_327fcbaaeb46c2fb.png and
+        # cited/dosbox/p114/encounter-with-parlay.png
+        (128, "dbac174b6033b5e9", "encounter"),
+        # `MOVE VIEW AIM` -- shared by every character's turn, however much of
+        # `USE CAST TURN QUICK DONE` the acting character is offered (#340).
+        # cited/dosbox/p114/bar04_02d05064ee41da5f.png,
+        # cited/dosbox/p114/command-bar-with-cast.png and
+        # cited/52/crops/stuck.ppm (a level-1 party, `USE` never drawn).
+        (113, "fc8f7441fc1419de", "command"),
+    )
+
+    #: What to press at each label.  A label with no key here is a screen the
+    #: driver watches and does not touch.
+    COMBAT_KEYS: dict[str, str] = {
+        "encounter": "c",       # COMBAT.  `q`, `Return`, `Escape`, `e` and `n`
+                                # were each pressed at this menu for eight
+                                # seconds and none of them moved it, so it
+                                # takes first letters only.
+        "command": "q",         # QUICK
+        "continue_battle": "n",  # NO.  The party has already won by the time
+                                # this is asked; YES would start another round
+                                # against whatever is left standing.
+        "claim_treasure": "n",  # NO, which is the answer that matches EXIT
+                                # below.  Saying yes would go back to a screen
+                                # the driver has just declined.
+        "press_return": "Return",
+        "treasure": "e",        # EXIT.  Nothing is taken: the party's items
+                                # are not what any of this is measuring, and
+                                # TAKE would change a record the diff reads.
+        # `message` and `blank` carry no commands, so they get no key and the
+        # driver waits them out.
+    }
+
+    def bar_kind(self, screen: Screen | None = None) -> str | None:
+        """What the bar on this frame is, or None for one we have not seen.
+
+        In the order `COMBAT_BARS` is written, which is whole-strip rows
+        before prefixes: a bar that is one flat colour has a flat prefix too
+        and must be called `blank` rather than a command bar.
+        """
+        screen = screen if screen is not None else self.s.capture()
+        for width, digest, label in self.COMBAT_BARS:
+            if screen.glyphs((BAR[0], BAR[1], width, BAR[3])) == digest:
+                return label
+        return None
+
+    def in_combat(self) -> bool:
+        """Whether the screen is one of the fight's own command bars."""
+        return self.bar_kind() is not None
+
+    def fight(self, budget: float = 900.0, settled: float = 4.0,
+              dwell: float = 1.5, patience: float = 60.0) -> bool:
+        """Answer an encounter and press the fight to its end.
+
+        Returns True only when the world command bar recorded at load time
+        came back and stayed `settled` seconds; False, with a screenshot, when
+        the budget ran out.  It never returns True off a screen it merely
+        stopped seeing.
+
+        **Nothing here waits for the picture to hold still.**  It does not: the
+        left panel animates on its own -- 165 pixels of the treasure chest
+        moved between eight consecutive captures with no key pressed and
+        nobody acting -- so `settle()` inside a fight is a wait that never
+        ends, and "the frame has not changed for N seconds" is a condition
+        that never comes true.  That is the blink hazard, measured rather than
+        assumed.
+
+        **The bar cannot say a turn passed either.**  Every character's turn
+        shows the same `MOVE VIEW AIM USE QUICK DONE`, so its ink is identical
+        from one turn to the next.  So a press is not confirmed by effect at
+        all; it is *rate limited* instead -- one key, then the bar is watched
+        for `dwell` seconds and the loop goes round whether it moved or not.
+        That is safe because of the rule below.
+
+        **A bar we do not recognise is pressed at not at all.**  It is a
+        monster's turn, an animation, `A BATTLE BEGINS...`, or a screen nobody
+        has labelled.  Every key this sends therefore lands on a bar that
+        carries it, so a repeat is at worst the same command given twice at
+        the same kind of screen -- `QUICK` to the next character in the queue.
+        The C64 side measured what the other policy costs: asking a bar for a
+        word that is not on it spins to the full timeout, 441 of 605 seconds
+        of one fight.
+
+        This does not read a word off the screen and it cannot say whether the
+        party *fought*.  Only the files say that, and only experience does:
+        `tools/dos/dosfightrun.py`'s `fought()`.
+        """
+        if self.world_glyphs is None:
+            raise RuntimeError("fight() needs the world bar load_game recorded")
+        deadline = time.time() + budget
+        world_since: float | None = None
+        unknown_since: float | None = None
+        while time.time() < deadline:
+            screen = self.s.capture()
+            bar = screen.glyphs(BAR)
+            if bar == self.world_glyphs:
+                world_since = world_since or time.time()
+                if time.time() - world_since >= settled:
+                    return True
+                time.sleep(0.25)
+                continue
+            world_since = None
+            key = self.COMBAT_KEYS.get(self.bar_kind(screen) or "")
+            if key is None:
+                # A monster's turn or an animation passes in a second or two.
+                # A bar nobody has labelled does not, and standing at one until
+                # the budget runs out throws away the evidence needed to add
+                # it -- so give up early and name the screenshot for the
+                # digest, which is what the next reader has to look up.
+                unknown_since = unknown_since or time.time()
+                if time.time() - unknown_since >= patience:
+                    self.s.shot(f"fight_unknown_bar_{bar}", allow_blank=True)
+                    return False
+                time.sleep(0.25)
+                continue
+            unknown_since = None
+            self.s.key(key)
+            self.s.wait_while_glyphs(BAR, bar, timeout=dwell)
+        self.s.shot("fight_stuck", allow_blank=True)
+        return False
+
+
+class Camp:
+    """DOS Curse's `ENCAMP > MAGIC` screens, once the world map is showing.
+
+    Reached from the map the same way `curseregain.py`'s own run reaches
+    the roster menu -- `PoolOfRadiance.to_main_menu`/`load_game` boot Curse
+    as well as Pool of Radiance -- so this drives only the one screen
+    family neither of those already covers: the spell list a magic-using
+    class memorizes from.
+    """
+
+    #: `PICK A SPELL TO MEMORIZE`'s list, x clear of the border columns
+    #: Curse draws down each side, y spanning its eleven 8px rows.  Measured
+    #: off `024-paladin_book.png` and `027-paladin_next.png`
+    #: (`#551`'s live-boot comment) and confirmed against a live `End`/`Home`
+    #: walk in `cited/555/highlight-findings.md` (#555).
+    GRIMOIRE_LIST = (16, 40, 288, 88)
+
+    def __init__(self, session: Session):
+        self.s = session
+
+    def memorize(self, row: int, page: int = 0, timeout: float = 20.0) -> int:
+        """From `ENCAMP > MAGIC > MEMORIZE`, memorize the grimoire's `row`th spell.
+
+        Presses `LIST_PAGE_DOWN` `page` times to turn to the wanted page,
+        walks the highlight onto `row` (`Session.walk_highlight`, driven by
+        where the highlight actually is -- the grimoire can open with it
+        already on the page's last row rather than row 0, measured at
+        #551/#555), then confirms with `Return`, which is the key the issue
+        confirmed fires on whichever entry is highlighted. Returns the row
+        actually reached, so a caller can check it against `row` instead of
+        trusting the walk blindly.
+
+        Raises `TimeoutError` when the highlight never reaches `row` --
+        this must never be swallowed into pressing `Return` on whatever was
+        already highlighted, which is the exact failure #555 exists to fix.
+
+        **`page=0` (the default) is what #555's own driven proof exercised**
+        -- moving the highlight to a non-default row on the page the
+        grimoire opens on, memorizing it, and reading the id back out of a
+        saved record. **`page > 0` is not proven and measured flaky**: two
+        driven attempts at `page=1` both landed back on page 0 with nothing
+        memorized. `Session.walk_highlight` reads a *physical screen row*,
+        and whether pressing `LIST_PAGE_DOWN` keeps the highlight on the
+        same logical spell (now drawn at a different row) or resets it to
+        the new page's own last row turned out to depend on whether the
+        highlight had already been moved by an `End` press before the page
+        turn -- and in the reset case, `End` was seen to cross back over
+        the page boundary on its own, so `walk_highlight` can report
+        `reached == row` while `row` names a different spell than the one
+        asked for. Untangling that is `#574 (Camp.memorize's page-turn
+        landing is stateful and not proven for page > 0)`. Prefer `page=0`
+        until that closes.
+        """
+        for _ in range(page):
+            self.s.key(LIST_PAGE_DOWN)
+            self.s.settle(quiet=0.5, timeout=timeout)
+        reached = self.s.walk_highlight(self.GRIMOIRE_LIST, row, timeout=timeout)
+        if reached != row:
+            raise TimeoutError(
+                f"the grimoire highlight never reached row {row} "
+                f"(reached {reached!r})")
+        self.s.key("Return")
+        self.s.settle(quiet=0.6, timeout=timeout)
+        return reached
+
+
+# --------------------------------------------------------------------------
+# The obstacle-2 experiment
+# --------------------------------------------------------------------------
+
+
+def one_step(
+    load: str = "A", before: str = "C", after: str = "D", turns: int = 0
+) -> dict:
+    """Save, act, save again, and diff -- the whole evidence for obstacle 2.
+
+    `turns` right turns before the step, so the party is aimed somewhere it can
+    actually go.  Returns the two squares, the two areas, and the byte offsets
+    that moved in the parts of the file where an answer can live.
+    """
+    with claim("one_step") as slot:
+        with Session(slot, find_game()) as s:
+            por = PoolOfRadiance(s)
+            por.to_main_menu()
+            por.load_game(load)
+            a = por.save_game(before)
+            for _ in range(turns):
+                por.turn_right()
+            por.step()
+            b = por.save_game(after)
+    changed = [i for i in range(len(a)) if a[i] != b[i]]
+    # The dense tail from 5121 on is the loaded area's ECL text and scratch:
+    # hundreds of bytes move on any action and none of it is party state.  The
+    # word array and the state struct after it are where an answer can live.
+    return {
+        "before": position(a),
+        "after": position(b),
+        "area_file": (a[0], b[0]),
+        "area_id": (geo_block(a), geo_block(b)),
+        "changed_in_array": [i for i in changed if i < 5121],
+        "changed_in_struct": [i for i in changed if i >= 12550],
+        "changed_total": len(changed),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument(
+        "command", choices=("check", "one-step"), help="check tools, or run the diff"
+    )
+    ap.add_argument("--load", default="A")
+    ap.add_argument("--turns", type=int, default=0)
+    args = ap.parse_args(argv)
+    if args.command == "check":
+        absent = missing_tools()
+        print("tools missing:", ", ".join(absent) if absent else "none")
+        try:
+            print("game:", find_game())
+        except FileNotFoundError as e:
+            print("game:", e)
+        return 1 if absent else 0
+    import pprint
+
+    pprint.pprint(one_step(load=args.load, turns=args.turns))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

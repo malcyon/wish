@@ -266,7 +266,7 @@ def _effect(effect_id: int, duration: int = 0, value: int = 0xFF) -> bytes:
 
 def test_a_permanent_item_granted_effect_is_converted_whole():
     """A Ring of Fire Resistance, id 61, at duration zero -- the shape the
-    engine wrote in front of `tools/dosspcexpiry.py` and the shape CONJURER
+    engine wrote in front of `tools/dos/dosspcexpiry.py` and the shape CONJURER
     carries on the Amiga -- reaches `granted_effects` with all five of its
     meaning-bearing bytes, and comes back out of the writer as the same
     record.
@@ -577,7 +577,7 @@ def _item_granted_specimen():
     effect byte 61 and power byte `0x80` in a staged copy of the shipped
     party, readied through the game's own `VIEW > ITEMS > READY`, and the
     party saved to slot D **by the game**, which is what wrote the `.SPC`.
-    `tools/dosspcexpiry.py ready` regenerates it in about five minutes.
+    `tools/dos/dosspcexpiry.py ready` regenerates it in about five minutes.
 
     Staging the item's two bytes and then reading what the engine computed
     from them is the experiment `.claude/rules/testing.md` calls valid: the
@@ -611,7 +611,7 @@ def test_the_engines_own_item_granted_record_survives_the_round_trip():
     path = _item_granted_specimen()
     if path is None:
         pytest.skip("no por-item-granted specimen; "
-                    "tools/dosspcexpiry.py ready makes one")
+                    "tools/dos/dosspcexpiry.py ready makes one")
     char = dos_codec.read_character(path)
     nodes = [bytes(e) for e in char.effects]
     ring = [e for e in nodes if e[0] == 61]
@@ -1252,7 +1252,7 @@ def test_the_archives_hold_the_share_byte_the_writer_writes():
 @pytest.mark.skipif(
     not (have_specimen("por-304-modify-exited")
          and have_specimen("por-304-modify-kept")),
-    reason="needs the #304 MODIFY CHARACTER pair; see tools/dosmodifyprobe.py")
+    reason="needs the #304 MODIFY CHARACTER pair; see tools/dos/dosmodifyprobe.py")
 def test_keeping_a_character_out_of_modify_sets_the_share_byte():
     """`#304 (field_83_87 is written as a constant that the characters we
     rolled ourselves do not hold)` settled in the running game rather than in
@@ -1260,7 +1260,7 @@ def test_keeping_a_character_out_of_modify_sets_the_share_byte():
 
     Two human fighters rolled from CREATE NEW CHARACTER, added to the party
     and saved; MODIFY CHARACTER opened on the second and left by **EXIT**,
-    saved; opened again and left by **KEEP**, saved. `tools/dosmodifyprobe.py`
+    saved; opened again and left by **KEEP**, saved. `tools/dos/dosmodifyprobe.py`
     drove it and `tests/gamedata.py` re-hashes both saves before this reads
     them.
 
@@ -1312,7 +1312,7 @@ def test_two_characters_of_the_same_name_get_different_identity_bytes():
     **and** this byte, so two converted characters sharing a name were the
     same character to it and the second was silently refused -- no message,
     the entry starred as though added, the roster simply not gaining a line.
-    Measured in a driven DOSBox session by `tools/dosaddchar.py`.
+    Measured in a driven DOSBox session by `tools/dos/dosaddchar.py`.
 
     `unnamed_0ab` is in `WRITE_DERIVED`, so every round-trip comparison masks
     it out.  That is correct and it means **no round-trip test can catch this
@@ -2506,7 +2506,7 @@ def test_the_script_scratch_is_the_c64s_and_not_the_templates(tmp_path):
 # tests of the other shape: 13137 zero bytes, and every one of them written
 # from the C64 party, written to a measured constant, or written zero with the
 # reason it is nobody's.  The proof that the zeroes are survivable is not here
-# -- it is `tools/dosnewsave.py`, whose party loads, walks, changes area and
+# -- it is `tools/dos/dosnewsave.py`, whose party loads, walks, changes area and
 # is saved back by the engine's own ENCAMP > SAVE.
 
 

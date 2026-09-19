@@ -298,7 +298,7 @@ def dos(args) -> int:
     """
     import shutil  # noqa: PLC0415
 
-    from tools import dosbox  # noqa: PLC0415
+    from tools.dos import dosbox  # noqa: PLC0415
 
     party = pathlib.Path(args.party)
     out = pathlib.Path(args.out)

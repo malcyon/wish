@@ -7,7 +7,7 @@ it towards that record having been edited.  `#323 (The encumbrance identity
 does not survive the training fee, so failing it is not evidence of an edited
 record)` is the ticket that doubts it, and this is the sweep behind the answer.
 
-`tools/dosencumbrance.py` already prints both sides of the sum for one DOS
+`tools/dos/dosencumbrance.py` already prints both sides of the sum for one DOS
 directory and sweeps the same DOS records.  This tool asks the wider question
 the rule file rests on, and asks it of the whole machine:
 
@@ -58,12 +58,12 @@ sys.path.insert(0, str(ROOT))
 from goldbox import amiga_later, amiga_por, amiga_port, amiga_savegame  # noqa: E402
 from goldbox import dos_codec as gdos  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
-from tools import (  # noqa: E402
-    dostailcensus,
-)
 from tools.amiga import (  # noqa: E402
     amigarecords,
     amigasaves,
+)
+from tools.dos import (  # noqa: E402
+    dostailcensus,
 )
 
 #: How a record is graded, by where it was found, strongest claim first.  A
@@ -149,8 +149,8 @@ def _carried(items) -> int:
 def dos_roots() -> list[pathlib.Path]:
     """The specimen tree, the archives and the played DOS game directory.
 
-    `tools/dostailcensus.py`'s own list, so every DOS census on this machine
-    covers the same corpus (#575).  `tools/dosencrecompute.py` calls this.
+    `tools/dos/dostailcensus.py`'s own list, so every DOS census on this machine
+    covers the same corpus (#575).  `tools/dos/dosencrecompute.py` calls this.
     """
     return dostailcensus.dos_record_roots()
 
@@ -158,7 +158,7 @@ def dos_roots() -> list[pathlib.Path]:
 def dos_rows(roots=None, want_built: bool = True):
     """Every distinct DOS record, read **with its item file**.
 
-    `tools/dostailcensus.py`'s finder deduplicates on the record bytes alone,
+    `tools/dos/dostailcensus.py`'s finder deduplicates on the record bytes alone,
     which is right for a field census and wrong here: the identity's other
     term is a sibling file, so two records with the same bytes and different
     `.ITM` files are two specimens.  So this walks the same roots with the

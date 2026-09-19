@@ -1,4 +1,4 @@
-"""`tools.dosbox.judge_step` and `run_walked`: telling a walk from a wall
+"""`tools.dos.dosbox.judge_step` and `run_walked`: telling a walk from a wall
 from a driver that pressed nothing (#341 (A DOS run reports a party that
 walked into another area as never having walked)).
 
@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import dosbox  # noqa: E402
+from tools.dos import dosbox  # noqa: E402
 
 
 def describe(area: int, x: int, y: int, facing: int) -> dict:

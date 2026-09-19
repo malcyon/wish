@@ -1,8 +1,8 @@
-"""`tools/dosdropcensus.py`'s `0x0E6` column (#284).
+"""`tools/dos/dosdropcensus.py`'s `0x0E6` column (#284).
 
 `goldbox/dos_port.py` renamed that byte from `gap_0e6` to `former_level` as
 part of `#256 (The neutral record has nowhere to put a dual-classed
-character's former levels)`, and `tools/dosdropcensus.py` kept the old name in
+character's former levels)`, and `tools/dos/dosdropcensus.py` kept the old name in
 its lookup, so the column silently degraded to `-` for every record.
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 import pathlib
 
 from goldbox import dos_port
-from tools import dosdropcensus, dostailcensus
+from tools.dos import dosdropcensus, dostailcensus
 
 CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
 POR = dos_port.POOL_OF_RADIANCE

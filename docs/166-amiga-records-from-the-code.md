@@ -114,7 +114,7 @@ The sixth byte of each Amiga array — spell level 6 — has no DOS counterpart.
 A second binary agrees: `/Secret`'s Curse-import routine at `0x26F64` reads a
 Curse record's arrays at exactly `0x12E`, `0x134` and `0x13A`.
 
-**The DOS side is five, from DOS's own code.** `tools/dosspellslots.py sites
+**The DOS side is five, from DOS's own code.** `tools/dos/dosspellslots.py sites
 --game CURSE` finds three `FillChar(record + 0x12D, 15, 0)` in Curse's
 `GAME.OVR` — 15 = 3 × 5 — which is the same evidence
 [`164-ssb-spell-slot-block.md`](164-ssb-spell-slot-block.md) used for Silver

@@ -1,4 +1,4 @@
-"""`tools/dospod.py`, the Pools of Darkness drive (#175).
+"""`tools/dos/dospod.py`, the Pools of Darkness drive (#175).
 
 Driving the game needs DOSBox, an X display and about a minute a boot, so
 what is tested here is the part that decides what a run *does* -- the step
@@ -16,7 +16,7 @@ import pytest
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import dospod  # noqa: E402
+from tools.dos import dospod  # noqa: E402
 
 # --- the step grammar --------------------------------------------------------
 

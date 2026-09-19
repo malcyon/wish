@@ -39,7 +39,7 @@ the running game, six crossings, each ability crossed both ways.
 
 The record is reached through a far pointer, so the compiler emits
 `es:[di+<record offset>]` and a displacement *is* a record offset. Offsets
-below are into Curse's shipped `GAME.OVR`; `tools/dosabilitypair.py sites`
+below are into Curse's shipped `GAME.OVR`; `tools/dos/dosabilitypair.py sites`
 finds the same six signatures in Silver Blades, Pools of Darkness, Gateway to
 the Savage Frontier and Treasures of the Savage Frontier, and in none of Pool
 of Radiance.
@@ -95,9 +95,9 @@ moves the byte in force and leaves the permanent one alone -- and
 
 DOSBox, one boot, 2026-09-07.
 `~/wish-specimens/coab-dos/WISH-SPEC-curse-52-dialog-converted-resave` staged
-by `tools/dosabilitypair.py stage` so that one pair per character disagrees,
+by `tools/dos/dosabilitypair.py stage` so that one pair per character disagrees,
 loaded through DOS Curse's own `LOAD SAVED GAME`, and every sheet photographed
-by `tools/dossheetread.py`.
+by `tools/dos/dossheetread.py`.
 
 | who | pair staged | lower / higher | the sheet drew |
 |---|---|---|---|
@@ -175,6 +175,6 @@ evidence.
 
 ## The tools
 
-`tools/dosabilitypair.py` -- `sites`, `census`, `read`, `stage`.
-`tools/c64/abilitypair.py` is the C64 one. `tools/dossheetread.py` boots a staged
+`tools/dos/dosabilitypair.py` -- `sites`, `census`, `read`, `stage`.
+`tools/c64/abilitypair.py` is the C64 one. `tools/dos/dossheetread.py` boots a staged
 save and photographs every sheet.

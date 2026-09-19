@@ -203,7 +203,7 @@ POD_PARTY_COUNT = 32         # file 31: the save loop's bound, `es:[di + 0x1f]`
 #: not -- and `GetVar` index 17 halves the facing only when it is set.
 POD_IN_DUNGEON = 34
 POD_WILDERNESS_REGION = 58   # file 57, indexed into a table at `DS:0x7D08`
-#: The last variable the engine itself names.  `tools/dosptrfields.py` finds
+#: The last variable the engine itself names.  `tools/dos/dosptrfields.py` finds
 #: displacements 0-58 and 195-197 off the block pointer and nothing else, so
 #: variables 1-59 and 196-198 are the engine's and every other index is
 #: whatever an `ECL1.DAX` script chooses to put there.
@@ -239,7 +239,7 @@ POD_MODE_WILDERNESS, POD_MODE_DUNGEON = 3, 4
 #: Curse A/B, Silver Blades A/B and Pools of Darkness A/B -- deduplicated on
 #: their bytes, because the archives ship most save directories twice and for
 #: three of the four titles the copies are identical.
-#: `tools/dossavgam.py` is what surveys them and `docs/141-dos-savegame.md`
+#: `tools/dos/dossavgam.py` is what surveys them and `docs/141-dos-savegame.md`
 #: is the prose.
 @dataclasses.dataclass(frozen=True)
 class DosContainer:
@@ -1001,7 +1001,7 @@ def encounter_text(save: bytes, limit: int = 96) -> str:
 #: coded: a lead byte under 128 copies the next `n + 1` bytes, one at or above
 #: it repeats the next byte `256 - n` times.
 #:
-#: **One copy, here** (#76).  `tools/dosbox.py` carried a second and re-exports
+#: **One copy, here** (#76).  `tools/dos/dosbox.py` carried a second and re-exports
 #: this one; a retarget needs one ECL block out of the player's own archive and
 #: `goldbox/` may not import from `tools/`, so the shared copy has to be this side
 #: of the edge.
@@ -1146,7 +1146,7 @@ def put_position(save: bytearray, x: int, y: int, facing: int,
 #: all four shipped stubs, which are saves the engine loads and plays from
 #: -- `#113` drove the shipped Curse party out of its inn -- and in the
 #: Silver Blades container `WISH-SPEC-ssb-234-party-pair` slot D, which
-#: `tools/dossheetread.py` loaded for `#299`'s record proof.  The played
+#: `tools/dos/dossheetread.py` loaded for `#299`'s record proof.  The played
 #: values vary between two saves of the same party on the same square (4/2,
 #: 2/0 and 0/0 across three Silver Blades saves at (3,12)), so they are the
 #: menu the save was made from rather than anything the party carries.

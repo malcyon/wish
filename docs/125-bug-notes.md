@@ -476,7 +476,7 @@ Blades'. The one money-moving screen that does call it is the gem and jewel
 appraise screen, which decrements the count (`0x0268F0` and `0x026B7D` in
 Pool of Radiance, `0x02D87F`/`0x02DB0F` in Curse, `0x035671`/`0x03591A` in
 Silver Blades) and rebuilds the total on its way out.
-`tools/dosencrecompute.py callers` re-takes all of it.
+`tools/dos/dosencrecompute.py callers` re-takes all of it.
 
 **The evidence.** Four measurements in a driven DOS session, on MATHEW of the
 Curse party from `#113 (Play DOS Curse far enough to save a party with
@@ -802,7 +802,7 @@ carrying, so the character is `Overloaded` at a weight Pool of Radiance would
 have let pass, with no message saying why, because
 `docs/173-carrying-limits.md` shows the refusal is one flag carrying two
 tests. **That sentence is the code read aloud rather than anything observed**:
-`tools/dosencrecompute.py bags` finds no such item in 6497 items across 2965
+`tools/dos/dosencrecompute.py bags` finds no such item in 6497 items across 2965
 record files, and nobody has checked whether Curse's own treasure tables ever
 hand one out. Until somebody does, this is a bug in the sense that the code
 cannot do what it was written to do, not in the sense that a player has met
@@ -825,14 +825,14 @@ it can never take is a defect a player can hit.
 
 **What is not established.** Whether Curse's treasure and shop tables actually
 hand one out, which the name table's entry allows but does not prove. **No DOS
-record on this machine carries one**: `tools/dosencrecompute.py bags` walked
+record on this machine carries one**: `tools/dos/dosencrecompute.py bags` walked
 2965 record files and 6497 items, 3494 of them readied, and 186 is not among
 the 69 distinct name words in use. What would settle it: a sweep of Curse's
 `ITEM1`-`ITEM8` treasure files for a record whose name words include 186.
 
 **Version.** Pool of Radiance live, Curse of the Azure Bonds dead, Silver
 Blades and Pools of Darkness absent; DOS. CONFIRMED from the code in all four
--- `tools/dosencrecompute.py routine` re-derives the three states, and
+-- `tools/dos/dosencrecompute.py routine` re-derives the three states, and
 `tests/test_dosencrecompute.py` pins each. `#323 (The encumbrance identity does
 not survive the training fee, so failing it is not evidence of an edited
 record)`.

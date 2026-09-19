@@ -1,4 +1,4 @@
-"""The seed `tools/dosoutdoor.py` plants before the DOS engine resaves it.
+"""The seed `tools/dos/dosoutdoor.py` plants before the DOS engine resaves it.
 
 The tool's *output* is a specimen the DOS engine wrote and cannot be tested
 here -- it takes DOSBox, a private X display and about ninety seconds.  What
@@ -28,7 +28,7 @@ from test_dossave import _save_dir, needs_dos_saves
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools import dosoutdoor  # noqa: E402
+from tools.dos import dosoutdoor  # noqa: E402
 
 #: A script of the right shape and none of the game's bytes: `retarget` copies
 #: it into the ECL buffer from byte 2 on, so what matters here is the header

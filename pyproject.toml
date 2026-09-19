@@ -17,7 +17,7 @@ dependencies = ["pyyaml>=6.0"]
 # without them. Both were installed by hand in the `.venv` and never declared,
 # so rebuilding the environment from this file gave seven failures nobody
 # could explain (2026-09-11). `capstone` disassembles for
-# `tools/amiga/amiga68k.py` and `tools/dosdis16.py`; `pillow` draws for
+# `tools/amiga/amiga68k.py` and `tools/dos/dosdis16.py`; `pillow` draws for
 # `tools/iconproposal.py` and fifteen others.
 #
 # **`numpy` is deliberately absent**, and adding it here would reverse a

@@ -97,7 +97,7 @@ Mail +2, Long Sword +2, this ring, Shield +1 and four two-spell clerical
 scrolls. Two independent DOS installs (`/home/donald/dos_por_play/` and the copy
 in the Forgotten Realms archives) have byte-identical `ITEM4.DAX`.
 
-Stronger still: `tools.dosbox.item_to_c64` applied to the DOS ring produces
+Stronger still: `tools.dos.dosbox.item_to_c64` applied to the DOS ring produces
 `ITEMFILE1D`'s sixteen bytes exactly, and the count of C64 records the DOS
 projection reproduces byte for byte rose from 157 to 159 when the reader started
 preferring the working copy (`tests/test_dosbox.py`). **CONFIRMED.**

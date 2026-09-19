@@ -158,7 +158,7 @@ RACE_NUMBERS = (
 #: game's own joke, and `tribble` is what the executable says.
 #:
 #: CONFIRMED, read two independent ways and cross-checked against the records
-#: (#237).  `tools/dosraces.py` reads it out of `START.EXE`, where the eight
+#: (#237).  `tools/dos/dosraces.py` reads it out of `START.EXE`, where the eight
 #: entries are counted strings on a stride of 9 beginning at file
 #: offset 0x00E721, bounded above by the eighteenth class name and below
 #: by the alignment table's `Lawful Good`; Gold Box Companion's
@@ -269,7 +269,7 @@ _DECLARED: Sequence[Field] = (
        "17 in her higher byte rather than the 9 in her lower one. The same "
        "signatures are in Silver Blades, Pools of Darkness and both Savage "
        "Frontier games, and in none of Pool of Radiance, which has no pairs. "
-       "`tools/dosabilitypair.py sites` finds them"),
+       "`tools/dos/dosabilitypair.py sites` finds them"),
     _f(0x011, 1, _U8, "intelligence", "INT", _OK),
     _f(0x012, 1, _U8, "wisdom", "WIS", _OK),
     _f(0x013, 1, _U8, "dexterity", "DEX", _OK),
@@ -648,7 +648,7 @@ _DECLARED: Sequence[Field] = (
        "own 0x143. Elsewhere the same overlay stores **12** here around a "
        "far call and puts the old value back, and stores **255** and "
        "**10**: no marching position in a six-character party is ever 10, "
-       "12 or 255. `tools/dosbyteimm.py <GAME.OVR> --offset 0x0BF` is the "
+       "12 or 255. `tools/dos/dosbyteimm.py <GAME.OVR> --offset 0x0BF` is the "
        "scan.\n"
        "**Why 0-5 in file order was never evidence either way.** The "
        "engine's LOAD SAVED GAME walks the six saved filenames in order and "
@@ -1288,7 +1288,7 @@ SECRET_OF_THE_SILVER_BLADES = DosDeltas(
 #: field of this title's record still unlocated (#462).  So the conversion
 #: copies the byte across untouched, exactly as it did before #527, rather
 #: than writing a number derived from a rule invented for it.  The
-#: experiment that would settle it is `tools/dosfieldrefs.py` over this
+#: experiment that would settle it is `tools/dos/dosfieldrefs.py` over this
 #: title's own `GAME.OVR` for each candidate displacement: the offset the
 #: engine's own combat code reads is the field.
 POOLS_OF_DARKNESS = DosDeltas(

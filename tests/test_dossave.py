@@ -204,7 +204,7 @@ CLEAN_ROLLS = ("gnomf1", "gnomt2", "gnomft3", "dwarfc4", "halfl5", "elf6",
                "human7", "halfe8")
 
 #: The two states of the training run. Their experience, gold and encumbrance
-#: went in as *ours* -- `tools/dostrainprobe.py`'s `install` writes all three --
+#: went in as *ours* -- `tools/dos/dostrainprobe.py`'s `install` writes all three --
 #: so nothing money-shaped in them is the game's arithmetic. Everything the
 #: trainer itself wrote is: level, the per-class levels, hit points, the spell
 #: slots, and the experience it left behind.
@@ -626,7 +626,7 @@ def test_the_stored_encumbrance_is_one_debit_behind_after_the_trainer_charges():
 
     The differential is inside one specimen pair. Both runs went in with the
     same poked 20000 gold and matching encumbrance -- ours, written by
-    `tools/dostrainprobe.py`, so no reading here is of a number we wrote. In
+    `tools/dos/dostrainprobe.py`, so no reading here is of a number we wrote. In
     `WISH-SPEC-por-party-trained-c2` the clerics' school trained WISHCLE and
     WISHHEL and took 1000 gold from each: those two come out at +1000 and the
     four it never touched at 0. In `WISH-SPEC-por-train-clamp`, where TRAIN
@@ -1080,7 +1080,7 @@ def test_silver_blades_items_are_67_bytes_in_a_stf_file(tmp_path):
 # `ITEMS > JOIN` hangs a bundle's sub-scrolls off a far pointer at item offset
 # 0x03F and writes them into the .STF inline; item_count counts head items
 # only (#432). Composed from the documented format -- no save on this machine
-# carries one, per `tools/dosscrollbundle.py census`.
+# carries one, per `tools/dos/dosscrollbundle.py census`.
 
 def _synthetic_joined_scroll_bundle() -> bytearray:
     """A bundle of two, then a Plate Mail the naive slice would lose.

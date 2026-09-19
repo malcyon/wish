@@ -1,4 +1,4 @@
-"""`tools/dosgnome.py`, the DOS character-creation drive (#84).
+"""`tools/dos/dosgnome.py`, the DOS character-creation drive (#84).
 
 Driving the game needs DOSBox, an X display and about a minute a boot, so what
 is tested here is the part that decides what a run *does* -- the step grammar
@@ -28,7 +28,7 @@ from gamedata import needs_specimens, specimen
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import dosgnome  # noqa: E402
+from tools.dos import dosgnome  # noqa: E402
 
 #: Specimen -> the effect ids the engine wrote into that character's `.SPC`
 #: at creation.  One per race, from #84's eight rolls: the gnome's 18 and 48

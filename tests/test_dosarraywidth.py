@@ -1,4 +1,4 @@
-"""`tools/dosarraywidth.py`'s `LOOKBACK` window, and the one field it settled.
+"""`tools/dos/dosarraywidth.py`'s `LOOKBACK` window, and the one field it settled.
 
 `#516 (Generate boundary characters and check every writer's field widths,
 since no real save reaches a limit and the corpus cannot find a wrong one)`'s
@@ -11,7 +11,7 @@ function that ends `retf 4` at `0x02ac33`, not the one at the measured site,
 
 import pytest
 
-from tools import dosarraywidth
+from tools.dos import dosarraywidth
 
 
 def test_a_retf_between_the_guard_and_the_site_is_excluded():

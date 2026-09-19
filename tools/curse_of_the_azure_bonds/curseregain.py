@@ -58,8 +58,9 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
-from tools import dosbox, scratch  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools.c64.dualclassagain import install  # noqa: E402
+from tools.dos import dosbox  # noqa: E402
 
 #: What to write at `SAVGAM<slot>.DAT+0xD51`.  The low byte is ANDed with the
 #: per-class bit table at `DS:0x3EAA` to decide which classes this school

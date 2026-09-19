@@ -5,10 +5,10 @@ watchpoints, breakpoints, registers and single-stepping on a running game.
 **It can be driven unattended.** The debugger is an ncurses program with no
 socket and no command file, but its input is the process's own terminal and its
 output goes to a host log file, so a pty on one end and a log tail on the other
-make it scriptable — the same shape as `tools/dosbox.py`'s keystrokes-in,
+make it scriptable — the same shape as `tools/dos/dosbox.py`'s keystrokes-in,
 files-out, and nothing here is read off the screen.
 
-`tools/dosbox.py`'s three primitives still stand for driving the *game*. This
+`tools/dos/dosbox.py`'s three primitives still stand for driving the *game*. This
 document adds a fourth: the emulator will tell you what it is doing.
 
 ## What is installed
@@ -36,7 +36,7 @@ were both installed, tested and removed: neither links ncurses, neither prints a
 `Debugging options:` section for `--help`, and `-break-start` is silently
 ignored by both. `dosbox-x --help | grep -c helpdebug` is the one-line test — 1
 means you have the debugger, 0 means you do not. Ordinary DOSBox 0.74-3
-(`/usr/bin/dosbox`) is untouched and `tools/dosbox.py` still uses it.
+(`/usr/bin/dosbox`) is untouched and `tools/dos/dosbox.py` still uses it.
 
 The C64 side is untouched: no VICE or FS-UAE configuration was changed.
 
@@ -67,7 +67,7 @@ title                    = wishdbg
 That directory is also where `MEMDUMP.BIN` lands, which is how a memory read
 gets back to the host. `-nopromptfolder` on the command line is a second belt.
 
-The rest of the config is `tools/dosbox.py`'s, plus:
+The rest of the config is `tools/dos/dosbox.py`'s, plus:
 
 ```ini
 [log]
@@ -95,8 +95,8 @@ reads back one flat colour** — X keeps no contents for a window nobody can see
 black frames a finished screen, every `wait_for` on it times out, and
 `load_game` reports a save that loads perfectly as never having loaded.
 
-Three things follow. They live in `tools/dosbox.py`, which had the same three
-faults (#88 (tools/dosbox.py can capture the wrong window, and then every screenshot is black)) and now shares one copy of the fix with this harness — and note
+Three things follow. They live in `tools/dos/dosbox.py`, which had the same three
+faults (#88 (tools/dos/dosbox.py can capture the wrong window, and then every screenshot is black)) and now shares one copy of the fix with this harness — and note
 that the pid filter is inert there: DOSBox 0.74 is SDL 1.2, which does not set
 `_NET_WM_PID`, so on that side the display refusal is what does the work.
 
@@ -129,7 +129,7 @@ Alt+Pause is `MK_pause` with `MMOD2` in `src/gui/sdlmain.cpp`, and reaches a
 windowed instance through `xdotool key --clearmodifiers alt+Pause` after
 `xdotool windowfocus`. **XTEST, not `xdotool key --window`**: SDL2 ignores the
 synthetic events that DOSBox 0.74's SDL1 accepted, so the `--window` form used
-throughout `tools/dosbox.py` silently does nothing here.
+throughout `tools/dos/dosbox.py` silently does nothing here.
 
 **The debugger only exists if DOSBox-X was started from a terminal.** On Linux
 it draws in the terminal that launched the process, not in a window of its own,
@@ -192,7 +192,7 @@ Addresses are `segment:offset`, hexadecimal, and **the offset wraps at 64K**
 | `MEMFIND` / `MEMS` | in-emulator memory search | UNTESTED — dumping and searching host-side is easier |
 
 Three quirks that will cost an hour if nobody says them. All three are hidden
-by `tools/dosboxx.py`, so this is the explanation rather than the instruction:
+by `tools/dos/dosboxx.py`, so this is the explanation rather than the instruction:
 
 * **`MEMDUMPBIN` cannot read more than 64K in one call.** Ask for `100000` and
   you get 1 MB of the *same* 64K repeated sixteen times — the offset wraps, and
@@ -252,7 +252,7 @@ load this build with this config, and `$39940` is CONFIRMED only for the
 configuration in this document. The finding is the *recipe*: dump, then locate
 the array by matching a save you already hold.
 
-All six steps are now `python3 tools/dosboxx.py clock`, which runs them
+All six steps are now `python3 tools/dos/dosboxx.py clock`, which runs them
 unattended in about twenty seconds and prints what it found. It has produced
 `$39940`, 62 voting windows, 5118 of 5120 bytes equal, `39AC:000E` live `06`,
 the spurious `00 -> 06`, the tick `06 -> 07` and `2f69 462` on every run so
@@ -280,13 +280,13 @@ allowed to be a finding.
 
 ## The harness
 
-`tools/dosboxx.py` is `tools/dosbox.py` with the launch replaced: the same slot
+`tools/dos/dosboxx.py` is `tools/dos/dosbox.py` with the launch replaced: the same slot
 lease, the same staged game tree, the same `Screen` digests, and
 `PoolOfRadiance` drives it unchanged. **Corrected, `#204 (The DOSBox-X harness
 measures the picture panel where it means to measure the command bar)`:**
 "unchanged" held only for the whole-screen paths. DOSBox-X line-doubles this
 game's 320x200 mode into a 640x400 window, so every rectangle
-`tools/dosbox.py` measures -- `BAR`, `STATUS` -- would land on the wrong
+`tools/dos/dosbox.py` measures -- `BAR`, `STATUS` -- would land on the wrong
 pixels without `XSession.capture()` halving each frame back to 320x200 first,
 which is what actually gets a run to a loaded save with rectangles worth
 looking at. Displays :90-:105, so the two pools and VICE's :10-:25 never
@@ -295,7 +295,7 @@ eight slots is no longer enough)` moved this from :40-:47 when every pool
 widened to sixteen slots).
 
 ```python
-from tools import dosbox, dosboxx
+from tools.dos import dosbox, dosboxx
 
 with dosboxx.claim("what I am doing") as slot:
     with dosboxx.XSession(slot, dosbox.find_game("POOLRAD")) as s:

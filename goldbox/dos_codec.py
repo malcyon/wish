@@ -736,7 +736,7 @@ RACE_COMBAT_EFFECTS: dict[str, tuple[int, ...]] = {
 
 #: Curse of the Azure Bonds' own ids, read from its character-creation race
 #: switch rather than from Pool of Radiance's table above (#490).  CONFIRMED,
-#: `tools/innateids.py seed --game CURSE` against the archives' `GAME.OVR`,
+#: `tools/dos/innateids.py seed --game CURSE` against the archives' `GAME.OVR`,
 #: both copies of the switch (`0x1E244` and `0x20989`) agreeing id for id and
 #: order for order: `GAME.OVR:0x1E244` pushes the dwarf 97, 26 then 47, the
 #: gnome 97, 18, 47 then 48, and the halfling 97 alone -- never 90, which is
@@ -749,7 +749,7 @@ RACE_COMBAT_EFFECTS_CURSE: dict[str, tuple[int, ...]] = {
 }
 
 #: Secret of the Silver Blades' own ids, read from its character-creation
-#: race switch (#490).  CONFIRMED, `tools/innateids.py seed --game SECRET`
+#: race switch (#490).  CONFIRMED, `tools/dos/innateids.py seed --game SECRET`
 #: against the archives' `GAME.OVR:0x1DF47`: the dwarf pushes 47, 26 then 97,
 #: the gnome 48, 7 then 97, and the halfling 97 alone.
 #:
@@ -3222,7 +3222,7 @@ WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
 #: reachable only just after creation.
 #:
 #: **CONFIRMED in the running game, one action apart, with a control**
-#: (`tools/dosmodifyprobe.py`, 2026-09-05).  Two human fighters rolled from
+#: (`tools/dos/dosmodifyprobe.py`, 2026-09-05).  Two human fighters rolled from
 #: CREATE NEW CHARACTER and added to the party both read 0.  MODIFY CHARACTER
 #: opened on one and left by EXIT, saved again: both records byte for byte
 #: unchanged.  MODIFY CHARACTER opened on the same one and left by KEEP, saved
@@ -5200,7 +5200,7 @@ def never_adventured(savgam: bytes,
 
     What separates the two states is the container itself, two ways that
     agree on all 107 of 114 distinct containers where both can be taken
-    (`tools/neveradventured.py`, `docs/185-a-party-that-has-not-set-out.md`):
+    (`tools/dos/neveradventured.py`, `docs/185-a-party-that-has-not-set-out.md`):
 
     * **the staged area script** -- bytes 5121-12800 of a Pool of Radiance or
       Curse container.  A party in the world always has its area's script
@@ -6316,7 +6316,7 @@ SAVGAM_CONSTANTS_LATER: dict[str, tuple[tuple[int, int, str], ...]] = {
 #: reason each is nobody's -- the later-title `SAVGAM_UNSOURCED`.  The
 #: evidence is per title: the six Curse containers (two played, four
 #: stubs) and six Silver Blades ones (four played, two stubs) in
-#: `~/wish-specimens/por-dos` and the archives, `tools/dossavcensus.py`.
+#: `~/wish-specimens/por-dos` and the archives, `tools/dos/dossavcensus.py`.
 #: Everything else in the array reads zero in every one of them and is
 #: swept by `savgam_zeroes`.
 LATER_SCRIPT_REFILLED = ("the arriving area's own script writes it from its "
@@ -6350,7 +6350,7 @@ SAVGAM_UNSOURCED_LATER: tuple[tuple[int, int, str], ...] = (
                 "divide arm storing the remainder into VM word $6E3F, the "
                 "one site in either overlay that writes it; nothing in "
                 "either overlay reads it and no script of either title "
-                "names it (tools/dosptrfields.py, tools/areas/eclcensus.py). 4 "
+                "names it (tools/dos/dosptrfields.py, tools/areas/eclcensus.py). 4 "
                 "in both played Curse containers, 0 everywhere else"),
     (0x5079, 3, f"the VM's own working registers $6E79-$6E7B, {ENGINE_REBUILT}"
                 f"; no site in either overlay reaches them by "
@@ -6838,13 +6838,13 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
     # covered by the same sweep and there is no sixth word (#59, #190).
     # An earlier note here said six, on three overland specimens that lived
     # in scratch and are gone; the sixth belonged to a specimen nobody can
-    # re-read.  `tools/dossavcensus.py` re-takes the count in a second, and
+    # re-read.  `tools/dos/dossavcensus.py` re-takes the count in a second, and
     # what catches a word this line is wrong about is
     # `test_every_nonzero_word_a_real_saved_game_holds_is_written_or_declared`,
     # which reads the player's own saves.
     # The later titles' sweep rests on the same kind of count over their own
     # containers: 2516 of 2560 words are zero in every Curse and Silver
-    # Blades container on this machine (`tools/dossavcensus.py --title`),
+    # Blades container on this machine (`tools/dos/dossavcensus.py --title`),
     # and every one of the live words is written or declared above (#299).
     rest = [i for i in range(container.var_offset,
                              container.var_offset + 2 * container.var_words)

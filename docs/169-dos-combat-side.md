@@ -5,9 +5,9 @@ combat tail are dropped converting to C64, and nobody knows what they
 hold)`, settled from the code rather than from specimens, because no
 player-character record can ever show it: every engine-written `CHRDAT`
 holds 0 there. Read out of `GAME.OVR` (Pool of Radiance 1.3) and the
-resident `START.EXE` with `tools/dosfieldrefs.py`, `tools/dosovrmap.py` and
-`tools/dosdis16.py`; checked in the running game with
-`tools/dostailprobe.py` and `tools/dossideprobe.py`. Listings and frames
+resident `START.EXE` with `tools/dos/dosfieldrefs.py`, `tools/dos/dosovrmap.py` and
+`tools/dos/dosdis16.py`; checked in the running game with
+`tools/dos/dostailprobe.py` and `tools/dos/dossideprobe.py`. Listings and frames
 are under `cited/235`. Grades are `docs/50-experiments.md`'s.
 
 ## The byte -- CONFIRMED
@@ -30,7 +30,7 @@ engine's own `ENCAMP > SAVE` wrote it back unchanged.
 | `0xD947` | a side-1 combatant's facing is turned by four at setup |
 | resident `0x23B7` | name colour: `0x10D == 0` -> `0x0C` light red; `0x10E == 1` -> `0x0E` **yellow**; else `0x0B` light cyan |
 
-Running game, one boot (`tools/dostailprobe.py --pattern
+Running game, one boot (`tools/dos/dostailprobe.py --pattern
 0:00010000,1:00010100`): MAGNUS staged `0x10E` = 1 in Donald's slot A was
 drawn **yellow** on the party panel between BRUTUS in white and four names
 in light cyan (`cited/235/side-name/01-loaded.png`), and the resave
@@ -45,7 +45,7 @@ the party's computer-run members and ignored by the monsters, gets
 `Attack Ally:` when he aims at one, and **the fight cannot end while he
 stands**, because `[0x6815]` never reaches zero.
 
-Measured, one fight (`tools/dossideprobe.py`, `issue235/side-fight/` (scratch, deleted)):
+Measured, one fight (`tools/dos/dossideprobe.py`, `issue235/side-fight/` (scratch, deleted)):
 BAKSHI of Donald's slot J staged `00 01 01 01`, the other five `00 01 00
 01` so the fight ran itself. His name was yellow at the encounter; the
 combat log read `BAKSHI ATTACKS BROTHER SEAN HITTING FOR 7 POINTS OF

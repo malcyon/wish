@@ -125,7 +125,7 @@ def c64_rows(field: str, title: str = "pool-of-radiance"):
 
 def dos_rows(field: str, title: str | None = "pool-of-radiance"):
     """Every DOS record the machine holds, of `title` or of all four."""
-    from tools import dosbox
+    from tools.dos import dosbox
 
     tree = _specimen_tree()
     folders = [str(p) for p in sorted(tree.glob("*/WISH-SPEC-*")) if p.is_dir()]

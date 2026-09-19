@@ -295,7 +295,7 @@ def test_no_character_on_the_built_disk_would_draw_as_black_hooks(tmp_path):
 
 @needs_dos_saves
 def test_build_wires_the_creation_menu_into_the_disk_it_writes(tmp_path):
-    """`tools/dosdisk.py`'s `build()` reads the creation menu (#57) off the
+    """`tools/dos/dosdisk.py`'s `build()` reads the creation menu (#57) off the
     same disks directory it already reads the icon and `ANIMATE00` from, and
     passes it on to `dos_codec.new_save` -- so a party wholly inside the menu
     arrives on the disk with the sheet portrait switched on rather than with

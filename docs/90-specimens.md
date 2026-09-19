@@ -295,7 +295,7 @@ who wrote it", has the account of what one edited record cost. These live in
 read-only and hashed; `tools/specimens.py check` re-verifies them.
 
 Six characters, rolled in Pool of Radiance's own CREATE NEW CHARACTER screens
-under DOSBox by `tools/dosparty.py` on 2026-09-04, with the archives' shipped
+under DOSBox by `tools/dos/dosparty.py` on 2026-09-04, with the archives' shipped
 roster wiped out of the staged copy first so nothing but our own characters
 could enter the party. First roll kept for every one.
 
@@ -356,8 +356,8 @@ the sum.
 **Experience and gold are written into the record before the run**, at
 `goldbox.dos_port`'s own offsets — `experience` `0x0AC`, three bytes little
 endian; `gold` `0x08E`, a word; and `encumbrance` `0x102` moved with the gold,
-since the identity above would otherwise fail. `tools/dostrainprobe.py`'s
-`install()` does it and `tools/dostrain.py`'s `--xp` and `--gold` are the door.
+since the identity above would otherwise fail. `tools/dos/dostrainprobe.py`'s
+`install()` does it and `tools/dos/dostrain.py`'s `--xp` and `--gold` are the door.
 
 That makes the experience total an **input**, and nothing read back from it is
 the game's arithmetic. What the trainer then writes — level, `class_levels`,

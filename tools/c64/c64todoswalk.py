@@ -40,7 +40,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools.dos import dosbox  # noqa: E402
 
 
 def describe(save: bytes) -> dict:

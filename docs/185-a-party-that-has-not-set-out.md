@@ -75,7 +75,7 @@ the source of the shipped containers' (7, 13, 0), is where it comes from.
 
 114 distinct DOS containers on this machine, deduplicated on sha256, out of
 the archives, scratch (since deleted), `~/wish-specimens/` and `/home/donald/dos_por_play/`,
-swept by `tools/neveradventured.py` on 2026-09-06. Grouped by whether the
+swept by `tools/dos/neveradventured.py` on 2026-09-06. Grouped by whether the
 staged area script (bytes 5121-12800 of the container) is all zero:
 
 | title | containers | never adventured | area word there | is 0 a place in this title? |
@@ -110,7 +110,7 @@ against `$FF` (`goldbox.dos_codec.LATER_BEGUN_WORD`), while what Pool of
 Radiance's 255, 16 and 8 mean is unread, so for that title the word is a
 census result rather than a reading of the engine. `goldbox.dos_codec.never_adventured`
 takes the buffer where the shape has one and the word where it does not, and
-`tools/neveradventured.py --by rule` sweeps with exactly that.
+`tools/dos/neveradventured.py --by rule` sweeps with exactly that.
 
 **The initialisers disagree about `$49E6`.** Pool of Radiance's seven
 never-adventured containers hold 0 there and Curse's and Silver Blades' six
@@ -290,7 +290,7 @@ in the world -- is unaffected.
 
 | tool | what it does |
 |---|---|
-| `tools/neveradventured.py` | the census above: every distinct container on the machine, per title, split by the staged script (`--by buffer`), by `$4FE1` (`--by word`) or by the rule the import applies (`--by rule`) |
+| `tools/dos/neveradventured.py` | the census above: every distinct container on the machine, per title, split by the staged script (`--by buffer`), by `$4FE1` (`--by word`) or by the rule the import applies (`--by rule`) |
 | `tools/curse_of_the_azure_bonds/curseareazero.py` | boots C64 Curse to the party menu and reads `$4B00`-`$4DDF`; `--save`/`--begin` load a disk and press `BEGIN ADVENTURING`; `--doctor` stamps the never-adventured header into a copy of a save disk, one field at a time with `--zero` |
 | `tools/curse_of_the_azure_bonds/doscurse.py console` | the DOSBox session the DOS half was driven in |
-| `tools/daxls.py` | the `ECL`/`GEO` container indexes the "no block 0" row rests on |
+| `tools/dos/daxls.py` | the `ECL`/`GEO` container indexes the "no block 0" row rests on |

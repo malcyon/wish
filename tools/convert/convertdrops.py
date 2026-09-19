@@ -33,7 +33,7 @@ Two modes:
 
 Inputs come from `$WISH_SPECIMENS` (default `~/wish-specimens`,
 `tools/specimens.py`), the C64 game disks `tools/gamedisks.py` finds and the
-DOS archives `tools/dosbox.find_game` finds.  Nothing is written outside a
+DOS archives `tools/dos/dosbox.find_game` finds.  Nothing is written outside a
 temporary directory, and no specimen is opened for writing.
 
     tools/convert/convertdrops.py
@@ -57,7 +57,8 @@ from goldbox import amiga_savegame, c64_codec, c64_port, dos_codec  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
-from tools import dosbox, gamedisks  # noqa: E402
+from tools import gamedisks  # noqa: E402
+from tools.dos import dosbox  # noqa: E402
 
 
 def specimen_root() -> pathlib.Path:
@@ -75,7 +76,7 @@ WRITER_DROPS = {
               dos_codec.WRITE_DROPPED),
 }
 
-#: The DOS archive directory stem per title, for `tools/dosbox.find_game`.
+#: The DOS archive directory stem per title, for `tools/dos/dosbox.find_game`.
 DOS_DIRS = {
     "pool-of-radiance": "POOLRAD",
     "curse-of-the-azure-bonds": "CURSE",

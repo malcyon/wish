@@ -27,7 +27,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import dosbox, dosfightrun  # noqa: E402
+from tools.dos import dosbox, dosfightrun  # noqa: E402
 
 BAR_W, BAR_H = dosbox.BAR[2], dosbox.BAR[3]
 
@@ -39,7 +39,7 @@ BAR_W, BAR_H = dosbox.BAR[2], dosbox.BAR[3]
 def test_the_record_offsets_are_the_layouts_and_not_a_second_copy():
     """#76's rule: one byte map, `goldbox/`'s, never a harness copy of it.
 
-    `tools/dosbox.py` already held a second `AREA_ID` that had drifted out of
+    `tools/dos/dosbox.py` already held a second `AREA_ID` that had drifted out of
     the map's units, so a reader who fixed one side would never have found the
     other. These three are read raw for speed and are pinned to the table.
     """
@@ -56,7 +56,7 @@ def test_the_quickfight_byte_is_0x10f_not_0x10e():
     candidate by alignment alone and is refuted in
     `docs/149-driving-a-dos-fight.md` -- it read `00` in eighteen records of
     three `QUICK`-driven fights while its neighbours moved. `0x10F` is
-    CONFIRMED: `tools/dosquickprobe.py` staged it and a fight ran to
+    CONFIRMED: `tools/dos/dosquickprobe.py` staged it and a fight ran to
     completion with zero combat command bars and `q` never pressed."""
     from goldbox.dos_port import FIELDS_BY_NAME
 

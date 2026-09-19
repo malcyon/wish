@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A hand-driven DOS Curse of the Azure Bonds session, one command at a time.
 
-`tools/dosbox.py` drives Pool of Radiance by *digest*: every screen it has to
+`tools/dos/dosbox.py` drives Pool of Radiance by *digest*: every screen it has to
 recognise was measured once and is compared as a hash.  That works for a menu
 path somebody has already walked.  It cannot walk a new one, and Curse's camp
 menus -- MEMORIZE, REST, the spell lists -- had never been walked at all when
@@ -16,7 +16,7 @@ is the one reader that can be trusted with a menu nobody has mapped.
     tools/curse_of_the_azure_bonds/doscurse.py console --game CURSE --note "issue 113"
 
 writes `console.cmd` (the input), `console.log` (what it did) and `shots/`
-(what it saw) under `inst/<n>/` in `tools/dosbox.py`'s scratch directory, and
+(what it saw) under `inst/<n>/` in `tools/dos/dosbox.py`'s scratch directory, and
 holds the slot until `quit` or `--minutes` runs out.  The lifetime cap is deliberate: an abandoned console would hold a
 pool slot and an X display for as long as the machine stayed up.
 
@@ -66,8 +66,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import dosbox, scratch  # noqa: E402
-from tools.dosbox import BAR, Screen, Session, claim, find_game  # noqa: E402
+from tools import scratch  # noqa: E402
+from tools.dos import dosbox  # noqa: E402
+from tools.dos.dosbox import BAR, Screen, Session, claim, find_game  # noqa: E402
 
 #: Where a copied-out specimen lands: scratch, never the repository, like
 #: everything derived from the game's bytes.

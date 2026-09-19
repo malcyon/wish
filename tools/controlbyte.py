@@ -7,7 +7,7 @@ a character or the engine does: DOS `0x084` in Pool of Radiance (`0x0F7`,
 Bit 7 is the flag; the low seven bits are a morale percentage stored halved,
 which both ports double on the way out.
 
-`tools/dosbyteimm.py` reads what the engines *store* there.  This asks what
+`tools/dos/dosbyteimm.py` reads what the engines *store* there.  This asks what
 the records on this machine actually *hold*, on both sides at once, because
 the conversion's question is not what the byte means but what value a
 converted companion should be given -- `#303 (The DOS record may hold the NPC
@@ -22,7 +22,7 @@ flag that the conversion reports as having nowhere to go)`.
 **Provenance is the whole caution and it is printed on every run.**  A save
 found on a disk was not necessarily written by the game; `tests/gamedata.py`
 and `.claude/rules/testing.md` say why.  The DOS half reuses
-`tools/dostailcensus.py`'s finder and its roots -- the specimen tree, the
+`tools/dos/dostailcensus.py`'s finder and its roots -- the specimen tree, the
 archives and the played DOS game directory, every record in the last of which
 has been through Gold Box Companion's editor -- so it inherits that tool's
 exclusions as well: records this project wrote, and an emulator instance's
@@ -43,7 +43,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import dostailcensus, gamedisks  # noqa: E402
+from tools import gamedisks  # noqa: E402
+from tools.dos import dostailcensus  # noqa: E402
 
 #: The C64 control byte, at the same record offset in every C64 title
 #: (`#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the
@@ -74,7 +75,7 @@ def dos_offsets(shape) -> tuple[int, int]:
     of Radiance importer copies `0x083`-`0x087` to `0x0F6`-`0x0FA` one for
     one (`docs/195-three-dos-record-bytes-named-from-the-overlays.md`).  So
     the control byte is the fourth from the end of the run in every title,
-    which reproduces the four offsets `tools/dosbyteimm.py` finds the
+    which reproduces the four offsets `tools/dos/dosbyteimm.py` finds the
     compares at: `0x084`, `0x0F7`, `0x0FF`, `0x147`.
     """
     field = dl.FIELDS_BY_NAME_FOR[shape.key]["field_83_87"]

@@ -85,7 +85,7 @@ def pool(tmp_path, monkeypatch, ports):
 
 
 def test_module_imports_without_fcntl(monkeypatch):
-    """The guard `tools/dosbox.py` was caught by, asserted rather than assumed.
+    """The guard `tools/dos/dosbox.py` was caught by, asserted rather than assumed.
 
     With no `$POR_INST` the pool lives in scratch, outside the repository,
     and asking where it is creates nothing."""
@@ -865,7 +865,7 @@ def test_lock_holder_names_the_pid_that_holds_the_flock_and_takes_none_itself(tm
 
 @posix
 def test_display_rows_names_all_three_pools(monkeypatch):
-    from tools import dosbox, dosboxx
+    from tools.dos import dosbox, dosboxx
 
     monkeypatch.setattr(instance, "DISPLAY_BASE", 1080)
     monkeypatch.setattr(instance, "SLOTS", 2)
@@ -889,7 +889,7 @@ def test_display_rows_tells_a_stale_file_from_a_held_one_and_from_no_file_at_all
     a file nobody locked, and a file somebody genuinely holds."""
     _needs_proc_locks()
 
-    from tools import dosbox, dosboxx
+    from tools.dos import dosbox, dosboxx
 
     monkeypatch.setattr(instance, "DISPLAY_BASE", 1095)
     monkeypatch.setattr(instance, "SLOTS", 3)
@@ -941,7 +941,7 @@ def test_status_displays_prints_a_state_and_a_pid_column(monkeypatch):
     has ever touched this number" rows appear in the same table.
     """
     _needs_proc_locks()
-    from tools import dosbox, dosboxx
+    from tools.dos import dosbox, dosboxx
 
     monkeypatch.setattr(instance, "DISPLAY_BASE", 1220)
     monkeypatch.setattr(instance, "SLOTS", 1)
@@ -1066,7 +1066,7 @@ def test_stray_displays_reports_a_socket_whose_owner_has_been_reparented_to_init
 def test_stray_displays_ignores_everything_inside_a_pools_own_band(tmp_path, monkeypatch):
     """A display number a pool already owns is `display_rows()`'s business,
     not this one's -- even an orphaned process there is not reported here."""
-    from tools import dosbox, dosboxx
+    from tools.dos import dosbox, dosboxx
     monkeypatch.setattr(instance, "DISPLAY_BASE", 1090)
     monkeypatch.setattr(instance, "SLOTS", 2)
     monkeypatch.setattr(dosbox, "DISPLAY_BASE", 1095)

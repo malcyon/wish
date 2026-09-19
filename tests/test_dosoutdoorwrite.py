@@ -29,7 +29,7 @@ conversion stages is *generated* by `_dax_with`, since what the write path
 needs from it is a block of the right id and not the game's own text.
 
 The run that proves the file loads is not here and cannot be:
-`tools/dosnewsave.py --c64 <that C64 save>`, whose party stands on
+`tools/dos/dosnewsave.py --c64 <that C64 save>`, whose party stands on
 window 26 and walks.
 """
 

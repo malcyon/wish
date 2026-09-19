@@ -53,7 +53,7 @@ def _c64_disk(name: str) -> pathlib.Path:
 
 
 def _game_dir(stem: str) -> pathlib.Path:
-    from tools import dosbox
+    from tools.dos import dosbox
     try:
         return dosbox.find_game(stem)
     except FileNotFoundError as e:

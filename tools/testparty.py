@@ -45,7 +45,7 @@ The generator is two halves and they have different authorities.
 **Level 1 is seeded from the tables, checked against six characters the engine
 itself rolled.**  `WISH-SPEC-por-party-l1-rolled` is six DOS Pool of Radiance
 characters captured between creation and `ADD CHARACTER TO PARTY`, driven by
-`tools/dosparty.py` for `#249 (Build a DOS party from creation and level it
+`tools/dos/dosparty.py` for `#249 (Build a DOS party from creation and level it
 ourselves, so DOS measurements rest on records we watched being written)`.
 Every level-1 constant below is what those six hold:
 
@@ -550,7 +550,7 @@ def _seed_hit_points(spec: Spec, game, rng) -> int:
     to be a guess, and a caller who knows the number hands it in through
     `Spec.hit_points_rolled` instead.  The experiment that would settle it:
     roll six multi-class characters in the game's own creation screens with
-    `tools/dosparty.py` and see whether any `hp_rolled` exceeds the largest
+    `tools/dos/dosparty.py` and see whether any `hp_rolled` exceeds the largest
     single die of the character's classes.
     """
     if spec.hit_points_rolled is not None:

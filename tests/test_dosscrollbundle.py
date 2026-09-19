@@ -18,7 +18,7 @@ bundle's spell nodes as items. `walk` is the engine's shape and
 composed bytes, because no save on this machine carries a bundle.
 
 The engine tests read the player's own archives through
-`tools/dosbox.find_game` and skip cleanly without them; no game bytes are in
+`tools/dos/dosbox.find_game` and skip cleanly without them; no game bytes are in
 this repository.
 """
 
@@ -30,7 +30,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import dosscrollbundle as sb  # noqa: E402
+from tools.dos import dosscrollbundle as sb  # noqa: E402
 
 STRIDE = 67
 
@@ -132,7 +132,7 @@ def test_three_bytes_of_a_weapon_are_charges_effect_and_power():
 
 
 def _overlay(stem: str) -> bytes:
-    from tools import dosxpaward
+    from tools.dos import dosxpaward
     try:
         path = dosxpaward.find_game(stem) / "GAME.OVR"
     except FileNotFoundError:
@@ -143,7 +143,7 @@ def _overlay(stem: str) -> bytes:
 
 
 def _far_loads(ovr: bytes, displacement: int) -> int:
-    from tools import dosfieldrefs
+    from tools.dos import dosfieldrefs
     return sum(1 for r in dosfieldrefs.references(ovr, displacement,
                                                   prefixes=(0x26,))
                if r["mnem"].startswith(("les", "lds")))

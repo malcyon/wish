@@ -1,4 +1,4 @@
-"""The census `tools/dossavcensus.py` takes of the DOS saved games present.
+"""The census `tools/dos/dossavcensus.py` takes of the DOS saved games present.
 
 Every grade in `docs/141-dos-savegame.md` is a **count**, and a count is only
 worth its exclusions: `#59 (Map the DOS saved game, not just the character
@@ -31,7 +31,7 @@ from test_dossave import _save_dir, needs_dos_saves
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools import dossavcensus as census  # noqa: E402
+from tools.dos import dossavcensus as census  # noqa: E402
 
 
 def _blank(shape: sg.DosContainer = sg.SAVE_POOL_OF_RADIANCE, **words) -> bytes:

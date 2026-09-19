@@ -68,7 +68,7 @@ def default_icon() -> bytes:
     """The icon the game's own character creation composes, off the disks.
 
     The tables are on `POOL3`, so this walks the directory rather than naming
-    a side -- the same shape as `tools/dosdisk.py`'s `game_files`.
+    a side -- the same shape as `tools/dos/dosdisk.py`'s `game_files`.
     """
     from automap.paths import find_disks
     from goldbox.iconparts import IconParts

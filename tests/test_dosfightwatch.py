@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import dosbox, dosfightwatch  # noqa: E402
+from tools.dos import dosbox, dosfightwatch  # noqa: E402
 
 
 class _Screen:

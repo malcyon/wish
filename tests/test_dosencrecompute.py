@@ -1,4 +1,4 @@
-"""`tools/dosencrecompute.py` reads the recompute out of the shipped binaries.
+"""`tools/dos/dosencrecompute.py` reads the recompute out of the shipped binaries.
 
 `#323 (The encumbrance identity does not survive the training fee, so failing
 it is not evidence of an edited record)`.  The finding the tool carries is that
@@ -26,13 +26,13 @@ import pytest
 
 # `capstone` is not a declared dependency of this project -- the same reason
 # `tests/test_amiga68k.py` and its neighbours skip rather than fail. The tool
-# reaches it through `tools/dosovrmap.py`, so the import below is what fails
+# reaches it through `tools/dos/dosovrmap.py`, so the import below is what fails
 # on a machine without it, and CI is such a machine: this file was green here
 # and red on both Linux jobs, 2026-09-09.
 pytest.importorskip("capstone")
 
 from goldbox import dos_port as dl  # noqa: E402
-from tools import dosencrecompute as der  # noqa: E402
+from tools.dos import dosencrecompute as der  # noqa: E402
 
 #: The three titles `#323` asks about.  Pools of Darkness is left out because
 #: it ships no EXEPACKed loader, so it has no unit map and no far callers --

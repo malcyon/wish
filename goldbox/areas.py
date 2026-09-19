@@ -752,7 +752,7 @@ class Start:
 #: their clocks.  What separates the two states is the container: the staged
 #: area script is 7680 zeroes in a never-adventured save and holds a script
 #: in every other, and `$4FE1` is 0 in one and never in the other.  Measured
-#: over 114 distinct containers by `tools/neveradventured.py` -- 13 never
+#: over 114 distinct containers by `tools/dos/neveradventured.py` -- 13 never
 #: adventured against 101 in the world, the two tests agreeing on all 107
 #: containers where both can be taken.  `goldbox/dos_savegame.py` owns the
 #: container; this owns the area.

@@ -28,7 +28,8 @@ import pytest
 
 from goldbox import c64_codec, layout
 from goldbox import dos_port as dl
-from tools import dostailcensus, enccensus
+from tools import enccensus
+from tools.dos import dostailcensus
 
 ENCUMBRANCE = dl.FIELDS_BY_NAME["encumbrance"].offset
 ITEM_COUNT = dl.FIELDS_BY_NAME["item_count"].offset

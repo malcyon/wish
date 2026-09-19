@@ -97,7 +97,7 @@ def test_trait_demand_is_the_slots_on_the_c64_and_the_two_halves_elsewhere():
 def test_a_specimens_provenance_beats_a_copy_left_in_a_run_directory():
     """The same record in a run directory and in the specimen tree is a specimen.
 
-    `tools/dostailcensus.py` deduplicates on the record's bytes and keeps
+    `tools/dos/dostailcensus.py` deduplicates on the record's bytes and keeps
     every path it saw.  Grading the first of them called THRENDER GRONE --
     the one record on this machine wanting five trait slots -- `ours`, purely
     because a run directory sorted before the tree, which would have thrown

@@ -31,7 +31,7 @@ import pytest
 
 from goldbox import dos_codec, levels, neutral, spells
 from goldbox.dos_codec import _ability_pair
-from tools import dosbox
+from tools.dos import dosbox
 
 CURSE = "curse-of-the-azure-bonds"
 SSB = "secret-of-the-silver-blades"
@@ -257,7 +257,7 @@ _TABLES = (
 
 def _curse_image():
     """`(GAME.OVR, the expanded START.EXE image)` for DOS Curse, or a skip."""
-    dosspellslots = pytest.importorskip("tools.dosspellslots")
+    dosspellslots = pytest.importorskip("tools.dos.dosspellslots")
     try:
         game = dosbox.find_game("CURSE")
     except FileNotFoundError as exc:

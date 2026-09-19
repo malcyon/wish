@@ -54,7 +54,7 @@ def _add(root, sources, **kw):
     kw.setdefault("title", "Pool of Radiance")
     kw.setdefault("issue", "#84 (Roll a gnome in DOS and read the two "
                             "innate effect ids nobody has seen)")
-    kw.setdefault("made_by", "tools/dosgnome.py")
+    kw.setdefault("made_by", "tools/dos/dosgnome.py")
     kw.setdefault("what", "rolled a gnome in the game's own creation screens")
     return specimens.add("dos", "gnomf1", sources, root=root, **kw)
 
@@ -71,11 +71,11 @@ def test_add_creates_a_directory_named_for_the_specimen(tree, one_source):
 
 
 def test_add_writes_the_required_fields(tree, one_source):
-    dest = _add(tree, one_source, command="tools/dosgnome.py c ...")
+    dest = _add(tree, one_source, command="tools/dos/dosgnome.py c ...")
     fields = specimens.read_provenance(dest / "provenance.toml")
     for field in specimens.REQUIRED_FIELDS:
         assert field in fields, field
-    assert fields["command"] == "tools/dosgnome.py c ..."
+    assert fields["command"] == "tools/dos/dosgnome.py c ..."
     assert fields["edited_afterwards"] is False
 
 
@@ -151,14 +151,14 @@ def test_add_accepts_amiga_and_builds_a_directory_specimen(tree, one_source):
 def test_add_takes_a_pools_of_darkness_specimen_into_its_own_directory(
         tree, one_source):
     """#575: the fourth title had no slug, so the engine-written containers
-    `tools/dospod.py` left in the scratch directory -- which is deleted and
+    `tools/dos/dospod.py` left in the scratch directory -- which is deleted and
     was lost twice -- could not be kept in the tree at all. The directory is
     `pod-dos`, the same `<title>-<platform>` the other three use."""
     dest = specimens.add("dos", "p175-run17", one_source, root=tree,
                          title="Pools of Darkness",
                          issue="#175 (Decode the first 1024 bytes of the "
                                "Pools of Darkness saved game)",
-                         made_by="tools/dospod.py under DOSBox",
+                         made_by="tools/dos/dospod.py under DOSBox",
                          what="saved in a dungeon at 11,2 facing south")
     assert dest == tree / "pod-dos" / "WISH-SPEC-p175-run17"
     fields = specimens.read_provenance(dest / "provenance.toml")

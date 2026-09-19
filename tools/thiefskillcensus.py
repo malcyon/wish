@@ -18,7 +18,7 @@ thief whether the eight stored bytes are what that port's own tables give.
 the title carries `GEN`, at the addresses `goldbox/levels.py` names -- which
 the engine's own `LDA $102E,X` / `LDA $1076,X` fixes for Pool of Radiance.
 The DOS ones come out of `START.EXE`, which is EXEPACK-packed
-(`tools/unexepack.py`), located in the expanded image by **the C64's own 72
+(`tools/dos/unexepack.py`), located in the expanded image by **the C64's own 72
 bytes of level table**: that run occurs exactly once in each of the three
 images, so the anchor is a file on the player's shelf rather than a number in
 this repository.  Two structural checks then say the geometry is right and
@@ -160,7 +160,7 @@ def c64_tables(title: str = "pool-of-radiance") -> dict:
 
 def dos_image(title: str = "pool-of-radiance") -> bytes:
     """The player's own `START.EXE`, EXEPACK-expanded."""
-    from tools import dosbox, unexepack
+    from tools.dos import dosbox, unexepack
 
     folder = dosbox.find_game(DOS_STEM[title])
     image, _ = unexepack.unpack((folder / "START.EXE").read_bytes())
@@ -304,7 +304,7 @@ def c64_records(title: str = "pool-of-radiance"):
 
 def dos_records(title: str = "pool-of-radiance", extra=()):
     """The same, for every DOS record the specimen tree and archives hold."""
-    from tools import dosbox
+    from tools.dos import dosbox
 
     tree = pathlib.Path(os.environ.get("WISH_SPECIMENS",
                                        pathlib.Path.home() / "wish-specimens"))

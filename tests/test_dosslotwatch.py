@@ -1,4 +1,4 @@
-"""`tools/dosslotwatch.py`'s staging, isolated from DOSBox-X.
+"""`tools/dos/dosslotwatch.py`'s staging, isolated from DOSBox-X.
 
 `main()`'s copy loop puts `--save`'s `CHRDAT*` and `SAVGAM*.DAT` into the
 staged session's `SAVE` directory with `tools.c64.session.stage_writable`, not a
@@ -23,7 +23,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import dosslotwatch  # noqa: E402
+from tools.dos import dosslotwatch  # noqa: E402
 
 
 class _StopEarly(Exception):

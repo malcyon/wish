@@ -1,4 +1,4 @@
-"""`tools/dosracialseed.py`: what DOS Pool of Radiance's engine says 97 is.
+"""`tools/dos/dosracialseed.py`: what DOS Pool of Radiance's engine says 97 is.
 
 `#247 (Nobody knows whether innate effect 97 is racial or the constitution
 bonus)` could not be settled by a specimen, because every race that carries
@@ -9,7 +9,7 @@ character's constitution at the moment a saving throw is rolled
 
 The synthetic test pins the reader's grammar with no game data.  The rest
 read the player's own `GAME.OVR` and `START.EXE` out of the archives through
-`tools.dosbox.find_game`, and skip without them -- `goldbox.dos_codec`'s race table
+`tools.dos.dosbox.find_game`, and skip without them -- `goldbox.dos_codec`'s race table
 is checked against the engine's creation switch, and `goldbox.levels`'s
 constitution rule against the handler's band table.
 """
@@ -23,7 +23,7 @@ import pytest
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-#: `tools/dosracialseed.py` disassembles the overlay, so it imports capstone at
+#: `tools/dos/dosracialseed.py` disassembles the overlay, so it imports capstone at
 #: module level -- and capstone is not installed on the CI runners, where this
 #: file failed on all four jobs with `ModuleNotFoundError: No module named
 #: 'capstone'` while passing here.  `tests/test_amiga68k.py` guards the same
@@ -31,7 +31,7 @@ sys.path.insert(0, str(REPO))
 pytest.importorskip("capstone")
 
 from goldbox import dos_codec, levels  # noqa: E402
-from tools import dosracialseed  # noqa: E402
+from tools.dos import dosracialseed  # noqa: E402
 
 INNATE = bytes((0x31, 0xC0, 0x50,          # xor ax, ax / push ax   (duration 0)
                 0xB0, 0xFF, 0x50,          # mov al, 0xff / push ax (data)
@@ -85,7 +85,7 @@ def test_a_race_read_that_is_not_the_switch_is_passed_over():
 @pytest.fixture(scope="module")
 def engine():
     """`GAME.OVR` and the expanded `START.EXE` from the player's archives."""
-    from tools import dosbox, unexepack
+    from tools.dos import dosbox, unexepack
     try:
         game = dosbox.find_game()
     except FileNotFoundError:

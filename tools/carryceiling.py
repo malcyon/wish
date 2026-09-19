@@ -230,7 +230,7 @@ def _grade(path, specimen_grades: dict[str, str]) -> str:
 def _grade_over(paths, specimen_grades: dict[str, str]) -> str:
     """The grade for one record that turned up at several paths.
 
-    `tools/dostailcensus.py` deduplicates on the record's bytes, so the same
+    `tools/dos/dostailcensus.py` deduplicates on the record's bytes, so the same
     record is routinely a copy in a run directory **and** the specimen it was copied
     into.  Grading the first path found would call an engine-written specimen
     `ours`, purely because a run directory sorted first -- which is how
@@ -360,22 +360,22 @@ def _specimen_root():
 def _dos_roots() -> list[pathlib.Path]:
     """The specimen tree, the archives and the played DOS game directory.
 
-    `tools/dostailcensus.py`'s own list, so every DOS census on this machine
+    `tools/dos/dostailcensus.py`'s own list, so every DOS census on this machine
     covers the same corpus (#575).
     """
-    from tools import dostailcensus
+    from tools.dos import dostailcensus
     return dostailcensus.dos_record_roots()
 
 
 def dos_rows(specimen_grades: dict[str, str], problems: list[str]):
     """Every distinct DOS record, with its sibling effect file counted.
 
-    `tools/dostailcensus.py` finds and deduplicates them, and its exclusions
+    `tools/dos/dostailcensus.py` finds and deduplicates them, and its exclusions
     come with it: an emulator instance's staged tree, records whose names say
     this project built them, and the three titles whose record is the same
     size as one we have a layout for.
     """
-    from tools import dostailcensus
+    from tools.dos import dostailcensus
     roots = _dos_roots()
     if not roots:
         problems.append(dostailcensus.NO_RECORDS)

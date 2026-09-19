@@ -97,7 +97,7 @@ ten-byte nodes (`p105/saves/` (scratch, deleted), a rebuilt corpus): CONJURER
 
 ## Watched in the running game
 
-`tools/dosspcexpiry.py`, DOSBox-X with the debugger, the chains read off the
+`tools/dos/dosspcexpiry.py`, DOSBox-X with the debugger, the chains read off the
 heap through record `0x7F` before and after.
 
 | run | before | after | grade |
@@ -154,10 +154,10 @@ including an editor's Detect Magic.
   62 runs 2 past the end"), so whether an authored NPC effect can carry a
   zero duration is UNKNOWN. Settle it by reading those blocks with a codec
   that tolerates the overrun, or by recruiting an NPC in the game and reading
-  his chain with `tools/dosspcexpiry.py chain`.
+  his chain with `tools/dos/dosspcexpiry.py chain`.
 * **`START.EXE` is EXEPACK-compressed.** The overlay descriptors looked
   unaligned and no data-segment offset could be found until it was expanded
-  (`tools/unexepack.py`); the "file = 0x200 + seg x 16 + off" rule in
+  (`tools/dos/unexepack.py`); the "file = 0x200 + seg x 16 + off" rule in
   `docs/145-dos-decode-kit.md` holds only for the first few hundred bytes.
 
 ## What the conversion should do with this
@@ -182,5 +182,5 @@ another agent holds tonight.
 4. **A specimen is now available that no editor touched:**
    `cited/232/ready4/ready.json` records the six `.SPC` files the engine
    wrote to slot D, the first ending in `3D 00 00 0C 00` beside the racial
-   and `BLESS` records, and `tools/dosspcexpiry.py ready` regenerates the
+   and `BLESS` records, and `tools/dos/dosspcexpiry.py ready` regenerates the
    run in four minutes.

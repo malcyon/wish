@@ -74,7 +74,7 @@ multicolour scores 8 of 9 for an icon with one hi-res cell, in every reading of
 it, and that reads exactly like a fault in the game.
 
 **A converted party is drawn from the bytes the conversion wrote.** The same
-run on a disk `tools/dosdisk.py` had just built: 6 of 6 party figures, 9 of 9
+run on a disk `tools/dos/dosdisk.py` had just built: 6 of 6 party figures, 9 of 9
 glyphs, against the eighteen codes `IconParts.default_icon` composed. Which
 slot cannot be told there and never will be, because the conversion writes one
 icon into all six --

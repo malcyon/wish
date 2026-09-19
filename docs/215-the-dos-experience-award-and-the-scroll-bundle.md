@@ -5,7 +5,7 @@ shipped DOS engines rather than from a saved game.
 `#254 (Two DOS gaps the Amiga port gives a shape to: a 16-bit field in
 gap_13c, and a pointer at the end of the Silver Blades item)` asked for both;
 the Amiga port gave each a shape and the DOS code settles them.
-`tools/dosxpaward.py` and `tools/dosscrollbundle.py` are the instruments, and
+`tools/dos/dosxpaward.py` and `tools/dos/dosscrollbundle.py` are the instruments, and
 `tests/test_dosxpaward.py` and `tests/test_dosscrollbundle.py` pin what they
 found.
 
@@ -77,11 +77,11 @@ found in both Amiga unpackers.
 Radiance's `MON1CHA.DAX`, at the offsets above: GOBLIN GUARD 10 and 1,
 HOBGOBLIN 20 and 2, OGRE 90 and 5 — the C64's numbers exactly. Silver Blades
 reads BLACK DRAGON 4250 and 16, STORM GIANT 5850 and 20, PURPLE WORM 4900 and
-20. `tools/dosxpaward.py monsters --game SECRET` prints them.
+20. `tools/dos/dosxpaward.py monsters --game SECRET` prints them.
 
 ### Zero in every player, which is why nobody could place it
 
-`tools/dosxpaward.py census` swept **474 DOS character records** — 238 Pool of
+`tools/dos/dosxpaward.py census` swept **474 DOS character records** — 238 Pool of
 Radiance, 110 of the Curse and Gateway shape, 74 Silver Blades, 52 of the
 Pools of Darkness and Treasures shape — across the specimen tree and the
 player's archives. **Two paths carry a non-zero award and they are one
@@ -156,11 +156,11 @@ and `goldbox.dos_codec.read_character`, which takes the first `item_count` of th
 would read the bundle's spell pages as items and lose that many real items off
 the end of the pack. That is
 `#432 (A joined scroll in a DOS Silver Blades save shifts everything after it
-out of the character's pack)`; `tools/dosscrollbundle.py`'s `walk()` is the
+out of the character's pack)`; `tools/dos/dosscrollbundle.py`'s `walk()` is the
 engine's loop and `slice_naively()` is the other one.
 
 **Nothing anybody holds is misread today.**
-`tools/dosscrollbundle.py census` walked **140 item files** across the
+`tools/dos/dosscrollbundle.py census` walked **140 item files** across the
 specimen tree and the archives: **0 scroll bundles**, 0 files whose record
 count disagrees with `item_count`, and 18 with an `item_count` of zero, which
 is an export beside a stale item file and is what `goldbox.dos_codec` documents. The
@@ -171,7 +171,7 @@ defect is reachable in the game and unexercised by the corpus, which is why
 
 * **Name the fields in `goldbox/dos_port.py`**: `experience_award` (`u16le`)
   and `experience_per_hit_point` (`u8`) in the four earlier shapes,
-  `experience_award` alone in the two later ones. `tools/dosxpaward.py` looks
+  `experience_award` alone in the two later ones. `tools/dos/dosxpaward.py` looks
   those names up first and falls back to the gap, so it moves with the rename;
   `tests/test_dosxpaward.py` asserts the offsets either way. The C64 side is
   `0x0F7`-`0x0F8` and `0x0F9`, inside `gap_0f4` in `goldbox/layout.py`, and

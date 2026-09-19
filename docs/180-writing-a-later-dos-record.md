@@ -69,7 +69,7 @@ one `to_neutral` makes in the other direction.
 A DOS record read into the neutral middle and written back, compared byte for
 byte outside the writer's own declared mask -- `WRITE_UNSOURCED`,
 `WRITE_UNSOURCED_LATER`, `WRITE_DEFAULTS` and `WRITE_DERIVED`, and never
-whatever happened to differ. `tools/dosrecordwrite.py roundtrip` is the sweep.
+whatever happened to differ. `tools/dos/dosrecordwrite.py roundtrip` is the sweep.
 
 The eight engine-written Curse records are the party driven for
 `#234 (A dual-classed Curse or Silver Blades character converted to DOS loses
@@ -114,7 +114,7 @@ diff:
 ## The loop that puts the C64 game in the middle
 
 Bytes matching is necessary and not sufficient. The strongest measurement
-available without booting DOS is the loop `tools/dosrecordwrite.py loop` runs,
+available without booting DOS is the loop `tools/dos/dosrecordwrite.py loop` runs,
 because the **C64 engine itself** is one of its steps:
 
     a DOS record  ->  neutral  ->  a C64 record  ->  the C64 game loaded it
@@ -170,7 +170,7 @@ DOS save into a C64 one, which the importer refuses today)` set the
 standard: convert, boot the game, read the sheets, and diff the engine's own
 resave. The record half of that was done for Silver Blades on 2026-09-05.
 
-The six records `tools/dosrecordwrite.py from-c64` built out of
+The six records `tools/dos/dosrecordwrite.py from-c64` built out of
 `WISH-SPEC-ssb-d-engine-resave.D64` were staged into DOS Silver Blades under
 DOSBox beside an unchanged `SAVGAMD.DAT` -- **the container is the engine's,
 because no Silver Blades container can be written yet** -- and `LOAD SAVED
@@ -382,7 +382,7 @@ VM arithmetic handler's divide arm storing the division remainder into VM word
 `$6E3F`, which the file's contiguous naming calls `$503F`
 (`docs/163-dos-vm-address-map.md`). It is the only site in either overlay that
 writes it, nothing reads it, and no script of either title names it
-(`tools/dosptrfields.py`, `tools/areas/eclcensus.py`). So the conversion writes it
+(`tools/dos/dosptrfields.py`, `tools/areas/eclcensus.py`). So the conversion writes it
 **zero** with that reason in `SAVGAM_UNSOURCED_LATER`, and the running game
 confirmed the zero loads and plays. It is a stale VM register, not party
 state.

@@ -8,7 +8,7 @@ measurements rest on records we watched being written)` is
 `#323 (The encumbrance identity does not survive the training fee, so failing
 it is not evidence of an edited record)` was waiting on.
 
-`tools/dosshop.py` is the tool. `tools/dosshop.py --map` re-derives every
+`tools/dos/dosshop.py` is the tool. `tools/dos/dosshop.py --map` re-derives every
 square below from the player's own files with no emulator.
 
 ## The four shops
@@ -90,7 +90,7 @@ Radiance does the same**, measured in
 
 `190 = 140 + 50` -- his purse *before* it paid, plus the axe. **The spoiled 999
 does not settle whether the field was rebuilt wholesale or added to**, because
-`#429 (tools/dosshop.py stages its spoiled encumbrance after the load, so the
+`#429 (tools/dos/dosshop.py stages its spoiled encumbrance after the load, so the
 engine never reads it)` found this specimen's own poke landed after the boot
 too, so 999 never reached the engine's resident copy of the record: 140 + 50
 is 190 either way. What the number does show, unaffected by the poke's
@@ -115,8 +115,8 @@ nobody looking at the sheet is the one that fails the identity.**
 `WISH-SPEC-por-shop-encumbrance-control` looked like the opposite: the same
 six records staged at 999, loaded, encamped on the map and saved, with no
 shop and no trainer, and all six came back holding their own correct sum.
-**That result was `tools/dosshop.py` measuring itself.**
-`#429 (tools/dosshop.py stages its spoiled encumbrance after the load, so the
+**That result was `tools/dos/dosshop.py` measuring itself.**
+`#429 (tools/dos/dosshop.py stages its spoiled encumbrance after the load, so the
 engine never reads it)` found that `--encumbrance` wrote its 999 *after*
 `open_loaded` had already booted DOSBox and pressed `LOAD SAVED GAME`, so the
 engine had the record in memory before the poke touched the file, and its own
@@ -124,7 +124,7 @@ save wrote that untouched, already-correct copy back. A run that came back
 "correct" had measured nothing.
 
 **CONFIRMED the other way**, once the poke moves before the boot.
-`tools/dosencsave.py` stages the same 999 between `install` and `session.boot()`,
+`tools/dos/dosencsave.py` stages the same 999 between `install` and `session.boot()`,
 and `WISH-SPEC-por-enc-spoiled-campsave` -- an ordinary camp save, no shop and
 no trainer -- comes back holding **999 in all six**. `WISH-SPEC-por-enc-
 spoiled-menusave`, a party-menu `SAVE CURRENT GAME` on the same boot, agrees.
@@ -155,23 +155,23 @@ evidence that anybody edited the record.** That is what
 | specimen | what it is |
 |---|---|
 | `WISH-SPEC-por-party-l1-shopped` | the six from creation, WISHFTR carrying two hand axes he bought with the 140 gp the engine rolled him. No character field was ever poked; the only byte this project wrote is the party's saved square |
-| `WISH-SPEC-por-shop-encumbrance-spoiled` | the same party with stored encumbrance staged to 999 *after* the boot (`tools/dosshop.py`'s old, unfixed order): the buyer's 190 stands as a measurement of the purchase bug, the five who bought nothing are correct because they were always correct, and the 999 itself never reached the engine |
-| `WISH-SPEC-por-shop-encumbrance-control` | the same after-the-boot 999 with no shop at all: all six come back correct because the poke never reached the engine, not because a save recomputed anything -- see `#429 (tools/dosshop.py stages its spoiled encumbrance after the load, so the engine never reads it)` |
-| `WISH-SPEC-por-enc-spoiled-campsave` | `tools/dosencsave.py`'s repeat with the poke *before* the boot: an ordinary camp save, all six still holding 999 |
+| `WISH-SPEC-por-shop-encumbrance-spoiled` | the same party with stored encumbrance staged to 999 *after* the boot (`tools/dos/dosshop.py`'s old, unfixed order): the buyer's 190 stands as a measurement of the purchase bug, the five who bought nothing are correct because they were always correct, and the 999 itself never reached the engine |
+| `WISH-SPEC-por-shop-encumbrance-control` | the same after-the-boot 999 with no shop at all: all six come back correct because the poke never reached the engine, not because a save recomputed anything -- see `#429 (tools/dos/dosshop.py stages its spoiled encumbrance after the load, so the engine never reads it)` |
+| `WISH-SPEC-por-enc-spoiled-campsave` | `tools/dos/dosencsave.py`'s repeat with the poke *before* the boot: an ordinary camp save, all six still holding 999 |
 | `WISH-SPEC-por-enc-spoiled-menusave` | the same boot's party-menu `SAVE CURRENT GAME`, taken first: all six still 999 |
 | `WISH-SPEC-por-enc-spoiled-viewed` | the next save in that boot, after `VIEW` drew WISHFTR's sheet: WISHFTR holds his true sum, the other five are still 999 |
 
 ## Running it
 
-    tools/dosshop.py --map
-    tools/dosshop.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-por-party-l1-intown \
+    tools/dos/dosshop.py --map
+    tools/dos/dosshop.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-por-party-l1-intown \
         --shop 53 --slot E --interactive --cmd $TMPDIR/cmd.txt
-    tools/dosshop.py --party ... --shop 53 --encumbrance 999 \
+    tools/dos/dosshop.py --party ... --shop 53 --encumbrance 999 \
         --steps Up '~5' y '~4' b '~4' b '~4' '@e' '~3' '@e' '~4' \
                 '@e' '~4' '@s' '~3' g '~10' n '~4'
 
 `--encumbrance` spoils the stored field before the boot -- `open_loaded_spoiled`,
-fixed by `#429 (tools/dosshop.py stages its spoiled encumbrance after the
+fixed by `#429 (tools/dos/dosshop.py stages its spoiled encumbrance after the
 load, so the engine never reads it)` -- which is what makes a right answer
 afterwards a recompute rather than our own staging surviving. Output goes
 under the temp directory, which may vanish (the old gitignored directory was lost twice): copy a run you

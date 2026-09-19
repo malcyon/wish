@@ -1,4 +1,4 @@
-"""`tools/dossavewritemap.py`, which reads a title's save map off its writer.
+"""`tools/dos/dossavewritemap.py`, which reads a title's save map off its writer.
 
 Two halves. The synthetic one builds a `BlockWrite` chain byte by byte and
 runs in CI, because the parser -- the immediate that is decimal when small and
@@ -11,10 +11,10 @@ without the archives, so say in the commit that you ran it somewhere they are.
 import pytest
 
 from goldbox import dos_savegame as sg
-from tools import dossavewritemap as wm
+from tools.dos import dossavewritemap as wm
 
 # `capstone` is not a declared dependency: nine tools under `tools/` use it and
-# CI installs none of them.  `tools/dossavewritemap.py` imports it lazily, so the
+# CI installs none of them.  `tools/dos/dossavewritemap.py` imports it lazily, so the
 # module above is safe to import and it is the test bodies that need the skip.
 # `tests/test_amiga68k.py` guards the same way, and passes in CI without it.
 pytest.importorskip("capstone")
@@ -101,7 +101,7 @@ def test_a_chain_whose_widths_are_no_titles_size_is_refused():
 
 
 def _overlay(stem: str):
-    from tools import dosbox
+    from tools.dos import dosbox
     try:
         path = dosbox.find_game(stem) / "GAME.OVR"
     except FileNotFoundError:
@@ -184,7 +184,7 @@ def test_the_twelve_extra_bytes_are_inside_the_block_not_in_front_of_it():
 def test_the_command_line_check_passes_against_every_engine_here():
     """`--check` is the whole tool as one exit code, and a subagent running
     it should get a `0` rather than a map to read."""
-    from tools import dosbox
+    from tools.dos import dosbox
     if not dosbox.ARCHIVES.is_dir():
         pytest.skip("needs the DOS archives; set FR_ARCHIVES")
     assert wm.main(["--check"]) == 0

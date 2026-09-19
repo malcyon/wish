@@ -1,6 +1,6 @@
 """New Phlan's four shops, and the record the engine wrote after a purchase.
 
-`tools/dosshop.py` walks a DOS Pool of Radiance party into a shop.  Three
+`tools/dos/dosshop.py` walks a DOS Pool of Radiance party into a shop.  Three
 things about it can be checked with no emulator, and they fail for different
 reasons.
 
@@ -31,7 +31,7 @@ import pytest
 
 from goldbox import dos_codec
 from goldbox import geo as geolib
-from tools import dosbox, dosshop
+from tools.dos import dosbox, dosshop
 
 SHOPPED = "por-party-l1-shopped"
 BEFORE = "por-party-l1-intown"
@@ -47,7 +47,7 @@ def new_phlan():
 
 @pytest.fixture(scope="module")
 def dos_game():
-    """The DOS install, wherever `tools/dosbox.py` finds it."""
+    """The DOS install, wherever `tools/dos/dosbox.py` finds it."""
     try:
         where = dosbox.find_game()
     except Exception:
@@ -181,7 +181,7 @@ CONTROL = "por-shop-encumbrance-control"
 #: What was staged into every record's stored encumbrance for these two
 #: specimens.  The engine's own arithmetic cannot produce it for any of
 #: these six characters, which is why it was chosen -- but `#429
-#: (tools/dosshop.py stages its spoiled encumbrance after the load, so the
+#: (tools/dos/dosshop.py stages its spoiled encumbrance after the load, so the
 #: engine never reads it)` found that in both of these the poke landed
 #: *after* the boot had already loaded the party, so it never reached the
 #: engine's resident copy of the record.  CONTROL's own "recompute" was
@@ -231,7 +231,7 @@ def test_an_ordinary_in_town_save_preserves_stored_encumbrance():
     already booted DOSBox and loaded the party, so the engine's resident
     copy was never spoiled and its save simply wrote that untouched, already
     -correct copy back. `WISH-SPEC-por-enc-spoiled-campsave` is the same
-    experiment with the poke moved before the boot, by `tools/dosencsave.py`
+    experiment with the poke moved before the boot, by `tools/dos/dosencsave.py`
     -- which is the order this tool now uses too. All six come back **still
     holding 999**, so an ordinary camp save preserves whatever the engine
     loaded and recomputes nothing. `tests/test_dosencsave.py` pins this

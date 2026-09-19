@@ -1,0 +1,365 @@
+#!/usr/bin/env python3
+"""What every DOS character record on this machine holds in a chosen field.
+
+Written for `#235 (Two unattributed DOS byte ranges in the combat tail are
+dropped converting to C64, and nobody knows what they hold)`, whose two
+entries in `goldbox/dos_codec.py`'s `DROPPED` table -- `field_83_87` and
+`field_10c_10f` -- rested on "the same bytes in all 24 specimens", and 24 is
+one played Pool of Radiance party.  `#224 (0x0B9 and 0x0BA are documented both
+as an NPC marker and as the dual-class slot)` is the standing warning: **a byte
+that is constant across a corpus is constant because of what the corpus is.**
+So this widens the corpus rather than re-reading the same 24 files.
+
+What it does, and it reads only:
+
+1. **Finds every DOS Gold Box character record** under the roots given, or
+   under `dos_record_roots()` by default -- the specimen tree, the player's
+   archives and the played DOS game directory.  A record is a file whose size
+   is one of the four `goldbox/dos_port.py` knows -- 285 Pool of Radiance, 422
+   Curse, 439 Silver Blades, 510 Pools of Darkness -- and whose suffix is a
+   record suffix (`.SAV`, `.CHA`, `.GUY`).  Anything else, including the
+   288-byte Amiga records, is skipped.  A record under a `FOREIGN_TITLES`
+   directory -- Gateway to the Savage Frontier's `.GUY` is 422 bytes,
+   Treasures of the Savage Frontier's record is 510 -- is the same size as a
+   title read here and is skipped and counted rather than read through that
+   title's table; `--foreign` includes it, marked.
+2. **Grades each file's provenance.**  `engine` is a file the game wrote:
+   everything that does not carry one of the `BUILT-`/`SEED-`/`C64-` prefixes
+   this project's own writers use.  `built` is ours.  The distinction is the
+   whole point of the run: our own `WRITE_CONSTANTS` writes `00 00 01 00 00`
+   into `field_83_87`, so a built file can only ever agree with the claim
+   under test.  `--built` includes them, marked, and they are never counted in
+   the headline partition.  **`engine` is not a chain of custody**: the
+   archives are a download and every record under the played game directory
+   has been through Gold Box Companion's editor, so both are an *input* rather
+   than evidence (`.claude/rules/testing.md`).  Only the specimen tree says
+   who wrote each file, and `tools/dos/innateids.py` and `tools/enccensus.py`
+   print that finer grade.
+3. **Deduplicates on the record bytes**, per title, because the archives ship
+   every save directory twice and carry a second copy of the played game
+   directory's own `SAVE`.  A count is a count of distinct records.
+4. **Prints the value partition** for each field named with `--field`: which
+   byte values occur, how many distinct records hold each, and which -- name,
+   class, level, title -- so a value that varies can be correlated at once.
+
+`--field` takes a layout field name (`field_83_87`) or a raw
+`0xNN:len` window in *Pool of Radiance* offsets, which is then followed
+through each title's own shape.  `--per-title` breaks the partition down by
+title, which is what tells "constant everywhere" from "constant within each
+title and different between them".
+
+Nothing here is a claim about what a field *means*.  It reports what the
+records hold, which is what a claim has to rest on.
+"""
+
+from __future__ import annotations
+
+import argparse
+import collections
+import hashlib
+import pathlib
+import sys
+
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(REPO))
+
+from goldbox import dos_codec as gdos  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
+
+#: Suffixes a DOS character record is stored under.  `.GUY` is Gateway's
+#: export, which reads through the Curse table (`dos_layout.shape_for`).
+RECORD_SUFFIXES = (".sav", ".cha", ".guy")
+
+#: Filename prefixes this project's own writers use for records **we** made.
+#: A record we wrote carries whatever `goldbox/dos_codec.py` chose to write, so it
+#: is evidence about our writer and never about the game.
+BUILT_PREFIXES = ("built-", "seed-", "c64-", "conv-")
+
+#: An emulator instance's **staged game tree**, which is skipped entirely.
+#:
+#: This is the trap that cost a re-take.  `tools/dos/dosbox.py` copies the game
+#: into `inst/<n>/game/<stem>/` in `tools/dos/dosbox.py`'s scratch directory, and a probe that tampers with a
+#: record writes it there under the game's own name -- so a sweep counting
+#: that directory reads **our** staged bytes as the engine's, and a run of
+#: `tools/dos/dostailprobe.py` staging `04 00 00 00` would come back as a
+#: specimen holding `04 00 00 00`.  Whatever the engine wrote in there is
+#: also still in whichever scratch directory the run copied it out to, so
+#: nothing is lost by skipping the tree.
+_DOSBOX_SCRATCH = scratch.scratch_dir("dosbox").as_posix()
+SCRATCH_DIRS = (_DOSBOX_SCRATCH + "/inst/", _DOSBOX_SCRATCH + "/x/inst/")
+
+#: Directory names of Gold Box titles on the same engine whose record this
+#: module has **no layout for**, and whose records are the same size as one
+#: it does.  Gateway to the Savage Frontier's `.GUY` exports are 422 bytes,
+#: which is Curse of the Azure Bonds' size, and Treasures of the Savage
+#: Frontier's record is 510, which is Pools of Darkness' -- so a finder that
+#: trusts size alone reads one title's characters through another's table and
+#: counts them as its own.  `#400 (The DOS record census counts Gateway and
+#: Treasures characters as Curse and Pools of Darkness ones, because it
+#: identifies a title by record size)` is that bug, caught when a Gateway
+#: pregen's `.GUY` was about to be quoted as Curse evidence for `#395`.  They
+#: are skipped and counted here, never silently folded in -- moved from
+#: `tools/dos/innateids.py`, which had already worked this out for its own finder.
+FOREIGN_TITLES = ("gateway to the savage frontier",
+                  "treasures of the savage frontier",
+                  "unlimited adventures")
+
+
+#: What to tell somebody whose machine holds no DOS records at all.  Naming
+#: the registry entry and its variable is the whole point: a census that
+#: prints a row of zeros and no advice looks like a finding (#575).
+NO_RECORDS = ("No DOS records on this machine: set $FR_ARCHIVES to the "
+              "Forgotten Realms archives, or add a dos-archives path to "
+              "gamedisks.yaml")
+
+
+def foreign_title(path: pathlib.Path) -> str | None:
+    """The name of a title with no layout here, if `path` is inside one."""
+    text = path.as_posix().lower()
+    return next((t for t in FOREIGN_TITLES if f"/{t}/" in text), None)
+
+
+def archives() -> pathlib.Path | None:
+    """The player's unpacked Forgotten Realms archives, or None.
+
+    The `dos-archives` entry of `gamedisks.yaml`, whose own first layer is
+    `$FR_ARCHIVES` -- so the variable still wins outright and the private
+    fallback this used to carry is one search list rather than two (#575).
+    """
+    return gamedisks.find("dos-archives")
+
+
+def specimen_tree() -> pathlib.Path | None:
+    """The specimen tree, `$WISH_SPECIMENS` or `~/wish-specimens`, or None.
+
+    Every record in there says who made it and how, which is the only corpus
+    on this machine that does -- `.claude/rules/testing.md`.
+    """
+    from tools import specimens  # noqa: PLC0415
+    root = pathlib.Path(specimens.tree_root())
+    return root if root.is_dir() else None
+
+
+def played_game_dir() -> pathlib.Path | None:
+    """Donald's own played DOS game directory, `por-dos-play`, or None.
+
+    **Every character record under it has been edited with Gold Box
+    Companion**, so it is an input to a census of what a container will hold
+    and never evidence about what the engine writes -- `.claude/rules/
+    testing.md`, "A specimen is only evidence if we know who wrote it".  It is
+    swept because the question these tools ask is what values exist, and
+    graded wherever a tool grades at all.
+    """
+    return gamedisks.find("por-dos-play")
+
+
+def dos_record_roots() -> list[pathlib.Path]:
+    """Every directory on this machine that may hold a DOS record.
+
+    The specimen tree first, because it is the only one whose files carry
+    their own provenance and a deduplicated record should show that path;
+    then the archives; then the played game directory, whose `SAVE` the
+    archives already ship a byte-identical copy of.
+
+    **A scratch directory is not here and must not be** (#575).  It may vanish
+    at any time, so records that live only there stop existing; a run whose records are evidence copies them into the
+    specimen tree with `tools/specimens.py add`.  Pass a scratch directory on
+    the command line to sweep one anyway.
+    """
+    roots = [specimen_tree(), archives(), played_game_dir()]
+    return [r for r in roots if r is not None]
+
+
+def is_built(path: pathlib.Path) -> bool:
+    """Did this project write this record, rather than the game?"""
+    return path.name.lower().startswith(BUILT_PREFIXES)
+
+
+class Specimen:
+    """One distinct record, with everything the partition wants to print."""
+
+    def __init__(self, path: pathlib.Path, data: bytes) -> None:
+        self.path = path
+        self.data = data
+        self.shape = dl.deltas_for(len(data))
+        self.built = is_built(path)
+        self.digest = hashlib.sha256(data).hexdigest()[:12]
+        self.paths = [path]
+        char = gdos.DosCharacter(data, deltas=self.shape)
+        self.char = char
+        try:
+            self.name = char.name or "(unnamed)"
+        except Exception:                                # pragma: no cover
+            self.name = "(unreadable)"
+        self.klass = _safe(char, "char_class")
+        self.level = _safe(char, "level")
+        self.race = _safe(char, "race")
+
+    @property
+    def who(self) -> str:
+        klass = dl.CLASS_NUMBERS[self.klass] if isinstance(
+            self.klass, int) and self.klass < len(dl.CLASS_NUMBERS) else "?"
+        return f"{self.name} ({klass} {self.level})"
+
+
+def _safe(char, name):
+    try:
+        return char.get(name)
+    except Exception:                                    # pragma: no cover
+        return None
+
+
+def collect(roots, want_built: bool,
+            want_foreign: bool = False
+            ) -> tuple[list[Specimen], collections.Counter]:
+    """Every distinct DOS record under `roots`, deduplicated on its bytes.
+
+    Returns the specimens and a count of records skipped for belonging to a
+    title this module has no layout for -- see `FOREIGN_TITLES`.  A caller
+    that has not been updated for the second value can take `collect(...)[0]`.
+    """
+    seen: dict[str, Specimen] = {}
+    skipped: collections.Counter = collections.Counter()
+    for root in roots:
+        if not root.exists():
+            continue
+        walk = sorted(root.rglob("*")) if root.is_dir() else [root]
+        for path in walk:
+            if not path.is_file() or path.suffix.lower() not in RECORD_SUFFIXES:
+                continue
+            if any(d in path.as_posix() for d in SCRATCH_DIRS):
+                continue
+            try:
+                size = path.stat().st_size
+            except OSError:                              # pragma: no cover
+                continue
+            if size not in dl.DELTAS_BY_SIZE:
+                continue
+            other = foreign_title(path)
+            if other and not want_foreign:
+                skipped[other] += 1
+                continue
+            data = path.read_bytes()
+            try:
+                spec = Specimen(path, data)
+            except Exception as exc:                     # pragma: no cover
+                print(f"  skipped {path}: {exc}", file=sys.stderr)
+                continue
+            if spec.built and not want_built:
+                continue
+            key = f"{spec.shape.key}:{spec.digest}"
+            if key in seen:
+                seen[key].paths.append(path)
+            else:
+                seen[key] = spec
+    return list(seen.values()), skipped
+
+
+def window(spec: Specimen, field: str) -> bytes | None:
+    """The bytes `field` names in this specimen's own title's shape."""
+    if ":" in field:
+        head, _, length = field.partition(":")
+        start = int(head, 0)
+        if spec.shape.key != "pool-of-radiance":
+            # A raw window is stated in Pool of Radiance offsets; following it
+            # into another title would need a per-title displacement nobody
+            # has measured, so say so rather than read the wrong bytes.
+            return None
+        return spec.data[start:start + int(length, 0)]
+    f = dl.FIELDS_BY_NAME_FOR[spec.shape.key].get(field)
+    if f is None:
+        return None
+    return spec.data[f.offset:f.offset + f.size]
+
+
+def show(specs: list[Specimen], field: str, per_title: bool,
+         examples: int) -> None:
+    if not per_title:
+        _partition(specs, field, examples)
+        return
+    keyed = collections.defaultdict(list)
+    for s in specs:
+        keyed[s.shape.key].append(s)
+    for key in sorted(keyed):
+        f = dl.FIELDS_BY_NAME_FOR[key].get(field)
+        where = f"0x{f.offset:03X}+{f.size}" if f else "not in this shape"
+        print(f"\n  {dl.DELTAS_BY_KEY[key].title} -- {field} {where}")
+        _partition(keyed[key], field, examples, indent="    ")
+
+
+def _partition(specs, field, examples, indent="  ") -> None:
+    groups = collections.defaultdict(list)
+    for s in specs:
+        groups[window(s, field)].append(s)
+    for raw, group in sorted(groups.items(),
+                             key=lambda kv: -len(kv[1])):
+        if raw is None:
+            print(f"{indent}(field absent) x{len(group)}")
+            continue
+        hexed = " ".join(f"{b:02X}" for b in raw)
+        mark = " BUILT" if all(s.built for s in group) else ""
+        print(f"{indent}{hexed}  x{len(group)}{mark}")
+        for s in group[:examples]:
+            flag = "*" if s.built else " "
+            print(f"{indent}  {flag}{s.who:38s} "
+                  f"{s.shape.key:28s} {s.path.name}")
+        if len(group) > examples:
+            print(f"{indent}  ... and {len(group) - examples} more")
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("roots", nargs="*", type=pathlib.Path,
+                    help="directories to sweep; default the specimen tree, "
+                         "the archives and the played DOS game directory")
+    ap.add_argument("--field", action="append", default=[],
+                    help="layout field name, or 0xNN:len in Pool of "
+                         "Radiance offsets; repeatable")
+    ap.add_argument("--built", action="store_true",
+                    help="include records this project wrote, marked *")
+    ap.add_argument("--foreign", action="store_true",
+                    help="include titles this module has no layout for, "
+                         "whose records are read through a same-sized "
+                         "title's table")
+    ap.add_argument("--per-title", action="store_true",
+                    help="break the partition down by title")
+    ap.add_argument("--examples", type=int, default=6,
+                    help="specimens to name per value (default 6)")
+    ap.add_argument("--list", action="store_true",
+                    help="list every distinct record found and stop")
+    args = ap.parse_args(argv)
+
+    roots = list(args.roots) or dos_record_roots()
+    if not roots:
+        print(NO_RECORDS, file=sys.stderr)
+        return 1
+    fields = args.field or ["field_83_87", "field_10c_10f"]
+
+    specs, skipped = collect(roots, args.built, args.foreign)
+    by_title = collections.Counter(s.shape.key for s in specs)
+    built = sum(1 for s in specs if s.built)
+    print(f"{len(specs)} distinct records "
+          f"({len(specs) - built} engine-written, {built} ours) under:")
+    for r in roots:
+        print(f"  {r}")
+    for key, n in sorted(by_title.items()):
+        print(f"  {dl.DELTAS_BY_KEY[key].title:32s} {n}")
+    for other, n in sorted(skipped.items()):
+        print(f"  skipped {n} record(s) under {other}: the same record "
+              f"size as a title read here, and not the same id space")
+
+    if args.list:
+        for s in sorted(specs, key=lambda s: (s.shape.key, s.name)):
+            print(f"  {'*' if s.built else ' '}{s.who:38s} "
+                  f"{s.shape.key:28s} {s.digest} {s.path}")
+        return 0
+
+    for field in fields:
+        print(f"\n{field}:")
+        show(specs, field, args.per_title, args.examples)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import find_disks  # noqa: E402
 from goldbox import areas, dos_codec  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools import dosdisk  # noqa: E402
+from tools.dos import dosdisk  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")

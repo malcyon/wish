@@ -1,6 +1,6 @@
 """Which screen makes DOS Pool of Radiance rewrite stored encumbrance.
 
-`tools/dosencsave.py` staged 999 into every record of a training-ladder rung
+`tools/dos/dosencsave.py` staged 999 into every record of a training-ladder rung
 **before the boot**, so the engine read the spoiled value when it loaded the
 party, and then took three saves off that one load.  What the three saves hold
 is asserted here, because the finding is a negative one and a negative finding
@@ -79,13 +79,13 @@ def test_drawing_a_sheet_writes_the_recomputed_total_into_that_record():
 def test_the_training_ladder_agrees_once_the_restaging_is_taken_out():
     """The ladder's climbing total is one fee a boot plus our own poke.
 
-    `tools/dostrainprobe.install` moves stored encumbrance with the gold it
+    `tools/dos/dostrainprobe.install` moves stored encumbrance with the gold it
     writes, so rung *n+1* is staged at rung *n*'s stored value plus whatever
     the restaging put back -- and the engine leaves it there.  Reproducing
     that arithmetic is what shows the drift is not the engine adding 1000 a
     rung, which is how the ladder was read before.
     """
-    from tools.dosencsave import LADDER_GOLD
+    from tools.dos.dosencsave import LADDER_GOLD
 
     names = [f"por-party-ladder-rung{n}" for n in range(8)]
     if not all(gamedata.have_specimen(n) for n in names):

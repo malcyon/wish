@@ -852,7 +852,7 @@ choose a slot, choose where the write goes, press **Convert**. Or, without
 the GUI:
 
 ```sh
-tools/dosdisk.py --slot J --out $TMPDIR/NEWJ.D64 --report --sheet
+tools/dos/dosdisk.py --slot J --out $TMPDIR/NEWJ.D64 --report --sheet
 ```
 
 *Expect:* `Bytes left to the payload: 0`. Anything else is a byte the

@@ -7,8 +7,8 @@ library supports)`'s plan (`cited/reports/52-plan.md`, on the issue's own
 comments): no window, no menu, no template.
 
 **Every test here is a round trip.** It proves `editor.convert` wraps
-`goldbox.dos_codec` the way `editor/dosimport.py`, `tools/dosdisk.py` and
-`tools/dosnewsave.py` already do, byte for byte -- not a fact about the game,
+`goldbox.dos_codec` the way `editor/dosimport.py`, `tools/dos/dosdisk.py` and
+`tools/dos/dosnewsave.py` already do, byte for byte -- not a fact about the game,
 so the input's provenance does not matter to the assertion
 (`.claude/rules/testing.md`, "A specimen is only evidence if we know who
 wrote it"). `tests/fixtures/savedgame0.bin` / `savedgame1.bin` are Donald's
@@ -510,7 +510,7 @@ def test_dos_to_c64_direction_writes_only_into_its_own_folder(game_files,
 @needs_dos_saves
 @needs_disks
 def test_dos_to_c64_direction_is_the_transfer_test(game_files, tmp_path):
-    """The bytes this direction writes equal what `tools/dosdisk.py` writes,
+    """The bytes this direction writes equal what `tools/dos/dosdisk.py` writes,
     calling `goldbox.dos_codec.new_save` and `goldbox.dos_codec.save_disk` directly for
     the same slot -- so `#119 (Play a converted DOS save in VICE, off a disk
     Wish built from nothing)`'s VICE proof stands for this path too."""
@@ -610,7 +610,7 @@ def test_c64_to_dos_direction_writes_only_into_its_own_folder(tmp_path):
 
 @needs_dos_saves
 def test_c64_to_dos_direction_is_the_transfer_test(tmp_path):
-    """The files this direction writes equal what `tools/dosnewsave.py`
+    """The files this direction writes equal what `tools/dos/dosnewsave.py`
     writes, calling `goldbox.dos_codec.new_dos_save` directly for the same inputs
     -- so `#26 (Write a DOS save, not just read one)`'s DOSBox proof stands
     for this path too. No template anywhere (`.claude/rules/conversions.md`).
@@ -865,7 +865,7 @@ def _curse_game_dir() -> pathlib.Path | None:
     """The DOS Curse game directory, for the area script `new_dos_save`
     stages -- `tests/test_doslatercontainer.py`'s own helper, repeated here
     rather than imported across `#52`'s lane."""
-    from tools import dosbox
+    from tools.dos import dosbox
     try:
         return dosbox.find_game("CURSE")
     except FileNotFoundError:

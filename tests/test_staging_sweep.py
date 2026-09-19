@@ -54,7 +54,7 @@ machine:
 default mode on it, so neither can put a read-only file anywhere.  Both can
 *fail* on a read-only leftover, but only one of the three above can have left
 one, so flagging the three covers the cause.  `tools/instance.py` and
-`tools/dosabilitypair.py` already stage this way deliberately.
+`tools/dos/dosabilitypair.py` already stage this way deliberately.
 
 `tools/c64/session.py` is exempt: `stage_writable` is the function everything
 else is supposed to go through, and this is its own implementation.

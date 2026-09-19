@@ -20,7 +20,7 @@ So the answer is an art id, not a screenshot somebody has to squint at: if
 `portrait_head = 9` matches block `$2D`, and `$2D` is the ninth entry of the
 menu table, the reading is confirmed and the conversion is a lookup.
 
-Nothing here writes to the player's archives -- `tools.dosbox.Session.stage`
+Nothing here writes to the player's archives -- `tools.dos.dosbox.Session.stage`
 copies the tree -- and nothing opens a window on the desktop.  Screenshots go
 under `--out`, which defaults to a scratch directory.
 
@@ -46,7 +46,8 @@ from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox import portraits as portrait_tables  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import dosbox, scratch  # noqa: E402
+from tools import scratch  # noqa: E402
+from tools.dos import dosbox  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 

@@ -58,7 +58,7 @@ never carries a combined class code**, before or after the regain.
 
 ## Five of five titles, and Pool of Radiance is the control
 
-`tools/dualclassregain.py code`. Each overlay clears `class_bits` in three or
+`tools/dos/dualclassregain.py code`. Each overlay clears `class_bits` in three or
 four places; in every title with a former array **exactly one** of them goes on
 to read that array and compare it with `level`.
 
@@ -71,7 +71,7 @@ to read that array and compare it with `level`.
 | Gateway to the Savage Frontier | 3 | `0x42D42` |
 | Treasures of the Savage Frontier | 4 | `0x42A6A` |
 
-`tools/dualclassregain.py census` predicts the mask from the rule and compares
+`tools/dos/dualclassregain.py census` predicts the mask from the rule and compares
 it with the stored byte: **62 of 62** records in the archives that have a
 former array agree, and **11 of 11** of the dual-classed ones across the
 archives and the specimen tree.
@@ -179,7 +179,7 @@ PHILIPPE `$09` against `$08`, OUGO `$0A` against `$02`; 8 of 135 records with a
 former array, 127 agreeing. Its docstring already says it is the regained state
 rather than the general one, and its only caller is a test that walks shipped
 records and has no dual-classed one, so no player can reach it. `predict_bits`
-and `regained` in `tools/dualclassregain.py` are the general rule, in three
+and `regained` in `tools/dos/dualclassregain.py` are the general rule, in three
 lines.
 
 **That second half also removes the DOS side of
@@ -194,14 +194,14 @@ choice rather than a measurement.
 
 | file | what |
 |---|---|
-| `tools/dualclassregain.py` | the family scan of the derive, and the mask census against every record |
+| `tools/dos/dualclassregain.py` | the family scan of the derive, and the mask census against every record |
 | `tools/curse_of_the_azure_bonds/curseregain.py` | the driven run that made the specimen |
 | `docs/209-the-regained-dual-class-on-dos.md` | this page |
 | `WISH-SPEC-curse-408-regained-paladin` | the first DOS record past the threshold anybody here watched being written |
 
 ## What would refute this
 
-A DOS record whose `class_bits` disagrees with `tools/dualclassregain.py
+A DOS record whose `class_bits` disagrees with `tools/dos/dualclassregain.py
 census`'s prediction, or a dual-classed DOS record with a non-zero entry in
 `class_levels` at the slot its former array names. Neither exists in the 62
 records on this machine that could hold one.

@@ -13,11 +13,11 @@ Grades follow `docs/50-experiments.md`'s scale. "The build" is the 1.3
 `GAME.OVR` and `START.EXE` in the archives.
 
 **Four of the six links below are re-taken every time the suite runs, and two
-are not.** `tools/dosracialseed.py` reads links 1, 4, 5 and 6 -- the creation
+are not.** `tools/dos/dosracialseed.py` reads links 1, 4, 5 and 6 -- the creation
 switch, the start-up-filled dispatch table, the overlay stubs and the handlers
 -- by shape rather than by address, and `tests/test_dosracialseed.py` pins the
 project's tables to what it finds. **Links 2 and 3 were read once, by hand,
-with `tools/dosovrmap.py dis`, and nothing re-checks them.** They are the two
+with `tools/dos/dosovrmap.py dis`, and nothing re-checks them.** They are the two
 that join "a saving throw is rolled" to "the dispatch table is consulted at
 all", so they are where a later reader who doubts any of this should start.
 
@@ -35,7 +35,7 @@ out**, because the magnitude is never written anywhere. CONFIRMED.
 
 ## The chain
 
-Six links, each read from the bytes; `tools/dosovrmap.py dis` prints any of
+Six links, each read from the bytes; `tools/dos/dosovrmap.py dis` prints any of
 them.
 
 **1. Creation, `GAME.OVR:0x1A12A`.** CONFIRMED. `mov al, es:[di+0x2E]` --
@@ -82,11 +82,11 @@ re-takes.
 table is BSS, filled at start-up by quartets of `mov ax / mov dx / mov [] /
 mov []`: `0x122D3` stores `0x41:0x01B5` into `[0x69AC]`, entry 97, and
 `0x12278` stores `0x41:0x0197` into `[0x6990]`, entry 90. 180 entries are
-filled that way. CONFIRMED, and `tools/dosracialseed.py` re-takes it.
+filled that way. CONFIRMED, and `tools/dos/dosracialseed.py` re-takes it.
 
 **5. The stubs.** Unit `0x41`'s public entry at stub `0x1B5` is code
 `0x268A`, file `0x112E5`; stub `0x197` is code `0x24D9`, file `0x11134`
-(`tools/dosovrmap.py units`). CONFIRMED, and `tools/dosracialseed.py`
+(`tools/dos/dosovrmap.py units`). CONFIRMED, and `tools/dos/dosracialseed.py`
 re-takes it.
 
 **6. The handler, `0x112E5`:**
@@ -151,7 +151,7 @@ target number read.
   is data) are range switches on some other byte -- each tests `0x61`
   between `0x5B` and `0x64` neighbours -- and none is an effect-id test.
 * **135 reads of the race byte** in the overlay; only one is followed by a
-  compare and `add_affect` calls, and `tools/dosracialseed.py` finds the
+  compare and `add_affect` calls, and `tools/dos/dosracialseed.py` finds the
   switch by that shape rather than by address.
 
 ## What would refute it

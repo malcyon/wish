@@ -111,7 +111,7 @@ a path -- it is **whether we watched it being written**.
 essentially one source.**
 
 **Saves an agent made by driving the game**, from character creation onward.
-`tools/dosgnome.py` is the worked example: it rolls a character in the game's
+`tools/dos/dosgnome.py` is the worked example: it rolls a character in the game's
 own creation screens under DOSBox and reads back the bytes, and its five
 same-boot racial controls are what make a single reading a measurement rather
 than an anecdote. Donald, 2026-09-04: *"if we created our own characters and
@@ -170,9 +170,9 @@ a stranger's edited party. Both halves of that are gone:
   character whose sheet `VIEW` drew came back holding the right sum, with five
   untouched characters in the same save still at 999. **So one boot leaves one
   fee of drift, and the ladder's climb to +11,000 is mostly our own
-  restaging** -- `tools/dostrainprobe.install` moves stored encumbrance with
+  restaging** -- `tools/dos/dostrainprobe.install` moves stored encumbrance with
   the gold it pokes, which is right for an input and is not the engine
-  agreeing with us. `tools/dosencsave.py` is the tool, and `#323 (The
+  agreeing with us. `tools/dos/dosencsave.py` is the tool, and `#323 (The
   encumbrance identity does not survive the training fee, so failing it is not
   evidence of an edited record)` has the runs.
 
@@ -308,7 +308,7 @@ written up, give the corpus size *and* what the records are.
 
 The same trap caught a census that was sweeping an emulator instance's staged
 tree, where the sweeping tool's own tampered probe records sat -- our bytes
-read back as the engine's. `tools/dostailcensus.py` excludes what this project
+read back as the engine's. `tools/dos/dostailcensus.py` excludes what this project
 wrote, by name; copy that exclusion rather than reinventing it.
 
 **The way out, when no specimen can be trusted, is to read the code instead.**

@@ -175,7 +175,7 @@ with no eligible class, takes the same path and is equally silent here.
 
 ## No record anywhere holds two
 
-`tools/dualclassdos.py census` over every DOS character record on this machine:
+`tools/dos/dualclassdos.py census` over every DOS character record on this machine:
 98 distinct records, 62 of them in the three shapes that have a former array
 (Curse 24, Silver Blades 12, the 510-byte shape 26).
 

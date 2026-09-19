@@ -1,4 +1,4 @@
-"""`tools/innateids.py`: where a DOS innate effect id comes from.
+"""`tools/dos/innateids.py`: where a DOS innate effect id comes from.
 
 `#395 (A Curse cleric carries the ranger's innate effect and a human carries
 the elf's, in the specimen both ids were graded from)` asked what effect ids
@@ -21,8 +21,8 @@ import struct
 
 import pytest
 
-# **The skip has to come before the import, not beside it.** `tools/innateids.py`
-# imports `capstone` at module level, so `from tools import innateids` raises
+# **The skip has to come before the import, not beside it.** `tools/dos/innateids.py`
+# imports `capstone` at module level, so `from tools.dos import innateids` raises
 # `ModuleNotFoundError` on a machine without it -- and every CI runner is one.
 # A skip written after this line never runs: the module fails to import first
 # and pytest reports an error rather than a skip. That is the mistake that
@@ -32,7 +32,7 @@ pytest.importorskip("capstone")
 
 from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
-from tools import innateids  # noqa: E402
+from tools.dos import innateids  # noqa: E402
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
@@ -146,7 +146,7 @@ def test_the_id_of_a_site_is_the_first_of_the_four_pushed():
 
 # --- the finding itself, off the player's own archives -----------------------
 def _game(stem):
-    from tools import dosbox
+    from tools.dos import dosbox
     try:
         return dosbox.find_game(stem)
     except FileNotFoundError:

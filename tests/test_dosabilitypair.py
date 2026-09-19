@@ -18,7 +18,7 @@ It did, and it is not one answer for all seven pairs:
 The tests below pin that to the shipped `GAME.OVR` of five DOS engines, with
 Pool of Radiance -- which keeps one copy of each ability and can therefore have
 none of the signatures -- as the negative control. They read the player's own
-archives through `tools/dosbox.find_game` and skip cleanly without them; no
+archives through `tools/dos/dosbox.find_game` and skip cleanly without them; no
 game bytes are in this repository, and the synthetic records the staging tests
 use are built here out of zeroes.
 
@@ -38,7 +38,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import dos_port  # noqa: E402
-from tools import dosabilitypair as ap  # noqa: E402
+from tools.dos import dosabilitypair as ap  # noqa: E402
 
 #: Long enough for the 422-byte Curse shape, which is the smallest of the three
 #: that keep pairs.

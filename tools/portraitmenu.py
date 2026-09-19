@@ -13,7 +13,7 @@ re-derived:
 
 It reads the C64 side (`GEN`, off `$POR_DISKS` or wherever `gamedisks.yaml`
 says the `POOL*.D64` sides are) and the DOS side (`START.EXE`, in the
-*Forgotten Realms: The Archives* game directory `tools/dosbox.py` finds),
+*Forgotten Realms: The Archives* game directory `tools/dos/dosbox.py` finds),
 whichever of the two is on this machine, through the same run-finder the
 conversion uses -- `goldbox.portraits.tables_from_disks` and
 `tables_from_dos` -- and prints each as the Python literal the stored block
@@ -44,7 +44,7 @@ def _dos_game(given: str | None) -> pathlib.Path | None:
     if given:
         return pathlib.Path(given)
     try:
-        from tools import dosbox
+        from tools.dos import dosbox
         return dosbox.find_game("POOLRAD")
     except (FileNotFoundError, ImportError):
         return None

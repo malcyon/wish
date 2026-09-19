@@ -48,7 +48,7 @@ def tree(tmp_path):
                       issue="#249 (Build a DOS party from creation and level "
                             "it ourselves, so DOS measurements rest on "
                             "records we watched being written)",
-                      made_by="tools/dosparty.py",
+                      made_by="tools/dos/dosparty.py",
                       what="rolled in the game's own creation screens")
     yield root
     if root.is_dir():
@@ -73,7 +73,7 @@ def test_two_specimens_sharing_a_file_are_one_thing_to_find(tmp_path, tree):
     (src / "WISH0.CHA").write_bytes(b"a character record, standing in for one")
     specimens.add("dos", "party2", [src / "WISH0.CHA"], root=tree,
                   title="Pool of Radiance", issue="#249 (...)",
-                  made_by="tools/dosparty.py", what="the same record again")
+                  made_by="tools/dos/dosparty.py", what="the same record again")
     wanted = specimenbackup.recorded_hashes(tree)
     shared = [entries for entries in wanted.values() if len(entries) == 2]
     assert shared and sorted(shared[0]) == [("party0", "WISH0.CHA"),

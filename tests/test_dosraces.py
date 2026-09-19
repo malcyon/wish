@@ -13,7 +13,7 @@ Two kinds of test here, and they are deliberately different in kind.
   with the code by construction, and
   `test_the_single_table_is_what_the_legality_test_catches` shows it failing
   against the pre-#237 numbering on the same records.
-* **The reader tests** check that `tools/dosraces.py` finds each title's own
+* **The reader tests** check that `tools/dos/dosraces.py` finds each title's own
   race-name table in the executable the game runs, and that what it reads is
   what `DosDeltas.race_numbers` says.  Run against Pool of Radiance and Curse
   the reader reproduces `RACE_NUMBERS`, a table established here independently
@@ -36,7 +36,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_port  # noqa: E402
-from tools import dosraces  # noqa: E402
+from tools.dos import dosraces  # noqa: E402
 
 #: What AD&D lets each race be, as the Gold Box character creation screen
 #: enforces it.  This is the *rules*, not a restatement of anything in
@@ -238,7 +238,7 @@ def test_the_reader_finds_the_table_pool_of_radiance_already_knew():
 
 
 def test_each_titles_table_is_what_dos_layout_says_it_is():
-    """`tools/dosraces.py --check`, as an assertion."""
+    """`tools/dos/dosraces.py --check`, as an assertion."""
     found = _need_tables()
     assert len(found) >= 2, f"only {sorted(found)} found"
     for key, (path, offset, stride, names) in found.items():

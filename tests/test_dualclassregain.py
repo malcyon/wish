@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import dos_codec  # noqa: E402
 from tests import gamedata  # noqa: E402
-from tools import dosbox, dualclassdos, dualclassregain  # noqa: E402
+from tools.dos import dosbox, dualclassdos, dualclassregain  # noqa: E402
 
 
 class _Stub:

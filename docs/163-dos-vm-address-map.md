@@ -26,7 +26,7 @@ is read, and the third is recomputed on the first step or turn.
 
 Grades follow `docs/50-experiments.md`'s scale. "The build" is the 1.3
 `GAME.OVR` in the player's copy of *Forgotten Realms: The Archives*; file
-offsets are into it, and `tools/dosovrmap.py` turns them into `seg:off` and
+offsets are into it, and `tools/dos/dosovrmap.py` turns them into `seg:off` and
 back. Runs are under `cited/218`.
 
 ## The address classes
@@ -63,8 +63,8 @@ So file word `k`, at offset `1 + 2k`:
 | 1024-2047 | `$4D00`-`$50FF` | `$6B00`-`$6EFF` | the resident character record `$6B00`-`$6D43` (`41-memory-regions.md`), then engine variables and the script registers `150-departing-prologues.md` lists |
 | 2048-2559 | `$5100`-`$52FF` | `$9700`-`$98FF` | the workspace where monster-group names are composed (`50-experiments.md`) |
 
-`goldbox.dos_savegame.word(save, address)` and `tools/dossavcensus.py` still
-take the contiguous name; `tools/dosvmwatch.py`'s `vm_address()` translates
+`goldbox.dos_savegame.word(save, address)` and `tools/dos/dossavcensus.py` still
+take the contiguous name; `tools/dos/dosvmwatch.py`'s `vm_address()` translates
 it. The renaming that matters:
 
 | named until now | VM address | already known as |
@@ -85,7 +85,7 @@ name `$6DD2`, and all 30 name `$6E79`.
 
 **Written** by each area's script in entry 2, "before camping", through the
 VM store. The only engine-side writer, found with
-`tools/dosptrfields.py --pointer 0x49d6`, is the area-init routine at
+`tools/dos/dosptrfields.py --pointer 0x49d6`, is the area-init routine at
 `GAME.OVR:0x7689`, which zeroes both (`0x76FF`-`0x7710`) beside `[0x49ED] =
 0x9900`. The four measured pairs are the four scripts' text (addresses are
 the C64 listing's; the DOS `ECL00` block carries a three-byte insertion and
@@ -129,7 +129,7 @@ taken from inside ENCAMP, so entry 2 has just run and the file carries the
 pair; the area-init routine zeroes it on load and nothing writes it until the
 next ENCAMP. That is `142-dosbox-x-debugger.md`'s "24 in the file, 0 live".
 
-**Watched.** `tools/dosvmwatch.py --save cited/p59-wallset/ycol --slot C`,
+**Watched.** `tools/dos/dosvmwatch.py --save cited/p59-wallset/ycol --slot C`,
 a `BPM` on each byte, then E: `$6DD3` 0 -> 10, then `$6DD2` 0 -> 96, both at
 `CS:0CCE` with `03 f8 26 89 95 00 2a` behind it -- the class-1 store at
 `GAME.OVR:0x819C`, unit `0x2B` code offset `0xCC9` plus the instruction's

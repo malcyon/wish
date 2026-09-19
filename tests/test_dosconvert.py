@@ -468,8 +468,8 @@ def test_the_class_level_permutation_covers_every_c64_slot():
 
 
 def test_item_to_c64_is_the_harness_projection():
-    """One copy of the projection. `tools/dosbox.py` re-exports this one."""
-    from tools import dosbox
+    """One copy of the projection. `tools/dos/dosbox.py` re-exports this one."""
+    from tools.dos import dosbox
     assert dosbox.item_to_c64 is dos_codec.item_to_c64
 
 
@@ -737,7 +737,7 @@ def test_an_item_granted_effect_reaches_a_c64_trait_slot():
     path = _item_granted_specimen()
     if path is None:
         pytest.skip("no por-item-granted specimen; "
-                    "tools/dosspcexpiry.py ready makes one")
+                    "tools/dos/dosspcexpiry.py ready makes one")
     char = dos_codec.read_character(path)
     rec, rep = dos_codec.to_c64_record(char)
     slots = [b for b in rec.get_raw("item_effects") if b]

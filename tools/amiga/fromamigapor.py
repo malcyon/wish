@@ -26,7 +26,7 @@ accounting.
 **A DOS destination reads the player's own DOS game folder** and no C64 disk
 at all: the party's area script is lifted out of `ECL<n>.DAX` there, and a
 conversion that could not read it would have to invent the area the party is
-standing in.  `--game` says where; with none, `tools.dosbox.find_game()`
+standing in.  `--game` says where; with none, `tools.dos.dosbox.find_game()`
 finds it the way every other DOS tool here does.  The combat figure needs no
 disk in this direction -- an Amiga record already stores `icon_head`,
 `icon_body` and `icon_colours` at the DOS offsets -- and the sheet portrait
@@ -72,7 +72,8 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import amiga_savegame, c64_port, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
-from tools import dosdisk, scratch  # noqa: E402
+from tools import scratch  # noqa: E402
+from tools.dos import dosdisk  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -174,7 +175,7 @@ def _item_line(item) -> str:
 def sheet(party, state) -> list[str]:
     """The Amiga party laid out the way the C64's VIEW screen shows it.
 
-    `tools/dosdisk.py`'s `--sheet` for a DOS folder, over an Amiga slot: the
+    `tools/dos/dosdisk.py`'s `--sheet` for a DOS folder, over an Amiga slot: the
     records have been re-cut into the DOS shape by
     `goldbox.amiga_por.to_dos_character`, so the same reader and the same three
     display constants serve, imported from there rather than copied.
@@ -330,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--game", default=None,
                    help="--to dos: the DOS game folder ECL<n>.DAX lives in; "
                         "read, never written (default: "
-                        "tools.dosbox.find_game())")
+                        "tools.dos.dosbox.find_game())")
     p.add_argument("--dos-slot", default="A",
                    help="--to dos: the DOS slot letter to write as "
                         "(default: A)")
@@ -362,12 +363,12 @@ def main(argv: list[str] | None = None) -> int:
                          f"{', '.join(present)}")
 
     if args.to == "dos":
-        # `tools.dosbox` is imported only here: it is the DOS harness, and a
+        # `tools.dos.dosbox` is imported only here: it is the DOS harness, and a
         # C64 conversion has no business loading it.
         if args.game:
             game = pathlib.Path(args.game)
         else:
-            from tools.dosbox import find_game
+            from tools.dos.dosbox import find_game
 
             game = pathlib.Path(find_game())
         out = None if args.no_write else pathlib.Path(
@@ -406,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.to != "c64":
             raise SystemExit("--against reads a tools/c64/savecheck.py log, "
                              "which is the C64 run's; a DOS run's sheets are "
-                             "tools/dossheetread.py's screenshots")
+                             "tools/dos/dossheetread.py's screenshots")
         import json
 
         events = []

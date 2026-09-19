@@ -24,7 +24,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import dosboxx  # noqa: E402
+from tools.dos import dosboxx  # noqa: E402
 
 # Shares a group with tests/test_instance.py -- see that file's own note.
 pytestmark = pytest.mark.xdist_group(name="emulator-pool")
@@ -245,7 +245,7 @@ def test_the_clock_lives_where_the_save_format_says_it_does():
 #
 # `#204 (The DOSBox-X harness measures the picture panel where it means to
 # measure the command bar)`: DOSBox-X draws this game's 320x200 mode into a
-# 640x400 window, and every rectangle `tools/dosbox.py` measures -- `BAR`,
+# 640x400 window, and every rectangle `tools/dos/dosbox.py` measures -- `BAR`,
 # `STATUS` -- is in DOSBox 0.74's 320x200 coordinates.  `XSession.capture()`
 # halves a frame back before anything else sees it, which is the fix `#69 (No
 # WRITE_UNSOURCED zero has been tested during combat)` was blocked on.
@@ -257,7 +257,7 @@ def _double(screen):
     Each source pixel becomes an identical 2x2 block of itself -- exactly what
     `dosboxx.halve()` undoes.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     w, h = screen.width, screen.height
     px = screen.px
@@ -278,7 +278,7 @@ def test_halve_recovers_the_frame_dosboxx_doubled_it_from():
     """`halve()` undoes DOSBox-X's line-doubling exactly, not approximately."""
     import random
 
-    from tools import dosbox
+    from tools.dos import dosbox
 
     rng = random.Random(204)
     w, h = 40, 30
@@ -293,7 +293,7 @@ def test_halve_recovers_the_frame_dosboxx_doubled_it_from():
 
 def test_halve_leaves_an_odd_sized_frame_alone():
     """Nothing this harness captures is odd-sized; refusing to guess is safer."""
-    from tools import dosbox
+    from tools.dos import dosbox
 
     screen = dosbox.Screen(3, 3, bytes(27))
     assert dosboxx.halve(screen) is screen
@@ -306,7 +306,7 @@ def test_halve_raises_on_an_even_sized_frame_that_is_not_a_replication():
     """
     import random
 
-    from tools import dosbox
+    from tools.dos import dosbox
 
     rng = random.Random(215)
     w, h = 8, 6
@@ -323,7 +323,7 @@ def test_halve_raises_on_rows_that_repeat_horizontally_but_not_vertically():
     read the top row of each pair -- could not have caught: it read a clean,
     doubled-looking row and never looked at the one below.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     w, h = 4, 2
     row0 = bytes([10, 20, 30] * 2 + [40, 50, 60] * 2)  # itself doubled: p0 p0 p1 p1
@@ -344,7 +344,7 @@ def test_capture_halves_a_line_doubled_frame_to_dosbox_074s_size(monkeypatch):
     it is the one line this override calls, and the whole point is what
     happens to what it returns.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     original = dosbox.Screen(4, 4, bytes(range(48)))
     doubled = _double(original)
@@ -362,14 +362,14 @@ def test_capture_halves_a_line_doubled_frame_to_dosbox_074s_size(monkeypatch):
 
 
 def test_the_window_trap_is_one_mechanism_and_not_two():
-    """`tools/dosbox.py` has the same three faults (#88), so it has the fix.
+    """`tools/dos/dosbox.py` has the same three faults (#88), so it has the fix.
 
     These names stay here because `docs/142-dosbox-x-debugger.md` "The window
     trap" documents them here and this is where they were measured; what they
     must not become is a second implementation.  The assertions that exercise
     them are in `tests/test_dosbox.py`, beside the code.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     assert dosboxx.BlankCapture is dosbox.BlankCapture
     assert dosboxx.uniform_colour is dosbox.uniform_colour
@@ -442,7 +442,7 @@ def _band(module) -> range:
 
 
 def test_the_three_pools_bands_never_overlap():
-    """:10-:25 are VICE's, :50-:65 are `tools/dosbox.py`'s, :90-:105 are
+    """:10-:25 are VICE's, :50-:65 are `tools/dos/dosbox.py`'s, :90-:105 are
     these -- a fact about the three modules' own constants, so unlike the
     tests below it needs no lock, no lease and no live machine state to
     check.
@@ -455,7 +455,8 @@ def test_the_three_pools_bands_never_overlap():
     of a session he started by hand. Pinned here so that re-space cannot
     happen quietly.
     """
-    from tools import dosbox, instance
+    from tools import instance
+    from tools.dos import dosbox
 
     vice_band, plain_band, x_band = _band(instance), _band(dosbox), _band(dosboxx)
     assert not set(vice_band) & set(plain_band)
@@ -485,7 +486,7 @@ def test_a_claim_lands_inside_its_own_band(tmp_path, monkeypatch):
     real bands widened to sixteen and this test's own (unpatched, sixteen
     wide) band needed the room.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     monkeypatch.setattr(dosboxx, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 990)
@@ -511,7 +512,7 @@ def test_the_pool_refuses_once_its_display_band_is_full(tmp_path, monkeypatch):
     """
     import fcntl  # local: unimportable on Windows, and @posix_only skips there
 
-    from tools import dosbox
+    from tools.dos import dosbox
 
     monkeypatch.setattr(dosboxx, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosboxx, "SLOTS", 2)
@@ -534,7 +535,7 @@ def test_a_machine_with_only_the_debugger_build_can_open_a_session(tmp_path,
                                                                    monkeypatch):
     """This harness never launches DOSBox 0.74, so it must not require it (#73).
 
-    `XSession.__init__` runs `tools/dosbox.py`'s `require_tools()`, whose list
+    `XSession.__init__` runs `tools/dos/dosbox.py`'s `require_tools()`, whose list
     names `dosbox`; a machine carrying only the debugger build was refused a
     session with `not installed: dosbox`, about an emulator nothing here starts.
     `require_debugger` is stubbed because the debugger build is what the machine
@@ -552,7 +553,7 @@ def test_a_machine_with_only_the_debugger_build_can_open_a_session(tmp_path,
 
 def test_the_debugger_harness_still_needs_the_tools_it_does_run():
     """Narrowing the list is not emptying it: Xvfb, xdotool and import stay."""
-    from tools import dosbox
+    from tools.dos import dosbox
 
     assert set(dosboxx.XSession.TOOLS) < set(dosbox.Session.TOOLS)
     assert set(dosboxx.XSession.TOOLS) == {"Xvfb", "xdotool", "import"}
@@ -583,7 +584,7 @@ def test_the_harness_reproduces_the_clock_tick_docs_142_recorded():
     if dosboxx.unavailable():
         pytest.skip(dosboxx.unavailable())
     try:
-        game = __import__("tools.dosbox", fromlist=["dosbox"]).find_game("POOLRAD")
+        game = __import__("tools.dos.dosbox", fromlist=["dosbox"]).find_game("POOLRAD")
     except FileNotFoundError as e:
         pytest.skip(str(e))
     if not (game / "SAVE" / "SAVGAMJ.DAT").is_file():

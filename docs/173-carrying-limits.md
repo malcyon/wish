@@ -36,7 +36,7 @@ record (CONFIRMED from the layout). Whether the C64 engine also refuses in
 words has not been read, and it cannot change the number.
 
 Nothing here needed WinUAE: `tools/amiga/amiga68k.py` reads the Amiga executables
-off the disk images, and `tools/dosovrmap.py` resolves the DOS overlays.
+off the disk images, and `tools/dos/dosovrmap.py` resolves the DOS overlays.
 
 ## The routine
 
@@ -88,7 +88,7 @@ Three things about it:
   So the encumbrance the compare uses is as fresh as the count. `#323 (The
   encumbrance identity does not survive the training fee, so failing it is not
   evidence of an edited record)` reads it end to end and
-  `tools/dosencrecompute.py routine` finds it by signature, without a table of
+  `tools/dos/dosencrecompute.py routine` finds it by signature, without a table of
   addresses to keep true.
 
   **One term of it differs between titles**: Pool of Radiance takes 5000 off
@@ -131,7 +131,7 @@ this project reads Pools of Darkness saved games yet, so it has not been run.
 ## What the player sees at the limit
 
 **The word `Overloaded`, and nothing else.** Watched in the running game:
-`tools/dositemcap.py` had `WISHFTR` offer a sling by `TRADE` to a character
+`tools/dos/dositemcap.py` had `WISHFTR` offer a sling by `TRADE` to a character
 holding sixteen, and 11 of 300 rapid captures caught `OVERLOADED` across the
 bottom bar before the screen redrew. The string is `0A 'Overloaded'` at
 `GAME.OVR` `0x022763` (Pool of Radiance), `0x02916E` (Curse) and `0x028FAD`
@@ -157,7 +157,7 @@ too heavy.
 
 ## The measurement in the running game
 
-`tools/dositemcap.py`, three boots on 2026-09-05, on
+`tools/dos/dositemcap.py`, three boots on 2026-09-05, on
 `WISH-SPEC-por-party-l1-intown` -- six characters this project rolled from
 creation, saved by the game's own `SAVE CURRENT GAME`. The item lists are
 **our input**: sixteen copies of the game's own `Sling` template
@@ -214,8 +214,8 @@ the sixteenth slot.
 
 ## Where this came from
 
-Tools: `tools/dositemcap.py` (the running-game half),
-`tools/dosovrmap.py` (DOS overlay units and disassembly),
+Tools: `tools/dos/dositemcap.py` (the running-game half),
+`tools/dos/dosovrmap.py` (DOS overlay units and disassembly),
 `tools/amiga/amiga68k.py` (the Amiga executables). Specimens:
 `WISH-SPEC-por-party-l1-intown` as the base,
 `WISH-SPEC-por-item-cap-16` and `WISH-SPEC-por-item-twenty` as the results.

@@ -1,4 +1,4 @@
-"""`tools/dosrecordloops.py`, promoted from `issue516/loopwalk.py` (scratch, deleted) for
+"""`tools/dos/dosrecordloops.py`, promoted from `issue516/loopwalk.py` (scratch, deleted) for
 `#516 (Generate boundary characters and check every writer's field widths,
 since no real save reaches a limit and the corpus cannot find a wrong one)`'s
 slice 3.
@@ -12,7 +12,7 @@ import pytest
 
 pytest.importorskip("capstone")
 
-from tools import dosarraywidth, dosrecordloops  # noqa: E402
+from tools.dos import dosarraywidth, dosrecordloops  # noqa: E402
 
 
 def test_a_a_word_stride_doubles_the_span_not_the_entry_count():

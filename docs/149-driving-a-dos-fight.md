@@ -6,8 +6,8 @@ screen. `docs/70-driving-the-game.md` is the same subject on the C64 under
 VICE, where the machine's memory is readable and the answers come out quite
 differently.
 
-The code is `tools/dosfightrun.py` and the `fight()` end of
-`tools/dosbox.py`'s `PoolOfRadiance`. The work is `#114 (Drive a fight in
+The code is `tools/dos/dosfightrun.py` and the `fight()` end of
+`tools/dos/dosbox.py`'s `PoolOfRadiance`. The work is `#114 (Drive a fight in
 DOSBox, so a converted save can be checked past loading)`.
 
 ## Ground truth is the files, and experience is the only field that says it
@@ -23,7 +23,7 @@ nobody at all.
 **Hit points falling is the same trap in a new place and is never proof.**
 `0x11B` going down says the monsters struck the party. A party member who
 swings and misses lowers nothing, and a party that stands still and is beaten
-on lowers plenty. `tools/dosfightrun.py` reports it and never cites it, and
+on lowers plenty. `tools/dos/dosfightrun.py` reports it and never cites it, and
 `test_hit_points_falling_is_never_proof_that_the_party_fought` pins that.
 
 ## The bars, by the glyphs of the bottom row
@@ -182,7 +182,7 @@ the diff reads.
 ## What three driven fights did
 
 Slot J's level-one party, in the Slums, three consecutive wandering fights in
-one session, `tools/dosfightrun.py fight --save J --rounds 3`. `fight()`
+one session, `tools/dos/dosfightrun.py fight --save J --rounds 3`. `fight()`
 returned True on all three, and every one of them was fought: `save_game` to a
 scratch slot either side, and the files read back.
 

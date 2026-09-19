@@ -485,7 +485,7 @@ should close on.
   page is about the C64 destination. All 12 shipped Curse `CHRDAT*.SAV`
   records in the archives read `portrait_head = portrait_body = 0`, which
   fits "neither port has one" and does not prove it. The experiment: open a
-  Curse character sheet in DOSBox with `tools/dosbox.py` and look, then set
+  Curse character sheet in DOSBox with `tools/dos/dosbox.py` and look, then set
   `0x0BB`/`0x0BC` of that record to 1 and look again.
 * **What Curse's `+$0FF` bit 0 actually toggles.** `CAMP $09BC` picks between
   message `$FD` and message `$FE`; nobody has read the two strings or watched

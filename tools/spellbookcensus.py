@@ -24,7 +24,7 @@ being written is not evidence about the game.  A `found` record with a bit set
 would say the bit is *storable*; only a record the engine wrote says the engine
 sets it.
 
-The DOS half reuses `tools/dostailcensus.py`'s finder, its roots -- the
+The DOS half reuses `tools/dos/dostailcensus.py`'s finder, its roots -- the
 specimen tree, the archives and the played DOS directory -- and its exclusions
 (an emulator instance's staged tree, and records we wrote).  The C64 half
 reads every save disk `tools/gamedisks.py` finds plus the specimen tree; the
@@ -63,12 +63,14 @@ from goldbox import dos_port as dl  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import (  # noqa: E402
-    dostailcensus,
     gamedisks,
 )
 from tools.amiga import (  # noqa: E402
     amigarecords,
     amigasaves,
+)
+from tools.dos import (  # noqa: E402
+    dostailcensus,
 )
 
 #: The C64 record's spellbook, both declared halves: seven bytes Pool of
@@ -167,7 +169,7 @@ def _grade(path: str) -> str:
 def _grade_over(paths) -> str:
     """The grade for one record that turned up at several paths.
 
-    `tools/dostailcensus.py` deduplicates on the record's bytes and keeps every
+    `tools/dos/dostailcensus.py` deduplicates on the record's bytes and keeps every
     path it saw, and its roots are searched in a fixed order -- so a record
     that is both a scratch copy and the specimen it was copied into gets
     whichever sorted first.  The specimen tree decides when any path is in it,
@@ -300,7 +302,7 @@ def _specimen_root():
 def dos_roots() -> list[pathlib.Path]:
     """The specimen tree, the archives and the played DOS game directory.
 
-    `tools/dostailcensus.py`'s own list, so every DOS census on this machine
+    `tools/dos/dostailcensus.py`'s own list, so every DOS census on this machine
     covers the same corpus (#575).
     """
     return dostailcensus.dos_record_roots()

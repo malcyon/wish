@@ -48,7 +48,7 @@ except ImportError:                 # pragma: no cover - Windows
     # The pool drives VICE on Linux and nothing else needs it, but the module
     # still has to *import* everywhere: CI runs the suite on Windows and an
     # unimportable module fails at collection time, which is how
-    # `tools/dosbox.py` was caught.  Same guard, same reason.
+    # `tools/dos/dosbox.py` was caught.  Same guard, same reason.
     fcntl = None
 from dataclasses import dataclass
 from pathlib import Path
@@ -71,7 +71,7 @@ BIN_BASE = 6520
 TEXT_BASE = 6540
 CMD_BASE = 6560
 #: Unmoved by #233's re-spacing: at sixteen slots this is :10-:25, which
-#: already clears `tools/dosbox.py`'s old :30 with room to spare.  Only
+#: already clears `tools/dos/dosbox.py`'s old :30 with room to spare.  Only
 #: DOSBox and DOSBox-X had to move -- see their own modules.
 DISPLAY_BASE = 10
 
@@ -668,7 +668,7 @@ def display_rows() -> list[dict]:
     anyone -- holds its `/tmp/.wish-x11-<n>.lock`. Read-only: see the
     section docstring above for why it must stay that way.
     """
-    from tools import dosbox, dosboxx  # local: instance.py stays importable alone
+    from tools.dos import dosbox, dosboxx  # local: instance.py stays importable alone
 
     out = []
     for pool_name, base, slots in (
@@ -768,7 +768,7 @@ def stray_displays(x11_dir: Path = Path("/tmp/.X11-unix")) -> list[dict]:
     deliberately never claimed the authority to touch, and this must not
     become a second way to reap it by another name.
     """
-    from tools import dosbox, dosboxx  # local: instance.py stays importable alone
+    from tools.dos import dosbox, dosboxx  # local: instance.py stays importable alone
 
     known: set[int] = set()
     for base, slots in (

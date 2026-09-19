@@ -5,7 +5,7 @@ from __future__ import annotations
 Two kinds of test live here, and both skip rather than fail on a machine that
 has neither the player's archives nor an emulator, which is what CI is.
 
-* The parts of `tools/dosbox.py` that need nothing: the PPM decode, the
+* The parts of `tools/dos/dosbox.py` that need nothing: the PPM decode, the
   colour-blind screen digest, and the instance lease.
 * The **findings** — where the party's square, its facing and its area sit in
   `SAVGAM<slot>.DAT`. These are asserted against the player's own three saves
@@ -30,7 +30,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from gamedata import needs_specimens  # noqa: E402
 
-from tools import dosbox  # noqa: E402
+from tools.dos import dosbox  # noqa: E402
 
 # Shares a group with tests/test_instance.py -- see that file's own note.
 # Only three tests here claim a pool slot, each at its own fixed display
@@ -278,7 +278,7 @@ def test_a_stray_lit_pixel_does_not_beat_a_real_highlighted_row():
 # 0.74 does not.  `BAR` -- `(0, 192, 320, 7)` -- is measured in the 320x200
 # frame, so reading it against a 640x400 one lands on the picture panel, not
 # the command bar.  Reproduced here with no emulator and no game pixels: a
-# synthetic bar, doubled the way DOSBox-X draws it, and `tools/dosboxx.py`'s
+# synthetic bar, doubled the way DOSBox-X draws it, and `tools/dos/dosboxx.py`'s
 # `halve()` putting it back.
 
 
@@ -307,9 +307,9 @@ def test_bar_kind_reads_the_picture_panel_when_the_frame_is_not_halved_back(monk
     320x200 frame with a bar `bar_kind()` names correctly is doubled the way
     DOSBox-X draws it, and the same rectangle on the doubled frame names
     nothing -- the `fight_unknown_bar` symptom, a plausible `None` rather than
-    an error.  `tools/dosboxx.py`'s `halve()` is what recovers the answer.
+    an error.  `tools/dos/dosboxx.py`'s `halve()` is what recovers the answer.
     """
-    from tools import dosboxx
+    from tools.dos import dosboxx
 
     width, height = 320, 200
     px = bytearray(width * height * 3)  # all-black paper
@@ -473,7 +473,7 @@ def test_a_lease_is_dropped_when_the_process_holding_it_dies(tmp_path, monkeypat
     repo = pathlib.Path(__file__).resolve().parent.parent
     script = (
         "import sys; sys.path.insert(0, %r)\n"
-        "from tools import dosbox\n"
+        "from tools.dos import dosbox\n"
         "dosbox.INST = __import__('pathlib').Path(%r)\n"
         "dosbox.SLOTS = 1\n"
         "dosbox.DISPLAY_BASE = 960\n"
@@ -757,7 +757,7 @@ def test_the_shot_on_the_way_out_of_a_failure_is_written_anyway(tmp_path,
 
 
 # --------------------------------------------------------------------------
-# The public seam #226 (Two tools reach into tools/dosbox.py's private
+# The public seam #226 (Two tools reach into tools/dos/dosbox.py's private
 # methods for want of a public seam) opened, and the two tools that reached
 # past `_move` and `_env` before it existed.
 # --------------------------------------------------------------------------
@@ -788,7 +788,7 @@ class _MoveSession:
 def test_move_is_public_and_step_turn_left_turn_right_still_wrap_it():
     """`_move` became `move` (#226); the three wrappers keep working unchanged.
 
-    `tools/dosoutdoorprobe.py` needs the raw key directly -- outdoors the
+    `tools/dos/dosoutdoorprobe.py` needs the raw key directly -- outdoors the
     arrows move the party rather than turn it, so no combination of
     `step`/`turn_left`/`turn_right` can walk a four-direction travel-grid
     route.
@@ -814,7 +814,7 @@ def test_session_env_is_public_and_returns_what_env_builds():
 
     `tools/curse_of_the_azure_bonds/doscurse.py` used to write `session._env()` for the same
     dictionary it now gets from `session.env()`.  `_env()` is not renamed
-    away, only wrapped: `tools/dosboxx.py`'s `XSession` overrides `_env`, not
+    away, only wrapped: `tools/dos/dosboxx.py`'s `XSession` overrides `_env`, not
     `env`, to swap in its own `debug_env()`, and a plain rename of the name
     every internal call dispatches through would have silently stopped that
     override from firing.
@@ -834,8 +834,8 @@ def test_dosoutdoorprobe_and_doscurse_no_longer_reach_past_the_seam():
     """
     import inspect
 
-    from tools import dosoutdoorprobe
     from tools.curse_of_the_azure_bonds import doscurse
+    from tools.dos import dosoutdoorprobe
 
     assert "._move(" not in inspect.getsource(dosoutdoorprobe)
     assert "._env(" not in inspect.getsource(doscurse)
@@ -887,7 +887,7 @@ def test_the_square_read_back_is_the_square_the_party_was_standing_on():
 def test_the_harness_reads_the_facing_the_file_carries_and_por_halves_it():
     """The one place the two accessors over one byte map differ (#76).
 
-    `tools/dosbox.py` reports the facing byte as the file carries it, doubled,
+    `tools/dos/dosbox.py` reports the facing byte as the file carries it, doubled,
     because a differential between two driven saves is written in file bytes;
     `goldbox.dos_savegame.position` reports the C64's 0-3 because that is what a
     conversion writes.  Collapsing the harness onto the other accessor -- the
@@ -1126,7 +1126,7 @@ def test_the_dos_item_type_table_is_the_c64_one():
 def test_the_dos_item_tail_projects_onto_the_c64_record():
     """159 of the C64's 163 distinct item records, byte for byte, from DOS.
 
-    Every offset in `tools.dosbox.item_to_c64` rests on this: get the plus,
+    Every offset in `tools.dos.dosbox.item_to_c64` rests on this: get the plus,
     the saving-throw bonus, the readied bit, the hidden-name mask, the cursed
     bit, the weight, the quantity, the cost or the three special bytes wrong
     and the count collapses.

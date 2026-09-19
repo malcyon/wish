@@ -1,4 +1,4 @@
-"""`tools/dostailcensus.py`'s finder does not fold another title in by size.
+"""`tools/dos/dostailcensus.py`'s finder does not fold another title in by size.
 
 `#400 (The DOS record census counts Gateway and Treasures characters as Curse
 and Pools of Darkness ones, because it identifies a title by record size)`:
@@ -19,7 +19,7 @@ import pathlib
 import pytest
 
 from goldbox import dos_port as dl
-from tools import dostailcensus
+from tools.dos import dostailcensus
 
 
 def _write(root: pathlib.Path, rel: str, size: int, tag: bytes = b"") -> pathlib.Path:

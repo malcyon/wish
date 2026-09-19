@@ -1,4 +1,4 @@
-"""The seed and the route `tools/dosoutdoorprobe.py` plants before DOSBox runs.
+"""The seed and the route `tools/dos/dosoutdoorprobe.py` plants before DOSBox runs.
 
 The tool's *output* is a specimen the DOS engine wrote and cannot be tested
 here -- it takes DOSBox, a private X display and about four minutes a boot.
@@ -6,7 +6,7 @@ What can be tested is everything that decides whether the run will mean
 anything: the route the party walks, and the seed it walks from.
 
 **The seed's whole point is the wallset triple it does not touch.**
-`tools/dosoutdoor.py` writes `(0, $FFFF, $FFFF)` over whatever the source
+`tools/dos/dosoutdoor.py` writes `(0, $FFFF, $FFFF)` over whatever the source
 carried, which is right for making a specimen and useless for measuring one:
 `#59 (Map the DOS saved game, not just the character record)` left the
 outdoor triple UNKNOWN for a month because every overland save had departed
@@ -30,7 +30,7 @@ from test_dossave import _save_dir, needs_dos_saves
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools import dosoutdoorprobe as probe  # noqa: E402
+from tools.dos import dosoutdoorprobe as probe  # noqa: E402
 
 #: A script of the right shape and none of the game's bytes: `retarget` copies
 #: it into the ECL buffer from byte 2 on, so what matters is the header and
@@ -72,7 +72,7 @@ def test_the_same_slot_letter_twice_is_refused():
     The game writes `SAVGAM<slot>.DAT`, so a route saving to C twice reports
     two waypoints while keeping the evidence for one -- and keeping every
     waypoint's own file is the only reason this tool exists rather than
-    `tools/dosoutdoor.py`.
+    `tools/dos/dosoutdoor.py`.
     """
     with pytest.raises(ValueError, match="twice"):
         probe.parse_route("U,SC,R,SC")
@@ -125,7 +125,7 @@ def _indoor_with_a_wallset() -> bytes:
 
 @needs_dos_saves
 def test_the_seed_keeps_the_sources_wallset_when_asked_to():
-    """The one thing this seed does that `tools/dosoutdoor.py`'s does not.
+    """The one thing this seed does that `tools/dos/dosoutdoor.py`'s does not.
 
     A seed that overwrites the field can never say whether the field
     mattered, and that is exactly how the outdoor triple stayed UNKNOWN.

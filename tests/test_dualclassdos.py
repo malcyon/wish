@@ -2,13 +2,13 @@
 
 Three claims, none of which needs the player's disks:
 
-* `tools/dualclassdos.py`'s `source_title` names the **game tree** a record
+* `tools/dos/dualclassdos.py`'s `source_title` names the **game tree** a record
   came out of, and refuses rather than guesses.  A record is grouped by its
   *size*, which only ever names four titles, and six exist on this machine --
   OUGO is a Treasures of the Savage Frontier record read as Pools of Darkness,
   and before this the census printed him under the wrong title in as many
   words.
-* `tools/dosdis16.py`'s `listing` puts an instruction boundary **on** the
+* `tools/dos/dosdis16.py`'s `listing` puts an instruction boundary **on** the
   offset asked for.  A listing that starts mid-instruction decodes to
   plausible nonsense, which is the one failure mode that costs a day.
 * `tools/curse_of_the_azure_bonds/doscurse.py`'s `PANES` all lie inside the 320x200 frame DOSBox is
@@ -25,8 +25,8 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import dosdis16, dualclassdos  # noqa: E402
 from tools.curse_of_the_azure_bonds import doscurse  # noqa: E402
+from tools.dos import dosdis16, dualclassdos  # noqa: E402
 
 # --------------------------------------------------------------------------
 # Which game a record came out of

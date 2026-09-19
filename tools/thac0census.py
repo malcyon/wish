@@ -14,7 +14,7 @@ what that port's table gives.
 
 **Neither table is hardcoded here.** The C64's comes off whichever `POOL*.D64`
 carries `GEN`. The DOS one comes out of `START.EXE`, which is EXEPACK-packed
-(`tools/unexepack.py`) and is located in the expanded image by the **class-bit
+(`tools/dos/unexepack.py`) and is located in the expanded image by the **class-bit
 table** that sits immediately after it -- eight bytes, one a class, in class
 number order, `02 20 08 40 80 01 04 10` for Pool of Radiance. That run occurs
 exactly once in the image, and anchoring on it keeps this from assuming the
@@ -114,7 +114,7 @@ def c64_table(title: str = "pool-of-radiance") -> dict[str, list[int]]:
 
 def dos_image(title: str = "pool-of-radiance") -> bytes:
     """The player's own `START.EXE`, EXEPACK-expanded."""
-    from tools import dosbox, unexepack
+    from tools.dos import dosbox, unexepack
 
     stem = {"pool-of-radiance": "POOLRAD",
             "curse-of-the-azure-bonds": "CURSE",
@@ -152,7 +152,7 @@ def dos_table_code(title: str = "pool-of-radiance") -> list[tuple[int, int, int]
     whose stride matches this title's row width; a run of identical hits is the
     compiler failing to share one lookup between the compare and the store.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     stem = {"pool-of-radiance": "POOLRAD",
             "curse-of-the-azure-bonds": "CURSE",
@@ -242,7 +242,7 @@ def dos_records(title: str = "pool-of-radiance", extra: list[str] = ()):
     `--extra` directory.  Records of another title are skipped, so one sweep
     can be pointed at a tree holding several.
     """
-    from tools import dosbox
+    from tools.dos import dosbox
 
     tree = pathlib.Path(os.environ.get("WISH_SPECIMENS",
                                        pathlib.Path.home() / "wish-specimens"))

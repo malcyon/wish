@@ -676,7 +676,7 @@ rather than a lost keypress: the facing byte had moved and the screen had not.
 
 ## 6. Getting output back without reading the screen
 
-This is the whole trick, and it is the same one `tools/dosboxx.py` uses for
+This is the whole trick, and it is the same one `tools/dos/dosboxx.py` uses for
 DOSBox-X's `MEMDUMP.BIN`.
 
 ```

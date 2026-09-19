@@ -1,6 +1,6 @@
 """The DOS training ladder: its routing, and the records the trainer wrote.
 
-`tools/dosladder.py` walks DOS Pool of Radiance's training hall and presses
+`tools/dos/dosladder.py` walks DOS Pool of Radiance's training hall and presses
 `TRAIN CHARACTER`.  Two halves are worth testing and they fail for different
 reasons.
 
@@ -28,7 +28,7 @@ import pytest
 
 from goldbox import geo as geolib
 from goldbox import levels
-from tools import dosladder
+from tools.dos import dosladder
 
 
 def _character(name, **classes):
@@ -195,7 +195,7 @@ def test_every_trained_record_stops_one_short_of_its_next_level():
     Two exceptions, both named rather than rounded away.  A character at its
     class's **ceiling** has no next threshold and keeps whatever it went in
     with.  A **multi-class** character is counted against the largest of its
-    classes' caps, which is a rule `tools/dosladder.clamp_cap` states and this
+    classes' caps, which is a rule `tools/dos/dosladder.clamp_cap` states and this
     does not re-test.
     """
     checked = 0

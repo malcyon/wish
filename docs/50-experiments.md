@@ -5461,7 +5461,7 @@ counters that first looked like state were the slot letter in `CHRDATC1` →
 are zero words on DOS — the cache's DOS descendants are `$4AFA`-`$4AFF` +
 `$5012`. No GEO image is stored in the save. No pointer to the ECL buffer
 exists in the file (none needed; the buffer is at a fixed offset).
-`tools/dosbox.py`'s `dax_unpack` IndexErrored on `ECL2.DAX` block 9 during
+`tools/dos/dosbox.py`'s `dax_unpack` IndexErrored on `ECL2.DAX` block 9 during
 this run and the block was skipped — since diagnosed and fixed (#65 (dax_unpack raises IndexError on ECL2.DAX block 9): two
 real faults in the reader, zero failures over 11 654 blocks after; the block
 itself was always well-formed).
@@ -5543,7 +5543,7 @@ bytes 12804-12807 have no single live address to watch.
 (0,$FFFF,$FFFF) and so did the departure template's, so live-versus-stale
 could not be separated here and this entry asked for a sail from Sokol Keep.
 
-**A sail was not needed.** `tools/dosoutdoorprobe.py --from B --wallset keep`
+**A sail was not needed.** `tools/dos/dosoutdoorprobe.py --from B --wallset keep`
 seeded a travel window carrying Sokol Keep's (1, 5, 9) -- a triple no overland
 save has ever held -- and the engine's own `ENCAMP > SAVE` replaced it with
 (0,$FFFF,$FFFF) at three squares, 3 of 3. The triple outdoors is written by
@@ -6621,7 +6621,7 @@ the second.
 
 ### The routine, read out of a memory image
 
-`tools/dosfieldrefs.py` over `cited/69/watch13b/memory-after-fight.bin`
+`tools/dos/dosfieldrefs.py` over `cited/69/watch13b/memory-after-fight.bin`
 finds three `es:[di+0xab]` sites: one write inside character creation, and two
 reads eleven bytes apart inside one routine. Disassembled 16-bit from the
 image, that routine is the game's `ADD A CHARACTER: ADD EXIT` screen. It reads
@@ -6662,7 +6662,7 @@ Three details the read added:
 
 ### The measurement, one byte apart
 
-`tools/dosaddchar.py`. Two `.CHA` files built by `goldbox.dos_codec.write` from two
+`tools/dos/dosaddchar.py`. Two `.CHA` files built by `goldbox.dos_codec.write` from two
 **different** shipped records, both renamed `DUPLICO` through the neutral
 character, offered to an **empty** party so capacity cannot be the cause.
 
@@ -6692,7 +6692,7 @@ highlight within the page, `N`/`P` and `PgDn`/`PgUp` turn the page, `E` and
 `unnamed_0ab` moves out of `WRITE_UNSOURCED` into a new one-entry
 `WRITE_DERIVED`, written by `goldbox.dos_codec.identity_byte` as a one-byte
 `blake2b` of the other 284 bytes of the finished record. Not `random`, because
-every acceptance run this project has — `tools/dosnewsave.py`'s resave diff,
+every acceptance run this project has — `tools/dos/dosnewsave.py`'s resave diff,
 the round trip in `tests/test_doswriter.py` — converts twice and compares, and
 a converter that writes different bytes each run cannot be diffed against
 itself.
@@ -7057,7 +7057,7 @@ to 5 and steps to 19 at 6, which a cache nobody refreshes cannot do.
 
 ### Where `DS:0x3C7C` is, and how it was found without assuming the answer
 
-`START.EXE` is EXEPACK-packed, so a file offset drifts; `tools/unexepack.py`
+`START.EXE` is EXEPACK-packed, so a file offset drifts; `tools/dos/unexepack.py`
 expands it, and in the expanded image `seg * 16 + off` is a linear address.
 Two independent anchors put the table at image `0x1043C`:
 
@@ -7795,7 +7795,7 @@ failure needed triage into the three kinds the plan named.
 **The array-width check (part C) is corroborated for one field only.** The
 plan's own measurement, taken 2026-09-16, found every other multi-byte array
 in the Pool of Radiance table reading a neighbouring loop's guard rather than
-its own bound when scanned with `tools/dosarraywidth.py`. `spells_memorised`
+its own bound when scanned with `tools/dos/dosarraywidth.py`. `spells_memorised`
 alone reads the same width in all four titles the tool can check (21, 84, 75,
 141, matching the declared table exactly) and is the only assertion `tests/
 test_boundary.py`'s part C makes; a `reverse-engineering` agent is the plan's
@@ -7810,7 +7810,7 @@ fewer slots than the engine gives it)`'s fix, monkeypatched into `dos_port.
 FIELDS_BY_NAME_FOR["pool-of-radiance"]` for one test's duration. Against it,
 the caster case's 20 memorised spells come back 16 of 20 with the log line
 `spells_memorised: 20 ids and Pool of Radiance allots 16 slots, so 4 were not
-written`, and `tools.dosarraywidth.width()` at the real array offset (`0x017`)
+written`, and `tools.dos.dosarraywidth.width()` at the real array offset (`0x017`)
 reads 21 against the old table's declared 16 — both proven to fail without the
 fix and to pass with it, watched directly rather than assumed.
 

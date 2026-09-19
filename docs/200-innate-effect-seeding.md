@@ -3,7 +3,7 @@
 `#395 (A Curse cleric carries the ranger's innate effect and a human carries
 the elf's, in the specimen both ids were graded from)` asked two questions
 about Curse of the Azure Bonds' effect ids 134 and 107, and both are answered
-here. `tools/innateids.py` is the reader; `tests/test_innateids.py` pins it.
+here. `tools/dos/innateids.py` is the reader; `tests/test_innateids.py` pins it.
 
 **The short answer.** 134 is Curse's ranger id and 107 is its elf id, and this
 is now read out of the engine's own character creation rather than out of a
@@ -25,7 +25,7 @@ feed it: one on the record's **race** byte and one on its **class** byte. The
 nine-byte `.SPC`/`.FX`/`.SFX` record the engine later writes is the id
 followed by those three values, so reading the switch reads the file.
 
-`tools/innateids.py seed` finds all three by shape rather than by address —
+`tools/dos/innateids.py seed` finds all three by shape rather than by address —
 `add_affect` is the far call a race switch reaches with four constant pushes,
 and a switch is a read of the race or class byte into `al` followed by
 `cmp al` — so one run works on any of the three titles.
@@ -121,7 +121,7 @@ one thing. The paladin is the disagreement both titles share.
 
 ## 2. The Curse corpus, character by character
 
-`tools/innateids.py census --title curse --by-id` over the specimen tree, the
+`tools/dos/innateids.py census --title curse --by-id` over the specimen tree, the
 archives and the old scratch directory: 69 distinct 422-byte records, 42 with an effect file.
 Every carrier of each class or race id:
 
@@ -147,7 +147,7 @@ the Savage Frontier's `.GUY` exports are 422 bytes, which is Curse's record
 size, so `dos_port.deltas_for` reads them through Curse's table. The first
 sweep counted TARLREN, a Gateway human ranger carrying 134, as a Curse
 carrier. He is not; a fifth title reading the same numbers is a separate
-finding and not evidence about this one. `tools/innateids.py` now skips 24
+finding and not evidence about this one. `tools/dos/innateids.py` now skips 24
 Gateway and 28 Treasures of the Savage Frontier records by directory and says
 how many it skipped.
 

@@ -1,4 +1,4 @@
-"""`tools/dosvmwatch.py`'s translation from the file's contiguous names to the VM's addresses.
+"""`tools/dos/dosvmwatch.py`'s translation from the file's contiguous names to the VM's addresses.
 
 `docs/141-dos-savegame.md` names the 2560 words of `SAVGAM<slot>.DAT` as
 `$4900` + word index.  The engine's own classifier (`GAME.OVR:0x7BCE`) puts
@@ -12,7 +12,7 @@ import stat
 
 import pytest
 
-from tools.dosvmwatch import stage_save, vm_address
+from tools.dos.dosvmwatch import stage_save, vm_address
 
 
 @pytest.mark.parametrize("named, vm", [

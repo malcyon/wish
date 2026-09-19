@@ -6,7 +6,7 @@
     tools/pathleak.py --shadow     # only the ones that would capture `wish`
 
 A script in here that wants to reach a sibling by its bare name -- `import
-dosbox` rather than `from tools import dosbox` -- does it by inserting its own
+dosbox` rather than `from tools.dos import dosbox` -- does it by inserting its own
 directory at the front of `sys.path`, and none of them takes it off again. That
 is harmless on its own and not harmless in a process that later imports
 something whose name a file in `tools/` also has. `tools/wish.py` is the file

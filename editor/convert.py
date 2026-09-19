@@ -19,7 +19,7 @@ rule against a template. Today that is:
   of the Silver Blades by `docs/175-silver-blades-save-conversion.md`);
 * C64 `.D64` → DOS save folder, one row per entry of the same `C64_PAIRED` --
   the same three titles (`goldbox.dos_codec.new_dos_save`; Pool of Radiance proven
-  in DOSBox by `tools/dosnewsave.py` under `#26 (Write a DOS save, not just
+  in DOSBox by `tools/dos/dosnewsave.py` under `#26 (Write a DOS save, not just
   read one)`, Curse of the Azure Bonds and Secret of the Silver Blades by
   `#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing
   can be converted to DOS for the later titles)`, whose container writer this
@@ -66,7 +66,7 @@ the check that direction needs.
 
 **The source is a path, not the open window.** `Source.detect` reads a
 `.D64`, an Amiga `.adf`, a `SAVGAM<slot>.DAT`/`.PTY` file, or a DOS save
-folder directly, the way `tools/dosdisk.py` and `tools/dosnewsave.py`
+folder directly, the way `tools/dos/dosdisk.py` and `tools/dos/dosnewsave.py`
 already do. When the path is
 the save the editor already has open, the caller passes `party` and this
 reads its in-memory bytes instead, so unsaved edits cross -- the same rule
@@ -245,7 +245,7 @@ class Source:
         """The DOS shape at `folder`, for the save at `slot`.
 
         The one thing the two callers above disagree on is which slot: a
-        bare folder (`tools/dosdisk.py`, `tools/dosnewsave.py`, and the
+        bare folder (`tools/dos/dosdisk.py`, `tools/dos/dosnewsave.py`, and the
         Step 1 tests) takes the first one `_dos_slots` finds, and a
         `SAVGAM<slot>.DAT`/`.PTY` file picked directly -- the dialog's own
         save picker -- names its own. Either way the title comes off
