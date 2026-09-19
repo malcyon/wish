@@ -1,10 +1,9 @@
 """`.claude/hooks/check-context-handoff.py` refuses a new worker once the context passes the hand-off line.
 
-`.claude/skills/orchestrate/SKILL.md` said to hand off at about 300k tokens.
-On 2026-09-16 the orchestrator went 479 turns past that line, and could not
-have done otherwise: the model is never shown its own context size. The
-transcript records it on every assistant turn, and this hook reads it from
-there and refuses the launch that the rule alone could not stop.
+`.claude/skills/orchestrate/SKILL.md` says to hand off at 400k tokens, but the
+model is never shown its own context size. The transcript records it on
+every assistant turn, and this hook reads it from there and refuses the
+launch that the rule alone cannot stop.
 """
 import importlib.util
 import io

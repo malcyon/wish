@@ -2,13 +2,10 @@
 """Refuse a new worker subagent once the session's context has passed the hand-off line.
 
 `.claude/skills/orchestrate/SKILL.md` tells the orchestrator to hand off at
-about 300k tokens of context: launch nothing new, let the agents in flight
-report, commit, push, and tell Donald to start a fresh session. **The rule
-did not hold, and could not have**: the orchestrator is never shown its own
-context size, so it was asked to act on a number it does not have. On
-2026-09-16 the running orchestrator went 479 turns past the line, and those
-turns were most of what the day cost, because every turn resends the whole
-context.
+400k tokens of context: launch nothing new, let the agents in flight
+report, commit, push, and start a fresh session. The orchestrator is never
+shown its own context size, so that rule alone cannot hold, and every turn
+past the line resends the whole context.
 
 The number is in the transcript. Every assistant turn Claude Code writes to
 the session's `.jsonl` carries a `usage` block, and the sum of its
