@@ -9,10 +9,6 @@
 # there is one) is the answer. An entry whose comment says "no data yet" means
 # nobody has produced that data on any machine; its path is where it would go.
 #
-# No path here may sit under `work/`: that directory is scratch, gitignored, and
-# has been deleted twice, so a default that resolves into it stops resolving the
-# day somebody runs `rm -rf work/`.
-#
 # THIS IS THE EXAMPLE. Copy it to `gamedisks.yaml` in this directory -- that file
 # is gitignored, is the only one the loader reads, and is one machine's own -- and
 # edit the paths to where the data really is. The paths below are where Donald's
@@ -140,9 +136,7 @@ codewheel:
 ecl-scripts:
   # The decompiled ECL event scripts of the Gold Box titles, which `tests/
   # test_areas.py` reads. They are derived from the game's own code, so they are
-  # game data and are never committed. No path on any machine has them yet: the
-  # directory this used to be, `work/ecl-scripts`, is gone, and `work/` is not
-  # somewhere to keep a corpus.
+  # game data and are never committed. No path on any machine has them yet.
   env: WISH_ECL_SCRIPTS
   paths:
     - "/data/agent-disks/ecl-scripts"
@@ -150,8 +144,7 @@ ecl-scripts:
 coab-source:
   # The decompiled source of Curse of the Azure Bonds, which `tests/
   # test_coabsource.py` reads. Derived from the game's own executable, so it is
-  # game data and is never committed. No path on any machine has it yet: it used
-  # to be `work/forums/ext`, which is gone.
+  # game data and is never committed. No path on any machine has it yet.
   env: WISH_COAB_SOURCE
   paths:
     - "/data/agent-disks/coab-source"

@@ -1,6 +1,6 @@
 # The automapper in the wilderness — a plan
 
-Donald: *"When I load up `work/p3/W1.D64`, I can see that I am in the
+Donald: *"When I load up `p3/W1.D64` (scratch, deleted), I can see that I am in the
 wilderness. The automapper does not display anything."*
 
 He is right, and the reason is not one bug. This is the drawing half of
@@ -72,7 +72,7 @@ read off the save.
 **c. No `GEO` is resident, so `ResidentGeo` never names an area.** It matches
 the 1024 bytes at `$0400` against the disk `GEO`s; outdoors the square engine's
 descriptor is there instead. FastTraveling into all three overland areas found
-`$49E6` = 0 and **no `GEO` resident** (write-up lost, `work/reports/p20-arrivals.md`).
+`$49E6` = 0 and **no `GEO` resident** (write-up lost, `reports/p20-arrivals.md`).
 `Fingerprint`, fed the frozen (15,1) fix from (b), never narrows either.
 CONFIRMED.
 
@@ -209,7 +209,7 @@ it.
 
 | unknown | the experiment |
 |---|---|
-| **which colour bucket is which terrain** | a screenshot of the travel screen, next to a rendering of the tile table's colours. The screenshot no longer has to be taken -- `work/issue178/` has three -- but a rendering to put beside them does not exist yet. This is still the blocker on everything downstream |
+| **which colour bucket is which terrain** | a screenshot of the travel screen, next to a rendering of the tile table's colours. The screenshot no longer has to be taken -- `cited/178` has three -- but a rendering to put beside them does not exist yet. This is still the blocker on everything downstream |
 | whether the buckets are even the right partition | render all 120 tiles of one window as coloured 3 × 3 blocks, offscreen, and look at them as a sheet. Same rig as `tools/iconsheet.py`. **The sheet is a working file and is not committed** — it is the game's art |
 | the eight-way facing encoding | `$033D` is page 3 and is not in the save; W2/W3 proved the travel facing is not saved at all. A live read while turning |
 | whether the impassable lists are per-window complete | `ECL19`/`1A`/`1B` each carry one; map `1B` reserves a stamp for a site that does not exist |

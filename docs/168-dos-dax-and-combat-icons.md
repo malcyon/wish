@@ -7,7 +7,7 @@ fields into a figure on the combat screen. Read out of `GAME.OVR` (the 1.3
 build, byte-identical between `/home/donald/dos_por_play` and the archives'
 `POOLRAD`), with `tools/dosdis16.py` and `tools/dosovrmap.py` against the
 unpacked `START.EXE`. Grades are `docs/50-experiments.md`'s. The renders are
-under `work/issue130/`, and `tools/daxls.py` lists any container.
+under `cited/130`, and `tools/daxls.py` lists any container.
 
 The container itself -- the index, the run-length coding -- is documented
 beside `goldbox.dos_savegame.dax_index`, and this page does not repeat it.

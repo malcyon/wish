@@ -141,7 +141,7 @@ matters here:
   (0-11) and `$1377` the path — and derives the displayed runes from those.
   So the answer can simply be read out of `$1376`.
 * One byte-pair patch (`$12D9: D0 04 -> EA EA`) makes any answer pass.
-* `work/E003-past-protection.vsf` is a VICE snapshot taken at the
+* `E003-past-protection.vsf` (scratch, deleted) is a VICE snapshot taken at the
   party-creation menu.
 
 **Warning learned the hard way.** That overlay is *replaced* once the game loads
@@ -1964,7 +1964,7 @@ it was saved after a rest and before the next fight, which is exactly the "the
 cache was stale" explanation the section above refused to accept without
 evidence. The evidence is the absence of a writer.
 
-**Result 4. Watched happening, at no emulator cost.** `work/p235c64/run1/
+**Result 4. Watched happening, at no emulator cost.** `cited/p235c64/run1
 roster.jsonl` — the `#235 (Two unattributed DOS byte ranges in the combat tail
 are dropped converting to C64, and nobody knows what they hold)` Slums ambush on
 `PORSAVE13`, driven by `tools/statusdrive.py`, which samples the whole roster
@@ -2294,7 +2294,7 @@ found nothing; it succeeded by reading somebody's reimplementation.
 which place. Without that a map is a floor plan of nowhere.
 
 **Method.** Transcribe the nine city blocks off the fan-drawn NES map
-(`work/maps/phlan-block-maps-nes.jpg`) into 16×16 wall grids, then score every
+(`maps/phlan-block-maps-nes.jpg` (scratch, deleted)) into 16×16 wall grids, then score every
 file against every block. The blocks' dimensions were **measured, not assumed**:
 215 px at 13.4375 px per cell is 16 exactly, on both axes, for all nine.
 
@@ -2636,7 +2636,7 @@ script. The dead end recorded across two earlier sessions was a shift key.
 
 ### A walk corpus, and what it confirms
 
-`work/drive/walks/` holds 20 saves the game itself wrote, one step apart, each
+`drive/walks/` (scratch, deleted) held 20 saves the game itself wrote, one step apart, each
 position verified against the disk and against the game's own status line.
 Checked against the decoded `GEO00`: **7 adjacent steps, 7 legal, 0
 contradicted**, and none of the occupied squares is sealed. Independent of the
@@ -2712,7 +2712,7 @@ differ between it and ours. No signal survives that much noise.
 save again. Two disks differing by one deliberate act, and the diff is the answer.
 
 This is now runnable without Donald, because `tools/walkrun.py` drives the game
-end to end and `work/drive/walks/` already holds a corpus generated that way. The
+end to end and `drive/walks/` (scratch, deleted) already held a corpus generated that way. The
 route out of New Phlan into the slums is longer than anything driven so far, and
 the training-hall trigger at (6,2) has to be avoided, but neither is a blocker.
 
@@ -2938,7 +2938,7 @@ with the block based at **`$9900`** rather than `$8000`: five entry-point words
 in the first `$14` bytes, and coab's 6-bit string unpacker turns the `80`
 operands into clean English. `ECL00` decodes linearly from `$9914` to its last
 byte and lands on every entry point and jump target. Disassembler at
-`work/analysis/ecl.py`.
+`analysis/ecl.py` (scratch, deleted).
 
 **The training-hall prediction closes exactly**, which is the proof:
 
@@ -3332,8 +3332,8 @@ own pre-generated party correctly — abilities, race, age, saves, money, levels
 class bits, experience. Paladin and ranger turn out to fit *existing* slots: the
 per-class array at `0x0C9` is eight wide, not four.
 
-The full survey and the plan it proposed, `work/reports/coab-research.md` and
-`work/reports/coab-plan.md`, are lost; `docs/116-second-game.md` §7 corrects
+The full survey and the plan it proposed, `reports/coab-research.md` and
+`reports/coab-plan.md`, are lost; `docs/116-second-game.md` §7 corrects
 the plan's open questions against what was later confirmed.
 
 ## A real fight, and what it settles
@@ -3514,7 +3514,7 @@ where is the bit the combat menu's QUICK sets.
 
 ### The setup
 
-`work/drive/SLUMS.D64`, six characters at (15,4) in the slums. VICE launched
+`drive/SLUMS.D64` (scratch, deleted), six characters at (15,4) in the slums. VICE launched
 into its own Xephyr on `:8` — **not** `tools/porlaunch.sh`, which `pkill`s
 unconditionally — and shut down through `CMD_QUIT` and the two process ids it
 started, so nothing else on the machine was touched.
@@ -3599,7 +3599,7 @@ map files a supplement. It does not, and it is the other way round.
 **Method.** Every area script has five entry points in its first `$14` bytes,
 and entry 4 is area initialisation — CONFIRMED, `LOADFILES`/`LOADPIECES` in the
 first fourteen instructions of 26 of 30 scripts
-(the write-up, `work/reports/ecl-opcodes.md`, is lost). Walking each script from entry 4 and looking
+(the write-up, `reports/ecl-opcodes.md`, is lost). Walking each script from entry 4 and looking
 for a write into the persistent-flag region `$4A20`-`$4AF8` asks exactly the
 right question: what does a party set by *arriving*? The walk was then repeated
 from every entry with any of `PRINT`, a menu, a fight, an item search or a
@@ -3625,7 +3625,7 @@ record.**
 `ECL1B` sets it 255 on entering a wilderness site and 0 on leaving, so it is
 current state, not history. `$4BC0`-`$4BD8` is the loader's file cache, also
 current state. The 44 one-shot "already happened" flags (write-up lost,
-`work/reports/quest-flags.md` §3.4) are each tied to a *scene*, not to arrival.
+`reports/quest-flags.md` §3.4) are each tied to a *scene*, not to arrival.
 
 **What this means for the feature.** The visited list has to be wish's own
 record — one `GEO*.json` per area with a non-empty `seen` — which covers only
@@ -3635,13 +3635,13 @@ See [`118-debug-mode.md`](118-debug-mode.md) §2.1.
 
 **Worth knowing for Curse.** The same question will come up, and the same method
 answers it: the ECL bytecode is one artefact shared by every port, absolute
-address operands included (write-up lost, `work/reports/quest-flags.md` §7), so a Curse script
+address operands included (write-up lost, `reports/quest-flags.md` §7), so a Curse script
 can be walked from its entry 4 exactly as these were. Whether Curse's scripts
 happen to carry arrival flags is not settled by this — only that Pool of
 Radiance's do not.
 
-Scratch: `work/analysis6/ecl6.py` and the extracted scripts in
-`work/amiga/c64ecl/`.
+Scratch: `analysis6/ecl6.py` (scratch, deleted) and the extracted scripts in
+`amiga/c64ecl/`.
 
 
 ## The trainer's own routine, and the end of the level-up blockers
@@ -3728,7 +3728,7 @@ second-level spells at that same training — which is what a first replay got
 wrong. A cleric needs no menu: `$20CF` ORs its whole new spell level in.
 
 **The verification.** `goldbox/levelup.py` was written from the routines and then
-replayed against the thirty-four before/after record pairs in `work/p18b/`,
+replayed against the thirty-four before/after record pairs in `p18b/` (scratch, deleted),
 each one a 580-byte read either side of a real training. Given the roll the
 game made, **every pair comes out byte-identical** on every field except the
 three the action deliberately does not do: the 1000-gold fee and the platinum
@@ -3948,7 +3948,7 @@ knowledge base. `docs/125-bug-notes.md` R51's "the DOS file even carries the
 same `$7600` load address" is a statement about the two files' headers and stays
 true.
 
-Scripts: `work/p17/` (gitignored) — `fit2.py` the base fit, `cites.py` the
+Scripts: `p17/` (scratch, deleted) — `fit2.py` the base fit, `cites.py` the
 citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
 
 
@@ -4223,7 +4223,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   sits inside it at `$2C48`, which independently confirms the container. Every
   resident routine is now reachable.
 
-  **Verified by rendering.** `work/analysis8/view.py` reimplements the view and
+  **Verified by rendering.** `analysis8/view.py` (scratch, deleted) reimplements the view and
   draws `GEO00` at (4,2) facing east — the square a VICE capture was taken on,
   its status line reading `E 16:47 4,2`, matching `PORSAVE11`. **The geometry
   agrees cell for cell**: the same wall, the same two windows in the same
@@ -4287,12 +4287,12 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   editor while another task was rewriting it. He had not: both defects are in
   `automap/combatlog.py` and both reproduce off a captured fight.
 
-  **The instrument.** `work/combatlog/fight.py` drives one fight and records
+  **The instrument.** `combatlog/fight.py` (scratch, deleted) drives one fight and records
   every poll — the four window bytes, the cursor, `$49FC`, the jiffy clock and
   all 1000 screen codes — and folds each frame through `CombatLog` at the same
   instant, so the log's output can be set against the screen it came from.
   1428 frames at ~0.18 s, six characters against a pack of orcs at (14,0) in
-  the Slums. `work/combatlog/replay.py` re-runs the file through the reader,
+  the Slums. `combatlog/replay.py` (scratch, deleted) re-runs the file through the reader,
   which is how both fixes were checked without a second fight.
 
   **Defect one: `$03F2`-`$03F5` are not always the message window.** The
@@ -4360,7 +4360,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   when it is already in the drive**, because the 1541 only notices a disk
   *change*. Without the re-attach the game asks again for ever.
 
-- **`work/drive/SLUMS.D64` cannot be loaded.** Not a game fact, a warning: the
+- **`drive/SLUMS.D64` (scratch, deleted) cannot be loaded.** Not a game fact, a warning: the
   party comes up, `BEGIN ADVENTURING` prints `OUTWARD BOUND ...`, and the
   loader then asks for side 3 in a loop, requesting **`WALLSET00`** — a file
   that exists on none of the eight sides. `PORSAVE14` in the same area loads
@@ -4562,7 +4562,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
 
 - **P19 item 7: a second fight, and still no block past row 22. Still
   UNKNOWN.** 1050 frames at 0.18 s over a six-character fight in Sokol Keep,
-  logged the way `work/combatlog/watch.py` does it. `$03F2`-`$03F5` held
+  logged the way `combatlog/watch.py` (scratch, deleted) does it. `$03F2`-`$03F5` held
   `17 27 01 17` (the acting combatant's panel) for 661 frames, `17 27 0A 17`
   for 135, `17 27 0F 17` for 48 and the command bar's `00 28 18 19` for 206 —
   the last of which is defect one still being caught correctly. The deepest row
@@ -4602,7 +4602,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   target reads state the *departure* was supposed to leave behind, which is
   exactly the class of assumption `FastTravel`'s standing warning is about.
 
-  A save with the boosted party is at `work/drive/LVBEFORE.D64`, in New Phlan,
+  A save with the boosted party was at `drive/LVBEFORE.D64` (scratch, deleted), in New Phlan,
   including a live **magic-user/thief** (LADY KATHERINE, `class_bits` 5, two
   non-zero entries in `0x0C9`-`0x0CC`) — the multi-class specimen
   `docs/90-specimens.md` wants. Next session needs only to get one character
@@ -4647,7 +4647,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   `docs/124-amiga-port.md` §2.2.**
 
   Method, one FS-UAE session on the untagged three-disk rip, Kickstart 1.3.
-  `work/amiga/adfedit.py` replaced the contents of two of disk 3's twelve
+  `amiga/adfedit.py` (scratch, deleted) replaced the contents of two of disk 3's twelve
   `Save/*.pc` files in place — `KILLKILL.pc` = `tests/fixtures/brutus.chr`
   verbatim (582 bytes, `$6B00` load address included), `INRANGE.pc` = the same
   with the load address stripped (580) — leaving the other ten genuine.
@@ -4698,7 +4698,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   Amiga, so the picker's cursor cannot be moved — put the payload in the entry
   the `*` starts on, which is the first row. `*` in that list marks a name that
   matches a party member, not the cursor. The `INSERT INTO DF0` submenu opens
-  with the *current* image highlighted, which is what `work/amiga/pod/swap.sh`
+  with the *current* image highlighted, which is what `amiga/pod/swap.sh` (scratch, deleted)
   now assumes. Editing the ADF while it is inserted is fine as long as the
   eject-and-reinsert happens afterwards.
 
@@ -4730,7 +4730,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   `goldbox.c64_port.CLASS_BITS_CLASSIC`, which is a free corroboration of that table
   and of the fact that the trainer tests `class_bits` at `0x0EB`.
 
-  **The run.** `work/drive/LVBEFORE.D64`, party at (15,1) in New Phlan.
+  **The run.** `drive/LVBEFORE.D64` (scratch, deleted), party at (15,1) in New Phlan.
   Route `(15,1) (14,1) (13,1) (12,1) (11,1) (11,2) (10,2) (10,1) (10,0) (9,0)`
   — a Dijkstra over `GEO00` that costs a scripted square ten steps, so it takes
   the two harmless ones (id 2 fires only facing north, id 3 only prints the
@@ -4789,7 +4789,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
     from encumbrance. Read the money rows the same way: the fee is 1000 gp, but
     4999 of the gold was poked in.
 
-  The same sixteen slot-block bytes appear on `work/drive/LVAFTER.D64`, and
+  The same sixteen slot-block bytes appear on `drive/LVAFTER.D64` (scratch, deleted), and
   **no other character's record changed at all**; `0x119`/`0x11B` live in the
   roster block and so are live-only here.
 
@@ -5034,7 +5034,7 @@ matching `ECL00` on POOL3 and `ECL14` on POOL2. So `$49EA` is a third byte a
 converter has to set, and `docs/117`'s field table currently lists
 `$49EA`-`$49EF` among the unattributed gaps.
 
-The build scripts and the driven session are `work/p24/`.
+The build scripts and the driven session are `p24/` (scratch, deleted).
 
 ## The travel grid's cache entries, and the outdoor form of the recipe
 
@@ -5044,9 +5044,9 @@ observed — and something has to be said about `$49EA` and whether `$49E6` = 0
 puts the engine in travel mode from a cold load.
 
 **Method.** Differential first: the seven game-written wilderness saves
-(`work/p3/W1`–`W7`, `docs/90-specimens.md`) against the fourteen indoor
+(`p3/W1`-`W7` (scratch, deleted); `docs/90-specimens.md`) against the fourteen indoor
 specimens, which localises every byte before any theory. Then two live runs on
-pool slot 1, `work/p47/`.
+pool slot 1, `p47/` (scratch, deleted).
 
 **What the specimens say, before the emulator was touched.** All seven outdoor
 saves, areas 26 (`$1A`, window `SQRDATA05`) and 27 (`$1B`, `SQRDATA06`):
@@ -5084,13 +5084,13 @@ writing: the refilled live cache read `GDRIVE00`, `SQRPACI00`, slot 2 still
 exactly as `140-loaded-files-cache.md` reads it.
 
 **The placement question is settled outdoors, unlike test B indoors.** A fasttravel
-with `$49C3`/`$49C4` = (0,0) came up at (0,0) (write-up lost, `work/reports/p20-arrivals.md`);
+with `$49C3`/`$49C4` = (0,0) came up at (0,0) (write-up lost, `reports/p20-arrivals.md`);
 test D with (5,2) came up at (5,2). Two different values, both honoured — on a
 load the arriving script does not re-place an outdoor party, and a converter's
 square survives.
 
 **A loose end worth recording: the hidden-site paint did not happen on either
-load.** The write-up, `work/reports/p3-saves.md`, is lost; it measured the walk-in case at 647/648, the
+load.** The write-up, `reports/p3-saves.md`, is lost; it measured the walk-in case at 647/648, the
 one difference being the nomad camp square (12,11) painted `$39` over the
 disk's `$37` while its flag is clear. Both p47 loads read **648/648 — no square
 painted**, on the same flag bytes (test C is W1's own flags verbatim).
@@ -5112,7 +5112,7 @@ variable-array mapping that already carried `$49C5` and `$49F2`, it is
 was written; #64 (por/dos_savegame.py and por/dos.py hold the same byte map twice) renamed it); the experiment is one DOS save made on the
 overland map, its words at those addresses against the on-screen position.
 
-Build scripts, runner, logs and screenshots: `work/p47/`.
+Build scripts, runner, logs and screenshots: `p47/` (scratch, deleted).
 
 ## Does the arriving script re-place the party? Yes, when it means to
 
@@ -5120,12 +5120,12 @@ Build scripts, runner, logs and screenshots: `work/p47/`.
 party or the saved square survived, because `(8,14)` was both. The clean test is
 the same build carrying `(8,12)` — a walkable square that is neither.
 
-**Method.** `work/p24/build2.py`'s save-moved-to-Sokol-Keep rebuilt with
+**Method.** `p24/build2.py` (scratch, deleted) rebuilt the save-moved-to-Sokol-Keep with
 `$49C0`-`$49C2` = `(8,12,0)` and one benign extra, `$49EA` = 4, so the run does
 not sit on the disk-hint hang test B had to poke through. `$4A02` — the scratch
 flag `118-debug-mode.md` reads as the gate on `ECL15 $9A92`'s message-and-place
 branch — is 0 in the built save, so the branch is armed. One session on pool
-slot 1; `work/p46/`.
+slot 1; `p46/` (scratch, deleted).
 
 **Result. CONFIRMED: `ECL15` placed the party at `(8,14)` and the saved
 `(8,12)` was ignored.** The boat message printed, `$4A02` went 0 → 1, and
@@ -5164,7 +5164,7 @@ time. Outdoors there is no overlay copy: `$49C3`/`$49C4` is itself the live
 variable, leading the status line in the p3 walk logs. CONFIRMED — same store
 twice per fact, live reads here plus p20 and the p3 logs.
 
-Build, runner, log and screenshots: `work/p46/`.
+Build, runner, log and screenshots: `p46/` (scratch, deleted).
 
 ## The hidden-site paint does not survive a reload, and the player can see it
 
@@ -5180,7 +5180,7 @@ painted control state was manufactured first — a seam bounce, east into window
 `1B` and back, so `ECL1A`'s entry runs as a genuine walk-in. Start from
 `W7.D64` at `(14,8)`, two squares from the camp at `(12,11)`, rather than the
 issue's `W1.D64` at `(5,2)`, sixteen squares away — every travel step risks a
-random encounter and the run took none. One session, pool slot 1, `work/p49/`.
+random encounter and the run took none. One session, pool slot 1, `p49/` (scratch, deleted).
 
 **Result. CONFIRMED at the screen; `goldbox-bugs.md` #10 (Finish the high-level test party).** The camp byte
 `$8CD2` (= `$8C00` + 11·18 + 12):
@@ -5205,11 +5205,11 @@ clobbers it after, or the paint branch never runs on a load — is SPECULATIVE
 either way; a write-watchpoint on `$8CD2` through a load would say. The other
 three hidden sites (all on window `1B`) reload revealed by the same one-shot
 paint — PROBABLE, measured painted together on walk-in (write-up lost,
-`work/reports/p3-saves.md`) but not carried to a screenshot. Whether the reveal
+`reports/p3-saves.md`) but not carried to a screenshot. Whether the reveal
 survives riding around the window is PROBABLE (nothing repaints between
 entries); a step-and-redump would confirm.
 
-Runner, log, `PRE.png`/`POST.png` and the phase-2 `$8C00` dump: `work/p49/`.
+Runner, log, `PRE.png`/`POST.png` and the phase-2 `$8C00` dump: `p49/` (scratch, deleted).
 
 ## Why the converted C64 character reached DOS with no items (#56 (Why did a converted C64 character reach DOS with no items?))
 
@@ -5246,11 +5246,11 @@ owns nothing"; two in-game controls narrow that:
 
 * a character freshly rolled in the DOS game, viewed before buying anything,
   shows a **clean** sheet — no `WEAPON` line at all, `DAMAGE 1D2+1`,
-  `THAC0 20`, sane encumbrance (`work/p56/shots/h6_next.png`);
+  `THAC0 20`, sane encumbrance (`p56/shots/h6_next.png` (scratch, deleted));
 * MALCYON with every item dropped **in the game** (unready the darts, then
   DROP each with its `GONE FOREVER` confirmation) is also clean — the
   `ITEMS` command even disappears from the VIEW bar
-  (`work/p56/shots/k3_list.png`).
+  (`p56/shots/k3_list.png` (scratch, deleted)).
 
 So a player cannot reach the garbage unaided by either route. What does show
 it, reproduced today under the current writer: the zero-item fixture BRUTUS
@@ -5269,12 +5269,12 @@ Which of our bytes makes it do that is **SPECULATIVE** — candidates are
 `hands_used` (`0x100`, we write 0; native fighters carry 2) and the combat
 tail's attack-form bytes. Settling experiment: create a fresh character
 in the DOS game, save him into a slot so the engine writes his `.SAV`,
-diff it against `work/p56/dos-out-fixture/CHRDATA1.SAV` over `0x0C0`–`0x11C`,
+diff it against `p56/dos-out-fixture/CHRDATA1.SAV` (scratch, deleted) over `0x0C0`–`0x11C`,
 then flip the differing bytes in our output one at a time and re-view.
 Practical weight is low — a played C64 party's characters all carry items —
 but a converted naked character grows a garbage item on his first resave.
 
-Conversions, resaves, runner scripts and screenshots: `work/p56/`.
+Conversions, resaves, runner scripts and screenshots: `p56/` (scratch, deleted).
 
 **Answered by "A converted character who owns nothing (#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then invents a garbage item))" below: no record
 byte triggers it. The trigger is the zero-length `.ITM` file beside it.**
@@ -5289,7 +5289,7 @@ and the attack-form tail, both written zero because nothing sources them.
 refuted.** There was no engine-written specimen of a character carrying
 nothing, so one was made: the shipped slot A party loaded, saved to C as a
 baseline, character 1's nine items dropped in play, saved again to D
-(`work/p62/run_n.py`, artefacts in `work/p62/truth/`). The same character
+(`p62/run_n.py`, artefacts in `p62/truth/` (scratch, deleted)). The same character
 before and after, in one session, differs at exactly these bytes:
 
 | offset | field | 9 items | 0 items |
@@ -5309,7 +5309,7 @@ variable.** The engine wrote **no `CHRDATD1.ITM` at all** for the emptied
 character — every other character in the slot got one. Our writer wrote a
 zero-length file. Six variants of the same converted BRUTUS rode as the six
 characters of one save slot, judged by the `.ITM` each grew on the engine's
-own resave (`work/p62/run_o.py`, `work/p62/out-v1/`):
+own resave (`p62/run_o.py`, `p62/out-v1/` (scratch, deleted)):
 
 | n | record | `.ITM` given | `.ITM` after the engine's resave |
 |---|---|---|---|
@@ -5323,9 +5323,9 @@ own resave (`work/p62/run_o.py`, `work/p62/out-v1/`):
 The file separates them and `hands_used` does not. Character 1's sheet, the
 identical 285 bytes that read `WEAPON 254 PASSS`, `DAMAGE 0D8-128`,
 `THAC0 148`, `ENCUMBRANCE 60540` with the empty file beside them
-(`work/p56/shots/l1_sheet.png`), reads clean with no file: no `WEAPON` line,
+(`p56/shots/l1_sheet.png` (scratch, deleted)), reads clean with no file: no `WEAPON` line,
 `DAMAGE 1D2+5`, `THAC0 18`, `ENCUMBRANCE 120`, and no `ITEMS` in the VIEW bar
-(`work/p62/out-v1/v1_sheet.png`).
+(`p62/out-v1/v1_sheet.png` (scratch, deleted)).
 
 **What the engine is doing** is SPECULATIVE and does not need settling to fix
 this: a zero-length file opens successfully where a missing one does not, and
@@ -5338,7 +5338,7 @@ it.
 character carries something, and remove a stale one, the way the stale `.SPC`
 already was (`goldbox.dos_codec.ITM_OMITTED_WHEN_EMPTY`). Verified by conversion,
 not by hand-edit: the fixture converted by the fixed writer loads, views
-clean and resaves without inventing anything (`work/p62/out-fixed/`).
+clean and resaves without inventing anything (`p62/out-fixed/` (scratch, deleted)).
 
 **The lesson, applied to the rest of the list.** `WRITE_UNSOURCED` had been
 measured survivable on characters *carrying items* only. Four of its seven
@@ -5362,7 +5362,7 @@ because the engine not rewriting them means a converted character's icon keeps
 whatever colour index 0 draws as. `#112 (A converted DOS character's combat
 icon has no colours)`.
 
-Runner scripts, conversions, resaves and screenshots: `work/p62/`.
+Runner scripts, conversions, resaves and screenshots: `p62/` (scratch, deleted).
 
 ## Mapping the DOS saved game (#59 (Map the DOS saved game, not just the character record))
 
@@ -5373,7 +5373,7 @@ then bisection with hand-built saves the game is made to load.
 **Specimens.** Donald's slots A (New Phlan, area 0), B (Sokol Keep, 21) and
 J (the Slums, 20); four saves taken one action apart (run 1); two engine
 resaves of converted parties from #56 (Why did a converted C64 character reach DOS with no items?); and nine hand-built variants V1-V12.
-All artefacts in `work/p59/`. `docs/141-dos-savegame.md` is the resulting
+All artefacts in `p59/` (scratch, deleted). `docs/141-dos-savegame.md` is the resulting
 layout; `goldbox/dos_savegame.py` reads it.
 
 **Result 1. The file is five fixed regions**, and the biggest is the
@@ -5441,7 +5441,7 @@ of V1-V12 was built on slot J and carried **J's** ECL buffer — 0 bytes
 differ over 5121-12800 in all twelve, against 7439 differing from A. So the
 buffer was never a variable in this bisection and no variant could have
 shown it mattered; V11 stood in the Slums with the *Slums'* script staged,
-not area 0's. The control this run lacked is `work/p60/run2` X1 — slot A,
+not area 0's. The control this run lacked is `p60/run2` (scratch, deleted) X1 — slot A,
 all seven writes above, its own buffer left alone — which dies in
 `Load3DMap`. The buffer is write **7** of nine, and #60 (Put a converted party where it actually stood, not where the template stood) was implemented
 against the seven and its first attempt to move a save onto a fresh template
@@ -5480,7 +5480,7 @@ the DOS load path keys on.
 **Getting there, without a fasttravel.** The DOS engine has no debug fasttravel, so the
 party went by play. The route was read out of `ECL00` (the DOS `ECL3.DAX`
 block 0 — the DOS blocks still carry the C64's `$9900` base internally, so
-`work/analysis/ecl.py` disassembles them unchanged): the harbor master at
+`analysis/ecl.py` (scratch, deleted) disassembles them unchanged): the harbor master at
 (11,1), entered heading north with quest word `$4AA7` ≥ 254, offers
 `HORIZMENU [$4AC4]`: SOKAL / EAST / WEST / BAY / NONE; any purchase sets
 `$4A01` = 1; boarding at the pier end (15,1) then runs, for WEST,
@@ -5491,7 +5491,7 @@ wants `WHO WILL PAY? SELECT` answered (Return does), and the WEST landing
 square, world (20,29), is the overland's own "boat back to Phlan" event,
 whose TAKE BOAT / STAY menu ignores Return and wants the letter.
 
-**Specimens.** `work/p59-outdoor/`: SAVGAMC (at the landing, screen
+**Specimens.** `p59-outdoor/` (scratch, deleted): SAVGAMC (at the landing, screen
 `20,29 E 10:15`), SAVGAMD (one step north, `20,28 N 22:15`), SAVGAME (one
 step east, `21,28 E 10:15` next day), with the engine's `CHRDAT` files, the
 screenshots and `run1.py`. `run2.py` is the DOSBox-X debugger pass on save
@@ -5677,7 +5677,7 @@ engine writes it: a hand-built save carrying 0 came back from the engine's
 resave holding 9.
 
 **The boundary that reorganised the rest.** Grepping every bracketed address
-out of the thirty ECL disassemblies in `work/ecl-scripts` gives 2544 distinct
+out of the thirty ECL disassemblies in `ecl-scripts` (scratch, deleted) gives 2544 distinct
 addresses and **not one at or above `$4AF9`**. So the shared, cross-port ECL
 variable space is `$4900`-`$4AF8` and no further — and on the C64 `$4D00`
 upwards is the twelve character slots, so the DOS VM array above `$4AF8` has
@@ -5697,7 +5697,7 @@ rebuilt, not carried. `$49EB` and `$4A00` read the same way on both ports too
 
 The inherit list this leaves — three groups with an experiment against each,
 and the byte count — is the table in `141-dos-savegame.md`. Scripts:
-`work/p59-vars/corr.py`, `partition.py`, `inherit.py`, `crossport.py`.
+`p59-vars/corr.py` (scratch, deleted), `partition.py`, `inherit.py`, `crossport.py`.
 
 ## What the C64 engine writes when a character is dropped (#104 (A converted DOS party arrives with the template save's spare characters still in it))
 
@@ -5712,7 +5712,7 @@ should look like. Writing zeros over the whole slot was the obvious guess, and
 
 ### The static half: no header byte holds a count
 
-190 `.d64` images under `work/` carry a readable `SAVEDGAME0` — party sizes 1,
+190 `.d64` images in scratch (since deleted) carried a readable `SAVEDGAME0` — party sizes 1,
 2, 6 (×187) and 8. For every byte of the 1024-byte header `$4900`-`$4CFF`,
 none equals the party size in all 190; nor the size minus one, nor the highest
 occupied slot index, nor twice the size. `$49FC` behaves as `#104 (A converted DOS party arrives with the template save's spare characters still in it)` says: 2 in
@@ -5725,7 +5725,7 @@ fails the `A`-`Z` test by construction — and the half that is not is the
 finding: no slot anywhere has a live first byte and fails the ability check, so
 the engine never leaves a half-scrubbed record that reads as occupied.
 
-`work/p104/countsearch.py` and `work/p104/namebyte.py`.
+`p104/countsearch.py` (scratch, deleted) and `p104/namebyte.py` (scratch, deleted).
 
 ### The measured half: the engine's own DROP
 
@@ -5758,7 +5758,7 @@ There is no name-length byte in a C64 record — the name is 20 NUL-padded bytes
 — and those are not remnants: **those saves were made by dropping BRUTUS**, and
 that is byte for byte what it leaves.
 
-`work/p104/drop2.py`, payloads in `work/p104/*.bin`.
+`p104/drop2.py` (scratch, deleted), payloads in `p104/*.bin` (scratch, deleted).
 
 ### Two harness faults, both of which produce a run that looks fine and saves nothing
 
@@ -5840,7 +5840,7 @@ settled 53, and is the obvious next measurement.
 
 ## The 68000 disassembler, and the `.pc` loader it was written to read (#148 (The Amiga port's tools are gone, and phase 1 still needs the disassembler))
 
-`work/amiga/m68dis.py` went with `work/`, and `docs/124-amiga-port.md` phase 1
+`amiga/m68dis.py` went with scratch, and `docs/124-amiga-port.md` phase 1
 had been stopped on it since: "read the `.pc` loader" needs a 68000
 disassembler and there was not one in the tree. Donald's ruling on 2026-08-31
 was to rebuild it and put it in `tools/`, which is where
@@ -5909,7 +5909,7 @@ regression, and it fails against the first draft.
 
 The committed tests build their encodings by hand from the Motorola manual, so
 the suite needs no game data and skips nothing. The comparison script needs
-capstone and therefore cannot be one of them; it stays under `work/`, and the
+capstone and therefore cannot be one of them; it stays in scratch, and the
 two numbers that matter — the mode and the counts — are in this section so the
 claim can be checked without it.
 
@@ -5977,7 +5977,7 @@ loaded-files cache that a real exit script writes and `FastTravel` does not.
 ### What was measured
 
 Five driven sessions on instance-pool slot 0, all from the player's own save
-disks. Every arrival at New Phlan in `work/wallart/run4` is at New Phlan's own
+disks. Every arrival at New Phlan in `cited/wallart/run4` is at New Phlan's own
 arrival square, `(15, 1)` facing west, so the pictures compare directly.
 
 | where the party was, and how it got there | `$ED50`-`$FF97` against `WALLS00` |
@@ -6071,7 +6071,7 @@ resolves to `$2011`, which [`118`](118-debug-mode.md) already names as
 **`$21`** (`$2041`, three operands) and `LOADPIECES` opcode **`$37`**
 (`$276E`, three operands). `DUNGEON $1663` decodes an operand: kind byte `00`
 means an immediate follows, which is the form all six statements above use.
-`tools/loadfiles.py` prints them for any script; it was `work/wallart/loadfiles.py`
+`tools/loadfiles.py` prints them for any script; it was `wallart/loadfiles.py` (scratch, deleted)
 until `#159 (Nobody has read what Fast Travel skips in the other twenty-nine
 scripts)` moved it somewhere it can be found. `tools/eclwalk.py` reads the same
 scripts statement by statement.
@@ -6129,7 +6129,7 @@ is why the collision never shows in ordinary play.
   `$6E1B = new | $80`, and the 32-byte scratch wipe — exactly the five writes
   `automap/actions.py` makes, in that order, and nothing else.
 * **That the staging buffer at `$8C00` is what goes wrong.** It looked that way
-  in `work/wallart/run2`, where a warped Slums held a mixture of three
+  in `wallart/run2` (scratch, deleted), where a warped Slums held a mixture of three
   `WALLDEF` files there. That capture was taken **mid-load**: a fixed settle of
   40 s is not enough for an arrival that comes off a floppy, and the piece
   loads were still running. With a wait that polls the program counter until it
@@ -6382,12 +6382,13 @@ what `docs/41-memory-regions.md` records the engine's own DROP CHARACTER doing
 comparison cannot give. Walking out, the panel lists seven names — `GRON`,
 `SKULLCRUSHER`, `SIMON`, `DIRTEN`, `MAD MAN`, `XAVIER`, `GENHEERIS`. Fast
 travelling out, it lists eight, with `PRINCESS FATIMA` between `DIRTEN` and
-`MAD MAN` at AC 0 and 33 hit points, in both runs. `work/issue180/walk/`,
-`work/issue180/warp/` and `work/issue180/warp2/` hold the screenshots.
+`MAD MAN` at AC 0 and 33 hit points, in both runs. `cited/180/walk`
+holds the screenshots; `cited/180/warp` and `cited/180/warp2` hold only the
+recorded state.
 
 **What the player answers on the way out.** The exit square prints
 `DO YOU WANT TO LEAVE?` over a `YES NO` bar, and the panel at that moment still
-has all eight names on it — `work/issue180/walk/walk-bar-01.png`. She goes
+has all eight names on it — `cited/180/walk/walk-bar-01.png`. She goes
 after `YES`.
 
 **The resident `$6B00`/`$6C00` are not the evidence and were misread as such
@@ -6620,7 +6621,7 @@ the second.
 
 ### The routine, read out of a memory image
 
-`tools/dosfieldrefs.py` over `work/issue69/watch13b/memory-after-fight.bin`
+`tools/dosfieldrefs.py` over `cited/69/watch13b/memory-after-fight.bin`
 finds three `es:[di+0xab]` sites: one write inside character creation, and two
 reads eleven bytes apart inside one routine. Disassembled 16-bit from the
 image, that routine is the game's `ADD A CHARACTER: ADD EXIT` screen. It reads
@@ -6815,7 +6816,7 @@ preparation is the only thing that does it.
 
 ### The measurement
 
-`tools/c64strength.py`, one boot, `work/issue277/run3/`. The same DOS specimen
+`tools/c64strength.py`, one boot, `cited/277/run3`. The same DOS specimen
 converted into four slots of one party — `WISH-SPEC-elf6`, an elf fighter with
 18/75 rolled in DOS Pool of Radiance's own creation screens — differing only in
 `0x0E3` and in whether the roster block was spoiled first. `PORSAVE13.D64`'s
@@ -6835,7 +6836,7 @@ cannot be a copy of what the conversion wrote.
 Both spoiled slots landed on exactly the value their own `0x0E3` dictates. One
 byte, +2 to hit and +3 damage.
 
-**Run 4 (`work/issue277/run4/`) repeats it against the fixed writer**, with a
+**Run 4 (`cited/277/run4`) repeats it against the fixed writer**, with a
 fifth copy called `ASWRITTEN` whose `0x0E3` the tool never touches after
 `goldbox.dos_codec.to_c64_record` returns and whose roster went in spoiled to 50 /
 +7. It came out of the same ambush at **18 / +3**, beside `ZEROFLAG` at 20 /
@@ -7681,14 +7682,14 @@ reported for inspection; no failure path unlinks a name another process may
 have replaced. No automatic migration or original-file write was added.
 
 A read-only inspection of the established control and one explicit disposable
-output at `work/issue533/deep-research/cli-iTcZtY/repaired.d64` both produced
+output at `cited/533/deep-research/cli-iTcZtY/repaired.d64` both produced
 the already accepted output hash
 `a49e2d071d21a46df5a7cd1e31c8dfc214e8b71bc9737526ecae6c2f0b26b64c`:
 exactly 36 changed bytes, `SAVEDGAME1` and every other disk byte unchanged.
 The control still hashes to
 `9217a34736c8e0cff8ba11b51116a345ba8091bbfe4ce499935413bde3bdce53`.
 A second disposable copy, made with the revised exclusive-descriptor writer,
-at `work/issue533/deep-research/cli-review-N5N0cl/repaired.d64` has the same
+at `cited/533/deep-research/cli-review-N5N0cl/repaired.d64` has the same
 accepted output hash. The revised CLI describes a verified snapshot copy,
 not an assertion that no external process could have changed the source.
 

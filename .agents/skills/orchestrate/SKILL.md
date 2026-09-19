@@ -21,13 +21,13 @@ The definitions are .codex/agents/<name>.toml, generated from .claude/agents/<na
 - emulator-runner: a bounded emulator experiment where the harness, actions, captures and stop condition are specified. It preserves evidence and interprets nothing, runs a driver that already exists, and does not modify it. If the brief needs a driver written or extended first, that is building: junior-dev when the plan names the driver and the sequence, reverse-engineering when the sequence has to be worked out from the game's screens or bytes. Then the runner gets the finished driver. Its budget is two boots that end at the same step, or an hour, and the budget belongs to the investigation: a brief that relaunches the work says how many boots are already spent, and they count.
 - qt-ui-specialist: a Qt repair where the behaviour, wording, target widget and acceptance criteria are already approved.
 - code-reviewer: after every subagent that wrote code, on the local commit, scoped to its files, before the push.
-- test-runner: the whole suite in a detached worktree before a push, or a scoped run. The only agent that may run everything. Never two at once. On a green run it writes work/testrun/<sha>.green, which is what lets the push through the push guard.
+- test-runner: the whole suite in a detached worktree before a push, or a scoped run. The only agent that may run everything. Never two at once. On a green run it writes ~/.cache/wish/testrun/<sha>.green, which is what lets the push through the push guard.
 - docs-reviewer: when documentation may have drifted from the code.
 - backlog-auditor, changelog-writer: audits and the changelog, on request.
 
 ## Standing rules
 
-- The queue is work/orchestrator-queue.md. You own it, and it is never committed. Where an issue in it already carries a specific plan, brief the implementing agent from it. Where it does not, a senior-analyst (code that exists) or an architect (a subsystem that does not, or stages across agents) writes the plan on the issue first, and a different agent implements it.
+- The queue is ~/.cache/wish/orchestrator-queue.md. You own it, and it is never committed. Where an issue in it already carries a specific plan, brief the implementing agent from it. Where it does not, a senior-analyst (code that exists) or an architect (a subsystem that does not, or stages across agents) writes the plan on the issue first, and a different agent implements it.
 - Every issue you or one of your agents files joins the queue the moment it is filed, placed by the rule below and with an agent named. An issue filed and not queued is an issue nobody works.
 - The ranking rule: a defect a player can hit first, then work that unblocks other issues, then the smallest thing that removes a blocker. A question with no consequence attached goes last. Anything waiting on a decision only Donald can make, or on a picture he has to look at, is not scheduled: produce what he needs to decide, post it on the issue, and mark the row "waiting on Donald".
 - Read the latest comments on every issue before briefing, because the comments override the body.
@@ -35,11 +35,11 @@ The definitions are .codex/agents/<name>.toml, generated from .claude/agents/<na
 - Every finding goes on its issue when it arrives. Every agent gets its own files and an escape hatch, and an agent stopping to say the work is not its kind is a success. If an agent hits a refusal it cannot clear, it stops and reports.
 - Do not make a decision that is Donald's: wording, priorities, or anything a player reads. Leave it, mark the row, and say so in your status.
 - The order before every push is: commit the work, send the whole suite to test-runner at the tip, push. check-push-tested.py refuses a push that carries a .py, .ui or tests/ change with no green marker for the tip or for a tested ancestor with only documentation on top of it. Do not look for a way round it; run the suite.
-- A subagent past its budget with no report is not waiting to be asked. Judge it by what it has written: the files it owns under work/, and tools/instance.py status if it holds a slot. If Codex gives you a way to stop it, stop it and relaunch with a tighter brief; if not, say so to Donald, who can. Check the pool afterwards, because a run it started with nohup keeps its slot after the agent dies.
+- A subagent past its budget with no report is not waiting to be asked. Judge it by what it has written: the files it owns, and tools/instance.py status if it holds a slot. If Codex gives you a way to stop it, stop it and relaunch with a tighter brief; if not, say so to Donald, who can. Check the pool afterwards, because a run it started with nohup keeps its slot after the agent dies.
 
 ## On start
 
-1. Read work/orchestrator-queue.md. If it does not exist, create it with the header, the table and the two lists, from the open issues.
+1. Read ~/.cache/wish/orchestrator-queue.md. If it does not exist, create it with the header, the table and the two lists, from the open issues.
 2. For every row, check the issue's state with tools/issueread.py N --json. Drop rows whose issue is closed into the "Closed" list at the bottom of the file.
 3. List every open issue that is in neither the table nor the "Do not schedule" list, and place each by the ranking rule. If you cannot tell where one goes, send a senior-analyst to read it and say what it needs and which agent fits, then place it.
 4. Print the table as your first status. The file is not committed.
@@ -49,7 +49,7 @@ Codex has no self-scheduling loop. The session lives while you are waiting on a 
 
 ## Keeping the queue file current
 
-Rewrite the row's status column whenever an issue starts, reports, is committed, or closes, and add a row for anything filed. The file is under `work/`, gitignored, and is never committed or staged: Donald does not want "Update the orchestrator queue" in the log again. If it is missing at start, rebuild it from the open issues by the steps above. The "Do not schedule" list is the one part of the file the tracker does not already hold, so keep it derivable: an issue goes into that list only with the `blocked` label and a comment saying what it waits on, and comes off the label when it leaves the list, as issues.md already asks. A fresh machine with no work/ rebuilds the list from `gh issue list --label blocked --limit 200`.
+Rewrite the row's status column whenever an issue starts, reports, is committed, or closes, and add a row for anything filed. The file is under `~/.cache/wish/`, outside the repository, and is never committed or staged: Donald does not want "Update the orchestrator queue" in the log again. If it is missing at start, rebuild it from the open issues by the steps above. The "Do not schedule" list is the one part of the file the tracker does not already hold, so keep it derivable: an issue goes into that list only with the `blocked` label and a comment saying what it waits on, and comes off the label when it leaves the list, as issues.md already asks. A fresh machine with no queue file rebuilds the list from `gh issue list --label blocked --limit 200`.
 
 ## Handing off
 

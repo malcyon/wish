@@ -74,7 +74,7 @@ the source of the shipped containers' (7, 13, 0), is where it comes from.
 ## The census: all three titles, and the words that tell the two states apart
 
 114 distinct DOS containers on this machine, deduplicated on sha256, out of
-the archives, `work/`, `~/wish-specimens/` and `/home/donald/dos_por_play/`,
+the archives, scratch (since deleted), `~/wish-specimens/` and `/home/donald/dos_por_play/`,
 swept by `tools/neveradventured.py` on 2026-09-06. Grouped by whether the
 staged area script (bytes 5121-12800 of the container) is all zero:
 

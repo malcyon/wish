@@ -56,7 +56,7 @@ pool-of-radiance 6BAD 6BB6`) finds every writer:
 | `SQRPACI64 $05A5`, `$063A`, `$065A` | clear the slot the predicate just matched -- 32, 31 and 55 on a cure |
 
 The grant writes the id and nothing else. **CONFIRMED in the running game:**
-`work/issue252/ask11/`, MALCYON with a CLOAK OF DISPLACEMENT staged readied
+`cited/252/ask11`, MALCYON with a CLOAK OF DISPLACEMENT staged readied
 and an empty slot, ENCAMP > VIEW > ITEMS > READY on the cloak three times,
 the whole 256-byte record at `$4D00` and the 768 bytes of the effect
 arrays at `$4900` read before and after each press:
@@ -108,7 +108,7 @@ $07A8  JSR $FFFF          (patched with that address)
 
 That is Curse's `calc_affect_effect` per `CheckType`, on the C64, and every
 ask on every list honours a trait slot. The lists, read out of RAM bank 1
-by `tools/traitask.py` while `COMBAT` was resident (`work/issue252/ask1/tables.json`):
+by `tools/traitask.py` while `COMBAT` was resident (`cited/252/ask1/tables.json`):
 
 | list | walked from | for | ids |
 |---|---|---|---|
@@ -212,7 +212,7 @@ properly rather than staying at six or borrowing Pool of Radiance's names
 unmarked. Four readings off the player's own disks filled 55 of the 90, and a
 fifth -- reading the handler each id dispatches -- filled the other 35 and
 corrected two of the 55. `tools/traitquery.py` takes all five and the runs are
-in `work/issue497/`.
+in `cited/497`.
 
 | route | what it reads | ids named | grade |
 |---|---|---|---|
@@ -346,7 +346,7 @@ is CONFIRMED from the code; where a creature, an item template or a spell
 routine carries the id as well, the table says so, and that second line is
 what the *Monster Manual* would have predicted in every case it applies.
 `tools/traitquery.py secret-of-the-silver-blades --handlers` prints all 90
-and `work/issue497/ssb-handlers.txt` is that run.
+and `cited/497/ssb-handlers.txt` is that run.
 
 ### The dispatch, and the anchors every reading stands on
 
@@ -542,7 +542,7 @@ matched, which is right: nobody had anything in one but 107 and 124, which
 are on no list.
 
 **And a slot that has an id something asks about changes the game.**
-CONFIRMED, `work/issue252/ask4/`: 98, "regenerates 3 hit points a round",
+CONFIRMED, `cited/252/ask4`: 98, "regenerates 3 hit points a round",
 written by `tools/traitask.py` into slot 9 of ROLAND's block with his
 current hit points set to 1, and SILAS beside him at 1 with nothing in his
 block. The roster's hit points (`$8300 + slot * $20 + $19`) read once a
@@ -583,7 +583,7 @@ $AA03  JSR $A705          a fire spell: $A4F7, the damage, becomes 0
 
 Handler 20, the Resist Fire spell, at `$A873` only halves.
 
-**Watched, `work/issue252/fire9/`:** MALCYON, a level-1 magic-user given
+**Watched, `cited/252/fire9`:** MALCYON, a level-1 magic-user given
 three memorised Burning Hands, cast one at ROLAND, who had 61 written into
 slot 9 by `tools/traitask.py` and no ring. The trace, in list 6's order:
 
@@ -622,13 +622,13 @@ POOL4 and three readied on monsters in `MON32` and `MON56`, all
 -- `+14 = 61`, `+15 = $81`, which `ECL65`'s table sends to `$ADD4` like
 `$80`. Readying `ITEMFILE1D`'s ring in camp writes 61 into a trait slot and
 un-readying it takes 61 back out, one byte each way, watched
-(`work/issue285/ring-81/`).
+(`cited/285/ring-81`).
 
 What stood here rested on the **fifth** record, `ITEMFILE17` record 3 on
 POOL3 -- `45 cd a7 42 00 00 00 00 01 00 00 88 13 00 00 00`, `+14 = 0` and
 `+15 = $00`, with the protection bytes `+4`/`+5` a Ring of Protection uses
 zero too. That one does grant nothing, and three READY presses on it moved no
-byte at all (`work/issue285/ring-shipped/`). `load_item_templates` handed it
+byte at all (`cited/285/ring-shipped`). `load_item_templates` handed it
 back because it kept the first record it met for a printed name and POOL3
 sorts before POOL4.
 
@@ -695,7 +695,7 @@ reason that is now wrong on both clauses:
    `$AE13` when it comes off; a ring with `00 00` grants nothing and, if 61
    is in the slot from somewhere else, leaves it there for ever. That
    experiment has now been run: READY, UNREADY and READY again on the
-   converted item, one byte moving each way (`work/issue285/ring-81/`), so
+   converted item, one byte moving each way (`cited/285/ring-81`), so
    `$81` reaching `$ADD4` is CONFIRMED in the running machine rather than
    only from `ECL65`'s table. Whether any code reads the low bits of `+15`
    for anything but the dispatch is still UNKNOWN, and nothing in the record
@@ -735,7 +735,7 @@ reason that is now wrong on both clauses:
 
 ## The runs
 
-`work/issue252/ask1/` (the cloak readied, the fight, the tables), `ask4/`
+`cited/252/ask1` (the cloak readied, the fight, the tables), `ask4/`
 (the regeneration fight), `ask11/` (the READY toggles from camp), and the
 fire runs (`fire9/` is the cast that reached ROLAND; `fire1`-`fire8` are the boot hangs and the driver being found: the spells bar takes CAST before the row, and the target is picked with NEXT and TARGET rather than a cursor), and the runs in between, which are how the READY driver was found: the panel is in
 marching order (`ask2`, `ask3`), the item list prints an unidentified item
@@ -746,12 +746,12 @@ on the keyboard or a numpad joystick selects a row from the world's VIEW
 camp (`ask8`-`ask10`). Each holds `traits.jsonl`, `trace.log`,
 `asks.json`, and `tools/traitask.py --report` prints the table.
 
-`work/issue417/` holds the editor half: `write1/` (the copy, the disk File >
+`cited/417` holds the editor half: `write1/` (the copy, the disk File >
 Save wrote, and the one-byte diff), `cast-edited/` and `cast-control/` (the
 differential pair), `boot1/` and `reload/` (the engine's own save, the reload
 and the eight-hour rest, with ROLAND's sheet in `sheet.txt`).
 
-`work/issue497/` holds the naming runs, all of them from the disks and none
+`cited/497` holds the naming runs, all of them from the disks and none
 of them needing an emulator: the three `--lists` runs of 2026-09-10, then
 `ssb-vs-curse-lists.txt` and `ssb-vs-por-lists.txt` (`--compare`), `por-`,
 `curse-` and `ssb-spell-effects.txt` (`--spells`), and `ssb-handlers.txt`

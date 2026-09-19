@@ -148,8 +148,8 @@ under `NEW`/`OLD` and `READY`/`ACTION`:
 | THRENDER GRONE | 2, 16 | 28, 21 — both large-only | all four exactly slot 5, poses 0 and 1, 9 of 9 glyphs, colours matching |
 | PHINEAS | 8, 27 | 34, 17 — both large-only | all four exactly slot 0, poses 0 and 1, 9 of 9 glyphs, colours matching |
 
-Eight blocks, every one naming exactly one of sixteen candidates. `work/`'s
-`i130mix0-zoom.png` and `i130mix5-zoom.png` are the two figures at six times,
+Eight blocks, every one naming exactly one of sixteen candidates. The scratch directory's
+`i130mix0-zoom.png` and `i130mix5-zoom.png` (scratch, deleted) were the two figures at six times,
 cropped off the screen rather than drawn from a sheet: a purple hood over a
 pink face with a crossbow held level, and a robed figure with long hair and its
 arms out. **In both the head sits on the shoulders and nothing floats, is cut
@@ -381,11 +381,11 @@ resolves). It is input only, never evidence about the game:
 
 ```sh
 for k in weapon head; do for s in small large; do
-    tools/iconproposal.py --kind $k --size $s --png work/issue130/$k-$s.png
+    tools/iconproposal.py --kind $k --size $s --png $TMPDIR/$k-$s.png
 done; done
 tools/dosfigures.py --folder "$SAVE" --slot J \
-    --out work/issue130/PLAYJ.D64 --png work/issue130/playj.png
-POR_HEADLESS=1 tools/savecheck.py --disk work/issue130/PLAYJ.D64 \
+    --out $TMPDIR/PLAYJ.D64 --png $TMPDIR/playj.png
+POR_HEADLESS=1 tools/savecheck.py --disk $TMPDIR/PLAYJ.D64 \
     --icon --fight --steps 60
 ```
 
@@ -393,25 +393,25 @@ The nine mixed rows, which no Pool of Radiance party here wears:
 
 ```sh
 tools/dosmixedicon.py --census
-tools/dosmixedicon.py --stage work/issue130/mixedparty \
+tools/dosmixedicon.py --stage $TMPDIR/mixedparty \
     --from "$SAVE" --slot J
-tools/dosfigures.py --folder work/issue130/mixedparty --slot J \
-    --out work/issue130/MIXEDJ.D64 --png work/issue130/mixedj.png
-POR_HEADLESS=1 tools/iconswing.py --disk work/issue130/MIXEDJ.D64 \
+tools/dosfigures.py --folder $TMPDIR/mixedparty --slot J \
+    --out $TMPDIR/MIXEDJ.D64 --png $TMPDIR/mixedj.png
+POR_HEADLESS=1 tools/iconswing.py --disk $TMPDIR/MIXEDJ.D64 \
     --camp --who 0 --tag mix0
 ```
 
 The earlier run, on the staged clean party:
 
 ```sh
-cp ~/wish-specimens/por-dos/WISH-SPEC-por-party-l1-intown/* work/issue130/dosparty/
-tools/dosiconstage.py --folder work/issue130/dosparty --slot E
-tools/dosfigures.py --folder work/issue130/dosparty --slot E \
-    --out work/issue130/FIGURES.D64 --png work/issue130/converted-party.png
-tools/dosfigures.py --mixed-png work/issue130/mixed-size.png
+cp ~/wish-specimens/por-dos/WISH-SPEC-por-party-l1-intown/* $TMPDIR/dosparty/
+tools/dosiconstage.py --folder $TMPDIR/dosparty --slot E
+tools/dosfigures.py --folder $TMPDIR/dosparty --slot E \
+    --out $TMPDIR/FIGURES.D64 --png $TMPDIR/converted-party.png
+tools/dosfigures.py --mixed-png $TMPDIR/mixed-size.png
 tools/dosnibbles.py --per-option
 for w in 0 1 2 3 4 5; do
-    POR_HEADLESS=1 tools/iconswing.py --disk work/issue130/FIGURES.D64 \
+    POR_HEADLESS=1 tools/iconswing.py --disk $TMPDIR/FIGURES.D64 \
         --camp --who $w --tag who$w
 done
 ```

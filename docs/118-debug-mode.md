@@ -61,7 +61,7 @@ clock printer. CONFIRMED. A stale `$282E` for the scratch wipe was this mistake
 
 The restart re-enters `DUNGEON` at `$0809`, which loads whatever in
 `$6E13`-`$6E2B` carries bit 7 and then calls the new script's **entry 4**, the
-area-initialisation entry (CONFIRMED; the write-up, `work/reports/ecl-opcodes.md`, is lost). Entry 4
+area-initialisation entry (CONFIRMED; the write-up, `reports/ecl-opcodes.md`, is lost). Entry 4
 looks like this, in 26 of 30 scripts:
 
 ```
@@ -165,7 +165,7 @@ watched it place a fasttraveled-in party. Fourteen areas still have none.
 
 Names come from `docs/88-map-files.md` (nine city blocks matched by wall
 geometry), the wilderness site list and the quest flags (write-ups lost —
-`work/reports/world-map.md` and `work/reports/quest-flags.md`), and — for
+`reports/world-map.md` and `reports/quest-flags.md`), and — for
 the nine rows the first three could not name — the DOS area tables in
 `docs/128-guide-and-scripting.md` and `docs/126-forum-findings.md`.
 
@@ -593,7 +593,7 @@ the sections above. Both entries below are answers rather than questions, and
    Answered: mostly, and the exceptions are worth fixing.** All fifteen were
    fasttraveled into with the square `FastTravel` itself picks —
    nothing landed off the map or inside a wall and nothing crashed. The table
-   of all fifteen was in `work/reports/p20-arrivals.md`, which is lost. Three
+   of all fifteen was in `reports/p20-arrivals.md`, which is lost. Three
    findings came out of it:
 
    * the fallback picked **`(0, 0)` on every map**, and on `GEO05`, `GEO19`,

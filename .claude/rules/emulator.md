@@ -25,7 +25,8 @@ blast the intro song, and I'll have no way to turn it down."* A window on his
 screen and a noise in his room are the same kind of mistake.
 
 ```sh
-c64u --host <device> config export > work/c64u/config-backup-$(date +%F-%H%M).json
+mkdir -p "${TMPDIR:-/tmp}/wish/c64u"
+c64u --host <device> config export > "${TMPDIR:-/tmp}/wish/c64u/config-backup-$(date +%F-%H%M).json"
 c64u --host <device> config set "Speaker Mixer" "Speaker Enable" "Disabled"
 # ... drive the game ...
 c64u --host <device> config set "Speaker Mixer" "Speaker Enable" "Enabled"

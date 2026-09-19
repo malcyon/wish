@@ -7,18 +7,16 @@ paths:
 
 # Documentation
 
-**A write-up's permanent home is `docs/`, never `work/`.** `work/` holds the
-game's own bytes and anything derived byte for byte from them, and it is
-gitignored, so nothing in it survives. The *reasoning* about those bytes is not
-game data: a write-up that argues from evidence to a conclusion belongs in
-`docs/`, cited by a path that survives. **A tool that regenerates an artefact
-belongs in `tools/`.**
+**A write-up's permanent home is `docs/`.** Nothing under the temp directory
+survives, and game bytes and anything derived byte for byte from them are never
+committed. The *reasoning* about those bytes is not game data: a write-up that
+argues from evidence to a conclusion belongs in `docs/`, cited by a path that
+survives. **A tool that regenerates an artefact belongs in `tools/`.**
 
-If a working file under `work/` would take more than a session to reproduce,
-write its findings into a `docs/` page **before** the working file is deleted.
-`tests/test_repository_contents.py` fails the build on a new `work/` path cited
-from `docs/` or a package unless the file exists or its own text says it is
-lost -- 32 write-ups were lost that way in
+If a working file would take more than a session to reproduce, write its
+findings into a `docs/` page **before** it is lost. `tests/test_repository_contents.py`
+fails the build on a scratch path cited from `docs/` or a package -- 32
+write-ups were lost that way in
 `#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed
 into gitignored scratch)`.
 

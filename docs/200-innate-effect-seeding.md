@@ -122,7 +122,7 @@ one thing. The paladin is the disagreement both titles share.
 ## 2. The Curse corpus, character by character
 
 `tools/innateids.py census --title curse --by-id` over the specimen tree, the
-archives and `work/`: 69 distinct 422-byte records, 42 with an effect file.
+archives and the old scratch directory: 69 distinct 422-byte records, 42 with an effect file.
 Every carrier of each class or race id:
 
 | id | carriers | exceptions |
@@ -163,7 +163,7 @@ characters it was not aimed at. It could not, four ways:
    16-bit word, `SAVGAM<slot>.DAT+0xD51`, the training hall's maximum level.
    No character record and no effect file is written at all.
 2. **The direction.** The specimen's files were collected from
-   `work/curse/234-curse-dualclassed`, which is the run's **input**. Nothing
+   `curse/234-curse-dualclassed` (scratch, deleted), which is the run's **input**. Nothing
    is written back there.
 3. **A shared byte-for-byte record.** The specimen's `CHRDATD1.SAV` hashes
    `352f508395065c91443e4e314a29f20564dfdf1af681c2078607fe6c822ec801`, which

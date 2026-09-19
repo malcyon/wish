@@ -2,7 +2,7 @@
 
 **Status: phases 0 to 5 are done.** Phases 0-2 were a cold read of the disks
 with `goldbox/geo.py`, `goldbox/record.py` and `goldbox/savegame.py` **unmodified**;
-phases 3-5 were one driven session; the account of it, `work/reports/p9-ssb-live.md`,
+phases 3-5 were one driven session; the account of it, `reports/p9-ssb-live.md`,
 is lost. `tests/test_ssblive.py` carries what a machine with the disks
 can check again without an emulator.
 
@@ -27,7 +27,7 @@ say.
 
 `SILVER-1.D64` ... `SILVER-6.D64` — three double-sided disks, sides 1 to 6,
 with no gap and no error-byte rip among them. `goldbox/d64.py` opens all six.
-The full inventory was in `work/reports/goldbox-inventory.md`, which is lost;
+The full inventory was in `reports/goldbox-inventory.md`, which is lost;
 the per-title base addresses it established are asserted in
 `tests/test_curse.py::test_the_addresses_are_the_ones_measured`.
 
@@ -153,7 +153,7 @@ showed the seam is the save container's base address and nothing else, and
 ### What phase 2 corrected in its own pass criterion
 
 Phase 2's criterion was "`class_bits` is exactly one bit per non-zero slot of
-the array at `0x0C9`". The report, `work/reports/goldbox-inventory.md` §3.3(a)
+the array at `0x0C9`". The report, `reports/goldbox-inventory.md` §3.3(a)
 (now lost), read it
 **failing** on PAINE (`0x80`) and GUY DE VALOIS (`0x40`), and concluded the
 criterion covers only the low four bits. The correction below is repeated as
@@ -173,7 +173,7 @@ it for Silver Blades and `tests/test_curse.py` for Curse.
 
 ### 4.1 The import diff, byte by byte
 
-Seven specimens: the Curse export already in `work/curse/`, plus the six
+Seven specimens: the Curse export already in `curse/` (scratch, deleted), plus the six
 pre-generated characters SSI ships inside Curse's own `SAVEAZURE`, reassembled
 into 580-byte records and written onto a save disk as `\x02NAME` files. The
 assembly was checked against a real Curse export first and reproduces it byte
@@ -388,7 +388,7 @@ platinum and 124,000 experience were the same after five presses, where Curse
 takes 1,000 gp a class and lowers the experience to one under the next
 threshold. The thief skills were rewritten from a dexterity the engine read
 (`0x0A5`-`0x0AC` all moved), which is the input `goldbox/levelup.py` still
-refuses this title for; the pairs are in `work/issue344/` for whoever reads
+refuses this title for; the pairs are in `cited/344` for whoever reads
 `$126D` next. The engine's own save of the trained party is
 `~/wish-specimens/por-c64/WISH-SPEC-ssb-malachite-trained.D64`.
 
@@ -561,7 +561,7 @@ they are listed here rather than made.
   repository in any form.
 * **Committing any part of Silver Blades** — code, art, music, manuals, maps,
   scripts, data files, disassembly listings, or a slice of any of them dressed
-  as a test fixture. Disks live in `work/`; tests read the player's own.
+  as a test fixture. Disks stay outside the repository; tests read the player's own.
 * **A full `ECL` decode.** Pool of Radiance's took the whole project. Silver
   Blades needs it only if quest flags are ever wanted.
 * **An editor UI for Silver Blades.** Phases 2 to 4 have now proven the record,

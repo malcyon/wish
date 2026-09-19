@@ -113,7 +113,7 @@ Staged before the boot and therefore ours: `class_levels[mage]` and `level` at
 teaches every class wherever the party stands. Everything above is the
 engine's.
 
-**Reproduced on a second boot**, `work/issue408/run3`, from the same staged
+**Reproduced on a second boot**, `cited/408/run3`, from the same staged
 input. Every field in the table came out identical except the two the hit die
 decides -- MATHEW's `hp_rolled` 38 against 37 and PHILIPPE's 21 against 20 --
 which is the only random part of a training.

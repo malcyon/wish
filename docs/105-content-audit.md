@@ -8,7 +8,7 @@ disassembly listings, or data files.
 how it was resolved; `tests/test_repository_contents.py` now enforces it.
 
 Audited the tracked tree on 2026-08-20. **Disk images are clean** — no `.d64`
-has ever been committed, in any commit, and `work/` has been `.gitignore`d from
+has ever been committed, in any commit, and the scratch directory for game-derived files (deleted 2026-09-18) was `.gitignore`d from
 the start. The findings are all in `tests/fixtures/`, plus one in the docs.
 
 ---
@@ -106,8 +106,8 @@ audio anywhere in the tree.
 * **No art, music or sound of any kind** is tracked — no sprites, tilesets,
   portraits or SID data.
 * **No manual, cluebook or journal text** is tracked, transcribed or otherwise.
-* `work/analysis4/dis_*.txt` are full disassembly listings, and are correctly
-  outside the repository — `work/` is ignored. They must stay there.
+* `analysis4/dis_*.txt` (scratch, deleted) were full disassembly listings, and were correctly
+  outside the repository, in ignored scratch. They must never be committed.
 * The generated docs (`docs/20`, `docs/40`, `docs/85`–`89`) are tables *about*
   the format, produced by our own tools from field descriptions. They describe;
   they do not copy.

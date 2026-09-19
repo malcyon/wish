@@ -42,7 +42,7 @@ and leaves it stale (`#310 (A trained C64 Curse character arrives in DOS with th
 |---|---|---|---|
 | C64, specimen tree (three titles) | 132 | 3 | 0 disagree |
 | DOS, specimen tree, converted to C64 first (three titles) | 228 | 9 | 0 disagree |
-| C64, `work/` (three titles) | 1,482 | 14 | 0 disagree |
+| C64, scratch copies (three titles; deleted) | 1,482 | 14 | 0 disagree |
 | C64 Pool of Radiance, the player's own save disks | 150 | 0 | 0 disagree |
 
 Only one of those dual-classed records is past the regain threshold, and it is

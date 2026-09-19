@@ -2,7 +2,7 @@
 
 **Status: built.** `wish`, with `wish-editor` and `wish-automap` as aliases
 onto the tab each name implies. The build report that verified it,
-`work/reports/one-window.md`, is lost; the Ultimate backend in `wish/ultimate.py`
+`reports/one-window.md`, is lost; the Ultimate backend in `wish/ultimate.py`
 is the one part it flagged **unverified**, because nobody has the hardware.
 
 Two programs when this was written: `wish-editor` (a file tool) and

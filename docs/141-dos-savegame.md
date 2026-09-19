@@ -13,26 +13,29 @@ saved game" and "The DOS saved game outdoors".
 **Every count on this page is a count of engine-written saves, and
 `tools/dossavcensus.py` re-takes it rather than quoting it.** That matters
 because the corpus keeps changing: eight of the twelve specimens the original
-pass counted lived under `work/` and are gone, and later work has made ones
+pass counted lived in scratch and are gone, and later work has made ones
 it never had.
 
 ```sh
-.venv/bin/python tools/dossavcensus.py work/p26 work/p50-outdoor work/p59-wallset
+.venv/bin/python tools/dossavcensus.py cited/p26 cited/p50-outdoor cited/p59-wallset
 ```
 
-What it finds on this machine as of 2026-09-04 is **21 genuine
-engine-written containers**, 11 indoors and 10 on the travel grid:
+What it found on this machine as of 2026-09-04 is **21 genuine
+engine-written containers**, 11 indoors and 10 on the travel grid. That command
+no longer reproduces them: the archive keeps only a fraction of those
+directories (`cited/p26` holds `issue191/built` and nothing else, and
+`cited/p59-wallset` holds two saves), so the table below is the count as it was:
 
 | where | how many | what they are |
 |---|---|---|
 | Donald's played party | 3 | slots A (New Phlan), B (Sokol Keep), J (the Slums), in the Steam `SavesDir` |
 | the archives' own | 1 | `games/POOLRAD/Default files/Saves/SAVGAMA.DAT`, a Slums save and *not* the same file as Donald's slot A |
-| #26 (Write a DOS save, not just read one)'s resaves | 7 | the engine's own `ENCAMP > SAVE` of a party loaded out of a save built from 13137 zeroes, `work/p26/run*` and `work/p26/issue191/run` |
-| overland | 10 | `work/p50-outdoor/SAVGAMC.DAT` and the nine of `work/p59-wallset` |
+| #26 (Write a DOS save, not just read one)'s resaves | 7 | the engine's own `ENCAMP > SAVE` of a party loaded out of a save built from 13137 zeroes, `p26/run*` (scratch, deleted) and `p26/issue191/run` (scratch, deleted) |
+| overland | 10 | `cited/p50-outdoor/SAVGAMC.DAT` and nine more from `p59-wallset` (`cited/p59-wallset` keeps two of them) |
 
 **Two kinds of file are excluded from every count and the tool marks both.**
 A file we assembled is not evidence about what the engine writes, so
-`BUILT-`, `SEED-` and `work/p26/issue191/built/` are out; and
+`BUILT-`, `SEED-` and `cited/p26/issue191/built` are out; and
 `Default files/Saves/SAVGAMB.DAT` is a **shipped stub** rather than a played
 party — its ECL buffer is 7680 zero bytes, it holds nine nonzero VM words, no
 quest flags and a 00:00 clock, and it is the only file that disagrees with
@@ -51,7 +54,7 @@ in different places and Pools of Darkness writes a `SAVGAM<slot>.PTY` instead.
 |---|---|---|---|
 | 0 | 1 | the current area's `.DAX` container number, 1-8 — numerically the C64 `POOL` disk side that carries the same area (A/B/J = 3/4/2 = the C64 disks for New Phlan, Sokol Keep, the Slums) | CONFIRMED |
 | 1-5120 | 5120 | 2560 `u16le` **VM variables**, indexed by ECL address: `offset = 1 + 2*(addr − $4900)`. Sparse: **2407 of 2560 words are zero in all 11 engine-written indoor specimens, and 2402 across all 21**. The five words in the difference are exactly `$49C3`, `$49C4`, `$507A`, `$507B` and `$507C` — the travel square and the three overland-only words below, nothing else. Re-take it with `tools/dossavcensus.py` | CONFIRMED |
-| 5121-12800 | 7680 | the **ECL text buffer**: the current area's script, byte-identical to its `ECL<n>.DAX` block from byte 2 on — every block opens `88 13`, `u16le` 5000, and the save carries everything after it. Bytes past the script's end are **all zeros** in every specimen held (6 of 6 checked, remnants of 209/1972/3/1113 bytes; an earlier claim of stale remnants was wrong). **Live on load**: a save built for a new area that still carries the old area's script dies in `Load3DMap` however many other variables it writes, so writing the target area's own script is one of the writes of the recipe below | CONFIRMED — #60 (Put a converted party where it actually stood, not where the template stood), `work/p60/run2` variant X1; zero-fill measured in #59 (Map the DOS saved game, not just the character record)'s outdoor pass |
+| 5121-12800 | 7680 | the **ECL text buffer**: the current area's script, byte-identical to its `ECL<n>.DAX` block from byte 2 on — every block opens `88 13`, `u16le` 5000, and the save carries everything after it. Bytes past the script's end are **all zeros** in every specimen held (6 of 6 checked, remnants of 209/1972/3/1113 bytes; an earlier claim of stale remnants was wrong). **Live on load**: a save built for a new area that still carries the old area's script dies in `Load3DMap` however many other variables it writes, so writing the target area's own script is one of the writes of the recipe below | CONFIRMED — #60 (Put a converted party where it actually stood, not where the template stood), `p60/run2` (scratch, deleted) variant X1; zero-fill measured in #59 (Map the DOS saved game, not just the character record)'s outdoor pass |
 | 12801-12808 | 8 | the square and the party size — see below | CONFIRMED |
 | 12809-13136 | 328 | **eight** 41-byte character slots, of which six are filled. Each is a length-prefixed `CHRDAT<letter><n>` filename followed by 32 bytes of heap junk. **The filenames are live**: the engine loads the party from the files named here, not from the slot letter chosen at the LOAD menu — slot J's file staged as slot C loaded J's characters — and its own resave rewrites the letters. This page said "six entries, then 82 bytes of UI scratch" until #175 (Decode the first 1024 bytes of the Pools of Darkness saved game); the 82 are slots 6 and 7 holding the stack, which is why they read `lter Exit` and `Camp: ` at exactly the 41-byte stride | CONFIRMED as 328 bytes of `CHRDAT` slots; the count of **eight** is CONFIRMED for Pools of Darkness and Silver Blades from the code and PROBABLE here — see the settling experiment below |
 
@@ -69,7 +72,7 @@ in different places and Pools of Darkness writes a `SAVGAM<slot>.PTY` instead.
 
 **The tail is assembled at save time, not dumped from a struct**: the byte
 run 12801-12817 (stale square + `CHRDATD1`) appears nowhere in the first
-megabyte of the running game (`work/p59-outdoor/run2.log`), so 12804-12807
+megabyte of the running game (`p59-outdoor/run2.log` (scratch, deleted)), so 12804-12807
 have no single live address to watch.
 
 ## The named VM variables
@@ -101,7 +104,7 @@ quest flags convert unconditionally.
 | `$507A`, `$507B`, `$507C` | **`$6E7A`-`$6E7C`: the overland script's loop registers** while `ECL1A` entry 1 searches its fourteen-square table on every step -- the row's y, the row's count and the running index. The band table below is reproduced row for row by running that loop by hand, (29, 1, 14) included; nothing reads them after it. Rewritten on the first step, so a conversion writing 0 loses nothing. [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) | CONFIRMED -- reproduced from the script and watched under a `BPM` |
 | `$5082` | **equals `$5200` in 21 of 21** engine-written specimens, which makes it a third name for the value file byte 12805 also carries. Not previously noted; found by searching the variable array for words whose value vector across the whole corpus is identical | CONFIRMED as a copy |
 | `$4B00`-`$52FF` | **Two VM heap blocks whose real addresses are `$6B00`-`$6EFF` (file words 1024-2047) and `$9700`-`$98FF` (words 2048-2559).** The contiguous names this page uses are file positions rather than the addresses the engine or the scripts use, and the claim this row used to make -- that no script references the range -- rested on that misnaming: 28 of the 30 scripts name `$6DD2` and all 30 name `$6E79`. [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) has the classifier and the renaming table; `$4B00`-`$4CFF` is real and unreferenced. Live and still unnamed, under their VM names: `$6BB8`, `$6BC3`, `$6C0C`, `$6DA8`, `$6DC0`-`$6DC1`, `$6DC6`, `$6DC8`, `$6E7D`, `$6E7F`-`$6E80`, `$9802`-`$9807`, `$980A`-`$980F`. Constant in all twelve: `$6DE1` = 255, `$6E6D` = 16, `$6EF6` = 1 | the blocks CONFIRMED from the code; the words individually UNKNOWN |
-| engine-rebuilt | `$49F0`, `$49F1`, `$49FE`, `$4FD2`, `$4FD3`, `$5079`, `$5082`, `$5200`, `$5208` — the nine words the engine rewrote by itself when it loaded a hand-built save and the party moved (`work/p59/retarget-C.DAT` against `work/p59/run9/SAVGAMD.DAT`). The load path was already bisected as not needing them | CONFIRMED engine-maintained |
+| engine-rebuilt | `$49F0`, `$49F1`, `$49FE`, `$4FD2`, `$4FD3`, `$5079`, `$5082`, `$5200`, `$5208` — the nine words the engine rewrote by itself when it loaded a hand-built save and the party moved (`p59/retarget-C.DAT` against `p59/run9/SAVGAMD.DAT` (scratch, deleted)). The load path was already bisected as not needing them | CONFIRMED engine-maintained |
 
 ### `$507A`-`$507C`: a rule that holds in a band, and a refutation
 
@@ -130,8 +133,8 @@ separate boots from two different seeds — one party that walked there from
 (7,29) over four steps, and one seeded at (7,26) that took a single step —
 and both wrote exactly (29, 1, 14).
 
-**And the pair to diff is the same-slot one.** `work/p59-wallset/ycol/SAVGAMC.DAT`
-at (7,28) against `work/p59-wallset/y25/SAVGAMC.DAT` at (7,25) — both engine
+**And the pair to diff is the same-slot one.** `cited/p59-wallset/ycol/SAVGAMC.DAT`
+at (7,28) against `cited/p59-wallset/y25/SAVGAMC.DAT` at (7,25) — both engine
 written, both from a slot A seed, both saved to **slot C**, and their clocks
 happen to agree — differ in **23 bytes**, of which only **five words** sit
 below the character table:
@@ -161,7 +164,7 @@ every comparison.
 So whatever these words are, they are deterministic and position-dependent
 and they are **not** the travel square. Settling experiment: a `BPM`
 write-watch on `$507A` in DOSBox-X across a dozen overland steps, which is
-how `$49C3` was confirmed. `work/p59-wallset/ycol` and `y25`.
+how `$49C3` was confirmed. `cited/p59-wallset/ycol` and `y25`.
 
 ## The recipe for moving a save to a different area (#60 (Put a converted party where it actually stood, not where the template stood))
 
@@ -170,7 +173,7 @@ square — exits to DOS with `Unable to load geo in Load3DMap.`, and so does
 #59 (Map the DOS saved game, not just the character record)'s seven-write recipe when it is run on a template it was not found on:
 every one of #59 (Map the DOS saved game, not just the character record)'s twelve variants happened to carry the *target's* ECL
 buffer, so the buffer was never a variable and "dead on load" was a reading
-of that accident. `work/p60/run2` variant X1 is the control it lacked —
+of that accident. `p60/run2` (scratch, deleted) variant X1 is the control it lacked —
 slot A, all seven writes, its own buffer left staged — and it dies in
 `Load3DMap`.
 
@@ -196,20 +199,20 @@ is the function that applies these writes, and `RETARGET_WRITES` holds the list
 above in machine-readable form.
 
 **CONFIRMED for three area pairs**, each loaded and walked: 0 → 20 (#59 (Map the DOS saved game, not just the character record) run
-9), 21 → 20 and 20 → 0 (`work/p60/run2`, X2 and X3). The script buffer is why
+9), 21 → 20 and 20 → 0 (`p60/run2` (scratch, deleted), X2 and X3). The script buffer is why
 a converter needs the DOS **game** directory and not only a template save:
 `ECL<n>.DAX` is the only copy of the target's script.
 
 **An empty wallset triple is legal**, which matters because New Phlan is the
 one area a C64 save can offer nothing better for. A save moved into area 0 with
 `($FFFF, $FFFF, $FFFF)` in the triple draws a view **pixel-identical** to the
-same move carrying DOS's own `(0, $FFFF, $FFFF)` — `work/p60/run3` Z0 against
+same move carrying DOS's own `(0, $FFFF, $FFFF)` — `p60/run3` (scratch, deleted) Z0 against
 `run2` X3, the only differing pixels being the colour-cycling command bar.
 
 And end to end through `goldbox.dos_codec.write_dos_save`, both walked: `PORSAVE13` in
 the Slums onto template A comes up at 15,4 W 21:15, and `PORSAVE12` in New
 Phlan onto template J at 0,4 W 16:58 — each party's own square, facing and
-clock, with six characters on the roster (`work/p60/run3` and `run4`).
+clock, with six characters on the roster (`p60/run3` (scratch, deleted) and `run4`).
 
 ## The container in the other three titles
 
@@ -530,9 +533,9 @@ reading them named a field. CONFIRMED — the code and both containers agree on
 all five.
 
 **Eight engine-written containers exist**, from `tools/dospod.py` drives under
-`work/p175` (`clock1`, `diff1`, `diff2`, `run16`, `run17`), all in a dungeon
+`p175` (scratch, deleted) (`clock1`, `diff1`, `diff2`, `run16`, `run17`), all in a dungeon
 at 00:04–00:07 with a six-strong party.
-`tools/dossavcensus.py --title pools-of-darkness work/p175` re-takes every
+`tools/dossavcensus.py --title pools-of-darkness p175` (scratch, deleted) re-takes every
 count on this page and marks the two shipped stubs; 36 of the 1024 variables
 are live in at least one of them and 988 are zero in all twelve.
 
@@ -575,7 +578,7 @@ single-byte:
 
 ## The outdoor form (#59 (Map the DOS saved game, not just the character record)'s outdoor pass)
 
-Three engine-written overland saves exist — `work/p59-outdoor/SAVGAMC.DAT`,
+Three engine-written overland saves exist — `p59-outdoor/SAVGAMC.DAT` (scratch, deleted),
 `D`, `E`: slot A's party sailed WEST from New Phlan's passenger dock and
 landed at world (20,29) on window 26, then stepped north and east. The route
 itself is in `ECL00`: the harbor master at (11,1) sells SOKAL/EAST/WEST/BAY
@@ -634,7 +637,7 @@ game's own `ENCAMP > SAVE` taken at three squares:
 **And the outdoor load path does not read the triple at all.** The save
 carrying Sokol Keep's `(1, 5, 9)` on a travel window loaded and drew,
 reporting `20,29 N 01:22` on the status line
-(`work/p59-wallset/keep/loaded.png`). Indoors, a triple that does not match
+(`cited/p59-wallset/keep/loaded.png`). Indoors, a triple that does not match
 the area kills the load in `LoadWallSet`; outdoors a wrong one is not
 noticed.
 
@@ -699,7 +702,7 @@ legitimate ones in `.claude/rules/conversions.md`:
 | the encounter and monster message buffers | `$522C`+ and `$5290`+ | one fight, which filled them with the sentence the game shouted |
 
 Eleven of the twenty are new to this list; the other nine were #59 (Map the DOS saved game, not just the character record)'s. The
-runs are `work/p26/run2` (load, two steps, resave), `run4` (a walk that left
+runs are `p26/run2` (scratch, deleted) (load, two steps, resave), `run4` (a walk that left
 the Slums for New Phlan) and `run5` (a wandering encounter, fought).
 
 Byte 12804 is in this group too, and the run **refuted** what this page used
@@ -708,7 +711,7 @@ to write". The engine's own resave of a party standing **indoors** in the
 Slums, walked in from a from-nothing save, holds **14** -- so the value does
 not partition on indoors and out, and the doc's own corpus already had an
 indoor 14 in slot B. What is CONFIRMED is only that the engine maintains it:
-it replaced a written 0 with 14 in `work/p26/run2` and with 9 in #59 (Map the DOS saved game, not just the character record)'s run 9. It is `$C04E`, the wall the party faces -- [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md).
+it replaced a written 0 with 14 in `p26/run2` (scratch, deleted) and with 9 in #59 (Map the DOS saved game, not just the character record)'s run 9. It is `$C04E`, the wall the party faces -- [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md).
 
 **2. The C64 save has no such field.** Everything at `$4AF9` and above: no
 ECL script references any address there (2544 distinct addresses across 30
@@ -851,7 +854,7 @@ importer, not fitted to make the widths add up.
   script's loop registers, reproduced row for row on the same page.
 * **Whether a played overland save differs from a seeded one** beyond
   `$4DC3` -- the one word measured to differ. Experiment: sail out by boat
-  once and census the result against `work/p59-wallset`.
+  once and census the result against `cited/p59-wallset`.
 * Moving an outdoor save to a new area (the #60 (Put a converted party where it actually stood, not where the template stood) recipe with `$49E6` = 0 and
   `$49C3`/`$49C4` in place of the square bytes) has not been driven;
   `#190 (A C64 party standing on the travel grid cannot be written into a

@@ -320,15 +320,15 @@ his.
 ## Temp files, tools and backups
 
 **`ecl6.py` is the expensive loss.** It decoded all thirty ECL scripts to 100%
-of every byte, lived under `work/`, and is gone. Losing it cost more than losing
+of every byte, lived in the old scratch directory, and is gone. Losing it cost more than losing
 any single report, and no rule about write-ups would have saved it -- which is
 why a tool goes in `tools/`, committed, with a row in `tools/README.md`. Donald,
-2026-09-01: *"If you develop tools, put them into tools/, not work/. That way,
+2026-09-01: *"If you develop tools, put them into tools/, not [the scratch directory]. That way,
 you don't have to rebuild them."* The test is not whether a script looks
 finished; it is whether somebody would otherwise write it again.
 
-**A file under `work/` cannot be found either**, which is the cheaper half of
-the same problem. `work/issue127/proto.py` holds the breadth-first
+**A file in the scratch directory cannot be found either**, which is the cheaper half of
+the same problem. `issue127/proto.py` (scratch, deleted) held the breadth-first
 `step_towards` that walks round rock and round the party's own formation,
 written for `#127 (A driven character stands next to an enemy and passes its
 turn instead of attacking)`. On 2026-09-01 the main window reported it lost --
@@ -336,10 +336,10 @@ wrongly, off its own `ls | head` truncating the listing before the `.py` files
 -- and wrote that into `CLAUDE.md` and into `#170 (A driven character walks into
 rock, because step_towards never reads the terrain)` before a subagent that had
 actually opened the directory corrected it. A tool in `tools/` has a row saying
-what it is for; a tool in `work/` is one entry among the logs and dumps of the
+what it is for; a tool in scratch is one entry among the logs and dumps of the
 run that produced it, and nothing anywhere says it exists.
 
-**`work/` has been lost twice**, and Donald established the cause on 2026-09-02:
+**The scratch directory was lost twice**, and Donald established the cause on 2026-09-02:
 he ran out of Claude quota, drove the project with Google Gemini for a while,
 and it deleted the directory -- probably because it does not read `CLAUDE.md`.
 The two losses are `#136 (Thirty-two cited write-ups are gone, because the
@@ -364,7 +364,7 @@ days.
 
 **It is deliberately Donald's machine only.** He asked on 2026-09-02 what would
 happen if another person cloned the repository and ran Claude Code on it: without
-the guards, a stranger's machine would tar up their `work/` and run
+the guards, a stranger's machine would tar up their scratch directory and run
 `onedrive --sync` against *their* account. The hook is registered in
 `.claude/settings.local.json`, which is gitignored, and refuses unless the
 destination's parent directory exists.
@@ -533,12 +533,12 @@ fixes it, and a run whose `conclusion` is empty has not finished however
 `pytest tests/test_combatdrive.py` was green and `main` went red on all four
 jobs eight minutes later. A scoped run is for working; it is not the check.
 
-**A worktree run without the `work/` symlink lies by omission.** `work/` is
+**A worktree run without the scratch-directory symlink lies by omission.** That directory was
 gitignored, so a bare detached worktree skipped every test that reads a specimen
 out of it -- 204 skipped against the working tree's 103 on 2026-09-02, and the
 hundred that vanished were exactly the ones with real game data behind them.
-With `work/` linked the numbers matched to the test: 2783 passed, 103 skipped,
-both ways. That gap is also the useful fact about CI, which has no `work/`
+With the directory linked the numbers matched to the test: 2783 passed, 103 skipped,
+both ways. That gap is also the useful fact about CI, which has no such directory
 either: the bare run is the closest thing to what CI will do, and the in-tree
 run is what covers the specimen-backed tests. Neither is the whole check alone.
 
@@ -704,16 +704,15 @@ new difference fails.
 
 ## Documentation
 
-**Thirty-two write-ups gone.** `work/reports/` held 32 of them and all 32 are
+**Thirty-two write-ups gone.** The scratch directory's `reports/` held 32 of them and all 32 are
 gone; nothing recovered them, and 80 citations across 29 documents had to be
 rewritten to say so. That is `#136 (Thirty-two cited write-ups are gone, because
-the knowledge base pointed into gitignored scratch)`. `work/` is gitignored on
+the knowledge base pointed into gitignored scratch)`. The scratch directory was gitignored on
 purpose, because the game's own bytes may not be committed -- but the
 *reasoning* about those bytes is not itself game data, so a write-up that argues
 from evidence to a conclusion belongs in `docs/`, cited by a path that survives.
-`tests/test_repository_contents.py` now fails the build on a new one: a `work/`
-path in `docs/` or in a package is either a file that exists, or is marked in its
-own text as lost.
+`tests/test_repository_contents.py` fails the build on any `work/` path in a
+tracked file, and the directory no longer exists (since 2026-09-18).
 
 **A README table that is only mostly true is worse than no table**, because the
 gap is invisible. `tools/livestrip.py` landing on `main` without its row is the

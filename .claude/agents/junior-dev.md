@@ -143,8 +143,9 @@ anything it does not cover itself; the two rows that name `testing.md` and
 carries, because a port or a dedup can touch either without ever opening the
 file that states it:
 
-* **Never write to `/home/donald/c64/Pool of Radiance Disks/`.** Read only,
-  always; a copy goes under `work/`.
+* **Game disks are read-only and come from the registry**
+  (`tools/gamedisks.py`, `automap.paths.find_disks()`). If you must write,
+  work on a copy under the temp directory (`tools/scratch.py`).
 * **Comment the why, not the what.** A comment restating the code should not be
   written. `goldbox/layout.py` is the deliberate exception — its notes are field
   documentation generated into `docs/20-character-record.md` by

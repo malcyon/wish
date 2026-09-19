@@ -240,7 +240,7 @@ above describes.
 
     tools/dosladder.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-por-party-l1-intown \
         --enter 7,2,W --rungs 6 --xp 300000 --gold 20000 \
-        --out work/issue249/ladder
+        --out $TMPDIR/ladder
 
 Each rung writes `before/` and `after/` snapshots of the whole `SAVE`
 directory, a `run.jsonl` with one line per step, prompt, training and save,
@@ -248,6 +248,6 @@ and a screenshot of every frame it acted on. `--xp-mode threshold` stages one
 level's worth plus a margin instead of a flat number, which is what tells the
 clamp apart from a price.
 
-**A specimen dies with the emulator slot that made it.** `work/` is gitignored
-and has been lost twice; copy a rung worth keeping into `$WISH_SPECIMENS` with
+**A specimen dies with the emulator slot that made it.** Scratch is gitignored
+and the old directory was lost twice; copy a rung worth keeping into `$WISH_SPECIMENS` with
 `tools/specimens.py add` before the slot goes down.

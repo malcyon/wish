@@ -941,7 +941,7 @@ to `$ADD4` like `$80`. `ITEMFILE1D` is DOS `ITEM4.DAX` block 29 byte for
 byte. The fifth, `ITEMFILE17` record 3 on POOL3, is `45 cd a7 42 00 00 00 00
 01 00 00 88 13 00 00 00`: `+14` and `+15` zero, so readying it grants
 nothing. Watched -- three READY presses in camp moved no byte of the record
-and left the ten trait slots at zero (`work/issue285/ring-shipped/`).
+and left the ten trait slots at zero (`cited/285/ring-shipped`).
 
 `ITEMFILE17`'s other three items are flattened the same way, and DOS has no
 block 23 at all.
@@ -1016,7 +1016,7 @@ screen, no reload prompt. Return and space change nothing. The only way on is
 to switch the machine off and reload the last save.
 
 **What the game does.** `POST.COM`'s losing branch ends `JMP $0957`, a jump to
-itself. Driven twice (`tools/defeatdrive.py`, `work/issue128/run2` and
+itself. Driven twice (`tools/defeatdrive.py`, `cited/128/run2` and
 `run3`), the program counter was caught sitting there 96 of 97 samples across
 70 seconds of screen reads that never changed. All six characters are left
 `DYING` (`$84`) rather than `DEAD`, because the pass that would advance them to
@@ -1061,7 +1061,7 @@ the rest of his thread had not been.
 
 Source unless stated: [Gold Box games bugs](https://forums.goldbox.games/index.php?topic=2772.0),
 posters Gwindor, Null Null, Amarande, PetrusOctavianus and Kirben, 2014–2015.
-Raw capture in `work/forums/p2772.txt`. Summarised in our own words.
+Raw capture in `forums/p2772.txt` (scratch, deleted). Summarised in our own words.
 
 ### Pool of Radiance
 

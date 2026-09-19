@@ -43,7 +43,7 @@ a manual sits beside the disks it documents rather than in a downloads folder
 that gets cleared.
 
 **It is read-only to this project.** Nothing here writes there. Anything that
-needs to extract from a PDF copies into `work/` first.
+needs to extract from a PDF copies into a scratch directory under the temp directory first.
 
 ## They are not in the repository, and must never be
 
@@ -110,10 +110,10 @@ contents entry is not a PDF page. **Add the offset, do not hunt:**
 
 **The Programmer's Reference Guide is 173 MB and cannot be opened directly** —
 a reader that renders pages refuses it over 100 MB. Cut the range out first,
-into `work/` or a scratch directory, and read that:
+into a scratch directory, and read that:
 
     gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dFirstPage=257 -dLastPage=259 \
-       -sOutputFile=work/prg-235-237.pdf \
+       -sOutputFile=$TMPDIR/prg-235-237.pdf \
        "$MANUALS/commodore_64_programmers_reference_guide.pdf"
 
 Three pages come out at about a megabyte. The other two guides open whole.

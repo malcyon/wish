@@ -75,7 +75,7 @@ clear), root drawer `Save/`:
 | `spindisk` | 16538 | 1 | loader, not save data |
 | `WRITE.ME` | 0 | 1 | write-test probe |
 
-`work/amiga/adf.py` reads all of it today with no change. **The `.dax` /
+`amiga/adf.py` (scratch, deleted) reads all of it today with no change. **The `.dax` /
 `GLIB` container work is irrelevant to saves** — saves are ordinary files.
 
 Amiga Pool of Radiance, disk 1, `save/` drawer, for comparison: `CHRDATAn.sav`
@@ -490,9 +490,9 @@ at `0x1400` and the square region starts at `0x1401`.
 **`GLIB` is not the crunched container.** `*.GLB` and `*.TLB` are: magic
 `GLIB`, u32 total size, u16 block count, u16 1, magic `DATA`, then count+1
 big-endian u32 offsets, block *i* being `[off[i], off[i+1])`. **The blocks are
-uncompressed** — `work/amiga/dax.py`'s bit-cruncher fails on 25 of ECL.GLB's 26
+uncompressed** — the bit-cruncher in `amiga/dax.py` (scratch, deleted) fails on 25 of ECL.GLB's 26
 and yields 3 bytes of garbage from the last. §1.1's container work is for the
-Pool of Radiance `.dax` archives and does not apply. `work/amiga/goldbox/glib.py`
+Pool of Radiance `.dax` archives and does not apply. `amiga/goldbox/glib.py` (scratch, deleted)
 reads it.
 
 **Where DOS names six `CHRDAT<letter><n>` files, the Amiga embeds the records.**
@@ -621,7 +621,7 @@ line reads ` No `; everything else reads 1 and draws ` Yes `.
 **The display line is a cached render on both ports, not a canonical string.**
 #55 (Decode the Amiga Curse and Silver Blades records) left this UNKNOWN, wondering whether Amiga Curse's `" Yes  Shield "` meant
 the ready column lived in the text. It does — and so it does on **DOS**: the
-DOS `.ITM` files in `work/dos-saves` carry ` No   Long Sword +1 `,
+DOS `.ITM` files in `dos-saves` (scratch, deleted) carry ` No   Long Sword +1 `,
 ` Yes  * Shield +1 ` and, on the same character, a plain `Plate Mail ` with
 stale bytes (`Mail           400`) past its own length byte. So the line is
 **never a source**, and neither reader reads it.
@@ -791,7 +791,7 @@ an Amiga disk only by overwriting an existing file's bytes.
 files**, and Amiga Pool of Radiance listed slot B in `LOAD WHICH GAME: A  B`
 and loaded it: the six-character roster with its own AC and HP, standing at
 `0,3 N 05:49`, which is the state the save holds.
-`work/amiga/p36/shots/slotb-final.png`.
+`amiga/p36/shots/slotb-final.png` (scratch, deleted).
 
 **`save/save` is the slot list, not a note about the current slot.** Ten bytes;
 `"A         "` on the shipped disk and `"AB        "` after the game saved to
@@ -1207,11 +1207,11 @@ the same write produced. That single identity fixes the money offsets, the
 and it is what `test_a_c64_party_converts_to_a_coherent_amiga_record` asserts.
 Watched failing with the item shift map's second step moved by one.
 
-**The specimens come out of the disks now, not out of `work/`.**
+**The specimens come out of the disks now, not out of scratch.**
 `tools/amigasaves.py` reads the twenty records back out of the images they live
 in -- six on Pool of Radiance disk 1 and fourteen on the Curse save disk -- and
 `tests/test_amiga.py` calls it when `$AMIGA_POR_SAVES` names nothing. The
-earlier corpus was extracted into `work/`, which is gitignored and was lost,
+earlier corpus was extracted into gitignored scratch and was lost,
 and every one of these tests was skipping until 2026-09-04.
 
 **The second insertion is narrowed from six candidate positions to three, and
@@ -1534,7 +1534,7 @@ the region is open.
 
 ### 1.14a A Silver Blades party stood where we put it (#28 (Decode an Amiga saved game, not just a character file))
 
-WinUAE, 2026-09-07, holder `wish28sq`; screenshots in `work/28ssb/shots/` and
+WinUAE, 2026-09-07, holder `wish28sq`; screenshots in `cited/28ssb/shots` and
 both files in `~/wish-specimens/ssb-amiga/WISH-SPEC-ssb-amiga-moved/`.
 
 **The edit is three bytes.** `WISH-SPEC-ssb-amiga-adventuring/savgamB.sav` is
@@ -1883,7 +1883,7 @@ load address plus the 580-byte record, little-endian, C64 field order
 (`docs/30-savegame-layout.md`).
 
 **The experiment, as run** (P51 in `docs/50-experiments.md`, one FS-UAE
-session, Kickstart 1.3, the untagged three-disk rip). `work/amiga/adfedit.py`
+session, Kickstart 1.3, the untagged three-disk rip). `amiga/adfedit.py` (scratch, deleted)
 replaces a file's contents in place on a real disk 3 — no ADF writer needed,
 because a 484-524-byte `.pc` already owns two 488-byte OFS data blocks and 582
 fits. Two of the twelve were overwritten, ten left genuine.
@@ -1930,7 +1930,7 @@ Practical notes for the next session, all learned the hard way: FS-UAE's arrow
 keys never reach the Amiga, so the picker's cursor cannot be moved — **put the
 payload in the first row's file**. The `*` in that list marks a name matching a
 party member, not the cursor. The `INSERT INTO DF0` submenu opens with the
-image currently in the drive highlighted; `work/amiga/pod/swap.sh` assumes that.
+image currently in the drive highlighted; `amiga/pod/swap.sh` (scratch, deleted) assumes that.
 `PLEASE INSERT DISK 3.` is answered with `o` then Return.
 
 ---
@@ -1945,9 +1945,9 @@ big-endian word prints two of them side by side. One run identifies every field
 in the window at once, and the name on the sheet is the check that the payload
 on the disk is the one that loaded.
 
-`work/amiga/pod/probe.py` builds the payload and installs it,
-`work/amiga/pod/cycle.sh` drives one probe end to end, and the screenshots are
-`work/amiga/pod/R*.png`.
+`amiga/pod/probe.py` (scratch, deleted) builds the payload and installs it,
+`amiga/pod/cycle.sh` drives one probe end to end, and the screenshots are
+`amiga/pod/R*.png` (scratch, deleted).
 
 | probe | window | what the sheet drew | reading |
 |---|---|---|---|
@@ -2080,7 +2080,7 @@ Notes for whoever runs the next one:
 * **Never press Up at the top of an FS-UAE menu list.** The cursor leaves the
   list and lands on the window's `X`, and Return there quits the emulator. That
   is what killed one session; it looked like a crash and was not.
-  `work/amiga/pod/df0.sh` navigates by Down-then-Up from a clamped bottom and
+  `amiga/pod/df0.sh` (scratch, deleted) navigates by Down-then-Up from a clamped bottom and
   tracks which disk is in DF0 in `.df0state` so it can move by an exact delta.
 * The DF0 submenu opens on **whatever is in the drive**, and the main menu's
   highlight is wherever it was left, so no fixed key sequence reaches it —
@@ -2113,7 +2113,7 @@ undecoded; and spells are untouched.
 
 ### 2.5 End to end: a C64 character in the Amiga party
 
-**The thing Donald asked for, run.** `LADY KATHERINE` off `work/PORSAVE11.D64`
+**The thing Donald asked for, run.** `LADY KATHERINE` off `PORSAVE11.D64` (scratch, deleted)
 -- a half-elf magic-user/thief the player rolled on the C64 -- converted with
 `tools/toamiga.py`, installed as `Save/TROND.pc` on a copy of disk 3, added
 through `Add Character -> Pools` and viewed. The party roster drew
@@ -2149,7 +2149,7 @@ The losses were the expected ones and every one was named in the report before
 the run: 104 silver and gold pieces (only platinum, gems and jewelry have a
 located home), her items, her spellbook, her portrait and her combat icon.
 
-Screenshots are `work/amiga/pod/v_*.png`; `work/amiga/pod/install_pc.py` puts a
+Screenshots are `amiga/pod/v_*.png` (scratch, deleted); `amiga/pod/install_pc.py` (scratch, deleted) puts a
 built `.pc` on a fresh copy of disk 3. Two practical notes on top of §2.4's:
 **the picker takes several seconds to populate** and looks empty until it
 does, and the first row is the file `Save/TROND.pc` whatever the record inside
@@ -2179,7 +2179,7 @@ player boots PoD normally, chooses `Add Character` → `Pools`, and picks them.
 **The `.pc` files exist; the ADF does not.** `tools/toamiga.py` writes a whole
 party into a directory, and §2.5 got one of them into the game by *replacing*
 an existing file's contents on a copy of disk 3 — which is what
-`work/amiga/adfedit.py` can do and all it can do. Authoring a disk, or adding
+`amiga/adfedit.py` (scratch, deleted) can do and all it can do. Authoring a disk, or adding
 a directory entry to one, still wants phase 3's OFS writer. That is the last
 piece between here and something a player can be handed.
 
@@ -2237,9 +2237,9 @@ name difference is the DOS length byte, which the Amiga drops for NUL padding.
 
 | question | answer | confidence |
 |---|---|---|
-| Are PoD's saves inside the `.dax` / `GLIB` container scheme? | **No.** They are ordinary AmigaDOS files in a `Save` drawer. | CONFIRMED — `work/amiga/adf.py` reads them |
+| Are PoD's saves inside the `.dax` / `GLIB` container scheme? | **No.** They are ordinary AmigaDOS files in a `Save` drawer. | CONFIRMED — `amiga/adf.py` (scratch, deleted) reads them |
 | What filesystem? | **OFS.** All three PoD ADFs are `DOS\0`, FFS bit clear, root names `POD 1/2/3`. | CONFIRMED |
-| Can we read one already? | Yes. `work/amiga/adf.py` walks the hash chains, follows extension blocks and extracts every file. | CONFIRMED |
+| Can we read one already? | Yes. `amiga/adf.py` (scratch, deleted) walks the hash chains, follows extension blocks and extracts every file. | CONFIRMED |
 | Can we **write** one? | Yes, for Pool of Radiance: `#36 (Write an Amiga disk image, not just the character files)` writes a fresh 880K `POOLSAVE.ADF` carrying a converted party and no game code, without `amitools` — `wish` ships as a PyInstaller binary and does not take dependencies lightly. `docs/191-the-amiga-save-disk.md` has the format and the WinUAE proof. Pools of Darkness, the subject of this table, is not built yet. | CONFIRMED for Pool of Radiance |
 | What does writing require? | An OFS writer: bootblock, root block with its hash table and checksum, bitmap block, one dir header, and per file a header block plus data blocks each carrying a 24-byte header and its own checksum. Perhaps 300 lines, and `goldbox/d64.py` is the precedent — this project already writes a container by hand. | PROBABLE |
 | Does PoD want its own save disk? | It prompts (`is your save disk in drive`, `Place Secret save disk in DF0:`), and the rip we read carries `Save/` on disk 3 itself. Whether an original demands a separately formatted disk is UNKNOWN and phase 2 answers it. | — |
@@ -2256,7 +2256,7 @@ Ordered so the cheapest thing that could kill the approach runs first.
 
 | # | phase | produces | emulator? | cost | pass/fail |
 |---|---|---|---|---|---|
-| 0 | **Confirm §1 independently.** Re-extract both PoD and PoR ADFs, re-derive the file inventory and the twelve `.pc` constants. | a reproducible script under `work/` | no | an hour | the numbers in §1 come out again |
+| 0 | **Confirm §1 independently.** Re-extract both PoD and PoR ADFs, re-derive the file inventory and the twelve `.pc` constants. | a reproducible script in `tools/` | no | an hour | the numbers in §1 come out again |
 | 1 | ~~**Read the `.pc` loader.**~~ **DONE** (#148 (The Amiga port's tools are gone, and phase 1 still needs the disassembler)). `tools/m68dis.py` was rebuilt for it. 404 bytes, then 20 per item and 10 per effect; AmigaDOS `Open`/`Read`; the only checks are the read lengths and an `'I'` on each item. | §1.16 | no | done | run — see §1.16 |
 | 2 | ~~**The assumption test (§2.2), cases A–D.**~~ **DONE.** | A loads; **B loads too** | yes | one session | run — see §2.2 |
 | 3 | **An OFS ADF writer.** Round-trip: read every file off disk 3, rebuild an image, compare file contents byte for byte; then boot it in FS-UAE and let PoD list the twelve characters. | `goldbox/adf.py` (writer) with tests that read the player's own disks, never a committed image | yes, once | a week | PoD's `Add Character → Pools` shows all twelve names off our image |
@@ -2302,7 +2302,7 @@ So nobody is surprised, and nobody tries.
 
 1. ~~**There is no Amiga Secrets of the Silver Blades on this machine.**~~
    **Gone — the disks arrived 2026-08-25**, in
-   `work/amiga/goldbox/Secret_Of_The_Silver_Blades/` (both sides, 901120 bytes
+   `amiga/goldbox/Secret_Of_The_Silver_Blades/` (both sides, 901120 bytes
    each), and `SecretOfTheSilverBlades_A.adf` carries a shipped saved game at
    `SAVE/savgamA.sav`. The Curse disks and a Curse save disk came with them.
    So the `Secret` import route — the one the game was designed around, where

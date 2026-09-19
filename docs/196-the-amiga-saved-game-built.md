@@ -39,7 +39,7 @@ they are zero in all ten saved games here.
 
 **The name table's entries are eight plain bytes** where DOS spends a count
 byte and eight, and **only as many are filled as the party has characters**.
-CONFIRMED from `work/issue105`'s `savgamE.dat`, which Amiga Pool of Radiance
+CONFIRMED from `savgamE.dat` in `issue105` (scratch, deleted), which Amiga Pool of Radiance
 itself wrote for a one-character party: `CHRDATE1` in entry 0 and Amiga heap
 addresses in entries 1 to 7.
 
@@ -105,7 +105,7 @@ The stream carries a running XOR of every longword it reads and the routine
 ends with `tst.l d5` on it, so a block that unpacks to the stated length with a
 non-zero checksum was read wrong. **All 843 blocks of all 23 `.dax` files on
 disk 2 unpack to their stated length with a zero checksum** -- the same figure
-`docs/117` records from the lost `work/amiga/dax.py`, reproduced by an
+`docs/117` records from the lost `amiga/dax.py`, reproduced by an
 independent transcription.
 
 **The oracle that makes it CONFIRMED rather than plausible**: block 0 unpacked,
@@ -116,7 +116,7 @@ carries in its script buffer, followed by zeros to 7680. Every block opens
 ## 4. What the running game did with one
 
 Two WinUAE runs on 2026-09-05, `docs/143-winuae-debugger.md` §1, holder
-`por316`; screenshots in `work/issue316/`. Both parties were written onto a
+`por316`; `cited/316` keeps only the mock-up note, not the screenshots. Both parties were written onto a
 freshly formatted `POOLSAVE` save disk with `tools/toamigapor.py --save-disk`,
 which reads **only** disk 2.
 
@@ -223,7 +223,7 @@ only square byte that moved. Two saves one step apart differ in 15 bytes of
 ### A converted outdoor party, in the running game
 
 `tools/toamigapor.py` built a save disk from the C64 outdoor party in
-`work/p190/C64OUT1.D64` -- window-local (8,27) in the Wilderness Middle
+`p190/C64OUT1.D64` (scratch, deleted) -- window-local (8,27) in the Wilderness Middle
 Window, clock 21:18, 13,141 of 13,141 bytes accounted for. Amiga Pool of
 Radiance loaded it and drew the overland view with the status line reading
 **`21,27 W 21:18`**: world x = window-local 8 + 13, the offset
@@ -271,16 +271,16 @@ came back exactly as written.**
 ## 7. Reproducing it
 
 ```sh
-tools/toamigapor.py work/por2.adf --to B --save-disk work/poolsave.adf \
+tools/toamigapor.py $TMPDIR/por2.adf --to B --save-disk $TMPDIR/poolsave.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-porunconscious1.d64 --provenance
 ```
 
 An outdoor party is the same command with an outdoor source save --
-`work/p190/C64OUT1.D64` is the one the run above used -- and needs no other
+one that `tools/c64outdoor.py` makes -- and needs no other
 argument: the writer picks the outdoor branch off the source save's own
 `$49E6`.
 
-`work/por2.adf` is a copy of Amiga disk 2. `--provenance` prints one line per
+`$TMPDIR/por2.adf` is a copy of Amiga disk 2, taken from the player's own disk. `--provenance` prints one line per
 run of bytes saying where each came from; the run's summary line says
 `13141/13141 bytes accounted for, 0 left to nobody`, and a number other than
 zero there is the whole of what "no template" means.

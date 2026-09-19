@@ -157,7 +157,7 @@ a stranger's edited party. Both halves of that are gone:
   run's 200-coin payment, and twelve by a 999 this ticket staged itself.
   **Nothing in the never-watched corpus misses at all**, 0 of 46. That leaves
   **four records and two characters**: GILES at -20 and ASTRID at -65, each
-  found twice, once in the edited directory and once under `work/`. They are
+  found twice, once in the edited directory and once in a copy. They are
   the only two nobody can name an operation for, and 90 + 3 + 1 + 4 + 12 + 4
   is the 114.
 
@@ -252,7 +252,7 @@ the edited party up under an innocent-looking path, so grade a record by
 **Records this project's own writers produced** test the writer and are never
 evidence about the game, since they carry what we already believe. **Including
 saves a person edited in Wish.** Donald, 2026-09-04, of the C64 party on
-`work/drive/P18PARTY.D64` that `#10 (Finish the high-level test party)` drove
+`P18PARTY.D64` (scratch, deleted) that `#10 (Finish the high-level test party)` drove
 through the training hall: *"I edited the C64 characters you mentioned with
 WISH. I gave them gold. I increased their ability scores. I changed the weight
 of their items."* Driving a party through the game does not keep it clean
@@ -272,10 +272,10 @@ Wish and read the stored encumbrance, and you have measured Wish.
 takes the instance with it. On 2026-09-04 the only engine-written DOS
 item-granted effect record this project has ever had -- `CHRDATD1.SPC`, made by
 readying a magical item in the running game -- was reported at
-`work/issue232/ready4/` and was gone from the whole filesystem an hour later.
+`cited/232/ready4/` and was gone from the whole filesystem an hour later.
 Its nine bytes survive only because they were quoted in
 `docs/162-spc-permanence.md`. **Copy a specimen out before the slot goes**, and
-put it in the tree below rather than anywhere under `work/`.
+put it in the tree below rather than anywhere in scratch.
 
 **The tree is `$WISH_SPECIMENS`, default `~/wish-specimens/`**, outside the
 repository because the game's data must never be committed. `tools/specimens.py

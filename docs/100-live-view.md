@@ -53,7 +53,7 @@ proportion — comfortable, hurt, in danger — and keep the numbers beside it f
 when the exact value matters.
 
 **The experience bar needs the level table**, which is not in the repo yet:
-`work/goldbox-research/por_xp_tables.txt` was fetched during the research pass
+`goldbox-research/por_xp_tables.txt` (scratch, deleted) was fetched during the research pass
 and holds the thresholds per class. Bring it in as a generated table beside
 `docs/86-spell-table.md`, and derive the bar from `experience` against the next
 threshold for the character's class. For a multi-class character the game splits
@@ -202,7 +202,7 @@ number is only interesting while editing, it belongs on the editor tab.
    headless against captured bytes and against `PORSAVE11.D64` read straight
    off a disk (`test_the_party_reads_the_same_live_as_it_does_off_the_disk`,
    `tests/test_automap.py`).
-2. ~~The experience table~~ **Done, a different way.** `work/goldbox-research/por_xp_tables.txt`
+2. ~~The experience table~~ **Done, a different way.** `goldbox-research/por_xp_tables.txt`
    is gone; the table came instead from `goldbox/levels.py`, generated into
    [`89-level-tables.md`](89-level-tables.md) and verified against the game
    rather than transcribed. `automap/live.py` already draws the experience bar
@@ -262,7 +262,7 @@ number is only interesting while editing, it belongs on the editor tab.
   `tools/livestrip.py` reads six per-character rows off the machine and draws
   `healing-shield` with `Bless` in the tooltip; cast Prayer and it reads one
   `$FF` row, id 35, and draws the same shield with `Under an allied Prayer`.
-  Pictures in `work/issue-142-slot2/`, which is gitignored.
+  Pictures are in `cited/142-slot2`.
 * A hit point bar at 5 of 7 is coloured as hurt, and a full one is not —
   `test_a_wounded_character_is_coloured_and_a_whole_one_is_not`, which cites
   this page's own example.

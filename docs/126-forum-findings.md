@@ -11,12 +11,12 @@ Bug and exploit reports are logged separately, as rumours, in
 [`125-bug-notes.md`](125-bug-notes.md). Nothing from the forums goes in
 `goldbox-bugs.md`.
 
-Method and the full 296-row thread index were in `work/reports/forum-sweep.md`,
+Method and the full 296-row thread index were in `reports/forum-sweep.md`,
 which is lost. Raw
-captures are `work/forums/print/<topic>.html` and `.txt` — the forum's own
+captures were `forums/print/<topic>.html` and `.txt` (scratch, deleted) — the forum's own
 `action=printpage` rendering returns every page of a thread in one document, so
 there is never a reason to walk `.20`, `.40` by hand. Fetched non-forum
-material is under `work/forums/ext/`. All of `work/` is `.gitignore`d.
+material was under `forums/ext/` (scratch, deleted). None of it was committed.
 
 **What the board is.** 50 threads of the 296 are useful; 246 are *Forgotten
 Realms Unlimited Adventures* module hacking — byte edits to `CKIT.EXE` to change
@@ -125,7 +125,7 @@ the automapper does not do and should not start doing.
 **Worth carrying to a later title**: if we take Pools of Darkness or Dark Queen,
 the first cheap probe is an area id with an `ECL` record and no `NEWECL`
 pointing at it, and the smallest `ECL` records in the file — Ishad Nha reports
-the playtester scripts are among the smallest, 1–2 KB. `work/analysis6/`
+the playtester scripts are among the smallest, 1–2 KB. `analysis6/` (scratch, deleted)
 answers both without an emulator.
 
 ### The command-line cheat — `start.exe STING` — and the C64 verdict: **absent**
@@ -176,7 +176,7 @@ could hide.
 Bonds carry no trace of the DOS command-line cheat** — not the literals, not the
 message, not a dead comparison. It was compiled out for the port, as it was for
 Buck Rogers. Method, every hit and the limit of the claim were in
-`work/reports/sting-search.md`, which is lost; the finding is asserted in
+`reports/sting-search.md`, which is lost; the finding is asserted in
 `tests/test_coabsource.py` so nobody looks again.
 
 A second, unrelated original-game patch from the same corner of the board:
@@ -194,7 +194,7 @@ disable the password check at save time.
 | Ishad Nha, [1912](https://forums.goldbox.games/index.php?topic=1912.0): `GEO6.DAX` record **19** is the "Silver Dragon Den" | **Resolved: the same place.** Stephen S. Lee's guide lists script 19 as *Silver Dragon Lair*, and Diogenes **is** the silver dragon; this project's own "Cave of Diogenes" name for the same place is not in conflict |
 | The same list gives `GEO` record **30** "Lizard Man Catacombs" and **31** "Wealthy Area" | 30 is agreed by everyone: `GEO1E` is Lizardman Keep's catacombs, and our *script* 30 (`ECL1E`) is a different thing — the attract-mode demo, in a slot DOS's single numbering space left free. **Record 31 is an open conflict between two third-party DOS sources** — §5 |
 | Simeon Pilgrim, 2013: the Pool of Radiance ECL "command offset is `0x6700` compared to `0x8000` used in Curse" — while marainein's listings of the same game print addresses from `0x9800` up | Irreconcilable as stated, and neither is ours: the C64 `ECL` block is at **`$9900`** with its flag page at `$4A00`, which is what the addresses in the listings behave like. Take the *addresses in the listings*, not the prose |
-| The `coab` opcode table's `$3E DUMP`, `$3F FINDSPECIAL`, `$40 DESTROYITEMS` | **Do not exist in Pool of Radiance.** The dispatch tables at `$15A9`/`$15E7`/`$1625` are 62 entries, `$00`–`$3D` (CONFIRMED; the write-up, `work/reports/ecl-opcodes.md`, is lost). Curse's DOS build having three more is a difference between titles, not an error in either |
+| The `coab` opcode table's `$3E DUMP`, `$3F FINDSPECIAL`, `$40 DESTROYITEMS` | **Do not exist in Pool of Radiance.** The dispatch tables at `$15A9`/`$15E7`/`$1625` are 62 entries, `$00`–`$3D` (CONFIRMED; the write-up, `reports/ecl-opcodes.md`, is lost). Curse's DOS build having three more is a difference between titles, not an error in either |
 | Nol Drek: FRUA's combat limits are memory partitioning — 50 monsters, 3 items each, 100 events, 24×24 maps | About FRUA, a later DOS product. Nothing here constrains the C64 engine. Draxinusom's 2026 measurements ([4677](https://forums.goldbox.games/index.php?topic=4677.0)) put FRUA's real ceiling at ~480 items live at combat start, sharing storage with the party's memorised spells. Interesting engineering, wrong engine |
 | marainein: the aggregation wall scheme exists "because they had to support architectures like the Commodore 64 and Apple II" | Plausible and unevidenced. Recorded as his speculation, not as a finding |
 
@@ -449,7 +449,7 @@ before an encounter reduces the size of the enemy party.**
   three bytes**, six bits each, with the compressed length in the byte before
   the string ([997](https://forums.goldbox.games/index.php?topic=997.0),
   [981](https://forums.goldbox.games/index.php?topic=981.0)). The C64 `ECL`
-  strings use exactly this packing — `work/analysis6/ecl6.py::unpack` is the
+  strings use exactly this packing — `analysis6/ecl6.py::unpack` (scratch, deleted) is the
   VM's `$150A` unpacker, and it is what read every string quoted in §2's table.
 * **No file names a map.** Simeon Pilgrim, flatly: "there is no data in the game
   that names the `GEO` blocks"
@@ -490,15 +490,15 @@ before an encounter reduces the size of the enemy party.**
 ## 9. Tooling and sources, and what survives today
 
 455 distinct external URLs appear in the 296 threads, across 132 hosts. The
-extracted list with citing threads is `work/forums/board8_external_urls.txt`;
+extracted list with citing threads is `forums/board8_external_urls.txt` (scratch, deleted);
 a per-thread index with authors and post counts is
-`work/forums/board8_triage.txt`.
+`forums/board8_triage.txt` (scratch, deleted).
 
 ### Live, and worth having
 
 | resource | what it holds |
 |---|---|
-| **`github.com/simeonpilgrim/coab`** | The Curse reimplementation, and **the most valuable thing the board points at**. `Classes/PoolRadPlayer.cs` and `Classes/Player.cs` are the DOS records for our two titles; `engine/ovr017.cs::ConvertPoolRadPlayer` is the import routine; `engine/ovr025.cs` and `ovr026.cs` recompute the derived fields; `Classes/GeoBlock.cs`, `EclBlock.cs`, `Item.cs`, `engine/VmOpp.cs` and `ovr0NN.cs` are the ECL VM. Mined in [`117`](117-save-conversion.md); fetched to `work/forums/ext/`. Simeon notes **no repacker exists** — modifying a DOS `.DAX` in place is still hand work |
+| **`github.com/simeonpilgrim/coab`** | The Curse reimplementation, and **the most valuable thing the board points at**. `Classes/PoolRadPlayer.cs` and `Classes/Player.cs` are the DOS records for our two titles; `engine/ovr017.cs::ConvertPoolRadPlayer` is the import routine; `engine/ovr025.cs` and `ovr026.cs` recompute the derived fields; `Classes/GeoBlock.cs`, `EclBlock.cs`, `Item.cs`, `engine/VmOpp.cs` and `ovr0NN.cs` are the ECL VM. Mined in [`117`](117-save-conversion.md); fetched to `forums/ext/` (scratch, deleted). Simeon notes **no repacker exists** — modifying a DOS `.DAX` in place is still hand work |
 | **`gbc.zorbus.net`** | Gold Box Companion, **ECL-Tool**, **ECL-Monitor** (a live ECL disassembler over a running DOSBox game, following the script PC and *editing* flags and operands — the closest existing thing to `wish`, on the other port), `savefiles_compared.txt` (already in `docs/60`), `formats.zip` |
 | **`frua.rosedragon.org`** | The FRUA archive; 137 of the 151 links resolve under `/pc/`. `pc/uashell/hackdocs.zip`, 202 KB, holds 56 text files including `SAVGAM.TXT`, `CCHFORM.TXT`, `GEOGRIDS.TXT`, `GEOEVENT.TXT`, `ITEM.TXT`/`ITEMS.TXT`, `VOCAB.TXT`, `SPECAB.TXT`, `VAULT.TXT`, `TLBFORM.TXT`. All FRUA, but it is the primary source most of the board is quoting |
 | **`github.com/simeonpilgrim/goldboxexplorer`**, **`github.com/bsimser/Gold-Box-Explorer`** | Gold Box Explorer, C# `DAX`/`GEO`/`ECL`/`GLB` plugins; version 1.2 added ECL decoding for most games, search, and a first-person map view ([3089](https://forums.goldbox.games/index.php?topic=3089.0)). The CodePlex original is gone. Its own users report it mis-sorts image resources and its PNG export is unreliable |

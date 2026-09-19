@@ -15,7 +15,7 @@ the run, the method and the things that went wrong on the way.
 ## 0. The answers
 
 **Ten checks, three titles, thirty passes and no failures.** The runs are
-`work/issue34/por5`, `work/issue34/curse6` and `work/issue34/ssb6`, taken on
+`cited/34/por5`, `cited/34/curse6` and `cited/34/ssb6`, taken on
 2026-09-08 against `automap/` as it stands at `edcf842`.
 
 | `docs/139` row | check | Pool of Radiance | Curse | Silver Blades |
@@ -242,13 +242,13 @@ agree on the square and the facing.
 
 ## 6. Re-running it
 
-    tools/livecheck.py --title por   --walk JIKI --boundary --out work/issue34/por
-    tools/livecheck.py --title curse --walk JIKI --boundary --out work/issue34/curse
-    tools/livecheck.py --title ssb   --walk JIKI --boundary --out work/issue34/ssb
+    tools/livecheck.py --title por   --walk JIKI --boundary --out $TMPDIR/por
+    tools/livecheck.py --title curse --walk JIKI --boundary --out $TMPDIR/curse
+    tools/livecheck.py --title ssb   --walk JIKI --boundary --out $TMPDIR/ssb
 
 Each claims its own pool slot, copies the player's disks into it and reads
 them only, and tears the slot down at the end. The save disks come out of the
-specimen tree, so the run does not depend on anything under `work/`:
+specimen tree, so the run does not depend on anything in scratch:
 
 | title | save disk | why that one |
 |---|---|---|

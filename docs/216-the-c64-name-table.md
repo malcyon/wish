@@ -72,11 +72,11 @@ rather than off a screen.
 
 | run | the disk | after `LOAD SAVED GAME` | after the add list was drawn |
 |---|---|---|---|
-| `work/issue435/curse3` | `WISH-SPEC-curse-party-with-items`: six party records, six stored entries naming them, and four `\x02` files called `ARDEN`, `BRISA`, `KORDAN`, `ELVYN` | `PALADIN RANGER F/T CLERIC FEMALE MAGE MALE ELF MAGE` -- the stored table, byte for byte | `ARDEN BRISA KORDAN ELVYN` and the rest zero; the screen listed those four and nothing else |
-| `work/issue435/ssb2` | `work/issue33/edited.D64`: Wish renamed `MORGAINE` to `BRIGHID` in the record and left the table saying `MORGAINE` | `Guy de Valois  PAINE EPONA MALACHITE DOMINIC MORGAINE` -- the stale entry present | after `REMOVE CHARACTER FROM PARTY > BRIGHID` wrote `\x05BRIGHID` to the disk, the buffer was all zeros, then `BRIGHID`; the screen listed `BRIGHID` and not `MORGAINE` |
+| `cited/435/curse3` | `WISH-SPEC-curse-party-with-items`: six party records, six stored entries naming them, and four `\x02` files called `ARDEN`, `BRISA`, `KORDAN`, `ELVYN` | `PALADIN RANGER F/T CLERIC FEMALE MAGE MALE ELF MAGE` -- the stored table, byte for byte | `ARDEN BRISA KORDAN ELVYN` and the rest zero; the screen listed those four and nothing else |
+| `cited/435/ssb2` | `cited/33/edited.D64`: Wish renamed `MORGAINE` to `BRIGHID` in the record and left the table saying `MORGAINE` | `Guy de Valois  PAINE EPONA MALACHITE DOMINIC MORGAINE` -- the stale entry present | after `REMOVE CHARACTER FROM PARTY > BRIGHID` wrote `\x05BRIGHID` to the disk, the buffer was all zeros, then `BRIGHID`; the screen listed `BRIGHID` and not `MORGAINE` |
 
 **And the engine stores the buffer as though it were a record.**
-`work/issue435/ssb3` repeated the second run and then took
+`cited/435/ssb3` repeated the second run and then took
 `SAVE CURRENT GAME`. The party it saved is five characters -- Guy de Valois,
 PAINE, EPONA, MALACHITE, DOMINIC -- and the `+$C00` table in the `SAVEDBASH`
 it wrote holds **one** entry, `BRIGHID`, who is not in the party. A record

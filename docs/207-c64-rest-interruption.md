@@ -201,7 +201,7 @@ the checkpoint.
 | 2 | flag set, chance held at 0 | 255 | (24, 24) | 13 | 312 | 26 h | 13 | 0 |
 | 2 | flag set, chance as written | 255 | (24, 24) | 1 | 24 | 2 h | 1 | **1** |
 
-`work/issue250/run1` and `run2`. **With the flag clear the d100 is never
+`cited/250/run1` and `run2`. **With the flag clear the d100 is never
 rolled**, so neither run is an unlucky one: `$1E12` takes the branch and skips
 the block. Seventy-four game-hours of resting in the Slums over 37 rests, and
 not one check. The middle session of each run holds `$6DD3` at 0 after entry 2
@@ -210,7 +210,7 @@ without the first interruption ending the session: **13 of 13 rests made a
 check** in run 2. The last session of each leaves the chance as the script
 wrote it, and both were interrupted — `$6DD3` went to 255 at `$1E29` and the
 screen said `YOUR REST IS RUDELY INTERRUPTED!`, which
-`work/issue250/run1/flag-set-interrupted.png` caught. Camp then ended and the
+`cited/250/run1/flag-set-interrupted.png` caught. Camp then ended and the
 party was back in the dungeon view. Whether the wandering fight `ECL14` entry 3
 sets up follows was not established here: run 2's screen ten seconds later was
 the dungeon view with no combat on it, and this run does not measure that.

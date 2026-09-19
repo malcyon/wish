@@ -33,8 +33,8 @@ directory owing nothing to another save, and DOS Pool of Radiance loads and
 plays the result under DOSBox — see "The reverse direction" below.
 
 The decode: `goldbox/dos_port.py` is the character-record field table with
-confidence per field. The write-ups behind it — `work/reports/dos-saves.md`
-for the character record and the saved game, `work/reports/dos-items.md` for
+confidence per field. The write-ups behind it — `reports/dos-saves.md` (scratch, deleted)
+for the character record and the saved game, `reports/dos-items.md` for
 the items — are lost. The
 measurements are asserted in `tests/test_dossave.py` and `tests/test_dosbox.py`,
 which read the archives from Donald's machine and skip where there are none.
@@ -161,7 +161,7 @@ That single sum confirms the money block, the 63-byte item stride, the weight
 offset and the byte order together.
 
 The DOS layout was originally taken from the community format notes in
-`work/coab-research/formats/`. **They were right about every field they
+`coab-research/formats/` (scratch, deleted). **They were right about every field they
 predicted.** That is a fact about those notes worth carrying to the next
 title.
 
@@ -175,7 +175,7 @@ shipped DOS overlays. It is the best outside evidence this project has for the
 conversion, because it is not somebody's reading of a file format — it is the
 arithmetic the engine runs.
 
-The files, read from `work/forums/ext/` (fetched, `.gitignore`d, not committed):
+The files, read from `forums/ext/` (scratch, deleted) (fetched, `.gitignore`d, not committed):
 
 | file | what it is |
 |---|---|
@@ -846,9 +846,9 @@ Curse's **HUMAN CHANGE CLASSES disappears from the menu after the change**,
 because its second gate wants the "which class was he" reader to return the
 `0x11` sentinel — the array read back through a different code path.
 
-Where the specimens are: `work/curse/234-curse-dualclassed/CHRDATD1.SAV` after
-against `work/curse/234-before/CHRDATC1.SAV` before, and
-`work/curse/234-ssb-dualclassed/CHRDATD2.SAV` after against `CHRDATC2.SAV`
+Where the specimens are: `curse/234-curse-dualclassed/CHRDATD1.SAV` (scratch, deleted) after
+against `curse/234-before/CHRDATC1.SAV` before, and
+`curse/234-ssb-dualclassed/CHRDATD2.SAV` (scratch, deleted) after against `CHRDATC2.SAV`
 beside it. Gitignored, so take them as convenience rather than citation; the
 recipe above re-makes either in about four minutes.
 
@@ -929,7 +929,7 @@ quote, because it is stable and it is what `tools/dualclassdos.py census
 | Secret of the Silver Blades, 439 bytes | 12 | Silver Blades 12 | 0 |
 | Pools of Darkness, 510 bytes | 26 | Pools of Darkness 12, **Treasures 14** | 3 |
 
-98 records, 22 of them multi-classed. Adding `work/` brings it to 267 and 8
+98 records, 22 of them multi-classed. Adding the scratch directory (since deleted) brings it to 267 and 8
 dual-classed, but that number moves with every run and includes copies of
 `/home/donald/dos_por_play/SAVE/`, which is known-edited. **An earlier version
 of this section said 52 Curse and 44 Silver Blades records and eleven
@@ -1004,7 +1004,7 @@ reverse direction has since been built and has its own section further down.
 writes them, **135** (`$4AF9`-`$4B7F`) shown not to be flag storage at all, and
 **38** unreferenced padding between the per-area blocks. The region is one
 private block per area script plus the City Hall's books. The write-up
-that established this, `work/reports/quest-flags.md`, is lost.
+that established this, `reports/quest-flags.md`, is lost.
 
 **And the other ports use the same addresses.** Two independent lines:
 
@@ -1051,7 +1051,7 @@ on load** — this said it was "reloaded from the DAX on load, dead data for a
 converter", and #60 (Put a converted party where it actually stood, not where the template stood) refuted it: a save carrying the wrong area's script dies
 in `Load3DMap` however many variables it writes, so writing the target's own
 script is one of the retarget's writes. The mechanism is in the Curse reimplementation:
-`vm_SetMemoryValue` in `work/coab/engine/ovr008.cs` ends in
+`vm_SetMemoryValue` in `coab/engine/ovr008.cs` (scratch, deleted) ends in
 `area_ptr.field_6A00_Set(0x6A00 + (location * 2), value)` — the operand
 address doubled — and `ovr021.cs` annotates the same array `// as WORD[]`.
 
@@ -1071,7 +1071,7 @@ the C64's bytes, widened. A base off by one would straddle the runs.
 So the flag transfer is now a copy with a stride change: read the DOS word,
 write the C64 byte.
 
-*Tooling*, all in `work/amiga/` (gitignored): `adf.py` reads the Amiga
+*Tooling*, all in `amiga/` (scratch, deleted): `adf.py` reads the Amiga
 filesystem, `dax.py` the container — a big-endian index of `id:u16
 offset:u32 compSize:u16 rawSize:u16` entries, and a ByteKiller-style backwards
 bit-cruncher transcribed from the routine at `program` hunk27`+$7346`. All 843
@@ -1152,7 +1152,7 @@ Three things fall out, and each was an open question.
   and `-5` in both `0x032` and `0x033` on a cursed necklace, which is the
   C64's `+4`/`+5` pair exactly. The game prints its own field names in a debug
   panel — `plus`, `plussave`, `ready`, `identified`, `cursed`, `value`,
-  `special(1..3)` — in that order (`work/coab/engine/ovr020.cs`).
+  `special(1..3)` — in that order (`coab/engine/ovr020.cs` (scratch, deleted)).
 * **The charges** are `0x03C`. The game's use-item routine spends `count`
   (`0x039`) while it is above one and then decrements `0x03C`, destroying the
   item at zero. Three `WAND OF MAGIC MISSILES` templates differ in that byte
@@ -1176,16 +1176,16 @@ needed the DOS container: a `u16le` index size, `size / 9` entries of
 run-length-coded blocks — all 46 blocks of the eight `ITEM*.DAX` decode to
 exactly their stated size and every size is a whole number of 63-byte records.
 
-Full working was in `work/reports/dos-items.md`, which is lost. Asserted in `tests/test_dosbox.py`.
+Full working was in `reports/dos-items.md`, which is lost. Asserted in `tests/test_dosbox.py`.
 
 **4. We have no DOS save. — CLOSED.** Donald's Steam copy of *Forgotten
 Realms: The Archives* carries three played slots, 18 saved characters and 6
 exports. Everything above was checked against them; the write-up,
-`work/reports/dos-saves.md`, is lost, and `tests/test_dossave.py` carries the
+`reports/dos-saves.md`, is lost, and `tests/test_dossave.py` carries the
 assertions.
 
 **5. The DOS layout we have is community documentation, not our own decode.**
-`work/coab-research/formats/` is where the record table came from. **It has now
+`coab-research/formats/` (scratch, deleted) is where the record table came from. **It has now
 been checked, and every field it predicted was right** — name, the abilities,
 exceptional strength, THAC0 base, race, class, age and the one-byte hit points.
 Downgraded from an obstacle to a recommendation: those notes are good, and the
@@ -1238,8 +1238,8 @@ FIGHTER`, `STR 18(100)`, `LEVEL 4  EXP 9559`, `HITPOINTS 70`, `AC 2`,
 Then the party walked: five steps across New Phlan and out through the gateway
 into the Slums, which loaded `GEO14` and ran `ECL14`'s arrival normally.
 
-The converter that made it is a throwaway — `work/p20/convert.py` and
-`build2.py`, which is gitignored along with the rest of `work/` — because the
+The converter that made it is a throwaway — `p20/convert.py` (scratch, deleted) and
+`build2.py`, which went with the rest of the deleted scratch directory — because the
 real one is `goldbox/dos_port.py` and the order of work below. It exists only to
 answer this question, and it answered it.
 
@@ -1452,8 +1452,8 @@ been loaded on a C64 end to end** — that run is the remaining proof for the
 outdoor shape. The indoor one has run three times, on all three of the
 player's DOS saves: `tools/dosdisk.py` builds the disk and `tools/savecheck.py`
 boots it, and the party loads, reads right on the sheet, walks and changes area
-— §"Three from-nothing disks played". (This cited `work/p119/`, which was the
-first run's scripts and went with the rest of `work/`; the tools that replaced
+— §"Three from-nothing disks played". (This cited `p119/`, which was the
+first run's scripts and went with the rest of the scratch directory, deleted 2026-09-18; the tools that replaced
 them are in `tools/` and cannot.)
 
 The cache is written this way **every time**, even when the party is going to
@@ -1519,7 +1519,7 @@ GILES, ASTRID and SILAS. Fourteen figures were on the floor: ten monster
 blocks, none matching, and **four** party blocks, all four matching
 `0E 0F 0E 0E 0E 0E 0E 0E 0E`. Two party members were never drawn as a figure
 at all -- not scanned and missed, but absent from the floor, which
-`work/p119b/NEWB3-combat.png` shows directly.
+`cited/p119b/NEWB3-combat.png` shows directly.
 
 So the honest sample across both fights is **10 of 10 party blocks that
 appeared matched the composed icon, and 0 of 17 monster blocks did**. The
@@ -2266,7 +2266,7 @@ and a save built for a new area but still carrying the old area's script dies
 with `Unable to load geo in Load3DMap.` however many other variables it
 writes. All twelve of #59 (Map the DOS saved game, not just the character record)'s variants
 happened to carry the target area's buffer, so it was never a variable in
-that bisection; `work/p60/run2`'s X1 is the control, and it fails. The buffer
+that bisection; variant X1 of `p60/run2` (scratch, deleted) is the control, and it fails. The buffer
 is the target's `ECL<dax>.DAX` block from byte 2 on — every block opens
 `88 13` — which is why the conversion takes a `game` directory, and why it
 refuses rather than writing a save without one.
@@ -2284,7 +2284,7 @@ no `WALLSET` for — all three cache slots read `$FF` — where DOS's own slot A
 holds `(0, $FFFF, $FFFF)`. A save moved there with three empty words in the
 triple draws a view **pixel-identical** to one carrying DOS's own triple, so the
 converter sources the triple from the C64 and does not refuse the empty case
-(`work/p60/run3` Z0 against `run2` X3, 229 differing pixels and every one of
+(`p60/run3` (scratch, deleted) Z0 against `run2` X3, 229 differing pixels and every one of
 them in the colour-cycling command bar).
 
 **Three** kinds of area are refused, each because there is no legal answer
@@ -2828,16 +2828,16 @@ boots DOSBox, loads it through the game's own `LOAD SAVED GAME`, walks, and
 lets the engine's own `ENCAMP > SAVE` write it back. The resave is the
 oracle: what the engine fills in for itself is what a converted save never
 had to carry. The party is `PORSAVE13`'s six, standing in the Slums at 15,4
-facing west at 21:15.
+facing west at 21:15. None of the run directories in the table below exists any more.
 
 | run | what happened | what it settled |
 |---|---|---|
-| `work/p26/run1` | loaded; two steps; a wandering encounter interrupted the resave | the party panel lists all six with their real AC and HP; the map draws |
-| `work/p26/run2` | loaded, walked 15,4 → 14,4, resaved | the engine rewrote 10 words and **all 274 bytes** of character-table heap and menu text, from zero, with heap pointers and the words `Save View M` and `Camp: ` |
-| `work/p26/run3` | the `VIEW` sheet and the item list | BRUTUS reads AC 3, THAC0 18, HP 11, `LONG SWORD`, `BANDED MAIL`, encumbrance 1787, and 17 items with the mail readied -- no garbage weapon line |
-| `work/p26/run4` | walked out of the Slums into New Phlan | the engine loaded a **new map, script and wallset** from a save it did not write: `$49C5`, `$49F2`, `$5012`, byte 0 and the whole wallset triple came back rewritten |
-| `work/p26/run5` | a wandering encounter, fought | the engine filled the pending-encounter record and the message buffer itself -- `$5202`, `$5205`, `$5206`, and `$522C`+ spelling out the sentence it shouted |
-| `work/p26/run7` | a **second party into a second slot**: `PORSAVE12`, standing in New Phlan, written as slot B | comes up at **0,4 W 16:58** with all six -- that party's own square and clock, and the same numbers the template-based run of #60 (Put a converted party where it actually stood, not where the template stood) got |
+| `p26/run1` | loaded; two steps; a wandering encounter interrupted the resave | the party panel lists all six with their real AC and HP; the map draws |
+| `p26/run2` | loaded, walked 15,4 → 14,4, resaved | the engine rewrote 10 words and **all 274 bytes** of character-table heap and menu text, from zero, with heap pointers and the words `Save View M` and `Camp: ` |
+| `p26/run3` | the `VIEW` sheet and the item list | BRUTUS reads AC 3, THAC0 18, HP 11, `LONG SWORD`, `BANDED MAIL`, encumbrance 1787, and 17 items with the mail readied -- no garbage weapon line |
+| `p26/run4` | walked out of the Slums into New Phlan | the engine loaded a **new map, script and wallset** from a save it did not write: `$49C5`, `$49F2`, `$5012`, byte 0 and the whole wallset triple came back rewritten |
+| `p26/run5` | a wandering encounter, fought | the engine filled the pending-encounter record and the message buffer itself -- `$5202`, `$5205`, `$5206`, and `$522C`+ spelling out the sentence it shouted |
+| `p26/run7` | a **second party into a second slot**: `PORSAVE12`, standing in New Phlan, written as slot B | comes up at **0,4 W 16:58** with all six -- that party's own square and clock, and the same numbers the template-based run of #60 (Put a converted party where it actually stood, not where the template stood) got |
 
 So a converted party in a save with no template loads, is looked at, walks,
 changes area and fights. Every byte the engine rewrote is one this
@@ -2847,7 +2847,7 @@ two slot letters, two areas, six runs.
 ### What the engine recomputes on load, which nobody had measured
 
 Diffing what the conversion wrote against the engine's own `ENCAMP > SAVE`
-of the same six characters — `work/p26/run6`, loaded and resaved with
+of the same six characters — `p26/run6` (scratch, deleted), loaded and resaved with
 nothing in between — shows the DOS engine **rewriting derived combat numbers
 before anybody can read them**:
 
@@ -2872,7 +2872,7 @@ lost the bonus the first time the engine looked at the character —
 
 Measured again with the fix in, same party and same recipe
 (`tools/dosnewsave.py --steps 0`, resaving over the loaded slot so the
-engine's own records could be read back — `work/p26/issue191`):
+engine's own records could be read back — `cited/p26/issue191`):
 
 | | breath | spell | wands | paralysis | petrification | `.SPC` |
 |---|---|---|---|---|---|---|
@@ -2887,7 +2887,7 @@ bonus in the records beside it. **The engine kept all four records and relinked
 them**, which is what says they were read rather than copied: the file goes in
 with four NULL next pointers and comes back with three live far pointers and a
 NULL, so each record was a node in the character's own effect list. Before the
-fix (`work/p26/run6`) the same dwarf's file held 26 and 47 and nothing else.
+fix (`p26/run6` (scratch, deleted)) the same dwarf's file held 26 and 47 and nothing else.
 
 The rest are derived values a conversion need not carry at all, which is a
 finding in the useful direction: they cannot be got wrong.

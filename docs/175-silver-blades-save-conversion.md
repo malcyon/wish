@@ -196,7 +196,7 @@ strength, the first byte of `abilities_second`.
 ## What the running game showed, six checks
 
 One VICE session per build, pool slots 1 and 0, 2026-09-05, on a save disk
-`tools/ssbdisk.py` built from `work/curse/SSB-D-paine-memorised` slot D with
+`tools/ssbdisk.py` built from `curse/SSB-D-paine-memorised` (scratch, deleted) slot D with
 `unwritten == []` and no template.
 
 | check | what it showed |

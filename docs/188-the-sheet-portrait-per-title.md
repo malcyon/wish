@@ -70,13 +70,13 @@ party arriving without a face has lost nothing, because there is nothing on
 that side for it to have.
 
 **The picture**, which is the evidence a reader can check without a
-disassembly: `work/issue300/three-sheets.png` -- one character sheet from
+disassembly: `cited/300/three-sheets.png` -- one character sheet from
 each title. Pool of Radiance draws a face in a framed box on the right;
 Curse leaves that side of the screen blank; Silver Blades draws a framed
 panel there and puts the character's money in it.
 
 **Two of the three were taken in this session's own harness and the Pool of
-Radiance one was not.** It is `work/issue57/c64-slotA/sheet-1.png`, taken in
+Radiance one was not.** It is `cited/57/c64-slotA/sheet-1.png`, taken in
 an earlier session in a different pool slot, and it is there because three
 attempts to load `WISH-SPEC-por-party-twin-pair.d64` in this session answered
 `SAVED GAME NOT FOUND!` (`$03F1` = `$3C`). `$3C` is 60 decimal, the 1541's
@@ -97,7 +97,7 @@ looks like an empty portrait frame; MALACHITE's identical panel reads
 `#300 (A Curse or Silver Blades party imported to the C64 arrives with no
 sheet portrait, because the creation menu is read only off a POOL<n>.D64)`.
 
-(All of these are lost when `work/` next goes; `tools/portraitdraw.py` and
+(All of these are lost, with the scratch directory they lived in; `tools/portraitdraw.py` and
 the run recipe below rebuild the census, and the sheets need the emulator.)
 
 ## What Pool of Radiance does
@@ -142,7 +142,7 @@ the world -- go through it.
 | files calling `ANIMATE +$6` (body at `$CC44`) | 2: `LIBRARY`, `POOLRB` | **0** | **0** |
 | files calling `ANIMATE +$9` (head at `$CC44`) | 2: `LIBRARY`, `POOLRB` | **0** | **0** |
 | files calling `ANIMATE +$0`/`+$3`/`+$C` (the view window) | 4 / 6 / 2 | 5 / 4 / 3 | 3 / 3 / 2 |
-| the sheet routine | `LIBRARY $4435`, menu `VIEW: ITEMS SPELLS TRADE DROP EXIT` | `LIBRARY $4600`, menu `ITEMS SPELLS TRADE DROP CURE HEAL EXIT` | present, same shape; measured bar `EXIT` alone for a character with nothing to list (GUY DE VALOIS, `work/issue52/walk-dostoc64-ssb/ssbcheck.jsonl`, `work/issue52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl`) |
+| the sheet routine | `LIBRARY $4435`, menu `VIEW: ITEMS SPELLS TRADE DROP EXIT` | `LIBRARY $4600`, menu `ITEMS SPELLS TRADE DROP CURE HEAL EXIT` | present, same shape; measured bar `EXIT` alone for a character with nothing to list (GUY DE VALOIS, `cited/52/walk-dostoc64-ssb/ssbcheck.jsonl`, `cited/52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl`) |
 | `LIBRARY` naming the save's `+$0FF` | yes, the `BPL` above | no | no |
 
 `tools/portraitdraw.py` prints that table off the player's own disks. It
@@ -361,7 +361,7 @@ across and seven down, and the rows are, top to bottom: **C64, PC CGA, PC
 EGA/Tandy, Apple II, Macintosh, PC-9801, Amiga.** The bottom row is the one
 this document is about.
 
-`work/issue480/480-menu.png` agrees with that bottom row at **all twelve
+`cited/480/480-menu.png` agrees with that bottom row at **all twelve
 positions** -- same drawings, same order, same colours. That is a check on
 three separate things at once, taken from outside this project: the palette
 above, the order of the blocks in `body.dax`, and the menu table's contents.

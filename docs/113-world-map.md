@@ -21,7 +21,7 @@ shape, which makes this much cheaper than it looks.
 | The three are **overlapping windows on one world, 13 columns apart, west to east** | CONFIRMED — 179/180 and 180/180 squares agree, and the edge-crossing arithmetic closes independently |
 | Walkable is `x` 2..15, `y` 2..33 of each window; the world's playable area is **40 x 32** | CONFIRMED from the edge tests and the southernmost site |
 | The party's travel position is **`$49C3`, `$49C4`** — a separate pair from `$49C0`/`$49C1` | CONFIRMED by `npc_party.d64` |
-| `$49C0`–`$49C2` **is frozen while the party is outdoors**, so `$49C2` is not the travel facing | CONFIRMED. `DUNGEON $1A3C` is `if $49E6 then copy $C04B..$C04D into $49C0..$49C2` ([`118-debug-mode.md`](118-debug-mode.md)), so the live square reaches the save only indoors. `work/p3/W4.D64`–`W7.D64` are four saves taken through the game's own ENCAMP ▸ SAVE during one travel-grid walk that went in three different directions, and all four read `0,0,0`. A read checkpoint over the three counted **0 reads** across four converted outdoor saves, eight travel-grid steps and four area changes |
+| `$49C0`–`$49C2` **is frozen while the party is outdoors**, so `$49C2` is not the travel facing | CONFIRMED. `DUNGEON $1A3C` is `if $49E6 then copy $C04B..$C04D into $49C0..$49C2` ([`118-debug-mode.md`](118-debug-mode.md)), so the live square reaches the save only indoors. `p3/W4.D64` (scratch, deleted)–`W7.D64` are four saves taken through the game's own ENCAMP ▸ SAVE during one travel-grid walk that went in three different directions, and all four read `0,0,0`. A read checkpoint over the three counted **0 reads** across four converted outdoor saves, eight travel-grid steps and four area changes |
 | Travel is **eight-way**, direction in `$033D` | CONFIRMED |
 | `$4A9E` = 0 on the grid, 255 inside that map's own cave (`GEO19`/`1A`/`1B`) | CONFIRMED |
 | `$49E6` is `inDungeon` — 0 selects the overhead view, non-zero the 3D one | CONFIRMED against the Azure Bonds reimplementation |
@@ -58,7 +58,7 @@ nothing is broken; for the overland map `$0607` is 20 against a true stride of
    CONFIRMED**: 648 bytes read live at `$8C00` matched `SQRDATA05` in 647 of
    648 bytes and `SQRDATA06` in 645 of 648, and every byte that differed was a
    site square the script paints over while its flag is clear
-   (`work/reports/p3-saves.md` §4, lost with `work/`; restated in
+   (`reports/p3-saves.md` §4, lost; restated in
    `docs/137-wilderness-automap.md` §1's table and pinned on the disk side by
    `tests/test_p3.py`, which this doc's own "unknown" list had fallen behind).
    Kept numbered rather than removed: the saves table below still cross-refers
@@ -125,7 +125,7 @@ so there is no new transport.
 **This was the part to hand Donald; it no longer is.** `tools/c64outdoor.py`
 seeds an indoor save onto the travel grid and lets the engine write it back,
 so every specimen below that only needs the party standing somewhere on the
-grid is now made without him -- `work/p190/C64OUT1.D64` and `C64OUT2.D64` are
+grid is now made without him -- `p190/C64OUT1.D64` (scratch, deleted) and `C64OUT2.D64` are
 two such saves. **W8** and **W12**, the cave and the wilderness encounter,
 are the two nobody has: the tool walks the party on the grid and does not
 put it in either. The table below is kept for what each specimen still
@@ -182,7 +182,7 @@ answers unknown 2 on its own.
    **The site tables and the two terrain tables are not read, and
    `passable()`/`site_at()` are not implemented.** Both live inside
    `ECL19`/`ECL1A`/`ECL1B`'s own bytecode, not in `SQRDATA0n`, and their byte
-   offsets were in `work/reports/world-map.md`, lost with `work/`
+   offsets were in `reports/world-map.md`, lost
    (`#136 (Thirty-two cited write-ups are gone, because the knowledge base
    pointed into gitignored scratch)`) -- `tools/windowsquare.py`'s own
    docstring says the same thing from the other side: "the running game is
@@ -218,7 +218,7 @@ answers unknown 2 on its own.
    set and the two live captures were taken and are recorded in
    `docs/90-specimens.md` "The wilderness set" -- `$8C00` matched against
    `SQRDATA0n`, `$4BC0`, `$49FB`, the travel facing -- but the disks
-   themselves lived in `work/p3/` and are gone. `work/p190/C64OUT1.D64`,
+   themselves lived in `p3/` and are gone. `p190/C64OUT1.D64` (scratch, deleted),
    `C64OUT2.D64` and `tools/c64outdoor.py` replace them: an engine-written
    outdoor C64 save can be made again without playing to reach one. Steps 6
    onward are drawing, and drawing the wrong map is worse than drawing none.

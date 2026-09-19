@@ -4,7 +4,7 @@
 game's own tables, and replaying the twenty-nine measured trainings of
 [`119`](119-test-party.md) through `goldbox/levelup.py` reproduces the record the
 trainer produced, **byte for byte**, on all thirty-five before/after pairs held
-in `work/p18b/` — given the hit die the game rolled. The thirty-fifth is
+in `p18b/` (scratch, deleted) — given the hit die the game rolled. The thirty-fifth is
 `rec-kath-t2-*`, driven later for the multi-class clamp below. The five blockers
 `automap/actions.py` used to carry are gone, and `level_up_blockers()` is empty.
 
@@ -221,7 +221,7 @@ Two of the twenty-nine trainings settle the multi-class rule on their own:
 | magic-user 1 / thief 2 | both | 2,500 | either — both want 2,501 |
 | magic-user 2 / thief 9 | both | 160,000 | the **thief**'s entry past its ceiling, not magic-user 3's 5,001 |
 
-`work/p18/lk-{before,after}.hex` and `work/p18b/rec-kath-m2-*.bin`. The rule is
+`p18/lk-{before,after}.hex` and `p18b/rec-kath-m2-*.bin` (scratch, deleted). The rule is
 `max` across the classes, from the game, and it is why the order a multi-class
 character trains in changes what it ends up with.
 

@@ -182,7 +182,7 @@ it — though at 34 bytes a command it is at least 31 `M-W`s before the loader
 can start.
 
 **Whether the game enters through that table is not established** — the dumps
-that would say went with `work/p69/`. Re-running cell B and reading
+that would say went with `p69/`. Re-running cell B and reading
 `m 8:0500 050f` on the text monitor would settle it: three-byte `4C xx xx`
 jumps there mean the documented entry points; anything else means the game
 found its own way in.
@@ -220,8 +220,8 @@ They were never distorting the loading; they were distorting the launch.
 | **G** | defaults `Y` | 31.9 | 131.4 | 4.4 | **167.7** | 179.4 |
 
 Medians of five runs; the per-run numbers and ranges were in the run sheet,
-`work/reports/p69-fastloader.md`, which is lost, along with the raw JSON that
-was in `work/p69/`.
+`reports/p69-fastloader.md`, which is lost, along with the raw JSON that
+was in `p69/`.
 Read M2→M3 and M3→M4 together, for the reason under "Milestones".
 
 **M3→M4 has a floor of about 121 s**, hit by both `N` cells and by neither `Y`

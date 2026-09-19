@@ -19,7 +19,7 @@ rather than as instructions still open.
 
 ## 0. What the artist delivered, and what is settled
 
-`WISH delivery.zip`, unpacked at `work/logo/` -- gitignored, so nothing there
+`WISH delivery.zip`, unpacked at `logo/` (scratch, deleted) -- gitignored, so nothing there
 is the record; what is committed is under `assets/logo/`. Three families, each
 in black, white and colour, each with an SVG source beside PNG exports:
 
@@ -504,7 +504,7 @@ decides the taskbar question: an opaque square is the same picture on a
 light taskbar and a dark one, and transparent line art is invisible on the
 taskbar that matches it.
 
-`tools/taskbaricon.py` draws the sheet, `work/issue351/taskbar-marks.png`:
+`tools/taskbaricon.py` draws the sheet, `cited/351/taskbar-marks.png`:
 twelve lettered rows, every square file rendered from its SVG and scaled
 from its nearest delivered PNG, at 16, 20, 24, 32, 48 and 256, each at true
 size on a light and a dark taskbar and magnified beside it. The taskbar
@@ -583,7 +583,7 @@ Donald, 2026-09-06: *"Go with row B, please."* What that is in the code:
   did for the SVGs.
 
 `tools/taskbaricon.py --shipped` draws the result --
-`work/issue351/taskbar-shipped.png`, the icon at 16, 20, 24, 32, 48 and 256
+`cited/351/taskbar-shipped.png`, the icon at 16, 20, 24, 32, 48 and 256
 through `ui.appicon.image`, on a light taskbar and a dark one -- so what
 shipped can be looked at rather than described. Not yet seen on a Windows
 taskbar itself; that is Donald's to photograph.

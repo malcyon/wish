@@ -24,9 +24,9 @@ work that was already finished, so §0 comes first.
 | the mapper's third mode, `AutomapState.outdoors`; the strip's `Outdoors (x,y)`, the label `Wilderness`, the status `Outdoors, no map` | `automap/state.py`, `automap/panel.py`, `automap/window.py` | **done**, same issue; the three strings are Donald's |
 | read `SQRDATA04`/`05`/`06` off the disks, the 18 x 36 grid, the 120 tile entries, the stitch at world x 15 and 28 | `goldbox/world.py`, `tests/test_world.py` (19 tests) | **done**, commits `4836f23` and `806497c` |
 | a party's outdoor state in a save, every port: `outdoors`, `travel`, and `geo` holding the `SQRDATA` number when outdoors | `goldbox/world_state.py` | **done**, `#352 (Handle world state for Amiga saves)` and `#376 (An Amiga party on the travel grid still cannot be converted to the C64 or DOS, because the reader refuses one)` |
-| engine-written outdoor C64 saves and the tool that makes more | `work/p190/C64OUT1.D64`, `C64OUT2.D64`; `tools/c64outdoor.py` | exist on this machine; `work/p3/W1.D64`-`W7.D64` are **gone** |
+| engine-written outdoor C64 saves and the tool that makes more | `p190/C64OUT1.D64`, `C64OUT2.D64` (scratch, deleted); `tools/c64outdoor.py` | the tool exists; both saves are **gone**, as are `p3/W1.D64`-`W7.D64` (`cited/p190` kept only a seed disk and the log) |
 | walking a party on the grid under VICE, one compass step at a time, with a screenshot per press | `tools/session.py` (`savecheck --walk`), `tools/outdoorstep.py`, `tools/windowsquare.py` | **done**, `#189 (The emulator driver cannot move a party on the travel grid, and reads its facing out of the word OUTDOORS)` |
-| screenshots of the travel screen | `work/issue178/25-westwindow-arrival.png` (14,29), `25-westwindow.step3.png` (15,29), `26-middlewindow-arrival.png` (7,29) | exist; the "one screenshot" the ticket was waiting on has been on disk since `#178 (Fast Travel to the wilderness leaves the party on whatever overland square it last stood on)` |
+| screenshots of the travel screen | `cited/178/25-westwindow-arrival.png` (14,29), `25-westwindow.step3.png` (15,29), `26-middlewindow-arrival.png` (7,29) | exist; the "one screenshot" the ticket was waiting on has been on disk since `#178 (Fast Travel to the wilderness leaves the party on whatever overland square it last stood on)` |
 | a second generator for a byte-a-square map, painted by the same `kind` dispatch | `automap/combat.py` and `CombatCanvas` in `automap/window.py` | the pattern to copy, not a thing to reuse |
 | `passable()` and `site_at()` | `goldbox/world.py` | **stubs that raise**, on purpose: their tables are in `ECL19`/`1A`/`1B` and the script read is closed (`docs/115-review-the-scripts.md`) |
 
@@ -51,7 +51,7 @@ work that was already finished, so §0 comes first.
 | Which value of `$033D` is which direction | UNKNOWN | measurement B |
 | The game's travel view is a window of squares around the party whose top-left is `CAMERA` `$037E`; the combat view is 7 across | PROBABLE for combat, UNKNOWN for travel -- the screenshots look narrower than seven tiles | measurement B reads `$037E` and the screen |
 | A site is hidden by painting plain terrain over its square until its flag is set; four are known: `1A` (12,11) nomad camp, `1B` (11,8) lizardman keep, (6,15) kobold caves, (7,23) a site that was cut | CONFIRMED | `tests/test_p3.py` `PAINTED`, `docs/90` |
-| The full site list (46) and the impassable-terrain tables, including `ECL1A`'s swap when `$4AB3` reaches 254, are in the scripts' own bytecode; their offsets went with `work/` (`#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)`) | UNKNOWN, and closed research | `docs/115-review-the-scripts.md`; `goldbox/world.py`'s docstring |
+| The full site list (46) and the impassable-terrain tables, including `ECL1A`'s swap when `$4AB3` reaches 254, are in the scripts' own bytecode; their offsets were lost (`#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)`) | UNKNOWN, and closed research | `docs/115-review-the-scripts.md`; `goldbox/world.py`'s docstring |
 | `$4A9E` is 0 on the grid and 255 in a random cave, which is `GEO19`/`1A`/`1B` and draws with the existing code | CONFIRMED | `docs/113` |
 | Only Pool of Radiance has a travel grid: Curse and Silver Blades ship no `SQRDATA` or `SQRPACI` | CONFIRMED | `goldbox/titles.py` `Title.travel_grid`, `docs/121-silver-blades.md` |
 | Two candidate looks, both Donald's, 2026-09-04: the game's own tiles read off the player's disk at run time, or game-icons.net icons (`mountain-cave`, `forest`, `grass`, Delapouite). An older ruling (`docs/137` §3) said not to reuse the game's graphics; the later comment reopened it | a decision, not a fact | the 2026-09-04 14:48 comment on `#11 (Draw the wilderness on the automapper)` |
@@ -60,7 +60,7 @@ work that was already finished, so §0 comes first.
 
 Two measurements, and the drawing cannot start before the first. The
 ticket's own blocker -- "one screenshot of the travel screen" -- is already
-met three times over in `work/issue178/`; what those screenshots cannot do is
+met three times over in `cited/178`; what those screenshots cannot do is
 name a hill, because none of them has one in view.
 
 ### A. The tile sheet -- no emulator, an hour or two
@@ -70,7 +70,7 @@ out of `SECSET0n` (glyph = code - `$40`), each cell in hi-res or multicolour
 by bit 3 of its attribute, the cell colour the low nibble & 7, the three
 shared colours taken from the screenshots (the plains ground is light green,
 `$0D`). Do all three windows, label each tile with its index and how many
-grid squares use it, and write the PNGs to `work/issue11/` -- they are the
+grid squares use it, and write the PNGs under `$TMPDIR` -- they are the
 game's art and are never committed; the tool is.
 
 **The check that can fail:** render the 7 x 7 (or whatever B says) around
@@ -92,7 +92,7 @@ skip the two bytes and index from zero.
 
 ### B. One session on the grid -- emulator, one pool slot, about half an hour
 
-Boot `work/p190/C64OUT1.D64` (middle window, (8,27)) the way
+Boot `p190/C64OUT1.D64` (scratch, deleted) (middle window, (8,27)) the way
 `tools/outdoorstep.py` does, and in one stop read:
 
 | bytes | what it settles |
@@ -124,7 +124,7 @@ no flag.
 
 1. **The look** -- the game's tiles at run time, or icons. Not chosen by the
    implementer. The useful form is measurement A's renderer drawing the same
-   piece of map both ways at 34 and 20 pixels a square, in `work/issue11/`,
+   piece of map both ways at 34 and 20 pixels a square, under `$TMPDIR`,
    linked from the issue, and asked. Until it is chosen the world canvas
    draws flat squares in the classes the sheet named, or nothing.
 2. **Every string.** The strip already says `Outdoors (x,y)` in the game's
@@ -282,13 +282,14 @@ For whoever next edits them; this document does not.
   `docs/90` and `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)`. 4: `$4BC0` reads `00` outdoors -- settled the same
   way. Step 4's save-side half is done in `goldbox/world_state.py`. Step 5,
   "take W1 and the two live captures", was done and the captures then lost
-  with `work/p3/`; `work/p190/` is what replaces them.
+  with `p3/`; `cited/p190` kept only a seed disk and the log, so it does not
+  replace them.
 * `docs/113` "The saves to take" is a list Donald was to play through; every
   save in it that still matters is now made by `tools/c64outdoor.py` without
   him, and the W8/W12 cave-and-encounter cases are the only ones nobody has.
 * `docs/137` §2 is done and says so; §3's colour table names the raw nibble
   and is wrong about what the colours are (§1 above); §5's first row is met
-  by `work/issue178/` and its "not needed" row -- the `SECSET0n` glyph -- is
+  by `cited/178` and its "not needed" row -- the `SECSET0n` glyph -- is
   now measurement A. §4's canvas and third page are piece 5.
 * The 2026-09-04 comment on `#11 (Draw the wilderness on the automapper)` calls `SQRPACI00`'s tail "a ~20-byte
   structured tail"; it is the `$0600` parameter block, and the "DOS names

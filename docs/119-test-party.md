@@ -5,9 +5,9 @@
 game's own school in 2026-08-22 gave the level-up specification, every one
 diffed across the 580-byte record — the tables, the rules and the corrections
 are in §7 — and the generator replays that specification rather than reading
-the tables again. **The disk that party was on, `work/drive/P18PARTY.D64`, is
+the tables again. **The disk that party was on, `drive/P18PARTY.D64`, is
 gone from this machine**, which is the argument for a generator made for us:
-`python3 tools/testparty.py --disk work/issue10/TESTPARTY.D64` rebuilds an
+`python3 tools/testparty.py --disk $TMPDIR/TESTPARTY.D64` rebuilds an
 equivalent one in about a second.
 
 **And the game agrees with it.** `tools/testpartyrun.py` booted the generated
@@ -275,14 +275,14 @@ Instead, three pieces:
 | piece | where | why it is allowed |
 |---|---|---|
 | the six records | `tools/testparty.py`, built at run time through `goldbox/c64_codec.py` and `goldbox/levelup.py` | generated from a format we documented — the same argument as `tests/gamedata.synthetic_geo` |
-| the disk | `work/`, built by `--disk` or at test time | `work/` is `.gitignore`d and `AGENTS.md` already names it as where disk images belong |
+| the disk | a scratch file, built by `--disk` or at test time | never committed; scratch lives under the temp directory and may vanish, so the disk is rebuilt |
 | the base disk | **the player's own**, via `tests/gamedata.save_disk("PORSAVE")` | read-only, never written, skipped when absent |
 
 ### How a VICE run gets a disk to boot
 
 ```
 tests/gamedata.save_disk("PORSAVE")        # the player's; skips if absent
-  shutil.copy(...)             -> work/drive/TESTPARTY.D64     # never write the original
+  shutil.copy(...)             -> $TMPDIR/drive/TESTPARTY.D64     # never write the original
   D64.open(copy)
     SaveGame0.from_prg(disk.read_file(b"SAVEDGAME0"))
     save0.write_record(slot, record)  x6
@@ -297,9 +297,9 @@ tests/gamedata.save_disk("PORSAVE")        # the player's; skips if absent
 limitation here: both payloads are fixed sizes (7168 and 2048) and a rewritten
 save occupies exactly the chain it already had.
 
-`tools/walkrun.py` already does the copy step — `shutil.copy(BASE_SAVE,
-work/drive/SIDE0.D64)` — and `Session.attach` already refuses any path outside
-`work/drive/`. Nothing new is needed to get the disk into the emulator; what is
+`tools/walkrun.py` already does the copy step — `shutil.copy(BASE_SAVE, HERE/SIDE0.D64)`
+— and `Session.attach` already refuses any path outside the session's scratch
+directory. Nothing new is needed to get the disk into the emulator; what is
 new is what goes on it.
 
 **The read-only rule is the same promise `wish` already makes**: the source
@@ -424,10 +424,10 @@ at all and can run beside them.
 ## 7. What the trainer actually wrote
 
 **Twenty-nine level-ups, 2026-08-22.** The full tables, evidence and driving
-notes were in `work/reports/p18-party.md`, which is lost; what follows is the
+notes were in `reports/p18-party.md`, which is lost; what follows is the
 part a reader of the plan needs.
 
-The party on `work/drive/P18PARTY.D64`:
+The party on `drive/P18PARTY.D64` (scratch, deleted):
 
 | name | race | class(es) | level(s) |
 |---|---|---|---|

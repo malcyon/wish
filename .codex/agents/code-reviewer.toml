@@ -32,13 +32,10 @@ agent, and the same one holding whatever the maintainer has not committed yet.
 There is no private copy to absorb a mistake, which is why the rules above are
 absolute rather than cautionary.
 
-`work/` is in that tree at its ordinary path: every disk image, specimen, dump
-and run artefact, 1.6 GB of it, gitignored. **Read it, never write to it** -- a
-write there lands in another agent's lap.
-
-The archives outside the repository are read-only too:
-`~/Downloads/fr-archives/` and `/home/donald/c64/Pool of Radiance Disks/`,
-always.
+Game disks and specimens come from the registry (`tools/gamedisks.py`,
+`automap.paths.find_disks()`) and are read-only, always. So are the archives
+outside the repository, `~/Downloads/fr-archives/` among them. Anything you
+must write goes under the temp directory (`tools/scratch.py`).
 
 If you cannot establish something without modifying the tree, **say so in the
 report as an unverified claim.** That is a useful finding. A destroyed working
@@ -102,7 +99,7 @@ say so and name the file you would need to read to confirm.** A named
 uncertainty is useful; a confident guess is not.
 
 When a commit adds or changes a test that reads a game disk or a specimen
-under work/, check that the test skips cleanly when the file is absent
+from the registry, check that the test skips cleanly when the file is absent
 rather than raising. CI has no disks, so a test that only passes on this
 machine is a red main waiting to happen. Run the test with the disks
 unreachable, for instance with POR_DISKS pointed at an empty directory, and

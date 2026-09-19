@@ -446,7 +446,7 @@ experiment on the list.
   changed is that the names are no longer unsourced: they are the **DOS** release's real
   filenames, read off Donald's own DOS saves, and the engine's own format strings
   `CHRDAT%s%d.SAV` / `SAVGAM%s.DAT` are in the Gold Box Companion binary. The
-  write-up that found them, `work/reports/dos-saves.md`, is lost. Right names, wrong port.
+  write-up that found them, `reports/dos-saves.md`, is lost. Right names, wrong port.
 - **The Lemon64 claim that "file TEST will be saved as UEST".** One forum post, about a different
   editor release, unexplained. If real it is a filename-mangling bug in that tool, not a property
   of the save format. `WEAK`.

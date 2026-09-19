@@ -157,9 +157,9 @@ Twelve disks driven out of the game on 2026-08-22, the first specimens in the se
 that were *ordered* rather than found. They are the game's own writes: every one
 was produced by the game's `SAVE GAME`, from a state reached by playing, fasttraveling
 or poking, and every one has a recipe. They are game data, so they live in
-`work/p3/` and never in the repository. The recipes, byte for byte, were in
-`work/reports/p3-saves.md`, which is lost; the party throughout
-is Donald's six off `work/drive/LVBEFORE.D64`.
+`p3/` and never in the repository. The recipes, byte for byte, were in
+`reports/p3-saves.md`, which is lost; the party throughout
+is Donald's six off `drive/LVBEFORE.D64`.
 
 | specimen | file | what it is |
 |---|---|---|
@@ -232,7 +232,7 @@ count. Copy after a clean teardown, or check and repair.
 ### The wilderness set — `W1.D64` to `W7.D64`
 
 **No save in this project had ever been outdoors.** Seven now are, in
-`work/p3/`, all on the middle and east travel windows:
+`p3/` (scratch, deleted), all on the middle and east travel windows:
 
 | file | window | square | why it exists |
 |---|---|---|---|

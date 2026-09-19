@@ -157,7 +157,7 @@ keyboard scan rather than by DMA not reaching I/O. Trust the skill.
 | Write memory | `machine write-mem <addr> <hex>` | poking a value to see what the game does with it; 128 bytes a call, hex as **one** argument |
 | Hold the machine still | `machine pause` / `resume` | pulls the DMA line low, so a 64K dump is coherent rather than smeared across many HTTP round-trips |
 | Run code | `runners run-prg-upload <local.prg>` | the only way to change banking, since `$01` is unreachable over DMA |
-| Mount a disk | `drives mount-upload a <local.d64>` | the player's own images, uploaded from a copy under `work/` |
+| Mount a disk | `drives mount-upload a <local.d64>` | the player's own images, uploaded from a copy in scratch |
 | Type at it | `machine sendkey '<petscii>'` | KERNAL buffer only — see below |
 | Device settings | `config get` / `set` / `export` | read freely; `save-to-flash`, `load-from-flash` and `reset-to-default` are refused by `tools/c64u.py` |
 
@@ -316,7 +316,7 @@ Three hardware readings over the ten minutes before that were identical but
 for the jiffy clock, so the state was not moving, but there is no reading
 afterward to prove it stayed that way. If the machine returns and the party
 has not moved, re-running `tools/c64ucompare.py hw` and diffing it against
-`work/c64u/240/hw-c` settles this in thirty seconds.
+`cited/c64u/240/hw-c` settles this in thirty seconds.
 
 ## Without the CLI: REST and FTP direct
 
@@ -436,7 +436,7 @@ Nothing below has been measured. Each line says what would settle it.
 * **Never `config save-to-flash`, `config load-from-flash` or `config
   reset-to-default`.** The first persists a change past power-off; the second
   replaces the live settings wholesale; the third cannot be undone from the
-  CLI. `config export > work/c64u-config-backup.json` before changing any
+  CLI. `config export > $TMPDIR/c64u-config-backup.json` before changing any
   setting, and leave the device on the settings it started with.
   `tools/c64u.py` refuses all three, and `machine poweroff` with them.
 * **Never `c64u ui` or `c64u streams listen`** from an agent: both put a window
@@ -448,14 +448,14 @@ Nothing below has been measured. Each line says what would settle it.
   once the machine has been told to start. Read back a byte only that program
   could have produced — a blank screen proves nothing if it was already blank.
 * **Nothing read off the machine is committed.** A dump is the game's bytes;
-  it lives under `work/`, which is gitignored, and stays there.
+  it lives in scratch under the temp directory and is never committed.
 
 ## Reference
 
 `~/c64u-reference.md` is Donald's own notes and the source for most of what is
 graded CONFIRMED above; "The addresses hold on hardware" is `#240 (Drive Pool
 of Radiance on the C64 Ultimate, so a VICE reading can be checked against
-hardware)`'s own reading instead, under `work/c64u/240/`. The two Agent Skills
+hardware)`'s own reading instead, under `cited/c64u/240`. The two Agent Skills
 are `.claude/skills/c64u-cli/`
 (the tool: `commands.md`, `workflows.md`, `limits.md`) and
 `.claude/skills/c64-knowledge/` (the hardware: twelve quickrefs, one per

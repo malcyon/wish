@@ -21,7 +21,7 @@ Grades follow `docs/50-experiments.md`'s scale. "The build" is the 1.3
 
 `GAME.OVR` file offset `0x23DCC`-`0x240BB`, the first routine of the overlay
 unit with stub segment `0x8C`. It is the twin of `coab`'s
-`ovr021.CheckAffectsTimingOut` (Curse's decompiled engine, `work/coab/`,
+`ovr021.CheckAffectsTimingOut` (Curse's decompiled engine, `coab/` (scratch, deleted),
 `github.com/simeonpilgrim/coab`), and it goes:
 
 1. outside camp (`[0x49F3] != 2`) mark every party slot as needing a pass;
@@ -90,7 +90,7 @@ select the kind of grant and zero means "grant byte `0x3D`", as in `coab`'s
 the low bits map exactly as Curse's do, since only the zero case was run.
 
 **The three Amiga item specimens match these shapes byte for byte.** Their
-ten-byte nodes (`work/p105/saves/`, a rebuilt corpus): CONJURER
+ten-byte nodes (`p105/saves/` (scratch, deleted), a rebuilt corpus): CONJURER
 `3D 00 0000 0C 00` and MAGICIAN `59 00 0000 0C 00` are the item path; ADDERLY
 `26 00 0000 5C 01` is the strength-item path, flag 1 and all, which makes
 "92 is the strength the girdle replaced" PROBABLE rather than SPECULATIVE.
@@ -180,7 +180,7 @@ another agent holds tonight.
    resistance until he takes it off and puts it back on. The node and the
    readied item travel together.
 4. **A specimen is now available that no editor touched:**
-   `work/issue232/ready4/ready.json` records the six `.SPC` files the engine
+   `cited/232/ready4/ready.json` records the six `.SPC` files the engine
    wrote to slot D, the first ending in `3D 00 00 0C 00` beside the racial
    and `BLESS` records, and `tools/dosspcexpiry.py ready` regenerates the
    run in four minutes.

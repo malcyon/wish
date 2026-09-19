@@ -20,10 +20,10 @@ find it, and a new kind joins the row it belongs to rather than the end.
 
 Every name and every description is Donald's, settled on `#166 (Draw the twenty-three note kinds Donald chose, and name them)`; the
 descriptions are tooltip only, and each opens with a capital because he
-asked for that across the whole program. `work/note-icons.md` rendered
+asked for that across the whole program. `note-icons.md` (scratch, deleted) rendered
 all twenty-five at 32px and 13px, which is what he chose them from --
-`work/` is gitignored, so that file may not survive; the table below is
-the record that does.
+that file is gone; the table below is
+the record that survives.
 
 | row | kind | icon | artist | description |
 |---|---|---|---|---|

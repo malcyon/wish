@@ -135,7 +135,7 @@ and are drawn by something else.
 | either against the other three frames | | | 19 to 27 |
 | `WISH-SPEC-ssb-d-engine-resave` and `-walked` | 594 | `PIC3B` frame 0 | **0 of 1024** |
 | `WISH-SPEC-ssb-d-converted-resave` and `-walked` | 594 | `PIC3B` frame 0 | **0 of 1024** |
-| `work/issue192/CURSEH.D64`, the save Wish built | 0 | nothing | 524 to 526 |
+| `cited/192/CURSEH.D64`, the save Wish built | 0 | nothing | 524 to 526 |
 
 So the 23 bytes the two Curse saves differ in, at cells in columns 2-7 and
 rows 7-10 of the eleven-wide grid and five of the colour bytes, are frame 1
@@ -169,7 +169,7 @@ at `$6971`, one byte in, with the load count still zero. **Three runs, three
 times the same stop and the same zero.** Between a load and the first
 `ENCAMP` the saved content is never read; at `ENCAMP` it is zeroed before
 it is read. The camp screen drew correctly over it in every run, which
-`work/issue192/run1/05-encamp.png` had already shown from the same save.
+`cited/192/run1/05-encamp.png` had already shown from the same save.
 
 **A checkpoint stop ends VICE's monitor for the rest of the run.** After the
 one-shot stop and a resume, every later read timed out -- on fresh

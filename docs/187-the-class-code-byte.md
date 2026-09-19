@@ -82,7 +82,7 @@ trained, keeps his. The cleric's right code is 0 as well, so one of the five
 is invisible.
 
 **The C64 game never notices, because it never reads the byte.** Across the
-seven Curse overlays dumped in `work/issue18` there is exactly one instruction
+seven Curse overlays dumped in `cited/18` there is exactly one instruction
 that touches `$7C73` -- that store -- and no load, no compare and no indexed
 form. `GEN $0DEB` is the only caller of the routine.
 
@@ -234,7 +234,7 @@ unedited export of `WISH-SPEC-curse-trained-party` imports with no changes.
 
 * `tools/classcodecensus.py` -- the census above, and it prints the mask it
   derived beside the mask the record stores.
-* `tools/d6502.py work/issue18/GEN.bin 0800 1930 25` -- the routine.
+* `tools/d6502.py cited/18/GEN.bin 0800 1930 25` -- the routine.
 * `tools/dosfieldrefs.py <Curse GAME.OVR> --offset 0x075` -- 51 sites in the
   DOS overlay, 4 write and 47 read.
 * `tools/dossheetread.py` -- the six sheets in the running game.

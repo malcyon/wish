@@ -47,7 +47,7 @@ invisibility?"* — and it reads as a closed eye. `oppression`,
 `embrassed-energy`, `running-ninja` and `sparkling-sabre` all come apart into
 two to six pieces at 13 px and are legible only as a general shape. The sheet
 is `tools/iconsheet.py`, which carries all ten, and a magnified render is
-`work/eyelashes-13px-x6.png` (lost with `work/` — `#136 (Thirty-two cited
+`eyelashes-13px-x6.png` (lost — `#136 (Thirty-two cited
 write-ups are gone, because the knowledge base pointed into gitignored
 scratch)`; re-render it with
 `tools/iconsheet.py`).
@@ -317,7 +317,7 @@ displaced collision without choosing between them.
 * **Nothing measured in the running game.** The suite runs offscreen against
   synthesised effect arrays. No save this project holds has a spell running on
   a character, so the only badges a live poll has ever lit are the two the record
-  carries — `P3-EFFECTS.D64` would have shown all five and went with `work/`
+  carries — `P3-EFFECTS.D64` would have shown all five and went with the scratch directory
   (#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)).
 
 ## Which title's ids these are

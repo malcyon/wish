@@ -238,7 +238,7 @@ C64 build does the same is NOT FOUND.
 | **Levels** | Measured — §9. The ceiling is **11 / 10 / 12 / 12 / 11 / 11** for magic-user, cleric, thief, fighter, paladin, ranger, against Pool of Radiance's 6 / 6 / 9 / 8, and the experience table is the full AD&D 1st edition progression to level 13. `goldbox/levels.py`'s existing rows are Curse's rows exactly where the two overlap; what it needs is the missing levels and two more classes, not a different `Level` |
 | **Items** | `ITEMS` byte `+13` is the class-usage bitmask. Curse sets **bit 7 (ranger) wherever Pool of Radiance sets bit 6 (paladin)** — 95 of the 128 records differ in that byte, against at most 9 in any other. `goldbox/items.py`'s `CLASS_USAGE_BITS` names only the low four bits, so bit 6 already reads as nothing in Pool of Radiance |
 | **Item names** | 253 named entries against Pool of Radiance's 252, sharing 252 indices of which **217 are the identical string**. Curse fills the gap at 168 and replaces 35 entries Pool of Radiance never used. One constant (`$9E00`) and `goldbox/items.py` reads it |
-| **Spells** | 169 named ids where Pool of Radiance has 120, and the **first 56 are the same spell in the same order** — §10. Curse has **no `SPELLN00`**; it ships `SPELLN64`, and so does Pool of Radiance, and that file is not a spell-name table in either game: its payload is the `ALTER`/icon menu strings (`SIZE`, `SMALL`, `LARGE`, `WEAPON`, `HEAD`, `SHIELD`), 1878 bytes in both. The names and their pointer table are in `COMBAT2`, resident at `$E000`. The spellbook bitmask is at `0x078` in both; no Curse specimen writes past `0x07D`, so its width is unproven here — but Silver Blades and Death Knights casters set `0x07D`–`0x07F`, so on the later engine the mask is **at least 8 bytes** (write-up lost, `work/reports/goldbox-inventory.md`) |
+| **Spells** | 169 named ids where Pool of Radiance has 120, and the **first 56 are the same spell in the same order** — §10. Curse has **no `SPELLN00`**; it ships `SPELLN64`, and so does Pool of Radiance, and that file is not a spell-name table in either game: its payload is the `ALTER`/icon menu strings (`SIZE`, `SMALL`, `LARGE`, `WEAPON`, `HEAD`, `SHIELD`), 1878 bytes in both. The names and their pointer table are in `COMBAT2`, resident at `$E000`. The spellbook bitmask is at `0x078` in both; no Curse specimen writes past `0x07D`, so its width is unproven here — but Silver Blades and Death Knights casters set `0x07D`–`0x07F`, so on the later engine the mask is **at least 8 bytes** (write-up lost, `reports/goldbox-inventory.md`) |
 | **Status** | `0x100` reads 1 in every occupied Curse record, exactly as Pool of Radiance's `roster_in_use` does. The C64 Curse editor labels `0x100` `STATUS` with a seven-value enum — 1 OK, 2 GONE, 3 DEAD, 4 DYING, 5 UNCONSCIOUS, 6 RUNNING, 7 STONED — and the same author's Silver Blades and Death Knights editors carry it unchanged. It disagrees with the DOS enum, and no specimen reads anything but 1, so it stays a lead; the one observation that fits is the combat research watching the byte go `$01` → `$84`, and `$84 & 0x0F = 4 = DYING`. **Pool of Radiance has since settled it**: `LIBRARY $38BE` masks the byte with 7 and indexes the game's own `OK, GONE, DEAD, DYING, UNCONSIOUS, RUNNING, STONED`, and a character taken to 0 hit points in a driven fight had `84` written there and then `85`, which the engine saved. So the editors' enum is right and the DOS workbooks' `CharacterStatus` at DOS `0x10C` is a different enumeration at a different offset. **Curse has not been checked**: its `LIBRARY` may or may not carry the same table, and that is the open question here |
 
 ## 6. Still unknown
@@ -253,7 +253,7 @@ C64 build does the same is NOT FOUND.
 | How many combat slots Curse keeps, and where | NOT FOUND — `$5800`–`$5AFF` zero in both saves |
 | Which class and level each new spell id 57–100 belongs to | PROBABLE from AD&D — §10 — but no code assigns them here |
 
-## 7. Corrections to the original plan (`work/reports/coab-plan.md`, lost)
+## 7. Corrections to the original plan (`reports/coab-plan.md`, lost)
 
 That plan was written before any of this and several of its open questions are
 now settled, some against its guesses.
@@ -297,8 +297,7 @@ base would fail on the other side. The Curse half skips when the disks are
 absent, like every other test that needs game data.
 
 Curse disks are found the same way Pool of Radiance's are: `$COAB_DISKS` first,
-then the usual home-directory names, then `work/` — which `AGENTS.md` already
-names as where disk images belong.
+then the usual home-directory names.
 
 ## 9. Levels, ceilings and experience
 

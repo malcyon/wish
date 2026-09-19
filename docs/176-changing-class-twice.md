@@ -107,8 +107,8 @@ the call, with no message.
 
 ### Watched, six characters, one save
 
-`tools/dualclassagain.py dos --game CURSE --party work/curse/234-curse-dualclassed`
-loads the save DEMELTINA was dual-classed in on `#234 (A dual-classed Curse or Silver Blades character converted to DOS loses the class he trained out of)` and photographs the
+`tools/dualclassagain.py dos --game CURSE --party <a Curse save you dual-classed a character in>`
+loads a save of that kind; the one measured here was the save DEMELTINA was dual-classed in on `#234 (A dual-classed Curse or Silver Blades character converted to DOS loses the class he trained out of)` and photographs the
 party menu once per character, moving the roster highlight with `End`. The
 records were read at `goldbox/dos_port.py`'s own offsets from the same files.
 
@@ -150,7 +150,7 @@ the eligible-class list comes out empty.
 
 ### Watched, one action apart
 
-Two slots of the same tree, `work/curse/234-ssb-dualclassed`, differing by the
+Two slots of the same tree, `curse/234-ssb-dualclassed` (scratch, deleted), differing by the
 one `HUMAN CHANGE CLASSES` `#234 (A dual-classed Curse or Silver Blades character converted to DOS loses the class he trained out of)` drove: slot C is PAINE the human ranger 8
 with an all-zero former array, slot D is PAINE the magic-user 1 with
 `former_class_levels[ranger] = 8`. The same six keys in each run.
@@ -193,7 +193,7 @@ PAINE -- hold exactly one each.
 ## The specimens
 
 Both parties were rescued into `$WISH_SPECIMENS` before the run directories
-could be lost, since `work/` is gitignored and has been lost twice.
+could be lost, since scratch is not kept.
 `tools/specimens.py check` passes on 37 specimens.
 
 | specimen | what |
@@ -231,7 +231,7 @@ pressed `HUMAN CHANGE CLASS` on an already dual-classed character.
 `WISH-SPEC-curse-dual-classed` is the specimen and it would take one drive --
 except that on 2026-09-05 **no Curse save disk could be loaded through the
 front end in a pooled session at all**. That is not the specimen:
-`WISH-SPEC-curse-h-engine-resave` and `#18 (Measure Curse's trainer so Level Up works there)`'s own `work/issue18/train1.D64`,
+`WISH-SPEC-curse-h-engine-resave` and `#18 (Measure Curse's trainer so Level Up works there)`'s own `issue18/train1.D64` (scratch, deleted),
 which that session did load, fail the same way, and the attach itself is proven
 working because `ADD CHARACTER TO PARTY` asks for `INSERT SIDE # 1` once the
 save disk is in the drive. `GEN $1F42` is the load and `$3159` is what fails;

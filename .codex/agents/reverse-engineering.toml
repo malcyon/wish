@@ -93,8 +93,9 @@ Two facts neither `AGENTS.md` nor any `.claude/rules/` file states, because a
 reverse-engineering session can run entirely through the VICE MCP tools
 without ever touching a file that would load `emulator.md` for you:
 
-* **Never write to `/home/donald/c64/Pool of Radiance Disks/`.** Read only,
-  always. Copies go under `work/`, which is gitignored.
+* **Game disks are read-only and come from the registry**
+  (`tools/gamedisks.py`, `automap.paths.find_disks()`). If you must write,
+  work on a copy under the temp directory (`tools/scratch.py`).
 * **Do not leave a background wait loop running when you report.** A `sleep`
   loop watching an emulator or a DOSBox run keeps waking the session long
   after the work is done, and one that outlives you looks exactly like an

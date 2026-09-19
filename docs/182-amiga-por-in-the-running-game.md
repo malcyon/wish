@@ -4,7 +4,7 @@ What the game does with character files our own code wrote, measured on the
 screen and in the bytes it wrote back. Four runs under WinUAE on 2026-09-05
 for `#105 (Write an Amiga Pool of Radiance character, not just a Pools of
 Darkness one)`; `docs/143-winuae-debugger.md` §1 is the procedure and
-`work/issue105/` holds the screenshots.
+`issue105/` (scratch, deleted) held the screenshots.
 
 The short version, and it is the answer `#105 (Write an Amiga Pool of
 Radiance character, not just a Pools of Darkness one)` had been waiting for
@@ -213,15 +213,15 @@ export SSH_ASKPASS_REQUIRE=never
 winvm acquire wish105
 ps='powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1'
 winvm ssh "$ps claim -Holder por105"
-tools/toamigapor.py work/por1.adf --to B --out work/por1-B.adf \
+tools/toamigapor.py $TMPDIR/por1.adf --to B --out $TMPDIR/por1-B.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
-winvm scp work/por1-B.adf 'donald@192.168.123.50:C:/Amiga/Disks/por/x.adf'
+winvm scp $TMPDIR/por1-B.adf 'donald@192.168.123.50:C:/Amiga/Disks/por/x.adf'
 winvm ssh "$ps start -Holder por105 -log -f C:\Amiga\configs\goldbox-a500.uae \
     -s floppy0=C:\Amiga\Disks\por\x.adf -s floppy1=C:\Amiga\Disks\por\por2.adf"
 # RET at the code wheel, RET at the title, then:
 tools/amigadrive.py --holder por105 keys L S A V E SLASH RET B
 tools/amigadrive.py --holder por105 keys V I      # sheet, then ITEMS
-tools/amigadrive.py --holder por105 shot work/items.png
+tools/amigadrive.py --holder por105 shot $TMPDIR/items.png
 ```
 
 Three things cost time on the way and are worth knowing.

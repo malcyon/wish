@@ -88,7 +88,7 @@ send.
 | `EXIT` out of `VIEW:ITEMS` → `READY` | the item list re-arms itself: choosing its `EXIT` returns to the bar, and the next `Return` drops straight back into the list. Rebooting the session was faster than escaping it |
 | **XTEST keys while a binary-monitor client holds the socket** | thirty `Right` presses moved nothing; the first press after the client closed moved the highlight. A driver that both watches and types must **connect, read, close** for every poll, the way `tools/session.py` does — which is also why `automap` and a driving script cannot be one process |
 | **entering area 11 (the training hall) by fasttraveling** | `ECL0B` reads `$6E82`, which the *departing* square's attribute byte sets, so a fasttravel arrives with nothing to dispatch on and the game drops the party back into New Phlan within eight seconds. Walk in; do not fasttravel in |
-| loading `work/drive/SLUMS.D64` | the party comes up, `BEGIN ADVENTURING` prints `OUTWARD BOUND ...`, and the loader then asks for side 3 for ever, requesting **`WALLSET00`** — a file on none of the eight sides. Use the player's own saves for driving work |
+| loading `drive/SLUMS.D64` (scratch, deleted) | the party comes up, `BEGIN ADVENTURING` prints `OUTWARD BOUND ...`, and the loader then asks for side 3 for ever, requesting **`WALLSET00`** — a file on none of the eight sides. Use the player's own saves for driving work |
 
 `Alt+N` genuinely *is* the right binding (VICE's own
 `share/vice/hotkeys/hotkeys-fliplist.vhk` maps `fliplist-next-8` to `<Alt>n`).
@@ -114,7 +114,7 @@ Three rules, each learned by wedging the emulator:
    already attached leaves the game asking for ever.
 
 `tools/session.py` implements this as `Session.attach(path)`, and
-`tools/walkrun.py` runs whole batches on it. Only copies under `work/drive/`
+`tools/walkrun.py` runs whole batches on it. Only copies under `drive/` (scratch, deleted)
 are ever attached — `attach` refuses any other path.
 
 ## Driving a session end to end
@@ -277,21 +277,21 @@ rows 4 to 11.
 
 `tools/session.py` drives one: `in_combat()`, `combat_state()`, `combat_bar()`
 and `fight()`. Before those existed every agent that needed a fight wrote its
-own loop, and `work/drive/qffight.py`, `work/combatlog/walkabout.py` and
-`work/p118-step3/run.py` are three of them.
+own loop, and `drive/qffight.py`, `combatlog/walkabout.py` (scratch, deleted) and
+`p118-step3/run.py` are three of them.
 
 **`tools/fightrun.py` is the runner**: boot a pool slot, load a save, walk
 until something ambushes the party, drive every command bar with
 `melee_turn`, and print who took the turns, how many had an enemy in contact
 and how many of those ended with a blow. Three copies of it were written into
-`work/` for `#126 (The emulator harness cannot drive a fight, so no conversion has ever been proven in combat)`, `#127 (A driven character stands next to an enemy and passes its turn instead of attacking)` and `#165 (One character that cannot act takes every turn in a driven fight)` and thrown away with that directory; the
-log it writes still belongs in `work/`, the tool does not.
+scratch for `#126 (The emulator harness cannot drive a fight, so no conversion has ever been proven in combat)`, `#127 (A driven character stands next to an enemy and passes its turn instead of attacking)` and `#165 (One character that cannot act takes every turn in a driven fight)` and thrown away with that directory; the
+log it writes still belongs in scratch, the tool does not.
 
 **`$6E11` says whether there is a fight**: `1` DUNGEON, `2` COMBAT. It is
 LINKER's own dispatch byte and `automap/combat.py` documents the rest of it.
 
 **Row 24 is the whole of what a fight asks you**, and telling its kinds apart is
-most of the work. 807 readings across the twelve logs in `work/p118-step3/`
+most of the work. 807 readings across the twelve logs in `p118-step3/` (scratch, deleted)
 hold 18 distinct bars, and every one of them is one of these:
 
 | kind | what it looks like | what to do |
@@ -396,7 +396,7 @@ waits for row 24 to stop saying what it said before answering it again.
 `GUARD DELAY QUIT SPEED EXIT`, and **`GUARD` on that is what ends the turn**,
 which is where the `GUARDING` on row 24 in the older logs was coming from. A
 driver that takes DONE and stops is asked for the same character's command
-again: 210 turns in 420 seconds, no blow struck (`work/p126/melee4.log`).
+again: 210 turns in 420 seconds, no blow struck (`p126/melee4.log` (scratch, deleted)).
 Tell it apart from a treasure bar, which also carries EXIT, by `GUARD` and
 `DELAY` being on it.
 
@@ -413,14 +413,14 @@ driver being asked for the same character again.
 `DELAY QUIT SPEED EXIT` — and `end_turn` used to fall to DELAY there. One
 character who could not strike then took **50 of the 54 turns** that had an
 enemy in contact, in a fight of 56 driven turns, while the other five never
-acted again (`#165 (One character that cannot act takes every turn in a driven fight)`, `work/issue127/after1.jsonl`). `Session.ENDS_TURN` is
+acted again (`#165 (One character that cannot act takes every turn in a driven fight)`, `cited/127/after1.jsonl`). `Session.ENDS_TURN` is
 `GUARD` then `QUIT` and `Session.LEAVES_BAR` is `DELAY` then `EXIT`, in that
 order, so a bar with no GUARD gets QUIT. Why GUARD drops off is still not
 established; the obvious suspect is that it is only offered to a character
 that has not moved yet.
 
 **`QUICK` reached the same sub-bar** and the quickfight bit at roster `+0x0C`
-did not move on any of six characters (`work/p126/quick.log`). Whether QUICK
+did not move on any of six characters (`p126/quick.log` (scratch, deleted)). Whether QUICK
 opens it in its own right or the highlight walk landed on DONE was not
 distinguished, so nothing is claimed about QUICK beyond that it did not resolve
 a turn.
@@ -443,7 +443,7 @@ it. **Nothing in this project has driven `AIM` or `CAST`.**
 **Combat movement is the joystick, and under the pool's seeded `vicerc` that
 is the numeric keypad.** Measured key by key at a `MOVE LEFT = 12` bar, reading
 the square each press spent out of the combatant table
-(`work/p126/run1.log`):
+(`p126/run1.log` (scratch, deleted)):
 
 | key | step | key | step |
 |---|---|---|---|
@@ -474,7 +474,7 @@ square is never dropped, because that step is the point.
 **`MOVE LEFT` does not go down when the step is an attack, and the character
 does not move.** ROLAND at (29,13) pressed `KP_1` into an orc on (28,14): the
 count read 9 before and 9 after, nobody moved, and **the orc went from 5 hit
-points to 1** (`work/issue127/sweep1.jsonl`, turn 15). So neither the count on
+points to 1** (`cited/127/sweep1.jsonl`, turn 15). So neither the count on
 row 24 nor the position table says a blow happened. What says it is the
 target's hit points, and the move sub-bar going away a moment later.
 
@@ -494,7 +494,7 @@ the sub-bar has gone.
 this way** — PROBABLE, not confirmed. MALCYON with `13 DART` readied pressed
 into an adjacent orc six times, each watched for ten seconds with nothing else
 sent: no message, no damage, the sub-bar never went
-(`work/issue127/probe1.jsonl`). Every character who did land or attempt a blow
+(`cited/127/probe1.jsonl`). Every character who did land or attempt a blow
 in the same fight had a melee weapon — a mace, a long sword. It rests on one
 character on one side and four on the other, and the weapon was never changed
 and re-tried. `melee_turn` gives a blow `ATTACK_TIMEOUT` seconds and passes the
@@ -525,7 +525,7 @@ that used to be here — twelve — was almost all waste. `combat_bar` has no wa
 of saying "that command is not on this bar": it waits for the label to appear
 and spins to its full timeout when it never does. `end_turn` asked for GUARD,
 DELAY and EXIT blind, and **441 of one 605-second fight's seconds, 73% of it,
-went on words that were not on row 24** (`work/issue127/diag1.jsonl`). It reads
+went on words that were not on row 24** (`cited/127/diag1.jsonl`). It reads
 the bar once now and asks only for what is on it.
 
 **Never point `combat_bar` at a label you have not seen on the bar.** That is
@@ -592,7 +592,7 @@ did.
 
 **The attacker's name is on the screen and was rejected anyway.** `COMBAT
 $2994` prints the speaker's name at `$6B00` as the first row of a message
-block, so `work/rolls/run2.jsonl` caught the band reading `ORC / ATTACKS /
+block, so `cited/rolls/run2.jsonl` caught the band reading `ORC / ATTACKS /
 BRUTUS / AND MISSES...` down columns 23-38 — attacker, verb and target on three
 separate rows. Three things made it the worse foundation: a block lives about a
 second of *emulated* time (`automap/combatlog.py`) while `fight` polls once a
@@ -731,7 +731,7 @@ blind a second time corrupted a live routine (`LDA #$01` → `NOP NOP`).
 ## Snapshots
 
 `DUMP` (`0x41`) / `UNDUMP` (`0x42`) over the binary monitor save and restore full
-machine state. `work/E003-past-protection.vsf` is a snapshot taken at the
+machine state. `E003-past-protection.vsf` (scratch, deleted) is a snapshot taken at the
 party-creation menu. Restoring proved unreliable in practice — the one attempt
 left the machine at a fresh boot — so treat it as a convenience, not a
 dependency.

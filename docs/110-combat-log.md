@@ -196,7 +196,7 @@ pointer table (lo `$2A8D`, hi `$2AC5`, at overlay base `$0800` and not the
 (`#128 (Nothing has ever read what the game prints when the party loses a
 fight)`) and `THE PARTY RUNS AWAY` off a driven flight on 2026-09-08
 (`#445 (The game's third fight outcome, THE PARTY RUNS AWAY, has never been
-seen on a screen)`, `work/issue445/run2`); the winning line is the oldest of
+seen on a screen)`, `cited/445/run2`); the winning line is the oldest of
 the three. `DEFEATED`, which `tools/session.py` guessed at for months, is not
 a word the game uses anywhere.
 
@@ -245,7 +245,7 @@ message and its delay, `$0942`-`$0957` takes three readings and two of the
 three ways out are `JMP $0957`, at `$0957` — a jump to itself.
 
 Measured on the running machine, twice, with the same six-character party out
-of `PORSAVE13.D64` (`tools/defeatdrive.py`, `work/issue128/run2` and `run3`):
+of `PORSAVE13.D64` (`tools/defeatdrive.py`, `cited/128/run2` and `run3`):
 
 * **66 of 66 program-counter samples read `$0957`** over 70 seconds in the
   second run, and 30 of 31 in the first — the odd one was `$2E25`, inside
@@ -299,7 +299,7 @@ the fight ended with every one of them at `$84`; the binding pass that turns
 character at 0 hit points has ten rounds of losing one a round to go, and the
 fight was over before then.
 
-**The save disk was not written.** `work/issue128/run3/save-after.d64` has the
+**The save disk was not written.** `issue128/run3/save-after.d64` (scratch, deleted) has the
 same SHA-256 as the player's `PORSAVE13.D64`, `f7e7f1a2…`, so a defeat costs
 whatever has happened since the last `ENCAMP > SAVE` and nothing more — and
 there is no specimen to keep, because the game authored no bytes.
@@ -386,8 +386,8 @@ second.
 | `automap/screen.py` | `band`, which slices a window out of whole rows |
 | `automap/window.py` | `poll_combat_log`, `log_combat`, and the flush |
 | `tests/test_combatlog.py` | every rule, against constructed screens and two frames from the captured fight |
-| `work/combatlog/fight.py` | drives a fight and records every poll (scratch, not shipped) |
-| `work/combatlog/replay.py` | re-runs a recording through the reader (scratch) |
+| `combatlog/fight.py` (scratch, deleted) | drives a fight and records every poll (scratch, not shipped) |
+| `combatlog/replay.py` | re-runs a recording through the reader (scratch) |
 
 `log_combat` **defeats `MessagesPanel`'s own repeat-dropping**, and that is the
 point of the feature: the panel drops a line identical to the one before it,
@@ -400,8 +400,8 @@ which is right for "waiting for the game" on every tick and wrong for two
 ## Verified on a live machine
 
 One fight, 1428 frames at ~0.18 s, six characters against orcs at (14,0) in the
-Slums. `work/combatlog/fight.py` drove it and recorded every poll; the raw
-frames replay through the reader with `work/combatlog/replay.py`, so any later
+Slums. `combatlog/fight.py` (scratch, deleted) drove it and recorded every poll; the raw
+frames replay through the reader with `combatlog/replay.py`, so any later
 change to `combatlog.py` can be checked against the same fight without a
 second one.
 
@@ -415,7 +415,7 @@ second one.
 | 6 | the split | **CONFIRMED.** `MAGNUS ATTACKS ORC AND HITS FOR 10 POINTS OF DAMAGE` and `ORC GOES DOWN AND IS DYING` came out of one eight-row frame as two messages, split on the `$03F4` = 15 the follow-up set |
 | 7 | the scroll | **CONFIRMED. It scrolls.** Third fight, kobolds and bugbears in the Slums with the P18 party. No natural block reaches row 22, so the window was made small instead: `COMBAT $0970`'s own four bytes were poked to `17 1E 01 11` — columns 23-29, bottom row 16 — while COMBAT was resident, and the game's own messages then overflowed it every round. Two things were watched. **A block that overflowed lost its top line**: `NAME / ATTACKS / SILAS / AND HIT / S FOR 3 / POINTS / OF DAMA / GE` came out as seven rows starting at `ATTACKS`, the name gone. And **rows moved up between two consecutive polls**: row 17 went `KOBOLD ` → `GOES DO` and row 18 `GOES` → `WN` while `$03F4`/`$03F5` stood at 17. At the shipped width nothing wraps far enough — a block would have to run about thirteen rows — which is why 2478 frames of two fights never saw it |
 | 8 | after the fight | **not reached** — the fight was ended from the emulator, not through the panel |
-| 9 | a fight the party **loses** | **CONFIRMED.** Two runs, `work/issue128/run2` and `run3`, six characters wounded to 1 hit point through the monitor and every turn passed. All six took `GOES DOWN` then `AND IS DYING`, then `THE PARTY HAS LOST` on row 10 of an otherwise empty full-width window, `$6DC7` = `$80`, all six roster statuses `$84`, the save disk untouched, and the machine stopped at `POST.COM $0957` |
+| 9 | a fight the party **loses** | **CONFIRMED.** Two runs, `cited/128/run2` and `run3`, six characters wounded to 1 hit point through the monitor and every turn passed. All six took `GOES DOWN` then `AND IS DYING`, then `THE PARTY HAS LOST` on row 10 of an otherwise empty full-width window, `$6DC7` = `$80`, all six roster statuses `$84`, the save disk untouched, and the machine stopped at `POST.COM $0957` |
 
 Left to do: the same run through the real `AutomapWindow` rather than through
 `CombatLog` alone.
@@ -425,8 +425,8 @@ own output is nonsense — it slices columns 23-38 from `$0970`'s *documented*
 constant and so reads residue from outside the narrowed region. That is the
 right behaviour for the shipped window and it is why the verdict above is read
 off the raw rows rather than off the messages the reader produced. The raw
-frames are `work/p18b/frames-narrow.jsonl`, with `frames-baseline.jsonl` and
-`frames-shrink{14,17}.jsonl` beside them; `work/p18b/fight.py` is the driver,
+frames are `p18b/frames-narrow.jsonl` (scratch, deleted), with `frames-baseline.jsonl` and
+`frames-shrink{14,17}.jsonl` beside them; `p18b/fight.py` is the driver,
 and its `--shrink`/`--narrow` only ever write `$0973`/`$0971` when the four
 bytes there really are COMBAT's `17 27 01 17` — the first attempt wrote to
 `$0973` while another overlay owned it, which is the hazard

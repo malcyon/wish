@@ -220,14 +220,14 @@ alignment pad.
 ```sh
 tools/amigalaterproof.py build \
     --source ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \
-    --into work/384/ssb-src.adf --from A --to B \
-    --first 'Guy de Valois' --out work/384/ssb-first.adf
+    --into $TMPDIR/ssb-src.adf --from A --to B \
+    --first 'Guy de Valois' --out $TMPDIR/ssb-first.adf
 # copy ssb-first.adf to the guest, boot it, and drive:
 #   RET  P  L  B          -- credits, PLAY, LOAD SAVED GAME, our slot
 #   V  I  E  E            -- the sheet, ITEMS, back out twice
 #   S  D                  -- SAVE CURRENT GAME into slot D, the clean resave
-tools/amigalaterproof.py diff --ours work/384/ssb-first.adf --ours-slot B \
-    --theirs work/384/ssb-resaved.adf --theirs-slot D
+tools/amigalaterproof.py diff --ours $TMPDIR/ssb-first.adf --ours-slot B \
+    --theirs $TMPDIR/ssb-resaved.adf --theirs-slot D
 ```
 
 Amiga Curse is the same with `P` twice, `tools/amigacursewheel.py` for the code

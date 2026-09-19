@@ -18,8 +18,8 @@ The disk was built the way that issue asked for -- a C64 party whose records
 carry portrait ids, so `goldbox.amiga_savegame.new_por_savegame` wrote `$49FF` = 3:
 
 ```sh
-tools/toamigapor.py work/3q/por1.adf --to B --out work/3q/por1-B.adf \
-    --data-disk work/3q/por2.adf \
+tools/toamigapor.py $TMPDIR/por1.adf --to B --out $TMPDIR/por1-B.adf \
+    --data-disk $TMPDIR/por2.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
 ```
 
@@ -112,7 +112,7 @@ word and `.claude/rules/gui-text.md`'s to govern.
 
 The disk the engine wrote all four of those slots onto is
 `~/wish-specimens/por-amiga/WISH-SPEC-por-amiga-name-spaces`, copied out of the
-emulator slot before it went. The `work/` paths above are the run's own scratch
+emulator slot before it went. The scratch paths above (under `$TMPDIR`) are the run's own
 and the command at the top of §1 rebuilds them.
 
 **Read a name to the first NUL, not to 16 bytes.** Slot D's field is
@@ -133,7 +133,7 @@ Export for every direction the library supports)`'s 2026-09-09 ruling), and
 
 ```sh
 tools/toamiga.py ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \
-    -o work/3q/pcexport
+    -o $TMPDIR/pcexport
 ```
 
 Six 484-byte files -- `DOMINIC.pc`, `EPONA.pc`, `GUYDEVAL.pc`, `MALACHIT.pc`,

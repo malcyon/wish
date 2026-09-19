@@ -246,7 +246,7 @@ the animator **modifying its own operands**, not the game recording anything.
 | `$49F0`, `$49F1` | the square occupied before the last move |
 | `$49C6`–`$49CB` | **the clock, six digits**, limits `0A 0A 06 18 1E 0C`. `$49C6` is a sub-minute counter the game never shows; `$49C7`–`$49C9` are units of a minute, tens of a minute and the hour — `DUNGEON $09F7` prints `$49C9 : $49C8 $49C7` — and `$49CA`/`$49CB` are the day and the month. Rises by a minute per step and per turn in place. See [the clock is six digits and only three are shown](#the-clock-is-six-digits-and-only-three-of-them-are-shown) below |
 | `$49C3`, `$49C4` | the party's square on the **overland** map, a separate pair from `$49C0`/`$49C1` — which is why walking into a site and out again puts you back where you left |
-| `$49C0`–`$49C2` **outdoors** | stale, and **never read**. `DUNGEON $1A3C` is `if $49E6 then copy $C04B..$C04D into $49C0..$49C2` ([`118-debug-mode.md`](118-debug-mode.md)), so the live square reaches the save only while the party is indoors, and what these three hold on the travel grid is whatever the party last arrived on. Measured in VICE with a non-stopping read checkpoint on four converted outdoor saves, two pairs differing only in these three bytes: **0 reads** across 4 loads, 4 arrivals, 8 travel-grid steps and 4 area changes, and 13 screenshot pairs identical to the pixel. Across 115 distinct save payloads on this machine, 30 of them outdoors, 6 read `0,0,0`; `work/p3/W4`–`W7` are four of them and the game itself wrote them |
+| `$49C0`–`$49C2` **outdoors** | stale, and **never read**. `DUNGEON $1A3C` is `if $49E6 then copy $C04B..$C04D into $49C0..$49C2` ([`118-debug-mode.md`](118-debug-mode.md)), so the live square reaches the save only while the party is indoors, and what these three hold on the travel grid is whatever the party last arrived on. Measured in VICE with a non-stopping read checkpoint on four converted outdoor saves, two pairs differing only in these three bytes: **0 reads** across 4 loads, 4 arrivals, 8 travel-grid steps and 4 area changes, and 13 screenshot pairs identical to the pixel. Across 115 distinct save payloads on this machine, 30 of them outdoors, 6 read `0,0,0`; `p3/W4` (scratch, deleted)–`W7` are four of them and the game itself wrote them |
 | `$49E6` | non-zero indoors, zero on the overland map; it picks which file `LOADFILES` asks for |
 | `$49F2` | the current area id — set on the `$0809` restart path at `$19E1`, and holding the *departing* id right through a load |
 | `$4A00`–`$4A1F` | per-script scratch, zeroed by `DUNGEON $202A` on every area change |
@@ -266,7 +266,7 @@ without the library.
 
 **Quest state is found, and the region above is where it lives.** The split at
 `$4A20` is the game's own: `DUNGEON $202A` zeroes `$4A00`-`$4A1F` on every area
-change and everything from `$4A20` to `$4AF8` survives. The write-up, `work/reports/quest-flags.md`
+change and everything from `$4A20` to `$4AF8` survives. The write-up, `reports/quest-flags.md`
 (lost), attributed 172 of those addresses to the scripts that write them, and a DOS guide
 published since names 229 of them in English —
 see [`128-guide-and-scripting.md`](128-guide-and-scripting.md), where merging the
@@ -424,7 +424,7 @@ screen in text mode — `$D011` bit 5 never goes up. This said it was therefore
 "a text message, not a picture", and that is wrong: it **draws a boat** in the
 view window, in character graphics, over `THE BOAT DISEMBARKS YOU AT SOKAL
 KEEP.` and under `(PRESS <RETURN> OR BUTTON TO CONTINUE)`. Photographed on a
-converted Sokol Keep party built from nothing, `work/p119b/NEWB2-boat.png`
+converted Sokol Keep party built from nothing, `cited/p119b/NEWB2-boat.png`
 (#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing), 2026-09-02, gitignored). Bitmap mode and a picture are not the same
 question, and the earlier reading answered the second from the first. Whether
 the boat is drawn *by the animator* is still unknown, so "something that draws
@@ -551,7 +551,7 @@ and before the next fight. The counters are a cache of the list, the same way
 armour class is a cache of what is worn.
 
 **Watched happening.** The roster page sampled either side of one fight —
-`work/p235c64/run1/roster.jsonl`, the `#235 (Two unattributed DOS byte ranges in
+`cited/p235c64/run1/roster.jsonl`, the `#235 (Two unattributed DOS byte ranges in
 the combat tail are dropped converting to C64, and nobody knows what they hold)`
 Slums ambush on `PORSAVE13` — has `+0x03` going `0` → `1` for MALCYON and `0` →
 `1` for LADY KATHERINE between "in the world" and "fight begins", ROLAND's

@@ -37,7 +37,7 @@ the grant. **CONFIRMED from the table, cross-checked four ways.**
 
 ## The flattened one grants nothing, watched
 
-`work/issue285/ring-shipped/`. `ITEMFILE17`'s record staged readied into
+`cited/285/ring-shipped`. `ITEMFILE17`'s record staged readied into
 ROLAND's inventory on a copy of a save, booted, and READY pressed three times
 from ENCAMP > VIEW > ITEMS with the whole 256-byte character record and the
 768 bytes of the effect arrays read before and after each press:
@@ -52,7 +52,7 @@ from ENCAMP > VIEW > ITEMS with the whole 256-byte character record and the
 
 ## The working one grants 61, and takes it back, watched
 
-`work/issue285/ring-81/` and `work/issue285/ring-81c/`, two runs agreeing byte
+`cited/285/ring-81` and `cited/285/ring-81c`, two runs agreeing byte
 for byte. The same drive with `ITEMFILE1D`'s record staged in the same slot of
 the same save -- one item differing from the control by two bytes:
 

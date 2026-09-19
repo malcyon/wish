@@ -7,7 +7,7 @@ answer `PATH FOR SAVE  RETURN = POOLSAVE:` with a bare RETURN.
 
 Written for `#36 (Write an Amiga disk image, not just the character files)`
 and measured on 2026-09-05 in three WinUAE runs; `docs/143-winuae-debugger.md`
-§1 is the procedure and `work/issue36/` holds the screenshots.
+§1 is the procedure and `cited/36` holds the screenshots.
 `docs/182-amiga-por-in-the-running-game.md` is the companion for the other
 route -- a copy of the player's own game disk with a slot written into its
 `save` drawer -- which still works and is what `tools/toamigapor.py --out`
@@ -210,13 +210,13 @@ winvm ssh "$ps claim -Holder por36"
 
 # Since #316 the disk on the command line is **disk 2**, whose ecl.dax the
 # area's script is read out of; the saved game is built rather than copied.
-tools/toamigapor.py work/issue36/por2.adf --to B \
-    --save-disk work/issue36/poolsave-B.adf \
+tools/toamigapor.py $TMPDIR/por2.adf --to B \
+    --save-disk $TMPDIR/poolsave-B.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
 
 winvm ssh 'powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path C:\Amiga\Disks\i36"'
 for f in por1.adf por2.adf poolsave-B.adf; do
-    scp -o BatchMode=yes work/issue36/$f donald@192.168.123.50:"C:/Amiga/Disks/i36/$f"
+    scp -o BatchMode=yes $TMPDIR/$f donald@192.168.123.50:"C:/Amiga/Disks/i36/$f"
 done
 winvm ssh "$ps start -Holder por36 -log -f C:\Amiga\configs\goldbox-a500.uae \
     -s nr_floppies=3 -s floppy2type=0 \
@@ -228,7 +228,7 @@ winvm ssh "$ps start -Holder por36 -log -f C:\Amiga\configs\goldbox-a500.uae \
 tools/amigadrive.py --holder por36 keys L
 tools/amigadrive.py --holder por36 keys RET     # the default, POOLSAVE:
 tools/amigadrive.py --holder por36 keys B
-winvm shot work/issue36/loaded.png
+winvm shot $TMPDIR/loaded.png
 ```
 
 Four things cost time on the way.

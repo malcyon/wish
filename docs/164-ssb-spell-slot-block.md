@@ -124,7 +124,7 @@ magic-user), so the fourth array is Silver Blades' alone.
 ## Watched in the running game
 
 `tools/dosslotwatch.py`, DOSBox-X with the debugger, the played save
-`work/curse/SSB-D-paine-memorised` staged with PAINE's `CHRDATD2.SAV`
+`curse/SSB-D-paine-memorised` (scratch, deleted) staged with PAINE's `CHRDATD2.SAV`
 patched to `05` at `0x140` and `07` at `0x143` before the game saw it --
 DOSBox-X's `BPM` fires on change, so a byte the file holds at zero cannot
 be watched being zeroed.
@@ -137,7 +137,7 @@ be watched being zeroed.
 
 Two writes to the byte across a load: the file arriving and the builder's
 zero fill, in that order, and nothing after. Logs and the save trees are
-under `work/issue222/run1/` and `run2/`.
+under `issue222/run1/` (scratch, deleted) and `run2/`.
 
 ## Grades
 

@@ -3,7 +3,7 @@
 **Status: all five tiers are done.** Tiers 1, 2 and 5.1 are automated in
 `tests/test_curse.py`; tiers 3, 4 and 5.2 were done under VICE and what survives
 without an emulator is pinned in `tests/test_curselive.py`. The write-up for the
-live tiers, `work/reports/p8-curse-live.md`, is lost. The goal was a **base-level
+live tiers, `reports/p8-curse-live.md`, is lost. The goal was a **base-level
 check**, not coverage: enough evidence to say "the tooling reads the second
 game" or "here is exactly where it stops", and to keep that answer from silently
 rotting.
@@ -80,7 +80,7 @@ and names every place they do not. **Asserted by**
 `test_curse_map_ids_are_sparse_so_nothing_may_enumerate_by_count`, each with
 the Pool of Radiance side of the comparison in the same test.
 
-Measured over the six `CURSE_?.D64` sides in `work/curse/` against the nine
+Measured over the six `CURSE_?.D64` sides in `curse/` (scratch, deleted) against the nine
 `POOL*.D64`:
 
 | | Pool of Radiance | Curse |
@@ -194,7 +194,7 @@ and the renderer, and it is not a base-level question.
 
 ## Tier 3 — live memory under VICE
 
-**Done.** The write-up, `work/reports/p8-curse-live.md`, carried the evidence for every line
+**Done.** The write-up, `reports/p8-curse-live.md`, carried the evidence for every line
 below and is lost; `tests/test_curselive.py` pins the constants and the code paths.
 
 **One resident address transfers between the two titles, and it is the one the
@@ -238,7 +238,7 @@ example.
 
 **The start-up check did not block the rip used here**, which is why this tier
 ran at all. Nothing further about it belongs in this repository. A live session
-still writes only to `work/`, never to the player's own disks.
+still writes only to a scratch copy under the temp directory, never to the player's own disks.
 
 ### 3.1 The item area, and what the last four pages really are
 
@@ -330,7 +330,7 @@ APPRAISE EXIT`, both of which highlight in colour 1 and drive normally.
 ## Tier 4 — the automapper
 
 **Done.** Driven against a live Curse session with `automap/` **unmodified**;
-the run was recorded in `work/reports/p8-curse-live.md`, now lost, and
+the run was recorded in `reports/p8-curse-live.md`, now lost, and
 `tests/test_curselive.py` pins what
 can be checked without an emulator.
 
@@ -434,7 +434,7 @@ that rip**. What is left:
 |---|---|---|
 | the area byte across a boundary is unwatched | `$4DC2` stays PROBABLE | drive the party over an area edge and read it either side. One session |
 | the automapper's memory fallback has no per-title base | the live view works off the status line and has nothing to fall back to in camp or combat | thread a party base through `automap/target.py` the way `goldbox/c64_port.py` threads the save geometry. Curse's value is `$C04B`, and it is *not* a save-image offset |
-| ~~no Curse save from a *played* party with inventory~~ **cleared** | the item area is Pool of Radiance's, payload `$1000` -- resident `$5B00` -- and the 16-byte record decodes field for field: type at `+0`, name indices at `+3`/`+2`, readied bit `$80` at `+6`, weight in tenths at `+8`, quantity at `+10`, cost at `+11`. Ten items bought in a Tilverton shop, one readied, every weight and price matching what the shop printed | done (#32 (One Curse session, to get a party with items)). A save disk the game wrote carrying them is `WISH-SPEC-curse-party-with-items` in the specimen tree, added on 2026-09-08; it was made in `work/issue32/specimens/`, which is scratch and is gone. The measurements are in §3.1 below, and an edit made to that inventory in Wish has since been read off the game's own item screen -- `docs/139-per-title-validation.md` A13 |
+| ~~no Curse save from a *played* party with inventory~~ **cleared** | the item area is Pool of Radiance's, payload `$1000` -- resident `$5B00` -- and the 16-byte record decodes field for field: type at `+0`, name indices at `+3`/`+2`, readied bit `$80` at `+6`, weight in tenths at `+8`, quantity at `+10`, cost at `+11`. Ten items bought in a Tilverton shop, one readied, every weight and price matching what the shop printed | done (#32 (One Curse session, to get a party with items)). A save disk the game wrote carrying them is `WISH-SPEC-curse-party-with-items` in the specimen tree, added on 2026-09-08; it was made in `issue32/specimens/`, which is scratch and is gone. The measurements are in §3.1 below, and an edit made to that inventory in Wish has since been read off the game's own item screen -- `docs/139-per-title-validation.md` A13 |
 | ~~Curse's level caps are not measured~~ **cleared** | ceilings `GEN $15A1`, racial limits `$15A9` (rows for races 1-5; race 6 and above skip the check at `$155B`), experience `$136E`, hit dice `$161E` — all in `goldbox/levels.py` and asserted in `tests/test_titletables.py` | done. `tools/coldread.py levels curse-of-the-azure-bonds` reads them off the disk again in one command |
 | ~~the spellbook's width in Curse~~ **cleared** | it is **13**, and no specimen was needed: `CAMP $2A25` walks spell ids from 1 with `INY / CPY #$65 / BCC`, so it stops after id 100, and reads the mask as `TYA / LSR x3 / TAX / LDA $7C78,X` — id 100 puts X at 12, so the game itself reads `0x078`-`0x084` | done (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)). Whether `0x085`-`0x087` are also mask stays UNKNOWN in Curse, whose `GEN` has no clear loop; thirteen is what the game reads and no more is claimed |
 | Curse's `$200` attribute plane — indoor bit and script id | GUESS and UNKNOWN, tier 2 | needs Curse's ECL decoded, which nothing else depends on |
@@ -444,7 +444,7 @@ that rip**. What is left:
 labelled "with docs" carry `advtjrnl.txt`, `rulebook.txt` and a
 `..._Journal.d64`: **that is the manual and the adventurer's journal, and it
 must never enter this repository in any form, transcribed or otherwise.**
-Extract only into `work/`, which is gitignored, and extract only the `.d64`
+Extract only into a scratch directory under the temp directory, never into the repository, and extract only the `.d64`
 sides.
 
 ---

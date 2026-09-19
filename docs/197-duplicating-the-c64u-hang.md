@@ -133,7 +133,7 @@ anybody's — mounts it, boots it, polls at a chosen size and interval, and
 scores the result from the machine's own samples.
 
 ```sh
-tools/c64uhang.py build --out work/hang.d64
+tools/c64uhang.py build --out $TMPDIR/hang.d64
 tools/c64uhang.py run --variant load --size 32768 --interval 2 --minutes 10
 ```
 
@@ -208,7 +208,7 @@ unit**, and one of them looks busy:
 | game at rest | `$DD00` | bus bits 3-7 | samples |
 |---|---|---|---|
 | after a KERNAL load | `$C4` (`$C7` in VIC bank 0) | nothing driven, both lines released | 162 of 373 over three runs, jiffy at full rate throughout, stretches of 101 s without a change |
-| with the game's own loader | `$10` | C64 holds CLOCK low, drive holds DATA low | 3 of 3 readings ten minutes apart, party idle in the Slums, 2026-09-04 (`work/c64u/240/hw-a` to `hw-c`, `cia2.bin`) |
+| with the game's own loader | `$10` | C64 holds CLOCK low, drive holds DATA low | 3 of 3 readings ten minutes apart, party idle in the Slums, 2026-09-04 (`cited/c64u/240/hw-a` to `hw-c`, `cia2.bin`) |
 
 The second is also the KERNAL's between-bytes state while the C64 is sending
 a command, so no rule on a single byte separates "resting with the drive code

@@ -27,7 +27,7 @@ is read, and the third is recomputed on the first step or turn.
 Grades follow `docs/50-experiments.md`'s scale. "The build" is the 1.3
 `GAME.OVR` in the player's copy of *Forgotten Realms: The Archives*; file
 offsets are into it, and `tools/dosovrmap.py` turns them into `seg:off` and
-back. Runs are under `work/issue218/`.
+back. Runs are under `cited/218`.
 
 ## The address classes
 
@@ -129,11 +129,11 @@ taken from inside ENCAMP, so entry 2 has just run and the file carries the
 pair; the area-init routine zeroes it on load and nothing writes it until the
 next ENCAMP. That is `142-dosbox-x-debugger.md`'s "24 in the file, 0 live".
 
-**Watched.** `tools/dosvmwatch.py --save work/p59-wallset/ycol --slot C`,
+**Watched.** `tools/dosvmwatch.py --save cited/p59-wallset/ycol --slot C`,
 a `BPM` on each byte, then E: `$6DD3` 0 -> 10, then `$6DD2` 0 -> 96, both at
 `CS:0CCE` with `03 f8 26 89 95 00 2a` behind it -- the class-1 store at
 `GAME.OVR:0x819C`, unit `0x2B` code offset `0xCC9` plus the instruction's
-five bytes. `work/issue218/watch1/watch.json`.
+five bytes. `cited/218/watch1/watch.json`.
 
 **The Slums block is patched on DOS, and the patch is the reason every Slums
 specimen holds (24, 24) with `$4A0B` clear.** `50-experiments.md` reads

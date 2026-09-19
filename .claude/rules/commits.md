@@ -55,7 +55,7 @@ questions."* Four minutes of a blocked window, every push, was the cost.
 
 So: **the main window either runs the suite itself or sends it to
 `test-runner`, and never both, and never two of them at once.** A `test-runner`
-gets the detached worktree, the `work/` and `gamedisks.yaml` symlinks, the foreground run and the
+gets the detached worktree, the `gamedisks.yaml` symlink, the foreground run and the
 three checks; it reports and fixes nothing. `.claude/agents/test-runner.md` is
 the definition.
 
@@ -79,7 +79,6 @@ push. A detached worktree at `HEAD` tests exactly what will land:
 
 ```sh
 git worktree add -q --detach "$WT" HEAD
-ln -sfn "$PWD/work" "$WT/work"          # gitignored, so a fresh checkout has none
 ln -sfn "$PWD/gamedisks.yaml" "$WT/gamedisks.yaml"   # ditto: one machine's own registry
 (cd "$WT" && /path/to/.venv/bin/python -m pytest -q)
 git worktree remove "$WT" --force
@@ -98,10 +97,10 @@ exists to prevent between real agents. `pytest -q -n0` drops back to one
 process, for a single flaky-looking failure that needs to be seen in
 isolation.
 
-**The symlinks are the part that is easy to miss, and without them the run lies
-by omission.** `work/` and `gamedisks.yaml` are gitignored, so a bare worktree
-skips every test that reads a specimen or a disk out of them -- the ones with
-real game data behind them. CI has neither, so the bare run is the closest thing to what CI will do and
+**The symlink is the part that is easy to miss, and without it the run lies
+by omission.** `gamedisks.yaml` is gitignored, so a bare worktree skips every
+test that reads a specimen or a disk through the registry -- the ones with
+real game data behind them. CI has no registry, so the bare run is the closest thing to what CI will do and
 the in-tree run is what covers the specimen-backed tests. Neither is the whole
 check on its own.
 
@@ -146,7 +145,7 @@ straight out.
 batches the reviews land in.
 
 **The push is refused until the run is recorded.** `tools/suiterun.py`
-writes `work/testrun/<sha>.green` after a green whole-suite run at that
+writes `~/.cache/wish/testrun/<sha>.green` after a green whole-suite run at that
 commit, and `.claude/hooks/check-push-tested.py` refuses a `git push` with no
 marker for the tip, or for an ancestor with only prose between it and the
 tip. Prose means `.md` files outside `.claude/agents/`; `pyproject.toml`, a

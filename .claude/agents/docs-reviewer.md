@@ -46,13 +46,10 @@ agent, and the same one holding whatever the maintainer has not committed yet.
 There is no private copy to absorb a mistake, which is why the rules above are
 absolute rather than cautionary.
 
-`work/` is in that tree at its ordinary path: every disk image, specimen, dump
-and run artefact, 1.6 GB of it, gitignored. **Read it, never write to it** -- a
-write there lands in another agent's lap.
-
-The archives outside the repository are read-only too:
-`~/Downloads/fr-archives/` and `/home/donald/c64/Pool of Radiance Disks/`,
-always.
+Game disks and specimens come from the registry (`tools/gamedisks.py`,
+`automap.paths.find_disks()`) and are read-only, always. So are the archives
+outside the repository, `~/Downloads/fr-archives/` among them. Anything you
+must write goes under the temp directory (`tools/scratch.py`).
 
 If you cannot establish something without modifying the tree, **say so in the
 report as an unverified claim.** That is a useful finding. A destroyed working

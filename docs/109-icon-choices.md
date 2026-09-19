@@ -43,7 +43,7 @@ artist is commissioned; see `132-logo.md` and `ui/appicon.py`.
 
 The sheet is still buildable and now shows the chosen set:
 
-    .venv/bin/python tools/iconsheet.py work/reports/icon-sheet.png
+    .venv/bin/python tools/iconsheet.py
 
 Every icon at 13, 15 and 26 pixels, in `NOTE` ink in a map cell with a wall
 against it and in `MUTED` on a roster card, and then magnified 8× and 5×. **The
@@ -424,7 +424,7 @@ untouched, at every size.
 ## `#166 (Draw the twenty-three note kinds Donald chose, and name them)` — sixteen more note kinds
 
 Donald picked twenty-three glyphs for map notes and named every one of them
-himself, working from `work/note-icons.md`, which drew each at 32px and at
+himself, working from `note-icons.md` (scratch, deleted), which drew each at 32px and at
 13px. Sixteen became new kinds; the nine that already existed kept their names
 and had been repictured on `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)` already.
 

@@ -103,8 +103,8 @@ the engine fetches them once per turn for whichever character is acting.
 ## Reproducing it
 
 ```sh
-tools/iconpoke.py --disk work/issue184/SIX.D64        # six different figures
-POR_HEADLESS=1 tools/savecheck.py --disk work/issue184/SIX.D64 --fight --icon
+tools/iconpoke.py --disk $TMPDIR/SIX.D64        # six different figures
+POR_HEADLESS=1 tools/savecheck.py --disk $TMPDIR/SIX.D64 --fight --icon
 ```
 
 `--icon` reads the disk's own eight icon entries and `CHARPIC00` off the

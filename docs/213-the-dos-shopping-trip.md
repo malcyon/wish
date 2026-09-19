@@ -165,7 +165,7 @@ evidence that anybody edited the record.** That is what
 
     tools/dosshop.py --map
     tools/dosshop.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-por-party-l1-intown \
-        --shop 53 --slot E --interactive --cmd work/issue249/shop/cmd.txt
+        --shop 53 --slot E --interactive --cmd $TMPDIR/cmd.txt
     tools/dosshop.py --party ... --shop 53 --encumbrance 999 \
         --steps Up '~5' y '~4' b '~4' b '~4' '@e' '~3' '@e' '~4' \
                 '@e' '~4' '@s' '~3' g '~10' n '~4'
@@ -174,6 +174,6 @@ evidence that anybody edited the record.** That is what
 fixed by `#429 (tools/dosshop.py stages its spoiled encumbrance after the
 load, so the engine never reads it)` -- which is what makes a right answer
 afterwards a recompute rather than our own staging surviving. Output goes
-under `work/`, which is gitignored and has been lost twice: copy a run you
+under the temp directory, which may vanish (the old gitignored directory was lost twice): copy a run you
 mean to keep into `$WISH_SPECIMENS` with `tools/specimens.py add` before the
 slot goes down.

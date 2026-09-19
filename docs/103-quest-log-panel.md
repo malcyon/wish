@@ -262,7 +262,7 @@ log that blanked every time somebody opened one would be a flicker.
 * The marker value never reaches the state word; the Slums' tooltip is
   Donald's one sentence and every other row keeps its ledger line.
 * The shipped unplayed `POOL1` save shows nothing done and offers exactly slums,
-  Sokal Keep, and books. `work/fields/npc_party.d64` reads `$4AC1` = 6, fourteen
+  Sokal Keep, and books. `fields/npc_party.d64` (scratch, deleted) reads `$4AC1` = 6, fourteen
   entries paid — six of them the major ones, which is what `$4AC1` counts — and
   offers nomads, kobolds, lizardmen, and draws each commission once.
 * Reading is pure: the decoder copies its input, and the specimen save's bytes
@@ -278,8 +278,8 @@ needs.
 
 A plain `strings` over a Gold Box script finds nothing, which is why nobody had
 looked: the text is **6-bit packed**, three characters to four bytes.
-`work/analysis/ecl.py`'s `unpack` already had the decoder from the Pool of
-Radiance work and it applies unchanged. `work/p40/curse_strings.py` is the scan.
+the `unpack` in `analysis/ecl.py` (scratch, deleted) already had the decoder from the Pool of
+Radiance work and it applies unchanged. `p40/curse_strings.py` is the scan.
 
 | word | Curse | Silver Blades |
 |---|---:|---:|

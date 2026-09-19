@@ -129,8 +129,8 @@ the importer refuses today)`.
 
 **The measurement below was taken once, on 2026-09-05, and its other half is
 gone.** The DOS folders those two parties were converted from were
-`work/curse/H-square-5-13` and `work/curse/SSB-D-paine-memorised`, and
-`work/curse` was deleted by something else in the tree the same afternoon,
+`curse/H-square-5-13` and `curse/SSB-D-paine-memorised`, and
+`curse/` (scratch) was deleted by something else in the tree the same afternoon,
 so the run cannot be repeated as it stands. The nearest specimen of the same
 party, `WISH-SPEC-ssb-234-party-pair`, is a *different state* of those
 characters and comparing against it shows real differences rather than

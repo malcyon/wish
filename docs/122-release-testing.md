@@ -218,7 +218,7 @@ wheel and the frozen build *different* version strings. Neither is fatal for
 exercising the machinery — CI builds from a clean checkout at a tag and gets a
 clean number — but build from a quiet tree if you want the names to match.
 
-*Run by the assistant on 2026-08-22, in a throwaway venv under `work/`, at
+*Run by the assistant on 2026-08-22, in a throwaway venv in scratch (since deleted), at
 version `0.0.1.dev165+g24a77e835.d20260822`. B1–B6 all worked; the frozen build
 took 9.4 s and came to 158 MB unpacked, the wheel to 386 KB, the tarball to
 60 MB. B6 was rewritten in the course of the run — see the note on it.
@@ -352,7 +352,7 @@ it fails again the release page is wrong, not your disk.
 *Run by the assistant on 2026-08-22 against
 `wish-0.0.1.dev165+g24a77e835.d20260822-linux-x86_64.tar.gz`. L1–L7 all passed;
 every measurement and every quoted string below is from that run. It was done
-under `work/relcheck/` rather than `~/wish-test`, and with `XDG_CONFIG_HOME`
+under `relcheck/` (scratch, deleted) rather than `~/wish-test`, and with `XDG_CONFIG_HOME`
 and `XDG_DATA_HOME` redirected there, so that nothing landed in Donald's own
 `~/.config/wish` or `~/.local/share/wish` — both were confirmed untouched
 afterwards. The window steps ran on a headless `Xvfb` driven by `xdotool`.*
@@ -558,7 +558,7 @@ the title table did not make it into the package — that is a release blocker f
 the same reason L9's `ModuleNotFoundError: tools` is.
 
 *Verified 2026-08-22* against a Curse of the Azure Bonds save made by the
-project's own driven session (`work/curse/CURSESAVE2.D64`), there being no
+project's own driven session (`curse/CURSESAVE2.D64` (scratch, deleted)), there being no
 `SAVEAZURE` disk in any folder `gamedisks.yaml` lists. It exported three characters under
 `# Curse of the Azure Bonds character export`, and re-imported byte for byte.
 Silver Blades remains untested: the disks are there, a save is not.
@@ -852,7 +852,7 @@ choose a slot, choose where the write goes, press **Convert**. Or, without
 the GUI:
 
 ```sh
-tools/dosdisk.py --slot J --out work/NEWJ.D64 --report --sheet
+tools/dosdisk.py --slot J --out $TMPDIR/NEWJ.D64 --report --sheet
 ```
 
 *Expect:* `Bytes left to the payload: 0`. Anything else is a byte the
@@ -897,7 +897,7 @@ in a driven session)` is where that was measured;
 `docs/70-driving-the-game.md` carries the keys, and the driven form is
 
 ```sh
-tools/savecheck.py --disk work/NEWJ.D64 --slot N --view
+tools/savecheck.py --disk $TMPDIR/NEWJ.D64 --slot N --view
 ```
 
 with `--view` taking no number, which reads every character the panel lists
@@ -918,7 +918,7 @@ west, which is a closed box and ends where it began.
 
 *Expect:* `moved=True` on all four, a square that changes on each, and a status
 line that says `outdoors` rather than a facing. Driven on pool slot 3 on
-2026-09-02 against `work/p50-outdoor/OUTC.D64`: `(7,28)` to `(7,27)` to
+2026-09-02 against `cited/p50-outdoor/OUTC.D64`: `(7,28)` to `(7,27)` to
 `(8,27)` to `(8,28)` and back to `(7,28)`. Before `#189 (The emulator driver
 cannot move a party on the travel grid, and reads its facing out of the word
 OUTDOORS)` this reported `moved=False` at every heading and `facing=2` on every

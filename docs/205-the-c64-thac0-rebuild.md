@@ -64,7 +64,7 @@ x3. Pool of Radiance's `$3729` has 44 callers in the same shape.
 
 ## What the running game did
 
-`tools/cursethac0.py`, pool slot 2, `work/issue368/run5`, `run6` and `run7`
+`tools/cursethac0.py`, pool slot 2, `cited/368/run5`, `run6` and `run7`
 -- three boots, three tavern brawls, the same numbers each time. Two of six
 characters had their stored roster THAC0 replaced with `0x0A` -- THAC0 50,
 which nothing the engine computes can reach, since the worst row of the
@@ -125,7 +125,7 @@ opened on a pair of specimens in which five characters walked out of Curse's
 hall holding `thac0_base` exactly, with no strength bonus in it. That is real
 and the hall is not the reason.
 
-Watched, `work/issue368/hall1`: MARK's roster THAC0 spoiled to `0x0A`, his
+Watched, `cited/368/hall1`: MARK's roster THAC0 spoiled to `0x0A`, his
 gate at `0x0E3` forced to 1, his experience set to 46,000 so the hall would
 take him, and `GEN $12CA`'s hall gate at `$7EA8` opened from the monitor. One
 press of `TRAIN CHARACTER` ▸ `MARK`:
@@ -186,8 +186,8 @@ strength bonus for ever, and looks right on the sheet until it does.
 * `tools/absrefsweep.py curse-of-the-azure-bonds 3918 3918` and its Pool of
   Radiance twin at `$3729`;
 * `tools/cursethac0.py stage` and `run`, whose readings are in
-  `work/issue368/run5/thac0.jsonl` for the fight and
-  `work/issue368/hall1/thac0.jsonl` for the training;
+  `cited/368/run5/thac0.jsonl` for the fight and
+  `cited/368/hall1/thac0.jsonl` for the training;
 * `tests/test_cursethac0.py` re-derives the three instructions and the five
   table rows off the player's own disks, so the citations above are checked
   rather than remembered.

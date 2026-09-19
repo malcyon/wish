@@ -193,7 +193,7 @@ an item's printed name is three indices into it — noun, qualifier, suffix.
 `$9E00`. `tests/test_titletables.py` asserts it per title. The race labels are the
 same pool: `LDA $9E8C,X` is `$9E00 + 140`, so a race name is word-table entry
 `140 + race`, read straight out of `ITEMNAMES`. Asserted per title in
-`tests/test_titletables.py`; the write-up, `work/reports/p40-title-tables.md`,
+`tests/test_titletables.py`; the write-up, `reports/p40-title-tables.md`,
 is lost.
 
 Nothing in the tool depends on the resident copy — `goldbox/items.py` reads the disk

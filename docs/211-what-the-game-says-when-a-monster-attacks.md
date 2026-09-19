@@ -88,9 +88,9 @@ ticks at, driving the party's turns in between.
 
 | run | `$49FC` | polls | mean gap | messages | a monster's |
 |---|---|---|---|---|---|
-| `work/issue350/fight1.jsonl` | 2 | 448 | 0.67 s | 26 | 26 |
-| `work/issue350/fight2.jsonl` | 2 | 412 | 0.58 s | 23 | 23 |
-| `work/issue350/fight3.jsonl` | 2 | 410 | 0.58 s | 23 | 23 |
+| `cited/350/fight1.jsonl` | 2 | 448 | 0.67 s | 26 | 26 |
+| `cited/350/fight2.jsonl` | 2 | 412 | 0.58 s | 23 | 23 |
+| `cited/350/fight3.jsonl` | 2 | 410 | 0.58 s | 23 | 23 |
 
 Every attack line came out whole, with the target named, whether it landed and
 the damage; a killing blow added `ROLAND GOES DOWN AND IS DYING`, and one orc
@@ -104,14 +104,14 @@ window never stops polling to take a turn.
 **"A monster's index is past the end of the roster `_block` reads."** It is
 not. `rolls.ROSTER_BLOCKS` is 64, covering `$8300`-`$8AFF`, and
 `RosterBlock.occupied` is `any(self.raw)`, which a monster's block satisfies.
-Measured: 22 of 23 monster messages in `work/issue350/fight3.jsonl` carry a
+Measured: 22 of 23 monster messages in `cited/350/fight3.jsonl` carry a
 complete roll — `ORC rolled 17, needed 17, 1d8 = 2` — and the 23rd is the
 `GOES DOWN` follow-up, which correctly has none. The needed numbers are the
 orc's THAC0 19 less each defender's armour class: 17 against BRUTUS at AC 2,
 13 against MALCYON at AC 6, 15 against ROLAND at AC 4.
 
 **"The message never arrives."** It does. Two of them are in
-`work/rolls/run1.jsonl`, a fight recorded on 2026-08-30 for the roll work,
+`cited/rolls/run1.jsonl`, a fight recorded on 2026-08-30 for the roll work,
 and they replay through today's reader as
 `ORC ATTACKS BRUTUS AND MISSES...` and `ORC ATTACKS MALCYON AND MISSES...`.
 `tools/monstermsg.py replay` is that check, and it needs no emulator.
@@ -121,7 +121,7 @@ and they replay through today's reader as
 `$2983` prints whatever is at `$6B00`, which for a monster is the `MON*`
 record loaded into the character-record buffer — the same record
 `automap/combat.py` reads for the combatant, so `Combatant.name` **is** the
-string the engine prints. Measured on `work/issue350/fight2.jsonl`: on 22 of
+string the engine prints. Measured on `cited/350/fight2.jsonl`: on 22 of
 23 messages the name printed on row 10 equals the backend's name for the
 acting index, and the 23rd is the follow-up whose subject is the target
 instead. The names in that fight were `ORC` for indices 8-15 against

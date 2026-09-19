@@ -170,8 +170,8 @@ against a copy taken before the repair. **Both load directly now, with no
 same fault, not for either specimen as it stands today.
 
 Both damaged disks were copied out of a pool slot after the engine's own
-`SAVE CURRENT GAME`, and both of the sound ones under `work/issue18/` were
-written by our tools before a boot; `work/issue192/run1/engine-resave.D64` is
+`SAVE CURRENT GAME`, and both of the sound ones under `cited/18` were
+written by our tools before a boot; `issue192/run1/engine-resave.D64` (scratch, deleted) is
 an engine save that came out closed. So it was a race between the copy and
 the drive rather than anything the engine does wrong, and it was ours.
 
@@ -244,7 +244,7 @@ the front end does. The experiment is to break at `GEN $1FDC` during an
 `ENCAMP > SAVE` and read `$7E9F`.
 
 **Why `#291 (A Curse save disk will not load through the game's own front end in a pooled session, so no C64 Curse party can be got in)`'s own sessions refused with the save disk attached.** Their logs
-survive at `work/issue256-dual/c64/run.jsonl` and stop at `menu-miss` before
+survive at `cited/256-dual/c64/run.jsonl` and stop at `menu-miss` before
 any load, so the refusals they describe came from driving by hand over the
 command port and no transcript of that survives. All three faults above were
 reachable from the state those sessions were in, and `$03F1` was never read at

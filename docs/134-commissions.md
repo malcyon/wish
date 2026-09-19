@@ -1,8 +1,8 @@
 # The council's commissions
 
 The City Hall's books, as `goldbox/commissions.py` reads them. `ECL08` on disk 3 is
-the authority for all of it; the working that established it, `work/reports/commissions.md`
-(P80) and `work/reports/quest-flags.md` (P30), is lost.
+the authority for all of it; the working that established it, `reports/commissions.md`
+(P80) and `reports/quest-flags.md` (P30), is lost.
 
 **The quest-flag half of that working is back and is now generated.**
 [`151-quest-flags.md`](151-quest-flags.md) is every reference the thirty
@@ -66,7 +66,7 @@ The wandering half is capped by a *different* byte. `$4A80` counts won
 wandering fights, and both spawn sites refuse to roll another once it reaches
 15 — `ECL14 $9B32` and `$ADD6`, `COMPARE [$4A80], 15 / IF>= / EXIT`. Ten set
 plus fifteen wandering is 25 exactly, and the two specimens that finished the
-slums (`work/p20/CONV2.D64`, `work/fields/npc_party.d64`) show `$4A80` = 15
+slums (`p20/CONV2.D64`, `fields/npc_party.d64` (scratch, deleted)) show `$4A80` = 15
 with all nine one-shot flags and `$4A81` at 255 — 10 + 15 = 25, arithmetic
 closed against the data.
 
@@ -187,4 +187,4 @@ meeting for good. `goldbox-bugs.md` #7 (Write a C64 party into Amiga Pools of Da
 
 The ECL bytecode is one artefact shared by every port, absolute operands
 included, so all of the above holds at the same addresses on Amiga and DOS
-(write-up lost, `work/reports/quest-flags.md` §7).
+(write-up lost, `reports/quest-flags.md` §7).

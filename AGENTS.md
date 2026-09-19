@@ -25,7 +25,7 @@ gap cost a decision twice on 2026-09-10.
 | Write a brief for a subagent | `delegating.md` |
 | End a turn, end a session, or plan an unattended run (Claude Code only -- describes its own re-invocation model) | `sessions.md` |
 | Put a major feature behind a flag | `feature-flags.md` |
-| Write a script, or leave a file in `work/` | `scratch.md` |
+| Write a script, or leave a file on disk | `scratch.md` |
 | Show Donald anything about how the program looks, ask him to decide how it should look, or touch `wish/`, `editor/` or `automap/` | `gui-text.md` |
 | Add, change or propose any image, sprite or icon, or touch `ui/`, `assets/` or a `.svg` | `art.md` |
 | Say a field or a record cannot be converted, or touch `goldbox/` | `conversions.md` |
@@ -168,8 +168,8 @@ This project documents a game it does not ship. **Never commit, in any form:**
   **including as test fixtures**. A fixture that is a slice of a game file is
   the same copy under a new name.
 
-Disk images are gitignored; keep them under `work/` and read them at run time
-from the player's own. **Describe, cite, measure and generate. Do not copy.**
+Disk images are gitignored; read them at run time from the player's own,
+through the registry (`gamedisks.yaml`, `tools/gamedisks.py`). **Describe, cite, measure and generate. Do not copy.**
 
 ## Git in a shared tree
 

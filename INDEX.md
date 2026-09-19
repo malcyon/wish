@@ -23,7 +23,7 @@ What each directory in this repository is for.
 | `.agents/skills/` | Skills Codex and Antigravity read. `caveman` is shared with Claude Code by symlink from `.claude/skills/`; `orchestrate` here is Codex's own orchestrator skill, a deliberate second copy of `.claude/skills/orchestrate/` written for Codex's mechanisms, and the two are allowed to drift. |
 | `.gemini/` | One file, `settings.json`, telling Gemini CLI to read `AGENTS.md` as its context file -- it takes a list of filenames, so it needs no symlink at all. Nothing else; `.gemini/agents/` was deleted, having been read by neither tool. |
 | `.claude/` (the rest) | Local state -- agent memory, machine settings. Gitignored; `agents/`, `rules/`, `hooks/` and `settings.json` are the tracked exceptions. |
-| `work/` | Scratch: disk images, dumps, analysis runs. **Gitignored**, and where anything derived from the game lives so it never enters the repository. |
+| `<temp>/wish/` | Not in the repository: where a tool's runs write (`tools/scratch.py`), under the machine's temp directory. It may vanish at any time; anything derived from the game stays there so it never enters the repository. |
 | `build/` | PyInstaller's intermediate output. Gitignored. |
 | `dist/` | The frozen build — `wish` and `_internal/`. Gitignored. |
 

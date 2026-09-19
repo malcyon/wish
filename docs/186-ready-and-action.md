@@ -120,9 +120,9 @@ on that: all eighteen codes are read, expanded correctly and drawn.
 ## Reproducing it
 
 ```sh
-tools/iconpoke.py --disk work/issue184/SIX.D64          # six different figures
-POR_HEADLESS=1 tools/iconswing.py --disk work/issue184/SIX.D64
-POR_HEADLESS=1 tools/iconswing.py --disk work/issue184/SIX.D64 --camp
+tools/iconpoke.py --disk $TMPDIR/SIX.D64          # six different figures
+POR_HEADLESS=1 tools/iconswing.py --disk $TMPDIR/SIX.D64
+POR_HEADLESS=1 tools/iconswing.py --disk $TMPDIR/SIX.D64 --camp
 ```
 
 The first drives a fight with `Session.melee_turn`, so the party strikes rather

@@ -53,7 +53,7 @@ terrain, where 0 is floor. The view checks the two against each other.
 
 **The shape is read at runtime, never hard-coded.** `SQRPACI01` carries a stride
 of 56 and bounds 55 x 25; `SQRPACI00` a stride of 20 and bounds 17 x 35. The
-write-up behind those numbers, `work/reports/combat-terrain.md`, is lost.
+write-up behind those numbers, `reports/combat-terrain.md`, is lost.
 
 The tooltip's own fields come off the character record, which is what a monster
 is: name `0x000`, hit dice `0x0A0`, armour class `0x0E1` (as `60 - AC`),
@@ -72,7 +72,7 @@ Four addresses move, two do not, and **the two later titles agree on every one
 of them**. Each was derived from that title's own binary and then read off a
 running Curse on 2026-09-08, pool slot 2 -- `#334 (The session driver
 cannot fight in Curse or Silver Blades, and says the party is not in a
-fight while it is standing on the combat floor)`, `work/issue334/run5`;
+fight while it is standing on the combat floor)`, `cited/334/run5`;
 `tools/latercombat.py` is the table and `tools/session.py` reads a fight
 through it.
 
@@ -220,7 +220,7 @@ the seven ranges the view reads:
 * the canvas swaps on the flag and back, with the area map's explored squares
   unchanged.
 
-And live: VICE booted, `work/drive/SLUMS.D64` loaded, three steps out of (15, 4)
+And live: VICE booted, `drive/SLUMS.D64` (scratch, deleted) loaded, three steps out of (15, 4)
 into an orc ambush. `$6E11` read 1 and `read_battle` returned None; three steps
 later it read 2 and returned six party at 0-5 and **eight orcs from 8, all
 sharing record slot 8** — one record per type, exercised for the first time.

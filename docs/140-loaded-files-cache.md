@@ -70,7 +70,7 @@ piece 0 starts. The four 1536-byte files fill `$6500`-`$6AFF`, which is
 `SECSET` **and all three wall pieces**.
 
 **Rendering them settles it.** Every one is 8×8 multicolour tiles: brick,
-arches, diagonal edges, floor dither. `work/p48/render.py` draws the contact
+arches, diagonal edges, floor dither. `p48/render.py` (scratch, deleted) draws the contact
 sheets.
 
 **And the scripts prove the overlap is real rather than arithmetic.** Every
@@ -149,8 +149,8 @@ it is which `GDRIVE` overlay is resident.
 
 ## The three entries a save actually needs
 
-CONFIRMED, twice, in the running game. `work/p24/build.py` and
-`work/p24/build2.py`.
+CONFIRMED, twice, in the running game. `p24/build.py` (scratch, deleted) and
+`p24/build2.py`.
 
 A save whose cache is `$FF` in every slot except **slot 2 (`GEO`)** and
 **slot 8 (`ECL`)** loads, draws and plays. The engine refills the rest itself.
@@ -169,7 +169,7 @@ Test B needed one more byte than the cache, `$49EA`; see below.
 Test B rebuilt with `$49C0`-`$49C2` = `(8,12)` — neither the save's square nor
 the arrival — came up at **`(8,14)`**: the boat message printed, `$4A02` went
 0 → 1, and the live position `$C04B`-`$C04D` read the script's square while
-`$49C0`-`$49C2` still held `(8,12)` (`work/p46/`). So `ECL15 $9A92`'s
+`$49C0`-`$49C2` still held `(8,12)` (`p46/` (scratch, deleted)). So `ECL15 $9A92`'s
 message-and-place branch, gated on the scratch flag `$4A02`, overwrites the
 saved square when the gate is open — and a converter that zeroes the scratch
 arms it, which is safe: the script's own square is legal by construction. An
@@ -227,7 +227,7 @@ gaps; `$49EA` is no longer one.
 ## Slot 11 is not lazy, because the save is carrying the file
 
 CONFIRMED in the running game, by bisecting a known-good and a known-bad save
-that differ in the cache and nothing else (`work/p102/`, #102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands)).
+that differ in the cache and nothing else (`p102/` (scratch, deleted), #102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands)).
 
 `SAVEDGAME1` is `$8300`-`$8AFF`, and its tail from `$8400` is the resident
 `ANIMATE00`: 829 of those 852 bytes match the file on the disk, over 98 saves
@@ -252,7 +252,7 @@ matching `GEO15` in 1024 of 1024. The screen never left text mode, and this
 concluded from that that the arrival "draws no picture" — which is wrong: it
 **draws a boat** in the view window, in character graphics, and waits on
 `(PRESS <RETURN> OR BUTTON TO CONTINUE)`. Photographed on a converted Sokol
-Keep party built from nothing, `work/p119b/NEWB2-boat.png` (#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing), 2026-09-02,
+Keep party built from nothing, `cited/p119b/NEWB2-boat.png` (#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing), 2026-09-02,
 gitignored). Bitmap mode and a picture are not the same question. Whether that
 picture is drawn by the animator at `$8400` is still unknown, so what is
 outstanding is unchanged: nothing that provably calls into `$8400` has been
@@ -306,7 +306,7 @@ Given a target area id `N`, its `GEO` number `G` and the disk `D` that carries
 
 ## The outdoor form — areas 25, 26 and 27
 
-CONFIRMED, twice, in the running game (`work/p47/`): once cutting a genuine
+CONFIRMED, twice, in the running game (`p47/` (scratch, deleted)): once cutting a genuine
 wilderness save's cache to the two entries, once rewriting an indoor Slums
 save to stand on travel window `1A` instead, from a cold boot. Both came up
 `OUTDOORS`,

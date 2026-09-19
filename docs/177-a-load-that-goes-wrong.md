@@ -37,9 +37,9 @@ dungeon view and the credits, and then starts again -- loading from disk
 continuously, forever, unattended. On 2026-09-05 the first run stopped after
 about nine minutes and the second after about ten, one each way.
 
-    tools/c64uplay.py boot work/issue286/disks/POOL1.D64 --mode readonly
+    tools/c64uplay.py boot $TMPDIR/disks/POOL1.D64 --mode readonly
     tools/c64uplay.py keys Y --wait
-    tools/c64uplay.py hangwatch --log work/x.jsonl --capture work/x-hang
+    tools/c64uplay.py hangwatch --log $TMPDIR/x.jsonl --capture $TMPDIR/x-hang
 
 `hangwatch` takes the memory regions itself the moment the machine stops, which
 matters because the failure is intermittent and unattended.

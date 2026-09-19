@@ -5,6 +5,8 @@ costing they always were.** What changed when it was built is in §0; the rest
 of this document is the design, corrected in place where building it proved a
 claim wrong.
 
+**Update, 2026-09-18:** the `inst/<n>/` and `drive/` directories below are the design's own names. The scratch directory they sat in no longer exists; the pool now keeps its slots under the temp directory (`tools/scratch.py`, `tools/instance.py`'s `pool_root()`), and anything there may vanish.
+
 Donald asked whether Proxmox VMs, each with its own VICE and the game inside,
 would let tests run in parallel, and separately asked for "Windows VMs for
 DOSBox experiments". Those are three needs and they have three different
@@ -99,7 +101,7 @@ Checked 2026-08-21, in this tree.
 | "Which backend, where" is data | `wish/backends.py` — `Backend(probe=…, connect=…)` | already data |
 | The launcher takes a display | `tools/porlaunch.sh` — `POR_DISPLAY`, default `:7` | already parameterised |
 | The launcher takes monitor flags | `tools/porlaunch.sh` — `$MONFLAGS` | already parameterised |
-| Everything is copied into `work/` before booting | `tools/session.py:113` asserts `path.startswith(HERE)` | already the practice |
+| Everything is copied into scratch before booting | `Session.attach` in `tools/session.py` asserts `path.startswith(self.here)` | already the practice |
 | An env var is the project's idiom for "where is the thing" | `wish/ultimate.py:55`, `automap/paths.py:71` | pattern to copy |
 
 **So the premise holds: what is missing is an override and a harness, not an
@@ -122,7 +124,7 @@ of them are the actual work:
 3. **`SaveResourcesOnExit=1`.** `~/.var/app/net.sf.VICE/config/vice/vicerc`
    was last rewritten at 01:19 today and currently records
    `BinaryMonitorServerAddress="127.0.0.1:6502"` and
-   `FliplistName=".../work/curse.vfl"`. Parallel instances would race that
+   `FliplistName=".../curse.vfl"`. Parallel instances would race that
    file, and the last one to exit would leave Donald's own configuration
    pointing at whatever port it happened to use. Per-instance config is
    mandatory, exactly as the premise said, and now with the byte to prove it.
@@ -137,7 +139,7 @@ of them are the actual work:
 | 2 | text-monitor port | `tools/session.py` needs it for `attach`; one connection per run | `-remotemonitoraddress`, already a launch flag |
 | 3 | command-server port | `tools/session.py:509 serve()` binds `CMD_PORT` | module constant → instance attribute |
 | 4 | X display | `xdotool` XTEST goes to a display, not a window | `POR_DISPLAY`, already a launch flag |
-| 5 | disk copies | the game **writes** to the disks it is given | `HERE` → `work/inst/<n>/` |
+| 5 | disk copies | the game **writes** to the disks it is given | `HERE` → `inst/<n>/` |
 | 6 | `vicerc` | rewritten on exit; instances would race it | `-config <file>` |
 
 `Slot.env()` is the whole interface: `POR_SLOT`, `POR_DISPLAY`, `POR_VICERC`,
@@ -159,7 +161,7 @@ and neither is currently parameterised.
 what it says: **CONFIRMED** 2026-08-22 by launching with `-config` and no
 monitor flags and watching VICE bind the file's two monitor addresses.
 
-Each slot gets `work/inst/<n>/vicerc`, **seeded by copying Donald's** and then
+Each slot gets `inst/<n>/vicerc`, **seeded by copying Donald's** and then
 overriding four lines. Copying rather than writing from scratch is not
 laziness: his rc carries
 
@@ -183,7 +185,7 @@ FliplistName=""                            # the pool attaches by path, not flip
 ```
 
 The flatpak grants `filesystems=home` (`flatpak info --show-permissions
-net.sf.VICE`), so a config under `/home/donald/src/wish/work/` is visible
+net.sf.VICE`), so a config anywhere under the home directory is visible
 inside the sandbox. `shared=network` is already granted too, so the
 `--share=network` gotcha in the launch wrapper is history.
 
@@ -199,11 +201,11 @@ template.
 
 | slot | binary | text | command | display | work dir |
 |---|---|---|---|---|---|
-| — | **6502** | **6510** | 6600 | `:7` | `work/drive/` |
-| 0 | 6520 | 6540 | 6560 | `:10` | `work/inst/0/` |
-| 1 | 6521 | 6541 | 6561 | `:11` | `work/inst/1/` |
+| — | **6502** | **6510** | 6600 | `:7` | `drive/` (scratch, deleted) |
+| 0 | 6520 | 6540 | 6560 | `:10` | `inst/0/` |
+| 1 | 6521 | 6541 | 6561 | `:11` | `inst/1/` |
 | … | … | … | … | … | … |
-| 15 | 6535 | 6555 | 6575 | `:25` | `work/inst/15/` |
+| 15 | 6535 | 6555 | 6575 | `:25` | `inst/15/` |
 
 **6502 and 6510 stay exactly what they are today and the pool never allocates
 them.** That is the point of moving the pool off the legacy numbers: after this
@@ -258,7 +260,7 @@ slot.release()                        # or just exit
 `tools/instance.py reap [n]` frees the ones that are nobody's;
 `python3 tools/session.py --pool` claims a slot and serves on its command port.
 
-**The lease is an `fcntl.flock` on `work/inst/<n>/lease`, held by the claiming
+**The lease is an `fcntl.flock` on `inst/<n>/lease`, held by the claiming
 process.** Allocation is: try `LOCK_EX | LOCK_NB` on each slot in turn, first
 success wins. The file's contents are informational JSON — slot, pid, game,
 agent name, launch time, the x64sc pid once known.
@@ -496,8 +498,8 @@ saving and is not the tenfold one the word "parallel" suggests.
   to name a slot, and an agent that names the wrong one kills the wrong game.
   §3.4 exists for that and it is the part most likely to be got wrong under
   pressure.
-* **Screenshots and logs need slot-stamping**, or `work/drive/` becomes a pile
-  of `boot-check.png` written by three agents. `work/inst/<n>/` fixes it by
+* **Screenshots and logs need slot-stamping**, or `drive/` (scratch, deleted) becomes a pile
+  of `boot-check.png` written by three agents. `inst/<n>/` fixes it by
   construction, which is why the disk copies move too.
 
 ---
@@ -539,7 +541,7 @@ rules files are what binds.
 > `vicerc` seeded from his; `SaveResourcesOnExit=0` in every one of them, so
 > nothing the pool runs can write settings back.
 
-The existing lines about copying disks into `work/`, never writing to
+The existing lines about copying disks into scratch, never writing to
 `/home/donald/c64/Pool of Radiance Disks/`, and never committing game data are
 unaffected and stay exactly as they are.
 
@@ -630,7 +632,7 @@ written, and step 0 was the whole thing:**
 | 0 | **A DOS copy of Pool of Radiance.** | **Found.** Donald's Steam *Forgotten Realms: The Archives*, unpacked read-only at `/home/donald/Downloads/fr-archives/` — the DOS game, plus the shipped pre-generated parties for six DOS Gold Box titles |
 | 1 | A DOS save of a known party | **Found**, in the same tree: a real played DOS Pool of Radiance party in three slots (`A`, `B`, `J`), `A` and `B` being the same party at two moments. 24 specimens in all |
 | 2 | `dosbox-staging` installed | still not installed here. One package. Recommending, not provisioning |
-| 3 | Check the community record layout against a real file | **Done.** **Every prediction in `117` survived**, the record is 285 bytes, and the money block, spellbook, per-class array and class bitmask are all CONFIRMED against 24 specimens. The write-up, `work/reports/dos-saves.md`, is lost; `goldbox/dos_port.py` carries the field table with confidence per field |
+| 3 | Check the community record layout against a real file | **Done.** **Every prediction in `117` survived**, the record is 285 bytes, and the money block, spellbook, per-class array and class bitmask are all CONFIRMED against 24 specimens. The write-up, `reports/dos-saves.md`, is lost; `goldbox/dos_port.py` carries the field table with confidence per field |
 | 4 | `goldbox/dos_port.py`, declarative, confidence per field | `117` order of work, step 2 |
 | 5 | Stand on a known square in both ports, read `$4BC2` / `$49C0` and the DOS equivalents | `117` obstacle 2 — and this one really does want DOSBox |
 | 6 | Item and spell numbering agreement | `117` obstacle 3. Partly answered statically: `ITEMS` is **126 of 128 records byte-identical** between the two ports, and spell ids 1–56 match — but DOS continues to 67 with item-invoked effects where the C64 continues with combat message fragments, so a DOS memorised-spell byte in 57–67 has no C64 id |
@@ -640,7 +642,7 @@ on has arrived. Only steps 4 and 5 are left, and only 5 wants a running DOSBox.
 
 ### The Amiga stand-in: where it is safe and where it is not
 
-Another agent is working `work/amiga/` right now — the two `[cr SKR]` ADFs are
+Another agent was working `amiga/` (scratch, deleted) right now — the two `[cr SKR]` ADFs are
 unpacked and `hunk10.asm`, `dax.py`, `ecl/` are today's files. `117` obstacle 1
 proposes exactly this: the Amiga port is DOS-lineage (`ecl.dax`, `geo.dax`,
 `DAxF` containers) so its scripts can be read to find the quest-flag base *by

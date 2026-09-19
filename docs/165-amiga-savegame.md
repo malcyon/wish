@@ -93,7 +93,7 @@ increments `g57a0`, south increments `g57a1`, west decrements `g57a0`, each
 wrapping at 15. So `g57a0` is x, `g57a1` is y, and both wrap on a 16 x 16
 grid -- which the bounds test at `0x3b612` states directly. And a saved game
 edited to `x = 5, y = 9, facing = 6`, three bytes and nothing else, drew
-**`5,9 W 00:00`** on the status line (`work/28ssb/shots/06-world.png`; the
+**`5,9 W 00:00`** on the status line (`cited/28ssb/shots/06-world.png`; the
 specimen is `~/wish-specimens/ssb-amiga/WISH-SPEC-ssb-amiga-moved/`).
 
 **`docs/124-amiga-port.md` §1.14a has the same run's other half**: the engine
@@ -299,7 +299,7 @@ ENCAMP. UNKNOWN, one specimen.
 **The party region moved nothing but `experience`, on all six characters**:
 200,000 to 202,750 on the five single-classed and 100,000 to 101,250 on the
 multi-classed one, which carries half. The opening scene awards it; there was
-no fight (`work/331run/shots/07-after.png` through `09-adventuring.png` are the
+no fight (`cited/331run/shots/07-after.png` through `09-adventuring.png` are the
 scene) and the clock never left `00:00`. That is an independent corroboration
 of the field's offset -- it is the one thing the engine moved, by an amount a
 Gold Box award has the shape of. The other 42 bytes are `effect_chain` and
@@ -317,7 +317,7 @@ number in `$5012` alone.
 ## What the running game did with one
 
 **CONFIRMED, one WinUAE run each on 2026-09-05**, holder `wish28`, screenshots
-in `work/28run/shots/`. Until then every claim on this page was a statement
+in `cited/28run/shots`. Until then every claim on this page was a statement
 about what the save routine writes, and no Curse or Silver Blades saved game
 this project wrote had ever been loaded by the game.
 
