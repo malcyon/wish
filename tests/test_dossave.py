@@ -107,19 +107,29 @@ def _save_dir():
     not under the game folder. Recognise it by the files rather than the path,
     and by the record size rather than by the file names: every title in the
     family writes `CHRDAT??.SAV` beside a `SAVGAM?.DAT`, and only Pool of
-    Radiance writes 285 bytes. Prefer the directory with the most records, so
-    a played party wins over the shipped one.
+    Radiance writes 285 bytes. Count the `.CHA` files beside the `.SAV` ones,
+    since a played party is both. Rank a folder with the game's own files above
+    it ahead of the save count, so the installed copy beats a shipped
+    `Default files/Saves` and a Steam `SavesDir` folder that has no game beside
+    it, and walk in sorted order so a tie is the same folder on every machine.
     """
     best = None
     for root in _candidates():
         try:
             if not root.is_dir():
                 continue
-            for path in root.rglob("SAVGAM[ABJ].DAT"):
-                records = [p for p in path.parent.glob("CHRDAT*.SAV")
+            folders = sorted({p.parent for p in root.rglob("SAVGAM[ABJ].DAT")})
+            for folder in folders:
+                records = [p for p in (*folder.glob("CHRDAT*.SAV"),
+                                       *folder.glob("*.CHA"))
                            if p.stat().st_size == RECORD_SIZE]
-                if records and (best is None or len(records) > best[0]):
-                    best = (len(records), path.parent)
+                if not records:
+                    continue
+                game = any((folder.parent / name).is_file()
+                           for name in ("START.EXE", "ECL1.DAX"))
+                rank = (game, len(records))
+                if best is None or rank > best[0]:
+                    best = (rank, folder)
         except OSError:
             continue
     return best[1] if best else None

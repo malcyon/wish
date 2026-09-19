@@ -21,10 +21,10 @@ Load3DMap.`
 
 from __future__ import annotations
 
-import functools
 import pathlib
 
 import pytest
+from test_dossave import _save_dir
 
 from goldbox import dos_codec
 from goldbox import dos_savegame as sg
@@ -42,31 +42,6 @@ TRAINING_HALL = 11
 #: with 11 at `$49F2`, and so does DOS Pool of Radiance's own resave of the
 #: converted file.
 HALL_GEO = 0
-
-
-@functools.lru_cache(maxsize=1)
-def _save_dir():
-    """A played DOS Pool of Radiance save directory, or None.
-
-    The same rule `tests/test_dossave.py` uses -- recognised by a
-    `SAVGAM?.DAT` beside 285-byte `CHRDAT*.SAV` files rather than by its path,
-    because Steam redirects the save directory out of the game folder.
-    Repeated here rather than imported: a test module's private helpers are
-    not another agent's to depend on.
-    """
-    from tools.registry import gamedisks
-    for root in gamedisks.candidates("dos-archives"):
-        try:
-            if not root.is_dir():
-                continue
-            for path in root.rglob("SAVGAM[ABJ].DAT"):
-                records = [p for p in path.parent.glob("CHRDAT*.SAV")
-                           if p.stat().st_size == 285]
-                if records:
-                    return path.parent
-        except OSError:
-            continue
-    return None
 
 
 needs_dos_game = pytest.mark.skipif(
