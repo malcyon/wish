@@ -24,6 +24,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from optin import opted_in  # noqa: E402
+
 from tools.dos import dosboxx  # noqa: E402
 
 # Shares a group with tests/test_instance.py -- see that file's own note.
@@ -570,7 +572,7 @@ def test_a_machine_with_no_debugger_build_says_so_rather_than_failing_later():
 
 
 @pytest.mark.skipif(
-    os.environ.get("WISH_DOSBOXX_DRIVE") != "1",
+    not opted_in("WISH_DOSBOXX_DRIVE"),
     reason="set WISH_DOSBOXX_DRIVE=1 to boot DOSBox-X; it takes about four minutes",
 )
 def test_the_harness_reproduces_the_clock_tick_docs_142_recorded():

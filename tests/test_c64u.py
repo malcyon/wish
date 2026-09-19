@@ -19,6 +19,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from optin import opted_in  # noqa: E402
+
 from tools.c64 import c64u  # noqa: E402
 
 
@@ -381,6 +383,27 @@ def test_collecting_this_file_with_hardware_tests_enabled_touches_no_device(
         + result.stdout + result.stderr)
 
 
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on", "TRUE", " On "])
+def test_an_opt_in_variable_set_to_a_true_word_is_on(monkeypatch, value):
+    """The rule behind the DOSBox, DOSBox-X and hardware opt-ins: `=true`
+    counts, the same as `=1`."""
+    monkeypatch.setenv("WISH_TEST_OPT_IN", value)
+    assert opted_in("WISH_TEST_OPT_IN")
+
+
+@pytest.mark.parametrize("value", ["", "0", "off", "no", "false", "2"])
+def test_an_opt_in_variable_set_to_anything_else_is_off(monkeypatch, value):
+    """A variable somebody exported once and forgot must not start an
+    emulator or touch a device."""
+    monkeypatch.setenv("WISH_TEST_OPT_IN", value)
+    assert not opted_in("WISH_TEST_OPT_IN")
+
+
+def test_an_opt_in_variable_that_is_not_set_is_off(monkeypatch):
+    monkeypatch.delenv("WISH_TEST_OPT_IN", raising=False)
+    assert not opted_in("WISH_TEST_OPT_IN")
+
+
 def _hardware_tests_requested() -> bool:
     """Whether `$C64U_HARDWARE_TESTS` opts in -- the environment only.
 
@@ -390,8 +413,7 @@ def _hardware_tests_requested() -> bool:
     the device -- even `available()`, which is a real REST call -- belongs in
     a test body behind a runtime `pytest.skip()`, never here.
     """
-    return os.environ.get("C64U_HARDWARE_TESTS", "").lower() in (
-        "1", "true", "yes", "on")
+    return opted_in("C64U_HARDWARE_TESTS")
 
 
 @pytest.mark.skipif(not _hardware_tests_requested(),

@@ -29,6 +29,7 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from gamedata import needs_specimens  # noqa: E402
+from optin import opted_in  # noqa: E402
 
 from tools.dos import dosbox  # noqa: E402
 
@@ -967,7 +968,7 @@ def test_the_header_byte_names_more_than_one_area_so_it_is_not_the_map():
 
 
 @pytest.mark.skipif(
-    os.environ.get("WISH_DOSBOX_DRIVE") != "1",
+    not opted_in("WISH_DOSBOX_DRIVE"),
     reason="set WISH_DOSBOX_DRIVE=1 to boot DOSBox; it takes about a minute",
 )
 def test_driving_the_game_one_step_moves_the_square_and_nothing_else():

@@ -27,6 +27,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from optin import opted_in  # noqa: E402
+
 from tools.dos import dosbox, dosfightrun  # noqa: E402
 
 BAR_W, BAR_H = dosbox.BAR[2], dosbox.BAR[3]
@@ -407,7 +409,7 @@ def test_no_recorded_combat_bar_is_a_strip_of_one_colour():
 
 
 @pytest.mark.skipif(
-    os.environ.get("WISH_DOSBOX_DRIVE") != "1",
+    not opted_in("WISH_DOSBOX_DRIVE"),
     reason="set WISH_DOSBOX_DRIVE=1 to boot DOSBox; a fight takes a few minutes",
 )
 def test_a_driven_fight_raises_experience_in_the_records():
