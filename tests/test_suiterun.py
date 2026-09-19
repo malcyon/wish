@@ -342,7 +342,11 @@ CHILD = textwrap.dedent("""
     suiterun.REPO = pathlib.Path(sys.argv[1])
     suiterun.RUFF = pathlib.Path(sys.executable)
     suiterun.marker_dir = lambda: pathlib.Path(sys.argv[2])
-    suiterun.run_checks = lambda worktree: time.sleep(120)
+    def waiting(worktree):
+        pathlib.Path(sys.argv[3]).write_text("ready")
+        time.sleep(120)
+
+    suiterun.run_checks = waiting
     sys.exit(suiterun.main(["HEAD", "--no-rebase"]))
 """)
 
@@ -354,21 +358,25 @@ def test_a_real_sigterm_to_the_wrapper_leaves_no_worktree(clones, tmp_path):
     temp = tmp_path / "temp"
     temp.mkdir()
     errors = tmp_path / "child.stderr"
+    ready = tmp_path / "ready"
     with errors.open("wb") as fh:
         child = subprocess.Popen(
-            [sys.executable, "-c", CHILD, str(mine), str(tmp_path / "testrun")],
+            [sys.executable, "-c", CHILD, str(mine), str(tmp_path / "testrun"), str(ready)],
             cwd=REPO, stderr=fh,
             env={**os.environ, "TMPDIR": str(temp), "TEMP": str(temp), "TMP": str(temp)})
     try:
-        # A deadline rather than a sleep: how long a checkout takes on a
-        # loaded machine is not something this test should assert.
+        # The child writes `ready` once its checkout is complete, so the signal
+        # arrives while the run is checking, not while git is still filling the
+        # worktree; the locked case has its own test. A deadline rather than a
+        # sleep, because how long a checkout takes on a loaded machine is not
+        # something this test should assert.
         deadline = time.time() + 60
-        while len(_worktrees(mine)) < 2:
+        while not ready.exists():
             if child.poll() is not None:
                 pytest.fail(f"the wrapper exited {child.returncode} before it "
-                            f"made a worktree:\n{errors.read_text() or '(empty)'}")
+                            f"was ready:\n{errors.read_text() or '(empty)'}")
             if time.time() > deadline:
-                pytest.fail("no worktree appeared in 60s")
+                pytest.fail("the wrapper was not ready in 60s")
             time.sleep(0.05)
         child.send_signal(signal.SIGTERM)
         assert child.wait(60) == 128 + signal.SIGTERM, errors.read_text()
@@ -379,6 +387,28 @@ def test_a_real_sigterm_to_the_wrapper_leaves_no_worktree(clones, tmp_path):
     assert len(_worktrees(mine)) == 1
     scratch_root = temp / "wish" / "suiterun"
     assert list(scratch_root.iterdir()) == []
+
+
+def test_a_worktree_left_locked_by_an_interrupted_checkout_is_still_removed(clones, tmp_path, monkeypatch):
+    """`git worktree add` locks a worktree while it fills it, so a run stopped mid-checkout leaves a locked one, which a single `--force` does not remove."""
+    _, mine = clones
+    monkeypatch.setattr(suiterun, "REPO", mine)
+    monkeypatch.setattr(suiterun, "RUFF", pathlib.Path(sys.executable))
+    monkeypatch.setattr(suiterun, "marker_dir", lambda: tmp_path / "testrun")
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    seen = {}
+
+    def locked(worktree):
+        seen["worktree"] = worktree
+        _git(mine, "worktree", "lock", str(worktree))
+        raise SystemExit(128 + signal.SIGTERM)
+
+    monkeypatch.setattr(suiterun, "run_checks", locked)
+    with pytest.raises(SystemExit):
+        suiterun.main(["HEAD", "--no-rebase"])
+    worktree = seen["worktree"]
+    assert not worktree.exists() and not worktree.parent.exists()
+    assert len(_worktrees(mine)) == 1
 
 
 def test_the_sweep_removes_an_abandoned_base_and_leaves_a_live_one(clones, tmp_path, monkeypatch):

@@ -313,7 +313,10 @@ def main(argv=None) -> int:
     finally:
         signal.signal(signal.SIGTERM, previous)
         if not args.keep:
-            _run(["git", "worktree", "remove", "--force", str(worktree)], REPO, 120)
+            # Twice, because git locks a worktree while it fills it and a run
+            # stopped mid-checkout leaves a locked one, which one `--force`
+            # does not remove.
+            _run(["git", "worktree", "remove", "--force", "--force", str(worktree)], REPO, 120)
             _run(["git", "worktree", "prune"], REPO, 60)
             shutil.rmtree(base, ignore_errors=True)
     print(f"target {sha}")
