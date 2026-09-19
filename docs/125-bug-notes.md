@@ -1016,7 +1016,7 @@ screen, no reload prompt. Return and space change nothing. The only way on is
 to switch the machine off and reload the last save.
 
 **What the game does.** `POST.COM`'s losing branch ends `JMP $0957`, a jump to
-itself. Driven twice (`tools/defeatdrive.py`, `cited/128/run2` and
+itself. Driven twice (`tools/pool_of_radiance/defeatdrive.py`, `cited/128/run2` and
 `run3`), the program counter was caught sitting there 96 of 97 samples across
 70 seconds of screen reads that never changed. All six characters are left
 `DYING` (`$84`) rather than `DEAD`, because the pass that would advance them to

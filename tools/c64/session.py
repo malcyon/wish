@@ -276,7 +276,7 @@ def parse_status(text: str) -> Status | None:
 # **This is Pool of Radiance's address and `Session.mode()` no longer reads
 # it**: the byte is `$7F11` in Curse and Silver Blades, so the method asks
 # `self.machine.mode_flag` (`#334`).  The constant stays because
-# `tools/defeatdrive.py` and `tools/fleedrive.py` import it, and both drive
+# `tools/pool_of_radiance/defeatdrive.py` and `tools/pool_of_radiance/fleedrive.py` import it, and both drive
 # Pool of Radiance and nothing else.
 MODE = 0x6E11
 DUNGEON = 1
@@ -340,11 +340,11 @@ RE_MOVE_LEFT = re.compile(r"MOVE\s*LEFT\s*[=:]\s*(\d+)")
 #
 # The losing line was then read off a driven defeat -- six characters wounded
 # to 1 hit point through the monitor and every turn passed, `cited/128`,
-# `tools/defeatdrive.py` -- where it appeared on row 10 with `$6DC7` = $80.
+# `tools/pool_of_radiance/defeatdrive.py` -- where it appeared on row 10 with `$6DC7` = $80.
 # No exclamation mark, unlike the winning line (`#128`).
 #
 # **`RAN_TEXT` was read off a driven flight** -- `cited/445/run2`,
-# `tools/fleedrive.py`, where ROLAND walked to the edge of the combat map and
+# `tools/pool_of_radiance/fleedrive.py`, where ROLAND walked to the edge of the combat map and
 # stepped off it, the game answered `GOT AWAY` and wrote `$86 RUNNING` into
 # his record, and the orcs finished the other five.  Row 10 column 1 in a
 # cleared window with row 24 blank, `$6DC7` = $81, and nothing written by the
@@ -2626,7 +2626,7 @@ class Session:
                 # and `NO` is deliberate there rather than a gap.  The default
                 # tactic never steps off the map, so the prompt can only be up
                 # because a tactic put it there, and a tactic that means to
-                # flee answers it itself; `Flight` in `tools/fleedrive.py`
+                # flee answers it itself; `Flight` in `tools/pool_of_radiance/fleedrive.py`
                 # does (`#445`).  Answering `YES` here would let any driver
                 # walk a converted party out of the fight it was meant to be
                 # proving something in.
@@ -2659,7 +2659,7 @@ def claim_slot(want: int | None = None, note: str = ""):
     again.  Nothing is ever killed to make room: a slot whose lease is held
     belongs to somebody.
 
-    This lived in `tools/fightrun.py` and is here because every tool that
+    This lived in `tools/pool_of_radiance/fightrun.py` and is here because every tool that
     drives a session needs it, and the second copy of it would be the third
     in this directory.
     """

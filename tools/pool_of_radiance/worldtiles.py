@@ -34,10 +34,10 @@ The attribute's **high nibble** is not the C64's business: colour RAM is four
 bits wide and the chip never sees it.  `census` counts it; what the engine
 does with it is not settled here.
 
-    tools/worldtiles.py sheet --window all
-    tools/worldtiles.py view 5 7 29 --scale 4
-    tools/worldtiles.py codes 5 7 29
-    tools/worldtiles.py census
+    tools/pool_of_radiance/worldtiles.py sheet --window all
+    tools/pool_of_radiance/worldtiles.py view 5 7 29 --scale 4
+    tools/pool_of_radiance/worldtiles.py codes 5 7 29
+    tools/pool_of_radiance/worldtiles.py census
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ import os
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -83,7 +83,7 @@ CHARSET_NAMES = ("SECSET04", "SECSET05", "SECSET06")
 #: `$D021`, `$D022`, `$D023` -- the three colours a multicolour cell shares
 #: with the whole screen, so no tile can carry them: black, light grey and
 #: green.  **Read off the chip on the travel grid**, 2026-09-08, measurement
-#: B of `docs/217-drawing-the-wilderness.md`: `tools/worldregisters.py` booted
+#: B of `docs/217-drawing-the-wilderness.md`: `tools/pool_of_radiance/worldregisters.py` booted
 #: `p190/C64OUT1.D64` (scratch, deleted) and read `$D021`-`$D023` as `$F0 $FF $F5` while the
 #: party stood at (8,27) on the middle window, the border `$D020` black with
 #: it.  Change this only against another such reading -- fitting it to a
@@ -209,7 +209,7 @@ def pane_codes(window: W.Window, left: int, top: int,
     """The character codes and attributes a pane would put on the screen.
 
     One row a character row, `(screen code, attribute)` a cell -- what
-    `tools/worldregisters.py` compares against the live screen and colour
+    `tools/pool_of_radiance/worldregisters.py` compares against the live screen and colour
     RAM, which is the check that says the 9-and-9 split and the pane
     geometry are both right.
     """

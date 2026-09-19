@@ -211,7 +211,7 @@ writes: `$4A81` 0 → 250 at `ECL14 $B048` and the row appears reading
 `In progress`, then 250 → 255 at `$A3A8` and it reads `Finished` and is drawn
 muted. The panel was rendered from the live `$4900`-`$64FF` read rather than
 from a file — the run is "The Quest Log's side-quest row, watched arriving"
-in `docs/50-experiments.md`, and `tools/ohlowatch.py` repeats it. Both halves
+in `docs/50-experiments.md`, and `tools/pool_of_radiance/ohlowatch.py` repeats it. Both halves
 of the removal condition were met, and `WISH_EXPERIMENTAL_QUESTS` came off on
 2026-09-05: the row and the group are built unconditionally now.
 

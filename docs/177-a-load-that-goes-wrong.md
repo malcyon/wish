@@ -221,4 +221,4 @@ the main menu, and Donald's own recipe cannot be driven this way at all.
 |---|---|
 | `tools/c64/c64uplay.py` | boots, answers a prompt, tells a KERNAL stage from a matrix stage, watches until the machine stops and captures ten regions when it does |
 | `tools/c64/c64urest.py` | the transport underneath it -- REST for the machine, FTP for a file |
-| `tools/porattract.py` | the same attract loop under a pooled VICE, sampling the **program counter**, which is the control the hardware cannot provide |
+| `tools/pool_of_radiance/porattract.py` | the same attract loop under a pooled VICE, sampling the **program counter**, which is the control the hardware cannot provide |

@@ -13,7 +13,7 @@ import pytest
 from goldbox import c64_save, savegame
 from goldbox.d64 import D64, attach_load_address
 from goldbox.record import CharacterRecord
-from tools import dirtenicon as repair
+from tools.pool_of_radiance import dirtenicon as repair
 
 
 @pytest.fixture

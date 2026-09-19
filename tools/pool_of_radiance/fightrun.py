@@ -22,7 +22,7 @@ Nothing here writes to the player's disks: the save and the eight sides are
 copied into the slot's own directory, and `Session.attach` refuses any path
 outside it.
 
-    tools/fightrun.py --save PORSAVE13.D64 --slot 1 --budget 600
+    tools/pool_of_radiance/fightrun.py --save PORSAVE13.D64 --slot 1 --budget 600
 
 `PORSAVE13.D64` three steps into the Slums is the reproduction `#127` and
 `#165` were both measured on: one ambush, six characters, eight orcs,
@@ -36,7 +36,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

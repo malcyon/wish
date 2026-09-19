@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Press the attack step and then WAIT, logging what the game does.
 
-    tools/attackwatch.py [NAME [SAVE [BUDGET [SLOT]]]]
+    tools/pool_of_radiance/attackwatch.py [NAME [SAVE [BUDGET [SLOT]]]]
 
 This is a run for `#127 (A driven character stands next to an enemy and
 passes its turn instead of attacking)`.  NAME is the log's name (default
@@ -27,7 +27,7 @@ import shutil
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402

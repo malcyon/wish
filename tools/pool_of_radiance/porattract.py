@@ -15,7 +15,7 @@ leaving the `PLAY GAME` menu alone is what starts the demo -- and sample the
 jiffy clock and the screen until either the window expires or nothing has moved
 for long enough to call it a stall.
 
-    tools/porattract.py --minutes 30 --log vice-attract.jsonl
+    tools/pool_of_radiance/porattract.py --minutes 30 --log vice-attract.jsonl
 
 One JSON line per sample, written as it is taken, because a run that ends in a
 stall ends by being killed and nothing would be written at the end.  The slot
@@ -33,7 +33,7 @@ import pathlib
 import sys
 import time
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from tools import gamedisks, instance  # noqa: E402
 from tools.c64.session import Session  # noqa: E402

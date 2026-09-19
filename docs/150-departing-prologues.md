@@ -220,7 +220,7 @@ The DOS guide's note that a `LOADCHAR` index of 128 or more adds a monster to
 the party ([`128`](128-guide-and-scripting.md)) describes `ADDNPC` (`$36`), not
 this opcode; `ECL0D $A8AB ADDNPC 104, 100` is how she joins.
 
-**Grade: CONFIRMED**, in the emulator on 2026-09-03 by `tools/koboldnpc.py`.
+**Grade: CONFIRMED**, in the emulator on 2026-09-03 by `tools/pool_of_radiance/koboldnpc.py`.
 Two runs of the warp plan and one of the walk plan, all three booting the same
 save disk with the party in area 13 and ending in area 27, so the only thing
 that differs is how the party left. Master slot 3 -- the record at `$4D00 +
@@ -311,7 +311,7 @@ it as belt-and-braces for a path that returns; on the path that reaches
   jumps to. A route two jumps back may run statements this page does not list.
 * **Two of the three visible entries have now been watched in the running
   game** -- the pinned wall slots by `tools/areas/wallpins.py` on 2026-09-02 and the
-  Kobold Caves' NPC by `tools/koboldnpc.py` on 2026-09-03, both graded
+  Kobold Caves' NPC by `tools/pool_of_radiance/koboldnpc.py` on 2026-09-03, both graded
   CONFIRMED above. This bullet said nothing here had been watched at all,
   which was true when the page was written and stopped being true with the
   first of those runs. The overland-square entry is still read off the

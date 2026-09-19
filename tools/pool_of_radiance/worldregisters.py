@@ -8,7 +8,7 @@ registers, the character base, how big the game's own travel view is, and
 whether the tile attribute's high nibble ever reaches colour RAM.
 
 **Not a new driver.**  It boots one outdoor save the way
-`tools/c64/c64outdoor.py` and `tools/outdoorstep.py` do -- pool slot, staged
+`tools/c64/c64outdoor.py` and `tools/pool_of_radiance/outdoorstep.py` do -- pool slot, staged
 copies of the player's disks, `Session` -- and then reads memory instead of
 writing a save.  The player's disks are read and never written.
 
@@ -24,7 +24,7 @@ writing a save.  The player's disks are read and never written.
 | `$8C00`-`$8E87` | the resident window against the disk's own `SQRDATA0n` |
 | `$033D` after each of the digits `1`-`8` | which value of the heading byte is which compass direction |
 
-    tools/worldregisters.py
+    tools/pool_of_radiance/worldregisters.py
 
 With no `--disk` it boots the engine-written outdoor save out of the specimen
 tree -- `$WISH_SPECIMENS`, `~/wish-specimens` by default -- and says what to
@@ -39,7 +39,7 @@ import json
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -48,8 +48,8 @@ from automap import vice as V  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox import world as W  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import worldtiles as WT  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.pool_of_radiance import worldtiles as WT  # noqa: E402
 
 #: The outdoor save this boots when `--disk` names none: `#190`'s own resave,
 #: the first C64 saved game anybody made standing on the travel grid, written

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Drive a Curse of the Azure Bonds party into a fight and try to flee it, for `#445 (The game's third fight outcome, THE PARTY RUNS AWAY, has never been seen on a screen)`.
 
-The Pool of Radiance half of that issue is `tools/fleedrive.py`, which cannot be
+The Pool of Radiance half of that issue is `tools/pool_of_radiance/fleedrive.py`, which cannot be
 reused whole for Curse: it boots `tools/c64/session.py`'s own `Session`, and Curse
 boots through `tools/curse_of_the_azure_bonds/curserun.py`'s `CurseSession`.  What does reuse whole is
-`Flight`, `tools/fleedrive.py`'s tactic -- it is written against the generic
+`Flight`, `tools/pool_of_radiance/fleedrive.py`'s tactic -- it is written against the generic
 `Session` interface (`battle()`, `acting()`, `combat_bar()`, `await_bar()`,
 `press_kernal()`, `kbd.key()`, `combat_turn()`), all of which `CurseSession`
 already answers, with its own overrides where a bar needs the KERNAL buffer --
@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: E402
-from tools.fleedrive import Flight, Log, rows_of  # noqa: E402
+from tools.pool_of_radiance.fleedrive import Flight, Log, rows_of  # noqa: E402
 
 
 def run(args) -> int:

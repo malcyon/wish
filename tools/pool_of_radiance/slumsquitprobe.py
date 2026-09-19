@@ -2,7 +2,7 @@
 """What does QUIT on the DONE sub-bar actually do? -- a driven probe for `#165
 (One character that cannot act takes every turn in a driven fight)`.
 
-    .venv/bin/python tools/slumsquitprobe.py [NAME [SAVE [BUDGET [SLOT]]]]
+    .venv/bin/python tools/pool_of_radiance/slumsquitprobe.py [NAME [SAVE [BUDGET [SLOT]]]]
 
 NAME is the run's name (default `quit1`), SAVE the save disk in the Pool of
 Radiance folder (default `PORSAVE13.D64`), BUDGET the fight's time budget in
@@ -36,7 +36,7 @@ import shutil
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from tools import gamedisks, instance, scratch  # noqa: E402

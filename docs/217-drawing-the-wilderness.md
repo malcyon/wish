@@ -25,7 +25,7 @@ work that was already finished, so §0 comes first.
 | read `SQRDATA04`/`05`/`06` off the disks, the 18 x 36 grid, the 120 tile entries, the stitch at world x 15 and 28 | `goldbox/world.py`, `tests/test_world.py` (19 tests) | **done**, commits `4836f23` and `806497c` |
 | a party's outdoor state in a save, every port: `outdoors`, `travel`, and `geo` holding the `SQRDATA` number when outdoors | `goldbox/world_state.py` | **done**, `#352 (Handle world state for Amiga saves)` and `#376 (An Amiga party on the travel grid still cannot be converted to the C64 or DOS, because the reader refuses one)` |
 | engine-written outdoor C64 saves and the tool that makes more | `p190/C64OUT1.D64`, `C64OUT2.D64` (scratch, deleted); `tools/c64/c64outdoor.py` | the tool exists; both saves are **gone**, as are `p3/W1.D64`-`W7.D64` (`cited/p190` kept only a seed disk and the log) |
-| walking a party on the grid under VICE, one compass step at a time, with a screenshot per press | `tools/c64/session.py` (`savecheck --walk`), `tools/outdoorstep.py`, `tools/areas/windowsquare.py` | **done**, `#189 (The emulator driver cannot move a party on the travel grid, and reads its facing out of the word OUTDOORS)` |
+| walking a party on the grid under VICE, one compass step at a time, with a screenshot per press | `tools/c64/session.py` (`savecheck --walk`), `tools/pool_of_radiance/outdoorstep.py`, `tools/areas/windowsquare.py` | **done**, `#189 (The emulator driver cannot move a party on the travel grid, and reads its facing out of the word OUTDOORS)` |
 | screenshots of the travel screen | `cited/178/25-westwindow-arrival.png` (14,29), `25-westwindow.step3.png` (15,29), `26-middlewindow-arrival.png` (7,29) | exist; the "one screenshot" the ticket was waiting on has been on disk since `#178 (Fast Travel to the wilderness leaves the party on whatever overland square it last stood on)` |
 | a second generator for a byte-a-square map, painted by the same `kind` dispatch | `automap/combat.py` and `CombatCanvas` in `automap/window.py` | the pattern to copy, not a thing to reuse |
 | `passable()` and `site_at()` | `goldbox/world.py` | **stubs that raise**, on purpose: their tables are in `ECL19`/`1A`/`1B` and the script read is closed (`docs/115-review-the-scripts.md`) |
@@ -93,7 +93,7 @@ skip the two bytes and index from zero.
 ### B. One session on the grid -- emulator, one pool slot, about half an hour
 
 Boot `p190/C64OUT1.D64` (scratch, deleted) (middle window, (8,27)) the way
-`tools/outdoorstep.py` does, and in one stop read:
+`tools/pool_of_radiance/outdoorstep.py` does, and in one stop read:
 
 | bytes | what it settles |
 |---|---|
@@ -105,7 +105,7 @@ Boot `p190/C64OUT1.D64` (scratch, deleted) (middle window, (8,27)) the way
 | `$033D`, then after pressing each of `1`-`8` in turn and returning | the eight-way encoding. `outdoorstep.py` already presses the digit and reads `$49C3`/`$49C4` around it; add the one byte |
 
 Then a screenshot standing on a `$A` tile if the sheet has not already said
-what one is. `tools/outdoorstep.py` and `tools/c64/c64outdoor.py` have the
+what one is. `tools/pool_of_radiance/outdoorstep.py` and `tools/c64/c64outdoor.py` have the
 staging, the pool claim and the monitor reads; this is a `--registers`
 option on one of them, not a new driver. Nothing in it writes to the player's
 disks; the save is copied into the slot.
@@ -155,7 +155,7 @@ Each piece is one reviewable commit with a test that goes red without it.
 Pieces 1 and 2 need no emulator and can start now; 3 to 5 need measurement
 B's answers only where marked; 6 waits on Donald.
 
-**1. `tools/worldtiles.py`, measurement A.** `sheet` writes the three
+**1. `tools/pool_of_radiance/worldtiles.py`, measurement A.** `sheet` writes the three
 sheets; `view WINDOW X Y` writes the game's own pane around a square; `sample
 X Y --cell 34` writes the two looks side by side once piece 5 exists. Reads
 the disks through `automap.paths.find_disks`, writes only under `--out`.

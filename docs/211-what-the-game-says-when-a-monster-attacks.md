@@ -69,10 +69,10 @@ The eight the melee-attack routine uses:
 the ones a monster or a spell earns, and they come out of the same table
 through the same printer: `GAZES...`, `BREATHES...`, `SPITS ACID`,
 `SUCKS SOME BLOOD`, `RAKES`, `SWEEPS`, `TURNS INTO GAS`, `SURRENDERS`,
-`(HELPLESS)`. `tools/monstermsg.py table` prints all 64 off the player's own
+`(HELPLESS)`. `tools/pool_of_radiance/monstermsg.py table` prints all 64 off the player's own
 disks; nothing here copies them.
 
-`tools/monstermsg.py sites` finds the printers' callers. `$0D68` is the only
+`tools/pool_of_radiance/monstermsg.py sites` finds the printers' callers. `$0D68` is the only
 `JSR $2983` in COMBAT with a literal index; the other two, `$2936` and
 `$29B1`, take theirs from `$2B38`, and **nothing in COMBAT stores to `$2B38`
 with a direct instruction** — three mentions, two `LDX $2B38` and one byte
@@ -81,7 +81,7 @@ loose end here.
 
 ## Driven, and what came out — CONFIRMED
 
-`tools/monstermsg.py fight` boots a pool slot, loads `PORSAVE13.D64`, walks
+`tools/pool_of_radiance/monstermsg.py fight` boots a pool slot, loads `PORSAVE13.D64`, walks
 four steps into the slums ambush and polls the panel through
 `automap/combatlog.py`'s own `CombatLog.poll` at the 200 ms `AutomapBinding`
 ticks at, driving the party's turns in between.
@@ -114,7 +114,7 @@ orc's THAC0 19 less each defender's armour class: 17 against BRUTUS at AC 2,
 `cited/rolls/run1.jsonl`, a fight recorded on 2026-08-30 for the roll work,
 and they replay through today's reader as
 `ORC ATTACKS BRUTUS AND MISSES...` and `ORC ATTACKS MALCYON AND MISSES...`.
-`tools/monstermsg.py replay` is that check, and it needs no emulator.
+`tools/pool_of_radiance/monstermsg.py replay` is that check, and it needs no emulator.
 
 ## The name a monster is given
 

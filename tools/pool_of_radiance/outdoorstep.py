@@ -22,7 +22,7 @@ Both routes for the digit are tried in turn -- XTEST first, then the KERNAL
 buffer -- because a title that reads only one of them looks exactly like a
 party hemmed in (`#192`, `#360`).
 
-    tools/outdoorstep.py --disk /path/to/PORSAVEB-fixed.D64 --moves 7315 \\
+    tools/pool_of_radiance/outdoorstep.py --disk /path/to/PORSAVEB-fixed.D64 --moves 7315 \\
         --tag amiga --resave /path/to/amiga-resaved.D64
 
 Nothing is written to the player's disks: the save is copied into the pool
@@ -36,7 +36,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

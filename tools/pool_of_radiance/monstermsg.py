@@ -6,10 +6,10 @@ monster does)` has two halves. The dice half is explained in `automap/rolls.py`;
 this is the tool for the other one -- the words themselves. Four commands, in
 increasing order of what they cost:
 
-    tools/monstermsg.py table            # COMBAT's 64 messages, out of SPELLN00
-    tools/monstermsg.py sites            # every place COMBAT prints one
-    tools/monstermsg.py replay F.jsonl   # a recorded fight, through CombatLog
-    tools/monstermsg.py fight --slot 3   # drive one and poll as the window does
+    tools/pool_of_radiance/monstermsg.py table            # COMBAT's 64 messages, out of SPELLN00
+    tools/pool_of_radiance/monstermsg.py sites            # every place COMBAT prints one
+    tools/pool_of_radiance/monstermsg.py replay F.jsonl   # a recorded fight, through CombatLog
+    tools/pool_of_radiance/monstermsg.py fight --slot 3   # drive one and poll as the window does
 
 **`table` and `sites` are the evidence that cannot be poisoned**, because they
 read the shipped overlay rather than any specimen. `SPELLN00` loads at `$AF00`
@@ -51,7 +51,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

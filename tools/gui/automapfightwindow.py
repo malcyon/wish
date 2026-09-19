@@ -3,7 +3,7 @@
 dice but nothing a monster does)` had not taken: the assembled window,
 `AutomapBinding` on its own `QTimer`, against a live driven fight -- rather
 than `CombatLog.poll` driven directly by a harness, which is all
-`tools/monstermsg.py fight` does.
+`tools/pool_of_radiance/monstermsg.py fight` does.
 
 **Why this needed its own target.** `automap/target.py`'s `ViceTarget` holds
 one binary-monitor connection open for the whole session and resumes it

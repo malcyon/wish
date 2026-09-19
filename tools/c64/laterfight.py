@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Walk a Curse or Silver Blades party into a fight, and read the combat screen.
 
-`tools/fightrun.py` and `tools/c64/combatdiag.py` do this for Pool of Radiance and
+`tools/pool_of_radiance/fightrun.py` and `tools/c64/combatdiag.py` do this for Pool of Radiance and
 both boot their own `Session`, which is that title's front end.  Curse and
 Silver Blades boot differently (`tools/curse_of_the_azure_bonds/curserun.py`, `tools/ssbrun.py`), and
 by the time either has a party in the world the session is already **served**

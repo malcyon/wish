@@ -14,8 +14,8 @@ and then every turn is passed so nobody strikes back.  Nothing else is
 touched: the status byte at `+0x00`, the messages, the outcome byte and
 whatever the game does next are all the game's.
 
-    tools/defeatdrive.py --save PORSAVE13.D64 --slot 3
-    tools/defeatdrive.py --save PORSAVE13.D64 --hp 1 --after 90
+    tools/pool_of_radiance/defeatdrive.py --save PORSAVE13.D64 --slot 3
+    tools/pool_of_radiance/defeatdrive.py --save PORSAVE13.D64 --hp 1 --after 90
 
 `PORSAVE13.D64` three steps into the Slums is the one-ambush reproduction the
 combat harness was built on: six characters, eight orcs, everybody in contact
@@ -56,7 +56,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

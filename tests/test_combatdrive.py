@@ -419,7 +419,7 @@ def test_a_fight_the_party_loses_is_classified_from_the_screen():
     say it claimed nothing about the game's wording.  It can now: a party of
     six wounded to 1 hit point through the monitor and left to the orcs drew
     `THE PARTY HAS LOST` at row 10 with the result byte `$6DC7` at `$80`
-    (`#128`, `tools/defeatdrive.py`), so the row below is the shape the game
+    (`#128`, `tools/pool_of_radiance/defeatdrive.py`), so the row below is the shape the game
     puts on the screen -- the line alone in a cleared full-width window,
     which is why nothing else is on the row.
     """

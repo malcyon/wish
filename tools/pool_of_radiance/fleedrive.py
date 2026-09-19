@@ -6,8 +6,8 @@ third -- the party running away -- had never been read off a screen, so a
 driven fight that ended in flight came back as `ended` (`#445`).  This drives
 it, through the game's own FLEE.
 
-    tools/fleedrive.py code
-    POR_HEADLESS=1 tools/fleedrive.py drive --out DIR
+    tools/pool_of_radiance/fleedrive.py code
+    POR_HEADLESS=1 tools/pool_of_radiance/fleedrive.py drive --out DIR
 
 **`code` needs no emulator.**  It reads each C64 title's own `POST.COM` off
 the player's disks and prints the three end-of-fight lines, the base the
@@ -28,7 +28,7 @@ The outcome the message needs is not "everybody ran": `POST.COM $0903` prints
 least one character is `RUNNING`**.  So once the game has written the first
 `$86` -- and not before -- the run puts whoever is still standing on one hit
 point through the monitor and passes their turns while the monsters finish
-them, which is `tools/defeatdrive.py`'s patch and nothing more (`#128`).
+them, which is `tools/pool_of_radiance/defeatdrive.py`'s patch and nothing more (`#128`).
 Every flight in the run is the game's, the hit points are the only thing this
 writes, and they are written after the outcome has already been decided.
 **`--no-wound` turns even that off**, and the run that read the line used it:
@@ -63,7 +63,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -102,7 +102,7 @@ SPIN = 0x0957
 #: otherwise clears status and empties the roster slot of anyone who is
 #: neither `RUNNING` nor the flee outcome itself.  Nonzero skips the drop and
 #: spares the character.  The same byte gates the `$0957` spin on a defeat
-#: (`tools/defeatdrive.py`'s `MERCY`); `#445`'s `--mercy` here stages it to 1
+#: (`tools/pool_of_radiance/defeatdrive.py`'s `MERCY`); `#445`'s `--mercy` here stages it to 1
 #: once, after the fight has started and before the outcome is decided, to
 #: test whether it spares the characters a flight would otherwise drop.
 MERCY = 0x6DE6
@@ -645,7 +645,7 @@ def drive(sess, log: Log, frames: Frames, flight: Flight, args) -> str | None:
             # no longer be `$80`: `POST.COM $090C` reaches `THE PARTY RUNS
             # AWAY` as soon as nobody is standing.  Everybody still standing
             # is put on one hit point so the monsters can finish the fight,
-            # which is `tools/defeatdrive.py`'s patch and nothing more.
+            # which is `tools/pool_of_radiance/defeatdrive.py`'s patch and nothing more.
             standing = [i for i, v in enumerate(here) if v and not v & 0x80]
             if standing:
                 wound(sess, standing, args.hp)

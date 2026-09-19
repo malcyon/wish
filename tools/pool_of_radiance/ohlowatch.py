@@ -9,7 +9,7 @@ collects the potion and to change when it delivers it.  Everything before
 this was a save file read offline; nothing had watched the engine write
 `$4A81` with the panel attached.
 
-    POR_HEADLESS=1 tools/ohlowatch.py --out DIR
+    POR_HEADLESS=1 tools/pool_of_radiance/ohlowatch.py --out DIR
 
 What one run does, in order:
 
@@ -70,7 +70,7 @@ import subprocess
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -250,7 +250,7 @@ def render(bin_path: pathlib.Path, png_path: pathlib.Path) -> dict:
     env["QT_QPA_PLATFORM"] = "offscreen"
     env["GDK_BACKEND"] = "x11"
     r = subprocess.run(
-        [sys.executable, str(TOOLS / "ohlowatch.py"), "rows",
+        [sys.executable, str(TOOLS / "pool_of_radiance" / "ohlowatch.py"), "rows",
          "--bin", str(bin_path), "--png", str(png_path)],
         env=env, capture_output=True, text=True)
     if r.returncode != 0:
@@ -319,7 +319,7 @@ def answer(sess, body, out, label, menu_at, option, expect,
     """Answer whatever the square's script puts up, until `$4A81` reads `expect`.
 
     Driven by what is on the screen rather than by a fixed sequence, the same
-    shape `tools/koboldnpc.py`'s `answer_the_exit` uses: a script answers a
+    shape `tools/pool_of_radiance/koboldnpc.py`'s `answer_the_exit` uses: a script answers a
     walked step with several screens and the order is not knowable in advance.
     `$4A81` is sampled on every pass, so the run measures when the engine
     wrote it rather than assuming the screen that followed.

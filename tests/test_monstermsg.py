@@ -13,7 +13,7 @@ from gamedata import disk_dir, needs_disks
 
 from automap import combatlog
 from automap.screen import SCREEN_COLS
-from tools import monstermsg
+from tools.pool_of_radiance import monstermsg
 
 #: `COMBAT $0D63`'s own indices, read off the overlay in `#350`. Kept here as
 #: the phrases rather than the numbers, because a number that moved would be a

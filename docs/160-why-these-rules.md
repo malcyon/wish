@@ -542,7 +542,7 @@ both ways. That gap is also the useful fact about CI, which has no such director
 either: the bare run is the closest thing to what CI will do, and the in-tree
 run is what covers the specimen-backed tests. Neither is the whole check alone.
 
-**`tools/fightrun.py` shipped a hardcoded path, 2026-09-01.** It carried
+**`tools/pool_of_radiance/fightrun.py` shipped a hardcoded path, 2026-09-01.** It carried
 `DISKS = pathlib.Path("/home/donald/c64/...")` and went red on all four jobs
 against a suite that had passed twice locally. The cause is that
 `tests/test_repository_contents.py` walks the files *git knows about* -- the

@@ -23,7 +23,7 @@ record)` -- through the binary monitor, before and after every key.  A turn
 then shows as "the square did not move, and it was not meant to", and a step
 shows as the square moving, which is the thing worth proving:
 
-    tools/outdoorwalk.py --disk OUTC.D64 --slot 2 --moves 8484
+    tools/pool_of_radiance/outdoorwalk.py --disk OUTC.D64 --slot 2 --moves 8484
 
 Written for `#50 (Lift the wilderness refusal from the DOS save converter)`,
 whose end-to-end proof is "convert a wilderness DOS save, load it, and walk".
@@ -41,7 +41,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

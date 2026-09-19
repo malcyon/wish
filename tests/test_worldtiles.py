@@ -1,4 +1,4 @@
-"""`tools/worldtiles.py` -- the C64 cell rules, against synthetic bytes.
+"""`tools/pool_of_radiance/worldtiles.py` -- the C64 cell rules, against synthetic bytes.
 
 Measurement A of `docs/217-drawing-the-wilderness.md` turns a wilderness tile
 into pixels, and three rules decide every pixel of it: bit 3 of the attribute
@@ -13,7 +13,7 @@ and cannot be fixtures, so the check that the renderer reproduces one is done
 by eye and reported on
 `#11 (Draw the wilderness on the automapper)`. The byte-level half of that
 check -- 225 of 225 screen codes over the game's own pane -- is
-`tools/worldregisters.py`'s, against a running machine.
+`tools/pool_of_radiance/worldregisters.py`'s, against a running machine.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from goldbox.world import (
     Window,  # noqa: E402
 )
 from tests.test_world import synthetic_window  # noqa: E402
-from tools.worldtiles import (  # noqa: E402
+from tools.pool_of_radiance.worldtiles import (  # noqa: E402
     GLYPH_BASE,
     GLYPH_BYTES,
     TILE_PIXELS,

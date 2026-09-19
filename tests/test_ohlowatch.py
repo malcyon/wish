@@ -1,4 +1,4 @@
-"""`tools/ohlowatch.py`'s `rows` mode, offline (#414).
+"""`tools/pool_of_radiance/ohlowatch.py`'s `rows` mode, offline (#414).
 
 `rows_mode()` renders the Quest Log panel from a captured `$4900`-`$64FF`
 window with no emulator involved, which is the half of the tool this suite can
@@ -23,7 +23,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import ohlowatch  # noqa: E402
+from tools.pool_of_radiance import ohlowatch  # noqa: E402
 
 
 def test_rows_mode_runs_with_no_quests_environment_variable(tmp_path, capsys):

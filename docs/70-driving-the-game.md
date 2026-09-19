@@ -280,7 +280,7 @@ and `fight()`. Before those existed every agent that needed a fight wrote its
 own loop, and `drive/qffight.py`, `combatlog/walkabout.py` (scratch, deleted) and
 `p118-step3/run.py` are three of them.
 
-**`tools/fightrun.py` is the runner**: boot a pool slot, load a save, walk
+**`tools/pool_of_radiance/fightrun.py` is the runner**: boot a pool slot, load a save, walk
 until something ambushes the party, drive every command bar with
 `melee_turn`, and print who took the turns, how many had an enemy in contact
 and how many of those ended with a blow. Three copies of it were written into
@@ -337,7 +337,7 @@ that stops at the mode byte leaves the party at a `PRESS <RETURN>` for ever, so
 
 ### Driving a flight, and a line a one-second poll cannot see
 
-`tools/fleedrive.py` drives the third outcome, and two things about it
+`tools/pool_of_radiance/fleedrive.py` drives the third outcome, and two things about it
 generalise to any message on the way out of a fight.
 
 **A character flees by walking off the edge of the combat map**, which puts up

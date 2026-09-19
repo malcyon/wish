@@ -357,8 +357,8 @@ def keep_old_log(out: pathlib.Path) -> pathlib.Path | None:
 class Log:
     """Everything the run saw, to the terminal and to a `.jsonl` beside it.
 
-    Nine other driven-run tools -- `tools/fightrun.py`, `tools/outdoorstep.py`,
-    `tools/c64/c64restinterrupt.py`, `tools/defeatdrive.py`, `tools/c64/statusdrive.py`,
+    Nine other driven-run tools -- `tools/pool_of_radiance/fightrun.py`, `tools/pool_of_radiance/outdoorstep.py`,
+    `tools/c64/c64restinterrupt.py`, `tools/pool_of_radiance/defeatdrive.py`, `tools/c64/statusdrive.py`,
     `tools/c64/hallmenu.py`, `tools/c64/turndrive.py`, `tools/c64/traitsave.py` and
     `tools/c64/traitdrive.py` -- had their own copy of this class, none of them
     hardened the way `#380 (The session driver sometimes fails BEGIN

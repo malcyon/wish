@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Inspect DIRTEN's missing Pool combat icon, or repair a new disk-image copy.
 
-    tools/dirtenicon.py save.d64
-    tools/dirtenicon.py save.d64 --out repaired.d64
+    tools/pool_of_radiance/dirtenicon.py save.d64
+    tools/pool_of_radiance/dirtenicon.py save.d64 --out repaired.d64
 
 Inspection is the default. The only accepted repair is a unique joined NPC
 named DIRTEN whose entire icon is zero. No existing file is ever overwritten.
@@ -25,7 +25,7 @@ import sys
 from dataclasses import dataclass
 from hashlib import sha256
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox import c64_codec, c64_port, c64_save, savegame  # noqa: E402

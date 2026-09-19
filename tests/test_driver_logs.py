@@ -5,8 +5,8 @@ wait)`: a second run at the same path keeps the first run's log rather than
 truncating it, a dead console cannot take the record down with it, and a
 `SIGTERM` unwinds through the run's own cleanup instead of killing it where it
 stands. `#442 (Nine driven-run tools lose their log when the console goes,
-and two truncate the previous run's)` moved `tools/fightrun.py`,
-`tools/outdoorstep.py`, `tools/c64/c64restinterrupt.py`, `tools/defeatdrive.py`,
+and two truncate the previous run's)` moved `tools/pool_of_radiance/fightrun.py`,
+`tools/pool_of_radiance/outdoorstep.py`, `tools/c64/c64restinterrupt.py`, `tools/pool_of_radiance/defeatdrive.py`,
 `tools/c64/statusdrive.py`, `tools/c64/hallmenu.py`, `tools/c64/turndrive.py`,
 `tools/c64/traitsave.py` and `tools/c64/traitdrive.py` onto `tools/c64/savecheck.py`'s
 `Log`, either directly or as the base of a small subclass.
@@ -208,7 +208,7 @@ def make_fake_s(slot: FakeSlot, on_boot=None):
         def stage_writable(src, dest):
             """`#472`'s shared helper, which several of these tools now call.
 
-            `tools/c64/hallmenu.py` and `tools/outdoorstep.py` both call it, and
+            `tools/c64/hallmenu.py` and `tools/pool_of_radiance/outdoorstep.py` both call it, and
             these tests reach neither line because they pass no `--disk`. So
             this is here before it is needed rather than after: the same gap
             in `tests/test_savecheck_log.py`'s own double did fire, and the

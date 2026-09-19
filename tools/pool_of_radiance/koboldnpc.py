@@ -10,8 +10,8 @@ name, and on finding her zeroes `$6B00` (the name) and `$6C00` (the roster
 status) and writes the emptied record back with `LOADCHAR slot | 128`.  A fast
 travel enters `NEWECL` at its tail, `$2034`, past all of it.
 
-    tools/koboldnpc.py --plan walk --out DIR
-    tools/koboldnpc.py --plan warp --out DIR2
+    tools/pool_of_radiance/koboldnpc.py --plan walk --out DIR
+    tools/pool_of_radiance/koboldnpc.py --plan warp --out DIR2
 
 Both plans boot the **same** save disk and end in area 27, so exactly one
 thing differs between the two captures: how the party left area 13.  The save
@@ -38,7 +38,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

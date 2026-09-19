@@ -6347,7 +6347,7 @@ fast travel, which enters `NEWECL` at its tail `$2034`, does not. Stated in
 understood, and Fast Travel skips it)` and predicted from the bytecode before
 any emulator ran.
 
-**Method.** `tools/koboldnpc.py`, on pool slot 1, `POR_HEADLESS=1`. Both plans
+**Method.** `tools/pool_of_radiance/koboldnpc.py`, on pool slot 1, `POR_HEADLESS=1`. Both plans
 boot the **same** save disk — a party standing in the Kobold Caves, area 13,
 with `PRINCESS FATIMA` in master slot 3 — and both end in area 27, so the one
 thing that differs between the capture sets is how the party left. `walk` puts
@@ -6906,7 +6906,7 @@ checked against six of the player's own save disks, and
 `automap/questlog.py`'s `WISH_EXPERIMENTAL_QUESTS` flag was held up until the
 row had been **seen** to change with the game running. This is that run; it
 is the measurement that let the flag come off on 2026-09-05.
-`tools/ohlowatch.py` repeats it in one command.
+`tools/pool_of_radiance/ohlowatch.py` repeats it in one command.
 
 **Method.** Pool slot 0, headless, `NEWSAVE4.D64` — the party standing in the
 Slums with `$4A04` = 250 and `$4A81` = 0. At each stage the driver reads
@@ -7662,7 +7662,7 @@ this engine evidence, not weakened to accept arbitrary output.
 ### Explicit recovery writes a new copy, not the original save
 
 **The recovery command reproduces the accepted repair — CONFIRMED.**
-`tools/dirtenicon.py` inspects by default; `--out` must name a new `.d64` in
+`tools/pool_of_radiance/dirtenicon.py` inspects by default; `--out` must name a new `.d64` in
 an existing directory. It locates DIRTEN across all eight party slots by name,
 NPC flag, nonzero roster status with `OUT_OF_PLAY` clear, and matching roster
 slot identity. It refuses

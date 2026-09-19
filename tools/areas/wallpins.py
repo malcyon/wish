@@ -268,7 +268,7 @@ def walk_into_graveyard(sess, target, ft, out) -> bool:
 
     Which digit is east is not written down anywhere -- `#189 (The emulator
     driver cannot move a party on the travel grid, and reads its facing out of
-    the word OUTDOORS)` is open, and `tools/outdoorwalk.py` records only that
+    the word OUTDOORS)` is open, and `tools/pool_of_radiance/outdoorwalk.py` records only that
     `8` and `4` each moved the party a square.  So the eight are tried in
     turn, the square put back to the start before each, and the one that lands
     on a gate square is the answer.

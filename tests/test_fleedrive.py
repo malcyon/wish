@@ -2,7 +2,7 @@
 
 `tools/c64/session.py` classified two of the engine's three end-of-fight lines
 until 2026-09-08. The third, `THE PARTY RUNS AWAY`, was read off a driven
-flight that night -- `cited/445/run2`, `tools/fleedrive.py drive
+flight that night -- `cited/445/run2`, `tools/pool_of_radiance/fleedrive.py drive
 --no-wound`, where ROLAND walked to the edge of the combat map, stepped off
 it, and the game answered `GOT AWAY` and wrote `$86 RUNNING` into his record
 (`#445`).

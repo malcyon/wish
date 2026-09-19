@@ -203,7 +203,7 @@ a word the game uses anywhere.
 **All three C64 titles carry the same three lines at the same three table
 entries, and pick between them with the same compare.** The base is derived
 from each file's own table rather than taken from the PRG header, which is
-wrong on every one of them — `tools/fleedrive.py code` prints this off the
+wrong on every one of them — `tools/pool_of_radiance/fleedrive.py code` prints this off the
 player's disks:
 
 | title | header claims | derived base | table | entry 2 | the fleeing arm |
@@ -245,7 +245,7 @@ message and its delay, `$0942`-`$0957` takes three readings and two of the
 three ways out are `JMP $0957`, at `$0957` — a jump to itself.
 
 Measured on the running machine, twice, with the same six-character party out
-of `PORSAVE13.D64` (`tools/defeatdrive.py`, `cited/128/run2` and `run3`):
+of `PORSAVE13.D64` (`tools/pool_of_radiance/defeatdrive.py`, `cited/128/run2` and `run3`):
 
 * **66 of 66 program-counter samples read `$0957`** over 70 seconds in the
   second run, and 30 of 31 in the first — the odd one was `$2E25`, inside
