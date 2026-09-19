@@ -27,7 +27,7 @@ at, and a hit inside a string table would be a false one. Read it as an
 inventory to check by hand, not as a proof.
 
 `replay` takes any JSON-lines capture carrying a whole-screen `scr` and the
-four window bytes `win2` -- `work/rolls/run1.jsonl` is the shape -- and runs it
+four window bytes `win2` -- `cited/rolls/run1.jsonl` is one -- and runs it
 through today's `automap/combatlog.py`, so a reader change can be checked
 against a fight nobody has to drive again.
 
@@ -40,7 +40,7 @@ monster, and the summary is the count of each.
 
 Nothing here writes to the player's disks: `Session` stages copies into the
 slot's own directory. Nothing it prints is committed -- the game's strings go
-to a terminal and to `work/`, and the repository keeps only the findings.
+to a terminal and to a scratch directory, and the repository keeps only the findings.
 """
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ sys.path.insert(0, str(ROOT))
 from automap import combatlog, rolls  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from automap.screen import band  # noqa: E402
-from tools import overlay  # noqa: E402
+from tools import overlay, scratch  # noqa: E402
 
 #: Where `SPELLN00` is loaded, and the shape of its pointer table.
 SPELLN_LOAD = 0xAF00
@@ -208,7 +208,8 @@ def drive(args) -> int:
     """Boot, find a fight, and poll the message panel as the window does."""
     from tools import session as S
 
-    out = pathlib.Path(args.out or ROOT / "work" / "issue350" / "fight.jsonl")
+    out = pathlib.Path(
+        args.out or scratch.scratch_dir("monstermsg") / "fight.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
     disks = pathlib.Path(args.disks)
     slot = S.claim_slot(args.slot, "monstermsg")

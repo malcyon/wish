@@ -16,8 +16,8 @@ Silver Blades saved game this project wrote had ever been loaded by the
 game**.  A slot written here, booted and drawn is what turns that into a
 measurement.
 
-    tools/amigalaterslot.py work/copy-of-curseA.adf --to B --out work/run.adf
-    tools/amigalaterslot.py work/copy-of-curseA.adf --to C --out work/run.adf \\
+    tools/amigalaterslot.py copy-of-curseA.adf --to B --out run.adf
+    tools/amigalaterslot.py copy-of-curseA.adf --to C --out run.adf \\
         --keep 3 --rename 1=BJORNDAR --strip-items 2
 
 Each edit is one visible thing, so a screenshot of the party panel says which

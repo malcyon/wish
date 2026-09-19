@@ -44,7 +44,7 @@ trains whoever is highlighted and `y` accepts.
         Up '~10' Right '~2' Up '~3' Up '~3' Left '~2' Up '~5' y '~6' \\
         '@End' t '~5' y '~7' s '~2' f '~7'
 
-Output goes under `work/`, never into the repository.  **Copy anything worth
+Output goes under the temp directory, never into the repository.  **Copy anything worth
 keeping into `$WISH_SPECIMENS` with `tools/specimens.py add` before the slot
 goes down.**
 """
@@ -64,7 +64,7 @@ sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_savegame as _sav  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 from tools.dosparty import wipe_roster  # noqa: E402
 from tools.dostrainprobe import install  # noqa: E402
 
@@ -209,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--party", type=pathlib.Path, required=True)
     ap.add_argument("--out", type=pathlib.Path,
-                    default=REPO / "work" / "issue249" / "train")
+                    default=scratch.scratch_dir("dostrain"))
     ap.add_argument("--slot", default="C")
     ap.add_argument("--level", type=lambda s: int(s, 0), default=None,
                     help="what to write at 0xD51, the hall's maximum level; "

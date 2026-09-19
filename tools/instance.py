@@ -54,6 +54,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
+
+from tools import scratch  # noqa: E402
 
 #: #233 (The test suite takes the emulator displays agents need, and eight
 #: slots is no longer enough): eight was too few for the agent count this
@@ -104,7 +107,7 @@ class PoolUnavailable(RuntimeError):
 
 def pool_root() -> Path:
     """Where the slots live. `$POR_INST` overrides, which is how tests isolate."""
-    return Path(os.environ.get("POR_INST") or (REPO / "work" / "inst"))
+    return Path(os.environ.get("POR_INST") or scratch.scratch_dir("instance"))
 
 
 def template_vicerc() -> Path:

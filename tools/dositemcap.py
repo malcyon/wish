@@ -52,9 +52,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.dos_savegame import dax_block  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
-OUT = pathlib.Path(__file__).resolve().parent.parent / "work" / "issue52-items"
+OUT = scratch.scratch_dir("dositemcap")
 
 #: The specimen this stands on: six characters rolled from creation under
 #: `#249 (Build a DOS party from creation and level it ourselves, so DOS

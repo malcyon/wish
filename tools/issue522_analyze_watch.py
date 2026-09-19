@@ -5,7 +5,7 @@ events for the two probe files that
 `tests/test_conftest_state_guard.py::_run_throwaway_test` writes, and reports
 whether the two probes' lifetimes overlapped and for how long.
 
-Usage: `issue522_analyze_watch.py work/issue522/watch/run1 work/issue522/watch/run2 ...`
+Usage: `issue522_analyze_watch.py RUN1 RUN2 ...`, each a directory `tools/issue522_probe_watch.py` wrote logs into
 """
 
 from __future__ import annotations

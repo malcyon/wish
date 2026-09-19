@@ -18,8 +18,8 @@ the confirm bar instead.  If it does, the bar is answered and gone before
 So this run does deliberately what the race does by accident: choose LOAD SAVED
 GAME, settle, send one space, and then ask exactly what `load_save` asks next.
 
-    tools/loadrace.py --disk work/376/PORSAVEB.D64 --space
-    tools/loadrace.py --disk work/376/PORSAVEB.D64 --no-space   # the control
+    tools/loadrace.py --disk PORSAVEB.D64 --space
+    tools/loadrace.py --disk PORSAVEB.D64 --no-space   # the control
 
 The two runs differ by one keypress and nothing else, which is what makes the
 answer a measurement rather than a story.  Nothing is written to the player's
@@ -40,6 +40,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
 from tools import savecheck as V  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -149,7 +150,7 @@ def main(argv=None) -> int:
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     p.add_argument("--tag", default=None, help="prefix for the screenshots")
     p.add_argument("--out", default=None,
-                   help="the log (default work/loadrace/<disk>.jsonl)")
+                   help="the log (default in the loadrace scratch directory, <disk>.jsonl)")
     p.add_argument("--space", action=argparse.BooleanOptionalAction, default=True,
                    help="send the stray space at the confirm prompt; "
                         "--no-space is the control")
@@ -162,7 +163,8 @@ def main(argv=None) -> int:
     stem = pathlib.Path(args.disk).stem
     args.tag = args.tag or f"{stem}-{'space' if args.space else 'control'}"
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "loadrace" / f"{args.tag}.jsonl")
+        scratch.scratch_dir("loadrace") / f"{args.tag}.jsonl")
+    scratch.ensure(out.parent)
     log = V.Log(out)
     try:
         return run(args, log)

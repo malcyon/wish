@@ -34,7 +34,7 @@ to for operand kind `$80` -- Silver Blades' is at `$1453`:
 
 So 81 payload bytes carry 108 characters. The one measurement behind the
 whole of this is that `ECL10 +$07B4`, unpacked that way, is character for
-character the line in `work/issue334/ssb8/04-after-watch.txt`.
+character the line in `cited/334/ssb8/04-after-watch.txt`.
 
 Nothing is assumed from Pool of Radiance: the opcode tables and the operand
 counts come out of the title's own `DUNGEON` through `tools/eclcensus.py`,

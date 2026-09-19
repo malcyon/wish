@@ -10,7 +10,7 @@ own store routine: `$6DD2`/`$6DD3` (the rest-interruption interval and
 chance) by entry 2 on ENCAMP, and `$6E7A`-`$6E7C` by the overland script's
 special-square search on every step.  This puts both to the running game:
 
-    tools/dosvmwatch.py --save work/p59-wallset/ycol --slot C
+    tools/dosvmwatch.py --save cited/p59-wallset/ycol --slot C
 
 It stages the named engine-written save into a DOSBox-X instance, loads it,
 finds the live VM array by matching the file (`tools/dosboxx.py`'s recipe),
@@ -22,8 +22,8 @@ rather than taken on trust.  Two experiments run back to back: a step with
 
 Addresses are given in the file's contiguous naming (`$4900` + word index),
 the way `docs/141-dos-savegame.md` names them, and translated to the VM's own
-addresses in the report.  Output goes under `--out`, which should be in
-`work/`; the archives and the source save are never written.
+addresses in the report.  Output goes under `--out`, which defaults to this tool's
+scratch directory; the archives and the source save are never written.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import dosbox, dosboxx  # noqa: E402
+from tools import dosbox, dosboxx, scratch  # noqa: E402
 from tools.dosspcexpiry import boot_retry, claim_free, on_screen  # noqa: E402
 from tools.session import stage_writable  # noqa: E402
 
@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--camp-words", type=lambda v: int(v, 0), nargs="*", default=[0x4FD2, 0x4FD3],
                     help="file-named words to watch across ENCAMP (default $4FD2 $4FD3 = VM $6DD2 $6DD3)")
     ap.add_argument("--quiet", type=float, default=8.0, help="seconds without a hit that end a collection")
-    ap.add_argument("--out", default="work/issue218/watch")
+    ap.add_argument("--out", default=str(scratch.scratch_dir("dosvmwatch", "watch")))
     args = ap.parse_args(argv)
     if dosboxx.unavailable():
         print(dosboxx.unavailable())

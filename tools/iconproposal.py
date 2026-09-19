@@ -16,10 +16,10 @@ colours the same record converts to.  Nothing here converts a save; when the
 tables are approved they move into `goldbox/`, and until then they are a
 picture on the issue.
 
-    tools/iconproposal.py --markdown work/issue130/proposal/proposal.md
-    tools/iconproposal.py --title secret-of-the-silver-blades --markdown work/issue330/silver-blades.md
-    tools/iconproposal.py --png work/issue130/proposal-weapons.png
-    tools/iconproposal.py --kind head --png work/issue130/proposal-heads.png
+    tools/iconproposal.py --markdown proposal.md
+    tools/iconproposal.py --title secret-of-the-silver-blades --markdown silver-blades.md
+    tools/iconproposal.py --png proposal-weapons.png
+    tools/iconproposal.py --kind head --png proposal-heads.png
     tools/iconproposal.py --compare-c64                # every title's C64 art
     tools/iconproposal.py --colours 91a2b3c4e6f7      # a record's own six bytes
     tools/iconproposal.py                             # the tables, as text
@@ -61,7 +61,7 @@ than one believed to be the same.
 all** and says so where each one would have been, rather than filling the
 column with another game's art.
 
-The PNG is the game's art and goes under `work/`, never into the repository.
+The PNG is the game's art and goes under the temp directory, never into the repository.
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ from tools import iconcorrespond as ic  # noqa: E402
 # each DOS head becomes, and EGA colour to C64 colour -- are Donald's
 # judgement and live in `tools/iconproposal.yaml`, beside this file, so he can
 # edit them without touching Python. Every row there is a look at
-# `work/issue130/big-*.png`, not a measurement.
+# `issue130/big-*.png` (scratch, deleted), not a measurement.
 
 #: `tools/iconproposal.yaml`, the single source for the three tables below.
 TABLE_PATH = pathlib.Path(__file__).with_name("iconproposal.yaml")
@@ -609,8 +609,8 @@ def markdown(game: pathlib.Path, disk: pathlib.Path | None, size: str,
     c64_redrawn = c64_redrawn_options(disk, reference_disk, icon_colours)
     lines += _c64_source_note(display_title, disk, c64_redrawn, compare)
     lines += [
-        "This file and its images are the game's own art. They live under",
-        "`work/` and must never be committed.",
+        "This file and its images are the game's own art. They live in the",
+        "temp directory and must never be committed.",
         "",
     ]
     for kind, table, alternatives in (
@@ -861,7 +861,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--size", default="large", choices=("small", "large"))
     ap.add_argument("--colours", default=DEFAULT_COLOURS.hex(),
                     help="the record's six icon_colours bytes, as hex")
-    ap.add_argument("--png", metavar="PATH", help="draw the table, under work/")
+    ap.add_argument("--png", metavar="PATH", help="draw the table to this path")
     ap.add_argument("--markdown", metavar="PATH",
                     help="write the proposal as a document, generated fresh "
                          "from tools/iconproposal.yaml, with one image per "

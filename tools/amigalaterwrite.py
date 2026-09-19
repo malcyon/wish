@@ -6,12 +6,12 @@ has an Amiga to arrive on)` built `goldbox.amiga_later.write_later`; this is the
 driver that runs it over a whole party, and the harness for the thing that
 would close that issue -- a converted party in front of the running game.
 
-    tools/amigalaterwrite.py --source work/copy-of-ssb.d64
-    tools/amigalaterwrite.py --source work/copy-of-ssb.d64 --report
-    tools/amigalaterwrite.py --source work/copy-of-ssb.d64 \\
-        --compare work/copy-of-secret-A.adf
-    tools/amigalaterwrite.py --source work/copy-of-ssb.d64 \\
-        --into work/copy-of-secret-A.adf --from A --to B --out work/run.adf
+    tools/amigalaterwrite.py --source copy-of-ssb.d64
+    tools/amigalaterwrite.py --source copy-of-ssb.d64 --report
+    tools/amigalaterwrite.py --source copy-of-ssb.d64 \\
+        --compare copy-of-secret-A.adf
+    tools/amigalaterwrite.py --source copy-of-ssb.d64 \\
+        --into copy-of-secret-A.adf --from A --to B --out run.adf
 
 Four things it does, cheapest first:
 

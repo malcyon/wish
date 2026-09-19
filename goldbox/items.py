@@ -238,7 +238,7 @@ EFFECT, POWER = 14, 15
 # 88 13 00 00 00`: +14 and +15 both zero, so bit 7 is never set and readying
 # it grants nothing. Watched in the running game -- three READY presses in
 # camp moved no byte of the character record and left the ten trait slots at
-# zero (`work/issue285/ring-shipped/`).
+# zero (`cited/285/ring-shipped/`).
 #
 # The repair below writes the working record's own two bytes, so a repaired
 # ring is the game's `ITEMFILE1D` ring rather than a value of ours.

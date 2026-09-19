@@ -45,7 +45,7 @@ Two subcommands:
         coins so the total is exactly what it says.
 
     tools/cursetrain.py run --pool N --disks <PIS> --save <out.d64> \\
-        --out work/issue18/run1
+        --out DIR
 
         Claim a pooled VICE slot, stage the six sides and the save disk,
         boot, and serve the command port.  **It stops there and does not
@@ -118,6 +118,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
+from tools import scratch  # noqa: E402
 
 #: Where the working character record sits while `GEN` runs.  `#18`'s own
 #: census fixed it: `GEN $151D CMP $7CC9,X` is the per-class level array at
@@ -293,7 +294,7 @@ def main(argv=None) -> int:
     rn.add_argument("--pool", type=int, default=None)
     rn.add_argument("--disks", default=os.environ.get("COAB_DISKS", ""))
     rn.add_argument("--save", required=True)
-    rn.add_argument("--out", default="work/issue18/run")
+    rn.add_argument("--out", default=str(scratch.scratch_dir("cursetrain", "run")))
     rn.set_defaults(func=drive)
 
     df = sub.add_parser("diff", help="diff a before/after record pair")

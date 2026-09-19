@@ -14,9 +14,9 @@ runs before `#126` ended with `THE PARTY HAS WON !` and no character having
 attacked, and a log of command bars cannot tell those apart.
 
 This lives in `tools/` because three copies of it have been written into
-`work/` and thrown away -- Donald, 2026-09-01: *"If you develop tools, put
-them into tools/, not work/.  That way, you don't have to rebuild them."*
-Only the data it produces belongs in `work/`.
+a scratch directory and thrown away, and Donald's instruction on 2026-09-01
+was that a tool belongs in tools/ so nobody has to rebuild it. Only the data it
+produces belongs in scratch.
 
 Nothing here writes to the player's disks: the save and the eight sides are
 copied into the slot's own directory, and `Session.attach` refuses any path
@@ -42,6 +42,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: Where the player keeps the disks, unless `--disks` says otherwise.  Read
@@ -170,14 +171,14 @@ def main(argv=None) -> int:
     p.add_argument("--steps", type=int, default=400,
                    help="give up after this many steps with no fight")
     p.add_argument("--out", default=None,
-                   help="where the log goes (default work/fightrun/<save>.jsonl)")
+                   help="where the log goes (default <temp>/wish/fightrun/<save>.jsonl)")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
     SC.catch_signals()
 
     disks = pathlib.Path(args.disks)
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "fightrun" / f"{pathlib.Path(args.save).stem}.jsonl")
+        scratch.scratch_dir("fightrun") / f"{pathlib.Path(args.save).stem}.jsonl")
     run = Run(out, args.quiet)
     slot = claim_slot(args.slot, f"fightrun/{args.save}")
     run.say(f"slot {slot.n} display {slot.display}  log {out}")

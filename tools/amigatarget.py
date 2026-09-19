@@ -4,12 +4,12 @@
 `automap/amiga.py` is the backend; this is the command line that drives it and
 the thing to reach for when an address stops answering.  Five commands:
 
-    tools/amigatarget.py --holder wish37 verify --adf work/issue37/ssb-A.adf
+    tools/amigatarget.py --holder wish37 verify --adf SSB-A.adf
     tools/amigatarget.py --holder wish37 locate
     tools/amigatarget.py --holder wish37 fix
-    tools/amigatarget.py --holder wish37 geo --out work/issue37/geo.bin \\
-        --library work/issue37/GEO.GLB
-    tools/amigatarget.py --holder wish37 automap --out work/issue37/run \\
+    tools/amigatarget.py --holder wish37 geo --out geo.bin \\
+        --library GEO.GLB
+    tools/amigatarget.py --holder wish37 automap --out DIR \\
         --polls 6 --walk 'NP8 NP4 NP8'
 
 **`automap` is the one that answers this ticket**: it builds the shipped

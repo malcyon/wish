@@ -13,7 +13,7 @@ questions and this file pins the difference: a retarget names an area the
 party has never been in, so `goldbox/areas.py` is its only source for the map;
 a conversion reads the map out of the save it is converting.
 
-Measured in the running game on 2026-09-05: `work/issue276/probe-geo00` loads
+Measured in the running game on 2026-09-05: `issue276/probe-geo00` (scratch, deleted) loads
 and draws the hall, and the same save with `$49C5` poked to 11 -- the value
 this code used to write -- exits to DOS with `Unable to load geo in
 Load3DMap.`

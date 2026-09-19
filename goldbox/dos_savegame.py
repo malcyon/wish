@@ -5,7 +5,7 @@ the saved game around it, the DOS counterpart of `docs/30-savegame-layout.md`.
 Everything here was established by differential analysis in DOSBox: twelve
 specimens -- Donald's own slots A, B and J, four saves taken one action
 apart, two engine resaves of converted parties, and three saves made on the
-overland travel map by playing there (#59's outdoor pass, `work/p59-outdoor`).
+overland travel map by playing there (#59's outdoor pass, `p59-outdoor` in scratch, deleted).
 The five-region map below is Pool of Radiance's; the other three titles are
 `CONTAINERS`, one row of region widths each, and what is graded there is
 graded there.  `docs/141-dos-savegame.md` is the prose
@@ -96,7 +96,7 @@ ECL_BUFFER = (5121, 12801)   # the loaded script text -- **live**, see below
 #: areas 0/21/20 and recorded the buffer as dead weight the loader refills;
 #: both are wrong.  The offset is 2 for all three, and a retarget that leaves
 #: the template's script in place dies in `Load3DMap` however many variables
-#: it writes -- `work/p60/run2`, variant X1.
+#: it writes -- `p60/run2` in scratch, deleted, variant X1.
 #:
 #: Past the script's end the buffer is **all zeros** -- 6 of 6 specimens,
 #: Donald's A/B/J and the three outdoor saves, remnants of 209/1972/3/1113
@@ -614,9 +614,9 @@ WALLMAP = 0x4AFD             # three words: (1,2,3) with three sets loaded,
 #: The wallset triple an **outdoor** save carries, and it is the engine's own
 #: value rather than one inherited from wherever the party left the grid.
 #:
-#: Six engine-written overland specimens hold it: `work/p50-outdoor` and #59's
+#: Six engine-written overland specimens hold it: `cited/p50-outdoor` and #59's
 #: three of 2026-08, all of which departed New Phlan, which holds the same
-#: three words -- and the three of `work/p59-wallset/keep`, which departed
+#: three words -- and the three of `cited/p59-wallset/keep`, which departed
 #: **Sokol Keep's `(1, 5, 9)`** with that triple deliberately left in the
 #: seed.  The engine replaced a triple it had never held, three times of
 #: three, so live and stale are separated (#59, #190).
@@ -648,7 +648,7 @@ VAR_LAST = VAR_BASE + VAR_WORDS - 1          # $52FF
 #: Measured over the four engine-written Pool of Radiance containers still on
 #: this machine -- Donald's played A, B and J, and the archives' own
 #: `Default files/Saves/SAVGAMA.DAT` -- and reported the same over twelve in
-#: #59, eight of which lived under `work/` and are gone.  None of the three
+#: #59, eight of which lived in scratch and are gone.  None of the three
 #: has a name; what is known is that the value does not move.
 SAVGAM_CONSTANTS: tuple[tuple[int, int, str], ...] = (
     (0x4FE1, 255, "255 in every specimen"),
@@ -890,7 +890,7 @@ def outdoors(save: bytes) -> bool:
 #: What the status line adds to the window-local x to print a world
 #: coordinate, per outdoor area.  Window 26 measured on-screen -- world
 #: `20,29` against `$49C3`/`$49C4` = (7,29), three of three (#59); 25 and 27
-#: are the C64 seam arithmetic (write-up lost, `work/reports/world-map.md` §3:
+#: are the C64 seam arithmetic (write-up lost, `reports/world-map.md` §3 in scratch, deleted:
 #: window 25's x+13 is window 26's x, and 26's x+13 is 27's), PROBABLE for the DOS
 #: display.  y is world y in every window.
 WINDOW_X_OFFSET = {25: 0, 26: 13, 27: 26}
@@ -1009,7 +1009,7 @@ def encounter_text(save: bytes, limit: int = 96) -> str:
 #: This is *not* the Amiga container.  That one is big-endian, orders the entry
 #: `id:u16 offset:u32 compressed:u16 raw:u16`, and is bit-packed rather than
 #: run-length coded; `docs/117-save-conversion.md`'s "all 843 blocks of all 23
-#: `.dax` files" is a statement about that format and `work/amiga/dax.py`, and
+#: `.dax` files" is a statement about that format and `amiga/dax.py` in scratch, deleted, and
 #: says nothing about this one (#65).
 DAX_ENTRY = 9
 
@@ -1356,14 +1356,14 @@ def retarget(save: bytearray, *, area: int, dax: int, wallset,
     save[start:start + len(body)] = body
 
 
-#: What a retarget must write.  Established by bisection -- `work/p59` runs
-#: 2-9 for the variables, `work/p60/run2` for the script buffer.  The naive
+#: What a retarget must write.  Established by bisection -- `p59` runs
+#: 2-9 for the variables, `p60/run2` for the script buffer (both scratch, deleted).  The naive
 #: recipe (header + $49C5 + $49F2 + square) dies with "Unable to load geo in
 #: Load3DMap."; so does the seven-write recipe that leaves the template's
 #: script staged.
 #:
 #: CONFIRMED for three area pairs: 0 -> 20 (#59 run 9), 21 -> 20 and 20 -> 0
-#: (`work/p60/run2`, X2 and X3), each loaded and walked.  The addresses are
+#: (`p60/run2` in scratch, deleted, X2 and X3), each loaded and walked.  The addresses are
 #: formatted from the constants above so the recipe cannot drift from the map
 #: it is a recipe for.
 RETARGET_WRITES = (

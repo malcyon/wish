@@ -27,7 +27,7 @@ GAME = f"{DISKS}/POOL1.D64"
 # skips rather than fails.
 pytestmark = pytest.mark.skipif(
     not pathlib.Path(GAME).exists(),
-    reason="needs the disks under work/")
+    reason="needs the game disks")
 
 
 live = pytest.mark.skipif(not pathlib.Path(SAVE).exists(),

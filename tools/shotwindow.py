@@ -28,13 +28,13 @@ pasted into an issue arrives without its terminal.
     .venv/bin/python tools/shotwindow.py                    # synthetic party
     .venv/bin/python tools/shotwindow.py --empty             # nothing open
     .venv/bin/python tools/shotwindow.py --font +6
-    .venv/bin/python tools/shotwindow.py --save work/PORSAVE11.D64 --tab map
+    .venv/bin/python tools/shotwindow.py --save PORSAVE11.D64 --tab map
 
 The default party is `tests/gamedata.synthetic_party` -- six characters of the
 widest shape the record allows -- so this runs on a machine with no game disks,
 and the picture is the worst case rather than a plausible one.
 
-**Output goes under `work/`, which is `.gitignore`d.** A synthetic party is
+**Output goes to the `shotwindow` scratch directory, outside the repository.** A synthetic party is
 ours; a screenshot of Donald's own save is his data and neither belongs in the
 repository.
 """
@@ -112,6 +112,7 @@ from PyQt6.QtGui import (  # noqa: E402
 )
 from PyQt6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
+from tools import scratch  # noqa: E402
 from wish.session import Session  # noqa: E402
 from wish.window import EDITOR_TAB, MAP_TAB, WishWindow  # noqa: E402
 
@@ -278,9 +279,8 @@ def _font_offset(text: str) -> float:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         description="Render the editor's window offscreen and write a PNG.")
-    ap.add_argument("out", nargs="?", default="work/reports/window.png",
-                    help="where to write the PNG (default: %(default)s, "
-                         "which is gitignored)")
+    ap.add_argument("out", nargs="?", default=str(scratch.scratch_dir("shotwindow") / "window.png"),
+                    help="where to write the PNG (default: %(default)s)")
     ap.add_argument("--save", help="a saved game to open (default: the "
                                    "synthetic widest party, so this runs "
                                    "with no game disks)")

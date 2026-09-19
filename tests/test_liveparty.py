@@ -4,7 +4,7 @@ from __future__ import annotations
 
 Twenty-nine level-ups were driven through the training school in area 11 on
 2026-08-22 and the 580-byte record read before and after each one
-(`work/reports/p18-party.md`).  The numbers below are what the *game* wrote, so
+(`reports/p18-party.md`, lost).  The numbers below are what the *game* wrote, so
 where they and `goldbox/levels.py` disagree it is the table that is wrong.
 
 Nothing here touches a disk or an emulator: the measurements are a handful of
@@ -224,11 +224,11 @@ def test_the_clamp_past_a_ceiling_has_a_number():
 
 # --- the multi-class clamp -------------------------------------------------
 #
-# LADY KATHERINE is magic-user 1 / thief 1 on `work/drive/LVBEFORE.D64` with
-# 5,002 experience, and the trainer's own before/after pair for her thief
-# training is `work/p18/lk-{before,after}.hex`.  These are the numbers off
-# those two records, so a change to `goldbox/levelup.py` cannot quietly stop
-# reproducing them.
+# LADY KATHERINE is magic-user 1 / thief 1 on `drive/LVBEFORE.D64` (scratch,
+# deleted) with 5,002 experience, and the trainer's own before/after pair for
+# her thief training was `p18/lk-{before,after}.hex` (scratch, deleted).
+# These are the numbers off those two records, so a change to
+# `goldbox/levelup.py` cannot quietly stop reproducing them.
 
 KATHERINE = {"class_bits": 5, "race": HALF_ELF, "constitution": 14,
              "thac0_base": 39}
@@ -247,7 +247,7 @@ def _character(**fields):
 
 
 def test_training_one_class_of_a_multi_class_character_is_the_pair_measured():
-    """The whole of `work/p18/lk-{before,after}.hex`, in three numbers."""
+    """The whole of `p18/lk-{before,after}.hex` (scratch, deleted), in three numbers."""
     before = _character(**KATHERINE_BEFORE)
     assert levelup.ready_classes(before) == ["magic-user", "thief"]
     plan = levelup.plan(before, "thief", rolled=1)

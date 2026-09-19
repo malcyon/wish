@@ -32,11 +32,11 @@ missing scan rather than as a silent pass.
 
     tools/dosicontitles.py                       # art, all four DOS titles
     tools/dosicontitles.py --code
-    tools/dosicontitles.py --json work/issue330/icontitles.json
+    tools/dosicontitles.py --json icontitles.json
 
 The game folders are found under `$FR_ARCHIVES`, then `gamedisks.yaml`'s
 `dos-archives` entry.  Everything is read and nothing is written except what
-`--json` names, which belongs under `work/`.
+`--json` names, which belongs in a scratch directory.
 """
 
 from __future__ import annotations

@@ -33,10 +33,10 @@ Examples
     tools/dosrecordwrite.py roundtrip ~/wish-specimens/por-dos
     tools/dosrecordwrite.py from-c64 \\
         ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \\
-        --out work/299/ssb-back --slot D
+        --out DIR --slot D
     tools/dosrecordwrite.py loop \\
         ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \\
-        work/curse/SSB-D-paine-memorised D
+        FOLDER D
 """
 
 from __future__ import annotations

@@ -13,7 +13,7 @@ Synthetic records come from `goldbox/dos_port.py`'s own table, exactly as
 `tests/test_curseconvert.py`'s `curse_record` does, so they run everywhere with
 no game data in them.  Two pairs are specimen-backed: `WISH-SPEC-curse-234-*`
 and `WISH-SPEC-ssb-234-*`, DEMELTINA and PAINE one action apart from their own
-training halls, rescued into `$WISH_SPECIMENS` from `work/curse/234-*` for
+training halls, rescued into `$WISH_SPECIMENS` from `curse/234-*` (scratch, deleted) for
 `#234 (A dual-classed Curse or Silver Blades character converted to DOS loses
 the class he trained out of)`.  Those tests skip without the specimen tree.
 """

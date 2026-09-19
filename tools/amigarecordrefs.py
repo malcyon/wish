@@ -9,9 +9,9 @@ displacement search is the way to ask "who reads this **field**", and there was
 no tool for it until `#396 (Whether an Amiga Curse or Silver Blades record's
 combat-icon fields share DOS's own numbering is unmeasured)` needed one.
 
-    tools/amigarecordrefs.py --adf work/copy-of-curse-A.adf --exe /Curse \
+    tools/amigarecordrefs.py --adf curse-A.adf --exe /Curse \
         145 146 148 149
-    tools/amigarecordrefs.py --file work/396/Curse de
+    tools/amigarecordrefs.py --file PATH/TO/Curse de
 
 Give it Amiga record offsets in hex; it prints the file offset and the
 instruction for every site.  Feed a file offset straight to

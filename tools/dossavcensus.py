@@ -4,8 +4,8 @@
 `#59 (Map the DOS saved game, not just the character record)` grades most of
 `docs/141-dos-savegame.md` on counts -- "2401 of 2560 words are zero in all
 twelve specimens", "byte 12807 is 2 in all twelve".  Those counts were taken
-against a corpus that has since changed: eight of the twelve files lived under
-`work/` and are gone, and `tools/dosoutdoor.py` and `#26`'s runs have made
+against a corpus that has since changed: eight of the twelve files lived in
+scratch and are gone, and `tools/dosoutdoor.py` and `#26`'s runs have made
 engine-written ones the original pass never had.  A count nobody can re-take
 is a count that rots, so this is the thing that re-takes it.
 
@@ -13,8 +13,8 @@ What it does, and it reads only -- it never writes a saved game:
 
 1. **Finds every `SAVGAM*.DAT` on this machine** -- the played party in the
    Steam `SavesDir`, the shipped ones under each title's `Default files/Saves`
-   and `GAME/*/SAVE`, and anything named on the command line (`work/p26/run*`,
-   `work/p50-outdoor`) -- and **deduplicates on the bytes**, because the
+   and `GAME/*/SAVE`, and anything named on the command line (`p26/run*` (scratch, deleted),
+   `cited/p50-outdoor`) -- and **deduplicates on the bytes**, because the
    archives ship most save directories twice.
 2. **Classifies each specimen**: its area, whether it stands indoors, its
    square, its clock, its party size, its wallset triple, and whether its ECL
@@ -26,7 +26,7 @@ What it does, and it reads only -- it never writes a saved game:
    that has none yet: `--include-never-adventured` keeps it in.  Nothing here
    claims such a save is *shipped*; a shipped stub (`Default files/Saves`'s
    `SAVGAMB.DAT` on each title) is one example of it, and
-   `work/issue304/probe/created/SAVGAMC.DAT` -- a save this project drove
+   `cited/304/probe/created/SAVGAMC.DAT` -- a save this project drove
    under DOSBox on `#304 (field_83_87 is written as a constant that the
    characters we rolled ourselves do not hold)` -- is another
    (`#327 (dossavcensus calls a party saved before it set out a shipped
@@ -67,7 +67,7 @@ def _roots() -> list[pathlib.Path]:
 
 #: A file we assembled rather than one the engine wrote.  Kept out of every
 #: count: a seed is a thing we put together and is not evidence about what the
-#: engine does with it.  `work/p26/issue191/built/SAVGAMA.DAT` carries no
+#: engine does with it.  `cited/p26/issue191/built/SAVGAMA.DAT` carries no
 #: prefix, so the directory name is the second test.
 HAND_BUILT_PREFIXES = ("BUILT-", "SEED-")
 HAND_BUILT_DIRS = ("built",)

@@ -11,7 +11,7 @@ score**, which is what `stage` is for; `read` says what a disk holds
 afterwards.
 
     tools/abilitypair.py read WISH-SPEC-curse-h-engine-resave.D64
-    tools/abilitypair.py stage --base in.D64 --out work/x.D64 \\
+    tools/abilitypair.py stage --base in.D64 --out DIR/x.D64 \\
         --set PHILIPPE:str=9/18 --set SHARA:str=18/9
     tools/abilitypair.py refs curse-of-the-azure-bonds
 

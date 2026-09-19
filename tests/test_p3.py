@@ -2,10 +2,10 @@ from __future__ import annotations
 
 """The disk half of the P3 wilderness finding, so it cannot rot silently.
 
-`work/reports/p3-saves.md` §4 reports that 648 bytes read live at `$8C00`
+`reports/p3-saves.md` (scratch, deleted) §4 reported that 648 bytes read live at `$8C00`
 matched `SQRDATA05` in 647 of 648 bytes and `SQRDATA06` in 645 of 648, and that
 **every byte that differed was a site square the scripts paint over while its
-flag is clear** -- `work/reports/world-map.md` §7's table, value for value.
+flag is clear** -- `reports/world-map.md` (scratch, deleted) §7's table, value for value.
 
 The live half needs an emulator and is not testable here. The disk half is:
 the four squares must hold the *unpainted* artwork the comparison found, at the

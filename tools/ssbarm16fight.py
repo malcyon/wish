@@ -22,8 +22,8 @@ three the engine itself writes on every step.
 
 Run: `.venv/bin/python tools/ssbarm16fight.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
-as the save. Writes its log and dumps under `work/issue334/ssb20/`. It waits
-90 seconds for the fight and gives `melee_turn` 300 seconds, which did not
+as the save. Writes its log and dumps under
+`<tmp>/wish/ssbarm16fight`. It waits 90 seconds for the fight and gives `melee_turn` 300 seconds, which did not
 finish six 52-hit-point assassins; `ssbarm16quick.py` is the version that
 answered that with `QUICK`.
 """
@@ -44,12 +44,13 @@ from tools import (  # noqa: E402
     cursethac0,
     gamedisks,
     laterbattle,
+    scratch,
     specimens,
     ssbwarp,
 )
 from tools import session as S  # noqa: E402
 
-OUT = ROOT / "work/issue334/ssb20"
+OUT = scratch.scratch_dir("ssbarm16fight")
 
 SAVE = str(specimens.tree_root() / "por-c64"
             / "WISH-SPEC-ssb-d-engine-resave-walked.D64")
@@ -97,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     ).parse_args(argv)
-    OUT.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(OUT)
     run = laterbattle.Battle(OUT, quiet=False)
     disks = str(gamedisks.find(G.SECRET_OF_THE_SILVER_BLADES.key))
     run.slot = S.claim_slot(None, "ssb_arm16_fight/334")

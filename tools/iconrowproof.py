@@ -18,7 +18,7 @@ leg, and nothing of the weapon class.
 
     tools/iconrowproof.py --specimen ssb-299-engine-resave --slot D \\
         --title secret-of-the-silver-blades --body 11 --size small \\
-        --stage work/issue335/staged-body11 --control
+        --stage DIR --control
 
 `--specimen` names a directory under the specimen tree
 (`tools/specimens.py`), `--from` a save folder anywhere; either is **copied**
@@ -44,9 +44,9 @@ the C64, because the reverse table has no per-title rows)`).  Comparing the
 two against what was staged shows the fix's effect, not a reading of either
 table in isolation.
 
-Nothing is written outside `--stage`, and that belongs under `work/`.  The
-C64 art is read off the title's own disk at run time and none of it is
-printed: the output is option numbers and part-class names.
+Nothing is written outside `--stage`, which defaults to a directory under the
+temp directory.  The C64 art is read off the title's own disk at run time and
+none of it is printed: the output is option numbers and part-class names.
 """
 
 from __future__ import annotations
@@ -69,6 +69,7 @@ from goldbox.iconparts import (  # noqa: E402
     dos_icon_tables,
 )
 from tools import iconproposal as ip  # noqa: E402
+from tools import scratch  # noqa: E402
 
 #: The three titles whose DOS-to-C64 conversion this can drive.  Pools of
 #: Darkness has no C64 port at all, and its combat art is a different
@@ -236,8 +237,9 @@ def main(argv: list[str] | None = None) -> int:
                                        "the prefix")
     ap.add_argument("--from", dest="source", help="a DOS save folder instead")
     ap.add_argument("--slot", default="D", help="the DOS save slot letter")
-    ap.add_argument("--stage", default="work/issue335/staged",
-                    help="where to copy the party and edit it, under work/")
+    ap.add_argument("--stage",
+                    default=str(scratch.scratch_dir("iconrowproof", "staged")),
+                    help="where to copy the party and edit it")
     ap.add_argument("--body", type=int, help="the DOS icon_body to stage")
     ap.add_argument("--head", type=int, help="the DOS icon_head to stage")
     ap.add_argument("--size", choices=("small", "large"),

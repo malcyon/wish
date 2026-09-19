@@ -389,7 +389,7 @@ def test_a_built_disk_lays_its_directory_out_the_way_the_drive_does():
 
 # --- three properties `tests/test_d64.py` used to get for free -------------
 #
-# That file read a real `work/PORSAVE.D64` until #211: a bug in the lock bit,
+# That file read a real `PORSAVE.D64` from scratch (deleted) until #211: a bug in the lock bit,
 # in a name's leading control byte, or in the directory's slot accounting
 # would have shown up there without anyone asking for it by name. The disk is
 # gone, and what replaced it is a disk `write_file` built, so a bug shared

@@ -12,7 +12,7 @@ titles is driven by one key interpreter, and it reads PETSCII `$5F` -- the
 highlight is".**  `Session.leave_sheet` sends that instead of walking to
 `EXIT`, and on 2026-09-08 that read four sheets in one boot on Curse and four
 on Silver Blades, 6 leaves out of 6, each landing on `VIEW WHICH CHARACTER?`
-inside 0.9 seconds (`work/issue444/curse-proof`, `work/issue444/ssb-proof`).
+inside 0.9 seconds (`cited/444/curse-proof`, `cited/444/ssb-proof`).
 
 Two halves, and only one of them needs the game:
 

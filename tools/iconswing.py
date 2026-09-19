@@ -27,9 +27,9 @@ drawing when it was taken is in the log rather than in somebody's memory:
 2 is COMBAT and 9 is CAMP (`#265 (The combat-icon glyph check reads VIC
 registers instead of the character set, and half of it passes anyway)`).
 
-    tools/iconpoke.py --disk work/issue184/SIX.D64
-    POR_HEADLESS=1 tools/iconswing.py --disk work/issue184/SIX.D64
-    POR_HEADLESS=1 tools/iconswing.py --disk work/issue184/SIX.D64 --camp
+    tools/iconpoke.py --disk SIX.D64
+    POR_HEADLESS=1 tools/iconswing.py --disk SIX.D64
+    POR_HEADLESS=1 tools/iconswing.py --disk SIX.D64 --camp
 
 Nothing is written to the player's disks: the save disk named here is copied
 into the slot's own directory before the emulator sees it.
@@ -47,6 +47,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from tools import savecheck as V  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: `MON_CMD_CHECKPOINT_GET`.  `automap/vice.py` sets, deletes and lists
@@ -603,7 +604,7 @@ def main(argv=None) -> int:
                         "control run did")
     args = p.parse_args(argv)
     args.tag = args.tag or pathlib.Path(args.disk).stem
-    out = pathlib.Path(args.out or ROOT / "work" / "issue184" /
+    out = pathlib.Path(args.out or scratch.scratch_dir("iconswing") /
                        f"{args.tag}-swing.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
     log = V.Log(out)

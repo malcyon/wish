@@ -62,9 +62,8 @@ SSB_KEY = "secret-of-the-silver-blades"
 def _candidates():
     """`gamedisks.yaml`'s own search list for this title (#212).
 
-    No candidate here may sit under `work/`: that directory is scratch and has
-    been deleted twice, so a default that resolved into it stopped resolving
-    the day it was.
+    No candidate here may sit under a scratch directory: it has been deleted
+    twice, so a default that resolved into it stopped resolving the day it was.
     """
     from tools import gamedisks
     return gamedisks.candidates(SSB_KEY)
@@ -271,7 +270,7 @@ def test_class_bits_is_one_bit_per_slot_of_the_eight_wide_level_array():
     """This is phase 2's pass criterion, and it holds -- including for `0x40`
     and `0x80`.
 
-    `work/reports/goldbox-inventory.md` §3.3(a) reports it *failing* on PAINE
+    `reports/goldbox-inventory.md` (scratch, deleted) §3.3(a) reports it *failing* on PAINE
     and GUY DE VALOIS, and says their level array is all zero. That reading
     took the array at `0x0C9` to be four bytes. It is eight: PAINE's level 8
     sits in slot 7 (`level_ranger`) and GUY DE VALOIS's in slot 6

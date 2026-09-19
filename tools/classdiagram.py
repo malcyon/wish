@@ -7,7 +7,7 @@ step 1 was run by hand on 2026-09-10; this is that run turned into a tool, so
 the next session can reproduce a picture instead of reading a report about
 one. The findings from that run -- the whole-package diagram being a
 hairball, which modules fit a page and which do not, the recommended scope
-for steps 2 and 3 -- are on the issue and in `work/issue488/README.md`, not
+for steps 2 and 3 -- are on the issue and in `cited/488/README.md`, not
 repeated here. This tool does not decide any of that; it only runs the
 command.
 
@@ -68,6 +68,8 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from tools import scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -257,7 +259,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                               "'goldbox' or 'goldbox/amiga_por.py'")
     parser.add_argument("--out", type=pathlib.Path, default=None,
                          help="output directory (default: a new directory "
-                              "under work/issue488/tool/)")
+                              "under this tool's scratch directory)")
     parser.add_argument("--dirty", action="store_true",
                          help="run against the working tree instead of a "
                               "detached worktree at HEAD")
@@ -285,8 +287,8 @@ def main(argv: list[str] | None = None) -> int:
 
     mmdc = args.mmdc or shutil.which("mmdc")
 
-    out_dir = args.out or (REPO / "work" / "issue488" / "tool"
-                            / slug_for(args.targets))
+    out_dir = args.out or scratch.scratch_dir("classdiagram",
+                                              slug_for(args.targets))
 
     root = REPO
     wt = None

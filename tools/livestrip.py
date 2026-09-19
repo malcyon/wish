@@ -9,7 +9,7 @@ from that. Cast Bless in the emulator and this is the picture of what a
 player is shown for it -- which is the one thing `#142 (The party effects
 line is computed every poll and shown nowhere)` was never proven on.
 
-    tools/livestrip.py --port 6521 work/issue142/bless.png
+    tools/livestrip.py --port 6521 bless.png
 
 The effect table is printed as well as drawn, because a row that draws
 nothing and a machine with nothing running look the same in a PNG.
@@ -18,7 +18,7 @@ nothing and a machine with nothing running look the same in a PNG.
 it runs beside an idle `tools/session.py` -- but never beside `wish` or
 anything else holding that socket open.
 
-Output goes under `work/`, which is gitignored, and the tooltip is printed to
+Output goes under this tool's scratch directory unless told otherwise, and the tooltip is printed to
 the terminal because a `grab()` does not draw one.
 """
 
@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from automap import live  # noqa: E402
 from automap.target import ViceTarget  # noqa: E402
-from tools import shotstrip  # noqa: E402
+from tools import scratch, shotstrip  # noqa: E402
 
 
 def read_snapshot(port: int, host: str = "127.0.0.1"):
@@ -59,9 +59,9 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         description="Render the automapper's party-effects row from a running "
                     "emulator's own memory.")
-    ap.add_argument("out", nargs="?", default="work/livestrip.png",
-                    help="where to write the PNG (default: %(default)s, "
-                         "which is gitignored)")
+    ap.add_argument("out", nargs="?", default=str(scratch.scratch_dir("livestrip")
+                                             / "livestrip.png"),
+                    help="where to write the PNG (default: %(default)s)")
     ap.add_argument("--port", type=int, default=6502, metavar="N",
                     help="the binary monitor to read (default: %(default)s, "
                          "the human's; a pool slot prints its own)")

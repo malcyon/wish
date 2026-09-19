@@ -776,7 +776,7 @@ def _extracted_records() -> tuple[pathlib.Path, ...]:
 
     They are not loose files on any machine: six live in the `save/` drawer of
     Pool of Radiance disk 1 and fourteen in the Curse of the Azure Bonds save
-    disk.  They were once extracted into `work/`, which is gitignored and has
+    disk.  They were once extracted into a gitignored scratch directory that has
     been lost, so `$AMIGA_POR_SAVES` named nothing and thirty-one tests here
     skipped on the machine that holds every byte of the corpus -- the shape of
     #211.  `tools/amigasaves.py` finds them again from `gamedisks.yaml`'s
@@ -877,7 +877,7 @@ def test_the_effect_pointer_is_set_exactly_when_a_spc_chain_exists():
 
 #: What Amiga Pool of Radiance itself drew for the party shipped on disk 1,
 #: read off the screen under WinUAE on 2026-08-26 (#27,
-#: `work/amiga/p27/shots/m6.png` and `v1.png`). The roster gave AC and HP for
+#: `amiga/p27/shots/m6.png` and `v1.png`, scratch, deleted). The roster gave AC and HP for
 #: all six; GARWAN's sheet gave the rest. These are the instrument, and the
 #: reader has to agree with them -- not with itself.
 AMIGA_POR_ON_SCREEN = {
@@ -1165,8 +1165,8 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
         # it to `goldbox.dos_codec.DERIVED` on 2026-09-05, which says the same
         # thing without calling it a drop at all.  This test asserted the
         # line before that until 2026-09-04 and never went red, because the
-        # specimen corpus had been lost with `work/` and every test that
-        # reads one was skipping.
+        # specimens had been lost with the scratch directory and every test
+        # that reads one was skipping.
         assert n.get("encumbrance") is None
         assert dos_field_disposition()["encumbrance"].startswith("derived:")
         assert not any("encumbrance" in d for d in n.dropped)
@@ -1998,7 +1998,7 @@ def _later_specimens() -> tuple[pathlib.Path, ...]:
     Amiga Curse disk 1 and the other ten are inside two saved games.
     `tools/amigarecords.py` reads them out through `gamedisks.yaml`'s `amiga`
     entry, into a directory that lives as long as the test process -- so the
-    corpus is never only in `work/`, which is gitignored and has been lost.
+    files are never only in a gitignored scratch directory, which has been lost.
     """
     from tools import amigarecords, gamedisks
     if not gamedisks.candidates("amiga"):

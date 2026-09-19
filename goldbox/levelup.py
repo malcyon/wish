@@ -813,8 +813,8 @@ def _experience(record, class_levels: dict[str, int], game=None) -> int:
     and **2,500** -- the larger of magic-user 2's 2,501 and thief 3's 2,501,
     minus one. At magic-user 2 / thief 9 she came out of the magic-user's
     school at **160,000**, which is the thief's entry one past its ceiling and
-    not magic-user 3's 5,001. `work/p18/lk-{before,after}.hex` and
-    `work/p18b/rec-kath-m2-*.bin`.
+    not magic-user 3's 5,001. `p18/lk-{before,after}.hex` and
+    `p18b/rec-kath-m2-*.bin` (scratch, deleted).
 
     So the rule is the game's, not an extrapolation from single-class runs, and
     it is why training the *lower* threshold first can cost a multi-class

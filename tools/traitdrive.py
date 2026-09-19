@@ -50,7 +50,7 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import find_disks  # noqa: E402
 from goldbox import c64_port, traits  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
 from tools import session as S  # noqa: E402
 from tools.absrefsweep import files  # noqa: E402
@@ -192,7 +192,8 @@ def main(argv=None) -> int:
     p.add_argument("--walk", default="I", help="the move to repeat")
     p.add_argument("--save-game", action="store_true",
                    help="ENCAMP > SAVE at the end and read the disk back")
-    p.add_argument("--out", default=None, help="run directory")
+    p.add_argument("--out", default=None,
+                   help="run directory (default: this tool's scratch directory)")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
     SC.catch_signals()
@@ -200,7 +201,7 @@ def main(argv=None) -> int:
     disks = pathlib.Path(args.disks)
     tag = "staged" if args.stage else "control"
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "issue252" / tag)
+        scratch.scratch_dir("traitdrive", tag))
     log = Log(out, args.quiet)
 
     where = gamedisks.find("pool-of-radiance") or str(disks)

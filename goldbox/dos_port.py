@@ -13,11 +13,11 @@ Where the offsets come from
 Every entry below was measured against **24 real specimens** -- 18 characters
 in three played save slots and 6 exported `.CHA` files -- from Donald's Steam
 copy of *Forgotten Realms: The Archives*.  The write-up that was the working,
-`work/reports/dos-saves.md`, is lost; `tests/test_dossave.py` and
+`reports/dos-saves.md` (scratch, deleted), is lost; `tests/test_dossave.py` and
 `tests/test_dosconvert.py` are the assertions, and
 `docs/117-save-conversion.md` is the plan the table serves.
 Nothing here is transcribed from a hex-editing guide: the community notes in
-`work/coab-research/formats/` predicted nine of these fields and were right
+`coab-research/formats/` (scratch, deleted) predicted nine of these fields and were right
 about all nine, which is corroboration and is said as much in the notes.
 
 Three things to know before reading the table
@@ -614,7 +614,7 @@ _DECLARED: Sequence[Field] = (
        "and 0x0BD and 0x0BE "
        "the small combat icon, `CHEAD.DAX` and `CBODY.DAX`. Three things say "
        "so together. The community's per-title tables in "
-       "`work/coab-research/formats/` name exactly this split and only Pool "
+       "`coab-research/formats/` (scratch, deleted) name exactly this split and only Pool "
        "of Radiance has all four: from Curse onwards the first pair is gone "
        "and Pools of Darkness carries the second alone, which is what a "
        "sheet portrait dropped between titles looks like. The C64 record has "

@@ -1,26 +1,28 @@
 #!/bin/bash
-# Start the prebuilt, packaged FS-UAE (work/issue464/uaedap/package/bin/fs-uae/
-# fs-uae-linux_x64, unpacked from the download) in a private Xvfb, and time its
+# Start the prebuilt, packaged FS-UAE (bin/fs-uae/fs-uae-linux_x64 out of the
+# unpacked download, given as the one argument) in a private Xvfb, and time its
 # GDB-remote memory reads while the machine runs.  A probe for #464: the same
 # test as fsuaeruncustombuild.sh against the packaged binary instead of the
 # one built from source.
 #
-# Uses work/issue464/base4 as the base directory, display :79, debugger port
-# 6529.  Those are fixed: check nothing else is on them.  No window reaches the
+# Usage: fsuaerununpackaged.sh PATH-TO-fs-uae-linux_x64
+# Uses "${TMPDIR:-/tmp}/wish/fsuaerununpackaged/base4" as the base directory,
+# display :79, debugger port 6529.  Those are fixed: check nothing else is on them.  No window reaches the
 # desktop (Xvfb), audio is dummied, and the emulator's process group is killed
 # on the way out.
 #
 # Reads with the Gdb class of tools/fsuaegdbprobe.py.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-D="$ROOT/work/issue464"
+FSUAE=${1:?usage: $0 PATH-TO-fs-uae-linux_x64}
+D="${TMPDIR:-/tmp}/wish/fsuaerununpackaged"
 mkdir -p "$D/base4"
 Xvfb :79 -screen 0 800x600x24 -nolisten tcp >"$D/xvfb79.log" 2>&1 &
 XPID=$!
 sleep 2
 env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE DISPLAY=:79 GDK_BACKEND=x11 \
     SDL_AUDIODRIVER=dummy ALSOFT_DRIVERS=null \
-    setsid "$D/uaedap/package/bin/fs-uae/fs-uae-linux_x64" \
+    setsid "$FSUAE" \
       --base_dir="$D/base4" \
       --fullscreen=0 --volume=0 \
       --remote_debugger=30 --remote_debugger_port=6529 \

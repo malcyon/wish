@@ -212,7 +212,7 @@ class RedrawingGame(FakeGame):
     sheet, this serves a synthetic torn frame -- the command bar already
     changed, only the first three panel rows drawn, no status line -- built
     from the general redraw race rather than from a specific capture.  The
-    torn frames actually on file, `work/issue52/walk-amigatoc64-curse/
+    torn frames actually on file, `cited/52/walk-amigatoc64-curse/
     cursecheck/sheet-3-missing.txt` and its `walk-dostoc64-curse` sibling,
     both caught the panel with all six rows drawn and only the last row's HP
     field still blank, which is the separate case

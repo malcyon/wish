@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """What driving Secret of the Silver Blades under VICE established.
 
-`docs/121-silver-blades.md` phases 3, 4 and 5. The run itself is in
-`work/reports/p9-ssb-live.md`; what is here is the part of it a machine with
-the player's disks can check again without an emulator.
+`docs/121-silver-blades.md` phases 3, 4 and 5. The run itself was in
+`reports/p9-ssb-live.md`, which is lost; what is here is the part of it a
+machine with the player's disks can check again without an emulator.
 
 Three kinds of assertion, and they are different in nature:
 

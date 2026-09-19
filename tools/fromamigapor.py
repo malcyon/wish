@@ -12,10 +12,10 @@ standing in the Slums at 21:22 with half the quests done, and the party
 arrives in the Slums at 21:22 with the same quests done -- not just the six
 characters, which have crossed since 2026-08-26, but the game around them.
 
-    tools/fromamigapor.py work/issue316/poolsave-c64-after-C.adf \\
-        --slot C --out work/353/PORSAVEC.D64 --report --sheet
-    tools/fromamigapor.py work/issue316/poolsave-c64-after-C.adf \\
-        --slot C --to dos --out work/354/save --report
+    tools/fromamigapor.py poolsave-c64-after-C.adf \\
+        --slot C --out PORSAVEC.D64 --report --sheet
+    tools/fromamigapor.py poolsave-c64-after-C.adf \\
+        --slot C --to dos --out save --report
 
 **Nothing is written from a template** (#118).  Whichever destination is
 asked for, every byte comes from a zeroed buffer, and `goldbox.dos_codec.
@@ -72,7 +72,7 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import amiga_savegame, c64_port, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
-from tools import dosdisk  # noqa: E402
+from tools import dosdisk, scratch  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -114,7 +114,7 @@ def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
         state, party, icon, animate, portraits=portraits,
         game=c64_port.POOL_OF_RADIANCE)
     if out is not None:
-        out.parent.mkdir(parents=True, exist_ok=True)
+        scratch.ensure(out.parent)
         out.write_bytes(dos_codec.save_disk(bytes(save0), bytes(save1)).data)
     return party, state, report
 
@@ -336,8 +336,9 @@ def main(argv: list[str] | None = None) -> int:
                         "(default: A)")
     p.add_argument("--out", default=None,
                    help="the .d64 to write, or the DOS save folder for "
-                        "--to dos (default work/fromamigapor/"
-                        "PORSAVE<slot>.D64, or work/fromamigapor/dos-<slot>)")
+                        "--to dos (default wish/fromamigapor/"
+                        "PORSAVE<slot>.D64, or wish/fromamigapor/dos-<slot>, "
+                        "under the temp directory)")
     p.add_argument("--report", action="store_true",
                    help="print the conversion's provenance summary")
     p.add_argument("--sheet", action="store_true",
@@ -370,12 +371,12 @@ def main(argv: list[str] | None = None) -> int:
 
             game = pathlib.Path(find_game())
         out = None if args.no_write else pathlib.Path(
-            args.out or ROOT / "work" / "fromamigapor" / f"dos-{slot}")
+            args.out or scratch.scratch_dir("fromamigapor") / f"dos-{slot}")
         party, state, report = build_dos(disk, slot, game, out,
                                          args.dos_slot.upper())
     else:
         out = None if args.no_write else pathlib.Path(
-            args.out or ROOT / "work" / "fromamigapor" / f"PORSAVE{slot}.D64")
+            args.out or scratch.scratch_dir("fromamigapor") / f"PORSAVE{slot}.D64")
         party, state, report = build(disk, slot, pathlib.Path(args.disks), out)
 
     print(f"{args.adf} slot {slot}: {len(party)} character(s), "

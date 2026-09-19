@@ -255,7 +255,7 @@ class Run:
         `INSERT SIDE # 1` leaves only two ways out -- a key it reads at
         `$C6`/`$0277`, or the fire button.  An XTEST space is not one of them,
         which is what left a first run watching the same prompt for 45
-        seconds (`work/issue435/curse1`).
+        seconds (`issue435/curse1` in scratch, deleted).
         """
         last, same, end = None, 0, time.time() + max(budget, 6.0)
         while time.time() < end and same < quiet:
@@ -414,7 +414,7 @@ def drive(save: str, out: str, pool: int | None, disks: str | None,
                         still=True)
         # The bar can be a few seconds behind the pick -- a first Silver
         # Blades run read row 24 before `ADD FROM:` was drawn on it, skipped
-        # the whole list and reported nothing (`work/issue435/ssb1`).
+        # the whole list and reported nothing (`issue435/ssb1` in scratch, deleted).
         if not from_bar(text):
             text = run.wait_bar("ADD FROM:", 60.0)
         run.live_table("add-source")

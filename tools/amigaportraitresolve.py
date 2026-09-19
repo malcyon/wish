@@ -18,7 +18,7 @@ instruction's neighbourhood, and reports the shape it found:
     tools/amigaportraitresolve.py                 # the finding, in full
     tools/amigaportraitresolve.py --check         # exit 1 if it no longer holds
     tools/amigaportraitresolve.py --out-of-range 32
-    tools/amigaportraitresolve.py --file work/issue480/program
+    tools/amigaportraitresolve.py --file PROGRAM
 
 What it looks for is one instruction sequence, and either the executable has
 it or the reading in `goldbox/portraits.py` is wrong:

@@ -13,7 +13,7 @@ too wide for its square shows up.
     tools/combatlabelroomshot.py OUTDIR
 
 No emulator and no game disk: the arena is synthetic. The pictures go under the
-directory named, which belongs under `work/` (gitignored).
+directory named; `tools/scratch.py`'s `scratch_dir` is the place for it.
 """
 
 from __future__ import annotations

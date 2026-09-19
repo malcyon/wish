@@ -15,7 +15,7 @@ Whether such a figure *reads* as a whole figure on the screen is a look, and
 a look needs a specimen.  This finds one or makes one.
 
     tools/dosmixedicon.py --census
-    tools/dosmixedicon.py --stage work/issue130/mixedparty --slot J \\
+    tools/dosmixedicon.py --stage DIR --slot J \\
         --from "$POR_DOS_GAME/SAVE"
 
 `--census` reads every `.SAV` and `.CHA` under the DOS corpora and reports

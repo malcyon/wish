@@ -23,7 +23,7 @@ record)` -- through the binary monitor, before and after every key.  A turn
 then shows as "the square did not move, and it was not meant to", and a step
 shows as the square moving, which is the thing worth proving:
 
-    tools/outdoorwalk.py --disk work/p50-outdoor/OUTC.D64 --slot 2 --moves 8484
+    tools/outdoorwalk.py --disk OUTC.D64 --slot 2 --moves 8484
 
 Written for `#50 (Lift the wilderness refusal from the DOS save converter)`,
 whose end-to-end proof is "convert a wilderness DOS save, load it, and walk".
@@ -46,6 +46,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
@@ -70,8 +71,8 @@ def travel_square(sess) -> tuple[int, int]:
 
 
 def run(args) -> int:
-    out = pathlib.Path(args.out or ROOT / "work" / "outdoorwalk")
-    out.mkdir(parents=True, exist_ok=True)
+    out = pathlib.Path(args.out or scratch.scratch_dir("outdoorwalk"))
+    scratch.ensure(out)
     slot = S.claim_slot(args.slot, f"outdoorwalk/{pathlib.Path(args.disk).name}")
     print(f"Slot {slot.n} display {slot.display}")
     sess = None

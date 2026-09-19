@@ -29,10 +29,10 @@ has to roll its own party rather than load one.  It reuses
 `tools/dosparty.py`'s creation flow, which is where the menu positions were
 mapped.
 
-    tools/dosmodifyprobe.py --out work/issue304/probe
+    tools/dosmodifyprobe.py --out DIR
 
-Every screen is shot and every `SAVE` snapshot kept under `--out`, which is
-under `work/` and never in the repository: a saved game is the game's data.
+Every screen is shot and every `SAVE` snapshot kept under `--out`, which
+defaults to this tool's scratch directory and is never in the repository: a saved game is the game's data.
 The verdict is read from the records the engine wrote, not from a screenshot.
 """
 
@@ -48,7 +48,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_port  # noqa: E402
-from tools import dosbox, dosparty  # noqa: E402
+from tools import dosbox, dosparty, scratch  # noqa: E402
 
 #: The byte under test: the third of `field_83_87`, which the Curse
 #: decompilation calls `npcTreasureShareCount`.
@@ -56,7 +56,7 @@ SHARE = dos_port.FIELDS_BY_NAME["field_83_87"].offset + 2
 
 #: Two characters, both human fighters so nothing about the roll differs
 #: between them.  Menu positions, not record codes -- `tools/dosparty.py` has
-#: the lists, and `work/issue249/party.json` is the spec they were measured
+#: the lists, and `cited/249/party.json` is the spec they were measured
 #: with: human is race 5 and FIGHTER is class 1 in a human's list.
 SPECS = [dosparty.Spec(name="PROBEA", race=5, gender=0, cls=1, alignment=0,
                        classes={"fighter": 1}),
@@ -147,7 +147,7 @@ def run(out: pathlib.Path, letter: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=pathlib.Path,
-                    default=REPO / "work" / "issue304" / "probe")
+                    default=scratch.scratch_dir("dosmodifyprobe", "probe"))
     ap.add_argument("--slot", default="C", help="save-game letter to write")
     args = ap.parse_args(argv)
     return run(args.out, args.slot)

@@ -83,7 +83,7 @@ def test_a_vm_that_is_not_running_is_said_in_the_guests_own_words(
 
 
 def test_the_directory_is_made_rather_than_demanded(monkeypatch, tmp_path):
-    # A run's shots go somewhere under `work/` that does not exist yet, and
+    # A run's shots go somewhere that does not exist yet, and
     # failing on that after waiting a minute for the screen is a poor trade.
     _grabs(monkeypatch, [b"same", b"same"])
     out = tmp_path / "run" / "shots" / "shot.png"

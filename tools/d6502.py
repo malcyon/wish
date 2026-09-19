@@ -133,7 +133,7 @@ USAGE = """usage: d6502.py <file> <load-address> <start-address> <count>
     Disassembles `count` instructions from a raw image.
     The two addresses are hexadecimal, with or without a leading $ or 0x.
 
-    d6502.py work/DUNGEON.prg 0800 0A3C 40
+    d6502.py DUNGEON.prg 0800 0A3C 40
 
 Written for the combat-roll work; the listings behind
 docs/147-combat-rolls.md came out of it."""
@@ -145,7 +145,7 @@ def _address(text: str) -> int:
 
 if __name__ == "__main__":
     # It used to index `sys.argv` straight and answer a missing argument with
-    # an IndexError traceback. That was fine while it lived in `work/` and had
+    # an IndexError traceback. That was fine while it was a scratch script with
     # one user; in `tools/` it is a program somebody else runs.
     if len(sys.argv) != 5 or sys.argv[1] in ("-h", "--help"):
         print(USAGE, file=sys.stderr)

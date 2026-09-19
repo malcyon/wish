@@ -396,7 +396,7 @@ def test_adding_a_file_to_a_real_disk_leaves_every_other_file_alone():
 def test_allocation_stays_away_from_the_front_of_the_disk():
     """A cracked release reads blocks the bitmap says are free.
 
-    Measured under WinUAE (#36, `work/amiga/p36/shots/`): one small file in
+    Measured under WinUAE (#36, `amiga/p36/shots/` in scratch, deleted): one small file in
     Pool of Radiance disk 1's lowest free blocks boots; a second, which takes
     992 and 993, hangs the boot with every checksum right and no existing
     file touched. So the allocator counts down from the top, and this is what

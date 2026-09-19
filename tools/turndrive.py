@@ -47,6 +47,7 @@ from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.layout import FIELDS_BY_NAME  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -154,7 +155,7 @@ def main(argv=None) -> int:
 
     disks = pathlib.Path(args.disks)
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "issue288" / "run")
+        scratch.scratch_dir("turndrive", "run"))
     log = Log(out, args.quiet)
 
     save = args.save

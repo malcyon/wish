@@ -26,7 +26,7 @@ the main loop), push the chain, set the PC.  `EXIT` unwinds to `$2B63`, which
 `$1581` records on entry, and `NEWECL`'s tail resets to `$03BF`, so whatever
 the party answers the machine comes back to a state the game itself built.
 
-    tools/exitreentry.py --out work/issue207/run1
+    tools/exitreentry.py --out DIR
 
 Boots `npc_party.d64` -- the party inside the Kobold Caves with Fatima in
 slot 3 -- and runs the phases in order, each writing a JSON capture and a
@@ -36,7 +36,7 @@ from the wilderness back indoors with the writes `ECL1A $A0A4` makes; and,
 if that lands, an edge exit out of New Phlan.
 
 Nothing is written to the player's disks: `stage_disks` copies the sides
-into the slot.  The pool owns the emulator.  Captures go to `work/`.
+into the slot.  The pool owns the emulator.  Captures go to the temp directory (`tools/scratch.py`).
 """
 from __future__ import annotations
 
@@ -53,6 +53,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -476,7 +477,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--save", default=str(S.npc_party_save()))
     p.add_argument("--slot", type=int, default=None)
-    p.add_argument("--out", default=str(ROOT / "work" / "issue207" / "run1"))
+    p.add_argument("--out", default=str(scratch.scratch_dir("exitreentry", "run")))
     p.add_argument("--arrive", type=float, default=240.0)
     p.add_argument("--phases", default="ACGDEF",
                    help="which phases to run, from A C G D E F")

@@ -9,7 +9,7 @@ every session is the name-to-virtual-key table and the waiting.
 
     tools/amigadrive.py --holder wish109-por keys RET L S A V E SLASH RET
     tools/amigadrive.py --holder wish109-por keys NP8 NP4 NP8   # walk, turn, walk
-    tools/amigadrive.py --holder wish109-por shot work/109/picker.png
+    tools/amigadrive.py --holder wish109-por shot picker.png
 
 `--holder` is the lane claim `winuae.ps1` enforces, and it is required: every
 call this makes is refused without it.  Take the claim yourself before the

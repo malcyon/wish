@@ -45,10 +45,11 @@ from PyQt6.QtWidgets import (  # noqa: E402
 )
 
 from automap import live, paths  # noqa: E402
+from tools import scratch  # noqa: E402
 from wish.session import Session  # noqa: E402
 from wish.window import MAP_TAB, WishWindow  # noqa: E402
 
-OUT = ROOT / "work" / "reports" / "issue-161"
+OUT = scratch.scratch_dir("rostercardvariants")
 NAME = "LADY KATHERINE"
 CLASSES = tuple(live.ClassProgress(n, 8, 100_000, 0.5, 90_000)
                 for n in ("magic-user", "cleric", "thief"))

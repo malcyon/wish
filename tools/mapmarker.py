@@ -10,7 +10,7 @@ every step.
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
         GDK_BACKEND=x11 .venv/bin/python tools/mapmarker.py \\
-        --disk work/p50-outdoor/OUTC.D64 --slot 2 --walk 1357
+        --disk OUTC.D64 --slot 2 --walk 1357
 
 Three things make it a fair reproduction of what a player has rather than a
 model of it:
@@ -46,6 +46,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap import actions  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 from tools.savecheck import Log, answer_bars  # noqa: E402
 
@@ -566,7 +567,7 @@ def main(argv=None) -> int:
                         "settles a poll or two after the game does")
     p.add_argument("--answer", default="NO",
                    help="what to answer a YES NO bar the arrival puts up")
-    p.add_argument("--out", default="work/mapmarker",
+    p.add_argument("--out", default=str(scratch.scratch_dir("mapmarker")),
                    help="where the screenshots and the log go")
     p.add_argument("--tag", default=None, help="prefix for the screenshots")
     p.add_argument("--arrive", type=float, default=240.0,

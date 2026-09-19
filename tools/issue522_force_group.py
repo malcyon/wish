@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from tools import scratch
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
@@ -27,8 +29,11 @@ def pytest_collection_modifyitems(config, items):
 def pytest_collection_finish(session):
     """Diagnostic only: record the nodeids xdist's own hook produced, so the
     marker's effect on scheduling can be checked rather than assumed."""
+    # The default is the watcher's own directory, so the two plugins loaded
+    # together write side by side.
     logdir = Path(os.environ.get(
-        "ISSUE522_LOGDIR", Path(__file__).resolve().parent.parent / "work" / "issue522" / "watch"))
+        "ISSUE522_LOGDIR",
+        scratch.scratch_dir("issue522_probe_watch", "watch")))
     logdir.mkdir(parents=True, exist_ok=True)
     worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
     with open(logdir / f"nodeids-{worker}.log", "a") as fh:

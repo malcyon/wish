@@ -21,7 +21,7 @@ old reader and the new one, and puts `$01` back before a cycle passes.
 
     .venv/bin/python tools/screenblind.py --disks "$POR_DISKS" --save PORSAVE.D64
 
-Everything is logged as it is measured (`work/screenblind/<tag>/samples.jsonl`),
+Everything is logged as it is measured (`<tag>/samples.jsonl` in this tool's scratch directory),
 because a run that dies at minute nine still has minutes one to eight.
 """
 from __future__ import annotations
@@ -36,6 +36,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from automap import screen as _screen  # noqa: E402
 from automap.vice import CMD_BANKS_AVAILABLE  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 
@@ -187,7 +188,7 @@ def report(out: dict) -> None:
 
 def run(args) -> int:
     tag = args.tag or time.strftime("%H%M%S")
-    out = pathlib.Path(S.TOOLS).parent / "work" / "screenblind" / tag
+    out = scratch.scratch_dir("screenblind", tag)
     log = Log(out / "samples.jsonl")
     slot = S.claim_slot(args.slot, f"screenblind/{tag}")
     print(f"slot {slot.n} display {slot.display}; log {log.path}", flush=True)

@@ -10,8 +10,8 @@ an address, a position or a map.
     tools/fsuaegdb.py locate --port 6525
     tools/fsuaegdb.py fix --port 6525
     tools/fsuaegdb.py dump --port 6525 --at 0xC00000 --length 0x400 \\
-        --out work/issue464/block.bin
-    tools/fsuaegdb.py automap --port 6525 --out work/issue464/run \\
+        --out DIR/block.bin
+    tools/fsuaegdb.py automap --port 6525 --out DIR/run \\
         --polls 8 --walk 'KP_Up KP_Left KP_Up' --display :77
 
 **`probe` is the one to run first.**  It connects, prints what the server

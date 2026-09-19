@@ -19,8 +19,8 @@ captured **unhalved** -- `dosbox.Session.capture` rather than
 The frames are captured while the game is doing something: the party turns on
 the spot between batches, so the viewport is redrawn and the sample is not
 three hundred pictures of one still screen.  Nothing is written but the
-report; a frame of the running game is the game's own art and stays under
-`work/`.
+report; a frame of the running game is the game's own art and stays in
+this tool's scratch directory (`tools/scratch.py`).
 
     tools/dosframeaudit.py --save J --frames 300
 """
@@ -35,12 +35,12 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import dosbox, dosboxx  # noqa: E402
+from tools import dosbox, dosboxx, scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-#: Where the report lands.  Under `work/`, which is gitignored.
-OUT = REPO / "work" / "issue215"
+#: Where the report lands: this tool's scratch directory, which may vanish.
+OUT = scratch.scratch_dir("dosframeaudit")
 
 
 def blocks_that_differ(screen: dosbox.Screen, limit: int = 8) -> tuple[int, list]:

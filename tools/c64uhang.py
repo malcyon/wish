@@ -37,10 +37,10 @@ program and one data file, generated here, containing nothing copyrighted.
   `$DC0D`, and where the stack's return addresses fall in the KERNAL, resolved
   against a KERNAL ROM with `capstone`'s MOS65xx backend (`--kernal PATH`).
 
-    tools/c64uhang.py build --out work/x/hang.d64
-    tools/c64uhang.py run --size 8192 --interval 2 --minutes 10 --log work/x/r.jsonl
+    tools/c64uhang.py build --out hang.d64
+    tools/c64uhang.py run --size 8192 --interval 2 --minutes 10 --log r.jsonl
     tools/c64uhang.py sweep --sizes 256,1024,4096,8192,16384 --budget 8 \\
-        --log-dir work/x/sweep
+        --log-dir SWEEPDIR
 
 Speaker off before a boot (`.claude/rules/emulator.md`); `run` refuses unless
 the device reports it Disabled.  Writes memory only at `$0277`/`$00C6` for a

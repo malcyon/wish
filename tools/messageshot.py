@@ -9,7 +9,7 @@ timestamp in front of every line and the combat log puts `round N` in front of
 most of them, so a sentence that reads well in a constant can read badly in the
 only place anybody sees it.
 
-    .venv/bin/python tools/messageshot.py work/issue425/panel.png
+    .venv/bin/python tools/messageshot.py panel.png
     .venv/bin/python tools/messageshot.py --say "One line." shot.png
 
 So this builds the real window offscreen, drives `tests/gamedata`'s arena
@@ -25,7 +25,7 @@ carries, shown by setting the game's combat speed to 0 in the arena's memory
 and letting the window notice, which is the path a player takes.
 
 No emulator and no game disks: the arena is generated from the format plus the
-player's own saved records. The PNG goes under `work/`, which is gitignored.
+player's own saved records. The PNG goes where the argument says.
 """
 
 from __future__ import annotations

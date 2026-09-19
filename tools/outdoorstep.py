@@ -22,8 +22,8 @@ Both routes for the digit are tried in turn -- XTEST first, then the KERNAL
 buffer -- because a title that reads only one of them looks exactly like a
 party hemmed in (`#192`, `#360`).
 
-    tools/outdoorstep.py --disk work/376/PORSAVEB-fixed.D64 --moves 7315 \\
-        --tag amiga --resave work/382/amiga-resaved.D64
+    tools/outdoorstep.py --disk /path/to/PORSAVEB-fixed.D64 --moves 7315 \\
+        --tag amiga --resave /path/to/amiga-resaved.D64
 
 Nothing is written to the player's disks: the save is copied into the pool
 slot's own directory and the engine's resave is copied back out of it.
@@ -42,6 +42,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -249,7 +250,8 @@ def main(argv=None) -> int:
     p.add_argument("--disks", default=str(DISKS), help="the game disks")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     p.add_argument("--tag", default=None, help="prefix for the screenshots")
-    p.add_argument("--out", default=None, help="where the .jsonl goes")
+    p.add_argument("--out", default=None, help="where the .jsonl goes (default: this tool's scratch "
+                        "directory)")
     p.add_argument("--moves", default="7", help="compass digits, one per step")
     p.add_argument("--patience", type=float, default=20.0,
                    help="seconds to watch the square after one key")
@@ -266,7 +268,7 @@ def main(argv=None) -> int:
     stem = pathlib.Path(args.disk).stem
     args.tag = args.tag or stem
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "382" / f"{stem}.jsonl")
+        scratch.scratch_dir("outdoorstep") / f"{stem}.jsonl")
     log = Log(out)
     try:
         return run(args, log)

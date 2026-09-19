@@ -29,7 +29,7 @@ conversion stages is *generated* by `_dax_with`, since what the write path
 needs from it is a block of the right id and not the game's own text.
 
 The run that proves the file loads is not here and cannot be:
-`tools/dosnewsave.py --c64 work/p190/C64OUT1.D64`, whose party stands on
+`tools/dosnewsave.py --c64 <that C64 save>`, whose party stands on
 window 26 and walks.
 """
 
@@ -43,7 +43,7 @@ from goldbox import dos_savegame as sg
 from goldbox.savegame import SaveGame0
 
 #: Window 26, the middle wilderness window, and a square inside it.  The
-#: numbers are `work/p190/C64OUT1.D64`'s, which the game itself walked the
+#: numbers are `p190/C64OUT1.D64`'s (scratch, deleted), which the game itself walked the
 #: party to and saved.
 WINDOW = 26
 TRAVEL_X, TRAVEL_Y = 7, 27
@@ -90,7 +90,7 @@ def _c64_on_the_travel_grid(x: int = TRAVEL_X, y: int = TRAVEL_Y,
     """The fixture party, standing on window 26 the way the C64 keeps it.
 
     Built rather than committed, and built to the outdoor form the C64
-    engine's own save holds -- measured on `work/p190/C64OUT1.D64`, which the
+    engine's own save holds -- measured on `p190/C64OUT1.D64` (scratch, deleted), which the
     game wrote after walking there:
 
     * `$49F2` is the window id and `$49E6` is 0;
@@ -179,7 +179,7 @@ def test_a_retarget_onto_a_travel_window_names_no_geo():
 def test_a_party_on_the_travel_grid_is_written_where_it_stands(tmp_path,
                                                                game_dir):
     """The place, field by field, against what an engine-written outdoor save
-    holds -- `work/p50-outdoor/SAVGAMC.DAT` and `work/p59-wallset/keep`."""
+    holds -- `cited/p50-outdoor/SAVGAMC.DAT` and `cited/p59-wallset/keep`."""
     savgam, _ = _write(_c64_on_the_travel_grid(), tmp_path, game_dir)
     assert sg.outdoors(savgam)
     assert sg.travel_square(savgam) == (TRAVEL_X, TRAVEL_Y)

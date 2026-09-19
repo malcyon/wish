@@ -151,8 +151,8 @@ def test_add_accepts_amiga_and_builds_a_directory_specimen(tree, one_source):
 def test_add_takes_a_pools_of_darkness_specimen_into_its_own_directory(
         tree, one_source):
     """#575: the fourth title had no slug, so the engine-written containers
-    `tools/dospod.py` left under `work/` -- which is gitignored and has been
-    lost twice -- could not be kept in the tree at all. The directory is
+    `tools/dospod.py` left in the scratch directory -- which is deleted and
+    was lost twice -- could not be kept in the tree at all. The directory is
     `pod-dos`, the same `<title>-<platform>` the other three use."""
     dest = specimens.add("dos", "p175-run17", one_source, root=tree,
                          title="Pools of Darkness",

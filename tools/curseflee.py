@@ -13,7 +13,7 @@ and `Session.fight(budget, tactic=...)` is already written to take it: its
 around that pairing, not a second `Flight`.
 
     POR_HEADLESS=1 .venv/bin/python tools/curseflee.py --slot 6 \\
-        --save work/issue131-m1/CURSEI.D64 --out work/issue445/run7-curse
+        --save path/to/CURSEI.D64 --out DIR
 
 `--save` is a Curse save disk (SIDE0) to copy into the slot.  The disks come
 from `--disks`, else `$POR_DISKS`, else `tools/gamedisks.py`'s Curse entry.
@@ -32,14 +32,13 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import curseload, curserun  # noqa: E402
+from tools import curseload, curserun, scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 from tools.fleedrive import Flight, Log, rows_of  # noqa: E402
 
 
 def run(args) -> int:
-    out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    out = scratch.ensure(args.out)
     log = Log(out, args.quiet)
     flight = Flight(log)
     slot = S.claim_slot(args.slot, "curseflee/445")
@@ -155,7 +154,7 @@ def main(argv=None) -> int:
                    help="the move-key pattern; the next key is tried "
                         "whenever the last one changed nothing")
     p.add_argument("--steps", type=int, default=300)
-    p.add_argument("--out", default=str(ROOT / "work" / "issue445" / "curse-run"))
+    p.add_argument("--out", default=str(scratch.scratch_dir("curseflee", "run")))
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
     if not args.disks or args.disks == ".":

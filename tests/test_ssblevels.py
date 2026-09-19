@@ -182,7 +182,7 @@ def test_silver_blades_is_among_the_titles_a_race_with_no_bonus_covers():
 #: What Silver Blades' own trainer wrote at `0x09A`-`0x09E` for MALACHITE --
 #: thief 8 / fighter 7, constitution 17 -- raised to thief 9 five times on
 #: one boot (VICE pool slot 0, 2026-09-06, `tools/ssbtrain.py`,
-#: `work/issue344/m1..m6`), with only the race byte poked between presses and
+#: `issue344/m1..m6`, scratch, deleted), with only the race byte poked between presses and
 #: the five stored saves poked to 14 first so each row is a write and not a
 #: keep. The DOS values he arrived with were `10 7 5 9 6`.
 MALACHITE_PRESSES = (

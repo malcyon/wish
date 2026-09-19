@@ -60,7 +60,7 @@ def test_the_deepest_game_directory_wins():
 
 @pytest.mark.parametrize("parts", [
     ("SavesDir", "76561197971030711", "1882370", "English", "CHRDATA1.SAV"),
-    ("work", "curse", "234-before", "CHRDATA1.SAV"),
+    ("scratch", "curse", "234-before", "CHRDATA1.SAV"),
 ])
 def test_a_path_that_names_no_game_tree_refuses(parts):
     """`?` rather than a guess: a Steam app id names the whole collection."""

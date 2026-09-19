@@ -128,7 +128,7 @@ def stage(slot, disks: str, save: str = "") -> str:
         # boots, the party loads, and every write the game makes is silently
         # refused.  A driven `REMOVE CHARACTER FROM PARTY` went the whole way
         # through its menus that way and left no file on the disk
-        # (`work/issue439/readd1`, #439).  It also breaks the *next* run in
+        # (`cited/439/readd1`, #439).  It also breaks the *next* run in
         # this slot, since a read-only `SIDE0.D64` cannot be staged over.
         por.stage_writable(save, target)
     else:

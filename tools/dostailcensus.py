@@ -65,7 +65,7 @@ sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec as gdos  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 
 #: Suffixes a DOS character record is stored under.  `.GUY` is Gateway's
 #: export, which reads through the Curse table (`dos_layout.shape_for`).
@@ -76,7 +76,8 @@ RECORD_SUFFIXES = (".sav", ".cha", ".guy")
 #: is evidence about our writer and never about the game.
 BUILT_PREFIXES = ("built-", "seed-", "c64-", "conv-")
 
-#: Directories under `work/` holding hand-assembled specimens whose names do
+#: Directories (they were under the scratch directory that has since been
+#: deleted) holding hand-assembled specimens whose names do
 #: not carry a prefix.  Listed rather than guessed; add to it, do not widen
 #: the prefix list, because a prefix that matches too much silently shrinks
 #: the corpus and the shrink is invisible in the output.
@@ -85,14 +86,15 @@ BUILT_DIRS = ("issue191/built",)
 #: An emulator instance's **staged game tree**, which is skipped entirely.
 #:
 #: This is the trap that cost a re-take.  `tools/dosbox.py` copies the game
-#: into `work/dosbox/inst/<n>/game/<stem>/`, and a probe that tampers with a
+#: into `inst/<n>/game/<stem>/` in `tools/dosbox.py`'s scratch directory, and a probe that tampers with a
 #: record writes it there under the game's own name -- so a sweep counting
 #: that directory reads **our** staged bytes as the engine's, and a run of
 #: `tools/dostailprobe.py` staging `04 00 00 00` would come back as a
 #: specimen holding `04 00 00 00`.  Whatever the engine wrote in there is
-#: also still in whichever `work/` directory the run copied it out to, so
+#: also still in whichever scratch directory the run copied it out to, so
 #: nothing is lost by skipping the tree.
-SCRATCH_DIRS = ("work/dosbox/inst/", "work/dosbox/x/inst/")
+_DOSBOX_SCRATCH = scratch.scratch_dir("dosbox").as_posix()
+SCRATCH_DIRS = (_DOSBOX_SCRATCH + "/inst/", _DOSBOX_SCRATCH + "/x/inst/")
 
 #: Directory names of Gold Box titles on the same engine whose record this
 #: module has **no layout for**, and whose records are the same size as one
@@ -167,10 +169,9 @@ def dos_record_roots() -> list[pathlib.Path]:
     then the archives; then the played game directory, whose `SAVE` the
     archives already ship a byte-identical copy of.
 
-    **`work/` is not here and must not be** (#575).  It is gitignored scratch
-    that has been lost twice, so a corpus that lives only there is a corpus
-    that stops existing; a run whose records are evidence copies them into the
-    specimen tree with `tools/specimens.py add`.  Pass a `work/` directory on
+    **A scratch directory is not here and must not be** (#575).  It may vanish
+    at any time, so records that live only there stop existing; a run whose records are evidence copies them into the
+    specimen tree with `tools/specimens.py add`.  Pass a scratch directory on
     the command line to sweep one anyway.
     """
     roots = [specimen_tree(), archives(), played_game_dir()]

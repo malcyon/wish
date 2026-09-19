@@ -27,8 +27,8 @@ measurement in the running game:
 6. read `$6700`-`$6740` at each step, because the decoder's colour bytes run
    65 bytes into the roster page and the specimens hold an intact roster.
 
-    tools/cursepicrun.py --save work/issue192/CURSEH.D64 --out work/issue283/run1
-    tools/cursepicrun.py --save ... --out work/issue283/run4 --no-stop
+    tools/cursepicrun.py --save /path/to/CURSEH.D64 --out DIR/run1
+    tools/cursepicrun.py --save ... --out DIR/run4 --no-stop
 
 Writes `run.jsonl`, screenshots and the sampled buffers into `--out`.  Nothing
 outside the slot's own directory is written, and the player's disks are read
@@ -46,7 +46,7 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from tools import curseload, cursepic, curserun, gamedisks  # noqa: E402
+from tools import curseload, cursepic, curserun, gamedisks, scratch  # noqa: E402
 from tools import session as por  # noqa: E402
 
 BUFFER, BUFFER_END = 0x6300, 0x66FF
@@ -82,8 +82,9 @@ def aim_bar(sess, label: str, row: int = 24, timeout: float = 30.0) -> bool:
 
 
 def run(args) -> int:
-    out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    out = (pathlib.Path(args.out) if args.out
+           else scratch.scratch_dir("cursepicrun", "run"))
+    scratch.ensure(out)
     log = (out / "run.jsonl").open("a")
 
     def note(**kw):
@@ -260,7 +261,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--save", required=True, help="the save disk to load")
     ap.add_argument("--disks", default="", help="where the Curse sides are")
-    ap.add_argument("--out", default="work/issue283/run", help="log directory")
+    ap.add_argument("--out", default=None,
+                    help="log directory (default: this tool's scratch directory)")
     ap.add_argument("--pool", type=int, default=None, help="a specific slot")
     ap.add_argument("--pic", default="PIC1D", help="the picture ENCAMP draws")
     ap.add_argument("--moves", default="KI",

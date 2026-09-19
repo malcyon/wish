@@ -18,11 +18,11 @@ each -- which reads exactly like a hang and is not one.
 So this presses the key and then **reads whatever is on the screen**, one
 screen at a time, saving a `.png` and the twenty-five text rows for each.
 Nothing is inferred from a status line and nothing is retried.  The game's
-own words go to `--out`, which must be under `work/`: they are the game's and
+own words go to `--out`, which must be outside the repository: they are the game's and
 must not enter the repository.
 
-    tools/hallmenu.py --disk work/issue257/fixed/script.d64 \
-        --out work/issue257/menu --walk MKI
+    tools/hallmenu.py --disk SAVE.d64 \
+        --out DIR --walk MKI
 
 `--answer` is what to give a `YES NO`; the default `NO` declines training,
 which leaves the party where it stands.  The C64 game disks are `$POR_DISKS`
@@ -217,7 +217,7 @@ def main(argv=None) -> int:
     p.add_argument("--disks", default=str(DISKS),
                    help="the C64 game disks; read only")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
-    p.add_argument("--out", required=True, help="a directory under work/")
+    p.add_argument("--out", required=True, help="a directory outside the repository")
     p.add_argument("--walk", default="MKI",
                    help="moves, in the game's own I J K M")
     p.add_argument("--answer", default="NO", help="what to answer a YES NO")

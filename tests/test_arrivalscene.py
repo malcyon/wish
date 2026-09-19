@@ -192,7 +192,7 @@ def test_new_phlan_and_the_slums_still_hand_control_straight_back():
 
 def test_wait_for_world_gives_up_rather_than_waiting_for_ever():
     """A bar that is neither the world's nor a continue prompt -- `GUARDING`,
-    read off a live screen in `work/p118-step3/` -- still gives up inside its
+    read off a live screen in `p118-step3/` (scratch, deleted) -- still gives up inside its
     own timeout instead of hanging."""
     sess = FakeSession(["GUARDING"])
     assert sess.wait_for_world(timeout=0.2, interval=0.02) is False
@@ -204,7 +204,7 @@ def test_select_bar_presses_a_scripts_own_one_option_acknowledgement():
     Three Curse landings (`$20`, `$22`, `$33`) put up `PRESS BUTTON OR
     RETURN TO CONTINUE.` after their arrival narration, and
     `select_bar('CONTINUE.')` spun its whole timeout instead of pressing the
-    one option offered (`work/issue15/curse25/run.log` lines 27, 38, 112,
+    one option offered (`cited/15/curse25/run.log` lines 27, 38, 112,
     `#565`).  There is no highlighted word on this bar at all -- an
     acknowledgement is not a menu -- so a fixed `select_bar` presses it
     through `press_kernal`, the same way `wait_for_world`'s own `BAR_PRESS`

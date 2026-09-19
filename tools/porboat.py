@@ -46,8 +46,8 @@ The square's wall byte and square property go to zero with it.  Both are
 `docs/196-the-amiga-saved-game-built.md` §4 measured the engine's own resave
 holding zero in both.
 
-    tools/porboat.py work/321/por1.adf --out work/321/por1-harbour.adf
-    tools/porboat.py work/321/por1.adf --report
+    tools/porboat.py por1.adf --out por1-harbour.adf
+    tools/porboat.py por1.adf --report
 
 Then, in the running game: step forward once for the harbour master, buy any
 passage but the first and the last, turn east, and walk `(11,1)` to `(15,1)`.

@@ -224,8 +224,6 @@ def _grade(path, specimen_grades: dict[str, str]) -> str:
         return "edited"
     if "/wish-specimens/" in text:
         return "engine"          # a specimen with no provenance row read
-    if "/work/" in text or text.startswith("work/"):
-        return "ours"
     return "found"
 
 
@@ -233,7 +231,7 @@ def _grade_over(paths, specimen_grades: dict[str, str]) -> str:
     """The grade for one record that turned up at several paths.
 
     `tools/dostailcensus.py` deduplicates on the record's bytes, so the same
-    record is routinely a copy in `work/` **and** the specimen it was copied
+    record is routinely a copy in a run directory **and** the specimen it was copied
     into.  Grading the first path found would call an engine-written specimen
     `ours`, purely because a run directory sorted first -- which is how
     THRENDER GRONE, the one record on this machine wanting five trait slots,
@@ -265,9 +263,9 @@ def c64_disks(extra_disks=()) -> list[pathlib.Path]:
     sit on this machine, and an image with no saved game costs one read and is
     skipped.
 
-    **No `work/` sweep** (#575): a disk image a driven run left there is
-    gitignored scratch, and one carrying a party that is evidence belongs in
-    the specimen tree.  `--disk` still takes any image by name.
+    **No sweep of scratch directories** (#575): a disk image a driven run left
+    there is gitignored scratch, and one carrying a party that is evidence
+    belongs in the specimen tree.  `--disk` still takes any image by name.
     """
     paths: list[pathlib.Path] = []
     for _game, key in C64_TITLES:

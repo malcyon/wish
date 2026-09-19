@@ -196,7 +196,7 @@ def test_the_driver_asks_this_titles_own_mode_flag(game, flag):
 
     Before `#334` this read `$6E11` on all three, so a Curse party in a fight
     answered whatever that byte happened to hold -- `1`, in the run at
-    `work/issue131-m2/curse-brawl`, with `MOVE VIEW AIM TURN QUICK DONE` on
+    `issue131-m2/curse-brawl` (scratch, deleted), with `MOVE VIEW AIM TURN QUICK DONE` on
     row 24 and six figures on the floor.
     """
     sess = ModeSession(game, {flag: 2})

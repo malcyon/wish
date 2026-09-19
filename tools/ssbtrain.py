@@ -32,7 +32,7 @@ Three subcommands:
         (`.claude/rules/testing.md`).  A slot is found by **the name inside
         the record**, not by the name table at `+$C00`: in this title that
         table runs in marching order while the slots do not
-        (`goldbox/c64_save.py`), and on `work/193/SSBD.D64` entry 2 says
+        (`goldbox/c64_save.py`), and on `cited/193/SSBD.D64` entry 2 says
         EPONA over a slot whose record says MALACHITE.  The fields are
         `xp`, `plat`, `con`, `race`, `bits`, `dcs`, `dcl`, `hpr`, `int`,
         `wis` and `lvl_<class>`; `plat` zeroes the four lesser coins, and
@@ -42,7 +42,7 @@ Three subcommands:
         `0x015`/`0x016`, so the sheet agrees with it.  `--repair` closes a
         `SAVEDBASH` the drive never finished (`#298`).
 
-    tools/ssbtrain.py run --pool N --save <out.d64> --out work/issue344/run1
+    tools/ssbtrain.py run --pool N --save <out.d64> --out DIR
 
         `tools/ssbrun.py`: claim a pooled slot, stage the six sides and the
         save disk, boot through the cracker intro, load the party and serve
@@ -109,6 +109,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
+from tools import scratch  # noqa: E402
 
 #: Where the working character record sits while `GEN` runs.  `$11D8` reads
 #: the race at `$7C72` and the constitution at `$7C18` and writes `$7C9A,X`,
@@ -491,7 +492,7 @@ def press(args) -> int:
                 raise SystemExit(f"unknown field {key!r}")
     at = ROSTER + args.slot * SLOT_SIZE
     out = pathlib.Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(out.parent)
 
     cmd(port, "poke", f"{at:X}", base.hex())
     cmd(port, "poke", f"{MENU_COUNT:X}", "00")
@@ -563,7 +564,7 @@ def main(argv=None) -> int:
     rn.add_argument("--pool", type=int, default=None)
     rn.add_argument("--disks", default=os.environ.get("SSB_DISKS", ""))
     rn.add_argument("--save", required=True)
-    rn.add_argument("--out", default="work/issue344/run")
+    rn.add_argument("--out", default=str(scratch.scratch_dir("ssbtrain", "run")))
     rn.set_defaults(func=drive)
 
     pr = sub.add_parser("press", help="drive one training press and dump it")

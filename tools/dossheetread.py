@@ -11,8 +11,8 @@ and takes one screenshot per character with `VIEW CHARACTER` open.
 
     tools/dossheetread.py --game CURSE \\
         --container ~/wish-specimens/por-dos/WISH-SPEC-curse-234-party-dualclassed \\
-        --records work/issue234/from-c64 \\
-        --out work/issue234/dosrun
+        --records DIR \\
+        --out DIR2
 
 **Two stagings, and `--save` is the stronger one.**  `--container` plus
 `--records` puts our six `CHRDAT` files beside a `SAVGAM<slot>.DAT` the
@@ -51,7 +51,7 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
 #: The training hall's maximum level, at this file offset of
 #: `SAVGAM<slot>.DAT` in Pool of Radiance, Curse and Silver Blades alike
@@ -388,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
                          "to_main_menu, for a title screen that will not "
                          "settle")
     ap.add_argument("--note", default="issue234 converted sheets")
-    ap.add_argument("--out", default="work/issue234/dosrun")
+    ap.add_argument("--out", default=str(scratch.scratch_dir("dossheetread")))
     args = ap.parse_args(argv)
     if not args.save and not (args.container and args.records):
         ap.error("give --save, or both --container and --records")

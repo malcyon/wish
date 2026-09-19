@@ -7,21 +7,21 @@ This is the one run that gates a push (`.claude/rules/commits.md`), made
 into a single command so that the green marker is written by the command
 that saw the checks pass, and never by an agent concluding that it did.
 `.claude/hooks/check-push-tested.py` refuses a `git push` with no marker for
-the tip, so `work/testrun/<sha>.green` is what lets a push through.
+the tip, so `~/.cache/wish/testrun/<sha>.green` is what lets a push through.
 
 What it does, in order, and all of it against the same checkout:
 
 1. `git worktree add --detach` at the resolved sha, so the run tests exactly
    what will land and not whatever other agents have half-edited in the
    main tree.
-2. Symlink `work/` and `gamedisks.yaml` into the worktree. Both are gitignored,
-   and without them every test that reads game data skips.
+2. Symlink `gamedisks.yaml` into the worktree. It is gitignored, and without
+   it every test that reads game data skips.
 3. `pytest -q` in the worktree, with the repository's own virtual
    environment. `-n auto --dist loadgroup` is in `pyproject.toml`. Then the
    whole suite once more with `gamedisks.yaml` unlinked, as CI has none.
 4. `ruff check .` in the worktree.
 5. `tools/genui.py --check` in the worktree.
-6. If all three passed, write `work/testrun/<sha>.green` in the main tree,
+6. If all three passed, write `~/.cache/wish/testrun/<sha>.green`,
    holding pytest's summary line. On any failure, write nothing.
 7. Remove the worktree, whatever happened, unless `--keep`.
 
@@ -44,8 +44,19 @@ import sys
 import tempfile
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
+
+from tools import scratch  # noqa: E402
+
 PYTHON = REPO / ".venv" / "bin" / "python"
-MARKER_DIR = REPO / "work" / "testrun"
+
+
+def marker_dir() -> pathlib.Path:
+    """Outside the temp directory on purpose: the push hook reads it, and it has
+    to survive a reboot. `.claude/hooks/check-push-tested.py` computes the same
+    path, and a test fails if the two disagree."""
+    return scratch.cache_dir("testrun")
+
 
 SUMMARY = re.compile(r"^(?:=+ )?(\d+ passed.*?)(?: =+)?$", re.MULTILINE)
 
@@ -119,7 +130,6 @@ def main(argv=None) -> int:
         print(added.stderr.strip())
         return 1
     try:
-        (worktree / "work").symlink_to(REPO / "work")
         if (REPO / "gamedisks.yaml").is_file():
             (worktree / "gamedisks.yaml").symlink_to(REPO / "gamedisks.yaml")
         green, summary, failure = run_checks(worktree)
@@ -132,8 +142,7 @@ def main(argv=None) -> int:
         print("RED, no marker written")
         print(failure)
         return 1
-    MARKER_DIR.mkdir(parents=True, exist_ok=True)
-    marker = MARKER_DIR / f"{sha}.green"
+    marker = scratch.ensure(marker_dir()) / f"{sha}.green"
     marker.write_text(summary + "\n")
     print(f"GREEN: {summary}")
     print(f"marker {marker}")

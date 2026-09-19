@@ -18,7 +18,7 @@ rather than re-deriving either rule, so a change to either side moves what this
 prints.
 
     tools/classcombocheck.py                          # the specimen tree
-    tools/classcombocheck.py --c64 work/issue393      # a directory or a .d64
+    tools/classcombocheck.py --c64 DIR              # a directory or a .d64
     tools/classcombocheck.py --dos ~/wish-specimens/coab-dos --dual-only
 
 It also prints, per C64 record, the bitmask the **level array** implies beside

@@ -75,8 +75,8 @@ def test_a_character_who_owns_nothing_reads_too():
 #
 # Two walks measured Silver Blades' own sheet bar as `EXIT` followed by 36
 # spaces, nothing else on the row:
-# `work/issue52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl` and
-# `work/issue52/walk-dostoc64-ssb/ssbcheck.jsonl`, with a screenshot
+# `cited/52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl` and
+# `cited/52/walk-dostoc64-ssb/ssbcheck.jsonl`, with a screenshot
 # `02-sheet-0.png` in one of those directories.  `Session.character_sheet`
 # polls the base `sheet_is_up`, which looks for `VIEW:` and never finds it, so
 # every Silver Blades sheet read timed out.  `SSBSession` had overridden

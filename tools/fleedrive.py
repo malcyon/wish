@@ -7,7 +7,7 @@ driven fight that ended in flight came back as `ended` (`#445`).  This drives
 it, through the game's own FLEE.
 
     tools/fleedrive.py code
-    POR_HEADLESS=1 tools/fleedrive.py drive --out work/issue445/run1
+    POR_HEADLESS=1 tools/fleedrive.py drive --out DIR
 
 **`code` needs no emulator.**  It reads each C64 title's own `POST.COM` off
 the player's disks and prints the three end-of-fight lines, the base the
@@ -72,6 +72,7 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
@@ -904,7 +905,7 @@ def main(argv=None) -> int:
                    help="the move to repeat while looking for a fight")
     d.add_argument("--steps", type=int, default=400,
                    help="give up after this many steps with no fight")
-    d.add_argument("--out", default=str(ROOT / "work" / "issue445" / "run"),
+    d.add_argument("--out", default=str(scratch.scratch_dir("fleedrive", "run")),
                    help="run directory")
     d.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)

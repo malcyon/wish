@@ -4,7 +4,7 @@
 `#10 (Finish the high-level test party)` asked for a **generator, not a
 disk**.  A party that exists only as a saved image is a party somebody has to
 keep -- and the one this project drove through the training hall on
-2026-08-22, `work/drive/P18PARTY.D64`, is gone from this machine, so that is
+2026-08-22, `drive/P18PARTY.D64` in scratch, is gone from this machine, so that is
 not a hypothetical.  This rebuilds an equivalent party from nothing in about a
 second, with no emulator and no game bytes in the repository.
 

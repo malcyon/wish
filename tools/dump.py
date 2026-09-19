@@ -3,9 +3,9 @@
 
 Discovery tool -- not part of the shipped editor.
 
-    tools/dump.py work/PORSAVE.D64                 # disk directory + save summary
+    tools/dump.py SAVE.D64                         # disk directory + save summary
     tools/dump.py tests/fixtures/brutus.chr        # one character record
-    tools/dump.py work/PORSAVE.D64 --raw SAVEDGAME0 --range 0x4c00-0x4cff
+    tools/dump.py SAVE.D64 --raw SAVEDGAME0 --range 0x4c00-0x4cff
 """
 from __future__ import annotations
 

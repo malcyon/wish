@@ -9,7 +9,7 @@ outside the test suite.  It is what the emulator proof for
 picker)` needs: a slot on a real disk written by our own code rather than by
 hand, so the game can be asked whether it offers it.
 
-    tools/porslot.py work/por1.adf --from A --to F --out work/por1-F.adf
+    tools/porslot.py por1.adf --from A --to F --out por1-F.adf
 
 The party is read back out of the disk through `goldbox.amiga_savegame.read_por_slot`
 and `goldbox.dos_codec.to_neutral`, so it goes through the same neutral record a

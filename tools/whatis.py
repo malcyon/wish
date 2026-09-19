@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Which game file, if any, a block of captured memory holds.
 
-    tools/whatis.py work/wallart/run2/05-slums.stage.bin 0x8C00
+    tools/whatis.py 05-slums.stage.bin 0x8C00
 
 A driven session dumps regions of the machine as `.bin` files, and the first
 question about every one of them is the same: **is this a file the loader put

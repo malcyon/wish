@@ -23,7 +23,7 @@ not is a refutation, and a refutation is the point of having the control.
 
     tools/dostrainprobe.py --party ~/wish-specimens/por-dos/WISH-SPEC-por-party-l1
 
-Nothing is written outside the staged copy and `--out`, both under `work/`.
+Nothing is written outside the staged copy and `--out`, both under the temp directory.
 The specimen is opened read only.
 """
 
@@ -40,7 +40,7 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 from tools.dosparty import wipe_roster  # noqa: E402
 
 #: Where Curse and Silver Blades keep the training hall's maximum level.  A
@@ -158,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--party", type=pathlib.Path, required=True,
                     help="a specimen directory holding SAVGAM*.DAT and CHRDAT*")
     ap.add_argument("--out", type=pathlib.Path,
-                    default=REPO / "work" / "issue249" / "trainprobe")
+                    default=scratch.scratch_dir("dostrainprobe"))
     ap.add_argument("--slot", default="C", help="which letter to install as")
     ap.add_argument("--level", type=lambda s: int(s, 0), default=None,
                     help="what to write at 0xD51; omit for the control")

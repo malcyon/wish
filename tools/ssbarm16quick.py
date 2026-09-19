@@ -22,7 +22,7 @@ three the engine itself writes on every step.
 
 Run: `.venv/bin/python tools/ssbarm16quick.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
-as the save. Writes its log and dumps under `work/issue334/ssb21/`.
+as the save. Writes its log and dumps under `scratch.scratch_dir("ssbarm16quick")`.
 `ssbarm16fight.py` is the earlier version, which fights with `melee_turn` and
 a shorter budget.
 """
@@ -43,12 +43,13 @@ from tools import (  # noqa: E402
     cursethac0,
     gamedisks,
     laterbattle,
+    scratch,
     specimens,
     ssbwarp,
 )
 from tools import session as S  # noqa: E402
 
-OUT = ROOT / "work/issue334/ssb21"
+OUT = scratch.scratch_dir("ssbarm16quick")
 
 SAVE = str(specimens.tree_root() / "por-c64"
             / "WISH-SPEC-ssb-d-engine-resave-walked.D64")

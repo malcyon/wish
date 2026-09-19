@@ -544,7 +544,7 @@ def test_a_square_is_chosen_off_the_map_when_the_table_has_none():
     party's current square, which is a wall in the next area along.
 
     `goldbox.areas.landing_square` picks it -- P20 measured what the old rule came
-    to and it was `(0, 0)` on every map (`work/reports/p20-arrivals.md`)."""
+    to and it was `(0, 0)` on every map (`reports/p20-arrivals.md`, scratch, deleted)."""
     from goldbox.geo import Geo
     from tests.gamedata import synthetic_geo
     geo = Geo(synthetic_geo())
@@ -585,7 +585,7 @@ def _window(app):
 def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
         app, monkeypatch):
     """It was debug-mode-only while nobody knew where a trip landed. P20
-    measured that (`work/reports/p20-arrivals.md`) and the gate came off, so
+    measured that (`reports/p20-arrivals.md`, scratch, deleted) and the gate came off, so
     the flag no longer decides whether the row is built."""
     from PyQt6.QtWidgets import QAbstractButton
 
@@ -603,7 +603,7 @@ def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
 
 def test_the_row_lists_every_fasttravelable_area_by_name(app):
     """Every area but 30, which is the attract-mode demo and is not a place a
-    party can be put -- `work/reports/p20-arrivals.md`.
+    party can be put -- `reports/p20-arrivals.md` (scratch, deleted).
 
     A row built with no settings is a row nobody has chosen for, and offers
     the lot; the window always passes the window's settings."""
@@ -652,7 +652,7 @@ def test_unticking_an_area_takes_it_out_of_the_dropdown(app):
 def test_area_30_is_never_offered_however_the_setting_is_written(app):
     """`ECL1E` is the attract-mode demo: fasttraveling there ends the session, so it
     is not in the table to be ticked and a hand-edited config naming it still
-    does not get it (`work/reports/p20-arrivals.md`)."""
+    does not get it (`reports/p20-arrivals.md`, scratch, deleted)."""
     from automap.config import Settings
 
     row = bar(app, settings=Settings(
@@ -789,7 +789,7 @@ def test_a_square_is_chosen_off_the_map_only_where_that_means_something(app):
     An overland area gets no square because outdoors the position is
     `$49C3`/`$49C4`, and a `dynamic_geo` area gets none because it loads a map
     `geos` does not name -- area 3 loaded `GEO05` and area 5 `GEO04`
-    (`work/reports/p20-arrivals.md`).
+    (`reports/p20-arrivals.md`, scratch, deleted).
     """
     from goldbox.geo import Geo
     from tests.gamedata import synthetic_geo

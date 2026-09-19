@@ -12,7 +12,7 @@ Two sweeps, and they fail differently:
 
 * `--table` decodes every byte value with a `$1234` operand and compares
   the mnemonic and the size with capstone's. This catches a typed row: the
-  copy of this table that `work/d6502/before.py` holds has `F6 SBC ZPX` where
+  copy of this table that `d6502/before.py` (scratch, deleted) held has `F6 SBC ZPX` where
   the real opcode is `INC`, and the sweep names it.
 * `--code` walks whole overlays end to end, advancing by `d6502`'s own size
   (one byte for a `.byte`), which is what a reader actually does. It catches

@@ -10,7 +10,7 @@ default into all six slots today, which is
 `#130 (A converted DOS party arrives with six identical combat figures, not
 its own)`, so the party has to be made by hand.
 
-    tools/iconpoke.py --disk work/issue184/SIX.D64
+    tools/iconpoke.py --disk SIX.D64
 
 Every icon it writes is one the game's own ICON menu can reach:
 `IconParts.compose` applies a weapon option and then a head option out of
@@ -18,7 +18,7 @@ Every icon it writes is one the game's own ICON menu can reach:
 does.  Nothing is invented and nothing is stored here -- the part tables are
 read off the disks at run time.
 
-The disk is edited **in place**, so point it at a copy under `work/`.  It
+The disk is edited **in place**, so point it at a copy.  It
 refuses a directory it was not given, refuses to write two slots the same
 shape, and prints the eighteen screen codes it left in each slot so the run
 that follows has the file's side of the comparison in its log.
@@ -121,7 +121,7 @@ def poke(disk: pathlib.Path, disks: pathlib.Path,
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--disk", required=True,
-                   help="the save .d64 to edit in place; keep it under work/")
+                   help="the save .d64 to edit in place; use a copy")
     p.add_argument("--disks", default=str(DISKS),
                    help="where the player's game disks are; read, never written")
     args = p.parse_args(argv)

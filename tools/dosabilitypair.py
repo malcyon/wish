@@ -12,7 +12,7 @@ saved game can separate them and the answer has to come out of the engine.
     tools/dosabilitypair.py sites --game CURSE
     tools/dosabilitypair.py census --game SECRET
     tools/dosabilitypair.py read ~/wish-specimens/coab-dos/WISH-SPEC-...
-    tools/dosabilitypair.py stage --save in/ --out work/x/ \\
+    tools/dosabilitypair.py stage --save in/ --out DIR \\
         --set PHILIPPE:str=18/9 --set SHARA:str=9/17
 
 `sites` is the answer: six instruction signatures, each read out of the

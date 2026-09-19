@@ -16,9 +16,9 @@ every candidate key is pressed from a sheet in turn and the frame identified,
 so "which key turns the page" is answered by the art that appears rather than
 by a guess.
 
-    tools/dosportraitparty.py --c64 work/issue57/PORSAVE12.D64 --out work/x
-    tools/dosportraitparty.py --slot A --out work/y          # the shipped party
-    tools/dosportraitparty.py --slot A --probe n,Down,Right,plus --out work/z
+    tools/dosportraitparty.py --c64 PORSAVE12.D64 --out DIR
+    tools/dosportraitparty.py --slot A --out DIR          # the shipped party
+    tools/dosportraitparty.py --slot A --probe n,Down,Right,plus --out DIR
 
 With `--c64` the party is converted **from nothing** through
 `goldbox.dos_codec.new_dos_save`, which is the code `File ▸ Convert…` runs -- not a
@@ -48,7 +48,7 @@ from goldbox import (
 from goldbox import portraits as portrait_tables  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 from tools import portraitshot as shot  # noqa: E402
 
 #: The key the character screen answers with the next character in the party.
@@ -195,8 +195,8 @@ def sequence(por, s, out: pathlib.Path, keys: list[str]) -> list[str]:
 def run(*, c64: pathlib.Path | None, slot: str, out: pathlib.Path,
         count: int, keys: list[str], key: str,
         walk: list[str] | None = None, first: int = 0) -> dict:
-    out.mkdir(parents=True, exist_ok=True)
     game = dosbox.find_game()
+    scratch.ensure(out)
     report: dict = {"slot": slot, "c64": str(c64) if c64 else None}
 
     with dosbox.claim("dosportraitparty") as claimed:
@@ -269,7 +269,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--sequence", default="",
                     help="press these keys from the map instead, comma "
                          "separated, photographing after each")
-    ap.add_argument("--out", default="work/issue57/dosparty",
+    ap.add_argument("--out", default=str(scratch.scratch_dir("dosportraitparty")),
                     help="where the run's files go")
     args = ap.parse_args(argv)
 

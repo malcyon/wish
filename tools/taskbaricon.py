@@ -1,7 +1,7 @@
 """Draw every square mark the artist delivered, resized to the sizes Windows
 draws, on a light taskbar and a dark one.
 
-    .venv/bin/python tools/taskbaricon.py work/issue351/taskbar-marks.png
+    .venv/bin/python tools/taskbaricon.py taskbar-marks.png
 
 For `#351 (The Windows build shows no logo in About and a black square on
 the taskbar, because the artist's SVGs are not in the package)`. Donald,
@@ -73,6 +73,8 @@ from PyQt6.QtGui import (  # noqa: E402
     QPainter,
 )
 from PyQt6.QtSvg import QSvgRenderer  # noqa: E402
+
+from tools import scratch  # noqa: E402
 
 #: Where the artist's delivery sits. Read in place: the six files the program
 #: uses are committed under `assets/logo/`, the rest stay his, and nothing the
@@ -444,8 +446,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--shipped", action="store_true",
                     help="draw only the row that matches what ships")
     ap.add_argument("out", nargs="?", default=None,
-                    help="where the PNG goes (default: work/issue351/"
-                         "taskbar-shipped.png or -marks.png)")
+                    help="where the PNG goes (default: taskbar-shipped.png or "
+                         "taskbar-marks.png in the taskbaricon scratch "
+                         "directory)")
     args = ap.parse_args(argv)
     app = QGuiApplication(["taskbaricon"])
     assert app is not None
@@ -456,8 +459,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{family:13s} {colourway:10s} {g24:6d}  {g32:6d}")
         return 0
     out = pathlib.Path(args.out or (
-        "work/issue351/taskbar-shipped.png" if args.shipped
-        else "work/issue351/taskbar-marks.png"))
+        scratch.scratch_dir("taskbaricon") / (
+            "taskbar-shipped.png" if args.shipped else "taskbar-marks.png")))
     out.parent.mkdir(parents=True, exist_ok=True)
     the_rows = [shipped_row()] if args.shipped else rows()
     image = sheet(the_rows)

@@ -15,9 +15,9 @@ project built, staged as `SIDE0`, and a session left serving so the party on
 it can be read off the running game** (`#193 (Convert a Secret of the Silver
 Blades DOS save into a C64 one, which the importer refuses today)` step 3).
 
-    tools/ssbdisk.py --folder work/curse/SSB-D-paine-memorised --slot D \\
-        --out work/193/SSBD.D64
-    tools/ssbrun.py --pool 4 --save work/193/SSBD.D64 --out work/193/run1
+    tools/ssbdisk.py --folder DIR --slot D \\
+        --out SSBD.D64
+    tools/ssbrun.py --pool 4 --save SSBD.D64 --out RUNDIR
 
 Then drive it with `POR_CMD_PORT=65<slot> tools/porcmd screen`, exactly as
 for the other two titles.  `--watch` launches and serves with no boot, for

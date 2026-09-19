@@ -49,6 +49,7 @@ from automap.paths import find_disks  # noqa: E402
 from automap.state import Automapper  # noqa: E402
 from automap.vice import Monitor  # noqa: E402
 from automap.window import AutomapBinding  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 from wish.ui_window import Ui_WishWindow  # noqa: E402
 
@@ -73,7 +74,7 @@ def main(argv=None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=pathlib.Path,
-                    default=ROOT / "work" / "automapfightwindow.jsonl",
+                    default=scratch.scratch_dir("automapfightwindow") / "events.jsonl",
                     help="where to write the JSON-lines event log")
     ap.add_argument("--budget", type=float,
                     default=float(os.environ.get("WHOLEWINDOW_BUDGET", "300")),
@@ -83,15 +84,14 @@ def main(argv=None) -> int:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     out = args.out
-    out.parent.mkdir(parents=True, exist_ok=True)
-    scratch = out.parent / "automapfightwindow-config"
-    scratch.mkdir(parents=True, exist_ok=True)
+    config_dir = out.parent / "automapfightwindow-config"
 
     disks = os.environ.get("POR_DISKS") or str(find_disks() or "")
     if not disks or not os.path.isdir(disks):
         print("No game disks. Set $POR_DISKS.", file=sys.stderr)
         return 2
 
+    scratch.ensure(config_dir)
     lines = out.open("w")
 
     def emit(kind, **kw):
@@ -124,8 +124,8 @@ def main(argv=None) -> int:
         # globally before the boot, it makes flatpak look for VICE in an empty
         # scratch directory and fail with "app/net.sf.VICE/x86_64/master not
         # installed".
-        os.environ["XDG_CONFIG_HOME"] = str(scratch / "config")
-        os.environ["XDG_DATA_HOME"] = str(scratch / "data")
+        os.environ["XDG_CONFIG_HOME"] = str(config_dir / "config")
+        os.environ["XDG_DATA_HOME"] = str(config_dir / "data")
 
         target = TransientTarget(slot.port)
         mapper = Automapper(target, {})

@@ -12,7 +12,7 @@ M1  Idle: sample the PC at the interval the wait loop will use, and for every
     inside again.
 M2  The same while the party walks -- the game genuinely busy.
 
-    tools/fasttravelpcwait.py [--slot 2] [--save PORSAVE11.D64] [--disks DIR] [--out work/agent152]
+    tools/fasttravelpcwait.py [--slot 2] [--save PORSAVE11.D64] [--disks DIR] [--out DIR]
 
 It claims a pool slot, stages the Pool of Radiance disks and the save into it,
 boots, loads, begins adventuring and samples the monitor; `--save` defaults to
@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 from automap.actions import KEY_FETCH, KEY_WAIT, pc_register  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from automap.vice import Monitor, MonitorError  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 
@@ -116,8 +117,9 @@ def main(argv=None) -> int:
     parser.add_argument("--disks", type=pathlib.Path,
                         help="the Pool of Radiance disks directory")
     parser.add_argument("--out", type=pathlib.Path,
-                        default=ROOT / "work" / "agent152",
-                        help="where wait.json goes")
+                        default=None,
+                        help="where wait.json goes (default: this tool's "
+                             "scratch directory)")
     args = parser.parse_args(argv)
     disks = args.disks or find_disks()
     if disks is None:
@@ -125,8 +127,8 @@ def main(argv=None) -> int:
                      "pass --disks")
     base_save = args.save or disks / "PORSAVE11.D64"
 
-    out = args.out
-    out.mkdir(parents=True, exist_ok=True)
+    out = args.out or scratch.scratch_dir("fasttravelpcwait")
+    scratch.ensure(out)
     slot = S.claim_slot(args.slot, "issue 152 fast travel wait")
     results: dict = {"slot": slot.n, "port": slot.port}
     try:

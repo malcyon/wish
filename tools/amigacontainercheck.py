@@ -4,7 +4,7 @@
     tools/amigacontainercheck.py                       every C64 specimen
     tools/amigacontainercheck.py SAVE.d64 OTHER.d64    two named saves
     tools/amigacontainercheck.py --data-disk pool2.adf --game-disk pool1.adf
-    tools/amigacontainercheck.py --out work/issue316/container.md
+    tools/amigacontainercheck.py --out container.md
 
 `goldbox.amiga_savegame.new_por_savegame` builds all 13,141 bytes of a
 `savgam<letter>.dat` from the save being converted, so a converted party

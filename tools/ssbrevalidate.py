@@ -14,7 +14,7 @@ driving a real fight with `Session.fight()` if one starts.
 
 Run: `.venv/bin/python tools/ssbrevalidate.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
-as the save. Writes its log and dumps under `work/issue334/ssb17/`. The
+as the save. Writes its log and dumps under its own scratch directory. The
 walk itself is the one `ssbstep1512.py` and `ssbreturnprobe.py` make.
 """
 from __future__ import annotations
@@ -32,12 +32,13 @@ from tools import (  # noqa: E402
     cursethac0,
     gamedisks,
     laterbattle,
+    scratch,
     specimens,
     ssbwarp,
 )
 from tools import session as S  # noqa: E402
 
-OUT = ROOT / "work/issue334/ssb17"
+OUT = scratch.scratch_dir("ssbrevalidate")
 
 SAVE = str(specimens.tree_root() / "por-c64"
             / "WISH-SPEC-ssb-d-engine-resave-walked.D64")

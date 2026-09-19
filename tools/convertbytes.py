@@ -11,11 +11,10 @@ the same conversions in a detached worktree at the older commit and diff the
 manifests:
 
     git worktree add -q --detach "$WT" <sha>
-    ln -sfn "$PWD/work" "$WT/work"
-    .venv/bin/python tools/convertbytes.py --tree "$WT" --out work/issue52/old.json
-    .venv/bin/python tools/convertbytes.py --out work/issue52/new.json
-    .venv/bin/python tools/convertbytes.py --diff work/issue52/old.json \
-                                                  work/issue52/new.json
+    ln -sfn "$PWD/gamedisks.yaml" "$WT/gamedisks.yaml"
+    .venv/bin/python tools/convertbytes.py --tree "$WT" --out old.json
+    .venv/bin/python tools/convertbytes.py --out new.json
+    .venv/bin/python tools/convertbytes.py --diff old.json new.json
 
 `--tree` puts another checkout's `goldbox/`, `editor/` and `tools/` in front
 of this one on `sys.path`, so the *measuring* code is this file in both runs

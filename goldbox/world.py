@@ -47,12 +47,12 @@ Both need a table that is not in `SQRDATA0n` at all: "each script carries
 its site list as four tables (y, count, x, event) and its impassable-terrain
 list as one more" (`docs/113-world-map.md`) -- inside `ECL19`/`ECL1A`/`ECL1B`'s
 own bytecode, not in the file this module reads. The byte offsets of those
-tables were recorded once, in `work/reports/world-map.md`, which is lost
-with `work/` (`#136 (Thirty-two cited write-ups are gone, because the
+tables were recorded once, in `reports/world-map.md` (scratch, deleted), which is lost
+with the scratch directory (`#136 (Thirty-two cited write-ups are gone, because the
 knowledge base pointed into gitignored scratch)`) -- confirmed by
 `tools/windowsquare.py`'s own docstring: "Passability cannot be read off the
 disk: the impassable-terrain table's address was in
-`work/reports/world-map.md`, which is lost (#136), so the running game is
+`reports/world-map.md`, which is lost (#136), so the running game is
 the only authority left." Recovering the offsets means rebuilding an ECL
 decoder, and `docs/115-review-the-scripts.md` records that reading the ECL
 scripts at all was **closed at Donald's own direction** on 2026-08-31 --
@@ -288,7 +288,7 @@ class World:
 _BLOCKED = (
     "the site tables and the impassable-terrain tables live in ECL19/1A/1B's "
     "own bytecode, not in SQRDATA0n; their addresses were in "
-    "work/reports/world-map.md, lost with work/ (#136), and recovering them "
+    "reports/world-map.md, lost with the scratch directory (#136), and recovering them "
     "means reopening docs/115-review-the-scripts.md, closed at Donald's own "
     "direction -- see the goldbox/world.py module docstring and "
     "#11 (Draw the wilderness on the automapper)")

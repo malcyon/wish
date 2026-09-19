@@ -10,7 +10,7 @@ works offscreen, so this never puts a window on his screen -- run it the way
 the rule says:
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \
-        GDK_BACKEND=x11 .venv/bin/python tools/rosterfloorshot.py work/issue474
+        GDK_BACKEND=x11 .venv/bin/python tools/rosterfloorshot.py DIR
 
 **No source file is edited to take these pictures.** `EditorBinding._size_
 roster` is monkeypatched onto the class in memory, for the lifetime of one
@@ -38,6 +38,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
+
+from tools import scratch  # noqa: E402
+
 
 #: The four things being compared. Each is a function of `(natural,
 #: ROSTER_MIN_WIDTH)` -> the value `_size_roster` would hand `setMinimumWidth`
@@ -176,6 +179,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "out", nargs="?", default="work/issue474", type=pathlib.Path,
-        help="directory to write the pictures into (default: work/issue474)")
+        "out", nargs="?", default=scratch.scratch_dir("rosterfloorshot"),
+        type=pathlib.Path,
+        help="directory to write the pictures into (default: %(default)s)")
     raise SystemExit(main(parser.parse_args().out))

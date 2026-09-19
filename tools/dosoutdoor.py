@@ -4,7 +4,7 @@
 `#50 (Lift the wilderness refusal from the DOS save converter)` and
 `#59 (Map the DOS saved game, not just the character record)` both needed a
 DOS saved game made on the travel grid, and the three that were made for them
-in 2026-08 lived in `work/p59-outdoor/` and are gone -- along with the run
+in 2026-08 lived in `p59-outdoor/` (scratch, deleted) and are gone -- along with the run
 script that produced them.  Donald's own three DOS saves are all indoors, so
 there is no overland specimen on this machine and every session that wants one
 has to make it again.  This is the thing that makes it, kept in `tools/` so
@@ -30,7 +30,7 @@ saved square is one the engine itself moved the party to rather than the one
 the seed asked for.
 
 Nothing here touches the player's own game tree: `tools.dosbox.Session.stage`
-copies it into `work/dosbox/inst/<n>/` and the seed is written into the copy.
+copies it into `inst/<n>/` in the `dosbox` scratch directory and the seed is written into the copy.
 
 Run it with `--check` first; it needs `dosbox`, `Xvfb`, `xdotool` and
 ImageMagick's `import`, and says which are absent rather than half-running.
@@ -48,7 +48,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import areas  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -103,9 +103,9 @@ def make(*, source: str = "A", target: str = "C", area: int = 26,
          x: int = 7, y: int = 29, steps: int = 1,
          out: pathlib.Path | None = None) -> dict:
     """Seed, load, walk, save.  Returns what the engine wrote, described."""
-    out = pathlib.Path(out or REPO / "work" / "p50-outdoor")
-    out.mkdir(parents=True, exist_ok=True)
+    out = pathlib.Path(out or scratch.scratch_dir("dosoutdoor"))
     game = dosbox.find_game()
+    scratch.ensure(out)
     report: dict = {"area": area, "asked_for": [x, y], "steps": steps}
 
     with dosbox.claim("dosoutdoor") as slot:

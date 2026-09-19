@@ -47,7 +47,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import curserun, gamedisks  # noqa: E402
+from tools import curserun, gamedisks, scratch  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
 from tools import session as por  # noqa: E402
 from tools.c64nametable import character_files, from_bar, load_party  # noqa: E402
@@ -112,7 +112,7 @@ def answer(sess, word: str, timeout: float = 60.0) -> bool:
     list stays on the screen and every later pick lands on the wrong menu.
     A first run read the unanswered remove list as an add list, found `CLERIC`
     on it because `CLERIC` is also a party row, and reported a pick that never
-    happened (`work/issue439/readd1`).
+    happened (`cited/439/readd1`).
 
     The Return goes in through the KERNAL buffer, as it does at this title's
     other `YES NO` bars -- an XTEST Return does not move them
@@ -138,7 +138,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--save", required=True,
                     help="a Curse save disk to drive")
-    ap.add_argument("--out", default="work/issue439/add-probe",
+    ap.add_argument("--out", default=str(scratch.scratch_dir("c64addprobe")),
                     help="where the screens and the saved disk are written")
     ap.add_argument("--disks", default="",
                     help="the player's own game disks; $POR_DISKS otherwise")
@@ -156,11 +156,11 @@ def main(argv=None) -> int:
     # run where it stands, or the slot's emulator outlives it (#442).
     SC.catch_signals()
     out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
     shots = [0]
     where = args.disks or str(gamedisks.find("curse-of-the-azure-bonds"))
     if not where:
         raise SystemExit("no Curse disks found; pass --disks")
+    scratch.ensure(out)
     save = args.save
     pick = args.pick or args.remove
     slot = por.claim_slot(args.slot, note="c64addprobe/439")
@@ -225,7 +225,7 @@ def main(argv=None) -> int:
         # still on the screen means this is some other menu and a name found
         # on it is a party row rather than a candidate. That is what made a
         # first run report picking `CLERIC` off a remove list nobody had
-        # dismissed (`work/issue439/readd1`).
+        # dismissed (`cited/439/readd1`).
         is_add_list = "AC HP" not in add_list_text
         print(json.dumps({"event": "add_list", "reached": is_add_list,
                           "pick": pick,

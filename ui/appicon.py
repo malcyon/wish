@@ -45,8 +45,8 @@ from PyQt6.QtSvg import QSvgRenderer
 
 from goldbox.assets import asset_path
 
-#: The artist's own file, committed rather than left under `work/`, which is
-#: gitignored and has been lost twice. Resolved through `goldbox.assets` so
+#: The artist's own file, committed rather than left in the scratch
+#: directory, which has been deleted and was lost twice. Resolved through `goldbox.assets` so
 #: a frozen build finds it under `sys._MEIPASS` -- a path built from
 #: `__file__` here is what shipped a black square on the Windows taskbar,
 #: `#351 (The Windows build shows no logo in About and a black square on the

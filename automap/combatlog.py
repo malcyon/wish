@@ -151,7 +151,7 @@ DELAY = _POOL.delay
 #: and the step from 0 to 1 is the only one that matters to a reader polling
 #: every 200 to 500 ms.
 #:
-#: Measured as well as counted, `work/issue425/`, three driven slums fights on
+#: Measured as well as counted, `cited/425`, three driven slums fights on
 #: 2026-09-08, one at each setting: 6 messages over 29 party turns at 0 with
 #: **3 of them caught half-printed**, against 37 over 25 turns at 1 and 29 over
 #: 17 at 2, with none truncated at either.

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Where a captured `$ED50` block still agrees with `WALLS00`, block by block.
 
-    tools/wallsmap.py work/issue179/01-podol-control.walls.bin
-    tools/wallsmap.py work/issue179/*.walls.bin
+    tools/wallsmap.py DIR/01-podol-control.walls.bin
+    tools/wallsmap.py DIR/*.walls.bin
 
 Reads the `<label>.walls.bin` captures `tools/wallpins.py` writes and prints
 one character per 128 bytes: `#` where the whole block matches `WALLS00` as it

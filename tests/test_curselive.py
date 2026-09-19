@@ -16,7 +16,7 @@ findings that survives without one:
   against the real maps -- the coordinates are our own observations, not the
   game's data, so they may live here.
 
-The live evidence itself is in `work/reports/p8-curse-live.md`.
+The live evidence itself was in `reports/p8-curse-live.md`, which is lost.
 
 Every test skips when the Curse disks are absent. Nothing here reads a
 committed fixture.

@@ -41,10 +41,11 @@ Two modes:
   its own ends it.
 
     tools/dosgnome.py c '~2' Home Down Down Return
-    tools/dosgnome.py --interactive --cmd work/issue84/cmd.txt
+    tools/dosgnome.py --interactive --cmd cmd.txt
 
 Output -- screenshots, `SAVE` snapshots and the record dump -- goes under
-`work/issue84/`, never into the repository: a saved game is the game's data.
+a scratch directory outside the repository (`--out`), never into it: a saved
+game is the game's data.
 """
 
 from __future__ import annotations
@@ -60,10 +61,10 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
 #: Where a run's screenshots, `SAVE` snapshots and reports land.
-OUT = REPO / "work" / "issue84"
+OUT = scratch.scratch_dir("dosgnome")
 
 #: One `.SPC` record.  Nine bytes: the effect id, four of payload, and a
 #: four-byte far pointer the loader rebuilds (`goldbox.dos_codec.EFFECT_NEXT_NULL`).

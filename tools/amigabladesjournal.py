@@ -226,7 +226,7 @@ def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
     which is a whole number of pixels per Amiga pixel rather than the
     reader's own fractional 30.64.  Replicating by a fraction is what made
     this issue's `6` read as an `8`, measured on the capture that did it:
-    `work/361run/shots/07-chal.png` reads `8` at 30.64 and `6` at 16, 24,
+    `cited/361run/shots/07-chal.png` reads `8` at 30.64 and `6` at 16, 24,
     32, 40, 48, 64, 80, 96 and 128, under this algorithm and under the
     cropping one alike.  The pitch the reader is handed back is the one it
     must use, so `answer()` sets `screen.PITCH` from this return value.

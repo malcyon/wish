@@ -11,8 +11,8 @@ differ and the name table may be keyed the other way round, so the geometry
 lives in `goldbox/c64_save.py` and this file is the runner (`#193 (Convert a Secret of
 the Silver Blades DOS save into a C64 one, which the importer refuses today)`).
 
-    tools/ssbdisk.py --folder work/curse/SSB-D-paine-memorised --slot D \\
-        --out work/193/SSBD.D64 --report --sheet
+    tools/ssbdisk.py --folder path/to/dos-ssb-save --slot D \\
+        --out SSBD.D64 --report --sheet
 
 **`enable_ssb()` is a reach-around and says so.** `goldbox.dos_codec.CONVERTS` does
 not carry Silver Blades: the refusal in `goldbox/dos_codec.py` stands until a party
@@ -46,7 +46,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox import areas, c64_port, dos_codec, dos_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 
 SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 
@@ -194,7 +194,8 @@ def main(argv=None) -> int:
                    help="where the player's Silver Blades sides are; read, "
                         "never written.  $SSB_DISKS, then the registry")
     p.add_argument("--out", default=None,
-                   help="the .d64 to write (default work/193/SSB<slot>.D64)")
+                   help="the .d64 to write (default SSB<slot>.D64 in this "
+                        "tool's scratch directory)")
     p.add_argument("--report", action="store_true",
                    help="print the conversion's provenance summary")
     p.add_argument("--sheet", action="store_true",
@@ -223,7 +224,7 @@ def main(argv=None) -> int:
         return 0
 
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "193" / f"SSB{args.slot}.D64")
+        scratch.scratch_dir("ssbdisk") / f"SSB{args.slot}.D64")
     save0, report = build(folder, args.slot, disks, out)
     party = dos_codec.read_party(folder, args.slot)
     print(f"Slot {args.slot}: {len(party)} characters -- "

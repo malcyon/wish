@@ -61,6 +61,7 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import find_disks  # noqa: E402
 from automap.vice import CMD_CHECKPOINT_GET  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
+from tools import scratch  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 
@@ -455,7 +456,7 @@ def drive(args) -> int:
     from tools import session as S
 
     SC.catch_signals()
-    out = pathlib.Path(args.out) if args.out else ROOT / "work" / "issue250" / "run"
+    out = pathlib.Path(args.out) if args.out else scratch.scratch_dir("c64restinterrupt", "run")
     log = Log(out, args.quiet)
     slot = S.claim_slot(args.slot, f"c64restinterrupt/{args.save}")
     log.say(f"slot {slot.n} display {slot.display}  out {out}")

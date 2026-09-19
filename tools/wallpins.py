@@ -17,7 +17,7 @@ section: `ECL1A` entry 4 issues no `LOADPIECES` at all, so arriving on the
 travel grid touches `$ED50` by neither route and `cmp -l` there is empty.  The
 damage only shows one hop later, where something does unpack wall pieces.
 
-    tools/wallpins.py --slot 2 --out work/issue179
+    tools/wallpins.py --slot 2 --out DIR
 
 Three arrivals at Podol Plaza's own arrival square, so the pictures compare:
 
@@ -48,6 +48,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -342,7 +343,7 @@ def plan_walkin(sess, target, ft, out) -> int:
 
 def run(args) -> int:
     out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(out)
     slot = S.claim_slot(args.slot, "issue179 wall pins")
     print(f"Slot {slot.n} display {slot.display}", flush=True)
     sess = None
@@ -429,7 +430,7 @@ def main(argv=None) -> int:
     p.add_argument("--save", default="PORSAVE13.D64",
                    help="the save disk to copy in as SIDE0")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
-    p.add_argument("--out", default=str(ROOT / "work" / "issue179"))
+    p.add_argument("--out", default=str(scratch.scratch_dir("wallpins")))
     p.add_argument("--plan", choices=("full", "walkin"),
                    default="full",
                    help="the whole comparison, or only the walk in")

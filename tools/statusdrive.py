@@ -18,7 +18,7 @@ writing one:
      which is what says the status *persists* rather than only existing in RAM.
 
     tools/statusdrive.py --save PORSAVE13.D64 --slot 3 --victim 5
-    tools/statusdrive.py --sheets --save-path work/p235c64/run1/saved.d64
+    tools/statusdrive.py --sheets --save-path /path/to/saved.d64
 
 `--sheets` is the other half of the same question and drives no fight: it loads
 a save and reads every character's `VIEW` sheet, whose last line is the STATUS
@@ -31,7 +31,7 @@ sheet is drawn from `value & 7` and the panel from bit 7 (`LIBRARY $3E4A`,
 `CMP #$80`), so staging an OK status with bit 7 set beside a non-OK status
 with bit 7 clear is what says whether the two are one field or two:
 
-    tools/statusdrive.py --panel --save-path work/p235c64/run1/saved.d64 \
+    tools/statusdrive.py --panel --save-path /path/to/saved.d64 \
         --stage 0=0x01,1=0x81,2=0x05,3=0x85,4=0x01,5=0x01
 
 `PORSAVE13.D64` three steps into the Slums is the one-ambush reproduction the
@@ -62,6 +62,7 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
@@ -213,7 +214,8 @@ def main(argv=None) -> int:
     p.add_argument("--no-save", action="store_true",
                    help="skip ENCAMP > SAVE; sample RAM only")
     p.add_argument("--out", default=None,
-                   help="run directory (default work/p235c64/<save>)")
+                   help="run directory (default: <save>'s name under this tool's "
+                        "scratch directory)")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
     SC.catch_signals()
@@ -221,7 +223,7 @@ def main(argv=None) -> int:
     disks = pathlib.Path(args.disks)
     save = args.save
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "p235c64" / pathlib.Path(args.save).stem)
+        scratch.scratch_dir("statusdrive", pathlib.Path(args.save).stem))
     log = Log(out, args.quiet)
     if args.save_path:
         # `stage_disks` copies `disks/save` into the slot, so a save that is

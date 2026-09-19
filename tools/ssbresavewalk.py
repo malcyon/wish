@@ -21,7 +21,7 @@ pool slot. `--out` receives the screenshots, `ssbcheck.jsonl`, `summary.json`
 and, when the engine's own save succeeds, `resave-SSBC.D64`.
 
     .venv/bin/python -m tools.ssbresavewalk --disks path/to/ssb-disks \\
-        --produced path/to/SSBC.D64 --out work/ssbresavewalk
+        --produced path/to/SSBC.D64 --out DIR
 """
 import argparse
 import json

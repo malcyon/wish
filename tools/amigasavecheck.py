@@ -10,8 +10,8 @@ what it finds against things the file says independently: the signature scan
 in `goldbox.amiga_later.party_in_savegame`, the `$503E` and `$5012` words in the
 variable array, and the file's own length.
 
-    tools/amigasavecheck.py --adf work/copy-of-disk.adf
-    tools/amigasavecheck.py work/28/saves/curse-savgamA.dat
+    tools/amigasavecheck.py --adf copy-of-disk.adf
+    tools/amigasavecheck.py saves/curse-savgamA.dat
 
 Each title's save routine is a straight run of `write(fd, buf, len)` calls,
 so the file is the concatenation in :data:`SHAPES`.  `docs/165-amiga-savegame.md`

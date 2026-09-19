@@ -149,7 +149,7 @@ WRONG_GAME = ("ERROR: Wrong game disk loaded. Disabling functionality to "
 #: proposal standing in until he does.
 #:
 #: **Donald's wording, approved 2026-09-08**, chosen from three against a
-#: picture of the real panel (`tools/messageshot.py`, `work/issue425/`). Two
+#: picture of the real panel (`tools/messageshot.py`, `cited/425`). Two
 #: sentences, because the panel wraps and does not truncate: it is 198px wide
 #: at the window's own minimum, so this takes two of its rows against a
 #: message's one, and every clause added is another row of the panel the fight

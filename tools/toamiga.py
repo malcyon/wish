@@ -22,7 +22,7 @@ tested in `tests/test_amiga.py` and `tests/test_exports.py` and used by
 `editor/exports.py`. Nothing imports this wrapper.
 
 
-    tools/toamiga.py PORSAVE.D64 -o work/pod-save/SAVE
+    tools/toamiga.py PORSAVE.D64 -o OUTDIR/SAVE
 
 One file per character, 484 bytes each, ready to be dropped into the `Save`
 drawer of a Pools of Darkness disk 3 and picked up with

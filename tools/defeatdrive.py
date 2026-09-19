@@ -64,6 +64,7 @@ from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
@@ -126,7 +127,7 @@ class Log(SC.Log):
 
     Keeps a second run's log rather than truncating it, and a `say` a dead
     console cannot take down with it (`#442`).  `--out` defaults to
-    `work/issue128/<save-stem>`, which has no run tag in it, so two runs on
+    `<tmp>/wish/defeatdrive/<save-stem>`, which has no run tag in it, so two runs on
     the same save at the default used to truncate each other -- exactly the
     shape `d532ad6` fixed in `tools/savecheck.py` after `#380`.
     """
@@ -367,7 +368,7 @@ def main(argv=None) -> int:
 
     disks = pathlib.Path(args.disks)
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "issue128" / pathlib.Path(args.save).stem)
+        scratch.scratch_dir("defeatdrive", pathlib.Path(args.save).stem))
     log = Log(out, args.quiet)
     frames = Frames()
     started = time.time()

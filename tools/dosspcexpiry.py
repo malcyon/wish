@@ -27,8 +27,8 @@ item-granted specimen the issue was missing.
 
 Every run needs the DOSBox-X debugger build (`docs/142-dosbox-x-debugger.md`)
 and reads the game out of the player's archives through `tools/dosbox.py`;
-the archives are never written.  Output goes under `--out`, which should be
-in `work/`.
+the archives are never written.  Output goes under `--out`, which defaults to
+a scratch directory outside the repository.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import dos_codec as pordos  # noqa: E402
-from tools import dosbox, dosboxx  # noqa: E402
+from tools import dosbox, dosboxx, scratch  # noqa: E402
 
 #: Where a DOS character record keeps the far pointer to its first effect node.
 EFFECT_HEAD = 0x7F
@@ -374,7 +374,7 @@ def cmd_ready(args: argparse.Namespace) -> int:
             # run of this command lost the only engine-written DOS
             # item-granted `.SPC` this project has ever had that way -- the
             # incident behind `.claude/rules/testing.md`'s "A specimen dies
-            # with the emulator slot that made it".  `work/` is a staging
+            # with the emulator slot that made it".  The scratch directory is a staging
             # post, not a home: `tools/specimens.py add` is what makes it
             # keep.
             if args.save:
@@ -400,7 +400,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--slot", default="J")
     c.add_argument("--steps", type=int, default=4)
     c.add_argument("--save", default=None, help="then save to this slot and read its .SPC")
-    c.add_argument("--out", default="work/issue232/chain")
+    c.add_argument("--out",
+                   default=str(scratch.scratch_dir("dosspcexpiry", "chain")))
     c.set_defaults(func=cmd_chain)
     r = sub.add_parser("ready", help="grant an item an effect and ready it")
     r.add_argument("--slot", default="J")
@@ -414,7 +415,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--leave", nargs="*", default=["Escape", "Escape"],
                    help="keys that get back to the map before saving")
     r.add_argument("--save", default=None)
-    r.add_argument("--out", default="work/issue232/ready")
+    r.add_argument("--out",
+                   default=str(scratch.scratch_dir("dosspcexpiry", "ready")))
     r.set_defaults(func=cmd_ready)
     args = ap.parse_args(argv)
     if dosboxx.unavailable():

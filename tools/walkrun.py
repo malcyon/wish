@@ -7,7 +7,7 @@ Route letters are the game's own: `I` forward, `J` turn left, `K` turn right,
 `M` turn about.  Every step records the party position before and after, so a
 move that does not change the position is a **wall** -- which is the whole
 point of the corpus.  One save disk is written per step into
-`work/drive/walks/`, with a manifest naming the intended route.
+the `walks` directory under `tools.session.HERE`, with a manifest naming the intended route.
 
 Everything is torn down at the end, checkpoints included, and a screenshot is
 taken if anything goes wrong -- an armed checkpoint or a stranded Xephyr looks

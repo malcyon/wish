@@ -10,27 +10,27 @@ directory goes".
 
 Three commands, none of which decides where a copy should live:
 
-    tools/specimenbackup.py audit                 # what already covers the tree
+    tools/specimenbackup.py audit --in DIR        # what already covers the tree
     tools/specimenbackup.py audit --tar SNAP.tar.zst
     tools/specimenbackup.py archive /somewhere/wish-specimens-2026-09-08.tar.gz
     tools/specimenbackup.py verify /somewhere/wish-specimens-2026-09-08.tar.gz
 
 **`audit` matches on content, never on a filename.**  A specimen's bytes
 routinely sit in the run directory they were copied out of under a different
-name -- `work/issue249/ladder4/rung2/party/CHRDATC1.SAV` against
+name -- `issue249/ladder4/rung2/party/CHRDATC1.SAV` (scratch, deleted) against
 `~/wish-specimens/por-dos/WISH-SPEC-por-party-ladder-rung8/CHRDATC1.SAV` --
 and a name match would also count a file that had been edited since.  So every
 candidate is hashed and compared against the SHA-256 the specimen's own
 `provenance.toml` records.
 
-**A copy under `work/` is not a backup**, and the audit says so rather than
-counting it as one: `work/` is gitignored, has been lost twice, and is a run's
-output rather than storage (`.claude/rules/scratch.md`).  It is reported
-because it is what an hourly snapshot of `work/` happens to carry, which is a
-fact about how much of the tree could be reconstructed today -- not a fact
-about where the tree should live.
+**A copy in a run's scratch directory is not a backup**, and the audit says so
+rather than counting it as one: scratch is a run's output rather than storage
+(`.claude/rules/scratch.md`).  It is reported because it is what a snapshot of
+that directory happens to carry, which is a fact about how much of the tree
+could be reconstructed today -- not a fact about where the tree should live.
+`audit` searches only what `--in` and `--tar` name.
 
-**`archive` refuses a destination inside this repository**, `work/` included.
+**`archive` refuses a destination inside this repository.**
 The game's data must never be committed, and an archive whose whole purpose is
 to outlive the working tree has no business inside it.  It also refuses to run
 at all when `specimens.check_specimens` reports a problem, because an archive
@@ -57,8 +57,8 @@ sys.path.insert(0, str(REPO))
 from tools import specimens  # noqa: E402
 
 #: Suffixes `audit --tar` and `verify` know how to stream.  `.zst` is here
-#: because the hourly snapshot of `work/` on this machine is zstd, and reading
-#: one through `zstd -dc` costs no temporary copy of 1.5 GB.
+#: because the hourly snapshot this machine took of its scratch directory was
+#: zstd, and reading one through `zstd -dc` costs no temporary copy of 1.5 GB.
 ZSTD_SUFFIXES = (".zst", ".zstd")
 
 
@@ -198,8 +198,8 @@ def archive(dest: pathlib.Path, root: pathlib.Path | None = None) -> dict:
     absolute = dest if dest.is_absolute() else pathlib.Path.cwd() / dest
     # Both the path as given and the path with every symlink followed, against
     # this checkout and against its own resolved self. A detached worktree
-    # symlinks `work/` back to the main tree (`.claude/rules/commits.md`), so
-    # resolving alone walks the destination out of the worktree and into the
+    # symlinks a gitignored directory back to the main tree, so resolving
+    # alone walks the destination out of the worktree and into the
     # repository the check was meant to catch -- where it then wrote an
     # archive of a temporary tree, found on 2026-09-08 by the whole-suite run
     # this rule exists for.
@@ -209,7 +209,7 @@ def archive(dest: pathlib.Path, root: pathlib.Path | None = None) -> dict:
                for home in homes):
             raise ValueError(
                 f"{dest} is inside {REPO}; a copy of the specimen tree does "
-                "not go in the repository, work/ included -- it holds the "
+                "not go in the repository -- it holds the "
                 "game's data and its whole purpose is to outlive this "
                 "working tree")
     problems = specimens.check_specimens(root)
@@ -303,7 +303,9 @@ def cmd_audit(args: argparse.Namespace) -> int:
     root = pathlib.Path(args.root) if args.root else specimens.tree_root()
     directories = [pathlib.Path(d) for d in (args.into or [])]
     if not directories and not args.tar:
-        directories = [REPO / "work"]
+        print("audit needs --in DIR or --tar ARCHIVE to say where to look",
+              file=sys.stderr)
+        return 1
     archives = [pathlib.Path(a) for a in (args.tar or [])]
     try:
         cov = audit(root, directories=directories, archives=archives)
@@ -366,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
 
     a = sub.add_parser("audit", help="where else the tree's bytes exist")
     a.add_argument("--in", dest="into", action="append",
-                   help="a directory to search (default: the repository's work/)")
+                   help="a directory to search")
     a.add_argument("--tar", action="append",
                    help="an archive to search; .zst is read through zstd")
     a.set_defaults(func=cmd_audit)

@@ -12,7 +12,7 @@ What is asserted here is the half a machine with no emulator can check -- the
 six code sites in each title's own `GEN`, the filename prefix read off the
 game rather than written down, and the three readings of a save disk that
 disagree.  The running-game half is `tools/c64nametable.py run`, and `#435`
-carries what it saw: on `work/issue435/ssb3`, an engine `SAVE CURRENT GAME`
+carries what it saw: on `cited/435/ssb3`, an engine `SAVE CURRENT GAME`
 stored a one-entry table naming a character who was **not** in the
 five-strong party it saved.
 
@@ -140,8 +140,8 @@ def test_an_engine_written_save_can_name_six_characters_with_no_files(
     ("MOVE VIEW CAST EXIT", ""),
 ])
 def test_the_add_bar_names_which_game_to_read_the_disk_as(bar, want):
-    """Both bars were photographed on 2026-09-08, in `work/issue435/curse3`
-    and `work/issue435/ssb3`.  The word chosen is the filename prefix byte
+    """Both bars were photographed on 2026-09-08, in `cited/435/curse3`
+    and `cited/435/ssb3`.  The word chosen is the filename prefix byte
     the directory scan then filters on, so taking the wrong one lists another
     game's characters."""
     assert nt.from_bar("\n".join(["", "", bar])) == want

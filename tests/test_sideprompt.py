@@ -9,7 +9,7 @@ row 24 to change, and went round again **without ever reaching
 game asked again, and `begin_adventuring` returned False after its whole
 240-second budget.
 
-Driven on pool slot 0 on 2026-09-07, `work/screenblind/run3`: the reader saw
+Driven on pool slot 0 on 2026-09-07, `screenblind/run3` (scratch, deleted): the reader saw
 `INSERT SIDE # 3, AND PRESS ANY KEY.` on row 24 of 38 of the run's last 40
 polls -- so the screen reader was not blind at all in that run -- and the run
 still ended `arrived=False` with two disks attached where the working runs

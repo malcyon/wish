@@ -54,7 +54,7 @@ def test_the_combat_figure_table_is_inside_a_directory_the_wheel_ships():
     """Move the table out of a shipped package and an installed Wish breaks.
 
     Not a restatement of where the file is: it is the one check that fails
-    the day somebody tidies `tools/iconproposal.yaml` into `work/`, `docs/`
+    the day somebody tidies `tools/iconproposal.yaml` into `docs/`
     or the repository root, all of which leave a checkout working and every
     installed copy raising on the first DOS import.
     """

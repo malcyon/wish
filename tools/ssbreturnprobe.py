@@ -21,7 +21,7 @@ trying anything further.
 Run: `.venv/bin/python tools/ssbreturnprobe.py`. It takes no arguments,
 claims an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes its log, dumps and `readings.json` under
-`work/issue334/ssb13/`.
+this tool's scratch directory.
 """
 from __future__ import annotations
 
@@ -40,12 +40,13 @@ from tools import (  # noqa: E402
     cursethac0,
     gamedisks,
     laterbattle,
+    scratch,
     specimens,
     ssbwarp,
 )
 from tools import session as S  # noqa: E402
 
-OUT = ROOT / "work/issue334/ssb13"
+OUT = scratch.scratch_dir("ssbreturnprobe")
 
 SAVE = str(specimens.tree_root() / "por-c64"
             / "WISH-SPEC-ssb-d-engine-resave-walked.D64")

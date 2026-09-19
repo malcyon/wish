@@ -63,7 +63,7 @@ def test_a_prefixed_file_is_hand_built(tmp_path, name):
 
 
 def test_a_file_in_a_built_directory_is_hand_built(tmp_path):
-    """`work/p26/issue191/built/SAVGAMA.DAT` carries no prefix at all.
+    """`cited/p26/issue191/built/SAVGAMA.DAT` carries no prefix at all.
 
     It is the one hand-built specimen on this machine whose *name* says
     nothing, so the directory is the second test and dropping it is how that
@@ -113,7 +113,7 @@ def test_never_adventured_is_named_for_what_it_is_not_for_shipping(tmp_path):
     """#327 (dossavcensus calls a party saved before it set out a shipped
     stub, and drops thirteen engine-written containers from every count):
     an engine-written save this project drove itself -- the shape of
-    `work/issue304/probe/created/SAVGAMC.DAT` -- carries the same zero
+    `cited/304/probe/created/SAVGAMC.DAT` -- carries the same zero
     script buffer and 00:00 clock a shipped never-adventured save does, and
     the classification has to say so without claiming it shipped with the
     game.  `describe` no longer has a `stub` key at all: the field is

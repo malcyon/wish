@@ -29,7 +29,7 @@ own files and prints it, on both ports, with no emulator.
 
     tools/dosshop.py --map
     tools/dosshop.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-por-party-l1-intown \\
-        --shop 53 --interactive --cmd work/issue249/shop/cmd.txt
+        --shop 53 --interactive --cmd DIR/cmd.txt
     tools/dosshop.py --party ... --shop 53 --steps Up '~4' y '~3' --save-to F
 
 **The party is put down one square short and walks the last one**, the same as
@@ -39,7 +39,7 @@ nothing.  `--shop` picks the approach square and the facing out of the table
 below; nothing else about the save is touched, so a run on
 `WISH-SPEC-por-party-l1-intown` buys with the gold the engine rolled.
 
-Output goes under `work/`, which is gitignored and has been lost twice.
+Output goes under the temp directory (`tools/scratch.py`), which may vanish.
 **Copy anything you mean to keep into `$WISH_SPECIMENS` with
 `tools/specimens.py add` before the slot goes down.**
 """
@@ -62,7 +62,7 @@ from automap import maps  # noqa: E402
 from goldbox import dos_codec  # noqa: E402
 from goldbox.dos_savegame import dax_block  # noqa: E402
 from goldbox.geo import Geo  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 from tools.dosparty import wipe_roster  # noqa: E402
 from tools.dostrain import Runner, collect, move_to, snapshot  # noqa: E402
 from tools.dostrainprobe import install  # noqa: E402
@@ -425,7 +425,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--shop", type=int, default=53,
                     help="which shop id to walk into: 52, 53, 54 or 55")
     ap.add_argument("--out", type=pathlib.Path,
-                    default=REPO / "work" / "issue249" / "shop" / "run")
+                    default=scratch.scratch_dir("dosshop", "run"))
     ap.add_argument("--slot", default="E", help="which letter to install as")
     ap.add_argument("--xp", type=lambda s: int(s, 0), default=None)
     ap.add_argument("--gold", type=lambda s: int(s, 0), default=None,
@@ -440,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="run step lines appended to --cmd, one boot, many "
                          "screens")
     ap.add_argument("--cmd", type=pathlib.Path,
-                    default=REPO / "work" / "issue249" / "shop" / "cmd.txt")
+                    default=scratch.scratch_dir("dosshop") / "cmd.txt")
     ap.add_argument("--save-to", default=None,
                     help="after the steps, ENCAMP > SAVE to this slot letter")
     args = ap.parse_args(argv)

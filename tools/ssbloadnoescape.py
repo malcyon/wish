@@ -20,7 +20,8 @@ Expected if the Escape is the cause: the `tail` checkpoint over
 
 Run: `.venv/bin/python tools/ssbloadnoescape.py`. It takes no arguments,
 claims an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
-as the save. Writes dumps and `noesc.jsonl` under `work/issue334/ssb15/`.
+as the save. Writes dumps and `noesc.jsonl` under this tool's scratch directory
+(`tools/scratch.py`).
 `ssbloadwatch.py` is the same boot with the loader watched from the party
 menu, and `ssbloadescape.py` adds one Escape.
 """
@@ -39,13 +40,14 @@ from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import (  # noqa: E402
     gamedisks,
+    scratch,
     specimens,
     ssbwarp,
 )
 from tools import session as S  # noqa: E402
 from tools.cursethac0 import checkpoint_hits  # noqa: E402
 
-OUT = pathlib.Path("work/issue334/ssb15")
+OUT = scratch.scratch_dir("ssbloadnoescape")
 SAVE = str(specimens.tree_root() / "por-c64"
             / "WISH-SPEC-ssb-d-engine-resave-walked.D64")
 
@@ -76,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     ).parse_args(argv)
     out = OUT
-    out.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(out)
     log_file = (out / "noesc.jsonl").open("w")
 
     def log(kind: str, **kw) -> None:

@@ -27,10 +27,10 @@ game on VICE pool slots 0 and 1 on 2026-09-05 before it was fixed:
 The tests that read a save the *game* wrote take it from `$WISH_SPECIMENS`
 (`~/wish-specimens/` by default) through `gamedata.specimen`, which verifies
 the manifest and skips when the tree is not on the machine -- so CI runs the
-synthetic half only.  They used to read `work/curse/SSB-D-paine-memorised`
-and `work/193/run1/`; `work/` is gitignored and has now lost a DOS session
-twice (`#337`, Four DOS Silver Blades conversion tests skip because their
-specimen lived under work/, which has been lost twice).
+synthetic half only.  They used to read `curse/SSB-D-paine-memorised`
+(scratch, deleted) and `cited/193/run1/`; scratch has now lost a DOS session
+twice (`#337`, about four DOS Silver Blades conversion tests that skipped
+because their specimen lived in the scratch directory).
 """
 
 from __future__ import annotations
@@ -437,7 +437,7 @@ def test_the_shipped_save_is_what_the_marching_order_reading_rests_on():
 #: `WISH-SPEC-ssb-slote-zeroed140` slot E: the whole eleven-file save the DOS
 #: engine itself wrote on SAVE CURRENT GAME under DOSBox-X on 2026-09-04, the
 #: same six-character party at 3,3 in area 16 that these four tests were
-#: written against when they read `work/curse/SSB-D-paine-memorised` -- which
+#: written against when they read `curse/SSB-D-paine-memorised` (scratch, deleted) -- which
 #: is gone, and is why they skipped (`#337`).  Guy de Valois' 804-byte
 #: `CHRDATE1.STF` is the twelve items at Silver Blades' 67-byte stride.
 #:
@@ -567,11 +567,11 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
 
 
 # --- the engine's own rewrite, from this ticket's VICE session ---------------
-#: The specimen tree only, because `work/` is gitignored and a save the
+#: The specimen tree only, because scratch is not kept and a save the
 #: engine wrote is the one thing here that cannot be regenerated without an
 #: emulator session -- `.claude/rules/testing.md`, "a specimen dies with the
-#: emulator slot that made it".  `work/193/run2/engine-resave.D64`, which
-#: this also read, is byte-identical to the specimen (#575).
+#: emulator slot that made it".  `193/run2/engine-resave.D64` (scratch, deleted), which
+#: this also read, was byte-identical to the specimen (#575).
 def _engine_save() -> "pathlib.Path | None":
     root = gamedata.specimen_root()
     if root is None:

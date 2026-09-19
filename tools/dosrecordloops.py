@@ -27,7 +27,7 @@ with `shl ax, 1` before the add, so the loop bound (7 entries) and the byte
 span it covers (14 bytes) are not the same number.  Reported as `stride`; a
 span that ignores it is half (or a quarter) of the true one.
 
-Promoted from `work/issue516/loopwalk.py` for `#516 (Generate boundary
+Promoted from `issue516/loopwalk.py` (scratch, deleted) for `#516 (Generate boundary
 characters and check every writer's field widths, since no real save reaches
 a limit and the corpus cannot find a wrong one)`'s slice 3, which used it to
 settle `spells_castable_cleric`, `attack_forms` and `field_83_87`.

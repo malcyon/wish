@@ -15,7 +15,7 @@ and adds new ones locally. Every string that has not been ruled on carries
 ` (APPROVAL UNRECORDED)` instead. The paths drawn in the fields are made up.
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
-        GDK_BACKEND=x11 .venv/bin/python tools/convertdialogmockup.py [--out work/issue413]
+        GDK_BACKEND=x11 .venv/bin/python tools/convertdialogmockup.py [--out DIR]
 
 `tools/convertdialogbuiltshot.py` is the same sheet drawn from the real,
 built `ConvertDialog`. Needs Pillow and the DejaVu fonts.
@@ -42,10 +42,11 @@ from PyQt6.QtWidgets import (  # noqa: E402
 )
 
 from editor.ui_convert import Ui_ConvertDialog  # noqa: E402
+from tools import scratch  # noqa: E402
 
 #: Set by `main`, before anything draws.
 app = None
-OUT = str(ROOT / "work" / "issue413")
+OUT = str(scratch.scratch_dir("convertdialogmockup"))
 FONT = SMALL = TITLE = None
 
 W, H = 700, 380
@@ -341,7 +342,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", default=OUT,
-                        help="where the sheets are written (default work/issue413)")
+                        help="where the sheets are written (default <tmp>/wish/convertdialogmockup)")
     args = parser.parse_args(argv)
     OUT = args.out
     os.makedirs(OUT, exist_ok=True)

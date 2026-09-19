@@ -18,9 +18,9 @@ is not a loaded game (`.claude/rules/conversions.md`: "A conversion is not
 proven until it runs").
 
     tools/convertrun.py --source ~/wish-specimens/por-dos/WISH-SPEC-por-party-l1-intown \
-                        --to c64 --out work/issue52/dos-to-c64 --walk II
-    tools/convertrun.py --source work/issue52/dos-to-c64/wish-2026-09-05/PORSAVEE.D64 \
-                        --to dos --out work/issue52/c64-to-dos --steps 2
+                        --to c64 --out DIR --walk II
+    tools/convertrun.py --source DIR/wish-2026-09-05/PORSAVEE.D64 \
+                        --to dos --out DIR2 --steps 2
 
 What it does, in order:
 
@@ -436,8 +436,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--to", required=True, choices=("c64", "dos"),
                    help="the destination port")
     p.add_argument("--out", required=True,
-                   help="where the conversion and the run's files go; under "
-                        "work/")
+                   help="where the conversion and the run's files go")
     p.add_argument("--game", default=None,
                    help="the DOS game folder, for a DOS destination "
                         "(default: tools.dosbox.find_game())")

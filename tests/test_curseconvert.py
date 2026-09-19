@@ -18,13 +18,13 @@ files and twelve pages.
 `goldbox/dos_port.py`'s own table, so they belong to us and run anywhere.
 The two tests that read a C64 save the *game* wrote skip without it:
 `coab-c64/WISH-SPEC-curse-party-with-items.D64` is the save an agent drove
-the game to write for `#32`, in the specimen tree rather than under
-`work/issue32/specimens/`.  The tests that read a *played DOS*
+the game to write for `#32`, in the specimen tree rather than in
+`issue32/specimens/` (scratch, deleted).  The tests that read a *played DOS*
 session use `gamedata.specimen("curse-131-four-items-readied")`, under
-`$WISH_SPECIMENS` (`~/wish-specimens/` by default) rather than `work/curse/`,
+`$WISH_SPECIMENS` (`~/wish-specimens/` by default) rather than `curse/` (scratch, deleted),
 which held the `#113`/`#234` sessions these once read and has been lost
-twice (`#333`, Six DOS Curse conversion tests skip because their specimen
-lived under work/, which has been lost twice).
+twice (`#333`, about six DOS Curse conversion tests that skipped because
+their specimen lived in the scratch directory).
 """
 
 from __future__ import annotations
@@ -341,9 +341,8 @@ def test_the_last_flag_word_reaches_the_c64_payload():
 
 # --- the container, against a save the game itself wrote --------------------
 #: `#32`'s own run, in the specimen tree since 2026-09-14.  It was
-#: `work/issue32/specimens/D-curse-party-with-items.D64`, which is
-#: byte-identical to the tree's copy; `work/` is gitignored and has been lost
-#: twice, so only the tree is looked at now (#575).
+#: `issue32/specimens/D-curse-party-with-items.D64` (scratch, deleted), which
+#: was byte-identical to the tree's copy; scratch has been lost twice, so only the tree is looked at now (#575).
 ENGINE_WRITTEN = "coab-c64/WISH-SPEC-curse-party-with-items.D64"
 
 

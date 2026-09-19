@@ -25,20 +25,20 @@ tables through.  With it zero the rebuild adds nothing; with it one it adds
 "the engine rebuilt it and the gate decided what it was worth", in one fight.
 
     tools/cursethac0.py stage --base WISH-SPEC-curse-trained-party.D64 \
-        --out work/issue368/spoiled.D64 --spoil MATHEW --spoil MARK:gate=1
+        --out spoiled.D64 --spoil MATHEW --spoil MARK:gate=1
 
-    tools/cursethac0.py run --pool 2 --save work/issue368/spoiled.D64 \
-        --out work/issue368/run5 --goto 6,10 --quick 6
+    tools/cursethac0.py run --pool 2 --save spoiled.D64 \
+        --out DIR --goto 6,10 --quick 6
 
 And the other half of the question, which is what the **training hall** writes
 rather than what the fight does.  The hall refuses a character who cannot
 advance, so it takes an experience total as a third input:
 
-    tools/cursethac0.py stage --base <same> --out work/issue368/hall.D64 \
+    tools/cursethac0.py stage --base <same> --out hall.D64 \
         --spoil MARK:gate=1,xp=46000 --spoil MATHEW:gate=1
 
-    tools/cursethac0.py run --pool 2 --save work/issue368/hall.D64 \
-        --out work/issue368/hall1 --train MARK --steps 0 --punch "" --wait 0
+    tools/cursethac0.py run --pool 2 --save hall.D64 \
+        --out DIR --train MARK --steps 0 --punch "" --wait 0
 
 `run` claims a pooled VICE slot, stages the six Curse sides beside the spoiled
 save, boots, loads the party through the game's own `LOAD SAVED GAME`, and
@@ -67,7 +67,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS as GAME  # noqa: E402
 from goldbox.d64 import D64, attach_load_address, split_load_address  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: Where `SAVEAZURE` loads, and the two regions inside it this asks about.
@@ -377,7 +377,7 @@ class Run:
         `MOVE` has to be chosen first, and the game then sits on
         `I,J,K,M, RETURN OR BUTTON` until something takes it away.  The first
         run of this tool sent sixty of them at the world bar and the triple
-        never moved once (`work/issue368/run1`), which reads exactly like a
+        never moved once (`cited/368/run1`), which reads exactly like a
         party walled in on every side.  `CurseSession.walk_one` enters and
         keeps that state and judges the step in memory.
         """
@@ -397,7 +397,7 @@ class Run:
         squares, and while one is up `enter_move` cannot get back to
         `I,J,K,M` -- so every following step is refused and the run looks
         like a party walled in.  The locked door north of `7,12` in Tilverton
-        is the one that stopped `work/issue368/run4`: `BASH PICKLOCK QUIT`,
+        is the one that stopped `issue368/run4` (scratch, deleted): `BASH PICKLOCK QUIT`,
         for twenty-five seconds a step until the budget was gone.
 
         Each of `DISMISS`'s words leaves the party where it is with nothing
@@ -473,7 +473,7 @@ class Run:
         """Turn until the facing byte says so, reading it after every press.
 
         **Not a computed number of presses.**  Counting `(want - facing) % 4`
-        put the party the wrong way round in `work/issue368/run2` -- it wanted
+        put the party the wrong way round in `issue368/run2` (scratch, deleted) -- it wanted
         north, pressed three times and ended facing west -- and a walk that
         thinks it is facing north while it is facing west oscillates between
         two squares until the budget is gone, which is what that run spent
@@ -495,7 +495,7 @@ class Run:
         square north of `6,12` is solid and the door north of `7,12` is
         locked -- `BASH PICKLOCK QUIT` -- so a walker that steers by which
         axis is furthest out spends its budget at that door, which is what
-        `work/issue368/run3` did with eight steps.  The route round it is six
+        `issue368/run3` (scratch, deleted) did with eight steps.  The route round it is six
         squares and the map says so: `GEO01`'s own passability, breadth
         first.
 
@@ -789,7 +789,8 @@ def main(argv=None) -> int:
     rn.add_argument("--disks", default=None, help="the Curse sides")
     rn.add_argument("--pool", dest="slot", type=int, default=None,
                     help="demand this pool slot")
-    rn.add_argument("--out", default="work/issue368/run", help="run directory")
+    rn.add_argument("--out", default=str(scratch.scratch_dir("cursethac0", "run")),
+                    help="run directory (default: %(default)s)")
     rn.add_argument("--goto", default="6,10",
                     help="the square to walk to: Tilverton's tavern by default")
     rn.add_argument("--steps", type=int, default=60, help="walk budget")

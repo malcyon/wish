@@ -35,15 +35,15 @@ Two subcommands:
 
     tools/pursecheck.py stage \\
         --base ~/wish-specimens/coab-c64/WISH-SPEC-curse-party-with-items.D64 \\
-        --out work/issue139-a8/curse-edited.D64 --who "MALE ELF MAGE"
+        --out curse-edited.D64 --who "MALE ELF MAGE"
 
         Copy the disk and set the seven purses **through the form's own spin
         boxes**, so `EditorBinding._flush` is what writes them -- the path a
         player's typing takes. Prints the seven before and after and the
         encumbrance the engine ought to compute from them.
 
-    tools/pursecheck.py run --save work/issue139-a8/curse-edited.D64 \\
-        --out work/issue139-a8/curse-edited-run --who "MALE ELF MAGE"
+    tools/pursecheck.py run --save curse-edited.D64 \\
+        --out RUNDIR --who "MALE ELF MAGE"
 
         Claim a pooled VICE slot, boot whichever title the save is, load the
         party through the game's own `LOAD SAVED GAME`, and photograph the
@@ -65,7 +65,7 @@ naming the second character; every reading in `docs/139` A8 was taken that
 way, at one boot each.
 
 The party-formation menu is enough for this screen, unlike the item list --
-`work/issue33/run1/03-sheet.txt` shows a sheet reached that way drawing
+`cited/33/run1/03-sheet.txt` shows a sheet reached that way drawing
 `GOLD 4321` and `ENCUMBRANCE 4321`, and `LIBRARY`'s money box is the tail of
 the one sheet routine each title has, entered by `JMP $3D3E` at Curse's
 `$37B7` and `JSR $31F2` at Silver Blades' `$3121`. So the world's `VIEW` draws
@@ -382,7 +382,7 @@ def leave_sheet(sess, r: Run, walk) -> bool:
     **The sheet's `EXIT` is on the command bar and the picker's is a row in
     its own list**, and the two take different keys.  Asking `select_row` for
     the bar's `EXIT` walked the highlight the wrong way and pressed `TRADE`,
-    which is what `work/issue139-a8/ssb-edited-run/04-no-view-MALACHITE.txt`
+    which is what `cited/139-a8/ssb-edited-run/04-no-view-MALACHITE.txt`
     caught: the run came back on `TRADE TO ?` with a side prompt behind it and
     the second character never read.  `tools/inventorycheck.py:press_bar` is
     the bar half -- Curse and Silver Blades read Return from the KERNAL buffer

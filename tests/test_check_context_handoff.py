@@ -13,6 +13,7 @@ import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 import pytest
 
@@ -45,12 +46,11 @@ def run(monkeypatch, payload):
     return mod.main()
 
 
-def spawn(path, agent="junior-dev", tool="Agent", session=None, cwd=None):
+def spawn(path, agent="junior-dev", tool="Agent", session=None):
     payload = {"tool_name": tool, "transcript_path": path,
                "tool_input": {"subagent_type": agent, "prompt": "x"}}
     if session:
         payload["session_id"] = session
-        payload["cwd"] = str(cwd)
     return payload
 
 
@@ -120,15 +120,16 @@ def test_a_message_to_a_finished_agent_is_refused_past_the_line(tmp_path, monkey
 
 def test_once_refused_a_session_stays_refused(tmp_path, monkeypatch, capsys):
     """A compaction can bring the measured context back under the line."""
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     over = transcript(tmp_path, _turn("assistant", cache_read_input_tokens=600_000))
-    assert run(monkeypatch, spawn(over, session="s1", cwd=tmp_path)) == 2
-    assert (tmp_path / "work" / "handoff" / "s1").exists()
+    assert run(monkeypatch, spawn(over, session="s1")) == 2
+    assert (tmp_path / "wish" / "check-context-handoff" / "s1").exists()
     compacted = transcript(tmp_path, _turn("assistant", cache_read_input_tokens=90_000))
-    assert run(monkeypatch, spawn(compacted, session="s1", cwd=tmp_path)) == 2
+    assert run(monkeypatch, spawn(compacted, session="s1")) == 2
     assert "winding down" in capsys.readouterr().err
     # The wind-down agents still get through, and another session is untouched.
-    assert run(monkeypatch, spawn(compacted, "test-runner", session="s1", cwd=tmp_path)) == 0
-    assert run(monkeypatch, spawn(compacted, session="s2", cwd=tmp_path)) == 0
+    assert run(monkeypatch, spawn(compacted, "test-runner", session="s1")) == 0
+    assert run(monkeypatch, spawn(compacted, session="s2")) == 0
 
 
 def test_the_older_tool_name_is_matched_too(tmp_path, monkeypatch):

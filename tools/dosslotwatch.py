@@ -9,12 +9,12 @@ DOSBox-X's memory breakpoint fires on *change*, so a byte the file already
 holds at zero cannot be watched being zeroed -- the record is patched to a
 nonzero value first, and the load is what changes it back.
 
-    tools/dosslotwatch.py --game SECRET --save work/curse/SSB-D-paine-memorised \\
+    tools/dosslotwatch.py --game SECRET --save SPECIMEN_DIR \\
         --slot D --patch 2:0x140=5 --minutes 40
 
 is `tools/doscurse.py`'s console over `tools/dosboxx.py`'s DOSBox-X: it
 boots with the save staged and patched, then executes lines appended to
-`work/dosbox/x/inst/<n>/console.cmd`, shooting the screen after each.  The
+`console.cmd` in the instance directory it prints, shooting the screen after each.  The
 console's own commands (`key`, `type`, `sleep`, `settle`, `shot`, `files`,
 `quit`) work as there; these are added for the debugger:
 
@@ -32,7 +32,7 @@ console's own commands (`key`, `type`, `sleep`, `settle`, `shot`, `files`,
 | `reboot` | close DOSBox-X and boot again on the same staged tree, so a save can be loaded a second time with a breakpoint already armed |
 
 Nothing here writes to the archives or to the source save: the staged copy
-under `work/` is what is patched and loaded.
+under the scratch directory is what is patched and loaded.
 """
 
 from __future__ import annotations

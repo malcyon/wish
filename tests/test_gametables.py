@@ -34,8 +34,7 @@ KEYS = [g.key for g in c64_port.GAMES]
 
 def _roots() -> list[pathlib.Path]:
     home = pathlib.Path.home()
-    repo = pathlib.Path(__file__).resolve().parent.parent
-    bases = [pathlib.Path.cwd(), repo / "work", home, home / "c64",
+    bases = [pathlib.Path.cwd(), home, home / "c64",
              home / "Documents", home / "Games", home / "roms",
              home / "Downloads"]
     out: list[pathlib.Path] = []

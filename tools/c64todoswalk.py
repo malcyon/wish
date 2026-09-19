@@ -27,7 +27,7 @@ staleness, not a wall.
 Claims one DOSBox pool slot; the run is `--out` (screenshots, the resaved
 `SAVGAMD.DAT`, the character files and `walk-report.json`).
 
-    .venv/bin/python -m tools.c64todoswalk --slot A --out work/c64todoswalk \\
+    .venv/bin/python -m tools.c64todoswalk --slot A --out DIR \\
         path/to/SAVGAMA.DAT path/to/CHRDATA1.SAV ...
 """
 import argparse

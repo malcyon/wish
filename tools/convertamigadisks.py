@@ -3,8 +3,8 @@
 step 4 of `#36 (Write an Amiga disk image, not just the character files)`
 loads in WinUAE -- one from a C64 source, one from a DOS source.
 
-    .venv/bin/python tools/convertamigadisks.py --disk work/issue36/por2.adf \\
-        [--out work/issue36/dialog]
+    .venv/bin/python tools/convertamigadisks.py --disk POR2.ADF \\
+        [--out DIR]
 
 `--disk` is the Amiga Pool of Radiance disk 2 the conversion writes into (it
 is not in the repository and there is no default). The sources are two
@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import QApplication, QDialog, QWidget  # noqa: E402
 
 from editor import convert as convert_mod  # noqa: E402
 from editor.window import EditorBinding  # noqa: E402
+from tools import scratch  # noqa: E402
 
 SPECS = pathlib.Path(os.environ.get("WISH_SPECIMENS",
                                     os.path.expanduser("~/wish-specimens")))
@@ -84,7 +85,7 @@ def main(argv=None) -> int:
     ap.add_argument("--disk", type=pathlib.Path, required=True,
                     help="the Amiga Pool of Radiance disk 2 image to write into")
     ap.add_argument("--out", type=pathlib.Path,
-                    default=ROOT / "work" / "issue36" / "dialog",
+                    default=scratch.scratch_dir("convertamigadisks", "dialog"),
                     help="directory for the c64/ and dos/ output")
     args = ap.parse_args(argv)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

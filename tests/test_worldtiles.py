@@ -8,7 +8,7 @@ three shared colours and the attribute's low three bits, and a screen code is
 no game bytes are needed and none are read.
 
 What is *not* here, deliberately: any comparison against a screenshot. The
-travel screens in `work/issue178/` and `work/issue11/` are the game's own art
+travel screens in `cited/178` and `cited/11` are the game's own art
 and cannot be fixtures, so the check that the renderer reproduces one is done
 by eye and reported on
 `#11 (Draw the wilderness on the automapper)`. The byte-level half of that

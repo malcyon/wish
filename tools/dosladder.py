@@ -28,15 +28,15 @@ Nothing is pressed blind: a step that does not bring the map's command bar back
 is a prompt, and it is photographed and pressed through by name.
 
     tools/dosladder.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-por-party-trained-c2 \\
-        --rungs 4 --xp 300000 --gold 20000 --out work/issue249/ladder
+        --rungs 4 --xp 300000 --gold 20000 --out DIR
 
 The party starts wherever the save it was handed says -- a save the trainer
 wrote is inside the hall already, so no walk into the hall is needed and the
 `(7,2)`-facing-west entry `tools/dostrain.py` documents is only for a save made
 outside one.  `--enter` does that walk when it is wanted.
 
-Output goes under `work/`, which is gitignored and has been lost twice: **copy
-a rung worth keeping into `$WISH_SPECIMENS` with `tools/specimens.py add`
+Output goes under this tool's scratch directory, which may vanish at any
+time: **copy a rung you mean to keep into `$WISH_SPECIMENS` with `tools/specimens.py add`
 before the slot goes down.**
 """
 
@@ -57,7 +57,7 @@ sys.path.insert(0, str(REPO))
 from automap import maps  # noqa: E402
 from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_savegame as _sav  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 from tools.dosparty import wipe_roster  # noqa: E402
 from tools.dostrain import move_to  # noqa: E402
 from tools.dostrainprobe import install  # noqa: E402
@@ -746,8 +746,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--audit", type=pathlib.Path, default=None,
                     help="read a finished run's rungs and check every "
                          "experience the trainer left against clamp_cap")
-    ap.add_argument("--out", type=pathlib.Path,
-                    default=REPO / "work" / "issue249" / "ladder")
+    ap.add_argument("--out", type=pathlib.Path, default=None,
+                    help="output directory (default: this tool's scratch "
+                         "directory)")
     ap.add_argument("--save-letters", default="ABDEFGHIJ",
                     help="slot letters a boot may save to, one per school; the "
                          "letter the party is installed under is skipped")
@@ -781,7 +782,7 @@ def main(argv: list[str] | None = None) -> int:
 
     party = args.party
     for n in range(args.rungs):
-        out = args.out / f"rung{n}"
+        out = (args.out or scratch.scratch_dir("dosladder", "ladder")) / f"rung{n}"
         here = source_letter(party)
         letters = "".join(c for c in args.save_letters.upper() if c != here)
         after, last = rung(party, out, here, args.xp, args.gold,

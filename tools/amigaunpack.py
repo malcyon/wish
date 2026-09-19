@@ -10,9 +10,9 @@ than as an inference from specimens, which is what
 `#55 (Decode the Amiga Curse and Silver Blades records)` needed and what
 `docs/166-amiga-records-from-the-code.md` is written from.
 
-    tools/amigaunpack.py --file work/exe/curse --size 0x1ac \\
+    tools/amigaunpack.py --file CURSE.EXE --size 0x1ac \\
         --shape curse-of-the-azure-bonds 270a6 273ea
-    tools/amigaunpack.py --adf work/copy-of-curse-A.adf --exe /Curse \\
+    tools/amigaunpack.py --adf CURSE-A.adf --exe /Curse \\
         --items --size 0x42 --shape curse-of-the-azure-bonds 26ef8 270a6
 
 Each row is one copy the routine makes, and `swap` rows are the byte-order

@@ -5,7 +5,7 @@
 
 Builds `wish.licenses.dialog()` at the base font and at six points more,
 writes `licenses-0pt.png` and `licenses-+6pt.png` into DIR (default
-`work/licensesshot`), and prints the size the dialog was shown at, its
+the `licensesshot` scratch directory), and prints the size the dialog was shown at, its
 `sizeHint` and its `minimumSizeHint`, which is what a caption on the picture
 cannot say.  `+6` measures here about like Windows' base font.
 
@@ -25,12 +25,13 @@ sys.path.insert(0, str(ROOT))
 
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
+from tools import scratch  # noqa: E402
 from wish import licenses  # noqa: E402
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--out", default=str(ROOT / "work" / "licensesshot"),
+    ap.add_argument("--out", default=str(scratch.scratch_dir("licensesshot")),
                     help="where the PNGs go")
     args = ap.parse_args(argv)
     out = pathlib.Path(args.out)

@@ -119,7 +119,7 @@ def test_the_family_shares_one_payload_layout():
     (c64_port.GATEWAY_TO_THE_SAVAGE_FRONTIER, 0x4F00, 0x5B00, 0x6700),
 ])
 def test_the_addresses_are_the_ones_measured(game, slots, items, roster):
-    """The table in `work/reports/goldbox-inventory.md`, as an assertion."""
+    """The table in `reports/goldbox-inventory.md` (scratch, deleted), as an assertion."""
     assert (game.slot_area_base, game.item_area_base, game.roster_base) == (
         slots, items, roster)
 

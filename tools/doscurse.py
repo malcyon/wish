@@ -15,9 +15,9 @@ is the one reader that can be trusted with a menu nobody has mapped.
 
     tools/doscurse.py console --game CURSE --note "issue 113"
 
-writes `work/dosbox/inst/<n>/console.cmd` (the input), `console.log` (what it
-did) and `shots/` (what it saw), and holds the slot until `quit` or `--minutes`
-runs out.  The lifetime cap is deliberate: an abandoned console would hold a
+writes `console.cmd` (the input), `console.log` (what it did) and `shots/`
+(what it saw) under `inst/<n>/` in `tools/dosbox.py`'s scratch directory, and
+holds the slot until `quit` or `--minutes` runs out.  The lifetime cap is deliberate: an abandoned console would hold a
 pool slot and an X display for as long as the machine stayed up.
 
 Commands, one per line, blank lines and `#` comments ignored:
@@ -31,7 +31,7 @@ Commands, one per line, blank lines and `#` comments ignored:
 | `shot name` | screenshot to `shots/NNN-name.png` and `-big.png` |
 | `bar` | log the bottom bar's `ink`, `glyphs` and whole-frame digests |
 | `files` | log the game's `SAVE` directory, with sizes and mtimes |
-| `copy label` | copy `SAVE` to `work/curse/<label>/`, the specimen |
+| `copy label` | copy `SAVE` to `<label>/` in this tool's scratch directory, the specimen |
 | `restart` | stop and start DOSBox, keeping the staged tree and its saves |
 | `quit` | close the session and release the slot |
 
@@ -66,12 +66,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 from tools.dosbox import BAR, Screen, Session, claim, find_game  # noqa: E402
 
-#: Where a copied-out specimen lands.  Gitignored, like everything derived
-#: from the game's bytes.
-SPECIMENS = REPO / "work" / "curse"
+#: Where a copied-out specimen lands: scratch, never the repository, like
+#: everything derived from the game's bytes.
+SPECIMENS = scratch.scratch_dir("doscurse", "specimens")
 
 #: The named regions of a 320x200 Gold Box frame, as ImageMagick geometry.
 #: Measured off Secret of the Silver Blades and shared with Curse of the Azure
@@ -93,7 +93,7 @@ def shot_files(slot: int, last: int, names: list[str]) -> list[Path]:
     already in the list, and a montage that repeats its own final frame reads
     as one step more than the walk actually took.
     """
-    shots = (REPO / "work" / "dosbox" / "inst" / str(slot) / "shots")
+    shots = dosbox.INST / str(slot) / "shots"
     every = sorted((p for p in shots.glob("*.png")
                     if not p.stem.startswith("last")
                     and not p.stem.endswith("-big")),
@@ -108,7 +108,7 @@ def pane(slot: int, rect: str, last: int, names: list[str], out: Path,
     """Crop `rect` out of each shot; montage them, or list the ones with ink."""
     files = shot_files(slot, last, names)
     if not files:
-        print(f"no shots under work/dosbox/inst/{slot}/shots")
+        print(f"no shots under {dosbox.INST / str(slot) / 'shots'}")
         return 1
     geometry = PANES[rect]
     if events:
@@ -294,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--scale", type=int, default=2, help="pane: blow-up factor")
     ap.add_argument("--events", action="store_true",
                     help="pane: list the shots with ink in the region")
-    ap.add_argument("--out", default=str(REPO / "work" / "pane.png"))
+    ap.add_argument("--out", default=str(scratch.scratch_dir("doscurse") / "pane.png"))
     args = ap.parse_args(argv)
     if args.command == "pane":
         return pane(args.slot, args.rect, args.last, args.shots,

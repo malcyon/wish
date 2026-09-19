@@ -29,19 +29,19 @@ things it does that a bare CLI call does not, each of them a rule from
    interpret later.
 4. **Reads the disks the way this project's own tools do** -- `$POR_DISKS`,
    then `tools/gamedisks.py`'s registry, never a path in the source.  The image
-   is staged into `work/c64u/` and uploaded from there, so the player's own
+   is staged into a scratch directory and uploaded from there, so the player's own
    directory is never opened for writing, exactly as `tools/session.py` stages
    `SIDE1.D64` for VICE.
 
-Nothing read off the machine is ever committed: dumps land under `work/`,
-which is gitignored, and stay there.
+Nothing read off the machine is ever committed: a dump goes where `-o` says, so
+point it outside the repository.
 
     tools/c64u.py info                     device identity
     tools/c64u.py disks                    which images we would mount
     tools/c64u.py boot                     stage disk 1, mount it, reset
     tools/c64u.py read 4900 --length 32    hex dump of one range
     tools/c64u.py dump --start 0 --to ffff --banking default
-    tools/c64u.py poll -o work/c64u/run1   the automapper's own read, once
+    tools/c64u.py poll -o DIR             the automapper's own read, once
     tools/c64u.py time-reads --count 100   how many polls a second this gives
     tools/c64u.py probe-key SPACE          does the game read the KERNAL buffer
 
@@ -67,7 +67,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from automap.live import memory_blocks  # noqa: E402
 from automap.paths import disk_globs  # noqa: E402
 from goldbox import c64_port  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 
 #: Exit code for "no C64 Ultimate answered", distinct from a failed check.
 NO_DEVICE = 3
@@ -485,21 +485,21 @@ def boot_disk(game: c64_port.C64Container | None = None, number: int = 1,
         "to the directory holding the game disks")
 
 
-def work_dir() -> pathlib.Path:
-    """Where staged images and dumps go: gitignored, and never the player's."""
-    return pathlib.Path(__file__).resolve().parent.parent / "work" / "c64u"
+def staging_dir() -> pathlib.Path:
+    """Where staged images go: under the temp directory, and never the player's."""
+    return scratch.scratch_dir("c64u")
 
 
 def stage(image: str | os.PathLike, into: str | os.PathLike | None = None) -> str:
-    """Copy an image into `work/` and give back the copy's path.
+    """Copy an image into scratch and give back the copy's path.
 
     The player's disk directory is read-only to everything in this repository.
     `mount-upload` only reads the local file, but a run that later wants a
     writable mount must have a copy to write to, and staging every time is one
     rule rather than two.
     """
-    into = pathlib.Path(into) if into is not None else work_dir()
-    into.mkdir(parents=True, exist_ok=True)
+    into = pathlib.Path(into) if into is not None else staging_dir()
+    scratch.ensure(into)
     dest = into / pathlib.Path(image).name
     shutil.copy(image, dest)
     return str(dest)
@@ -532,7 +532,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("info", help="device identity")
     sub.add_parser("disks", help="which images we would mount")
 
-    p = sub.add_parser("mount", help="stage a disk under work/ and mount it")
+    p = sub.add_parser("mount", help="stage a disk in a scratch directory and mount it")
     p.add_argument("--disk", type=int, default=1)
     p.add_argument("--drive", default="a")
     p.add_argument("--mode", default="readonly",

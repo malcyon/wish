@@ -8,7 +8,7 @@ second while the party stands still)` and `#151 (The automapper loses VICE and
 cannot get back in, because it never hangs up the connection it gave up on)`.
 It claims pool slot N (default 1), boots Pool of Radiance from `PORSAVE11.D64`
 in `$POR_DISKS`, and writes `results.json` to DIR (default
-`work/automappoll`).
+`wish/automappoll` under the temp directory).
 
 E1  Sample the CPU's PC while the party stands still in DUNGEON, and count how
     often it lands outside FastTravel's KEY_WAIT/KEY_FETCH windows.  That is
@@ -35,10 +35,10 @@ from automap.actions import KEY_FETCH, KEY_WAIT, pc_register  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from automap.target import NotConnected, ViceTarget, monitor_listening  # noqa: E402
 from automap.vice import Monitor, MonitorError  # noqa: E402
-from tools import instance  # noqa: E402
+from tools import instance, scratch  # noqa: E402
 from tools.session import Session  # noqa: E402
 
-DEFAULT_OUT = ROOT / "work" / "automappoll"
+DEFAULT_OUT = scratch.scratch_dir("automappoll")
 
 
 def disks_dir() -> pathlib.Path:
@@ -129,7 +129,6 @@ def main(argv=None) -> int:
                     help="where results.json goes")
     args = ap.parse_args(argv)
     out_dir = pathlib.Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
     slot = claim_slot(args.slot)
     results: dict = {"slot": slot.n, "port": slot.port}
     try:
@@ -245,6 +244,7 @@ def main(argv=None) -> int:
             except Exception as exc:                        # noqa: BLE001
                 print("teardown:", exc, flush=True)
     finally:
+        scratch.ensure(out_dir)
         (out_dir / "results.json").write_text(json.dumps(results, indent=2))
         slot.teardown()
         slot.release()

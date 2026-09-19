@@ -8,9 +8,9 @@ question about the Amiga port (a loader, a display routine, the item node's
 last two bytes) starts the same way.  It needs `capstone`, which the
 project's virtual environment carries.
 
-    tools/amiga68k.py --adf work/copy-of-curse-A.adf --exe /Curse refs 274b4
-    tools/amiga68k.py --adf work/copy-of-curse-A.adf --exe /Curse disasm 26af8 26d6c
-    tools/amiga68k.py --file work/28/exe/program hunks
+    tools/amiga68k.py --adf copy-of-curse-A.adf --exe /Curse refs 274b4
+    tools/amiga68k.py --adf copy-of-curse-A.adf --exe /Curse disasm 26af8 26d6c
+    tools/amiga68k.py --file exe/program hunks
 
 Two linker layouts are understood, and the tool tells them apart itself:
 

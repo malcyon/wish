@@ -25,7 +25,7 @@ moved.
 
 Boots VICE in a pool slot (`.claude/rules/emulator.md`), so it is never run for
 `--help`. Research only: nothing in `tools/session.py` is changed. Writes
-`work/issue165/<name>.jsonl`.
+`<name>.jsonl` under this tool's scratch directory.
 """
 from __future__ import annotations
 
@@ -39,10 +39,10 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import gamedisks, instance  # noqa: E402
+from tools import gamedisks, instance, scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
-OUT = ROOT / "work" / "issue165"
+OUT = scratch.scratch_dir("slumsquitprobe")
 
 ACTING = 0xA4F4          # docs/147-combat-rolls.md: 0-7 party, 8 up monsters
 

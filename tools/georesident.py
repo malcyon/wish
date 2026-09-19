@@ -26,7 +26,7 @@ block, so a load count of zero would mean the checkpoints are measuring
 nothing.  The store counter is the measurement -- every write into the block
 while one map stays loaded, whoever makes it.
 
-    tools/georesident.py --save PORSAVE13.D64 --route IIIIII --out work/issue447/run1
+    tools/georesident.py --save PORSAVE13.D64 --route IIIIII --out DIR
 
 Crossing an area boundary is the other half, and `--route` is how it is asked
 for: the loader filling the page for the new area is a legitimate store, and
@@ -53,7 +53,7 @@ from automap.area import NEAR_ENOUGH, RESIDENT_GEO, ResidentGeo, _distance  # no
 from automap.maps import load_maps  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox.geo import GEO_SIZE  # noqa: E402
-from tools import curseload  # noqa: E402
+from tools import curseload, scratch  # noqa: E402
 from tools import session as por  # noqa: E402
 
 #: The page the loader leaves a `GEO` file on and never moves it.
@@ -238,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--disks", default=None)
     ap.add_argument("--route", default="IIII",
                     help="I forward, J left, K right, M about")
-    ap.add_argument("--out", default="work/issue447/georesident")
+    ap.add_argument("--out", default=str(scratch.scratch_dir("georesident")))
     ap.add_argument("--idle", type=int, default=0,
                     help="extra readings taken standing still")
     ap.add_argument("--interval", type=float, default=2.0)

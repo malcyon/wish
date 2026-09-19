@@ -60,13 +60,13 @@ CIA 1's interrupt register acknowledges whatever was pending, which is a
 perturbation of the machine under test.  `$DC0D` is read once, in the end
 check, after the jiffy has already been seen to stop.
 
-    tools/c64uload.py trial --treatment silent --minutes 40 --log work/x/b1.jsonl
+    tools/c64uload.py trial --treatment silent --minutes 40 --log B1.jsonl
     tools/c64uload.py trial --treatment readmem --size 7168 --at 4900 \\
-        --interval 5 --minutes 60 --log work/x/e1.jsonl --capture work/x/e1
+        --interval 5 --minutes 60 --log E1.jsonl --capture E1
     tools/c64uload.py endcheck
-    tools/c64uload.py fit --log work/x/e1.jsonl
+    tools/c64uload.py fit --log E1.jsonl
     tools/c64uload.py stress --treatment version --interval 0.1 --minutes 20 \\
-        --log work/x/http1.jsonl
+        --log HTTP1.jsonl
 
 `stress` applies a treatment to the machine as it stands -- no reset, no boot
 -- so the device's HTTP service can be loaded with the C64 sitting at `READY.`

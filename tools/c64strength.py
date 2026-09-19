@@ -61,7 +61,7 @@ from goldbox import dos_codec  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE as GAME  # noqa: E402
 from goldbox.d64 import D64, attach_load_address, split_load_address  # noqa: E402
 from goldbox.layout import NAME_SIZE  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: `LIBRARY` is resident at `$2C48` and `$375C` is the strength gate.
@@ -310,7 +310,7 @@ def main(argv=None) -> int:
 
     disks = pathlib.Path(args.disks or gamedisks.find("pool-of-radiance"))
     out = pathlib.Path(args.out) if args.out \
-        else ROOT / "work" / "issue277" / "run"
+        else scratch.scratch_dir("c64strength", "run")
     run = Run(out, args.quiet)
 
     slot = S.claim_slot(args.slot, "c64strength/277")

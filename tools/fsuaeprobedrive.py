@@ -5,7 +5,7 @@ automapper follow a live FS-UAE game on Linux, so Wish and the Amiga game run
 on one machine?)`.
 
     .venv/bin/python tools/fsuaeprobedrive.py [PORT] [--display :77] \\
-        [--shots work/issue464/shots]
+        [--shots DIR]
 
 Continues the machine, then reads `VHPOSR` and a 1 KB block every 1.5 seconds
 for 110 seconds, taking screenshots and sending keys (through `xdotool`, to
@@ -26,6 +26,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from tools import scratch  # noqa: E402
 from tools.fsuaegdbprobe import Gdb  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -65,7 +66,7 @@ def main(argv=None) -> int:
     ap.add_argument("--display", default=":77",
                     help="the Xvfb display the emulator is on (default :77)")
     ap.add_argument("--shots", type=pathlib.Path,
-                    default=ROOT / "work" / "issue464" / "shots",
+                    default=scratch.scratch_dir("fsuaeprobedrive", "shots"),
                     help="directory for the screenshots")
     args = ap.parse_args(argv)
     args.shots.mkdir(parents=True, exist_ok=True)

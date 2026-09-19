@@ -26,7 +26,7 @@ The map used to draw at 13 and the 13px rule was written for it. It draws at 26
 now, so the rule binds on the notes list and nowhere else -- see
 `docs/109-icon-choices.md`.
 
-    .venv/bin/python tools/iconsheet.py work/reports/icon-sheet.png
+    .venv/bin/python tools/iconsheet.py icon-sheet.png
 """
 
 from __future__ import annotations
@@ -49,6 +49,7 @@ from PyQt6.QtGui import (  # noqa: E402
     QPen,
 )
 
+from tools import scratch  # noqa: E402
 from ui import icons  # noqa: E402
 from ui.iconpaint import draw_icon  # noqa: E402
 
@@ -247,7 +248,7 @@ def build() -> QImage:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("out", nargs="?", default="work/reports/icon-sheet.png",
+    ap.add_argument("out", nargs="?", default=str(scratch.scratch_dir("iconsheet") / "icon-sheet.png"),
                     help="where the PNG goes (default: %(default)s)")
     args = ap.parse_args(argv)
     app = QGuiApplication(["iconsheet"])     # a QImage still wants one

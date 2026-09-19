@@ -13,7 +13,7 @@ boots the result under DOSBox and reads the party off the game's own screens.
 Why the run and not the bytes: every byte of the file now has a declared
 source, and 4070 of them are declared *zero* on the strength of a census of
 the engine-written specimens -- nine indoor ones, since eight of the twelve
-lived under `work/` and are gone, which is why that grade is PROBABLE rather
+lived in scratch and are gone, which is why that grade is PROBABLE rather
 than CONFIRMED.  A census says what a saved party held; only
 the running game says what the load path reads.  This is the same bar #118
 held the C64 direction's 193 zeroed header bytes to.
@@ -32,7 +32,7 @@ What it does, in order:
    diffed against what we wrote -- the engine's own rewrite is the oracle for
    which of the zeroed bytes it fills in for itself.
 
-Screenshots and both saves go to `--out`, which should be under `work/`.
+Screenshots and both saves go to `--out`, which defaults to a scratch directory outside the repository.
 Run with `--check` first: it needs `dosbox`, `Xvfb`, `xdotool` and
 ImageMagick's `import`, and says which are absent rather than half-running.
 """
@@ -52,7 +52,7 @@ from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -111,7 +111,7 @@ def word_diff(ours: bytes, theirs: bytes) -> list[str]:
 def make(*, c64: pathlib.Path, slot: str = "A", steps: int = 2,
          resave: str = "D", out: pathlib.Path | None = None) -> dict:
     """Build, boot, load, walk, resave.  Returns everything measured."""
-    out = pathlib.Path(out or REPO / "work" / "p26")
+    out = pathlib.Path(out or scratch.scratch_dir("dosnewsave"))
     out.mkdir(parents=True, exist_ok=True)
     game = dosbox.find_game()
     save0, save1 = c64_payloads(c64)

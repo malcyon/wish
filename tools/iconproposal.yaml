@@ -4,11 +4,11 @@
 # This is the single source: edit `c64:` and `alt:` here, never in the
 # generated document. Regenerate it with:
 #
-#     tools/iconproposal.py --markdown work/issue130/proposal/proposal.md
+#     tools/iconproposal.py --markdown "${TMPDIR:-/tmp}/wish/iconproposal/proposal.md"
 #
 # `c64` is the proposed C64 option number, `alt` (when present) lists any
 # other option that looked as close, and the trailing comment names what the
-# DOS figure shows -- read off the sheets at work/issue130/big-*.png, not
+# DOS figure shows -- read off the contact sheets (scratch, deleted), not
 # measured.
 
 # DOS body n -> C64 large weapon option. The C64's small list is the same 28
@@ -188,7 +188,7 @@ small:
 #
 # Donald picked this row on 2026-09-05. Two more of his are in the `small:`
 # section above; the rest of both were proposed by a Claude agent the same
-# day, from the pictures in work/issue130/proposal*/ -- weapon first, then
+# day, from the pictures in cited/130/proposal/ -- weapon first, then
 # pose, then shield -- and are his to accept, adjust or delete. "Judgement"
 # in a comment means two options looked as close.
 overrides:

@@ -125,7 +125,7 @@ def test_the_committed_pngs_are_the_delivered_pngs():
 
 def test_the_shipped_sheet_is_the_icon_the_window_gets(app):
     """`--shipped` draws `ui.appicon.image` and nothing of its own: each
-    cell is the window's icon at that size, so the sheet under `work/` is
+    cell is the window's icon at that size, so the sheet is
     a picture of what ships rather than a picture of something like it."""
     from ui import appicon
 

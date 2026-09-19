@@ -1,4 +1,4 @@
-"""`tools/dosrecordloops.py`, promoted from `work/issue516/loopwalk.py` for
+"""`tools/dosrecordloops.py`, promoted from `issue516/loopwalk.py` (scratch, deleted) for
 `#516 (Generate boundary characters and check every writer's field widths,
 since no real save reaches a limit and the corpus cannot find a wrong one)`'s
 slice 3.

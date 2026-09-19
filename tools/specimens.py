@@ -16,7 +16,7 @@ before adding anything here.
 
 **The tree lives outside the repository, at `$WISH_SPECIMENS` or
 `~/wish-specimens` by default** -- the same shape as `$POR_DISKS` and
-`automap.paths.find_disks()`, not a fourth way.  `work/` is gitignored and has
+`automap.paths.find_disks()`, not a fourth way.  scratch is not kept and has
 been lost twice; this is not that.  The game's data must never be committed,
 so only this tool and its tests live in `tools/` and `tests/` -- the tree
 itself is never in git.
@@ -65,7 +65,7 @@ left a directory-shaped specimen under `por-c64` hashed by nothing
 specimens.py check, so eight files in the tree are never verified)`).
 
     tools/specimens.py add dos gnomf1 \\
-        work/issue84/run1/halfelf-GNOMF1.CHA work/issue84/run1/halfelf-GNOMF1.SPC \\
+        DIR/halfelf-GNOMF1.CHA DIR/halfelf-GNOMF1.SPC \\
         --title "Pool of Radiance" --issue "#84 (...)" \\
         --made-by "tools/dosgnome.py, driven under DOSBox from character creation" \\
         --what "Rolled a gnome fighter in the game's own creation screens"
@@ -113,7 +113,7 @@ PLATFORMS = ("c64", "dos", "amiga")
 #: this tool took Amiga specimens at all, and both picked this same shape.
 #: `add` refuses a title that is not here rather than guessing an abbreviation.
 #: `pod` is the fourth, added for #575 so the engine-written Pools of
-#: Darkness containers a `tools/dospod.py` drive left under `work/` could be
+#: Darkness containers a `tools/dospod.py` drive left in scratch could be
 #: kept somewhere that is not gitignored.
 TITLE_SLUGS = {
     "Pool of Radiance": "por",

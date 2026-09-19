@@ -28,7 +28,7 @@ from goldbox.assets import asset_path
 
 from . import __version__
 
-#: The artist's own file, committed rather than left under `work/`. Resolved
+#: The artist's own file, committed rather than left in the scratch directory. Resolved
 #: through `goldbox.assets`, which is what finds it in a frozen build; built
 #: from `__file__`, as it was, the Windows package drew no picture at all --
 #: `#351 (The Windows build shows no logo in About and a black square on the

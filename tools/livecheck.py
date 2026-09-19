@@ -7,7 +7,7 @@ own body sets out: draw the map and walk it, cross an area boundary and read
 the area byte either side, the roster cards, the condition and quickfight
 badges, and each of the five live actions.
 
-    tools/livecheck.py --title curse --pool 3 --out work/issue34/curse1
+    tools/livecheck.py --title curse --pool 3 --out DIR
     tools/livecheck.py --title ssb --walk MMII --no-actions
 
 **Everything it reports is read through the code the window ships.**
@@ -62,7 +62,7 @@ from automap.target import party_fix  # noqa: E402
 from automap.vice import banked  # noqa: E402
 from goldbox import c64_port, items, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools import session as por  # noqa: E402
 
 #: Where this run's notes and explored squares go.
@@ -82,7 +82,7 @@ from tools import session as por  # noqa: E402
 #: leaves the environment the emulator inherits exactly as it was. Nothing
 #: under test is replaced -- `save_notes`, `load_notes` and `migrate_flat_
 #: notes` are the shipped ones and still run.
-RUN_DATA = ROOT / "work" / "issue34" / "data"
+RUN_DATA = scratch.scratch_dir("livecheck", "data")
 
 
 def redirect_notes(root=RUN_DATA) -> None:
@@ -1129,7 +1129,8 @@ def _cross(cards, cold) -> tuple[int, list]:
 
 def run(args) -> int:
     title = TITLES[args.title]
-    out = pathlib.Path(args.out or f"work/issue34/{args.title}")
+    out = pathlib.Path(
+        args.out or scratch.scratch_dir("livecheck", args.title))
     out.mkdir(parents=True, exist_ok=True)
     logfile = (out / "livecheck.jsonl").open("a")
 

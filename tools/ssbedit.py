@@ -25,7 +25,7 @@ the run answers, and it is why `--name` is one of the three.
 Two subcommands:
 
     tools/ssbedit.py stage --base ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \\
-        --out work/issue33/edited.D64 --who MORGAINE \\
+        --out EDITED.D64 --who MORGAINE \\
         --name BRIGHID --gold 4321 --strength 12
 
         Copy the disk and make the edits **through `EditorBinding`**, which is
@@ -34,8 +34,8 @@ Two subcommands:
         field held before and after, and what the `+$C00` table entry for that
         character says once the save is written.
 
-    tools/ssbedit.py run --save work/issue33/edited.D64 --pool N \\
-        --out work/issue33/run1 --who BRIGHID --was MORGAINE
+    tools/ssbedit.py run --save EDITED.D64 --pool N \\
+        --out DIR --who BRIGHID --was MORGAINE
 
         Claim a pooled VICE slot, stage the six sides, boot through the
         cracker intro, load the party, photograph the party-formation panel,

@@ -30,14 +30,14 @@ does not:
 Every region below was identified rather than assumed, and the evidence is in
 `docs/177-a-load-that-goes-wrong.md`.
 
-    tools/c64uplay.py boot work/x/POOL1.D64 --mode readonly
-    tools/c64uplay.py mount work/x/NEWSAVE6.D64 --mode readwrite
+    tools/c64uplay.py boot POOL1.D64 --mode readonly
+    tools/c64uplay.py mount NEWSAVE6.D64 --mode readwrite
     tools/c64uplay.py screen
     tools/c64uplay.py keys Y --wait
     tools/c64uplay.py probe ' '
     tools/c64uplay.py wait --contains "onward bound" --timeout 200
-    tools/c64uplay.py burst --seconds 20 --out work/x/burst
-    tools/c64uplay.py regions --out work/x/hang --note "after the exit"
+    tools/c64uplay.py burst --seconds 20 --out DIR
+    tools/c64uplay.py regions --out DIR --note "after the exit"
     tools/c64uplay.py alive --seconds 10
 
 Nothing here writes to the device's configuration, and the only memory it

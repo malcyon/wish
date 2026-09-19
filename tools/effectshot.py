@@ -7,7 +7,7 @@ comes with a picture of it, and every string on this panel is his to word.
 run it the way the rule says:
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \
-        GDK_BACKEND=x11 .venv/bin/python tools/effectshot.py work/issue13
+        GDK_BACKEND=x11 .venv/bin/python tools/effectshot.py --help
 
 **The effects in the picture are put there by this script**, into the save
 image in memory and never onto a disk. Nothing on the player's save disks has
@@ -34,6 +34,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
+
+from tools import scratch  # noqa: E402
 
 #: `(effect slot, id, owner, duration)`. The ids are all CONFIRMED names, and
 #: the owners are the three shapes the panel has to tell apart: a character in
@@ -132,6 +134,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "out", nargs="?", default="work/issue13", type=pathlib.Path,
-        help="directory to write the pictures into (default: work/issue13)")
+        "out", nargs="?", default=scratch.scratch_dir("effectshot"),
+        type=pathlib.Path,
+        help="directory to write the pictures into (default: %(default)s)")
     raise SystemExit(main(parser.parse_args().out))

@@ -26,7 +26,7 @@ directly rather than through `QMessageBox.warning`, which blocks on
 `.exec()` waiting for somebody to click it.
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
-        GDK_BACKEND=x11 .venv/bin/python tools/convertshots.py work/convertshots
+        GDK_BACKEND=x11 .venv/bin/python tools/convertshots.py OUT_DIR
 """
 
 from __future__ import annotations
@@ -46,6 +46,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from editor import convert  # noqa: E402
 from goldbox import c64_port, dos_codec, dos_port  # noqa: E402
+from tools import scratch  # noqa: E402
 
 
 def _dos_folder(root: pathlib.Path, shape, slot: str = "A",
@@ -214,11 +215,11 @@ def _success_states():
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("out_dir", nargs="?", default="work/convertshots",
-                    help="where the PNGs go (default: %(default)s)")
+    ap.add_argument("out_dir", nargs="?", default=None,
+                    help="where the PNGs go (default: this tool's scratch directory)")
     args = ap.parse_args(argv)
-    out_dir = pathlib.Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = (pathlib.Path(args.out_dir) if args.out_dir
+               else scratch.scratch_dir("convertshots"))
 
     app = QApplication.instance() or QApplication(["convertshots"])
     assert app is not None
@@ -227,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
         root = pathlib.Path(tmp)
         states = _synthetic_states(root) + _ready_states(root) \
             + _modal_state() + _success_states()
+        scratch.ensure(out_dir)
         for name, dialog in states:
             dialog.resize(dialog.sizeHint())
             dialog.show()

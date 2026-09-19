@@ -11,7 +11,7 @@ The reading itself is CONFIRMED --
 `COMBAT $0CAD` rolls damage through `LDA $6C13,Y` / `LDX $6C15,Y` with a stride
 of 2, which is what proves there are exactly two attack forms, and twenty
 creatures match the *Monster Manual*. The write-up,
-`work/reports/disasm-batch.md`, is lost.
+`reports/disasm-batch.md` (scratch, deleted), is lost.
 
 Read `0x0D9`-`0x0E0`, never the working copies at `0x111`-`0x118`: in a shipped
 `MON*` file those are stale scratch -- `MON61 BANDIT` holds the ASCII of an

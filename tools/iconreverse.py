@@ -20,8 +20,8 @@ edited by hand.
     tools/iconreverse.py --coverage            how many rows are forced, and by what
     tools/iconreverse.py --census              every icon on the player's own disks,
                                                read back into menu choices
-    tools/iconreverse.py --markdown work/issue320/proposal/proposal.md
-    tools/iconreverse.py --png work/issue320/reverse-weapons.png
+    tools/iconreverse.py --markdown proposal.md
+    tools/iconreverse.py --png reverse-weapons.png
 
 **`--markdown` is the form a person can only look at.** One row per C64
 option: the C64 figure on the left, the DOS figure it is proposed to become
@@ -30,8 +30,8 @@ of every DOS option follows each table, numbered, so a preferred alternative
 can be named. To change a row, edit the YAML and run this again -- there is no
 reading the document back, for the reason `tools/iconproposal.py` gives.
 
-**The pictures are the game's own art.** They go under `work/` and are never
-committed. The table of numbers is a measurement and is committed, which is
+**The pictures are the game's own art.** They go outside the repository and are
+never committed. The table of numbers is a measurement and is committed, which is
 the line `.claude/rules/conversions.md` draws.
 """
 
@@ -366,8 +366,8 @@ def markdown(parts: IconParts, charset: bytes, game: pathlib.Path,
         "comes back correctly, so the pick is about the picture. *Judgement*",
         "means DOS has no figure for this one at all.",
         "",
-        "This file and its images are the game's own art. They live under",
-        "`work/` and must never be committed.",
+        "This file and its images are the game's own art. They live outside",
+        "the repository and must never be committed.",
         "",
     ]
     for size in ("large", "small"):
@@ -538,7 +538,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--census", action="store_true",
                     help="read every icon on the player's own disks back "
                          "into menu choices")
-    ap.add_argument("--png", metavar="PATH", help="draw one list, under work/")
+    ap.add_argument("--png", metavar="PATH", help="draw one list, outside the repository")
     ap.add_argument("--markdown", metavar="PATH",
                     help="write the proposal as a document, generated fresh "
                          "from tools/iconreverse.yaml")

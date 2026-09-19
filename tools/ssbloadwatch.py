@@ -20,7 +20,7 @@ the running machine rather than off a transcription.
 Run: `.venv/bin/python tools/ssbloadwatch.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades on the disks `tools/gamedisks.py`
 finds, with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
-as the save. Writes dumps and `load-probe.jsonl` under `work/issue334/ssb14/`.
+as the save. Writes dumps and `load-probe.jsonl` under the `ssbloadwatch` scratch directory.
 `ssbloadnoescape.py` and `ssbloadescape.py` are the same boot with one thing
 changed.
 """
@@ -38,13 +38,14 @@ sys.path.insert(0, str(ROOT))
 from goldbox import c64_port as G  # noqa: E402
 from tools import (  # noqa: E402
     gamedisks,
+    scratch,
     specimens,
     ssbwarp,
 )
 from tools import session as S  # noqa: E402
 from tools.cursethac0 import checkpoint_hits  # noqa: E402
 
-OUT = pathlib.Path("work/issue334/ssb14")
+OUT = scratch.scratch_dir("ssbloadwatch")
 SAVE = str(specimens.tree_root() / "por-c64"
             / "WISH-SPEC-ssb-d-engine-resave-walked.D64")
 

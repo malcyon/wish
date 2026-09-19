@@ -13,9 +13,9 @@ routine from the party's x byte in one call, and that routine's only caller
 from its jump-table slot in a second
 (`#28 (Decode an Amiga saved game, not just a character file)`).
 
-    tools/amigaglobal.py --adf work/copy-of-secret-A.adf --exe /Secret \
+    tools/amigaglobal.py --adf copy-of-secret-A.adf --exe /Secret \
         refs 57a0 57a1 57a2
-    tools/amigaglobal.py --adf work/copy-of-secret-A.adf --exe /Secret \
+    tools/amigaglobal.py --adf copy-of-secret-A.adf --exe /Secret \
         callers 118cc
 
 A global is named the way `amiga68k.py`'s listing names it, `g<offset>` with

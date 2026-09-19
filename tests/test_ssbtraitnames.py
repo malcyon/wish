@@ -20,7 +20,7 @@ Two kinds of test here, and the second is the one that would catch a mistake:
   writes it. A base that slips or a name that drifts from the code turns
   these red. All of them skip with no disks.
 
-`docs/171-c64-trait-slots.md` has the readings and `work/issue497/` the runs.
+`docs/171-c64-trait-slots.md` has the readings and `cited/497` the runs.
 """
 
 from __future__ import annotations

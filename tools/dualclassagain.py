@@ -15,7 +15,7 @@ and photographs what the game does.
     tools/dualclassagain.py c64 --save ~/wish-specimens/por-c64/WISH-SPEC-curse-dual-classed.D64
     tools/dualclassagain.py c64 --save ... --serve     # boot and hand over
 
-    tools/dualclassagain.py dos --game CURSE --party work/curse/234-curse-dualclassed
+    tools/dualclassagain.py dos --game CURSE --party <tree>
     tools/dualclassagain.py dos --game SECRET --party <tree> --from-slot C --slot C \
         --probe 1 --load-keys "Down,Down,Down,Return,c" \
         --press Down --press Down --press Return --press Down --press Return
@@ -41,7 +41,7 @@ attempt starts further on:
   applied and without, and with `$03B4` -- the byte `GEN $182D` compares
   against 2 to decide whether to ask for the save disk -- poked to 1 first.
 * **It is not the specimen.**  `WISH-SPEC-curse-dual-classed`,
-  `WISH-SPEC-curse-h-engine-resave` and `#18`'s own `work/issue18/train1.D64`,
+  `WISH-SPEC-curse-h-engine-resave` and `#18`'s own `issue18/train1.D64` (scratch, deleted),
   which that session did load, all fail identically.
 * **The attach itself works**: with the save disk in the drive,
   `ADD CHARACTER TO PARTY` asks for `INSERT SIDE # 1`, which it would not do
@@ -80,7 +80,7 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 
 #: Where each C64 title's refusal lives, read out of its own `GEN`.
 #: `gate` is the `BNE` that jumps to the message when `dual_class_level` is
@@ -204,7 +204,7 @@ def drive(args) -> int:
 
     gate = C64_GATES[args.title]
     out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(out)
     log = (out / "run.jsonl").open("a")
 
     def note(**kw):
@@ -302,7 +302,7 @@ def dos(args) -> int:
 
     party = pathlib.Path(args.party)
     out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(out)
     log = (out / "run.jsonl").open("a")
 
     def note(**kw):
@@ -382,7 +382,7 @@ def main(argv=None) -> int:
     c.add_argument("--save", required=True, help="the save disk to load")
     c.add_argument("--disks", default="")
     c.add_argument("--pool", type=int, default=None)
-    c.add_argument("--out", default="work/issue256-dual/c64")
+    c.add_argument("--out", default=str(scratch.scratch_dir("dualclassagain", "c64")))
     c.add_argument("--gate-off", action="store_true",
                    help="NOP the refusal branch, to prove it is the refusal")
     c.add_argument("--serve", action="store_true",
@@ -412,7 +412,7 @@ def main(argv=None) -> int:
                    help="the keys that reach and pick the save slot")
     d.add_argument("--probe", type=int, default=0,
                    help="press Return this many times and shoot each,\n                        instead of waiting for the menu to settle")
-    d.add_argument("--out", default="work/issue256-dual/dos")
+    d.add_argument("--out", default=str(scratch.scratch_dir("dualclassagain", "dos")))
     d.set_defaults(func=dos)
 
     args = ap.parse_args(argv)

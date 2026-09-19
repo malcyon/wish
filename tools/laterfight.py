@@ -8,11 +8,11 @@ by the time either has a party in the world the session is already **served**
 on its command port -- so this drives that port rather than booting anything,
 and the same file works for both titles.
 
-    tools/curseload.py --save work/issue131-m1/CURSEI.D64 --pool 2 --repair --serve
-    POR_CMD_PORT=6562 tools/laterfight.py --out work/issue131-m2/curse
+    tools/curseload.py --save CURSEI.D64 --pool 2 --repair --serve
+    POR_CMD_PORT=6562 tools/laterfight.py --out DIR/curse
 
-    tools/ssbrun.py --pool 3 --save work/193/SSBD.D64 --out work/193/run1
-    POR_CMD_PORT=6563 tools/laterfight.py --out work/issue131-m2/ssb
+    tools/ssbrun.py --pool 3 --save SSBD.D64 --out DIR/run1
+    POR_CMD_PORT=6563 tools/laterfight.py --out DIR/ssb
 
 **Three things about these two titles that Pool of Radiance's drivers do not
 know, and each cost a run before it was found** (`#192`, `#291`, and the runs
@@ -52,6 +52,8 @@ import time
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
+
+from tools import scratch  # noqa: E402
 
 #: The move keys, as PETSCII codes for the KERNAL buffer.  `I` is forward,
 #: `J` turns left, `K` turns right, `M` reverses.
@@ -371,7 +373,7 @@ def main(argv=None) -> int:
     ap.add_argument("--port", type=int,
                     default=int(os.environ.get("POR_CMD_PORT") or 0),
                     help="the served session's command port; $POR_CMD_PORT")
-    ap.add_argument("--out", default="work/laterfight",
+    ap.add_argument("--out", default=str(scratch.scratch_dir("laterfight")),
                     help="where the log, the screens and the shots go")
     ap.add_argument("--steps", type=int, default=120,
                     help="how many move keys to spend looking for a fight")

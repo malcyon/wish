@@ -12,7 +12,7 @@ re-derived:
     tools/amigaportraitmenu.py --check     # exit 1 if the disks disagree
     tools/amigaportraitmenu.py --art       # the art census behind the diff
     tools/amigaportraitmenu.py --palette   # the screen colours it draws in
-    tools/amigaportraitmenu.py --montage work/issue194/menu.png
+    tools/amigaportraitmenu.py --montage MENU.png
 
 It finds the player's own Amiga disk images the way the other Amiga tools do
 -- `tools/amigasaves.py`'s walk of `$AMIGA_DISKS` and `gamedisks.yaml`, which

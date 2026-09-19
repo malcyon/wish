@@ -25,11 +25,11 @@ total in step and lets only the cached line go stale
 spoiled specimen, and `+109` is the hand-axe purchase of
 `docs/213-the-dos-shopping-trip.md`.
 
-The 2026-09-04 reading was 264 records over the archives and `work/`, and the
-six Curse characters `#225` found at `+3` were under `work/`.  That directory
-is gitignored scratch and has been lost twice, so it is no longer a default
-root (#575): the two counts are not counts of the same corpus, and neither
-number can be read as the other moving.
+The 2026-09-04 reading was 264 records over the archives and the scratch
+directory, and the six Curse characters `#225` found at `+3` were in that
+directory.  It has been deleted (scratch was lost twice), so it is no longer a
+default root (#575): the two counts are not counts of the same files, and
+neither number can be read as the other moving.
 
 Written for `#225 (A shopped Curse character's stored encumbrance is three
 tenths above the sum)`, where the answer turned out to be that a purchase

@@ -84,9 +84,16 @@ def pool(tmp_path, monkeypatch, ports):
 # -- what a slot is ---------------------------------------------------------
 
 
-def test_module_imports_without_fcntl():
-    """The guard `tools/dosbox.py` was caught by, asserted rather than assumed."""
-    assert instance.pool_root().name == "inst"
+def test_module_imports_without_fcntl(monkeypatch):
+    """The guard `tools/dosbox.py` was caught by, asserted rather than assumed.
+
+    With no `$POR_INST` the pool lives in scratch, outside the repository,
+    and asking where it is creates nothing."""
+    from tools import scratch
+    monkeypatch.delenv("POR_INST", raising=False)
+    root = instance.pool_root()
+    assert root == scratch.scratch_dir("instance")
+    assert instance.REPO not in root.parents
 
 
 def test_the_pool_never_allocates_the_human_s_ports():

@@ -4,22 +4,24 @@
 # in a private Xvfb, and time its GDB-remote memory reads while the machine
 # runs.  A probe for #464: does a read return while the Amiga is running?
 #
-# Uses work/issue464/forksrc/fs-uae as the emulator and work/issue464/base3 as
-# its base directory, display :78, debugger port 6528.  Those are fixed: check
+# Usage: fsuaeruncustombuild.sh PATH-TO-BUILT-FS-UAE-BINARY
+# The emulator binary is a required argument; its base directory and logs go
+# under "${TMPDIR:-/tmp}/wish/fsuaeruncustombuild", display :78, debugger port 6528.  Those are fixed: check
 # nothing else is on them.  No window reaches the desktop (Xvfb), audio is
 # dummied, and the emulator's process group is killed on the way out.
 #
 # Reads with the Gdb class of tools/fsuaegdbprobe.py.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-D="$ROOT/work/issue464"
+FSUAE=${1:?usage: $0 PATH-TO-BUILT-FS-UAE-BINARY}
+D="${TMPDIR:-/tmp}/wish/fsuaeruncustombuild"
 mkdir -p "$D/base3"
 Xvfb :78 -screen 0 800x600x24 -nolisten tcp >"$D/xvfb78.log" 2>&1 &
 XPID=$!
 sleep 2
 env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE DISPLAY=:78 GDK_BACKEND=x11 \
     SDL_AUDIODRIVER=dummy ALSOFT_DRIVERS=null \
-    setsid "$D/forksrc/fs-uae" \
+    setsid "$FSUAE" \
       --base_dir="$D/base3" \
       --fullscreen=0 --volume=0 \
       --remote_debugger=30 --remote_debugger_port=6528 \

@@ -263,7 +263,7 @@ VERIFY_SECONDS = 30.0
 #: start from, before saying the game is busy.
 #:
 #: **Measured on instance-pool slot 2, `PORSAVE11.D64`, the party at (4,2) in
-#: the world** (#152, `work/agent152/wait.json`). 5500 samples of the program
+#: the world** (#152, `cited/agent152/wait.json`). 5500 samples of the program
 #: counter -- 2000 idle 20 ms apart, 2000 idle 5 ms apart, 1500 while the
 #: party walked -- put 230 of them outside the two windows, and **every one of
 #: those 230 was a run of exactly one sample**: the next look was always back
@@ -314,7 +314,7 @@ class FastTravelBar(QObject):
 
     **Shown to everybody**, no longer only in debug mode: P20 fasttraveled into every
     area that had no arrival square and recorded where the party landed
-    (write-up lost, `work/reports/p20-arrivals.md`), which is what the gate was
+    (write-up lost, `reports/p20-arrivals.md`, scratch, deleted), which is what the gate was
     waiting for.
     The one area that turned out not to be a place is not offered at all.
 
@@ -566,7 +566,7 @@ class FastTravelBar(QObject):
         the window for them rather than for the emulator.
 
         **Two kinds of area get no square at all**, and both are P20's findings
-        (write-up lost, `work/reports/p20-arrivals.md`):
+        (write-up lost, `reports/p20-arrivals.md`, scratch, deleted):
 
         * **overland** -- outdoors the party's position is `$49C3`/`$49C4`, so
           a `GEO` square in `$C04B` there is meaningless and this method

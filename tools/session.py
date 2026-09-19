@@ -16,8 +16,8 @@ by wedging the emulator:
    one long-lived process with a command port rather than a series of scripts.
 3. Never send `x` on the text socket.  Resuming is the binary monitor's job.
 
-Only images under `work/drive/` are ever attached.  The player's own disks are
-never in the drive.
+Only images under the session's own scratch directory (`HERE`, or its slot's)
+are ever attached.  The player's own disks are never in the drive.
 """
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 from automap import c64 as machines  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64, D64Error  # noqa: E402
-from tools import gamedisks, instance  # noqa: E402
+from tools import gamedisks, instance, scratch  # noqa: E402
 from tools.drive import (  # noqa: E402
     Keyboard,
     Monitor,
@@ -60,7 +60,7 @@ from tools.drive import (  # noqa: E402
 )
 
 # Disk images and logs live in scratch; the code does not.
-HERE = str(pathlib.Path(TOOLS).parent / "work" / "drive")
+HERE = str(scratch.scratch_dir("session", "drive"))
 # The human's numbers, and the defaults when no slot is passed.  The pool never
 # allocates these: `tools/instance.py` starts at 6520, so anything still on 6502
 # is a game a human started from the desktop menu.
@@ -327,7 +327,7 @@ AFTER_MOVE = (BAR_COMMAND, BAR_DONE, BAR_PRESS, BAR_CONTINUE, BAR_YESNO,
 RE_MOVE_LEFT = re.compile(r"MOVE\s*LEFT\s*[=:]\s*(\d+)")
 
 # What a fight prints when it is over.  `THE PARTY HAS WON !` was read off two
-# fights (`work/p118-step3/runF.log`, `runH.log`).
+# fights (`p118-step3/runF.log` (scratch, deleted), `runH.log`).
 #
 # **`LOST_TEXT` is no longer a guess.**  It was `DEFEATED`, invented, and the
 # game does not say that.  `POST.COM`'s own string table -- lo `$2A8D`, hi
@@ -339,11 +339,11 @@ RE_MOVE_LEFT = re.compile(r"MOVE\s*LEFT\s*[=:]\s*(\d+)")
 #   index 4, `$6DC7` = $00  THE PARTY HAS WON !   somebody still standing
 #
 # The losing line was then read off a driven defeat -- six characters wounded
-# to 1 hit point through the monitor and every turn passed, `work/issue128`,
+# to 1 hit point through the monitor and every turn passed, `cited/128`,
 # `tools/defeatdrive.py` -- where it appeared on row 10 with `$6DC7` = $80.
 # No exclamation mark, unlike the winning line (`#128`).
 #
-# **`RAN_TEXT` was read off a driven flight** -- `work/issue445/run2`,
+# **`RAN_TEXT` was read off a driven flight** -- `cited/445/run2`,
 # `tools/fleedrive.py`, where ROLAND walked to the edge of the combat map and
 # stepped off it, the game answered `GOT AWAY` and wrote `$86 RUNNING` into
 # his record, and the orcs finished the other five.  Row 10 column 1 in a
@@ -376,21 +376,21 @@ RAN_TEXT = "THE PARTY RUNS AWAY"
 # apart:
 #
 # * `HIT POINTS 4`, on the acting character's panel on every screen of every
-#   fight -- so the word is `HITS`, never `HIT` (`work/p126/quick.log`);
+#   fight -- so the word is `HITS`, never `HIT` (`p126/quick.log` (scratch, deleted));
 # * `THAC0 17  DAMAGE 1D3`, on the VIEW panel -- so it is `POINTS OF DAMAGE`,
-#   never `DAMAGE` on its own (`work/p126/run1.log`).
+#   never `DAMAGE` on its own (`p126/run1.log` (scratch, deleted)).
 #
 # `HAS LOST` and `RUNS AWAY` are here rather than `DEFEATED`, which nothing in
 # the game ever printed.  `GOES DOWN` is the line a character actually gets
 # when it reaches 0 hit points -- `GOES DOWN` then `AND IS DYING`, six times
-# over in the defeat at `work/issue128` -- and `UNCONSCIOUS` is kept although
+# over in the defeat at `cited/128` -- and `UNCONSCIOUS` is kept although
 # the game spells the status word `UNCONSIOUS`, because the sheet is where
 # that spelling appears and the message band has never used either.
 #
 # `GOT AWAY` is what a character who escapes gets, and it is **on row 24**
 # rather than in the message band -- `COMBAT`'s own message 5, from the table
 # at `$0BF6`/`$0C0B`, printed by `$0B07` after `$1719` has written `$86`.
-# Seen there in both flights at `work/issue445` (`#445`).  Its sibling,
+# Seen there in both flights at `cited/445` (`#445`).  Its sibling,
 # message 6 `FAILED`, is deliberately not here: one word, no subject, and
 # common enough in ordinary English to match a line that has nothing to do
 # with a fight.
@@ -419,7 +419,7 @@ OUTCOME_LINES = ((WON, WON_TEXT), (LOST, LOST_TEXT), (RAN, RAN_TEXT))
 # only after a step into an enemy's square and the move sub-bar then going
 # away, which is the measured signature of a blow that resolved: an attack
 # spends no movement and moves nobody, so nothing else on the screen says it
-# happened (`#127`, `work/issue127/sweep1.jsonl`, turn 15).
+# happened (`#127`, `cited/127/sweep1.jsonl`, turn 15).
 #
 # `fight` counts these and `FightResult.acted` is that count.  A tactic that
 # strikes without saying so therefore leaves `acted` False, which is the safe
@@ -538,7 +538,7 @@ class FightResult:
         return said
 
 
-# How a character moves in a fight, measured key by key in `work/p126/run1.log`:
+# How a character moves in a fight, measured key by key in `p126/run1.log` (scratch, deleted):
 # eight candidate key sets were pressed at a `MOVE/ATTACK, MOVE LEFT = 12` bar
 # and the square each one spent was read out of the combatant table.
 #
@@ -580,7 +580,7 @@ def word_column(text: str, label: str) -> int:
     `str.find` is not enough here.  `MOVE` is inside `MOVE/ATTACK, MOVE LEFT
     = 9`, so a substring match walks the highlight towards a target that is not
     a command at all -- which is one of the two ways the draft in
-    `work/p118-step3/run.py` stalled.
+    `p118-step3/run.py` (scratch, deleted) stalled.
     """
     want = label.upper()
     for m in re.finditer(r"[A-Z0-9<>]+", text.upper()):
@@ -609,7 +609,7 @@ def span_in(screen, row: int, colour: int = 1) -> tuple[int, int] | None:
 class Session:
     """One driven game.
 
-    With no `slot` this is what it always was: `work/drive/`, ports 6502, 6510
+    With no `slot` this is what it always was: `HERE`, ports 6502, 6510
     and 6600, display `:7` -- the human's numbers, kept so `tools/walkrun.py`
     and `tools/porcmd` need no change.  Pass a `tools.instance.Slot` and every
     one of those six becomes that slot's own, which is the whole of what makes
@@ -1052,7 +1052,7 @@ class Session:
         highlighted word at all, so `span_in` came back `None` and this spun
         its whole timeout instead of pressing the one thing the game was
         waiting for; three Curse landings hit exactly this
-        (`work/issue15/curse25/run.log` lines 27, 38, 112, `#565`).
+        (`cited/15/curse25/run.log` lines 27, 38, 112, `#565`).
         `combat_state` already tells such a bar apart as `BAR_PRESS`, and
         `wait_for_world` already answers it with `press_kernal` rather than
         a highlight walk -- reused here rather than a second copy of the
@@ -1979,7 +1979,7 @@ class Session:
         """Row 24 during a fight, classified.  Reading a fight is mostly this.
 
         A bar caught **half redrawn** -- `MOVE/AT`, `MO`, both seen in
-        `work/p118-step3/*.log` -- comes back as `BAR_MESSAGE` rather than
+        `p118-step3/*.log` (scratch, deleted) -- comes back as `BAR_MESSAGE` rather than
         being forced into a kind, so the driver waits and reads again instead
         of pressing Return at a bar that does not exist yet.
         """
@@ -2001,7 +2001,7 @@ class Session:
         # square gets `VIEW AIM USE QUICK DONE` -- **MOVE is dropped from its
         # own command bar** -- and a driver that wanted both would sit waiting
         # at a bar that was asking it for a command.  Measured in
-        # `work/p126/run1.log`, on the press that spent the last square.
+        # `p126/run1.log` (scratch, deleted), on the press that spent the last square.
         if word_column(up, "DONE") >= 0:
             return CombatBar(BAR_COMMAND, bar)
         # **Before `PRESS`, because a disk prompt carries that word.**
@@ -2010,7 +2010,7 @@ class Session:
         # went round again without ever reaching `handle_prompt` -- the disk
         # the game asked for was never put in the drive and the whole
         # 240-second budget went by with the prompt on the screen.  Driven on
-        # pool slot 0 on 2026-09-07: `work/screenblind/run3` reads the prompt
+        # pool slot 0 on 2026-09-07: `screenblind/run3` (scratch, deleted) reads the prompt
         # on 38 of its last 40 polls and `begin_adventuring` still returned
         # False (`#336`).
         if RE_GAME_SIDE.search(up) or SAVE_PROMPT in up:
@@ -2022,7 +2022,7 @@ class Session:
         # coming from.  Told apart from a treasure bar, which also carries
         # EXIT, by DELAY and SPEED being on it -- **not** by GUARD, which drops
         # off the bar for a character that cannot take it and left the driver
-        # bouncing off `DELAY QUIT SPEED EXIT` (`work/p126/melee5.log`).
+        # bouncing off `DELAY QUIT SPEED EXIT` (`p126/melee5.log` (scratch, deleted)).
         if word_column(up, "DELAY") >= 0 and word_column(up, "SPEED") >= 0:
             return CombatBar(BAR_DONE, bar)
         # `THERE IS STILL TREASURE LEFT` prints above this one, and the two
@@ -2045,8 +2045,8 @@ class Session:
 
     #: How long to give a blow to resolve before calling it refused.  Six
     #: seconds because a landed one showed inside 1.6 s on every press
-    #: measured (`work/issue127/sweep1.jsonl`) and a refused one had not
-    #: moved after ten (`work/issue127/probe1.jsonl`).
+    #: measured (`cited/127/sweep1.jsonl`) and a refused one had not
+    #: moved after ten (`cited/127/probe1.jsonl`).
     ATTACK_TIMEOUT = 6.0
 
     #: Which bars `combat_bar` will walk the highlight along.  Not the move
@@ -2153,7 +2153,7 @@ class Session:
         which is where the `GUARDING` on row 24 in the older logs was coming
         from.  A driver that takes DONE and stops leaves the same command bar
         up and is asked again: 210 turns in 420 seconds
-        (`work/p126/melee4.log`).
+        (`p126/melee4.log` (scratch, deleted)).
         """
         if not self.combat_bar("DONE", timeout=12):
             return ""
@@ -2173,7 +2173,7 @@ class Session:
     #: rather than finishing with it**: it comes straight back to the front of
     #: the queue, and one character that could not strike took 50 of the 54
     #: turns of a fight that way while the other five never acted again
-    #: (`#165`, `work/issue127/after1.jsonl`).  `EXIT` backs out to the same
+    #: (`#165`, `cited/127/after1.jsonl`).  `EXIT` backs out to the same
     #: character's command bar, which is no better.  Both are last resorts for
     #: a bar carrying neither of the two above.
     LEAVES_BAR = ("DELAY", "EXIT")
@@ -2195,7 +2195,7 @@ class Session:
         missing on 34 turns at 8 seconds each, and 10 more turns spent 24
         seconds apiece finding none of them, because `fight` also calls this at
         a bar that is not the sub-bar at all (`#127`,
-        `work/issue127/diag1.jsonl`).  One read of row 24 first turns every one
+        `cited/127/diag1.jsonl`).  One read of row 24 first turns every one
         of those into a tenth of a second.
         """
         bar = self.combat_state().text
@@ -2238,7 +2238,7 @@ class Session:
         afterwards gives the command bar still, so a driver that decides on one
         read concludes the sub-bar never appeared, backs out, and takes MOVE
         again -- 638 times in 420 seconds with `MOVE LEFT = 12` never once
-        going down (`work/p126/melee2.log`).  Verify by effect and retry: it is
+        going down (`p126/melee2.log` (scratch, deleted)).  Verify by effect and retry: it is
         the rule the rest of this file already follows.
         """
         deadline = time.time() + timeout
@@ -2424,7 +2424,7 @@ class Session:
         # the party has boxed in has nowhere that gets it closer, and taking
         # MOVE and backing out again does not end its turn: the same command
         # bar comes back and the driver does it again, 638 times in 420
-        # seconds (`work/p126/melee3.log`).  A turn that cannot attack has to
+        # seconds (`p126/melee3.log` (scratch, deleted)).  A turn that cannot attack has to
         # be **passed**, not merely left.
         index = me.index
         target = min((e for e in b.enemies if e.alive and e.on_map),
@@ -2462,7 +2462,7 @@ class Session:
                 # measured at a live sub-bar, ROLAND at (29,13) against an orc
                 # on (28,14): `MOVE LEFT` 9 before and 9 after, nobody moved,
                 # and the orc went from 5 hit points to 1
-                # (`work/issue127/sweep1.jsonl`, turn 15).
+                # (`cited/127/sweep1.jsonl`, turn 15).
                 #
                 # Treating that as "the step cost nothing, so it did not
                 # happen" is what put the attack key in `avoid` on every turn
@@ -2479,7 +2479,7 @@ class Session:
                 # refused rather than struck.  Seen for a character with a
                 # **missile weapon readied** -- MALCYON with 13 DART, six
                 # presses watched for ten seconds apiece, no message, no
-                # damage, nothing (`work/issue127/probe1.jsonl`).  Pass the
+                # damage, nothing (`cited/127/probe1.jsonl`).  Pass the
                 # turn; do not stand there pressing it again.
                 self.press_kernal(0x0D)
                 return self.combat_turn()
@@ -2490,7 +2490,7 @@ class Session:
                 # A wall, and the count says so: a step into impassable
                 # terrain spends nothing and moves nobody -- LADY KATHERINE
                 # at (29,11) north-east into terrain code 1, `MOVE LEFT` 5
-                # and 5 (`work/issue127/sweep1.jsonl`, turn 5).  Try another.
+                # and 5 (`cited/127/sweep1.jsonl`, turn 5).  Try another.
                 avoid.add(key)
             else:
                 stepped = True
@@ -2619,7 +2619,7 @@ class Session:
                 # would walk into a party member.  `NO` is the conservative
                 # answer to a yes/no bar this does not recognise: that one
                 # stalled a whole fight for its 421-second budget because
-                # there was no branch for it at all (`work/p126/melee.log`).
+                # there was no branch for it at all (`p126/melee.log` (scratch, deleted)).
                 #
                 # **The second such bar is `FLEE: YES NO`** -- `COMBAT $17A9`,
                 # put up by `$0E6E` when a step would leave the combat map --
@@ -2968,12 +2968,12 @@ _NO_POOL = object()
 def main(argv: list[str] | None = None) -> int:
     """`--pool` claims an instance slot and holds its lease for as long as
     this process lives; without it the session is the legacy one on
-    6502/6510/6600 and `work/drive/`, which is what `tools/porcmd` still
+    6502/6510/6600 and `HERE`, which is what `tools/porcmd` still
     talks to.
 
     `--pool N` demands slot *N*, which is what a brief names; `--disks DIR`
     and `--save NAME` copy the player's disks into the slot first, so the
-    session comes up ready to load a save rather than needing a `work/drive`
+    session comes up ready to load a save rather than needing `HERE`
     laid out by hand.
     """
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -3006,7 +3006,7 @@ def main(argv: list[str] | None = None) -> int:
     disk_arg, save_disk_arg = args.disk, args.save_disk
     if args.disks:
         assert slot is not None, \
-            "--disks needs --pool: nothing stages work/drive"
+            "--disks needs --pool: nothing stages the legacy directory"
         disk_arg = stage_disks(slot, args.disks, args.save)
         save_disk_arg = args.disk
         if args.save_disk is not None:

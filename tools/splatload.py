@@ -47,7 +47,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 from tools.curseload import close_splat  # noqa: E402
 
@@ -185,7 +185,7 @@ def main(argv=None) -> int:
     ap.add_argument("--tag", default="load", help="prefix for this run's files")
     ap.add_argument("--serve", action="store_true",
                     help="hand the session over on the command port at the end")
-    ap.add_argument("--out", default="work/issue298/splatload")
+    ap.add_argument("--out", default=str(scratch.scratch_dir("splatload")))
     return run(ap.parse_args(argv))
 
 

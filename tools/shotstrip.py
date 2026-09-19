@@ -24,7 +24,7 @@ party-wide effect**: checked 2026-08-31, the only effect in any fixture is id
 lets every badge be looked at at once. `tools/livestrip.py` is the other half
 and reads a real one off a running machine.
 
-**Output goes under `work/`, which is `.gitignore`d**, and the tooltip text is
+**Output goes under this tool's scratch directory** unless told otherwise, and the tooltip text is
 printed to the terminal, because a `grab()` does not draw one.
 """
 
@@ -75,6 +75,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow  # noqa: E402
 from automap import live  # noqa: E402
 from automap.panel import BottomStrip  # noqa: E402
 from automap.state import AutomapState  # noqa: E402
+from tools import scratch  # noqa: E402
 from wish.ui_window import Ui_WishWindow  # noqa: E402
 
 #: One id out of each badge group, so the default picture is every glyph the
@@ -158,9 +159,9 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         description="Render the automapper's roster column offscreen, with a "
                     "made-up set of party-wide effects running.")
-    ap.add_argument("out", nargs="?", default="work/strip.png",
-                    help="where to write the PNG (default: %(default)s, "
-                         "which is gitignored)")
+    ap.add_argument("out", nargs="?", default=str(scratch.scratch_dir("shotstrip")
+                                             / "strip.png"),
+                    help="where to write the PNG (default: %(default)s)")
     ap.add_argument("--effects", nargs="+", default=None, metavar="ID",
                     help="effect ids to run on the whole party, or the word "
                          "'none' (default: one from every badge group)")

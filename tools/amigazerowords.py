@@ -44,7 +44,7 @@ committed and none of them ours:
     tools/amigazerowords.py                       the report
     tools/amigazerowords.py --dos PATH [PATH...]  add DOS containers
     tools/amigazerowords.py --engine             add the engine's own accesses
-    tools/amigazerowords.py --json work/issue446/words.json
+    tools/amigazerowords.py --json words.json
 
 Everything is read; nothing is written but the JSON the caller asks for, and
 no string of the game's is printed.

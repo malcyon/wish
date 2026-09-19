@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Expand a Microsoft EXEPACK-compressed DOS executable to its load image.
 
-    tools/unexepack.py START.EXE work/START.img
+    tools/unexepack.py START.EXE START.img
 
 DOS Pool of Radiance's `START.EXE` is EXEPACK-compressed: the entry stub
 (`mov ax, es; add ax, 0x10 ... std; rep movsb`) copies the packed image to the
@@ -16,7 +16,7 @@ the code uses is `seg * 16 + off` into the output -- the same numbering
 documented one: commands read backwards from the end of the packed data,
 `0xB0`/`0xB1` fill a byte, `0xB2`/`0xB3` copy a run, bit 0 marks the last.
 
-Nothing here is game data; the output goes under `work/` and stays there.
+Nothing here is game data; the output goes where you name it and stays out of the repository.
 """
 
 from __future__ import annotations

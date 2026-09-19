@@ -7,7 +7,7 @@ Put a slot on a disk with `tools/porslot.py`, boot it, load it, camp, save to
 another slot, and then run this -- every difference is either a field the
 engine derives or a field we got wrong, and there is no third kind.
 
-    tools/porslotdiff.py work/109/por1-F-after-C.adf --from F --to C
+    tools/porslotdiff.py path/to/por1-F-after-C.adf --from F --to C
 
 That run is `docs/124-amiga-port.md` §1.12a: slot `F` was written by
 `goldbox.amiga_savegame.write_por_slot` and slot `C` is the engine's own save of the

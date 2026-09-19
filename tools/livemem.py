@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dump a range of a **running** pooled session's memory to a file.
 
-    tools/livemem.py --port 6523 0000 10000 work/issue32/all.bin
+    tools/livemem.py --port 6523 0000 10000 ALL.BIN
     tools/livemem.py --port 6523 4b00 1d00 -            # hex to stdout
 
 `tools/porcmd peek` answers one short range as hex, which is right for a

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 The arena is composed rather than captured -- see `tests/gamedata.py`. It used
 to be a snapshot of live memory taken out of a running
-machine at `work/drive/c3-combat1.bin` and trimmed to the seven ranges the view
+machine at `drive/c3-combat1.bin` (scratch, deleted) and trimmed to the seven ranges the view
 reads. It is stored as chunks of `addr, length, bytes` so the addresses travel
 with the data and nothing here has to repeat them.
 """

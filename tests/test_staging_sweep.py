@@ -30,7 +30,7 @@ assignments and through a helper's `out`-shaped parameters:
 * **a pool slot's own directory** -- `slot.dir`, `slot_dir`.  Reused by every
   later tenant of that slot.
 * **a tool's own `--out`** -- `args.out`, `args.output`, `args.dir`.  It
-  defaults to a fixed path under `work/`, so it is reused across invocations
+  defaults to a fixed path, so it is reused across invocations
   unless the caller passes a new one each time.
 * **an emulator instance's staged save directory** -- `save_dir`,
   `save_file(...)`.  This is where the running game reads and writes its

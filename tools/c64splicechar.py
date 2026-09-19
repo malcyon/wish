@@ -11,7 +11,7 @@ gnome that goes into the C64 side is one the DOS engine itself wrote, and the
 run measures a round trip rather than a character somebody invented.
 
     tools/c64splicechar.py --cha ~/wish-specimens/por-dos/WISH-SPEC-gnomf1/halfelf-GNOMF1.CHA \
-        --c64 PORSAVE13.D64 --slot 5 --out work/issue243/GNOME.D64
+        --c64 PORSAVE13.D64 --slot 5 --out GNOME.D64
 
 The four per-slot regions are the ones `goldbox.dos_codec.convert_save` writes for a
 whole party, at the same offsets and out of the same 580-byte record:

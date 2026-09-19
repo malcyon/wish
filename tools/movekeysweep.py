@@ -18,7 +18,7 @@ For each press it records the destination square's contents (empty, a party
 member, an enemy), whether the character moved, whether `MOVE LEFT` went down,
 and whether the target lost hit points.
 
-Research only.  Writes work/issue127/<name>.jsonl.
+Research only.  Writes `<name>.jsonl` into `OUT`, the tool's scratch directory.
 """
 from __future__ import annotations
 
@@ -34,10 +34,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from tools import instance  # noqa: E402
+from tools import instance, scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
-OUT = ROOT / "work" / "issue127"
+OUT = scratch.scratch_dir("movekeysweep")
 
 
 def disks_dir() -> pathlib.Path:
@@ -82,7 +82,7 @@ def main(argv=None) -> int:
                                      args.slot)
     DISKS = disks_dir()
 
-    OUT.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(OUT)
     out = open(OUT / f"{name}.jsonl", "w")
 
     def emit(kind, **kw):

@@ -46,7 +46,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.layout import NAME_SIZE  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: The three watched windows of the working record at `$6B00`.
@@ -236,12 +236,12 @@ def main(argv=None) -> int:
                    help="demand this pool slot rather than the first free one")
     p.add_argument("--no-stage", action="store_true",
                    help="leave the save copy as the game wrote it")
-    p.add_argument("--out", default=None, help="run directory")
+    p.add_argument("--out", default=None, help="run directory (default: the tool's scratch directory)")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
 
     disks = pathlib.Path(args.disks or gamedisks.find("pool-of-radiance"))
-    out = pathlib.Path(args.out) if args.out else ROOT / "work" / "issue258" / "run"
+    out = pathlib.Path(args.out) if args.out else scratch.scratch_dir("c64addchar", "run")
     run = Run(out, args.quiet)
 
     slot = S.claim_slot(args.slot, "c64addchar/258")

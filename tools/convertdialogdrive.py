@@ -52,8 +52,9 @@ def main(argv=None) -> int:
     ap.add_argument("--amiga-disk2", required=True, type=pathlib.Path,
                     help="the title's Amiga disk 2, the one carrying ecl.dax")
     ap.add_argument("--out-dir", type=pathlib.Path,
-                    default=ROOT / "work" / "convertdialogdrive",
-                    help="folder Convert writes its wish-<date> subfolder into")
+                    default=None,
+                    help="folder Convert writes its wish-<date> subfolder into "
+                         "(default: this tool's scratch directory)")
     ap.add_argument("--report", type=pathlib.Path,
                     help="where to write the JSON report "
                          "(default: <out-dir>/convert-report.json)")
@@ -73,16 +74,16 @@ def main(argv=None) -> int:
     os.environ["GDK_BACKEND"] = "x11"
     os.environ.setdefault("POR_HEADLESS", "1")
 
-    out = args.out_dir
-    out.mkdir(parents=True, exist_ok=True)
-    report_path = args.report or out / "convert-report.json"
     sys.path.insert(0, str(args.tree.resolve()))
 
     from PyQt6.QtWidgets import QApplication, QDialog, QWidget
 
     from editor import convert as convert_mod
     from editor.window import EditorBinding
-    from tools import gamedisks
+    from tools import gamedisks, scratch
+
+    out = args.out_dir or scratch.scratch_dir("convertdialogdrive")
+    report_path = args.report or out / "convert-report.json"
 
     report: dict = {}
 
@@ -129,6 +130,7 @@ def main(argv=None) -> int:
     convert_mod.QMessageBox.critical = _stub_critical
     convert_mod.QMessageBox.warning = _stub_warning
 
+    scratch.ensure(out)
     try:
         note = window.convert(source=str(specimen), destination="amiga",
                               disk=str(amiga_disk2), folder=str(out))

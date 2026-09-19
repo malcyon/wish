@@ -11,15 +11,15 @@ AmigaDOS disk images:
 * fourteen `.cha` exports staged in the `save/` drawer of the **Curse of the
   Azure Bonds save disk**, which is where nobody was looking for them.
 
-They were once extracted into `work/`, which is gitignored and has been lost
+They were once extracted into a gitignored scratch directory that has been lost
 twice, so `$AMIGA_POR_SAVES` pointed at nothing and thirty-one tests skipped on
-the machine that has every byte of the corpus -- the shape of
+the machine that has every byte of them -- the shape of
 `#211 (103 tests skip on the machine that has the game files, and the game
 files are not why)`.  This is the tool that produces them again, and
 `tests/test_amiga.py` calls :func:`extract` itself when the environment names
-no directory, so the corpus is never only in a scratch directory again.
+no directory, so they are never only in a scratch directory again.
 
-    tools/amigasaves.py -o work/amiga-por-saves
+    tools/amigasaves.py -o DIR
 
 The disks are opened **read-only**; nothing is written anywhere but `--out`.
 

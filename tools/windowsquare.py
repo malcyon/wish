@@ -9,10 +9,10 @@ square it last stood on)` was fixed by giving areas 25, 26 and 27 an
 the row the other two windows arrive on, and nobody had ever stood on it.
 
 Passability cannot be read off the disk: the impassable-terrain table's
-address was in `work/reports/world-map.md`, which is lost (#136), so the
+address was in `reports/world-map.md`, which is lost (#136), so the
 running game is the only authority left.  That is what this drives:
 
-    tools/windowsquare.py --slot 0 --out work/issue178
+    tools/windowsquare.py --slot 0 --out DIR
 
 For each window, in order: write `$49C3`/`$49C4` to a known wrong value so the
 arrival cannot be the stale square, fast travel there through
@@ -24,7 +24,7 @@ recording which ones move it.
 **The compass is clockwise from north**: 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW,
 7 W, 8 NW.  A square that can be left in at least one direction is not a trap.
 
-Captures go to `work/`, which is gitignored; the tool does not.  Nothing is
+Captures go to the temp directory (`tools/scratch.py`).  Nothing is
 written to the player's disks: `stage_disks` copies the sides into the slot
 and `Session.attach` refuses a path outside it.  The pool owns the emulator --
 claim, launch, tear down.
@@ -44,6 +44,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -330,7 +331,7 @@ def main(argv=None) -> int:
     p.add_argument("--save", default="PORSAVE13.D64",
                    help="the save disk to copy in as SIDE0")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
-    p.add_argument("--out", default=str(ROOT / "work" / "issue178"))
+    p.add_argument("--out", default=str(scratch.scratch_dir("windowsquare")))
     p.add_argument("--areas", default=",".join(str(a) for a in WINDOWS),
                    help="which wilderness windows to visit, in order")
     p.add_argument("--patience", type=float, default=25.0,

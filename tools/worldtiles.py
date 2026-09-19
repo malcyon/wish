@@ -8,7 +8,7 @@ nobody can say which square is a hill and which is a mountain.  This renders
 them off the player's own disks.
 
 **The pictures are the game's art and are never committed.**  The tool is;
-the PNGs it writes go under `--out`, which defaults to `work/issue11/`.
+the PNGs it writes go under `--out`, which defaults to this tool's scratch directory.
 
 ## What a tile is
 
@@ -55,6 +55,7 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import find_disks  # noqa: E402
 from goldbox import world as W  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
+from tools import scratch  # noqa: E402
 
 #: The C64's sixteen colours, the same table `tools/cursepic.py` draws its
 #: Curse pictures with -- one palette for the project rather than two that
@@ -83,7 +84,7 @@ CHARSET_NAMES = ("SECSET04", "SECSET05", "SECSET06")
 #: with the whole screen, so no tile can carry them: black, light grey and
 #: green.  **Read off the chip on the travel grid**, 2026-09-08, measurement
 #: B of `docs/217-drawing-the-wilderness.md`: `tools/worldregisters.py` booted
-#: `work/p190/C64OUT1.D64` and read `$D021`-`$D023` as `$F0 $FF $F5` while the
+#: `p190/C64OUT1.D64` (scratch, deleted) and read `$D021`-`$D023` as `$F0 $FF $F5` while the
 #: party stood at (8,27) on the middle window, the border `$D020` black with
 #: it.  Change this only against another such reading -- fitting it to a
 #: screenshot is how the plains came to be called light grey in
@@ -337,7 +338,7 @@ def cmd_census(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--out", default="work/issue11",
+    p.add_argument("--out", default=str(scratch.scratch_dir("worldtiles")),
                    help="where the PNGs go; the game's art never leaves it")
     p.add_argument("--window", default="all", help="4, 5, 6 or all")
     p.add_argument("--shared", default="",

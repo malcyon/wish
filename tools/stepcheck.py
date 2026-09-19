@@ -6,8 +6,8 @@
 Six positions on `tests/gamedata.py`'s arena, with the answer each one was
 measured to want.  They are the table in `#170` -- the six cases the
 breadth-first routing was prototyped against during `#127`, when the
-prototype lived in `work/issue127/proto.py` and `work/` is gitignored, which
-is why it is here instead.
+prototype lived in `issue127/proto.py` (scratch, deleted) and scratch is
+gitignored, which is why it is here instead.
 
 This drives the **real** `Session.step_towards`, so it is a check on the
 routing rather than a second copy of it: change the routing and this says

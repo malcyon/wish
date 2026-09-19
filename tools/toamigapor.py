@@ -8,9 +8,9 @@ disk to begin with.  This is the other direction -- the one
 Darkness one)` exists for -- and it is what puts a C64 or DOS party on an
 Amiga disk the game will load.
 
-    tools/toamigapor.py work/por1.adf --to B --out work/por1-B.adf \\
+    tools/toamigapor.py por1.adf --to B --out por1-B.adf \\
         --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
-    tools/toamigapor.py work/por1-B.adf --to D --out work/por1-BD.adf \\
+    tools/toamigapor.py por1-B.adf --to D --out por1-BD.adf \\
         --dos ~/wish-specimens/por-dos/WISH-SPEC-por-item-granted --dos-slot D
 
 Both readers go through `goldbox/neutral.py`'s `NeutralCharacter` and out
@@ -40,7 +40,7 @@ so the party is ours and the place is somebody else's.  The run says so.
 **`--save-disk` writes a save disk instead of a copy of the game disk**, which
 is what a player is actually handed (#36):
 
-    tools/toamigapor.py work/por2.adf --to B --save-disk work/poolsave.adf \\
+    tools/toamigapor.py por2.adf --to B --save-disk poolsave.adf \\
         --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
 
 That output is an 880K floppy named `POOLSAVE` with no game code on it at all

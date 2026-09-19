@@ -112,7 +112,7 @@ ROSTER_MEMORISE_QUEUE_COUNT = 0x02
 # last fight computed. CAMP touches none of them.
 #
 # Measured in the running game, on the roster page sampled either side of one
-# fight (work/p235c64/run1/roster.jsonl, the #235 Slums ambush): +0x03 went 0
+# fight (cited/p235c64/run1/roster.jsonl, the #235 Slums ambush): +0x03 went 0
 # -> 1 for MALCYON and 0 -> 1 for LADY KATHERINE between "in the world" and
 # "fight begins", ROLAND's stayed at 3, and the three non-casters stayed at 0 --
 # which is the recompute from each of their memorised lists exactly. The save

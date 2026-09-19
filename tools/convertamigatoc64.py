@@ -17,7 +17,7 @@ worktree pinned to the commit under test.
 
     .venv/bin/python -m tools.convertamigatoc64 --tree . \\
         --specimen path/to/por1-outdoor.adf --disks path/to/c64-por-disks \\
-        --out-dir work/convertamigatoc64 --summary work/convertamigatoc64.json
+        --out-dir OUT --summary OUT/summary.json
 
 Runs offscreen; nothing opens on the desktop.
 """

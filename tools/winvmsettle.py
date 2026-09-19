@@ -8,7 +8,7 @@ run.  The steps do not take a fixed time either: on one Silver Blades boot the
 credits took 47 seconds, the party menu 9, and `BEGIN ADVENTURING` 56 the
 first time and 129 the second.
 
-    tools/winvmsettle.py work/331run/shots/05-loaded.png --limit 150
+    tools/winvmsettle.py 05-loaded.png --limit 150
 
 So this grabs `winvm shot` every couple of seconds until two consecutive grabs
 are byte for byte the same, saves that one, and prints how long it took.  A

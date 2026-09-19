@@ -50,12 +50,12 @@ race, class and alignment against what was asked for.  That check is the
 evidence: the party is what we said it was because the engine's own bytes say
 so, not because the screenshots look right.
 
-    tools/dosparty.py --classes --out work/issue249/classes
-    tools/dosparty.py --build work/issue249/party.json --slot C \\
-        --out work/issue249/build
+    tools/dosparty.py --classes --out DIR/classes
+    tools/dosparty.py --build DIR/party.json --slot C \\
+        --out DIR/build
 
-Output goes under `work/`, never into the repository: a saved game is the
-game's data.  **Copy it into `$WISH_SPECIMENS` with `tools/specimens.py add`
+Output goes under the temp directory, never into the repository: a saved game
+is the game's data.  **Copy it into `$WISH_SPECIMENS` with `tools/specimens.py add`
 before the slot goes down** -- `Session.stage` is a copy into the pool
 instance's own directory and tearing the slot down takes it with it.
 """
@@ -76,7 +76,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
 #: The race list, in the order CREATE NEW CHARACTER draws it.  Read off the
 #: screen in `#84 (Roll a gnome in DOS and read the two innate effect ids
@@ -351,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__.splitlines()[0],
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=pathlib.Path,
-                    default=REPO / "work" / "issue249" / "run")
+                    default=scratch.scratch_dir("dosparty", "run"))
     ap.add_argument("--classes", action="store_true",
                     help="shoot the class list for each race and exit")
     ap.add_argument("--build", type=pathlib.Path,

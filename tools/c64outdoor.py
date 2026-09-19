@@ -63,6 +63,7 @@ from goldbox import areas, dos_codec, world_state  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: Where the player keeps the C64 disks.  Read only, and found the way every
@@ -83,7 +84,7 @@ def outdoor_request(area: int, x: int, y: int) -> "world_state.WorldState":
     `world_state.from_dos` rather than assembling a `WorldState` by hand,
     so a caller here is reading the same three words those two functions
     always read.  This matters because the only outdoor DOS saves on this
-    machine live under `work/` and have been lost once already.
+    machine were scratch files, and have been lost once already.
 
     A buffer this short also reads as `dos.never_adventured`'s "never set
     out" signature (#301, #326) -- an all-zero script buffer -- so it is
@@ -258,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     p.add_argument("--arrive", type=float, default=240.0,
                    help="seconds to wait for the world bar")
-    p.add_argument("--out", default=str(ROOT / "work" / "p190"),
+    p.add_argument("--out", default=str(scratch.scratch_dir("c64outdoor")),
                    help="where the specimens and the log go")
     args = p.parse_args(argv)
     return run(args)

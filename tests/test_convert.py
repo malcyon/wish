@@ -3,7 +3,7 @@ from __future__ import annotations
 """`editor.convert`'s registry: which directions the library can write whole.
 
 Step 1 of `#52 (File ▸ Import and File ▸ Export for every direction the
-library supports)`'s plan (`work/reports/52-plan.md`, on the issue's own
+library supports)`'s plan (`cited/reports/52-plan.md`, on the issue's own
 comments): no window, no menu, no template.
 
 **Every test here is a round trip.** It proves `editor.convert` wraps
@@ -49,8 +49,8 @@ from goldbox.savegame import SaveGame0, SaveGame1
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
 
 #: The played DOS Curse session this reads, and the slot in it.  It was
-#: `work/curse/H-square-5-13`, which is gone from this machine -- `work/` is
-#: gitignored and has been lost twice -- so this follows
+#: `curse/H-square-5-13` (scratch, deleted), which is gone from this machine --
+#: scratch has been lost twice -- so this follows
 #: `test_curseconvert.py`'s `_dos_save()` onto the specimen tree, where
 #: `#131`'s own session stands in Tilverton with four items readied.
 CURSE_SPECIMEN, CURSE_SLOT = "curse-131-four-items-readied", "I"
@@ -915,7 +915,7 @@ def test_234_a_dual_classed_curse_character_keeps_his_former_class_through_the_r
 
 
 # ---------------------------------------------------------------------------
-# Step B of `work/reports/52-plan.md`: `ConvertDialog`, and the rows a
+# Step B of `cited/reports/52-plan.md`: `ConvertDialog`, and the rows a
 # direction needs before Convert becomes pressable. Every test here drives
 # the dialog directly -- a fake `game_files` lookup, never a real picker --
 # so nothing here opens a window (`tests/conftest.py` forces
@@ -1090,7 +1090,7 @@ def test_a_curse_or_silver_blades_d64_lists_dos(tmp_path, game):
 def test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot(
         tmp_path):
     """Picking `SAVGAMB.DAT` directly names slot B, with no slot row
-    anywhere in the dialog (`work/reports/52-plan.md`, step B: "one file
+    anywhere in the dialog (`cited/reports/52-plan.md`, step B: "one file
     picker ... so there is no slot row"), and since `#316` offers the
     registered DOS -> Amiga row too."""
     folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE,
@@ -1198,7 +1198,7 @@ def test_disk_candidates_picks_the_destination_pattern_not_the_open_partys(
         tmp_path):
     """`EditorBinding._disk_candidates`'s new `pattern` argument: a fake
     disks folder holding both a `POOL*` and a `CURSE*` name, asked for each
-    in turn, answers only the one that matches (`work/reports/52-plan.md`
+    in turn, answers only the one that matches (`cited/reports/52-plan.md`
     step B's own suggested test shape)."""
     disks = tmp_path / "disks"
     disks.mkdir()
@@ -1509,7 +1509,7 @@ def test_a_c64_destinations_result_is_the_party_on_screen_afterwards(
         tmp_path, monkeypatch):
     """After a DOS -> C64 write, the editor has the written disk open --
     the same thing `File ▸ Open` would show, reached without a second click
-    (`work/reports/52-plan.md` step B: "for a C64 destination the editor
+    (`cited/reports/52-plan.md` step B: "for a C64 destination the editor
     opens written[0]")."""
     save_dir = _save_dir()
     disks = disk_dir()
@@ -1974,7 +1974,7 @@ def test_the_picker_offers_an_amiga_disk():
 # function. `_wish_window`/`_file_menu` are that file's private helpers,
 # copied rather than imported -- a subagent's files may not import another
 # test module's private helpers across `#52`'s lane
-# (`work/reports/52-plan.md`).
+# (`cited/reports/52-plan.md`).
 # ---------------------------------------------------------------------------
 
 def _wish_window(tmp_path, monkeypatch):

@@ -7,7 +7,7 @@ the reason on the ticket -- "the destination recomputes it from race" -- had
 never been demonstrated.  This is the tool that answers it, in three modes:
 
     tools/infravision.py table                     the generator's own tables
-    tools/infravision.py read work/x.d64           race and stored byte, per slot
+    tools/infravision.py read SAVE.d64           race and stored byte, per slot
     tools/infravision.py stage --source a.d64 --out b.d64
 
 **`table`** reads the race-indexed table the C64 character generator writes

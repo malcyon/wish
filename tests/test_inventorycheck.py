@@ -129,7 +129,7 @@ def _listed(path, slot, side) -> list[tuple[str, int, bool]]:
 def test_a_lower_case_letter_draws_as_the_glyph_forty_hex_below_it():
     """`Guy de Valois` is `G59 $% V!,/)3` on the party panel.
 
-    Pinned against what VICE drew in `work/issue139-a13/ssb-run1`: this save
+    Pinned against what VICE drew in `issue139-a13/ssb-run1` (scratch, deleted): this save
     was converted from DOS, which keeps mixed case, and a run looking for the
     name the record holds found nobody on the panel at all.
     """
@@ -144,7 +144,7 @@ def test_the_item_list_reader_drops_the_frame_and_the_empty_slots():
 
     A reader that took the row to the end of the line came back with every
     empty slot on the list as an item -- nineteen rows for a character
-    carrying ten (`work/issue139-a13/control`).
+    carrying ten (`issue139-a13/control` (scratch, deleted)).
     """
     rows = [""] * 25
     rows[3] = "*EQUIPPED ITEM                         <"

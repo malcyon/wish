@@ -58,7 +58,6 @@ def test_a_record_is_graded_by_where_it_was_found():
     """The played DOS directory is the one whose records were all edited."""
     assert census._grade("/home/x/dos_por_play/SAVE/CHRDATA1.SAV") == "edited"
     assert census._grade("/home/x/wish-specimens/por-dos/a.sav") == "spec"
-    assert census._grade("/x/wish/work/issue1/a.sav") == "work"
     assert census._grade("/x/fr-archives/games/POOLRAD/a.sav") == "found"
 
 
@@ -88,11 +87,11 @@ def test_a_title_with_no_spell_table_is_not_measured_against_pool_of_radiance():
 def test_a_deduplicated_record_is_graded_over_every_path_it_was_found_at():
     """The specimen tree decides, whichever path the finder happened to sort
     first -- `tools/carryceiling.py` mis-graded THRENDER GRONE this way."""
-    assert census._grade_over(["/x/work/issue1/a.sav",
+    assert census._grade_over(["/x/fr-archives/games/POOLRAD/a.sav",
                                "/home/x/wish-specimens/por-dos/a.sav"]) == "spec"
-    assert census._grade_over(["/x/work/issue1/a.sav",
+    assert census._grade_over(["/x/fr-archives/games/POOLRAD/a.sav",
                                "/home/x/dos_por_play/SAVE/a.sav"]) == "edited"
-    assert census._grade_over(["/x/work/issue1/a.sav"]) == "work"
+    assert census._grade_over(["/x/fr-archives/games/POOLRAD/a.sav"]) == "found"
 
 
 @gamedata.needs_disks

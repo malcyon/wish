@@ -54,8 +54,8 @@ Three things the board does that a pure predicate cannot show:
   ledger index 24, "Cadorna exposed as a traitor" — so the next visit gets that
   speech.
 
-The write-ups, `work/reports/quest-flags.md` and
-`work/reports/commissions.md`, are lost; the plan and its evidence table are
+The write-ups, `reports/quest-flags.md` and
+`reports/commissions.md`, are lost (scratch, deleted); the plan and its evidence table are
 `docs/103-quest-log-panel.md`.
 Nothing outside those two structures and the named appointment flags is exposed,
 because nothing else in the region is confirmed to the same standard.

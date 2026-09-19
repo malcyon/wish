@@ -47,14 +47,15 @@ from automap import screen as SCR  # noqa: E402
 from automap import vice as V  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox import world as W  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 from tools import worldtiles as WT  # noqa: E402
 
 #: The outdoor save this boots when `--disk` names none: `#190`'s own resave,
 #: the first C64 saved game anybody made standing on the travel grid, written
 #: by the game's own `ENCAMP > SAVE` after two walked squares.  It was
-#: `work/p190/C64OUT1.D64`; `work/` is gitignored and has been lost twice, so
-#: it is in the specimen tree now (#575).
+#: `p190/C64OUT1.D64` in scratch, which was lost twice, so it is in the
+#: specimen tree now (#575).
 OUTDOOR_SPECIMEN = "por-c64/WISH-SPEC-por-190-c64-outdoor-1.D64"
 
 #: The eight-way travel heading (`docs/137-wilderness-automap.md`), page 3 and
@@ -317,7 +318,8 @@ def main(argv: list[str] | None = None) -> int:
                         f"{OUTDOOR_SPECIMEN} when this is not given")
     p.add_argument("--disks", default=str(find_disks() or ""),
                    help="the player's game disks, read only")
-    p.add_argument("--out", default="work/issue11", help="where the report goes")
+    p.add_argument("--out", default=str(scratch.scratch_dir("worldregisters")),
+                   help="where the report goes")
     p.add_argument("--name", default="registers", help="stem for the report")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     p.add_argument("--arrive", type=float, default=300.0,

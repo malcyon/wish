@@ -48,7 +48,7 @@ class NoteType:
 #: that means something is worth more than an alphabet.
 #:
 #: The names and the descriptions are Donald's, settled on `#166`, and
-#: `work/note-icons.md` renders every one at the two sizes he judged them at.
+#: `note-icons.md` (scratch, deleted) rendered every one at the two sizes he judged them at.
 TYPES: tuple[NoteType, ...] = (
     # Marks: where you are, where you are going, how you get out.
     NoteType("note", "Note", "position-marker",

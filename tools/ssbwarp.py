@@ -9,9 +9,9 @@ built the table off its own scripts; both are static readings, so every row of
 that then draws that area's map is what makes a row CONFIRMED**, and that is
 what this measures.
 
-    tools/ssbwarp.py --pool 3 --probe --out work/issue20/probe
+    tools/ssbwarp.py --pool 3 --probe --out DIR
     tools/ssbwarp.py --pool 3 --to 0x22,0x50,0x60 --via-actions \
-        --spoil-from 2 --walk --out work/issue20/run1
+        --spoil-from 2 --walk --out DIR
 
 `--probe` boots, loads a party and reports what the machine holds without
 warping; it is what to run first, because the current area and the indoors
@@ -69,7 +69,7 @@ sys.path.insert(0, str(ROOT))
 from automap.actions import pc_register  # noqa: E402
 from goldbox import areas, c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import newecl  # noqa: E402
+from tools import newecl, scratch  # noqa: E402
 from tools import session as por  # noqa: E402
 
 #: The live party square. **Not relocated in any title read so far**: page
@@ -93,9 +93,9 @@ SIDE_GLOBS = ("SILVER-?.D64", "SILVER?.D64", "*Disk?.d64")
 #: **Silver Blades letters its sides, and that is what `A` was.** The loader
 #: drew `INSERT SIDE A, AND PRESS ANY KEY.` at the moment it wanted the side
 #: carrying `ECL11`, which `goldbox.areas.AREAS_SILVER_BLADES` puts on side 1,
-#: and attaching `SILVER-1` got past it (`work/issue20/warp1`). Read as hex
+#: and attaching `SILVER-1` got past it (`issue20/warp1`, scratch, deleted). Read as hex
 #: that token is side 10, which is what an earlier run did before attaching a
-#: `SIDE10.D64` that does not exist (`work/issue20/probe4`); read as a letter
+#: `SIDE10.D64` that does not exist (`issue20/probe4`, scratch, deleted); read as a letter
 #: it is side 1 and the disk that answered it. Digits stay accepted because
 #: nothing says the loader never prints one.
 RE_SSB_SIDE = re.compile(
@@ -286,9 +286,9 @@ class SSBSession(por.Session):
         Measured against GUY DE VALOIS, a level 8 paladin with nothing
         readied, on 2026-09-14: the sheet bar reads `EXIT` alone, followed by
         36 spaces and nothing else on the row --
-        `work/issue52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl`
+        `cited/52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl`
         (`sheet_bar_probe`) and
-        `work/issue52/walk-dostoc64-ssb/ssbcheck.jsonl` (`sheet`, last line),
+        `cited/52/walk-dostoc64-ssb/ssbcheck.jsonl` (`sheet`, last line),
         with a screenshot at `02-sheet-0.png` in the DOS-to-C64 walk
         directory. The world bar on the same walk reads `MOVE VIEW CAST AREA
         ENCAMP SEARCH LOOK`, `ENCAMP` spelled in full -- identical to
@@ -467,7 +467,7 @@ def impossible_side(sess, addr, text: str, fix: bool) -> dict | None:
         return state
     # **The disk byte is not what the prompt is printing.** `$7F12` read 1
     # while the prompt said `A`, so writing 1 to it changed nothing and the
-    # loop ran forever -- measured, `work/issue20/probe6`. What is left is
+    # loop ran forever -- measured, `cited/20/probe6`. What is left is
     # the ordinary answer to a disk prompt: put a disk in and press a key.
     n = getattr(sess, "_side_rotation", 0)
     sess._side_rotation = n + 1
@@ -1107,12 +1107,12 @@ def run(args) -> int:
             # key wait is neither `DUNGEON`'s loop nor the `LIBRARY` fetcher --
             # so `wait_idle` timed out on a hop that had plainly landed: the
             # cache slot read `$22`, `$0400` held `GEO22` byte for byte and the
-            # script's own text was on the screen (`work/issue20/land1`).
+            # script's own text was on the screen (`cited/20/land1`).
             # **And "landed" is not "arrived in the area we asked for".**
             # `ECL30` runs its own entry 4 -- it loads `GEO31` and places the
             # party at 3,3 E -- and then issues `NEWECL 51` on the spot, so a
             # trip to `$30` ends in `$33` with `$7F1B` reading `$33`
-            # (`work/issue20/land3`). The trip took effect; it simply did not
+            # (`issue20/land3`, scratch, deleted). The trip took effect; it simply did not
             # stop where it was aimed. The two are reported apart.
             landed = after.get("area") != here["area"]
             after["reached_target"] = after.get("area") == want
@@ -1209,7 +1209,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--walk", action="store_true",
                     help="after the last hop, walk the party to show the "
                          "arrival is a place and not a picture")
-    ap.add_argument("--out", default="work/issue20/run",
+    ap.add_argument("--out", default=str(scratch.scratch_dir("ssbwarp", "run")),
                     help="where captures go (default: %(default)s)")
     args = ap.parse_args(argv[1:])
     if not args.disks or not os.path.isdir(args.disks):

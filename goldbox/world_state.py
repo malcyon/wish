@@ -280,7 +280,7 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     `#376 (An Amiga party on the travel grid still cannot be converted to
     the C64 or DOS, because the reader refuses one)`: the game accepted the
     disk, drew the roster, and never reached a world to show, and
-    `work/p190/C64OUT1.D64` -- the engine's own outdoor resave from
+    `p190/C64OUT1.D64` (scratch, deleted) -- the engine's own outdoor resave from
     `#190 (A C64 party standing on the travel grid cannot be written into a
     DOS save)` -- holds 5 in that slot for the same area 26 this reads 0
     for.  So this takes the same substitution `_resolve_dos_place` does.

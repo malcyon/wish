@@ -18,8 +18,8 @@ questions this answers off the corpus, with no emulator:
     tools/spellbookcensus.py --c64 --verbose  one port, one line per record
     tools/spellbookcensus.py --ids 56 57      ask about other ids as well
 
-Each row is graded by where it came from -- `GRADE_MARKERS` below has the five
--- because `.claude/rules/testing.md` is clear that a record nobody watched
+Each row is graded by where it came from -- `built`, `spec`, `edited` or
+`found`, and `GRADE_MARKERS` below has the paths -- because `.claude/rules/testing.md` is clear that a record nobody watched
 being written is not evidence about the game.  A `found` record with a bit set
 would say the bit is *storable*; only a record the engine wrote says the engine
 sets it.
@@ -100,15 +100,12 @@ C64_MEMORISED = {"pool-of-radiance": (0x020, 81),
 #:
 #: * `built` -- one of this project's writers made it (`dostailcensus.is_built`)
 #: * `spec`  -- the specimen tree, which records who made each save and how
-#: * `work`  -- a run's output: engine-written under our watch, or ours, and
-#:   which of those is in the run's own log rather than in the bytes
 #: * `edited` -- the played DOS directory, every record in which has been
 #:   through Gold Box Companion's editor (`.claude/rules/testing.md`)
 #: * `found` -- the archives and the game disks: nobody watched it being
 #:   written, so it is not evidence about what the engine does
 GRADE_MARKERS = (("/wish-specimens/", "spec"),
-                 ("/dos_por_play/", "edited"),
-                 ("/work/", "work"))
+                 ("/dos_por_play/", "edited"))
 
 
 @dataclass
@@ -170,7 +167,7 @@ def _grade_over(paths) -> str:
 
     `tools/dostailcensus.py` deduplicates on the record's bytes and keeps every
     path it saw, and its roots are searched in a fixed order -- so a record
-    that is both a copy in `work/` and the specimen it was copied into gets
+    that is both a scratch copy and the specimen it was copied into gets
     whichever sorted first.  The specimen tree decides when any path is in it,
     because that is the one with a `provenance.toml` behind it; the played
     directory decides next, because a record that was edited is edited
@@ -178,7 +175,7 @@ def _grade_over(paths) -> str:
     THRENDER GRONE.
     """
     grades = [_grade(str(p)) for p in paths]
-    for want in ("spec", "edited", "found", "work"):
+    for want in ("spec", "edited", "found"):
         if want in grades:
             return want
     return "found"
@@ -230,8 +227,8 @@ def c64_disks(extra_disks=()) -> list[pathlib.Path]:
     same way, which is why the report says how many images were unreadable.
     Copied from `tools/carryceiling.py`, which worked this out first.
 
-    **No `work/` sweep** (#575): a disk image a driven run left there is
-    gitignored scratch, and one carrying a party that is evidence belongs in
+    **No sweep of scratch directories** (#575): a disk image a driven run left
+    there is temporary, and one carrying a party that is evidence belongs in
     the specimen tree.  `--disk` still takes any image by name.
     """
     paths: list[pathlib.Path] = []

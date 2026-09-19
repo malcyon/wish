@@ -36,18 +36,18 @@ Two subcommands:
 
     tools/inventorycheck.py stage \\
         --base ~/wish-specimens/coab-c64/WISH-SPEC-curse-party-with-items.D64 \\
-        --out work/issue139-a13/edited.D64 --who "MALE ELF MAGE" \\
+        --out edited.D64 --who "MALE ELF MAGE" \\
         --delete 4 --quantity 9 --add "TWO-HANDED SWORD"
 
-    tools/inventorycheck.py run --save work/issue139-a13/edited.D64 --pool N \\
-        --out work/issue139-a13/run1 --who "MALE ELF MAGE"
+    tools/inventorycheck.py run --save edited.D64 --pool N \\
+        --out DIR --who "MALE ELF MAGE"
 
 `run` reads the title off the save disk and drives it accordingly: Curse
 through `tools/curserun.py` and `tools/curseload.py`, Silver Blades through
 `tools/ssbwarp.py`. **Both have to reach the world**, because the item list
 hangs off the world's `VIEW` and off nothing else -- the party-formation
 menu's `VIEW CHARACTER` draws a sheet whose bar is `TRADE DROP EXIT` with no
-`ITEMS` on it (`work/issue33/run1/03-sheet.txt`).
+`ITEMS` on it (`cited/33/run1/03-sheet.txt`).
 
 `--base` is copied before a byte of it is touched and the sides are staged
 into the pool slot by each title's own `stage`, which copies them; nothing
@@ -72,7 +72,7 @@ from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER  # noqa: E402
 
 #: The item screen's own columns, from a Pool of Radiance capture kept in
-#: `work/issue252/probe4/screen.txt` and unchanged in Curse: a `YES`/`NO`
+#: `cited/252/probe4/screen.txt` and unchanged in Curse: a `YES`/`NO`
 #: readied column at 1, then an optional count, then the name.
 ITEM_ROWS = range(4, 23)
 ITEM_COLUMN = 1
@@ -305,7 +305,7 @@ def as_drawn(name: str) -> str:
     **This character set has no lower case**, and a lower-case letter is
     drawn as the glyph at its code minus `$40`: `Guy de Valois` comes out of
     the party panel as `G59 $% V!,/)3`, measured on
-    `WISH-SPEC-ssb-d-engine-resave` in `work/issue139-a13/ssb-run1`.  A save
+    `WISH-SPEC-ssb-d-engine-resave` in `issue139-a13/ssb-run1` (scratch, deleted).  A save
     converted from DOS keeps DOS's mixed-case name, so a run that looks for
     the name it read out of the record finds nobody at all.
     """
@@ -338,7 +338,7 @@ def open_items(sess, r: Run, who: str) -> list[str] | None:
     **The list can already be up by the time `VIEW` returns.**  The sheet's
     highlight starts on `ITEMS`, and the Return `press_bar` sends at the
     world bar can still be in the KERNAL buffer when the sheet draws -- the
-    first run of this file (`work/issue139-a13/run1`) came back holding the
+    first run of this file (`issue139-a13/run1`, scratch, deleted) came back holding the
     item list under a capture labelled `sheet`.  So which screen is up is
     read off row 24 rather than assumed, and `ITEMS` is pressed only when the
     sheet is the thing in front of it.

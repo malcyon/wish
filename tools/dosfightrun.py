@@ -26,7 +26,7 @@ words beside each digest in `PoolOfRadiance.COMBAT_BARS` were read once, by a
 person, off the PNGs this tool wrote; the driver never reads them.
 
 Run time it needs: whatever `tools/dosbox.py` needs, plus the player's own
-copy of the archives.  Output goes under `work/dosbox/p114/`, never into the
+copy of the archives.  Output goes under `scratch.scratch_dir("dosfightrun")`, never into the
 repository: the PNGs are the game's own pixels.
 """
 
@@ -42,7 +42,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from goldbox import dos_savegame as _sav  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 from tools.dosbox import (  # noqa: E402
     BAR,
     STATUS,
@@ -52,9 +52,9 @@ from tools.dosbox import (  # noqa: E402
     find_game,
 )
 
-#: Where a run's frames, log and saves land.  Under `work/`, which is
-#: gitignored, because a frame of the game is the game's own art.
-OUT = dosbox.REPO / "work" / "dosbox" / "p114"
+#: Where a run's frames, log and saves land.  Under the temp directory, which is
+#: outside the repository, because a frame of the game is the game's own art.
+OUT = scratch.scratch_dir("dosfightrun")
 
 #: The Slums encounter counter.  `ECL14` adds one to `$4ABB` in a subroutine
 #: reached only after a `COMBAT`, so it says a fight *ended* -- never that the

@@ -139,7 +139,7 @@ def test_the_retarget_recipe_names_the_addresses_the_map_names():
     for address in (sg.AREA, sg.SCRIPT, sg.DISK, sg.WALLSET, sg.WALLMAP,
                     sg.PARTY_SIZE):
         assert f"${address:04X}" in recipe
-    # The write #59 recorded as unnecessary and `work/p60` proved is not:
+    # The write #59 recorded as unnecessary and `p60` (scratch, deleted) proved is not:
     # the target area's own script.
     assert f"{sg.ECL_BUFFER[0]}-{sg.ECL_BUFFER[1] - 1}" in recipe
 

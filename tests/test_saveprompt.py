@@ -27,7 +27,7 @@ CURSE = load_tools_module("curserun")
 
 #: Row 18 and row 24 of the camp prompt, the same wording all three titles
 #: draw from `ENCAMP > SAVE` -- confirmed on Silver Blades'
-#: `work/issue52/walk-amigatoc64-ssb/ssbcheck/04-resaved.png` and in the
+#: `cited/52/walk-amigatoc64-ssb/ssbcheck/04-resaved.png` and in the
 #: disk bytes at `SILVER-1.D64` offset `0x2230F`.
 CAMP_PROMPT_TOP = "INSERT YOUR SAVE GAME DISK"
 CAMP_PROMPT_BOTTOM = "PRESS ANY KEY TO CONTINUE"

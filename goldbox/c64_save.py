@@ -44,7 +44,7 @@ where Pool of Radiance's ninth character page would be, eight item pages,
 `ANIMATE00`'s picture buffer and the roster at the end.  Measured on the
 player's own disks for Curse, Silver Blades, Champions of Krynn, Death Knights
 of Krynn and Gateway to the Savage Frontier.  The write-up,
-`work/reports/goldbox-inventory.md`, is lost; the per-title base addresses are
+`reports/goldbox-inventory.md`, is lost; the per-title base addresses are
 asserted in `tests/test_curse.py::test_the_addresses_are_the_ones_measured`.
 
 Confidence: Pool of Radiance's row and Curse of the Azure Bonds' are each
@@ -531,7 +531,7 @@ _POOL_ZERO = ("zero: no part of the conversion computes it, and a save with "
 #: And what Curse's list rests on, which is a different measurement.  Every
 #: byte of the header outside the square, the clock, the eight named bytes,
 #: the cache and the icon table is **zero in both engine-written Curse saves
-#: on this machine** -- `work/issue32/specimens/A-no-items.D64`, taken before
+#: on this machine** -- `issue32/specimens/A-no-items.D64` (scratch, deleted), taken before
 #: the party had walked anywhere, and `D-curse-party-with-items.D64`, taken in
 #: Tilverton after shopping.  So a zero here is the value the engine itself
 #: writes rather than a value nobody has looked at.  PROBABLE: two saves of

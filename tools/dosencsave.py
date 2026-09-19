@@ -22,7 +22,7 @@ order in which a value coming back changed says the engine changed it.
 Three modes, and the first two need no emulator:
 
     tools/dosencsave.py --rungs $WISH_SPECIMENS/por-dos/WISH-SPEC-por-party-ladder-rung*
-    tools/dosencsave.py --boots work/issue249/ladder*/rung* work/issue249/thresh/rung*
+    tools/dosencsave.py --boots LADDER_DIR/rung* THRESH_DIR/rung*
     tools/dosencsave.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-por-party-ladder-rung1 \\
         --spoil 999 --menu-save A --camp-save B --view-save D
 
@@ -42,7 +42,8 @@ and a save after `VIEW`.  Order matters -- the first save that recomputes
 destroys the spoiled value for every test after it, so the cheapest screens go
 first and a later save is only evidence while the value is still spoiled.
 
-Output goes under `work/`, which is gitignored and has been lost twice.
+Output goes under this tool's scratch directory (`tools/scratch.py`), which
+may vanish at any time.
 **Copy anything you mean to keep into `$WISH_SPECIMENS` with
 `tools/specimens.py add` before the slot goes down.**
 """
@@ -61,7 +62,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 from tools.dosparty import wipe_roster  # noqa: E402
 from tools.dosshop import ENCUMBRANCE_AT, stage_encumbrance  # noqa: E402
 from tools.dostrainprobe import install  # noqa: E402
@@ -251,7 +252,7 @@ def to_map(session: dosbox.Session, game: dosbox.PoolOfRadiance,
 
 
 def drive(args: argparse.Namespace) -> int:
-    out = args.out
+    out = args.out or scratch.scratch_dir("dosencsave", "savepath")
     session, slot = open_spoiled(args.party, out, args.slot, args.spoil)
     game = dosbox.PoolOfRadiance(session)
     results: list[tuple[str, str, pathlib.Path]] = []
@@ -338,7 +339,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--view-save", default=None,
                     help="slot letter for a camp save after VIEW drew a sheet")
     ap.add_argument("--out", type=pathlib.Path,
-                    default=REPO / "work" / "issue323" / "savepath")
+                    default=None,
+                    help="output directory (default: this tool's scratch "
+                         "directory)")
     args = ap.parse_args(argv)
     if args.rungs:
         return rungs(list(args.rungs))

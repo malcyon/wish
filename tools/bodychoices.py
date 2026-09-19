@@ -9,9 +9,9 @@ are three pictures the Amiga could end up drawing and the whole question has
 been argued in art ids.  Donald, 2026-09-10: *"I have no idea what you're
 talking about.  I would need to see screenshots."*
 
-    tools/bodychoices.py                   # work/issue480/480-bodies.png
-    tools/bodychoices.py --menu            # and 480-menu.png, both menus
-    tools/bodychoices.py --all             # and 480-all.png, every block
+    tools/bodychoices.py                   # <tmp>/wish/bodychoices/bodies.png
+    tools/bodychoices.py --menu            # and menu.png, both menus
+    tools/bodychoices.py --all             # and all.png, every block
     tools/bodychoices.py --out other.png
 
 The three panels, left to right:
@@ -42,7 +42,7 @@ a head above the body inside a frame, so what is compared here is the art the
 engine would fetch rather than the pixels a player would see around it.
 
 Nothing is written but the PNGs named on the command line, and they go under
-`work/`, which is gitignored: these are the game's own pictures.
+the temp directory, never the repository: these are the game's own pictures.
 """
 
 from __future__ import annotations
@@ -57,9 +57,10 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import amiga_dax, portraits  # noqa: E402
 from tools import amigaportraitmenu as menu  # noqa: E402
+from tools import scratch  # noqa: E402
 
 #: Where the picture goes unless the caller says otherwise.
-OUT = ROOT / "work" / "issue480" / "480-bodies.png"
+OUT = scratch.scratch_dir("bodychoices") / "bodies.png"
 
 #: The value that reaches the Amiga's art `0x18` off the end of the menu
 #: table, from `tools/amigaportraitresolve.py --out-of-range`.

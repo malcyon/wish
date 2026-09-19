@@ -34,7 +34,7 @@ ROWS = 25
 
 #: The two status lines, verbatim.  The indoor one is off
 #: `docs/70-driving-the-game.md`; the outdoor one is the frame driven on pool
-#: slot 2 on 2026-09-02, `work/p50-outdoor/p50c-0I-menu.png`.
+#: slot 2 on 2026-09-02, `cited/p50-outdoor/p50c-0I-menu.png`.
 INDOOR_LINE = "E 16:48 5,2"
 OUTDOOR_LINE = "OUTDOORS 22:02 7,28"
 

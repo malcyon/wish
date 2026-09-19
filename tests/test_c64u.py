@@ -302,12 +302,12 @@ def test_no_path_to_the_players_disks_is_written_into_the_source():
 
 def test_staging_copies_out_of_the_players_directory(tmp_path):
     """The player's disks are read-only to everything in this repository, so a
-    mount goes from a copy under `work/` -- the same rule `tools/session.py`
+    mount goes from a scratch copy -- the same rule `tools/session.py`
     follows when it stages SIDE1.D64 for VICE."""
     src = tmp_path / "disks"
     src.mkdir()
     (src / "POOL1.D64").write_bytes(b"disk")
-    into = tmp_path / "work"
+    into = tmp_path / "staged"
     staged = c64u.stage(src / "POOL1.D64", into)
     assert pathlib.Path(staged).parent == into
     assert pathlib.Path(staged).read_bytes() == b"disk"

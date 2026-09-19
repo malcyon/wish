@@ -32,7 +32,7 @@ The route, and why each step is where it is:
         --give MARK:wis=18
 
     tools/cursepaladin.py run --pool N --disks <PIS> --save <out.d64> \\
-        --change MATHEW:FIGHTER --regain MATHEW --out work/issue409/run1
+        --change MATHEW:FIGHTER --regain MATHEW --out DIR
 
 `stage` writes **inputs only** and says which; `run` prints the class fields
 before the change, after the change and after the training, photographs every
@@ -54,6 +54,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools.cursetrain import (  # noqa: E402
     FIELDS,
     MONEY,
@@ -455,7 +456,7 @@ def main(argv=None) -> int:
     rn.add_argument("--experience", type=int, default=900000)
     rn.add_argument("--platinum", type=int, default=2000)
     rn.add_argument("--save-out", default="")
-    rn.add_argument("--out", default="work/issue409/run")
+    rn.add_argument("--out", default=str(scratch.scratch_dir("cursepaladin", "run")))
     rn.set_defaults(func=drive)
 
     args = ap.parse_args(argv)

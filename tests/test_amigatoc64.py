@@ -52,9 +52,9 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 #:
 #: In the specimen tree since 2026-09-07 -- `#332 (The specimen tree cannot
 #: hold an Amiga saved game, so the first two engine-written Amiga parties
-#: sit outside its checks)`.  The `work/issue316/` copy this also read is
-#: byte-identical to the tree's and is no longer looked for: `work/` is
-#: gitignored and has been lost twice, so a second route to the same bytes
+#: sit outside its checks)`.  The `cited/316/` copy this also read is
+#: byte-identical to the tree's and is no longer looked for: the scratch
+#: directory it lived in was gitignored and lost twice, so a second route to the same bytes
 #: only decides which copy a failure is about.
 ENGINE_SPECIMEN = ("por-amiga/WISH-SPEC-por-amiga-slums-resave/"
                    "poolsave-c64-after-C.adf")
@@ -298,8 +298,8 @@ def test_an_outdoor_party_converts_to_the_c64_travel_grid(outdoor_disk):
     engine leaves the resident-map word at 0 outdoors, exactly as DOS does,
     and `goldbox.world_state.from_amiga` substitutes the area table's own
     `SQRDATA05` for area 26's window rather than pass the 0 through --
-    `WISH-SPEC-por-190-c64-outdoor-1` (`work/p190/C64OUT1.D64` when this was
-    measured), the engine's own outdoor resave from `#190 (A C64 party
+    `WISH-SPEC-por-190-c64-outdoor-1` (`p190/C64OUT1.D64` when this was
+    measured, scratch, deleted), the engine's own outdoor resave from `#190 (A C64 party
     standing on the travel grid cannot be written into a DOS save)`, holds 5
     in the same slot for the same area, and a save built
     with the raw 0 loaded in VICE, drew the party roster and never reached

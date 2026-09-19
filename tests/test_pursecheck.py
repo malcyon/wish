@@ -110,7 +110,7 @@ def _payload(path) -> bytes:
 def test_the_money_box_reader_finds_all_seven_purses():
     """The seven lines Curse drew for `MALE ELF MAGE`, in the sheet's order.
 
-    Pinned against what VICE drew in `work/issue139-a8/curse-edited-run`.  The
+    Pinned against what VICE drew in `cited/139-a8/curse-edited-run`.  The
     engine's loop counts down from purse six, so jewelry is at the top and
     copper below `CHR` -- Pool of Radiance's order, unchanged in Curse.
     """
@@ -131,7 +131,7 @@ def test_the_money_box_reader_reads_silver_blades_boxed_column():
 
     Silver Blades gives the money a boxed column of its own with the number
     right-aligned, so a reader tied to Curse's spacing would find none of it
-    (`work/issue139-a8/ssb-edited-run`).
+    (`cited/139-a8/ssb-edited-run`).
     """
     rows = [""] * 25
     rows[9] = "$STR 17            $JEWELRY         77 $"
@@ -151,7 +151,7 @@ def test_a_purse_that_is_zero_draws_no_line_at_all():
     `LIBRARY $31F2` skips a purse whose sixteen bits are zero, so a character
     with one purse draws one line -- and every capture this project took
     before 2026-09-08 was of a character like that
-    (`work/issue139-a8/ssb-control-run`).
+    (`cited/139-a8/ssb-control-run`).
     """
     rows = [""] * 25
     rows[9] = "$STR 17            $                   $"

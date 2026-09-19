@@ -48,11 +48,11 @@ sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
-#: Where a run's report and frames land.  Under `work/`, gitignored, because
-#: a frame of the game is the game's own art.
-OUT = REPO / "work" / "p235"
+#: Where a run's report and frames land.  Under the temp directory, never the
+#: repository, because a frame of the game is the game's own art.
+OUT = scratch.scratch_dir("dostailprobe")
 
 #: One value per party slot, as hex, for `field_10c_10f`.  Slot 0 is left at
 #: the constant every record on this machine holds, so the run carries its own

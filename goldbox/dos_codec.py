@@ -43,7 +43,7 @@ The three places the formats diverge in kind
   C64's sixteen bytes, one field to a byte -- `item_to_c64` is the projection,
   and it reproduces 157 of the 163 distinct C64 item records byte for byte.
 
-The write-ups, `work/reports/dos-saves.md` and `work/reports/dos-items.md`, are
+The write-ups, `reports/dos-saves.md` and `reports/dos-items.md`, are
 lost. The plan is `docs/117-save-conversion.md` and the assertions are
 `tests/test_dosconvert.py`.
 """
@@ -387,7 +387,7 @@ def item_to_c64(record: bytes) -> bytes:
     C64's byte +6 where DOS spends a byte on each, and that cursed is bit 7 of
     +7.  The six that do not match are items the two ports hand out in
     different places, not near misses.  The write-up,
-    `work/reports/dos-items.md`, is lost; asserted in `tests/test_dosbox.py`.
+    `reports/dos-items.md`, is lost; asserted in `tests/test_dosbox.py`.
     """
     sizes = sorted({s.item_size for s in DELTAS})
     if len(record) not in sizes:
@@ -2795,7 +2795,7 @@ ITM_OMITTED_WHEN_EMPTY = True
 #: *carrying items* and read as proven, and "a character carrying none" was a
 #: case nobody had run.  Four entries have now been measured both ways --
 #: the engine's own record for a character who dropped everything in play,
-#: `work/p62/truth/CHRDATD1.SAV`.
+#: `p62/truth/CHRDATD1.SAV` (scratch, deleted).
 WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
     ("effect_chain", "live heap pointer, and **NULL is right whatever the "
                      "character carries**: the engine allocates a node per "
@@ -4658,7 +4658,7 @@ def export_party(folder: str | pathlib.Path, slot: str,
 #: nothing but `struct`, so the edge runs this way and not the other.
 #:
 #: The persistent quest flags. The write-up that gave all 352 bytes of
-#: $4A20-$4B7F a disposition, `work/reports/quest-flags.md`, is lost; $4AF9
+#: $4A20-$4B7F a disposition, `reports/quest-flags.md`, is lost; $4AF9
 #: upwards is provably not flag storage, so only this window transfers.
 FLAGS_FIRST = dos_savegame.FLAGS_FIRST
 FLAGS_LAST = dos_savegame.FLAGS_LAST
@@ -4930,7 +4930,7 @@ CACHE_UNSET = 0x7F
 #: and stops in it, in all four directions; with `00` the same save completes
 #: the transition.  Measured by bisecting the sixteen cache bytes that differ
 #: between a full and a minimal cache: slot 11 alone is sufficient and slot 11
-#: removed is sufficient to break it (`work/p102/bisect3.log`, `anim.log`).
+#: removed is sufficient to break it (`p102/bisect3.log`, `anim.log`; scratch, deleted).
 #:
 #: `00` is not a guess and not a choice: `ANIMATE00` is the only `ANIMATE`
 #: file in the game and it is on all eight `POOL` sides, so the disk hint
@@ -4963,7 +4963,7 @@ SAVE1_SIZE = 0x0800             # $8300-$8AFF
 #: writes the party's slots and zeroes all the rest, combat scratch included:
 #: `ZSLOT8` was built with slots 6-11 and item blocks 6-11 zeroed outright,
 #: and the party in it started a fight, fought it and won it -- so combat
-#: fills those four from nothing (#118, `work/p118-step3/runF.log`).
+#: fills those four from nothing (#118, `p118-step3/runF.log`, scratch, deleted).
 SLOT_TOTAL = 12
 
 # ---------------------------------------------------------------------------
@@ -4973,7 +4973,7 @@ SLOT_TOTAL = 12
 #:
 #: All 192 of them were written as zero in a converted save that was then
 #: loaded, walked, taken into a random encounter and taken through an area
-#: change in VICE (#118, `work/p118-step3/runC.log` and `runE.log`).  The
+#: change in VICE (#118, `p118-step3/runC.log` and `runE.log`, scratch, deleted).  The
 #: template was `PORSAVE13`, chosen because it is one of the few saves that
 #: carries something here to destroy: `$49EB` = 1, `$49F0`-`$49F1` the
 #: previous square, `$49FC` = 2, `$49FD`-`$49FE` the wall colours 8 and 9,
@@ -5084,7 +5084,7 @@ PORTRAIT_SWITCH_WHY = (
 #: travel-grid steps and 4 area changes; the first read comes only after the
 #: arrival has already written them.  Every log line matched between the two
 #: disks of each pair, and 13 screenshot pairs differ in **0 pixels** of the
-#: emulated screen (#118, `work/p118-outdoor/`).
+#: emulated screen (#118, `p118-outdoor/`, scratch, deleted).
 #:
 #: That run also corrected what the census below looked like it said: the
 #: `15,1,3` is New Phlan's arrival square, written by the boat on all four
@@ -5092,11 +5092,11 @@ PORTRAIT_SWITCH_WHY = (
 #: outdoor save means by it.  Zero and 15,1,3 are the same kind of value --
 #: whatever the party last arrived on -- and the game reads neither.
 #:
-#: Zero is also what an engine-written outdoor save holds.  `work/p3/W4.D64`
-#: through `W7.D64` are four travel-grid saves the game itself wrote through
-#: its own ENCAMP > SAVE (`work/p3/wsave.py`) and all four read 0,0,0.  Over
+#: Zero is also what an engine-written outdoor save holds.  `p3/W4.D64`
+#: through `W7.D64` (scratch, deleted) are four travel-grid saves the game itself wrote through
+#: its own ENCAMP > SAVE (`p3/wsave.py`, also deleted) and all four read 0,0,0.  Over
 #: every C64 save payload on this machine -- 115 distinct, 30 of them
-#: outdoors -- 6 of the 30 read 0,0,0 (`work/p118-outdoor/census.py`).
+#: outdoors -- 6 of the 30 read 0,0,0 (`p118-outdoor/census.py`, also deleted).
 DUNGEON_SQUARE: tuple[int, int] = (0x49C0, 3)
 
 #: `SAVEDGAME1`'s tail past `ANIMATE00`: the bitmap buffer, `$8754`-`$8AFF`.
@@ -5422,7 +5422,7 @@ def marching_slot(index: int, count: int) -> int:
 
     **The C64 lists the party from the highest slot down** (#101).  Its own
     `ENCAMP > ALTER > ORDER` screen asks `WHO TAKES POSITION #1?` over a list
-    headed by BRUTUS, and BRUTUS is in slot 5 of `work/p3/W1.D64`, an
+    headed by BRUTUS, and BRUTUS is in slot 5 of `p3/W1.D64` (scratch, deleted), an
     engine-written save whose slots 0-5 are MALCYON, LADY KATHERINE, ROLAND,
     SILAS, MAGNUS, BRUTUS.  The main panel lists the same six in the same
     order, and so does `PORSAVE13`.
@@ -5727,7 +5727,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     # roster blocks 6-7 on the one template in 99 whose slots 6 and 7 hold a
     # seventh and an eighth character -- 555 non-zero bytes of a stranger's
     # party wiped -- and the party list showed six, the party walked five
-    # squares and won a fight (#118, `work/p118-step3/runF.log`).
+    # squares and won a fight (#118, `p118-step3/runF.log`, scratch, deleted).
     for place in range(len(party), container.record_pages):
         for at in (container.slot(place), container.items(place)):
             save0[at:at + SLOT_STRIDE] = bytes(SLOT_STRIDE)
@@ -6033,7 +6033,7 @@ def c64_wall_triple(save0: bytes,
     and every slot reads `$FF`, where DOS slot A holds `(0, $FFFF, $FFFF)`.
     So this returns three empties for a New Phlan save, which is not what the
     DOS engine's own save says -- and is measured to draw the identical view
-    anyway, `work/p60/run3` Z0.
+    anyway, `p60/run3` Z0 (scratch, deleted).
     """
     container = c64_save.container_for(container)
     at = container.cache[0] + CACHE_WALLSET
@@ -6088,7 +6088,7 @@ def dos_dax_number(game: "str | pathlib.Path | None", area: int
 #: So no C64 saved game holds one, and there is nothing to read.  The DOS
 #: byte 12803 is live out there by contrast: it prints the facing letter on
 #: the status line, it reads 0, 0, 0 and 2 across the four engine-written
-#: overland saves in `work/p50-outdoor` and `work/p59-wallset/keep`, and the
+#: overland saves in `cited/p50-outdoor` and `cited/p59-wallset/keep`, and the
 #: engine rewrote a written 0 to 2 after two steps in both of #190's runs.
 #:
 #: **The C64's own `$49C2` is not the answer**, tempting as it is: outdoors
@@ -6410,7 +6410,7 @@ def retarget_reason(area: int) -> str | None:
     **An empty wallset triple is not a reason.**  New Phlan is the one area
     the C64 loads no `WALLSET` for, and a save retargeted there with all
     three words empty draws a view pixel-identical to one carrying DOS's own
-    `(0, $FFFF, $FFFF)` -- `work/p60/run3`, Z0 against `run2`'s X3.
+    `(0, $FFFF, $FFFF)` -- `p60/run3` (scratch, deleted), Z0 against `run2`'s X3.
     """
     where = areas.area(area)
     if where is None:
@@ -6837,7 +6837,7 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
     # declared above -- so an **outdoor** save this conversion writes is
     # covered by the same sweep and there is no sixth word (#59, #190).
     # An earlier note here said six, on three overland specimens that lived
-    # under `work/` and are gone; the sixth belonged to a specimen nobody can
+    # in scratch and are gone; the sixth belonged to a specimen nobody can
     # re-read.  `tools/dossavcensus.py` re-takes the count in a second, and
     # what catches a word this line is wrong about is
     # `test_every_nonzero_word_a_real_saved_game_holds_is_written_or_declared`,

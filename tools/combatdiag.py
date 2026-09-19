@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Drive a fight with every routing decision logged, and read the log back.
 
-    tools/combatdiag.py run --out work/combatdiag/run1.jsonl --slot 4
-    tools/combatdiag.py read work/combatdiag/run1.jsonl
+    tools/combatdiag.py run --out DIR/run1.jsonl --slot 4
+    tools/combatdiag.py read DIR/run1.jsonl
 
 `run` boots a pool slot, loads a save, walks until something ambushes the
 party and hands every turn to the shipped `Session.melee_turn` -- changing
@@ -48,6 +48,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: Give up walking rather than circling an area that will not ambush anybody.
@@ -278,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("run", help="drive a fight and write a log")
-    r.add_argument("--out", default="work/combatdiag/run.jsonl")
+    r.add_argument("--out", default=str(scratch.scratch_dir("combatdiag") / "run.jsonl"))
     r.add_argument("--slot", type=int, default=None,
                    help="pool slot to claim; the first free one by default")
     r.add_argument("--save", default="PORSAVE13.D64",

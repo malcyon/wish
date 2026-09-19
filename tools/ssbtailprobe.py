@@ -13,7 +13,7 @@ itself) rather than only as changed bytes.
 Run: `.venv/bin/python tools/ssbtailprobe.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes readings, screens and `tail-probe.jsonl` under
-`work/issue334/ssb8/`.
+`<tmp>/wish/ssbtailprobe/`.
 """
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from goldbox import c64_port as G  # noqa: E402
 from tools import (  # noqa: E402
     cursethac0,
     gamedisks,
+    scratch,
     specimens,
     ssbwarp,
 )
@@ -37,7 +38,7 @@ from tools import session as S  # noqa: E402
 from tools.cursethac0 import checkpoint_hits  # noqa: E402
 from tools.laterbattle import Battle  # noqa: E402
 
-OUT = pathlib.Path("work/issue334/ssb8")
+OUT = scratch.scratch_dir("ssbtailprobe")
 SAVE = str(specimens.tree_root() / "por-c64"
             / "WISH-SPEC-ssb-d-engine-resave-walked.D64")
 
@@ -83,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     ).parse_args(argv)
     out = OUT
-    out.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(out)
     log_path = out / "tail-probe.jsonl"
     log_file = log_path.open("w")
 

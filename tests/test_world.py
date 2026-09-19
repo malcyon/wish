@@ -243,7 +243,7 @@ def test_the_two_blocked_functions_say_what_blocks_them():
 
     Their tables are not in `SQRDATA0n` at all -- they live in `ECL19`/`1A`/
     `1B`'s own bytecode, and the addresses were in a write-up lost with
-    `work/` (`#136`). Declaring them and failing loudly is better than
+    the scratch directory (`#136`). Declaring them and failing loudly is better than
     leaving a caller to guess the module simply has no such idea, and much
     better than guessing an address; but a function that raises is exactly
     what a reader mistakes for dead code, so the message is part of the

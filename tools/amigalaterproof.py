@@ -9,9 +9,9 @@ has an Amiga to arrive on)` -- boot the disk and read the engine's answer back
 off it.  This is the two halves of that run:
 
     tools/amigalaterproof.py build --source party.d64 --into disk1.adf \\
-        --from A --to B --first 'Guy de Valois' --out work/384/run.adf
-    tools/amigalaterproof.py diff --ours work/384/run.adf --ours-slot B \\
-        --theirs work/384/resave.sav
+        --from A --to B --first 'Guy de Valois' --out run.adf
+    tools/amigalaterproof.py diff --ours run.adf --ours-slot B \\
+        --theirs resave.sav
 
 **`--first` is the whole reason this is not `amigalaterwrite.py --into`.**
 The writer's highest-risk choice is that it writes a **boolean** chain head --

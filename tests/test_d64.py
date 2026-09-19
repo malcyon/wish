@@ -13,8 +13,8 @@ holds". Three tests still open a real disk, `POOL1`, through
 the machine.
 
 It was not always built this way. Until #211 this file read two frozen images
-out of `work/PORSAVE.D64` and `work/POOL1.D64.orig`. `work/` is gitignored
-scratch that has been lost twice, and even where the same *names* exist on
+out of `PORSAVE.D64` and `POOL1.D64.orig` (scratch copies, deleted). Scratch
+has been lost twice, and even where the same *names* exist on
 the player's disks today they are not the same bytes: `PORSAVE.D64` is a save
 disk that keeps getting played, so the party of three (`BRUTUS`,
 `SAVEDGAME1`, `SAVEDGAME0`) the old fixtures were captured from is long gone
@@ -23,7 +23,7 @@ from it -- the live disk now carries eight exported characters, and even
 state cannot be reconstructed from any disk on the machine, and committing a
 disk image to freeze it would be committing the game's data, which
 `AGENTS.md` forbids -- so the disk below is built, not read, and every test
-that used to need `work/PORSAVE.D64` now needs nothing but the fixtures
+that used to need `PORSAVE.D64` now needs nothing but the fixtures
 already committed, and runs on a bare checkout with no game files at all.
 
 That rebuild has a cost worth naming: it can only prove `write_file()` agrees
@@ -72,7 +72,7 @@ SAVE_FILES = [
 @pytest.fixture(scope="module")
 def porsave_bytes() -> bytes:
     """A disk built from the three committed fixtures, in the same order and
-    at the same names `work/PORSAVE.D64` once carried them -- see the module
+    at the same names the scratch `PORSAVE.D64` once carried them -- see the module
     docstring for why it is built rather than read."""
     disk = D64.blank()
     for name, fixture, *_rest in SAVE_FILES:

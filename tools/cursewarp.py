@@ -10,8 +10,8 @@ answers the half that a listing cannot: whether the writes made from outside,
 with the PC dropped into the handler's tail, actually land a party in another
 area of a running Curse.
 
-    tools/cursewarp.py --pool 3 --to 0x03 --disk 2 --out work/issue19/run1
-    tools/cursewarp.py --pool 3 --probe --out work/issue19/probe
+    tools/cursewarp.py --pool 3 --to 0x03 --disk 2 --out DIR
+    tools/cursewarp.py --pool 3 --probe --out DIR
     tools/cursewarp.py --pool 5 --to 0x10 --disk 3 --via-actions --out DIR
 
 `--probe` boots, loads the party, and reports what the machine holds without
@@ -39,7 +39,7 @@ otherwise.
 
 Nothing is written to the player's disks.  `curserun.stage` copies the six
 sides into the pool slot and makes the save disk there, and every byte this
-writes goes to RAM.  Captures go to `work/`, which is gitignored.
+writes goes to RAM.  Captures go to the `cursewarp` scratch directory by default.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ sys.path.insert(0, str(ROOT))
 from automap.actions import pc_register  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import curserun, newecl  # noqa: E402
+from tools import curserun, newecl, scratch  # noqa: E402
 from tools import session as por  # noqa: E402
 
 #: Where Curse's live party square is.  **Not relocated**: `DUNGEON`'s own
@@ -273,7 +273,7 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
     * **A disk prompt can be up when the row is picked.**  Loading the party
       pulls in side 2, so `INSERT SIDE # 2, AND PRESS ANY KEY.` sits over the
       menu; a pick made then opened a submenu and lost `BEGIN ADVENTURING`
-      off the screen entirely (`work/issue19/warp1`).
+      off the screen entirely (a capture in scratch, deleted).
     * **The screen goes blank while the area draws.**  1024 zeroes is not a
       menu that needs a keypress, and pressing one into it is how a run ends
       up somewhere nobody can name.
@@ -782,7 +782,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--force", action="store_true",
                     help="warp even from the travel grid, which is expected "
                          "to wedge the loader")
-    ap.add_argument("--out", default="work/issue19/run",
+    ap.add_argument("--out", default=str(scratch.scratch_dir("cursewarp")),
                     help="where captures go (default: %(default)s)")
     args = ap.parse_args(argv[1:])
     if not args.disks or not os.path.isdir(args.disks):

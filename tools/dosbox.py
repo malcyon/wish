@@ -31,7 +31,7 @@ thing DOSBox will not give us is a frame counter, so a run is reproducible in
 what it produces, not cycle-exact in how long it takes.
 
 **Isolation.** Every instance owns its X display, its game tree, its DOSBox
-config and its capture directory, all under `work/dosbox/inst/<n>/`, and the
+config and its capture directory, all under `inst/<n>/` in the `dosbox` scratch directory (`tools/scratch.py`), and the
 slot is held by an `fcntl.flock` so a crashed run frees it with no cleanup --
 the lease pattern `docs/123-parallel-sessions.md` chose for the VICE pool.  The
 player's archives are copied, never opened for writing, and nothing here reads
@@ -68,7 +68,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-WORK = REPO / "work" / "dosbox"
+sys.path.insert(0, str(REPO))
+from tools import gamedisks, scratch  # noqa: E402
+
+WORK = scratch.scratch_dir("dosbox")
 INST = WORK / "inst"
 
 # The pool never takes a display anything else here uses: `tools/porlaunch.sh`
@@ -82,12 +85,9 @@ INST = WORK / "inst"
 DISPLAY_BASE = 50
 SLOTS = 16
 
-sys.path.insert(0, str(REPO))
-from tools import gamedisks  # noqa: E402
-
 
 # Where the player's copy of Forgotten Realms: The Archives is unpacked.
-# Read only, always: a game tree is copied into `work/` before DOSBox sees it.
+# Read only, always: a game tree is copied into the scratch directory before DOSBox sees it.
 # The registry's `dos-archives` entry (#212, #575): `$FR_ARCHIVES` first, then
 # its search list. When nothing holds data this stays the first candidate --
 # the `$FR_ARCHIVES` value when set, even if it does not exist, so a wrong
@@ -373,7 +373,7 @@ class Screen:
 
         `rect` should stay clear of a list's own border columns: reading the
         full frame width picked up border noise that read as a highlight
-        where there was none (`work/issue555/highlight-findings.md`).
+        where there was none (`cited/555/highlight-findings.md`).
 
         Returns the row's index within `rect` (0 at its top), or `None` when
         no band clears `floor` -- the caller's signal that the list is not
@@ -1495,44 +1495,44 @@ class PoolOfRadiance:
     #: character with no usable item and no memorised spell draws neither `USE`
     #: nor `CAST`, so the bar is `MOVE VIEW AIM QUICK DONE` and the 136-pixel
     #: prefix never matched.  113 pixels is the widest measured shared by both
-    #: -- `work/dosbox/p114/bar04_02d05064ee41da5f.png`,
-    #: `work/dosbox/p114/command-bar-with-cast.png` and the level-1 screenshot
-    #: at `work/issue52/crops/stuck.ppm` all agree up to column 113 and diverge
+    #: -- `cited/dosbox/p114/bar04_02d05064ee41da5f.png`,
+    #: `cited/dosbox/p114/command-bar-with-cast.png` and the level-1 screenshot
+    #: at `cited/52/crops/stuck.ppm` all agree up to column 113 and diverge
     #: at 114.
     COMBAT_BARS: tuple[tuple[int, str, str], ...] = (
         # The bar row in one flat colour, caught mid-redraw.  The C64 side
         # called one of these the end of a turn and starved a fight of them.
-        # work/dosbox/p114/bar02_f399fe870112b71a.png
+        # cited/dosbox/p114/bar02_f399fe870112b71a.png
         (320, "f399fe870112b71a", "blank"),
         # `A BATTLE BEGINS...` -- a message occupying the bar row, not a bar.
         # It is what a *surprised* encounter shows instead of the menu.
-        # work/dosbox/p114/bar03_e5b3317d2142242d.png
+        # cited/dosbox/p114/bar03_e5b3317d2142242d.png
         (320, "e5b3317d2142242d", "message"),
         # `CONTINUE BATTLE : YES NO`, asked once the fight can be called off.
-        # work/dosbox/p114/continue-battle.png
+        # cited/dosbox/p114/continue-battle.png
         (320, "c545a9ecbcaa33dc", "continue_battle"),
         # `PRESS <ENTER>/<RETURN> TO CONTINUE`, under `THE PARTY HAS WON.  EACH
         # CHARACTER RECEIVES 8 EXPERIENCE POINTS.`
-        # work/dosbox/p114/bar05_f1672ba1064bf2b1.png
+        # cited/dosbox/p114/bar05_f1672ba1064bf2b1.png
         (320, "f1672ba1064bf2b1", "press_return"),
         # `VIEW TAKE POOL SHARE EXIT` -- the treasure the fight left behind.
         # The fight is not over here, and a driver that stopped at the win
         # message would leave the party at this prompt for ever.
-        # work/dosbox/p114/bar06_39afdcc0f8704784.png
+        # cited/dosbox/p114/bar06_39afdcc0f8704784.png
         (320, "39afdcc0f8704784", "treasure"),
         # `YES NO`, under `THERE IS STILL TREASURE LEFT.  DO YOU WANT TO GO
         # BACK AND CLAIM YOUR TREASURE?`, asked because the driver leaves the
-        # treasure where it lies.  work/dosbox/p114/claim-treasure.png
+        # treasure where it lies.  cited/dosbox/p114/claim-treasure.png
         (320, "c576b6838d2e460b", "claim_treasure"),
         # `COMBAT WAIT FLEE` -- the first sixteen of every encounter menu.
-        # work/dosbox/p114/bar01_327fcbaaeb46c2fb.png and
-        # work/dosbox/p114/encounter-with-parlay.png
+        # cited/dosbox/p114/bar01_327fcbaaeb46c2fb.png and
+        # cited/dosbox/p114/encounter-with-parlay.png
         (128, "dbac174b6033b5e9", "encounter"),
         # `MOVE VIEW AIM` -- shared by every character's turn, however much of
         # `USE CAST TURN QUICK DONE` the acting character is offered (#340).
-        # work/dosbox/p114/bar04_02d05064ee41da5f.png,
-        # work/dosbox/p114/command-bar-with-cast.png and
-        # work/issue52/crops/stuck.ppm (a level-1 party, `USE` never drawn).
+        # cited/dosbox/p114/bar04_02d05064ee41da5f.png,
+        # cited/dosbox/p114/command-bar-with-cast.png and
+        # cited/52/crops/stuck.ppm (a level-1 party, `USE` never drawn).
         (113, "fc8f7441fc1419de", "command"),
     )
 
@@ -1661,7 +1661,7 @@ class Camp:
     #: Curse draws down each side, y spanning its eleven 8px rows.  Measured
     #: off `024-paladin_book.png` and `027-paladin_next.png`
     #: (`#551`'s live-boot comment) and confirmed against a live `End`/`Home`
-    #: walk in `work/issue555/highlight-findings.md` (#555).
+    #: walk in `cited/555/highlight-findings.md` (#555).
     GRIMOIRE_LIST = (16, 40, 288, 88)
 
     def __init__(self, session: Session):

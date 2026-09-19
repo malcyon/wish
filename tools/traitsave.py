@@ -13,7 +13,7 @@ real `File > Save` action, and the only thing replaced is `TraitPicker.exec`
 -- the modal wait for a person, and nothing else.
 
     tools/traitsave.py write --who ROLAND --trait "Resist Fire"
-    tools/traitsave.py boot --disk work/issue417/edited.d64 --who ROLAND
+    tools/traitsave.py boot --disk edited.d64 --who ROLAND
 
 `write` needs no emulator and opens no window: `QT_QPA_PLATFORM=offscreen` is
 assigned at the top of the module, before PyQt is imported anywhere, and the
@@ -59,7 +59,7 @@ os.environ.pop("XDG_SESSION_TYPE", None)
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
 
 #: `SAVEDGAME0` loads at `$4900`; the twelve character slots start at `$4D00`.
@@ -198,7 +198,7 @@ def write(args) -> int:
 
     original = out / "original.d64"
     edited = out / "edited.d64"
-    out.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(out)
     # `--out` defaults to a fixed path and is reused across invocations, so
     # a bare `shutil.copy` from a read-only `$WISH_SPECIMENS` file leaves
     # `original.d64`/`edited.d64` read-only too, and a second run into the
@@ -211,7 +211,7 @@ def write(args) -> int:
 
     # The settings file this run may touch is inside the run directory.
     config = out / "config"
-    config.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(config)
     for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"):
         os.environ[var] = str(config)
 
@@ -377,7 +377,7 @@ def boot(args) -> int:
     log.say(f"trait blocks on {disk.name}: {trait_blocks(disk)}")
 
     staging_dir = out / "disks"
-    staging_dir.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(staging_dir)
     for i in range(1, 9):
         s, link = disks / f"POOL{i}.D64", staging_dir / f"POOL{i}.D64"
         if s.exists() and not link.exists():
@@ -444,7 +444,7 @@ def boot(args) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--out", default=str(ROOT / "work" / "issue417"),
+    p.add_argument("--out", default=str(scratch.scratch_dir("traitsave")),
                    help="run directory")
     p.add_argument("--disks", default=None,
                    help="where the player's disks are; read, never written")

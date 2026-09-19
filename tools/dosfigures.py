@@ -9,7 +9,7 @@ the combat floor as six identical unarmed men.  This builds the same disk
 DOS record names, through `goldbox.iconparts.IconParts.dos_icon`.
 
     tools/dosfigures.py --folder ~/wish-specimens/... --slot C \\
-        --out work/issue130/FIGURES.D64 --json work/issue130/figures.json
+        --out DIR/FIGURES.D64 --json DIR/figures.json
 
 **The disk is built by the shipped conversion, not by this tool.**
 `goldbox/dos_codec.py`'s `convert_save` takes an `IconParts` as its `icon` and
@@ -23,7 +23,7 @@ composition and not the button, which is the failure that check now catches.
 The DOS folder is `--folder`, or found the way `tools/dosdisk.py` finds it.
 The game disks come from `$POR_DISKS`, then `automap.paths.find_disks()`, and
 are read and never written; the output goes wherever `--out` says, which
-should be under `work/`.
+should be outside the repository.
 """
 from __future__ import annotations
 
@@ -150,7 +150,7 @@ def png(rows: list[dict], disks: pathlib.Path,
 
     Both poses of both, the DOS side in the record's own EGA colours and the
     C64 side in the colours the conversion gave it, so a row can be judged by
-    looking.  The image is the game's art and goes under `work/`.
+    looking.  The image is the game's art and goes outside the repository.
     """
     import iconcorrespond as ic
     import iconproposal as ip
@@ -295,7 +295,7 @@ def main(argv=None) -> int:
     p.add_argument("--folder", default=None,
                    help="the DOS save directory; read, never written")
     p.add_argument("--slot", default=None, help="the DOS save slot letter")
-    p.add_argument("--out", default=None, help="the .d64 to write, under work/")
+    p.add_argument("--out", default=None, help="the .d64 to write, outside the repository")
     p.add_argument("--mixed-png", default=None,
                    help="draw the nine rows a small character wears large, "
                         "and write nothing else")

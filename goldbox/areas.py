@@ -29,11 +29,11 @@ and `ECL07` already loads `GEO03` on its way into area 5. `ECL1E` is a second
 example: its `GEO12` is also area 18's, Podol Plaza's.
 
 Names come from `docs/88-map-files.md` and two write-ups since lost,
-`work/reports/world-map.md` and `work/reports/quest-flags.md`; arrival squares were harvested from the
+`reports/world-map.md` and `reports/quest-flags.md`; arrival squares were harvested from the
 departing scripts' `SAVE <n>, mapX` and the arriving scripts' entry 4. Fourteen
 areas have no known arrival square and say so with `arrival = None`. FastTraveling
 into all fifteen that had none at the time and watching where the party ends up
-P20, whose write-up `work/reports/p20-arrivals.md` is lost: it found area 21's
+P20, whose write-up `reports/p20-arrivals.md` is lost: it found area 21's
 square in `ECL15`'s own bytecode, and `landing_square` at the foot of this module is the fallback that
 measurement put in place of "the first square with a passable edge".
 
@@ -71,7 +71,7 @@ unnamed and `confidence` UNKNOWN, three of them pending his decision.
 Enumerating maps by count or assuming a `GEO00` is wrong for every Gold Box
 title after this one: Curse's ids are sparse and chapter-grouped, and Silver
 Blades, Champions and Death Knights start at `$10` or `$20`
-(write-up lost, `work/reports/goldbox-inventory.md`; the per-title base
+(write-up lost, `reports/goldbox-inventory.md`; the per-title base
 addresses are asserted in
 `tests/test_curse.py::test_the_addresses_are_the_ones_measured`). Scan a
 directory; never a range.
@@ -225,7 +225,7 @@ class Area:
     #:
     #: **And the inference is wrong for both.** FastTraveled into, area 3 loaded
     #: `GEO05` and area 5 loaded `GEO04` -- `$6E15` and the bytes at `$0400`
-    #: agreeing (write-up lost, `work/reports/p20-arrivals.md`). So a square
+    #: agreeing (write-up lost, `reports/p20-arrivals.md`). So a square
     #: chosen off
     #: `geos[0]` is a square off a map the game was never going to show, and a
     #: caller with no arrival square should write none for these two and let
@@ -236,7 +236,7 @@ class Area:
     #: `$C04B`-`$C04D` read `254, 127, 16`, no `GEO` is resident, no status
     #: line and no command bar appear, and the program counter never returns
     #: to `DUNGEON`'s key-wait loop, so **no later fasttravel can be started**
-    #: (write-up lost, `work/reports/p20-arrivals.md`).
+    #: (write-up lost, `reports/p20-arrivals.md`).
     fasttravelable: bool = True
     #: How this title names a disk side, for `label`. Pool of Radiance's sides
     #: are `POOL1`-`POOL8` and Silver Blades' are `SILVER-1`-`SILVER-6`, and a
@@ -332,7 +332,7 @@ AREAS: tuple[Area, ...] = (
     # SAVE 14, mapY`, immediately before the boat message, so the square is
     # the script's own and is gated on the scratch flag `$4A02` being zero.
     # Watched placing a fasttraveled-in party (write-up lost,
-    # `work/reports/p20-arrivals.md`).
+    # `reports/p20-arrivals.md`).
     _a(21, "Sokol Keep", 4, ("GEO15",), Arrival(8, 14, 0), C),
     _a(22, "Yarash's Pyramid", 7, ("GEO16",), Arrival(15, 7, 1), C),
     _a(23, "Yarash's Pyramid, Lower", 7, ("GEO17",), Arrival(15, 0, 2), P),
@@ -405,7 +405,7 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
 #: entered by a trip through `automap.actions.FastTravel` -- 22 hops across
 #: nine driven sessions -- and `$11` is where a loaded party starts, so it was
 #: read where it stood. `#20 (Build an area table for Silver Blades)`,
-#: `work/issue20/land1`-`land9`.
+#: `cited/20/land1`-`land9`.
 #:
 #: **The map column is 21 of 21 exact**, an unmasked 1024-byte compare of
 #: `$0400` against the copy on the player's own disk, no fingerprint and no
@@ -782,7 +782,7 @@ class Start:
 #: suggestive before this: all five played containers on this machine stood
 #: there, but that is a square parties had reached during play, not the one
 #: `BEGIN ADVENTURING` itself lands on -- which is `3,3`, not the `15,8`
-#: earlier guessed from the census.  Evidence at `work/issue535/`.
+#: earlier guessed from the census.  Evidence at `cited/535/`.
 STARTS: Mapping[str, Start] = MappingProxyType({
     POOL_OF_RADIANCE: Start(0, Arrival(15, 1, 3), Confidence.CONFIRMED),
     CURSE_OF_THE_AZURE_BONDS: Start(0x01, Arrival(7, 13, 1),
@@ -1050,7 +1050,7 @@ def landing_square(geo) -> tuple[int, int, int] | None:
 
     **What `FastTravel` uses**, in place of the old rule -- the first square with any
     passable edge at all, which therefore took `(0, 0)` on every one of the
-    twenty-nine maps (write-up lost, `work/reports/p20-arrivals.md`; the pocket
+    twenty-nine maps (write-up lost, `reports/p20-arrivals.md`; the pocket
     sizes are asserted in `tests/test_p20.py`'s `POCKETS`). That was legal in the
     narrow sense on most
     maps and wrong on four: `(0, 0)` is in a pocket of 32 squares in `GEO05`,

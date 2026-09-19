@@ -22,9 +22,9 @@ menu table, the reading is confirmed and the conversion is a lookup.
 
 Nothing here writes to the player's archives -- `tools.dosbox.Session.stage`
 copies the tree -- and nothing opens a window on the desktop.  Screenshots go
-under `--out`, which should be under `work/`.
+under `--out`, which defaults to a scratch directory.
 
-    tools/portraitshot.py --out work/p57-portraits/run2 --heads 1,2,3,4,5,6
+    tools/portraitshot.py --out DIR --heads 1,2,3,4,5,6
 
 `--keys` is the escape hatch for a route that has moved: every key is pressed
 in turn from the character sheet and a frame captured after each, which is
@@ -46,7 +46,7 @@ from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox import portraits as portrait_tables  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -313,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--keys", default="v",
                     help="Keys to press from the character sheet, comma "
                          "separated, with a frame captured after each")
-    ap.add_argument("--out", default="work/p57-portraits/shot",
+    ap.add_argument("--out", default=str(scratch.scratch_dir("portraitshot", "shot")),
                     help="Where the run's files go")
     args = ap.parse_args(argv)
 

@@ -11,8 +11,8 @@ confirmed: `tools/curseload.py` gets a party in through the game's own
 character sheet or a step off it.  The bytes were believed right; nobody had
 looked.
 
-    tools/cursecheck.py --disk work/.../CURSEJ.D64 --walk KIKI \\
-                        --resave work/.../RESAVE.D64
+    tools/cursecheck.py --disk CURSEJ.D64 --walk KIKI \\
+                        --resave RESAVE.D64
 
 What it reads, in order, and every one of them is a thing bytes cannot
 answer:
@@ -57,7 +57,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import c64 as machines  # noqa: E402
-from tools import curseload, curserun, cursewarp, gamedisks  # noqa: E402
+from tools import curseload, curserun, cursewarp, gamedisks, scratch  # noqa: E402
 from tools import session as por  # noqa: E402
 
 #: The live square triple -- x, y, facing -- which is where Curse keeps the
@@ -166,8 +166,7 @@ def walk(sess, moves: str, log) -> list[dict]:
 
 
 def run(args) -> int:
-    out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    out = scratch.ensure(args.out)
     logfile = (out / "cursecheck.jsonl").open("a")
 
     def log(**kw):
@@ -279,7 +278,7 @@ def main(argv=None) -> int:
     ap.add_argument("--serve", action="store_true",
                     help="hand the session over on the command port at the "
                          "end instead of tearing it down")
-    ap.add_argument("--out", default="work/issue52/cursecheck")
+    ap.add_argument("--out", default=str(scratch.scratch_dir("cursecheck")))
     return run(ap.parse_args(argv))
 
 

@@ -32,15 +32,15 @@ Usage:
     tools/iconcorrespond.py                     # the counts and the scores
     tools/iconcorrespond.py --catalogue dos     # every DOS body, as ASCII
     tools/iconcorrespond.py --show 72           # DOS body 72 beside its match
-    tools/iconcorrespond.py --png work/sheet.png    # both lists, in colour
+    tools/iconcorrespond.py --png sheet.png    # both lists, in colour
 
 The `--png` contact sheet is the one output meant for a person rather than
 for a grep: whichever C64 figure each DOS one should become is a decision
 about what a converted character looks like, and nobody can make it off a
 Jaccard score.  It draws each option as the game itself would -- the DOS
 figures in EGA with the art's own stored colours, the C64 ones in the
-combat floor's four -- and writes a PNG **under `work/`**, which is
-gitignored, because it is the game's art.
+combat floor's four -- and writes a PNG **outside the repository**,
+because it is the game's art.
 """
 
 from __future__ import annotations
@@ -400,7 +400,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--against", type=int, metavar="M",
                     help="which C64 option --show uses; default the best")
     ap.add_argument("--png", metavar="PATH",
-                    help="write both lists as a contact sheet, under work/")
+                    help="write both lists as a contact sheet, outside the repository")
     args = ap.parse_args(argv)
 
     game, disk = dos_game(args.dos), c64_disk(args.disk)

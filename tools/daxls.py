@@ -10,8 +10,8 @@ question about a container starts from a listing rather than from a hex
 dump.
 
     tools/daxls.py CBODY.DAX                  # the index: id, sizes, image header
-    tools/daxls.py CBODY.DAX --dump 64 work/issue130/cbody-64.bin
-    tools/daxls.py CHEAD.DAX --png 3 work/issue130/chead-3.png --scale 8
+    tools/daxls.py CBODY.DAX --dump 64 cbody-64.bin
+    tools/daxls.py CHEAD.DAX --png 3 chead-3.png --scale 8
 
 An *image* block, which is what `HEAD*`, `BODY*`, `CHEAD`, `CBODY`, `CPIC*`,
 `ICON` and `COMSPR` hold, is a 17-byte header and then 4-bit pixels: byte 0
@@ -23,7 +23,7 @@ figure the values are part numbers and `tools/iconproposal.py` recolours
 them the way the engine does (`docs/168-dos-dax-and-combat-icons.md`).
 
 Anything written goes where the command names, and the game's bytes belong
-under `work/`.
+outside the repository.
 """
 
 from __future__ import annotations

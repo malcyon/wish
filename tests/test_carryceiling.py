@@ -94,8 +94,8 @@ def test_trait_demand_is_the_slots_on_the_c64_and_the_two_halves_elsewhere():
 
 # -- grading, and the copy that sorted first --------------------------------
 
-def test_a_specimens_provenance_beats_a_copy_left_in_work():
-    """The same record in `work/` and in the specimen tree is a specimen.
+def test_a_specimens_provenance_beats_a_copy_left_in_a_run_directory():
+    """The same record in a run directory and in the specimen tree is a specimen.
 
     `tools/dostailcensus.py` deduplicates on the record's bytes and keeps
     every path it saw.  Grading the first of them called THRENDER GRONE --
@@ -105,7 +105,7 @@ def test_a_specimens_provenance_beats_a_copy_left_in_work():
     """
     spec = "/home/x/wish-specimens/por-dos/WISH-SPEC-a/CHRDATD1.SAV"
     grades = {spec: "engine"}
-    paths = [pathlib.Path("/home/x/src/wish/work/issue232b/CHRDATD1.SAV"),
+    paths = [pathlib.Path("/home/x/run/issue232b/CHRDATD1.SAV"),
              pathlib.Path(spec)]
     assert cc._grade_over(paths, grades) == "engine"
     assert cc._grade_over(list(reversed(paths)), grades) == "engine"
@@ -125,8 +125,6 @@ def test_a_record_in_the_played_dos_directory_is_graded_edited():
     assert cc._grade_over([played], {}) == "edited"
     assert cc._grade_over([pathlib.Path("/mnt/roms/c64/PORSAVE.D64")], {}) \
         == "found"
-    assert cc._grade_over([pathlib.Path("/home/x/src/wish/work/a/b.d64")], {}) \
-        == "ours"
 
 
 # -- the Amiga: the wrong shape reads plausible rubbish ----------------------

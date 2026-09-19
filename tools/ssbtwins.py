@@ -10,7 +10,7 @@ diffing against the second says which fields a converted Silver Blades record
 gets wrong -- **before any of it is loaded in the game**.
 
     ssbtwins.py                              the field-by-field table
-    ssbtwins.py --folder work/curse/SSB-C-items --slot A
+    ssbtwins.py --folder DIR --slot A
     ssbtwins.py --bytes                      every differing byte run
 
 **This is a consistency check and not proof.**  `.claude/rules/testing.md`:

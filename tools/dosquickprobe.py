@@ -46,9 +46,9 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_port as dl  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
-OUT = REPO / "work" / "p235"
+OUT = scratch.scratch_dir("dosquickprobe")
 
 #: The byte under test, and the two neighbours read beside it so a run that
 #: changes the wrong thing says so.

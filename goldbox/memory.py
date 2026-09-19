@@ -113,7 +113,7 @@ MAP: tuple[Region, ...] = (
                 "gaps between per-area blocks that no script touches. All of "
                 "that was regenerated on 2026-09-02 by tools/eclflags.py "
                 "into docs/151-quest-flags.md, replacing the lost "
-                "work/reports/quest-flags.md, and every figure came back "
+                "reports/quest-flags.md, and every figure came back "
                 "identical. The one that did not is how many carry a naming "
                 "string: the old note said 158 'with a printed string at the "
                 "write site', the rule it meant by 'at' was never written "

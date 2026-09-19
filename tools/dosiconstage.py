@@ -10,7 +10,7 @@ characters rolled in the game's own creation screens -- holds `icon_head` 0
 and `icon_body` 0 for all six, because the driver never entered the creation
 screens' MODIFY ICON step.  So the figures have to be put there.
 
-    tools/dosiconstage.py --folder work/issue130/dosparty --slot C
+    tools/dosiconstage.py --folder path/to/dosparty --slot C
 
 This writes four record bytes a character and nothing else: `icon_head`
 `0x0BD`, `icon_body` `0x0BE` and the six `icon_colours` pairs at `0x0C1`.
@@ -21,7 +21,7 @@ Editing an input and then watching the game compute from it is a valid
 experiment -- the engine does not care how a byte got there -- which is what
 `.claude/rules/testing.md` distinguishes from reading back a value we wrote
 and calling it the game's arithmetic.  The folder is edited in place, so
-point it at a copy under `work/`.
+point it at a copy under the temp directory.
 """
 from __future__ import annotations
 
@@ -80,8 +80,8 @@ def stage(folder: pathlib.Path, slot: str, figures=FIGURES) -> list[dict]:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--folder", required=True,
-                   help="the DOS save directory, edited in place; keep it "
-                        "under work/")
+                   help="the DOS save directory, edited in place; give it "
+                        "a copy, not the original")
     p.add_argument("--slot", required=True, help="the DOS save slot letter")
     args = p.parse_args(argv)
     for row in stage(pathlib.Path(args.folder), args.slot):

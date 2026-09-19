@@ -9,7 +9,7 @@ collects the potion and to change when it delivers it.  Everything before
 this was a save file read offline; nothing had watched the engine write
 `$4A81` with the panel attached.
 
-    POR_HEADLESS=1 tools/ohlowatch.py --out work/issue158
+    POR_HEADLESS=1 tools/ohlowatch.py --out DIR
 
 What one run does, in order:
 
@@ -56,7 +56,7 @@ prints a string as its length.
 
 The pool owns the emulator: claim, launch, tear down.  The player's disks are
 copied into the slot and read there; `Session.attach` refuses a path outside
-it.  Captures go to `work/`, which is gitignored; this file does not.
+it.  Captures go to `wish/ohlowatch` under the temp directory, not into the repository.
 """
 from __future__ import annotations
 
@@ -76,6 +76,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -533,10 +534,10 @@ def unstick(sess, out) -> bool:
 
 def run(args) -> int:
     out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
     body = _script()
     log = {"save": args.save, "stages": []}
     slot = S.claim_slot(args.slot, "issue158 ohlo potion watch")
+    scratch.ensure(out)
     print(f"Slot {slot.n} display {slot.display}", flush=True)
     sess = None
     try:
@@ -616,7 +617,7 @@ def main(argv=None) -> int:
                    help="a save disk with the party standing in the Slums "
                         "and $4A81 still 0; copied in as SIDE0")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
-    p.add_argument("--out", default=str(ROOT / "work" / "issue158"))
+    p.add_argument("--out", default=str(scratch.scratch_dir("ohlowatch")))
     p.add_argument("--budget", type=float, default=300.0,
                    help="seconds to spend answering one square's script")
     p.add_argument("--no-calm", dest="calm", action="store_false",

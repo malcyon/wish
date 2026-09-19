@@ -93,7 +93,7 @@ def screen(rows: dict[int, str]) -> bytes:
 
 
 def test_a_monsters_block_replays_as_one_message(tmp_path):
-    """The shape `work/rolls/run1.jsonl` caught an orc printing.
+    """The kind of block `cited/rolls/run1.jsonl` caught an orc printing.
 
     Four rows: the attacker's name, `ATTACKS`, the target's name, and the
     outcome. The block is committed when the game paints over it, so the

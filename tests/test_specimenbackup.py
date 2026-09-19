@@ -87,11 +87,11 @@ def test_audit_finds_a_second_copy_under_another_name(tmp_path, tree):
     """The point of hashing: a specimen's bytes usually sit in the run
     directory they were copied out of, and the run may have called the file
     something else."""
-    elsewhere = tmp_path / "work" / "issue249" / "run1"
+    elsewhere = tmp_path / "runs" / "ladder" / "run1"
     elsewhere.mkdir(parents=True)
     (elsewhere / "CHRDATC1.SAV").write_bytes(
         b"a character record, standing in for one")
-    cov = specimenbackup.audit(tree, directories=[tmp_path / "work"])
+    cov = specimenbackup.audit(tree, directories=[tmp_path / "runs"])
     assert len(cov.found) == 1
     assert cov.per_specimen()["party0"] == (1, 2)
     assert cov.per_specimen()["party1"] == (0, 2)
@@ -100,7 +100,7 @@ def test_audit_finds_a_second_copy_under_another_name(tmp_path, tree):
 def test_audit_does_not_count_a_file_that_only_shares_the_name(tmp_path, tree):
     """A copy edited since is not a copy, and this is what a name match would
     get wrong -- the whole failure `#246` is about."""
-    elsewhere = tmp_path / "work"
+    elsewhere = tmp_path / "runs"
     elsewhere.mkdir()
     (elsewhere / "WISH0.CHA").write_bytes(
         b"a character record, standing in for one!")
@@ -147,11 +147,11 @@ def test_archive_refuses_to_overwrite(tmp_path, tree):
 
 
 def test_archive_refuses_a_destination_inside_the_repository(tree):
-    """`work/` included: the game's data must never be committed, and a copy
+    """A subdirectory included: the game's data must never be committed, and a copy
     meant to outlive the working tree does not live in it."""
     with pytest.raises(ValueError, match="inside"):
         specimenbackup.archive(
-            specimenbackup.REPO / "work" / "copy.tar.gz", tree)
+            specimenbackup.REPO / "backups" / "copy.tar.gz", tree)
     with pytest.raises(ValueError, match="inside"):
         specimenbackup.archive(specimenbackup.REPO / "copy.tar", tree)
 
@@ -232,7 +232,7 @@ def test_verify_names_the_count_when_it_passes(tmp_path, tree, capsys):
 
 
 def test_audit_command_reports_the_counts(tmp_path, tree, capsys):
-    elsewhere = tmp_path / "work"
+    elsewhere = tmp_path / "runs"
     elsewhere.mkdir()
     (elsewhere / "anything.bin").write_bytes(
         b"a character record, standing in for one")
@@ -297,21 +297,22 @@ def test_a_missing_archive_is_a_message_rather_than_a_traceback(
 
 def test_a_symlink_out_of_the_repository_is_still_the_repository(
         tmp_path, tree, monkeypatch):
-    """A `work/` that is a symlink must not walk the check out of the tree.
+    """A directory of the repository that is a symlink out of it must not
+    walk the check out of the tree.
 
     `.claude/rules/commits.md` has the whole suite run in a detached worktree
-    with `work/` symlinked back to the main tree, because `work/` is
-    gitignored and a bare checkout has none. Resolving the destination then
+    with gitignored directories symlinked back to the main tree, because a
+    bare checkout has none. Resolving the destination then
     lands it in the *other* checkout, so a check that compared only the
     resolved path against this one did not fire -- and the run wrote an
-    archive of a temporary tree into the real `work/`, which is where this
-    was found on 2026-09-08.
+    archive of a temporary tree into the main tree's gitignored directory,
+    which is where this was found on 2026-09-08.
     """
     outside = tmp_path / "elsewhere"
     outside.mkdir()
     monkeypatch.setattr(specimenbackup, "REPO", tmp_path / "checkout")
-    (tmp_path / "checkout" / "work").mkdir(parents=True)
-    link = tmp_path / "checkout" / "work" / "out"
+    (tmp_path / "checkout" / "linked").mkdir(parents=True)
+    link = tmp_path / "checkout" / "linked" / "out"
     link.symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError, match="inside"):
         specimenbackup.archive(link / "copy.tar.gz", tree)

@@ -1,7 +1,7 @@
 """Driving a Pool of Radiance fight: what row 24 means, and the loop over it.
 
 Nothing here needs an emulator or a display.  The screens are the ones the
-harness actually saw -- every distinct row-24 bar in `work/p118-step3/*.log`,
+harness actually saw -- every distinct row-24 bar in `p118-step3/*.log` (scratch, deleted),
 404 readings across nine runs -- and the session is a fake that records the
 keys it was asked to send.
 
@@ -152,7 +152,7 @@ class FakeSession(Session):
 
 # -- what row 24 means ------------------------------------------------------
 
-# Every distinct row-24 reading in `work/p118-step3/*.log`, with how many times
+# Every distinct row-24 reading in `p118-step3/*.log` (scratch, deleted), with how many times
 # it was seen -- 807 readings, 18 distinct.  The truncated ones and the row of
 # screen border are bars caught mid-redraw, and they are why a half-drawn bar
 # must not be forced into a kind.
@@ -161,7 +161,7 @@ MEASURED = [
     ("MOVE VIEW AIM USE CAST QUICK DONE", 59, BAR_COMMAND),
     ("MOVE VIEW AIM QUICK DONE", 18, BAR_COMMAND),
     # Not in those logs.  A character who has spent every square of movement
-    # loses MOVE from its own command bar -- `work/p126/run1.log`, on the press
+    # loses MOVE from its own command bar -- `p126/run1.log` (scratch, deleted), on the press
     # that took MOVE LEFT to 0.
     ("VIEW AIM USE QUICK DONE", 0, BAR_COMMAND),
     ("MOVE/ATTACK, MOVE LEFT = 9", 28, BAR_MOVE),
@@ -174,15 +174,15 @@ MEASURED = [
     ("MOVE/ATTACK, MOVE LEFT = 11", 1, BAR_MOVE),
     ("CONTINUE BATTLE : YES NO", 8, BAR_CONTINUE),
     # Not in those logs either.  This is what taking QUICK puts up --
-    # `work/p126/quick.log` -- and `EXIT` backs out of it.
-    # What DONE opens -- `work/p126/melee4.log`.  Not a treasure bar, though
+    # `p126/quick.log` (scratch, deleted) -- and `EXIT` backs out of it.
+    # What DONE opens -- `p126/melee4.log` (scratch, deleted).  Not a treasure bar, though
     # it carries EXIT too: GUARD on it is what actually ends a turn.
     ("GUARD DELAY QUIT SPEED EXIT", 0, BAR_DONE),
-    # GUARD is not always offered -- `work/p126/melee5.log`.  Same bar, and a
+    # GUARD is not always offered -- `p126/melee5.log` (scratch, deleted).  Same bar, and a
     # classifier that keyed on GUARD stopped recognising it.
     ("DELAY QUIT SPEED EXIT", 0, BAR_DONE),
     ("TAKE POOL SHARE DETECT VIEW EXIT", 0, BAR_EXIT),
-    # The treasure bar a won fight actually put up -- `work/issue171/`, and
+    # The treasure bar a won fight actually put up -- `issue171/` (scratch, deleted), and
     # the same five commands in a different order from the one above.
     ("VIEW TAKE POOL SHARE EXIT", 0, BAR_EXIT),
     # What `EXIT` on that bar opens while there is treasure left, with
@@ -191,7 +191,7 @@ MEASURED = [
     # it for the whole of their budgets (`#171`).
     ("GO BACK LEAVE TREASURE", 0, BAR_LEAVE),
     # What the game asks when a step would walk into a party member --
-    # `work/p126/melee.log`.  It is the proof that a step onto an occupied
+    # `p126/melee.log` (scratch, deleted).  It is the proof that a step onto an occupied
     # square is a blow.
     ("ATTACK ALLY: YES NO", 0, BAR_YESNO),
     ("GUARDING", 17, BAR_MESSAGE),
@@ -278,7 +278,7 @@ def test_the_walk_steps_right_then_presses_return():
 
 
 def test_the_walk_will_not_act_on_the_move_sub_bar():
-    """The trap that cost the draft in `work/p118-step3/run.py` its turns.
+    """The trap that cost the draft in `p118-step3/run.py` (scratch, deleted) its turns.
 
     `MOVE` is a word on `MOVE/ATTACK, MOVE LEFT = 9` as much as it is on the
     command bar, so no amount of care over matching saves this one.  What saves
@@ -341,7 +341,7 @@ def test_the_bar_a_won_fight_ends_on_is_not_a_message():
 def test_a_won_fight_leaves_the_treasure_rather_than_waiting_at_it():
     """The whole tail of a won fight, as the emulator played it.
 
-    Bar for bar out of `work/issue171/`: the withdrawal offer, the prompt,
+    Bar for bar out of `issue171/` (scratch, deleted): the withdrawal offer, the prompt,
     the treasure bar, and the `GO BACK LEAVE TREASURE` that the driver used
     to stop dead at.  `GO BACK` is where the highlight starts and it only
     returns to the treasure bar, so the walk has to reach `LEAVE`.
@@ -474,7 +474,7 @@ def test_the_party_standing_still_is_not_a_fight_it_fought():
 
 # -- who swung ---------------------------------------------------------------
 
-# The message band as `work/rolls/run2.jsonl` caught it, whole and unedited.
+# The message band as `cited/rolls/run2.jsonl` caught it, whole and unedited.
 # The game prints into columns 23-38 (`COMBAT $0970`), one phrase to a row,
 # and the **first row of a block is the name of whoever is speaking** --
 # `$2994 JSR $34C3` prints the name at `$6B00` before the message text, which
@@ -587,8 +587,8 @@ def test_a_result_says_what_acted_rests_on():
 # Both are real captures, and both were the pattern being too loose rather than
 # anything the game did.
 PANEL_LIES = [
-    "$                     $HIT POINTS 4    $",       # work/p126/quick.log
-    "$THACO 17  DAMAGE 1D3                  $",       # work/p126/run1.log
+    "$                     $HIT POINTS 4    $",       # p126/quick.log (scratch, deleted)
+    "$THACO 17  DAMAGE 1D3                  $",       # p126/run1.log (scratch, deleted)
 ]
 
 
@@ -596,7 +596,7 @@ PANEL_LIES = [
 def test_a_panel_line_is_not_a_blow_struck(line):
     """The furniture is on the screen too, and it matches a loose pattern.
 
-    `work/p126/quick.log` reported a blow landed in a fight whose 213 turns
+    `p126/quick.log` (scratch, deleted) reported a blow landed in a fight whose 213 turns
     were all the driver bouncing off a sub-bar.  `acted` no longer reads the
     band at all, so this now guards `anybody_swung` and `lines` -- which are
     still what a run's log carries, and still what the next person to write a
@@ -720,7 +720,7 @@ def test_the_driver_waits_for_the_move_sub_bar_to_be_drawn():
     Reading row 24 straight after taking MOVE gives the command bar still.
     A driver that decides on that read backs out and takes MOVE again -- 638
     times in 420 seconds, with `MOVE LEFT = 12` never once going down, and not
-    one blow struck (`work/p126/melee2.log`).
+    one blow struck (`p126/melee2.log` (scratch, deleted)).
     """
     b = combat.read_battle(MemoryTarget(synthetic_arena()))
     me = b.party[0]
@@ -784,7 +784,7 @@ def test_a_yes_no_bar_nobody_recognises_is_answered_no():
     """`ATTACK ALLY: YES NO` had no branch at all and stalled a whole fight.
 
     421 seconds of a 421-second budget, one turn taken, and the log showed the
-    bar sitting there being read over and over -- `work/p126/melee.log`.
+    bar sitting there being read over and over -- `p126/melee.log` (scratch, deleted).
     """
     frames = [
         (COMBAT, command_bar("ATTACK ALLY: YES NO", "YES")),
@@ -837,7 +837,7 @@ class WalledArena(ArenaSession):
     """An arena where the first direction tried costs nothing.
 
     `KP_4` did exactly this in the live sweep: the character pressed it, the
-    square west was taken, and `MOVE LEFT` did not move (`work/p126/run1.log`).
+    square west was taken, and `MOVE LEFT` did not move (`p126/run1.log` (scratch, deleted)).
     Nothing in the position table says why, so the driver has to notice that
     the count did not go down and try somewhere else.
     """
@@ -867,7 +867,7 @@ def test_a_character_boxed_in_by_its_own_party_passes_its_turn():
     `step_towards` was right to find nothing -- but taking MOVE and backing
     out does not end a turn, so the same command bar came back and the driver
     did it again for the whole 420-second budget with not one blow struck
-    (`work/p126/melee3.log`).  A turn that cannot attack has to be passed.
+    (`p126/melee3.log` (scratch, deleted)).  A turn that cannot attack has to be passed.
 
     **Every one of the eight squares is shut here**, which is a change of
     fixture rather than of guarantee (`#170`).  Three friends on the squares
@@ -946,7 +946,7 @@ def test_passing_a_turn_takes_done_and_then_guard():
 
     Taking DONE and stopping leaves the same command bar up and the driver is
     asked again -- 210 turns in 420 seconds with no blow struck
-    (`work/p126/melee4.log`).  `GUARD` on the sub-bar is what ends it, which is
+    (`p126/melee4.log` (scratch, deleted)).  `GUARD` on the sub-bar is what ends it, which is
     where the `GUARDING` on row 24 in the older logs was coming from.
     """
     bar = "MOVE VIEW AIM USE QUICK DONE"
@@ -974,7 +974,7 @@ def test_the_sub_bar_is_still_itself_without_guard_on_it():
 
     `DELAY QUIT SPEED EXIT` is the same bar, and a classifier keyed on GUARD
     stopped recognising it -- so `fight` read it as a treasure bar, took EXIT,
-    and got the same command bar back (`work/p126/melee5.log`).
+    and got the same command bar back (`p126/melee5.log` (scratch, deleted)).
     """
     sess = FakeSession([(COMBAT, bar_screen("DELAY QUIT SPEED EXIT"))])
     assert sess.combat_state().kind == BAR_DONE
@@ -989,7 +989,7 @@ def test_a_turn_with_no_guard_offered_is_quit_rather_than_delayed():
     That is the whole of `#165`.  The driver took DELAY at this bar, the same
     character came straight back to the front of the queue, and one character
     who could not strike took **50 of the 54 turns** of a fight while the
-    other five never acted again (`work/issue127/after1.jsonl`).
+    other five never acted again (`cited/127/after1.jsonl`).
 
     `QUIT` is on this bar and on the one with GUARD, and it ends the turn --
     Donald, who plays this game, on 2026-09-01: *"In Combat, QUIT ends the
@@ -1102,7 +1102,7 @@ def test_end_turn_asks_only_for_a_command_that_is_on_the_bar():
 
     Asking for GUARD, DELAY and EXIT blind spent 441 of one 605-second
     fight's seconds -- 73% of it -- waiting for words that were not on row
-    24 (`#127`, `work/issue127/diag1.jsonl`).  Reading the bar first costs one
+    24 (`#127`, `cited/127/diag1.jsonl`).  Reading the bar first costs one
     screen read.
     """
     sess = RecordingBars([(COMBAT, command_bar(SUB_NO_GUARD, "DELAY")),
@@ -1128,7 +1128,7 @@ class AttackArena(ArenaSession):
     not go down, nobody moves, the target loses hit points and the move
     sub-bar goes away a moment later -- ROLAND at (29,13) against an orc on
     (28,14), 9 squares before and 9 after, the orc 5 hit points before and 1
-    after (`work/issue127/sweep1.jsonl`, turn 15).
+    after (`cited/127/sweep1.jsonl`, turn 15).
     """
 
     def __init__(self, battle, name, steps, resolve=2, highlight="MOVE"):
@@ -1174,7 +1174,7 @@ class RefusedArena(ArenaSession):
     MALCYON with `13 DART` readied: six presses into the orc on the next
     square, each watched for ten seconds with nothing else sent, and the
     sub-bar never went away, no message and no damage
-    (`work/issue127/probe1.jsonl`).
+    (`cited/127/probe1.jsonl`).
     """
 
     def __init__(self, *a, **kw):

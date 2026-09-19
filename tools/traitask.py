@@ -17,7 +17,7 @@ checkpoint that prints the registers on every hit and lets the machine run,
 and the id is in A at `LIBRARY $3FE4`, the entry every ask passes through:
 
     tools/traitask.py --save PORSAVE13.D64 --item 0=CLOAK OF DISPLACEMENT \\
-        --item 1=RING OF FIRE RESISTANCE --ready 0 --fight --out work/issue252/ask1
+        --item 1=RING OF FIRE RESISTANCE --ready 0 --fight --out DIR
 
 Phases, each logged to `traits.jsonl` as it happens and each read back off
 the machine rather than assumed:
@@ -70,7 +70,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox import items as I  # noqa: E402
 from goldbox import traits  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 from tools.traitdrive import (  # noqa: E402
     SLOT_BASE,
@@ -522,7 +522,7 @@ def toggle_item(sess: S.Session, log: Log, label: str, tag: str) -> bool:
 #: What selects a row on a list with a cursor on it. `LIBRARY $2E4E`, the
 #: game's key fetcher, reads joystick port 2 (`$DC00`) as well as the KERNAL
 #: buffer, and the list cursor wants **fire**: eleven keyboard keys did
-#: nothing in `work/issue252/probe1/`. `--joy` gives VICE a numpad joystick
+#: nothing in `cited/252/probe1/`. `--joy` gives VICE a numpad joystick
 #: and KP_0 is its fire button.
 SELECT = {"key": "KP_0"}
 
@@ -834,7 +834,7 @@ def main(argv=None) -> int:
     if not disks.is_dir():
         raise SystemExit("traitask.py: no Pool of Radiance disks")
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "issue252" / "ask")
+        scratch.scratch_dir("traitask", "ask"))
     log = Log(out, args.quiet)
 
     staging_dir = out / "disks"

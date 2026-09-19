@@ -41,7 +41,7 @@ The highlight is moved with `End`, which wraps and which the game swallows
 once after a redraw, so the run photographs every press.  `--dry-run` stages
 into `--out/staged` and stops, for checking the poke without a slot.
 
-Output goes under `work/`, which is gitignored.  **Copy anything to keep into
+Output goes to `--out`, by default a scratch directory outside the repository.  **Copy anything to keep into
 `$WISH_SPECIMENS` with `tools/specimens.py add` before the slot goes down.**
 """
 
@@ -58,7 +58,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 from tools.dualclassagain import install  # noqa: E402
 
 #: What to write at `SAVGAM<slot>.DAT+0xD51`.  The low byte is ANDed with the
@@ -291,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="keys pressed after BEGIN ADVENTURING; ~N sleeps")
     ap.add_argument("--dry-run", action="store_true",
                     help="stage into --out/staged and stop, with no emulator")
-    ap.add_argument("--out", default=str(REPO / "work" / "issue408" / "run"))
+    ap.add_argument("--out", default=str(scratch.scratch_dir("curseregain", "run")))
     args = ap.parse_args(argv)
     return run(args)
 

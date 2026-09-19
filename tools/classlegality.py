@@ -26,7 +26,7 @@ both ports:
 Run it with no arguments to read whichever ports are on this machine:
 
     tools/classlegality.py
-    tools/classlegality.py --gen work/issue510/GEN.bin --exe .../START.EXE
+    tools/classlegality.py --gen path/to/GEN.bin --exe .../START.EXE
 
 Reads only.  With neither port present it prints nothing and exits 0, the way
 the tests skip.

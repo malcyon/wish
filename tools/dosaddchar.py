@@ -57,8 +57,8 @@ the file count is a host-filesystem fact.
     tools/dosaddchar.py --writer
     tools/dosaddchar.py --ident 0x42 --keep
 
-Output -- screenshots and a JSON report -- goes under `work/issue216/`, never
-into the repository.
+Output -- screenshots and a JSON report -- goes under `wish/dosaddchar/` in the
+temp directory, never into the repository.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
 #: The name both test characters carry inside their records.  Deliberately not
 #: a name any shipped character has, so a roster line naming it can only have
@@ -89,7 +89,7 @@ NAME = "DUPLICO"
 SOURCES = (("ALPHA", "CHRDATA1.SAV"), ("BETA", "CHRDATA2.SAV"))
 
 #: Where the run's screenshots and report land.
-OUT = REPO / "work" / "issue216"
+OUT = scratch.scratch_dir("dosaddchar")
 
 
 def converted(src: Path, name: str, ident: int | None) -> tuple[bytes, bytes]:
@@ -142,7 +142,7 @@ def run(ident: int | None, keep: bool = False) -> dict:
     label = ("writer" if ident is None
              else "same" if ident == 0 else f"differs-{ident:#04x}")
     shots = OUT / label
-    shots.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(shots)
     result: dict = {"ident": ident, "label": label}
 
     slot = dosbox.claim(f"issue216 {label}")
@@ -249,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         result = run(ident, keep=args.keep)
         results.append(result)
         print(json.dumps(result, indent=2))
-    OUT.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(OUT)
     (OUT / "report.json").write_text(json.dumps(results, indent=2))
     if len(results) == 2:
         print(f"\n0x00 -> {results[0]['added']} in the party; "

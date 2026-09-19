@@ -19,7 +19,7 @@ not find these: it looks for files of exactly 288 bytes in a lowercase
 than merged because what counts as a specimen is different in each -- a fixed
 size there, a record signature here.
 
-    tools/amigarecords.py -o work/amiga-later-saves
+    tools/amigarecords.py -o DIR
 
 The disks are opened **read-only**; nothing is written anywhere but `--out`.
 `tests/test_amiga.py` calls :func:`extract` itself when the environment names

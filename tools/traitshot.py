@@ -7,7 +7,7 @@ comes with a picture of it, and every string on both of these is his to word.
 run it the way the rule says:
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \
-        GDK_BACKEND=x11 .venv/bin/python tools/traitshot.py work/issue13
+        GDK_BACKEND=x11 .venv/bin/python tools/traitshot.py DIR
 
 `#13 (Edit traits and active effects, in two separate panels)`, step S3.
 """
@@ -27,6 +27,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
+from tools import scratch  # noqa: E402
+
 
 def main(out: pathlib.Path) -> int:
     import gamedata
@@ -43,12 +45,12 @@ def main(out: pathlib.Path) -> int:
     out.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication([])
 
-    work = pathlib.Path(tempfile.mkdtemp()) / "PORSAVE11.D64"
-    shutil.copy(src, work)
+    disk_copy = pathlib.Path(tempfile.mkdtemp()) / "PORSAVE11.D64"
+    shutil.copy(src, disk_copy)
 
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
-    window = EditorBinding(root, str(work))
+    window = EditorBinding(root, str(disk_copy))
     root.resize(1875, 1030)
     root.show()
     app.processEvents()
@@ -94,6 +96,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "out", nargs="?", default="work/issue13", type=pathlib.Path,
-        help="directory to write the pictures into (default: work/issue13)")
+        "out", nargs="?", default=scratch.scratch_dir("traitshot"), type=pathlib.Path,
+        help="directory to write the pictures into (default: %(default)s)")
     raise SystemExit(main(parser.parse_args().out))

@@ -12,7 +12,7 @@ dialogs: the six directions, and an Amiga source holding three saved games so
 the `Slot` combo and the DOS game folder show together.
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
-        GDK_BACKEND=x11 .venv/bin/python tools/convertdialogbuiltshot.py [--out work/issue413]
+        GDK_BACKEND=x11 .venv/bin/python tools/convertdialogbuiltshot.py [--out DIR]
 
 The synthetic DOS and C64 sources are built from `tests/fixtures`; the Amiga
 disk comes from `tests/test_amigatoc64` and the three-slot one from the
@@ -37,10 +37,11 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from editor import convert  # noqa: E402
 from goldbox import dos_port  # noqa: E402
+from tools import scratch  # noqa: E402
 
 #: Set by `main`, before anything draws.
 app = None
-OUT = str(ROOT / "work" / "issue413")
+OUT = str(scratch.scratch_dir("convertdialogbuiltshot"))
 FONT = SMALL = TITLE = None
 
 W, H = 680, 305
@@ -162,10 +163,10 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", default=OUT,
-                        help="where the sheet is written (default work/issue413)")
+                        help="where the sheet is written (default: wish/convertdialogbuiltshot under the temp directory)")
     args = parser.parse_args(argv)
     OUT = args.out
-    os.makedirs(OUT, exist_ok=True)
+    scratch.ensure(OUT)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication(sys.argv[:1])
     load_fonts()

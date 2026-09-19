@@ -37,7 +37,7 @@ screen: experience rising in `CHRDAT<slot><n>.SAV`, as
 `docs/149-driving-a-dos-fight.md` sets out.
 
 Output -- a JSON report, the memory image and the PNGs -- goes under
-`work/issue69/`, never into the repository.
+a scratch directory (`--out`; by default `scratch.scratch_dir("dosfightwatch")`), never into the repository.
 
     tools/dosfightwatch.py watch --c64 PORSAVE13.D64 --slot A
     tools/dosfightwatch.py locate --slot A     # stop after step 3
@@ -70,13 +70,13 @@ from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import dosbox, dosboxx  # noqa: E402
+from tools import dosbox, dosboxx, scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-#: Where a run's report, memory image and frames land.  Under `work/`, which
-#: is gitignored: a frame of the game is the game's own art.
-OUT = REPO / "work" / "issue69"
+#: Where a run's report, memory image and frames land.  Scratch, outside the
+#: repository: a frame of the game is the game's own art.
+OUT = scratch.scratch_dir("dosfightwatch")
 
 #: `CHRDAT` offsets read directly, as `tools/dosfightrun.py` does.
 XP = 0x0AC
@@ -607,7 +607,7 @@ def truth(*, c64: pathlib.Path | None, slot: str, engine_slot: str, steps: int,
     takes.  Every field that then differs from the converted run's is a field
     where our zero is not what the engine would have had when the fight began.
 
-    **Run once, `work/issue69/truth13`.**  It reached a wandering encounter at
+    **Run once, `cited/69/truth13`.**  It reached a wandering encounter at
     step 44 and found all six records at 285 of 285 bytes -- a cleaner match
     than the `watch` runs get, because the needle is the engine's own save of
     the state it is being matched against rather than the file we wrote before

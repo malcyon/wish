@@ -2,7 +2,7 @@
 
 `tools/session.py` classified two of the engine's three end-of-fight lines
 until 2026-09-08. The third, `THE PARTY RUNS AWAY`, was read off a driven
-flight that night -- `work/issue445/run2`, `tools/fleedrive.py drive
+flight that night -- `cited/445/run2`, `tools/fleedrive.py drive
 --no-wound`, where ROLAND walked to the edge of the combat map, stepped off
 it, and the game answered `GOT AWAY` and wrote `$86 RUNNING` into his record
 (`#445`).
@@ -41,7 +41,7 @@ RAN_TEXT = session.RAN_TEXT
 def test_a_fight_the_party_runs_away_from_is_classified_from_the_screen():
     """The fleeing branch, against the row a driven flight actually drew.
 
-    `work/issue445/run2/screens.txt` at +686.7s: the line alone on row 10 in
+    `cited/445/run2/screens.txt` at +686.7s: the line alone on row 10 in
     a cleared full-width window, and row 24 blank -- the same shape as the
     losing line, which is why nothing else is on the row here.
     """
@@ -100,7 +100,7 @@ def test_a_character_getting_away_is_kept_in_the_log():
 
     `COMBAT`'s own message 5, printed by `$0B07` once `$1719` has written
     `$86`. It was drawn on the command-bar row rather than in the message
-    band in both flights at `work/issue445`, which is why a fight log that
+    band in both flights at `cited/445`, which is why a fight log that
     only sliced the band would have lost it.
     """
     assert session.RE_NOTABLE.search("GOT AWAY")
@@ -153,7 +153,7 @@ def test_the_walk_prefers_a_straight_step_to_a_diagonal_one():
 
     A diagonal costs two and an orthogonal one -- measured at a live sub-bar,
     `MOVE LEFT` 11 to 9 on `KP_9` and 12 to 11 on `KP_8`
-    (`work/issue127/sweep1.jsonl`). A tactic that walks diagonally towards a
+    (`cited/127/sweep1.jsonl`). A tactic that walks diagonally towards a
     straight edge spends twice the movement to get there.
     """
     b = arena(25, 13)

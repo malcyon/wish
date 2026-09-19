@@ -42,8 +42,8 @@ an image holds only what was resident when it was dumped.  Pass every dump a
 run made -- at the encounter and after the fight -- and the union is what was
 loaded across the fight.
 
-    tools/dosfieldrefs.py work/issue69/watch13b/memory-*.bin --offset 0x100
-    tools/dosfieldrefs.py work/issue69/*/memory-*.bin --unsourced
+    tools/dosfieldrefs.py DIR/memory-*.bin --offset 0x100
+    tools/dosfieldrefs.py DIR/*/memory-*.bin --unsourced
 """
 
 from __future__ import annotations

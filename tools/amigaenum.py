@@ -14,9 +14,9 @@ with record byte `0x143`, and `/Curse` `0x1A38E` hands record byte `0x19A` to
 a helper that fetches entry `status + 0x2C` of a text library.  The same three
 subcommands found the race, class, sex and alignment tables on the way past.
 
-    tools/amigaenum.py --file work/exe/secret sites
-    tools/amigaenum.py --file work/exe/secret table 30fc --count 9
-    tools/amigaenum.py --glib work/STRINGS.GLB --first 44 --count 9
+    tools/amigaenum.py --file SECRET_EXE sites
+    tools/amigaenum.py --file SECRET_EXE table 30fc --count 9
+    tools/amigaenum.py --glib STRINGS.GLB --first 44 --count 9
 
 **`sites` finds one shape of indexing and not all of them.**  It matches the
 SAS/Lattice small-data idiom `move.b d16(An), d0; ext.w; ext.l; asl.l #2;

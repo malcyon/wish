@@ -8,16 +8,17 @@ separate 1400x1050 emulator frames do not answer it; one strip of six
 portraits does, and a face that repeats is then obvious rather than something
 somebody has to hold in their head across six files.
 
-    tools/portraitmontage.py work/issue57/c64-slotA/sheet-*.png \
-        --rect 535,145,190,245 --out work/issue57/c64-faces.png
+    tools/portraitmontage.py c64-slotA/sheet-*.png \
+        --rect 535,145,190,245 --out c64-faces.png
 
 `--rect` is `left,top,width,height` in the source image's own pixels, and
 `--across` tiles left to right instead of top to bottom.  With no `--rect` the
 whole frame is used, which is what a DOS capture wants -- it is 320x200 and
 the portrait is a quarter of it.
 
-The output goes under `work/`, which is gitignored: these are the game's own
-portraits and they are not committed anywhere.
+The output goes under the temp directory by default, never into the
+repository: these are the game's own portraits and they are not committed
+anywhere.
 """
 
 from __future__ import annotations
@@ -27,6 +28,9 @@ import pathlib
 import sys
 
 from PIL import Image
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from tools import scratch  # noqa: E402
 
 
 def montage(paths: list[pathlib.Path], rect: tuple[int, int, int, int] | None,
@@ -68,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="nearest-neighbour magnification")
     ap.add_argument("--gap", type=int, default=4,
                     help="pixels between tiles")
-    ap.add_argument("--out", default="work/montage.png")
+    ap.add_argument("--out", default=str(scratch.scratch_dir("portraitmontage") / "montage.png"))
     args = ap.parse_args(argv)
 
     rect = None

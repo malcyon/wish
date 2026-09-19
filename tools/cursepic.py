@@ -14,7 +14,7 @@ This is that unpacker, transcribed from `ANIMATE00 $6AC0`, so the claim can be
 checked against any save without an emulator:
 
     tools/cursepic.py frames PIC1D                    each frame's shape
-    tools/cursepic.py frames PIC1D --png work/pic     and a PNG of each
+    tools/cursepic.py frames PIC1D --png DIR         and a PNG of each
     tools/cursepic.py match SAVE.D64 PIC1D            which frame the save holds
 
 `match` prints, for every frame, how many of the 1024 bytes differ; the answer

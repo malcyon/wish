@@ -11,11 +11,11 @@ checked against hardware)` is the work; `docs/161-c64-ultimate.md` the write-up.
 
 Three subcommands, and the order matters:
 
-    tools/c64ucompare.py hw   -o work/c64u/240/hw-a     # twice, to find
-    tools/c64ucompare.py hw   -o work/c64u/240/hw-b     # what free-runs
-    tools/c64ucompare.py vice -o work/c64u/240/vice --save NEWSAVE6.D64
-    tools/c64ucompare.py diff work/c64u/240/hw-a work/c64u/240/vice \
-        --stable work/c64u/240/hw-b
+    tools/c64ucompare.py hw   -o RUNS/hw-a  # twice, to find
+    tools/c64ucompare.py hw   -o RUNS/hw-b  # what free-runs
+    tools/c64ucompare.py vice -o RUNS/vice --save NEWSAVE6.D64
+    tools/c64ucompare.py diff RUNS/hw-a RUNS/vice \
+        --stable RUNS/hw-b
 
 **Taking the hardware reading twice is not belt and braces, it is the
 exclusion list.**  The Ultimate cannot be paused here -- Donald is at the
@@ -34,8 +34,8 @@ Two corrections the diff applies before it will call anything a difference:
   masked out of that one register rather than the register being dropped:
   `party_fix` reads `$D011` for bit 5, and bit 5 is what has to be compared.
 
-Nothing read off either machine is committed: the directories live under
-`work/`, which is gitignored.
+Nothing read off either machine is committed: keep the directories outside the
+repository.
 """
 
 from __future__ import annotations

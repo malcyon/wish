@@ -16,7 +16,7 @@ and stays under `tools/` per `.claude/rules/scratch.md` rather than being
 thrown away, in case the question needs asking again.
 
 Point it at an output directory with `ISSUE522_LOGDIR`; defaults to
-`work/issue522/watch`.
+this tool's scratch directory (`tools/scratch.py`).
 """
 
 from __future__ import annotations
@@ -26,6 +26,8 @@ import re
 import threading
 import time
 from pathlib import Path
+
+from tools import scratch
 
 TESTS_DIR = Path(__file__).resolve().parent.parent / "tests"
 PROBE_RE = re.compile(r"^test_zzz_conftest_guard_probe_[0-9a-f]{32}\.py$")
@@ -37,7 +39,8 @@ def _worker_id() -> str:
 
 
 def _log_path() -> Path:
-    logdir = Path(os.environ.get("ISSUE522_LOGDIR", TESTS_DIR.parent / "work" / "issue522" / "watch"))
+    logdir = Path(os.environ.get("ISSUE522_LOGDIR",
+                                 scratch.scratch_dir("issue522_probe_watch", "watch")))
     logdir.mkdir(parents=True, exist_ok=True)
     return logdir / f"{_worker_id()}.log"
 

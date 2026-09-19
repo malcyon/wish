@@ -39,11 +39,11 @@ the buffer where the shape has one and the word where it does not -- so a
 sweep can say whether the rule and either reading ever part company.  They
 agreed on all 107 containers where both could be taken on 2026-09-06.
 
-**That 107 is a count of a corpus that included `work/`, and this sweep no
-longer reaches there** (#575): on 2026-09-18 it finds 39 Pool of Radiance
-containers, 14 Curse and 11 Silver Blades.  `work/` is gitignored scratch that
-has been lost twice, so a container that is evidence belongs in the specimen
-tree; name a directory on the command line to sweep one that is not there yet.
+**That 107 counted containers in the scratch directory, which has been
+deleted** (#575): on 2026-09-18 the sweep finds 39 Pool of Radiance
+containers, 14 Curse and 11 Silver Blades.  Scratch was lost twice, so a
+container that is evidence belongs in the specimen tree; name a directory on
+the command line to sweep one that is not there yet.
 
 Reading only.  Nothing here writes a saved game or touches the player's disks.
 """
@@ -99,11 +99,10 @@ def roots(extra: list[str] | None = None) -> list[pathlib.Path]:
     an input to a census of what a container holds, never evidence about what
     the engine writes.
 
-    **`work/` is not one of them** (#575).  A run's output there is gitignored
-    scratch and half of what is there today will be gone tomorrow, which is
-    the reason this sweep gets written down rather than re-typed; a container
-    that is evidence goes into the specimen tree with `tools/specimens.py
-    add`.  Name a directory on the command line to sweep one anyway.
+    **The scratch directory is not one of them** (#575).  A run's output there
+    may vanish at any time, which is the reason this sweep gets written down
+    rather than re-typed; a container that is evidence goes into the specimen
+    tree with `tools/specimens.py add`.  Name a directory on the command line to sweep one anyway.
     """
     if extra:
         repo = pathlib.Path(__file__).resolve().parent.parent

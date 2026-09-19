@@ -352,9 +352,9 @@ def test_bar_kind_reads_the_picture_panel_when_the_frame_is_not_halved_back(monk
 
 def test_the_command_bar_prefix_is_no_wider_than_move_view_aim():
     """#340: measured directly off the level-1 party's own screenshot from
-    that run (`work/issue52/crops/stuck.ppm`) against the two specimens the
-    `command` digest was measured from (`work/dosbox/p114/bar04_...png` and
-    `work/dosbox/p114/command-bar-with-cast.png`): all three agree, glyph for
+    that run (`cited/52/crops/stuck.ppm`) against the two specimens the
+    `command` digest was measured from (`cited/dosbox/p114/bar04_...png` and
+    `cited/dosbox/p114/command-bar-with-cast.png`): all three agree, glyph for
     glyph, up to column 113 and diverge at 114, so 113 is the widest a shared
     prefix can be.
     """
@@ -503,7 +503,7 @@ def test_a_plain_session_still_asks_for_dosbox(tmp_path, monkeypatch):
     assert "not installed: dosbox" in str(e.value)
 
 
-def test_a_session_refuses_to_stage_outside_work(tmp_path):
+def test_a_session_refuses_to_stage_outside_the_scratch_directory(tmp_path):
     """The assertion that keeps a copy from ever landing on the player's files."""
     slot = dosbox.Slot(n=0, dir=tmp_path, _fd=-1, _display_num=30)
     session = dosbox.Session.__new__(dosbox.Session)
@@ -517,8 +517,8 @@ def test_a_session_refuses_to_stage_outside_work(tmp_path):
     slot.release()
 
 
-#: `#544 (tools/dosbox.py's Session.stage() refuses a detached worktree whose
-#: work/ is symlinked to the shared work/)` -- distinct from `posix_only`
+#: #544 (`Session.stage()` refused a detached worktree whose scratch
+#: directory was symlinked to the shared one) -- distinct from `posix_only`
 #: above, which is about `flock`. These three build a real symlink, which
 #: Windows handles differently (and often needs elevated privileges for), so
 #: they skip there rather than for any reason to do with the lease.
@@ -538,22 +538,20 @@ def _staged_session(work: pathlib.Path, source: pathlib.Path, slot: str = "0") -
 
 
 @symlink_only
-def test_a_session_stages_through_a_symlinked_work(tmp_path, monkeypatch):
-    """A detached worktree's `work/` is a symlink to the main tree's own
-    `work/`, per `.claude/rules/commits.md`'s own pattern
-    (`ln -sfn "$PWD/work" "$WT/work"`) -- reused by every walk agent's
-    worktree, not only the one that filed `#544
-    (tools/dosbox.py's Session.stage() refuses a detached worktree whose
-    work/ is symlinked to the shared work/)`. `stage()` must not mistake that
-    link for reaching outside its own sandbox.
+def test_a_session_stages_through_a_symlinked_scratch_directory(tmp_path, monkeypatch):
+    """A scratch directory that is itself a symlink to another tree's own
+    scratch directory -- what a detached worktree had when its scratch
+    directory was linked to the main tree's, which is the case #544 filed.
+    `stage()` must not mistake that link for reaching outside its own
+    sandbox.
     """
     main = tmp_path / "main"
-    (main / "work" / "dosbox" / "inst" / "0").mkdir(parents=True)
+    (main / "scratch" / "dosbox" / "inst" / "0").mkdir(parents=True)
     wt = tmp_path / "wt"
     wt.mkdir()
-    (wt / "work").symlink_to(main / "work", target_is_directory=True)
+    (wt / "scratch").symlink_to(main / "scratch", target_is_directory=True)
 
-    work = wt / "work" / "dosbox"
+    work = wt / "scratch" / "dosbox"
     monkeypatch.setattr(dosbox, "WORK", work)
     monkeypatch.setattr(dosbox, "INST", work / "inst")
 
@@ -564,26 +562,26 @@ def test_a_session_stages_through_a_symlinked_work(tmp_path, monkeypatch):
     session = _staged_session(work, source)
     session.stage()
 
-    landed = main / "work" / "dosbox" / "inst" / "0" / "game" / "POOLRAD" / "START.EXE"
+    landed = main / "scratch" / "dosbox" / "inst" / "0" / "game" / "POOLRAD" / "START.EXE"
     assert landed.exists()
     assert (session.dir / "dosbox.conf").exists()
 
 
 @symlink_only
-def test_a_session_still_refuses_a_symlink_that_escapes_work(tmp_path, monkeypatch):
+def test_a_session_still_refuses_a_symlink_that_escapes_the_scratch_directory(tmp_path, monkeypatch):
     """The safety property the fix must not loosen: an instance directory that
-    is itself a symlink pointing outside `work/dosbox` is still refused, and
+    is itself a symlink pointing outside the scratch directory is still refused, and
     whatever it pointed at survives untouched.
     """
     main = tmp_path / "main"
-    (main / "work" / "dosbox" / "inst").mkdir(parents=True)
+    (main / "scratch" / "dosbox" / "inst").mkdir(parents=True)
     elsewhere = tmp_path / "elsewhere" / "game"
     elsewhere.mkdir(parents=True)
     (elsewhere / "keep.txt").write_text("not staged over")
-    (main / "work" / "dosbox" / "inst" / "1").symlink_to(
+    (main / "scratch" / "dosbox" / "inst" / "1").symlink_to(
         tmp_path / "elsewhere", target_is_directory=True)
 
-    work = main / "work" / "dosbox"
+    work = main / "scratch" / "dosbox"
     monkeypatch.setattr(dosbox, "WORK", work)
     monkeypatch.setattr(dosbox, "INST", work / "inst")
 
@@ -599,21 +597,21 @@ def test_a_session_still_refuses_a_symlink_that_escapes_work(tmp_path, monkeypat
 
 @symlink_only
 def test_a_sibling_directory_sharing_the_prefix_is_still_refused(tmp_path, monkeypatch):
-    """`work/dosbox-other/` shares `work/dosbox` as a string prefix without
+    """`scratch/dosbox-other/` shares `scratch/dosbox` as a string prefix without
     being inside it -- the second, smaller defect the same line carried.
     """
     main = tmp_path / "main"
-    (main / "work" / "dosbox-other" / "inst" / "0").mkdir(parents=True)
+    (main / "scratch" / "dosbox-other" / "inst" / "0").mkdir(parents=True)
 
-    work = main / "work" / "dosbox"
+    work = main / "scratch" / "dosbox"
     monkeypatch.setattr(dosbox, "WORK", work)
-    monkeypatch.setattr(dosbox, "INST", main / "work" / "dosbox-other" / "inst")
+    monkeypatch.setattr(dosbox, "INST", main / "scratch" / "dosbox-other" / "inst")
 
     source = tmp_path / "POOLRAD"
     source.mkdir()
     (source / "START.EXE").write_text("stand-in for the game tree")
 
-    session = _staged_session(main / "work" / "dosbox-other", source)
+    session = _staged_session(main / "scratch" / "dosbox-other", source)
     with pytest.raises(AssertionError):
         session.stage()
 
@@ -967,32 +965,6 @@ def test_the_header_byte_names_more_than_one_area_so_it_is_not_the_map():
     assert max(counts.values()) > 1
 
 
-def test_the_c64_arrival_square_for_new_phlan_is_where_the_boat_lands():
-    """A cross-port check that costs nothing and would catch a wrong offset.
-
-    `goldbox/areas.py` records New Phlan's arrival as (15, 1) facing west, measured
-    on the C64.  Driving DOS and taking the boat back to Phlan puts the party
-    at DOS (15, 1) facing 6 -- west, doubled.  The saved run is kept under
-    `work/dosbox/p47/`, which is gitignored, so this skips without it.
-    """
-    from goldbox.areas import AREAS_BY_ID
-
-    path = (
-        pathlib.Path(__file__).resolve().parent.parent
-        / "work"
-        / "dosbox"
-        / "p47"
-        / "09_postboat_phlan.dat"
-    )
-    if not path.is_file():
-        pytest.skip("needs the driven capture in work/dosbox/p47")
-    data = path.read_bytes()
-    arrival = AREAS_BY_ID[dosbox.current_area(data)].arrival
-    x, y, facing = dosbox.position(data)
-    assert (x, y) == (arrival.x, arrival.y)
-    assert facing == arrival.facing * 2
-
-
 @pytest.mark.skipif(
     os.environ.get("WISH_DOSBOX_DRIVE") != "1",
     reason="set WISH_DOSBOX_DRIVE=1 to boot DOSBox; it takes about a minute",
@@ -1198,7 +1170,7 @@ def test_a_wand_carries_its_charges_in_the_first_special_byte():
     They are the same item -- type 79, the same three name words, effect 88 --
     differing in `0x03C` and in nothing else that names them.  The game's own
     use-item routine spends `count` first and then this byte, and destroys the
-    item when it reaches zero (`work/coab/engine/ovr020.cs`).
+    item when it reaches zero (`coab/engine/ovr020.cs`, scratch, deleted).
     """
     wands = [
         r for r in _need_templates()

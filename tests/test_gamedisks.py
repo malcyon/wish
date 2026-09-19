@@ -177,13 +177,49 @@ def test_pointed_at_an_empty_directory_find_is_still_none(registry,
     assert gamedisks.find("a-game") is None
 
 
-def test_an_entry_with_no_glob_only_needs_the_directory_to_exist(registry):
+def _no_glob_entry(registry):
     _write(registry / "gamedisks.yaml", """
 a-game:
   paths: ["a-directory"]
 """)
-    (registry / "a-directory").mkdir()
+    directory = registry / "a-directory"
+    directory.mkdir()
+    return directory
+
+
+def test_an_entry_with_no_glob_needs_a_directory_with_something_in_it(registry):
+    """`dos-archives` names a directory, not a file, so any content will do."""
+    directory = _no_glob_entry(registry)
+    (directory / "anything.txt").write_bytes(b"")
     assert gamedisks.find("a-game") == pathlib.Path("a-directory")
+
+
+def test_an_empty_directory_is_not_found_when_the_entry_has_no_glob(registry):
+    """16 empty entry directories sat under /data/agent-disks, `dos-archives`
+    matched one, and its tests stopped with `SystemExit` instead of skipping."""
+    _no_glob_entry(registry)
+    assert gamedisks.find("a-game") is None
+    assert gamedisks.report()[0][-1] is False
+
+
+def test_an_empty_directory_is_not_found_when_the_entry_has_a_glob(registry):
+    (registry / "committed-one").mkdir()
+    assert gamedisks.find("a-game") is None
+
+
+def test_a_directory_with_a_matching_file_is_found(registry):
+    disks = registry / "committed-one"
+    disks.mkdir()
+    (disks / "A1.d64").write_bytes(b"")
+    assert gamedisks.find("a-game") == pathlib.Path("committed-one")
+
+
+def test_a_directory_with_only_non_matching_files_is_not_found(registry):
+    disks = registry / "committed-one"
+    disks.mkdir()
+    (disks / "B1.d64").write_bytes(b"")
+    (disks / "A1.txt").write_bytes(b"")
+    assert gamedisks.find("a-game") is None
 
 
 # -- report() ------------------------------------------------------------------
@@ -289,15 +325,13 @@ def test_nothing_shipped_imports_this_module():
     assert offenders == []
 
 
-def test_no_example_path_points_into_work():
-    """`work/` is scratch, gitignored, and has been deleted twice -- a
-    default that resolves into it stops resolving the day somebody runs
-    `rm -rf work/`, which is what happened to
-    `tests/test_silverblades.py`'s old `work/silverblades` entry."""
-    repo = pathlib.Path(__file__).resolve().parent.parent
+def test_no_example_path_points_into_the_repository():
+    """A default inside the checkout is scratch or a gitignored copy, and stops
+    resolving the day somebody clears it -- which is how
+    `tests/test_silverblades.py`'s old in-tree entry went missing."""
     offenders = [(name, raw)
                  for name, row in _example().items()
                  for raw in row.get(gamedisks.PATHS) or []
-                 if (repo / "work") in pathlib.Path(raw).expanduser().parents
-                 or pathlib.Path(raw).expanduser() == repo / "work"]
+                 if REPO in [pathlib.Path(raw).expanduser(),
+                             *pathlib.Path(raw).expanduser().parents]]
     assert offenders == []

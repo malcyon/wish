@@ -10,7 +10,7 @@ read right and a byte anybody has seen.
 
     tools/laterbattle.py --pool 2 \
         --save ~/wish-specimens/por-c64/WISH-SPEC-curse-h-engine-resave-walked.D64 \
-        --out work/issue334/run1 --keys --melee 240
+        --out DIR --keys --melee 240
 
 What one run does, in order, logging every reading to `battle.jsonl` as it is
 taken because a run that dies half way still has to have said what it saw:
@@ -46,7 +46,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.savegame import ROSTER_HP_CURRENT, ROSTER_STRIDE  # noqa: E402
-from tools import cursethac0, gamedisks, latercombat  # noqa: E402
+from tools import cursethac0, gamedisks, latercombat, scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: The tavern in Tilverton, and the script bar it puts up. `#131 (Lift
@@ -212,7 +212,7 @@ class Battle(cursethac0.Run):
         # who was acting on the frame the floor finished drawing, before the
         # round had begun: the panel named nobody, `Session.acting` answered
         # None and the sweep pressed nothing at all
-        # (`work/issue334/run5`, `key-sweep {'acting': None}`).
+        # (`cited/334/run5`, `key-sweep {'acting': None}`).
         if self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0) \
                 is None:
             self.log("key-sweep", reached_a_command_bar=False,
@@ -296,7 +296,7 @@ def curse_fight(run: Battle, args, disks: str) -> int:
         # an XTEST space, which Curse does not read, so the party menu had
         # six characters on it and the world never arrived -- twenty-three
         # readings of the same prompt in 200 seconds
-        # (`work/issue334/run2`). `CurseSession.patch_disk_prompt` NOPs the
+        # (`cited/334/run2`). `CurseSession.patch_disk_prompt` NOPs the
         # two `BNE`s that make the loop, and `#301` measured that patching
         # while the prompt is on the screen is what works.
         if s is not None and "INSERT SIDE" in s.text() and not patched:
@@ -368,7 +368,7 @@ def ssb_fight(run: Battle, args, disks: str) -> int:
     if args.goto:
         # **A pattern walker cannot leave the starting pocket.** 400 steps of
         # one stood on sixteen distinct squares of `GEO10` and never met
-        # anything (`work/issue334/ssb3`), which is the same failure
+        # anything (`issue334/ssb3`, scratch, deleted), which is the same failure
         # `#368 (Does the C64 Curse engine read thac0_current in a fight,
         # since the training hall overwrites it with the base and loses the
         # strength bonus?)` found in Tilverton. The area's own map is what
@@ -401,7 +401,7 @@ def ssb_fight(run: Battle, args, disks: str) -> int:
     # **A blocked step is answered with a turn, not with the next key.** The
     # first Silver Blades run spent 78 of its 90 steps pressing `I` at the
     # same wall: the party stood on twelve distinct squares and the walk went
-    # nowhere (`work/issue334/ssb1`). `docs/121-silver-blades.md` records that
+    # nowhere (`issue334/ssb1`, scratch, deleted). `docs/121-silver-blades.md` records that
     # a wandering encounter took **228 driven steps** out of New Verdigris, so
     # a walker that wastes five of every six is not going to reach one.
     keys = list(args.pattern)
@@ -452,7 +452,8 @@ def main(argv=None) -> int:
                    help="that title's six sides")
     p.add_argument("--pool", dest="slot", type=int, default=None,
                    help="claim this instance-pool slot")
-    p.add_argument("--out", default="work/issue334/run", help="run directory")
+    p.add_argument("--out", default=str(scratch.scratch_dir("laterbattle", "run")),
+                   help="run directory")
     p.add_argument("--steps", type=int, default=60, help="walk budget")
     p.add_argument("--goto", default="",
                    help="Silver Blades only: walk to this square over "

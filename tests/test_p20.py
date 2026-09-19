@@ -5,7 +5,7 @@ from __future__ import annotations
 Fourteen of the thirty areas have no arrival square harvested from the scripts,
 and for those `FastTravel` picks one off the `GEO` with `goldbox.areas.landing_square`.
 The rule that used to ship took the first square with any passable edge;
-driving the game found what that came to (`work/reports/p20-arrivals.md`), and
+driving the game found what that came to (`reports/p20-arrivals.md`, scratch, deleted), and
 what is testable without an emulator is the geometry underneath it, which is
 what is asserted here.
 

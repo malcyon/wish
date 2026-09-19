@@ -467,7 +467,7 @@ class AmigaDisk:
         -- boots to the code wheel; writing a second, which takes 992 and 993,
         hangs the boot on a white screen with the drive still seeking, and
         that is with no existing file touched and every checksum right
-        (`work/amiga/p36/shots/`, #36). Those blocks sit between the bitmap at
+        (`amiga/p36/shots/` in scratch, deleted; #36). Those blocks sit between the bitmap at
         990 and the `save` drawer at 996, which is where a loader would put
         its own scratch.
 

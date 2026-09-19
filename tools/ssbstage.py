@@ -18,7 +18,7 @@ every seventeen steps: repeatable, and a state the game itself sets
 (`ECL10` entry 4, `+$00BB`) rather than an invented value.
 
     tools/ssbstage.py ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64 \
-        work/issue334/ssb9-staged.D64
+        STAGED.D64
 
 The output is a plain copy with that one byte changed; nothing else in the
 save is touched, and the input is opened read only.

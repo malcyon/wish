@@ -29,7 +29,7 @@ session Donald wants to run longer or a test that wants a smaller number.
 
 `SendMessage` is refused too, because a message to a finished agent gives it
 more work without a launch, and once refused a session stays refused, by an
-empty file under `work/handoff/`, so a compaction that brings the measured
+empty file under the temp directory (`sticky_path`), so a compaction that brings the measured
 context back under the line does not turn the wind-down back into a working
 session.
 
@@ -43,6 +43,7 @@ the line is behind it.
 import json
 import os
 import sys
+import tempfile
 
 DEFAULT_LIMIT = 300_000
 
@@ -54,7 +55,10 @@ SPAWN_TOOLS = {"Agent", "Task", "SendMessage"}
 #: Once a session has been refused, it stays refused: a compaction can bring
 #: the measured context back under the line, and the wind-down must not turn
 #: back into a working session because of it. One empty file per session.
-STICKY_DIR = os.path.join("work", "handoff")
+#: Computed rather than taken from `tools.scratch.scratch_dir`, because the
+#: harness runs this hook under the system interpreter with the repository on
+#: no path; it must stay equal to `scratch.scratch_dir("check-context-handoff")`.
+STICKY_DIR = os.path.join("wish", "check-context-handoff")
 
 #: The wind-down needs these two: the review of the last commits and the one
 #: suite run before the push. Everything else is new work.
@@ -144,10 +148,9 @@ def refusal(tokens: int, cap: int, resumed: bool = False,
 
 def sticky_path(payload: dict) -> str | None:
     session = payload.get("session_id")
-    cwd = payload.get("cwd") or os.getcwd()
     if not session:
         return None
-    return os.path.join(cwd, STICKY_DIR, str(session))
+    return os.path.join(tempfile.gettempdir(), STICKY_DIR, str(session))
 
 
 def main() -> int:

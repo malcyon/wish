@@ -26,7 +26,7 @@ main menu is up.  A step is one of three things:
 
 So a differential pair is one boot and one command line::
 
-    tools/dospod.py --out work/p175/diff1 Escape c '!C' Right Escape c '!D'
+    tools/dospod.py --out DIR Escape c '!C' Right Escape c '!D'
 
 Every step is shot and its screen digest printed, so a run that went somewhere
 unexpected can be read back afterwards without re-driving it.
@@ -38,7 +38,7 @@ new-game initialiser writes, so only a save the engine wrote after a step can
 separate one field from another.  Eight engine-written containers came out of
 this tool and they are what turned the code reading of the square, the facing
 and the clock into a measurement --
-`tools/dossavcensus.py --title pools-of-darkness work/p175` reads them back
+`tools/dossavcensus.py --title pools-of-darkness DIR` reads them back
 and `docs/141-dos-savegame.md` has what they said.
 
 **Never point this at the archives.** `Session.stage` copies the game tree
@@ -58,7 +58,7 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 
 #: The game directory inside the player's archives.  `dosbox.find_game` looks
 #: for `START.EXE` and this title ships `STARTUP.EXE` and a `START.BAT`, so
@@ -196,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=pathlib.Path,
-                    default=REPO / "work" / "p175" / "run",
+                    default=scratch.scratch_dir("dospod", "run"),
                     help="where the SAVE directory snapshots go")
     ap.add_argument("--presses", type=int, default=30,
                     help="how many Escapes to spend reaching the main menu")

@@ -10,8 +10,8 @@ name, and on finding her zeroes `$6B00` (the name) and `$6C00` (the roster
 status) and writes the emptied record back with `LOADCHAR slot | 128`.  A fast
 travel enters `NEWECL` at its tail, `$2034`, past all of it.
 
-    tools/koboldnpc.py --plan walk --out work/issue180/walk
-    tools/koboldnpc.py --plan warp --out work/issue180/warp
+    tools/koboldnpc.py --plan walk --out DIR
+    tools/koboldnpc.py --plan warp --out DIR2
 
 Both plans boot the **same** save disk and end in area 27, so exactly one
 thing differs between the two captures: how the party left area 13.  The save
@@ -26,8 +26,8 @@ step itself is walked**, so the game's own dispatch reaches `$99C1`.
 
 Nothing is written to the player's disks: `stage_disks` copies the sides into
 the slot and `Session.attach` refuses a path outside it.  The pool owns the
-emulator -- claim, launch, tear down.  Captures go to `work/`, which is
-gitignored; the tool does not.
+emulator -- claim, launch, tear down.  Captures go under the temp directory, so the tool does not
+commit them.
 """
 from __future__ import annotations
 
@@ -44,6 +44,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -290,7 +291,7 @@ def main(argv=None) -> int:
                    help="a save disk whose party is inside the Kobold Caves "
                         "with an NPC in it; copied in as SIDE0")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
-    p.add_argument("--out", default=str(ROOT / "work" / "issue180"))
+    p.add_argument("--out", default=str(scratch.scratch_dir("koboldnpc")))
     p.add_argument("--arrive", type=float, default=240.0)
     return run(p.parse_args(argv))
 

@@ -70,7 +70,7 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 
 #: Every byte worth reading when the load has just failed, and why.
 PROBES = {
@@ -492,7 +492,7 @@ def main(argv=None) -> int:
                     help="seconds to wait for the load to say something")
     ap.add_argument("--serve", action="store_true",
                     help="hand the session over on the command port at the end")
-    ap.add_argument("--out", default="work/issue291/load")
+    ap.add_argument("--out", default=str(scratch.scratch_dir("curseload")))
     return run(ap.parse_args(argv))
 
 

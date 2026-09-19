@@ -32,7 +32,7 @@ exists, and `.claude/rules/testing.md`'s "A specimen is only evidence if we
 know who wrote it" is the rule. Nothing is copied into the repository either
 way. With neither tree the module skips, which is what CI does.
 
-Findings and their reasoning: `work/reports/dos-saves.md`.
+Findings and their reasoning: `reports/dos-saves.md` (scratch, deleted).
 """
 
 
@@ -48,7 +48,7 @@ from gamedata import (
 )
 
 #: The 285-byte Pool of Radiance record. Offsets confirmed in
-#: `work/reports/dos-saves.md` section 3.
+#: `reports/dos-saves.md` (scratch, deleted) section 3.
 RECORD_SIZE = 285
 NAME_LEN = 0x000            # length byte, then up to 15 ASCII
 ABILITIES = 0x010           # STR INT WIS DEX CON CHA
@@ -82,7 +82,7 @@ EFFECT_SIZE = 9
 SAVGAM_SIZE = 13137
 SAVGAM_BASE = 0x4900
 SAVGAM_WORDS = 2560
-#: The persistent quest flags, `work/reports/quest-flags.md`.
+#: The persistent quest flags, `reports/quest-flags.md` (scratch, deleted).
 FLAGS_FIRST, FLAGS_LAST = 0x4A20, 0x4AF8
 
 #: GBC's table, `Games/01. Pool of Radiance/Game.dat`. Index is the byte.
@@ -816,7 +816,7 @@ def test_the_quest_flags_are_where_the_ecl_addresses_say_they_are():
 @needs_dos_saves
 def test_the_slums_flags_are_set_together():
     """`$4ACA`-`$4AD0` is one run of seven `SAVE 255` sites in `ECL14`
-    (`work/reports/quest-flags.md`), so a save either has all seven or none.
+    (`reports/quest-flags.md` (scratch, deleted)), so a save either has all seven or none.
 
     A base address off by one would straddle the run, which is what fixes it
     at `$4900` rather than near it.
@@ -827,7 +827,7 @@ def test_the_slums_flags_are_set_together():
     a row prove nothing about where the run starts. The positive evidence --
     seven words all holding 255 -- exists on this machine only in the party
     Gold Box Companion had open. It is corroborated independently by the
-    seven `SAVE 255` sites in `ECL14` (`work/reports/quest-flags.md`), which
+    seven `SAVE 255` sites in `ECL14` (`reports/quest-flags.md` (scratch, deleted)), which
     is code rather than a save and cannot have been edited, so the claim
     stands; what is missing is a specimen. Driving a party through the slums
     and saving would supply one (`#246`).

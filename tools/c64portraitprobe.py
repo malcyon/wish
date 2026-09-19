@@ -49,6 +49,7 @@ from automap.paths import find_disks  # noqa: E402
 from automap.vice import MonitorError  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.dos_codec import SAVE0_BASE, SLOT_AREA, SLOT_STRIDE  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: The loaded-files cache while the game runs, and the two slots that hold a
@@ -366,7 +367,7 @@ def main(argv=None) -> int:
                         "whichever side the game asked for")
     p.add_argument("--wait", type=float, default=90.0,
                    help="seconds to wait for the sheet's own bar to come back")
-    p.add_argument("--out", default="work/p57-c64probe")
+    p.add_argument("--out", default=str(scratch.scratch_dir("c64portraitprobe")))
     args = p.parse_args(argv)
     os.environ.setdefault("POR_HEADLESS", "1")
     return run(args)

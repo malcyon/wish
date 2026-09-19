@@ -29,9 +29,9 @@ writes the never-adventured header into the copy -- area, resident map, the
 disk hint and all twenty-five cache slots -- so the *loader's* behaviour on an
 area-0 save can be measured before any converter is able to write one.  It
 never touches the source, and the source is never one of the player's own
-disks: pass a specimen or something under `work/`.
+disks: pass a specimen or a copy you made yourself.
 
-Every reading goes to `work/issue301/<run>/run.jsonl` as one line per event,
+Every reading goes to `<out>/run.jsonl` (`--out`, by default a scratch directory) as one line per event,
 because a `timeout` around a driven session skips whatever a `finally` was
 going to write.
 """
@@ -52,7 +52,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_save  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 
 #: Where Curse's `SAVEAZURE` payload loads, and how much of it this tool reads.
 #: The whole payload is 7424 bytes; the first page carries every word the
@@ -322,7 +322,7 @@ def main(argv=None) -> int:
     ap.add_argument("--cache", default="ff",
                     help="doctor: the byte for all twenty-five cache slots")
     ap.add_argument("--wait", type=float, default=120.0)
-    ap.add_argument("--out", default=str(ROOT / "work" / "issue301" / "c64"))
+    ap.add_argument("--out", default=str(scratch.scratch_dir("curseareazero", "c64")))
     args = ap.parse_args(argv)
     if args.doctor:
         src, dst = (pathlib.Path(p) for p in args.doctor)

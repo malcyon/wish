@@ -13,7 +13,7 @@ be photographed from one. This writes the state by hand, the same way
 
     tools/rostercard.py                       today's worst case, as numbers
     tools/rostercard.py --badges 0 --no-readied
-    tools/rostercard.py --width 300 --out work/card.png
+    tools/rostercard.py --width 300 --out card.png
     tools/rostercard.py --font +6             about Windows' base font
 
 What it prints is where each part of the card ends up: **whole**, **cut (N of

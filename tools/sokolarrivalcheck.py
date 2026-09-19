@@ -10,7 +10,7 @@ copies the save you name over the slot's own save disk (`SIDE0.D64`), boots, loa
 the save, begins adventuring, prints each step's result and the status, and
 takes a screenshot of where it ended up.
 
-    tools/sokolarrivalcheck.py SAVE.D64 [--slot 1] [--disks DIR] [--shot work/p182/arrived.png]
+    tools/sokolarrivalcheck.py SAVE.D64 [--slot 1] [--disks DIR] [--shot PNG]
 
 `SAVE.D64` is a Pool of Radiance save disk with the party at a Sokol Keep
 arrival. `--disks` defaults to `automap.paths.find_disks()`. The player's disks
@@ -29,6 +29,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 
@@ -42,7 +43,7 @@ def main(argv=None) -> int:
     parser.add_argument("--disks", type=pathlib.Path,
                         help="the Pool of Radiance disks directory")
     parser.add_argument("--shot", type=pathlib.Path,
-                        default=pathlib.Path("work/p182/arrived.png"),
+                        default=scratch.scratch_dir("sokolarrivalcheck") / "arrived.png",
                         help="where the final screenshot goes")
     args = parser.parse_args(argv)
     disks = args.disks or find_disks()

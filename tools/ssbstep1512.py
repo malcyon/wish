@@ -12,8 +12,8 @@ static reading says it should not be.
 Run: `.venv/bin/python tools/ssbstep1512.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes its log, dumps and `readings.json` under
-`work/issue334/ssb12/`. `ssbreturnprobe.py` repeats this setup and adds one
-KERNAL Return.
+`scratch.scratch_dir("ssbstep1512")`, in the temp directory.
+`ssbreturnprobe.py` repeats this setup and adds one KERNAL Return.
 """
 from __future__ import annotations
 
@@ -31,12 +31,13 @@ from tools import (  # noqa: E402
     cursethac0,
     gamedisks,
     laterbattle,
+    scratch,
     specimens,
     ssbwarp,
 )
 from tools import session as S  # noqa: E402
 
-OUT = ROOT / "work/issue334/ssb12"
+OUT = scratch.scratch_dir("ssbstep1512")
 
 SAVE = str(specimens.tree_root() / "por-c64"
             / "WISH-SPEC-ssb-d-engine-resave-walked.D64")

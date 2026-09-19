@@ -395,7 +395,7 @@ def test_a_party_of_nobody_or_of_seven_is_refused(ecl_dax):
 def test_only_as_many_names_are_written_as_the_party_has(ecl_dax):
     """What the engine does, measured on its own one-character saved game.
 
-    `work/issue105`'s `savgamE.dat`, which Amiga Pool of Radiance itself
+    `issue105`'s `savgamE.dat` (scratch, deleted), which Amiga Pool of Radiance itself
     wrote for a party of one, holds `CHRDATE1` in entry 0 and Amiga heap
     addresses in entries 1 to 7.  So a writer that filled all six would be
     writing something the engine does not.

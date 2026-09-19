@@ -53,9 +53,9 @@ GUEST = "donald@192.168.123.50"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 #: Excluded from the archive sent to the guest: the virtualenv and the build
-#: outputs are the wrong platform's, `work/` is gigabytes of run output, and
-#: `.git` is not needed to run from source.
-SKIP = {".git", ".venv", "work", "build", "dist", "__pycache__",
+#: outputs are the wrong platform's, and `.git` is not needed to run from
+#: source.
+SKIP = {".git", ".venv", "build", "dist", "__pycache__",
         ".pytest_cache", ".ruff_cache"}
 
 #: PowerShell on this guest refuses a script otherwise: every scope of the

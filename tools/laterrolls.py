@@ -15,14 +15,14 @@ alone and never watched on a running machine:
 This drives the same Tilverton `PUNCH BARKEEP` fight `#334 (The session
 driver cannot fight in Curse or Silver Blades, and says the party is not in a
 fight while it is standing on the combat floor)` proved
-(`tools/laterbattle.py`, `work/issue334/run5`), and reads those thirteen
+(`tools/laterbattle.py`, `cited/334/run5`), and reads those thirteen
 bytes before combat, on first reaching the floor, and again after every
 `QUICK`-resolved turn -- so a change is seen against a baseline rather than
 read once and trusted.
 
     tools/laterrolls.py --pool 4 \\
         --save ~/wish-specimens/por-c64/WISH-SPEC-curse-trained-party.D64 \\
-        --turns 8 --out work/issue39/rolls1
+        --turns 8 --out DIR
 
 Nothing is written outside `--out` and the pool slot's own directory.
 """
@@ -36,7 +36,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools import laterbattle as LB  # noqa: E402
 from tools import session as S  # noqa: E402
 
@@ -97,7 +97,8 @@ def main(argv=None) -> int:
     p.add_argument("--disks", default=None, help="Curse's six sides")
     p.add_argument("--pool", dest="slot", type=int, default=None,
                    help="claim this instance-pool slot")
-    p.add_argument("--out", default="work/issue39/rolls", help="run directory")
+    p.add_argument("--out", default=str(scratch.scratch_dir("laterrolls", "run")),
+                   help="run directory")
     p.add_argument("--steps", type=int, default=60, help="walk budget")
     p.add_argument("--world", type=float, default=240.0,
                    help="seconds to give BEGIN ADVENTURING to reach the world")

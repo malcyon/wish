@@ -6,8 +6,8 @@ either alone has misled this project twice: a canvas that draws nothing and a
 machine with no fight running make the same PNG, and an effect table read
 without the picture says nothing about what a player is shown.
 
-    tools/combatshot.py --port 6521 work/fight.png     a fight in progress
-    tools/combatshot.py --synthetic work/arena.png     no emulator at all
+    tools/combatshot.py --port 6521 fight.png     a fight in progress
+    tools/combatshot.py --synthetic arena.png     no emulator at all
 
 So it prints all four effect arrays raw, the effects that are running, the
 indices the reader calls helpless, and every combatant with its position and
@@ -21,8 +21,9 @@ badge at all, since no save this project holds carries one.
 
 This connects, reads and closes, so it runs beside an idle
 `tools/session.py` -- but never beside `wish` or anything else holding the
-binary monitor open. It writes nothing to the machine, and the PNG goes under
-`work/`, which is gitignored: a picture of a fight is the game's own art.
+binary monitor open. It writes nothing to the machine, and the PNG goes to a
+scratch directory outside the repository unless told otherwise: a picture of a
+fight is the game's own art.
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 from automap import combat, live  # noqa: E402
 from automap.target import MemoryTarget, ViceTarget  # noqa: E402
 from automap.window import CombatCanvas  # noqa: E402
-from tools import shotwindow  # noqa: E402,F401  (imported for that alone)
+from tools import scratch, shotwindow  # noqa: E402,F401  (shotwindow: side effect)
 
 
 def from_machine(port: int, host: str = "127.0.0.1"):
@@ -112,9 +113,11 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         description="Draw the combat canvas and print what it was drawn "
                     "from.")
-    ap.add_argument("out", nargs="?", default="work/combatshot.png",
+    ap.add_argument("out", nargs="?",
+                    default=str(scratch.scratch_dir("combatshot")
+                                / "combatshot.png"),
                     help="where to write the PNG (default: %(default)s, "
-                         "which is gitignored)")
+                         "which is outside the repository)")
     ap.add_argument("--port", type=int, default=6502, metavar="N",
                     help="the binary monitor to read (default: %(default)s, "
                          "the human's; a pool slot prints its own)")

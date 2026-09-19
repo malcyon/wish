@@ -36,19 +36,19 @@ the routes `tools/c64u.py` refuses.
     tools/c64urest.py info                          device identity
     tools/c64urest.py drives                        every drive and its image_path
     tools/c64urest.py fileinfo /Temp/temp0002       size and name, or the error
-    tools/c64urest.py mount work/x.d64 [--name X.D64]   POST: upload and mount
+    tools/c64urest.py mount X.D64 [--name X.D64]      POST: upload and mount
     tools/c64urest.py remount /Temp/X.D64           PUT: mount what is there
-    tools/c64urest.py run work/marker.prg           POST: DMA-load and start it
-    tools/c64urest.py runfirst work/POOL1.D64       the image's first PRG
-    tools/c64urest.py grab /Temp/X.D64 work/back.d64    FTP RETR
+    tools/c64urest.py run MARKER.PRG             POST: DMA-load and start it
+    tools/c64urest.py runfirst POOL1.D64         the image's first PRG
+    tools/c64urest.py grab /Temp/X.D64 BACK.D64         FTP RETR
     tools/c64urest.py ftpcheck                      does ftplib reach it at all
-    tools/c64urest.py dir work/back.d64             a local image's directory
+    tools/c64urest.py dir BACK.D64                 a local image's directory
     tools/c64urest.py screen                        what is on the C64's screen
     tools/c64urest.py key Y                         one key into the KERNAL buffer
     tools/c64urest.py reset                         PUT /v1/machine:reset
-    tools/c64urest.py markprg work/mark.prg --file MARK1
+    tools/c64urest.py markprg MARK.PRG --file MARK1
                        build a PRG that writes one sequential file to drive 8
-    tools/c64urest.py tempsweep --count 12 --dir work/issue272/sweep
+    tools/c64urest.py tempsweep --count 12 --dir DIR
                        upload N blank images, then ask files:info which survive
 
 The host comes from `--host`, then `$POR_ULTIMATE`/`$WISH_ULTIMATE` (the
@@ -74,6 +74,7 @@ import urllib.request
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox.d64 import D64  # noqa: E402  (after the path fix-up)
+from tools import scratch  # noqa: E402
 
 DEFAULT_PORT = 80
 FTP_PORT = 21
@@ -537,7 +538,7 @@ def main(argv: list[str] | None = None) -> int:
 
     one = sub.add_parser("tempsweep")
     one.add_argument("--count", type=int, default=12)
-    one.add_argument("--dir", default="work/issue272/sweep")
+    one.add_argument("--dir", default=str(scratch.scratch_dir("c64urest", "sweep")))
     one.add_argument("--mode", default="readwrite")
     one.set_defaults(run=cmd_tempsweep)
 

@@ -16,7 +16,7 @@ in RAM stops part-way through the file.
 
 Run: `.venv/bin/python tools/ssbloadescape.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
-as the save. Writes dumps and `esc.jsonl` under `work/issue334/ssb16/`.
+as the save. Writes dumps and `esc.jsonl` under `<tmp>/wish/ssbloadescape/`.
 `ssbloadnoescape.py` is the `ssb15` half.
 """
 from __future__ import annotations
@@ -34,13 +34,14 @@ from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import (  # noqa: E402
     gamedisks,
+    scratch,
     specimens,
     ssbwarp,
 )
 from tools import session as S  # noqa: E402
 from tools.cursethac0 import checkpoint_hits  # noqa: E402
 
-OUT = pathlib.Path("work/issue334/ssb16")
+OUT = scratch.scratch_dir("ssbloadescape")
 SAVE = str(specimens.tree_root() / "por-c64"
             / "WISH-SPEC-ssb-d-engine-resave-walked.D64")
 
@@ -63,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     ).parse_args(argv)
     out = OUT
-    out.mkdir(parents=True, exist_ok=True)
+    scratch.ensure(out)
     log_file = (out / "esc.jsonl").open("w")
 
     def log(kind: str, **kw) -> None:

@@ -31,7 +31,7 @@ east, saves as D.
 **A seed is not evidence and the file the engine writes over it is**, so both
 are kept side by side in the output directory and the report says which is
 which.  Nothing here writes to the player's own game tree: `tools.dosbox`
-stages a copy under `work/dosbox/inst/<n>/`.
+stages a copy under `inst/<n>/` in the `dosbox` scratch directory.
 
 Run `--check` first; it names the tools it needs rather than half-running.
 """
@@ -51,6 +51,7 @@ from goldbox import dos_savegame as sg  # noqa: E402
 from tools import (
     dosbox,  # noqa: E402
     dosoutdoor,  # noqa: E402
+    scratch,  # noqa: E402
 )
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -219,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         if len(wallset) != 3:
             ap.error("--wallset wants three values, a:b:c")
 
-    out = pathlib.Path(args.out or REPO / "work" / "p59-wallset")
+    out = pathlib.Path(args.out or scratch.scratch_dir("dosoutdoorprobe"))
     report = run(source=args.source, area=args.area, x=args.x, y=args.y,
                  route=parse_route(args.route), wallset=wallset, out=out)
     print(json.dumps(report, indent=2))

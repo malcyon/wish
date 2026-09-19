@@ -5,7 +5,7 @@
 # This is the single source: edit `dos:` and `alt:` here, never in the
 # generated document. Regenerate it with:
 #
-#     tools/iconreverse.py --markdown work/issue320/proposal/proposal.md
+#     tools/iconreverse.py --markdown "${TMPDIR:-/tmp}/wish/iconreverse/proposal.md"
 #
 # `dos` is the proposed DOS option number, `alt` (when present) lists any
 # other DOS option that looked as close, and the trailing comment says what

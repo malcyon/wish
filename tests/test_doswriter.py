@@ -2360,7 +2360,7 @@ def test_an_area_with_no_legal_answer_is_named_rather_than_guessed(area,
 
 def test_the_areas_with_a_legal_answer_are_not_refused():
     """New Phlan among them: the C64 loads no WALLSET there, and a retarget
-    carrying an empty triple draws it identically -- `work/p60/run3` Z0.
+    carrying an empty triple draws it identically -- `p60/run3` (scratch, deleted) Z0.
 
     The three travel windows joined the list in #190, once an outdoor DOS
     retarget had been driven; `tests/test_dosoutdoorwrite.py` is where the
@@ -2383,7 +2383,7 @@ def test_a_character_who_carries_nothing_matches_the_engines_own_record():
     """#62's byte question, answered by measurement rather than by argument.
 
     The engine's own save of a character who dropped every item in play
-    (`work/p62/truth/CHRDATD1.SAV`, the diff in `docs/50-experiments.md`)
+    (`p62/truth/CHRDATD1.SAV` (scratch, deleted), the diff in `docs/50-experiments.md`)
     holds `item_count` 0, the whole 56-byte `item_chain` NULL and
     `hands_used` 0 -- which is exactly what the writer already produces.  So
     no byte of the record is wrong for an empty character, and `hands_used`,
@@ -2409,7 +2409,7 @@ def test_a_character_who_carries_nothing_gets_no_itm_file(tmp_path):
     `ENCUMBRANCE 60540` -- and writes the phantom into a 63-byte `.ITM` on
     the next save.  With the *same 285 record bytes* and no file at all the
     sheet is clean and the resave writes none.  Six variants in one save
-    slot separated on this and nothing else (`work/p62/`, run `v1`).
+    slot separated on this and nothing else (`p62/` (scratch, deleted), run `v1`).
     """
     save0, save1 = _fixture_payloads()
     stale = tmp_path / "CHRDATA1.ITM"

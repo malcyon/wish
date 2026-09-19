@@ -7,7 +7,7 @@ desktop with the emulator window somewhere in it.  Three calls per keystroke,
 and then a person reading the result is looking at a 720x568 Amiga screen
 inside a picture six times that size, most of it Windows wallpaper.
 
-    tools/amigashots.py --holder wish3q --out work/3q/rename \\
+    tools/amigashots.py --holder wish3q --out DIR \\
         keys R E N A M E
 
 Every key gets its own numbered PNG, cropped to the emulator's client area, so
@@ -16,7 +16,7 @@ while a disk is loading is swallowed with no sign (`docs/182-amiga-por-in-the-
 running-game.md` §7), which is the whole reason for settling between keys
 rather than sleeping a fixed time.
 
-    tools/amigashots.py crop work/3q/s01-boot.png work/3q/s01-boot-c.png
+    tools/amigashots.py crop s01-boot.png s01-boot-c.png
 
 `crop` does the same to a grab somebody else took.
 

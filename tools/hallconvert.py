@@ -11,7 +11,7 @@ identical; where they part -- the training hall and Phlan City Hall, whose
 scripts contain no `LOADFILES` at all -- the difference is the whole defect.
 
     tools/hallconvert.py --folder ~/wish-specimens/por-dos/WISH-SPEC-... \
-        --slot F --out work/issue257
+        --slot F --out DIR
 
 The `geo` disk is built by monkeypatching `current_area` back to
 ``word(save, AREA)``, which is the expression this module carried before
@@ -26,7 +26,7 @@ prototyped before it shipped.
 
 The DOS folder is `--folder`, the C64 game disks are `$POR_DISKS` then
 `automap.paths.find_disks()`, and both are read and never written.  Output
-goes wherever `--out` says, which should be under `work/`.
+goes wherever `--out` says.
 """
 from __future__ import annotations
 

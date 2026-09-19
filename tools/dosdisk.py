@@ -6,7 +6,7 @@ DOS *Pool of Radiance* save slot, write all 9216 bytes of `SAVEDGAME0` and
 `SAVEDGAME1` from two zeroed buffers, and put them on a `D64.blank()`.  No
 existing `.d64` is opened at any point.
 
-    tools/dosdisk.py --slot J --out work/NEWJ.D64
+    tools/dosdisk.py --slot J --out NEWJ.D64
 
 Two bytes of the result cannot be computed from the DOS save and are read off
 the player's own game disks at run time, which is Donald's ruling of
@@ -23,8 +23,8 @@ So it refuses without them rather than inventing either.
 The DOS folder is found the way `tools/dosbox.py` finds it -- `$FR_ARCHIVES`,
 then `~/Downloads/fr-archives` -- and the game disks the way every other tool
 here does: `$POR_DISKS`, then `automap.paths.find_disks()`.  Both are read and
-never written; the output goes wherever `--out` says, which should be under
-`work/`.
+never written; the output goes wherever `--out` says, and under this tool's
+scratch directory when it does not.
 
 `--report` prints the conversion's own provenance summary, which is the check
 that matters: a from-nothing save has `unwritten` empty, and `new_save` raises
@@ -52,6 +52,7 @@ from goldbox import dos_codec  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
+from tools import scratch  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -199,7 +200,8 @@ def main(argv=None) -> int:
     p.add_argument("--disks", default=str(DISKS),
                    help="where the player's C64 disks are; read, never written")
     p.add_argument("--out", default=None,
-                   help="the .d64 to write (default work/dosdisk/NEW<slot>.D64)")
+                   help="the .d64 to write (default NEW<slot>.D64 in this "
+                        "tool's scratch directory)")
     p.add_argument("--report", action="store_true",
                    help="print the conversion's provenance summary")
     p.add_argument("--sheet", action="store_true",
@@ -214,7 +216,7 @@ def main(argv=None) -> int:
         print("\n".join(sheet(folder, args.slot)))
         return 0
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "dosdisk" / f"NEW{args.slot}.D64")
+        scratch.scratch_dir("dosdisk") / f"NEW{args.slot}.D64")
     report = build(folder, args.slot, pathlib.Path(args.disks), out)
     party = dos_codec.read_party(folder, args.slot)
     print(f"Slot {args.slot}: {len(party)} characters -- "

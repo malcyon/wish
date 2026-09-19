@@ -19,7 +19,7 @@ Both poses of each, and then a gallery of the C64 options that could be
 chosen instead, numbered, so an answer can be a number.
 
     tools/iconredrawn.py
-    tools/iconredrawn.py --out work/issue335/silver-blades-figures.html
+    tools/iconredrawn.py --out PAGE.html
 
 The rows come from `tools/iconproposal.yaml` at run time, so the page can
 never show a mapping that is no longer the one in the table.  Which two
@@ -30,7 +30,7 @@ is drawn from whatever that comparison finds.
 The DOS art is read out of the player's own game folders under
 `$FR_ARCHIVES`, the C64 art off their own `SILVER-1.D64`; nothing is written
 except the page named by `--out`.  **The page is the game's own art and lives
-under `work/`, never in the repository.**
+outside the repository, never in it.**
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox import icons  # noqa: E402
 from goldbox.iconparts import PART_CLASSES, IconParts  # noqa: E402
 from tools import dosicontitles as dit  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools import iconcorrespond as ic  # noqa: E402
 from tools import iconproposal as ip  # noqa: E402
 
@@ -345,8 +345,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="the record's six icon_colours bytes, as hex")
     ap.add_argument("--scale", type=int, default=6,
                     help="how many screen pixels one figure pixel becomes")
-    ap.add_argument("--out", default="work/issue335/silver-blades-figures.html",
-                    help="where to write the page, under work/")
+    ap.add_argument("--out", default=str(scratch.scratch_dir("iconredrawn")
+                                  / "silver-blades-figures.html"),
+                    help="where to write the page, outside the repository")
     args = ap.parse_args(argv)
     colours = bytes.fromhex(args.colours)
     if len(colours) != 6:

@@ -175,12 +175,15 @@ def _matches(path: pathlib.Path, globs) -> bool:
     No globs means the entry only names a directory, not a file inside it --
     `dos-archives` is like this, because every DOS Gold Box title writes its
     own file names underneath and there is no one pattern for all of them.
+    Such an entry is found only when the directory holds something: an empty
+    one is a place somebody made and never filled, and answering "found" for it
+    turned a skip into a `SystemExit` ("no CHEAD.DAX under .../dos-archives").
     """
     try:
         if not path.is_dir():
             return False
         if not globs:
-            return True
+            return next(path.iterdir(), None) is not None
         return any(next(path.glob(g), None) is not None for g in globs)
     except OSError:
         return False

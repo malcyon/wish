@@ -3,7 +3,7 @@
 something to be read against for step 4 of `#36 (Write an Amiga disk image,
 not just the character files)`.
 
-    .venv/bin/python tools/convertsourcesheet.py SOURCE --disk work/issue36/por2.adf
+    .venv/bin/python tools/convertsourcesheet.py SOURCE --disk por2.adf
 
 SOURCE is a C64 disk image or a DOS saved game; `--disk` is the Amiga Pool of
 Radiance disk 2 image the conversion is rehearsed against (nothing is written

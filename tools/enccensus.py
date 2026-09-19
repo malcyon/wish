@@ -18,9 +18,8 @@ the rule file rests on, and asks it of the whole machine:
 * **every corpus** -- the specimen tree, the archives, the played DOS
   directory and the Amiga disk images -- each row graded by where it came
   from, because a record nobody watched being written is not evidence about
-  what the engine does.  A record that exists only under `work/` is in none
-  of them: that directory is gitignored scratch and is no longer a default
-  root (#575), so a run whose records are evidence copies them into the
+  what the engine does.  A record that exists only in a scratch directory is in none
+  of them: scratch is not a default root (#575), so a run whose records are evidence copies them into the
   specimen tree with `tools/specimens.py add`.  `dos_rows(roots=[...])` still
   takes any directory a caller wants swept.
 * **the direction of the miss**, because `#323`'s standing hypothesis is that
@@ -72,13 +71,12 @@ from tools import (  # noqa: E402
 #: Companion's editor, so counting that copy as an untouched archive record
 #: would launder it (`#323`).
 GRADE_MARKERS = (("/dos_por_play/", "edited"),
-                 ("/wish-specimens/", "spec"),
-                 ("/work/", "work"))
+                 ("/wish-specimens/", "spec"))
 
 #: Worst first.  `built` is ours and says nothing about the game; `edited` has
-#: been through an editor; `found` was never watched being written; `work` and
-#: `spec` name a run whose log says who wrote each file.
-GRADE_ORDER = ("built", "edited", "found", "work", "spec")
+#: been through an editor; `found` was never watched being written; `spec`
+#: names a run whose log says who wrote each file.
+GRADE_ORDER = ("built", "edited", "found", "spec")
 
 
 @dataclass

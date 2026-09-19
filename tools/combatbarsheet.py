@@ -11,8 +11,8 @@ and 20 and 40 between. Nothing in `automap/` changes; the square is drawn
 here, through one function, and `automap/window.py` takes whichever look he
 picks afterwards.
 
-    tools/combatbarsheet.py                    # everything, under work/345/bars/
-    tools/combatbarsheet.py --out work/x/      # somewhere else
+    tools/combatbarsheet.py                    # everything, into the scratch directory
+    tools/combatbarsheet.py --out DIR          # somewhere else
 
 What comes out:
 
@@ -49,8 +49,8 @@ fit"* is a direction and the size at which a letter stops being readable is
 a measurement he needs.
 
 Runs offscreen; nothing here opens a window. The output is our own drawing
-of our own colours and holds none of the game's art, but it goes under
-`work/` all the same, because a screenshot is a run's output.
+of our own colours and holds none of the game's art, but it goes into
+the scratch directory all the same, because a screenshot is a run's output.
 """
 
 from __future__ import annotations
@@ -91,6 +91,7 @@ from automap.window import (  # noqa: E402
     PAPER,
     CombatCanvas,
 )
+from tools import scratch  # noqa: E402
 
 #: The cells the canvas paints, smallest to largest. 12 is `combat.CELL_MIN`,
 #: the window's minimum; 30 is what `cell_for` gives every fight seen so far;
@@ -491,7 +492,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Draw the combat square as a letter over a health bar, "
                     "three ways, at every cell the canvas paints.")
-    ap.add_argument("--out", default="work/345/bars", metavar="DIR",
+    ap.add_argument("--out", default=str(scratch.scratch_dir("combatbarsheet")), metavar="DIR",
                     help="where the PNGs go (default: %(default)s)")
     ap.add_argument("--no-canvas", action="store_true",
                     help="skip the real-canvas shots (no fixtures needed)")

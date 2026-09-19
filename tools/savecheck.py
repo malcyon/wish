@@ -8,7 +8,7 @@ not sufficient -- an AC of 9 displayed as 51, a dropped combat tail and a
 garbage weapon line are three faults this project has shipped that passed
 every byte-level check that existed.
 
-    tools/savecheck.py --disk work/NEWJ.D64 --slot 1 --view --walk II
+    tools/savecheck.py --disk NEWJ.D64 --slot 1 --view --walk II
 
 What it reads, in order:
 
@@ -53,6 +53,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap import combat as C  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
@@ -321,7 +322,7 @@ def keep_old_log(out: pathlib.Path) -> pathlib.Path | None:
     """Move an existing log out of the way, and say where it went.
 
     **A second run on the same disk used to truncate the first one's log.**
-    `--out` defaults to `work/savecheck/<disk stem>.jsonl`, which does not
+    `--out` defaults to `<disk stem>.jsonl` in the `savecheck` scratch directory, which does not
     have `--tag` in it, so two runs of the same `.d64` share one path however
     differently they are tagged.  On 2026-09-07 a failure worth diagnosing was
     photographed, logged, and then erased by the immediate retry that was
@@ -616,7 +617,7 @@ def undrawn(roll: dict, blocks: int) -> list[str]:
     two reads a few milliseconds apart, and the camera moves between one
     combatant's turn and the next, so the screen can still be carrying the
     figures from before a scroll: on the engine-written Sokol Keep control
-    (`work/p185/SOKOLENG.log`) 27 of 30 turns matched exactly and the other
+    (`cited/p185/SOKOLENG.log`) 27 of 30 turns matched exactly and the other
     three drew **two more** than the table put in the window, never fewer.  An
     extra figure is that frame and is not a fault anybody could have; a missing
     one is the thing being looked for.
@@ -1173,7 +1174,7 @@ def main(argv=None) -> int:
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     p.add_argument("--tag", default=None, help="prefix for the screenshots")
     p.add_argument("--out", default=None,
-                   help="the log (default work/savecheck/<disk>.jsonl)")
+                   help="the log (default <disk>.jsonl in the savecheck scratch dir)")
     p.add_argument("--view", type=int, nargs="?", const=-1, default=0,
                    help="read this many VIEW sheets, walking the party panel's "
                         "highlight; with no number, every character the panel "
@@ -1211,7 +1212,7 @@ def main(argv=None) -> int:
     stem = pathlib.Path(args.disk).stem
     args.tag = args.tag or stem
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "savecheck" / f"{stem}.jsonl")
+        scratch.scratch_dir("savecheck") / f"{stem}.jsonl")
     log = Log(out)
     try:
         return run(args, log)

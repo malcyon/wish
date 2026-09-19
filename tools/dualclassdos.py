@@ -39,8 +39,8 @@ shows `di` and `al` being loaded.  That the slot is the class *number* rests
 on the specimens landing in different slots, not on anything printed here.
 
     tools/dualclassdos.py census
-    tools/dualclassdos.py census --dual-only work/curse
-    tools/dualclassdos.py census --no-archives work/curse
+    tools/dualclassdos.py census --dual-only DIR
+    tools/dualclassdos.py census --no-archives DIR
     tools/dualclassdos.py code
     tools/dualclassdos.py code --title curse-of-the-azure-bonds --window 60
 
@@ -99,7 +99,7 @@ def source_title(path: pathlib.Path) -> str:
 
     `"?"` where the path names no game tree, and two ordinary things do that:
     a Steam `SavesDir/<steamid>/<appid>/English/`, whose app id is the whole
-    collection rather than one title, and anything copied under `work/`.  It
+    collection rather than one title, and anything copied under a scratch directory.  It
     is a refusal rather than a guess, which is the point of the function.
     """
     best = "?"
@@ -114,7 +114,7 @@ def record_paths(extra: list[str], archives: bool = True) -> list[pathlib.Path]:
 
     `archives=False` sweeps only `extra`, which is how a count gets a scope
     somebody can check: the number depends entirely on which directories were
-    walked, and `work/` grows with every run.
+    walked, and a scratch directory grows with every run.
     """
     roots = ([dosbox.ARCHIVES] if archives else [])
     roots += [pathlib.Path(p) for p in extra]
@@ -131,8 +131,8 @@ def record_paths(extra: list[str], archives: bool = True) -> list[pathlib.Path]:
 def read_records(extra: list[str], archives: bool = True):
     """`(shape, character, paths)` for every distinct record, by bytes.
 
-    The archives ship most save directories twice and a run under `work/`
-    copies them again, so the same record turns up a dozen times.  One entry
+    The archives ship most save directories twice and a run's scratch
+    directory copies them again, so the same record turns up a dozen times.  One entry
     per distinct byte string, with every path it was found at.
     """
     by_size = {s.record_size: s for s in dos_port.DELTAS}

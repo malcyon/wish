@@ -20,7 +20,7 @@ contradict, the strategy is wrong.
 Radiance has 29 maps numbered `$00`-`$20`, but Curse's ids are sparse and
 chapter-grouped and Silver Blades, Champions and Death Knights have no `GEO00`
 at all -- their lowest id is `$10` or `$20` (write-up lost,
-`work/reports/goldbox-inventory.md`).
+`reports/goldbox-inventory.md` in scratch, deleted).
 Anything that counted maps, or walked a range, would be wrong for four of the
 six titles on the shelf.
 

@@ -8,7 +8,7 @@ not the game agrees.  This asks the C64 instead.  The name, class, level, hit
 points, armour class and THAC0 come back through the game's own character-sheet
 routine and its own charset, which shares nothing with `goldbox/layout.py`.
 
-    tools/testpartyrun.py --disk work/issue10/TESTPARTY.D64
+    tools/testpartyrun.py --disk path/to/TESTPARTY.D64
 
 **Nothing is written to the player's disks.**  `--disk` is a copy
 `tools/testparty.py` already made; `tools/session.stage_disks` copies the eight
@@ -27,8 +27,8 @@ the slot.
 `--full` adds the four remaining `#10 (Finish the high-level test party)`
 questions the 2026-09-09T03:00:20Z comment named as sharing one boot:
 
-    tools/testpartyrun.py --disk work/issue10/TESTPARTY-ARMED.D64 --full \\
-        --out work/issue10/full1
+    tools/testpartyrun.py --disk path/to/TESTPARTY-ARMED.D64 --full \\
+        --out DIR
 
 1. the six sheets (as above), now armed;
 2. `REMOVE CHARACTER FROM PARTY` on BULWARK, from the party menu, before
@@ -62,6 +62,7 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import SLOT_AREA_BASE, SLOT_STRIDE  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as S  # noqa: E402
 from tools.c64addprobe import answer as answer_yn  # noqa: E402
 from tools.c64nametable import character_files  # noqa: E402
@@ -296,8 +297,8 @@ def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150) -> dict:
     the way it came) the moment a step is refused.  A first attempt with a
     fixed `IIIIJIIII` cycle spent 80 moves getting from (9, 13) to (8, 13) --
     one tile -- because most of the forward presses were walls and the turns
-    never pointed it anywhere new twice in a row (`work/issue10/fight1`,
-    2026-09-16).  A wall refusing a step is not an error here, just the
+    never pointed it anywhere new twice in a row (a scratch run directory,
+    2026-09-16, deleted).  A wall refusing a step is not an error here, just the
     signal to turn.
     """
     taken = 0
@@ -344,13 +345,13 @@ def main(argv=None) -> int:
                         "re-running the slow part of --full on its own")
     args = p.parse_args(argv)
 
-    out = pathlib.Path(args.out) if args.out else ROOT / "work" / "issue10" / "run"
+    out = pathlib.Path(args.out) if args.out else scratch.scratch_dir("testpartyrun", "run")
     log = Log(out, args.quiet)
     log.emit("start", disk=str(args.disk), sides=args.disks)
 
     # The staging directory holds the generated save beside symlinks to the
     # player's own sides, so `stage_disks` copies all nine into the slot and
-    # the originals are only ever read -- the shape `tools/turndrive.py` uses.
+    # the originals are only ever read -- the way `tools/turndrive.py` does it.
     staging = out / "disks"
     staging.mkdir(parents=True, exist_ok=True)
     S.stage_writable(args.disk, staging / "STAGED.D64")

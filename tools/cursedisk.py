@@ -10,8 +10,8 @@ save into a C64 one, which the importer refuses today)` steps 1 and 2), so
 the two tools differ by more than a flag and this is a second file rather
 than a `--game` on the first.
 
-    tools/cursedisk.py --folder work/curse/H-square-5-13 --slot H \\
-        --out work/issue192/CURSESAVE.D64 --report --sheet
+    tools/cursedisk.py --folder DIR --slot H \\
+        --out CURSESAVE.D64 --report --sheet
 
 **Two reach-arounds this tool used to need, both closed by step 4.**
 `goldbox.dos_codec.CONVERTS` now carries Curse for real and `goldbox/areas.py` now
@@ -44,7 +44,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox import areas, c64_port, dos_codec, dos_port  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 U = areas.Confidence.UNKNOWN
@@ -244,7 +244,7 @@ def main(argv=None) -> int:
                         "written.  $COAB_DISKS, then the gamedisks registry")
     p.add_argument("--out", default=None,
                    help="the .d64 to write (default "
-                        "work/issue192/CURSE<slot>.D64)")
+                        "CURSE<slot>.D64 in this tool's scratch directory)")
     p.add_argument("--report", action="store_true",
                    help="print the conversion's provenance summary")
     p.add_argument("--sheet", action="store_true",
@@ -272,7 +272,7 @@ def main(argv=None) -> int:
         return 0
 
     out = pathlib.Path(args.out) if args.out else (
-        ROOT / "work" / "issue192" / f"CURSE{args.slot}.D64")
+        scratch.scratch_dir("cursedisk") / f"CURSE{args.slot}.D64")
     save0, report = build(folder, args.slot, disks, out)
     party = dos_codec.read_party(folder, args.slot)
     print(f"Slot {args.slot}: {len(party)} characters -- "

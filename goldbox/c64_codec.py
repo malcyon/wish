@@ -275,7 +275,7 @@ POOL_OF_RADIANCE_RECORD = C64Deltas(
 #: $7C65,X / STA $7C14,X`, so `0x065`-`0x070` is the array the engine works
 #: in and clamps against the racial minimum and maximum, and `0x014`-`0x01F`
 #: is a copy of it.  All six records of the engine-written Curse save in
-#: `work/issue32/specimens/` hold the two blocks byte for byte identical.
+#: `issue32/specimens/` (scratch, deleted) hold the two blocks byte for byte identical.
 #:
 #: **The spell-slot array is the drop.** `0x0EE`-`0x0F3` has 32 code
 #: references in Pool of Radiance and **none** in Curse across 411 files, and

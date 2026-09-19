@@ -4,7 +4,7 @@
 that carries code. On 2026-09-16 the orchestrator pushed eighteen times and
 launched `test-runner` once, and the batch closing `#89` turned `main` red
 on a test neither the builder nor the reviewer had run. The hook is that
-sentence's enforcement: `test-runner` writes `work/testrun/<sha>.green`
+sentence's enforcement: `tools/suiterun.py` writes `~/.cache/wish/testrun/<sha>.green`
 after a green run, and a push without one stops here rather than on CI.
 """
 import importlib.util
@@ -62,8 +62,18 @@ def commit(work, name, text="x\n"):
     return git(work, "rev-parse", "HEAD")
 
 
+@pytest.fixture(autouse=True)
+def home(tmp_path, monkeypatch):
+    """A home of its own, so no test reads or writes the real `~/.cache/wish`."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    return home
+
+
 def mark(work, sha):
-    d = work / "work" / "testrun"
+    d = pathlib.Path(_module().marker_dir())
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{sha}.green").write_text("1 passed\n")
 
@@ -214,18 +224,27 @@ def test_the_hook_is_registered_on_bash_in_both_harnesses():
 def test_the_test_runner_is_told_to_write_the_marker():
     root = pathlib.Path(__file__).resolve().parents[1]
     text = (root / ".claude" / "agents" / "test-runner.md").read_text()
-    assert "work/testrun/" in text
+    assert "testrun/" in text
     assert ".green" in text
 
 
+def test_the_hook_and_suiterun_read_and_write_one_directory(home):
+    """The hook cannot import `tools.scratch`, so it computes the path itself."""
+    from tools import scratch, suiterun
+    assert pathlib.Path(_module().marker_dir()) == scratch.cache_dir("testrun")
+    assert suiterun.marker_dir() == scratch.cache_dir("testrun")
+    assert scratch.cache_dir("testrun") == home / ".cache" / "wish" / "testrun"
+
+
 @pytest.mark.skipif(WINDOWS, reason="/usr/bin/python3 does not exist on Windows")
-def test_the_hook_runs_under_the_system_interpreter(clone):
+def test_the_hook_runs_under_the_system_interpreter(clone, home):
     """The harness runs it, not `.venv`, so it must be standard library only."""
     sha = commit(clone, "mod.py")
     payload = {"tool_name": "Bash", "cwd": str(clone),
                "tool_input": {"command": "git push"}}
     done = subprocess.run(["/usr/bin/python3", str(HOOK)],
                           input=json.dumps(payload), capture_output=True,
+                          env={**os.environ, "HOME": str(home)},
                           text=True, timeout=60)
     assert done.returncode == 2, done.stderr
     assert sha in done.stderr

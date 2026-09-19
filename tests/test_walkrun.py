@@ -102,7 +102,7 @@ def disks(tmp_path):
 def args(tmp_path, monkeypatch, disks):
     """A minimal, valid command line: a real (empty) base save and an
     isolated walks directory, so nothing is written under the real
-    `work/drive/walks/`."""
+    walks directory."""
     base = tmp_path / "base.d64"
     base.write_bytes(b"\x00")
     monkeypatch.setattr(walkrun, "WALKS", str(tmp_path / "walks"))

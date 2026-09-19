@@ -100,8 +100,7 @@ needs_disks = pytest.mark.skipif(disk_dir() is None,
 # Curse of the Azure Bonds shares this project's decoders (docs/116). The tests
 # that check it must not break when the disks are absent, and must not read
 # anything out of the repository, so they look for the disks the same way the
-# Pool of Radiance ones are found -- with `work/` added, because `AGENTS.md`
-# already names that as where disk images belong.
+# Pool of Radiance ones are found.
 
 CURSE_ENV = "COAB_DISKS"
 CURSE_KEY = "curse-of-the-azure-bonds"
@@ -242,7 +241,7 @@ def curse_file(name: str, engine_only: bool = True) -> bytes:
     reports 0 blocks and reads back 582 bytes from an intact chain. The same
     defect hides a whole title -- every file on all six Death Knights of Krynn
     sides reports 0, because that release's directory was rewritten by the
-    cracker (`work/reports/goldbox-inventory.md`). The chain is the file; the
+    cracker (a write-up kept in scratch, deleted). The chain is the file; the
     count is a claim about it.
     """
     encoded = name.encode() if isinstance(name, str) else name
@@ -715,7 +714,7 @@ def game_disk(stem: str = "POOL1"):
     and `load_item_templates` take a path. Prefer `game_file` where a payload
     will do; this is for the rest.
 
-    Several tests used to hardcode `work/POOL1.D64.orig` or an absolute path on
+    Several tests used to hardcode a path under a scratch directory or an absolute path on
     somebody's machine. Both are invisible on CI, and one of them named a
     directory that no longer exists anywhere.
     """

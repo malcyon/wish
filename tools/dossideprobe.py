@@ -25,7 +25,7 @@ engine did to the side-1 character is on film as well as in the resave.
 
 Nothing is written to the archives: `Session.stage` copies the game tree
 into the instance's own work directory and that copy is what is tampered
-with.  Frames and the report go under `work/issue235/<label>/`.
+with.  Frames and the report go under `<label>/` in this tool's scratch directory.
 """
 
 from __future__ import annotations
@@ -41,10 +41,10 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_port as dl  # noqa: E402
-from tools import dosbox  # noqa: E402
+from tools import dosbox, scratch  # noqa: E402
 from tools.dosquickprobe import LADDER, walk_to_encounter  # noqa: E402
 
-OUT = REPO / "work" / "issue235"
+OUT = scratch.scratch_dir("dossideprobe")
 
 FIELD = "field_10c_10f"
 SIDE = 2        # 0x10E within the four-byte field
@@ -187,7 +187,7 @@ def main(argv=None) -> int:
     ap.add_argument("--source", default="J", help="save slot to load (J)")
     ap.add_argument("--resave", default="D", help="slot to write back to (D)")
     ap.add_argument("--label", default="side-fight",
-                    help="output subdirectory under work/issue235")
+                    help="output subdirectory of this tool's scratch directory")
     ap.add_argument("--presses", type=int, default=60,
                     help="forward presses to spend looking for a fight")
     ap.add_argument("--budget", type=float, default=300.0,

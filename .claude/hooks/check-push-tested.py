@@ -12,7 +12,7 @@ and the full suite was the step that was skipped.
 
 So, like `check-context-handoff.py`, this makes the rule mechanical. A
 `PreToolUse` hook on Bash: when the command is a `git push`, it looks for a
-marker `work/testrun/<sha>.green`, which `test-runner` writes after
+marker `~/.cache/wish/testrun/<sha>.green`, which `test-runner` writes after
 `pytest`, `ruff` and `genui.py --check` all pass at that commit. The push is
 allowed when:
 
@@ -44,7 +44,21 @@ import shlex
 import subprocess
 import sys
 
-MARKER_DIR = os.path.join("work", "testrun")
+#: How the message names the marker directory. Not where it is looked for: see
+#: `marker_dir`.
+MARKER_DIR = "~/.cache/wish/testrun"
+
+
+def marker_dir() -> str:
+    """Where `tools/suiterun.py` writes a green marker: `scratch.cache_dir("testrun")`.
+
+    Computed here rather than imported because the harness runs this hook under
+    the system interpreter from whatever directory the command was in, with the
+    repository on no path, and a marker directory that lived in the repository
+    is what this replaced. `tests/test_check_push_tested.py` fails if the two
+    stop agreeing. Looked up at call time so a changed `$HOME` is honoured.
+    """
+    return os.path.join(os.path.expanduser("~"), ".cache", "wish", "testrun")
 
 #: Heredoc bodies are data being written to a file, not commands being run,
 #: and this project's documents quote `git push` constantly.
@@ -184,9 +198,9 @@ def changed_paths(cwd: str, base: str) -> list[str] | None:
     return [p for p in out.splitlines() if p.strip()]
 
 
-def markers(root: str) -> list[str]:
+def markers() -> list[str]:
     """Recorded green shas, newest first."""
-    path = os.path.join(root, MARKER_DIR)
+    path = marker_dir()
     try:
         names = [n for n in os.listdir(path) if n.endswith(".green")]
     except OSError:
@@ -202,7 +216,7 @@ def verdict(cwd: str) -> str | None:
     head = _git(cwd, "rev-parse", "HEAD")
     if not root or not head:
         return None
-    recorded = markers(root)
+    recorded = markers()
     if head in recorded:
         return None
     for sha in recorded[:MARKERS_CHECKED]:

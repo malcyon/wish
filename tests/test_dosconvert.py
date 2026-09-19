@@ -1074,7 +1074,7 @@ def test_the_quest_flags_narrow_to_bytes():
 
 @needs_dos_saves
 def test_the_sokal_keep_flags_are_set_together_or_not_at_all():
-    """`work/reports/quest-flags.md` names six ECL15 flags that a party which
+    """`reports/quest-flags.md` (scratch, deleted) named six ECL15 flags that a party which
     has taken the keep sets to 255. A base off by one would straddle them."""
     addresses = (0x4A21, 0x4A26, 0x4A27, 0x4A28, 0x4A29, 0x4AD7)
     states = set()
@@ -1402,7 +1402,7 @@ def test_a_training_hall_save_converts_into_the_hall_on_new_phlans_map():
 
 
 def _outdoor_savgam(script: int = 26) -> bytes:
-    """An overland save in the measured shape of `work/p59-outdoor`'s three:
+    """An overland save in the measured shape of `p59-outdoor`'s three (scratch, deleted):
     `$49E6` = 0, `$49C5` = 0, the area id in `$49F2` alone, the square in
     `$49C3`/`$49C4`, and the stale indoor square left in 12801-12803.
 
@@ -1591,10 +1591,10 @@ def test_a_clock_digit_too_large_for_its_field_is_reported():
 def test_the_converted_party_marches_in_the_dos_order():
     """The C64 lists the party from the highest slot down (#101).
 
-    `ENCAMP > ALTER > ORDER` in `work/p3/W1.D64` -- an engine-written save
+    `ENCAMP > ALTER > ORDER` in `p3/W1.D64` (scratch, deleted) -- an engine-written save
     whose slots 0-5 are MALCYON, LADY KATHERINE, ROLAND, SILAS, MAGNUS,
     BRUTUS -- asks `WHO TAKES POSITION #1?` over a list headed by BRUTUS, and
-    the main panel lists the same six in the same order (`work/p102/order2.log`).
+    the main panel lists the same six in the same order (`p102/order2.log`, scratch, deleted).
     So DOS position 0 belongs in the highest slot, and writing it into slot 0
     put the DOS party's front-rank fighter at the back.
     """
@@ -2478,7 +2478,7 @@ def test_an_outdoor_dos_save_builds_a_whole_c64_save(tmp_path):
     the first is SAVEDGAME0 $49C0`.
 
     Zero is what the game's own ENCAMP > SAVE writes there outdoors
-    (`work/p3/W4.D64`-`W7.D64`), which is what `DUNGEON_SQUARE` records.
+    (`p3/W4.D64`-`W7.D64`, scratch, deleted), which is what `DUNGEON_SQUARE` records.
     """
     icon, animate = _game_files()
     folder = _outdoor_folder(tmp_path)

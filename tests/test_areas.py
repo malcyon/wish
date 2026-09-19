@@ -200,7 +200,7 @@ def test_every_row_carries_a_confidence():
 def test_arrival_squares_where_they_are_known():
     known = {a.id: a.arrival for a in areas.AREAS if a.arrival}
     # Sixteen: fifteen harvested from the scripts, and Sokol Keep's, which P20
-    # found in `ECL15`'s own bytecode -- `work/reports/p20-arrivals.md`.
+    # found in `ECL15`'s own bytecode -- `reports/p20-arrivals.md` in scratch, deleted.
     assert len(known) == 16
     assert known[21] == Arrival(8, 14, 0)
     assert known[0] == Arrival(15, 1, 3)
@@ -407,9 +407,9 @@ def scripts() -> dict[int, pathlib.Path]:
         # `test_a_mapless_area_really_issues_no_loadfiles` checks for, and
         # neither of the two dynamic areas' `[$6Exx]`-addressed `LOADFILES`
         # is in the reached text either -- so it cannot regenerate this file
-        # honestly. A full linear ECL disassembler would; `work/analysis6/ecl6.py`
-        # was one, reaching 100% of every byte, and was lost with `work/`
-        # (#137). Rebuilding it is not this file's call to make: Donald closed
+        # honestly. A full linear ECL disassembler would; `analysis6/ecl6.py`
+        # was one, reaching 100% of every byte, and was lost with the scratch
+        # directory (#137). Rebuilding it is not this file's call to make: Donald closed
         # that whole effort on 2026-08-31, at his own direction --
         # `docs/115-review-the-scripts.md` -- "I don't need to see the ECL
         # scripts. If I decide I want to see them, we can approach the issue
@@ -656,7 +656,7 @@ def test_area_forty_has_two_candidate_squares_so_it_gets_none(ssb_table):
 
 #: The twenty-one Silver Blades areas a party has been **fast-travelled into**
 #: on a running machine, with the landing measured -- `#20 (Build an area
-#: table for Silver Blades)`, `work/issue20/land1`-`land9`. `$11` is not in
+#: table for Silver Blades)`, `cited/20/land1`-`land9`. `$11` is not in
 #: the set because nothing warps there: it is where a loaded party starts, and
 #: was read where it stood. A row outside both must not claim CONFIRMED.
 SILVER_BLADES_WARPED_INTO = {
@@ -1062,7 +1062,7 @@ def test_the_silver_blades_ids_are_sparse_and_must_not_be_enumerated():
 # -- the same reading, run against Pool of Radiance as a control -------------
 #
 # The five tests above that check `AREAS` against the scripts have skipped
-# since the `ecl-scripts` directory was lost with the rest of `work/` (#137). These
+# since the `ecl-scripts` directory was lost with the rest of the scratch directory (#137). These
 # three ask the same questions of the disks directly, through the reader that
 # built the Silver Blades table -- so the Silver Blades rows are not the only
 # thing that reader has ever been believed about.
