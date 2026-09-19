@@ -187,10 +187,6 @@ def _u16(data: bytes, at: int) -> int:
     return struct.unpack_from("<H", data, at)[0]
 
 
-def _experience(record: bytes) -> int:
-    return int.from_bytes(record[EXPERIENCE:EXPERIENCE + 3], "little")
-
-
 needs_dos_saves = pytest.mark.skipif(
     _save_dir() is None, reason="needs a DOS save; set FR_ARCHIVES")
 
@@ -719,43 +715,6 @@ def test_the_dos_record_is_little_endian():
         assert little in (2500, 3000, 4000, 5000), (filename, little)
         absurd += big >= 1_000_000
     assert absurd == 5, "five experience values the trainer wrote itself"
-
-
-@pytest.mark.skip(reason="no clean specimen holds two saves of one party "
-                         "with experience earned between them (#246)")
-@needs_dos_saves
-def test_experience_rises_between_the_two_saves_of_one_party():
-    """Slot B is the earlier save of the same six characters, and Gold Box
-    splits experience evenly -- so all six gained the same amount.
-
-    **Skipped rather than moved, and the reason is the point.** The only
-    corpus this has ever run against is the archives' A and B slots, which
-    Gold Box Companion had open on 2026-08-17; all six characters there
-    gained exactly 2337, which is equally the shape of a party that fought
-    together and the shape of one edit applied to six records. `#246 (Nothing
-    tells an engine-written DOS record from one edited with Gold Box
-    Companion, and conclusions already rest on edited ones)` found nothing
-    else on this machine that supports it.
-
-    The `#249` party cannot replace it yet: its slot C and slot E saves
-    bracket the New Phlan tour, which awards nothing, so both hold experience
-    0. What would settle it is two saves of that party with one driven fight
-    between them, added to the specimen tree, and this test re-pointed at
-    them.
-    """
-    where = _save_dir()
-    gains = []
-    for n in range(1, 7):
-        early = where / f"CHRDATB{n}.SAV"
-        late = where / f"CHRDATA{n}.SAV"
-        if not (early.exists() and late.exists()):
-            pytest.skip("needs both the A and B slots of one party")
-        a, b = late.read_bytes(), early.read_bytes()
-        if _name(a) != _name(b):
-            pytest.skip("the A and B slots hold different parties")
-        gains.append(_experience(a) - _experience(b))
-    assert all(gain >= 0 for gain in gains), gains
-    assert len(set(gains)) == 1, gains
 
 
 # --- the saved game -----------------------------------------------------------
