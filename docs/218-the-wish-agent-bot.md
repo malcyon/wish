@@ -60,7 +60,8 @@ three ways on 2026-09-11 against a scratch issue:
 Labelling and closing a locked issue both return `200`, so it is the comment
 path specifically. `Contents: write` was granted to test the theory that
 GitHub's lock check is a push check, and it is not: that grant changed nothing
-for comments. It is kept for a different reason, below.
+for comments, and it was revoked. It was granted again on 2026-09-18 for a
+different reason, below: the App pushes.
 
 The bot **can** unlock its own issue, comment, and re-lock -- all three return
 `204`/`201` with `issues: write` alone, in a window of about 2.3 seconds. That
@@ -149,7 +150,7 @@ is therefore somebody outside the project, which is what `human` should mark.
 | Private key | `~/.config/wish-agent/private-key.pem`, mode `0600`, directory `0700`. Never in this repository; `*.pem` is gitignored as a second line of defence |
 | App ID, installation ID | `~/.config/wish-agent/config.json`, or `$WISH_AGENT_APP_ID` / `$WISH_AGENT_INSTALLATION_ID`. Neither is a secret — both are integers that appear in GitHub URLs |
 | Installed on | `malcyon/wish` only — *Only select repositories*, not *All repositories* |
-| Permissions | `Issues: Read & write`, `Contents: Read & write`, `Workflows: Read & write`, `Metadata: Read-only`, `Actions: Read-only`. Contents and Workflows are what let the App push -- a push touching `.github/workflows/` is refused without Workflows |
+| Permissions | `Issues: Read & write`, `Contents: Read & write` (revoked once, and re-granted and approved on 2026-09-18), `Workflows: Read & write`, `Metadata: Read-only`, `Actions: Read-only`. Contents and Workflows are what let the App push -- a push touching `.github/workflows/` is refused without Workflows |
 | Token lifetime | One hour. An issues token is cached in the process only; a push token is minted on every call and cached nowhere. This tool writes neither to a file |
 
 Tokens are narrowed further at mint time, and there are two modes. The issues
