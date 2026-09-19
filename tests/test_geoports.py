@@ -6,7 +6,7 @@ are, and -- the part a player would feel -- that `ResidentGeo` still names the
 area when the maps it is holding came off the other port's disks.
 
 **No map is in this repository.** Every byte here is read at run time off the
-player's own disks by `tools/geoports.py`, and every test skips when they are
+player's own disks by `tools/records/geoports.py`, and every test skips when they are
 not on the machine. That means a bare checkout proves less; `AGENTS.md` makes
 that trade deliberately.
 
@@ -34,7 +34,7 @@ from goldbox.geo import (
     WALLS_SOUTH_WEST,
     Geo,
 )
-from tools import geoports
+from tools.records import geoports
 
 #: The three Curse areas the C64 disks disagree with the other two ports about,
 #: and the offsets of the two bytes in each.

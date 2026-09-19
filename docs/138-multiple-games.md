@@ -312,7 +312,7 @@ across ≥ 4.0 of the both-walled edges. Measured on 2026-09-08 against 65383
 blocks at 64-byte steps — every 1024-byte window of every non-`GEO` file on the
 Pool of Radiance, Curse and Silver Blades C64 disks and the Curse and Silver
 Blades Amiga disks — it admits **none**, and it admits **95 of the 95 real
-maps**. `tools/geoplausible.py` re-takes both corpora and
+maps**. `tools/records/geoplausible.py` re-takes both corpora and
 `tests/test_wronggame.py` pins both directions off the player's own disks.
 
 It used to be three clauses, the third asking that half the walled edges agree

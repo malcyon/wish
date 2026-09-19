@@ -4,7 +4,7 @@
 `money + sum(item weight x quantity)` is the identity this project checks a DOS
 record with, and `#323 (The encumbrance identity does not survive the training
 fee, so failing it is not evidence of an edited record)` asked *when* the engine
-makes that true.  `tools/enccensus.py` answers it from records and
+makes that true.  `tools/records/enccensus.py` answers it from records and
 `tools/dos/dosencsave.py` from a driven boot; this answers it from the shipped
 binaries, which no edited save can poison.
 
@@ -347,7 +347,7 @@ def money_writers(found: dict, which: str = "coins") -> dict[int, list[int]]:
 def bag_rows() -> tuple[list[dict], dict[str, int]]:
     """Records holding an item named `HOLDING`, and the sample it came from.
 
-    Walks the same roots `tools/enccensus.py` walks, with the same exclusions,
+    Walks the same roots `tools/records/enccensus.py` walks, with the same exclusions,
     so "no record has one" is a statement about the corpus that census
     reports on rather than about some other set of files.  **It does not
     deduplicate**: a nil result wants the widest sample, and a record found
@@ -378,8 +378,8 @@ def bag_rows() -> tuple[list[dict], dict[str, int]]:
 def _dos_characters():
     """`(path, character)` for every DOS record `enccensus` would count."""
     from goldbox import dos_codec as gdos  # noqa: PLC0415
-    from tools import enccensus  # noqa: PLC0415
     from tools.dos import dostailcensus  # noqa: PLC0415
+    from tools.records import enccensus  # noqa: PLC0415
     for root in enccensus.dos_roots():
         if not root.exists():
             continue

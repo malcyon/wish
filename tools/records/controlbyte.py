@@ -13,10 +13,10 @@ the conversion's question is not what the byte means but what value a
 converted companion should be given -- `#303 (The DOS record may hold the NPC
 flag that the conversion reports as having nowhere to go)`.
 
-    tools/controlbyte.py                     both ports
-    tools/controlbyte.py --c64
-    tools/controlbyte.py --dos
-    tools/controlbyte.py --disk some.d64     one more C64 image, e.g. a
+    tools/records/controlbyte.py                     both ports
+    tools/records/controlbyte.py --c64
+    tools/records/controlbyte.py --dos
+    tools/records/controlbyte.py --disk some.d64     one more C64 image, e.g. a
                                              save with companions in it
 
 **Provenance is the whole caution and it is printed on every run.**  A save
@@ -38,7 +38,7 @@ import collections
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402

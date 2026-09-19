@@ -94,7 +94,7 @@ UNMEASURED.
 
 ## The census -- CONFIRMED
 
-`tools/classcodecensus.py` compares the code with the classes the character
+`tools/records/classcodecensus.py` compares the code with the classes the character
 holds **levels** in, which is the reading that catches both kinds of
 disagreement -- a code that is stale and a level array that names a class the
 code does not. One thing it had to get right first, and it was this project's
@@ -232,7 +232,7 @@ unedited export of `WISH-SPEC-curse-trained-party` imports with no changes.
 
 ## Where the numbers came from
 
-* `tools/classcodecensus.py` -- the census above, and it prints the mask it
+* `tools/records/classcodecensus.py` -- the census above, and it prints the mask it
   derived beside the mask the record stores.
 * `tools/c64/d6502.py cited/18/GEN.bin 0800 1930 25` -- the routine.
 * `tools/dos/dosfieldrefs.py <Curse GAME.OVR> --offset 0x075` -- 51 sites in the

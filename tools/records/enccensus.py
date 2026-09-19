@@ -28,11 +28,11 @@ the rule file rests on, and asks it of the whole machine:
 
 Three modes:
 
-    tools/enccensus.py                    the census, every port
-    tools/enccensus.py --stacks           every item stack whose cached
+    tools/records/enccensus.py                    the census, every port
+    tools/records/enccensus.py --stacks           every item stack whose cached
                                           display line disagrees with its
                                           quantity byte
-    tools/enccensus.py --pair A B         two save directories, per character:
+    tools/records/enccensus.py --pair A B         two save directories, per character:
                                           money, stored encumbrance and the
                                           delta on each side
 
@@ -52,7 +52,7 @@ import pathlib
 import sys
 from dataclasses import dataclass, field
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import amiga_later, amiga_por, amiga_port, amiga_savegame  # noqa: E402
@@ -270,7 +270,7 @@ def _amiga_later_characters(data: bytes, what: str, label: str):
     each shape in turn: the signature `party_in_savegame` scans for sits at
     the same offsets in both titles, so a Silver Blades save handed the Curse
     shape yields six characters read through the wrong table -- plausible
-    rubbish rather than an error.  Copied from `tools/spellbookcensus.py`.
+    rubbish rather than an error.  Copied from `tools/records/spellbookcensus.py`.
     """
     if what == "record":
         shape = amiga_port.AMIGA_DELTAS_BY_SIZE.get(len(data))

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Diff the same Gold Box map between the ports that shipped it (#443).
 
-`tools/geoplausible.py maps` counts how many of the maps on this machine are
+`tools/records/geoplausible.py maps` counts how many of the maps on this machine are
 distinct and reports that three of Curse of the Azure Bonds' sixteen are not
 byte-identical between the C64 disks and the Amiga disks, while all seventeen
 of Secret of the Silver Blades' are. It does not say **which** three, or what
 changed in them. This does.
 
-    tools/geoports.py diff        every title, every port pairing, and the
+    tools/records/geoports.py diff        every title, every port pairing, and the
                                   decoded meaning of each differing byte
-    tools/geoports.py closest     the distance measurements `NEAR_ENOUGH` in
+    tools/records/geoports.py closest     the distance measurements `NEAR_ENOUGH` in
                                   `automap/area.py` rests on
-    tools/geoports.py blocks      every DOS `GEO<n>.DAX` block in the archives,
+    tools/records/geoports.py blocks      every DOS `GEO<n>.DAX` block in the archives,
                                   its leading word and how it scores as a map
 
 **Three ports, not two.** The C64 keeps one `GEO<id>` PRG per area on its
@@ -28,7 +28,7 @@ id is 21 as well; all three are area `$15`, and everything here is keyed
 
 `_distance` and `looks_like_a_map` are imported from `automap.area` rather than
 reimplemented, so this tool cannot quietly disagree with the check it is
-measuring -- the same rule `tools/geoplausible.py` follows.
+measuring -- the same rule `tools/records/geoplausible.py` follows.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ import pathlib
 import statistics
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap.area import (  # noqa: E402
     NEAR_ENOUGH,
@@ -62,7 +62,7 @@ from goldbox.geo import (  # noqa: E402
     Geo,
 )
 from tools import gamedisks  # noqa: E402
-from tools.geoplausible import amiga_maps, c64_maps  # noqa: E402
+from tools.records.geoplausible import amiga_maps, c64_maps  # noqa: E402
 
 #: The three titles this project maps, and the directory name the DOS release
 #: installs each under. `--all-dos-titles` widens the DOS side to whatever else

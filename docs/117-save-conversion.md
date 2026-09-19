@@ -410,7 +410,7 @@ because our table says a title has fewer slots than the engine gives it)` sat
 unnoticed because the corpus could not find it, and the harness
 `#516 (Generate boundary characters and check every writer's field widths,
 since no real save reaches a limit and the corpus cannot find a wrong one)`
-built is what would have caught it on the first run.** `tools/boundarychars.py` builds
+built is what would have caught it on the first run.** `tools/records/boundarychars.py` builds
 four Pool of Radiance characters at the game's own reachable extremes — a
 half-elf cleric/magic-user memorising all 20 spells the title's own table
 allows, a fighter at the hit-point and ability ceiling, a thief with all eight

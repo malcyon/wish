@@ -8,7 +8,7 @@ Every conversion test elsewhere in this project runs against records that
 exist, which cannot find a width that is wrong until a real save happens to
 reach it -- `#508 (A converted magic-user loses memorised spells on the way
 to DOS, because our table says a title has fewer slots than the engine gives
-it)` sat unnoticed for exactly that reason.  `tools/boundarychars.py` builds
+it)` sat unnoticed for exactly that reason.  `tools/records/boundarychars.py` builds
 four Pool of Radiance characters at the game's own reachable extremes; this
 module runs every one of them through `goldbox.dos_codec.write` and checks
 the writer came back whole (A), that the generator itself has not missed a
@@ -23,7 +23,7 @@ import pytest
 from test_doswriter import _portrait_tables
 
 from goldbox import dos_codec, dos_port
-from tools import boundarychars
+from tools.records import boundarychars
 
 CASES = boundarychars.CASES
 
@@ -120,7 +120,7 @@ def test_a_boundary_character_writes_and_reads_back_whole(name, caplog):
 def test_b_every_active_field_has_a_boundary_value():
     """The hook into `field_disposition()`: a field added to
     `goldbox/neutral.py` and wired into the writer has no value in
-    `tools.boundarychars._base()` until somebody says what its extreme is,
+    `tools.records.boundarychars._base()` until somebody says what its extreme is,
     and this fails until they do."""
     base = boundarychars._base()
     missing = set(_active_fields()) - set(base.keys())

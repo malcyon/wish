@@ -91,7 +91,7 @@ def test_an_unmeasured_title_is_refused_by_its_own_row(key):
     `container_for` short-circuits on anything that is already a container,
     and after the merge Champions of Krynn *is* one -- so without the
     `measured` check it would hand back a row whose every header offset is
-    Pool of Radiance's by default.  `tools/carryceiling.py` counts on this
+    Pool of Radiance's by default.  `tools/records/carryceiling.py` counts on this
     raise to say a title was not counted.
     """
     row = c64_port.BY_KEY[key]

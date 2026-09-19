@@ -565,7 +565,7 @@ def test_repair_closes_the_entry_and_changes_exactly_two_bytes(tree, tmp_path):
 def test_repair_records_the_edit_in_the_provenance(tree, tmp_path):
     """An honest `edited_afterwards`, the new hash, and a note saying where
     the unrepaired bytes still are -- the cost Donald accepted, written down
-    where `tools/carryceiling.py` reads it."""
+    where `tools/records/carryceiling.py` reads it."""
     dest = _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
     note = "Repaired 2026-09-08; unrepaired bytes in wish-specimens-...tar.gz"
     specimens.repair_unloadable("curse-left-open", note=note, root=tree)

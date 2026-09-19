@@ -118,7 +118,7 @@ class _NoClassCode(int):
     not. Subclassing `int` rather than returning something else keeps
     `_char_class_shown` comparing equal to a simple `int` of the same value
     for every caller that only asks what the code is (`tests/test_dualclasscombo.py`,
-    `tools/classcombocheck.py`); only `_populate`, which decides *how* to
+    `tools/records/classcombocheck.py`); only `_populate`, which decides *how* to
     show it, tells the two apart.
 
     `label` carries what the record's own classes actually are, already

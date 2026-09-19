@@ -1,4 +1,4 @@
-"""`tools/fieldcensus.py`, the parts that do not need a disk.
+"""`tools/records/fieldcensus.py`, the parts that do not need a disk.
 
 The tool's own answers are measurements and need the player's disks, so what
 is pinned here is the one thing that made an earlier version of the same
@@ -12,7 +12,7 @@ prefix went in.
 
 import pytest
 
-from tools import fieldcensus
+from tools.records import fieldcensus
 
 
 def test_the_c64_sweep_picks_specimen_disks_by_title_not_by_directory():

@@ -660,7 +660,7 @@ races: DAX, a halfling thief 1, holds `35 30 30 30 15 -5 80 -5`, the displaced
 row exactly including both negatives stored as `$FB`, and NYX, a gnome thief 1,
 holds the displaced gnome row. 27 of 27 engine-written C64 records on this
 machine reproduce as level row plus racial row. CONFIRMED from the table's
-bytes and the routine that adds them; `tools/thiefskillcensus.py`.
+bytes and the routine that adds them; `tools/records/thiefskillcensus.py`.
 
 **Where it would have cost something, and no longer does.** Converting a save
 between the two ports used to carry one port's stored percentages across to

@@ -31,7 +31,7 @@ first read of the local.
 `tools/c64/d6502.py` and `tools/dos/dosdis16.py` both carry.  What makes this one
 sound is that the three matches sit inside three routines of identical shape,
 each reading three tables at displacements 0x60 and 0x73 apart -- the same
-geometry `tools/thiefskillcensus.py` reads the tables at -- and each storing
+geometry `tools/records/thiefskillcensus.py` reads the tables at -- and each storing
 eight bytes into the record offset this project has already attributed.
 `tools/dos/dosdis16.py --game CURSE --file GAME.OVR --at 0x3b74a` prints the
 routine itself.
@@ -50,7 +50,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import dos_codec  # noqa: E402
-from tools import thiefskillcensus as census  # noqa: E402
+from tools.records import thiefskillcensus as census  # noqa: E402
 
 #: `push bp / mov bp, sp / sub sp, imm8` -- a Borland C far function's prologue.
 PROLOGUE = re.compile(rb"\x55\x89\xe5\x83\xec.", re.S)

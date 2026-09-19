@@ -117,7 +117,7 @@ UNKNOWN = "unknown"
 #: the collision wants solving before the title arrives rather than after.
 #: Treasures of the Savage Frontier is the next nearest at 99, which is
 #: outside 64 and would not move this at all.
-#: `tools/geoports.py closest` prints all three bounds and exits non-zero when
+#: `tools/records/geoports.py closest` prints all three bounds and exits non-zero when
 #: any is violated.
 NEAR_ENOUGH = 32
 
@@ -135,7 +135,7 @@ NEAR_ENOUGH = 32
 #   `/SAVE/spindisk` is a library of all sixteen Curse maps and a sweep that
 #   goes by filename reads slices of it as false alarms.
 #
-# `tools/geoplausible.py` re-takes both.
+# `tools/records/geoplausible.py` re-takes both.
 #
 # 144 of the 65383 reach 0.90 reciprocity with 20 walled edges, which is as far
 # as anything that is not a map gets. Across the four quantities:
@@ -149,7 +149,7 @@ NEAR_ENOUGH = 32
 #
 # All four together admit **95 of 95** maps and **none** of the 65383.
 #
-# `tools/geoplausible.py thresholds` prints, for each of the four, the worst
+# `tools/records/geoplausible.py thresholds` prints, for each of the four, the worst
 # real map beside the best non-map that clears the *other* three -- which is
 # the number the threshold has to hold off on its own, and the only honest way
 # to state a margin.
@@ -177,7 +177,7 @@ NEAR_ENOUGH = 32
 #   wall-art pairs the way a map does. What the four clauses separate is a Gold
 #   Box map from the rest of a Gold Box disk, which is what `ResidentGeo` asks
 #   them, and not a map from anything whatever.
-#   `tools/geoplausible.py sweep --include-other-games` re-takes it.
+#   `tools/records/geoplausible.py sweep --include-other-games` re-takes it.
 #
 # And one thing the sweep cannot exclude: a raw disk image holds
 # **sector-shifted fragments** of the maps on it, and a 64-byte run of a map is
@@ -239,7 +239,7 @@ def _distance(a: bytes, b: bytes) -> int:
 class MapEvidence:
     """The four numbers `looks_like_a_map` decides on, so a tool can print them.
 
-    `tools/geoplausible.py` is the tool, and it imports this rather than
+    `tools/records/geoplausible.py` is the tool, and it imports this rather than
     recomputing the quantities -- a measurement taken beside the code it
     justifies is a measurement that can disagree with it.
     """

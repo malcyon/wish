@@ -461,7 +461,7 @@ _LEVEL_ORDER = ("level_magic_user", "level_cleric", "level_thief",
 #: $6B00,Y` at `$094F`) and `CURSE_A.D64:GEN` (`$0C4B`, read at `$0C11`,
 #: written to `$7CD5` at `$0C14`) -- both titles ship the same seven values:
 #: dwarf 6, elf 6, gnome 6, half-elf 6, **halfling 3**, half-orc 6, human 0.
-#: `tools/infravision.py table` reads and disassembles both off the player's
+#: `tools/records/infravision.py table` reads and disassembles both off the player's
 #: own disks; `#392 (A converted halfling gets sixty feet of infravision,
 #: where the C64's own generator gives him thirty)` is where the halfling's
 #: was found wrong -- it had been 6 on the AD&D 1st-edition argument that
@@ -1061,7 +1061,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # A source that does keep it agrees with the derivation anyway: 187 of 187
     # engine-written C64 player records on this machine hold exactly what the
     # levels give, the 23 that do not being ones this converter wrote.
-    # `tools/turncensus.py` is that census.
+    # `tools/records/turncensus.py` is that census.
     rep.note(0x0A3, 1, "turn_class: zero -- no player character is undead")
     use("turn_power")           # consumed here, by rule rather than by copy
     turning = derive.turn_power(char.game, w.get("levels") or {})

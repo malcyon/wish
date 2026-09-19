@@ -171,7 +171,7 @@ the three windows; answer `(index, distance)` or None. Two clauses, both
 measured: every byte below 120 (the grid's own invariant, 0 of 1944 violate
 it) and distance at most `SITE_PAINT_TOLERANCE`, set from the measurements
 above -- 16 leaves a factor of thirty under the 532-byte spread between
-windows and the 554-byte closest impostor. Add `tools/geoplausible.py`-style
+windows and the 554-byte closest impostor. Add `tools/records/geoplausible.py`-style
 `worldplausible` reporting to `worldtiles.py` or its own tool so the numbers
 are re-takeable. *Test:* each disk window identifies itself at 0; each with
 its `PAINTED` squares altered still identifies; a page of zeroes and a real

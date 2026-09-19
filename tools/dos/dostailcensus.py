@@ -33,7 +33,7 @@ What it does, and it reads only:
    archives are a download and every record under the played game directory
    has been through Gold Box Companion's editor, so both are an *input* rather
    than evidence (`.claude/rules/testing.md`).  Only the specimen tree says
-   who wrote each file, and `tools/dos/innateids.py` and `tools/enccensus.py`
+   who wrote each file, and `tools/dos/innateids.py` and `tools/records/enccensus.py`
    print that finer grade.
 3. **Deduplicates on the record bytes**, per title, because the archives ship
    every save directory twice and carry a second copy of the played game

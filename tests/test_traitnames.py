@@ -1,4 +1,4 @@
-"""`tools/traitnames.py`'s own headline numbers, re-derived off Curse of the
+"""`tools/records/traitnames.py`'s own headline numbers, re-derived off Curse of the
 Azure Bonds' disks.
 
 `#561 (A Curse of the Azure Bonds character's traits are named from Pool of
@@ -18,7 +18,8 @@ from __future__ import annotations
 import pytest
 
 from goldbox import c64_port
-from tools import gamedisks, traitnames
+from tools import gamedisks
+from tools.records import traitnames
 
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 

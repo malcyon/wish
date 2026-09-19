@@ -1,4 +1,4 @@
-"""`tools/enccensus.py` counts an encumbrance failure only where there is one.
+"""`tools/records/enccensus.py` counts an encumbrance failure only where there is one.
 
 `#323 (The encumbrance identity does not survive the training fee, so failing
 it is not evidence of an edited record)`.  Two ways the census lied before
@@ -28,8 +28,8 @@ import pytest
 
 from goldbox import c64_codec, layout
 from goldbox import dos_port as dl
-from tools import enccensus
 from tools.dos import dostailcensus
+from tools.records import enccensus
 
 ENCUMBRANCE = dl.FIELDS_BY_NAME["encumbrance"].offset
 ITEM_COUNT = dl.FIELDS_BY_NAME["item_count"].offset

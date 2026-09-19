@@ -750,7 +750,7 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 #: gave those a table of its own. `#561 (A Curse of the Azure Bonds
 #: character's traits are named from Pool of Radiance's table, which
 #: disagrees with Curse's own data about eight codes)` is where the census
-#: -- `tools/traitnames.py curse-of-the-azure-bonds` and its `--monsters` and
+#: -- `tools/records/traitnames.py curse-of-the-azure-bonds` and its `--monsters` and
 #: `--records` flags -- read Curse's own `COMBAT2 +2732` spell table (100
 #: nine-byte records, byte 0 the effect code) and its 70 `MON*` templates
 #: against `NAMES`.

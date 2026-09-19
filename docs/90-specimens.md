@@ -1,7 +1,7 @@
 # Character specimens
 
 Every character record we have, with attributes known independently of the
-bytes. This is the reference set that `tools/compare.py` works from — the more
+bytes. This is the reference set that `tools/records/compare.py` works from — the more
 varied it is, the more fields can be identified by comparison alone.
 
 ## Donald's party — `PORSAVE.D64`

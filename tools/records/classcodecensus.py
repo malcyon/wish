@@ -10,9 +10,9 @@ they disagree draws the wrong word on the sheet after a conversion.
 This counts the disagreements, per port and per title, over every save and
 record it is pointed at.
 
-    tools/classcodecensus.py                       # the specimen tree
-    tools/classcodecensus.py --archives            # and the shipped archives
-    tools/classcodecensus.py --c64 ~/wish-specimens/por-c64
+    tools/records/classcodecensus.py                       # the specimen tree
+    tools/records/classcodecensus.py --archives            # and the shipped archives
+    tools/records/classcodecensus.py --c64 ~/wish-specimens/por-c64
 
 The bits-to-code table is **the game's own**, read out of Curse of the Azure
 Bonds' `GEN` at `$1951`: a 17-entry run indexed by the class code, holding the
@@ -33,7 +33,7 @@ import collections
 import pathlib
 import sys
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import c64_codec, dos_codec, dos_port, items  # noqa: E402

@@ -15,7 +15,7 @@ from gamedata import disk_dir
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import thiefskillcensus as census  # noqa: E402
+from tools.records import thiefskillcensus as census  # noqa: E402
 
 POOL = "pool-of-radiance"
 CURSE = "curse-of-the-azure-bonds"

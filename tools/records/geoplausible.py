@@ -14,10 +14,10 @@ A threshold set against a corpus nobody can re-take is a threshold that drifts.
 Silver Blades or the Amiga were in the project, and by 2026-09-08 it was
 throwing out 31 of the 95 maps on this machine.
 
-    tools/geoplausible.py maps          one row per map, every corpus found
-    tools/geoplausible.py sweep         every non-map window, and what reaches
+    tools/records/geoplausible.py maps          one row per map, every corpus found
+    tools/records/geoplausible.py sweep         every non-map window, and what reaches
                                         the gate
-    tools/geoplausible.py thresholds    the worst map and the best non-map for
+    tools/records/geoplausible.py thresholds    the worst map and the best non-map for
                                         each threshold, which is the number
                                         that justifies it
 
@@ -48,7 +48,7 @@ import pathlib
 import statistics
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap.area import (  # noqa: E402
     MAP_RECIPROCITY,

@@ -10,10 +10,10 @@ Pool of Radiance has not got. `#561` is Curse of the Azure Bonds' case;
 Two of the routes `docs/171-c64-trait-slots.md` grades are censuses of shipped
 data rather than reads of code, and this puts each one beside the table:
 
-    tools/traitnames.py curse-of-the-azure-bonds              # the spell table
-    tools/traitnames.py curse-of-the-azure-bonds --monsters   # the MON* records
-    tools/traitnames.py curse-of-the-azure-bonds --records    # one row a monster
-    tools/traitnames.py secret-of-the-silver-blades --monsters
+    tools/records/traitnames.py curse-of-the-azure-bonds              # the spell table
+    tools/records/traitnames.py curse-of-the-azure-bonds --monsters   # the MON* records
+    tools/records/traitnames.py curse-of-the-azure-bonds --records    # one row a monster
+    tools/records/traitnames.py secret-of-the-silver-blades --monsters
 
 **The spell audit** reads the per-spell record through
 `tools.c64.traitquery.spell_effects` -- `ECL65 +0` at seven bytes a record in Pool
@@ -53,7 +53,7 @@ import collections
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -150,7 +150,7 @@ def monster_blocks(title: str, given: str | None = None):
     """`{file: (name, the ten trait bytes)}` for every `MON<hex>` template.
 
     A `MON*` file is a PRG whose body is a character record at offset 0
-    (`tools/fieldcensus.py`'s `monsters` corpus reads the same files), so the
+    (`tools/records/fieldcensus.py`'s `monsters` corpus reads the same files), so the
     trait block is at `TRAIT_SLOTS` in the body with the load address off.
     The first copy of a name wins, since the same template ships on several
     sides.

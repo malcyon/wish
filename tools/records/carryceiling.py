@@ -23,11 +23,11 @@ Two ceilings, both in the C64 character record:
   read the two innate effect ids nobody has seen)`), so overflowing needs a
   dwarf or a gnome carrying seven or more effect-granting items readied.
 
-    tools/carryceiling.py                 the whole census
-    tools/carryceiling.py --items         the item census only
-    tools/carryceiling.py --grants        the effect-granting templates only
-    tools/carryceiling.py --census        the per-port census only
-    tools/carryceiling.py --json FILE     one JSON row per character found
+    tools/records/carryceiling.py                 the whole census
+    tools/records/carryceiling.py --items         the item census only
+    tools/records/carryceiling.py --grants        the effect-granting templates only
+    tools/records/carryceiling.py --census        the per-port census only
+    tools/records/carryceiling.py --json FILE     one JSON row per character found
 
 **What it counts and what it does not.**  It counts what is on the disks:
 item entries and trait bytes in a C64 saved game, `item_count` and `.SPC`
@@ -58,7 +58,7 @@ import json
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

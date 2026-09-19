@@ -12,7 +12,7 @@ Everything here reads the player's own files and skips without them.  The
 control is Pool of Radiance: the locator finds it by a completely different
 route -- the one block of plausible THAC0 bytes whose length is
 `class_levels` wide times the stride the engine multiplies by -- and has to
-land on the byte `tools/thac0census.py` finds by the class-bit anchor.
+land on the byte `tools/records/thac0census.py` finds by the class-bit anchor.
 
 The rows themselves are not asserted here.  What is asserted is what the
 issue turns on: **where the two ports disagree**, per title, against
@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import pytest
 
-from tools import thac0census
 from tools.c64 import laterthac0
+from tools.records import thac0census
 
 CURSE = "curse-of-the-azure-bonds"
 SSB = "secret-of-the-silver-blades"
@@ -70,7 +70,7 @@ def _located(title: str):
 def test_the_locator_lands_where_the_class_bit_anchor_does():
     """Pool of Radiance is the control, because both routes reach it.
 
-    `tools/thac0census.py` anchors on the class-bit run; this anchors on the
+    `tools/records/thac0census.py` anchors on the class-bit run; this anchors on the
     block's length and the paragraph boundary.  Two routes, one address.
     """
     found = _located(POOL)

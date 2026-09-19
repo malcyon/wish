@@ -316,12 +316,12 @@ def test_the_dos_thief_skill_tables_are_the_games_own():
     """`START.EXE`'s own racial and dexterity blocks (#431).
 
     Located by the C64's own 72 bytes of level table, the way
-    `tools/thiefskillcensus.py` does it, so this cannot agree with
+    `tools/records/thiefskillcensus.py` does it, so this cannot agree with
     `goldbox/levels.py` by construction.
     """
     import sys as _sys
     _sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-    from tools import thiefskillcensus
+    from tools.records import thiefskillcensus
     try:
         tables = thiefskillcensus.dos_tables("pool-of-radiance")
     except (FileNotFoundError, SystemExit) as exc:
@@ -539,12 +539,12 @@ def test_pool_of_radiance_and_curses_trainers_are_measured():
 # `START.EXE` and vote every DOS record on this machine on it, the same way the
 # `GEN` tests above do for the C64.
 #
-# The anchor is deliberately not a THAC0 number: `tools/thac0census.py` locates
+# The anchor is deliberately not a THAC0 number: `tools/records/thac0census.py` locates
 # the table by the **class-bit run** that sits immediately after it, so the read
 # cannot agree with `goldbox/levels.py` by construction.
 
 def _thac0census():
-    return pytest.importorskip("tools.thac0census")
+    return pytest.importorskip("tools.records.thac0census")
 
 
 def _dos_tables():
@@ -562,7 +562,7 @@ def test_the_dos_thac0_rows_are_the_games_own():
     The geometry is the engine's, not a guess: `GAME.OVR:0x01A68D` reaches the
     table with `mov dx, 0xB / mul dx / mov di, ax / add di, cx /
     mov al, [di+0x3C7C]`, so the rows are 11 wide and indexed by level with
-    entry 0 unused. `tools/thac0census.py code` prints every site of that shape
+    entry 0 unused. `tools/records/thac0census.py code` prints every site of that shape
     and all four Pool of Radiance ones carry the same stride and offset.
     """
     table = _dos_tables()

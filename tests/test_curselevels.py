@@ -297,7 +297,7 @@ def test_curse_dos_thac0_is_the_games_own_table():
 
     `tools/c64/laterthac0.py` locates the block without anchoring on a THAC0
     number -- the class-bit array that follows it is a different permutation
-    from Pool of Radiance's, so `tools/thac0census.py` cannot find this table
+    from Pool of Radiance's, so `tools/records/thac0census.py` cannot find this table
     at all (`#318 (DOS gives a low-level magic-user or thief THAC0 20 where
     the C64 gives 21, and our table holds only the C64's)`).
 

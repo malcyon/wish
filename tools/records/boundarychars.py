@@ -16,13 +16,13 @@ Radiance disk (`port="C64"`), because that is what a real conversion into DOS
 sees and it is the port that makes `goldbox.dos_codec.write` recompute
 thief skills and THAC0 through DOS's own tables rather than copy the
 source's. Every ceiling is computed from `goldbox/levels.py`,
-`goldbox/spells.py` or `tools/classlegality.py`, or cited to a byte address
+`goldbox/spells.py` or `tools/records/classlegality.py`, or cited to a byte address
 in the game's own code -- nothing here is typed in from memory. Pool of
 Radiance only: Curse of the Azure Bonds and Secret of the Silver Blades need
 their own creation-menu tables read first (the plan comment on `#516`, order
 of work, step 5).
 
-    tools/boundarychars.py
+    tools/records/boundarychars.py
 
 prints every case's fields, so a person can read what the harness builds
 without opening a debugger.
@@ -33,7 +33,7 @@ from __future__ import annotations
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import c64_codec, classcode, dos_codec
 from goldbox import items as items_mod
@@ -41,7 +41,7 @@ from goldbox import levels as level_tables
 from goldbox import spells as spells_mod
 from goldbox.neutral import Confidence, NeutralCharacter, Provenance
 
-#: The title every case is for.  `tools/classlegality.py` reads this one;
+#: The title every case is for.  `tools/records/classlegality.py` reads this one;
 #: Curse and Silver Blades are out of scope (plan, step 5).
 GAME = "pool-of-radiance"
 
@@ -125,7 +125,7 @@ def _base() -> NeutralCharacter:
     fields to a ceiling; everything they do not mention keeps the value set
     here.
     """
-    char = NeutralCharacter("C64", source="tools/boundarychars.py", game=GAME)
+    char = NeutralCharacter("C64", source="tools/records/boundarychars.py", game=GAME)
     char.set("name", "BASE", "made up", Confidence.CONFIRMED,
              Provenance.RESHAPED)
     # Every scalar `c64_codec.DIRECT` names, at a small sequential value --
@@ -188,7 +188,7 @@ def caster() -> NeutralCharacter:
     seventeen (WISHHEL, per the plan's own comment on `#516`).
 
     Half-elf is the *only* race Pool of Radiance's own creation menu offers
-    both cleric and magic-user to at once (`tools/classlegality.py`, 37 of 37
+    both cleric and magic-user to at once (`tools/records/classlegality.py`, 37 of 37
     entries agreeing on both ports); 5 and 6 are the class ceilings at
     `GEN $1E5C` (`06 06 09 08`) after the half-elf's racial limits at
     `GEN $1E60` (8 for magic-user, clamped down to the class ceiling; 5 for
@@ -321,7 +321,7 @@ def triple() -> NeutralCharacter:
     char.set("name", "TRIPLE", "made up", Confidence.CONFIRMED,
              Provenance.RESHAPED)
     char.set("race", RACE_HALF_ELF, "the only race offered all three at "
-             "once (tools/classlegality.py)")
+             "once (tools/records/classlegality.py)")
     char.set("levels", levels, "each class's own ceiling, cleric narrowed "
              "by the half-elf's racial limit")
     char.set("class_bits", bits, "computed from levels")

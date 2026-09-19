@@ -1,6 +1,6 @@
 """The control byte's offset in each DOS title, and how a value reads.
 
-`tools/controlbyte.py` derives the offset from each title's own shape rather
+`tools/records/controlbyte.py` derives the offset from each title's own shape rather
 than tabulating it, so the derivation is the thing that can silently go wrong:
 if `field_83_87` ever moves or changes width, the census would keep printing
 partitions of whatever byte happened to land there.  These pin it against the
@@ -21,7 +21,7 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import dos_port as dl  # noqa: E402
-from tools import controlbyte  # noqa: E402
+from tools.records import controlbyte  # noqa: E402
 
 #: Where each engine's own `cmp ..., 80h` reaches, measured per title.
 MEASURED = {

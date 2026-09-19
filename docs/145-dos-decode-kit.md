@@ -157,7 +157,7 @@ Corroborated across ports, 32 of 32: every Pools of Darkness DOS block is
 byte-identical from byte 2 on to the same id in the Amiga `GEO.GLB` on that
 release's disk 3, and 249 to 834 bytes away under the other trim.
 
-`tools/geoports.py` reads a DOS block by the engine's test — 1026 bytes, drop
+`tools/records/geoports.py` reads a DOS block by the engine's test — 1026 bytes, drop
 two — and its `blocks` command is the census. It used to require the `00 04`
 as well, which made Treasures invisible and Pools of Darkness a corpus of one
 (`#466 (The DOS map reader keeps only blocks with a C64 load address, so two

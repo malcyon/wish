@@ -9,7 +9,7 @@ characters' non-zero class levels and prints, per port and title, how many
 records there are, how many carry a dual-class old level, and each combination
 with its count.
 
-    tools/classcombocensus.py [--c64-root DIR ...] [--dos-root DIR ...]
+    tools/records/classcombocensus.py [--c64-root DIR ...] [--dos-root DIR ...]
 
 The roots searched by default are the specimen tree (`$WISH_SPECIMENS`,
 `por-c64` and `por-dos`), the Pool of Radiance disks directory
@@ -30,7 +30,7 @@ import collections
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402

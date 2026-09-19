@@ -203,7 +203,7 @@ against `GAME.OVR:0x1A659`, which reaches its table with `mov dx, 0xB / mul dx
 ladder's own magic-user steps 20 to 19 at level 6, which a cache nobody
 refreshes could not do. `DS:0x3C7C` is in `START.EXE` and its magic-user and
 thief rows simply hold 40 where `$1F1F` holds 39. 190 of 190 DOS records
-reproduce from it. `tools/thac0census.py` is the sweep,
+reproduce from it. `tools/records/thac0census.py` is the sweep,
 `docs/135-levelling.md` has the table and `goldbox/levels.py`'s `dos_thac0`
 carries the rows.
 

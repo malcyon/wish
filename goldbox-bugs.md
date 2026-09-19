@@ -676,7 +676,7 @@ writing the same row after five trainings.
 
 The DOS build of the same game ships **the same five racial rows in the same
 order**, 40 bytes for 40, read out of its own `START.EXE` on 2026-09-08 with
-`tools/thiefskillcensus.py rows --title secret-of-the-silver-blades`. So the
+`tools/records/thiefskillcensus.py rows --title secret-of-the-silver-blades`. So the
 data is not what differs between the ports, and whether the DOS engine
 subtracts the one before indexing has not been read; a DOS thief record of a
 known race would settle it in one sweep.

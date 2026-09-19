@@ -1,4 +1,4 @@
-"""What `tools/spellbookcensus.py` asked, and the answer read off the disks.
+"""What `tools/records/spellbookcensus.py` asked, and the answer read off the disks.
 
 `#411 (Nobody knows whether a converted cleric loses Restoration, because the
 spellbook field is one bit short of the game's own spell list)` asks whether a
@@ -20,7 +20,7 @@ import pytest
 from goldbox import dos_port as dl
 from goldbox import spells
 from tests import gamedata
-from tools import spellbookcensus as census
+from tools.records import spellbookcensus as census
 
 
 def test_the_dos_array_can_say_something_the_c64_mask_cannot():
@@ -86,7 +86,7 @@ def test_a_title_with_no_spell_table_is_not_measured_against_pool_of_radiance():
 
 def test_a_deduplicated_record_is_graded_over_every_path_it_was_found_at():
     """The specimen tree decides, whichever path the finder happened to sort
-    first -- `tools/carryceiling.py` mis-graded THRENDER GRONE this way."""
+    first -- `tools/records/carryceiling.py` mis-graded THRENDER GRONE this way."""
     assert census._grade_over(["/x/fr-archives/games/POOLRAD/a.sav",
                                "/home/x/wish-specimens/por-dos/a.sav"]) == "spec"
     assert census._grade_over(["/x/fr-archives/games/POOLRAD/a.sav",

@@ -20,7 +20,7 @@ Two halves, and only the first needs the player's disks:
 Nothing here is a fixture sliced out of a game file: `AGENTS.md` forbids that,
 and every disk-backed test skips when the disks are absent.
 
-`tools/turncensus.py` is the census these tests rest on -- 210 C64 records on
+`tools/records/turncensus.py` is the census these tests rest on -- 210 C64 records on
 this machine, 187 of them agreeing with the derivation and every one of the 23
 that do not being a save this converter itself wrote.
 """

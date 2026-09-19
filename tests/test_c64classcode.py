@@ -196,7 +196,7 @@ def test_pool_of_radiance_and_silver_blades_c64_specimens_are_never_repaired():
     did, a clean record would arrive at the DOS sheet with an invented
     class. Read through `c64_codec.read`, which is the neutral record every
     other reader of `char_class` now sees, not the raw byte the older
-    `tools/classcodecensus.py` compares."""
+    `tools/records/classcodecensus.py` compares."""
     checked = 0
     for prefix, game in (("por", POOL), ("ssb", SSB)):
         for path in _clean_c64_disks(prefix):

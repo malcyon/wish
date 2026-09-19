@@ -6,9 +6,9 @@ supports)` reports `infravision` as dropped on all three C64 → DOS rows, and
 the reason on the ticket -- "the destination recomputes it from race" -- had
 never been demonstrated.  This is the tool that answers it, in three modes:
 
-    tools/infravision.py table                     the generator's own tables
-    tools/infravision.py read SAVE.d64           race and stored byte, per slot
-    tools/infravision.py stage --source a.d64 --out b.d64
+    tools/records/infravision.py table                     the generator's own tables
+    tools/records/infravision.py read SAVE.d64           race and stored byte, per slot
+    tools/records/infravision.py stage --source a.d64 --out b.d64
 
 **`table`** reads the race-indexed table the C64 character generator writes
 record `0x0D5` from, off the player's own `GEN` overlay, and disassembles the
@@ -35,7 +35,7 @@ import argparse
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

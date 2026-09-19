@@ -222,7 +222,7 @@ never reads the field — where every DOS build adds an eleven-row block of five
 columns from a dexterity of 9 and clamps the result at zero. And the C64's
 progression being "the DOS one" is true only of the *level* rows.
 
-`tools/thiefskillcensus.py` reads both ports' tables off the player's own
+`tools/records/thiefskillcensus.py` reads both ports' tables off the player's own
 files and sweeps every record: 59 of 63 DOS records and 27 of 27
 engine-written C64 records reproduce. `#431 (A converted halfling thief keeps
 the other port's skill percentages, because the two ports ship different

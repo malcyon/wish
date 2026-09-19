@@ -436,7 +436,7 @@ _DECLARED: Sequence[Field] = (
        "carry a non-zero value here and every one is undead, at the "
        "published AD&D rows: skeleton 1, zombie 2, ghoul 3, wight 5, wraith "
        "7, giant skeleton 8, mummy 8, juju zombie 9, spectre 9, vampire 10, "
-       "and FERRAN MARTINEZ 9. `tools/turncensus.py --dos` re-runs it.\n"
+       "and FERRAN MARTINEZ 9. `tools/records/turncensus.py --dos` re-runs it.\n"
        "* Every player character in either port reads 0, including ROLAND, "
        "a cleric 3, whose C64 counterpart's `turn_power` would read 1.\n"
        "So a converter writes **zero** here for a player character and takes "

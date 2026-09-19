@@ -68,7 +68,7 @@ byte for byte the C64's. The other two are not:
 CONFIRMED: 190 of 190 DOS Pool of Radiance records on this machine reproduce
 from the DOS table with no exceptions, including the nine training-ladder
 specimens the trainer was watched writing one level at a time; every low-level
-magic-user or thief the C64 engine wrote holds 21. `tools/thac0census.py` is
+magic-user or thief the C64 engine wrote holds 21. `tools/records/thac0census.py` is
 the sweep and `goldbox/levels.py`'s `dos_thac0` carries the rows.
 
 **Curse and Silver Blades are settled**, and differently:

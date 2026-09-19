@@ -278,7 +278,7 @@ without running the game at all.
 
 **Method.** Donald created a six-character party with deliberately varied races,
 classes, sexes and alignments and saved it. Combined with the six on `POOL1.D64`'s
-sample save that gives **twelve specimens**. `tools/compare.py` reports, for every
+sample save that gives **twelve specimens**. `tools/records/compare.py` reports, for every
 offset, how the value varies across all of them; each varying offset is then
 matched against a known attribute or an AD&D rule.
 
@@ -7069,7 +7069,7 @@ Two independent anchors put the table at image `0x1043C`:
   is read four instructions after the THAC0 lookup, which pins its own base the
   same way.
 
-`tools/thac0census.py` anchors on the class-bit run rather than on any THAC0
+`tools/records/thac0census.py` anchors on the class-bit run rather than on any THAC0
 number, so the read cannot agree with `goldbox/levels.py` by construction.
 
 ### The difference, in full
@@ -7299,7 +7299,7 @@ cleric side and (4,3,3) on the magic-user side. (`#510 (Can a Pool of Radiance
 character memorise more than the 21 spells its DOS record allots?)`.)
 
 **Method.** Two tables and no emulator. Read which class combinations creation
-offers each race, on both ports — `tools/classlegality.py` — and then read how
+offers each race, on both ports — `tools/records/classlegality.py` — and then read how
 far each half may be taken, from the engine rather than from the racial table
 alone.
 
@@ -7768,7 +7768,7 @@ branch or this repair's byte boundary.
 
 [`#516 (Generate boundary characters and check every writer's field widths,
 since no real save reaches a limit and the corpus cannot find a wrong one)`](https://github.com/malcyon/wish/issues/516),
-slices 1 and 2 of `architect`'s plan. `tools/boundarychars.py` builds four
+slices 1 and 2 of `architect`'s plan. `tools/records/boundarychars.py` builds four
 Pool of Radiance `NeutralCharacter`s at the game's own reachable extremes, and
 `tests/test_boundary.py` runs each through `goldbox.dos_codec.write`.
 

@@ -1187,7 +1187,7 @@ def load_maps(image) -> dict[str, Geo]:
     `{"GEO10": Geo, ...}` -- `GEO{id:02X}`, which is the C64's own filename
     for the same area and what `goldbox.areas` and the automapper's notes
     files are keyed by. So an Amiga party's map is drawn on the same sheet its
-    C64 counterpart would be, and `tools/geoports.py` has already measured
+    C64 counterpart would be, and `tools/records/geoports.py` has already measured
     that the blocks themselves are the same bytes: all seventeen of Silver
     Blades' and thirteen of Curse's sixteen are byte-identical across the two
     ports.

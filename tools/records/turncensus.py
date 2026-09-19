@@ -22,8 +22,8 @@ reads it off the **target** and multiplies it by ten as the row of the turning
 matrix -- so what a DOS census establishes is that no player character carries
 anything there, and that the eleven undead monster records do.
 
-    tools/turncensus.py                 every C64 record, stored vs derived
-    tools/turncensus.py --dos           DOS records and monsters at 0x076
+    tools/records/turncensus.py                 every C64 record, stored vs derived
+    tools/records/turncensus.py --dos           DOS records and monsters at 0x076
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ import argparse
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import levels  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402

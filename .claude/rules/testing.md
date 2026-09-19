@@ -132,7 +132,7 @@ treat it as one.** It said six of the eighteen records in Pool of Radiance's
 total, two of eighteen in the known-edited set, and reasoned from that towards
 a stranger's edited party. Both halves of that are gone:
 
-* **The six were never there.** `tools/enccensus.py` swept every DOS and Amiga
+* **The six were never there.** `tools/records/enccensus.py` swept every DOS and Amiga
   record on this machine on 2026-09-07: **54 of 54 records the archives ship
   balance exactly**, across four titles, and so do **34 of 34 readable Amiga
   records**. Those files have not been written since 2026-08-15, and the reader

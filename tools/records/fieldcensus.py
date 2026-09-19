@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """One named record field, over every character record on this machine.
 
-`tools/thac0census.py` asks this of `thac0_base` and knows that field's table;
+`tools/records/thac0census.py` asks this of `thac0_base` and knows that field's table;
 this asks it of **any** field by name, and knows nothing about what the answer
 should be.  It is the thing that gets rewritten every time a byte's meaning is
 in question: print the stored value beside the class levels, group it, and see
 whether a rule fits.
 
-    tools/fieldcensus.py c64 attack_level
-    tools/fieldcensus.py dos attack_level --all-titles
-    tools/fieldcensus.py monsters level --title pool-of-radiance
+    tools/records/fieldcensus.py c64 attack_level
+    tools/records/fieldcensus.py dos attack_level --all-titles
+    tools/records/fieldcensus.py monsters level --title pool-of-radiance
 
 It settled `#527 (A DOS import combines saving throws from classes the
 character does not have)`'s last open byte.  `attack_level` at C64 `0x098` is
@@ -43,14 +43,14 @@ import os
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import dos_codec  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
 from tools import gamedisks  # noqa: E402
-from tools.thac0census import C64_LEVEL_FIELDS  # noqa: E402
+from tools.records.thac0census import C64_LEVEL_FIELDS  # noqa: E402
 
 #: Save disks carry a party; every other `.d64` on the pile is a game side.
 SAVE_DISK_PREFIXES = ("PORSAVE", "NEWSAVE", "TEST_DOS")

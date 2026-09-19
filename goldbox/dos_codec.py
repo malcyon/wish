@@ -2741,7 +2741,7 @@ def write_absent(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
 #:   race is in, and a round trip returns the game's own number, which was
 #:   measured on a party staged with every character's byte contradicting his
 #:   race -- 6 for the humans, 0 for the dwarf, elf and half-elf -- coming
-#:   back 0, 0, 0, 6, 6, 6, six of six (#52, `tools/infravision.py`,
+#:   back 0, 0, 0, 6, 6, 6, six of six (#52, `tools/records/infravision.py`,
 #:   `tests/test_infravision.py`).
 #:
 #: **`spells_castable` is not here and that is not an oversight.**  #307 named

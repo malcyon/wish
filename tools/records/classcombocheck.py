@@ -17,9 +17,9 @@ functions -- `editor.window._char_class_shown` and `goldbox.c64_codec.read` --
 rather than re-deriving either rule, so a change to either side moves what this
 prints.
 
-    tools/classcombocheck.py                          # the specimen tree
-    tools/classcombocheck.py --c64 DIR              # a directory or a .d64
-    tools/classcombocheck.py --dos ~/wish-specimens/coab-dos --dual-only
+    tools/records/classcombocheck.py                          # the specimen tree
+    tools/records/classcombocheck.py --c64 DIR              # a directory or a .d64
+    tools/records/classcombocheck.py --dos ~/wish-specimens/coab-dos --dual-only
 
 It also prints, per C64 record, the bitmask the **level array** implies beside
 the stored `class_bits`.  Those two being equal is why the two paths agree:
@@ -46,7 +46,7 @@ import sys
 # whatever the caller's environment says.
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from editor.window import _char_class_shown  # noqa: E402
@@ -56,7 +56,7 @@ from goldbox.savegame import load_save  # noqa: E402
 
 #: Class name -> its bit, in the neutral order every port's mask uses once
 #: `goldbox.dos_codec.neutral_class_bits` has folded DOS's paladin and ranger back.
-#: The same table `tools/classcodecensus.py` carries, for the same reason: the
+#: The same table `tools/records/classcodecensus.py` carries, for the same reason: the
 #: bitmask a level array implies is not a field any record stores.
 BIT_FOR_CLASS = {"magic-user": 0x01, "cleric": 0x02, "thief": 0x04,
                  "fighter": 0x08, "knight": 0x10, "paladin": 0x40,

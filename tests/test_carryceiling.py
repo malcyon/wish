@@ -1,4 +1,4 @@
-"""`tools/carryceiling.py` counts what a character carries against the C64's two ceilings.
+"""`tools/records/carryceiling.py` counts what a character carries against the C64's two ceilings.
 
 `#399 (A conversion that runs out of item or trait slots tells the player
 nothing, because the pane never shows a warning)` turns on one number: does
@@ -21,7 +21,7 @@ import pytest
 
 from goldbox import amiga_later, amiga_port, dos_codec, traits
 from goldbox import items as c64items
-from tools import carryceiling as cc
+from tools.records import carryceiling as cc
 
 # -- the ceilings themselves ------------------------------------------------
 

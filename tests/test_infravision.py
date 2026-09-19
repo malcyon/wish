@@ -13,7 +13,7 @@ behind the measurement that settled it:
   converted party, measured on its own resave of one.
 
 Everything here reads the player's own disks or the specimen tree and skips
-when neither is on the machine.  `tools/infravision.py` is the tool.
+when neither is on the machine.  `tools/records/infravision.py` is the tool.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from goldbox import c64_codec, c64_port, dos_codec, dos_port, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tests import gamedata  # noqa: E402
-from tools import infravision  # noqa: E402
+from tools.records import infravision  # noqa: E402
 
 #: The eight characters `#84 (Roll a gnome in DOS and read the two innate
 #: effect ids nobody has seen)` rolled in DOS Pool of Radiance's own creation

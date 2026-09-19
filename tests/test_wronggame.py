@@ -493,7 +493,7 @@ def test_no_page_of_the_players_own_disks_reads_as_a_map():
 
     The suite takes one page per 1024 bytes and the disks it has; the whole
     sweep is 65383 windows at 64-byte steps across both platforms and belongs
-    in `tools/geoplausible.py`, which takes minutes.
+    in `tools/records/geoplausible.py`, which takes minutes.
     """
     corpora = [(disk_dir(), ("POOL*.[dD]64",))]
     if curse_dir() is not None:

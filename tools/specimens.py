@@ -490,7 +490,7 @@ def repair_unloadable(name: str, *, note: str, root: pathlib.Path | None = None,
     emulator slot before the drive closes the file cannot be loaded by the
     game)` names are repaired in place rather than left, having been told the
     cost: the repair is an edit made after the game wrote the file, so
-    `edited_afterwards` becomes true and `tools/carryceiling.py` grades the
+    `edited_afterwards` becomes true and `tools/records/carryceiling.py` grades the
     specimen `edited` rather than `engine`.
 
     **Nothing is written until the repair has been proved on a copy.**  The

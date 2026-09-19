@@ -41,7 +41,7 @@ from goldbox.savegame import load_save
 CURSE = c64_port.by_key("curse-of-the-azure-bonds")
 
 #: Class name -> its bit in the neutral order, the same table
-#: `tools/classcombocheck.py` and `tools/classcodecensus.py` carry.  The
+#: `tools/records/classcombocheck.py` and `tools/records/classcodecensus.py` carry.  The
 #: bitmask a level array implies is not a field any record stores.
 BIT_FOR_CLASS = {"magic-user": 0x01, "cleric": 0x02, "thief": 0x04,
                  "fighter": 0x08, "knight": 0x10, "paladin": 0x40,

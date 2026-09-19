@@ -14,9 +14,9 @@ questions this answers off the corpus, with no emulator:
    magic-user's alone?
 2. does any record **anywhere** set id 56?
 
-    tools/spellbookcensus.py                  all three ports
-    tools/spellbookcensus.py --c64 --verbose  one port, one line per record
-    tools/spellbookcensus.py --ids 56 57      ask about other ids as well
+    tools/records/spellbookcensus.py                  all three ports
+    tools/records/spellbookcensus.py --c64 --verbose  one port, one line per record
+    tools/records/spellbookcensus.py --ids 56 57      ask about other ids as well
 
 Each row is graded by where it came from -- `built`, `spec`, `edited` or
 `found`, and `GRADE_MARKERS` below has the paths -- because `.claude/rules/testing.md` is clear that a record nobody watched
@@ -42,7 +42,7 @@ import pathlib
 import sys
 from dataclasses import dataclass
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 # The repository root and nothing else.  Putting `tools/` on `sys.path` is
 # what `#262 (Thirty-three tools still leave tools/ on sys.path, so one run
@@ -175,7 +175,7 @@ def _grade_over(paths) -> str:
     whichever sorted first.  The specimen tree decides when any path is in it,
     because that is the one with a `provenance.toml` behind it; the played
     directory decides next, because a record that was edited is edited
-    wherever else it also sits.  `tools/carryceiling.py` hit this first, on
+    wherever else it also sits.  `tools/records/carryceiling.py` hit this first, on
     THRENDER GRONE.
     """
     grades = [_grade(str(p)) for p in paths]
@@ -229,7 +229,7 @@ def c64_disks(extra_disks=()) -> list[pathlib.Path]:
     `/mnt/media/roms/c64`.  An image with no saved game costs one read and is
     skipped; a title `goldbox/c64_save.py` has no container for is skipped the
     same way, which is why the report says how many images were unreadable.
-    Copied from `tools/carryceiling.py`, which worked this out first.
+    Copied from `tools/records/carryceiling.py`, which worked this out first.
 
     **No sweep of scratch directories** (#575): a disk image a driven run left
     there is temporary, and one carrying a party that is evidence belongs in
@@ -429,7 +429,7 @@ def control_sweep(roots=None) -> tuple[int, list[tuple[pathlib.Path, str]]]:
     counterexample to be excluded rather than absent.  This reads every file
     whose size is one of the four record sizes and asks one question of it --
     is the byte for spell id 56 set? -- so a "nothing anywhere has it" claim
-    does not rest on the census's own filters.  `tools/carryceiling.py` is
+    does not rest on the census's own filters.  `tools/records/carryceiling.py` is
     where the practice comes from.
 
     Returns a count of files read per title and every hit as `(path, title)`.
