@@ -525,7 +525,8 @@ def test_no_bare_issue_number_where_a_citation_belongs(files):
         if rel.suffix != ".md":
             continue
         in_scope = (rel.parts[0] in CITED_ISSUE_SCOPE
-                    or pathlib.PurePosixPath(rel.as_posix()) in CITED_ISSUE_FILES)
+                    or pathlib.PurePosixPath(rel.as_posix()) in CITED_ISSUE_FILES
+                    or pathlib.PurePosixPath(rel.as_posix()).match("tools/*/README.md"))
         if not in_scope or rel.parts[:2] == (".github", "ISSUE_TEMPLATE"):
             continue
         text = (ROOT / rel).read_text(encoding="utf-8")
