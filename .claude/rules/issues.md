@@ -23,9 +23,9 @@ before, so a comment never claims a correction that failed to land.
 
 ## Citing an issue
 
-**Name an issue when you cite it: `#59 (Map the DOS saved game, not just the
-character record)`.** A bare number is a lookup Donald has to go and do:
-*"when you only reference a number, it never means anything to me."*
+**Name an issue when you cite it: `#123 (the issue's own title)`.** A bare
+number is a lookup Donald has to go and do, and it means nothing to him until
+he has done it.
 
 ```sh
 .venv/bin/python tools/github/issueread.py N --cite
@@ -38,18 +38,16 @@ title unfiltered and `.claude/hooks/check-issue-reads.py` refuses it for the
 same reason it refuses `--comments`.
 
 **It is a rule about talking to Donald**: replies, issue comments and
-documents, every mention and not just the first. **It does not govern code.**
-Donald, 2026-09-09: *"I don't care about bare issue numbers in code or
-docstrings. I care about it when you are communicating with me."* Do not sweep
-`.py` for them and do not file tickets about them.
+documents, every mention and not just the first. **It does not govern code**,
+which is read by somebody already in the file. Do not sweep `.py` for bare
+numbers and do not file tickets about them.
 
 **Two more exceptions, both about where the reader is:**
 
 * **A commit message**, where the number goes bare in parentheses at the end of
   the one line -- see `.claude/rules/commits.md`.
-* **The body of an issue**, read on the web, where hovering the number shows
-  the title. Donald, 2026-09-01: *"Leave them alone. GitHub.com shows the
-  ticket details on hover and makes it a hotlink, so it will be fine."*
+* **The body of an issue**, read on the web, where the number is a hotlink and
+  hovering it shows the title.
 
 **So do not go back and add titles to bare numbers in existing issue bodies**,
 and do not treat one as a defect in an audit. It is not a factual error, so
@@ -83,12 +81,9 @@ it off, the way you would fix a wrong sentence in a doc.
 
 **Two things must never happen, and they are the whole of the caution.**
 
-**Do not reverse a change a person made.** An agent asked for `enhancement`,
-Donald set `question`, and the agent set it back -- treating his decision as
-the defect. If you think a label a person chose is wrong, say why in a comment
-and leave it as they left it. He reads the comments. Donald, 2026-09-04: *"I
-just don't want it resetting labels back to what they were for no reason at
-all."* Undoing your *own* earlier change is not this, and neither is a label
+**Do not reverse a change a person made.** If you think a label a person chose
+is wrong, say why in a comment and leave it as they left it. He reads the
+comments. Undoing your *own* earlier change is not this, and neither is a label
 the world has since made wrong; what is banned is correcting a person.
 
 **Do not change a label without a comment saying what you changed and why**, in
@@ -120,18 +115,12 @@ something Donald can check and contradict:
   it belongs in your reply rather than in a label.
 
 **A priority is a label like any other: change it when you have a reason, and
-put the reason in a comment.** Donald, 2026-09-09: *"It is fine to change
-priorities. Just have a reason and post it in the comments. Don't just flip it
-back because you think it was a mistake."*
+put the reason in a comment.**
 
 The banned thing is the same one that governs every other label -- **do not
 reverse a change a person made.** Setting one on an issue that has none,
 correcting your own earlier guess, and moving one the world has since made
 wrong are all ordinary work.
-
-**An earlier version of this section said priorities were "the one place to
-hold back". That was wrong**, and `docs/160-why-these-rules.md` has how it got
-there.
 
 ## Who opened it, and what its text is
 
@@ -163,11 +152,10 @@ to one.
 **Do not add the `AI` label by hand.** `.github/workflows/issue-origin.yml`
 labels every new issue by its author, once, when it is opened. **Nothing
 locks anything**: a GitHub App installation is refused a comment on a locked
-issue whatever permissions it holds, measured three ways on 2026-09-11, so
-locking would silence this project's own bot rather than the public. An issue opened before 2026-09-11 carries neither label; nothing was
-backfilled, because all three hundred of them were Donald's and a universal
-label means nothing. `AI` and `human` are a third axis alongside the type label
-and the `Priority:` one, and are not part of the "exactly one priority" count.
+issue whatever permissions it holds, so locking would silence this project's
+own bot rather than the public. An issue with neither label predates that
+workflow. `AI` and `human` are a third axis alongside the type label and the
+`Priority:` one, and are not part of the "exactly one priority" count.
 
 ### Origin is the author. The label is only its picture.
 
@@ -278,18 +266,16 @@ is how a session files more than it needed to. If the only reason for a new
 issue is that it makes a tidy brief, put it in the parent's comment and brief
 the agent against that.
 
-**Never file a new issue restating an open one and close the original.**
-Donald, 2026-09-07, saying it as a standing instruction: *"Do not simply open
-new tickets for the same issue and close the original ticket. The issue must be
-resolved in the proper way."* That is renaming rather than splitting, and it
-makes a backlog look like it is moving when nothing has. A ticket closes
-because the thing it describes is done, or because it turned out not to be a
-thing -- never because its number changed.
+**Never file a new issue restating an open one and close the original.** That
+is renaming rather than splitting, and it makes a backlog look like it is
+moving when nothing has. A ticket closes because the thing it describes is
+done, or because it turned out not to be a thing -- never because its number
+changed.
 
 **And keep the count honestly.** A session that files twenty-three and closes
-twenty-eight is fine; one that files twenty-three and closes ten was choosing A
-too often, however good each individual ticket looked. Say both numbers when
-reporting a session's work rather than only the closes.
+twenty-eight is fine; one that files twenty-three and closes ten is filing
+where a comment would do, however good each individual ticket looked. Say both
+numbers when reporting a session's work rather than only the closes.
 
 ## Findings, and closing
 

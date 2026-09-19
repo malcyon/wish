@@ -32,8 +32,8 @@ somebody who needs text that large uses display scaling, which enlarges the
 window too. A test that only holds above +10 proves an artefact and will be
 true forever while catching nothing. If a claim is weak at a realistic font,
 say it differently rather than at a bigger font --
-`test_the_top_row_asks_for_more_than_the_page_makes_room_for` became true
-everywhere once it compared a *rate* across two fonts instead of a gap at one.
+`test_the_top_row_asks_for_more_than_the_page_makes_room_for` compares a *rate*
+across two fonts instead of a gap at one.
 
 **A number measured on this machine is not a number.** It is a measurement of
 this machine, and the moment it goes into an assertion it becomes a claim about
@@ -46,8 +46,7 @@ was measured on and what would move it.
 never moved** -- non-decreasing, and flat by the largest font. A machine whose
 base font is smaller than ours still climbs towards the cap; only a machine
 already at the cap sees no climb at all. Prefer the assertion that states the
-outcome a user cares about: "the window fits a 720-high screen at +6pt"
-survived both CI platforms where two structural proxies for it did not.
+outcome a user cares about: "the window fits a 720-high screen at +6pt".
 
 **A timing measured on this machine is not a timing**, and it is worse than a
 measured number because the test passes locally every time. A concurrency test
@@ -82,7 +81,7 @@ you keep them true afterwards.
 
 ## Where a test gets its data
 
-`CLAUDE.md` forbids the game's data entering this repository, and a fixture
+`AGENTS.md` forbids the game's data entering this repository, and a fixture
 that is a slice of a game file is the same copy under a new name. So:
 
 * `tests/gamedata.py` reads it off the player's disks -- `game_file("GEO04")`
@@ -97,15 +96,13 @@ that is a slice of a game file is the same copy under a new name. So:
 
 **`/home/donald/dos_por_play/SAVE/` is Donald's own play directory and every
 character record in it has been edited with Gold Box Companion's character
-editor.** Assume all of them, not the ones that look wrong. Donald,
-2026-09-04: *"Assume all character records in /home/donald/dos_por_play/SAVE/
-were edited. Base your evidence and reasoning off saves you created
-yourself."*
+editor.** Assume all of them, not the ones that look wrong. Base evidence and
+reasoning off saves you created yourself.
 
-**And it is not only that directory.** Donald, 2026-09-04: *"any saves you got
-off of any of the game disks might also have been edited."* His save disks are
-a player's disks, played and tinkered with over years. So the boundary is not
-a path -- it is **whether we watched it being written**.
+**And it is not only that directory.** Any save found on any of the game disks
+might also have been edited: his save disks are a player's disks, played and
+tinkered with over years. So the boundary is not a path -- it is **whether we
+watched it being written**.
 
 **So a measurement rests on records we watched being written, and there is
 essentially one source.**
@@ -114,81 +111,33 @@ essentially one source.**
 `tools/dos/dosgnome.py` is the worked example: it rolls a character in the game's
 own creation screens under DOSBox and reads back the bytes, and its five
 same-boot racial controls are what make a single reading a measurement rather
-than an anecdote. Donald, 2026-09-04: *"if we created our own characters and
-level them up, then you can know it is safe."*
+than an anecdote.
 
 **A save found on a disk is not evidence, however official the disk looks.**
-Donald, 2026-09-04: *"You shouldn't assume that saves you find on a game disk
-are 'saves shipped with the game by the manufacturer'. Some random person on
-the internet might have created those and edited them with GBC. You have no way
-of knowing."* The archives here are a download -- `~/Downloads/fr-archives`,
-"Forgotten Realms The Archives" -- so `Default files/Saves` has no chain of
-custody either. It was listed as trustworthy in an earlier version of this
-rule and that was wrong.
+Nobody can tell a save shipped with the game from one a stranger made and
+edited with Gold Box Companion. The archives here are a download --
+`~/Downloads/fr-archives`, "Forgotten Realms The Archives" -- so `Default
+files/Saves` has no chain of custody either.
 
-**The encumbrance identity is not a provenance test, and this rule used to
-treat it as one.** It said six of the eighteen records in Pool of Radiance's
-`Default files/Saves` fail `money + Σ(weight × quantity)` against the stored
-total, two of eighteen in the known-edited set, and reasoned from that towards
-a stranger's edited party. Both halves of that are gone:
+**The encumbrance identity is not a provenance test.** A record failing
+`money + Σ(weight × quantity)` against the stored total is not evidence that
+anybody edited it, and a record passing it is not evidence that nobody did. It
+checks our reading of the money block, the item stride, the weight offset and
+the byte order, in one sum, which is what it is for.
 
-* **The six were never there.** `tools/records/enccensus.py` swept every DOS and Amiga
-  record on this machine on 2026-09-07: **54 of 54 records the archives ship
-  balance exactly**, across four titles, and so do **34 of 34 readable Amiga
-  records**. Those files have not been written since 2026-08-15, and the reader
-  as it stood at the commit that wrote the sentence gives the same 0 of 18, so
-  it was not a reader fix either.
+**Failing it is the normal state of a record we watched being written.** The
+engine rewrites the field when it rebuilds a character's derived fields, and no
+routine that moves coins does that, which is why the drift survives a save: one
+boot leaves one fee of drift, and a training ladder's climb is mostly our own
+restaging -- `tools/dos/dostrainprobe.install` moves stored encumbrance with
+the gold it pokes, which is right for an input and is not the engine agreeing
+with us. `tools/dos/dosencsave.py` is the tool.
 
-  **The two figures do not come from the same place**, and an earlier version
-  of this passage read as though they did. `~/Downloads/fr-archives` holds no
-  `.adf` at all: the Amiga records come from the disk-image directories
-  `tools/registry/gamedisks.py` lists as its `amiga` candidates. The DOS figure is
-  pinned by `tests/test_enccensus.py::test_every_record_the_archives_ship_
-  balances_exactly`, so a reader change that brings the six back turns it red.
-  **The Amiga figure has no test**, so treat it as a measurement taken once
-  rather than a guarantee, and re-take it before resting anything on it.
-* **Failing it is the normal state of a record we watched being written.** Of
-  the 114 records here that miss, on the 2026-09-08 sweep, **110 are ours**:
-  90 by an exact multiple of 1000 gp -- Pool of Radiance's training fee, on
-  the ladder of `#249 (Build a DOS party from creation and level it ourselves,
-  so DOS measurements rest on records we watched being written)` -- 3 by the
-  Curse shop bug in `docs/125-bug-notes.md` N19, one at +109 by the hand-axe
-  purchase in `docs/213-the-dos-shopping-trip.md`, four at +200 by one Curse
-  run's 200-coin payment, and twelve by a 999 this ticket staged itself.
-  **Nothing in the never-watched corpus misses at all**, 0 of 46. That leaves
-  **four records and two characters**: GILES at -20 and ASTRID at -65, each
-  found twice, once in the edited directory and once in a copy. They are
-  the only two nobody can name an operation for, and 90 + 3 + 1 + 4 + 12 + 4
-  is the 114.
-
-  **The engine rewrites the field when it rebuilds a character's derived
-  fields, and no routine that moves coins does that**, which is why the drift
-  survives a save: 270 of 270 records the ladder saved held the
-  number they were loaded with, 87 of them after the trainer had taken 1000 gp
-  in that same boot, and a record spoiled to 999 *before* a boot came back 999
-  through both a party-menu `SAVE CURRENT GAME` and a camp save. Only the one
-  character whose sheet `VIEW` drew came back holding the right sum, with five
-  untouched characters in the same save still at 999. **So one boot leaves one
-  fee of drift, and the ladder's climb to +11,000 is mostly our own
-  restaging** -- `tools/dos/dostrainprobe.install` moves stored encumbrance with
-  the gold it pokes, which is right for an input and is not the engine
-  agreeing with us. `tools/dos/dosencsave.py` is the tool, and `#323 (The
-  encumbrance identity does not survive the training fee, so failing it is not
-  evidence of an edited record)` has the runs.
-
-  **Poke a field before the boot, or the engine never sees it.** That same 999,
-  written after `LOAD SAVED GAME` had already put the party in memory, came
-  back as the correct sum from every save -- which reads exactly like a
-  recompute and is the engine writing its own untouched value over our poke. A
-  staging that lands after the load has measured nothing.
-
-So **a record failing the identity is not evidence that anybody edited it**,
-and neither is a record passing it evidence that nobody did. It checks our
-reading of the money block, the item stride, the weight offset and the byte
-order, in one sum, which is what it was built for and what it is good at.
-`#323 (The encumbrance identity does not survive the training fee, so failing
-it is not evidence of an edited record)` has the counts and the two records
-that miss the other way.
+**Poke a field before the boot, or the engine never sees it.** A value written
+after `LOAD SAVED GAME` has already put the party in memory comes back as the
+correct sum from every save, which reads exactly like a recompute and is the
+engine writing its own untouched value over our poke. A staging that lands
+after the load has measured nothing.
 
 **The identity is the engine's own arithmetic, and the engine's own code says
 when it stops being true.** Pool of Radiance rebuilds the field at
@@ -228,7 +177,7 @@ line go stale (`docs/125-bug-notes.md` N19).
 
 **A tolerance is not a reading.** `assert exact >= total - 2` says our sum may
 be two-in-twenty-four wrong; it hides which two and why. Name the records, or
-point the test at a corpus where the answer is exact.
+point the test at a set of records where the answer is exact.
 
 **And the C64 cannot be checked this way at all.** Its record has no such
 field: all three titles sum into a scratch word past the end of the record
@@ -236,10 +185,9 @@ field: all three titles sum into a scratch word past the end of the record
 draws the sheet. `tests/test_enccensus.py::test_the_c64_record_has_no_
 encumbrance_to_check` goes red if one is ever located.
 
-What is left is the rule rather than the example: a save found on a disk has no
-chain of custody, and **staring at it does not say which**. The reason to
-distrust the archives is that nobody watched them being written, not a count
-somebody took once.
+The rule underneath all of this: a save found on a disk has no chain of
+custody, and **staring at it does not say which**. The reason to distrust the
+archives is that nobody watched them being written.
 
 **And the archives' installed save directory is not an archive.**
 `games/POOLRAD/GAME/POOLRAD/SAVE` is byte-identical to `~/dos_por_play/SAVE`,
@@ -251,17 +199,12 @@ the edited party up under an innocent-looking path, so grade a record by
 
 **Records this project's own writers produced** test the writer and are never
 evidence about the game, since they carry what we already believe. **Including
-saves a person edited in Wish.** Donald, 2026-09-04, of the C64 party on
-`P18PARTY.D64` (scratch, deleted) that `#10 (Finish the high-level test party)` drove
-through the training hall: *"I edited the C64 characters you mentioned with
-WISH. I gave them gold. I increased their ability scores. I changed the weight
-of their items."* Driving a party through the game does not keep it clean
-afterwards.
+saves a person edited in Wish**: driving a party through the game does not keep
+it clean afterwards.
 
-**But there is a distinction to hold on to, because it rescues real
-work.** Editing an **input** and then watching the game compute from it is a
-valid experiment -- the engine does not care how a byte got there. Reading back
-a **stored value that Wish wrote** and calling it the game's arithmetic is not.
+**Editing an input and then watching the game compute from it is a valid
+experiment** -- the engine does not care how a byte got there. Reading back a
+**stored value that Wish wrote** and calling it the game's arithmetic is not.
 
 So: raise a cleric's wisdom in Wish, drive the trainer, and what the trainer
 offers is the game's answer for that wisdom. Raise the weight of an item in
@@ -269,12 +212,7 @@ Wish and read the stored encumbrance, and you have measured Wish.
 
 **A specimen dies with the emulator slot that made it.** `Session.stage()` is a
 `copytree` into the pool instance's own directory, and tearing the slot down
-takes the instance with it. On 2026-09-04 the only engine-written DOS
-item-granted effect record this project has ever had -- `CHRDATD1.SPC`, made by
-readying a magical item in the running game -- was reported at
-`cited/232/ready4/` and was gone from the whole filesystem an hour later.
-Its nine bytes survive only because they were quoted in
-`docs/162-spc-permanence.md`. **Copy a specimen out before the slot goes**, and
+takes the instance with it. **Copy a specimen out before the slot goes**, and
 put it in the tree below rather than anywhere in scratch.
 
 **The tree is `$WISH_SPECIMENS`, default `~/wish-specimens/`**, outside the
@@ -282,9 +220,8 @@ repository because the game's data must never be committed. `tools/registry/spec
 add` copies a save in, records who made it and how, hashes every file and makes
 it read-only; `check` re-hashes and reports anything that moved; `list` says
 what is there. A file with no `provenance.toml` is not a specimen, and `check`
-says so. Donald asked for it in those terms: *"We could have a process or naming
-convention for saves that are JUST for your tests, so I'll know not to touch
-them."*
+says so. It is where saves that exist only for tests are kept, so nobody
+edits one by mistake.
 
 `docs/125-bug-notes.md`'s N13 is the worked example of surviving this. Its
 evidence is *"the table's bytes and the three compares"* -- `GEN $10AD`, read
@@ -292,34 +229,26 @@ out of the code -- with ROLAND at wisdom 16 as corroboration. The code half is
 untouchable and the finding stands on it. Had it rested on ROLAND alone it
 would now be worthless.
 
-**The cost of getting this wrong is silent.** On 2026-09-04 a single edited
-record -- SILAS, a *human* carrying two `.SPC` effect records where the engine
-writes a human none -- refuted "an effect at duration zero is permanent",
-stopped `#232 (An item-granted effect is dropped on the way through the
-neutral record, with no report)`, and sent a `deep-research` agent after a
-discriminator that may not exist. Nothing failed. The suite stayed green. It
-surfaced only because Donald happened to mention he had used the editor.
+**The cost of getting this wrong is silent.** A single edited record can refute
+a correct belief -- a *human* carrying two `.SPC` effect records where the
+engine writes a human none is enough to make "an effect at duration zero is
+permanent" look false -- and nothing fails. The suite stays green.
 
 **Two files can share a name and not each other's provenance.**
 `CHRDATA6.SAV` exists both in the archives, shipped, and in the edited play
 directory. A path finder resolves to one of them and the test cannot tell.
 **So say in the test where its specimen came from**, and when a finding is
-written up, give the corpus size *and* what the records are.
+written up, give how many records and what they are.
 
-The same trap caught a census that was sweeping an emulator instance's staged
-tree, where the sweeping tool's own tampered probe records sat -- our bytes
-read back as the engine's. `tools/dos/dostailcensus.py` excludes what this project
-wrote, by name; copy that exclusion rather than reinventing it.
+**A sweep must also exclude what this project wrote.** An emulator instance's
+staged tree holds the sweeping tool's own tampered probe records, and they read
+back as the engine's. `tools/dos/dostailcensus.py` excludes them by name; copy
+that exclusion rather than reinventing it.
 
 **The way out, when no specimen can be trusted, is to read the code instead.**
 A finding taken from the engine's own instructions cannot be poisoned by an
-edited save. `#232 (An item-granted effect is dropped on the way through the
-neutral record, with no report)` was settled that way on 2026-09-04 after
-SILAS had misled it: the expiry routine at `GAME.OVR:0x23DCC` reads the 16-bit
-duration at record bytes 1-2 and nothing else, so duration zero is permanence,
-which is what the project had believed before an edited record refuted it.
-Watching the routine run confirmed it, and readying a magical item in the
-running game produced the engine-written specimen the corpus had never had.
+edited save: the expiry routine at `GAME.OVR:0x23DCC` reads the 16-bit
+duration at record bytes 1-2 and nothing else, so duration zero is permanence.
 
 **That is the order to prefer when provenance is in doubt: the code, then a
 specimen we made, then a specimen we merely found.**

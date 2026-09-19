@@ -24,7 +24,7 @@ agent happening to be in flight. Without it, an overnight session is only as
 long as its longest-running subagent. Ask Donald to start the night that way.
 
 **A killed background command is not a finished one.** A backgrounded `pytest`
-has come back `killed` rather than with a result four times. A long run belongs
+can come back `killed` rather than with a result. A long run belongs
 in the foreground with an explicit timeout -- the suite takes about four
 minutes and the tool allows ten -- or it has to be checked for a real result
 rather than assumed to have passed.

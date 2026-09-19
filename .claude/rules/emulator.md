@@ -20,9 +20,8 @@ slot=slot)` takes it from there. Two instances have been proven to coexist;
 **On the C64 Ultimate, turn the speaker off before you boot a game.** The
 machine has an **internal speaker** and Donald has no physical way to turn it
 down, so booting Pool of Radiance plays the intro music into the room he is
-working in. He caught an agent doing it on 2026-09-05: *"That is going to
-blast the intro song, and I'll have no way to turn it down."* A window on his
-screen and a noise in his room are the same kind of mistake.
+working in. A window on his screen and a noise in his room are the same kind of
+mistake.
 
 ```sh
 mkdir -p "${TMPDIR:-/tmp}/wish/c64u"
@@ -48,27 +47,17 @@ when it draws no window.
 
 **Every emulator an agent starts is silent, and VICE is the only one this is
 already true of.** The headless branch handles VICE and nothing handles the
-others: on 2026-09-08 an agent booted FS-UAE offscreen on his own machine to
-answer `#464 (Can the automapper follow a live FS-UAE game on Linux, so Wish
-and the Amiga game run on one machine?)`, and two "Amiga Emulator" streams
-turned up in PulseAudio while he was working. He asked what was making disk
-noises, and it took a `pactl list sink-inputs` to say. He was mild about it --
-*"I can turn the speakers down, so this is not a huge impact. But make sure to
-silence it next time"* -- and mildness is not the point: a noise in his room is
-the same kind of mistake as a window on his screen, and the brief that sent
-that agent said "offscreen" and forgot to say "silent".
+others, so a brief for an emulator run says "silent" as well as "offscreen".
 
-* **FS-UAE**: **`--volume=0` does not silence it** -- all three runs Donald
-  heard on 2026-09-08 had it set, which is how this rule came to be measured
-  rather than guessed. Use `SDL_AUDIODRIVER=dummy` for a build that links SDL
-  audio, `flatpak run --nosocket=pulseaudio` for the stock Flatpak, and
+* **FS-UAE**: **`--volume=0` does not silence it.** Use
+  `SDL_AUDIODRIVER=dummy` for a build that links SDL audio,
+  `flatpak run --nosocket=pulseaudio` for the stock Flatpak, and
   `ALSOFT_DRIVERS=null` for a native 3.x build with OpenAL.
 * **WinUAE**: it runs on the Windows VM, whose audio reaches the host, and
   `sound_output=none` is **not** available -- it deadlocks Silver Blades on its
-  second turn (`#331 (Amiga Silver Blades asks a journal word before it will
-  adventure, so the title cannot be driven past its party menu)`), which is why
-  `tools/amiga/goldbox-a500.uae` sets `sound_output=interrupts`. Mute the VM's own
-  audio device rather than the emulator's.
+  second turn, which is why `tools/amiga/goldbox-a500.uae` sets
+  `sound_output=interrupts`. Mute the VM's own audio device rather than the
+  emulator's.
 
 **Check rather than assume.** `pactl list sink-inputs` names what is playing,
 and a run that leaves nothing there is the only proof that a flag worked.

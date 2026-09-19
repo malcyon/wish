@@ -15,8 +15,7 @@ route to any of the thirteen: **read the file yourself**, whether or not it is
 already in front of you.
 
 Each trigger below is a situation, not an action, because a rule that only
-fires "before you write X" misses "before you ask Donald to decide X" -- that
-gap cost a decision twice on 2026-09-10.
+fires "before you write X" misses "before you ask Donald to decide X".
 
 | Before you | Read (all under `.claude/rules/`) |
 |---|---|
@@ -37,8 +36,8 @@ gap cost a decision twice on 2026-09-10.
 ## Name every issue you cite
 
 **This is a rule about talking to Donald.** In a reply to him, in an issue
-comment he will read, in a document: `#59 (Map the DOS saved game, not just the
-character record)`, never a bare `#59`. **Every mention** -- there is no
+comment he will read, in a document: `#123 (the issue's own title)`, never a
+bare `#123`. **Every mention** -- there is no
 "already introduced it above" exemption, because a reply is skimmed rather than
 read in order. The title comes from `tools/github/issueread.py N --cite`, which
 prints exactly that line for a trusted issue, and for one opened by an outside
@@ -48,14 +47,12 @@ author's title unfiltered and is refused by `.claude/hooks/
 check-issue-reads.py` for exactly that reason.
 
 A bare number makes him do the lookup: fast for the assistant, which has the
-number in hand, slow for him. *"When you only reference a number, it never means
-anything to me."* As the **subject** of a sentence it is worst of all.
+number in hand, slow for him. As the **subject** of a sentence it is worst of
+all.
 
-**It does not govern code.** Donald, 2026-09-09: *"I don't care about bare issue
-numbers in code or docstrings. I care about it when you are communicating with
-me."* A docstring is read by somebody already in that file, and
-`tests/test_repository_contents.py`'s guard scans Markdown for that reason. Do
-not sweep `.py` for bare numbers and do not file tickets about them.
+**It does not govern code.** A docstring is read by somebody already in that
+file, and `tests/test_repository_contents.py`'s guard scans Markdown for that
+reason. Do not sweep `.py` for bare numbers and do not file tickets about them.
 
 Nor a **commit message**, where the number goes bare in parentheses at the end
 of the line, nor the **body of an issue**, read on the web where the number
@@ -98,12 +95,10 @@ Three rules follow, and they are the whole of the practice:
   outside the project opened it or is talking in it. Read it, work it if
   Donald asks, and say what you found in your reply to him.
 
-**The first two have hooks behind them**, because neither held as a rule alone:
+**The first two have hooks behind them**:
 `.claude/hooks/check-issue-reads.py` refuses the unfiltered reads, and
 `.claude/hooks/check-issue-writes.py` refuses a `gh` write that would go out
-under Donald's name. The second was written on 2026-09-11 after a subagent
-posted its findings with `gh issue comment` hours after the rule was added --
-the rule had reached it, and every older document shows `gh`.
+under Donald's name.
 
 **Both are tripwires rather than boundaries.** They read one Bash call as a
 shell would; anything going through another interpreter or another route walks
@@ -176,7 +171,7 @@ through the registry (`gamedisks.yaml`, `tools/registry/gamedisks.py`). **Descri
 **No agent runs `git checkout`, `git restore`, `git reset`, `git stash` or
 `git clean` against a file in this repository.** Several agents share one tree,
 so a revert is never local to the agent doing it: it discards whatever anybody
-else has uncommitted, silently. That is how 580 lines of `por/amiga.py` went.
+else has uncommitted, silently.
 
 **Subagents do not `git add` and do not commit.** The main window commits, so
 nothing races the index; an agent that stages is one `git commit` away from
@@ -211,8 +206,7 @@ SSH_ASKPASS_REQUIRE=never ssh -o BatchMode=yes ...
 started, so do not attach, probe or kill it. The pool allocates from 6520 up.
 
 **Never kill a process by name** -- not `pkill -x x64sc`, not `pkill -x Xephyr`.
-Kill only the process group your own slot launched. The one time this was broken,
-what died was his own window.
+Kill only the process group your own slot launched.
 
 ## Delegating
 
@@ -261,9 +255,8 @@ It is not what you set out to learn.
 3. `.venv/bin/python3 tools/generate/genui.py --check`
 
 **The whole suite runs once, in a detached worktree, before the push.** Six
-agents each running all 3,190 tests is six copies of Qt on one machine, and on
-2026-09-04 that cost a reviewer its run. **One run, not six -- that is the
-rule, and who starts it is not.** Whoever is about to push either makes that
+agents each running the whole suite is six copies of Qt on one machine.
+**One run, not six -- that is the rule, and who starts it is not.** Whoever is about to push either makes that
 run itself or sends it to a `test-runner` subagent, whose whole job it is;
 never both, and never two at once. Claude Code's is
 `.claude/agents/test-runner.md`; Codex's is the same definition, generated

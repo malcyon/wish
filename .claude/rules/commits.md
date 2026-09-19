@@ -16,8 +16,8 @@ finishes the work -- that closes the issue when it reaches `main` -- and a bare
 `#N` for a commit that only moves it along.
 
 ```
-Land in the largest open part of the map (closes #14)
-Read the trainer out of GEN (#10)
+Land in the largest open part of the map (closes #123)
+Read the trainer out of GEN (#123)
 ```
 
 **The sentence still has to stand on its own.** It is read in `git blame`, in
@@ -34,24 +34,21 @@ Run all three locally, or CI will find what you did not:
 3. `.venv/bin/python3 tools/generate/genui.py --check` (every `.ui` compiled and current)
 
 **Run the whole suite, not the files you touched.** A scoped run is for
-working; it is not the check. `pytest tests/test_combatdrive.py` was green and
-`main` went red on all four jobs eight minutes later.
+working; it is not the check, because a change can break a test in a file you
+did not run.
 
 **A subagent that is doing work runs only the files it touched.** Six agents
-each running all 3,190 tests is six copies of Qt on one machine: on 2026-09-04
-a reviewer's run sat producing nothing under that load and was abandoned. The
-whole suite runs **once**, in the detached worktree below, before the push --
-which is the run that gates anything, so nothing is lost by the agents not
-repeating it.
+each running the whole suite is six copies of Qt on one machine, and under that
+load a run stalls and produces nothing. The whole suite runs **once**, in the
+detached worktree below, before the push -- which is the run that gates
+anything, so nothing is lost by the agents not repeating it.
 
 **The rule is one run, not who starts it**, and that is the distinction to keep
 hold of. **`test-runner` is the agent whose whole job is that one run**, and
 handing it the suite is not the thing this rule forbids -- what it forbids is
 six of them at once. The main window still owns the decision and reads the
-result; it just does not have to sit and watch. Donald, 2026-09-09: *"Every
-time I want to ask you a question, I have to wait for you to finish running the
-tests. Your job as orchestrator is to coordinate subagents and answer my
-questions."* Four minutes of a blocked window, every push, was the cost.
+result; it just does not have to sit and watch, because a four-minute run in
+the main window is four minutes Donald cannot ask anything.
 
 So: **the main window either runs the suite itself or sends it to
 `test-runner`, and never both, and never two of them at once.** A `test-runner`
@@ -62,15 +59,13 @@ the definition.
 **The exception is a change that touches no code.** Prose in `docs/`, a rule
 file, `AGENTS.md`, a README row: the only test that reads any of those is
 `tests/test_repository_contents.py`, which takes a second and a half. Run that
-and `ruff`, and push. Donald, 2026-09-03: *"Waiting on a full test suite when
-you've only changed a markdown file is a real bummer."* Six and a half minutes
-of suite to prove a sentence did not break a parser is not diligence, it is a
-habit that costs a person their evening.
+and `ruff`, and push. The full suite takes minutes and proves nothing about a
+sentence.
 
 **"Touches no code" means no `.py`, no `.ui`, and no file a test reads as
 data.** A docstring is code for this purpose -- it ships in the module, and a
-comment change is the one that gets waved through and turns out to have been
-inside a string literal. If the diff has a `.py` in it at all, run everything.
+comment edit can turn out to sit inside a string literal. If the diff has a
+`.py` in it at all, run everything.
 
 **And in a shared tree, run it somewhere the other agents are not.** With two
 subagents mid-edit -- the normal state on a busy night -- a run in place tests
@@ -84,7 +79,7 @@ ln -sfn "$PWD/gamedisks.yaml" "$WT/gamedisks.yaml"   # ditto: one machine's own 
 git worktree remove "$WT" --force
 ```
 
-**Plain `pytest -q` is already this fast: parallel is the default, not an
+**A bare `pytest -q` is already this fast: parallel is the default, not an
 extra flag.** `-n auto --dist loadgroup` lives in `pyproject.toml`'s
 `addopts`, so the command above already runs on every core the machine has --
 about 1:40 on twelve cores against about 7:30 run one test at a time, both
@@ -152,9 +147,7 @@ tip. Prose means `.md` files outside `.claude/agents/`; `pyproject.toml`, a
 TOML agent profile and the hook wiring are read by tests and count as code.
 A commit and a push in one call are refused outright, because the hook can
 only vouch for the HEAD it sees. The documentation-only exception above is
-otherwise unchanged: a push carrying only prose needs no marker. On 2026-09-16
-the rule alone let eighteen pushes out with one run, and the batch that
-closed `#89` turned `main` red on a test nobody in scope had run.
+otherwise unchanged: a push carrying only prose needs no marker.
 
 ## After a push
 

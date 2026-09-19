@@ -12,17 +12,15 @@ paths:
 button text, tooltips, status messages, empty-state lines, dialog prose --
 propose the wording, do not ship it.
 
-**When in doubt, leave it out and say so in the reply.** The interface kept
-growing sentences that explained itself until it read as a program apologising
-for itself; every one of them was removed on request. Removing a sentence is
-cheap, and a user reading a paragraph that should never have existed is not.
+**When in doubt, leave it out and say so in the reply.** A sentence that
+explains the interface to itself makes the program read as apologising for
+itself. Removing a sentence is cheap, and a user reading a paragraph that
+should never have existed is not.
 
 **"It matches the wording already there" is not approval.** The sentences
 already in the interface read well to somebody who knows the machinery, which
-is everybody who has reviewed them and nobody who is using the program.
-Donald's verdict on three strings shipped that way --
-`#96 (Three interface strings shipped tonight without being approved)` -- was
-*"they won't be understood by humans"*.
+is everybody who has reviewed them and nobody who is using the program, so a
+string that matches them shares whatever a user cannot understand in them.
 
 **Everything a person reads starts with a capital letter.** The Messages panel,
 the status bar, a dialog, a tooltip, a label, an empty-state line, the debug
@@ -72,25 +70,19 @@ read by whoever is debugging, and an address there is the point.
 ## Any decision about the interface comes with a screenshot
 
 **If you are asking Donald to decide something about how the program looks,
-show him a picture of it.** 2026-09-05: *"For the theming stuff, you need to
-show me a screenshot. You are just giving me straight numbers, and I am not a
-computer. We need a rule that any UI decision requires a screenshot."*
+show him a picture of it.** A claim about **what something looks like**, argued
+in hex colours, file paths and line numbers, is argued entirely in things
+nobody can look at, and it can be wrong.
 
-He said it after being handed hex colours, file paths and line numbers as the
-evidence for a claim that Wish would be unreadable on a dark desktop -- a
-claim about **what something looks like**, argued entirely in things you
-cannot look at. When the screenshot was finally taken it did not support the
-claim.
-
-So the rule has two halves and the second is the one that costs:
+The rule has two halves and the second is the one that costs:
 
 * **Never describe an appearance in numbers when you could show it.** A hex
   triple is not a colour to a person, a font metric is not a size, and a
   layout described in pixels is not a layout.
 * **Take the screenshot before you form the opinion, not after.** Reading
-  `setStyleSheet` calls and reasoning about what they would do is how the
-  wrong claim above got made. `QWidget.grab()` works offscreen, so there is
-  never a reason to reason instead of look.
+  `setStyleSheet` calls and reasoning about what they would do is how a wrong
+  claim about appearance gets made. `QWidget.grab()` works offscreen, so there
+  is never a reason to reason instead of look.
 
 **Say what the screenshot does not show.** A window with no data in it does
 not exercise the code paths that draw data -- the empty automapper looks

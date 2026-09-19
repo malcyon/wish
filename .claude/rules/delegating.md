@@ -35,54 +35,44 @@ configured model, not the same decision spelled two ways.
 | `changelog-writer` | Sonnet | `gpt-5.6-terra` | after a batch of work lands, and before cutting a release |
 | `test-runner` | **Haiku** | `gpt-5.6-luna` | the whole suite before a push, or a scoped run on named files. **The one agent that may run everything**, because it exists so that one run does not block the window Donald is asking questions in. It reports and fixes nothing |
 
-**Cost is not the filter on `deep-research` and `architect`; fit is.** Donald,
-2026-09-04, of Fable, Claude Code's name for the tier behind both (Codex runs
-the same two agents on its own top tier, `gpt-6-astra`): *"consider
-deep-research and architect as available options to use when necessary. I
-don't want to waste tokens where another agent could do the job. But I don't
-think using Fable will run us out of tokens anytime soon."* So the question to
-ask is the same one the table asks of every row -- does this agent's
-definition already describe the work? -- and not whether the budget can stand
-it. Sending a measurement to `deep-research` is still waste, because a
-`reverse-engineering` agent would do it as well; sending it a question that
-more specimens cannot answer is what it is for.
+**Cost is not the filter on `deep-research` and `architect`; fit is.** Fable is
+Claude Code's name for the tier behind both (Codex runs the same two agents on
+its own top tier, `gpt-6-astra`). So the question to ask is the same one the
+table asks of every row -- does this agent's definition already describe the
+work? -- and not whether the budget can stand it. Sending a measurement to
+`deep-research` is still waste, because a `reverse-engineering` agent would do
+it as well; sending it a question that more specimens cannot answer is what it
+is for.
 
-**What earns `deep-research`** is an assumption that broke. On
-2026-09-04 the project had been reading a `.SPC` effect's duration of zero as
-"permanent", and SILAS turned up carrying two running spells at duration zero
--- so the discriminator is not in the bytes anybody has been reading, and no
-number of further specimens says what it is. Reading the engine's own expiry
-routine does. That is the test: **would another hour of measuring answer it?**
-If yes, it is not this agent's work.
+**What earns `deep-research`** is an assumption that broke: a field the project
+has been reading one way turns up carrying a value the reading cannot explain,
+so the discriminator is not in the bytes anybody has been reading, and no
+number of further specimens says what it is. Reading the engine's own code
+that uses the field does. That is the test: **would another hour of measuring
+answer it?** If yes, it is not this agent's work.
 
-**Widened on 2026-09-05: an issue whose remaining obstacle is an UNKNOWN goes
-here by default.** Donald: *"Honestly, just use the deep-research agent to
-figure out the unknowns. That should help a lot. You can't use it for
-everything, but you could use it for the hardest tickets."* So the broken
-assumption above is a **sufficient** reason to route here rather than the only
-one, and a ticket that has sat because nobody could say what some bytes hold is
-this agent's work now. What still does not come here is ordinary building and
-ordinary measuring: a `reverse-engineering` agent does those as well, and
-sending them to `deep-research` or `architect` buys nothing.
+**An issue whose remaining obstacle is an UNKNOWN goes to `deep-research` by
+default.** The broken assumption above is a **sufficient** reason to route
+here, not the only one, and a ticket that has sat because nobody could say
+what some bytes hold is this agent's work. What still does not come here is
+ordinary building and ordinary measuring: a `reverse-engineering` agent does
+those as well, and sending them to `deep-research` or `architect` buys
+nothing.
 
 **`senior-analyst` sits between `architect` and `junior-dev`, and the
-split is where the difficulty lives.** Donald, 2026-09-14: an orchestrator
-that finds a bug and files it needs a higher model to turn the ticket into a
-plan, and `architect` on Fable was doing that for bugs that did not need an
-expert. So: when the code that must change is already in the tree and the
-question is which lines, which helper already does it and what the test
-asserts, it goes to `senior-analyst`, which posts the plan on the issue
-and names the builder. When working out *how* is the hard part -- an unknown
-in the bytes, a subsystem that does not exist, stages across several agents
--- it goes to `architect`, or to `deep-research` if the obstacle is an
+split is where the difficulty lives.** When the code that must change is
+already in the tree and the question is which lines, which helper already does
+it and what the test asserts, it goes to `senior-analyst`, which posts the plan
+on the issue and names the builder. When working out *how* is the hard part --
+an unknown in the bytes, a subsystem that does not exist, stages across several
+agents -- it goes to `architect`, or to `deep-research` if the obstacle is an
 UNKNOWN. A `senior-analyst` that finds it is holding `architect`'s work
 stops and says so, and that is a completed task.
 
 **`junior-dev`'s filter is a property of the issue body** -- does it name the
-mechanism, or only the goal? `#71 (Character draws on top of itself when the header is squeezed to its floor)`
-looked like ordinary work and took nine rounds and a `QTableView` subclass.
-`#73 (The DOSBox-X harness refuses to start without DOSBox 0.74, which it never runs)` named the two candidate approaches and said
-which was smaller, and that is what made it assignable.
+mechanism, or only the goal? An issue that reads as ordinary work but names no
+mechanism is not assignable, however small it looks. One that names the
+candidate approaches and says which is smaller is.
 
 **Send work to the agent whose definition already describes it.** Each
 `.claude/agents/*.md` says what its agent is for, and that sentence is the
@@ -113,11 +103,11 @@ back the one hunk you changed -- to restoring the whole file you remember.
 
 **Tell the agent to run its own test files, not the suite.** `pytest` on what
 it touched, plus `ruff` and `genui.py --check`. The whole suite runs once,
-before the push -- `.claude/rules/commits.md`. Six agents each running all
-3,190 tests is six copies of Qt on one machine, and on 2026-09-04 that cost a
-reviewer its run. Tell it to run in the **foreground with a timeout** as well:
-a backgrounded `pytest` here has come back `killed` rather than with a result,
-and five agents ended turns that day waiting on runs that never reported.
+before the push -- `.claude/rules/commits.md`. Six agents each running the
+whole suite is six copies of Qt on one machine. Tell it to run in the
+**foreground with a timeout** as well: a backgrounded `pytest` here can come
+back `killed` rather than with a result, and an agent waiting on a run that
+never reports ends its turn with nothing.
 
 **`test-runner` is the exception, and it is the only one.** That one run may go
 to it rather than being made in the main window, because a four-minute run in
@@ -166,7 +156,7 @@ report another agent's half-finished change as a finding against the one under
 review.
 
 **Verify a finding before acting on it.** The reviewer is a reader, not an
-oracle -- it has reported a deliberate lever with a test and a docstring as
+oracle -- it can report a deliberate lever with a test and a docstring as
 dead code. Check the claim, then fix or reject it, and rejecting it is a normal
 outcome rather than a failure of the review.
 

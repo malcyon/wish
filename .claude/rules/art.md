@@ -8,8 +8,8 @@ paths:
 # Art
 
 **No AI-generated art, anywhere, ever.** Not icons, not logos, not textures, not
-placeholders "until we find a real one". This is Donald's rule and it is not
-negotiable by an agent that finds it inconvenient.
+placeholders "until we find a real one". It is not negotiable by an agent that
+finds it inconvenient.
 
 **Do not modify somebody else's art either.** An icon lifted from Font Awesome
 is drawn the way Fonticons drew it. If it does not work at a size, the answer is

@@ -69,8 +69,8 @@ conclusion should be now rather than quietly fixing the line.
 is the page a stranger reads first and it is his. A finding goes in `docs/`; if
 it belongs in the README too, say so and wait to be asked.
 
-**The open work list is GitHub issues.** `docs/TASKS.md` and its `P` codes are
-retired; do not cite a P-code in new work.
+**The open work list is GitHub issues.** There is no `docs/TASKS.md`; do not
+cite a P-code in new work.
 
 ## The two bug files
 

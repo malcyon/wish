@@ -69,6 +69,28 @@ use has to be clearable by whoever it blocks. This one was not, and its failure
 mode -- no agent can do anything -- was worse than the fault it caught, which is
 a sentence Donald has to read twice.
 
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### AGENTS.md, "Name every issue you cite"
+
+Original example (replaced by the placeholder `#123 (the issue's own title)`), lines 40-41:
+
+> `#59 (Map the DOS saved game, not just the
+> character record)`, never a bare number.
+
+Cut quotation, lines 51-52 (end of the paragraph "A bare number makes him do the lookup"):
+
+> number in hand, slow for him. *"When you only reference a number, it never means
+> anything to me."* As the **subject** of a sentence it is worst of all.
+
+Cut provenance, lines 54-56 ("It does not govern code"):
+
+> **It does not govern code.** Donald, 2026-09-09: *"I don't care about bare issue
+> numbers in code or docstrings. I care about it when you are communicating with
+> me."* A docstring is read by somebody already in that file, and
+
 ## Conciseness and replies
 
 Conciseness carries no incident of its own; it is a standing preference, and
@@ -231,6 +253,36 @@ the pane it is prefixed with the file it concerns -- so the same filename
 appears twice in one sentence and half of it repeats the prefix. That was
 invisible in the diff and obvious in a screenshot.
 
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### .claude/rules/gui-text.md -- "Help text in the GUI"
+
+> The interface kept
+> growing sentences that explained itself until it read as a program apologising
+> for itself; every one of them was removed on request.
+
+> Donald's verdict on three strings shipped that way --
+> `#96 (Three interface strings shipped tonight without being approved)` -- was
+> *"they won't be understood by humans"*.
+
+#### .claude/rules/gui-text.md -- "Any decision about the interface comes with a screenshot"
+
+> 2026-09-05: *"For the theming stuff, you need to
+> show me a screenshot. You are just giving me straight numbers, and I am not a
+> computer. We need a rule that any UI decision requires a screenshot."*
+>
+> He said it after being handed hex colours, file paths and line numbers as the
+> evidence for a claim that Wish would be unreadable on a dark desktop -- a
+> claim about **what something looks like**, argued entirely in things you
+> cannot look at. When the screenshot was finally taken it did not support the
+> claim.
+
+> Reading
+> `setStyleSheet` calls and reasoning about what they would do is how the
+> wrong claim above got made.
+
 ## What must never enter the repository
 
 This has no failure behind it, which is the point: nothing forbidden has been
@@ -303,6 +355,16 @@ documentation rules are about. Reading `git diff --cached --name-only` before
 every commit is the check; telling subagents not to `git add` at all is the
 prevention.
 
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### AGENTS.md, "Git in a shared tree"
+
+Cut sentence, line 179:
+
+> else has uncommitted, silently. That is how 580 lines of `por/amiga.py` went.
+
 ## The machine
 
 Donald works at this desktop while agents run. Windows flashing open and closed
@@ -342,6 +404,49 @@ belongs to somebody however dead it looks.
 pooled instance gets its own `vicerc` seeded from his with
 `SaveResourcesOnExit=0`, so nothing an agent runs can write settings back into
 his.
+
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### AGENTS.md, "The machine"
+
+Cut sentences, lines 214-215:
+
+> Kill only the process group your own slot launched. The one time this was broken,
+> what died was his own window.
+
+#### .claude/rules/emulator.md -- speaker section
+
+> He caught an agent doing it on 2026-09-05: *"That is going to
+> blast the intro song, and I'll have no way to turn it down."*
+
+#### .claude/rules/emulator.md -- "Every emulator an agent starts is silent"
+
+The FS-UAE incident (the rule keeps "The headless branch handles VICE and
+nothing handles the others" and says a brief must say "silent" as well as
+"offscreen"):
+
+> on 2026-09-08 an agent booted FS-UAE offscreen on his own machine to
+> answer `#464 (Can the automapper follow a live FS-UAE game on Linux, so Wish
+> and the Amiga game run on one machine?)`, and two "Amiga Emulator" streams
+> turned up in PulseAudio while he was working. He asked what was making disk
+> noises, and it took a `pactl list sink-inputs` to say. He was mild about it --
+> *"I can turn the speakers down, so this is not a huge impact. But make sure to
+> silence it next time"* -- and mildness is not the point: a noise in his room is
+> the same kind of mistake as a window on his screen, and the brief that sent
+> that agent said "offscreen" and forgot to say "silent".
+
+The FS-UAE volume measurement:
+
+> all three runs Donald
+> heard on 2026-09-08 had it set, which is how this rule came to be measured
+> rather than guessed.
+
+The WinUAE deadlock citation:
+
+> (`#331 (Amiga Silver Blades asks a journal word before it will
+> adventure, so the title cannot be driven past its party menu)`)
 
 ## Temp files, tools and backups
 
@@ -490,6 +595,92 @@ path)` and `#34 (Validate the live automapper tab per title)` at once. And
 on load)` was a contradiction in the knowledge base that took a paragraph to fix
 and had already cost somebody a session.
 
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### AGENTS.md, "The tracker is public..." hooks paragraph
+
+Cut, lines 101-106 (the whole paragraph; the two hook paths stay, the reason and the date go):
+
+> **The first two have hooks behind them**, because neither held as a rule alone:
+> `.claude/hooks/check-issue-reads.py` refuses the unfiltered reads, and
+> `.claude/hooks/check-issue-writes.py` refuses a `gh` write that would go out
+> under Donald's name. The second was written on 2026-09-11 after a subagent
+> posted its findings with `gh issue comment` hours after the rule was added --
+> the rule had reached it, and every older document shows `gh`.
+
+#### .claude/rules/issues.md -- "Citing an issue"
+
+The example and the quotation in the opening paragraph (the rule now reads
+`#123 (the issue's own title)` and gives the reason in its own words):
+
+> **Name an issue when you cite it: `#59 (Map the DOS saved game, not just the
+> character record)`.** A bare number is a lookup Donald has to go and do:
+> *"when you only reference a number, it never means anything to me."*
+
+The attribution on the code exemption:
+
+> Donald, 2026-09-09: *"I don't care about bare issue numbers in code or
+> docstrings. I care about it when you are communicating with me."*
+
+The attribution on the issue-body exemption:
+
+> Donald, 2026-09-01: *"Leave them alone. GitHub.com shows the
+> ticket details on hover and makes it a hotlink, so it will be fine."*
+
+#### .claude/rules/issues.md -- "Labels"
+
+The incident and the attribution under "Do not reverse a change a person made":
+
+> An agent asked for `enhancement`,
+> Donald set `question`, and the agent set it back -- treating his decision as
+> the defect.
+
+> Donald, 2026-09-04: *"I
+> just don't want it resetting labels back to what they were for no reason at
+> all."*
+
+The attribution under the priority rule:
+
+> Donald, 2026-09-09: *"It is fine to change
+> priorities. Just have a reason and post it in the comments. Don't just flip it
+> back because you think it was a mistake."*
+
+The account of the earlier version of the section (the rule now stands without
+it):
+
+> **An earlier version of this section said priorities were "the one place to
+> hold back". That was wrong**, and `docs/160-why-these-rules.md` has how it got
+> there.
+
+#### .claude/rules/issues.md -- "An agent files and comments as the bot"
+
+Dates and backfill history around the `AI` / `human` labels (the rule now says
+"An issue with neither label predates that workflow."):
+
+> **Nothing
+> locks anything**: a GitHub App installation is refused a comment on a locked
+> issue whatever permissions it holds, measured three ways on 2026-09-11, so
+> locking would silence this project's own bot rather than the public. An issue opened before 2026-09-11 carries neither label; nothing was
+> backfilled, because all three hundred of them were Donald's and a universal
+> label means nothing.
+
+#### .claude/rules/issues.md -- "Work you discover while working"
+
+The attribution on the renaming ban:
+
+> Donald, 2026-09-07, saying it as a standing instruction: *"Do not simply open
+> new tickets for the same issue and close the original ticket. The issue must be
+> resolved in the proper way."*
+
+The "A" in the count paragraph was a leftover from an earlier version's option
+list (A a comment on the ticket, B a separate issue); the rule now says what
+the letter stood for:
+
+> one that files twenty-three and closes ten was choosing A
+> too often
+
 ## Delegating
 
 **A reviewer's finding was nearly acted on and was wrong.** The `code-reviewer`
@@ -541,6 +732,78 @@ that is what made it assignable.
 so it reports another agent's half-finished change as a finding against the one
 you are reviewing unless it is told which files it owns.
 
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### AGENTS.md, opening paragraph after the routing intro
+
+Cut clause (end of the paragraph beginning "Each trigger below is a situation, not an action"):
+
+> -- that
+> gap cost a decision twice on 2026-09-10.
+
+#### .claude/rules/delegating.md -- "Choosing the agent"
+
+The cost paragraph's quotation and date:
+
+> Donald,
+> 2026-09-04, of Fable, Claude Code's name for the tier behind both (Codex runs
+> the same two agents on its own top tier, `gpt-6-astra`): *"consider
+> deep-research and architect as available options to use when necessary. I
+> don't want to waste tokens where another agent could do the job. But I don't
+> think using Fable will run us out of tokens anytime soon."*
+
+The incident that defined `deep-research`'s test (the rule now states the test
+without the case):
+
+> On
+> 2026-09-04 the project had been reading a `.SPC` effect's duration of zero as
+> "permanent", and SILAS turned up carrying two running spells at duration zero
+> -- so the discriminator is not in the bytes anybody has been reading, and no
+> number of further specimens says what it is. Reading the engine's own expiry
+> routine does.
+
+The widening of the `deep-research` rule (the rule now says the UNKNOWN clause
+without the date or quotation):
+
+> **Widened on 2026-09-05: an issue whose remaining obstacle is an UNKNOWN goes
+> here by default.** Donald: *"Honestly, just use the deep-research agent to
+> figure out the unknowns. That should help a lot. You can't use it for
+> everything, but you could use it for the hardest tickets."* So the broken
+> assumption above is a **sufficient** reason to route here rather than the only
+> one, and a ticket that has sat because nobody could say what some bytes hold is
+> this agent's work now.
+
+Why `senior-analyst` exists:
+
+> Donald, 2026-09-14: an orchestrator
+> that finds a bug and files it needs a higher model to turn the ticket into a
+> plan, and `architect` on Fable was doing that for bugs that did not need an
+> expert. So:
+
+The two issues that illustrated `junior-dev`'s filter:
+
+> `#71 (Character draws on top of itself when the header is squeezed to its floor)`
+> looked like ordinary work and took nine rounds and a `QTableView` subclass.
+> `#73 (The DOSBox-X harness refuses to start without DOSBox 0.74, which it never runs)` named the two candidate approaches and said
+> which was smaller, and that is what made it assignable.
+
+#### .claude/rules/delegating.md -- "Writing the brief"
+
+> Six agents each running all
+> 3,190 tests is six copies of Qt on one machine, and on 2026-09-04 that cost a
+> reviewer its run.
+
+> and five agents ended turns that day waiting on runs that never reported.
+
+#### .claude/rules/delegating.md -- "Commit, then review, then push"
+
+In the rule, reworded ("has reported" became "can report"):
+
+> it has reported a deliberate lever with a test and a docstring as
+> dead code.
+
 ## Commits and CI
 
 **Forty-one commits in one batch.** A day's work was held back and pushed all at
@@ -584,6 +847,62 @@ are expected rather than surprising: something Windows cannot do (`chmod` does
 not make a directory unwritable there, `fcntl` does not exist, paths are not
 split on `/`), and something that is not byte-identical on another machine (a
 rendered image, anything with a font or a timestamp in it).
+
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### AGENTS.md, "Before you commit"
+
+Cut, lines 263-266 ("The whole suite runs once..." -- the reason stays as a fact without the count or the date):
+
+> **The whole suite runs once, in a detached worktree, before the push.** Six
+> agents each running all 3,190 tests is six copies of Qt on one machine, and on
+> 2026-09-04 that cost a reviewer its run. **One run, not six -- that is the
+> rule, and who starts it is not.** Whoever is about to push either makes that
+
+#### .claude/rules/commits.md -- "Before every commit"
+
+The red-`main` incident under "Run the whole suite":
+
+> `pytest tests/test_combatdrive.py` was green and
+> `main` went red on all four jobs eight minutes later.
+
+The subagent-run incident:
+
+> on 2026-09-04
+> a reviewer's run sat producing nothing under that load and was abandoned.
+
+(The sentence also said "Six agents each running all 3,190 tests"; the count is
+dropped from the rule because it goes stale.)
+
+The `test-runner` quotation and its cost:
+
+> Donald, 2026-09-09: *"Every
+> time I want to ask you a question, I have to wait for you to finish running the
+> tests. Your job as orchestrator is to coordinate subagents and answer my
+> questions."* Four minutes of a blocked window, every push, was the cost.
+
+The prose-only-commit quotation and the "habit" argument:
+
+> Donald, 2026-09-03: *"Waiting on a full test suite when
+> you've only changed a markdown file is a real bummer."* Six and a half minutes
+> of suite to prove a sentence did not break a parser is not diligence, it is a
+> habit that costs a person their evening.
+
+The string-literal warning, before it was shortened:
+
+> a
+> comment change is the one that gets waved through and turns out to have been
+> inside a string literal.
+
+#### .claude/rules/commits.md -- "Pushing"
+
+The incident behind the push hook:
+
+> On 2026-09-16
+> the rule alone let eighteen pushes out with one run, and the batch that
+> closed `#89 (Silver Blades' trainer grants spells from a table, and goldbox/levelup.py offers them from a menu)` turned `main` red on a test nobody in scope had run.
 
 ## Testing
 
@@ -688,6 +1007,231 @@ A suite that is green because forty tests skipped has told you nothing;
 count is part of the result. And "24 of 24 records round-trip byte for byte" is
 evidence where "it worked on my character" is not.
 
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### testing.md
+
+Each block is the original paragraph, verbatim, whose provenance was cut. The rule in it stays in the file in a shorter form. Suggested homes in docs/160: the font and constant paragraphs under "Testing" ("The font calibration", "A number measured on this machine is not a number"); everything from the specimen section on has no section yet and wants a new one, "A specimen is only evidence if we know who wrote it", under "Testing".
+
+##### The largest font to test is +10 (testing.md lines 28-36 of the original)
+
+> **The largest font to test is +10, and 9pt is the base here**, so the
+> range is 9pt to 19pt, and `+6` matters most because it measures here about like
+> Windows' base font. There is no layout problem at any font a person uses;
+> somebody who needs text that large uses display scaling, which enlarges the
+> window too. A test that only holds above +10 proves an artefact and will be
+> true forever while catching nothing. If a claim is weak at a realistic font,
+> say it differently rather than at a bigger font --
+> `test_the_top_row_asks_for_more_than_the_page_makes_room_for` became true
+> everywhere once it compared a *rate* across two fonts instead of a gap at one.
+
+##### When a constant bounds something (testing.md lines 45-50 of the original)
+
+> **When a constant bounds something, assert that it is bounded, not that it
+> never moved** -- non-decreasing, and flat by the largest font. A machine whose
+> base font is smaller than ours still climbs towards the cap; only a machine
+> already at the cap sees no climb at all. Prefer the assertion that states the
+> outcome a user cares about: "the window fits a 720-high screen at +6pt"
+> survived both CI platforms where two structural proxies for it did not.
+
+##### Where a test gets its data (CLAUDE.md corrected to AGENTS.md in the retained text; no provenance cut) (testing.md lines 85-86 of the original)
+
+> `CLAUDE.md` forbids the game's data entering this repository, and a fixture
+> that is a slice of a game file is the same copy under a new name. So:
+
+##### The play directory is edited (testing.md lines 98-118 of the original)
+
+> **`/home/donald/dos_por_play/SAVE/` is Donald's own play directory and every
+> character record in it has been edited with Gold Box Companion's character
+> editor.** Assume all of them, not the ones that look wrong. Donald,
+> 2026-09-04: *"Assume all character records in /home/donald/dos_por_play/SAVE/
+> were edited. Base your evidence and reasoning off saves you created
+> yourself."*
+> 
+> **And it is not only that directory.** Donald, 2026-09-04: *"any saves you got
+> off of any of the game disks might also have been edited."* His save disks are
+> a player's disks, played and tinkered with over years. So the boundary is not
+> a path -- it is **whether we watched it being written**.
+> 
+> **So a measurement rests on records we watched being written, and there is
+> essentially one source.**
+> 
+> **Saves an agent made by driving the game**, from character creation onward.
+> `tools/dos/dosgnome.py` is the worked example: it rolls a character in the game's
+> own creation screens under DOSBox and reads back the bytes, and its five
+> same-boot racial controls are what make a single reading a measurement rather
+> than an anecdote. Donald, 2026-09-04: *"if we created our own characters and
+> level them up, then you can know it is safe."*
+
+##### A save found on a disk is not evidence (testing.md lines 120-127 of the original)
+
+> **A save found on a disk is not evidence, however official the disk looks.**
+> Donald, 2026-09-04: *"You shouldn't assume that saves you find on a game disk
+> are 'saves shipped with the game by the manufacturer'. Some random person on
+> the internet might have created those and edited them with GBC. You have no way
+> of knowing."* The archives here are a download -- `~/Downloads/fr-archives`,
+> "Forgotten Realms The Archives" -- so `Default files/Saves` has no chain of
+> custody either. It was listed as trustworthy in an earlier version of this
+> rule and that was wrong.
+
+##### The encumbrance identity is not a provenance test: earlier-version account and both sweeps (testing.md lines 129-191 of the original)
+
+> **The encumbrance identity is not a provenance test, and this rule used to
+> treat it as one.** It said six of the eighteen records in Pool of Radiance's
+> `Default files/Saves` fail `money + Σ(weight × quantity)` against the stored
+> total, two of eighteen in the known-edited set, and reasoned from that towards
+> a stranger's edited party. Both halves of that are gone:
+> 
+> * **The six were never there.** `tools/records/enccensus.py` swept every DOS and Amiga
+>   record on this machine on 2026-09-07: **54 of 54 records the archives ship
+>   balance exactly**, across four titles, and so do **34 of 34 readable Amiga
+>   records**. Those files have not been written since 2026-08-15, and the reader
+>   as it stood at the commit that wrote the sentence gives the same 0 of 18, so
+>   it was not a reader fix either.
+> 
+>   **The two figures do not come from the same place**, and an earlier version
+>   of this passage read as though they did. `~/Downloads/fr-archives` holds no
+>   `.adf` at all: the Amiga records come from the disk-image directories
+>   `tools/registry/gamedisks.py` lists as its `amiga` candidates. The DOS figure is
+>   pinned by `tests/test_enccensus.py::test_every_record_the_archives_ship_
+>   balances_exactly`, so a reader change that brings the six back turns it red.
+>   **The Amiga figure has no test**, so treat it as a measurement taken once
+>   rather than a guarantee, and re-take it before resting anything on it.
+> * **Failing it is the normal state of a record we watched being written.** Of
+>   the 114 records here that miss, on the 2026-09-08 sweep, **110 are ours**:
+>   90 by an exact multiple of 1000 gp -- Pool of Radiance's training fee, on
+>   the ladder of `#249 (Build a DOS party from creation and level it ourselves,
+>   so DOS measurements rest on records we watched being written)` -- 3 by the
+>   Curse shop bug in `docs/125-bug-notes.md` N19, one at +109 by the hand-axe
+>   purchase in `docs/213-the-dos-shopping-trip.md`, four at +200 by one Curse
+>   run's 200-coin payment, and twelve by a 999 this ticket staged itself.
+>   **Nothing in the never-watched corpus misses at all**, 0 of 46. That leaves
+>   **four records and two characters**: GILES at -20 and ASTRID at -65, each
+>   found twice, once in the edited directory and once in a copy. They are
+>   the only two nobody can name an operation for, and 90 + 3 + 1 + 4 + 12 + 4
+>   is the 114.
+> 
+>   **The engine rewrites the field when it rebuilds a character's derived
+>   fields, and no routine that moves coins does that**, which is why the drift
+>   survives a save: 270 of 270 records the ladder saved held the
+>   number they were loaded with, 87 of them after the trainer had taken 1000 gp
+>   in that same boot, and a record spoiled to 999 *before* a boot came back 999
+>   through both a party-menu `SAVE CURRENT GAME` and a camp save. Only the one
+>   character whose sheet `VIEW` drew came back holding the right sum, with five
+>   untouched characters in the same save still at 999. **So one boot leaves one
+>   fee of drift, and the ladder's climb to +11,000 is mostly our own
+>   restaging** -- `tools/dos/dostrainprobe.install` moves stored encumbrance with
+>   the gold it pokes, which is right for an input and is not the engine
+>   agreeing with us. `tools/dos/dosencsave.py` is the tool, and `#323 (The
+>   encumbrance identity does not survive the training fee, so failing it is not
+>   evidence of an edited record)` has the runs.
+> 
+>   **Poke a field before the boot, or the engine never sees it.** That same 999,
+>   written after `LOAD SAVED GAME` had already put the party in memory, came
+>   back as the correct sum from every save -- which reads exactly like a
+>   recompute and is the engine writing its own untouched value over our poke. A
+>   staging that lands after the load has measured nothing.
+> 
+> So **a record failing the identity is not evidence that anybody edited it**,
+> and neither is a record passing it evidence that nobody did. It checks our
+> reading of the money block, the item stride, the weight offset and the byte
+> order, in one sum, which is what it was built for and what it is good at.
+> `#323 (The encumbrance identity does not survive the training fee, so failing
+> it is not evidence of an edited record)` has the counts and the two records
+> that miss the other way.
+
+##### A tolerance is not a reading (corpus reworded, nothing else) (testing.md lines 229-231 of the original)
+
+> **A tolerance is not a reading.** `assert exact >= total - 2` says our sum may
+> be two-in-twenty-four wrong; it hides which two and why. Name the records, or
+> point the test at a corpus where the answer is exact.
+
+##### What is left is the rule (testing.md lines 239-242 of the original)
+
+> What is left is the rule rather than the example: a save found on a disk has no
+> chain of custody, and **staring at it does not say which**. The reason to
+> distrust the archives is that nobody watched them being written, not a count
+> somebody took once.
+
+##### Records this project's own writers produced (testing.md lines 252-268 of the original)
+
+> **Records this project's own writers produced** test the writer and are never
+> evidence about the game, since they carry what we already believe. **Including
+> saves a person edited in Wish.** Donald, 2026-09-04, of the C64 party on
+> `P18PARTY.D64` (scratch, deleted) that `#10 (Finish the high-level test party)` drove
+> through the training hall: *"I edited the C64 characters you mentioned with
+> WISH. I gave them gold. I increased their ability scores. I changed the weight
+> of their items."* Driving a party through the game does not keep it clean
+> afterwards.
+> 
+> **But there is a distinction to hold on to, because it rescues real
+> work.** Editing an **input** and then watching the game compute from it is a
+> valid experiment -- the engine does not care how a byte got there. Reading back
+> a **stored value that Wish wrote** and calling it the game's arithmetic is not.
+> 
+> So: raise a cleric's wisdom in Wish, drive the trainer, and what the trainer
+> offers is the game's answer for that wisdom. Raise the weight of an item in
+> Wish and read the stored encumbrance, and you have measured Wish.
+
+##### A specimen dies with the emulator slot (testing.md lines 270-287 of the original)
+
+> **A specimen dies with the emulator slot that made it.** `Session.stage()` is a
+> `copytree` into the pool instance's own directory, and tearing the slot down
+> takes the instance with it. On 2026-09-04 the only engine-written DOS
+> item-granted effect record this project has ever had -- `CHRDATD1.SPC`, made by
+> readying a magical item in the running game -- was reported at
+> `cited/232/ready4/` and was gone from the whole filesystem an hour later.
+> Its nine bytes survive only because they were quoted in
+> `docs/162-spc-permanence.md`. **Copy a specimen out before the slot goes**, and
+> put it in the tree below rather than anywhere in scratch.
+> 
+> **The tree is `$WISH_SPECIMENS`, default `~/wish-specimens/`**, outside the
+> repository because the game's data must never be committed. `tools/registry/specimens.py
+> add` copies a save in, records who made it and how, hashes every file and makes
+> it read-only; `check` re-hashes and reports anything that moved; `list` says
+> what is there. A file with no `provenance.toml` is not a specimen, and `check`
+> says so. Donald asked for it in those terms: *"We could have a process or naming
+> convention for saves that are JUST for your tests, so I'll know not to touch
+> them."*
+
+##### The cost of getting this wrong is silent (testing.md lines 295-301 of the original)
+
+> **The cost of getting this wrong is silent.** On 2026-09-04 a single edited
+> record -- SILAS, a *human* carrying two `.SPC` effect records where the engine
+> writes a human none -- refuted "an effect at duration zero is permanent",
+> stopped `#232 (An item-granted effect is dropped on the way through the
+> neutral record, with no report)`, and sent a `deep-research` agent after a
+> discriminator that may not exist. Nothing failed. The suite stayed green. It
+> surfaced only because Donald happened to mention he had used the editor.
+
+##### Two files can share a name (testing.md lines 303-312 of the original)
+
+> **Two files can share a name and not each other's provenance.**
+> `CHRDATA6.SAV` exists both in the archives, shipped, and in the edited play
+> directory. A path finder resolves to one of them and the test cannot tell.
+> **So say in the test where its specimen came from**, and when a finding is
+> written up, give the corpus size *and* what the records are.
+> 
+> The same trap caught a census that was sweeping an emulator instance's staged
+> tree, where the sweeping tool's own tampered probe records sat -- our bytes
+> read back as the engine's. `tools/dos/dostailcensus.py` excludes what this project
+> wrote, by name; copy that exclusion rather than reinventing it.
+
+##### The way out (testing.md lines 314-323 of the original)
+
+> **The way out, when no specimen can be trusted, is to read the code instead.**
+> A finding taken from the engine's own instructions cannot be poisoned by an
+> edited save. `#232 (An item-granted effect is dropped on the way through the
+> neutral record, with no report)` was settled that way on 2026-09-04 after
+> SILAS had misled it: the expiry routine at `GAME.OVR:0x23DCC` reads the 16-bit
+> duration at record bytes 1-2 and nothing else, so duration zero is permanence,
+> which is what the project had believed before an edited record refuted it.
+> Watching the routine run confirmed it, and readying a magical item in the
+> running game produced the engine-written specimen the corpus had never had.
+>
+
 ## Testing a conversion
 
 **The template ruling, 2026-08-26.** Donald: *"We should not be using a template
@@ -727,6 +1271,378 @@ is not proven until somebody loads it in the game, walks, and looks at the sheet
 construction**, which is why `tests/test_doswriter.py` masks by
 `WRITE_UNSOURCED` and `WRITE_DEFAULTS` -- the lists the writer declares -- so a
 new difference fails.
+
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### conversions.md
+
+Each block is the original paragraph, verbatim, whose provenance was cut. The rule in it stays in the file in a shorter form.
+
+##### A conversion is between two ports of the same title (conversions.md lines 8-14 of the original)
+
+> **A conversion is between two ports of the same title, and never between
+> titles.** Donald, 2026-09-05: *"the user should not be able to convert a Curse
+> character into a Pool character. The conversion is meant to be for the same
+> title."* **The title is fixed and the port is what changes**: a DOS Curse save
+> converts to a C64 Curse save or to an Amiga Curse save, and to nothing else.
+> Donald, 2026-09-05: *"A DOS Curse save would be able to be converted into a
+> C64 Curse save or an Amiga Curse save."*
+
+##### The six directions (conversions.md lines 16-19 of the original)
+
+> So the six directions of
+> `#51 (Every permutation of DOS, C64 and Amiga, in both directions)` are six
+> pairs of *ports*, each carrying whichever titles both ends can read -- not a
+> grid of every title against every other.
+
+##### The player still gets from one title to the next (conversions.md lines 21-28 of the original)
+
+> **The player still gets from one title to the next, and the game does it.**
+> Donald, 2026-09-08, giving the path this rule exists to protect: *"A user plays
+> Secrets of the Silver Blades on the C64. They beat the game. They then load
+> their save into Wish and convert into an Amiga save. They now have an Amiga
+> Secrets of the Silver Blades save. They then load that save into Amiga Pools of
+> Darkness, and the game itself converts it into an Amiga Pools of Darkness save.
+> This keeps us from running into a whole class of bugs that would come with
+> converting saves from one game into another."*
+
+##### editor/convert.py already builds it that way (conversions.md lines 37-44 of the original)
+
+> `editor/convert.py` already builds it that way -- a direction's destination is
+> `games.by_key(deltas.key)`, the same title on the other port -- so this rule is
+> here to stop somebody adding the other thing rather than to describe a defect.
+> It also settles a question that
+> would otherwise keep coming back: **a character who cannot exist in the
+> destination title is not a case the conversion has to handle**, because that
+> conversion is never offered. Pool of Radiance has no druids, and no Curse
+> druid is ever asked to become one.
+
+##### The standard is a perfect conversion (conversions.md lines 46-50 of the original)
+
+> **The standard is a perfect conversion, and the player is never told about a
+> drop, because a route that drops something is not offered.** Donald,
+> 2026-09-08, deciding it: *"I want perfect conversions. We should not have to
+> tell the player that anything is dropped, because everything should just work.
+> We should keep things behind feature flags until they are perfect."*
+
+##### Never write a sentence to the player (conversions.md lines 52-61 of the original)
+
+> **Never write a sentence to the player in place of fixing the thing it
+> describes.** Finding a condition the conversion cannot handle and reporting it
+> is how a defect turns into furniture: the sentence ships, the bug does not get
+> fixed, and the next agent reads the sentence as the design. Donald, 2026-09-10,
+> on being shown two such lines: *"Things like this are WHY we have to remove the
+> Convert dialog. Because the agents find a bug, and instead of fixing it, they
+> want to write an excuse to the player and then they never fix it. It's not
+> okay. We need it to be correct."* If a condition cannot be fixed in the session
+> that found it, **file it and send the line to the debug log** -- the evidence
+> stays, the excuse does not.
+
+##### The same game on two platforms is the same game (conversions.md lines 63-70 of the original)
+
+> **And the same game on two platforms is the same game.** Both ports run the
+> same rules on the same content, so a magic-user memorises the same number of
+> spells on the C64 as in DOS, and a title's spellbook holds the same spells on
+> both. **A difference between the platforms in what a character may hold is our
+> table being wrong until the engine's own code says otherwise** -- read the
+> code, do not reason from a record, and do not encode the difference as a limit
+> to warn about. #508 (A converted magic-user loses memorised spells on the way to DOS, because our table says a title has fewer slots than the engine gives it) and #509 (A converted spellbook drops ids the destination title is said not to have, though both platforms are the same game) are both that mistake, each found as a sentence
+> shown to a player.
+
+##### Exactly two states (conversions.md lines 72-78 of the original)
+
+> So there are exactly two states a conversion may be in. **Perfect and
+> offered**: its drop list is empty, and there is nothing to say. **Imperfect
+> and behind a flag**: `.claude/rules/feature-flags.md` governs, and the flag
+> comes off when the list empties. There is no third state where a route ships
+> and apologises, and the Convert dialog carries no log of what did not survive
+> -- that pane is gone, and it is what had been sending a wording decision to
+> Donald every time a field turned out to have no home.
+
+##### Removing the pane gives nothing up (conversions.md lines 88-95 of the original)
+
+> **Removing the pane gives nothing up.** It listed only fields already in the
+> neutral vocabulary, and every writer must account for all of those: each has a
+> `field_disposition()` naming every field as direct, transformed or dropped,
+> and a test goes red the day a field exists in `goldbox/neutral.py` and a
+> writer has never heard of it (`tests/test_amiga.py`, and
+> `goldbox/c64_codec.py`'s own docstring: *"this catches a name the writer has
+> never been taught, which is the failure that rots silently"*). That is what
+> proves a conversion perfect, and the pane never contributed to it.
+
+##### What the tables cannot see (conversions.md lines 97-101 of the original)
+
+> **What the tables cannot see is a field nothing has named** -- something in a
+> save that no reader was ever taught to read. It is in no vocabulary, no
+> disposition table, and was in no pane either, so this is not a cost of dropping
+> the pane; it is the standing reason decoding work continues. It shrinks only by
+> reading the record.
+
+##### The byte-coverage audit (conversions.md lines 106-122 of the original)
+
+> **A full byte-coverage audit of every save file on every platform was proposed
+> on 2026-09-08 and Donald declined it.** The reasoning that led there is sound
+> and is kept because it explains what the problem is: an unnamed byte only
+> costs anything when a writer has to produce a container it did not receive,
+> which is cross-platform writing alone -- editing a save in place carries opaque
+> regions through untouched, and reading simply shows what can be named. What
+> the audit would have added is a measurement nobody has: what fraction of each
+> container we can name, per platform.
+> 
+> He declined it on cost. It was estimated at ten to seventeen new tickets, most
+> of them for the two containers nobody has counted, and it would have made the
+> backlog larger before it made any conversion better. **That is a decision about
+> a programme of work, not about the technique**: measuring the unnamed bytes of
+> one region, when a ticket needs it, stays ordinary work -- `#446 (The Amiga
+> saved game's zero argument rests on three of the game's twenty-nine areas)`
+> took one such region from 4,072 bytes to 44 in a night. Do not propose the
+> audit again without a reason he has not already heard.
+
+##### Reporting a dropped field internally is the minimum (conversions.md lines 124-131 of the original)
+
+> Reporting a dropped field internally is the
+> minimum; it is not permission to drop it, and "the destination has no such
+> field" is not an ending either. Donald, 2026-09-04: *"We should not be
+> dropping anything when converting a save. Anything less is a bug, and the
+> feature flag cannot be lifted until that is true."* Told separately that a
+> ring's effect could not reach the C64 and that the drop was therefore
+> legitimate: *"everything must work."* A converted character wearing a Ring of
+> Fire Resistance has to resist fire on the other side.
+
+##### So the three reasons below (conversions.md lines 133-140 of the original)
+
+> So the three reasons below explain why a field is not converted **yet** --
+> they are not a licence, and a drop list is not a state a conversion is allowed
+> to rest in. The first of them, "the destination has no such field," is a
+> description of the destination as we currently understand it rather than
+> permission to stop: if the destination has no home for something a player
+> would notice, finding it one is the work. **Every entry on every drop list has
+> an issue.** (`WISH_EXPERIMENTAL_DOS_IMPORT` came off on 2026-09-06 once the
+> import's lists were clear; the rule outlives the flag.)
+
+##### The standard is every direction, not the import (conversions.md lines 142-155 of the original)
+
+> **The standard is every direction, not the import.** Donald, 2026-09-05:
+> *"We should not drop any fields for any conversion in any direction. Unless
+> the platform we are converting to doesn't support that field."* And, on why:
+> *"People will abandon it and call it bad and buggy when they notice things are
+> missing from their characters. It's not a functional solution unless it
+> converts everything. Why would someone want only half of their stats
+> converted? It makes no sense. No shortcuts."*
+> 
+> This was asked because the two rulings above had only ever been made about the
+> DOS-to-C64 import, and the program keeps six more lists of the same kind --
+> `dos.WRITE_DROPPED`, `WRITE_UNSOURCED`, `WRITE_DEFAULTS`, `c64_codec.READ_DROPPED`,
+> `amiga_pod.POD_WRITE_DROPPED` and `amiga_later.LATER_DROPPED`. **They are all covered.** A list is
+> not exempt because its direction is the less travelled one, and the Amiga
+> lists are not exempt because they are the longest.
+
+##### The one carve-out is narrow (conversions.md lines 157-167 of the original)
+
+> **The one carve-out is narrow, and it is not the same as "we have not decoded
+> it yet".** A field is legitimately unconverted only when the destination
+> *platform* has nothing that field could be -- not when we have not yet found
+> its home, not when the home is inconvenient, and not when the value is one we
+> guess a player would not miss. The identity byte is the worked example and it
+> went the other way: Curse and Silver Blades on the C64 never write the pair
+> and nothing reads it, which looked like the carve-out, and the ruling was to
+> **write it anyway** because the bytes are there and a later conversion back to
+> DOS then returns the player's own number instead of inventing one. Donald,
+> 2026-09-05: *"Yes, write the identity byte. No, don't tell the user about
+> it."*
+
+##### Two things that are not drops (conversions.md lines 169-175 of the original)
+
+> Two things that are **not** drops and must not be counted as though they were:
+> a field the destination recomputes on load, and a constant of the format. Both
+> have their own lists (`dos_codec.DERIVED`, `dos_codec.CONSTANTS`,
+> `dos_codec.WRITE_DERIVED`, `dos_codec.WRITE_CONSTANTS`) and each row carries
+> the run that demonstrated it. When
+> a long drop list is read against this rule, sort it before costing it -- most
+> of what sat on the import list was never a loss.
+
+##### A small table of numbers is a measurement (conversions.md lines 177-196 of the original)
+
+> **A small table of numbers read out of the game is a measurement, not a data
+> file.** `AGENTS.md` forbids committing the game's data files -- maps, tables,
+> scripts, records -- as committed bytes. That ban is about redistributing the
+> game, and a handful of integers with a note saying where they were read from
+> is the thing the sentence after it asks for: *describe, cite, measure and
+> generate*. It is the same class of thing as the byte offsets, field addresses
+> and constants committed all through `docs/`.
+> 
+> Donald, 2026-09-06, on storing the fourteen head and twelve body art ids the
+> DOS-to-C64 portrait conversion needs, rather than reading them off the
+> player's disks every time: *"A table of 26 numbers doesn't break any rules.
+> It's not art, it's just two dozen numbers."* And on why to do it at
+> all: *"They are 40 years old and they are not going to change."*
+> 
+> **The line is drawn by what the thing is, not by its size.** Numbers and their
+> provenance are a measurement. A block of the game's own bytes is a copy
+> however short, and a sprite, a map, a script or a record stays banned at any
+> length -- including as a test fixture. If a table cannot be written as
+> numbers a reader could check against the game, it is the wrong side of the
+> line.
+
+##### Say converted, not carried (conversions.md lines 198-201 of the original)
+
+> **Say "converted", not "carried".** Donald, 2026-09-04: *"When you say
+> 'carried', you must mean 'converted'. I don't think carried means what you
+> think."* The word is in this file, in `field_disposition` prose and in drop
+> lines a player reads.
+
+##### SUPERSEDED BLOCK, cut whole -- the drop pane and its rulings
+
+The next eight sections (lines 203-273) are rulings dated 2026-09-04 to 2026-09-06 about a report pane in the Convert dialog that listed dropped fields. The file's own later text (lines 72-95, the 2026-09-08 decision: "that pane is gone", "the player is never told about a drop") and `editor/convert.py` lines 79-82 ("The report pane this paragraph used to name is gone (2026-09-10)") supersede them. They are cut from `conversions.md` as superseded text rather than as provenance, and are kept here as they stood.
+
+##### What a player would notice decides what a player is told ... Silent is about the pane ... A silent drop is still a drop (conversions.md lines 203-225 of the original)
+
+> **What a player would notice decides what a player is told.** Two things are
+> silent for two different reasons, and only one of them is a measurement.
+> 
+> * A field the destination **derives** on load needs no line, and that
+>   derivation has to be *demonstrated in the running game* first.
+> * A field a player **would not care about** needs no line either. Donald,
+>   2026-09-04, of the quickfight setting: *"The player will not care if
+>   Quickfight isn't converted. Don't bother alerting on that."*
+> 
+> The second is his judgement rather than anybody's finding, so **it is not a
+> licence to silence anything else** -- propose and leave it in place. The same
+> instinct applied to a character's status would have hidden a dead character
+> arriving alive, which is what `#235 (Two unattributed DOS byte ranges in the combat tail are dropped converting to C64, and nobody knows what they hold)` turned out to be.
+> 
+> **Silent is about the pane, not about the work.** Asked whether quickfight
+> should therefore come off `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all three C64 titles)`'s list, Donald, 2026-09-04: *"I agree, we
+> should try to convert it. We just shouldn't tell the player about
+> quickfight."* So a field nobody would miss still gets converted; it just does
+> not get a line.
+> 
+> **And a silent drop is still a drop.** It stays in `field_disposition` and in
+> the accounting; `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all three C64 titles)` is blocked on it either way. Only the line in the pane
+> goes.
+
+##### A player is shown a dropped field unless the destination derives it ... supersedes his ruling of 2026-09-05 ... UNREPORTED_DROPS (conversions.md lines 227-248 of the original)
+
+> **A player is shown a dropped field unless the destination derives it.**
+> Donald, 2026-09-06: *"do not show dropped fields if they are derived in the new
+> game. Show others for now. I will refine them as we go."*
+> 
+> **This supersedes his ruling of 2026-09-05**, which was *"I don't want the
+> player to EVER see a message saying any field was dropped. The conversion needs
+> to be perfect."* That sentence was made when the list held fourteen entries,
+> nine of which turned out not to be losses at all. With those nine moved to
+> `goldbox.dos_codec.DERIVED` and `CONSTANTS`, what is left is short enough for him to
+> read and rule on one at a time -- and hiding it put an agent's judgement
+> between him and his own program.
+> 
+> So `DERIVED` and `CONSTANTS` are silent, and everything still on `DROPPED`
+> reaches the pane. **No agent decides that a player would not care about an entry**; that
+> is the judgement he took back. `UNREPORTED_DROPS` existed to make exactly that
+> call and is gone.
+> 
+> What has not changed: **a dropped field is still a bug**, and the pane is a
+> working state rather than a finished feature. *"I will refine them as we go"*
+> is a plan for the sentences, not permission for the entries -- an entry is
+> removed by converting the field, not by wording it better. An agent polishing a
+> drop line is usually an agent working on the wrong half of the problem.
+
+##### The pane itself stays, and becomes a smaller one ... An earlier version said it was temporary (conversions.md lines 250-273 of the original)
+
+> **The pane itself stays, and becomes a smaller one that says what Wish did.**
+> Donald, 2026-09-05: *"you could reduce the size of the drop pane and make it a
+> messages pane. It could say things like, 'Fixing Ring of Fire Resistance
+> bug.' If we discover that it truly isn't needed, we can remove it then. But
+> let's not plan ahead so far. Let's wait and see what we might need it for."*
+> 
+> So it turns from a list of what did not convert into an account of what
+> happened. **And it is not there to be as small as possible -- a player wants
+> to know what the conversion did.** Donald, 2026-09-05: *"The user will want to
+> know details about the conversion. A messages pane with details about what
+> happened can have value."*
+> 
+> So the test of a line is whether it tells the player something true and useful
+> about their own save -- a repair Wish applied, a thing that did not fit and
+> which of them they kept, what was read and what was written. **The test it
+> must not fail is the one above it**: never a field we failed to convert, and
+> never a memory address, a record offset or a script filename, which
+> `.claude/rules/gui-text.md` keeps out of anything a player reads.
+> 
+> **An earlier version of this rule said the pane was a temporary state that
+> would end with the flag. That was my inference and it is wrong; do not plan
+> its removal.** The example sentence above is Donald's wording rather than
+> approved wording, and `.claude/rules/gui-text.md` governs every string that
+> ends up in it.
+
+##### The one exception -- destination holds fewer things (quote paragraph) (conversions.md lines 275-280 of the original)
+
+> **The one exception, and it covers every field alike: a destination that
+> genuinely holds fewer things than the source.** Donald, 2026-09-05: *"If a
+> limit is truly part of the platform's design, inform the user during the
+> convert about the limit. Offer them a choice on which to keep and which to
+> discard. It would be a limit of the platform, not something we just didn't
+> feel like fixing."*
+
+##### Limits table row for trait slots (cited #84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen)) and the #113 (Play DOS Curse far enough to save a party with items) sentence (conversions.md lines 306-310 of the original)
+
+> | C64 trait slots | 10, shared between racial effects and item grants | racial ids are 0-4 by race, CONFIRMED (`#84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen)`: human 0, elf 1, half-elf 1, halfling 2, dwarf 4, gnome 4), so it needs a dwarf or gnome with **seven or more effect-granting items readied at once** -- **UNMEASURED** |
+> 
+> Measure per title before designing anything: `#113 (Play DOS Curse far enough
+> to save a party with items)` proved this family is not uniform, its items
+> being 67 bytes where the others are 63.
+
+##### Nobody has measured it is not it cannot be done (conversions.md lines 312-320 of the original)
+
+> **"Nobody has measured it" is not "it cannot be done", and saying so is how an
+> agent gives up in a sentence that sounds like a finding.** Donald, 2026-09-05,
+> on the combat icon: *"We absolutely can figure out how to convert combat
+> icons. They are not that complex. What is the problem, exactly? Are there
+> differing amounts of colors? Are there differing amounts of pixels? We can
+> figure it out. Don't give up so easily."* So an UNKNOWN in a conversion is a
+> measurement somebody has to go and take, named in numbers -- how many colours
+> each side stores, how many pixels, which file the art is in -- and never a
+> reason to stop.
+
+##### Never tell a player something untrue about their own game (conversions.md lines 322-330 of the original)
+
+> **Never tell a player something untrue about their own game to make a drop
+> line shorter.** Proposed for the combat-icon line on 2026-09-05 and rejected:
+> *"DOS has no combat art"*. DOS has combat art. What it does not have is the
+> C64's **encoding** of it -- 18 `CHARPIC00` screen codes plus 18 colours out of
+> the C64's own character set -- and the converter has no route between the two
+> yet, which is `#130 (A converted DOS party arrives with six identical combat
+> figures, not its own)`. Donald, 2026-09-05: *"DOS absolutely does have combat
+> art. What does that mean?"* Compressing "no equivalent encoding" into "none"
+> reads as a claim about the game the player owns.
+
+##### A template is not one of the three reasons (conversions.md lines 343-350 of the original)
+
+> **A template is not one of the three reasons, and "the template supplies it" is
+> not an answer.** Building a converted save on top of a save the engine wrote
+> means every byte nobody has decoded silently keeps a value belonging to a
+> different party in a different place -- wrong data that looks right, and
+> invisible because the file loads. Donald, 2026-08-26: *"We should not be using
+> a template at all. We should block on not understanding everything and go back
+> and understand what we need to. No more plugging in fake data to make it
+> work."*
+
+##### Test the empty and the extreme case (conversions.md lines 367-372 of the original)
+
+> **Test the empty and the extreme case, not only the typical one.** A drop list
+> measured survivable for a character carrying items said nothing about a
+> character carrying none, which is where
+> `#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then
+> invents a garbage item)` was found -- after the conversion had been declared
+> proven.
+
+##### A conversion is not proven until it runs (conversions.md lines 380-384 of the original)
+
+> **A conversion is not proven until it runs.** Bytes matching is necessary and
+> not sufficient: load it in the game, walk the party, and look at the sheet.
+> Three faults this project shipped -- an AC of 9 displayed as 51, a dropped
+> combat tail, and a garbage weapon line -- passed every byte-level check that
+> existed.
 
 ## Documentation
 
@@ -798,7 +1714,7 @@ it came from.
 #### The docs index (`docs/README.md`)
 
 ###### The two design decisions behind the package split
-The editor is a file tool with zero emulator dependency: it opens a `.D64`, edits the save, writes it back and never talks to VICE, so `editor/` imports nothing from `automap/`, `goldbox/` stays transport-free, and the whole file path works on a machine with no emulator. `tests/test_wish.py` asserts both halves: the editor tab is never handed the live target, and no file under `editor/` mentions `automap`. Live memory is a discovery technique, not something the editor promises: a watchpoint on whatever stores to the strength byte beats reading disassembly, which grew into the automapper, a shipped feature that lives in `automap/` so the first decision survives it. (`tests/test_wish.py` has a docstring that still cites this as "docs/README.md decision 1".)
+The editor is a file tool with zero emulator dependency: it opens a `.D64`, edits the save, writes it back and never talks to VICE, so `editor/` imports nothing from `automap/`, `goldbox/` stays transport-free, and the whole file path works on a machine with no emulator. `tests/test_wish.py` asserts both halves: the editor tab is never handed the live target, and no file under `editor/` mentions `automap`. Live memory is a discovery technique, not something the editor promises: a watchpoint on whatever stores to the strength byte beats reading disassembly, which grew into the automapper, a shipped feature that lives in `automap/` so the first decision survives it.
 
 ###### The package layout, split along the packaging boundary
 `goldbox/` is the file formats (D64, the 580-byte record, save games, item and spell tables), transport-free. `editor/` is the PyQt6 character editor over `goldbox/` alone. `automap/` is everything that reads a running machine. `wish/` is the one window: two tabs, the single shared live connection, the backend registry and `File > Preferences…`. `ui/` is drawing code both GUIs need. `designer` launches Qt Designer on `wish/window.ui`. `packaging/` holds the PyInstaller entry points and the Windows console-stream repair. `tools/` is discovery scripts, but `tools.wish` (the `wish export`/`wish import` subcommands) and `tools.generate.genui` (run at window startup) ship. `INDEX.md` covers this per directory.
@@ -1179,7 +2095,7 @@ The 1541 User's Guide prints two byte ranges for the BAM disk header that cannot
 
 `c64addchar.py` watched what reads record `0x0E6`-`0x0E7` in the running game: three non-stopping load watchpoints at `$6BE4`-`$6BE5` (referenced by nothing), `$6BE6`-`$6BE7` (the pair) and `$6BE8`-`$6BE9` (experience, the positive control), through LOAD SAVED GAME, two REMOVEs, the add list, VIEW, SAVE and a walk; a block copy reads all three alike, so a field read shows on one. The staged `PORSAVE.D64` carries BRUTUS's record under MALCYON's name and MALCYON's record under the name TWIN, so one boot also shows the add screen tests the name and nothing else. Screens are kept as text and PNG beside `addchar.jsonl`. Write-up: `docs/170-c64-identity-pair.md`.
 
-`c64addprobe.py` staged a disk whose file name and stored name disagree (`\x02ARDXYZ` holding a record that still says `ARDEN`) and the game offered `ARDXYZ`, confirming that the add list is built from the directory. A parked character on a Curse or Silver Blades save disk is a whole 580-byte record in a file named for him. Still unanswered: whether completing an add deletes the source file, which decides whether a smaller fix for renames on the C64 disk is well defined; `--pick` and `--out` are there to take it further. It boots through `tools/curse_of_the_azure_bonds/curserun.py` and photographs each step.
+`c64addprobe.py` staged a disk whose file name and stored name disagree (`\x02ARDXYZ` holding a record that still says `ARDEN`) and the game offered `ARDXYZ`, confirming that the add list is built from the directory. A parked character on a Curse or Silver Blades save disk is a whole 580-byte record in a file named for him. Completing an add does not delete the source file: `tools/c64/c64addprobe.py --save ... --remove NAME` showed `\x02NAME` still in the directory after the pick, after `EXIT` and after `SAVE CURRENT GAME`, as the tool's docstring records. An earlier version of this entry called the question open; the docstring answers it. It boots through `tools/curse_of_the_azure_bonds/curserun.py` and photographs each step.
 
 `c64nametable.py` settled that the `+$C00` name table on Curse and Silver Blades is not read by anything a player sees: `GEN` clears the block and refills it from the save disk's directory before every read. `sites` finds the six `$5700` instructions in `GEN` and names each by its loop and reads the filename prefix byte off the `S0:` scratch template. `--remove NAME` takes a character out of the party so the game writes the character file the scan then finds; `--resave` takes SAVE CURRENT GAME at the end, which is how the buffer was caught being stored as though it were a record.
 
@@ -1695,6 +2611,17 @@ Silver Blades' party-menu builder is Curse's `$12AF` moved to `GEN $0991`, still
 
 Converting the six DOS characters SSI shipped and diffing them against the six C64 records found the ranger arriving as a paladin and the lower-case name, before either was watched in the game. Neither side has a chain of custody, so it is a consistency check and not proof.
 
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### .claude/rules/documentation.md
+
+> `docs/TASKS.md` and its `P` codes are
+> retired
+
+`docs/TASKS.md` does not exist, and the rule says so while still banning a citation of a P code.
+
 ## Art
 
 No incident sits behind this one. "No AI-generated art, anywhere, ever" is
@@ -1711,6 +2638,18 @@ The one thing that has gone wrong here is an attribution rather than a drawing,
 and it is recorded under Banned Words: the licence credit for Lorc's
 *Embraced energy* was written from the filename rather than from the title its
 author gave it.
+
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### art.md
+
+Cut, lines 10-12 ("No AI-generated art" paragraph; the rule stays, the attribution to Donald goes):
+
+> **No AI-generated art, anywhere, ever.** Not icons, not logos, not textures, not
+> placeholders "until we find a real one". This is Donald's rule and it is not
+> negotiable by an agent that finds it inconvenient.
 
 ## Qt Designer
 
@@ -1744,6 +2683,27 @@ worth writing for something due to be deleted.
 
 The feature-flag test that only earned its place once forcing the flag on made
 it fail is recorded under Testing.
+
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### .claude/rules/feature-flags.md -- opening paragraph
+
+> The DOS import was the first: it
+> worked, it was proven in the emulator, and it still dropped the portrait and
+> the clock -- so `File > Import` was not built unless the flag said to build
+> it, until `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import
+> working for all three C64 titles)` closed on 2026-09-06.
+
+The example sentence naming code that no longer has the `if`:
+
+> `wish/window.py` builds the Export submenu inside the `if`.
+
+`wish/window.py` no longer has an Export submenu or a flag around the convert
+entry (`WISH_EXPERIMENTAL_CONVERT` was lifted; the menu is built for
+everyone), so the sentence had become false. The rule now says "Build the menu
+entry inside the `if` that reads the flag."
 
 ## Sessions
 
@@ -1781,3 +2741,13 @@ spend limit, on a `/clear`, on a context window.
 The test of whether a session was recorded properly is whether the next one can
 answer "what should we work on" from the repository alone. When it cannot, that
 is a documentation bug rather than a reason to keep a session alive.
+
+### What the rule files said before they dropped their history
+
+The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.
+
+#### .claude/rules/sessions.md -- "A turn that ends with nothing running"
+
+> A backgrounded `pytest`
+> has come back `killed` rather than with a result four times.
+

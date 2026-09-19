@@ -6,26 +6,20 @@ paths:
 # Testing a conversion
 
 **A conversion is between two ports of the same title, and never between
-titles.** Donald, 2026-09-05: *"the user should not be able to convert a Curse
-character into a Pool character. The conversion is meant to be for the same
-title."* **The title is fixed and the port is what changes**: a DOS Curse save
-converts to a C64 Curse save or to an Amiga Curse save, and to nothing else.
-Donald, 2026-09-05: *"A DOS Curse save would be able to be converted into a
-C64 Curse save or an Amiga Curse save."*
+titles.** A Curse character is never converted into a Pool character. **The
+title is fixed and the port is what changes**: a DOS Curse save converts to a
+C64 Curse save or to an Amiga Curse save, and to nothing else.
 
-So the six directions of
-`#51 (Every permutation of DOS, C64 and Amiga, in both directions)` are six
+So the six directions -- every pair of DOS, C64 and Amiga, each way -- are six
 pairs of *ports*, each carrying whichever titles both ends can read -- not a
 grid of every title against every other.
 
-**The player still gets from one title to the next, and the game does it.**
-Donald, 2026-09-08, giving the path this rule exists to protect: *"A user plays
-Secrets of the Silver Blades on the C64. They beat the game. They then load
-their save into Wish and convert into an Amiga save. They now have an Amiga
-Secrets of the Silver Blades save. They then load that save into Amiga Pools of
-Darkness, and the game itself converts it into an Amiga Pools of Darkness save.
-This keeps us from running into a whole class of bugs that would come with
-converting saves from one game into another."*
+**The player still gets from one title to the next, and the game does it.** A
+player beats Secrets of the Silver Blades on the C64, loads the save into Wish
+and converts it to an Amiga save, then loads that save into Amiga Pools of
+Darkness, and the game itself converts it into an Amiga Pools of Darkness
+save. That path is what this rule protects: it avoids a whole class of bugs
+that come with converting saves from one game into another.
 
 So the division of labour is settled: **Wish changes the port, the game changes
 the title.** Every Gold Box title reads the previous one's finished party, that
@@ -34,31 +28,24 @@ number mean on both sides -- which Wish would have to reinvent per pair, per
 port, for every combination. A tool that writes a party of one title into
 another title's save is doing the game's job with none of the game's knowledge.
 
-`editor/convert.py` already builds it that way -- a direction's destination is
-`games.by_key(deltas.key)`, the same title on the other port -- so this rule is
-here to stop somebody adding the other thing rather than to describe a defect.
-It also settles a question that
-would otherwise keep coming back: **a character who cannot exist in the
-destination title is not a case the conversion has to handle**, because that
-conversion is never offered. Pool of Radiance has no druids, and no Curse
+`editor/convert.py` builds it that way -- a direction's destination is
+`c64_port.by_key(deltas.key)`, the same title on the other port -- and this
+rule is here to stop somebody adding the other thing. It also settles a
+question that would otherwise keep coming back: **a character who cannot exist
+in the destination title is not a case the conversion has to handle**, because
+that conversion is never offered. Pool of Radiance has no druids, and no Curse
 druid is ever asked to become one.
 
 **The standard is a perfect conversion, and the player is never told about a
-drop, because a route that drops something is not offered.** Donald,
-2026-09-08, deciding it: *"I want perfect conversions. We should not have to
-tell the player that anything is dropped, because everything should just work.
-We should keep things behind feature flags until they are perfect."*
+drop, because a route that drops something is not offered.** Anything short of
+perfect stays behind a feature flag until it is.
 
 **Never write a sentence to the player in place of fixing the thing it
 describes.** Finding a condition the conversion cannot handle and reporting it
 is how a defect turns into furniture: the sentence ships, the bug does not get
-fixed, and the next agent reads the sentence as the design. Donald, 2026-09-10,
-on being shown two such lines: *"Things like this are WHY we have to remove the
-Convert dialog. Because the agents find a bug, and instead of fixing it, they
-want to write an excuse to the player and then they never fix it. It's not
-okay. We need it to be correct."* If a condition cannot be fixed in the session
-that found it, **file it and send the line to the debug log** -- the evidence
-stays, the excuse does not.
+fixed, and the next agent reads the sentence as the design. If a condition
+cannot be fixed in the session that found it, **file it and send the line to
+the debug log** -- the evidence stays, the excuse does not.
 
 **And the same game on two platforms is the same game.** Both ports run the
 same rules on the same content, so a magic-user memorises the same number of
@@ -66,16 +53,13 @@ spells on the C64 as in DOS, and a title's spellbook holds the same spells on
 both. **A difference between the platforms in what a character may hold is our
 table being wrong until the engine's own code says otherwise** -- read the
 code, do not reason from a record, and do not encode the difference as a limit
-to warn about. #508 and #509 are both that mistake, each found as a sentence
-shown to a player.
+to warn about.
 
 So there are exactly two states a conversion may be in. **Perfect and
 offered**: its drop list is empty, and there is nothing to say. **Imperfect
 and behind a flag**: `.claude/rules/feature-flags.md` governs, and the flag
 comes off when the list empties. There is no third state where a route ships
-and apologises, and the Convert dialog carries no log of what did not survive
--- that pane is gone, and it is what had been sending a wording decision to
-Donald every time a field turned out to have no home.
+and apologises, and the Convert dialog carries no log of what did not survive.
 
 **The drop list itself stays, as our accounting, and goes to the debug log.**
 It is what a test reads to prove a conversion is perfect rather than assumed,
@@ -85,50 +69,35 @@ set. `.claude/rules/gui-text.md` exempts that log from approval by name,
 which is the whole reason it is the right destination: *"it is read by whoever
 is debugging."* **A drop line is therefore never a string Donald words.**
 
-**Removing the pane gives nothing up.** It listed only fields already in the
-neutral vocabulary, and every writer must account for all of those: each has a
-`field_disposition()` naming every field as direct, transformed or dropped,
-and a test goes red the day a field exists in `goldbox/neutral.py` and a
-writer has never heard of it (`tests/test_amiga.py`, and
-`goldbox/c64_codec.py`'s own docstring: *"this catches a name the writer has
-never been taught, which is the failure that rots silently"*). That is what
-proves a conversion perfect, and the pane never contributed to it.
+**The tables account for every field.** Every field in the neutral vocabulary
+must be accounted for by every writer: each has a `field_disposition()` naming
+every field as direct, transformed or dropped, and a test goes red the day a
+field exists in `goldbox/neutral.py` and a writer has never heard of it
+(`tests/test_amiga.py`, and `goldbox/c64_codec.py`'s own docstring: *"this
+catches a name the writer has never been taught, which is the failure that rots
+silently"*). That is what proves a conversion perfect.
 
 **What the tables cannot see is a field nothing has named** -- something in a
-save that no reader was ever taught to read. It is in no vocabulary, no
-disposition table, and was in no pane either, so this is not a cost of dropping
-the pane; it is the standing reason decoding work continues. It shrinks only by
-reading the record.
+save that no reader was ever taught to read. It is in no vocabulary and no
+disposition table, and it is the standing reason decoding work continues. It
+shrinks only by reading the record.
 
 So the one rule that protects the claim: **an entry leaves a drop list when the
 field converts, never when it stops being counted.**
 
-**A full byte-coverage audit of every save file on every platform was proposed
-on 2026-09-08 and Donald declined it.** The reasoning that led there is sound
-and is kept because it explains what the problem is: an unnamed byte only
-costs anything when a writer has to produce a container it did not receive,
-which is cross-platform writing alone -- editing a save in place carries opaque
-regions through untouched, and reading simply shows what can be named. What
-the audit would have added is a measurement nobody has: what fraction of each
-container we can name, per platform.
+**Do not propose a full byte-coverage audit of every save file on every
+platform.** An unnamed byte only costs anything when a writer has to produce a
+container it did not receive, which is cross-platform writing alone -- editing
+a save in place carries opaque regions through untouched, and reading simply
+shows what can be named. The audit would enlarge the backlog before it improved
+any conversion. Measuring the unnamed bytes of one region, when a ticket needs
+it, is ordinary work; the audit as a programme of work is not.
 
-He declined it on cost. It was estimated at ten to seventeen new tickets, most
-of them for the two containers nobody has counted, and it would have made the
-backlog larger before it made any conversion better. **That is a decision about
-a programme of work, not about the technique**: measuring the unnamed bytes of
-one region, when a ticket needs it, stays ordinary work -- `#446 (The Amiga
-saved game's zero argument rests on three of the game's twenty-nine areas)`
-took one such region from 4,072 bytes to 44 in a night. Do not propose the
-audit again without a reason he has not already heard.
-
-Reporting a dropped field internally is the
-minimum; it is not permission to drop it, and "the destination has no such
-field" is not an ending either. Donald, 2026-09-04: *"We should not be
-dropping anything when converting a save. Anything less is a bug, and the
-feature flag cannot be lifted until that is true."* Told separately that a
-ring's effect could not reach the C64 and that the drop was therefore
-legitimate: *"everything must work."* A converted character wearing a Ring of
-Fire Resistance has to resist fire on the other side.
+Reporting a dropped field internally is the minimum; it is not permission to
+drop it, and "the destination has no such field" is not an ending either.
+Dropping anything when converting a save is a bug, and the feature flag cannot
+be lifted until it is not. A converted character wearing a Ring of Fire
+Resistance has to resist fire on the other side.
 
 So the three reasons below explain why a field is not converted **yet** --
 they are not a licence, and a drop list is not a state a conversion is allowed
@@ -136,43 +105,35 @@ to rest in. The first of them, "the destination has no such field," is a
 description of the destination as we currently understand it rather than
 permission to stop: if the destination has no home for something a player
 would notice, finding it one is the work. **Every entry on every drop list has
-an issue.** (`WISH_EXPERIMENTAL_DOS_IMPORT` came off on 2026-09-06 once the
-import's lists were clear; the rule outlives the flag.)
+an issue.**
 
-**The standard is every direction, not the import.** Donald, 2026-09-05:
-*"We should not drop any fields for any conversion in any direction. Unless
-the platform we are converting to doesn't support that field."* And, on why:
-*"People will abandon it and call it bad and buggy when they notice things are
-missing from their characters. It's not a functional solution unless it
-converts everything. Why would someone want only half of their stats
-converted? It makes no sense. No shortcuts."*
-
-This was asked because the two rulings above had only ever been made about the
-DOS-to-C64 import, and the program keeps six more lists of the same kind --
-`dos.WRITE_DROPPED`, `WRITE_UNSOURCED`, `WRITE_DEFAULTS`, `c64_codec.READ_DROPPED`,
-`amiga_pod.POD_WRITE_DROPPED` and `amiga_later.LATER_DROPPED`. **They are all covered.** A list is
-not exempt because its direction is the less travelled one, and the Amiga
-lists are not exempt because they are the longest.
+**The standard is every direction, not only the DOS-to-C64 import.** A player
+who finds things missing from a converted character calls the feature buggy,
+and converting only half of a character's stats is no solution. The program
+keeps six more lists of the same kind -- `dos.WRITE_DROPPED`,
+`WRITE_UNSOURCED`, `WRITE_DEFAULTS`, `c64_codec.READ_DROPPED`,
+`amiga_pod.POD_WRITE_DROPPED` and `amiga_later.LATER_DROPPED`. **They are all
+covered.** A list is not exempt because its direction is the less travelled
+one, and the Amiga lists are not exempt because they are the longest.
 
 **The one carve-out is narrow, and it is not the same as "we have not decoded
 it yet".** A field is legitimately unconverted only when the destination
 *platform* has nothing that field could be -- not when we have not yet found
 its home, not when the home is inconvenient, and not when the value is one we
 guess a player would not miss. The identity byte is the worked example and it
-went the other way: Curse and Silver Blades on the C64 never write the pair
-and nothing reads it, which looked like the carve-out, and the ruling was to
-**write it anyway** because the bytes are there and a later conversion back to
-DOS then returns the player's own number instead of inventing one. Donald,
-2026-09-05: *"Yes, write the identity byte. No, don't tell the user about
-it."*
+goes the other way: Curse and Silver Blades on the C64 never write the pair
+and nothing reads it, which looks like the carve-out, and it is **written
+anyway** because the bytes are there and a later conversion back to DOS then
+returns the player's own number instead of inventing one. The player is not
+told about it.
 
 Two things that are **not** drops and must not be counted as though they were:
 a field the destination recomputes on load, and a constant of the format. Both
 have their own lists (`dos_codec.DERIVED`, `dos_codec.CONSTANTS`,
 `dos_codec.WRITE_DERIVED`, `dos_codec.WRITE_CONSTANTS`) and each row carries
-the run that demonstrated it. When
-a long drop list is read against this rule, sort it before costing it -- most
-of what sat on the import list was never a loss.
+the run that demonstrated it. When a long drop list is read against this rule,
+sort it before costing it -- much of a long list is derived fields and
+constants, which are not losses.
 
 **A small table of numbers read out of the game is a measurement, not a data
 file.** `AGENTS.md` forbids committing the game's data files -- maps, tables,
@@ -180,13 +141,8 @@ scripts, records -- as committed bytes. That ban is about redistributing the
 game, and a handful of integers with a note saying where they were read from
 is the thing the sentence after it asks for: *describe, cite, measure and
 generate*. It is the same class of thing as the byte offsets, field addresses
-and constants committed all through `docs/`.
-
-Donald, 2026-09-06, on storing the fourteen head and twelve body art ids the
-DOS-to-C64 portrait conversion needs, rather than reading them off the
-player's disks every time: *"A table of 26 numbers doesn't break any rules.
-It's not art, it's just two dozen numbers."* And on why to do it at
-all: *"They are 40 years old and they are not going to change."*
+and constants committed all through `docs/`. The fourteen head and twelve body
+art ids the DOS-to-C64 portrait conversion needs are such a table.
 
 **The line is drawn by what the thing is, not by its size.** Numbers and their
 provenance are a measurement. A block of the game's own bytes is a copy
@@ -195,89 +151,14 @@ length -- including as a test fixture. If a table cannot be written as
 numbers a reader could check against the game, it is the wrong side of the
 line.
 
-**Say "converted", not "carried".** Donald, 2026-09-04: *"When you say
-'carried', you must mean 'converted'. I don't think carried means what you
-think."* The word is in this file, in `field_disposition` prose and in drop
-lines a player reads.
-
-**What a player would notice decides what a player is told.** Two things are
-silent for two different reasons, and only one of them is a measurement.
-
-* A field the destination **derives** on load needs no line, and that
-  derivation has to be *demonstrated in the running game* first.
-* A field a player **would not care about** needs no line either. Donald,
-  2026-09-04, of the quickfight setting: *"The player will not care if
-  Quickfight isn't converted. Don't bother alerting on that."*
-
-The second is his judgement rather than anybody's finding, so **it is not a
-licence to silence anything else** -- propose and leave it in place. The same
-instinct applied to a character's status would have hidden a dead character
-arriving alive, which is what `#235` turned out to be.
-
-**Silent is about the pane, not about the work.** Asked whether quickfight
-should therefore come off `#131`'s list, Donald, 2026-09-04: *"I agree, we
-should try to convert it. We just shouldn't tell the player about
-quickfight."* So a field nobody would miss still gets converted; it just does
-not get a line.
-
-**And a silent drop is still a drop.** It stays in `field_disposition` and in
-the accounting; `#131` is blocked on it either way. Only the line in the pane
-goes.
-
-**A player is shown a dropped field unless the destination derives it.**
-Donald, 2026-09-06: *"do not show dropped fields if they are derived in the new
-game. Show others for now. I will refine them as we go."*
-
-**This supersedes his ruling of 2026-09-05**, which was *"I don't want the
-player to EVER see a message saying any field was dropped. The conversion needs
-to be perfect."* That sentence was made when the list held fourteen entries,
-nine of which turned out not to be losses at all. With those nine moved to
-`goldbox.dos_codec.DERIVED` and `CONSTANTS`, what is left is short enough for him to
-read and rule on one at a time -- and hiding it put an agent's judgement
-between him and his own program.
-
-So `DERIVED` and `CONSTANTS` are silent, and everything still on `DROPPED`
-reaches the pane. **No agent decides that a player would not care about an entry**; that
-is the judgement he took back. `UNREPORTED_DROPS` existed to make exactly that
-call and is gone.
-
-What has not changed: **a dropped field is still a bug**, and the pane is a
-working state rather than a finished feature. *"I will refine them as we go"*
-is a plan for the sentences, not permission for the entries -- an entry is
-removed by converting the field, not by wording it better. An agent polishing a
-drop line is usually an agent working on the wrong half of the problem.
-
-**The pane itself stays, and becomes a smaller one that says what Wish did.**
-Donald, 2026-09-05: *"you could reduce the size of the drop pane and make it a
-messages pane. It could say things like, 'Fixing Ring of Fire Resistance
-bug.' If we discover that it truly isn't needed, we can remove it then. But
-let's not plan ahead so far. Let's wait and see what we might need it for."*
-
-So it turns from a list of what did not convert into an account of what
-happened. **And it is not there to be as small as possible -- a player wants
-to know what the conversion did.** Donald, 2026-09-05: *"The user will want to
-know details about the conversion. A messages pane with details about what
-happened can have value."*
-
-So the test of a line is whether it tells the player something true and useful
-about their own save -- a repair Wish applied, a thing that did not fit and
-which of them they kept, what was read and what was written. **The test it
-must not fail is the one above it**: never a field we failed to convert, and
-never a memory address, a record offset or a script filename, which
-`.claude/rules/gui-text.md` keeps out of anything a player reads.
-
-**An earlier version of this rule said the pane was a temporary state that
-would end with the flag. That was my inference and it is wrong; do not plan
-its removal.** The example sentence above is Donald's wording rather than
-approved wording, and `.claude/rules/gui-text.md` governs every string that
-ends up in it.
+**Say "converted", not "carried".** The word is in this file, in
+`field_disposition` prose and in drop lines a player reads.
 
 **The one exception, and it covers every field alike: a destination that
-genuinely holds fewer things than the source.** Donald, 2026-09-05: *"If a
-limit is truly part of the platform's design, inform the user during the
-convert about the limit. Offer them a choice on which to keep and which to
-discard. It would be a limit of the platform, not something we just didn't
-feel like fixing."*
+genuinely holds fewer things than the source.** If a limit is truly part of
+the platform's design, inform the player during the convert about the limit
+and offer a choice of which to keep and which to discard. It is a limit of the
+platform, not something we did not feel like fixing.
 
 The two rules are not in tension, because they are different situations. A
 **field** we do not convert is our failure, the player is never told, and the
@@ -296,38 +177,29 @@ else with a hard count are all written the same way: say what will not fit, and 
 the player pick which of them to keep. Do not design a chooser for items and
 a different one for effects.
 
-**And do not build it until a measurement says it is needed.** Donald, same
-day: *"we shouldn't build that unless we are sure it is necessary."* Known
-limits and what is measured about reaching them:
+**And do not build it until a measurement says it is needed.** Known limits and
+what is measured about reaching them:
 
 | | the ceiling | can it be reached? |
 |---|---|---|
 | C64 items | 16 slots in the record | DOS keeps a one-byte `item_count` and its items in a sibling `.ITM`, so the format allows far more -- **what the DOS game itself allows is UNMEASURED** |
-| C64 trait slots | 10, shared between racial effects and item grants | racial ids are 0-4 by race, CONFIRMED (`#84`: human 0, elf 1, half-elf 1, halfling 2, dwarf 4, gnome 4), so it needs a dwarf or gnome with **seven or more effect-granting items readied at once** -- **UNMEASURED** |
+| C64 trait slots | 10, shared between racial effects and item grants | racial ids are 0-4 by race, CONFIRMED (human 0, elf 1, half-elf 1, halfling 2, dwarf 4, gnome 4), so it needs a dwarf or gnome with **seven or more effect-granting items readied at once** -- **UNMEASURED** |
 
-Measure per title before designing anything: `#113 (Play DOS Curse far enough
-to save a party with items)` proved this family is not uniform, its items
-being 67 bytes where the others are 63.
+Measure per title before designing anything: Curse's items are 67 bytes where
+the other titles' are 63, so this family is not uniform.
 
 **"Nobody has measured it" is not "it cannot be done", and saying so is how an
-agent gives up in a sentence that sounds like a finding.** Donald, 2026-09-05,
-on the combat icon: *"We absolutely can figure out how to convert combat
-icons. They are not that complex. What is the problem, exactly? Are there
-differing amounts of colors? Are there differing amounts of pixels? We can
-figure it out. Don't give up so easily."* So an UNKNOWN in a conversion is a
-measurement somebody has to go and take, named in numbers -- how many colours
-each side stores, how many pixels, which file the art is in -- and never a
-reason to stop.
+agent gives up in a sentence that sounds like a finding.** An UNKNOWN in a
+conversion is a measurement somebody has to go and take, named in numbers --
+how many colours each side stores, how many pixels, which file the art is in --
+and never a reason to stop.
 
 **Never tell a player something untrue about their own game to make a drop
-line shorter.** Proposed for the combat-icon line on 2026-09-05 and rejected:
-*"DOS has no combat art"*. DOS has combat art. What it does not have is the
-C64's **encoding** of it -- 18 `CHARPIC00` screen codes plus 18 colours out of
-the C64's own character set -- and the converter has no route between the two
-yet, which is `#130 (A converted DOS party arrives with six identical combat
-figures, not its own)`. Donald, 2026-09-05: *"DOS absolutely does have combat
-art. What does that mean?"* Compressing "no equivalent encoding" into "none"
-reads as a claim about the game the player owns.
+line shorter.** "DOS has no combat art" is untrue: DOS has combat art. What it
+does not have is the C64's **encoding** of it -- 18 `CHARPIC00` screen codes
+plus 18 colours out of the C64's own character set -- and the converter needs a
+route between the two. Compressing "no equivalent encoding" into "none" reads
+as a claim about the game the player owns.
 
 Three reasons are legitimate:
 
@@ -344,10 +216,8 @@ The third kind is a bug that has not been filed yet. Treat it that way.
 not an answer.** Building a converted save on top of a save the engine wrote
 means every byte nobody has decoded silently keeps a value belonging to a
 different party in a different place -- wrong data that looks right, and
-invisible because the file loads. Donald, 2026-08-26: *"We should not be using
-a template at all. We should block on not understanding everything and go back
-and understand what we need to. No more plugging in fake data to make it
-work."*
+invisible because the file loads. Do not use a template; block on not
+understanding everything and go back and understand what is needed.
 
 So **an undecoded field is a blocker, not a gap the template fills.** When the
 conversion needs a byte nobody has attributed, the work is to go and measure
@@ -365,11 +235,9 @@ carries the experiment that would remove it, and a drop list that has not
 shrunk in months is a list of unfiled bugs.
 
 **Test the empty and the extreme case, not only the typical one.** A drop list
-measured survivable for a character carrying items said nothing about a
-character carrying none, which is where
-`#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then
-invents a garbage item)` was found -- after the conversion had been declared
-proven.
+measured survivable for a character carrying items says nothing about a
+character carrying none, where a converted character can arrive with a corrupt
+sheet.
 
 **Round-trip byte for byte, and mask by the declared list rather than by the
 diff.** Masking by whatever happened to differ makes the test agree with the
@@ -379,9 +247,8 @@ fails.
 
 **A conversion is not proven until it runs.** Bytes matching is necessary and
 not sufficient: load it in the game, walk the party, and look at the sheet.
-Three faults this project shipped -- an AC of 9 displayed as 51, a dropped
-combat tail, and a garbage weapon line -- passed every byte-level check that
-existed.
+Faults that pass every byte-level check and show on the sheet include an AC of
+9 displayed as 51, a dropped combat tail, and a garbage weapon line.
 
 Why these rules exist, and the incidents behind them:
 `docs/160-why-these-rules.md`, "Testing a conversion".
