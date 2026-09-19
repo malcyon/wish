@@ -9,12 +9,15 @@ form (`goldbox/savegame.py`) and the armour-protection encoding (`goldbox/items.
 `docs/127-community-formats.md` and `docs/128-guide-and-scripting.md` are the
 write-ups.
 
-Everything here reads the player's own disks and skips without them.
+Everything here reads the player's own disks and skips without them, and the
+passive-item test also reads a specimen and still needs the game's POOL disk
+for `load_item_names`.
 """
 
 
 import pathlib
 
+import gamedata
 import pytest
 from gamedata import disk_dir, needs_disks
 
@@ -205,33 +208,56 @@ def test_the_race_seed_is_indexed_by_the_race_byte(monsters):
     assert 1 not in [code for _, block in seeded.values() for code in block]
 
 
-def test_a_passive_item_puts_an_effect_id_in_its_plus_fourteen():
-    """Item byte +15 bit 7 is the discriminator, and the two passive items in
-    Donald's saves both land on the guide's name for their id: the cloak of
-    displacement carries 89 "displaced" and the undead-slaying sword carries 3
-    "wielding an undead-slaying weapon". A potion's +14 is a spell id, not an
-    effect, which is why 85 is a healing potion and a level drain at once."""
-    where = disk_dir()
-    if where is None:
-        pytest.skip("needs the game disks")
-    names = load_item_names(_pool_disk())
-    found = {}
-    for path in sorted(where.glob("PORSAVE*.D64")):
-        try:
-            payload = D64.open(str(path)).read_file(b"SAVEDGAME0")[2:]
-        except Exception:
-            continue
-        for slot in range(8):
-            for item in items_for_slot(payload, slot, names):
-                if item.raw[15] & 0x80:
-                    found[item.name] = item.raw[14]
+def _passive_item_specimen() -> pathlib.Path:
+    """The edited save disk that holds one passive item, checked against its manifest.
+
+    `WISH-SPEC-por-passive-item-edit` is a copy of an engine-written C64 save
+    with two bytes of one item changed by hand, so it is an input for reading
+    an item and says nothing about what the game writes.
+    """
+    from tools.registry import specimens
+
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
+    name = "por-passive-item-edit"
+    found = sorted((root / "por-c64").glob(f"WISH-SPEC-{name}.[dD]64"))
     if not found:
-        pytest.skip("no passive magical item in these saves")
-    for name, code in found.items():
-        assert code in traits.NAMES, (name, code)
-    if "CLOAK OF DISPLACEMENT" in found:
-        assert found["CLOAK OF DISPLACEMENT"] == 89
-        assert traits.describe(89) == "displaced"
+        pytest.skip(f"needs the C64 specimen WISH-SPEC-{name}")
+    disk = found[0]
+    provenance = disk.with_suffix(".provenance.toml")
+    if not provenance.is_file():
+        pytest.fail(f"{disk.name}: no {provenance.name} -- not a specimen")
+    recorded = specimens.read_provenance(provenance).get("sha256", {}).get(disk.name)
+    if recorded is None:
+        pytest.fail(f"{disk.name}: {provenance.name} records no sha256 for it")
+    if specimens.sha256_file(disk) != recorded:
+        pytest.fail(f"{disk.name} has changed since it was recorded; "
+                    f"run tools/registry/specimens.py check")
+    return disk
+
+
+def test_a_passive_item_puts_an_effect_id_in_its_plus_fourteen():
+    """Item byte +15 bit 7 is the discriminator, and an item carrying it names
+    an effect id in +14: 89 is "displaced" on a cloak of displacement and 3 is
+    "wielding an undead-slaying weapon" on a sword. A potion's +14 is a spell
+    id, not an effect, which is why 85 is a healing potion and a level drain
+    at once.
+
+    The specimen's one passive item is a long sword with effect id 3. It reads
+    an edited record, so it checks that the reader takes the item's effect id
+    and passive bit from the bytes where the format puts them, and does not
+    check that the game writes the bit for its own passive items.
+    """
+    names = load_item_names(_pool_disk())
+    payload = D64.open(str(_passive_item_specimen())).read_file(b"SAVEDGAME0")[2:]
+    found = {}
+    for slot in range(8):
+        for item in items_for_slot(payload, slot, names):
+            if item.raw[15] & 0x80:
+                found[item.name] = item.raw[14]
+    assert found == {"LONG SWORD": 3}
+    assert traits.describe(3) == "wielding an undead-slaying weapon"
 
 
 # --- P56: the roster block's current attack form ----------------------------
