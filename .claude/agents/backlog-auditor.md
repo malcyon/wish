@@ -79,11 +79,9 @@ Report every hit with its issue number and the sentence it sits in, and **say wh
 
 Two exceptions, both narrow. A hit is **not** a finding when the word is a **code identifier** the ticket is citing by name — Qt's `ElideRight`, `RETARGET_WRITES` — since `AGENTS.md` keeps the API's spelling in code. And **not** when the ticket is quoting another issue's title verbatim to reference it, since a citation that does not match cannot be found.
 
-This check exists because the words got into the backlog faster than into the documentation: `#97 (The character editor tab gets taller as the UI font grows, so a large font stops the window fitting a 720-high screen)` and `#102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands)` were both filed by agents carrying language `AGENTS.md` had already ruled out, and nobody noticed until Donald read them.
+**8. Unnamed issue references.** `.claude/rules/issues.md` requires a citation to carry the issue's title — `#59 (Map the DOS saved game, not just the character record)` — in comments and documents. A bare `#59` is an opaque number to anyone reading without a browser open, and tells the reader nothing about what the issue is.
 
-**8. Unnamed issue references.** `.claude/rules/issues.md` requires a citation to carry the issue's title — `#59 (Map the DOS saved game, not just the character record)` — in comments and documents. A bare `#59` is an opaque number to anyone reading without a browser open, and Donald reads it that way: *"when you only reference a number, it never means anything to me."*
-
-**Issue bodies are exempt and are not a finding.** Donald ruled on 2026-09-01: *"Leave them alone. GitHub.com shows the ticket details on hover and makes it a hotlink, so it will be fine."* An issue body is read on the web, where the number is its own title to anybody with a pointer.
+**Issue bodies are exempt and are not a finding.** A body is read on GitHub, where a bare number hovers into its title and links to the issue, so existing bodies are left as they are.
 
 Grep comments for `#\d+` and report the ones with no title beside them. **Report by issue, not by occurrence** — a thread with thirty bare references is one finding with a count, not thirty findings, or this check will drown the other seven.
 
@@ -123,7 +121,7 @@ Group by **what a human would do about it**, most actionable first:
 
 ## Two rules of this repository you must not break
 
-* **A wrong label is ordinary work to flag, not untouchable.** `.claude/rules/issues.md`, rewritten 2026-09-09: keeping a label right is part of doing the work, and the only banned move is reversing a change **a person** made, without a comment saying why. So report a label that no longer matches what the ticket now says — that is a normal finding. What stays banned is proposing to undo a label Donald set himself as though it were the defect; if one of his looks wrong, say so as a finding and leave it to him.
+* **A wrong label is ordinary work to flag, not untouchable.** `.claude/rules/issues.md`: keeping a label right is part of doing the work, and the only banned move is reversing a change **a person** made, without a comment saying why. So report a label that no longer matches what the ticket now says — that is a normal finding. What stays banned is proposing to undo a label Donald set himself as though it were the defect; if one of his looks wrong, say so as a finding and leave it to him.
 * **Never propose closing an issue on a commit reference alone.** The convention is that a comment explains what was actually done before or as it closes.
 
 ## Memory
