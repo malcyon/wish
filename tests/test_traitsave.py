@@ -4,7 +4,7 @@
 can come off)` is measurement M3, and everything it adds to `#252 (Does a C64
 trait slot apply an item-granted effect id, or only the ones its own READY
 routine wrote?)` is the **write path**: not a byte poked into a `.d64`, but the
-Add button, the picker, and `File > Save`. `tools/traitsave.py` is what drives
+Add button, the picker, and `File > Save`. `tools/c64/traitsave.py` is what drives
 that, and what these tests hold down is the property the measurement rests on
 -- **the button and the menu together change one byte, at record `0x0AD`, and
 nothing else on the disk.**
@@ -23,7 +23,7 @@ import pytest
 from gamedata import synthetic_save
 
 from goldbox import layout
-from tools import traitsave
+from tools.c64 import traitsave
 
 #: `gamedata.synthetic_party` names every character a record's worth of
 #: capital Ws, so the name is the layout's and not a literal here.
@@ -72,7 +72,7 @@ def _run(tmp_path, monkeypatch, who: str, trait: str) -> tuple[int, object]:
 def test_the_add_button_and_the_file_menu_change_one_byte(tmp_path, monkeypatch):
     """The whole disk differs by the trait, and by nothing else.
 
-    This is the shape of M3's first half. If `tools/traitsave.py` ever stopped
+    This is the shape of M3's first half. If `tools/c64/traitsave.py` ever stopped
     going through the button and wrote the byte itself the assertion below
     would still pass -- so the guard is the *count*: a save that rewrote a
     derived field, a checksum or a name would show more than one byte here,
@@ -152,7 +152,7 @@ posix_only = pytest.mark.skipif(
 @pytest.mark.usefixtures("_one_qapplication")
 def test_file_save_writes_over_a_read_only_destination_anyway(tmp_path, monkeypatch):
     """Settles what `write()`'s own `File > Save` step
-    (`tools/traitsave.py:282`) would face if it were ever handed a genuinely
+    (`tools/c64/traitsave.py:282`) would face if it were ever handed a genuinely
     read-only `edited.d64` -- the open question `#487` filed and had not
     confirmed live.
 

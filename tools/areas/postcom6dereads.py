@@ -8,7 +8,7 @@ player's C64 disks (`automap.paths.find_disks()`, so `$POR_DISKS` or the usual
 places) with `tools/fleedrive.py`'s `overlay`, searches it for the
 little-endian address bytes of $6DE2, $6DE3, $6DE6, $6DC6 and $6DE1, and
 prints eight 6502 instructions from each referencing opcode with
-`tools/d6502.py`.  Reads the disks and writes nothing.
+`tools/c64/d6502.py`.  Reads the disks and writes nothing.
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from tools import d6502  # noqa: E402
 from tools import fleedrive as F  # noqa: E402
+from tools.c64 import d6502  # noqa: E402
 
 
 def main(argv=None) -> int:

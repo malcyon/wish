@@ -9,8 +9,8 @@ emulator)`: this used to boot regardless of what followed the script name).
 import argparse
 import time
 
+from tools.c64.session import Session
 from tools.instance import claim
-from tools.session import Session
 
 
 def run():

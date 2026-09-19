@@ -1,6 +1,6 @@
 """VICE binary-monitor client.
 
-Extracted from `tools/drive.py`, which still re-exports it so the discovery
+Extracted from `tools/c64/drive.py`, which still re-exports it so the discovery
 scaffolding keeps working. The protocol imposes two rules and both are obeyed
 here:
 
@@ -55,7 +55,7 @@ def monitor_address(value: str | None = None) -> tuple[str, int]:
 #: when the log is on and its level swallows them when it is off.
 _log = logging.getLogger("wish.automap.vice")
 
-# The import-time snapshot, kept because `tools/drive.py` re-exports it. Code
+# The import-time snapshot, kept because `tools/c64/drive.py` re-exports it. Code
 # that wants the *current* answer calls `monitor_address()`: a long-lived GUI
 # can be pointed at a pooled instance after it has already imported this.
 MON_HOST, MON_PORT = monitor_address()

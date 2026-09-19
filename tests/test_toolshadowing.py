@@ -72,8 +72,8 @@ def test_importing_one_of_the_six_leaves_tools_off_sys_path(name):
 
     Reverted to the pre-fix form, only `test_instance` and `test_genimports`
     actually raise: the other four are saved by an unrelated
-    `sys.path.insert(0, repo_root)` in `tools/coldread.py`, `tools/drive.py`
-    and `tools/savecheck.py`, which happens to put the real `wish` package
+    `sys.path.insert(0, repo_root)` in `tools/c64/coldread.py`, `tools/c64/drive.py`
+    and `tools/c64/savecheck.py`, which happens to put the real `wish` package
     back in front of `tools/wish.py`. That is luck two layers deep, and it is
     somebody else's file — delete one of those inserts and four of the
     subtests above go on passing while the fault is wide open again.

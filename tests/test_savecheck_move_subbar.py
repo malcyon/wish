@@ -1,8 +1,8 @@
 """A walk that crosses an area boundary is not left `stuck` (#545).
 
-`tools/savecheck.py`'s `answer_bars` recognises the world bar, the boat bar,
+`tools/c64/savecheck.py`'s `answer_bars` recognises the world bar, the boat bar,
 `PRESS` and `YES NO` -- not the dungeon's own move sub-bar, `I,J,K,M, RETURN
-OR BUTTON`, which `walk_one`'s own docstring (`tools/session.py`) says a
+OR BUTTON`, which `walk_one`'s own docstring (`tools/c64/session.py`) says a
 scripted area crossing can leave row 24 showing instead of the world bar.
 Nothing on that row matches any of the four checks `answer_bars` already had,
 so it spun its full retry budget and reported the walk `stuck`.

@@ -134,7 +134,7 @@ POSITION_OFFSET = 0x0C0        # x, y, facing -- the copy the game *saves*
 # nothing ever prints, which is why the two constants sit a byte apart:
 # `automap.target` folds three bytes as `c[2] * 60 + c[1] * 10 + c[0]`, and at
 # `+$C6` that is minute tens times sixty.  Read out of the tick loop and the
-# status-line printer in all three titles by `tools/c64clock.py`
+# status-line printer in all three titles by `tools/c64/c64clock.py`
 # (`docs/30-savegame-layout.md`); the name says which of the two facts it is,
 # which is what `#470` renamed it for.
 SHOWN_CLOCK_OFFSET = 0x0C7

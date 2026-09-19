@@ -35,7 +35,7 @@ about 65 s and touches no emulator at all — `tests/test_automap.py` is the onl
 imports `ViceTarget`, and it stubs it. Making that faster is
 `pip install pytest-xdist && pytest -n 12`, worth perhaps 40 seconds, and it is
 not what the rest of this document is about. What is serialised here is the
-**driven live sessions** — `tools/session.py`, `tools/walkrun.py`, the
+**driven live sessions** — `tools/c64/session.py`, `tools/c64/walkrun.py`, the
 automapper against a running game.
 
 ---
@@ -43,8 +43,8 @@ automapper against a running game.
 ## 0. What was built, and what the building corrected
 
 `tools/instance.py` is the pool; `tests/test_instance.py` is 26 tests of it and
-none of them needs an emulator.  `tools/session.py` takes a `Slot` and is
-otherwise unchanged, so `tools/walkrun.py` and `tools/porcmd` still work on the
+none of them needs an emulator.  `tools/c64/session.py` takes a `Slot` and is
+otherwise unchanged, so `tools/c64/walkrun.py` and `tools/c64/porcmd` still work on the
 human's numbers.  `pytest tests/ -q` is green.
 
 **`x64sc -config <file>` works. CONFIRMED**, and it is the one claim in §2 that
@@ -99,9 +99,9 @@ Checked 2026-08-21, in this tree.
 | The monitor client takes a host and a port | `automap/vice.py:64` — `Monitor(host=MON_HOST, port=MON_PORT)` | already parameterised |
 | `ViceTarget` passes them through | `automap/target.py:213` | already parameterised |
 | "Which backend, where" is data | `wish/backends.py` — `Backend(probe=…, connect=…)` | already data |
-| The launcher takes a display | `tools/porlaunch.sh` — `POR_DISPLAY`, default `:7` | already parameterised |
-| The launcher takes monitor flags | `tools/porlaunch.sh` — `$MONFLAGS` | already parameterised |
-| Everything is copied into scratch before booting | `Session.attach` in `tools/session.py` asserts `path.startswith(self.here)` | already the practice |
+| The launcher takes a display | `tools/c64/porlaunch.sh` — `POR_DISPLAY`, default `:7` | already parameterised |
+| The launcher takes monitor flags | `tools/c64/porlaunch.sh` — `$MONFLAGS` | already parameterised |
+| Everything is copied into scratch before booting | `Session.attach` in `tools/c64/session.py` asserts `path.startswith(self.here)` | already the practice |
 | An env var is the project's idiom for "where is the thing" | `wish/ultimate.py:55`, `automap/paths.py:71` | pattern to copy |
 
 **So the premise holds: what is missing is an override and a harness, not an
@@ -113,8 +113,8 @@ of them are the actual work:
    today because the values agree; the moment a port is overridable it means
    the probe tests one port and the connect uses another. Latent bug, two
    lines.
-2. **The harness is actively hostile to parallelism.** `tools/session.py`
-   lines 69–70 and 105–106, and `tools/porlaunch.sh` lines 8–9, run
+2. **The harness is actively hostile to parallelism.** `tools/c64/session.py`
+   lines 69–70 and 105–106, and `tools/c64/porlaunch.sh` lines 8–9, run
    `pkill -x x64sc` and `pkill -x Xephyr` on **every launch and every close**.
    Under a pool that is not a bug, it is a massacre: one agent starting a run
    kills every other agent's emulator and Donald's game with it. This is the
@@ -136,8 +136,8 @@ of them are the actual work:
 | # | resource | why per-instance | how |
 |---|---|---|---|
 | 1 | binary-monitor port | VICE serves **one** connection per process | `-binarymonitoraddress`, already a launch flag |
-| 2 | text-monitor port | `tools/session.py` needs it for `attach`; one connection per run | `-remotemonitoraddress`, already a launch flag |
-| 3 | command-server port | `tools/session.py:509 serve()` binds `CMD_PORT` | module constant → instance attribute |
+| 2 | text-monitor port | `tools/c64/session.py` needs it for `attach`; one connection per run | `-remotemonitoraddress`, already a launch flag |
+| 3 | command-server port | `tools/c64/session.py:509 serve()` binds `CMD_PORT` | module constant → instance attribute |
 | 4 | X display | `xdotool` XTEST goes to a display, not a window | `POR_DISPLAY`, already a launch flag |
 | 5 | disk copies | the game **writes** to the disks it is given | `HERE` → `inst/<n>/` |
 | 6 | `vicerc` | rewritten on exit; instances would race it | `-config <file>` |
@@ -171,7 +171,7 @@ DosName1541ii=".../JiffyDOS_1541-II_6.00.bin"
 ```
 
 and `Session.boot()` answers the fastloader prompt `Y` unconditionally
-(`tools/session.py:300`). A stock kernal makes `Y` the wrong answer and the
+(`tools/c64/session.py:300`). A stock kernal makes `Y` the wrong answer and the
 symptom looks like a corrupt disk image — the trap
 [`00-overview.md`](00-overview.md) records under "How a session runs".
 
@@ -258,7 +258,7 @@ slot.release()                        # or just exit
 
 `tools/instance.py status` prints every slot and which row of §3.4 it is on;
 `tools/instance.py reap [n]` frees the ones that are nobody's;
-`python3 tools/session.py --pool` claims a slot and serves on its command port.
+`python3 tools/c64/session.py --pool` claims a slot and serves on its command port.
 
 **The lease is an `fcntl.flock` on `inst/<n>/lease`, held by the claiming
 process.** Allocation is: try `LOCK_EX | LOCK_NB` on each slot in turn, first
@@ -268,14 +268,14 @@ agent name, launch time, the x64sc pid once known.
 The kernel releases a `flock` when the holding process dies, however it dies.
 That is the whole reason to use one: **a crashed agent frees its slot with no
 cleanup script, no timestamp heuristic and no stale-lock policy.** For a
-long-running driven session the holder is the `tools/session.py serve` process
+long-running driven session the holder is the `tools/c64/session.py serve` process
 that already exists; for a one-shot `walkrun.py` it is the run itself.
 
 ### 3.3 Launching, and killing only your own
 
 `porlaunch.sh` loses its two `pkill` lines and gains `--die-with-parent`
 (`flatpak run -p`, present in this flatpak). Combined with the
-`start_new_session=True` that `tools/session.py:74` already passes, teardown
+`start_new_session=True` that `tools/c64/session.py:74` already passes, teardown
 becomes `os.killpg(pgid, SIGTERM)` on the group this slot started — Xephyr and
 x64sc together, nothing else on the machine.
 
@@ -409,8 +409,8 @@ Small, as the premise claimed. Six existing files, one new one.
 | `automap/target.py` | `monitor_listening()` and `who_holds_hint()` default from `MON_HOST`/`MON_PORT` instead of the literal `6502` | 3 lines |
 | `wish/backends.py` | the `setup_hint` string interpolates the port | 1 line — **not done**, another agent's file |
 | `automap/__main__.py` | two message lines, same | 2 lines — **not done**, same |
-| `tools/session.py` | `HERE`, `TEXT_PORT`, `CMD_PORT`, `display`, `MONFLAGS` become instance attributes taken from a slot; the four `pkill` calls become a process-group kill | ~35 lines changed |
-| `tools/porlaunch.sh` | drop the two `pkill` lines; take `POR_SLOT`; pass `-config` and `--die-with-parent` | ~8 lines |
+| `tools/c64/session.py` | `HERE`, `TEXT_PORT`, `CMD_PORT`, `display`, `MONFLAGS` become instance attributes taken from a slot; the four `pkill` calls become a process-group kill | ~35 lines changed |
+| `tools/c64/porlaunch.sh` | drop the two `pkill` lines; take `POR_SLOT`; pass `-config` and `--die-with-parent` | ~8 lines |
 | `tools/instance.py` | **new** — claim, release, reap, seed a `vicerc`, and a `main()` so a shell script can claim a slot too | ~150 lines |
 | `tests/test_instance.py` | **new** — allocation, contention, reap's table, `vicerc` seeding. All of it is files and flocks, so none of it needs VICE | 26 tests |
 
@@ -453,7 +453,7 @@ The per-step costs are unchanged by any of this, and they dominate:
 | operation | cost | source |
 |---|---|---|
 | an area change | ~25 s | `50-experiments.md`, "There is no training-hall wedge" |
-| a save-game cycle | ~22 s of settle | `tools/session.py:426-432` |
+| a save-game cycle | ~22 s of settle | `tools/c64/session.py:426-432` |
 | a fasttravel, budgeted | 30 s | [`118-debug-mode.md`](118-debug-mode.md) §4 |
 | a monitor resume | 14.3 ms | `70-driving-the-game.md` |
 

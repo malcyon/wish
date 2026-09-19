@@ -106,7 +106,7 @@ class SpellTable:
     #: Pool of Radiance's `GEN $215A` and Curse's `$2200`: both are
     #: `LSR A / ADC #$00`, `(level + 1) // 2`. Silver Blades' `$1896` reads a
     #: table instead and the two disagree at levels 11, 13 and 15. CONFIRMED,
-    #: `tools/trainerspells.py --check` (#89).
+    #: `tools/c64/trainerspells.py --check` (#89).
     menu_spell_level: tuple[tuple[int, int], ...] = ()
     #: `(class level, minimum intelligence)` pairs for the same menu: a
     #: magic-user short of the score drops to the highest level it does reach.
@@ -283,7 +283,7 @@ _NOT_A_SPELL_SILVER_BLADES = (57, 59, 60, 61, 62, 63, 64, 65, 95, 97, 99, 100,
 #: sixth-level row is byte 13 mask `$C0` and byte 14 mask `$07`: ids 110-114
 #: and not 109. So a Silver Blades magic-user reaching level 12 is offered
 #: five sixth-level spells rather than six. CONFIRMED,
-#: `tools/trainerspells.py --check` (#89).
+#: `tools/c64/trainerspells.py --check` (#89).
 _NOT_GRANTED_SILVER_BLADES = (109,)
 
 #: How wide the spellbook bitmask at record `0x078` is, per title. **Measured
@@ -381,7 +381,7 @@ CURSE_OF_THE_AZURE_BONDS = SpellTable(
     # `ORA` constants, `$2329` for the four first-level druid spells at 8 and
     # `$2318` for the thirteen first-level magic-user spells at 9. Curse's
     # ceilings are 11 for both, so neither table has anywhere further to go.
-    # CONFIRMED, `tools/trainerspells.py --check` (#89).
+    # CONFIRMED, `tools/c64/trainerspells.py --check` (#89).
     paladin_cleric_level=((9, 1),),
     ranger_spell_level=((8, (1, 0)), (9, (1, 1))),
 )

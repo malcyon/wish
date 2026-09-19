@@ -122,7 +122,7 @@ so there is no new transport.
 
 ## The saves to take
 
-**This was the part to hand Donald; it no longer is.** `tools/c64outdoor.py`
+**This was the part to hand Donald; it no longer is.** `tools/c64/c64outdoor.py`
 seeds an indoor save onto the travel grid and lets the engine write it back,
 so every specimen below that only needs the party standing somewhere on the
 grid is now made without him -- `p190/C64OUT1.D64` (scratch, deleted) and `C64OUT2.D64` are
@@ -219,7 +219,7 @@ answers unknown 2 on its own.
    `docs/90-specimens.md` "The wilderness set" -- `$8C00` matched against
    `SQRDATA0n`, `$4BC0`, `$49FB`, the travel facing -- but the disks
    themselves lived in `p3/` and are gone. `p190/C64OUT1.D64` (scratch, deleted),
-   `C64OUT2.D64` and `tools/c64outdoor.py` replace them: an engine-written
+   `C64OUT2.D64` and `tools/c64/c64outdoor.py` replace them: an engine-written
    outdoor C64 save can be made again without playing to reach one. Steps 6
    onward are drawing, and drawing the wrong map is worse than drawing none.
 6. **The canvas.** A third page in the automapper's `QStackedWidget`, since

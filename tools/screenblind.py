@@ -37,7 +37,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from automap import screen as _screen  # noqa: E402
 from automap.vice import CMD_BANKS_AVAILABLE  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 
 def banks(mon) -> dict[str, int]:
@@ -144,7 +144,7 @@ def staged(sess, log, where: str) -> dict:
     it.
 
     `automap.vice.read_screen` is the reader as it was -- every read on the
-    default bank -- and `tools.drive.read_screen` is the one under test.
+    default bank -- and `tools.c64.drive.read_screen` is the one under test.
     """
     with sess.mon(5) as m:
         out = staged_reads(m, where)
@@ -157,10 +157,10 @@ def staged_reads(m, where: str) -> dict:
     """The staging itself, over a monitor somebody else has already opened.
 
     `automap.vice.read_screen` is the reader as it was -- every read on the
-    default bank -- and `tools.drive.read_screen` is the one under test.
+    default bank -- and `tools.c64.drive.read_screen` is the one under test.
     """
     from automap import vice as V
-    from tools import drive as Dr
+    from tools.c64 import drive as Dr
 
     out = {"where": where}
     was = m.read(0x01, 1)[0]

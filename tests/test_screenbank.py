@@ -118,11 +118,11 @@ class FakeMonitor:
         return False
 
 
-#: Every loaded copy of `tools/drive.py`.  `conftest.load_tools_module`
-#: imports it by path as top-level `drive`, and `tools/session.py` imports the
-#: same file as `tools.drive`, so there are two module objects with two bank
+#: Every loaded copy of `tools/c64/drive.py`.  `conftest.load_tools_module`
+#: imports it by path as top-level `drive`, and `tools/c64/session.py` imports the
+#: same file as `tools.c64.drive`, so there are two module objects with two bank
 #: caches -- and clearing one leaves the other holding this file's answers.
-_DRIVE_COPIES = [m for m in (D, __import__("sys").modules.get("tools.drive"))
+_DRIVE_COPIES = [m for m in (D, __import__("sys").modules.get("tools.c64.drive"))
                  if m is not None]
 
 

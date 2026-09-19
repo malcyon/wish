@@ -2771,7 +2771,7 @@ def test_which_write_dropped_lines_a_c64_or_amiga_source_reaches_today():
 
 _MEMORISED_CEILINGS = (
     # (title key, C64 region, DOS region) -- each read off that engine's own
-    # loop bounds: `tools/memorisedwidth.py` for the C64, and for DOS the four
+    # loop bounds: `tools/c64/memorisedwidth.py` for the C64, and for DOS the four
     # counters in Pool of Radiance's `GAME.OVR` compared against `0x14` and
     # their counterparts in the later overlays.
     ("pool-of-radiance", 81, 21),

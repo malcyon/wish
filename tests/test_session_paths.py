@@ -2,7 +2,7 @@
 hardcoded `/`, which is a Windows separator mismatch -- the same bug Windows
 CI caught in `tools/ssbwarp.py` and `tools/curserun.py` (#539), which this
 project's own review then found still live in the shared base class both
-those subclasses inherit from (#546 (tools/session.py's Session base class
+those subclasses inherit from (#546 (tools/c64/session.py's Session base class
 still builds disk/log paths with a hardcoded forward slash, the same bug
 Windows CI just caught in its subclasses)).
 
@@ -217,7 +217,7 @@ def test_launch_builds_the_porlaunch_and_log_paths_with_os_path_join(
 
     sess.launch()
 
-    assert (session.TOOLS, "porlaunch.sh") in spy.calls
+    assert (session.TOOLS, "c64", "porlaunch.sh") in spy.calls
     assert (str(tmp_path), "vice.log") in spy.calls
     args, kw = popen_calls[0]
-    assert args[0] == os.path.join(session.TOOLS, "porlaunch.sh")
+    assert args[0] == os.path.join(session.TOOLS, "c64", "porlaunch.sh")

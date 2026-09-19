@@ -16,13 +16,13 @@ desktop menu -- the name ends in `Server`, and VICE ignores a resource it does
 not recognise without a word. Nothing below this line applies.
 
 **Driving** a game — sending keys — needs everything below: the nested X server,
-the input timing, the whole apparatus. `tools/porlaunch.sh` exists for that, not
+the input timing, the whole apparatus. `tools/c64/porlaunch.sh` exists for that, not
 for the automapper.
 
 ## Run it in a nested X server
 
 Claim a slot from the instance pool (`tools/instance.py`) and launch through
-`tools/porlaunch.sh`, which starts VICE on that slot's own **Xephyr** display —
+`tools/c64/porlaunch.sh`, which starts VICE on that slot's own **Xephyr** display —
 see [`123-parallel-sessions.md`](123-parallel-sessions.md) for how to claim
 one. Running nested is not cosmetic:
 
@@ -83,10 +83,10 @@ send.
 | closing the binary monitor while a checkpoint is armed | VICE re-enters the monitor on the connection that was live when it stopped; with that socket closed the emulator freezes and no new connection is read. Only a kill recovers it |
 | closing the text-monitor connection | wedges the binary monitor too — VICE serves one text-monitor connection per run |
 | connecting to the text monitor first | it never breaks in on connect and sends no banner; it answers only while the machine is already stopped |
-| a **second** binary-monitor connection while one is open | VICE accepts the TCP connection and then never answers it — the read times out with zero bytes. One binary monitor client at a time, so `automap` and `tools/session.py` cannot both be live |
+| a **second** binary-monitor connection while one is open | VICE accepts the TCP connection and then never answers it — the read times out with zero bytes. One binary monitor client at a time, so `automap` and `tools/c64/session.py` cannot both be live |
 | a stray **`wish` GUI** left running | the same failure wearing a different hat: it holds `6502` open, so every later `Monitor()` times out and the game looks frozen. `ss -tnp \| grep 6502` names the process holding it; nothing recovers but closing that client |
 | `EXIT` out of `VIEW:ITEMS` → `READY` | the item list re-arms itself: choosing its `EXIT` returns to the bar, and the next `Return` drops straight back into the list. Rebooting the session was faster than escaping it |
-| **XTEST keys while a binary-monitor client holds the socket** | thirty `Right` presses moved nothing; the first press after the client closed moved the highlight. A driver that both watches and types must **connect, read, close** for every poll, the way `tools/session.py` does — which is also why `automap` and a driving script cannot be one process |
+| **XTEST keys while a binary-monitor client holds the socket** | thirty `Right` presses moved nothing; the first press after the client closed moved the highlight. A driver that both watches and types must **connect, read, close** for every poll, the way `tools/c64/session.py` does — which is also why `automap` and a driving script cannot be one process |
 | **entering area 11 (the training hall) by fasttraveling** | `ECL0B` reads `$6E82`, which the *departing* square's attribute byte sets, so a fasttravel arrives with nothing to dispatch on and the game drops the party back into New Phlan within eight seconds. Walk in; do not fasttravel in |
 | loading `drive/SLUMS.D64` (scratch, deleted) | the party comes up, `BEGIN ADVENTURING` prints `OUTWARD BOUND ...`, and the loader then asks for side 3 for ever, requesting **`WALLSET00`** — a file on none of the eight sides. Use the player's own saves for driving work |
 
@@ -113,13 +113,13 @@ Three rules, each learned by wedging the emulator:
    notices a disk *change*, so answering `INSERT SIDE # n` with the same image
    already attached leaves the game asking for ever.
 
-`tools/session.py` implements this as `Session.attach(path)`, and
-`tools/walkrun.py` runs whole batches on it. Only copies under `drive/` (scratch, deleted)
+`tools/c64/session.py` implements this as `Session.attach(path)`, and
+`tools/c64/walkrun.py` runs whole batches on it. Only copies under `drive/` (scratch, deleted)
 are ever attached — `attach` refuses any other path.
 
 ## Driving a session end to end
 
-The order of operations, all of it in `tools/session.py`:
+The order of operations, all of it in `tools/c64/session.py`:
 
 | step | what to do |
 |---|---|
@@ -241,7 +241,7 @@ slot 0 against `PORSAVE13.D64` on 2026-09-03:
 | `EXIT` off a sheet | back to the world with the panel highlight left where it was |
 
 `Session.select_party`, `Session.party_rows`, `Session.party_highlight` and
-`Session.character_sheet` are that, and `tools/savecheck.py --view` reads
+`Session.character_sheet` are that, and `tools/c64/savecheck.py --view` reads
 every character the panel lists.
 
 **After a sheet closes, Curse redraws the world in stages, at real emulated
@@ -256,7 +256,7 @@ Curse party, though the same run's own panel lists all six)`).
 **Nothing on the sheet itself changes character**, and this is the expensive
 half of the finding, because it is what three earlier runs assumed. The
 sheet's bar is `VIEW:ITEMS EXIT` with the highlight on `ITEMS`; there is no
-`NEXT` on it, and `tools/savecheck.py` used to step the party with one, so
+`NEXT` on it, and `tools/c64/savecheck.py` used to step the party with one, so
 every run it drove read the first character and stopped. Pressed at a live
 sheet and **none of them did anything at all**: `Up`, `Down`, `N`, `P`, `+`,
 `-`, `>`, `<`, space, Tab, `F1`, `F3`, `F5`, `F7`, `.`, `,`, `/`, `*`, `@`,
@@ -275,7 +275,7 @@ rows 4 to 11.
 
 ## Driving a fight
 
-`tools/session.py` drives one: `in_combat()`, `combat_state()`, `combat_bar()`
+`tools/c64/session.py` drives one: `in_combat()`, `combat_state()`, `combat_bar()`
 and `fight()`. Before those existed every agent that needed a fight wrote its
 own loop, and `drive/qffight.py`, `combatlog/walkabout.py` (scratch, deleted) and
 `p118-step3/run.py` are three of them.

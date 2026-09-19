@@ -14,7 +14,7 @@ Two kinds of test here, and the second is the one that would catch a mistake:
 * the picker offers what the table names, which is the ticket's own request;
 * **the entries are re-derived off the player's own disks**: 44 by reading
   that title's spell-effect table, and the handler-named ones by reading the
-  handler table through `tools/traitquery.py` and pinning the bytes each
+  handler table through `tools/c64/traitquery.py` and pinning the bytes each
   name rests on -- the damage-type bit an immunity tests, the item template
   that grants the code, the creature that carries it, the spell routine that
   writes it. A base that slips or a name that drifts from the code turns
@@ -30,7 +30,8 @@ import pytest
 from editor import effects
 from goldbox import c64_port, items, traits
 from goldbox.d64 import D64
-from tools import gamedisks, traitquery
+from tools import gamedisks
+from tools.c64 import traitquery
 
 SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 POOL = c64_port.POOL_OF_RADIANCE

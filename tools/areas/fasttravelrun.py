@@ -21,9 +21,9 @@ the NPC -- `npc_party.d64` -- and has actually been driven this way.
 
     tools/areas/fasttravelrun.py --disks $POR_DISKS --out DIR
 
-Nothing is written to the player's disks: `tools.session.stage_disks` copies
+Nothing is written to the player's disks: `tools.c64.session.stage_disks` copies
 the sides into the slot, and `--save` is copied in as `SIDE0.D64`. The pool
-owns the emulator lifecycle throughout -- `tools.session.claim_slot` leases
+owns the emulator lifecycle throughout -- `tools.c64.session.claim_slot` leases
 a slot through `tools.instance.claim`, and the slot is torn down on every
 exit path, including an exception, the same `finally` shape
 `tools/areas/exitreentry.py` and `tools/livecheck.py` use.
@@ -45,7 +45,7 @@ from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from automap.target import ViceTarget  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 

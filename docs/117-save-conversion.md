@@ -1450,7 +1450,7 @@ the same `$49C3`/`$49C4` pair, window-local, `$49E6` = 0, and the area id in
 live-proven cold-boot recipe exactly, but **the conversion itself has not
 been loaded on a C64 end to end** — that run is the remaining proof for the
 outdoor shape. The indoor one has run three times, on all three of the
-player's DOS saves: `tools/dosdisk.py` builds the disk and `tools/savecheck.py`
+player's DOS saves: `tools/dosdisk.py` builds the disk and `tools/c64/savecheck.py`
 boots it, and the party loads, reads right on the sheet, walks and changes area
 — §"Three from-nothing disks played". (This cited `p119/`, which was the
 first run's scripts and went with the rest of the scratch directory, deleted 2026-09-18; the tools that replaced
@@ -1496,7 +1496,7 @@ only a file-level measurement behind them: composed from part numbers, checked
 against the two NPC slots on all fourteen of the player's save disks, and never
 watched. A converted Slums party built onto a `D64.blank()` was booted, walked
 into an ambush, and the combat floor read out of the running machine —
-`tools/savecheck.py --icon`.
+`tools/c64/savecheck.py --icon`.
 
 **Six identical blue figures, and no black hooks.** Six identical is what the
 conversion predicts, because every converted character gets the same composed
@@ -1532,7 +1532,7 @@ UNKNOWN until 2026-09-02, when it was measured:
 The battlefield is **56 x 26** and the game draws a **7 x 7** window of it
 (`automap.combat.VIEW`, `COM.PREP $08C6 LDA #$07`), so a party member seven
 squares from the camera's corner is off the drawn portion and there is nothing
-wrong with them. `tools/savecheck.py` now reads the engine's own position table
+wrong with them. `tools/c64/savecheck.py` now reads the engine's own position table
 beside the floor, which says where every combatant is and where the window is
 (`$037E`).
 
@@ -1568,7 +1568,7 @@ finding is the colours and the picture.
 ### Three from-nothing disks played, one per DOS save (#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing))
 
 All three of the DOS saves in the player's archives were built onto a
-`D64.blank()` by `tools/dosdisk.py` and driven by `tools/savecheck.py`. **The
+`D64.blank()` by `tools/dosdisk.py` and driven by `tools/c64/savecheck.py`. **The
 game's own `LOAD SAVED GAME` accepted all three**, which is the check bytes
 cannot make and the shape `#109 (A save slot written onto an Amiga disk is not
 offered by the game's picker)` was.
@@ -2469,7 +2469,7 @@ been repeated with the fix in, so its numbers are left as they were taken.
 
 **A converted gnome has been loaded, walked and resaved.** The gnome is
 GNOMF1, one of #84 (Roll a gnome in DOS and read the two innate effect ids
-nobody has seen)'s three: `tools/c64splicechar.py` put his record into C64
+nobody has seen)'s three: `tools/c64/c64splicechar.py` put his record into C64
 slot 5 of a copy of `PORSAVE13.D64`, `goldbox.dos_codec.new_dos_save` converted the
 disk, and `tools/dosnewsave.py` booted the result. His DOS sheet reads
 `MALE GNOME AGE 71`, `LAWFUL GOOD`, `FIGHTER`, `STR 16 INT 15 WIS 12 DEX 14
@@ -2903,7 +2903,7 @@ finding in the useful direction: they cannot be got wrong.
   each result loaded, drew the overland, walked, and was resaved by the game's
   own `ENCAMP > SAVE`. The blocker had never been the converter -- none of the
   player's twenty C64 save disks stands outdoors, every one reading `$49E6` =
-  1, so `tools/c64outdoor.py` had to make the specimen the branch could be
+  1, so `tools/c64/c64outdoor.py` had to make the specimen the branch could be
   driven against.
 * **And the census is re-taken rather than PROBABLE.** `tools/dossavcensus.py`
   over the 21 containers that exist now gives 2407 zero across the 11 indoor

@@ -38,7 +38,7 @@ What it does, in order:
    a write that fails stops the run after one attempt rather than hanging on
    a box nobody can answer;
 3. boots what came out. A C64 destination goes to the reader that knows
-   its title -- `tools/savecheck.py` for Pool of Radiance,
+   its title -- `tools/c64/savecheck.py` for Pool of Radiance,
    `tools/cursecheck.py` for Curse of the Azure Bonds -- which reads the
    party panel and the `VIEW` sheets off the C64's own
    screen memory; a DOS destination is copied into a `tools.dosbox` staged
@@ -47,7 +47,7 @@ What it does, in order:
    diffed against ours.
 
 Nothing here writes to the player's disks: the C64 sides are copied into the
-pool slot by `tools.session.stage_disks`, and the DOS game tree is
+pool slot by `tools.c64.session.stage_disks`, and the DOS game tree is
 `tools.dosbox.Session.stage`'s copy. `POR_HEADLESS` is the slot's own
 default, so no window lands on the desktop, and this module unsets
 `WAYLAND_DISPLAY` and forces `QT_QPA_PLATFORM=offscreen` before PyQt6 is
@@ -239,7 +239,7 @@ def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
              walk: str, view: bool, resave: str | None) -> dict:
     """Hand the written `.d64` to whichever reader knows its title.
 
-    `tools/savecheck.py` boots through `tools/session.py`, which knows Pool of
+    `tools/c64/savecheck.py` boots through `tools/c64/session.py`, which knows Pool of
     Radiance's fastloader prompt, main menu and copy protection and none of
     Curse's -- so a Curse disk goes to `tools/cursecheck.py`, which boots
     through `tools/curserun.py` and reads the same things off the same kinds
@@ -263,7 +263,7 @@ def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
         log = out / "cursecheck" / "cursecheck.jsonl"
     else:
         argv = [str(ROOT / ".venv" / "bin" / "python"),
-                str(TOOLS / "savecheck.py"),
+                str(TOOLS / "c64" / "savecheck.py"),
                 "--disk", str(disk), "--disks", str(disks),
                 "--out", str(log), "--tag", disk.stem]
         if walk:

@@ -56,7 +56,7 @@ default mode on it, so neither can put a read-only file anywhere.  Both can
 one, so flagging the three covers the cause.  `tools/instance.py` and
 `tools/dosabilitypair.py` already stage this way deliberately.
 
-`tools/session.py` is exempt: `stage_writable` is the function everything
+`tools/c64/session.py` is exempt: `stage_writable` is the function everything
 else is supposed to go through, and this is its own implementation.
 
 ## The rule for the allowlist
@@ -101,7 +101,7 @@ REUSED = ("slot.dir", "slot_dir", "args.out", "args.output", "args.dir",
 
 #: Parameter names that are one of those directories by convention throughout
 #: `tools/`.  A staging helper takes the path as a bare parameter -- which is
-#: how `#487`'s two `tools/traitsave.py` sites hid from a sweep that only read
+#: how `#487`'s two `tools/c64/traitsave.py` sites hid from a sweep that only read
 #: call sites -- so a function that takes one of these is scanned as though it
 #: had built the directory itself.
 REUSED_PARAMS = {"out", "outdir", "out_dir", "staging", "staging_dir",
@@ -166,7 +166,7 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
 
     # -- a save the run's own game wrote, kept as evidence.  The staged disk
     # and the staged `SAVE` tree are both writable before the game is booted
-    # -- `tools/session.py`'s `_restage` and `dosbox.Session.stage` see to
+    # -- `tools/c64/session.py`'s `_restage` and `dosbox.Session.stage` see to
     # that -- so what the game leaves behind is writable too.
     ("convertrun.py", "out / p.name"):
         "the CHRDAT records the game wrote in this run's staged tree",
@@ -218,7 +218,7 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
 #: think about: an entry leaves when the site is fixed.
 #:
 #: `#495`'s six emptied this dict.  Each site now routes through
-#: `tools.session.stage_writable`, so the sweep no longer finds a bare
+#: `tools.c64.session.stage_writable`, so the sweep no longer finds a bare
 #: `shutil.copy`/`copy2`/`copytree` into any of the three reused directories
 #: anywhere in `tools/`.
 OPEN_DEFECTS: dict[tuple[str, str], str] = {}
@@ -267,7 +267,7 @@ def _tracked(statements, source: str, seeded) -> set[str]:
     Iterated to a fixed point rather than in one pass, because the chain can
     be several assignments long: `here = pathlib.Path(slot.dir)`, then
     `work_save = f"{here}/SIDE0.D64"`, then a copy into `work_save` --
-    `tools/walkrun.py`, and the shape the committed `#476` sweep walked past.
+    `tools/c64/walkrun.py`, and the shape the committed `#476` sweep walked past.
     """
     names = set(seeded)
     while True:
@@ -371,7 +371,7 @@ def test_every_copy_into_a_reused_directory_has_been_read_and_ruled_on():
         "source's mode, and nobody has said which kind they are. Read each "
         "one: if the source is something this run produced, add it to "
         "ARTEFACT_COPIES with a reason; if it comes from outside the run, "
-        "route it through tools.session.stage_writable:\n  "
+        "route it through tools.c64.session.stage_writable:\n  "
         + "\n  ".join(f"{_where(found, key)}  {key[1]}" for key in unruled))
 
 
@@ -558,7 +558,7 @@ def test_a_wrapped_copy_is_not_flagged(tmp_path):
     """`stage_writable` itself, or a call routed through it, is not a hit."""
     (tmp_path / "toolstub.py").write_text(
         "import pathlib\n"
-        "from tools import session as S\n"
+        "from tools.c64 import session as S\n"
         "\n"
         "def stage(slot, save):\n"
         "    S.stage_writable(save, pathlib.Path(slot.dir) / 'SIDE0.D64')\n")
@@ -582,7 +582,7 @@ def test_the_sweep_catches_a_copy_into_a_pool_slot(tmp_path):
 
 
 def test_the_sweep_catches_a_slot_path_built_two_assignments_earlier(tmp_path):
-    """`tools/walkrun.py`'s shape, and the one the committed `#476` sweep
+    """`tools/c64/walkrun.py`'s shape, and the one the committed `#476` sweep
     walked past: the slot's directory reaches the call through two hops, and
     neither the destination expression nor the assignment that built it
     mentions `slot.dir`."""

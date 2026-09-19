@@ -46,7 +46,7 @@ from goldbox.d64 import load_payload  # noqa: E402
 #: reports.
 #:
 #: The header rows come from an absolute-operand census over `$4B00`-`$4EFF`
-#: across this title's 347 files (`tools/absrefsweep.py`) and from an address
+#: across this title's 347 files (`tools/c64/absrefsweep.py`) and from an address
 #: census over all twenty-two of its `ECL` scripts on both ports
 #: (`tools/areas/eclcensus.py`); the container rows from `goldbox/c64_save.py`.
 #:

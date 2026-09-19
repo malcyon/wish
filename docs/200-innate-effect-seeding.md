@@ -8,7 +8,7 @@ here. `tools/innateids.py` is the reader; `tests/test_innateids.py` pins it.
 **The short answer.** 134 is Curse's ranger id and 107 is its elf id, and this
 is now read out of the engine's own character creation rather than out of a
 saved game. The specimen that raised the question is innocent: the poke
-`tools/dualclassagain.py` makes touches two bytes of the saved game's
+`tools/c64/dualclassagain.py` makes touches two bytes of the saved game's
 container on a staged copy and no character record at all, and the two
 anomalous records exist with the same ids in the archives' own copy of the
 same party, which that tool never met. What is *not* settled is how those two
@@ -77,7 +77,7 @@ so the enumeration is exhaustive over the *constant* sites only.
 This corroborates `docs/121-silver-blades.md` from a second, independent
 route. That document derives Curse's ranger 134 and Silver Blades' ranger 105
 from the two engines' **C64** seed tables, `GEN $2515` and `GEN $0FF0` —
-reproducible with `tools/coldread.py traits curse-of-the-azure-bonds`, which
+reproducible with `tools/c64/coldread.py traits curse-of-the-azure-bonds`, which
 prints `class ranger -> 134`.
 
 **The two ports side by side, every seeded id, both titles.** The C64 column
@@ -155,7 +155,7 @@ how many it skipped.
 
 `#395 (A Curse cleric carries the ranger's innate effect and a human carries
 the elf's, in the specimen both ids were graded from)` asked whether
-`tools/dualclassagain.py`'s poke could have disturbed trait seeding for
+`tools/c64/dualclassagain.py`'s poke could have disturbed trait seeding for
 characters it was not aimed at. It could not, four ways:
 
 1. **The code.** `install()` copies each `CHRDAT<slot><n>.*` byte for byte

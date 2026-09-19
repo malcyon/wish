@@ -16,7 +16,7 @@ import pytest
 
 from goldbox import c64_port, levels, levelup
 from goldbox.record import CharacterRecord
-from tools import laterthac0
+from tools.c64 import laterthac0
 
 POOL = levels.POOL_OF_RADIANCE
 SSB = levels.SECRET_OF_THE_SILVER_BLADES

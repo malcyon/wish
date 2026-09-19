@@ -15,7 +15,7 @@ The effect table is printed as well as drawn, because a row that draws
 nothing and a machine with nothing running look the same in a PNG.
 
 **One binary-monitor client at a time.** This connects, reads and closes, so
-it runs beside an idle `tools/session.py` -- but never beside `wish` or
+it runs beside an idle `tools/c64/session.py` -- but never beside `wish` or
 anything else holding that socket open.
 
 Output goes under this tool's scratch directory unless told otherwise, and the tooltip is printed to

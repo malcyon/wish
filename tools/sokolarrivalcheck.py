@@ -5,7 +5,7 @@ Kept from `#182 (A driven save that arrives on a picture is reported as a failed
 load)`. A Sokol Keep arrival plays the boat scene, and `Session.begin_adventuring`
 used to call that a failed load; the offline half is exercised by
 `tests/test_arrivalscene.py`, and this is the live half. It claims a pool slot,
-stages the player's Pool of Radiance disks into it (`tools.session.stage_disks`),
+stages the player's Pool of Radiance disks into it (`tools.c64.session.stage_disks`),
 copies the save you name over the slot's own save disk (`SIDE0.D64`), boots, loads
 the save, begins adventuring, prints each step's result and the status, and
 takes a screenshot of where it ended up.
@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 
 def main(argv=None) -> int:

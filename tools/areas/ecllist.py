@@ -52,7 +52,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import d6502, gamedisks  # noqa: E402
+from tools import gamedisks  # noqa: E402
 from tools.areas import newecl  # noqa: E402
 from tools.areas.eclcensus import (  # noqa: E402
     CONDITIONS,
@@ -65,6 +65,7 @@ from tools.areas.eclcensus import (  # noqa: E402
     decode,
     script_base,
 )
+from tools.c64 import d6502  # noqa: E402
 
 EXIT, GOTO, GOSUB, RETURN, NEWECL, COMBAT = 0x00, 0x01, 0x02, 0x13, 0x20, 0x24
 COMPARE = 0x03

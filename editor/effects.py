@@ -142,7 +142,7 @@ NO_HANDLER = frozenset({54, 63})
 #:
 #: `#562`: Secret of the Silver Blades' own namespace runs to 112 and spends
 #: 68, 69, 71, 106, 111 and 112 -- six of Pool of Radiance's monster-attack-
-#: form ids -- on real spells (`tools/traitquery.py secret-of-the-silver-
+#: form ids -- on real spells (`tools/c64/traitquery.py secret-of-the-silver-
 #: blades --spells`, `#497`), so they join its `BORN_WITH`. 63 has a handler
 #: in both Secret of the Silver Blades and Curse of the Azure Bonds -- each
 #: title's own Minor Globe of Invulnerability writes it -- so both drop it

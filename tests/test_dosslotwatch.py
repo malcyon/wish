@@ -1,7 +1,7 @@
 """`tools/dosslotwatch.py`'s staging, isolated from DOSBox-X.
 
 `main()`'s copy loop puts `--save`'s `CHRDAT*` and `SAVGAM*.DAT` into the
-staged session's `SAVE` directory with `tools.session.stage_writable`, not a
+staged session's `SAVE` directory with `tools.c64.session.stage_writable`, not a
 bare `shutil.copy` (`#495`): `--save` is often a read-only specimen, and a
 bare copy would carry that mode onto the staged files, leaving the tool's own
 `--patch` write-back a few lines later to die on a bare `PermissionError`.

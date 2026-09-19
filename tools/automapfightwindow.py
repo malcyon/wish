@@ -7,7 +7,7 @@ than `CombatLog.poll` driven directly by a harness, which is all
 
 **Why this needed its own target.** `automap/target.py`'s `ViceTarget` holds
 one binary-monitor connection open for the whole session and resumes it
-between reads. `tools/session.py`'s `Session` does the opposite for every
+between reads. `tools/c64/session.py`'s `Session` does the opposite for every
 action it takes -- `press_kernal`, `combat_turn`, `melee_turn`, `screen()`,
 all of it opens `Session.mon()` fresh and closes it again. VICE serves
 exactly one binary-monitor connection per process, so a persistent
@@ -50,7 +50,7 @@ from automap.state import Automapper  # noqa: E402
 from automap.vice import Monitor  # noqa: E402
 from automap.window import AutomapBinding  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 from wish.ui_window import Ui_WishWindow  # noqa: E402
 
 

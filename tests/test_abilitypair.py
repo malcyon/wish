@@ -27,7 +27,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from tests import gamedata  # noqa: E402
-from tools import abilitypair  # noqa: E402
+from tools.c64 import abilitypair  # noqa: E402
 
 # --- the formula, against the brackets the engine's own table names ---------
 

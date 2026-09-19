@@ -177,7 +177,7 @@ everything else reads. A slot holding zero is skipped outright (`$3E36 BEQ`).
 **So panel position 0 is the highest occupied roster slot, not slot 0.** A
 driven run that reads the character sheets back by panel position and calls
 the position a slot gets every staged value against the wrong character;
-`tools/statusdrive.py` reports both, since it was written before this was
+`tools/c64/statusdrive.py` reports both, since it was written before this was
 known.
 
 Every value has a writer that says what it means:
@@ -197,7 +197,7 @@ Two AD&D rules fall out of that and corroborate the names: a `$84` character
 bleeds for **ten** rounds and becomes `$83`, and damage that lands within ten
 points below zero gives `$85` rather than `$83` -- 0 to -9 dying, -10 dead.
 
-**And the byte was measured, not only read.** `tools/statusdrive.py` loaded
+**And the byte was measured, not only read.** `tools/c64/statusdrive.py` loaded
 `PORSAVE13.D64`, walked three steps into the Slums ambush, wounded one character
 to 1 hit point through the monitor **and touched nothing else**, and sampled the
 roster page every turn:
@@ -450,7 +450,7 @@ $4035  BEQ $403C      found here
 `$3FE4` alone -- `$3FE1` is a `LDX $6DB4` wrapper for the current character --
 is the array-only predicate, and **a caller that goes there never sees a trait
 slot.** So whether an id in a trait slot does anything is a question about the
-*call site*, not about the slot. `tools/traitquery.py` censuses the call sites
+*call site*, not about the slot. `tools/c64/traitquery.py` censuses the call sites
 that name their id with a literal, and finds the predicate in any of the three
 measured titles without being told where the overlay runs. **It is not the
 whole census**: the combat engine asks about most of the namespace from twenty
@@ -478,7 +478,7 @@ CONFIRMED in the running game as well as in the code: two boots of the same
 save three steps into the Slums, differing by one effect id written into trait
 slot 9 of one character, hit `$4027` 198 times each and reached `$403C` -- the
 `SEC` only a trait match falls through to -- **0 times in the control and 1
-time with the id staged** (`tools/traitdrive.py`).
+time with the id staged** (`tools/c64/traitdrive.py`).
 
 **Item power codes are a separate little namespace, `$80`-`$8B`, in item byte
 `+15`**, and `ECL65`'s 24-entry table at `$9AD5` dispatches them to handlers in

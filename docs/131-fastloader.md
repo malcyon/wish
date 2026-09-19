@@ -237,7 +237,7 @@ title sequence has already absorbed everything there was to absorb.
 
 ## What follows
 
-* **`tools/session.py` keeps `y` as its default.** The margin on this machine,
+* **`tools/c64/session.py` keeps `y` as its default.** The margin on this machine,
   1.0 s, does not exceed the within-cell range, 1.1 s, so there is no
   measurement here that argues for changing it — and `Y` is the right answer
   by 39 s on the stock-kernal configuration's mirror image. The docstring

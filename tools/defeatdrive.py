@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Lose a Pool of Radiance fight on purpose, and read what the game prints.
 
-Every fight this project has driven, the party won, so `tools/session.py`'s
+Every fight this project has driven, the party won, so `tools/c64/session.py`'s
 `LOST_TEXT` was a guess with no specimen behind it and `fight()` reported
 `ended` for a defeat it could not name (`#128`).  This drives the other
 outcome.
 
 The engine will not let a party lose on request, so the loss is arranged the
-way `tools/statusdrive.py` arranged a single character's status: **hit points
+way `tools/c64/statusdrive.py` arranged a single character's status: **hit points
 are set through the monitor and the engine's own damage code reacts**.  Here
 it is every occupied roster slot rather than one, at `$8300 + N*$20 + 0x19`,
 and then every turn is passed so nobody strikes back.  Nothing else is
@@ -63,9 +63,9 @@ sys.path.insert(0, str(ROOT))
 from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
-from tools import savecheck as SC  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -123,13 +123,13 @@ def describe(value: int) -> str:
 
 
 class Log(SC.Log):
-    """`SC.Log` -- `tools/savecheck.py`'s.
+    """`SC.Log` -- `tools/c64/savecheck.py`'s.
 
     Keeps a second run's log rather than truncating it, and a `say` a dead
     console cannot take down with it (`#442`).  `--out` defaults to
     `<tmp>/wish/defeatdrive/<save-stem>`, which has no run tag in it, so two runs on
     the same save at the default used to truncate each other -- exactly the
-    shape `d532ad6` fixed in `tools/savecheck.py` after `#380`.
+    shape `d532ad6` fixed in `tools/c64/savecheck.py` after `#380`.
     """
 
     def __init__(self, out: pathlib.Path, quiet: bool = False):

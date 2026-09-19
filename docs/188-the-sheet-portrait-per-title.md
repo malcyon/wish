@@ -186,7 +186,7 @@ Blades, which ships no `HEAD<xx>` or `BODY<xx>` file at all.
 
 The recipe, for anyone repeating it: boot with `tools/curserun.py --pool N
 --disks <dir> --save <d64>` or `tools/ssbrun.py --pool N --save <d64>`, then
-through `tools/porcmd` -- walk the party menu with `key Down` and answer with
+through `tools/c64/porcmd` -- walk the party menu with `key Down` and answer with
 `kernal 0D` in Curse or `key Return 0.25 0.3` in Silver Blades, `VIEW
 CHARACTER`, then the character. `peek 7F13 25` is the cache and `peek 7CFE 2`
 is the displayed character's pair. For the world sheet in Curse, `BEGIN
@@ -466,7 +466,7 @@ should close on.
   toggle that happens to share an offset. Writing `$81` there stays correct,
   because Curse's own `INIT` writes `$81` and both engine-written specimens
   hold it; the value is right and the name is wrong.
-* **`tools/absrefsweep.py` prints every overlay address two bytes high**,
+* **`tools/c64/absrefsweep.py` prints every overlay address two bytes high**,
   because it maps the PRG header to `$0800` rather than the byte after it.
   Both `CAMP` addresses above came out of it and have had the two subtracted;
   `#312 (Every overlay address absrefsweep prints is two bytes high, because

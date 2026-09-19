@@ -32,7 +32,7 @@ gap cost a decision twice on 2026-09-10.
 | Write a finding anywhere, or touch `docs/`, a `README.md`, or `INDEX.md` | `documentation.md` |
 | Touch a `.ui` file, a generated `ui_*.py`, or `tools/genui.py` | `qt-designer.md` |
 | Write, change or run a test, or touch `tests/` | `testing.md` |
-| Drive an emulator, or touch `automap/`, `tools/session.py` or `tools/instance.py` | `emulator.md` |
+| Drive an emulator, or touch `automap/`, `tools/c64/session.py` or `tools/instance.py` | `emulator.md` |
 
 ## Name every issue you cite
 

@@ -308,7 +308,7 @@ LDA #$00 / STA $ppC6,X / INX
 which is `+$C7`. The status line reads the same three: `LDA $ppC9`, a `#$3A`
 colon, `LDA $ppC8`, `LDA $ppC7`.
 
-`tools/c64clock.py` finds all of it from the signature. What it reports:
+`tools/c64/c64clock.py` finds all of it from the signature. What it reports:
 
 | title | tick | limits | status line | page |
 |---|---|---|---|---|
@@ -326,7 +326,7 @@ Two things the sweep turned up that were not the question:
   deliberate and not a defect: reading the table as six from the `CMP` operand
   is what makes it look like a limit of 96.
 * **The claim that the limits come from `$A83C` is unsupported and has been
-  removed from the row above.** Every copy `tools/c64clock.py` can point at is
+  removed from the row above.** Every copy `tools/c64/c64clock.py` can point at is
   inside the overlay that uses it — three in Pool of Radiance, two in Curse,
   one in Silver Blades — and nothing on any side of any of the three titles
   carries the six bytes at `$A83C`. Curse's `COMBAT2` is the one entry whose
@@ -523,7 +523,7 @@ $161F  LDY #$50 / LDX $6B20,Y / BEQ + / JSR $1751 / TAX
 ```
 
 `$6B20` is the resident record's `0x020` and `#$50` is its eighty-first slot,
-the same immediate `tools/memorisedwidth.py` reads the field's width from.
+the same immediate `tools/c64/memorisedwidth.py` reads the field's width from.
 `$1751` gives a spell id its level:
 
 ```
@@ -559,7 +559,7 @@ staying at `3`, and the three non-casters staying at `0`. That is the recompute
 from each of their memorised lists exactly, and the save the engine then wrote
 carries it.
 
-**Census.** `tools/rosterspellcount.py` compares the stored counters against the
+**Census.** `tools/c64/rosterspellcount.py` compares the stored counters against the
 recompute for every occupied roster block it can find. Over 24 of the player's
 own save disks, 144 blocks: 89 have nothing memorised, and of the 55 that have
 something to count, 10 agree exactly, 40 hold all zeroes and 5 are partly

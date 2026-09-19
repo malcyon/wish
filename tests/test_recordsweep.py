@@ -1,4 +1,4 @@
-"""`tools/recordsweep.py`'s hit-finding, on bytes built here rather than off a
+"""`tools/c64/recordsweep.py`'s hit-finding, on bytes built here rather than off a
 disk -- `hits()` and `indirect_hits()` are pure byte matching and need no
 game specimen to exercise. `pytest tests/test_recordsweep.py` runs with zero
 skips.
@@ -11,8 +11,8 @@ That scan was run once by a script nobody kept -- `#230 (The indirect half of
 a record-offset census cannot be rerun, because its script was never kept)`.
 """
 
-from tools.d6502 import M_IZX, M_IZY
-from tools.recordsweep import hits, indirect_hits
+from tools.c64.d6502 import M_IZX, M_IZY
+from tools.c64.recordsweep import hits, indirect_hits
 
 # --------------------------------------------------------------------------
 # hits() -- absolute-mode census, previously untested

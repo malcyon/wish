@@ -57,7 +57,7 @@ leave at `--` are what `tests/test_cursetrainer.py` reads off the disk**
 (`#18`). Finding them needed no emulator and no address from this file: Curse's
 working character sits at `$7C00`, so a census of every absolute instruction
 whose operand lands in the record puts each routine within two instructions of
-the table it reads, which is what `tools/trainerscan.py` prints. **Locating
+the table it reads, which is what `tools/c64/trainerscan.py` prints. **Locating
 them is not the same as being able to write a Curse record**, and four of the
 readings are a different *rule* rather than the same rule at a new address:
 
@@ -304,7 +304,7 @@ TABLES = {
 #: **Curse and Silver Blades are filled in too, from the same read, in
 #: `_DOS_THAC0_CURSE` and `_DOS_THAC0_SSB` below.** Their DOS tables sit at
 #: `DS:0x3E3A` (Curse, 8 rows of 13) and `DS:0x4C0C` (Silver Blades, 7 rows of
-#: 19, dropping the monk) -- located by `tools/laterthac0.py` without
+#: 19, dropping the monk) -- located by `tools/c64/laterthac0.py` without
 #: anchoring on a THAC0 number at all, because their class-bit array is a
 #: different permutation from Pool of Radiance's and `tools/thac0census.py`
 #: cannot find either. `docs/210-the-later-titles-dos-thac0.md` has the whole
@@ -328,13 +328,13 @@ TABLES = {
 #: 40 from a block of new-character defaults and none of them compares the
 #: field against a constant, so a record holding 40 where a table gives 39 is
 #: a creation, class-change or import value no rebuild has run over yet --
-#: `tools/laterthac0.py writers` has the four kinds of site that touch the
+#: `tools/c64/laterthac0.py writers` has the four kinds of site that touch the
 #: byte.
 #:
 #: CONFIRMED: 77 of 86 Curse records and 72 of 74 Silver Blades records
 #: reproduce from these rows by best-of-classes; every miss is a magic-user no
 #: rebuild has run over (`docs/210-the-later-titles-dos-thac0.md`).
-#: `tools/laterthac0.py records` is the sweep.
+#: `tools/c64/laterthac0.py records` is the sweep.
 _DOS_THAC0_POOL = (
     ("magic-user", (20, 20, 20, 20, 20, 19, 19, 19, 19, 19)),
     ("cleric",     (20, 20, 20, 18, 18, 18, 16, 16, 16, 14)),
@@ -670,7 +670,7 @@ HP_BONUS_FROM = 15
 
 # --- what Curse's trainer rolls and looks up ---------------------------------
 # Read off `CURSE_A.D64`'s own `GEN` and `ECL65` (`#18`), by the instruction
-# that touches the character record at `$7C00` -- `tools/trainerscan.py`.
+# that touches the character record at `$7C00` -- `tools/c64/trainerscan.py`.
 # `tests/test_cursetrainer.py` re-reads every one of these off the player's
 # disk, so a wrong number here fails rather than sits.
 
@@ -1413,7 +1413,7 @@ POOL_OF_RADIANCE = LevelTables(
     dos_wisdom_bonus_from=13,
 )
 
-#: `DS:0x3E3A`, 8 rows of 13, transcribed from `tools/laterthac0.py table
+#: `DS:0x3E3A`, 8 rows of 13, transcribed from `tools/c64/laterthac0.py table
 #: --title curse-of-the-azure-bonds`. THAC0, not the stored `60 - THAC0`,
 #: level 1 first. See `_DOS_THAC0_POOL`'s docstring for the grades and the
 #: sweep this reproduces (77 of 86).
@@ -1479,7 +1479,7 @@ CURSE_OF_THE_AZURE_BONDS = LevelTables(
 )
 
 #: `DS:0x4C0C`, 7 rows of 19 -- no monk -- transcribed from
-#: `tools/laterthac0.py table --title secret-of-the-silver-blades`. THAC0, not
+#: `tools/c64/laterthac0.py table --title secret-of-the-silver-blades`. THAC0, not
 #: the stored `60 - THAC0`, level 1 first. See `_DOS_THAC0_POOL`'s docstring
 #: for the grades and the sweep this reproduces (72 of 74).
 _DOS_THAC0_SSB = (
@@ -1541,7 +1541,7 @@ SECRET_OF_THE_SILVER_BLADES = LevelTables(
     #: same round-up-at-random #18 grades PROBABLE in both titles); `$156F`
     #: walks class slots 7 down to 0 in one press, Curse's `$14F8` shape;
     #: `$13EB STY $7CD9` stores outright, Curse's `$1909` shape; and
-    #: `tools/absrefsweep.py secret-of-the-silver-blades 7CEE 7CF3` over 347
+    #: `tools/c64/absrefsweep.py secret-of-the-silver-blades 7CEE 7CF3` over 347
     #: files finds no reference to `spells_castable`, Curse's own census result.
     #: So Silver Blades takes Curse's values on all seven, not Pool of
     #: Radiance's defaults.

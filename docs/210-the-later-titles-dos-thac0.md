@@ -35,7 +35,7 @@ sat: it anchors on the eight class bits that follow Pool of Radiance's table,
 and monk swap. That run occurs nowhere in either image, so the census exits
 with "the class-bit anchor occurs 0 times".
 
-`tools/laterthac0.py` locates it without knowing a THAC0 number at all, and
+`tools/c64/laterthac0.py` locates it without knowing a THAC0 number at all, and
 three checks have to agree:
 
 * the block is the **one maximal run of bytes in 30..70** whose length is
@@ -105,7 +105,7 @@ title would settle it.
 
 ## Why a record can hold a number the table does not give
 
-`tools/laterthac0.py writers` prints every instruction in `GAME.OVR` that
+`tools/c64/laterthac0.py writers` prints every instruction in `GAME.OVR` that
 touches `thac0_base` -- `0x02D` in Pool of Radiance, `0x073` in Curse, `0x06A`
 in Silver Blades, which is what `goldbox/dos_port.py` says for each and is
 the first corroboration that our layouts are right. Five kinds of site, and
@@ -140,7 +140,7 @@ who has never trained that is the creation constant or the import.
 
 ## What the corpus says
 
-`tools/laterthac0.py records` sweeps every DOS record in the specimen tree and
+`tools/c64/laterthac0.py records` sweeps every DOS record in the specimen tree and
 the player's archives against the title's own table, by the engine's own rule
 -- best of the classes, nothing else.
 

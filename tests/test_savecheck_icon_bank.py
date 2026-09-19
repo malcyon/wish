@@ -11,7 +11,7 @@ identical combat figures, not its own)` whether or not the icons differ.
 Nothing here needs an emulator: the monitor is a fake that hands back real
 bitmaps on the bank named ``ram`` and register-mirror zeroes on every other
 bank, the way VICE itself does at `$D000` (measured with
-`tools/vicebankcheck.py`).
+`tools/c64/vicebankcheck.py`).
 """
 
 import struct

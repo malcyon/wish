@@ -1,6 +1,6 @@
 """A walked step routes through whatever the game puts up next, always (#275).
 
-`tools/savecheck.py`'s walk loop only ran `answer_bars` -- the function that
+`tools/c64/savecheck.py`'s walk loop only ran `answer_bars` -- the function that
 presses through a room description, `PRESS <RETURN>`, a load and a `YES NO`
 back to the world bar -- when `--route` was passed.  The training hall
 answers a step with exactly that sequence and nothing had asked for routing,

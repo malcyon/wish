@@ -1,4 +1,4 @@
-"""`tools/laterthac0.py` reads the later DOS titles' THAC0 tables.
+"""`tools/c64/laterthac0.py` reads the later DOS titles' THAC0 tables.
 
 `#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64 gives
 21, and our table holds only the C64's)` was answered for Pool of Radiance and
@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import pytest
 
-from tools import laterthac0, thac0census
+from tools import thac0census
+from tools.c64 import laterthac0
 
 CURSE = "curse-of-the-azure-bonds"
 SSB = "secret-of-the-silver-blades"

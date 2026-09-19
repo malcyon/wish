@@ -13,7 +13,7 @@ mistake:
 
 * the picker offers what the table names;
 * **the entries are re-derived off the player's own disks**: the thirteen
-  spell-written codes through `tools.traitquery.spell_effects`, and the
+  spell-written codes through `tools.c64.traitquery.spell_effects`, and the
   monster-carried refusals by reading the `MON*` templates directly, the way
   `tests/test_ssbtraitnames.py` reads Silver Blades'. A base that slips or a
   name that drifts from the game's own data turns these red. All of them
@@ -27,7 +27,8 @@ import pytest
 from editor import effects
 from goldbox import c64_port, traits
 from goldbox.d64 import D64
-from tools import gamedisks, traitquery
+from tools import gamedisks
+from tools.c64 import traitquery
 
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 POOL = c64_port.POOL_OF_RADIANCE

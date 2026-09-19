@@ -1,4 +1,4 @@
-"""`tools/c64uload.py` without a C64 Ultimate on the network.
+"""`tools/c64/c64uload.py` without a C64 Ultimate on the network.
 
 The 2026-09-06 runs on `#286 (Pool of Radiance on the C64 Ultimate sometimes
 hangs on a disk load)` were lost because their verdicts were string matches --
@@ -15,7 +15,7 @@ import time as real_time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tools import c64uload  # noqa: E402
+from tools.c64 import c64uload  # noqa: E402
 
 
 class FakeTime:

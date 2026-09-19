@@ -52,7 +52,7 @@ Silver Blades' sequence is `$1527`, and this is the whole of it (#89):
 title's *starting* spellbook -- Curse's `$167F`, Silver Blades' `$0F7C`. Both
 are grant loops of the same shape, both are called only from character
 creation and from dual-classing, and both were read here as the trainer
-granting a row. `tools/trainerspells.py` refuses to call a routine a trainer
+granting a row. `tools/c64/trainerspells.py` refuses to call a routine a trainer
 step unless the title's own sequence `JSR`s it, and `--check` diffs every
 level of every class against this module.
 

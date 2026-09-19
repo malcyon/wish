@@ -11,7 +11,7 @@ routine and its own charset, which shares nothing with `goldbox/layout.py`.
     tools/testpartyrun.py --disk path/to/TESTPARTY.D64
 
 **Nothing is written to the player's disks.**  `--disk` is a copy
-`tools/testparty.py` already made; `tools/session.stage_disks` copies the eight
+`tools/testparty.py` already made; `tools/c64/session.stage_disks` copies the eight
 sides and that save into the pool slot's own directory, and `Session.attach`
 refuses any path outside it.  `POR_HEADLESS` is the slot's default, so no
 window lands on the desktop.
@@ -40,7 +40,7 @@ questions the 2026-09-09T03:00:20Z comment named as sharing one boot:
 3. un-ready then re-ready PILFER's `LEATHER ARMOR +4`, and ready then
    un-ready BULWARK's `TWO-HANDED SWORD +1 +3 VS UNDEAD`, each read at
    `$8300 + slot * 0x20` for 32 bytes before and after
-   (`goldbox.savegame.RosterBlock`, `tools/traitask.py`'s own item-list
+   (`goldbox.savegame.RosterBlock`, `tools/c64/traitask.py`'s own item-list
    driving);
 4. walk until something ambushes the party and screenshot the fight, which is
    the only way to see the icons `tools/testparty.py --disk` (no
@@ -63,10 +63,10 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import SLOT_AREA_BASE, SLOT_STRIDE  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
-from tools.c64addprobe import answer as answer_yn  # noqa: E402
-from tools.c64nametable import character_files  # noqa: E402
-from tools.traitask import (  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
+from tools.c64.c64addprobe import answer as answer_yn  # noqa: E402
+from tools.c64.c64nametable import character_files  # noqa: E402
+from tools.c64.traitask import (  # noqa: E402
     ROSTER_STRIDE,
     SAVE1_LOAD,
     leave_items,
@@ -77,7 +77,7 @@ from tools.traitask import (  # noqa: E402
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 
 #: Pool of Radiance's own prefix byte for a parked character's filename
-#: (`tools/c64nametable.py`'s `PREFIX`).
+#: (`tools/c64/c64nametable.py`'s `PREFIX`).
 POR_PREFIX = 0x01
 
 
@@ -124,7 +124,7 @@ def remove_and_readd(sess, log: Log, out: pathlib.Path, name: str) -> bytes | No
     portion of the boot, only the disk and the party.
 
     Returns the exported `.CHR` bytes (the file `\\x01BULWARK` on the C64,
-    `tools/c64nametable.py`'s `PREFIX` for Pool of Radiance), or None if the
+    `tools/c64/c64nametable.py`'s `PREFIX` for Pool of Radiance), or None if the
     remove never produced one.
     """
     dump(sess, out, log, "party-menu")
@@ -351,7 +351,7 @@ def main(argv=None) -> int:
 
     # The staging directory holds the generated save beside symlinks to the
     # player's own sides, so `stage_disks` copies all nine into the slot and
-    # the originals are only ever read -- the way `tools/turndrive.py` does it.
+    # the originals are only ever read -- the way `tools/c64/turndrive.py` does it.
     staging = out / "disks"
     staging.mkdir(parents=True, exist_ok=True)
     S.stage_writable(args.disk, staging / "STAGED.D64")

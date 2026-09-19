@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-"""`tools/walkrun.py` claims a pool slot instead of falling back to Donald's
-own ports and display (#144, `tools/walkrun.py has no way to use a pool slot,
+"""`tools/c64/walkrun.py` claims a pool slot instead of falling back to Donald's
+own ports and display (#144, `tools/c64/walkrun.py has no way to use a pool slot,
 so it opens a window on Donald's desktop`).
 
 None of this drives VICE. `Session` is replaced with a fake that never
@@ -18,7 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from tools import instance, walkrun
+from tools import instance
+from tools.c64 import walkrun
 
 posix = pytest.mark.skipif(instance.fcntl is None, reason="flock is POSIX only")
 

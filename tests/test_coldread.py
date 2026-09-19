@@ -17,7 +17,7 @@ $2A25` calls `$1CE9` -- addresses inside the file at `$0800` and outside it at
 the header's. Seven citations in this repository were written at the header base
 and are corrected in `goldbox/layout.py`.
 
-The finders live in `tools/coldread.py` rather than here, because the point of
+The finders live in `tools/c64/coldread.py` rather than here, because the point of
 them is that they can be run against Champions of Krynn, Death Knights of Krynn
 or Gateway to the Savage Frontier without anyone writing them a second time.
 
@@ -116,7 +116,7 @@ def test_a_cited_address_holds_the_instruction_it_is_cited_for(
 #: What `GEN` seeds each race's first trait slots with, per title, read out of
 #: the tables the seeding instruction points at. The count differs -- one slot
 #: in Pool of Radiance, three in Curse, two in Silver Blades -- which is why
-#: `tools/coldread.py` counts them rather than assuming.
+#: `tools/c64/coldread.py` counts them rather than assuming.
 SEEDS = {
     POOL.key: {2: [107], 4: [124]},
     CURSE.key: {1: [26, 47, 97], 2: [107], 3: [18, 48, 97], 4: [124]},

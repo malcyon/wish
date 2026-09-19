@@ -19,7 +19,7 @@ holding the old name, and that costs a player nothing.
 
 ## What the six code sites do
 
-`tools/c64nametable.py sites --title <key>` finds them in that title's own
+`tools/c64/c64nametable.py sites --title <key>` finds them in that title's own
 `GEN`, which `LINKER` runs at `$0800` whatever the two-byte header claims.
 Six sites in each title and no others; the addressing mode and the loop around
 each operand are what tell them apart.
@@ -48,7 +48,7 @@ A character saved on its own stands on the save disk as a file named after the
 character with **one byte in front of it**: `$01` for Pool of Radiance, `$02`
 for Curse, `$05` for Silver Blades. `GEN` carries the byte in the `S0:`
 template it sends to delete a character file before rewriting one, which is
-where `tools/c64nametable.py` reads it rather than trusting a table.
+where `tools/c64/c64nametable.py` reads it rather than trusting a table.
 
 `ADD CHARACTER TO PARTY` opens with a bar naming the games it will read the
 disk as -- `ADD FROM: CURSE POOL HILLSFAR EXIT` in Curse,
@@ -67,7 +67,7 @@ has no save file to read a title off at all.
 ## What was measured, and where
 
 **CONFIRMED in the running game**, VICE pool slot 0, 2026-09-08,
-`tools/c64nametable.py run`, which reads `$5700`-`$57FF` out of the machine
+`tools/c64/c64nametable.py run`, which reads `$5700`-`$57FF` out of the machine
 rather than off a screen.
 
 | run | the disk | after `LOAD SAVED GAME` | after the add list was drawn |

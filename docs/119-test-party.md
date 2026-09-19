@@ -297,7 +297,7 @@ tests/gamedata.save_disk("PORSAVE")        # the player's; skips if absent
 limitation here: both payloads are fixed sizes (7168 and 2048) and a rewritten
 save occupies exactly the chain it already had.
 
-`tools/walkrun.py` already does the copy step — `shutil.copy(BASE_SAVE, HERE/SIDE0.D64)`
+`tools/c64/walkrun.py` already does the copy step — `shutil.copy(BASE_SAVE, HERE/SIDE0.D64)`
 — and `Session.attach` already refuses any path outside the session's scratch
 directory. Nothing new is needed to get the disk into the emulator; what is
 new is what goes on it.
@@ -346,7 +346,7 @@ Four gates, weakest first. Only the last two are evidence about the *game*.
    returns no complaints — the cached roster THAC0, armour class and damage
    bonus match what the rules say for the record we built. Catches a stale
    cache, which is the failure mode a hand-built save has.
-3. **The game's own decoder.** Boot the disk under `tools/session.py`, open each
+3. **The game's own decoder.** Boot the disk under `tools/c64/session.py`, open each
    character sheet, and read it off the screen — the game runs in text mode with
    its own charset, so this is screen codes, not OCR. Name, class, level, hit
    points, armour class and THAC0 come back from a decoder that is completely

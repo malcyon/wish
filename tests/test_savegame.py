@@ -417,11 +417,11 @@ class TestRosterSpellCounts:
         assert sg1.roster(roland.index).unknown_03_05 == (0, 0, 0)
 
     def test_the_classifier_is_the_engines_own(self):
-        """tools/rosterspellcount.py reads the level off COM.PREP $1751's three
+        """tools/c64/rosterspellcount.py reads the level off COM.PREP $1751's three
         thresholds; goldbox/spells.py reads it off the spell names. They are
         two derivations of the same four bands and must not drift apart."""
         from goldbox.spells import POOL_OF_RADIANCE, spell_group
-        from tools.rosterspellcount import spell_level
+        from tools.c64.rosterspellcount import spell_level
 
         checked = 0
         for low, high, _cls, level in POOL_OF_RADIANCE.groups:
@@ -438,7 +438,7 @@ class TestRosterSpellCounts:
         them being written."""
         from goldbox.c64_codec import get_memorised
         from tools import specimens
-        from tools.rosterspellcount import recompute
+        from tools.c64.rosterspellcount import recompute
 
         disk = next((path
                      for entry in specimens.list_specimens()
@@ -447,7 +447,7 @@ class TestRosterSpellCounts:
                      if path.name.lower().endswith(".d64")), None)
         if disk is None:
             pytest.skip("no porunconscious1 specimen; "
-                        "tools/statusdrive.py --victim 5 makes one")
+                        "tools/c64/statusdrive.py --victim 5 makes one")
         sg0, sg1 = self._pair(str(disk))
         casters = 0
         for slot in sg0.characters:
@@ -476,7 +476,7 @@ class TestRosterSpellCounts:
                      if path.name.lower().endswith(".d64")), None)
         if disk is None:
             pytest.skip("no porunconscious1 specimen; "
-                        "tools/statusdrive.py --victim 5 makes one")
+                        "tools/c64/statusdrive.py --victim 5 makes one")
         sg0, sg1 = self._pair(str(disk))
         pairs = {s.record.name: tuple(sg1.roster(s.index).raw[0x0A:0x0C])
                  for s in sg0.characters}

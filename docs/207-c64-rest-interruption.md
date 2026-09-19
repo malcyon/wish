@@ -18,7 +18,7 @@ penalty, is 255. Thirty-seven two-hour rests in the Slums with the flag clear
 255 was checked on every rest, 13 of 13 in the run with the tightest
 instrument, and interrupted in both runs.
 
-`tools/c64restinterrupt.py` regenerates everything here: `code all` for the
+`tools/c64/c64restinterrupt.py` regenerates everything here: `code all` for the
 tables, `drive` for the measurement.
 
 ## The gate
@@ -52,13 +52,13 @@ REST IS RUDELY INTERRUPTED!`.
 
 The DOS routine increments a counter and compares it; the C64 one decrements to
 zero. Same arithmetic, and the same two bytes decide it. CONFIRMED — the bytes
-are on the player's own disks and `tools/c64restinterrupt.py code` checks them
+are on the player's own disks and `tools/c64/c64restinterrupt.py code` checks them
 there on every run.
 
 ## `$6DD2` has one non-zero source, and it is the area script
 
 A sweep of `$6DD2`-`$6DD3` over all 564 distinct files of the eight sides
-(`tools/absrefsweep.py pool-of-radiance 0x6DD2 0x6DD3 --sites 0x6DD2 0x6DD3`)
+(`tools/c64/absrefsweep.py pool-of-radiance 0x6DD2 0x6DD3 --sites 0x6DD2 0x6DD3`)
 finds 13 absolute references in code files and none in art or in script
 bytecode. Every engine-side **write** stores zero:
 
@@ -97,7 +97,7 @@ loop reads it.
 
 ## Which areas can interrupt a rest
 
-`tools/c64restinterrupt.py code all` walks every area script **from entry 2**
+`tools/c64/c64restinterrupt.py code all` walks every area script **from entry 2**
 rather than sweeping it, so a conditional pair is reported as the values each
 arm reaches rather than whichever came first in address order.
 
@@ -130,7 +130,7 @@ through it reaches `$9A2F` too, because `$9A2F` is the next statement. Both are
 conditionals whose two arms are the same instruction.
 
 **Two of two, against nought in the other twenty-nine scripts.**
-`tools/c64restinterrupt.py code all` walks both arms of every conditional in
+`tools/c64/c64restinterrupt.py code all` walks both arms of every conditional in
 every area's entry 2 through the statements that leave no trace — `COMPARE`,
 `IF`, `GOTO` — and asks where each arm first does something. Across all thirty
 scripts exactly three conditionals have both arms reaching the same set of
@@ -252,7 +252,7 @@ writes the same byte — `docs/50-experiments.md`'s murder run watched
   fight follows, or how often.
 * **Whether any other area's condition is inert the same way.** Twenty-two
   scripts are conditional and only `ECL14`'s condition was read statement by
-  statement. `tools/c64restinterrupt.py code all --verbose` prints the rest;
+  statement. `tools/c64/c64restinterrupt.py code all --verbose` prints the rest;
   a second one with identical arms would be a second bug.
 
 ## What this does not touch

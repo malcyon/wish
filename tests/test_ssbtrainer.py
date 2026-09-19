@@ -6,7 +6,7 @@ from __future__ import annotations
 goldbox/levelup.py offers them from a menu)`. Every table this title's
 trainer reads was already in `goldbox/levels.py` and `goldbox/spells.py`,
 read out of `GEN` and `ECL65` by `tools/ssbtrainerinputs.py` and
-`tools/trainerspells.py`. What had never happened was the other half:
+`tools/c64/trainerspells.py`. What had never happened was the other half:
 putting a party in front of the hall, pressing `TRAIN CHARACTER`, and asking
 whether `goldbox.levelup.plan` writes what the engine wrote.
 

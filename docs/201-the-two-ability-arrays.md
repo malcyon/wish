@@ -42,12 +42,12 @@ Both later titles stage the working record at **`$7C00`**, so `0x014` is
 `0x0EB`. The party's roster copies are at `$4F00 + slot * $100` in Curse,
 which is where `SAVEAZURE` loads plus its `0x400` slot offset.
 
-`tools/abilitypair.py` is the tool: `refs` for the census, `stage` to write
+`tools/c64/abilitypair.py` is the tool: `refs` for the census, `stage` to write
 the two arrays apart, `read` to say what a disk holds.
 
 ## The census, which is what makes the answer visible at a glance
 
-`tools/absrefsweep.py` over 412 distinct Curse files, counting absolute
+`tools/c64/absrefsweep.py` over 412 distinct Curse files, counting absolute
 operands that name each byte:
 
 | window | in code files | where |
@@ -93,7 +93,7 @@ the fifteen bytes the import changes, and this is why.
 ## The running-game measurement
 
 `WISH-SPEC-curse-h-engine-resave.D64` staged apart by
-`tools/abilitypair.py stage`, three abilities, each crossed both ways, one
+`tools/c64/abilitypair.py stage`, three abilities, each crossed both ways, one
 boot on a pooled VICE instance on 2026-09-07:
 
 | who | ability | `0x014` | `0x065` | the sheet drew |
@@ -192,7 +192,7 @@ What this settles is the **meaning**, so three things follow.
 * **Silver Blades has not been driven with the arrays crossed.** Its code is
   the same routine at a different address and its `LIBRARY $30F8` even marks
   the difference on the sheet with a `+`, which nobody has yet seen drawn.
-  The experiment is `tools/abilitypair.py stage` against a Silver Blades save
+  The experiment is `tools/c64/abilitypair.py stage` against a Silver Blades save
   disk and one boot.
 * **`0x0EC`, the dexterity index, was never seen written.** `COM.PREP $1740`
   is the only writer reached in play and it runs at the start of a fight; the

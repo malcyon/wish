@@ -62,7 +62,7 @@ own fastloader — answer **`Y`**. JiffyDOS does the fast loading; leaving the g
 conflicts with it, and the failure mode looks like a bad disk image rather than a loader clash.
 
 Every scripted launch and every written repro step has to answer that prompt.
-`tools/session.py` answers `Y` unconditionally, which is right on this machine and would be
+`tools/c64/session.py` answers `Y` unconditionally, which is right on this machine and would be
 **wrong under a stock kernal** — where the game's own fastloader is the only one there is,
 and the same corrupt-looking symptom appears for the opposite reason. Any VICE configured
 for this project keeps the JiffyDOS ROMs; see

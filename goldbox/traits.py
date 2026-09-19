@@ -313,7 +313,7 @@ EMPTY = "—"
 # `GEN $24EA` seeds three trait slots per race from `$24FF`, `$2506` and
 # `$250D`, and every code it writes lands on the race this table's name is
 # about: dwarf 26, 47, 97; gnome 18, 48, 97; elf 107; half-elf 124; paladin 45;
-# ranger 134. Read off the player's own disks by `tools/coldread.py traits
+# ranger 134. Read off the player's own disks by `tools/c64/coldread.py traits
 # curse-of-the-azure-bonds`, and asserted in `tests/test_coldread.py`.
 #
 # **That argument covers the nine codes `GEN` seeds and not the other 137, and
@@ -321,7 +321,7 @@ EMPTY = "—"
 # gives 3 to STICKS TO SNAKES, 4 to DISPEL EVIL, 7 to FAERIE FIRE, 27 to
 # FUMBLE, 35 to CONFUSION, 63 to MINOR GLOBE OF INVULNERABILITY, 68 to
 # FEEBLEMIND and 69 to INVISIBILITY TO ANIMALS -- spells Pool of Radiance has
-# not got, on codes it was already using. `tools/traitquery.py
+# not got, on codes it was already using. `tools/c64/traitquery.py
 # curse-of-the-azure-bonds --spells` is the run and #561 is the ticket; it is
 # left as it stands here because #497 was about Silver Blades.
 #
@@ -365,14 +365,14 @@ EMPTY = "—"
 # named properly, rather than staying at six or borrowing another title's
 # names unmarked (#497). **90 ids do something in a trait slot here** --
 # 80 on the engine's own check lists and ten more named by an instruction --
-# and the routes below name all 90. `tools/traitquery.py` takes every
+# and the routes below name all 90. `tools/c64/traitquery.py` takes every
 # measurement off the player's disks and `docs/171-c64-trait-slots.md` has
 # the runs.
 #
 # **The handler the id dispatches, read. CONFIRMED.** The combat ask
 # dispatches a matched id through `LDX $7F6E / LDA $EF90,X / LDA $F001,X`,
 # so the table index is the id itself and the address is a routine in
-# `COMBAT` at `$0800`. `tools/traitquery.py --handlers` prints each one.
+# `COMBAT` at `$0800`. `tools/c64/traitquery.py --handlers` prints each one.
 # Reading them is what named the 35 ids no spell writes and no check-list
 # agreement reached, and it corrected two names the other routes had
 # offered: 93 zeroes fire damage rather than halving it, and 96 cancels
@@ -454,7 +454,7 @@ EMPTY = "—"
 
 #: Secret of the Silver Blades' effect codes. Each entry carries its grade and
 #: the route that earned it in the comment above it; `docs/171-c64-trait-slots.md`
-#: has the evidence and `tools/traitquery.py --spells`, `--compare` and
+#: has the evidence and `tools/c64/traitquery.py --spells`, `--compare` and
 #: `--lists` re-take the measurements.
 #:
 #: **A string that is `NAMES[n][0]` is Pool of Radiance's own, pointed at the
@@ -739,7 +739,7 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 #
 # Five named ids have no shipped carrier at all -- 50, 54, 77, 82 and 108 --
 # so their names rest on the handler alone. The experiment that would add a
-# second line to any of them is `tools/traitask.py`'s: write the id into a
+# second line to any of them is `tools/c64/traitask.py`'s: write the id into a
 # slot on a copy of a save and watch the fight.
 
 #: Curse of the Azure Bonds seeds the same racial codes as Pool of Radiance

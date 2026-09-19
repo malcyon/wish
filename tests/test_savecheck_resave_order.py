@@ -1,6 +1,6 @@
 """#543: the resave has to run after the walk, not before it.
 
-`tools/savecheck.py`'s `run()` used to call `sess.save_game()` before its
+`tools/c64/savecheck.py`'s `run()` used to call `sess.save_game()` before its
 `for move in args.walk` loop, so a combined `--walk X --resave Y` invocation
 wrote the party back as it stood on arrival -- before any of the walk's own
 moves reached the game.  None of this needs an emulator: a fake session
@@ -16,7 +16,7 @@ from conftest import load_tools_module
 
 savecheck = load_tools_module("savecheck")
 
-#: The real `tools.session.Status`, captured before any test monkeypatches
+#: The real `tools.c64.session.Status`, captured before any test monkeypatches
 #: `savecheck.S` to a fake.  It is a plain `NamedTuple` and `run()` calls
 #: `.where()` and `.outdoors` on whatever `sess.status()` hands back.
 Status = savecheck.S.Status
@@ -184,7 +184,7 @@ def drive(tmp_path, monkeypatch, walk="", resave=True, combat_after=None):
 def test_the_resave_happens_after_every_walked_move(tmp_path, monkeypatch):
     """The bug: a combined `--walk MI --resave` run used to write the party
     back before either move reached the game.  This is the assertion that
-    goes red if the reorder in `tools/savecheck.py` is reverted."""
+    goes red if the reorder in `tools/c64/savecheck.py` is reverted."""
     rc, calls, out = drive(tmp_path, monkeypatch, walk="MI", resave=True)
     assert rc == 0, calls
     assert calls == ["walk M", "walk I", "save"], calls

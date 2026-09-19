@@ -23,7 +23,7 @@ otherwise.
 Grades follow `docs/50-experiments.md`'s scale. Addresses are Pool of
 Radiance's; the three C64 titles share the mechanism but not the numbers,
 and "The same three tables in the other two titles" below has Curse's and
-Silver Blades'. `tools/traitquery.py` derives all of it off the disks --
+Silver Blades'. `tools/c64/traitquery.py` derives all of it off the disks --
 the predicate on its own, and with `--lists` the check lists as well.
 
 ## Two backing stores, one question
@@ -39,12 +39,12 @@ through two routines in `LIBRARY` (resident at `$2C48`):
 The trait scan is three instructions and compares a value. There is no
 provenance byte, no flag beside the id, no second field. **A slot READY
 wrote and a slot Wish wrote are the same bytes to the same `CMP`.**
-CONFIRMED from the code and by `tools/traitdrive.py`, which staged an id and
+CONFIRMED from the code and by `tools/c64/traitdrive.py`, which staged an id and
 counted `$403C` -- the `SEC` only a trait match reaches -- going from 0 to 1.
 
 ## Who writes a slot
 
-An absolute-operand census over all 564 files (`tools/absrefsweep.py
+An absolute-operand census over all 564 files (`tools/c64/absrefsweep.py
 pool-of-radiance 6BAD 6BB6`) finds every writer:
 
 | writer | what |
@@ -88,7 +88,7 @@ in his slots -- `[107, 0, 0, 0, 0, 0, 0, 0, 0, 0]` read off `$4DAD` after
 
 ## Who reads a slot: the check lists the literal census could not see
 
-`tools/traitquery.py` finds the eleven call sites that reach `$4027` with a
+`tools/c64/traitquery.py` finds the eleven call sites that reach `$4027` with a
 literal id and reported 61 asked about nowhere. That was wrong, and the
 reason is worth keeping: **the combat engine asks from tables.**
 
@@ -108,7 +108,7 @@ $07A8  JSR $FFFF          (patched with that address)
 
 That is Curse's `calc_affect_effect` per `CheckType`, on the C64, and every
 ask on every list honours a trait slot. The lists, read out of RAM bank 1
-by `tools/traitask.py` while `COMBAT` was resident (`cited/252/ask1/tables.json`):
+by `tools/c64/traitask.py` while `COMBAT` was resident (`cited/252/ask1/tables.json`):
 
 | list | walked from | for | ids |
 |---|---|---|---|
@@ -154,7 +154,7 @@ is 95** -- 92 from the lists, plus 24, 32 and 55.
 ## The same three tables in the other two titles
 
 **Every C64 title in the family has this architecture and none of them has
-the same numbers.** `tools/traitquery.py --lists` follows the call chain out
+the same numbers.** `tools/c64/traitquery.py --lists` follows the call chain out
 from the predicate to the wrapper, the ask, the walker and the block, so a
 title nobody has mapped either answers or says it did not; its docstring has
 the four steps. Run against Pool of Radiance it reproduces the live reading
@@ -211,7 +211,7 @@ Donald ruled on 2026-09-15 that the picker should offer this title's ids named
 properly rather than staying at six or borrowing Pool of Radiance's names
 unmarked. Four readings off the player's own disks filled 55 of the 90, and a
 fifth -- reading the handler each id dispatches -- filled the other 35 and
-corrected two of the 55. `tools/traitquery.py` takes all five and the runs are
+corrected two of the 55. `tools/c64/traitquery.py` takes all five and the runs are
 in `cited/497`.
 
 | route | what it reads | ids named | grade |
@@ -232,7 +232,7 @@ already reads for their durations and `CAMP $1429` indexes as
 `$9900 + (id - 1) * 7`. Curse and Silver Blades keep a nine-byte version in
 `COMBAT2`, at `+2732` and `+2937`.
 
-`tools/traitquery.py --spells` prints it. Four things hold the reading up and
+`tools/c64/traitquery.py --spells` prints it. Four things hold the reading up and
 no two of them share a source:
 
 1. **Pool of Radiance's copy reproduces what is already known.** Its effect
@@ -345,7 +345,7 @@ one dispatches, `docs/189-effect-97-from-the-code.md`'s method. Every reading
 is CONFIRMED from the code; where a creature, an item template or a spell
 routine carries the id as well, the table says so, and that second line is
 what the *Monster Manual* would have predicted in every case it applies.
-`tools/traitquery.py secret-of-the-silver-blades --handlers` prints all 90
+`tools/c64/traitquery.py secret-of-the-silver-blades --handlers` prints all 90
 and `cited/497/ssb-handlers.txt` is that run.
 
 ### The dispatch, and the anchors every reading stands on
@@ -441,7 +441,7 @@ what the name says were promoted at the same time (18, 26, 31, 47, 48, 58,
 **110 is the one id whose meaning is not in `COMBAT`.** Its combat handler is
 the one 15, 34, 43 and 44 share, which puts the effect back when it expires.
 It is asked about in camp only, at `ECL65 $8730` (`ECL65` runs at `$8000`,
-co-resident with `CAMP`; `tools/traitquery.py --sites` prints the site as
+co-resident with `CAMP`; `tools/c64/traitquery.py --sites` prints the site as
 `$0F30` because it assumes `$0800`). `CAMP $1045`-`$1056` dispatches three
 paladin actions into `ECL65`: `$8751` heals twice the paladin level at
 `$7CCF` and spends record `$013` (lay on hands), `$871D` strips 31, 34, 43
@@ -516,7 +516,7 @@ FUMBLE, 35 to CONFUSION, 63 to MINOR GLOBE OF INVULNERABILITY, 68 to
 FEEBLEMIND and 69 to INVISIBILITY TO ANIMALS, where the shared table reads
 those eight as a Manual of Bodily Health, feather falling, an allied Prayer,
 an unimplemented handler and two melee paralysis grades. So a Curse character
-carrying one of the eight is named wrongly today. `tools/traitquery.py
+carrying one of the eight is named wrongly today. `tools/c64/traitquery.py
 curse-of-the-azure-bonds --spells` is the run; nothing has been changed for
 that title here, because `#497 (The trait picker offers a Secret of the Silver
 Blades character six names, and nobody has ruled on whether it should offer
@@ -524,9 +524,9 @@ Pool of Radiance's 129)` is about Silver Blades.
 
 ## Watching the asks
 
-`tools/traitask.py` arms VICE text-monitor tracepoints (`tr exec`) on
+`tools/c64/traitask.py` arms VICE text-monitor tracepoints (`tr exec`) on
 `$3FE4`, `$402D` and `$403C`, which print the registers on every hit without
-stopping the machine, so `tools/session.py` walks the party into the Slums
+stopping the machine, so `tools/c64/session.py` walks the party into the Slums
 ambush and fights it normally. One boot, 21,850 trace lines, 34 turns, won.
 Per id, *asked / reached the trait scan / matched*:
 
@@ -543,7 +543,7 @@ are on no list.
 
 **And a slot that has an id something asks about changes the game.**
 CONFIRMED, `cited/252/ask4`: 98, "regenerates 3 hit points a round",
-written by `tools/traitask.py` into slot 9 of ROLAND's block with his
+written by `tools/c64/traitask.py` into slot 9 of ROLAND's block with his
 current hit points set to 1, and SILAS beside him at 1 with nothing in his
 block. The roster's hit points (`$8300 + slot * $20 + $19`) read once a
 turn through the fight:
@@ -585,7 +585,7 @@ Handler 20, the Resist Fire spell, at `$A873` only halves.
 
 **Watched, `cited/252/fire9`:** MALCYON, a level-1 magic-user given
 three memorised Burning Hands, cast one at ROLAND, who had 61 written into
-slot 9 by `tools/traitask.py` and no ring. The trace, in list 6's order:
+slot 9 by `tools/c64/traitask.py` and no ring. The trace, in list 6's order:
 
 ```
 .C:3fe4  A:71 X:02          113 asked about, for character 2
@@ -641,14 +641,14 @@ has a flattened copy in `ITEMFILE17`).
 
 ## A trait the editor wrote, from the Add button to the handler
 
-Everything above was measured on bytes `tools/traitdrive.py` and
-`tools/traitask.py` poked into a `.d64`. That proves the engine reads a slot
+Everything above was measured on bytes `tools/c64/traitdrive.py` and
+`tools/c64/traitask.py` poked into a `.d64`. That proves the engine reads a slot
 and says nothing about **Wish's own write path**, which is what
 `WISH_EXPERIMENTAL_TRAITS` guards -- so `#417 (Prove the game applies a trait
 Wish wrote, so WISH_EXPERIMENTAL_TRAITS can come off)` took the same
 measurement again with the byte written by the editor: the real `WishWindow`,
 the real `button_trait_add`, the real `TraitPicker`, the real `File > Save`.
-`tools/traitsave.py` drives it and replaces only `TraitPicker.exec`, which is
+`tools/c64/traitsave.py` drives it and replaces only `TraitPicker.exec`, which is
 the modal wait for a person.
 
 **Resist Fire, id 20, added to ROLAND on `PORSAVE13.D64`.** CONFIRMED at every
@@ -712,7 +712,7 @@ reason that is now wrong on both clauses:
 ## Negative results
 
 * **`LIBRARY $402D` is the only reader of the block's contents**, absolute
-  and indirect: `tools/recordsweep.py --indirect` for `0xAD`-`0xB6` finds
+  and indirect: `tools/c64/recordsweep.py --indirect` for `0xAD`-`0xB6` finds
   four hits, all in picture and wall files.
 * **The world's copy of `$DA63`-`$DC62` is not the tables**: the region holds
   something else until `COMBAT` loads. Read them in a fight.
@@ -744,7 +744,7 @@ row's highlight is not white at the name column (`ask4`, `ask5`), no key
 on the keyboard or a numpad joystick selects a row from the world's VIEW
 (`probe1`, `probe4`), because the toggle refuses a magical item outside
 camp (`ask8`-`ask10`). Each holds `traits.jsonl`, `trace.log`,
-`asks.json`, and `tools/traitask.py --report` prints the table.
+`asks.json`, and `tools/c64/traitask.py --report` prints the table.
 
 `cited/417` holds the editor half: `write1/` (the copy, the disk File >
 Save wrote, and the one-byte diff), `cast-edited/` and `cast-control/` (the
@@ -755,5 +755,5 @@ and the eight-hour rest, with ROLAND's sheet in `sheet.txt`).
 of them needing an emulator: the three `--lists` runs of 2026-09-10, then
 `ssb-vs-curse-lists.txt` and `ssb-vs-por-lists.txt` (`--compare`), `por-`,
 `curse-` and `ssb-spell-effects.txt` (`--spells`), and `ssb-handlers.txt`
-(`--handlers`, all 90). Each is one `tools/traitquery.py` invocation and
+(`--handlers`, all 90). Each is one `tools/c64/traitquery.py` invocation and
 re-running it reproduces the file.

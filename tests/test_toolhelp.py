@@ -5,8 +5,8 @@ file.
 emulator)`: `tools/ssbrun.py --help` claimed a pooled VICE instance and
 booted it, because the tool scanned `sys.argv` by hand and silently ignored
 any token it did not recognise -- so `--help` fell through to the tool's
-normal job. `tools/curserun.py` and `tools/session.py` shared the identical
-manual-scan shape, and `tools/session.py`'s is worse: with no `--pool` it
+normal job. `tools/curserun.py` and `tools/c64/session.py` shared the identical
+manual-scan shape, and `tools/c64/session.py`'s is worse: with no `--pool` it
 drives the *legacy* session on Donald's own 6502/6510/6600, so its
 `--help` used to reach for his own machine rather than a pooled one.
 `tools/genui.py` and `tools/genlicenses.py` shared a smaller version of the

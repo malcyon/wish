@@ -234,7 +234,7 @@ Six distinct sets of eighteen codes, and the conversion wrote them itself: the
 tool composes the same six a second time and compares against the finished
 payload, 6 of 6 agreeing byte for byte.
 
-The party walked nine steps out of camp and was ambushed. `tools/savecheck.py
+The party walked nine steps out of camp and was ambushed. `tools/c64/savecheck.py
 --icon` read the floor at the first command bar and scored every 3x3 block
 against both poses of all eight save slots:
 
@@ -385,7 +385,7 @@ for k in weapon head; do for s in small large; do
 done; done
 tools/dosfigures.py --folder "$SAVE" --slot J \
     --out $TMPDIR/PLAYJ.D64 --png $TMPDIR/playj.png
-POR_HEADLESS=1 tools/savecheck.py --disk $TMPDIR/PLAYJ.D64 \
+POR_HEADLESS=1 tools/c64/savecheck.py --disk $TMPDIR/PLAYJ.D64 \
     --icon --fight --steps 60
 ```
 

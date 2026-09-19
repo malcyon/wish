@@ -47,7 +47,7 @@ def _load_tools_module(name: str):
     """Import a `tools/` module by its file path, and leave `sys.path`
     exactly as this function found it.
 
-    `tools/session.py` needs its siblings (`instance`, `drive`) importable
+    `tools/c64/session.py` needs its siblings (`instance`, `drive`) importable
     by their bare names, and does its own `sys.path.insert(0, ...)` to get
     them, so `tools/` still has to be on `sys.path` for the moment
     `exec_module` runs -- but only for that moment.  Several other test

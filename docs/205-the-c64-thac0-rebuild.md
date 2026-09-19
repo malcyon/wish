@@ -181,9 +181,9 @@ strength bonus for ever, and looks right on the sheet until it does.
 
 ## Where the numbers came from
 
-* `tools/recordsweep.py --game curse --offset 0x10E` and
-  `tools/absrefsweep.py curse-of-the-azure-bonds 7D00 7D1F`, over 412 files;
-* `tools/absrefsweep.py curse-of-the-azure-bonds 3918 3918` and its Pool of
+* `tools/c64/recordsweep.py --game curse --offset 0x10E` and
+  `tools/c64/absrefsweep.py curse-of-the-azure-bonds 7D00 7D1F`, over 412 files;
+* `tools/c64/absrefsweep.py curse-of-the-azure-bonds 3918 3918` and its Pool of
   Radiance twin at `$3729`;
 * `tools/cursethac0.py stage` and `run`, whose readings are in
   `cited/368/run5/thac0.jsonl` for the fight and

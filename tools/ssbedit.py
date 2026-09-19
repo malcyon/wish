@@ -231,7 +231,7 @@ class Run:
 def run(save: str, out: str, who: str, was: str, pool: int | None,
         disks: str = "") -> int:
     from tools import gamedisks, ssbwarp
-    from tools import session as por
+    from tools.c64 import session as por
 
     where = disks or str(gamedisks.find("secret-of-the-silver-blades") or "")
     if not where:

@@ -4,8 +4,8 @@
 `docs/123-parallel-sessions.md` is the design.  Two things in it are the whole
 reason this module exists.
 
-**Nothing here ever kills a process by name.**  `tools/session.py` and
-`tools/porlaunch.sh` used to `pkill -x x64sc` on every launch and every close,
+**Nothing here ever kills a process by name.**  `tools/c64/session.py` and
+`tools/c64/porlaunch.sh` used to `pkill -x x64sc` on every launch and every close,
 which under a pool is not a bug but a massacre: one agent starting a run killed
 every other agent's emulator and Donald's own game with it.  Teardown is
 `os.killpg` on the process group *this slot* started, and reclaiming somebody
@@ -150,7 +150,7 @@ class Slot:
 
     @property
     def cmd_port(self) -> int:
-        """`tools/session.py serve()`'s command port."""
+        """`tools/c64/session.py serve()`'s command port."""
         return CMD_BASE + self.n
 
     @property
@@ -272,7 +272,7 @@ def launch_env(extra: dict[str, str], base: dict[str, str] | None = None) -> dic
 
     Both launch sites go through this rather than building
     `dict(os.environ, **slot.env())` by hand: `tools/instance.py main()` and
-    `tools/session.py`'s `Session.launch()`.
+    `tools/c64/session.py`'s `Session.launch()`.
     """
     env = dict(os.environ if base is None else base)
     for key in UNSAFE_DISPLAY_ENV:

@@ -186,8 +186,9 @@ def read_header(sess) -> dict:
 
 
 def run(args) -> int:
-    from tools import curseload, curserun, dualclassagain  # noqa: PLC0415
-    from tools import session as por  # noqa: PLC0415
+    from tools import curseload, curserun  # noqa: PLC0415
+    from tools.c64 import dualclassagain  # noqa: PLC0415
+    from tools.c64 import session as por  # noqa: PLC0415
 
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

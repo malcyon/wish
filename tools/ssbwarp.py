@@ -70,8 +70,8 @@ from automap.actions import pc_register  # noqa: E402
 from goldbox import areas, c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as por  # noqa: E402
 from tools.areas import newecl  # noqa: E402
+from tools.c64 import session as por  # noqa: E402
 
 #: The live party square. **Not relocated in any title read so far**: page
 #: `$C0` is `GDRIVE00`, and `DUNGEON`'s own position flush reads `$C04B,X`
@@ -1019,7 +1019,7 @@ def run(args) -> int:
             staged = pathlib.Path(slot.dir) / "SAVE_IN.D64"
             por.stage_writable(save, staged)
             save = str(staged)
-        # `tools/session.py` carries Pool of Radiance's `$49E6` as a module
+        # `tools/c64/session.py` carries Pool of Radiance's `$49E6` as a module
         # constant and `walk_one` reads it to choose which keys to press. In a
         # running Silver Blades that address is somebody else's bytes. Point
         # it at this title's own for this process only; the file is another

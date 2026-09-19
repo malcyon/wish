@@ -8,7 +8,7 @@ other six were untested on any title but Pool of Radiance. It was the last
 unverified cell in that table anybody on this project could reach.
 
 **The confirming half of that cannot be a test**, because it needs the running
-game. `tools/pursecheck.py` is the run, and `#33 (One Silver Blades session, for the
+game. `tools/c64/pursecheck.py` is the run, and `#33 (One Silver Blades session, for the
 whole editor path)` and `#32 (One Curse session, to get a party with items)`
 carry what the game drew, on VICE pool slot 0, 2026-09-08, six boots:
 
@@ -22,7 +22,7 @@ carry what the game drew, on VICE pool slot 0, 2026-09-08, six boots:
 | Silver Blades, edited | `MALACHITE`, untouched | `GOLD 4` alone | 4 |
 
 What is asserted here is the half a machine with no emulator can check: that
-`tools/pursecheck.stage` puts those seven numbers in the record the game then
+`tools/c64/pursecheck.stage` puts those seven numbers in the record the game then
 read, that it puts them nowhere else, and that the encumbrance the engine drew
 is the one this file predicts from the same bytes.
 
@@ -39,7 +39,7 @@ import pytest
 from goldbox import c64_port, c64_save
 from goldbox.d64 import D64, split_load_address
 from tests import gamedata
-from tools import pursecheck
+from tools.c64 import pursecheck
 
 #: The two specimens and the character edited on each.  Curse's carries ten
 #: items, so its encumbrance is coins *and* weight; Silver Blades' MORGAINE

@@ -248,7 +248,7 @@ class C64Deltas:
 #: `+$10A5` and `+$21E5`, `LDY #$50 / LDA $6B20,Y` at `+$11F2` and `+$176E`,
 #: with `AND #$7F / STA $6B20,Y` at `+$16CA` clearing the cast bit the same
 #: way Curse's does.  Those six were read by hand and are offsets into the
-#: file; `tools/memorisedwidth.py` walks the whole overlay, finds sixteen
+#: file; `tools/c64/memorisedwidth.py` walks the whole overlay, finds sixteen
 #: sites and one immediate across all of them, and prints run-time addresses
 #: -- the same six are `$1450`, `$18A3`, `$29E3`, `$19F0`, `$1F6C` and
 #: `$1EC8`, the overlay running at `$0800`.  `0x020 + 80 = 0x070`, and
@@ -269,7 +269,7 @@ POOL_OF_RADIANCE_RECORD = C64Deltas(
 #:
 #: The 69 is Curse's own `CAMP` counting from `#$44` at every site that seeds
 #: an index; five of those `LDX`/`LDY` were read by hand at `$2037`, `$1A1F`,
-#: `$1A5A`, `$1AE6` and `$20BB`, and `tools/memorisedwidth.py` finds twelve
+#: `$1A5A`, `$1AE6` and `$20BB`, and `tools/c64/memorisedwidth.py` finds twelve
 #: accesses in all with `#$44` behind every one.  The twelve bytes it
 #: stops short of are the ability block: `GEN $1E9C` is `LDX #$0B / LDA
 #: $7C65,X / STA $7C14,X`, so `0x065`-`0x070` is the array the engine works
@@ -308,7 +308,7 @@ CURSE_RECORD = C64Deltas(
 #: Curse's ability block.  Silver Blades' `GEN $1F0A` is the same three
 #: instructions with `LDX #$06` -- seven bytes, `0x065`-`0x06B` into
 #: `0x014`-`0x01A` -- so those five bytes are free and the spell list has
-#: them.  CONFIRMED; `tools/memorisedwidth.py` reads it again off the disks.
+#: them.  CONFIRMED; `tools/c64/memorisedwidth.py` reads it again off the disks.
 #:
 #: **All three flags are this title's own, by a reference census of its 347
 #: files** -- the same question `#192` asked of Curse's 411, counting the

@@ -176,7 +176,7 @@ same byte.
 **Moving `$XDG_DATA_HOME` stops VICE launching.** The first version of
 `livecheck.py` reassigned it, to keep a validation run's explored squares out
 of the player's real map notes. A Flatpak *user* installation lives under
-`$XDG_DATA_HOME/flatpak`, so `tools/porlaunch.sh`'s `flatpak run net.sf.VICE`
+`$XDG_DATA_HOME/flatpak`, so `tools/c64/porlaunch.sh`'s `flatpak run net.sf.VICE`
 stopped finding the installed emulator, fell back to the system installation,
 defaulted to the `master` branch and wrote `app/net.sf.VICE/x86_64/master not
 installed` into the slot's `vice.log`. Three boots died three seconds in, and
@@ -206,7 +206,7 @@ which has no wandering monsters.
 **A Flatpak emulator cannot be launched from a worktree under `/tmp`.**
 Measuring at `HEAD` while another agent had `automap/actions.py` uncommitted
 meant a detached worktree, and the obvious place for one is the session's
-scratch directory. `tools/porlaunch.sh` runs `flatpak run net.sf.VICE`, and
+scratch directory. `tools/c64/porlaunch.sh` runs `flatpak run net.sf.VICE`, and
 the Flatpak's own filesystem permissions do not include `/tmp` -- so `Xvfb`
 came up, `x64sc` never did, and three runs failed with
 `RuntimeError: VICE never came up` and an empty process list. The worktree

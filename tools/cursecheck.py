@@ -2,7 +2,7 @@
 """Boot a Curse of the Azure Bonds save disk in VICE and read the party off
 the game's own screens.
 
-`tools/savecheck.py` does this for Pool of Radiance and there was no Curse
+`tools/c64/savecheck.py` does this for Pool of Radiance and there was no Curse
 equivalent, which is the whole of why
 `#52 (File ▸ Import and File ▸ Export for every direction the library
 supports)`'s fifth flag condition graded DOS → C64 Curse PROBABLE rather than
@@ -58,7 +58,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap import c64 as machines  # noqa: E402
 from tools import curseload, curserun, cursewarp, gamedisks, scratch  # noqa: E402
-from tools import session as por  # noqa: E402
+from tools.c64 import session as por  # noqa: E402
 
 #: The live square triple -- x, y, facing -- which is where Curse keeps the
 #: party while it is running.  `tools/cursewarp.py` established it for

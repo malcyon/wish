@@ -234,7 +234,7 @@ unedited export of `WISH-SPEC-curse-trained-party` imports with no changes.
 
 * `tools/classcodecensus.py` -- the census above, and it prints the mask it
   derived beside the mask the record stores.
-* `tools/d6502.py cited/18/GEN.bin 0800 1930 25` -- the routine.
+* `tools/c64/d6502.py cited/18/GEN.bin 0800 1930 25` -- the routine.
 * `tools/dosfieldrefs.py <Curse GAME.OVR> --offset 0x075` -- 51 sites in the
   DOS overlay, 4 write and 47 read.
 * `tools/dossheetread.py` -- the six sheets in the running game.

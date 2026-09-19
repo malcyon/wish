@@ -38,7 +38,7 @@ from automap.actions import KEY_FETCH, KEY_WAIT, pc_register  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from automap.vice import Monitor, MonitorError  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 
 def in_window(pc: int) -> bool:

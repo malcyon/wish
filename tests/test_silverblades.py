@@ -905,7 +905,7 @@ def test_the_magic_user_grant_is_morgaines_spellbook():
 # --- #89: what the trainer does, against what character creation does -------
 # The three grant routines above are read out of `GEN` mechanically. Two of
 # them are the trainer's and one is not, and telling them apart is the whole
-# of what these check: `tools/trainerspells.py` refuses to call a routine a
+# of what these check: `tools/c64/trainerspells.py` refuses to call a routine a
 # trainer step unless the title's own level-up sequence `JSR`s it.
 
 

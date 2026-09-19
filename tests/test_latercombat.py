@@ -104,7 +104,7 @@ def test_the_reader_as_it_stood_finds_no_fight_on_a_curse_machine():
     Curse that byte belongs to something else -- so a party standing on the
     combat floor is reported as not fighting, `porcmd battle` says `not in a
     fight`, and `Session.fight` returns `not fighting` with zero turns
-    (`#334`). This is what `tools/session.py` used to call.
+    (`#334`). This is what `tools/c64/session.py` used to call.
     """
     assert combat.read_battle(MemoryTarget(later_arena())) is None
 

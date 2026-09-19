@@ -8,7 +8,7 @@ registers, the character base, how big the game's own travel view is, and
 whether the tile attribute's high nibble ever reaches colour RAM.
 
 **Not a new driver.**  It boots one outdoor save the way
-`tools/c64outdoor.py` and `tools/outdoorstep.py` do -- pool slot, staged
+`tools/c64/c64outdoor.py` and `tools/outdoorstep.py` do -- pool slot, staged
 copies of the player's disks, `Session` -- and then reads memory instead of
 writing a save.  The player's disks are read and never written.
 
@@ -48,8 +48,8 @@ from automap import vice as V  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox import world as W  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
 from tools import worldtiles as WT  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 #: The outdoor save this boots when `--disk` names none: `#190`'s own resave,
 #: the first C64 saved game anybody made standing on the travel grid, written
@@ -227,7 +227,7 @@ def run(args) -> int:
     if disk is None:
         print(f"No outdoor save disk to boot. Pass --disk, or put "
               f"{OUTDOOR_SPECIMEN} in the specimen tree -- $WISH_SPECIMENS, "
-              f"or ~/wish-specimens by default. tools/c64outdoor.py makes "
+              f"or ~/wish-specimens by default. tools/c64/c64outdoor.py makes "
               f"one and tools/specimens.py add puts it there.", flush=True)
         return 1
     out = pathlib.Path(args.out)

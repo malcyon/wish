@@ -16,7 +16,8 @@ from types import SimpleNamespace
 
 sys.path.insert(0, ".")
 
-from tools import cursethac0, laterbattle, ssbwarp  # noqa: E402
+from tools import cursethac0, ssbwarp  # noqa: E402
+from tools.c64 import laterbattle  # noqa: E402
 
 
 class FakeGotoRun(laterbattle.Battle):

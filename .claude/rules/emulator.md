@@ -1,7 +1,7 @@
 ---
 paths:
   - "automap/**"
-  - "tools/session.py"
+  - "tools/c64/session.py"
   - "tools/instance.py"
 ---
 
@@ -42,7 +42,7 @@ The music is `Vol UltiSid 1`/`2` in the same category and the drive noise is
 `Vol Drive 1`/`2`, if something quieter than silence is wanted.
 
 **Set `POR_HEADLESS=1`.** It keeps the window off Donald's desktop, and he works
-at that desktop while agents run. `tools/porlaunch.sh` adds `+sound` in that
+at that desktop while agents run. `tools/c64/porlaunch.sh` adds `+sound` in that
 branch too, because he can hear a headless emulator through his speakers even
 when it draws no window.
 

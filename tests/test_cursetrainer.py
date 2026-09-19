@@ -5,7 +5,7 @@ from __future__ import annotations
 `#18 (Measure Curse's trainer so Level Up works there)`. `docs/135-levelling.md`
 records Pool of Radiance's trainer at twenty-five addresses and **not one of
 them means anything in Curse**, so every table here was found the way
-`tools/trainerscan.py` finds them: by the instruction that touches the
+`tools/c64/trainerscan.py` finds them: by the instruction that touches the
 character record at `$7C00`, working outwards to the table two instructions
 away.
 
@@ -41,7 +41,7 @@ CURSE = levels.CURSE_OF_THE_AZURE_BONDS
 GEN_BASE = 0x0800
 ECL65_BASE = 0x8000
 
-#: `GEN`. Found by `tools/trainerscan.py --game curse --file GEN`; the
+#: `GEN`. Found by `tools/c64/trainerscan.py --game curse --file GEN`; the
 #: routine that reads each one is named beside it.
 SAVE_ROWS = 0x0F49          # $0E9A: level-1 row, 4 classes x 5 columns
 SAVE_MASKS = 0x0F5D         # $0EB1: 4 x 5 x 4 bytes, two bits a level

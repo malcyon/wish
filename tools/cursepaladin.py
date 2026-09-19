@@ -305,7 +305,7 @@ def save_current_game(run: "Run") -> bool:
 def drive(args) -> int:
     """Boot Curse, change class, stage the regain, train, and read it back."""
     from tools import curseload, curserun  # noqa: PLC0415
-    from tools import session as por  # noqa: PLC0415
+    from tools.c64 import session as por  # noqa: PLC0415
 
     run = Run(pathlib.Path(args.out))
     slot = None

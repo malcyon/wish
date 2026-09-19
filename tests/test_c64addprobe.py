@@ -1,6 +1,6 @@
 """The parts of the add-list probe a machine with no emulator can check.
 
-`tools/c64addprobe.py` drives the running game, so what it establishes cannot
+`tools/c64/c64addprobe.py` drives the running game, so what it establishes cannot
 be asserted here. What can is that it refuses rather than guesses: a run with
 no save named, and a run that cannot find the player's own disks, both stop
 before they claim an emulator slot -- a slot claimed and then abandoned is one

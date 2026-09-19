@@ -1,4 +1,4 @@
-"""`tools/c64outdoor.py`'s `outdoor_request`, offline (#369).
+"""`tools/c64/c64outdoor.py`'s `outdoor_request`, offline (#369).
 
 `outdoor_request` builds the shortest DOS buffer that says "outdoors, in
 `area`, at `(x, y)`" and hands it to `goldbox.world_state.from_dos`, with no
@@ -23,7 +23,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
-from tools import c64outdoor  # noqa: E402
+from tools.c64 import c64outdoor  # noqa: E402
 
 
 def test_outdoor_request_reads_as_a_party_that_has_set_out():

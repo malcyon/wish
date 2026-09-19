@@ -1,4 +1,4 @@
-"""`tools/c64uhang.py`'s reproducer generation, without a C64 Ultimate.
+"""`tools/c64/c64uhang.py`'s reproducer generation, without a C64 Ultimate.
 
 The tool's value to an upstream report is that the disk it builds is a correct,
 runnable BASIC reproducer and contains nothing copyrighted. So what is tested
@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import c64uhang  # noqa: E402
+from tools.c64 import c64uhang  # noqa: E402
 
 
 def test_the_load_line_tokenizes_to_the_bytes_a_c64_would_make():

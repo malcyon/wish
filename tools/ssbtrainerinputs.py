@@ -51,7 +51,7 @@ from goldbox import c64_port, levels  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import gamedisks  # noqa: E402
-from tools.trainerscan import overlay  # noqa: E402
+from tools.c64.trainerscan import overlay  # noqa: E402
 
 GEN_BASE = 0x0800
 #: `ECL65`'s PRG header says `$4000` here and `$3000` in Curse, and neither

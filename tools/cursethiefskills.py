@@ -28,7 +28,7 @@ sp / sub sp, imm` before it, and the initialisation test is whether
 first read of the local.
 
 **A byte pattern is not proof that bytes are code**, the caution
-`tools/d6502.py` and `tools/dosdis16.py` both carry.  What makes this one
+`tools/c64/d6502.py` and `tools/dosdis16.py` both carry.  What makes this one
 sound is that the three matches sit inside three routines of identical shape,
 each reading three tables at displacements 0x60 and 0x73 apart -- the same
 geometry `tools/thiefskillcensus.py` reads the tables at -- and each storing

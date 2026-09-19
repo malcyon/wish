@@ -7,7 +7,7 @@ machine. The C64 Ultimate on Donald's desk is an FPGA recreation rather than an
 emulator, so a reading taken off it is genuinely independent — which is the
 whole reason it is worth the trouble.
 
-`tools/c64u.py` is the wrapper. `#240 (Drive Pool of Radiance on the C64
+`tools/c64/c64u.py` is the wrapper. `#240 (Drive Pool of Radiance on the C64
 Ultimate, so a VICE reading can be checked against hardware)` is the work.
 
 ## When to reach for it, and when not to
@@ -94,7 +94,7 @@ it was taken in.** Poking a routine that writes `$35` to `$01` and then stores
 to `$A000` and `$E000`, and running it, makes those addresses read back as the
 values stored; before it they read as BASIC and KERNAL ROM. Nothing is hidden,
 but the dump carries no record of which side of that it was taken on, so the
-bank state has to be written down separately at the time. `tools/c64u.py`'s
+bank state has to be written down separately at the time. `tools/c64/c64u.py`'s
 `dump()` takes `banking` as an argument and writes it into a JSON sidecar for
 exactly this reason; "unknown" is the default and it is a real answer, not a
 placeholder.
@@ -159,7 +159,7 @@ keyboard scan rather than by DMA not reaching I/O. Trust the skill.
 | Run code | `runners run-prg-upload <local.prg>` | the only way to change banking, since `$01` is unreachable over DMA |
 | Mount a disk | `drives mount-upload a <local.d64>` | the player's own images, uploaded from a copy in scratch |
 | Type at it | `machine sendkey '<petscii>'` | KERNAL buffer only — see below |
-| Device settings | `config get` / `set` / `export` | read freely; `save-to-flash`, `load-from-flash` and `reset-to-default` are refused by `tools/c64u.py` |
+| Device settings | `config get` / `set` / `export` | read freely; `save-to-flash`, `load-from-flash` and `reset-to-default` are refused by `tools/c64/c64u.py` |
 
 **`sendkey` writes PETSCII into the KERNAL keyboard buffer at `$0277` and the
 count at `$00C6`.** That is the path BASIC, `INPUT` and `GET` read from. A
@@ -193,7 +193,7 @@ needs it, not by default.
 
 Read off `1541u-documentation.readthedocs.io`, "Data Streams", 2026-09-07.
 Recorded here so nobody has to look it up twice; **nothing in this project
-uses it**, and `tools/c64u.py` refuses `streams` outright -- it needs the
+uses it**, and `tools/c64/c64u.py` refuses `streams` outright -- it needs the
 cable, and `listen video` opens a window on Donald's desktop.
 
 **A stream is a runtime action, not a setting.** The machine transmits nothing
@@ -233,7 +233,7 @@ hang rather than a rate reduction. Also blocked on the cable.
 
 ## The addresses hold on hardware
 
-CONFIRMED, 2026-09-04. `tools/c64ucompare.py` read twelve regions off Donald's
+CONFIRMED, 2026-09-04. `tools/c64/c64ucompare.py` read twelve regions off Donald's
 idle Ultimate, party standing in The Slums, and the same twelve out of a pooled
 VICE running the same save, then walked the VICE party to the hardware's own
 square so the two differed in nothing but the machine. **21,776 bytes of
@@ -259,7 +259,7 @@ measurement made so far.
 The hardware's own state had to be identified before anything was compared:
 its `$4900` image differs from `SAVEDGAME0` on `NEWSAVE6.D64` by 4 bytes of
 7168 and its `$8300` page by 0 of 256, where every other save on the player's
-disks is 72 to 1062 bytes away. `tools/c64ucompare.py vice --to 10,8,1 --clock
+disks is 72 to 1062 bytes away. `tools/c64/c64ucompare.py vice --to 10,8,1 --clock
 11:50 --move-mode` then booted that save in VICE and walked the party to the
 hardware's square, `(10,8)` facing E, by reading the game's own status line —
 landing two game-minutes past 11:50, which is the source of all three
@@ -292,7 +292,7 @@ A third reading seven minutes later differed from the first in one more byte,
 `$00A0`, the jiffy clock's third byte — so a 22.5 KB DMA read taken over
 several HTTP round trips is coherent on an idle game without pausing anything,
 which is what makes a hardware reading possible at all while a player sits at
-the machine. `tools/c64ucompare.py`'s `--stable` flag takes this list as known
+the machine. `tools/c64/c64ucompare.py`'s `--stable` flag takes this list as known
 moving parts, so a comparison against VICE never reports one of them as a
 disagreement.
 
@@ -311,19 +311,19 @@ has written, and a difference there is not a disagreement about the game.
 ### The reading is not bracketed
 
 The Ultimate stopped answering while this comparison was being taken —
-`tools/c64u.py info` exits 3, and it is still unreachable as this is written.
+`tools/c64/c64u.py info` exits 3, and it is still unreachable as this is written.
 Three hardware readings over the ten minutes before that were identical but
 for the jiffy clock, so the state was not moving, but there is no reading
 afterward to prove it stayed that way. If the machine returns and the party
-has not moved, re-running `tools/c64ucompare.py hw` and diffing it against
+has not moved, re-running `tools/c64/c64ucompare.py hw` and diffing it against
 `cited/c64u/240/hw-c` settles this in thirty seconds.
 
 ## Without the CLI: REST and FTP direct
 
-`tools/c64u.py` shells out to the `c64u` binary. Wish cannot: a player who
+`tools/c64/c64u.py` shells out to the `c64u` binary. Wish cannot: a player who
 installs Wish has no CLI, so `#272 (A Commodore 64 Ultimate tab: swap disks,
 boot, and grab the save over the REST API)` needs the same jobs done from
-Python's own standard library. `tools/c64urest.py` is that, and everything in
+Python's own standard library. `tools/c64/c64urest.py` is that, and everything in
 this section was measured with it on Donald's machine on 2026-09-05, firmware
 3.14.
 
@@ -426,8 +426,8 @@ Nothing below has been measured. Each line says what would settle it.
 
 | Question | Grade | The experiment |
 |---|---|---|
-| How many `read-mem` calls a second, at the automapper's poll size | UNKNOWN | `tools/c64u.py time-reads --count 100`. One poll of Pool of Radiance is two blocks — `$4900` for `$1C00` bytes and `$8300` for `$100` — so it is two HTTP round-trips over WiFi. The number decides whether the Ultimate can back a live tab or only a stop-and-dump measurement |
-| Whether Pool of Radiance can be driven from `sendkey` at the stages that are not the boot prompt | PARTLY ANSWERED | The boot's `DISABLE FASTLOADER (Y/N) ?` **can** be driven — see "Booting a game without the CLI" below, where a `Y` written to `$0277` with `01` at `$00C6` was echoed as `yes`. So that stage reads through the KERNAL's `GETIN`. The main menu, camp and the movement loop are still untried and may each answer differently: `tools/c64u.py probe-key ' '` at each, a `$00C6` returning to zero meaning the stage can be driven and a count that sits there meaning the keyboard matrix |
+| How many `read-mem` calls a second, at the automapper's poll size | UNKNOWN | `tools/c64/c64u.py time-reads --count 100`. One poll of Pool of Radiance is two blocks — `$4900` for `$1C00` bytes and `$8300` for `$100` — so it is two HTTP round-trips over WiFi. The number decides whether the Ultimate can back a live tab or only a stop-and-dump measurement |
+| Whether Pool of Radiance can be driven from `sendkey` at the stages that are not the boot prompt | PARTLY ANSWERED | The boot's `DISABLE FASTLOADER (Y/N) ?` **can** be driven — see "Booting a game without the CLI" below, where a `Y` written to `$0277` with `01` at `$00C6` was echoed as `yes`. So that stage reads through the KERNAL's `GETIN`. The main menu, camp and the movement loop are still untried and may each answer differently: `tools/c64/c64u.py probe-key ' '` at each, a `$00C6` returning to zero meaning the stage can be driven and a count that sits there meaning the keyboard matrix |
 
 ## Rules for working with it
 
@@ -438,7 +438,7 @@ Nothing below has been measured. Each line says what would settle it.
   replaces the live settings wholesale; the third cannot be undone from the
   CLI. `config export > $TMPDIR/c64u-config-backup.json` before changing any
   setting, and leave the device on the settings it started with.
-  `tools/c64u.py` refuses all three, and `machine poweroff` with them.
+  `tools/c64/c64u.py` refuses all three, and `machine poweroff` with them.
 * **Never `c64u ui` or `c64u streams listen`** from an agent: both put a window
   on the desktop Donald is working at. Refused in the wrapper too.
 * **Do not leave it paused, frozen or looping.** `machine reset` is the way out

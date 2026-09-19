@@ -11,7 +11,7 @@ places at once; `docs/186-ready-and-action.md` is what it found.
 
 * **A fight driven with `Session.melee_turn`**, so party members strike rather
   than passing, with a glyph reading on every command bar through
-  `tools/savecheck.py`'s own `icon_evidence`.
+  `tools/c64/savecheck.py`'s own `icon_evidence`.
 * **Checkpoints counting the engine's own reads**, at two levels.  The save's
   nine codes a pose at `$4BE0 + slot * 36` say whether the bytes are read at
   all; the 72 expanded bitmap bytes a pose at `$9BE8 + slot * 162` say when a
@@ -46,9 +46,9 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import savecheck as V  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import savecheck as V  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 #: `MON_CMD_CHECKPOINT_GET`.  `automap/vice.py` sets, deletes and lists
 #: checkpoints but never asks one for its hit count, which is the whole of
@@ -148,7 +148,7 @@ def editor_reading(sess, rows: list[bytes], hues: bytes,
     bitmaps the block is drawn from, against `CHARPIC00[code * 8]` for the
     nine codes each save slot holds, both poses, plain and mirrored.  The
     character set is read through the `ram` bank for the same reason
-    `tools/savecheck.py` reads the combat one that way -- it lands under the
+    `tools/c64/savecheck.py` reads the combat one that way -- it lands under the
     VIC's registers and the default bank answers those instead
     (`#265 (The combat-icon glyph check reads VIC registers instead of the
     character set, and half of it passes anyway)`).
@@ -359,7 +359,7 @@ def poll(sess, watch: list[dict]) -> list[dict]:
 def drop_over(sess, watch: list[dict], log, ceiling: int) -> None:
     """Delete any window the machine has read more than `ceiling` times.
 
-    `tools/absrefsweep.py` puts absolute operands naming `$4C0A`, `$4C10`,
+    `tools/c64/absrefsweep.py` puts absolute operands naming `$4C0A`, `$4C10`,
     `$4C11` and `$4C13` in `DUNGEON` -- inside slot 1's nine code bytes -- and
     a hit there is a byte pair in an overlay as easily as it is an
     instruction.  Either way a window read every frame stops the machine

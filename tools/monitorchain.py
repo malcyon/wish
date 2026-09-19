@@ -50,7 +50,7 @@ from automap.target import (  # noqa: E402
     monitor_listening,
 )
 from automap.vice import MonitorError  # noqa: E402
-from tools.session import Session, claim_slot  # noqa: E402
+from tools.c64.session import Session, claim_slot  # noqa: E402
 
 #: Short enough that the read gives up mid-message, which is the state a
 #: stalled emulator leaves the socket in; long enough not to fail on connect.

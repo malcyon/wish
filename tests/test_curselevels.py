@@ -18,7 +18,7 @@ from goldbox import levels, levelup, spells
 from goldbox.record import CharacterRecord
 from tests import gamedata
 from tests.test_curse import _cleric_grant_table
-from tools import laterthac0
+from tools.c64 import laterthac0
 
 GEN_BASE = 0x0800
 
@@ -295,7 +295,7 @@ def test_curse_dos_thac0_is_the_games_own_table():
     """`goldbox.levels.CURSE_OF_THE_AZURE_BONDS.dos_thac0` against the bytes
     at `DS:0x3E3A` in the DOS build's own `START.EXE`.
 
-    `tools/laterthac0.py` locates the block without anchoring on a THAC0
+    `tools/c64/laterthac0.py` locates the block without anchoring on a THAC0
     number -- the class-bit array that follows it is a different permutation
     from Pool of Radiance's, so `tools/thac0census.py` cannot find this table
     at all (`#318 (DOS gives a low-level magic-user or thief THAC0 20 where

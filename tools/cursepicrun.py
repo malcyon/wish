@@ -47,7 +47,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
 
 from tools import curseload, cursepic, curserun, gamedisks, scratch  # noqa: E402
-from tools import session as por  # noqa: E402
+from tools.c64 import session as por  # noqa: E402
 
 BUFFER, BUFFER_END = 0x6300, 0x66FF
 ROSTER = 0x6700
@@ -182,7 +182,7 @@ def run(args) -> int:
         if not args.stop:
             # The frame series.  `ENCAMP` through the ordinary driver, then
             # one fresh connection per sample, which is how every screen
-            # read in `tools/session.py` works and never wedges.
+            # read in `tools/c64/session.py` works and never wedges.
             if not sess.select_bar("ENCAMP"):
                 note(event="no-encamp-bar")
                 shot("05-no-encamp")

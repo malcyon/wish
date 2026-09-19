@@ -2,7 +2,7 @@
 """Drive a Curse of the Azure Bonds party into a fight and try to flee it, for `#445 (The game's third fight outcome, THE PARTY RUNS AWAY, has never been seen on a screen)`.
 
 The Pool of Radiance half of that issue is `tools/fleedrive.py`, which cannot be
-reused whole for Curse: it boots `tools/session.py`'s own `Session`, and Curse
+reused whole for Curse: it boots `tools/c64/session.py`'s own `Session`, and Curse
 boots through `tools/curserun.py`'s `CurseSession`.  What does reuse whole is
 `Flight`, `tools/fleedrive.py`'s tactic -- it is written against the generic
 `Session` interface (`battle()`, `acting()`, `combat_bar()`, `await_bar()`,
@@ -33,7 +33,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from tools import curseload, curserun, scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 from tools.fleedrive import Flight, Log, rows_of  # noqa: E402
 
 
@@ -65,7 +65,7 @@ def run(args) -> int:
         sess.settle(3)
         log.say(f"in the world at {sess.position()}")
 
-        # `tools/laterfight.py`'s own walker turns to the next key in its
+        # `tools/c64/laterfight.py`'s own walker turns to the next key in its
         # pattern whenever the last one changed nothing -- documented there
         # as the fix for `#131`, where a party facing a shopkeeper's script
         # (Tilverton's armourer at 3,12, which is exactly where `CURSEI.D64`
@@ -164,7 +164,7 @@ def main(argv=None) -> int:
             print("no Curse disks found; pass --disks")
             return 2
         args.disks = str(found)
-    from tools import savecheck as SC
+    from tools.c64 import savecheck as SC
     SC.catch_signals()
     return run(args)
 

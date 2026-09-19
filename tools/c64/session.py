@@ -1,0 +1,3024 @@
+#!/usr/bin/env python3
+"""A driven Pool of Radiance session: boot, copy protection, disk swapping.
+
+The thing that makes any of this possible is the **disk swap**, and it is not
+obvious.  `Alt+N`, `F10` and mouse clicks never reach VICE's GTK layer, so the
+fliplist is unusable to automation -- but VICE's *text* monitor has an `attach`
+command, and both monitor servers can run at once.  Three rules, each learned
+by wedging the emulator:
+
+1. The text monitor does **not** break in on connect: no banner, no prompt.  It
+   answers only while the machine is already stopped, which is what connecting
+   the binary monitor does.  So open binary, then talk text.
+2. VICE serves **one** text-monitor connection per run.  Close it and every
+   monitor -- binary included -- goes deaf and the emulator freezes.  So the
+   socket is opened once and held for the whole session, which is why this is
+   one long-lived process with a command port rather than a series of scripts.
+3. Never send `x` on the text socket.  Resuming is the binary monitor's job.
+
+Only images under the session's own scratch directory (`HERE`, or its slot's)
+are ever attached.  The player's own disks are never in the drive.
+"""
+from __future__ import annotations
+
+import argparse
+import contextlib
+import io
+import os
+import pathlib
+import re
+import shutil
+import socket
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+from dataclasses import dataclass, field
+from typing import NamedTuple
+
+# From this file, not from a path measured on one machine.  These were three
+# absolute paths under `/home/donald`, which is where `tools/` happens to sit
+# here and nowhere else -- and `tools/` ships, so they were wrong for everybody
+# who is not Donald.  `tests/gamedata.py` carries the same lesson: an absolute
+# path is invisible on CI, and this one hid until a test imported the module
+# and CI answered `ModuleNotFoundError: No module named 'session'`.
+TOOLS = str(pathlib.Path(__file__).resolve().parent.parent)
+sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
+from automap import c64 as machines  # noqa: E402
+from goldbox import c64_port as G  # noqa: E402
+from goldbox.d64 import D64, D64Error  # noqa: E402
+from tools import gamedisks, instance, scratch  # noqa: E402
+from tools.c64.drive import (  # noqa: E402
+    Keyboard,
+    Monitor,
+    MonitorError,
+    ScreenUnreadable,
+    colour_ram,
+    is_bitmap,
+    read_screen,
+)
+
+# Disk images and logs live in scratch; the code does not.
+HERE = str(scratch.scratch_dir("session", "drive"))
+# The human's numbers, and the defaults when no slot is passed.  The pool never
+# allocates these: `tools/instance.py` starts at 6520, so anything still on 6502
+# is a game a human started from the desktop menu.
+MON_PORT = 6502
+TEXT_PORT = 6510
+CMD_PORT = 6600
+DISPLAY = ":7"
+MONFLAGS = (
+    f"-binarymonitor -binarymonitoraddress 127.0.0.1:{MON_PORT} "
+    f"-remotemonitor -remotemonitoraddress 127.0.0.1:{TEXT_PORT}"
+)
+
+# The game asks for a disk in three different wordings, on two different rows.
+RE_GAME_SIDE = re.compile(r"INSERT\s+(?:YOUR\s+)?(?:SIDE|GAME\s+DISK)\s*#?\s*(\d)")
+SAVE_PROMPT = "SAVE GAME DISK"
+
+# The in-game status line, and **it has two shapes**.  Indoors it carries the
+# facing letter -- `E 16:48 5,2`.  On the travel grid the word `OUTDOORS`
+# stands where that letter goes -- `OUTDOORS 22:02 7,28` -- and there is no
+# facing out there at all.
+#
+# The lookarounds are not decoration.  Without them the final `S` of
+# `OUTDOORS` matched, so `status()` answered facing 2, south, for every
+# outdoor party on every square, and `tools/c64/savecheck.py` printed `facing=2`
+# as though it were a reading (`#189`).
+RE_STATUS = re.compile(r"(?<![A-Z])([NESW])(?![A-Z]) +(\d+):(\d+) +(\d+),(\d+)")
+RE_OUTDOOR_STATUS = re.compile(r"OUTDOORS +(\d+):(\d+) +(\d+),(\d+)")
+FACING = {"N": 0, "E": 1, "S": 2, "W": 3}
+
+# -- the two worlds ---------------------------------------------------------
+# `$49E6` is non-zero in a `GEO` area and zero on the travel grid
+# (`docs/118-debug-mode.md`, `docs/140-loaded-files-cache.md`).  Nothing in
+# this file asked it until `#189`, which is the whole of why the driver could
+# not move an outdoor party: it was written against the dungeon and assumed it.
+#
+# **It is Pool of Radiance's address and Pool of Radiance's question**, which
+# is `#360 (The session driver will not walk a Curse or Silver Blades party in
+# a dungeon, because it reads Pool of Radiance's indoors flag)`: Curse and
+# Silver Blades load at `$4B00` rather than `$4900`, so `$49E6` in those two is
+# a byte of `LIBRARY` code that reads zero -- and a driver that took that for
+# the travel grid sent compass digits at a dungeon and pressed nothing at all.
+# `Session.game` is what decides now, and `goldbox.c64_port` already knows that
+# neither later title has a travel grid to be on.
+INDOORS_AT = 0x49E6
+#: The dungeon's live position triple: x, y, facing.  It freezes outdoors at
+#: the square the party left the grid on, so reading it out there answers the
+#: pier rather than where the party is standing.
+DUNGEON_XY = 0x49C0
+#: The live travel-grid square, window-local -- `#47`, `#59`,
+#: `docs/141-dos-savegame.md`.  Two bytes, and no facing.
+TRAVEL_XY = 0x49C3
+
+#: What row 24 reads while the travel grid is waiting for a direction:
+#: `1-8, RETURN OR BUTTON`.  Matched on `1-8` because that is the part no
+#: other bar in the game carries.
+OUTDOOR_PROMPT = "1-8"
+
+#: What a **boat landing** puts up instead, when `MOVE` is chosen on the
+#: square a party sails to: `TAKE BOAT STAY`, under *"THERE IS A BOAT HERE
+#: THAT WILL TAKE YOU BACK TO THE CIVILISED SECTION OF PHLAN.  WILL YOU TAKE
+#: IT?"* and a picture of the boat.
+#:
+#: The direction prompt never comes up there until the question is answered,
+#: so a driver that waits for `1-8` waits out its whole timeout in front of a
+#: game that is asking it something -- and then reports the step as blocked,
+#: which is a map fact nobody measured.  That is what
+#: `#382 (An outdoor Pool of Radiance party's compass step is refused, and the
+#: retry cannot find the movement prompt afterwards)` turned out to be: the
+#: converted Amiga party of `#376 (An Amiga party on the travel grid still
+#: cannot be converted to the C64 or DOS, because the reader refuses one)`
+#: stands on the west landing it sailed to, and eight directions in a row were
+#: recorded as refused without a digit ever reaching the game.
+#:
+#: Both words, because `TAKE` alone is on other bars.
+BOAT_BAR = ("TAKE", "STAY")
+
+#: How many times `outdoor_key` will answer the boat before giving up.  Each
+#: answer gives the method its whole timeout again, because the landing draws
+#: the boat off the disk and that took most of twenty seconds on pool slot 1
+#: -- so without a cap a `select_bar` that never presses anything renews the
+#: deadline on every look and the driver waits for the boat for ever, holding
+#: a pooled emulator slot while it does.  Two is one answer plus one retry.
+BOAT_ANSWERS = 2
+
+#: The travel grid's directions, **clockwise from north**, and they are not
+#: the numpad: measured on 2026-09-02 by writing `$49C3`/`$49C4`, pressing one
+#: digit and reading the square back -- `3` took (11,26) to (12,26), east, and
+#: `6` took it to (10,27), south-west (`#189`).
+COMPASS = {
+    "1": (0, -1), "2": (1, -1), "3": (1, 0), "4": (1, 1),
+    "5": (0, 1), "6": (-1, 1), "7": (-1, 0), "8": (-1, -1),
+}
+
+#: The world screen's party panel, which is a **menu** and not a read-out:
+#: one of its names is drawn in the highlight colour, `Up` and `Down` move
+#: that highlight, and `VIEW` puts up the sheet of whichever name carries it.
+#: That is what reaches characters two to six; there is nothing on the sheet
+#: itself that does (`#183`).
+#:
+#: `PARTY_COLUMN` is where the names start and `PARTY_HEADER` is the heading
+#: over the column beside them.  The rows are not constants because a party
+#: of six and a party of eight fill different ones -- they are read off the
+#: screen, under the header.
+#:
+#: **These are not `PANEL_LEFT` and `PANEL_ROWS` further down**, which are
+#: combat's panel at column 22: slicing the world panel there cuts five
+#: letters off every name, and `THRENDER GRONE` arrives as `DER GRONE`.  Two
+#: different panels, so two different names -- the first draft of this called
+#: them the same thing and the combat pair, defined lower in the file, simply
+#: overwrote it.
+#:
+#: `PARTY_ROWS` stops at 12 and that is not slack: **row 14 is the status
+#: line**, `W 21:15 15,4`, which starts in the panel's own name column and
+#: would otherwise be read as a seventh character.  Eight names fill rows 4
+#: to 11, so twelve is exactly enough for the largest party the game holds.
+PARTY_COLUMN = 17
+PARTY_HEADER = "AC"
+PARTY_ROWS = range(0, 12)
+
+#: The dungeon's own move sub-bar, `I,J,K,M, RETURN OR BUTTON` -- `MOVE`
+#: already selected and waiting for a direction key.  It is what the game is
+#: showing right after a step that a script has interrupted, and the word
+#: `MOVE` is not on this row at all, so a caller that insists on selecting it
+#: first -- `walk_one` used to -- spends every one of its tries failing to
+#: find a word that was never going to be there (`#275`).
+MOVE_SUBBAR = "I,J,K,M"
+
+#: The bar the character sheet puts on row 24.  It carries no `NEXT`.
+#:
+#: **Not one fixed string.**  A character carrying something gets
+#: `VIEW:ITEMS EXIT`; a character who owns nothing gets `VIEW:EXIT`, with no
+#: `ITEMS` on it because there is nothing to list -- so a driver waiting for
+#: the longer string waits out its whole timeout on an itemless character
+#: while the sheet sits drawn on screen (`#280`).  `VIEW:` is what both bars
+#: share, and nothing else on any other bar carries a colon.
+SHEET_BAR = "VIEW:"
+
+#: PETSCII `$5F`, the `<-` key at the top left of a C64 keyboard, and the one
+#: key every Gold Box command bar reads as "leave, wherever the highlight is".
+#:
+#: **It is not a guess and it is not per-title.**  One key interpreter drives
+#: every bar in all three C64 titles, byte for byte the same routine at three
+#: addresses -- Pool of Radiance `LIBRARY $306D`, Curse `$31F1`, Silver Blades
+#: `$46F1` -- and its `CMP #imm / BEQ` chain ends with two branches that name
+#: themselves out of their own code: `$0D` reaches
+#: `LDX <highlight> / LDA <ids>,X / SEC / RTS`, which returns whatever the
+#: highlight is on, and `$5F` reaches `LDA #$FF / SEC / RTS`, which returns a
+#: negative accumulator.  The character sheet's loop closes
+#: `BCC <poll> / BPL <carry on> / RTS`, so a negative answer is the sheet
+#: returning to whoever opened it.  `tools/c64/sheetexit.py keys` prints all of
+#: that off the player's own disks; `#444` has the run that proves it.
+#:
+#: **Why it matters more than `EXIT` does.**  `EXIT` is one word on a bar the
+#: game builds per character -- Silver Blades draws `EXIT` *alone* for a
+#: character with nothing to trade, and Curse drops `ITEMS` for one carrying
+#: nothing -- so reaching it means walking a highlight whose start column
+#: moves with the party's inventory.  `$5F` needs no walk and no highlight.
+BAR_CANCEL = 0x5F
+
+
+class Status(NamedTuple):
+    """The status line, read: where the party is and what time it is.
+
+    **`facing` is None on the travel grid**, and that is a reading rather than
+    a failure -- the game prints no facing out there.  A NamedTuple so the
+    four values still index and compare as the plain tuple this used to
+    return, which is what `walk_one` and `tools/c64/savecheck.py` do with it; the
+    change a caller has to cope with is `facing` being absent, not the shape.
+    """
+
+    facing: int | None
+    minutes: int
+    x: int
+    y: int
+
+    @property
+    def outdoors(self) -> bool:
+        """True when the line said `OUTDOORS` rather than a facing letter."""
+        return self.facing is None
+
+    def where(self) -> str:
+        """The reading in words, for a line a person reads."""
+        way = "outdoors" if self.outdoors else "NESW"[self.facing]
+        return (f"{way} {self.minutes // 60}:{self.minutes % 60:02d} "
+                f"{self.x},{self.y}")
+
+
+def parse_status(text: str) -> Status | None:
+    """The status line out of a screen's text, whichever of the two it is.
+
+    Indoors first, then the travel grid.  Either shape or None, and None means
+    no status line was on the screen -- a menu, a bitmap, camp -- rather than
+    an error.
+    """
+    m = RE_STATUS.search(text)
+    if m:
+        return Status(FACING[m.group(1)],
+                      int(m.group(2)) * 60 + int(m.group(3)),
+                      int(m.group(4)), int(m.group(5)))
+    m = RE_OUTDOOR_STATUS.search(text)
+    if m:
+        return Status(None,
+                      int(m.group(1)) * 60 + int(m.group(2)),
+                      int(m.group(3)), int(m.group(4)))
+    return None
+
+
+# -- combat -----------------------------------------------------------------
+# LINKER's dispatch byte, and the two values a driver cares about: `1` DUNGEON,
+# `2` COMBAT.  `automap/combat.py` and `docs/101-combat-view.md` are where it
+# came from; before this it was a hand-rolled `peek` in three scratch scripts.
+#
+# **This is Pool of Radiance's address and `Session.mode()` no longer reads
+# it**: the byte is `$7F11` in Curse and Silver Blades, so the method asks
+# `self.machine.mode_flag` (`#334`).  The constant stays because
+# `tools/defeatdrive.py` and `tools/fleedrive.py` import it, and both drive
+# Pool of Radiance and nothing else.
+MODE = 0x6E11
+DUNGEON = 1
+COMBAT = 2
+
+BAR_COMMAND = "command"    # MOVE VIEW AIM USE [CAST] QUICK DONE
+BAR_MOVE = "move"          # MOVE/ATTACK, MOVE LEFT = 9
+BAR_CONTINUE = "continue"  # CONTINUE BATTLE : YES NO
+BAR_YESNO = "yesno"        # any other YES NO bar
+BAR_EXIT = "exit"          # the treasure and end-of-fight bars
+BAR_LEAVE = "leave"        # GO BACK LEAVE TREASURE -- what EXIT on the
+                           # treasure bar opens when treasure is still there
+BAR_DONE = "done"          # GUARD DELAY QUIT SPEED EXIT -- what DONE opens
+BAR_PRESS = "press"        # PRESS <RETURN> OR BUTTON TO CONTINUE
+BAR_DISK = "disk"          # INSERT SIDE # 3, AND PRESS ANY KEY.  -- a *disk*
+                           # prompt, and it carries the word PRESS, so
+                           # without a kind of its own it read as BAR_PRESS
+                           # and every caller answered it with a keystroke
+                           # and never put the disk in (`#336`)
+BAR_MESSAGE = "message"    # GUARDING, YOUR TEAMMATE IS DYING -- and a bar
+                           # caught half-redrawn, which reads as `MOVE/AT`
+BAR_BLANK = "blank"        # a monster's turn: row 24 is empty
+BAR_NONE = "none"          # no readable screen at all
+
+# What row 24 becomes once the move sub-bar has gone and the turn has moved
+# on.  Deliberately not `BAR_MESSAGE` or `BAR_NONE`: a half-redrawn bar reads
+# as a message, and taking that for the end of a turn is the mistake
+# `combat_state` already refuses to make.
+#
+# `BAR_DISK` is in it because it used to be: a disk prompt was classified as
+# `BAR_PRESS` until `#336` gave it a kind of its own, so leaving it out here
+# would make a waiter that used to see the move sub-bar go sit out its whole
+# timeout instead.  The prompt still has to be *answered*, and the fight loop
+# is what does that.
+AFTER_MOVE = (BAR_COMMAND, BAR_DONE, BAR_PRESS, BAR_CONTINUE, BAR_YESNO,
+              BAR_EXIT, BAR_BLANK, BAR_DISK)
+
+# `MOVE LEFT = 9` is the move sub-bar's own count of remaining squares, and it
+# is the one thing that tells that bar apart from the command bar, which also
+# begins with MOVE.
+#
+# **The separator is not the same in every title.**  Pool of Radiance draws
+# `MOVE/ATTACK, MOVE LEFT = 9` and Curse draws `MOVE/ATTACK, MOVE LEFT : 12`
+# (`#334`), so a pattern that wants `=` classifies Curse's move sub-bar as an
+# ordinary message -- and then `await_bar((BAR_MOVE,))` waits out its whole
+# timeout at a bar that is up on the screen, and `melee_turn` concludes MOVE
+# did not take.
+RE_MOVE_LEFT = re.compile(r"MOVE\s*LEFT\s*[=:]\s*(\d+)")
+
+# What a fight prints when it is over.  `THE PARTY HAS WON !` was read off two
+# fights (`p118-step3/runF.log` (scratch, deleted), `runH.log`).
+#
+# **`LOST_TEXT` is no longer a guess.**  It was `DEFEATED`, invented, and the
+# game does not say that.  `POST.COM`'s own string table -- lo `$2A8D`, hi
+# `$2AC5`, at overlay base `$0800` -- holds three end-of-fight lines next to
+# each other, and `$0903` picks between them off the result byte `$6DC7`:
+#
+#   index 2, `$6DC7` = $81  THE PARTY RUNS AWAY   nobody standing, somebody ran
+#   index 3, `$6DC7` = $80  THE PARTY HAS LOST    nobody standing, nobody ran
+#   index 4, `$6DC7` = $00  THE PARTY HAS WON !   somebody still standing
+#
+# The losing line was then read off a driven defeat -- six characters wounded
+# to 1 hit point through the monitor and every turn passed, `cited/128`,
+# `tools/defeatdrive.py` -- where it appeared on row 10 with `$6DC7` = $80.
+# No exclamation mark, unlike the winning line (`#128`).
+#
+# **`RAN_TEXT` was read off a driven flight** -- `cited/445/run2`,
+# `tools/fleedrive.py`, where ROLAND walked to the edge of the combat map and
+# stepped off it, the game answered `GOT AWAY` and wrote `$86 RUNNING` into
+# his record, and the orcs finished the other five.  Row 10 column 1 in a
+# cleared window with row 24 blank, `$6DC7` = $81, and nothing written by the
+# harness to make it happen (`#445`).
+#
+# **It does not need every character to have fled**, which is what this
+# comment used to say: `$0903` wants nobody standing *and* at least one `$86`,
+# so one character away and the rest down is enough.  `fight()` answering `NO`
+# to `CONTINUE BATTLE` is still not it -- that leaves the party standing,
+# which the engine counts as a win.
+#
+# **The line is up for under half a second** and there is no delay on that arm
+# of the branch: `$0938` calls `$1977` (`LDA $49FC`, the combat-speed delay)
+# and `$0929` goes straight on to `$0DF8`.  It took one reading of 240 at a
+# 0.12 s poll to catch, and a 1 s poll read the frame either side of it and
+# saw neither.  So a caller that wants this outcome must poll faster than
+# `fight`'s default, and `poll` is the argument for it.
+WON_TEXT = "THE PARTY HAS WON"
+LOST_TEXT = "THE PARTY HAS LOST"
+RAN_TEXT = "THE PARTY RUNS AWAY"
+
+# Lines worth keeping out of a fight: they are the evidence that a turn did
+# something.  A driver that only records the command bar cannot tell an attack
+# from a character standing still.
+#
+# **The panel is on the screen too, and it lies to a loose pattern.**  Two
+# false positives were caught this way and both reported a blow struck in a
+# fight where nobody had swung, which is the one thing `acted` exists to tell
+# apart:
+#
+# * `HIT POINTS 4`, on the acting character's panel on every screen of every
+#   fight -- so the word is `HITS`, never `HIT` (`p126/quick.log` (scratch, deleted));
+# * `THAC0 17  DAMAGE 1D3`, on the VIEW panel -- so it is `POINTS OF DAMAGE`,
+#   never `DAMAGE` on its own (`p126/run1.log` (scratch, deleted)).
+#
+# `HAS LOST` and `RUNS AWAY` are here rather than `DEFEATED`, which nothing in
+# the game ever printed.  `GOES DOWN` is the line a character actually gets
+# when it reaches 0 hit points -- `GOES DOWN` then `AND IS DYING`, six times
+# over in the defeat at `cited/128` -- and `UNCONSCIOUS` is kept although
+# the game spells the status word `UNCONSIOUS`, because the sheet is where
+# that spelling appears and the message band has never used either.
+#
+# `GOT AWAY` is what a character who escapes gets, and it is **on row 24**
+# rather than in the message band -- `COMBAT`'s own message 5, from the table
+# at `$0BF6`/`$0C0B`, printed by `$0B07` after `$1719` has written `$86`.
+# Seen there in both flights at `cited/445` (`#445`).  Its sibling,
+# message 6 `FAILED`, is deliberately not here: one word, no subject, and
+# common enough in ordinary English to match a line that has nothing to do
+# with a fight.
+RE_NOTABLE = re.compile(
+    r"\b(HITS|MISSES|SLAIN|KILLED|IS DEAD|DYING|UNCONSCIOUS|GOES DOWN"
+    r"|GOT AWAY|HAS WON|HAS LOST|RUNS AWAY|EXPERIENCE|GUARDING)\b"
+    r"|POINTS OF DAMAGE")
+
+# Of those, the ones only a blow can produce -- **by either side**.  This is
+# not who swung and cannot be made into it: the game prints the party's blows
+# and the monsters' in the same band in the same words, and the party is being
+# attacked in every fight it is in.  `FightResult.anybody_swung` is what this
+# answers, and `acted` deliberately does not use it (`#163`).
+RE_STRUCK = re.compile(r"\b(HITS|MISSES|SLAIN)\b|POINTS OF DAMAGE")
+
+WON, LOST, RAN, ENDED, BUDGET, NOT_FIGHTING = (
+    "won", "lost", "ran", "ended", "budget", "not fighting")
+
+# The three the game itself names, and the line each is read from.  A caller
+# that wants to know which of the engine's outcomes it got tests against
+# these; `ENDED` is still what an unrecognised end reports, and still claims
+# nothing.
+OUTCOME_LINES = ((WON, WON_TEXT), (LOST, LOST_TEXT), (RAN, RAN_TEXT))
+
+# What a tactic answers when the blow was struck.  `melee_turn` returns it
+# only after a step into an enemy's square and the move sub-bar then going
+# away, which is the measured signature of a blow that resolved: an attack
+# spends no movement and moves nobody, so nothing else on the screen says it
+# happened (`#127`, `cited/127/sweep1.jsonl`, turn 15).
+#
+# `fight` counts these and `FightResult.acted` is that count.  A tactic that
+# strikes without saying so therefore leaves `acted` False, which is the safe
+# direction: this is a check that gets believed, and one that under-reports
+# costs a re-run where one that over-reports costs a wrong conclusion.
+ATTACK = "ATTACK"
+
+
+class CombatBar(NamedTuple):
+    """Row 24 during a fight, classified."""
+
+    kind: str
+    text: str
+    moves_left: int | None = None
+
+
+@dataclass
+class FightResult:
+    """What one driven fight did.
+
+    `bars` is every row-24 bar in the order it appeared, deduplicated against
+    the one before it, and `lines` the messages the fight printed.  Both are
+    kept because the interesting failure is a fight that ends with the party
+    having done nothing, and a log of command bars cannot tell that apart from
+    a fight the party won.
+
+    `blows` is the count `acted` rests on: the turns a tactic answered
+    `ATTACK`.
+    """
+
+    outcome: str
+    turns: int
+    seconds: float
+    bars: list[str]
+    lines: list[str]
+    #: Turns whose tactic answered `ATTACK`.  Counted by `fight`.
+    blows: int = 0
+    #: One entry per bar in `bars`: the word the highlight was covering when
+    #: that bar was read, or `-` for a bar carrying no highlight at all.
+    #:
+    #: Beside `bars` rather than folded into it, because they are two facts
+    #: read from one snapshot and the interesting failure needs both.  A run
+    #: that logged only the bars could say the driver had reached the
+    #: treasure screen and not whether it had reached it *with the highlight
+    #: on the wrong command* -- which is exactly the question `#171` was left
+    #: unable to answer.
+    highlights: list[str] = field(default_factory=list)
+
+    @property
+    def acted(self) -> bool:
+        """Did a **party member** strike?  The difference between a fight the
+        party fought and one it stood through.
+
+        This is the driver's own count of turns that ended with the blow
+        struck, and **not** a read of the message band.  It used to be the
+        latter, and the latter cannot answer the question: `RE_STRUCK` matches
+        `HITS`, `MISSES`, `SLAIN` and `POINTS OF DAMAGE` for **either side**,
+        and the party is being attacked in every fight it is in.  One Slums
+        ambush drove 27 turns, passed 26 of them with the party standing next
+        to the orcs, and reported `acted=True` off `AND MISSES...` and `AND
+        HITS FOR 7 POINTS OF DAMAGE` -- the orcs (`#163`).
+
+        **What it depends on, said out loud:** the tactic.  `melee_turn`
+        answers `ATTACK` when the blow resolved and `fight` counts that, so a
+        tactic that strikes without answering `ATTACK` gets `acted` False.
+        That is under-reporting, which is the direction a check that gets
+        believed should fail in.  `evidence` says the same thing in words for
+        a report.
+
+        **And that is not hypothetical: it is `melee_turn` itself, today.**
+        Nothing in this project drives `AIM` or `CAST`, and `melee_turn` is
+        the only tactic that ever answers `ATTACK` -- which it does for a step
+        into an enemy's square and for nothing else.  A character with a
+        missile weapon readied cannot strike that way, so its turn is passed
+        rather than counted; `test_a_blow_the_game_refuses_passes_the_turn_
+        rather_than_pressing_on` pins exactly that.  **So a party that fought
+        only with bows or spells reads here as a party that did nothing**, and
+        `evidence` cannot tell the two apart.  That is the same fault `#163`
+        fixed with the sign flipped, and it is survivable only because it errs
+        towards saying nothing was proven.  What removes it is a tactic that
+        drives `AIM`, which is unwritten.
+        """
+        return self.blows > 0
+
+    @property
+    def anybody_swung(self) -> bool:
+        """Did **anybody** swing, either side?  What `acted` used to mean.
+
+        Kept, and named for what it is, because it is worth knowing that a
+        fight lasted a round at all -- and because deleting it would leave the
+        trap undocumented for whoever next writes a pattern over `lines`.
+        """
+        return any(RE_STRUCK.search(ln.upper()) for ln in self.lines)
+
+    @property
+    def evidence(self) -> str:
+        """What `acted` rests on, in words, for a run's report to print.
+
+        A number nobody states is a number nobody checks, and `acted` is the
+        check that decides whether a conversion has been proven in combat.
+
+        **The band is not attributed to either side, and must not be.**  With
+        no blow counted it is tempting to say the `HITS` and `MISSES` on it
+        are the monsters', and today that would even be right, because
+        `melee_turn` is the only tactic that lands one and it always answers
+        `ATTACK`.  It would stop being right the day somebody writes an `AIM`
+        tactic, and it would stop silently -- a sentence asserting more than
+        the evidence carries, which is `#163` itself.  So it says what can be
+        checked and no more.
+        """
+        said = (f"A party member struck on {self.blows} of {self.turns} "
+                f"driven turns")
+        if not self.blows and self.anybody_swung:
+            said += ("; the HITS and MISSES on the message band cannot be "
+                     "attributed to either side")
+        return said
+
+
+# How a character moves in a fight, measured key by key in `p126/run1.log` (scratch, deleted):
+# eight candidate key sets were pressed at a `MOVE/ATTACK, MOVE LEFT = 12` bar
+# and the square each one spent was read out of the combatant table.
+#
+# **It is the joystick, not the keyboard.**  XTEST `Up`, `Down`, `Left` and
+# `Right` moved nothing at all, and neither did the world's own `I`, `J`, `K`,
+# `M`.  The numeric keypad did, because VICE maps it to joystick port 2 -- so
+# this table is a property of the emulator's keyset as the pool seeds it, and
+# what would move it is a `vicerc` with a different joystick mapping, not a
+# different machine.
+#
+# Seven of the eight were seen to move a character.  `KP_4` is the exception
+# and it is graded PROBABLE by symmetry: the square west of the acting
+# character was occupied by another party member on the one turn it was tried.
+STEP_KEYS = {
+    (0, -1): "KP_8",
+    (0, 1): "KP_2",
+    (-1, 0): "KP_4",       # PROBABLE -- see above
+    (1, 0): "KP_6",
+    (-1, -1): "KP_7",
+    (1, -1): "KP_9",
+    (-1, 1): "KP_1",
+    (1, 1): "KP_3",
+}
+
+# Where the game names whose turn it is: the right-hand panel, which reads
+# `BAKSHI / HIT POINTS 4 / AC 3 / TWO-HANDED SWORD` down its own column.
+PANEL_LEFT = 22
+PANEL_ROWS = range(0, 8)
+
+
+def chebyshev(a, b) -> int:
+    """Squares between two combatants, eight-way."""
+    return max(abs(a.x - b.x), abs(a.y - b.y))
+
+
+def word_column(text: str, label: str) -> int:
+    """Where `label` starts on a bar as a **whole word**, or -1.
+
+    `str.find` is not enough here.  `MOVE` is inside `MOVE/ATTACK, MOVE LEFT
+    = 9`, so a substring match walks the highlight towards a target that is not
+    a command at all -- which is one of the two ways the draft in
+    `p118-step3/run.py` (scratch, deleted) stalled.
+    """
+    want = label.upper()
+    for m in re.finditer(r"[A-Z0-9<>]+", text.upper()):
+        if m.group(0) == want:
+            return m.start()
+    return -1
+
+
+def span_in(screen, row: int, colour: int = 1) -> tuple[int, int] | None:
+    """The highlighted run on a bar, from a snapshot's **own** colour RAM.
+
+    `Session.highlight_span` reads colour RAM in a second monitor connection,
+    which means the text and the highlight come from two different moments.
+    Outside a fight that is harmless; in one the bar is redrawn for every
+    character in turn, so the two can disagree and the walk goes the wrong way.
+    Blank cells are ignored because colour RAM under a space keeps whatever the
+    previous screen left there.
+    """
+    base = row * 40
+    idx = [i for i in range(40)
+           if screen.colours[base + i] == colour
+           and screen.codes[base + i] not in (0x20, 0x00)]
+    return (idx[0], idx[-1]) if idx else None
+
+
+class Session:
+    """One driven game.
+
+    With no `slot` this is what it always was: `HERE`, ports 6502, 6510
+    and 6600, display `:7` -- the human's numbers, kept so `tools/c64/walkrun.py`
+    and `tools/c64/porcmd` need no change.  Pass a `tools.instance.Slot` and every
+    one of those six becomes that slot's own, which is the whole of what makes
+    two sessions able to run at once.
+    """
+
+    #: Which title this driver is driving, and the only thing in this class
+    #: that is per-title.  Everything below the title screen is shared -- the
+    #: monitor, the keyboard, the screen reader, the menu walker -- but the
+    #: *addresses* are not, because Curse and Silver Blades load their save
+    #: page at `$4B00` where Pool of Radiance loads it at `$4900`.
+    #:
+    #: A subclass says which title it is (`tools/curserun.py` does), and
+    #: `indoors()` and `square_and_world()` ask this rather than a module
+    #: constant.  `#360 (The session
+    #: driver will not walk a Curse or Silver Blades party in a dungeon,
+    #: because it reads Pool of Radiance's indoors flag)` is what a wrong
+    #: answer here costs: a Silver Blades
+    #: party standing in a dungeon read as being on the travel grid, so every
+    #: `walk` it was sent threw the direction letter away and reported the
+    #: step as blocked without pressing a key.
+    game = G.POOL_OF_RADIANCE
+
+    @property
+    def machine(self):
+        """This title's live addresses -- `automap.c64.C64Machine`.
+
+        The mode flag, the engine's own party square, and whether the title
+        has a travel grid at all.  A property so that setting `game` on a
+        subclass or a fake still answers the right addresses.
+        """
+        return machines.machine_for(self.game)
+
+    #: See `__init__`; here as well so a `Session` built without it -- the
+    #: fake ones in `tests/` -- still answers the attribute.
+    walk_refused: str | None = None
+
+    #: What to answer a boat landing's `TAKE BOAT STAY` when a walk runs into
+    #: one -- `"STAY"`, `"TAKE"`, or None to stop and say so.  See
+    #: `outdoor_key`; None is the default because taking the boat moves the
+    #: party across the world, which is not a step.
+    outdoor_boat: str | None = None
+
+    #: Seconds between the two reads `stable_party_rows` compares.  A class
+    #: attribute so a fake can set it near zero and a real run does not wait
+    #: any longer than the redraw it is waiting out -- measured at three rows
+    #: within a few tens of ms of the world bar giving way and the whole panel
+    #: done within roughly 200ms (`#538`).
+    PANEL_SETTLE = 0.3
+
+    def __init__(self, disk: str | None = None, display: str | None = None,
+                 slot=None, fastloader: str | None = None):
+        self.slot = slot
+        # `DISABLE FASTLOADER (Y/N)?`.  A parameter, not a constant, because
+        # until P69 nobody could A/B it.  Measured, 5 boots a cell: on this
+        # machine's JiffyDOS `Y` reaches the main menu in 167.9 s against `N`'s
+        # 168.8; on a stock kernal the order reverses, 238.6 against 199.6.
+        # So the default stays `y` and a stock VICE wants `n`.
+        # `docs/131-fastloader.md`.
+        self.fastloader = (
+            fastloader or os.environ.get("POR_FASTLOADER") or "y"
+        ).strip().lower()[:1]
+        assert self.fastloader in ("y", "n"), \
+            f"POR_FASTLOADER must be y or n, not {self.fastloader!r}"
+        self.here = str(slot.dir) if slot is not None else HERE
+        self.mon_port = slot.port if slot is not None else MON_PORT
+        self.text_port = slot.text_port if slot is not None else TEXT_PORT
+        self.cmd_port = slot.cmd_port if slot is not None else CMD_PORT
+        self.monflags = slot.monflags() if slot is not None else MONFLAGS
+        self.display = display or (slot.display if slot is not None else DISPLAY)
+        self.disk = disk or os.path.join(self.here, "SIDE1.D64")
+        self.kbd = Keyboard(self.display)
+        self.text: socket.socket | None = None
+        self.attached = self.disk
+        # which image answers "insert your save game disk"; swappable so a run
+        # can read one save and write another
+        self.save_disk = os.path.join(self.here, "SIDE0.D64")
+        self.side_prompts = 0
+        self._last_prompt = 0.0
+        # Why the last `walk_one` sent no key, or None when it sent one.  A
+        # step the party took and a step the driver never asked for both
+        # answered `False` before `#360 (The session driver will not walk
+        # a Curse or Silver Blades party in a dungeon, because it reads Pool
+        # of Radiance's indoors flag)`.
+        self.walk_refused: str | None = None
+        # The process group `launch()` started.  Teardown kills this and nothing
+        # else -- never a process by name.
+        self.pgid: int | None = None
+
+    def mon(self, timeout: float = 5.0) -> Monitor:
+        """A monitor connection to *this* instance."""
+        return Monitor(port=self.mon_port, timeout=timeout)
+
+    # -- lifecycle --------------------------------------------------------
+
+    def launch(self) -> None:
+        """Start Xephyr and VICE in their own process group.
+
+        **It kills nothing first.**  This used to `pkill -x x64sc` and
+        `pkill -x Xephyr`, which under the instance pool would kill every other
+        agent's emulator and Donald's own game -- the same failure mode as the
+        incident in `docs/160-why-these-rules.md`, "The machine", generalised.
+        """
+        extra = {"MONFLAGS": self.monflags, "POR_DISPLAY": self.display}
+        if self.slot is not None:
+            extra.update(self.slot.env())
+        else:
+            # No slot claimed: the legacy path, reachable by anyone -- agent
+            # or human -- who runs this file's own CLI without `--pool`, on
+            # the reserved display (`RESERVED_DISPLAY` in `tools/instance.py`).
+            # `porlaunch.sh`'s own default when `POR_HEADLESS` is entirely
+            # unset is the *visible* branch, which is what `#266 (An orphaned
+            # Xephyr, launched outside the pool, left a visible window on
+            # Donald's screen)` found: this path is reachable outside the
+            # pool, `display_rows()` never enumerates its display, and
+            # nothing here defaulted it headless. Donald ruled it goes
+            # headless by default, 2026-09-07 -- the same override rule
+            # `Slot.env()` already uses (#147), so an explicit
+            # `POR_HEADLESS=0` in the environment still wins.
+            extra["POR_HEADLESS"] = os.environ.get("POR_HEADLESS", "1")
+        env = instance.launch_env(extra)
+        os.makedirs(self.here, exist_ok=True)
+        proc = subprocess.Popen(
+            [os.path.join(TOOLS, "c64", "porlaunch.sh"), self.disk],
+            env=env,
+            stdout=open(os.path.join(self.here, "vice.log"), "wb"),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        self.pgid = os.getpgid(proc.pid)
+        if self.slot is not None:
+            self.slot.record(pgid=self.pgid, launched=time.time())
+        for _ in range(60):
+            time.sleep(1)
+            try:
+                with self.mon(3):
+                    break
+            except (OSError, MonitorError):
+                continue
+        else:
+            raise RuntimeError("VICE never came up")
+        self.text = socket.create_connection(("127.0.0.1", self.text_port), timeout=5)
+        self.text.settimeout(3)
+        self.attached = self.disk
+        self.log("VICE up; text monitor connected")
+
+    def close(self, kill: bool = True) -> None:
+        try:
+            with self.mon(3) as m:
+                n = m.checkpoints_clear()
+                if n:
+                    self.log(f"deleted {n} checkpoints")
+        except Exception:
+            pass
+        if self.text is not None:
+            self.text.close()
+            self.text = None
+        if kill:
+            self.terminate()
+
+    def terminate(self, timeout: float = 8.0) -> bool:
+        """Kill the process group `launch()` started -- Xephyr and VICE together.
+
+        Nothing else on the machine, and nothing by name.  A session that never
+        launched anything tears down to a no-op rather than guessing at what to
+        kill, which is the entire difference from the `pkill -x x64sc` this
+        replaced.
+        """
+        if self.pgid is None:
+            return False
+        killed = instance._killpg(self.pgid, timeout)
+        self.pgid = None
+        if self.slot is not None:
+            self.slot.record(pgid=None)
+        return killed
+
+    #: False once the console has gone.  Class-wide because there is one
+    #: console per process however many sessions are driving it.
+    _talking = True
+
+    @staticmethod
+    def log(*a) -> None:
+        """Say something, and never let the saying of it stop the drive.
+
+        A driven run is usually started as `... 2>&1 | head -40`, and once
+        `head` has its forty lines and exits, the next `print` raises
+        `BrokenPipeError`.  This is called from inside `select_row`,
+        `attach` and `handle_prompt`, none of which expects an exception from
+        a log line -- so a console that went away used to come back as a
+        driver failure on whatever menu the game happened to be showing,
+        which is `#380`.  The `.jsonl` its caller writes is the record; the
+        terminal is a convenience, and one that has gone is dropped rather
+        than raised.
+        """
+        if not Session._talking:
+            return
+        try:
+            print(*a, flush=True)
+        except OSError:
+            Session._talking = False
+
+    # -- disk -------------------------------------------------------------
+
+    #: How long to let the machine *run* after a disk goes into the drive.
+    #:
+    #: An emulated 1541 answers `74, DRIVE NOT READY` for a little over a
+    #: second of its own clock after an image is attached, which is how it
+    #: tells the computer the disk changed.  Curse reads that number straight
+    #: out of the drive (`LIBRARY $402D`) and turns it into
+    #: `UNABLE TO LOAD SAVED GAME.`, so a load taken too soon after an attach
+    #: fails with a message that names neither the disk nor the reason
+    #: (`#291`).  Three seconds is comfortably past it and is still shorter
+    #: than a person takes to swap a disk.
+    ATTACH_SETTLE = 3.0
+
+    def attach(self, path: str, unit: int = 8,
+               settle: float | None = None) -> None:
+        if str(path).isdigit():
+            path = os.path.join(self.here, f"SIDE{path}.D64")
+        path = os.path.abspath(path)
+        assert path.startswith(self.here), \
+            f"refusing to attach outside {self.here}: {path}"
+        with self.mon(5):  # stopping is what makes the text monitor answer
+            self.text.sendall(f'attach "{path}" {unit}\n'.encode())
+            time.sleep(0.5)
+            with contextlib.suppress(TimeoutError, socket.timeout):
+                self.text.recv(65536)  # drained; it is only prompt echo
+        self.attached = path
+        self.log(f"  attached {os.path.basename(path)}")
+        # **Out here, and not in the block above.**  The machine is stopped
+        # for as long as a monitor connection is open, so the half second
+        # inside it passes no emulated cycles at all and the drive's own
+        # settling time never runs down.
+        time.sleep(self.ATTACH_SETTLE if settle is None else settle)
+
+    # -- screen -----------------------------------------------------------
+
+    def screen(self):
+        """The text screen, or None when there is not one to read.
+
+        None is three different things and only one of them is silent: a
+        bitmap, which is the title and the credits and is normal; a monitor
+        that would not answer; and a screen that could not be *located*, which
+        is said out loud because it is the failure `#336` is about -- forty
+        spaces read off the wrong memory look exactly like a game showing
+        nothing, and every caller here treats them as that.
+        """
+        try:
+            with self.mon(3) as m:
+                if is_bitmap(m):
+                    return None
+                return read_screen(m)
+        except ScreenUnreadable as exc:
+            self.log(f"  the screen could not be located: {exc}")
+            return None
+        except (OSError, MonitorError):
+            return None
+
+    def dump(self, rows=range(25)) -> None:
+        s = self.screen()
+        if s is None:
+            print("(bitmap)")
+            return
+        print(f"screen ${s.address:04X}")
+        for r in rows:
+            line = s.row(r)
+            if line.strip():
+                print(f"{r:2d} {s.row_colour(r):2d} |{line}|")
+
+    def colours(self, row: int | None = None) -> bytes:
+        """Colour RAM, whole screen or one row.
+
+        `row` is not decoration: the command server's `colours 24` has asked
+        for one row since it was written and this took no argument at all, so
+        the command raised `TypeError` at every caller -- which is why the
+        items command bar's highlight colour was never read (`#125`).
+
+        **Out of the io bank**, because `$D800` is I/O: read from the default
+        bank it answers the RAM underneath whenever the game has the chips
+        banked out, and colour is how every menu here finds its highlighted
+        row (`#336`).
+        """
+        with self.mon(5) as m:
+            return colour_ram(m, row)
+
+    def highlight_span(self, row: int) -> tuple[int, int] | None:
+        c = self.colours(row)
+        idx = [i for i, v in enumerate(c) if v == 1]
+        return (idx[0], idx[-1]) if idx else None
+
+    # -- prompts ----------------------------------------------------------
+
+    def handle_prompt(self, s=None) -> bool:
+        """Answer whichever `insert a disk` prompt is on screen.
+
+        The message lingers for a second or so after the keypress, so without
+        a cooldown every poll re-answers it -- and a redundant `attach` resets
+        the drive, which is slow and can lose the load that was in flight.
+        """
+        if time.time() - self._last_prompt < 2.0:
+            return False
+        if s is None:
+            s = self.screen()
+        if s is None:
+            return False
+        text = s.text()
+        want = None
+        if SAVE_PROMPT in text:
+            want = self.save_disk
+        else:
+            m = RE_GAME_SIDE.search(text)
+            if m:
+                want = os.path.join(self.here, f"SIDE{m.group(1)}.D64")
+        if want is None:
+            return False
+        self._last_prompt = time.time()
+        swapped = os.path.abspath(want) != self.attached
+        if swapped:
+            self.log(f"  prompt -> {os.path.basename(want)}")
+            self.attach(want)
+        # **Said out loud, because this keypress goes somewhere.**  A space
+        # sent at a disk prompt is buffered by the KERNAL, and if the game
+        # has moved on to a menu by the time it reads it, the space answers
+        # *that* instead -- which is one of the two candidates in `#380`.
+        # Only the re-attach used to be logged, so a run's console showed the
+        # prompts that changed disks and none of the keys, and a *second*
+        # space at a prompt already answered -- the one that can land on
+        # whatever replaced it -- showed nothing at all.
+        self.log("  answered the prompt with space" if swapped else
+                 f"  answered the prompt with space again, with "
+                 f"{os.path.basename(want)} already in the drive")
+        self.kbd.key("space")
+        return True
+
+    def wait_text(self, needle, timeout=180.0, interval=0.35):
+        needles = [needle] if isinstance(needle, str) else list(needle)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self.screen()
+            if s is not None:
+                for n in needles:
+                    if s.contains(n):
+                        return n, s
+                self.handle_prompt(s)
+            time.sleep(interval)
+        return None, None
+
+    def settle(self, seconds=6.0) -> None:
+        """Ride out a load, answering disk prompts as they appear."""
+        end = time.time() + seconds
+        while time.time() < end:
+            self.handle_prompt()
+            time.sleep(0.35)
+
+    # -- menus ------------------------------------------------------------
+
+    def select_row(self, label: str, timeout=30.0, column: int | None = None) -> bool:
+        """Vertical menu: walk the white row onto *label*, then Return.
+
+        Driven by where the highlight is, not by counting from an assumed
+        start, because a swallowed keypress otherwise puts every later count
+        out by one.
+
+        **`column` is which column the list's names start in**, and on a
+        screen with the map view drawn beside the list it is the difference
+        between working and sending no keys at all (`#173`).
+        `Screen.highlighted_rows()` with no column takes each row's *dominant*
+        colour, and the map view to the left of the in-world roster outvotes
+        the six white cells of the highlighted name -- so no row answers
+        colour 1, every pass takes the `continue`, and the whole timeout goes
+        by without a keypress.  From the outside that is indistinguishable
+        from a list ignoring the keyboard, which is how it was read for
+        several minutes.
+
+        A caller that knows its list passes `column`.  One that does not gets
+        it worked out here: when the dominant-colour scan finds nothing, the
+        label's own column is tried, since the highlighted row is another
+        entry in the same list and so starts where the label starts.  That
+        runs **only** when the plain scan came up empty, so no screen this
+        already drove is driven differently.
+
+        And when neither finds a highlight, this says so rather than
+        returning `False` off a silent timeout that looks exactly like a menu
+        that ignored the keys.
+        """
+        deadline = time.time() + timeout
+        seen_label = seen_highlight = False
+        fell_back = False
+        while time.time() < deadline:
+            s = self.screen()
+            if s is None:
+                time.sleep(0.3)
+                continue
+            hit = s.find(label)
+            hot = s.highlighted_rows(column=column)
+            if hit is not None and not hot and column is None:
+                hot = s.highlighted_rows(column=hit[1])
+                if hot and not fell_back:
+                    fell_back = True
+                    self.log(f"  No row is mostly white; reading the highlight "
+                             f"in column {hit[1]}, where {label.upper()} starts")
+            seen_label = seen_label or hit is not None
+            seen_highlight = seen_highlight or bool(hot)
+            if hit is None or not hot:
+                self.handle_prompt(s)   # a disk prompt can sit over any menu
+                time.sleep(0.3)
+                continue
+            # The column headings are white too, so take the highlighted row
+            # nearest the target rather than the first one on the screen.
+            cur = min(hot, key=lambda r: abs(r - hit[0]))
+            if cur == hit[0]:
+                self.kbd.key("Return")
+                return True
+            self.kbd.key("Down" if cur < hit[0] else "Up")
+        if not seen_label:
+            self.log(f"  {label.upper()} never appeared on the screen")
+        elif not seen_highlight:
+            self.log(f"  Found {label.upper()} but no highlighted row, so no "
+                     f"key was sent; pass column= the one the names start in")
+        else:
+            self.log(f"  Could not walk the highlight onto {label.upper()}")
+        return False
+
+    def select_bar(self, label: str, row: int = 24, timeout=30.0) -> bool:
+        """Horizontal command bar: the highlight is a run of cells, not a row.
+
+        **The text and the highlight come from the same snapshot**, which is
+        what `span_in` is for.  `Session.highlight_span` opens a second
+        monitor connection and reads `$D800` again, so the two are readings
+        from different moments -- and this walked the highlight by one of them
+        towards a word found by the other.  Asked for `CAST` on the world's
+        `MOVE VIEW CAST AREA ENCAMP SEARCH LOOK` it pressed Return on `VIEW`,
+        twice, minutes apart, and returned `True` both times (`#173`).  It is
+        the same fault `span_in` and `Session.combat_bar` were written to
+        remove inside a fight, and it was believed not to show outside one.
+
+        **A bar with only one option has nothing to walk the highlight
+        towards.**  A script's own acknowledgement -- `PRESS BUTTON OR
+        RETURN TO CONTINUE.`, an arrival narration's last step -- carries no
+        highlighted word at all, so `span_in` came back `None` and this spun
+        its whole timeout instead of pressing the one thing the game was
+        waiting for; three Curse landings hit exactly this
+        (`cited/15/curse25/run.log` lines 27, 38, 112, `#565`).
+        `combat_state` already tells such a bar apart as `BAR_PRESS`, and
+        `wait_for_world` already answers it with `press_kernal` rather than
+        a highlight walk -- reused here rather than a second copy of the
+        same classification.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self.screen()
+            if s is None:
+                time.sleep(0.3)
+                continue
+            state = self.combat_state(s)
+            if state.kind == BAR_PRESS:
+                self.press_kernal(0x0D)
+                after = self.await_change(state.text,
+                                   timeout=max(1.0, min(6.0, deadline - time.time())))
+                if after.kind == BAR_PRESS:
+                    # Unmoved: the same retry `await_change`'s own docstring
+                    # asks for, and the one `wait_for_world` and `fight`
+                    # already take.  Returning `True` here would tell the
+                    # caller the acknowledgement was dismissed while the
+                    # game is still sitting on it -- the ticket's own bug in
+                    # a form that no longer even times out visibly (#565).
+                    continue
+                return True
+            col = s.row(row).find(label.upper())
+            span = span_in(s, row)
+            if col < 0 or span is None:
+                self.handle_prompt(s)   # a disk prompt can sit over any bar
+                time.sleep(0.3)
+                continue
+            if span[0] == col:
+                self.confirm_bar(row, s.row(row))
+                return True
+            self.kbd.key("Right" if span[0] < col else "Left")
+        return False
+
+    # -- the party panel, which is a menu ---------------------------------
+
+    def party_rows(self, s=None) -> list[int]:
+        """The screen rows the world panel lists a character on, in order.
+
+        Read under the panel's own `NAME  AC HP` heading rather than at fixed
+        rows, because the number of them is the party size and that is one of
+        the things a driven run is checking (`#104`).
+        """
+        if s is None:
+            s = self.screen()
+        if s is None:
+            return []
+        head = None
+        for r in PARTY_ROWS:
+            if PARTY_HEADER in s.row(r)[PARTY_COLUMN:]:
+                head = r
+                break
+        if head is None:
+            return []
+        # Everything left of where `AC` starts is the name field; a row with
+        # nothing there is the panel's own frame rather than a character.
+        width = s.row(head)[PARTY_COLUMN:].index(PARTY_HEADER)
+        out = []
+        for r in PARTY_ROWS:
+            if r <= head:
+                continue
+            if s.row(r)[PARTY_COLUMN:PARTY_COLUMN + width].strip():
+                out.append(r)
+            elif out:
+                break   # the list is contiguous; what follows it is not a name
+        return out
+
+    def party_highlight(self, s=None) -> int | None:
+        """Which party slot the panel's highlight is on, or None.
+
+        The heading is drawn in the highlight colour too, which is why this
+        looks only at the rows `party_rows` found under it.
+        """
+        if s is None:
+            s = self.screen()
+        if s is None:
+            return None
+        rows = self.party_rows(s)
+        for i, r in enumerate(rows):
+            if s.colours[r * 40 + PARTY_COLUMN] == 1:
+                return i
+        return None
+
+    def stable_party_rows(self, settle: float | None = None,
+                           timeout: float = 3.0) -> list[int]:
+        """`party_rows`, but only once two reads in a row agree.
+
+        Curse redraws the world screen after a sheet in stages -- the command
+        bar on row 24 first, then the party panel row by row, then the status
+        line, then the 3D viewport -- all at real emulated time.  A single
+        `party_rows` read a few tens of ms after `cancel_bar` sees the bar
+        change lands mid-redraw: on a six-person party it can find only the
+        first three rows drawn, or the right rows with the last one's text
+        still filling in (`#538`).
+
+        Reads the panel, `settle` seconds apart, comparing both the rows
+        `party_rows` finds and the text of those rows from `PARTY_COLUMN` to
+        the end of the line -- text as well as count, because a row can be
+        present with its AC or HP not yet drawn.  Returns as soon as two
+        consecutive reads agree on both; past `timeout` it gives up and
+        returns the last read, settled or not.
+        """
+        if settle is None:
+            settle = self.PANEL_SETTLE
+        deadline = time.time() + timeout
+        prev_rows: list[int] | None = None
+        prev_text: list[str] | None = None
+        while True:
+            s = self.screen()
+            rows = self.party_rows(s) if s is not None else []
+            text = [s.row(r)[PARTY_COLUMN:] for r in rows] if s is not None \
+                else []
+            if rows == prev_rows and text == prev_text:
+                return rows
+            prev_rows, prev_text = rows, text
+            if time.time() >= deadline:
+                return rows
+            time.sleep(settle)
+
+    def select_party(self, index: int, timeout: float = 25.0) -> bool:
+        """Put the world panel's highlight on party slot *index*, 0 first.
+
+        **This is the whole of how a driven run reaches a character other
+        than the first one** (`#183`).  `VIEW` is not a list of names: it puts
+        up the sheet of whoever the panel is highlighting, and the sheet's own
+        bar is `VIEW:ITEMS EXIT` with nothing on it that changes character.
+        So the selection happens before `VIEW`, on the world screen, and it is
+        `Up` and `Down` that make it.
+
+        **The "no such slot" verdict comes from a stable read, taken once,
+        before the loop** -- not from a fresh `party_rows` on whatever frame
+        the loop happens to poll.  Straight after a sheet that frame can be
+        the world screen half-redrawn, which is what made `select_party(3)`
+        refuse a six-person Curse party at exactly three, every time (`#538`).
+        An empty stable read is not "no party", only "not settled in time" or
+        "not on the world screen at all", so it falls through to the loop
+        below, whose own "no name is highlighted" path answers that case.
+
+        Driven by where the highlight actually is after each press, the same
+        way `select_row` is, so a swallowed keypress costs a pass round the
+        loop rather than putting every later count out by one.
+        """
+        rows = self.stable_party_rows()
+        if rows and not 0 <= index < len(rows):
+            self.log(f"  the panel lists {len(rows)} characters, so there "
+                     f"is no slot {index}")
+            return False
+        deadline = time.time() + timeout
+        seen = False
+        while time.time() < deadline:
+            s = self.screen()
+            if s is None:
+                time.sleep(0.3)
+                continue
+            at = self.party_highlight(s)
+            if at is None:
+                self.handle_prompt(s)   # a disk prompt can sit over the panel
+                time.sleep(0.3)
+                continue
+            seen = True
+            if at == index:
+                return True
+            self.kbd.key("Down" if at < index else "Up", 0.15, 0.30)
+        if not seen:
+            self.log("  no name in the party panel is highlighted, so no key "
+                     "was sent; this is not the world screen")
+        else:
+            self.log(f"  could not walk the panel highlight onto slot {index}")
+        return False
+
+    def sheet_is_up(self, s) -> bool:
+        """Is a character sheet the thing on the screen?
+
+        Pool of Radiance answers it on row 24: its sheet bar begins `VIEW:`
+        and nothing else in the game carries a colon.  **Curse's does not**
+        -- `LIBRARY $4600`'s menu string is
+        `ITEMS SPELLS TRADE DROP CURE HEAL EXIT`
+        (`docs/188-the-sheet-portrait-per-title.md`) -- so a driver looking
+        for `VIEW:` there waits out its whole timeout with the sheet drawn in
+        front of it, reports no sheet, and leaves the session standing on a
+        screen the caller does not know it is on.  `tools/curserun.py`
+        overrides this.
+        """
+        return SHEET_BAR in s.row(24)
+
+    def character_sheet(self, index: int | None = None,
+                        timeout: float = 30.0,
+                        shot: str | None = None) -> list[str] | None:
+        """One character's `VIEW` sheet, verbatim, back at the world bar after.
+
+        `index` is the party slot, 0 first; None reads whoever the panel is
+        already highlighting.  `shot` is photographed while the sheet is still
+        up, which is the only moment it can be -- this leaves the sheet before
+        it returns, so a caller cannot take that picture itself.  Returns the
+        sheet's non-blank rows, or None if it never came up.
+        """
+        if index is not None and not self.select_party(index):
+            return None
+        if not self.select_bar("VIEW", timeout=20):
+            self.log("  VIEW could not be selected on the world bar")
+            return None
+        deadline = time.time() + timeout
+        lines = None
+        while time.time() < deadline:
+            s = self.screen()
+            # The name row fills in after the bar does, so wait for both --
+            # a sheet read on the first screen that says `VIEW:` comes back
+            # half drawn.
+            if s is not None and self.sheet_is_up(s) and s.row(1).strip():
+                time.sleep(0.6)
+                s = self.screen()
+                if s is not None:
+                    lines = [line.rstrip() for line in s.rows() if line.strip()]
+                    if shot:
+                        self.kbd.screenshot(shot)
+                    break
+            time.sleep(0.3)
+        if lines is None:
+            self.log("  no character sheet came up after VIEW")
+        self.leave_sheet()
+        return lines
+
+    def cancel_bar(self, timeout: float = 8.0, row: int = 24) -> bool:
+        """Send `BAR_CANCEL` and say whether the bar on `row` gave way.
+
+        The key goes through the KERNAL buffer rather than XTEST, because the
+        game's own key fetcher reads `$0277` with the count at `$C6` -- so
+        this reaches a screen whether or not VICE's keymap has the `<-` key
+        where a driver expects it.
+
+        **Answered by the bar changing, not by the key being sent.**  A
+        `select_bar` that presses Return has no way to tell a command that
+        took from one that was swallowed, which is how three `EXIT` presses
+        came back `True` with the sheet still up (`#444`).
+
+        **An unreadable screen is not a change.**  `screen()` answers `None`
+        for a bitmap, for a monitor that would not read, and for a screen
+        whose base this session could not locate, so a `None` taken as the
+        before-image would make the next successful read of the *unchanged*
+        bar answer `True` -- the same false success this method exists to
+        stop.  The key is not sent without a before-image to compare against,
+        and the caller's fallback route runs instead.
+        """
+        was = None
+        for _ in range(3):
+            s = self.screen()
+            if s is not None:
+                was = s.row(row)
+                break
+            time.sleep(0.4)
+        if was is None:
+            return False
+        self.press_kernal(BAR_CANCEL)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self.screen()
+            if s is not None and s.row(row) != was:
+                return True
+            time.sleep(0.4)
+        return False
+
+    def leave_sheet(self, tries: int = 3) -> bool:
+        """Off a character sheet, by the bar's own cancel key.
+
+        `BAR_CANCEL` rather than `EXIT`, and the difference is the whole of
+        `#444`: `EXIT` has to be walked to, and where it sits depends on what
+        the character is carrying, while the cancel key is read wherever the
+        highlight is.  Both later titles used to cost a boot per sheet
+        because of it.
+
+        The old route is kept as the fallback, and it is still asked for by
+        name rather than by pressing Return at whatever happens to be
+        highlighted: the sheet's bar usually starts on `ITEMS`, and `ITEMS`
+        opens the item list that re-arms itself -- choosing its `EXIT` returns
+        to the bar and the next `Return` drops straight back in
+        (`docs/70-driving-the-game.md`).
+        """
+        for _ in range(tries):
+            if self.cancel_bar():
+                return True
+            if self.select_bar("EXIT", timeout=8):
+                time.sleep(1.0)
+                return True
+            self.leave_move(2)
+        return False
+
+    # -- the game ---------------------------------------------------------
+
+    def pass_protection(self) -> bool:
+        """Answer the code wheel.
+
+        `$12D4` compares seven bytes of `$9700` against the expected word;
+        `$12D9` is the `BNE` that rejects a mismatch.  Two `NOP`s there let any
+        word through, which beats reading the expected index from `$1376` and
+        looking the word up.  The overlay is read back and checked first: this
+        address holds unrelated live code once another side has loaded.
+
+        Then six letters are typed and **Return is injected into the KERNAL
+        keyboard buffer**, because XTEST `Return` never arrives at this prompt
+        while XTEST letters do.
+        """
+        with self.mon(5) as m:
+            cur = m.read(0x12D9, 2)
+            if cur != bytes([0xD0, 0x04]):
+                self.log(f"$12D9 is {cur.hex()}, not D0 04 -- not patching")
+                return False
+            m.write(0x12D9, bytes([0xEA, 0xEA]))
+        self.log("copy protection patched at $12D9")
+        self.kbd.text("aaaaaa")
+        time.sleep(0.5)
+        self.press_kernal(0x0D)
+        return True
+
+    def press_kernal(self, code: int) -> None:
+        """Deliver one PETSCII code through the KERNAL keyboard buffer.
+
+        The game's key fetcher at `$2E4E` reads `$0277` with the count at
+        `$C6`, so this works where XTEST does not.  `$0277` is written first
+        so the game can never see a count without a character behind it.
+        """
+        with self.mon(5) as m:
+            m.write(0x0277, bytes([code]))
+        with self.mon(5) as m:
+            m.write(0xC6, bytes([1]))
+
+    def boot(self) -> bool:
+        self.launch()
+        if self.wait_text("DISABLE FASTLOADER", 120)[0] is None:
+            self.log("no fastloader prompt")
+            return False
+        self.kbd.key(self.fastloader, 0.15, 0.28)
+        self.log(f"fastloader: {self.fastloader.upper()}")
+        if self.wait_text("PLAY GAME", 240)[0] is None:
+            self.log("no PLAY GAME menu")
+            return False
+        self.kbd.key("Return")  # left alone, this screen starts the demo
+        self.log("PLAY GAME")
+        if self.wait_text("INPUT THE CODE WORD", 240)[0] is None:
+            self.log("no code word prompt")
+            return False
+        return self.pass_protection()
+
+    def load_save(self) -> bool:
+        """Drive the party menu's `LOAD SAVED GAME` and say whether it took.
+
+        **Every step says which one gave up.**  All four failures used to be
+        a bare `return False`, and the caller turns any of them into one
+        sentence -- `the game did not load the save` -- so a run that got
+        four fifths of the way through is indistinguishable in the log from a
+        disk the picker would not list at all.  That cost `#380` a repeat
+        run: the failure screen showed the party *loaded*, which no reading
+        of "did not load the save" accounts for, and nothing said which wait
+        had actually run out.
+        """
+        if self.wait_text("LOAD SAVED GAME", 240)[0] is None:
+            self.log("  the party menu never offered LOAD SAVED GAME")
+            return False
+        if not self.select_row("LOAD SAVED GAME"):
+            self.log("  the highlight would not go onto LOAD SAVED GAME")
+            return False
+        self.settle(4)
+        chose = time.time()
+        if self.wait_text("LOAD SAVED GAME: YES", 60)[0] is None:
+            self.log("  no LOAD SAVED GAME: YES prompt in 60s -- either it "
+                     "never came up, or something answered it first")
+            return False
+        self.log(f"  the confirm prompt came up {time.time() - chose:.1f}s "
+                 f"after the settle")
+        self.kbd.key("Return")  # YES is already white
+        hit, _ = self.wait_text("BEGIN ADVENTURING", 240)
+        if hit is None:
+            self.log("  the party menu never came back after the load")
+        return hit is not None
+
+    def begin_adventuring(self) -> bool:
+        if not self.select_row("BEGIN ADVENTURING"):
+            return False
+        return self.wait_for_world(240)
+
+    def wait_for_world(self, timeout: float = 240.0, interval: float = 0.35) -> bool:
+        """Wait for the world's command bar, answering a continue prompt on
+        the way.
+
+        **An arrival can have a scene in front of it.**  Loading a Sokol Keep
+        party draws the boat, prints `THE BOAT DISEMBARKS YOU AT SOKAL KEEP.`
+        and puts up `PRESS <RETURN> OR BUTTON TO CONTINUE` -- and a wait that
+        only watches for `ENCAMP` sits out its whole budget in front of a game
+        that is waiting on the driver, not stuck.  New Phlan and the Slums
+        hand control straight back with no scene, which is why this went
+        unseen until an arrival that was neither of those two was driven
+        (#182).
+
+        Same shape as `outdoor_key`: read what row 24 actually says and act on
+        it, rather than sitting for the one thing that was expected.
+        `combat_state` and `BAR_PRESS` are reused rather than a second copy of
+        the same classification, and the prompt is answered the way `fight`'s
+        own `BAR_PRESS` branch already does -- `press_kernal`, because XTEST
+        Return is not dependable at a prompt and the keyboard buffer is, and
+        once per prompt via `await_change` rather than once per reading, since
+        the prompt stays up about a second after the keystroke and answering
+        it again on the next poll sends the Return on to whatever it gave way
+        to.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self.screen()
+            if s is None:
+                time.sleep(interval)
+                continue
+            if s.contains("ENCAMP"):
+                return True
+            state = self.combat_state(s)
+            # The disk prompt first, and it is answered by putting the disk in
+            # rather than by pressing a key: a Return at `INSERT SIDE # 3, AND
+            # PRESS ANY KEY.` sends the game back to a drive holding the wrong
+            # side, and it asks again (`#336`).
+            if state.kind == BAR_DISK:
+                self.handle_prompt(s)
+                time.sleep(interval)
+                continue
+            if state.kind == BAR_PRESS:
+                self.press_kernal(0x0D)
+                self.await_change(state.text,
+                                  timeout=max(1.0, min(6.0, deadline - time.time())))
+                continue
+            # Still here, for a prompt that is **not** on row 24: the game
+            # asks for a disk in three wordings on two rows, and
+            # `combat_state` only ever sees the bar.
+            self.handle_prompt(s)
+            time.sleep(interval)
+        return False
+
+    # -- which of the two worlds ------------------------------------------
+
+    def indoors(self) -> bool | None:
+        """`$49E6`: True in a `GEO` area, False on the travel grid.
+
+        None is "the read failed", not a world -- the same degradation
+        `mode()` makes, and for the same reason: a caller that took a failed
+        read for the travel grid would press compass digits at a dungeon.
+
+        **A title with no travel grid is always in a `GEO` area, and no byte
+        is read at all.**  Curse of the Azure Bonds and Secret of the Silver
+        Blades carry no `SQRDATA`, `SQRPACI` or `WALLS` on either side of any
+        disk (`goldbox.titles.Title.travel_grid`,
+        `docs/121-silver-blades.md`), so there is nowhere in either of them
+        for a party to be but a dungeon -- and `$49E6` there is a byte of
+        `LIBRARY` code that happens to read zero, which is what made the
+        driver refuse to walk them
+        (`#360 (The session driver will not walk a Curse or Silver Blades party
+        in a dungeon, because it reads Pool of Radiance's indoors flag)`).
+        """
+        if not self.machine.title.travel_grid:
+            return True
+        try:
+            with self.mon(5) as m:
+                return m.read(INDOORS_AT, 1)[0] != 0
+        except (OSError, MonitorError):
+            return None
+
+    def square(self) -> tuple[int, int] | None:
+        """Where the party stands, out of memory, from whichever pair is live.
+
+        `$49C0` indoors and `$49C3` on the travel grid.  Reading `$49C0`
+        outdoors answers the square the party **left the grid on** -- the
+        pier, in all three outdoor specimens -- and it never moves however far
+        the party walks, so a driver watching it concludes every outdoor step
+        was blocked (`#189`, `docs/141-dos-savegame.md`).
+        """
+        got = self.square_and_world()
+        return None if got is None else (got[0], got[1])
+
+    def square_and_world(self) -> tuple[int, int, bool] | None:
+        """`square()`, plus the `$49E6` it had to read to choose the pair.
+
+        One monitor block, so the square and the world it was chosen for
+        cannot come from either side of a boundary crossing.  `position()`
+        used to call `square()` and then `indoors()` separately, which is two
+        reads of one fact -- the same shape `select_bar`'s docstring names as
+        `#173`, where two `$D800` reads were treated as one snapshot.  Found
+        in the code review of #189.
+
+        **A title with no travel grid reads its own live triple instead** --
+        `$C04B`, `automap.c64.C64Machine.live_position`, which
+        `tools/cursewarp.py` has driven Curse from since
+        `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
+        Radiance's alone?)`.  There is no second pair to choose between there,
+        and `$49C0` in Curse or Silver Blades is not the party's square at all
+        (`#360 (The session driver will not walk a Curse or Silver Blades
+        party in a dungeon, because it reads Pool of Radiance's indoors
+        flag)`).
+        """
+        try:
+            with self.mon(5) as m:
+                if not self.machine.title.travel_grid:
+                    x, y = m.read(self.machine.live_position, 2)
+                    return x, y, True
+                inside = m.read(INDOORS_AT, 1)[0] != 0
+                x, y = m.read(DUNGEON_XY if inside else TRAVEL_XY, 2)
+        except (OSError, MonitorError):
+            return None
+        return x, y, inside
+
+    def position(self) -> tuple[int, int, int | None]:
+        """x, y, facing -- and **facing is None on the travel grid**.
+
+        Read off the game's own status line, not out of memory.  The memory
+        copy is real and it does end up on the disk, but it lags a move --
+        reading it straight after a step gives the *previous* square, which
+        silently turns a good step into a "blocked" one.  The status line
+        (`E 16:48 5,2`) is correct the moment the screen settles.
+
+        **Outdoors the status line lags too**, measured on 2026-09-02: after a
+        step from (11,26) to (12,26), `$49C3`/`$49C4` read 12,26 and the line
+        still read 11,26.  So out there the memory pair is the better source
+        and `walk_outdoors` uses it directly; this stays screen-first because
+        that is what every indoor caller wants.
+        """
+        for _ in range(12):
+            s = self.screen()
+            if s is not None:
+                at = parse_status(s.text())
+                if at is not None:
+                    return at.x, at.y, at.facing
+            time.sleep(0.3)
+        here = self.square_and_world()   # fallback: the lagging memory copy
+        if here is None:
+            return 0, 0, None
+        x, y, inside = here
+        if not inside:
+            return x, y, None
+        with self.mon(5) as mon:
+            return x, y, mon.read(DUNGEON_XY + 2, 1)[0]
+
+    def walk(self, moves: str, hold=0.15, gap=0.30) -> None:
+        """One move per character of `moves`.
+
+        Indoors those are the game's own letters -- I forward, J left, K
+        right, M about.  On the travel grid they are the compass digits `1`
+        to `8`, because that is what the bar out there asks for; `walk_one`
+        reads `$49E6` and works out which world it is in.
+        """
+        for ch in moves.upper():
+            self.walk_one(ch, hold, gap)
+
+    def move_key(self, move: str, hold=0.15, gap=0.30) -> None:
+        """Send one dungeon direction -- `I` forward, `J` left, `K` right, `M`
+        about -- by whatever route this title actually reads.
+
+        Pool of Radiance reads the emulated keyboard, so this is an XTEST
+        press.  It is a method rather than a line inside `walk_one` because
+        Curse's move handler answers only the KERNAL buffer: an XTEST `I`
+        there moves the party not at all and does not even turn it, which
+        from outside looks exactly like a party hemmed in by walls
+        (`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
+        which the importer refuses today)`, and `tools/curserun.py` overrides
+        this).
+        """
+        self.kbd.key(move.lower(), hold, gap)
+
+    def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4) -> bool:
+        """One move, verified -- by the status line indoors, by memory outdoors.
+
+        Nothing here can be taken on trust.  Selecting `MOVE` succeeds against
+        a **stale** row 24 -- the game does not always redraw the command bar
+        after a room description -- and the first burst after a screen change
+        is swallowed.  So the move is re-sent until the status line moves, and
+        a move that never moves it is reported as blocked, which for a forward
+        step is exactly the map fact worth having.
+
+        **Row 24 can already be `MOVE_SUBBAR`** -- a square with a script on
+        it answers the previous step with a room description, a load or a
+        `YES NO`, and comes back to `I,J,K,M, RETURN OR BUTTON` rather than to
+        the world's own command bar.  `MOVE` is already selected there, so
+        the direction key goes straight at it; asking `select_bar("MOVE")` to
+        find a word that is not on the row spent every one of the four tries
+        failing and reported the step as blocked when the game was only
+        waiting for a key (`#275`).  Whatever else a script's own screens
+        need answering is `tools/c64/savecheck.py`'s `answer_bars`, called after
+        this returns.
+
+        **None of that paragraph is true on the travel grid**, which is why
+        the world is asked for first.  Out there the bar takes compass digits
+        rather than `I J K M`, a turn does not exist so nothing may be re-sent
+        on the strength of an unchanged line, and the line itself lags the
+        step.  `walk_outdoors` is that world's version of this.
+
+        **A `False` from here means the party tried and a wall stopped it, and
+        it must never mean the driver pressed nothing.**  Those two were the
+        same answer until `#360 (The session driver will not walk a Curse or
+        Silver Blades party in a dungeon, because it reads Pool of Radiance's
+        indoors flag)`, so a run recorded a map fact it had never
+        measured.  `walk_refused` carries the second case: None after a move
+        that was sent, and a sentence saying what the driver would not do
+        after one that was not.
+        """
+        self.walk_refused = None
+        if self.indoors() is False:
+            return self.walk_outdoors(move, hold, gap)
+        before = self.status()
+        for _ in range(tries):
+            s = self.screen()
+            row = "" if s is None else s.row(24)
+            if MOVE_SUBBAR in row:
+                self.move_key(move, hold, gap)
+            elif self.select_bar("MOVE", timeout=8):
+                time.sleep(0.6)
+                self.move_key(move, hold, gap)
+            else:
+                self.leave_move(2)
+                continue
+            time.sleep(1.2)
+            if self.status() != before:
+                self.leave_move()
+                return True
+        self.leave_move()
+        return False
+
+    def walk_outdoors(self, move: str, hold=0.15, gap=0.30,
+                      patience: float = 25.0) -> bool:
+        """One compass step on the travel grid, verified in memory.
+
+        **Pressed once, never re-sent.**  `walk_one` re-sends a move until the
+        status line changes, and out here that line carries no facing, so a
+        move it does not shift is indistinguishable from a turn -- which is
+        how one key became four presses and walked the party in a circle.
+
+        Verified by `$49C3`/`$49C4` rather than by the screen, because the
+        status line lags a step out here and the memory pair does not.  Polled
+        rather than slept: an overland step is hours of game time and can go
+        to the disk, so a fixed wait measures this machine rather than the
+        game.
+        """
+        if move not in COMPASS:
+            self.walk_refused = (
+                f"the driver pressed nothing: it read this party as being on "
+                f"the travel grid, where {move} is not a direction. That is a "
+                f"driver error and not a wall")
+            self.log(f"  {move} is not a compass digit; the travel grid takes "
+                     f"1-8, not the dungeon's I J K M")
+            return False
+        before = self.square()
+        if before is None:
+            self.log("  Could not read the travel square")
+            return False
+        if not self.outdoor_key(move, hold, gap):
+            # `leave_outdoor_move` only presses when the direction prompt is
+            # actually up, so this is safe on the boat's own bar -- where a
+            # Return would answer whichever of TAKE and STAY the highlight
+            # happened to be sitting on.  Without it a run that reached the
+            # prompt just too late left it on the screen and everything after
+            # it read a bar nothing knows how to answer (`#382`).
+            self.leave_outdoor_move()
+            return False
+        deadline = time.time() + patience
+        after = before
+        while time.time() < deadline:
+            now = self.square()
+            if now is not None and now != before:
+                after = now
+                break
+            time.sleep(0.5)
+        self.leave_outdoor_move()
+        return after != before
+
+    def outdoor_key(self, key: str, hold=0.15, gap=0.30,
+                    timeout: float = 20.0) -> bool:
+        """Press one compass digit, whichever bar the travel grid is showing.
+
+        **A walked exit on to the grid lands with the movement prompt already
+        up**: row 24 reads `1-8, RETURN OR BUTTON` straight away, so asking
+        for `MOVE` finds no such word and spins to its timeout -- which from
+        the outside looks exactly like an outdoor party that cannot move, and
+        is how one run of this was read.  A warped arrival lands on the
+        command bar and does need MOVE taking first.  So row 24 is read and
+        whichever bar is there is answered.
+
+        **Taking `MOVE` is not the same as reaching the direction prompt**,
+        and this used to assume it was: it pressed the digit six tenths of a
+        second after the Return, whatever row 24 had become.  On a boat
+        landing what it becomes is `TAKE BOAT STAY` (`BOAT_BAR`), so the digit
+        went into the boat's own question, nothing moved, and the step was
+        recorded as blocked.  Now the prompt is waited for, and a bar that is
+        not the prompt is named rather than pressed at
+        (`#382 (An outdoor Pool of Radiance party's compass step is refused,
+        and the retry cannot find the movement prompt afterwards)`).
+
+        `outdoor_boat` is what a caller sets to answer the boat rather than
+        stop at it: `STAY` declines the passage and leaves the party on the
+        landing, which is what a run measuring an overland step wants, and
+        `TAKE` sails it back to New Phlan.  It is None by default because
+        which of the two a run wants is the run's decision rather than this
+        file's, and a driver that quietly took a boat would move a party
+        across the world and call it a step.
+        """
+        deadline = time.time() + timeout
+        # When `MOVE` was last taken.  The prompt takes about a second to
+        # draw, and the command bar is still on row 24 while it does -- so a
+        # loop that re-selects `MOVE` on every look would press Return on it
+        # twice, and the second one lands at the direction prompt.  Four
+        # seconds is long enough for the redraw and short enough to retry a
+        # genuinely stale bar, which is what the old code's single retry was
+        # for.
+        took_move = 0.0
+        answered = 0
+        while time.time() < deadline:
+            s = self.screen()
+            row = "" if s is None else s.row(24)
+            if OUTDOOR_PROMPT in row:
+                self.kbd.key(key, hold, gap)
+                return True
+            if all(word in row for word in BOAT_BAR):
+                if self.outdoor_boat and answered < BOAT_ANSWERS:
+                    self.log(f"  a boat landing: |{row.strip()}| -- answering "
+                             f"{self.outdoor_boat}")
+                    if not self.select_bar(self.outdoor_boat, timeout=10):
+                        self.walk_refused = (
+                            f"the driver pressed nothing: this square is a "
+                            f"boat landing and {self.outdoor_boat} could not "
+                            f"be found on the bar to answer it with. That is "
+                            f"a driver error and not a wall")
+                        self.log(f"  a boat landing: |{row.strip()}|; "
+                                 f"{self.outdoor_boat} was not on the bar")
+                        return False
+                    answered += 1
+                    time.sleep(1.0)
+                    # The whole budget again, because answering a question is
+                    # not waiting for one.  Capped at `BOAT_ANSWERS`, because
+                    # a renewal on every look is a wait with no end to it.
+                    deadline = max(deadline, time.time() + timeout)
+                    continue
+                if self.outdoor_boat:
+                    self.walk_refused = (
+                        f"the driver pressed nothing: it answered the boat "
+                        f"{self.outdoor_boat} {answered} times and the "
+                        f"question was still on screen, so it never reached a "
+                        f"direction prompt. That is a driver error and not a "
+                        f"wall")
+                    self.log(f"  a boat landing: |{row.strip()}|; still up "
+                             f"after {answered} answers")
+                    return False
+                self.walk_refused = (
+                    "the driver pressed nothing: this square is a boat "
+                    "landing and the game is asking whether to take the boat, "
+                    "so there is no direction prompt to press a digit at. "
+                    "That is a driver error and not a wall")
+                self.log(f"  a boat landing: |{row.strip()}|; no digit was "
+                         f"pressed")
+                return False
+            if word_column(row, "MOVE") >= 0 and time.time() - took_move > 4.0:
+                if self.select_bar("MOVE", timeout=10):
+                    took_move = time.time()
+                    time.sleep(0.6)
+                    continue
+            self.handle_prompt(s)
+            time.sleep(0.5)
+        # `False` here is the one a caller must not read as a wall either.
+        # Row 24 was none of the three bars this knows -- a disk prompt over
+        # the top of it, a screen read that kept failing, a bar nobody has
+        # named yet -- and no digit was sent, so a step recorded as blocked
+        # would be the same invented map fact `#382 (An outdoor Pool of
+        # Radiance party's compass step is refused, and the retry cannot find
+        # the movement prompt afterwards)` was.
+        self.walk_refused = (
+            f"the driver pressed nothing: row 24 showed neither the direction "
+            f"prompt, nor MOVE, nor the boat question within {timeout:.0f}s, "
+            f"so there was nowhere to press a digit. That is a driver error "
+            f"and not a wall")
+        self.log(f"  Neither a 1-8 prompt nor MOVE on row 24 within "
+                 f"{timeout:.0f}s")
+        return False
+
+    def leave_outdoor_move(self, tries: int = 4) -> bool:
+        """Get off the travel grid's direction prompt, and only if it is up.
+
+        Not `leave_move`, which presses Return before it looks: outdoors the
+        prompt may already have given way to the command bar, and a Return
+        there runs whichever command the highlight is sitting on rather than
+        backing out of anything.
+        """
+        for _ in range(tries):
+            s = self.screen()
+            if s is not None and OUTDOOR_PROMPT not in s.row(24):
+                return True
+            self.kbd.key("Return", 0.20, 0.30)
+            time.sleep(0.6)
+        return False
+
+    def status(self) -> Status | None:
+        """The status line as a `Status`, or None if none was on screen.
+
+        `facing` is None on the travel grid.  Callers that print it say
+        "outdoors" rather than a number, and callers that compare two readings
+        -- `walk_one` -- are comparing whole tuples and need no change.
+        """
+        for _ in range(8):
+            s = self.screen()
+            if s is not None:
+                at = parse_status(s.text())
+                if at is not None:
+                    return at
+                self.handle_prompt(s)
+            time.sleep(0.3)
+        return None
+
+    def leave_move(self, tries: int = 8) -> bool:
+        """Get out of move mode, and *check*.
+
+        A single Return here is not enough: the game swallows input while it
+        redraws the view, and the next thing the driver does is hunt for a
+        command bar that is still showing `I,J,K,M`.
+        """
+        for n in range(tries):
+            if n % 2:
+                # XTEST Return is not dependable here; the KERNAL buffer is.
+                self.press_kernal(0x0D)
+            else:
+                self.kbd.key("Return", 0.20, 0.30)
+            time.sleep(0.6)
+            s = self.screen()
+            if s is not None and not s.contains(MOVE_SUBBAR):
+                return True
+            self.handle_prompt(s)
+        return False
+
+    def save_game(self, to: str | None = None) -> bool:
+        if to:
+            self.save_disk = os.path.abspath(to)
+        s = self.screen()
+        if s is not None and s.contains(MOVE_SUBBAR):
+            # A resave asked for right after a walk that crossed an area
+            # boundary can find row 24 still on the dungeon's move sub-bar
+            # rather than the world bar.  `select_bar` must never be pointed
+            # at it -- `docs/70-driving-the-game.md:315` -- and would
+            # otherwise burn its whole 30s timeout hunting `ENCAMP` on a row
+            # that will never show it (`#545`).
+            self.leave_move()
+        if not self.select_bar("ENCAMP"):
+            return False
+        self.settle(2)
+        if not self.select_bar("SAVE"):  # `ENCAMP:SAVE VIEW MAGIC ...`
+            return False
+        self.settle(6)  # `INSERT YOUR SAVE GAME DISK` -> attach, press a key
+        if not self.select_bar("SAVE GAME"):  # `SAVE GAME  EXIT`
+            return False
+        self.settle(14)  # the write, then `INSERT YOUR GAME DISK #3`
+        self.select_bar("EXIT")
+        return True
+
+    # -- combat -----------------------------------------------------------
+
+    def mode(self) -> int | None:
+        """LINKER's dispatch byte: which overlay is running, or None.
+
+        `1` DUNGEON, `2` COMBAT.  `automap/combat.py` documents the rest.
+
+        **The byte is at a different address in each title and this used to
+        read Pool of Radiance's.**  `$6E11` in Curse and Silver Blades is a
+        byte of somebody else's code, so a party standing on the combat floor
+        answered `1` and every caller was told there was no fight -- which
+        looks exactly like a save that failed to enter combat, and is how a
+        working conversion gets written up as broken (`#334`).  `LINKER` opens
+        `LDA $7F11` in both later titles where Pool of Radiance's opens
+        `LDA $6E11`; `automap.c64.C64Machine.mode_flag` has carried both since
+        `#29`.
+
+        **None is "the read failed", not a mode**, and a title whose flag
+        nobody has measured answers None as well rather than falling back --
+        an unmeasured address reads as a plausible mode instead of an error.
+        `screen()` and `battle()` degrade the same way, and this one has to as
+        well because `fight()` calls it once a second for up to `budget`
+        seconds: a single wedged monitor -- a stray client on the port, a text
+        monitor left open -- would otherwise raise out of the whole fight and
+        throw away every turn, bar and line gathered up to that point, which
+        is the evidence the harness exists to collect.
+        """
+        where = self.machine.mode_flag
+        if where is None:
+            return None
+        try:
+            with self.mon(5) as m:
+                return m.read(where, 1)[0]
+        except (OSError, MonitorError):
+            return None
+
+    def in_combat(self) -> bool:
+        """True only on a read that answered COMBAT.  A failed read is False."""
+        return self.mode() == COMBAT
+
+    def battle(self):
+        """The fight as `automap.combat` reads it, at **this title's**
+        addresses, or None.
+
+        One monitor connection for the whole read rather than one per range:
+        a stop/resume pair costs the emulation ~14.3 ms of extra time whatever
+        it carries, so the number that matters is how many, not how many bytes.
+
+        `tools/c64/latercombat.py` holds the four addresses that move between the
+        titles and hands the reading itself straight back to `automap.combat`.
+        Pool of Radiance's row there is the same six numbers `automap.combat`
+        already used, so nothing about this title's answer changes; Curse and
+        Silver Blades used to be read at those numbers and answered None on a
+        combat floor (`#334`).
+        """
+        from tools.c64.latercombat import read_battle
+
+        class _Target:
+            def __init__(self, m):
+                self.m = m
+
+            def read(self, addr, length):
+                return self.m.read(addr, length)
+
+        try:
+            with self.mon(8) as m:
+                return read_battle(_Target(m), self.game)
+        except (OSError, MonitorError):
+            return None
+
+    def combat_state(self, s=None) -> CombatBar:
+        """Row 24 during a fight, classified.  Reading a fight is mostly this.
+
+        A bar caught **half redrawn** -- `MOVE/AT`, `MO`, both seen in
+        `p118-step3/*.log` (scratch, deleted) -- comes back as `BAR_MESSAGE` rather than
+        being forced into a kind, so the driver waits and reads again instead
+        of pressing Return at a bar that does not exist yet.
+        """
+        if s is None:
+            s = self.screen()
+        if s is None:
+            return CombatBar(BAR_NONE, "")
+        bar = s.row(24).strip()
+        up = bar.upper()
+        # Whole words, like every other branch here: a substring test would
+        # take IMPRESSED for PRESS.  `word_column` tokenises, so a two-word
+        # label is two calls rather than one.
+        if word_column(up, "CONTINUE") >= 0 and word_column(up, "BATTLE") >= 0:
+            return CombatBar(BAR_CONTINUE, bar)
+        found = RE_MOVE_LEFT.search(up)
+        if found:
+            return CombatBar(BAR_MOVE, bar, int(found.group(1)))
+        # `DONE` alone, not `MOVE` and `DONE`.  A character who has spent every
+        # square gets `VIEW AIM USE QUICK DONE` -- **MOVE is dropped from its
+        # own command bar** -- and a driver that wanted both would sit waiting
+        # at a bar that was asking it for a command.  Measured in
+        # `p126/run1.log` (scratch, deleted), on the press that spent the last square.
+        if word_column(up, "DONE") >= 0:
+            return CombatBar(BAR_COMMAND, bar)
+        # **Before `PRESS`, because a disk prompt carries that word.**
+        # `INSERT SIDE # 3, AND PRESS ANY KEY.` classified as `BAR_PRESS`, so
+        # `wait_for_world` sent a Return, waited for the row to change, and
+        # went round again without ever reaching `handle_prompt` -- the disk
+        # the game asked for was never put in the drive and the whole
+        # 240-second budget went by with the prompt on the screen.  Driven on
+        # pool slot 0 on 2026-09-07: `screenblind/run3` (scratch, deleted) reads the prompt
+        # on 38 of its last 40 polls and `begin_adventuring` still returned
+        # False (`#336`).
+        if RE_GAME_SIDE.search(up) or SAVE_PROMPT in up:
+            return CombatBar(BAR_DISK, bar)
+        if word_column(up, "PRESS") >= 0:
+            return CombatBar(BAR_PRESS, bar)
+        # `DONE` does not end a turn; it opens this.  `GUARD` on it is what
+        # passes the turn, which is where the `GUARDING` in the old logs was
+        # coming from.  Told apart from a treasure bar, which also carries
+        # EXIT, by DELAY and SPEED being on it -- **not** by GUARD, which drops
+        # off the bar for a character that cannot take it and left the driver
+        # bouncing off `DELAY QUIT SPEED EXIT` (`p126/melee5.log` (scratch, deleted)).
+        if word_column(up, "DELAY") >= 0 and word_column(up, "SPEED") >= 0:
+            return CombatBar(BAR_DONE, bar)
+        # `THERE IS STILL TREASURE LEFT` prints above this one, and the two
+        # commands do what they say -- measured at a live bar on 2026-09-01,
+        # pool slot 1, `PORSAVE13.D64`, after the Slums ambush was won:
+        # `GO BACK` returns to `VIEW TAKE POOL SHARE EXIT` with the highlight
+        # on `EXIT`, so it only loops back into the treasure, and `LEAVE
+        # TREASURE` hands the party back to the world -- `$6E11` reads 1
+        # within a second and the status line is back about ten seconds
+        # later.  Until it was measured this bar matched no branch at all,
+        # read as `BAR_MESSAGE`, and `fight()` idled at it for the whole of
+        # whatever budget it had been given (`#171`).
+        if word_column(up, "LEAVE") >= 0 and word_column(up, "TREASURE") >= 0:
+            return CombatBar(BAR_LEAVE, bar)
+        if word_column(up, "EXIT") >= 0:
+            return CombatBar(BAR_EXIT, bar)
+        if word_column(up, "YES") >= 0 and word_column(up, "NO") >= 0:
+            return CombatBar(BAR_YESNO, bar)
+        return CombatBar(BAR_BLANK if not bar else BAR_MESSAGE, bar)
+
+    #: How long to give a blow to resolve before calling it refused.  Six
+    #: seconds because a landed one showed inside 1.6 s on every press
+    #: measured (`cited/127/sweep1.jsonl`) and a refused one had not
+    #: moved after ten (`cited/127/probe1.jsonl`).
+    ATTACK_TIMEOUT = 6.0
+
+    #: Which bars `combat_bar` will walk the highlight along.  Not the move
+    #: sub-bar: `MOVE LEFT = 9` is a prompt for a direction, not a menu, and
+    #: sending Right there steps the character.
+    SELECTABLE = (BAR_COMMAND, BAR_CONTINUE, BAR_YESNO, BAR_EXIT,
+                  BAR_DONE, BAR_LEAVE)
+
+    def combat_bar(self, label: str, timeout: float = 20.0, row: int = 24) -> bool:
+        """Put the combat highlight on `label` and press Return.
+
+        `select_bar` with three differences.  It **refuses every bar that is
+        not a menu**, which is what keeps a `Right` out of the move sub-bar,
+        where it would step the character rather than move a highlight.  The
+        highlight comes from the same screen snapshot as the text rather than
+        from a second monitor read, so a bar redrawn between the two cannot
+        send the walk the wrong way.  And the label is matched as a whole word
+        -- which on every bar measured so far gives the same answer as a plain
+        `find`, so treat that one as a guard against a vocabulary we have not
+        seen rather than as a fix for anything.
+
+        Returns True when the highlight was on `label` and Return was sent.
+        It does **not** claim the command did anything -- verify by effect.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self.screen()
+            if s is None:
+                time.sleep(0.3)
+                continue
+            state = self.combat_state(s)
+            if state.kind not in self.SELECTABLE:
+                time.sleep(0.3)
+                continue
+            col = word_column(s.row(row), label)
+            span = span_in(s, row)
+            if col < 0 or span is None:
+                time.sleep(0.3)
+                continue
+            if span[0] == col:
+                self.confirm_bar(row, s.row(row))
+                return True
+            self.kbd.key("Right" if span[0] < col else "Left")
+        return False
+
+    #: Does a bar on this title read Return from XTEST, or only out of the
+    #: KERNAL keyboard buffer?  False means XTEST is enough, which is Pool of
+    #: Radiance everywhere it has been driven.
+    #:
+    #: **Curse and Silver Blades set this, and a combat bar is where it shows
+    #: worst.**  `combat_bar` walks the highlight with XTEST arrows, which
+    #: both titles do read, and then pressed Return with XTEST, which they do
+    #: not -- so it returned True having done nothing at all, once per turn,
+    #: for a whole fight (`#334`, and `tools/curseload.py` records the same
+    #: thing for `LOAD SAVED GAME ? YES NO`).
+    BAR_RETURN_KERNAL = False
+
+    #: How long `confirm_bar` gives the XTEST Return to move the bar before
+    #: trying the KERNAL buffer.  Only read when `BAR_RETURN_KERNAL` is set.
+    BAR_RETURN_PATIENCE = 4.0
+
+    def confirm_bar(self, row: int = 24, was: str = "") -> None:
+        """Press Return at a bar whose highlight is already where it belongs.
+
+        **Sending both Returns every time is not the answer**, which is why
+        this watches instead: two queued keystrokes are what took the
+        `INSERT CURSE SAVE DISK` prompt before anybody could read it
+        (`docs/179-loading-a-curse-save.md`), and a spare Return after a won
+        fight lands on the treasure bar's `VIEW` (`#171`).
+
+        So the XTEST Return goes first, `was` -- the bar as the caller last
+        read it -- is given `BAR_RETURN_PATIENCE` seconds to change, and only
+        a row that has not moved gets the KERNAL one.  On a title that reads
+        XTEST the wait ends on the first look and nothing else is sent.
+        """
+        self.kbd.key("Return")
+        if not self.BAR_RETURN_KERNAL:
+            return
+        deadline = time.time() + self.BAR_RETURN_PATIENCE
+        while time.time() < deadline:
+            s = self.screen()
+            if s is not None and s.row(row) != was:
+                return
+            time.sleep(0.5)
+        self.press_kernal(0x0D)
+
+    def idle(self, seconds: float) -> None:
+        """Wait out somebody else's turn.
+
+        A seam rather than a bare `time.sleep`, so a fight can be driven
+        against a scripted screen without an emulator or a wall clock.
+        """
+        time.sleep(seconds)
+
+    def combat_turn(self) -> str:
+        """Pass one character's turn.  Returns what was chosen.
+
+        It takes no bar: it is only ever reached at a command bar, and it
+        walks the highlight to `DONE` from wherever it is rather than from
+        anything the bar said.  It used to take one and never read it.
+
+        **`DONE` does not end a turn.**  It opens
+        `GUARD DELAY QUIT SPEED EXIT`, and `GUARD` on that is what ends it --
+        which is where the `GUARDING` on row 24 in the older logs was coming
+        from.  A driver that takes DONE and stops leaves the same command bar
+        up and is asked again: 210 turns in 420 seconds
+        (`p126/melee4.log` (scratch, deleted)).
+        """
+        if not self.combat_bar("DONE", timeout=12):
+            return ""
+        if self.await_bar((BAR_DONE,), timeout=6) is None:
+            return "DONE"
+        return self.end_turn()
+
+    #: The commands on the sub-bar `DONE` opens that **finish with the
+    #: character**, so the game asks somebody else next.  `GUARD` ends the
+    #: turn and leaves the character guarding; `QUIT` ends it outright --
+    #: Donald, who plays this game, on 2026-09-01: *"In Combat, QUIT ends the
+    #: turn immediately."*  That is testimony rather than a screen read, and
+    #: it is the whole evidence for QUIT here.
+    ENDS_TURN = ("GUARD", "QUIT")
+
+    #: The ones that only get off the bar.  **`DELAY` postpones a character
+    #: rather than finishing with it**: it comes straight back to the front of
+    #: the queue, and one character that could not strike took 50 of the 54
+    #: turns of a fight that way while the other five never acted again
+    #: (`#165`, `cited/127/after1.jsonl`).  `EXIT` backs out to the same
+    #: character's command bar, which is no better.  Both are last resorts for
+    #: a bar carrying neither of the two above.
+    LEAVES_BAR = ("DELAY", "EXIT")
+
+    def end_turn(self) -> str:
+        """Get off the sub-bar `DONE` opens, and end the turn if it can.
+
+        **Take a command that finishes with the character before one that only
+        gets off the bar.**  `GUARD` is not always offered -- some characters
+        get `DELAY QUIT SPEED EXIT` with no GUARD on it at all -- and the
+        driver used to fall to `DELAY` there, which postpones the character
+        instead of ending its turn.  `QUIT` is on both shapes of the bar and
+        ends the turn, so it is what a bar with no GUARD gets.
+
+        **Ask only for a word that is on the bar.**  `combat_bar` has no way of
+        saying "that command is not here": it waits for the label to appear and
+        spins to its full timeout when it never does.  Trying the choices blind
+        cost **441 of one 605-second fight's seconds -- 73% of it**.  GUARD was
+        missing on 34 turns at 8 seconds each, and 10 more turns spent 24
+        seconds apiece finding none of them, because `fight` also calls this at
+        a bar that is not the sub-bar at all (`#127`,
+        `cited/127/diag1.jsonl`).  One read of row 24 first turns every one
+        of those into a tenth of a second.
+        """
+        bar = self.combat_state().text
+        for choice in self.ENDS_TURN + self.LEAVES_BAR:
+            if word_column(bar, choice) < 0:
+                continue
+            if self.combat_bar(choice, timeout=8):
+                return choice
+        return ""
+
+    def acting(self, battle, s=None):
+        """Whose turn the command bar belongs to, or None.
+
+        The game says so itself: the right-hand panel carries the acting
+        character's name, hit points, armour class and readied weapon.  Reading
+        it beats inferring from initiative, which several combatants hold at
+        once.
+        """
+        if battle is None:
+            return None
+        if s is None:
+            s = self.screen()
+        if s is None:
+            return None
+        panel = " ".join(s.row(r)[PANEL_LEFT:] for r in PANEL_ROWS)
+        # Longest first, so a party holding both SEAN and BROTHER SEAN does not
+        # hand every one of BROTHER SEAN's turns to SEAN.
+        named = sorted((c for c in battle.party if c.name.strip()),
+                       key=lambda c: -len(c.name.strip()))
+        for who in named:
+            if who.name.strip() in panel:
+                return who
+        return None
+
+    def await_bar(self, kinds, timeout: float = 6.0,
+                  interval: float = 0.4) -> CombatBar | None:
+        """Read row 24 until it is one of `kinds`, or give up.
+
+        **The bar lags the keypress.**  Taking MOVE and reading row 24 straight
+        afterwards gives the command bar still, so a driver that decides on one
+        read concludes the sub-bar never appeared, backs out, and takes MOVE
+        again -- 638 times in 420 seconds with `MOVE LEFT = 12` never once
+        going down (`p126/melee2.log` (scratch, deleted)).  Verify by effect and retry: it is
+        the rule the rest of this file already follows.
+        """
+        deadline = time.time() + timeout
+        while True:
+            state = self.combat_state()
+            if state.kind in kinds:
+                return state
+            if time.time() >= deadline:
+                return None
+            time.sleep(interval)
+
+    def await_change(self, was: str, timeout: float = 6.0,
+                     interval: float = 0.4) -> CombatBar:
+        """Read row 24 until its text is no longer `was`, then give up.
+
+        The prompt a keystroke answers stays on screen for about a second
+        after the keystroke has been taken, and `fight`'s loop comes back
+        round in a fraction of that -- so a branch that acts on every reading
+        acts several times, and the extra ones land on whatever the prompt
+        gave way to.
+
+        Returns whatever row 24 says at the end, changed or not: a prompt
+        that has not moved after `timeout` is one the caller should answer
+        again, which is the retry the rest of this file already insists on.
+        """
+        deadline = time.time() + timeout
+        while True:
+            state = self.combat_state()
+            if state.text != was:
+                return state
+            if time.time() >= deadline:
+                return state
+            time.sleep(interval)
+
+    def await_step(self, index, was, before, tries: int = 6,
+                   interval: float = 0.4):
+        """Wait for one combat step to show.  Returns `(moved, bar)`.
+
+        `bar` is None once the move sub-bar has gone, which is how a turn
+        ends.  Two signals, because either is enough and neither is good on
+        its own: row 24's count lags the keypress, and the position table is
+        the authority on where a character actually stands.
+
+        **Neither is read once.**  A single read 20 milliseconds after the key
+        says the game has not caught up yet, not that the step failed -- and
+        `melee_turn` concluded the latter on 27 of 27 turns of one fight,
+        passing 26 of them (`#127`).
+        """
+        for _ in range(max(1, tries)):
+            bar = self.combat_state()
+            if bar.kind in AFTER_MOVE:
+                return True, None
+            if before is not None and bar.moves_left is not None \
+                    and bar.moves_left != before:
+                return True, bar
+            b = self.battle()
+            me = None if b is None else next(
+                (c for c in b.combatants if c.index == index), None)
+            if me is not None and (me.x, me.y) != was:
+                return True, bar
+            time.sleep(interval)
+        return False, self.combat_state()
+
+    @staticmethod
+    def step_towards(battle, me, target, avoid=()) -> str | None:
+        """The first step of the shortest walkable path to the target.
+
+        A breadth-first walk outwards from the target over squares that can
+        actually be stood on, which is the whole reason this is not the
+        obvious "pick the neighbour that gets closest" (`#170`).  Greedy
+        picked the closest square without ever asking `battle.square(x, y)`,
+        so it aimed a character at rock: from `(19,13)` at an orc on
+        `(25,13)`, with the arena's own block at x 20-22, it pressed `KP_6`
+        into `(20,13)` and spent the turn on a key that cannot work.
+        **Impassable terrain is confirmed in the running game**, not inferred
+        from the renderer -- in the `#127` key sweep a press into a code-1
+        square moved nobody and spent no movement.
+
+        What counts as blocked:
+
+        * any square whose terrain code is nonzero -- rock;
+        * any square a combatant is standing on, **except** the target's own,
+          because stepping onto that is the blow.  That includes other
+          enemies: walking into one attacks it rather than the character this
+          turn is aimed at.
+
+        The character's own square is never blocked, so a path can start.
+
+        `avoid` is the keys already tried this turn that spent no square -- a
+        wall, or something else neither the terrain nor the position table
+        shows.  Without it a character pinned against one burns its whole turn
+        on the same press.
+
+        The second half of `#170` falls out of the same change: greedy passed
+        the turn whenever no neighbour got closer, even when a step sideways
+        would round the obstruction next turn.  Breadth-first walks round it
+        now, and `None` means what it says -- there is no path at all, or
+        every first step on one is in `avoid`.
+        """
+        shape = battle.shape
+        start = (me.x, me.y)
+        goal = (target.x, target.y)
+        if goal == start or not shape.holds(*start):
+            return None
+
+        blocked = {(x, y)
+                   for y in range(shape.height) for x in range(shape.width)
+                   if battle.square(x, y)}
+        for c in battle.combatants:
+            if not shape.holds(c.x, c.y):
+                continue
+            if (c.x, c.y) in (start, goal):
+                continue
+            blocked.add((c.x, c.y))
+
+        # Outwards from the target, so every square learns its distance to it
+        # in one sweep and the first step is a lookup rather than a search.
+        dist = {goal: 0}
+        frontier = [goal]
+        while frontier:
+            nxt = []
+            for at in frontier:
+                for dx, dy in STEP_KEYS:
+                    sq = (at[0] + dx, at[1] + dy)
+                    if sq in dist or not shape.holds(*sq) or sq in blocked:
+                        continue
+                    dist[sq] = dist[at] + 1
+                    nxt.append(sq)
+            frontier = nxt
+
+        here = dist.get(start)
+        best = None
+        for (dx, dy), key in STEP_KEYS.items():
+            if key in avoid:
+                continue
+            sq = (me.x + dx, me.y + dy)
+            if not shape.holds(*sq) or sq in blocked:
+                continue
+            d = dist.get(sq)
+            if d is None:
+                continue
+            # Ties on path length go to the square that is physically nearest,
+            # which keeps the open-arena answers the greedy ones.
+            score = (d, max(abs(target.x - sq[0]), abs(target.y - sq[1])))
+            if best is None or score < best[0]:
+                best = (score, key)
+        if best is None:
+            return None
+        if here is not None and best[0][0] >= here:
+            return None
+        return best[1]
+
+    def melee_turn(self, state: CombatBar) -> str:
+        """Walk the acting character into the nearest enemy, which attacks it.
+
+        `state` is the bar `fight` was looking at.  It is not read -- the
+        tactic protocol is `tactic(session, state)` and this is a tactic, so
+        it takes one whether it wants one or not; the positions come from
+        `battle()`, which is a fresher read than the bar.
+
+        There is no attack key.  `MOVE/ATTACK` is the whole of it: a step into
+        an occupied square is a blow, and the game says as much on the sub-bar
+        it puts up.  So this takes MOVE, then steps towards the nearest living
+        enemy until the sub-bar goes away -- which it does when the character
+        attacks, runs out of squares, or dies.
+
+        Distance is Chebyshev because the moves are eight-way.
+
+        **The square it steps into may hold a different enemy than the one it
+        aimed at**, because only party members are excluded from the
+        candidates.  That still lands a blow and still ends the turn, so it
+        does not stall a fight; it means the target this picks is where the
+        character is heading rather than what it is guaranteed to hit.  A
+        tactic wanting a chosen target would have to exclude the others too.
+        """
+        b = self.battle()
+        me = self.acting(b)
+        if b is None or me is None or not me.alive:
+            return self.combat_turn()
+        if not any(e.alive and e.on_map for e in b.enemies):
+            return self.combat_turn()
+        # Work out the step **before** taking MOVE.  A character the rest of
+        # the party has boxed in has nowhere that gets it closer, and taking
+        # MOVE and backing out again does not end its turn: the same command
+        # bar comes back and the driver does it again, 638 times in 420
+        # seconds (`p126/melee3.log` (scratch, deleted)).  A turn that cannot attack has to
+        # be **passed**, not merely left.
+        index = me.index
+        target = min((e for e in b.enemies if e.alive and e.on_map),
+                     key=lambda e: chebyshev(me, e))
+        if self.step_towards(b, me, target) is None:
+            return self.combat_turn()
+        if not self.combat_bar("MOVE", timeout=15):
+            return self.combat_turn()
+        moving = self.await_bar((BAR_MOVE,), timeout=8)
+        if moving is None:
+            return ""                           # MOVE did not take; press on
+        avoid: set[str] = set()
+        stepped = False
+        for _ in range(24):
+            b = self.battle()
+            if b is None:
+                break
+            me = next((c for c in b.combatants if c.index == index), None)
+            live = [e for e in b.enemies if e.alive and e.on_map]
+            if me is None or not me.on_map or not live:
+                break
+            target = min(live, key=lambda e: chebyshev(me, e))
+            key = self.step_towards(b, me, target, avoid)
+            if key is None:                     # nowhere to go that helps
+                break
+            delta = next(d for d, k in STEP_KEYS.items() if k == key)
+            into = b.at(me.x + delta[0], me.y + delta[1])
+            before = moving.moves_left
+            was = (me.x, me.y)
+            self.kbd.key(key, 0.15, 0.30)
+            if into is not None and not into.is_party:
+                # **The blow, and it is not a step.**  An attack spends no
+                # movement and does not move the character, so neither the
+                # count on row 24 nor the position table says it happened --
+                # measured at a live sub-bar, ROLAND at (29,13) against an orc
+                # on (28,14): `MOVE LEFT` 9 before and 9 after, nobody moved,
+                # and the orc went from 5 hit points to 1
+                # (`cited/127/sweep1.jsonl`, turn 15).
+                #
+                # Treating that as "the step cost nothing, so it did not
+                # happen" is what put the attack key in `avoid` on every turn
+                # of every fight, and passed 26 of 27 turns with the party
+                # standing next to the orcs (`#127`).  So: press it, and wait
+                # for the turn to move on rather than for a square to be
+                # spent.
+                if self.await_bar(AFTER_MOVE, self.ATTACK_TIMEOUT) is not None:
+                    # The one place in this file that knows a party member
+                    # struck.  `fight` counts it and `FightResult.acted` is
+                    # that count -- see `ATTACK` at the top of the file.
+                    return ATTACK
+                # Still on the sub-bar six seconds later, so the blow was
+                # refused rather than struck.  Seen for a character with a
+                # **missile weapon readied** -- MALCYON with 13 DART, six
+                # presses watched for ten seconds apiece, no message, no
+                # damage, nothing (`cited/127/probe1.jsonl`).  Pass the
+                # turn; do not stand there pressing it again.
+                self.press_kernal(0x0D)
+                return self.combat_turn()
+            moved, moving = self.await_step(index, was, before)
+            if moving is None:
+                return "MOVE"                   # spent, or dead
+            if not moved:
+                # A wall, and the count says so: a step into impassable
+                # terrain spends nothing and moves nobody -- LADY KATHERINE
+                # at (29,11) north-east into terrain code 1, `MOVE LEFT` 5
+                # and 5 (`cited/127/sweep1.jsonl`, turn 5).  Try another.
+                avoid.add(key)
+            else:
+                stepped = True
+        if self.combat_state().kind == BAR_MOVE:
+            self.press_kernal(0x0D)             # back out of move mode
+        if not stepped:
+            # Still this character's turn, and it has done nothing.  Pass it,
+            # or the same bar comes straight back.
+            return self.combat_turn()
+        return "MOVE"
+
+    def fight(self, budget: float = 300.0, tactic=None,
+              poll: float = 1.0) -> FightResult:
+        """Drive a fight from mode 2 back to mode 1.
+
+        The mode flag is this title's own -- `$6E11` in Pool of Radiance and
+        `$7F11` in both later titles -- since `#334 (The session driver cannot
+        fight in Curse or Silver Blades, and says the party is not in a fight
+        while it is standing on the combat floor)`. The two values are the
+        same everywhere; only the address moves.
+
+        The end of a fight is **not** the mode byte leaving 2: `THE PARTY HAS
+        WON !`, the experience share and any treasure run under POST.COM, and
+        a driver that stops at the mode byte leaves the party standing at a
+        `PRESS <RETURN>` for ever.  So this runs until DUNGEON is back *and*
+        the status line is on screen, which is the state the rest of
+        `Session` can drive.
+
+        `tactic(session, state)` is called once per command bar and returns
+        what it chose; the default passes the turn with `DONE`.
+
+        **`budget` says how long this runs at minimum, not a limit on how
+        long it runs.**  The deadline is tested once per iteration, and the
+        calls inside one iteration carry their own timeouts: this method
+        clamps its own to whatever is left, but a tactic's do not, so
+        `melee_turn` can spend `combat_bar(..., 15)` plus `await_bar(..., 8)`
+        plus `end_turn`'s three tries at 8 past a deadline that had already
+        passed -- about 42 seconds in the worst case measured here.  A short
+        budget overruns proportionally worse than a long one.  Give it
+        seconds to spare rather than the exact number wanted.
+        """
+        def left() -> float:
+            """Seconds to the deadline, never below one -- a timeout of zero
+            asks a bar to have already resolved."""
+            return max(1.0, end - time.time())
+
+        act = tactic or (lambda sess, state: sess.combat_turn())
+        started = time.time()
+        end = started + budget
+        bars: list[str] = []
+        highlights: list[str] = []
+        lines: list[str] = []
+        seen: set[str] = set()
+        turns = 0
+        blows = 0
+        outcome: str | None = None
+        if not self.in_combat():
+            return FightResult(NOT_FIGHTING, 0, 0.0, bars, lines)
+        while time.time() < end:
+            mode = self.mode()
+            s = self.screen()
+            text = s.text() if s is not None else ""
+            if outcome is None:
+                outcome = next((name for name, line in OUTCOME_LINES
+                                if line in text), None)
+            for row in text.splitlines():
+                row = row.strip()
+                if row and row not in seen and RE_NOTABLE.search(row.upper()):
+                    seen.add(row)
+                    lines.append(row)
+            # `parse_status`, not `RE_STATUS`: an ambush on the travel grid
+            # ends back on `OUTDOORS 22:02 7,28`, which carries no facing
+            # letter, so a pattern that wants one never matches and the fight
+            # runs to its whole budget after it is over (`#189`).
+            if mode == DUNGEON and parse_status(text) is not None:
+                return FightResult(outcome or ENDED, turns,
+                                   time.time() - started, bars, lines,
+                                   blows, highlights)
+            state = self.combat_state(s)
+            if state.text and (not bars or bars[-1] != state.text):
+                bars.append(state.text)
+                # The highlight from the **same** snapshot as the text, so a
+                # log can say not only which bar the driver was looking at
+                # but which command it was looking at on it.
+                span = None if s is None else span_in(s, 24)
+                highlights.append("-" if span is None
+                                  else s.row(24)[span[0]:span[1] + 1].strip())
+            if state.kind == BAR_DISK:
+                # A fight loads art and a fight can end in a load, so the game
+                # asks for a side in here too -- and the answer is a disk, not
+                # a keystroke (`#336`).
+                self.handle_prompt(s)
+            elif state.kind == BAR_CONTINUE:
+                # The game offering a withdrawal is how a driven fight ends.
+                self.combat_bar("NO", timeout=min(12.0, left()))
+            elif state.kind == BAR_DONE:
+                self.end_turn()      # left open by a turn that did not finish
+            elif state.kind == BAR_EXIT:
+                self.combat_bar("EXIT", timeout=min(12.0, left()))
+            elif state.kind == BAR_LEAVE:
+                # `GO BACK LEAVE TREASURE`, and `GO BACK` -- which is the
+                # command the highlight starts on -- only returns to the
+                # treasure bar this came from.  `LEAVE TREASURE` is the way
+                # out to the world.
+                self.combat_bar("LEAVE", timeout=min(12.0, left()))
+            elif state.kind == BAR_PRESS:
+                # XTEST Return is not dependable at a prompt; the buffer is.
+                self.press_kernal(0x0D)
+                # And **once per prompt, not once per reading**.  The prompt
+                # stays up for about a second after the keystroke is taken
+                # and this loop comes round in a fraction of that, so
+                # injecting on every reading sends several Returns and the
+                # spare ones land on whatever the prompt gave way to.  After
+                # a won fight that is the treasure bar, whose highlight
+                # starts on `VIEW`, and `VIEW` opens the item list -- the
+                # trap `docs/70-driving-the-game.md` already records as one
+                # that re-arms itself (`#171`).
+                #
+                # A prompt with a second page of message behind it draws the
+                # same row 24 again, so this waits out its timeout and the
+                # loop answers it on the next pass.  That costs seconds; the
+                # spare Return cost a whole budget.
+                self.await_change(state.text, timeout=min(6.0, left()))
+            elif state.kind == BAR_YESNO:
+                # `ATTACK ALLY: YES NO`, which the game puts up when a step
+                # would walk into a party member.  `NO` is the conservative
+                # answer to a yes/no bar this does not recognise: that one
+                # stalled a whole fight for its 421-second budget because
+                # there was no branch for it at all (`p126/melee.log` (scratch, deleted)).
+                #
+                # **The second such bar is `FLEE: YES NO`** -- `COMBAT $17A9`,
+                # put up by `$0E6E` when a step would leave the combat map --
+                # and `NO` is deliberate there rather than a gap.  The default
+                # tactic never steps off the map, so the prompt can only be up
+                # because a tactic put it there, and a tactic that means to
+                # flee answers it itself; `Flight` in `tools/fleedrive.py`
+                # does (`#445`).  Answering `YES` here would let any driver
+                # walk a converted party out of the fight it was meant to be
+                # proving something in.
+                self.combat_bar("NO", timeout=min(12.0, left()))
+            elif state.kind == BAR_MOVE:
+                self.press_kernal(0x0D)      # back out of move mode
+            elif state.kind == BAR_COMMAND:
+                turns += 1
+                # The tactic's own answer, which is the only thing in this
+                # loop that knows whether the *party* struck.  Every other
+                # signal a fight offers -- the message band, the mode byte,
+                # row 24 -- says a blow was struck without saying by whom.
+                if act(self, state) == ATTACK:
+                    blows += 1
+            else:
+                self.idle(poll)              # a monster's turn, or a redraw
+            self.handle_prompt()
+        return FightResult(outcome or BUDGET, turns, time.time() - started,
+                           bars, lines, blows, highlights)
+
+
+# -- claiming a slot, and putting the player's disks in it ------------------
+
+
+def claim_slot(want: int | None = None, note: str = ""):
+    """A pool slot, or the specific one a brief named.
+
+    `instance.claim` is first-free and has no way to ask for slot *n*, so
+    getting a named slot means holding the ones before it and letting them go
+    again.  Nothing is ever killed to make room: a slot whose lease is held
+    belongs to somebody.
+
+    This lived in `tools/fightrun.py` and is here because every tool that
+    drives a session needs it, and the second copy of it would be the third
+    in this directory.
+    """
+    if want is None:
+        return instance.claim(game="por", note=note)
+    holds, slot = [], None
+    try:
+        while True:
+            s = instance.claim(game="por", note=note)
+            if s.n == want:
+                slot = s
+                break
+            holds.append(s)
+            if s.n > want:
+                break
+    finally:
+        # `instance.claim` raises when the pool is full, and it can do so
+        # part way through -- so releasing has to happen on the way out
+        # rather than after the loop.  Process exit would drop the locks
+        # anyway; a slot held until then is a slot another agent is told
+        # is busy, for as long as it takes this one to die.
+        for h in holds:
+            h.release()
+    if slot is None:
+        raise RuntimeError(f"slot {want} is not free")
+    return slot
+
+
+def npc_party_save() -> pathlib.Path:
+    """The `npc-party-save` registry entry's `npc_party.d64`, or where it would
+    be if this machine had it -- the path a run refuses with when the file is
+    missing, so the message names the place to put it (#575)."""
+    return gamedisks.where("npc-party-save") / "npc_party.d64"
+
+
+def writable(path) -> str:
+    """Give a staged copy the user's write bit back, and hand the path back.
+
+    Everything in a slot's directory is a throwaway copy the emulator owns;
+    the mode that came with it belongs to the file it was copied from.  A
+    specimen out of `$WISH_SPECIMENS` is read-only by design
+    (`tools/specimens.py` makes it so), and `shutil.copy` carries that mode
+    onto the staged copy unchanged -- which gives the game a write-protected
+    save disk with nothing to say so (`#455`, `#469`, `#472`).
+    """
+    path = pathlib.Path(path)
+    path.chmod(path.stat().st_mode | stat.S_IWUSR)
+    return str(path)
+
+
+def stage_writable(src: pathlib.Path, dest: pathlib.Path) -> str:
+    """Copy `src` over `dest`, whatever an earlier tenant left there, and
+    give the copy the user's write bit back.
+
+    `shutil.copy` opens `dest` `'wb'` and also carries `src`'s own mode bits
+    onto it -- so a save staged from a read-only source leaves a read-only
+    `SIDE0.D64` in the slot, and every later stage into that slot then dies
+    on the open with a bare `PermissionError` naming neither the file nor the
+    reason (`#430`).  `dest` is always one of a slot's own staged copies, so
+    it is unlinked first, unconditionally: every call starts from nothing
+    there rather than trusting what the call before it left behind, which is
+    what keeps the state from recurring at all rather than merely reporting
+    it.  The copy is then handed to `writable`, so what lands in the slot can
+    always be overwritten by the game, whatever mode it arrived with
+    (`#455`, `#469`, `#472`).
+
+    **The read-only attribute has to come off before the unlink, not after.**
+    Windows refuses to delete a file that still carries it, so a read-only
+    leftover -- the exact thing this function exists to clear -- made the
+    unlink itself raise `PermissionError` there, on every call, and nothing
+    on Linux ever showed it (`#495`).  The `chmod` is guarded because `dest`
+    is routinely nothing at all -- a slot's first stage into a path no
+    earlier tenant used.
+    """
+    dest = pathlib.Path(dest)
+    try:
+        dest.chmod(dest.stat().st_mode | stat.S_IWUSR)
+    except FileNotFoundError:
+        pass
+    dest.unlink(missing_ok=True)
+    shutil.copy(src, dest)
+    return writable(dest)
+
+
+def _restage(src: pathlib.Path, dest: pathlib.Path) -> None:
+    """Copy `src` over `dest` and make the copy writable (`#430`, `#472`).
+
+    The `try` is only for what `stage_writable` cannot fix -- the slot
+    directory itself refusing to be written -- so the error that reaches a
+    caller names the path and what to do about it, rather than the bare
+    `PermissionError` this replaces.
+    """
+    try:
+        stage_writable(src, dest)
+    except OSError as exc:
+        raise RuntimeError(
+            f"could not stage {dest} from {src}: {exc}. If this is a "
+            f"leftover from an earlier tenant of the slot, delete {dest} "
+            f"by hand and retry."
+        ) from exc
+
+
+def copy_closed_disk(src: pathlib.Path, dest: pathlib.Path, *,
+                     attempts: int = 8, backoff: float = 0.25) -> str:
+    """Copy a C64 disk out of a slot only after its files are closed.
+
+    A successful game menu does not mean the 1541 has finished its final
+    directory update.  An image copied while that update is pending contains
+    a splat entry which the game refuses with ``60, WRITE FILE OPEN``.  Copy
+    each observation, rather than inspecting the live image in place, so the
+    result handed to the caller is the exact image whose directory was proved
+    closed.
+    """
+    if attempts < 1:
+        raise ValueError("attempts must be at least one")
+    src, dest = pathlib.Path(src), pathlib.Path(dest)
+    with tempfile.NamedTemporaryFile(prefix=f".{dest.name}.", suffix=".tmp",
+                                     dir=dest.parent, delete=False) as candidate:
+        candidate = pathlib.Path(candidate.name)
+    try:
+        last = "could not read the copied disk"
+        for attempt in range(attempts):
+            shutil.copy(src, candidate)
+            try:
+                image = D64.open(candidate)
+                unclosed = [entry for entry in image.iter_directory()
+                            if not entry.is_empty and not entry.is_closed]
+            except D64Error as exc:
+                last = f"could not read the copied disk ({exc})"
+            else:
+                if not unclosed:
+                    candidate.replace(dest)
+                    return str(dest)
+                names = ", ".join(repr(entry.display_name) for entry in unclosed)
+                last = f"open directory {'entry' if len(unclosed) == 1 else 'entries'} {names}"
+            if attempt + 1 < attempts:
+                time.sleep(backoff)
+        raise RuntimeError(
+            f"refusing to copy {src}: the drive did not close every non-empty "
+            f"directory entry after {attempts} read(s); {last}")
+    finally:
+        candidate.unlink(missing_ok=True)
+
+
+def stage_disks(slot, disks, save: str = "") -> str:
+    """Copy the eight sides and a save into the slot, and say what to boot.
+
+    **The player's disks are read and never written.**  `Session.attach`
+    refuses any path outside the slot's own directory, so everything the game
+    is ever shown is one of these copies: `SIDE1.D64` to `SIDE8.D64`, and the
+    save as `SIDE0.D64`, which is what `Session.save_disk` points at.
+    """
+    slot.seed_vicerc()
+    here = pathlib.Path(slot.dir)
+    disks = pathlib.Path(disks)
+    for i in range(1, 9):
+        src = disks / f"POOL{i}.D64"
+        if src.exists():
+            _restage(src, here / f"SIDE{i}.D64")
+    if save:
+        _restage(disks / save, here / "SIDE0.D64")
+    return str(here / "SIDE1.D64")
+
+
+# -- command server ---------------------------------------------------------
+
+
+def handle(sess: Session, line: str) -> bool:
+    parts = line.split()
+    if not parts:
+        return True
+    cmd, args = parts[0], parts[1:]
+    if cmd == "quit":
+        sess.close()
+        return False
+    if cmd == "screen":
+        sess.dump()
+    elif cmd == "key":
+        hold = float(args[1]) if len(args) > 1 else 0.10
+        gap = float(args[2]) if len(args) > 2 else 0.14
+        for _ in range(int(args[3]) if len(args) > 3 else 1):
+            sess.kbd.key(args[0], hold, gap)
+        time.sleep(0.8)
+        sess.dump()
+    elif cmd == "text":
+        sess.kbd.text(" ".join(args))
+        time.sleep(0.8)
+        sess.dump()
+    elif cmd == "kernal":
+        sess.press_kernal(int(args[0], 16))
+        time.sleep(0.8)
+        sess.dump()
+    elif cmd == "attach":
+        sess.attach(args[0])
+    elif cmd == "savedisk":
+        sess.save_disk = os.path.abspath(args[0])
+        print(sess.save_disk)
+    elif cmd == "peek":
+        with sess.mon(5) as m:
+            print(m.read(int(args[0], 16), int(args[1]) if len(args) > 1 else 16).hex(" "))
+    elif cmd == "poke":
+        addr = int(args[0], 16)
+        data = bytes.fromhex("".join(args[1:]))
+        with sess.mon(5) as m:
+            print("was", m.read(addr, len(data)).hex(" "))
+            m.write(addr, data)
+    elif cmd == "colours":
+        print(sess.colours(int(args[0])).hex(" "))
+    elif cmd == "settle":
+        sess.settle(float(args[0]) if args else 6.0)
+        sess.dump()
+    elif cmd == "wait":
+        hit, _ = sess.wait_text(" ".join(args))
+        print("found" if hit else "TIMEOUT")
+        sess.dump()
+    elif cmd == "row":
+        print(sess.select_row(" ".join(args)))
+        sess.dump()
+    elif cmd == "bar":
+        print(sess.select_bar(" ".join(args)))
+        sess.dump()
+    elif cmd == "pos":
+        print(sess.position())
+    elif cmd == "walk":
+        sess.walk(args[0])
+        # A move the driver would not send is not a wall, and the difference
+        # is the whole of `#360 (The session driver will not walk a Curse or
+        # Silver Blades party in a dungeon, because it reads Pool of
+        # Radiance's indoors flag)`: say so here rather than letting the caller
+        # read an unchanged position as a party hemmed in.
+        if sess.walk_refused:
+            print(sess.walk_refused)
+        print(sess.position())
+    elif cmd == "save":
+        print(sess.save_game(args[0] if args else None))
+        print(sess.position())
+    elif cmd == "combat":
+        print(sess.combat_state())
+    elif cmd == "battle":
+        b = sess.battle()
+        if b is None:
+            print("not in a fight")
+        else:
+            print(f"shape {b.shape.width}x{b.shape.height} camera {b.camera}")
+            for c in b.combatants:
+                print(f"  {c.index:2d} {c.kind:9s} ({c.x:2d},{c.y:2d}) "
+                      f"init {c.initiative:3d} hp {c.hp_text} {c.name}")
+    elif cmd == "fight":
+        print(sess.fight(float(args[0]) if args else 300.0))
+    elif cmd == "melee":
+        # The same fight, driven to *strike* rather than to pass every turn.
+        # `fight`'s default tactic guards with DONE, which wins nothing and
+        # cannot answer whether the party can fight at all.
+        print(sess.fight(float(args[0]) if args else 300.0,
+                         tactic=lambda s, state: s.melee_turn(state)))
+    elif cmd == "load":
+        print(sess.load_save())
+    elif cmd == "begin":
+        print(sess.begin_adventuring())
+    elif cmd == "shot":
+        print("ok" if sess.kbd.screenshot(
+            args[0] if args else os.path.join(sess.here, "shot.png")) else "failed")
+    else:
+        print("unknown command", cmd)
+    return True
+
+
+def serve(sess: Session, port: int | None = None) -> None:
+    port = sess.cmd_port if port is None else port
+    srv = socket.socket()
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", port))
+    srv.listen(4)
+    print(f"command server on {port}", flush=True)
+    running = True
+    while running:
+        conn, _ = srv.accept()
+        conn.settimeout(900)
+        try:
+            line = conn.makefile("r").readline().strip()
+        except Exception:
+            conn.close()
+            continue
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                running = handle(sess, line)
+        except Exception as exc:  # a bad command must not end the session
+            buf.write(f"ERROR {type(exc).__name__}: {exc}\n")
+        with contextlib.suppress(OSError):
+            conn.sendall(buf.getvalue().encode())
+            conn.close()
+    srv.close()
+
+
+#: A sentinel distinct from every valid `--pool` value, including the `None`
+#: `argparse` hands back for a bare `--pool` with no number after it -- so
+#: "the flag was never given" (the legacy session on 6502/6510/6600) and
+#: "the flag was given with no number" (the next free pool slot) are still
+#: two different things once `main` reads `args.pool`
+#: (`#403 (A tool with no argument parser reads --help as input and boots an
+#: emulator)`).
+_NO_POOL = object()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`--pool` claims an instance slot and holds its lease for as long as
+    this process lives; without it the session is the legacy one on
+    6502/6510/6600 and `HERE`, which is what `tools/c64/porcmd` still
+    talks to.
+
+    `--pool N` demands slot *N*, which is what a brief names; `--disks DIR`
+    and `--save NAME` copy the player's disks into the slot first, so the
+    session comes up ready to load a save rather than needing `HERE`
+    laid out by hand.
+    """
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--pool", nargs="?", type=int, const=None,
+                    default=_NO_POOL, metavar="N",
+                    help="claim an instance-pool slot: a specific one, or "
+                         "the next free one with no number. Without this, "
+                         "the session is the legacy one on Donald's own "
+                         "6502/6510/6600")
+    ap.add_argument("--disks", default="",
+                    help="stage the player's disks into the slot first "
+                         "(needs --pool)")
+    ap.add_argument("--save", default="",
+                    help="the save to copy in alongside --disks")
+    ap.add_argument("disk", nargs="?", default=None,
+                    help="the disk image Session() boots; replaced by the "
+                         "staged copy when --disks is given")
+    ap.add_argument("save_disk", nargs="?", default=None,
+                    help="override the save disk path")
+    args = ap.parse_args(argv)
+
+    slot = None
+    if args.pool is not _NO_POOL:
+        slot = claim_slot(args.pool, note=os.environ.get("POR_AGENT", ""))
+        slot.seed_vicerc()
+        print(f"slot {slot.n}: monitor {slot.port} text {slot.text_port} "
+              f"cmd {slot.cmd_port} display {slot.display} dir {slot.dir}",
+              flush=True)
+
+    disk_arg, save_disk_arg = args.disk, args.save_disk
+    if args.disks:
+        assert slot is not None, \
+            "--disks needs --pool: nothing stages the legacy directory"
+        disk_arg = stage_disks(slot, args.disks, args.save)
+        save_disk_arg = args.disk
+        if args.save_disk is not None:
+            ap.error(f"unexpected extra argument: {args.save_disk!r}")
+    sess = Session(disk_arg, slot=slot)
+    if save_disk_arg is not None:
+        sess.save_disk = os.path.abspath(save_disk_arg)
+    if not sess.boot():
+        print("boot failed")
+    serve(sess)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

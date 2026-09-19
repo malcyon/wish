@@ -20,7 +20,7 @@ combatant helpless in that made-up memory, which is the only way to see the
 badge at all, since no save this project holds carries one.
 
 This connects, reads and closes, so it runs beside an idle
-`tools/session.py` -- but never beside `wish` or anything else holding the
+`tools/c64/session.py` -- but never beside `wish` or anything else holding the
 binary monitor open. It writes nothing to the machine, and the PNG goes to a
 scratch directory outside the repository unless told otherwise: a picture of a
 fight is the game's own art.

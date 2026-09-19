@@ -14,7 +14,7 @@ which is exactly the property `$F6` violated: it printed as `SBC $nn,X`, a
 real 6502 instruction, and one line was indistinguishable from `$F5`'s.
 """
 
-from tools import d6502
+from tools.c64 import d6502
 
 
 def lines_of(data: bytes, base: int | None = None, start: int = 0, count: int = 1):

@@ -176,5 +176,5 @@ evidence.
 ## The tools
 
 `tools/dosabilitypair.py` -- `sites`, `census`, `read`, `stage`.
-`tools/abilitypair.py` is the C64 one. `tools/dossheetread.py` boots a staged
+`tools/c64/abilitypair.py` is the C64 one. `tools/dossheetread.py` boots a staged
 save and photographs every sheet.

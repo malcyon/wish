@@ -42,12 +42,14 @@ from goldbox.d64 import D64  # noqa: E402
 from tools import (  # noqa: E402
     cursethac0,
     gamedisks,
-    laterbattle,
     scratch,
     specimens,
     ssbwarp,
 )
-from tools import session as S  # noqa: E402
+from tools.c64 import (  # noqa: E402
+    laterbattle,
+)
+from tools.c64 import session as S  # noqa: E402
 
 OUT = scratch.scratch_dir("ssbarm16quick")
 

@@ -51,7 +51,7 @@ def _forget_banks():
 
 
 class FakeSession:
-    """Just enough `tools.session.Session` for a `SessionTarget`.
+    """Just enough `tools.c64.session.Session` for a `SessionTarget`.
 
     `mon()` hands back the same machine every time, the way a real session
     hands back a fresh connection to the same emulator.

@@ -197,7 +197,7 @@ pointer table (lo `$2A8D`, hi `$2AC5`, at overlay base `$0800` and not the
 fight)`) and `THE PARTY RUNS AWAY` off a driven flight on 2026-09-08
 (`#445 (The game's third fight outcome, THE PARTY RUNS AWAY, has never been
 seen on a screen)`, `cited/445/run2`); the winning line is the oldest of
-the three. `DEFEATED`, which `tools/session.py` guessed at for months, is not
+the three. `DEFEATED`, which `tools/c64/session.py` guessed at for months, is not
 a word the game uses anywhere.
 
 **All three C64 titles carry the same three lines at the same three table

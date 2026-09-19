@@ -165,7 +165,7 @@ class Title:
     #: The status line's own `OUTDOORS` pattern is a different question and
     #: is not gated by this: `#205 (A party that walks out onto the travel
     #: grid leaves the automapper's marker behind)` found the literal string
-    #: in both titles' `DUNGEON` overlay (`tools/outdoorsgrep.py`), sitting
+    #: in both titles' `DUNGEON` overlay (`tools/c64/outdoorsgrep.py`), sitting
     #: among other short message fragments (`EXIT`, `SEARCH`, `" IS "`)
     #: rather than proven to be a status-line reading -- open, and needs a
     #: driven session, not this table.

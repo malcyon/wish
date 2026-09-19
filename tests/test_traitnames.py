@@ -35,8 +35,8 @@ def _root():
 
 def test_the_spell_effect_table_is_where_this_title_keeps_it():
     """`COMBAT2 +2732`, nine bytes a record, one per spell id 1-100 -- the
-    base `tools/traitquery.py`'s `SPELL_EFFECTS` names for this title."""
-    from tools import traitquery
+    base `tools/c64/traitquery.py`'s `SPELL_EFFECTS` names for this title."""
+    from tools.c64 import traitquery
     table = traitquery.spell_effects(_root(), CURSE)
     assert len(table) == 100
     name, effect, message = table[1]
@@ -96,7 +96,7 @@ def test_monster_blocks_reports_a_disk_it_cannot_read(tmp_path, capsys):
     """`monster_blocks` used to swallow a bad `.d64` or a bad directory
     entry with a bare `except Exception: continue` -- a census tool whose
     whole point is a complete count over every `MON*` template must say what
-    it skipped, matching `tools/traitcross.py`'s pattern."""
+    it skipped, matching `tools/c64/traitcross.py`'s pattern."""
     bad = tmp_path / "BAD.D64"
     bad.write_bytes(b"not a disk image")
     traitnames.monster_blocks(CURSE.key, str(tmp_path))

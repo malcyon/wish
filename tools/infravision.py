@@ -41,8 +41,9 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port, savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import d6502, gamedisks  # noqa: E402
-from tools.session import stage_writable  # noqa: E402
+from tools import gamedisks  # noqa: E402
+from tools.c64 import d6502  # noqa: E402
+from tools.c64.session import stage_writable  # noqa: E402
 
 #: Where the record keeps it.  `goldbox/layout.py`'s `infravision`.
 INFRAVISION = 0x0D5

@@ -50,7 +50,7 @@ Three subcommands:
 
     tools/ssbtrain.py diff --before <stem> --after <stem> --class thief
 
-        Read a pair of `$7C00`/`$7D00` hex dumps taken with `tools/porcmd
+        Read a pair of `$7C00`/`$7D00` hex dumps taken with `tools/c64/porcmd
         peek`, print the field-by-field delta, and check the five stored
         saving throws against `goldbox.levels.saving_throws` for the record
         the engine wrote -- the question `#344` asks.  `--class` is then
@@ -291,7 +291,7 @@ def stage(args) -> int:
 
 
 def _record(stem: str) -> CharacterRecord:
-    """The record out of a `tools/porcmd peek` dump.
+    """The record out of a `tools/c64/porcmd peek` dump.
 
     `<stem>-a.hex` and `<stem>-b.hex` are `$7C00` and `$7D00`.  A dump of a
     **roster slot** -- `$4F00 + slot * $100`, where the trainer reads the
@@ -438,7 +438,7 @@ def compare(args) -> int:
 
 
 def cmd(port: int, *words) -> str:
-    """One line to a `tools/session.py` command server; its whole reply."""
+    """One line to a `tools/c64/session.py` command server; its whole reply."""
     sock = socket.create_connection(("127.0.0.1", port), timeout=600)
     sock.sendall((" ".join(str(w) for w in words) + "\n").encode())
     out = b""

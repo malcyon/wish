@@ -36,7 +36,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from tools import gamedisks, instance  # noqa: E402
-from tools.session import Session  # noqa: E402
+from tools.c64.session import Session  # noqa: E402
 
 #: The jiffy clock, and the screen.  `$00A0`-`$00A2` stops for the length of
 #: every KERNAL serial load, so a stall is only a stall when the screen has

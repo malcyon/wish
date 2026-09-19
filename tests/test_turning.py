@@ -47,13 +47,13 @@ TURN_MASK = 0xDF
 def _overlay(game, name: bytes) -> bytes:
     """One title's overlay payload at the address it runs at, or skip."""
     from tests.test_coldread import _root
-    from tools import coldread
+    from tools.c64 import coldread
     return coldread.overlay(game, name, _root(game))
 
 
 def _at(body: bytes, address: int, count: int) -> bytes:
     """`count` bytes of an overlay that runs at `$0800`, by run-time address."""
-    from tools import coldread
+    from tools.c64 import coldread
     return bytes(coldread.table(body, coldread.GEN_BASE, address, count))
 
 

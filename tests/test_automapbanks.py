@@ -2,7 +2,7 @@
 
 The live automapper reads the VIC registers through whatever the processor can
 see, so during a load it computes the screen address from a byte of RAM and
-reads a screen nothing is displaying.  `tools/drive.py` was fixed for the
+reads a screen nothing is displaying.  `tools/c64/drive.py` was fixed for the
 driver under `#336 (The screen reader goes blind on the insert-a-side prompt,
 and every screen-driven recovery fails with it)`; this is the same defect on
 the other side of the same arithmetic.

@@ -329,7 +329,7 @@ Radiance address survives, so the way in was the record rather than the code:
 Curse keeps the working character at `$7C00`, so a census of every absolute
 instruction in the overlay whose operand lands in `$7C00`-`$7DFF`, printed
 against `goldbox/layout.py`'s field names, puts every routine within two
-instructions of the table it reads. `tools/trainerscan.py` is that census, and
+instructions of the table it reads. `tools/c64/trainerscan.py` is that census, and
 `--callers` walks back up from a routine to the sequence that calls it. None of
 this needed the emulator.
 
@@ -588,7 +588,7 @@ is capped at 9 with strength 18, 8 with 17 and 7 with anything less.
 
 ## Spells at the trainer, all three titles
 
-`tools/trainerspells.py --rows` prints every one of these off the player's own
+`tools/c64/trainerspells.py --rows` prints every one of these off the player's own
 disks, and `--check` diffs them against `goldbox/levelup.py`. There are no
 mismatches over the three titles as of 2026-09-08 -- `#89 (Silver Blades' trainer grants spells from a table, and goldbox/levelup.py offers them from a menu)`.
 

@@ -1,13 +1,13 @@
 """The trainer's spell step, per class and per title (#89).
 
 Two halves. The disk-backed ones read each title's own `GEN` through
-`tools/trainerspells.py` and diff it against `goldbox/levelup.py`, so the
+`tools/c64/trainerspells.py` and diff it against `goldbox/levelup.py`, so the
 model cannot drift from the game. The disk-free ones pin the two claims that
 took this ticket apart: that Curse grants a ranger and a paladin, which the
 model gave them nothing for, and that Silver Blades' magic-user is offered a
 menu rather than a whole row.
 
-`tools/trainerspells.py` is the tool; `docs/135-levelling.md` is the prose.
+`tools/c64/trainerspells.py` is the tool; `docs/135-levelling.md` is the prose.
 """
 
 import pathlib
@@ -19,7 +19,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import c64_port, levelup, spells  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
-from tools import gamedisks, trainerspells  # noqa: E402
+from tools import gamedisks  # noqa: E402
+from tools.c64 import trainerspells  # noqa: E402
 
 POOL = c64_port.POOL_OF_RADIANCE
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
@@ -52,7 +53,7 @@ def _caster(level_field: str, level: int, intelligence: int = 18,
 
 @pytest.mark.parametrize("title", sorted(KEYS))
 def test_every_class_of_every_title_matches_its_own_overlay(title):
-    """`tools/trainerspells.py --check`, run as a test.
+    """`tools/c64/trainerspells.py --check`, run as a test.
 
     Every class, every level its own ceiling reaches, and -- where the title
     asks for one -- four intelligences and both sides of the Wisdom gate.

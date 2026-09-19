@@ -55,7 +55,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
-from tools import d6502, gamedisks  # noqa: E402
+from tools import gamedisks  # noqa: E402
+from tools.c64 import d6502  # noqa: E402
 
 #: The three C64 titles this project converts, and where their sides are.
 TITLES: tuple[tuple[str, str], ...] = (

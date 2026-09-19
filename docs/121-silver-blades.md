@@ -226,7 +226,7 @@ the marker is an identifier out of some list rather than a count of sequels.
 ### 4.3 The cold read of `GEN`, and an overlay base this document got wrong
 
 Done for `#31 (Cold-read Curse and Silver Blades for the fields the editor
-shows)`, with no emulator. `tools/coldread.py` reads all of it again in three
+shows)`, with no emulator. `tools/c64/coldread.py` reads all of it again in three
 commands and `tests/test_coldread.py` keeps it true.
 
 **`GEN` and `CAMP` run at `$0800`, not at the `$4000` their PRG headers claim.**
@@ -236,7 +236,7 @@ Radiance's at `$0800` too high — seven citations in `goldbox/layout.py`,
 `goldbox/spells.py`, `docs/20-character-record.md` and two test docstrings. The
 findings they carried were all correct; only the addresses were wrong, and
 **five** of the seven named bytes **outside the overlay altogether**, so anyone
-checking one with `tools/overlay.py` — whose `--base` is `$0800` — would have
+checking one with `tools/c64/overlay.py` — whose `--base` is `$0800` — would have
 been told the address is not in the file.
 
 Five rather than four, corrected 2026-09-02 by measuring each overlay's real
@@ -286,7 +286,7 @@ own overlay rather than inferred from Curse's. **CONFIRMED.** Curse's
 written out longhand instead of a call.
 
 Two corroborations, neither of which was needed and both of which agree.
-`tools/coldread.py traits secret-of-the-silver-blades` finds the same two
+`tools/c64/coldread.py traits secret-of-the-silver-blades` finds the same two
 immediates by pattern. And `SAVEDBASH` on the shipped `SILVER-6` side holds a
 party whose ids are this table's throughout — GUY DE VALOIS, a paladin, 45;
 PAINE, a ranger, 105; MALACHITE, a dwarf, 26 and 47 in slots 0 and 1 and no
@@ -491,7 +491,7 @@ see `docs/70-driving-the-game.md`.**
 | | |
 |---|---|
 | **Never leave a checkpoint armed when the socket closes** | VICE re-enters the monitor on a connection that is gone, freezes, and reads nothing new. Only a `pkill` recovers it. Delete every checkpoint at the end of every experiment |
-| **One binary-monitor client at a time** | A second connection is accepted and then never answered. `automap` and `tools/session.py` cannot both be live |
+| **One binary-monitor client at a time** | A second connection is accepted and then never answered. `automap` and `tools/c64/session.py` cannot both be live |
 | **Connecting stops the machine; resuming costs ~14.3 ms of extra emulated time** | Per `resume()`, not per byte. Batch a poll into one resume; the interval is a speed dial |
 | **Match responses by request id** | VICE interleaves unsolicited `STOPPED` events; a naive reader silently returns the *previous* request's data |
 | **RAM under I/O needs the `ram` bank** | Query `BANKS_AVAILABLE`; on this build `ram` is bank 1 |

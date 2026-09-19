@@ -58,7 +58,8 @@ sys.path.insert(0, str(ROOT))
 from automap import combatlog, rolls  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from automap.screen import band  # noqa: E402
-from tools import overlay, scratch  # noqa: E402
+from tools import scratch  # noqa: E402
+from tools.c64 import overlay  # noqa: E402
 
 #: Where `SPELLN00` is loaded, and the shape of its pointer table.
 SPELLN_LOAD = 0xAF00
@@ -206,7 +207,7 @@ def _combatant_names(m) -> dict[int, str]:
 
 def drive(args) -> int:
     """Boot, find a fight, and poll the message panel as the window does."""
-    from tools import session as S
+    from tools.c64 import session as S
 
     out = pathlib.Path(
         args.out or scratch.scratch_dir("monstermsg") / "fight.jsonl")

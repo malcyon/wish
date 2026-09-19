@@ -107,7 +107,7 @@ the call, with no message.
 
 ### Watched, six characters, one save
 
-`tools/dualclassagain.py dos --game CURSE --party <a Curse save you dual-classed a character in>`
+`tools/c64/dualclassagain.py dos --game CURSE --party <a Curse save you dual-classed a character in>`
 loads a save of that kind; the one measured here was the save DEMELTINA was dual-classed in on `#234 (A dual-classed Curse or Silver Blades character converted to DOS loses the class he trained out of)` and photographs the
 party menu once per character, moving the roster highlight with `End`. The
 records were read at `goldbox/dos_port.py`'s own offsets from the same files.
@@ -236,12 +236,12 @@ which that session did load, fail the same way, and the attach itself is proven
 working because `ADD CHARACTER TO PARTY` asks for `INSERT SIDE # 1` once the
 save disk is in the drive. `GEN $1F42` is the load and `$3159` is what fails;
 nobody has read `$3159`. The whole list of what was tried is in
-`tools/dualclassagain.py`'s docstring.
+`tools/c64/dualclassagain.py`'s docstring.
 
 **Gateway to the Savage Frontier** carries the same store (`GEN $23D3`, from
 `#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the dual-class slot)`) and its gate was not read. The question asked about two titles.
 
 **What the C64 does when the gate is removed** is unmeasured.
-`tools/dualclassagain.py c64 --gate-off` writes `NOP NOP` over `GEN $2396` and
+`tools/c64/dualclassagain.py c64 --gate-off` writes `NOP NOP` over `GEN $2396` and
 would answer it; the interest is only in confirming that the branch is what
 produces the message, since the state it would create is one no player reaches.

@@ -5,7 +5,7 @@
 third of three, because a boot is the one part of driving a Gold Box title
 that is genuinely per-release.  Everything below the title screen -- the
 monitor, the keyboard, the screen reader, the menu walker, the disk-prompt
-answerer -- is `tools/session.py`'s and is shared.
+answerer -- is `tools/c64/session.py`'s and is shared.
 
 **The boot and the prompts are `tools/ssbwarp.py`'s already**, measured for
 `#20 (Build an area table for Silver Blades)` over eight sessions, so this
@@ -19,7 +19,7 @@ Blades DOS save into a C64 one, which the importer refuses today)` step 3).
         --out SSBD.D64
     tools/ssbrun.py --pool 4 --save SSBD.D64 --out RUNDIR
 
-Then drive it with `POR_CMD_PORT=65<slot> tools/porcmd screen`, exactly as
+Then drive it with `POR_CMD_PORT=65<slot> tools/c64/porcmd screen`, exactly as
 for the other two titles.  `--watch` launches and serves with no boot, for
 reading a screen nothing recognises.
 
@@ -49,7 +49,7 @@ from tools import (  # noqa: E402
     gamedisks,
     ssbwarp,
 )
-from tools import session as por  # noqa: E402
+from tools.c64 import session as por  # noqa: E402
 
 
 def run(argv: list[str] | None = None) -> None:

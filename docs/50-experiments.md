@@ -104,7 +104,7 @@ Two consequences beyond convenience:
 Feedback channel is unaffected: screenshots come through the MCP and memory
 through the binary monitor, neither of which depends on the display.
 
-Baked into `tools/porlaunch.sh`, which the instance pool launches. It was
+Baked into `tools/c64/porlaunch.sh`, which the instance pool launches. It was
 `rungame.sh`, also in `tools/`, until that script was deleted for killing every emulator
 on the machine by name (#143 (rungame.sh kills every emulator by name and takes Donald's own ports), title paraphrased because the original names the deleted path).
 
@@ -1917,7 +1917,7 @@ and nobody could say what they were.
 specimen can be trusted, and what the section above never did. The roster block
 is resident at `$6C00`–`$6C1F` while the game runs (`LIBRARY $3189`/`$319A` copy
 it in and out of `$8300 + N*$20`), so the question is which overlays name
-`$6C03` and its neighbours. `tools/absrefsweep.py pool-of-radiance 6C00 6C1F`
+`$6C03` and its neighbours. `tools/c64/absrefsweep.py pool-of-radiance 6C00 6C1F`
 over all 564 files answers it in one command.
 
 **Result 1. Three references, and none of them is to a single byte.**
@@ -1944,7 +1944,7 @@ $161F  LDY #$50 / LDX $6B20,Y / BEQ + / JSR $1751 / TAX / INC $6C02,X / DEY / BP
 ```
 
 `$6B20` is the resident record's `0x020` and `#$50` is its eighty-first slot,
-the same immediate `tools/memorisedwidth.py` reads the field's width from.
+the same immediate `tools/c64/memorisedwidth.py` reads the field's width from.
 `$1751` is `LDA #$01 / CPX #$16 / ADC #$00 / CPX #$24 / ADC #$00 / CPX #$38 /
 ADC #$00`, so the level is `1 + (id≥22) + (id≥36) + (id≥56)` — which is
 `goldbox/spells.py`'s `_GROUPS_POOL` boundaries, arrived at from the spell names
@@ -1967,7 +1967,7 @@ evidence. The evidence is the absence of a writer.
 **Result 4. Watched happening, at no emulator cost.** `cited/p235c64/run1
 roster.jsonl` — the `#235 (Two unattributed DOS byte ranges in the combat tail
 are dropped converting to C64, and nobody knows what they hold)` Slums ambush on
-`PORSAVE13`, driven by `tools/statusdrive.py`, which samples the whole roster
+`PORSAVE13`, driven by `tools/c64/statusdrive.py`, which samples the whole roster
 page before the fight, on every turn and after it. Nobody had read these four
 bytes out of it.
 
@@ -1983,7 +1983,7 @@ whose stored value disagreed with the recompute, landing on the recomputed
 value. The save the engine wrote at the end of that fight carries `1 1 3`.
 
 **Result 5. A census, and the one number that carries it.**
-`tools/rosterspellcount.py` compares stored against recomputed for every
+`tools/c64/rosterspellcount.py` compares stored against recomputed for every
 occupied roster block it can find.
 
 | corpus | blocks | nothing memorised | agree | all-zero | partly behind | **higher than the list** |
@@ -2711,7 +2711,7 @@ differ between it and ours. No signal survives that much noise.
 **One save inside a different area.** Save in New Phlan, walk into the slums,
 save again. Two disks differing by one deliberate act, and the diff is the answer.
 
-This is now runnable without Donald, because `tools/walkrun.py` drives the game
+This is now runnable without Donald, because `tools/c64/walkrun.py` drives the game
 end to end and `drive/walks/` (scratch, deleted) already held a corpus generated that way. The
 route out of New Phlan into the slums is longer than anything driven so far, and
 the training-hall trigger at (6,2) has to be avoided, but neither is a blocker.
@@ -3108,7 +3108,7 @@ behind the party.
 
 Negative result worth having: **VICE never serves a second binary-monitor
 connection while the first is open.** It accepts the TCP connection and then
-ignores it. So `automap` and `tools/session.py` cannot both be live.
+ignores it. So `automap` and `tools/c64/session.py` cannot both be live.
 
 
 ## There is no training-hall wedge, and it was never (6,2)
@@ -3515,7 +3515,7 @@ where is the bit the combat menu's QUICK sets.
 ### The setup
 
 `drive/SLUMS.D64` (scratch, deleted), six characters at (15,4) in the slums. VICE launched
-into its own Xephyr on `:8` — **not** `tools/porlaunch.sh`, which `pkill`s
+into its own Xephyr on `:8` — **not** `tools/c64/porlaunch.sh`, which `pkill`s
 unconditionally — and shut down through `CMD_QUIT` and the two process ids it
 started, so nothing else on the machine was touched.
 
@@ -4353,7 +4353,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   socket.** Thirty XTEST `Right` presses through a `ViceTarget` moved nothing;
   the first press after it closed moved the highlight. So a driver that both
   watches and types must **connect, read, close** for every poll, the way
-  `tools/session.py` does — which is also why `automap` and a driving script
+  `tools/c64/session.py` does — which is also why `automap` and a driving script
   cannot be the same process. Two smaller ones, both of which cost an hour:
   a `press any key` prompt needs a **0.25 s hold**, not the 0.10 s the menus
   take; and answering `INSERT SIDE # n` needs the image **re-attached even
@@ -5767,7 +5767,7 @@ that is byte for byte what it leaves.
   for `SAVE CURRENT GAME` never finds it. `EXIT` in the list returns to the
   menu.
 * **`SAVE CURRENT GAME` puts up `SAVE GAME: YES NO`** on the command bar, and
-  `tools/session.py`'s `handle_prompt` does not answer it. The first run
+  `tools/c64/session.py`'s `handle_prompt` does not answer it. The first run
   exited cleanly having written nothing and reported "0 bytes differ" as
   though the engine had made no change.
 
@@ -6500,7 +6500,7 @@ level. One of the two readings is wrong, or they are about different things.
 
 **Method.** Two censuses and one specimen count, no emulator.
 
-1. `tools/recordsweep.py` — every absolute-mode instruction in every file on a
+1. `tools/c64/recordsweep.py` — every absolute-mode instruction in every file on a
    title's own disks whose operand lands on a chosen record byte. The record
    sits at a fixed address while an overlay runs (`$6B00` for Pool of Radiance,
    `$7C00` for the five later titles), so the operand identifies the byte
@@ -6532,11 +6532,11 @@ least interesting possible reason.
 through `(pointer),Y` would not show up. The first run of this check was a
 script that was not kept, so `#230 (The indirect half of a record-offset
 census cannot be rerun, because its script was never kept)` gave
-`tools/recordsweep.py` a `--indirect` flag beside its absolute-mode one and
+`tools/c64/recordsweep.py` a `--indirect` flag beside its absolute-mode one and
 reran it:
 
-    tools/recordsweep.py --game pool --offset 0xB9 --offset 0xBA --indirect
-    tools/recordsweep.py --game curse --offset 0xB9 --offset 0xBA --indirect
+    tools/c64/recordsweep.py --game pool --offset 0xB9 --offset 0xBA --indirect
+    tools/c64/recordsweep.py --game curse --offset 0xB9 --offset 0xBA --indirect
 
 Scanning `LDY #$B9`/`LDY #$BA` followed within ten bytes by an
 indirect-indexed opcode across 589 Pool of Radiance files and 412 Curse files
@@ -6771,7 +6771,7 @@ address down as `$1383`, which is the same instruction at the overlay base
 `$0800` rather than at `LIBRARY`'s resident `$2DC8` — the difference is
 `$25C8`, and both files' bases are in `docs/116-second-game.md`.
 
-`LIBRARY` is resident at **`$2C48`**, and `tools/d6502.py` takes the address
+`LIBRARY` is resident at **`$2C48`**, and `tools/c64/d6502.py` takes the address
 of file byte 0 rather than skipping the PRG header — so pass it a headerless
 image, or every address in the listing is two too high. The first reading of
 this routine had `$3764 LDA $3651,X` where the machine has `$3766`.
@@ -6816,7 +6816,7 @@ preparation is the only thing that does it.
 
 ### The measurement
 
-`tools/c64strength.py`, one boot, `cited/277/run3`. The same DOS specimen
+`tools/c64/c64strength.py`, one boot, `cited/277/run3`. The same DOS specimen
 converted into four slots of one party — `WISH-SPEC-elf6`, an elf fighter with
 18/75 rolled in DOS Pool of Radiance's own creation screens — differing only in
 `0x0E3` and in whether the roster block was spoiled first. `PORSAVE13.D64`'s
@@ -7134,7 +7134,7 @@ left are caches an edit left behind, which is what the check is for.
 
 **Curse and Silver Blades were open here and are now settled** --
 `docs/210-the-later-titles-dos-thac0.md` has both tables, their addresses and
-the whole mechanism, and `tools/laterthac0.py` reads them. The paragraph this
+the whole mechanism, and `tools/c64/laterthac0.py` reads them. The paragraph this
 replaces said their records contradicted their own tables and named a driven
 training as the experiment. The answer is the one that experiment would have
 given: **the 40 is a creation or an import value nothing has refreshed, and
@@ -7251,7 +7251,7 @@ its last index, then `add di, ax`. Scan `POOLRAD/GAME.OVR` for every
 look back 90 bytes for the `cmp byte [bp-n], imm` that guards it. Repeat in
 Curse's, Silver Blades' and Pools of Darkness' overlays, where our table's
 widths were measured a different way and can act as controls. On the C64,
-`tools/memorisedwidth.py` already reads the count-down immediate out of each
+`tools/c64/memorisedwidth.py` already reads the count-down immediate out of each
 title's `CAMP`.
 
 **Result.** REFUTED, and the truncation was ours.
@@ -7531,7 +7531,7 @@ No fourth copy writes `$4BE0 + slot*$24`. The complete reachable call graph
 of the less obvious helper, `$3729`, contains 391 decoded instructions,
 15 distinct call targets, no unresolved jump and no indirect store; every
 store falls outside the icon table. All 391 instruction mnemonics and sizes
-agree between `tools/d6502.py` and Capstone 5.0.7. The small `$3ED2` routine
+agree between `tools/c64/d6502.py` and Capstone 5.0.7. The small `$3ED2` routine
 writes only the strength-derived byte `$6BE2`.
 
 **CONFIRMED: saving and loading preserve that inherited value.**

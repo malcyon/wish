@@ -5023,7 +5023,7 @@ HEADER_ZEROED: tuple[tuple[int, int], ...] = (
 #:     LDA $6BFE / LDX #$0E ...  ; record 0x0FE into cache slot 14, HEAD<xx>
 #:     LDA $6BFF / LDX #$0D ...  ; record 0x0FF into cache slot 13, BODY<xx>
 #:
-#: Measured, VICE, `tools/c64portraitprobe.py`: PORSAVE12 with `$49FF = $01`
+#: Measured, VICE, `tools/c64/c64portraitprobe.py`: PORSAVE12 with `$49FF = $01`
 #: fetches no portrait art at all and the sheet is blank; the **same image
 #: with this one byte set to `$81`** fetches `$08`/`$07` for BRUTUS and
 #: `$09`/`$02` for MALCYON -- each character's own record -- and draws the

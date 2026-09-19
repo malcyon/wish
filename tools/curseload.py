@@ -112,7 +112,7 @@ def checkpoint_hits(m, number: int) -> int:
     """How many times a checkpoint has fired.
 
     VICE puts the count at bytes 13-16 of the `CHECKPOINT_GET` response;
-    `tools/c64addchar.py` and `tools/traitdrive.py` unpack the same field.
+    `tools/c64/c64addchar.py` and `tools/c64/traitdrive.py` unpack the same field.
     """
     body = m.command(CMD_CHECKPOINT_GET, struct.pack("<I", number))
     return struct.unpack("<I", body[13:17])[0]
@@ -167,7 +167,7 @@ def answer_yes(sess, word: str = "YES", row: int = 24,
     So the walk is XTEST, which Curse does read, and the answer is one
     `press_kernal` and nothing else.
     """
-    from tools.session import span_in  # noqa: PLC0415
+    from tools.c64.session import span_in  # noqa: PLC0415
 
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -331,7 +331,7 @@ def load_saved_game(sess, *, note=None, shot=None, wait: float = 90.0,
     again with `retry=True` after a `failed`: the refusal leaves the question
     up rather than the menu, and this answers whichever of the two is there.
     """
-    from tools import dualclassagain  # noqa: PLC0415
+    from tools.c64 import dualclassagain  # noqa: PLC0415
 
     def say(**kw):
         if note:
@@ -381,7 +381,7 @@ def load_saved_game(sess, *, note=None, shot=None, wait: float = 90.0,
 
 def run(args) -> int:
     from tools import curserun  # noqa: PLC0415
-    from tools import session as por  # noqa: PLC0415
+    from tools.c64 import session as por  # noqa: PLC0415
 
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

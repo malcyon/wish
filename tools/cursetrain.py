@@ -60,7 +60,7 @@ Two subcommands:
     tools/cursetrain.py diff --before <stem> --after <stem> --class cleric
 
         Read a pair of `$7C00`/`$7D00` hex dumps taken with
-        `tools/porcmd peek`, print the field-by-field delta, and replay it
+        `tools/c64/porcmd peek`, print the field-by-field delta, and replay it
         through `goldbox.levelup.plan` -- which is the check that matters:
         every derived field the engine wrote has to come back out of our own
         module.  `--class` may be given more than once, in the order the
@@ -69,7 +69,7 @@ Two subcommands:
 
 ### The recipe, once the session is up
 
-`run` boots and serves; these are the `tools/porcmd` lines that drove eight
+`run` boots and serves; these are the `tools/c64/porcmd` lines that drove eight
 trainings on 2026-09-05, and they are here because working them out is what
 cost the time.
 
@@ -364,7 +364,7 @@ def compare(args) -> int:
 def drive(args) -> int:
     """Stage a slot, boot Curse and serve the command port."""
     from tools import curserun  # noqa: PLC0415
-    from tools import session as por
+    from tools.c64 import session as por
 
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

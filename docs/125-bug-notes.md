@@ -613,7 +613,7 @@ before every fight begins. The wrong value survives only until the party is next
 attacked, and reaches a save disk only if the player saves in between — where it
 shows up as a counter that disagrees with the list, which is the ordinary state
 of that field anyway. `docs/30-savegame-layout.md`,
-`tools/rosterspellcount.py`.
+`tools/c64/rosterspellcount.py`.
 
 ## N21. Pool of Radiance's C64 racial thief table is a byte short
 
@@ -644,7 +644,7 @@ And the C64 engine reads only two of the eight. `DUNGEON $100E` passes the
 address of **open locks** to the party skill check at `$1CB2` in `X`/`Y`, which
 is the `PICK LOCK` menu item; `DUNGEON $1D88 CMP $6BA8` rolls against **move
 silently** in the surprise check. Neither an absolute-mode census of all 589
-distinct Pool of Radiance files (`tools/recordsweep.py --game pool --offset
+distinct Pool of Radiance files (`tools/c64/recordsweep.py --game pool --offset
 A5..AC`), nor the same census `--indirect`, nor a search for the `LDX #lo /
 LDY #$6B` convention finds a reader for the other six. A pointer built some
 other way would not show up, so read that as "none found" rather than "none".

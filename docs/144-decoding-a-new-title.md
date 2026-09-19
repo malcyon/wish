@@ -302,8 +302,8 @@ walls and it looks fine until somebody checks. The apparatus — the nested X
 server, the input timing, the KERNAL-buffer escape hatch, the disk swap through
 the text monitor, the monitor's sharp edges and the full list of what does not
 work — is [70-driving-the-game.md](70-driving-the-game.md), with the three
-layers as working code in `automap/vice.py`, `tools/session.py` and
-`tools/walkrun.py`.
+layers as working code in `automap/vice.py`, `tools/c64/session.py` and
+`tools/c64/walkrun.py`.
 
 **What the validation asserts**, at every step of a scripted route:
 

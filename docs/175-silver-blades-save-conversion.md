@@ -255,7 +255,7 @@ The four saves are in the specimen tree as `ssb-d-engine-resave`,
 saves this project has had.
 
 **The driven route to that resave goes through `Session.save_game()`
-(`tools/session.py`), and it needs both of the game's save-disk prompts
+(`tools/c64/session.py`), and it needs both of the game's save-disk prompts
 answered, not one.** `ENCAMP > SAVE` draws `INSERT YOUR SAVE GAME DISK` /
 `PRESS ANY KEY TO CONTINUE`, the same wording Pool of Radiance and Curse draw
 from camp -- confirmed in the running game and at `SILVER-1.D64` offset

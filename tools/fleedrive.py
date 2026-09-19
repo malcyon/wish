@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run a Pool of Radiance party away from a fight, and read what the game prints.
 
-`tools/session.py` classified two of the engine's three fight outcomes.  The
+`tools/c64/session.py` classified two of the engine's three fight outcomes.  The
 third -- the party running away -- had never been read off a screen, so a
 driven fight that ended in flight came back as `ended` (`#445`).  This drives
 it, through the game's own FLEE.
@@ -71,9 +71,9 @@ from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import savecheck as SC  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -112,7 +112,7 @@ STATUS_WORDS = {0: "(empty)", 1: "OK", 2: "GONE", 3: "DEAD", 4: "DYING",
                 5: "UNCONSIOUS", 6: "RUNNING", 7: "STONED"}
 
 #: The three lines `POST.COM` can print when a fight ends, entries 2, 3 and 4
-#: of its own pointer table -- `tools/session.py`'s, because a second copy of
+#: of its own pointer table -- `tools/c64/session.py`'s, because a second copy of
 #: three strings is a second copy to correct.  `code` re-derives all three off
 #: the player's own disks and needs none of them.
 OUTCOME_LINES = S.OUTCOME_LINES
@@ -146,7 +146,7 @@ TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
 def overlay(name: str, root: str) -> tuple[str, int, bytes]:
     """`(disk, declared load address, body)` for a file on any disk in `root`.
 
-    `tools/overlay.py` does this for Pool of Radiance and finds its disks by
+    `tools/c64/overlay.py` does this for Pool of Radiance and finds its disks by
     the `POOL*` glob, which is no use for the other two titles' names; this
     takes a directory and reads every image in it.
     """
@@ -274,7 +274,7 @@ def read_code(roots: dict[str, str]) -> int:
 
 
 class Log(SC.Log):
-    """`tools/savecheck.py`'s log, with a `quiet` flag."""
+    """`tools/c64/savecheck.py`'s log, with a `quiet` flag."""
 
     def __init__(self, out: pathlib.Path, quiet: bool = False):
         self.quiet = quiet

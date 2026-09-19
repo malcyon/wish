@@ -1,6 +1,6 @@
 """The third fight outcome, and the tactic that produced it.
 
-`tools/session.py` classified two of the engine's three end-of-fight lines
+`tools/c64/session.py` classified two of the engine's three end-of-fight lines
 until 2026-09-08. The third, `THE PARTY RUNS AWAY`, was read off a driven
 flight that night -- `cited/445/run2`, `tools/fleedrive.py drive
 --no-wound`, where ROLAND walked to the edge of the combat map, stepped off

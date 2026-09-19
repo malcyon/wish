@@ -91,7 +91,7 @@ C64_DISKS = ("pool-of-radiance", "curse-of-the-azure-bonds",
 #: measured title shares: each game's own `CAMP` walks its list with a
 #: count-down loop whose immediate is the last index, so Pool of Radiance has
 #: 81 slots at `0x020`, Curse 69 at `0x020` and Silver Blades 74 at `0x01B`.
-#: All three CONFIRMED and read out of the disks by `tools/memorisedwidth.py`.
+#: All three CONFIRMED and read out of the disks by `tools/c64/memorisedwidth.py`.
 C64_MEMORISED = {"pool-of-radiance": (0x020, 81),
                  "curse-of-the-azure-bonds": (0x020, 69),
                  "secret-of-the-silver-blades": (0x01B, 74)}

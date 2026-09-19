@@ -16,7 +16,7 @@ data rather than reads of code, and this puts each one beside the table:
     tools/traitnames.py secret-of-the-silver-blades --monsters
 
 **The spell audit** reads the per-spell record through
-`tools.traitquery.spell_effects` -- `ECL65 +0` at seven bytes a record in Pool
+`tools.c64.traitquery.spell_effects` -- `ECL65 +0` at seven bytes a record in Pool
 of Radiance, `COMBAT2 +2732` and `+2937` at nine in the later two -- and prints
 every code one of the title's own spells writes, the spells that write it, the
 combat message beside it, and what `goldbox/traits.py` calls that code today.
@@ -39,7 +39,7 @@ route most of `NAMES` was built on; a code landing on a creature the name
 cannot describe is a refusal, and a code no record carries is neither.
 
 Neither route names a code that no spell writes and no creature carries.
-`tools/traitquery.py --handlers` is the one that does, by reading the routine
+`tools/c64/traitquery.py --handlers` is the one that does, by reading the routine
 the code dispatches, and it is the tie-breaker when these two disagree.
 
 Nothing here needs an emulator or a save: the disks are opened read-only
@@ -59,10 +59,11 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import spells, traits  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import gamedisks, traitquery  # noqa: E402
+from tools import gamedisks  # noqa: E402
+from tools.c64 import traitquery  # noqa: E402
 
 #: The ten trait slots, at C64 record offset 0x0AD -- `docs/171-c64-trait-slots.md`.
-#: `tools/traitquery.py` locates the engine's own `LDX #$09` scan over the same
+#: `tools/c64/traitquery.py` locates the engine's own `LDX #$09` scan over the same
 #: ten bytes of the staged record, in each title, which is what says the offset
 #: holds for a title other than Pool of Radiance.
 TRAIT_SLOTS = 0x0AD

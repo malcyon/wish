@@ -8,7 +8,7 @@ was `V` for Pool of Radiance and `U` for both later titles until 2026-09-08.
 sentence: *"round-trip an item edit and confirm it in the game"*.
 
 **The confirming half of that cannot be a test**, because it needs the running
-game. `tools/inventorycheck.py` is the run and the two issues carry what the
+game. `tools/c64/inventorycheck.py` is the run and the two issues carry what the
 game drew, on VICE pool slot 7, 2026-09-08:
 
 | | Curse, `curse-party-with-items` | Silver Blades, `ssb-d-engine-resave` |
@@ -17,7 +17,7 @@ game drew, on VICE pool slot 7, 2026-09-08:
 | edited | 7 rows, 3 mirrors, `9 SILVER MIRROR`, `TWO-HANDED SWORD` | 10 rows, `9 ARROW +1`, `CANARY` |
 
 What is asserted here is the half a machine with no emulator can check: that
-`tools/inventorycheck.stage` puts those bytes in the item area the game then
+`tools/c64/inventorycheck.stage` puts those bytes in the item area the game then
 read, and that it puts them nowhere else.
 
 Six of the nine tests need the specimen tree, which CI has none of, **and the
@@ -39,7 +39,7 @@ from goldbox import c64_port, c64_save
 from goldbox.d64 import D64, split_load_address
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER
 from tests import gamedata
-from tools import inventorycheck
+from tools.c64 import inventorycheck
 
 #: The two specimens, the character on each who carries anything, and the
 #: `tools/gamedisks.py` key that finds that title's sides.

@@ -54,7 +54,7 @@ it out, which is what a person compares the running game against.  Bytes
 matching is necessary and not sufficient (`.claude/rules/conversions.md`):
 an AC of 9 displayed as 51, a dropped combat tail and a garbage weapon line
 are three faults this project has shipped that passed every byte-level check
-that existed.  `tools/c64sheet.py` prints the same shape off the `.d64` this
+that existed.  `tools/c64/c64sheet.py` prints the same shape off the `.d64` this
 writes, so the two can be read side by side.
 """
 from __future__ import annotations
@@ -347,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-write", action="store_true",
                    help="print only; build no disk")
     p.add_argument("--against", default=None,
-                   help="a tools/savecheck.py log of the disk this writes; "
+                   help="a tools/c64/savecheck.py log of the disk this writes; "
                         "every VIEW sheet in it is compared with the Amiga "
                         "record, value by value")
     args = p.parse_args(argv)
@@ -404,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
         print(report.summary() if hasattr(report, "summary") else "")
     if args.against:
         if args.to != "c64":
-            raise SystemExit("--against reads a tools/savecheck.py log, "
+            raise SystemExit("--against reads a tools/c64/savecheck.py log, "
                              "which is the C64 run's; a DOS run's sheets are "
                              "tools/dossheetread.py's screenshots")
         import json

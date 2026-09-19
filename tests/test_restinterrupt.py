@@ -18,7 +18,7 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from tests.gamedata import disk_dir, game_file, needs_disks  # noqa: E402
-from tools import c64restinterrupt as R  # noqa: E402
+from tools.c64 import c64restinterrupt as R  # noqa: E402
 
 
 def _root() -> str:
@@ -64,7 +64,7 @@ def test_no_overlay_ever_stores_a_non_zero_interval():
     would mean nothing. Swept over every distinct file of the eight sides.
     """
     from goldbox import c64_port
-    from tools import absrefsweep
+    from tools.c64 import absrefsweep
 
     game = next(g for g in c64_port.GAMES if g.key == "pool-of-radiance")
     _, hits = absrefsweep.sweep(_root(), game, R.INTERVAL, R.INTERVAL)

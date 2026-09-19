@@ -185,7 +185,7 @@ class C64Machine:
         `automap.target` folds them as `c[2] * 60 + c[1] * 10 + c[0]`, which
         at `+$C6` would be minute tens times sixty and nonsense. The two
         constants sat a byte apart with no explanation until the tick loop was
-        read in all three titles -- `tools/c64clock.py`, and
+        read in all three titles -- `tools/c64/c64clock.py`, and
         `docs/30-savegame-layout.md`.
         """
         return self.save_load_address + c64_port.SHOWN_CLOCK_OFFSET

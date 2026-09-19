@@ -32,7 +32,7 @@ what the guard was found not to be enough. `#375` is where that gets settled.
 With the flag unset, `backends()` never includes it: no menu entry, no probe,
 no delay and no error for somebody with no Ultimate on the network, and the
 application behaves as though the device is not there at all. This does not
-touch `tools/c64u*.py`, which are how the hang itself gets investigated and
+touch `tools/c64/c64u*.py`, which are how the hang itself gets investigated and
 stay unaffected by the flag.
 """
 

@@ -50,7 +50,7 @@ what a value drawn once and never rewritten looks like.
 
 ## What reads it: nothing
 
-`tools/recordsweep.py`, record at `$6B00`, every PRG on every side:
+`tools/c64/recordsweep.py`, record at `$6B00`, every PRG on every side:
 
 | census | files | references to `+0x0E6`/`+0x0E7` |
 |---|---|---|
@@ -98,7 +98,7 @@ the tiebreak.
 
 ## In the running game
 
-`tools/c64addchar.py`, one boot per run on a pool slot, off a copy of
+`tools/c64/c64addchar.py`, one boot per run on a pool slot, off a copy of
 `PORSAVE.D64` edited in two ways: the `\x01MALCYON` export rewritten to hold
 BRUTUS's record under MALCYON's name (same name as a party member, a
 different character, pair `57 D1` against the party's `E6 C3`), and a new

@@ -19,7 +19,7 @@ at its overall level.
 
 Everything below that reads a DOS record reads the player's own files at run
 time -- the specimen tree and the DOS archives, the same two places
-`tools/laterthac0.py`'s own `records()` walks -- and skips cleanly on a
+`tools/c64/laterthac0.py`'s own `records()` walks -- and skips cleanly on a
 machine that has neither.  No game bytes are committed.
 """
 
@@ -558,7 +558,7 @@ KNOWN_MISSES = {
 
 def _dos_records(title: str):
     """Every DOS record of one title this machine has: the specimen tree
-    and the DOS archives, the same two places `tools/laterthac0.py records`
+    and the DOS archives, the same two places `tools/c64/laterthac0.py records`
     walks."""
     tree = pathlib.Path(os.environ.get(
         "WISH_SPECIMENS", pathlib.Path.home() / "wish-specimens"))

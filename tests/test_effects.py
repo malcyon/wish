@@ -9,7 +9,7 @@ import pytest
 from gamedata import game_disk
 
 from goldbox import effects
-from tools import coldread
+from tools.c64 import coldread
 
 # --- S1: the port, and the two new writers -----------------------------------
 

@@ -20,7 +20,7 @@ sys.path.insert(0, ".")
 from goldbox.d64 import split_load_address  # noqa: E402
 from tests import gamedata  # noqa: E402
 from tools import cursethac0  # noqa: E402
-from tools.recordsweep import hits  # noqa: E402
+from tools.c64.recordsweep import hits  # noqa: E402
 
 #: `LINKER` puts an overlay's payload at `$0800` and `LIBRARY`'s at `$2DC8`
 #: in Curse and Silver Blades alike (`docs/40-memory-map.md`).  The PRG
@@ -310,7 +310,7 @@ def test_clear_bar_does_nothing_once_a_fight_has_started():
 
 
 def test_clear_bar_reaches_a_script_bar_on_a_session_with_no_press_bar():
-    """`tools/laterbattle.py --title ssb` crashed here (`#569`).
+    """`tools/c64/laterbattle.py --title ssb` crashed here (`#569`).
 
     `SSBSession` (`tools/ssbwarp.py`) carries no `press_bar` -- only
     `CurseSession` (`tools/curserun.py`) ever did, and it was a thin wrapper

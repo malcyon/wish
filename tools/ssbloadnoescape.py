@@ -44,7 +44,7 @@ from tools import (  # noqa: E402
     specimens,
     ssbwarp,
 )
-from tools import session as S  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 from tools.cursethac0 import checkpoint_hits  # noqa: E402
 
 OUT = scratch.scratch_dir("ssbloadnoescape")

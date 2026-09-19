@@ -206,7 +206,7 @@ read back as the engine's own arithmetic (`.claude/rules/testing.md`).
 * **A character set loaded from disk.** The `55`/`AA` byte patterns are
   multicolour glyph rows, but nothing loads at `$6300`: the loader table
   puts `SECSET` and the `WALLSET` pieces at `$BA00`-`$BFFF` in Curse.
-* **A table the engine indexes.** `tools/absrefsweep.py
+* **A table the engine indexes.** `tools/c64/absrefsweep.py
   curse-of-the-azure-bonds 6300 66FF` finds 112 absolute operands into the
   window over 411 files, and every one is a mis-phased byte pair (`8D 63` in
   `STA $xx63`, and the like) or bitmap data. The buffer is reached only
@@ -246,4 +246,4 @@ map, for whoever owns those files:
 |---|---|
 | `tools/cursepic.py` | `frames PIC [--png DIR]` decodes a picture and renders each frame; `match SAVE [PIC]` says which frame a save's region holds and exits 0 only on a byte-for-byte match |
 | `tools/cursepicrun.py` | the driven session above, with its counting checkpoints and the one-shot stop on the first store |
-| `tools/absrefsweep.py` | the census that showed no overlay names the window |
+| `tools/c64/absrefsweep.py` | the census that showed no overlay names the window |

@@ -1,4 +1,4 @@
-"""`tools/bamsweep.py`'s byte-range comparison, on a buffer built here rather
+"""`tools/c64/bamsweep.py`'s byte-range comparison, on a buffer built here rather
 than off a disk -- `check()` and `describe()` are pure byte matching and need
 no disk image. `pytest tests/test_bamsweep.py` runs with zero skips.
 
@@ -8,11 +8,11 @@ those counts are measured against, so an edit that shifts a byte range shows
 up here rather than only in a number nobody rechecks.
 
 The precedent is `tests/test_recordsweep.py`, which tests
-`tools/recordsweep.py`'s `hits()` and `indirect_hits()` the same way.
+`tools/c64/recordsweep.py`'s `hits()` and `indirect_hits()` the same way.
 """
 from __future__ import annotations
 
-from tools.bamsweep import FIXED, check, describe
+from tools.c64.bamsweep import FIXED, check, describe
 
 # --------------------------------------------------------------------------
 # describe() -- the fix for "3241" where the header means "2A"

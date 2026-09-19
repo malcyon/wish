@@ -478,7 +478,7 @@ def _unconscious_specimen():
     every `.d64` on this machine found 0 in 70 roster slots and 1 in 234 and
     nothing else, which is why this had to be made rather than found.
 
-    `tools/statusdrive.py --save PORSAVE13.D64 --victim 5` regenerates it.
+    `tools/c64/statusdrive.py --save PORSAVE13.D64 --victim 5` regenerates it.
     """
     import pathlib
     import sys
@@ -503,7 +503,7 @@ def test_the_byte_the_engine_wrote_reads_as_unconscious_and_out_of_play():
     path = _unconscious_specimen()
     if path is None:
         pytest.skip("no porunconscious1 specimen; "
-                    "tools/statusdrive.py --victim 5 makes one")
+                    "tools/c64/statusdrive.py --victim 5 makes one")
     _, body = split_load_address(D64.open(str(path)).read_file("SAVEDGAME1"))
     roster = [body[i * savegame.ROSTER_STRIDE] for i in range(8)]
     assert roster == [1, 1, 1, 1, 1, 0x85, 0, 0], roster

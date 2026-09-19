@@ -181,7 +181,7 @@ Not Curse-specific. `WISH-SPEC-por-party-twin-pair.d64`'s `SAVEDGAME0` entry
 carried the identical fault for the identical reason, and was closed by the
 same `#298 (A save disk copied out of an emulator slot before the drive
 closes the file cannot be loaded by the game)` repair on 2026-09-08
-(`$16642` `02`→`82`, `$1665E` `00`→`1D`). `tools/splatload.py` is Pool of
+(`$16642` `02`→`82`, `$1665E` `00`→`1D`). `tools/c64/splatload.py` is Pool of
 Radiance's counterpart to `tools/curseload.py`, driving the front end that
 title actually uses.
 
@@ -200,7 +200,7 @@ leaving a working menu behind an error box: the refusal replaces the whole
 party menu with the `SAVED GAME NOT FOUND!` box, and that same party menu
 carries `BEGIN ADVENTURING` **before** a load as well as after one — so a
 driver that answers `TRY AGAIN ABORT LOAD` and then waits for that label has
-a success test a refused load can pass. `tools/splatload.py` reads `$03F1`
+a success test a refused load can pass. `tools/c64/splatload.py` reads `$03F1`
 instead of trusting the screen.
 
 Driven both ways in pool slot 2 on 2026-09-08, one flag apart: unrepaired
@@ -230,7 +230,7 @@ again with `retry=True`.
 Two things about the front end that cost time before this and are settled:
 the party menu's highlight is the **colour RAM at the label's own column**
 rather than a row's dominant colour, so `Session.select_row` never starts the
-walk (`tools/dualclassagain.py` has the reader), and Return is read from the
+walk (`tools/c64/dualclassagain.py` has the reader), and Return is read from the
 KERNAL buffer rather than from XTEST while the arrows are read from XTEST.
 
 ## What is not settled

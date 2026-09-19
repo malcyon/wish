@@ -3,7 +3,7 @@
 
     tools/areas/geowalk.py --port 6563 --geo GEO01 --title curse 6 12 --to 5 5
 
-`tools/session.py`'s `walk` takes one step at a time and verifies each against
+`tools/c64/session.py`'s `walk` takes one step at a time and verifies each against
 the status line, which costs about forty seconds a step: right for measuring a
 map, far too slow for crossing one.  This plans the whole route first --
 breadth-first over `Geo.is_passable`, so it never asks the game to walk

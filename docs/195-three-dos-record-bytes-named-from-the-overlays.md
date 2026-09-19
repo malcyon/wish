@@ -191,7 +191,7 @@ This section settled the UNKNOWN the rest of the page left -- what a plain
 companion's control byte holds -- and it needed no companion and no emulator.
 The C64 port answers it, because **C64 `0x0B8` is the same field as DOS
 `0x084`, with the same encoding**, and the two engines can be read against each
-other. `tools/recordsweep.py --game pool --offset 0xB8 --context` is the C64
+other. `tools/c64/recordsweep.py --game pool --offset 0xB8 --context` is the C64
 census and `tools/dosdis16.py` the DOS listing.
 
 | what happens | Pool of Radiance, C64 | Pool of Radiance, DOS |

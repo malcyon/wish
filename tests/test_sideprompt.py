@@ -118,7 +118,7 @@ def test_waiting_for_the_world_puts_the_disk_in_rather_than_pressing_return():
     """The run that failed: the prompt on the screen, and nothing attached."""
     sess = FakeSession([screen_of(SIDE_PROMPT), screen_of(WORLD_BAR)])
     # `handle_prompt` builds this with `os.path.join(self.here, ...)`
-    # (#546 (tools/session.py's Session base class still builds disk/log
+    # (#546 (tools/c64/session.py's Session base class still builds disk/log
     # paths with a hardcoded forward slash, the same bug Windows CI just
     # caught in its subclasses)), which joins with `\` on Windows even
     # though `self.here` already contains a `/` -- so the expectation has

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A driven Curse of the Azure Bonds session, on a pooled VICE instance.
 
-`tools/session.py` drives Pool of Radiance: its `boot()` knows that game's
+`tools/c64/session.py` drives Pool of Radiance: its `boot()` knows that game's
 fastloader prompt, its main menu and the address its copy protection compares
 at, and `stage_disks` copies `POOL1.D64`-`POOL8.D64`.  None of that is Curse's.
 What *does* transfer is everything below the title screen -- the monitor, the
@@ -24,7 +24,7 @@ Usage:
     tools/curserun.py --pool 3            claim slot 3, stage, boot, serve
     tools/curserun.py --pool 3 --watch    same, but do not attempt the boot
 
-Then drive it with `POR_CMD_PORT=6563 tools/porcmd screen`, exactly as for
+Then drive it with `POR_CMD_PORT=6563 tools/c64/porcmd screen`, exactly as for
 Pool of Radiance.
 """
 from __future__ import annotations
@@ -40,7 +40,7 @@ TOOLS = str(pathlib.Path(__file__).resolve().parent)
 sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 
 from goldbox.d64 import D64  # noqa: E402
-from tools import session as por  # noqa: E402
+from tools.c64 import session as por  # noqa: E402
 
 SIDES = "ABCDEF"
 
@@ -580,7 +580,7 @@ def main(argv: list[str] | None = None) -> int:
     """`--pool [N]` claims slot *N*, or the next free one with no number.
 
     Everything below the title screen -- the monitor, the keyboard, the
-    screen reader -- is `tools/session.py`'s; what this adds is Curse's own
+    screen reader -- is `tools/c64/session.py`'s; what this adds is Curse's own
     sides, save disk and start-up check, in the class above.
     """
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])

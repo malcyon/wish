@@ -19,14 +19,14 @@ codes finds nothing, which is what a first pass reported.
 
 **The window puts square `(x, y)` at row `1 + 3 * (y - y0)`, column
 `1 + 3 * (x - x0)`** for a camera at `(x0, y0)`, which `$037E` holds. CONFIRMED
-on six party members in each of three fights; `tools/savecheck.py`'s
+on six party members in each of three fights; `tools/c64/savecheck.py`'s
 `where_drawn` is the one definition.
 
 **The combat character set is at `$D000`**, computed from `$D018` and `$DD00`,
 which is RAM *under* the VIC's I/O registers. A binary-monitor read there
 answers the registers unless it goes through the bank named `ram` --
 `#265 (The combat-icon glyph check reads VIC registers instead of the character
-set, and half of it passes anyway)`, and `tools/vicebankcheck.py` re-measures
+set, and half of it passes anyway)`, and `tools/c64/vicebankcheck.py` re-measures
 the bank numbering. Colour RAM at `$D800` is only reachable *through* I/O, so
 that read stays on the default bank. One read wants each bank and they are
 eight bytes apart.
@@ -104,7 +104,7 @@ the engine fetches them once per turn for whichever character is acting.
 
 ```sh
 tools/iconpoke.py --disk $TMPDIR/SIX.D64        # six different figures
-POR_HEADLESS=1 tools/savecheck.py --disk $TMPDIR/SIX.D64 --fight --icon
+POR_HEADLESS=1 tools/c64/savecheck.py --disk $TMPDIR/SIX.D64 --fight --icon
 ```
 
 `--icon` reads the disk's own eight icon entries and `CHARPIC00` off the

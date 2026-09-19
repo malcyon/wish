@@ -13,7 +13,7 @@ level-1 magic-user or thief -- before a strength penalty of at most -3, so
 nothing the engine computes for anybody reaches it.  A roster block still
 reading `0x0A` on the combat floor is a stored value the fight is using; one
 reading `thac0_base` plus the strength bonus is the engine's own arithmetic
-and the stored byte is dead.  `tools/c64strength.py` spoils Pool of Radiance's
+and the stored byte is dead.  `tools/c64/c64strength.py` spoils Pool of Radiance's
 roster the same way for `#277 (A DOS character converted to the C64 loses the
 strength bonus to hit and damage, because 0x0E3 is written zero)`, and picked
 the same 0x0A.
@@ -68,7 +68,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS as GAME  # noqa: E402
 from goldbox.d64 import D64, attach_load_address, split_load_address  # noqa: E402
 from tools import gamedisks, scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 #: Where `SAVEAZURE` loads, and the two regions inside it this asks about.
 #: The eight 256-byte character slots start `$400` in and the eight 32-byte

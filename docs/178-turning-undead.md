@@ -50,7 +50,7 @@ zero at `0x0A4`.
 
 One save, one byte, two boots, on VICE pool slots 0 and 2 with `PORSAVE13.D64`
 staged into the instance's own directory and the party walked into the Slums
-ambush. `tools/turndrive.py` reads the acting character's name and `$6BA4` out
+ambush. `tools/c64/turndrive.py` reads the acting character's name and `$6BA4` out
 of the working record at `$6B00` in one monitor stop and photographs row 24, so
 every line pairs the byte the engine read with the bar it drew.
 
@@ -202,5 +202,5 @@ and photograph what the game prints.
 | the tables | `goldbox/levels.py`, `_TURN_POWER_POOL`, `_TURN_POWER_CURSE`, `_TURN_POWER_SILVER` |
 | the writer | `goldbox/c64_codec.py`, the turning block of `write` |
 | the census | `tools/turncensus.py` |
-| the running-game run | `tools/turndrive.py` |
+| the running-game run | `tools/c64/turndrive.py` |
 | the tests | `tests/test_turning.py` |

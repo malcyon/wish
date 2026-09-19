@@ -897,7 +897,7 @@ in a driven session)` is where that was measured;
 `docs/70-driving-the-game.md` carries the keys, and the driven form is
 
 ```sh
-tools/savecheck.py --disk $TMPDIR/NEWJ.D64 --slot N --view
+tools/c64/savecheck.py --disk $TMPDIR/NEWJ.D64 --slot N --view
 ```
 
 with `--view` taking no number, which reads every character the panel lists
@@ -913,7 +913,7 @@ status line move with the party.
 
 **D5a.** Walk an **outdoor** party, if the save under test is one. The travel
 grid takes the compass digits rather than `I J K M`, so this is
-`tools/savecheck.py --disk <save> --slot N --walk 1357` -- north, east, south,
+`tools/c64/savecheck.py --disk <save> --slot N --walk 1357` -- north, east, south,
 west, which is a closed box and ends where it began.
 
 *Expect:* `moved=True` on all four, a square that changes on each, and a status
@@ -947,7 +947,7 @@ character gets the icon the game's own character creation writes. *If instead
 a character is a 3x3 block of black hooks*, its combat icon reached the disk as
 zero: screen code 0 is a real glyph and a zeroed icon is not "no icon" (`#57 (Convert the character portrait across ports)`).
 
-`tools/savecheck.py` does D3 to D7 unattended through the instance pool and
+`tools/c64/savecheck.py` does D3 to D7 unattended through the instance pool and
 prints what it read, which is how it was last checked; `--icon` is the D7
 check made mechanical.
 

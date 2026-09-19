@@ -18,7 +18,7 @@ session)`:
   that re-arms itself -- so pressing Return without walking the highlight to
   `EXIT` is a way into a screen a driven run does not get out of.
 
-The reason these are tests is that `tools/savecheck.py` used to step the
+The reason these are tests is that `tools/c64/savecheck.py` used to step the
 party with a `NEXT` that is not on the bar, so every run it drove read the
 first character's sheet and nothing else -- and the faults this project has
 actually shipped, an armour class of 9 displayed as 51, a dropped combat tail

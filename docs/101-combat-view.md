@@ -73,7 +73,7 @@ of them**. Each was derived from that title's own binary and then read off a
 running Curse on 2026-09-08, pool slot 2 -- `#334 (The session driver
 cannot fight in Curse or Silver Blades, and says the party is not in a
 fight while it is standing on the combat floor)`, `cited/334/run5`;
-`tools/latercombat.py` is the table and `tools/session.py` reads a fight
+`tools/c64/latercombat.py` is the table and `tools/c64/session.py` reads a fight
 through it.
 
 | what | Pool of Radiance | Curse and Silver Blades |

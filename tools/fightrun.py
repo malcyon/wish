@@ -41,9 +41,9 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from tools import savecheck as SC  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 #: Where the player keeps the disks, unless `--disks` says otherwise.  Read
 #: only, ever: everything is copied into the slot's directory first.
@@ -56,7 +56,7 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 
 
 #: Claiming a slot and staging the player's disks both live in
-#: `tools/session.py` now: every tool that drives a session needs them, and
+#: `tools/c64/session.py` now: every tool that drives a session needs them, and
 #: this file's copy was one of two.
 claim_slot = S.claim_slot
 
@@ -64,7 +64,7 @@ claim_slot = S.claim_slot
 class Run(SC.Log):
     """One booted session, and the log it writes.
 
-    `SC.Log` is `tools/savecheck.py`'s -- it keeps a second run's log rather
+    `SC.Log` is `tools/c64/savecheck.py`'s -- it keeps a second run's log rather
     than truncating it, and a `say` that a dead console cannot take down with
     it (`#442`).  This class adds only what a fight run needs beyond that:
     `quiet`, and the turn-by-turn record `tactic` and `report` read back.

@@ -176,7 +176,7 @@ def test_the_memory_fallback_is_off_for_a_title_with_no_travel_grid():
 
 @pytest.mark.parametrize("text", ["OUTDOORS", "NORTHWEST", "GATEHOUSE"])
 def test_neither_status_reader_takes_a_word_ending_in_a_facing_letter(text):
-    """`automap.target.RE_STATUS` and `tools/session.py`'s must agree on what
+    """`automap.target.RE_STATUS` and `tools/c64/session.py`'s must agree on what
     is not a facing, or one of the two readers can drift back into the #189
     fault alone. Each word here ends in a real facing letter (S, W, E)."""
     from conftest import load_tools_module

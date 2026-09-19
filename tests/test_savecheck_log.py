@@ -139,7 +139,7 @@ def drive_a_failing_run(tmp_path, monkeypatch, on_shot=None) -> pathlib.Path:
         def stage_writable(src, dest):
             """`#472`'s shared helper, which `run` calls before `Session`.
 
-            This double stands in for the whole of `tools/session.py`, so a
+            This double stands in for the whole of `tools/c64/session.py`, so a
             helper added there has to appear here or `run` dies on an
             `AttributeError` before it reaches the `RuntimeError('boot
             failed')` these tests are about -- which is what happened when
@@ -185,7 +185,7 @@ def test_a_photograph_that_throws_does_not_take_the_traceback_with_it(
 
 @posix_only
 def test_a_signal_stops_the_run_through_its_own_cleanup(tmp_path, monkeypatch):
-    """`timeout 200 tools/savecheck.py ...` is how this tool is usually run,
+    """`timeout 200 tools/c64/savecheck.py ...` is how this tool is usually run,
     and an unhandled SIGTERM there kills it mid-statement: no traceback, no
     teardown, and an emulator slot still leased."""
     if threading.current_thread() is not threading.main_thread():

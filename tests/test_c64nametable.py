@@ -11,7 +11,7 @@ at them.
 What is asserted here is the half a machine with no emulator can check -- the
 six code sites in each title's own `GEN`, the filename prefix read off the
 game rather than written down, and the three readings of a save disk that
-disagree.  The running-game half is `tools/c64nametable.py run`, and `#435`
+disagree.  The running-game half is `tools/c64/c64nametable.py run`, and `#435`
 carries what it saw: on `cited/435/ssb3`, an engine `SAVE CURRENT GAME`
 stored a one-entry table naming a character who was **not** in the
 five-strong party it saved.
@@ -25,8 +25,8 @@ import pytest
 
 from goldbox.d64 import D64
 from tests import gamedata
-from tools import c64nametable as nt
 from tools import gamedisks
+from tools.c64 import c64nametable as nt
 
 TITLES = ("curse-of-the-azure-bonds", "secret-of-the-silver-blades")
 

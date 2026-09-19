@@ -7,7 +7,7 @@ driver that watches it to decide whether a move happened therefore has, on the
 travel grid, no facing to turn from, and a step it will see late -- the line
 lags `$49C3`/`$49C4` by about a second.
 
-This tool was written when `tools/session.py` knew none of that: it pressed the
+This tool was written when `tools/c64/session.py` knew none of that: it pressed the
 dungeon's `I J K M` out here, read the facing out of the middle of the word
 `OUTDOORS`, and fell back to `$49C0`-`$49C2`, which outdoors is the frozen
 square the party left the grid on.  All three are fixed in `Session` now
@@ -47,7 +47,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -87,7 +87,7 @@ def run(args) -> int:
             raise RuntimeError("The game did not accept the disk")
         # `Session.begin_adventuring` reports a failure when the arrival plays
         # a scene, so the arrival is driven here instead -- the same
-        # work-around `tools/savecheck.py` uses.
+        # work-around `tools/c64/savecheck.py` uses.
         if not sess.select_row("BEGIN ADVENTURING"):
             raise RuntimeError("BEGIN ADVENTURING could not be selected")
         if not sess.wait_text("MOVE", timeout=args.arrive):

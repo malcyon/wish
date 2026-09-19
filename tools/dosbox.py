@@ -74,7 +74,7 @@ from tools import gamedisks, scratch  # noqa: E402
 WORK = scratch.scratch_dir("dosbox")
 INST = WORK / "inst"
 
-# The pool never takes a display anything else here uses: `tools/porlaunch.sh`
+# The pool never takes a display anything else here uses: `tools/c64/porlaunch.sh`
 # defaults to :7 and `docs/123-parallel-sessions.md` allocates :10-:25 to VICE.
 #
 # #233 (The test suite takes the emulator displays agents need, and eight
@@ -943,7 +943,7 @@ class Session:
         """Move a list's highlight onto row `want`, reading it after each press.
 
         **Driven by where the highlight actually is, never by counting
-        presses from an assumed start** -- `tools/session.py:select_row` is
+        presses from an assumed start** -- `tools/c64/session.py:select_row` is
         the C64 original and its own docstring says why a blind count
         desynchronises: a swallowed keypress leaves a counted walk one row
         short of where it thinks it is, and a camp screen that can open with

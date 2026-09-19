@@ -108,7 +108,7 @@ magic-user.
 
 ## Nothing on the C64 reads `char_class`
 
-`tools/absrefsweep.py` over all 412 files on the six Curse sides finds
+`tools/c64/absrefsweep.py` over all 412 files on the six Curse sides finds
 **one** absolute-mode reference to `$7C73` in the whole title, and it is a
 store: `GEN $194D`. There is no load anywhere, so the byte is invisible to the
 C64 game and matters only to Wish and to a conversion.

@@ -97,7 +97,7 @@ def test_module_imports_without_fcntl(monkeypatch):
 
 
 def test_the_pool_never_allocates_the_human_s_ports():
-    """6502 and 6510 are Donald's, and 6600 is `tools/porcmd`'s.
+    """6502 and 6510 are Donald's, and 6600 is `tools/c64/porcmd`'s.
 
     This is the property that makes "anything on 6502 is a human's game" true,
     and it is worth an assertion because it is one careless base away from
@@ -357,7 +357,7 @@ def test_killpg_refuses_our_own_group(pool):
 # unlike `SIGINT`, whose default handler already raises `KeyboardInterrupt`,
 # an ordinary exception the existing `finally: slot.teardown()` already
 # caught. So the wrapper died and the process group it had just launched,
-# started with its own session the way `tools/session.py`'s `Session.launch`
+# started with its own session the way `tools/c64/session.py`'s `Session.launch`
 # does, kept running with nothing left holding its lease.
 #
 # The stand-in is `time.sleep(120)` in its own session -- the same shape a
@@ -1084,7 +1084,7 @@ def test_stray_displays_ignores_everything_inside_a_pools_own_band(tmp_path, mon
 
 
 def test_session_no_slot_launch_is_headless_by_default(monkeypatch, tmp_path):
-    """`tools/session.py`'s legacy path -- reachable by anyone who runs the
+    """`tools/c64/session.py`'s legacy path -- reachable by anyone who runs the
     CLI without claiming a pool slot -- used to fall through to
     `porlaunch.sh`'s own visible default whenever nothing set `POR_HEADLESS`.
     Donald ruled, 2026-09-07, that it goes headless unless something asks
@@ -1327,8 +1327,8 @@ def test_instance_main_builds_its_launch_env_through_launch_env():
 
 
 def test_session_launch_builds_its_launch_env_through_launch_env():
-    """The same regression, in `tools/session.py`'s own launch site."""
-    src = (TOOLS / "session.py").read_text()
+    """The same regression, in `tools/c64/session.py`'s own launch site."""
+    src = (TOOLS / "c64" / "session.py").read_text()
     assert "instance.launch_env(extra)" in src
     assert "dict(os.environ, MONFLAGS=" not in src
 
@@ -1344,7 +1344,7 @@ def test_porlaunch_disables_sound_in_the_headless_branch_only():
     though it draws no window. `+sound` (VICE's own flag, from `-help`) must
     sit in the `POR_HEADLESS=1` (`Xvfb`) branch, and must not reach the
     `Xephyr` branch a human watching a run still gets sound from."""
-    text = (TOOLS / "porlaunch.sh").read_text()
+    text = (TOOLS / "c64" / "porlaunch.sh").read_text()
     before_else, _, after_else = text.partition("else\n")
     headless_part = before_else.rpartition("if ")[2]
     visible_part = after_else.partition("\nfi\n")[0]
@@ -1358,15 +1358,15 @@ def test_porlaunch_kills_nothing():
     The word survives in the comment that explains why the calls are gone;
     what must not survive is a line that runs it.
     """
-    assert not [ln for ln in _code_lines(TOOLS / "porlaunch.sh") if "pkill" in ln]
-    text = (TOOLS / "porlaunch.sh").read_text()
+    assert not [ln for ln in _code_lines(TOOLS / "c64" / "porlaunch.sh") if "pkill" in ln]
+    text = (TOOLS / "c64" / "porlaunch.sh").read_text()
     assert "--die-with-parent" in text
     assert "-config" in text
 
 
 def test_session_kills_nothing_by_name():
     """`subprocess.run(["pkill", ...])` -- the four calls §1 item 2 names."""
-    assert '"pkill"' not in (TOOLS / "session.py").read_text()
+    assert '"pkill"' not in (TOOLS / "c64" / "session.py").read_text()
 
 
 # -- the port override the pool needs ---------------------------------------
@@ -1546,7 +1546,7 @@ def test_ssbwarp_stage_replaces_a_read_only_side_left_in_the_slot(pool):
         assert stale.stat().st_mode & stat.S_IWUSR
 
 
-# -- tools.session.stage_writable: the shared helper (#472) ------------------
+# -- tools.c64.session.stage_writable: the shared helper (#472) ------------------
 #
 # `_restage` and `curserun.stage`/`ssbwarp.stage` each did their own version
 # of "unlink, copy, restore the write bit" by hand, and two more places --

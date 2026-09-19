@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Take one compass step on Pool of Radiance's travel grid, and say what happened.
 
-`tools/savecheck.py --walk` answers a step with `moved=True` or `moved=False`,
+`tools/c64/savecheck.py --walk` answers a step with `moved=True` or `moved=False`,
 and a `False` out here has meant three different things at once: the square
 refused the party, the driver never found the movement prompt, or the key went
 somewhere the game was not reading.  `#382 (An outdoor Pool of Radiance party's
@@ -41,9 +41,9 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from tools import savecheck as SC  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 

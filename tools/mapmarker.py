@@ -4,7 +4,7 @@
 The question `#198 (Does the automapper draw a live party on the travel grid,
 or leave the marker where it entered?)` asks is not what memory says -- it is
 what a player looking at the map window sees.  So this drives a real session
-with `tools/session.py`, builds the **real** map tab offscreen against the same
+with `tools/c64/session.py`, builds the **real** map tab offscreen against the same
 emulator, ticks it, and saves a PNG of the window and of the map canvas after
 every step.
 
@@ -47,8 +47,8 @@ sys.path.insert(0, str(ROOT))
 from automap import actions  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools import session as S  # noqa: E402
-from tools.savecheck import Log, answer_bars  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
+from tools.c64.savecheck import Log, answer_bars  # noqa: E402
 
 #: Where the player keeps the C64 disks.  Read, never written -- the sides are
 #: copied into the slot and the game only ever sees the copies.

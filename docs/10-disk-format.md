@@ -154,7 +154,7 @@ the `A0 A0` listed at `0xA0` above, so nobody is ever wrong by it. Then it print
 the `2A` and "166—167" for the shifted spaces after it, overlapping byte 166 with itself, and
 "177—255" for the nulls, leaving 168–176 described by nothing at all.
 
-The disks settle it. `tools/bamsweep.py` reads bytes 144–255 of track 18 sector 0 on every image
+The disks settle it. `tools/c64/bamsweep.py` reads bytes 144–255 of track 18 sector 0 on every image
 it is given; over the **79** `.d64` files on this machine the shifted spaces are bytes
 **167–170** on 73 and the nulls run from **171** on 79 of 79. All six exceptions are cracked or
 hand-built images whose header was rewritten — five Champions of Krynn sides carry `00` at both

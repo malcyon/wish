@@ -7,7 +7,7 @@ network interface -- does not have to pretend it has them.
 
 `ViceTarget` holds **one** connection for the whole session and calls
 `resume()` after each burst, rather than reconnecting per poll like
-`tools/session.py` does.
+`tools/c64/session.py` does.
 
 The reason turned out to be the opposite of the one this was designed for.
 Polling does **not** stall the machine — measured against the KERNAL jiffy clock,
@@ -64,7 +64,7 @@ CLOCK_BYTES = 3
 
 # The game's own status line, e.g. "E 16:48  5,2" -- facing, clock, x, y. It is
 # correct the moment the screen settles, where the memory copy at $49C0 lags a
-# move. Taken from tools/session.py, which learned this the hard way.
+# move. Taken from tools/c64/session.py, which learned this the hard way.
 #
 # The lookarounds are not decoration. Without them the final `S` of the
 # travel grid's `OUTDOORS 21:16 7,9` matched as a facing letter, and for a
@@ -72,7 +72,7 @@ CLOCK_BYTES = 3
 # grid -- so it was believed: the marker jumped to that square facing south,
 # fed the explored set and the fingerprint (`#189`, and finding A on
 # `#205 (A party that walks out onto the travel grid leaves the automapper's
-# marker behind)`). `tools/session.py`'s `RE_STATUS` already carries them;
+# marker behind)`). `tools/c64/session.py`'s `RE_STATUS` already carries them;
 # `test_neither_status_reader_takes_a_word_ending_in_a_facing_letter`
 # (`tests/test_wish.py`) pins that the two cannot drift apart again.
 STATUS_ROW = 14
@@ -127,7 +127,7 @@ class Fix:
     *refused* step be spotted: see `Automapper.poll`.
 
     `outdoors` is True on the travel grid, where `facing` is None -- the game
-    prints no facing out there, the same shape `tools/session.py`'s `Status`
+    prints no facing out there, the same shape `tools/c64/session.py`'s `Status`
     already has. At the end of the field list so every positional
     `Fix(x, y, f, "status")` already in this project still constructs.
     """
@@ -201,7 +201,7 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
     they did before this existed. Where it is set, it is read *first*,
     because `$C04B` and `$49C3` are two different facts about two different
     worlds and a plausible reading of the wrong one is worse than none --
-    `Session.square_and_world()` in `tools/session.py` is the same shape, for
+    `Session.square_and_world()` in `tools/c64/session.py` is the same shape, for
     the same reason.
 
     Nothing here is VICE-specific, which is the point: reading the status line

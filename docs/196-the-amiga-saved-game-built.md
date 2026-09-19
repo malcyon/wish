@@ -276,7 +276,7 @@ tools/amiga/toamigapor.py $TMPDIR/por2.adf --to B --save-disk $TMPDIR/poolsave.a
 ```
 
 An outdoor party is the same command with an outdoor source save --
-one that `tools/c64outdoor.py` makes -- and needs no other
+one that `tools/c64/c64outdoor.py` makes -- and needs no other
 argument: the writer picks the outdoor branch off the source save's own
 `$49E6`.
 

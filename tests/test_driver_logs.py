@@ -1,4 +1,4 @@
-"""Nine driven-run tools' own `Log`, hardened the way `tools/savecheck.py`'s
+"""Nine driven-run tools' own `Log`, hardened the way `tools/c64/savecheck.py`'s
 was hardened after `#380 (The session driver sometimes fails BEGIN
 ADVENTURING within 0.2s of the picker loading, well inside its own 30s
 wait)`: a second run at the same path keeps the first run's log rather than
@@ -6,9 +6,9 @@ truncating it, a dead console cannot take the record down with it, and a
 `SIGTERM` unwinds through the run's own cleanup instead of killing it where it
 stands. `#442 (Nine driven-run tools lose their log when the console goes,
 and two truncate the previous run's)` moved `tools/fightrun.py`,
-`tools/outdoorstep.py`, `tools/c64restinterrupt.py`, `tools/defeatdrive.py`,
-`tools/statusdrive.py`, `tools/hallmenu.py`, `tools/turndrive.py`,
-`tools/traitsave.py` and `tools/traitdrive.py` onto `tools/savecheck.py`'s
+`tools/outdoorstep.py`, `tools/c64/c64restinterrupt.py`, `tools/defeatdrive.py`,
+`tools/c64/statusdrive.py`, `tools/c64/hallmenu.py`, `tools/c64/turndrive.py`,
+`tools/c64/traitsave.py` and `tools/c64/traitdrive.py` onto `tools/c64/savecheck.py`'s
 `Log`, either directly or as the base of a small subclass.
 
 Every test here proves that against the tool's *own* class -- not against a
@@ -208,12 +208,12 @@ def make_fake_s(slot: FakeSlot, on_boot=None):
         def stage_writable(src, dest):
             """`#472`'s shared helper, which several of these tools now call.
 
-            `tools/hallmenu.py` and `tools/outdoorstep.py` both call it, and
+            `tools/c64/hallmenu.py` and `tools/outdoorstep.py` both call it, and
             these tests reach neither line because they pass no `--disk`. So
             this is here before it is needed rather than after: the same gap
             in `tests/test_savecheck_log.py`'s own double did fire, and the
             only difference was that that tool calls it unconditionally.
-            A double standing in for the whole of `tools/session.py` has to
+            A double standing in for the whole of `tools/c64/session.py` has to
             grow whatever that module grows.
             """
             return str(dest)
@@ -227,14 +227,14 @@ def make_fake_s(slot: FakeSlot, on_boot=None):
 
 @pytest.fixture
 def real_session_patched(monkeypatch):
-    """Patch `tools.session` itself, for the two tools that `import` it
+    """Patch `tools.c64.session` itself, for the two tools that `import` it
     *inside* their driving function rather than at module scope --
     `c64restinterrupt.py`'s `drive` and `traitsave.py`'s `boot`. A module-level
-    `from tools import session as S` can be overridden by replacing `S` on the
-    tool's own module; a fresh `from tools import session as S` executed every
+    `from tools.c64 import session as S` can be overridden by replacing `S` on the
+    tool's own module; a fresh `from tools.c64 import session as S` executed every
     call cannot, because it re-reads the real package each time.
     """
-    import tools.session as real_session
+    import tools.c64.session as real_session
 
     def patch(fake_s):
         monkeypatch.setattr(real_session, "claim_slot", fake_s.claim_slot)

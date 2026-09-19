@@ -27,8 +27,9 @@ import pathlib
 
 import pytest
 
-from tools import gamedisks, portraitdraw, sheetexit
-from tools import session as por
+from tools import gamedisks, portraitdraw
+from tools.c64 import session as por
+from tools.c64 import sheetexit
 
 #: The three titles, and the one measurement each has to agree on.
 TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
@@ -120,7 +121,7 @@ def test_the_later_titles_put_the_reader_in_the_same_place():
     The interpreter moved `$306D` -> `$31F1` -> `$46F1` across the three, which
     is no constant at all -- so a reader that took one title's address and
     added a delta would be wrong on both the others.  That is the reason
-    `tools/sheetexit.py` finds it by shape.
+    `tools/c64/sheetexit.py` finds it by shape.
     """
     seen = {t: sheetexit.read_library(library_for(t))["interpreter"]
             for t in TITLES}

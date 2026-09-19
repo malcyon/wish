@@ -22,7 +22,7 @@ paladin arrived with nothing.
 
 The specimen-backed half runs the DOS half of the conversion for real over
 every DOS save in `$WISH_SPECIMENS` and skips without the tree, which is what
-CI has.  `tools/traitcross.py` is the same walk with a printed table.
+CI has.  `tools/c64/traitcross.py` is the same walk with a printed table.
 """
 
 from __future__ import annotations

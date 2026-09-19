@@ -127,14 +127,14 @@ near 300 means the program is not running and nothing is being tested.
 
 ## 2. Driving it unattended
 
-`tools/c64uhang.py` does §1 without a person: it builds its own disk — one line
+`tools/c64/c64uhang.py` does §1 without a person: it builds its own disk — one line
 of BASIC and a 4 KB file of spaces, both generated, containing nothing of
 anybody's — mounts it, boots it, polls at a chosen size and interval, and
 scores the result from the machine's own samples.
 
 ```sh
-tools/c64uhang.py build --out $TMPDIR/hang.d64
-tools/c64uhang.py run --variant load --size 32768 --interval 2 --minutes 10
+tools/c64/c64uhang.py build --out $TMPDIR/hang.d64
+tools/c64/c64uhang.py run --variant load --size 32768 --interval 2 --minutes 10
 ```
 
 Two variants, and they differ in one way that matters:

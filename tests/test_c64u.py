@@ -1,4 +1,4 @@
-"""`tools/c64u.py` without a C64 Ultimate on the network.
+"""`tools/c64/c64u.py` without a C64 Ultimate on the network.
 
 Every test here drives the wrapper through its `runner` seam -- a callable
 taking `(argv, binary)` -- so what is under test is the arguments it builds and
@@ -19,7 +19,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tools import c64u  # noqa: E402
+from tools.c64 import c64u  # noqa: E402
 
 
 class Fake:
@@ -302,7 +302,7 @@ def test_no_path_to_the_players_disks_is_written_into_the_source():
 
 def test_staging_copies_out_of_the_players_directory(tmp_path):
     """The player's disks are read-only to everything in this repository, so a
-    mount goes from a scratch copy -- the same rule `tools/session.py`
+    mount goes from a scratch copy -- the same rule `tools/c64/session.py`
     follows when it stages SIDE1.D64 for VICE."""
     src = tmp_path / "disks"
     src.mkdir()

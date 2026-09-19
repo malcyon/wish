@@ -1,4 +1,4 @@
-"""`tools/c64ucompare.py` without a C64 Ultimate and without an emulator.
+"""`tools/c64/c64ucompare.py` without a C64 Ultimate and without an emulator.
 
 Everything under test here is the part that decides whether two readings
 *disagree*: the masks, the measured exclusion list, and the arithmetic that
@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tools import c64ucompare  # noqa: E402
+from tools.c64 import c64ucompare  # noqa: E402
 
 
 class FakeMachine:

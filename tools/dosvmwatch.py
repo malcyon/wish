@@ -37,8 +37,8 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from tools import dosbox, dosboxx, scratch  # noqa: E402
+from tools.c64.session import stage_writable  # noqa: E402
 from tools.dosspcexpiry import boot_retry, claim_free, on_screen  # noqa: E402
-from tools.session import stage_writable  # noqa: E402
 
 #: The VM's address classes (`GAME.OVR:0x7BCE`), as the file's word ranges.
 BLOCKS = ((0, 0x4900), (1024, 0x6B00), (2048, 0x9700))

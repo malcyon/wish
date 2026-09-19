@@ -2,7 +2,7 @@
 """Build a DOS saved game from a C64 one with no template, and play it.
 
 The acceptance check behind `#26 (Write a DOS save, not just read one)`, and
-the DOS-side twin of `tools/dosdisk.py` and `tools/savecheck.py`.
+the DOS-side twin of `tools/dosdisk.py` and `tools/c64/savecheck.py`.
 `goldbox.dos_codec.new_dos_save` builds all 13137 bytes of `SAVGAM<slot>.DAT` and
 every `CHRDAT<slot><n>` beside it from a C64 save disk and the player's own
 DOS game files -- no existing DOS save is opened at any point -- and this

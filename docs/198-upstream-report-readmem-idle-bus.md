@@ -10,7 +10,7 @@ nothing in it is ours to ask for beyond what the measurements support.
 Two things a sender should fill in first: which existing thread it belongs on
 (the issue body names 1541ultimate issue 710 as where REST-API features get
 built; check that before citing it), and whether to attach
-`tools/c64uhang.py`'s generated disk or leave the reader with the GEOS stick,
+`tools/c64/c64uhang.py`'s generated disk or leave the reader with the GEOS stick,
 which needs nothing from us.
 
 ---

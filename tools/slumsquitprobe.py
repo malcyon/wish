@@ -24,7 +24,7 @@ MOVE that turn -- which settles whether GUARD drops off after a character has
 moved.
 
 Boots VICE in a pool slot (`.claude/rules/emulator.md`), so it is never run for
-`--help`. Research only: nothing in `tools/session.py` is changed. Writes
+`--help`. Research only: nothing in `tools/c64/session.py` is changed. Writes
 `<name>.jsonl` under this tool's scratch directory.
 """
 from __future__ import annotations
@@ -40,7 +40,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from tools import gamedisks, instance, scratch  # noqa: E402
-from tools import session as S  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 
 OUT = scratch.scratch_dir("slumsquitprobe")
 

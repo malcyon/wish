@@ -10,7 +10,7 @@ editor is a file tool with **zero emulator dependency** ([README.md](README.md)
 
 | module | what it is |
 |---|---|
-| `automap/vice.py` | the binary-monitor client, moved here from `tools/drive.py`, which re-exports it |
+| `automap/vice.py` | the binary-monitor client, moved here from `tools/c64/drive.py`, which re-exports it |
 | `automap/screen.py` | screen decoding over a plain `read` callable -- no VICE in it |
 | `automap/target.py` | the two-method `Target` protocol, `party_fix` over any backend's `read`, and `ViceTarget` holding one connection open |
 | `automap/area.py` | three strategies for "which `GEO` are we on" |
@@ -366,7 +366,7 @@ Neither source survived out there:
   `OUTDOORS` for a facing, so a party there read as a *plausible indoor* fix on
   a square it had never stood on -- the same fault `#189 (The emulator driver
   cannot move a party on the travel grid, and reads its facing out of the word
-  OUTDOORS)` fixed in `tools/session.py` and not here, until `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)`;
+  OUTDOORS)` fixed in `tools/c64/session.py` and not here, until `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)`;
 * the **fallback**, `C64Machine.live_position` = `$C04B`, read `4C 2F C5` outdoors,
   unchanged over four steps: `DUNGEON` is not the resident overlay there, so
   those are somebody else's code bytes and not a triple. Indoors the same three
@@ -376,7 +376,7 @@ Neither source survived out there:
 **What `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)` added.** `automap/target.py`'s `party_fix` now tries a second
 status pattern, `OUTDOORS +(\d+):(\d+) +(\d+),(\d+)`, plausible over the travel
 grid's own 18x36 window rather than the dungeon's 16x16 -- and `RE_STATUS`
-itself gained the lookarounds `tools/session.py` already had, so `OUTDOORS`
+itself gained the lookarounds `tools/c64/session.py` already had, so `OUTDOORS`
 can no longer be read as a south-facing indoor line at all. The memory
 fallback gained a third answer too, gated on `$49E6` (`goldbox/c64_port.py`'s
 `Title.travel_grid`, **True for Pool of Radiance only** -- Curse and Silver

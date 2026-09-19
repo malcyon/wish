@@ -37,9 +37,9 @@ dungeon view and the credits, and then starts again -- loading from disk
 continuously, forever, unattended. On 2026-09-05 the first run stopped after
 about nine minutes and the second after about ten, one each way.
 
-    tools/c64uplay.py boot $TMPDIR/disks/POOL1.D64 --mode readonly
-    tools/c64uplay.py keys Y --wait
-    tools/c64uplay.py hangwatch --log $TMPDIR/x.jsonl --capture $TMPDIR/x-hang
+    tools/c64/c64uplay.py boot $TMPDIR/disks/POOL1.D64 --mode readonly
+    tools/c64/c64uplay.py keys Y --wait
+    tools/c64/c64uplay.py hangwatch --log $TMPDIR/x.jsonl --capture $TMPDIR/x-hang
 
 `hangwatch` takes the memory regions itself the moment the machine stops, which
 matters because the failure is intermittent and unattended.
@@ -131,7 +131,7 @@ it is not a disk block landing in the wrong place.
 ## Reading a stopped machine
 
 Three things make a capture worth taking, and all three are in
-`tools/c64uplay.py`'s region list.
+`tools/c64/c64uplay.py`'s region list.
 
 **The loaded-files cache at `$6E13` says where the game was.**
 `docs/140-loaded-files-cache.md` has the twenty-five slots; bit 7 of a slot is a
@@ -208,7 +208,7 @@ cannot localise it without the stack pointer, and DMA reads of memory will not
 close it. Getting it needs either the Ethernet cable and the debug stream, or a
 reproduction under an emulator where the processor can be read.
 
-**Driving the game past the demo.** `tools/c64uplay.py probe` reports which of
+**Driving the game past the demo.** `tools/c64/c64uplay.py probe` reports which of
 two ways a stage reads the keyboard: a `$00C6` that returns to zero is the
 KERNAL's buffer and can be driven from here, a count that sits there is CIA 1's
 matrix and cannot. `DISABLE FASTLOADER (Y/N) ?` is the first; **the attract loop
@@ -219,6 +219,6 @@ the main menu, and Donald's own recipe cannot be driven this way at all.
 
 | tool | what it does here |
 |---|---|
-| `tools/c64uplay.py` | boots, answers a prompt, tells a KERNAL stage from a matrix stage, watches until the machine stops and captures ten regions when it does |
-| `tools/c64urest.py` | the transport underneath it -- REST for the machine, FTP for a file |
+| `tools/c64/c64uplay.py` | boots, answers a prompt, tells a KERNAL stage from a matrix stage, watches until the machine stops and captures ten regions when it does |
+| `tools/c64/c64urest.py` | the transport underneath it -- REST for the machine, FTP for a file |
 | `tools/porattract.py` | the same attract loop under a pooled VICE, sampling the **program counter**, which is the control the hardware cannot provide |

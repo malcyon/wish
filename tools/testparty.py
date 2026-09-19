@@ -113,7 +113,7 @@ from goldbox import (  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.neutral import NeutralCharacter, Provenance  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
-from tools.session import stage_writable  # noqa: E402
+from tools.c64.session import stage_writable  # noqa: E402
 
 #: The five saving throws in stored order, so the seed writes them in the same
 #: order `goldbox.levelup` rewrites them at every level after the first.

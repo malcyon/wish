@@ -65,7 +65,7 @@ indexed. **558 files, five sites, and every one keeps the two in step:**
 | `SPELLE20 $0C5A` | **derives** the mask from the array, rolling a bit in for each non-zero slot |
 
 `PIC78 $0BC4` decodes as an `INC $7CEB` and is inside a picture file;
-`tools/d6502.py`'s own caveat covers it -- a byte pattern is not a routine.
+`tools/c64/d6502.py`'s own caveat covers it -- a byte pattern is not a routine.
 
 So the two writes at `GEN $20A3` are what makes the fighter-8 row above look
 the way it does: the old class's level and the old class's bit come back at the

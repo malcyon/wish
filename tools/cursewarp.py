@@ -59,8 +59,8 @@ from automap.actions import pc_register  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import curserun, scratch  # noqa: E402
-from tools import session as por  # noqa: E402
 from tools.areas import newecl  # noqa: E402
+from tools.c64 import session as por  # noqa: E402
 
 #: Where Curse's live party square is.  **Not relocated**: `DUNGEON`'s own
 #: position flush reads `$C04B,X` in Curse exactly as it does in Pool of
@@ -185,7 +185,7 @@ def load_curse_save(sess, timeout: float = 240.0) -> bool:
       the same thing `tools/curserun.py` found for the release's start-up
       check.
 
-    Written here rather than in `tools/session.py`, which is Pool of
+    Written here rather than in `tools/c64/session.py`, which is Pool of
     Radiance's and is another ticket's file.
     """
     if sess.wait_text("LOAD SAVED GAME", timeout)[0] is None:
@@ -288,7 +288,7 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
     because a disk load has not finished drawing anything yet.
 
     **`addr` is optional only for the callers that do not yet pass one** --
-    `tools/livecheck.py`, `tools/inventorycheck.py` and `tools/cursecheck.py`
+    `tools/livecheck.py`, `tools/c64/inventorycheck.py` and `tools/cursecheck.py`
     all call this without an `Addresses`, and giving `addr` no default would
     break them outright; without it, this falls back to the old unconditional
     Escape and cannot tell a stuck menu from a slow load.
@@ -656,7 +656,7 @@ def run(args) -> int:
             staged = pathlib.Path(slot.dir) / "SAVE_IN.D64"
             por.stage_writable(save, staged)
             save = str(staged)
-        # **`tools/session.py` is Pool of Radiance's, and one of its module
+        # **`tools/c64/session.py` is Pool of Radiance's, and one of its module
         # constants is an address.**  `Session.indoors` reads `$49E6`, which in
         # a running Curse is `LIBRARY` code rather than the indoors flag, and
         # `walk_one` routes to the travel grid's compass keys on the strength
