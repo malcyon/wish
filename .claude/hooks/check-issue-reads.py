@@ -60,28 +60,36 @@ opening a browser some other way. None of that is guarded here. What stops an
 is not the same thing as what stops a deliberate one, and this hook is only
 the first. The actual filtering is `tools/github/issueread.py`; this exists so the
 unfiltered habit stops working before it becomes the habit.
+
+A heredoc body is data unless a shell is reading it, in which case it is a
+script and is read as one, so `sh <<'EOF'` around a banned read is refused.
+Comments are dropped from the command line by a scan that respects quoting and
+not from inside a quoted `bash -c '...'` script. An apostrophe in such a
+comment makes `shlex` fail on the script, and the hook then allows the call
+instead of refusing it (`bash -c "# it's a note` and a newline, then `gh issue
+view 1 --comments"`). A shell fed through a pipe (`printf 'gh issue view 1
+--comments' | sh`) or a here-string (`sh <<< 'gh issue view 1 --comments'`), a
+command line quoted for another machine (`ssh host '...'`), a shell behind a
+wrapper (`sudo`, `env`, `nohup`, `exec`, `command`, `xargs`) and a heredoc read
+by another interpreter (`python3 <<'EOF'`) walk past it.
+
+So do three forms the comment scan reads wrongly, each ending in a banned
+command that it then drops: a `#` inside backticks (``echo `echo #`; gh issue
+view 1 --comments``), a `#` inside a parameter expansion (`echo ${x:- #foo}; gh
+issue view 1 --comments`), and a backslash-escaped quote inside `$'...'`
+(`echo $'\\' #'; gh issue view 1 --comments`). The reading of the call that the
+sibling guards share is in `shellcommands.py`.
 """
 import json
-import re
+import os
 import shlex
 import sys
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+import shellcommands
+
 READER = "tools/github/issueread.py"
-
-#: A quoted heredoc body is data being written to a file, not commands being
-#: run -- and it is how this project writes every document and every issue
-#: body, so its text routinely quotes commands. Unquoted (`<<EOF`) heredocs are
-#: stripped too: the shell expands them, but it still does not execute them.
-HEREDOC = re.compile(
-    r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1.*?^\s*\2\s*$",
-    re.DOTALL | re.MULTILINE)
-
-#: Characters a shell glues onto the token next to it with no space --
-#: `(gh issue view 510 --comments)` hands `shlex` back `(gh` and
-#: `--comments)`. Stripped from both ends of a token before it is compared
-#: against anything, so the punctuation never hides a real flag or a real
-#: `gh`.
-_GLUED_PUNCT = "`(){}[]<>$"
 
 #: Where one `gh` invocation's own arguments end, when they are separated
 #: from the next command by a space rather than glued to it.
@@ -91,24 +99,8 @@ _BOUNDARY_OPS = {"&&", "||", "|", ";", "&"}
 #: `gh issue view`, `gh issue list` or `gh search issues`.
 _BANNED_JSON_FIELDS = {"comments", "body", "title"}
 
-#: `bash`/`sh`/`zsh`/`dash` given `-c SCRIPT`, or `eval SCRIPT`, both execute
-#: their argument as a new command line -- so a `gh` call quoted inside one
-#: is a real invocation, not a mention, and has to be read the same way a
-#: top-level command would be.
-_SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
-
-
-def commands_only(command: str) -> str:
-    """The parts of a Bash call that are commands rather than data.
-
-    Heredoc bodies come out. What is left is what the shell would execute, and
-    it is the only thing worth matching a banned command against.
-    """
-    return HEREDOC.sub("\n", command)
-
-
 def _clean(tok: str) -> str:
-    return tok.strip(_GLUED_PUNCT)
+    return tok.strip(shellcommands.GLUED)
 
 
 def _is_gh(tok: str) -> bool:
@@ -162,7 +154,7 @@ def _refusal(tokens: list[str], depth: int = 0) -> tuple[str, str] | None:
     while i < n:
         cleaned = _clean(tokens[i])
 
-        if cleaned in _SHELLS and i + 2 < n and _clean(tokens[i + 1]) == "-c":
+        if cleaned in shellcommands.SHELLS and i + 2 < n and _clean(tokens[i + 1]) == "-c":
             found = _refuse_in_script(tokens[i + 2], depth)
             if found:
                 return found
@@ -222,7 +214,7 @@ def _refuse_in_script(script: str, depth: int) -> tuple[str, str] | None:
     if depth >= 3:
         return None
     try:
-        inner_tokens = shlex.split(commands_only(script), comments=False)
+        inner_tokens = shlex.split(shellcommands.commands_only(script), comments=False)
     except ValueError:
         return None
     return _refusal(inner_tokens, depth=depth + 1)
@@ -296,7 +288,7 @@ def main() -> int:
     if not command:
         return 0
 
-    runnable = commands_only(command)
+    runnable = shellcommands.strip_comments(shellcommands.commands_only(command))
     try:
         tokens = shlex.split(runnable, comments=False)
     except ValueError:

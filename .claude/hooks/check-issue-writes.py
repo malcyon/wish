@@ -42,33 +42,40 @@ which is rare enough that a rule is enough; and `tools/wishagent.py` itself.
 it reads one Bash call as a shell would tokenise it, and anything shelling out
 through another interpreter, renaming `gh`, or reaching GitHub some other way
 goes around it. It exists so the wrong habit stops working.
+
+A heredoc body is data unless a shell is reading it, in which case it is a
+script and is read as one, so `sh <<'EOF'` around a `gh issue comment` is
+refused. Comments are dropped from the command line by a scan that respects
+quoting and not from inside a quoted `bash -c '...'` script. An apostrophe in
+such a comment makes `shlex` fail on the script, and the hook then allows the
+call instead of refusing it (`bash -c "# it's a note` and a newline, then `gh
+issue comment 1 --body-file b"`). A shell fed through a pipe (`printf 'gh issue
+comment 1' | sh`) or a here-string (`sh <<< 'gh issue comment 1'`), a command
+line quoted for another machine (`ssh host '...'`), a shell behind a wrapper
+(`sudo`, `env`, `nohup`, `exec`, `command`, `xargs`) and a heredoc read by
+another interpreter (`python3 <<'EOF'`) walk past it.
+
+So do three forms the comment scan reads wrongly, each ending in a banned
+command that it then drops: a `#` inside backticks (``echo `echo #`; gh issue
+comment 1 --body-file b``), a `#` inside a parameter expansion (`echo ${x:- #foo};
+gh issue comment 1 --body-file b`), and a backslash-escaped quote inside
+`$'...'` (`echo $'\\' #'; gh issue comment 1 --body-file b`). The reading of the
+call that the sibling guards share is in `shellcommands.py`.
 """
 import json
+import os
 import re
 import shlex
 import sys
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+import shellcommands
+
 TOOL = "tools/wishagent.py"
-
-#: Heredoc bodies are data being written to a file rather than commands being
-#: run, and this project writes every document and every issue body that way,
-#: so their text quotes commands constantly. `check-issue-reads.py` learnt this
-#: the hard way: its first version refused the edit that wrote its own
-#: documentation.
-HEREDOC = re.compile(
-    r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1.*?^\s*\2\s*$",
-    re.DOTALL | re.MULTILINE)
-
-#: Shell punctuation glued to a token with no space -- `(gh issue comment 1)`
-#: hands `shlex` back `(gh` and `1)`.
-GLUED = "`(){}[]<>$"
 
 #: Where one `gh` invocation's arguments stop.
 BOUNDARY = {"&&", "||", "|", ";", "&"}
-
-#: Interpreters whose argument is a new command line, so a `gh` call quoted
-#: inside one is a real invocation rather than a mention.
-SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
 
 #: Each has a `tools/wishagent.py` verb, so each has somewhere to go.
 REFUSED_SUBCOMMANDS = {"create", "comment", "close", "edit"}
@@ -79,13 +86,8 @@ LOCK_SUBCOMMANDS = {"lock", "unlock"}
 WRITING_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
 
 
-def commands_only(command: str) -> str:
-    """What the shell would execute, with heredoc bodies removed."""
-    return HEREDOC.sub("\n", command)
-
-
 def _clean(token: str) -> str:
-    return token.strip(GLUED)
+    return token.strip(shellcommands.GLUED)
 
 
 def _is_gh(token: str) -> bool:
@@ -126,7 +128,7 @@ def refusal(tokens: list[str], depth: int = 0) -> str | None:
     """`"write"`, `"lock"`, or `None` -- the first banned call found."""
     for i, token in enumerate(tokens):
         cleaned = _clean(token)
-        if cleaned.rsplit("/", 1)[-1] in SHELLS:
+        if cleaned.rsplit("/", 1)[-1] in shellcommands.SHELLS:
             # `bash -c '<script>'` folds the script into one token; read it as
             # a command line of its own rather than as an argument.
             if depth < 3:
@@ -221,7 +223,7 @@ def main() -> int:
     if not isinstance(command, str) or not command:
         return 0
 
-    runnable = commands_only(command)
+    runnable = shellcommands.strip_comments(shellcommands.commands_only(command))
     try:
         tokens = shlex.split(runnable, comments=False)
     except ValueError:

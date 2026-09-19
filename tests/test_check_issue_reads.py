@@ -111,7 +111,33 @@ EOF""",
     """python - <<'PY'
 sub("Not `gh issue view N\\n--comments`,", "use the reader.")
 PY""",
+    # A shell reading this body runs it, and nothing in it is banned.
+    """sh <<'EOF'
+git status
+gh issue list --json number
+EOF""",
 ]
+
+
+def _shell_heredocs(banned):
+    """The ways a heredoc reaches a shell, each carrying `banned` in its body."""
+    return [
+        f"sh <<'EOF'\n{banned}\nEOF",
+        f"bash <<EOF\n{banned}\nEOF",
+        f"sh 2>&1 <<'EOF'\n{banned}\nEOF",
+        f"if true; then sh <<'EOF'\n{banned}\nEOF\nfi",
+        f"for i in 1; do sh <<'EOF'\n{banned}\nEOF\ndone",
+        f"sh <<'EOF'\n# a note\n{banned}\nEOF",
+        f"sh <<'EOF'\n# it's a note\n{banned}\nEOF",
+        f"echo \"# h\" > f\nsh <<'EOF'\n{banned}\nEOF",
+        f"FOO=1 sh <<'EOF'\n{banned}\nEOF",
+        f"bash <<-EOF\n\t{banned}\n\tEOF",
+        f"git status && sh <<'EOF'\n{banned}\nEOF",
+    ]
+
+
+#: A body fed to a shell is a script, so what it holds is executed.
+SHELL_HEREDOCS = _shell_heredocs("gh issue view 510 --comments")
 
 
 @pytest.mark.parametrize("command", REFUSED)
@@ -134,6 +160,87 @@ def test_a_heredoc_that_quotes_the_command_is_let_through(command, monkeypatch):
     telling you not to use. A guard that blocks its own documentation is one
     somebody turns off.
     """
+    assert run(command, monkeypatch=monkeypatch) == 0
+
+
+@pytest.mark.parametrize("command", SHELL_HEREDOCS)
+def test_a_heredoc_fed_to_a_shell_is_read_as_the_script_it_is(command, monkeypatch):
+    """`sh <<'EOF'` executes every line of its body, so a banned read in it is a real one.
+
+    Stripping the body as data, as `test_a_heredoc_that_quotes_the_command_is_let_through`
+    needs for a file being written, let this straight through.
+    """
+    assert run(command, monkeypatch=monkeypatch) == 2
+
+
+def test_a_banned_command_named_only_in_a_shell_comment_is_let_through(monkeypatch):
+    """The shell does not run a comment, so a comment naming the command reads nothing."""
+    assert run("git status # gh issue view 510 --comments",
+               monkeypatch=monkeypatch) == 0
+
+
+def test_a_shell_fed_on_stdin_by_another_command_is_a_known_limit(monkeypatch):
+    """The boundary of the tripwire, recorded so a reader does not mistake it for cover.
+
+    A shell fed through a pipe would need a quoted data argument read as a
+    script, which would also refuse `echo 'gh issue view 510 --comments'`, a
+    command that is allowed on purpose. `ssh host '...'` names another
+    machine. A wrapper in front of the shell (`sudo`, `env`, `nohup`, `exec`,
+    `command`, `xargs`) is not looked through, and another interpreter's
+    heredoc body is data to this hook whatever it runs.
+    """
+    banned = "gh issue view 510 --comments"
+    for command in [
+        f"printf '{banned}\\n' | sh",
+        f"ssh host '{banned}'",
+        f"sudo sh <<'EOF'\n{banned}\nEOF",
+        f"env sh <<'EOF'\n{banned}\nEOF",
+        f"sh <<< '{banned}'",
+        "python3 <<'PY'\nimport subprocess\n"
+        f"subprocess.run('{banned}', shell=True)\nPY",
+    ]:
+        assert run(command, monkeypatch=monkeypatch) == 0, command
+
+
+def test_a_hash_the_comment_scan_misreads_is_a_known_limit(monkeypatch):
+    """The boundary of the comment scan, recorded so a reader does not mistake it for cover.
+
+    Each command below runs a banned read after a `#` that a shell does not
+    treat as a comment, and the scan drops the read with it: the `#` sits
+    inside backticks, inside a parameter expansion, or after a
+    backslash-escaped quote in `$'...'`. All three are allowed today; a fix
+    that refuses them should move them to `REFUSED`.
+    """
+    banned = "gh issue view 1 --comments"
+    for command in [
+        f"echo `echo #`; {banned}",
+        f"echo ${{x:- #foo}}; {banned}",
+        f"echo $'\\' #' ; {banned}",
+    ]:
+        assert run(command, monkeypatch=monkeypatch) == 0, command
+
+
+def test_an_apostrophe_in_a_comment_inside_a_quoted_script_is_a_known_limit(monkeypatch):
+    """The boundary of the comment scan, recorded so a reader does not mistake it for cover.
+
+    Comments are dropped from the command line and not from inside a quoted
+    `bash -c` script, so the apostrophe in the comment makes `shlex` raise and
+    the script is allowed. The same script without the comment line is refused;
+    a fix that refuses this one should move it to `REFUSED`.
+    """
+    banned = "gh issue view 1 --comments"
+    assert run(f'bash -c "{banned}"', monkeypatch=monkeypatch) == 2
+    assert run(f'bash -c "# it\'s a note\n{banned}"', monkeypatch=monkeypatch) == 0
+
+
+def test_an_apostrophe_in_a_shell_comment_does_not_hide_the_script_from_the_scan(monkeypatch):
+    """A comment is dropped before the script is tokenised, so its apostrophe cannot break it.
+
+    Left in, the apostrophe makes `shlex` raise and the text fallback finds
+    `gh` inside `right` and `issues` in the text, which refuses a script that
+    reads nothing.
+    """
+    command = "sh <<'EOF'\n# it's fine\necho \"issues are right\"\nEOF"
     assert run(command, monkeypatch=monkeypatch) == 0
 
 
