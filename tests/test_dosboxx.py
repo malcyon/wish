@@ -354,6 +354,72 @@ def test_capture_halves_a_line_doubled_frame_to_dosbox_074s_size(monkeypatch):
     assert got.px == original.px
 
 
+def _torn(old, new, seam):
+    """Two doubled frames spliced before raw row `seam`: a grab served between blits."""
+    from tools.dos import dosbox
+
+    stride = old.width * 3
+    return dosbox.Screen(old.width, old.height, old.px[:seam * stride] + new.px[seam * stride:])
+
+
+def _two_moments():
+    """A clean doubled frame, the frame after it, and a splice of the two on an odd row."""
+    from tools.dos import dosbox
+
+    before = _double(dosbox.Screen(4, 4, bytes(range(48))))
+    after = _double(dosbox.Screen(4, 4, bytes(range(100, 148))))
+    torn = _torn(before, after, 3)
+    with pytest.raises(dosboxx.NotLineDoubled):
+        dosboxx.halve(torn)
+    return before, after, torn
+
+
+def test_capture_grabs_again_when_a_grab_was_torn_between_two_blits(monkeypatch):
+    """A seam between two doubled frames is a property of one grab, not of the window.
+
+    The refusal is right for that grab -- halving it would mix two moments --
+    and wrong for the session, which has only to grab again.
+    """
+    from tools.dos import dosbox
+
+    _before, after, torn = _two_moments()
+    grabs = iter([torn, after])
+    slept = []
+    monkeypatch.setattr(dosbox.Session, "capture", lambda self: next(grabs))
+    monkeypatch.setattr(dosboxx.time, "sleep", slept.append)
+
+    got = dosboxx.XSession.__new__(dosboxx.XSession).capture()
+
+    assert got.px == dosboxx.halve(after).px
+    assert len(slept) == 1 and slept[0] > 0
+
+
+def test_capture_still_refuses_a_window_that_is_never_line_doubled(monkeypatch):
+    """A steady non-doubled window (an 80x25 text mode) must keep failing loudly.
+
+    Retrying is for a grab that landed mid-redraw; a window that is wrong on
+    every grab is the wrong measurement `NotLineDoubled` exists to refuse.
+    """
+    from tools.dos import dosbox
+
+    _before, _after, torn = _two_moments()
+    grabs = []
+
+    def grab(self):
+        grabs.append(1)
+        return torn
+
+    slept = []
+    monkeypatch.setattr(dosbox.Session, "capture", grab)
+    monkeypatch.setattr(dosboxx.time, "sleep", slept.append)
+
+    with pytest.raises(dosboxx.NotLineDoubled, match="not one pixel"):
+        dosboxx.XSession.__new__(dosboxx.XSession).capture()
+
+    assert 3 <= len(grabs) <= 5
+    assert len(slept) == len(grabs) - 1
+
+
 # --------------------------------------------------------------------------
 # Which window, and whether anything is in it
 # --------------------------------------------------------------------------

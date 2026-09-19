@@ -498,10 +498,14 @@ class NotLineDoubled(RuntimeError):
     `#215 (Nothing checks that a frame halve() is about to halve was really
     line-doubled)`: parity alone used to be the whole guard, so a frame that
     was even-sized without being doubled would have been halved anyway and
-    handed back a plausible, wrong picture. `tools/dos/dosframeaudit.py` drove a
-    real session through `settle()`'s own poll and found 320 raw captures, 320
-    clean 2x2 replications, zero ragged -- so this is not expected to fire.
-    It exists so that if it ever does, the caller sees a named refusal
+    handed back a plausible, wrong picture.
+
+    It fires on a capture torn between two of the window's blits, or taken in
+    the middle of a mode change, where the frame mixes two moments. That
+    happens when a whole-screen repaint is captured, such as the title
+    sequence, so `XSession.capture()` grabs again a few times before letting
+    it out; `halve()` itself stays strict. A window that stays not
+    line-doubled through every retry still raises, which is the named refusal
     instead of a wrong measurement nobody notices.
     """
 
@@ -587,6 +591,11 @@ class XSession(dosbox.Session):
     Use it as a context manager.  `close()` kills the two process groups this
     instance started and nothing else.
     """
+
+    #: How many grabs `capture()` makes before a torn frame is refused, and the
+    #: pause between them.
+    CAPTURE_TRIES = 4
+    CAPTURE_RETRY_GAP = 0.15
 
     #: Narrower than `dosbox.Session.TOOLS`: no `dosbox` (#73).  `dosbox-x`
     #: itself is checked by `require_debugger()`, which also asks whether the
@@ -760,8 +769,21 @@ class XSession(dosbox.Session):
         `grab()` is deliberately left unscaled: its two callers only ask "is
         there content" and "is this one flat colour", and both answers are
         the same at either size.
+
+        **A grab can land between two of the window's blits**, so the top of
+        the frame is one moment and the bottom the next.  `halve()` refuses
+        that (`NotLineDoubled`) and is left strict; the seam belongs to that one
+        grab, so this grabs again a few times before letting the refusal out.  A
+        window that is not line-doubled at all fails every try and still raises.
         """
-        return halve(super().capture())
+        for attempt in range(self.CAPTURE_TRIES):
+            try:
+                return halve(super().capture())
+            except NotLineDoubled:
+                if attempt == self.CAPTURE_TRIES - 1:
+                    raise
+                time.sleep(self.CAPTURE_RETRY_GAP)
+        raise AssertionError("unreachable: CAPTURE_TRIES is at least one")
 
     # -- input -----------------------------------------------------------
 
