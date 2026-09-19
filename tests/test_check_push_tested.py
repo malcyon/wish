@@ -225,6 +225,14 @@ def test_the_push_is_seen_however_it_is_reached(clone, monkeypatch):
         "bash -c 'git \\\npush'",
         "bash -c \"git \\\npush\"",
         "git push \\\n# a comment\n",
+        # A continuation before the `<<` does not hide which command reads the heredoc.
+        "bash \\\n<<EOF\ngit push\nEOF",
+        "sh -s \\\n <<EOF\ngit push\nEOF",
+        "sh \\\n  -s \\\n<<'EOF'\ngit push\nEOF",
+        # A continuation before an unterminated quote is still deleted.
+        "git \\\npush origin\necho '",
+        "git \\\npush origin\necho \"x",
+        "git \\\npush origin\necho 'a \\\nb",
     ]:
         assert run(monkeypatch, command, clone) == 2, command
 
@@ -253,6 +261,9 @@ def test_commands_that_do_not_push_are_ignored(clone, monkeypatch):
         "echo git \\\nstatus",
         "git \\\nstatus\necho push",
         "echo 'git \\\npush'",
+        "cat \\\n<<EOF\ngit push\nEOF",
+        "echo git \\\nstatus\necho '",
+        "echo git \\\nstatus\necho \"x",
     ]:
         assert run(monkeypatch, command, clone) == 0, command
 
@@ -377,3 +388,33 @@ def test_a_continued_command_is_read_as_one_command():
     assert hook.subcommands("git \\\npush") == ["push"]
     assert hook.moves_head_first("git \\\ncommit -m x\ngit push")
     assert not hook.is_push("echo git \\\nstatus")
+
+
+def test_a_backslash_newline_before_an_unterminated_quote_is_deleted_up_to_the_quote():
+    sys.path.insert(0, str(HOOK.parent))
+    try:
+        import shellcommands
+    finally:
+        sys.path.remove(str(HOOK.parent))
+    strip = shellcommands.strip_comments
+    join = " ; "
+    # Before the quote opens the scan is trusted; from the quote on, every newline is joined.
+    assert strip("git \\\npush\necho 'a\nb", join_lines=join) == "git push ; echo 'a ; b"
+    assert strip("git \\\npush\necho 'a \\\nb", join_lines=join) == "git push ; echo 'a \\ ; b"
+    # Without `join_lines` the text comes back untouched.
+    assert strip("git \\\npush\necho 'a\nb") == "git \\\npush\necho 'a\nb"
+
+
+def test_a_heredoc_reader_is_found_past_a_continuation_but_not_past_an_escaped_backslash():
+    sys.path.insert(0, str(HOOK.parent))
+    try:
+        import shellcommands
+    finally:
+        sys.path.remove(str(HOOK.parent))
+    reader = shellcommands.reader
+    assert reader("bash \\\n") == "bash"
+    assert reader("echo hi; sh -s \\\n ") == "sh"
+    # `\\` is a literal backslash, so the newline after it ends the line and nothing reads the heredoc.
+    assert reader("bash \\\\\n") == ""
+    # Three backslashes: the last one continues the line again.
+    assert reader("bash \\\\\\\n") == "bash"

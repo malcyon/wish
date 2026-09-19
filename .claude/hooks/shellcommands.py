@@ -55,6 +55,10 @@ def reader(before: str) -> str:
     That is the first word of the last command on the line, past any leading
     `NAME=value` assignments, or `""` when there is none.
     """
+    # A backslash-newline pair is deleted before the line is read, so `bash \`
+    # newline `<<EOF` still names `bash`. A backslash that is itself escaped
+    # (`\\` newline) does not continue the line and stays.
+    before = re.sub(r"(?<!\\)((?:\\\\)*)\\\n", r"\1", before)
     # A `&` beside a `<` or `>` is a redirection (`2>&1`, `&>`), not a separator.
     last = re.split(r"\n|;|&&|\|\||\||(?<![<>])&(?!>)|\(", before)[-1]
     for token in tokens(last):
@@ -90,8 +94,9 @@ def strip_comments(text: str, join_lines: str | None = None) -> str:
     falls back to a split that misses the push. A `#` inside quotes, after a
     backslash or in the middle of a word (`a#b`, `$#`, `${#x}`) is not a
     comment. Text that ends inside an unterminated quote is returned with its
-    comments untouched rather than guessed at, and with every newline replaced
-    by `join_lines` when that is given.
+    comments untouched rather than guessed at. With `join_lines`, the text
+    before the quote is as scanned, so a backslash-newline there is deleted, and
+    the text from the quote on has every newline replaced by `join_lines`.
 
     Three forms are still read wrongly, and each drops a banned command that
     comes after it, so the guards allow what an unfiltered reading would refuse: a
@@ -102,6 +107,7 @@ def strip_comments(text: str, join_lines: str | None = None) -> str:
     """
     out = []
     quote = ""
+    quote_start = mark = 0
     begins_word = True
     i = 0
     while i < len(text):
@@ -129,6 +135,7 @@ def strip_comments(text: str, join_lines: str | None = None) -> str:
             continue
         elif char in "'\"":
             quote = char
+            quote_start, mark = i, len(out)
             begins_word = False
         elif char == "#" and begins_word:
             end = text.find("\n", i)
@@ -141,5 +148,7 @@ def strip_comments(text: str, join_lines: str | None = None) -> str:
         out.append(char)
         i += 1
     if quote:
-        return text if join_lines is None else text.replace("\n", join_lines)
+        if join_lines is None:
+            return text
+        return "".join(out[:mark]) + text[quote_start:].replace("\n", join_lines)
     return "".join(out)
