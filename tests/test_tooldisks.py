@@ -11,7 +11,9 @@ from __future__ import annotations
 import ast
 import importlib
 import pathlib
+import signal
 import sys
+import threading
 import types
 
 import pytest
@@ -334,6 +336,13 @@ def no_title_disks(monkeypatch):
     for var in ("COAB_DISKS", "SSB_DISKS", "POR_DISKS"):
         monkeypatch.delenv(var, raising=False)
     _nothing_launches(monkeypatch)
+    # `c64addprobe.main` installs its own SIGTERM and SIGINT handlers and
+    # never puts the old ones back.
+    saved = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT)}
+    yield
+    if threading.current_thread() is threading.main_thread():
+        for sig, handler in saved.items():
+            signal.signal(sig, handler)
 
 
 @pytest.mark.parametrize("module, argv, message", [
@@ -372,4 +381,4 @@ def test_a_given_disks_folder_gets_past_the_guard(
     given = tmp_path / "disks"
     given.mkdir()
     with pytest.raises(AssertionError, match="was reached with no disks"):
-        tool.main([*argv, "--disks", str(given)])
+        tool.main([*argv, "--disks", str(given), "--out", str(tmp_path / "out")])
