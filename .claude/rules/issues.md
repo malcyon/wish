@@ -138,6 +138,7 @@ anything filed with it says he wrote it.
     tools/wishagent.py create  --title T --body-file F --label L...
     tools/wishagent.py comment N --body-file F
     tools/wishagent.py close   N [--comment-file F]
+    tools/wishagent.py reopen  N [--comment-file F]
     tools/wishagent.py edit    N [--title T] [--body-file F] [--comment-file F]
 
 **Comments matter more than creation here**, because "Reply, never rewrite"

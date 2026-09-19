@@ -23,7 +23,7 @@ fields and honours the same exit code, so one script serves both harnesses.
 with an environment variable or a path, wrapped in a subshell, chained after
 `&&`, `;` or `|`, or handed to `bash -c`/`sh -c`/`eval` as a quoted script:
 
-  * `gh issue create`, `comment`, `close` and `edit`, each of which
+  * `gh issue create`, `comment`, `close`, `reopen` and `edit`, each of which
     `tools/wishagent.py` has a verb for;
   * `gh issue lock` and `unlock`, which is a different refusal: **nothing on
     this tracker is locked**, measured three ways on 2026-09-11 -- a GitHub App
@@ -35,8 +35,7 @@ with an environment variable or a path, wrapped in a subshell, chained after
 
 **What is not:** every read, which is
 `.claude/hooks/check-issue-reads.py`'s business; `gh issue list`; `gh label`
-and `gh pr` of any kind; `gh issue reopen`, which the tool has no verb for and
-which is rare enough that a rule is enough; and `tools/wishagent.py` itself.
+and `gh pr` of any kind; and `tools/wishagent.py` itself.
 
 **This is a tripwire, not a boundary**, for the same reasons its sibling gives:
 it reads one Bash call as a shell would tokenise it, and anything shelling out
@@ -78,7 +77,7 @@ TOOL = "tools/wishagent.py"
 BOUNDARY = {"&&", "||", "|", ";", "&"}
 
 #: Each has a `tools/wishagent.py` verb, so each has somewhere to go.
-REFUSED_SUBCOMMANDS = {"create", "comment", "close", "edit"}
+REFUSED_SUBCOMMANDS = {"create", "comment", "close", "reopen", "edit"}
 
 #: Refused for a different reason, and with a different message.
 LOCK_SUBCOMMANDS = {"lock", "unlock"}
@@ -177,6 +176,7 @@ def _refuse_write() -> None:
         f"    .venv/bin/python {TOOL} create --title T --body-file FILE "
         f"--label L\n"
         f"    .venv/bin/python {TOOL} close N --comment-file FILE\n"
+        f"    .venv/bin/python {TOOL} reopen N --comment-file FILE\n"
         f"    .venv/bin/python {TOOL} label N --add L --remove L\n"
         f"    .venv/bin/python {TOOL} edit N --title T --body-file FILE\n\n"
         "It mints a short-lived token for the `wish-agent` GitHub App, so the "
@@ -229,7 +229,7 @@ def main() -> int:
     except ValueError:
         # Unbalanced quotes. A rewrite costs a moment; a comment posted under
         # the wrong identity cannot be reauthored.
-        if re.search(r"\bgh\b.*\bissue\b.*\b(create|comment|close|edit)\b",
+        if re.search(r"\bgh\b.*\bissue\b.*\b(create|comment|close|reopen|edit)\b",
                      runnable):
             _refuse_write()
             return 2

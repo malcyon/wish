@@ -48,6 +48,7 @@ REFUSED = [
     "gh issue comment 470 --body-file /tmp/b",
     "gh issue create --title x --body-file /tmp/b",
     "gh issue close 470",
+    "gh issue reopen 470",
     "gh issue edit 470 --add-label AI",
     "gh issue edit 470 --title x",
     "gh issue edit 470 --body-file /tmp/b",
@@ -78,7 +79,6 @@ ALLOWED = [
     "gh pr list",
     "gh pr comment 5 --body x",
     "gh run list --limit 5",
-    "gh issue reopen 470",
     ".venv/bin/python tools/wishagent.py comment 470 --body-file /tmp/b",
     "git commit -m 'stop using gh issue comment'",
     "grep -rn 'gh issue comment' docs/",
@@ -253,6 +253,14 @@ def test_the_refusal_names_the_edit_verb(capsys, monkeypatch):
     assert run("gh issue edit 470 --title x", monkeypatch) == 2
     err = capsys.readouterr().err
     assert "wishagent.py edit" in err
+
+
+def test_the_refusal_names_the_reopen_verb(capsys, monkeypatch):
+    """`gh issue reopen` is refused, and the message must name the verb that
+    reopens an issue as the bot."""
+    assert run("gh issue reopen 470", monkeypatch) == 2
+    err = capsys.readouterr().err
+    assert "wishagent.py reopen" in err
 
 
 def test_a_non_bash_tool_is_ignored(monkeypatch):

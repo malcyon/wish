@@ -8,6 +8,7 @@
     tools/wishagent.py create  --title T --body-file F [--label L]...
     tools/wishagent.py comment N --body-file F
     tools/wishagent.py close   N [--comment-file F]
+    tools/wishagent.py reopen  N [--comment-file F]
     tools/wishagent.py label   N [--add L]... [--remove L]...
     tools/wishagent.py edit    N [--title T] [--body-file F] [--comment-file F]
     tools/wishagent.py edit-comment ID --body-file F
@@ -423,6 +424,22 @@ def close_issue(number, comment_text=None):
         raise ApiError(f"{status} closing #{number}: {_error_detail(raw)}", status)
 
 
+def reopen_issue(number, comment_text=None):
+    """Set an issue's state back to open.
+
+    `comment_text`, when given, is posted after the state change succeeds: a
+    comment explaining a reopen must not appear on an issue that is still
+    closed.
+    """
+    status, _headers, raw = _api_call(
+        "PATCH", _issues_path(number), body={"state": "open"}
+    )
+    if status >= 400:
+        raise ApiError(f"{status} reopening #{number}: {_error_detail(raw)}", status)
+    if comment_text:
+        comment_on_issue(number, comment_text)
+
+
 def edit_issue(number, title=None, body_text=None, comment_text=None):
     """Correct an issue's own title and/or body -- `.claude/rules/issues.md`:
     "Edit the description only to correct a factual error in it, and say in a
@@ -522,6 +539,10 @@ def build_parser():
     p_close.add_argument("number", type=int)
     p_close.add_argument("--comment-file")
 
+    p_reopen = sub.add_parser("reopen")
+    p_reopen.add_argument("number", type=int)
+    p_reopen.add_argument("--comment-file")
+
     p_label = sub.add_parser("label")
     p_label.add_argument("number", type=int)
     p_label.add_argument("--add", action="append", default=[], dest="add")
@@ -565,6 +586,12 @@ def main(argv=None):
             )
             close_issue(args.number, comment_text)
             print(f"closed #{args.number}")
+        elif args.command == "reopen":
+            comment_text = (
+                _read_body_file(args.comment_file) if args.comment_file else None
+            )
+            reopen_issue(args.number, comment_text)
+            print(f"reopened #{args.number}")
         elif args.command == "label":
             label_issue(args.number, args.add, args.remove)
             print(f"labelled #{args.number}")

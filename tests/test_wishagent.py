@@ -226,6 +226,75 @@ def test_edit_posts_its_comment_after_the_patch(monkeypatch):
     assert url.endswith("/issues/1/comments")
 
 
+def test_reopen_sets_the_state_to_open_and_says_so(monkeypatch, capsys):
+    _prime_token_cache()
+    calls = _install_fake_transport(monkeypatch, (200, {"state": "open"}))
+
+    assert wishagent.main(["reopen", "7"]) == 0
+
+    assert len(calls) == 1
+    method, url, _headers, body = calls[0]
+    assert method == "PATCH"
+    assert url.endswith("/issues/7")
+    assert body == {"state": "open"}
+    assert capsys.readouterr().out.strip() == "reopened #7"
+
+
+def test_reopen_posts_its_comment_after_the_state_change(monkeypatch, tmp_path):
+    _prime_token_cache()
+    comment = tmp_path / "why.md"
+    comment.write_text("Reopened because the fix regressed.", encoding="utf-8")
+    calls = _install_fake_transport(
+        monkeypatch,
+        [
+            (200, {"state": "open"}),
+            (201, {"html_url": "http://example/issues/7#comment"}),
+        ],
+    )
+
+    assert wishagent.main(["reopen", "7", "--comment-file", str(comment)]) == 0
+
+    assert [(c[0], c[1].rsplit("/issues/", 1)[1]) for c in calls] == [
+        ("PATCH", "7"),
+        ("POST", "7/comments"),
+    ]
+    assert calls[0][3] == {"state": "open"}
+    assert calls[1][3] == {"body": "Reopened because the fix regressed."}
+
+
+def test_a_failed_reopen_posts_no_comment(monkeypatch, tmp_path, capsys):
+    _prime_token_cache()
+    comment = tmp_path / "why.md"
+    comment.write_text("Reopened.", encoding="utf-8")
+    calls = _install_fake_transport(monkeypatch, (404, {"message": "Not Found"}))
+
+    assert wishagent.main(["reopen", "7", "--comment-file", str(comment)]) == 1
+
+    assert [c[0] for c in calls] == ["PATCH"]
+    captured = capsys.readouterr()
+    assert "reopened" not in captured.out
+    assert "404" in captured.err
+
+
+def test_a_reopen_whose_comment_fails_leaves_the_issue_reopened(
+        monkeypatch, tmp_path, capsys):
+    _prime_token_cache()
+    comment = tmp_path / "why.md"
+    comment.write_text("Reopened.", encoding="utf-8")
+    calls = _install_fake_transport(
+        monkeypatch,
+        [(200, {"state": "open"}), (422, {"message": "Validation Failed"})],
+    )
+
+    assert wishagent.main(["reopen", "7", "--comment-file", str(comment)]) == 1
+
+    assert [c[0] for c in calls] == ["PATCH", "POST"]
+    assert calls[0][3] == {"state": "open"}
+    captured = capsys.readouterr()
+    assert "reopened" not in captured.out
+    assert "422 commenting on #7" in captured.err
+
+
 # ---------------------------------------------------------------------------
 # Installation token minting
 
