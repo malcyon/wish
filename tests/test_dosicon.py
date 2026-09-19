@@ -13,6 +13,7 @@ being one the game's own ICON menu could have made -- because an icon that is
 engine draws it without complaint.
 """
 
+import iconcodes
 import pytest
 from gamedata import game_file
 
@@ -26,6 +27,10 @@ from goldbox.iconparts import (
     dos_part_colours,
     dos_size,
 )
+
+# One worker builds the shared reachable set instead of every worker that
+# receives a test from either file.
+pytestmark = pytest.mark.xdist_group(name="icon-tables")
 
 #: The set 42 of the 54 shipped records across the four titles carry.
 DEFAULT_COLOURS = bytes.fromhex("91a2b3c4e6f7")
@@ -48,9 +53,10 @@ def tables():
 
 
 @pytest.fixture(scope="module")
-def legal(parts) -> set[bytes]:
-    """Every shape any sequence of ICON menu choices reaches. Slow."""
-    return parts.legal_screen_codes()
+def legal() -> frozenset[bytes]:
+    """Every shape any sequence of ICON menu choices reaches, shared with
+    every other test in the process."""
+    return iconcodes.legal_screen_codes()
 
 
 def test_the_table_names_every_figure_a_dos_player_can_choose(tables):

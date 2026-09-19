@@ -3,12 +3,17 @@
 import pathlib
 
 import gamedata
+import iconcodes
 import pytest
 from gamedata import game_file
 
 from goldbox.iconparts import CELLS_PER_POSE, SPACE, IconParts
 from goldbox.icons import ICON_COUNT, icon_for_slot
 from goldbox.savegame import SaveGame0
+
+# One worker builds the shared reachable set instead of every worker that
+# receives a test from either file.
+pytestmark = pytest.mark.xdist_group(name="icon-tables")
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -20,9 +25,9 @@ def parts() -> IconParts:
 
 
 @pytest.fixture(scope="module")
-def legal(parts) -> set[bytes]:
-    """The whole reachable set. Slow enough to be worth computing once."""
-    return parts.legal_screen_codes()
+def legal() -> frozenset[bytes]:
+    """The whole reachable set, shared with every other test in the process."""
+    return iconcodes.legal_screen_codes()
 
 
 def test_the_counts_come_from_the_overlay_not_from_here(parts):
@@ -69,10 +74,20 @@ def test_the_reachable_set_is_bigger_than_the_naive_product(parts, legal):
     """35x23 would be 805. Order matters and the two size pairs interact, so
     the real answer is larger -- which is why the editor explores rather than
     enumerating pairs."""
-    assert len(parts.legal_screen_codes(("large",))) == 3138
-    assert len(parts.legal_screen_codes(("small",))) == 1227
+    assert len(iconcodes.legal_screen_codes(("large",))) == 3138
+    assert len(iconcodes.legal_screen_codes(("small",))) == 1227
     assert len(legal) == 15328
     assert len(legal) > 35 * 23 + 28 * 14
+
+
+def test_the_shared_reachable_set_is_what_the_model_computes(parts):
+    """The cache in `iconcodes` must not drift from `legal_screen_codes`.
+
+    The small pair is checked because it is the cheap one; the full set is the
+    same call with more sizes, and the cache keys on them.
+    """
+    assert iconcodes.legal_screen_codes(("small",)) == frozenset(
+        parts.legal_screen_codes(("small",)))
 
 
 def test_every_icon_we_hold_is_one_the_game_could_have_made(legal):
