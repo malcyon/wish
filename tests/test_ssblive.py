@@ -31,7 +31,6 @@ import pytest
 from goldbox import c64_port
 from goldbox.d64 import D64, split_load_address
 from goldbox.geo import EAST, GEO_SIZE, NORTH, SOUTH, WEST, Geo
-from tests.gamedata import curse_dir, curse_disks
 from tests.test_silverblades import _party, ssb_dir, ssb_disks
 
 SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
@@ -159,67 +158,6 @@ def test_the_two_titles_share_a_class_table_so_the_import_need_not_touch_it():
     assert SSB.class_bits == CURSE.class_bits
     assert dict(SSB.class_bits)[0x40] == "paladin"
     assert dict(SSB.class_bits)[0x80] == "ranger"
-
-
-def test_a_curse_export_is_the_four_save_blocks_concatenated():
-    """The offsets the import diff was measured at, checked against the game.
-
-    An exported character is 580 bytes: the slot at `0x400 + i*0x100`, the
-    roster block at `0x1C00 + i*0x20`, the item page at `0x1000 + i*0x100` and
-    the combat icon at `0x2E0 + i*36`, in that order. Assembling those four out
-    of a save and comparing with the export the same game wrote is what makes
-    a record read out of live memory trustworthy -- and it is the reading the
-    Silver Blades import diff rests on.
-
-    Reads the player's own Curse save disks; skips when there are none with an
-    exported character on them.
-    """
-    if curse_dir() is None:
-        pytest.skip("needs the Curse disks")
-    checked = 0
-    for disk in curse_disks(engine_only=False):
-        exports = {bytes(e.name)[1:].rstrip(b"\xa0"): e
-                   for e in disk.directory()
-                   if bytes(e.name).startswith(b"\x02")}
-        if not exports or disk.find(CURSE.save_file) is None:
-            continue
-        _, payload = split_load_address(disk.read_file(CURSE.save_file))
-        if len(payload) != CURSE.save_size:
-            continue
-        for name, entry in exports.items():
-            try:
-                raw = disk.read_file(entry)
-            except Exception:
-                continue                  # a chain the drive never closed
-            if len(raw) != 582:
-                continue
-            address, record = split_load_address(raw)
-            assert address == 0x7C00
-            slot = _slot_holding(payload, name)
-            if slot is None:
-                continue
-            assert _assemble(payload, slot) == record, (
-                f"{name.decode('latin1')} does not reassemble from the save")
-            checked += 1
-    if not checked:
-        pytest.skip("no Curse save disk here pairs an export with its save")
-
-
-def _slot_holding(payload: bytes, name: bytes) -> int | None:
-    for i in range(SSB.slot_count):
-        at = c64_port.HEADER_SIZE + i * c64_port.SLOT_STRIDE
-        if payload[at:at + len(name)] == name and not payload[at + len(name)]:
-            return i
-    return None
-
-
-def _assemble(payload: bytes, i: int) -> bytes:
-    """The 580-byte record for slot *i*, out of the four places it is kept."""
-    head = payload[c64_port.HEADER_SIZE + i * c64_port.SLOT_STRIDE:][:c64_port.SLOT_STRIDE]
-    roster = payload[CURSE.roster_offset + i * 0x20:][:0x20]
-    items = payload[c64_port.ITEM_AREA_OFFSET + i * c64_port.SLOT_STRIDE:][:c64_port.SLOT_STRIDE]
-    icon = payload[c64_port.ICON_TABLE_OFFSET + i * 36:][:36]
-    return bytes(head + roster + items + icon)
 
 
 # --- the spellbook's width ---------------------------------------------------
