@@ -327,9 +327,17 @@ def test_the_loader_has_no_candidates_and_does_not_raise_with_no_files_at_all(
 
 def _guesses(game, home, cwd) -> list[pathlib.Path]:
     """The home-folder guesses `disk_candidates` made before it read the
-    registry, spelt out again so a change to them shows up here."""
+    registry, spelt out again so a change to them shows up here.
+
+    On Windows the OneDrive roots come after the ordinary ones. `searching`
+    unsets `$OneDrive`, so `<home>/OneDrive` is the only base whatever machine
+    runs this; `sys.platform` is read here, at call time, so a test can fake it.
+    """
     roots = [cwd, home, home / "Documents", home / "Games",
              home / "c64", home / "roms", home / "Downloads"]
+    if sys.platform == "win32":
+        base = home / "OneDrive"
+        roots += [base, base / "Documents", base / "Downloads"]
     out = [r / n for r in roots for n in paths._dir_names(game)]
     return out + [cwd, home]
 
@@ -346,6 +354,7 @@ def searching(tmp_path, monkeypatch):
     monkeypatch.chdir(work)
     monkeypatch.delenv("POR_DISKS", raising=False)
     monkeypatch.delenv("COAB_DISKS", raising=False)
+    monkeypatch.delenv("OneDrive", raising=False)
     monkeypatch.setattr(gamedisks, "REGISTRY", tmp_path / "gamedisks.yaml")
     monkeypatch.setattr(gamedisks, "EXAMPLE", tmp_path / "gamedisks.yaml.example")
     return home, work.resolve(), tmp_path
@@ -385,6 +394,18 @@ def test_with_no_registry_the_guesses_are_unchanged(searching):
     assert paths.disk_candidates() == _guesses(None, home, work)
     game = c64_port.CURSE_OF_THE_AZURE_BONDS
     assert paths.disk_candidates(game) == _guesses(game, home, work)
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_the_onedrive_roots_are_searched_on_windows_only(
+        searching, monkeypatch, platform):
+    """Runs on every platform, so the Windows branch is covered by Linux CI."""
+    home, work, _ = searching
+    monkeypatch.setattr(sys, "platform", platform)
+    got = paths.disk_candidates()
+    assert got == _guesses(None, home, work)
+    onedrive = [p for p in got if home / "OneDrive" in p.parents]
+    assert bool(onedrive) == (platform == "win32")
 
 
 def test_por_disks_still_wins_over_the_registry(searching, monkeypatch):
