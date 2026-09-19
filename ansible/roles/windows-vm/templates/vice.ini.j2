@@ -1,0 +1,48 @@
+{#
+    VICE settings for the guest, seeded at first logon.
+
+    Modelled on the workstation's own ~/.var/app/net.sf.VICE/config/vice/vicerc
+    so a result measured in the VM is comparable with one measured here. The
+    host paths in that file are dropped: KernalName and DosName1541ii point at
+    the guest's copies of the ROMs, and the window geometry and fliplist are
+    left out so VICE picks its own.
+
+    SaveResourcesOnExit stays 1, as on the workstation, so a change made in the
+    guest's settings dialog persists -- which does mean VICE rewrites this file
+    on exit, and these values are a starting point rather than a guarantee.
+
+    VICIIFilter=0 is "no rendering filter": it turns off CRT emulation, and with
+    it the scan lines.
+
+    The binary monitor is what wish's automapper attaches to, and a stock VICE
+    has it off. The resources are BinaryMonitorServer and
+    BinaryMonitorServerAddress -- there is no `BinaryMonitor` resource, whatever
+    a search suggests. 127.0.0.1 keeps the socket inside the guest.
+#}
+[Version]
+ConfigVersion={{ winvm_vice_config_version }}
+
+[C64SC]
+SaveResourcesOnExit=1
+VICIIFilter=0
+VICIIGLFilter=1
+VICIIModel=3
+MachineVideoStandard={{ winvm_vice_video_standard }}
+MachinePowerFrequency={{ winvm_vice_power_frequency }}
+SidModel=0
+CIA1Model=0
+CIA2Model=0
+GlueLogic=0
+IECReset=1
+KernalRev=-1
+AutostartHandleTrueDriveEmulation=1
+{% if winvm_jiffydos_src | length > 0 %}
+KernalName="{{ winvm_jiffydos_dest }}\{{ winvm_jiffydos_kernal }}"
+DosName1541ii="{{ winvm_jiffydos_dest }}\{{ winvm_jiffydos_1541 }}"
+{% endif %}
+{% if winvm_vice_binary_monitor %}
+MonitorServer=1
+MonitorServerAddress="127.0.0.1:{{ winvm_vice_text_monitor_port }}"
+BinaryMonitorServer=1
+BinaryMonitorServerAddress="127.0.0.1:{{ winvm_vice_binary_monitor_port }}"
+{% endif %}

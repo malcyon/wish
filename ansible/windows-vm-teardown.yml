@@ -1,0 +1,13 @@
+---
+# Removes the Windows VM and everything roles/windows-vm created on a host.
+#
+#   ansible-playbook -i ansible/inventory.yml ansible/windows-vm-teardown.yml
+#
+- name: Remove Windows 11 test VM
+  hosts: winvm_hosts
+  become: true
+  tasks:
+    - name: Run the windows-vm teardown
+      ansible.builtin.include_role:
+        name: windows-vm
+        tasks_from: teardown

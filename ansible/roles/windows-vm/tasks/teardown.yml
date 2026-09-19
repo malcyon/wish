@@ -1,0 +1,83 @@
+---
+# Removes the VM and everything the role created on this host.
+# Deliberately leaves the QEMU/libvirt packages installed — removing about 99
+# packages from a host that may be running other guests is more than the ask,
+# and an idle libvirtd costs nothing. See ansible/README.md for the purge command.
+#
+#   ansible-playbook -i ansible/inventory.yml ansible/windows-vm-teardown.yml
+
+- name: List defined domains
+  ansible.builtin.command: virsh list --all --name
+  register: winvm_td_domains
+  changed_when: false
+  failed_when: false
+
+- name: List running domains
+  ansible.builtin.command: virsh list --name
+  register: winvm_td_running
+  changed_when: false
+  failed_when: false
+
+- name: Force off the domain {{ winvm_name }}
+  ansible.builtin.command: "virsh destroy {{ winvm_name }}"
+  when: winvm_name in (winvm_td_running.stdout_lines | default([]))
+  changed_when: true
+
+# --nvram matters: without it libvirt refuses to undefine a UEFI domain, and
+# the per-domain varstore is left orphaned in /var/lib/libvirt/qemu/nvram.
+- name: Undefine the domain and its NVRAM, named {{ winvm_name }}
+  ansible.builtin.command: "virsh undefine --nvram {{ winvm_name }}"
+  when: winvm_name in (winvm_td_domains.stdout_lines | default([]))
+  changed_when: true
+
+- name: Stop and disable the port-forward units
+  ansible.builtin.systemd:
+    name: "winvm-forward-{{ item.name }}.service"
+    state: stopped
+    enabled: false
+  loop: "{{ winvm_forwarded_ports }}"
+  loop_control:
+    label: "{{ item.name }}"
+  failed_when: false
+
+- name: Remove the port-forward unit files
+  ansible.builtin.file:
+    path: "/etc/systemd/system/winvm-forward-{{ item.name }}.service"
+    state: absent
+  loop: "{{ winvm_forwarded_ports }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload systemd
+
+# The `sandbox` network and the no-lan filter are sandbox-network's, shared with
+# the agent VM, and are left alone -- undefining them here would cut that VM
+# off. agent-vm-teardown.yml does not remove them either; `virsh net-destroy
+# sandbox && virsh net-undefine sandbox` does, if nothing is using them.
+
+- name: Remove the VM tree (disk, ISOs, generated XML, unattend)
+  ansible.builtin.file:
+    path: "{{ winvm_base_dir }}"
+    state: absent
+
+- name: Remove the AppArmor override
+  ansible.builtin.blockinfile:
+    path: /etc/apparmor.d/local/abstractions/libvirt-qemu
+    marker: "# {mark} ANSIBLE MANAGED BLOCK windows-vm"
+    state: absent
+  failed_when: false
+  notify: Reload AppArmor
+
+# The libvirt firewall backend pin is sandbox-network's and stays: the agent VM's
+# network depends on it just as this one's did.
+
+# The role touches libvirt's `default` network only when
+# winvm_disable_default_network is set, and then it stops it and turns off its
+# autostart. Re-enabling it here would put libvirt's dnsmasq back in contention
+# with any DNS or DHCP server on the host for :53 and :67 on every boot, a state
+# this role has no reason to restore.
+- name: Report what is left of libvirt's default network
+  ansible.builtin.debug:
+    msg: >-
+      libvirt's `default` network is left as it is. It is stopped and not
+      autostarting only if winvm_disable_default_network was set when the guest
+      was built, and this teardown does not undo that.

@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+# Managed by Ansible — roles/windows-vm.
+# Control surface for the {{ winvm_name }} VM, intended for scripted/agent use.
+#
+#   winvm acquire <tag>   take a lease and start the VM if needed
+#   winvm release <tag>   drop a lease; shut down when the last one goes
+#   winvm up|down|save|status|shot [file]|ssh [cmd...]
+#   winvm scp <src> <dst> copy, with the same non-interactive options as ssh
+#   winvm guest-setup    re-run the guest's first-logon script on a live VM
+#   winvm promote         make the current disk the golden base
+#   winvm revert          discard all changes since the golden base
+#
+# Every path here is non-interactive on purpose: BatchMode and
+# SSH_ASKPASS_REQUIRE mean a failure is an error on stderr, never a password
+# dialog on somebody's screen.  `promote` refuses unless the domain is shut
+# off, because a paused domain is a live qemu holding the very file it merges.
+set -euo pipefail
+
+VM={{ winvm_name }}
+BASE={{ winvm_base_dir }}
+DISK={{ winvm_disk_path }}
+GOLDEN="$BASE/{{ winvm_name }}-golden.qcow2"
+NVRAM=/var/lib/libvirt/qemu/nvram/{{ winvm_name }}_VARS.fd
+NVRAM_GOLDEN="$BASE/{{ winvm_name }}_VARS.golden.fd"
+IP={{ winvm_ip }}
+USER={{ winvm_admin_user }}
+LEASES="$BASE/leases"
+LOCK="$BASE/.winvm.lock"
+
+# Nothing here may stop and ask a person. With no tty and DISPLAY set, OpenSSH
+# does not fail when authentication falls through -- it runs SSH_ASKPASS, and
+# on a KDE desktop that draws a credential dialog in front of whoever happens
+# to be sitting there.
+export SSH_ASKPASS_REQUIRE=never
+
+# Every ssh in this file goes through here, so the options cannot drift apart:
+# a call without BatchMode is what lets the dialog through.
+SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+          -o BatchMode=yes)
+
+V() { virsh -c qemu:///system "$@"; }
+# Image files are root-owned and libvirt flips their ownership to libvirt-qemu
+# while the VM runs, so anything touching them needs root. ssh must NOT --
+# under sudo it runs as root, which has none of your keys. So elevate the
+# file operations only, and never the ssh ones.
+R() { sudo "$@"; }
+state() { V domstate "$VM" 2>/dev/null || echo "undefined"; }
+die() { echo "winvm: $*" >&2; exit 1; }
+
+# `virsh domstate` answers seven different things, so this script does not test
+# for `running` and treat everything else as "not running". That is wrong in
+# both directions: a *paused* domain is a live qemu with the overlay open, so
+# `promote` would have committed underneath it; and `down` would report success
+# having done nothing, leaving the VM up.
+#
+# `live` is "a qemu process exists and holds the disk". `off` is the only state
+# it is safe to touch the image files in.
+live()  { case "$(state)" in running|paused|pmsuspended|"in shutdown"|blocked|idle) return 0 ;; *) return 1 ;; esac; }
+off()   { [ "$(state)" = "shut off" ]; }
+
+# Every state-changing command runs under the same lock: agents are expected to
+# call this concurrently, and start/stop races corrupt disks.
+lock() { exec 9>"$LOCK"; flock 9; }
+
+wait_ssh() {
+  local n=${1:-120}
+  for _ in $(seq 1 "$n"); do
+    if ssh -o ConnectTimeout=2 "${SSH_OPTS[@]}" \
+           "$USER@$IP" 'exit' >/dev/null 2>&1; then return 0; fi
+    sleep 2
+  done
+  return 1
+}
+
+up() {
+  lock
+  case "$(state)" in
+    running) ;;
+    # A human who closes a viewer window leaves the domain paused, and `virsh
+    # start` refuses an already-active domain, so without this case a paused
+    # domain would break every command in the file.
+    paused|pmsuspended) V resume "$VM" >/dev/null ;;
+    # managedsave restores in a couple of seconds; a cold boot is ~40.
+    *) V start "$VM" >/dev/null ;;
+  esac
+  wait_ssh || die "VM started but ssh never answered — check: winvm shot"
+  echo "up"
+}
+
+down() {
+  lock
+  # A paused domain cannot be shut down gracefully, so resume it first and let
+  # Windows do it properly; `destroy` below is the fallback either way. The
+  # wait is for `shut off` rather than for "not running", because "not running"
+  # is true of `paused` and that would end the wait immediately.
+  case "$(state)" in paused|pmsuspended) V resume "$VM" >/dev/null || true ;; esac
+  live && V shutdown "$VM" >/dev/null || true
+  for _ in $(seq 1 60); do off && break; sleep 2; done
+  off || V destroy "$VM" >/dev/null || true
+  off || die "VM is $(state) and would not shut down"
+  echo "down"
+}
+
+save() {
+  lock
+  case "$(state)" in paused|pmsuspended) V resume "$VM" >/dev/null || true ;; esac
+  if live; then V managedsave "$VM" >/dev/null; else echo "winvm: nothing to save ($(state))" >&2; fi
+  echo "saved"
+}
+
+acquire() {
+  local tag=${1:?usage: winvm acquire <tag>}
+  # The lease is written only after `up` has succeeded: one written first would
+  # be left by a failed `up`, held by nobody and removed by nothing -- and since
+  # `release` only shuts the VM down when the last lease goes, one stranded
+  # lease would mean it never shut down again.
+  mkdir -p "$LEASES"
+
+  # A lease cannot outlive the boot it was taken in: nobody is driving a VM
+  # that is switched off, so anything in the directory is wreckage from a run
+  # that died. Clearing it here is what stops a crashed agent locking the tag
+  # out forever, and it is safe precisely because the VM is off.
+  local was_off=; off && was_off=1
+  up || { return 1; }
+  [ -n "$was_off" ] && { shopt -s nullglob; rm -f "$LEASES"/*; }
+
+  # A TAG IS AN IDENTITY, AND TWO HOLDERS OF ONE TAG IS THE BUG.
+  # A simple `: > "$LEASES/$tag"` succeeds whether or not the tag was already
+  # held -- so two agents both taking the documented `wish-re` would share one
+  # lease file, invisibly, and the first of them to `release` would shut
+  # the VM down on top of the other's emulator mid-debugger-session. The
+  # second acquire is refused instead, which turns a silent collision into an
+  # error naming the way out.
+  #
+  # `noclobber` in a subshell is what makes the create atomic: two acquires
+  # landing together cannot both win it, where a test-then-write pair can.
+  # (Two agents genuinely sharing one tag are indistinguishable to this file,
+  # so refusing is the safe direction: an agent re-taking its own tag is told
+  # something is wrong rather than being handed a lease somebody else holds.)
+  if ! (set -o noclobber; : > "$LEASES/$tag") 2>/dev/null; then
+    echo "winvm: the lease '$tag' is already held." >&2
+    echo "  Use a tag of your own -- 'winvm acquire $tag-\$\$' -- rather than one" >&2
+    echo "  somebody else may be using. If you are certain it is stale:" >&2
+    echo "    winvm release $tag" >&2
+    return 1
+  fi
+}
+
+release() {
+  local tag=${1:?usage: winvm release <tag>}
+  rm -f "$LEASES/$tag"
+  shopt -s nullglob; local held=("$LEASES"/*)
+  # Length test done with -z on the joined array rather than the usual
+  # array-length form: this file is a Jinja template, and a dollar-brace-hash
+  # sequence opens a Jinja comment and breaks templating.
+  if [ -z "${held[*]:-}" ]; then down; else echo "still held by: ${held[*]##*/}"; fi
+}
+
+promote() {
+  # `qemu-img commit` merges the overlay into the base, so the domain must not
+  # merely be "not running" -- it must be OFF. A paused domain is a live qemu
+  # with this exact file open, and it walked straight past the old guard.
+  off || die "the VM is $(state) -- it must be shut off before promoting (winvm down)"
+  lock
+  if [ -f "$GOLDEN" ]; then
+    # Re-promote. The disk is already a thin overlay on golden, so merge the
+    # diff down into the base -- work proportional to what changed, not to the
+    # 21 GB image. Rewriting the whole thing costs about 12 minutes and
+    # compacts nothing.
+    backing=$(R qemu-img info --output=json "$DISK" \
+              | tr ',' '\n' | sed -n 's/.*"backing-filename": *"\([^"]*\)".*/\1/p' | head -1)
+    [ "$backing" = "$GOLDEN" ] || die "$DISK is not an overlay on $GOLDEN (backing: ${backing:-none})"
+    echo "merging overlay into golden..."
+    R qemu-img commit "$DISK"
+  else
+    # First promote. The disk is standalone, so a rename makes it the base.
+    # Instant: no bytes move.
+    R mv "$DISK" "$GOLDEN"
+  fi
+  R cp -a "$NVRAM" "$NVRAM_GOLDEN"
+  R rm -f "$DISK"
+  R qemu-img create -f qcow2 -F qcow2 -b "$GOLDEN" "$DISK" >/dev/null
+  R chown root:kvm "$GOLDEN" "$DISK"; R chmod 0644 "$GOLDEN" "$DISK"
+  echo "promoted: golden is now $(du -h "$GOLDEN" | cut -f1), overlay reset"
+}
+
+revert() {
+  [ -f "$GOLDEN" ] || die "no golden base yet — run: winvm promote"
+  lock
+  [ "$(state)" = "running" ] && V destroy "$VM" >/dev/null || true
+  V managedsave-remove "$VM" >/dev/null 2>&1 || true
+  R rm -f "$DISK"
+  R qemu-img create -f qcow2 -F qcow2 -b "$GOLDEN" "$DISK" >/dev/null
+  R chown root:kvm "$DISK"; R chmod 0644 "$DISK"
+  # NVRAM too: reverting the disk without the UEFI varstore can leave the boot
+  # entry pointing at an ESP that no longer matches.
+  R cp -a "$NVRAM_GOLDEN" "$NVRAM"; R chown libvirt-qemu:kvm "$NVRAM"
+  echo "reverted to golden"
+}
+
+case "${1:-status}" in
+  up) up ;;
+  down) down ;;
+  save) save ;;
+  acquire) shift; acquire "$@" ;;
+  release) shift; release "$@" ;;
+  promote) promote ;;
+  revert) revert ;;
+  shot) V screenshot "$VM" "${2:-/tmp/$VM.png}" ;;
+  # Options before "$@" so a caller can still add their own; BatchMode means a
+  # failure is an error, not a prompt on somebody's desktop.
+  ssh) shift; ssh "${SSH_OPTS[@]}" "$USER@$IP" "$@" ;;
+
+  # Everything roles/windows-vm installs in the guest happens at first logon,
+  # which leaves no way to bring an EXISTING VM up to date after the role
+  # changes -- the ISO is rebuilt and nothing reads it. This runs the same
+  # script again, off the UNATTEND volume already attached to the domain, so a
+  # role change reaches a live VM without a rebuild.
+  #
+  # guest-setup.ps1 is written to be re-runnable: every step checks before it
+  # acts, msiexec and pnputil tolerate "already installed", and the VICE
+  # settings step leaves an existing vice.ini alone. Re-running it is dull by
+  # design.
+  #
+  # The script is piped in on stdin rather than quoted into a command line:
+  # nesting bash, ssh and PowerShell quoting around a drive letter that moves
+  # is how this gets subtly wrong.
+  #
+  # Session 0 is fine here. Nothing the script does needs a visible desktop --
+  # it writes the registry, runs installers and copies files.
+  'guest-setup')
+    live || die "VM is $(state) -- run: winvm acquire <tag>"
+    ssh "${SSH_OPTS[@]}" "$USER@$IP" \
+        'powershell -NoProfile -ExecutionPolicy Bypass -Command -' <<'PS'
+$u = Get-Volume | Where-Object { $_.FileSystemLabel -eq 'UNATTEND' } | Select-Object -First 1
+if (-not $u) { Write-Error 'UNATTEND volume not attached to this domain'; exit 1 }
+$s = '{0}:\guest-setup.ps1' -f $u.DriveLetter
+if (-not (Test-Path $s)) { Write-Error "not found: $s"; exit 1 }
+& $s
+Get-Content C:\Windows\Temp\guest-setup.log -Tail 40
+PS
+    ;;
+  scp) shift; scp "${SSH_OPTS[@]}" "$@" ;;
+  status)
+    printf 'state:   %s\n' "$(state)"
+    printf 'golden:  %s\n' "$([ -f "$GOLDEN" ] && du -h "$GOLDEN" | cut -f1 || echo 'none — run: winvm promote')"
+    printf 'overlay: %s\n' "$([ -f "$DISK" ] && du -h "$DISK" | cut -f1 || echo none)"
+    shopt -s nullglob; l=("$LEASES"/*); printf 'leases:  %s\n' "${l[*]##*/}"
+    ;;
+  *) die "unknown command: $1" ;;
+esac

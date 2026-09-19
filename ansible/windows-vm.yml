@@ -1,0 +1,12 @@
+---
+# Windows 11 guest that runs WinUAE and VICE (QEMU/KVM + libvirt), on the
+# isolated sandbox network.
+#
+#   ansible-playbook -i ansible/inventory.yml ansible/windows-vm.yml
+#
+- name: Set up Windows 11 test VM
+  hosts: winvm_hosts
+  become: true
+  roles:
+    - role: windows-vm
+      tags: winvm

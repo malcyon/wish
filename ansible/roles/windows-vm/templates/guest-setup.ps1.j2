@@ -1,0 +1,274 @@
+# Managed by Ansible — roles/windows-vm. Runs once, at first logon, elevated.
+# Everything here logs to C:\Windows\Temp\guest-setup.log so a failure can be
+# read back afterwards instead of guessed at.
+$ErrorActionPreference = 'Continue'
+$log = 'C:\Windows\Temp\guest-setup.log'
+function Log($m) { "{0}  {1}" -f (Get-Date -Format o), $m | Tee-Object -FilePath $log -Append | Out-Null }
+function Step($name, $block) {
+    try { & $block; Log "OK    $name" }
+    catch { Log "FAIL  $name :: $($_.Exception.Message)" }
+}
+
+Log "=== guest-setup start ==="
+
+# --- Console QuickEdit off --------------------------------------------------
+# With QuickEdit on (the default), a single click inside a console window puts
+# it in selection mode, which BLOCKS the running process on its next write.
+# A stray click while someone peeks at the console would otherwise wedge an
+# agent's job indefinitely, with no error anywhere.
+Step 'disable console QuickEdit' {
+    Set-ItemProperty 'HKCU:\Console' QuickEdit 0 -Type DWord
+    New-Item -Path 'HKCU:\Console\%SystemRoot%_System32_WindowsPowerShell_v1.0_powershell.exe' -Force | Out-Null
+    Set-ItemProperty 'HKCU:\Console\%SystemRoot%_System32_WindowsPowerShell_v1.0_powershell.exe' QuickEdit 0 -Type DWord
+}
+
+# --- Permanent auto-logon ---------------------------------------------------
+# WinUAE is a GUI app and cannot render in session 0. Without a standing
+# interactive desktop, an agent that SSHes in and launches it gets a process
+# with nowhere to draw. The unattend's own AutoLogon uses AutoLogonCount, which
+# decrements to zero — this replaces it with the permanent form.
+# The password lands in the registry in clear text, same as it already is in
+# autounattend.xml. Acceptable for a throwaway test VM; do not reuse the
+# password anywhere real.
+Step 'permanent auto-logon' {
+    $wl = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    Set-ItemProperty $wl AutoAdminLogon    '1'
+    Set-ItemProperty $wl DefaultUserName   '{{ winvm_admin_user }}'
+    Set-ItemProperty $wl DefaultPassword   '{{ vault_windows_admin_password }}'
+    Set-ItemProperty $wl DefaultDomainName $env:COMPUTERNAME
+    Remove-ItemProperty $wl AutoLogonCount -ErrorAction SilentlyContinue
+}
+
+# --- No lock screen, no screensaver, no password on wake --------------------
+Step 'disable lock screen' {
+    $p = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization'
+    New-Item -Path $p -Force | Out-Null
+    Set-ItemProperty $p NoLockScreen 1 -Type DWord
+    Set-ItemProperty 'HKCU:\Control Panel\Desktop' ScreenSaveActive '0'
+    powercfg /setacvalueindex SCHEME_CURRENT SUB_NONE CONSOLELOCK 0
+    powercfg /setactive SCHEME_CURRENT
+}
+
+# --- Windows Update off -----------------------------------------------------
+# This VM exists to run 1992 Amiga software offline; it is never going to be
+# patched, and Windows Update is pure cost here. Left on, ~25 minutes of uptime
+# wrote a 16 GB overlay -- update payloads plus a 6 GB pagefile -- all of which
+# then has to be merged into the golden image on `winvm promote`, turning a
+# seconds-long operation into a multi-minute one. It also competes with the
+# emulator for CPU.
+#
+# Enterprise honours the Group Policy keys properly, which Home does not.
+Step 'disable Windows Update' {
+    $wu = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
+    New-Item -Path "$wu\AU" -Force | Out-Null
+    Set-ItemProperty "$wu\AU" NoAutoUpdate 1 -Type DWord
+    Set-ItemProperty "$wu\AU" AUOptions   1 -Type DWord   # never check
+    Set-ItemProperty $wu DoNotConnectToWindowsUpdateInternetLocations 1 -Type DWord
+    # Store auto-updates are a second source of the same traffic.
+    New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore' -Force | Out-Null
+    Set-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore' AutoDownload 2 -Type DWord
+}
+# The services are disabled through the registry rather than Set-Service:
+# WaaSMedicSvc refuses Set-Service with access denied even elevated, and its
+# entire job is turning the others back on.
+Step 'disable Windows Update services' {
+    foreach ($svc in 'wuauserv', 'UsoSvc', 'DoSvc', 'WaaSMedicSvc') {
+        Stop-Service $svc -Force -ErrorAction SilentlyContinue
+        $key = "HKLM:\SYSTEM\CurrentControlSet\Services\$svc"
+        if (Test-Path $key) { Set-ItemProperty $key Start 4 -Type DWord }
+    }
+    Log "  services set to disabled: wuauserv UsoSvc DoSvc WaaSMedicSvc"
+}
+
+# --- Wait for outbound networking ------------------------------------------
+# Add-WindowsCapability pulls OpenSSH from Windows Update, so it needs the NAT
+# route to be up. The static IP is configured by an earlier first-logon
+# command, but DHCP-less interfaces take a moment to settle.
+# Test-NetConnection is not used here: its timeout is not configurable, it
+# writes a progress bar that outlives the call, and a bounded iteration count
+# says nothing about bounded wall-clock time. This probes DNS — the thing
+# Add-WindowsCapability actually needs — with an explicit deadline.
+Step 'wait for network' {
+    $ok = $false
+    $deadline = (Get-Date).AddMinutes(3)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $null = [System.Net.Dns]::GetHostAddresses('windowsupdate.microsoft.com')
+            $ok = $true; break
+        } catch { Start-Sleep -Seconds 5 }
+    }
+    Log "name resolution working: $ok"
+}
+
+# --- OpenSSH Server ---------------------------------------------------------
+Step 'install OpenSSH.Server' {
+    $cap = Get-WindowsCapability -Online -Name 'OpenSSH.Server*' | Select-Object -First 1
+    Log "OpenSSH.Server state before: $($cap.State)"
+    if ($cap.State -ne 'Installed') { Add-WindowsCapability -Online -Name $cap.Name | Out-Null }
+}
+Step 'enable sshd' {
+    Set-Service -Name sshd -StartupType Automatic
+    Start-Service sshd
+}
+Step 'sshd firewall rule' {
+    if (-not (Get-NetFirewallRule -Name 'winvm-ssh' -ErrorAction SilentlyContinue)) {
+        New-NetFirewallRule -Name 'winvm-ssh' -DisplayName 'winvm ssh (22)' `
+            -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
+    }
+}
+# For a member of Administrators, sshd reads this file and NOT the user's
+# ~/.ssh/authorized_keys — and it refuses the file outright unless only
+# SYSTEM and Administrators can write it. SIDs, not names: group names are
+# localised.
+Step 'authorized key' {
+    $akf = Join-Path $env:ProgramData 'ssh\administrators_authorized_keys'
+    New-Item -ItemType Directory -Force -Path (Split-Path $akf) | Out-Null
+    Set-Content -Path $akf -Value '{{ winvm_ssh_pubkey }}' -Encoding ascii
+    icacls $akf /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null
+}
+Step 'powershell as default ssh shell' {
+    New-Item -Path 'HKLM:\SOFTWARE\OpenSSH' -Force | Out-Null
+    New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell `
+        -Value 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' `
+        -PropertyType String -Force | Out-Null
+}
+
+# --- virtio drivers AND the QEMU guest agent --------------------------------
+# TWO installers, and both are required. This took three attempts to pin down:
+#
+#   guest-agent\qemu-ga-x86_64.msi  installs the agent SERVICE only
+#   virtio-win-gt-x64.msi           installs the DRIVERS only (13 of them,
+#                                   including vioser.sys)
+#
+# The agent speaks virtio-serial, for which Windows has no in-box driver — and
+# this VM otherwise needs none, since it boots on SATA and e1000e. Install the
+# agent alone and you get a service with no channel; install the drivers alone
+# and you get a channel with no service. Either way libvirt reports the channel
+# as state='disconnected' and `virsh domifaddr --source agent` fails.
+Step 'virtio drivers + guest agent' {
+    $v = Get-Volume | Where-Object { $_.FileSystemLabel -like 'virtio-win*' } | Select-Object -First 1
+    if (-not $v) { throw 'virtio-win volume not found' }
+    foreach ($rel in @('virtio-win-gt-x64.msi', 'guest-agent\qemu-ga-x86_64.msi')) {
+        $msi = '{0}:\{1}' -f $v.DriveLetter, $rel
+        if (-not (Test-Path $msi)) { Log "SKIP  not found: $msi"; continue }
+        $p = Start-Process msiexec.exe -ArgumentList '/i', $msi, '/qn', '/norestart' -Wait -PassThru
+        Log "msiexec $rel exit code: $($p.ExitCode)"
+    }
+    Start-Sleep -Seconds 5
+    $svc = Get-Service QEMU-GA -ErrorAction SilentlyContinue
+    Log "guest agent service: $(if ($svc) { "$($svc.Name)=$($svc.Status)" } else { 'ABSENT' })"
+}
+
+{% if winvm_install_qxl %}
+# --- QXL display driver -----------------------------------------------------
+# virtio-win-gt-x64.msi installs the network, storage and balloon drivers but
+# NOT the display one, so without this the guest runs on "Microsoft Basic
+# Display Adapter": a single fixed mode, no SPICE auto-resize when the viewer
+# window changes, and no way to make the screen taller. A dialog taller than
+# the screen then has its buttons off the bottom with nothing to drag them
+# back with -- as VICE's disk attach dialog is in 1280x800.
+# docs/219-the-agent-sandbox.md has the finding.
+#
+# **This step must stay after the virtio one.** That MSI puts Red Hat's
+# certificate into the TrustedPublisher store, and pnputil cannot install a
+# driver unattended until it is there -- it would sit waiting for a human to
+# confirm the publisher, on a machine with nobody at it.
+#
+# The ISO carries no w11 package for qxldod; w10\amd64 is the Windows 11 one.
+Step 'QXL display driver' {
+    $v = Get-Volume | Where-Object { $_.FileSystemLabel -like 'virtio-win*' } | Select-Object -First 1
+    if (-not $v) { throw 'virtio-win volume not found' }
+    $inf = '{0}:\{{ winvm_qxl_inf }}' -f $v.DriveLetter
+    if (-not (Test-Path $inf)) { throw "not found: $inf" }
+
+    $p = Start-Process pnputil.exe -ArgumentList '/add-driver', $inf, '/install' -Wait -PassThru -NoNewWindow
+    Log "pnputil exit code: $($p.ExitCode)"
+
+    # 259 is ERROR_NO_MORE_ITEMS -- pnputil's "nothing to do", which is a
+    # success here. Any other non-zero code is one to read in the log.
+    if ($p.ExitCode -notin 0, 259) { throw "pnputil failed with $($p.ExitCode)" }
+
+    # The adapter name only changes once Windows has swapped the driver in,
+    # which can wait for the reboot after first logon. Log whichever it is
+    # rather than failing: the driver being staged is what this step controls.
+    $gpu = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name
+    Log "display adapter now: $gpu"
+}
+{% endif %}
+
+{% if winvm_install_vice %}
+# --- VICE -------------------------------------------------------------------
+# VICE ships as a zip, not an installer, so there is nothing for msiexec to do
+# and this cannot ride the WinUAE path in autounattend.xml.
+#
+# The archive holds one versioned top-level directory -- GTK3VICE-3.10-win64 --
+# and unpacking it as-is would put x64sc.exe at a path carrying the version, so
+# every VICE release would move it and everything naming that path would have to
+# be edited. The inner directory is flattened instead: x64sc.exe lands at
+# {{ winvm_vice_install_dir }}\bin\x64sc.exe and stays there.
+#
+# The UNATTEND volume is found by label, not by drive letter: the letter shifts
+# as disks come and go. Same reason as the WinUAE and Kickstart steps.
+Step 'install VICE' {
+    $u = Get-Volume | Where-Object { $_.FileSystemLabel -eq 'UNATTEND' } | Select-Object -First 1
+    if (-not $u) { throw 'UNATTEND volume not found' }
+    $zip = '{0}:\{{ winvm_vice_zip }}' -f $u.DriveLetter
+    if (-not (Test-Path $zip)) { throw "not found: $zip" }
+
+    $tmp = Join-Path $env:TEMP 'vice-unpack'
+    Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    Expand-Archive -Path $zip -DestinationPath $tmp -Force
+
+    $inner = @(Get-ChildItem -Path $tmp -Directory)
+    if ($inner.Count -ne 1) { throw "expected one top-level directory in the zip, found $($inner.Count)" }
+
+    New-Item -ItemType Directory -Force -Path '{{ winvm_vice_install_dir }}' | Out-Null
+    Copy-Item -Path (Join-Path $inner[0].FullName '*') -Destination '{{ winvm_vice_install_dir }}' -Recurse -Force
+    Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+
+    $exe = Join-Path '{{ winvm_vice_install_dir }}' 'bin\x64sc.exe'
+    if (-not (Test-Path $exe)) { throw "unpacked, but $exe is missing" }
+    Log "VICE at $exe ($($inner[0].Name))"
+}
+{% endif %}
+
+{% if winvm_jiffydos_src | length > 0 %}
+# --- JiffyDOS ROMs ----------------------------------------------------------
+# Copyrighted, so they ride the unattend ISO from the host rather than
+# being downloaded. Without them VICE uses the stock kernal, which works -- it
+# just means no fastloader, and Pool of Radiance then asks to disable its own.
+Step 'copy JiffyDOS ROMs' {
+    $u = Get-Volume | Where-Object { $_.FileSystemLabel -eq 'UNATTEND' } | Select-Object -First 1
+    if (-not $u) { throw 'UNATTEND volume not found' }
+    $src = '{0}:\jiffydos' -f $u.DriveLetter
+    if (-not (Test-Path $src)) { throw "not found: $src" }
+    New-Item -ItemType Directory -Force -Path '{{ winvm_jiffydos_dest }}' | Out-Null
+    Copy-Item -Path (Join-Path $src '*') -Destination '{{ winvm_jiffydos_dest }}' -Force
+    Log "ROMs: $((Get-ChildItem '{{ winvm_jiffydos_dest }}' -File | Select-Object -ExpandProperty Name) -join ', ')"
+}
+{% endif %}
+
+# --- VICE settings ----------------------------------------------------------
+# VICE reads %APPDATA%\vice\vice.ini, which is per-user -- so this writes into
+# {{ winvm_admin_user }}'s profile explicitly rather than trusting $env:APPDATA,
+# which would be whichever account the first-logon script happens to run as.
+#
+# Written only if absent. VICE has SaveResourcesOnExit=1, so once somebody has
+# opened the settings dialog the file on disk is theirs and overwriting it on a
+# later run would throw their work away.
+Step 'seed VICE settings' {
+    $u = Get-Volume | Where-Object { $_.FileSystemLabel -eq 'UNATTEND' } | Select-Object -First 1
+    if (-not $u) { throw 'UNATTEND volume not found' }
+    $src = '{0}:\vice.ini' -f $u.DriveLetter
+    if (-not (Test-Path $src)) { throw "not found: $src" }
+
+    $dir = 'C:\Users\{{ winvm_admin_user }}\AppData\Roaming\vice'
+    $dst = Join-Path $dir 'vice.ini'
+    if (Test-Path $dst) { Log "SKIP  $dst exists, leaving it alone"; return }
+
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Copy-Item -Path $src -Destination $dst -Force
+    Log "wrote $dst"
+}
+
+Log "=== guest-setup done ==="

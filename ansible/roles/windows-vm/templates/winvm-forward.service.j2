@@ -1,0 +1,22 @@
+{# Managed by Ansible — roles/windows-vm #}
+[Unit]
+Description=Forward {{ item.name }} ({{ item.port }}/tcp) to the {{ winvm_name }} VM
+After=network-online.target libvirtd.service
+Wants=network-online.target
+
+[Service]
+# socat rather than a DNAT rule: Docker and Tailscale both manage iptables on
+# this host, and a userspace forwarder cannot be clobbered by either of them.
+ExecStart=/usr/bin/socat -d \
+    TCP4-LISTEN:{{ item.port }},bind={{ winvm_forward_listen_address }},fork,reuseaddr,keepalive \
+    TCP4:{{ winvm_ip }}:{{ item.port }},keepalive
+Restart=always
+RestartSec=5
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

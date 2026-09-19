@@ -1,0 +1,9 @@
+---
+- name: Reload AppArmor
+  ansible.builtin.service:
+    name: apparmor
+    state: reloaded
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true

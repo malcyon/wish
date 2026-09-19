@@ -1,0 +1,273 @@
+{# Managed by Ansible — roles/windows-vm.
+   Built into a small ISO labelled UNATTEND and attached to the VM; Windows
+   Setup picks autounattend.xml up from the root of any removable drive. -#}
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend"
+          xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-International-Core-WinPE"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <SetupUILanguage>
+        <UILanguage>{{ winvm_locale }}</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>{{ winvm_input_locale }}</InputLocale>
+      <SystemLocale>{{ winvm_locale }}</SystemLocale>
+      <UILanguage>{{ winvm_locale }}</UILanguage>
+      <UserLocale>{{ winvm_locale }}</UserLocale>
+    </component>
+
+    <component name="Microsoft-Windows-Setup"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+
+      <!-- The VM does present a real TPM 2.0 and Secure Boot, but on a host
+           whose CPU Windows 11 Setup rejects (older than 8th-generation Intel)
+           the CPU check still fails. LabConfig is the supported-by-convention
+           escape hatch; the rest are set too so the install does not stall if
+           the firmware features come up differently on a future qemu. -->
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassStorageCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+
+      <DiskConfiguration>
+        <WillShowUI>OnError</WillShowUI>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order><Type>EFI</Type><Size>260</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order><Type>MSR</Type><Size>128</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order><Type>Primary</Type><Extend>true</Extend>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order><PartitionID>1</PartitionID>
+              <Format>FAT32</Format><Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order><PartitionID>3</PartitionID>
+              <Format>NTFS</Format><Label>Windows</Label><Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+
+      <ImageInstall>
+        <OSImage>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/INDEX</Key>
+              <Value>{{ winvm_image_index }}</Value>
+            </MetaData>
+          </InstallFrom>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+          <WillShowUI>OnError</WillShowUI>
+        </OSImage>
+      </ImageInstall>
+
+      <!-- No ProductKey element: the Enterprise evaluation image carries its
+           own key, and supplying an empty one makes Setup prompt. -->
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <FullName>{{ winvm_admin_user }}</FullName>
+        <Organization></Organization>
+      </UserData>
+    </component>
+  </settings>
+
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <ComputerName>{{ winvm_computer_name }}</ComputerName>
+      <TimeZone>{{ winvm_timezone }}</TimeZone>
+    </component>
+
+    <component name="Microsoft-Windows-TerminalServices-LocalSessionManager"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <fDenyTSConnections>false</fDenyTSConnections>
+    </component>
+
+    <component name="Microsoft-Windows-TerminalServices-RDP-WinStationExtensions"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <UserAuthentication>1</UserAuthentication>
+      <SecurityLayer>2</SecurityLayer>
+    </component>
+
+    <component name="Microsoft-Windows-Deployment"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+{% for p in winvm_guest_open_ports %}
+        <!-- Rules are added by port, not by the built-in "Remote Desktop"
+             group: group names are localised and would break on a non-en-US
+             image. -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>{{ loop.index }}</Order>
+          <Path>{{ ('netsh advfirewall firewall add rule name="winvm-' ~ p.name ~ '-' ~ p.port ~ '" dir=in action=allow protocol=TCP localport=' ~ p.port) | e }}</Path>
+        </RunSynchronousCommand>
+{% endfor %}
+        <RunSynchronousCommand wcm:action="add">
+          <Order>{{ winvm_guest_open_ports | length + 1 }}</Order>
+          <Path>netsh advfirewall firewall add rule name="winvm-icmp" protocol=icmpv4:8,any dir=in action=allow</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
+
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <InputLocale>{{ winvm_input_locale }}</InputLocale>
+      <SystemLocale>{{ winvm_locale }}</SystemLocale>
+      <UILanguage>{{ winvm_locale }}</UILanguage>
+      <UserLocale>{{ winvm_locale }}</UserLocale>
+    </component>
+
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <!-- Declaring a LocalAccount below is what actually lets OOBE skip the
+             Microsoft-account requirement on Windows 11. -->
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>3</ProtectYourPC>
+      </OOBE>
+
+      <UserAccounts>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Name>{{ winvm_admin_user }}</Name>
+            <DisplayName>{{ winvm_admin_user }}</DisplayName>
+            <Description>Test account</Description>
+            <Group>Administrators</Group>
+            <Password>
+              <Value>{{ vault_windows_admin_password | e }}</Value>
+              <PlainText>true</PlainText>
+            </Password>
+          </LocalAccount>
+        </LocalAccounts>
+      </UserAccounts>
+
+      <!-- One automatic logon so FirstLogonCommands actually run; after that
+           the VM sits at the lock screen and RDP takes over. -->
+      <AutoLogon>
+        <Username>{{ winvm_admin_user }}</Username>
+        <Password>
+          <Value>{{ vault_windows_admin_password | e }}</Value>
+          <PlainText>true</PlainText>
+        </Password>
+        <Enabled>true</Enabled>
+        <LogonCount>1</LogonCount>
+      </AutoLogon>
+
+      <FirstLogonCommands>
+{% set flc = [] %}
+{#- The guest addresses itself rather than relying on DHCP at first logon. Located by adapter index rather
+    than by name: "Ethernet" is localised and would break on a non-en-US
+    image. -#}
+{% set _ = flc.append({
+     'd': 'Configure static networking',
+     'c': 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$a = Get-NetAdapter -Physical | Select-Object -First 1; Set-NetIPInterface -InterfaceIndex $a.ifIndex -Dhcp Disabled; Remove-NetIPAddress -InterfaceIndex $a.ifIndex -Confirm:$false -ErrorAction SilentlyContinue; New-NetIPAddress -InterfaceIndex $a.ifIndex -IPAddress ' ~ winvm_ip ~ ' -PrefixLength ' ~ winvm_net_prefix ~ ' -DefaultGateway ' ~ winvm_net_gateway ~ '; Set-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ServerAddresses ' ~ winvm_dns_server ~ '"'}) %}
+{#- Pin the RTC as UTC to match <clock offset='utc'/> in the domain. Left to
+    defaults the guest clock drifted by exactly the timezone offset once
+    Windows started syncing time. Also immune to DST, unlike localtime. -#}
+{% set _ = flc.append({'d': 'Treat the hardware clock as UTC', 'c': 'reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation" /v RealTimeIsUniversal /t REG_DWORD /d 1 /f'}) %}
+{#- A sleeping VM stops answering RDP and there is nobody at the console to
+    wake it. -#}
+{% set _ = flc.append({'d': 'Never sleep', 'c': 'cmd /c powercfg /change standby-timeout-ac 0'}) %}
+{% set _ = flc.append({'d': 'Never blank the display', 'c': 'cmd /c powercfg /change monitor-timeout-ac 0'}) %}
+{% set _ = flc.append({'d': 'Disable hibernation', 'c': 'cmd /c powercfg /hibernate off'}) %}
+{#- Belt and braces: the specialize pass should already have done this, but a
+    failed RDP enable means a VM you cannot reach. -#}
+{% set _ = flc.append({'d': 'Enable Remote Desktop', 'c': 'reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f'}) %}
+{% for p in winvm_guest_open_ports %}
+{% set _ = flc.append({
+     'd': 'Allow ' ~ p.name ~ ' inbound',
+     'c': 'netsh advfirewall firewall add rule name="winvm-' ~ p.name ~ '-' ~ p.port ~ '" dir=in action=allow protocol=TCP localport=' ~ p.port}) %}
+{% endfor %}
+{#- Windows Update may still install updates; this stops it rebooting out from
+    under a session you are testing in. Only applies while someone is logged
+    on, which is the case that matters here. -#}
+{% set _ = flc.append({'d': 'No automatic reboot while logged on', 'c': 'reg add "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU" /v NoAutoRebootWithLoggedOnUsers /t REG_DWORD /d 1 /f'}) %}
+{#- Defender exclusions are set before WinUAE is installed: Add-MpPreference
+    accepts paths that do not exist yet, and excluding first keeps real-time
+    scanning off the install itself. -#}
+{% for path in winvm_defender_exclusions %}
+{% set _ = flc.append({
+     'd': 'Exclude ' ~ path ~ ' from Defender real-time scanning',
+     'c': 'powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-MpPreference -ExclusionPath \'' ~ path ~ '\'"'}) %}
+{% endfor %}
+{% if winvm_kickstart_src | length > 0 %}
+{#- ROMs ride along on the unattend ISO, so the guest needs no network and no
+    share to reach them. Join-Path rather than string concatenation: the
+    drive letter arrives as a [char]. -#}
+{% set _ = flc.append({
+     'd': 'Copy Kickstart ROMs to ' ~ winvm_kickstart_dest,
+     'c': 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$u = Get-Volume | Where-Object { $_.FileSystemLabel -eq \'UNATTEND\' } | Select-Object -First 1; if ($u) { $src = \'{0}:\\kickstarts\' -f $u.DriveLetter; if (Test-Path $src) { New-Item -ItemType Directory -Force -Path \'' ~ winvm_kickstart_dest ~ '\' | Out-Null; Copy-Item -Path (Join-Path $src \'*\') -Destination \'' ~ winvm_kickstart_dest ~ '\' -Force } }"'}) %}
+{% endif %}
+{% if winvm_install_winuae %}
+{#- Installed from the UNATTEND volume, which is located by label because its
+    drive letter shifts as disks come and go. Same [char] caveat as below: `-f`
+    not `+`. -#}
+{% set _ = flc.append({
+     'd': 'Install WinUAE',
+     'c': 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$u = Get-Volume | Where-Object { $_.FileSystemLabel -eq \'UNATTEND\' } | Select-Object -First 1; if ($u) { $msi = \'{0}:\\' ~ winvm_winuae_msi ~ '\' -f $u.DriveLetter; if (Test-Path $msi) { Start-Process msiexec.exe -ArgumentList \'/i\', $msi, \'/qn\', \'/norestart\' -Wait } }"'}) %}
+{% endif %}
+{#- Everything needing real logic — permanent auto-logon, the lock screen,
+    OpenSSH Server, the authorized key, and the virtio/guest-agent install —
+    lives in guest-setup.ps1 on the unattend ISO. It logs every step to
+    C:\\Windows\\Temp\\guest-setup.log, which beats inline commands that fail
+    silently: the guest-agent install has now failed twice with no trace. -#}
+{% set _ = flc.append({
+     'd': 'Run guest setup script',
+     'c': 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$u = Get-Volume | Where-Object { $_.FileSystemLabel -eq \'UNATTEND\' } | Select-Object -First 1; if ($u) { & (\'{0}:\\guest-setup.ps1\' -f $u.DriveLetter) }"'}) %}
+{% for c in flc %}
+        <SynchronousCommand wcm:action="add">
+          <Order>{{ loop.index }}</Order>
+          <Description>{{ c.d | e }}</Description>
+          <CommandLine>{{ c.c | e }}</CommandLine>
+        </SynchronousCommand>
+{% endfor %}
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>

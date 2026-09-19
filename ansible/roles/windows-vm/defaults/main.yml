@@ -1,0 +1,170 @@
+---
+# --- Identity / sizing ------------------------------------------------------
+winvm_name: win11
+winvm_computer_name: WIN11-DEV
+# Host account added to the libvirt/kvm groups. The inventory sets it.
+winvm_user: CHANGE-ME-DESKTOP-ACCOUNT
+winvm_vcpus: 4
+winvm_memory_mb: 6144
+winvm_disk_gb: 64
+
+# --- Paths ------------------------------------------------------------------
+# Under /var/lib/libvirt on purpose. A per-user directory does not work: qemu
+# runs as libvirt-qemu, and a 0750 home directory blocks it from traversing to
+# the disk ("Cannot access storage file ... Permission denied"). Override this
+# on a host whose root filesystem is too small, but pick a path every user can
+# traverse.
+winvm_base_dir: /var/lib/libvirt/winvm
+winvm_iso_dir: "{{ winvm_base_dir }}/iso"
+winvm_state_dir: "{{ winvm_base_dir }}/state"
+winvm_disk_path: "{{ winvm_base_dir }}/{{ winvm_name }}.qcow2"
+
+# --- Windows install media --------------------------------------------------
+# The Evaluation Center gates the ISO behind a registration form, so there is
+# no stable URL to fetch. Download it once from
+#   https://www.microsoft.com/en-us/evalcenter/evaluate-windows-11-enterprise
+# then set winvm_iso_src to the local path, put it at winvm_iso_path yourself,
+# or set winvm_iso_url if you have a link the host can reach.
+winvm_iso_path: "{{ winvm_iso_dir }}/windows11-enterprise-eval.iso"
+# Local path of the downloaded ISO. The inventory sets it.
+winvm_iso_src: ""
+winvm_iso_url: ""
+winvm_image_index: 1        # Enterprise eval ISOs ship a single image
+
+# virtio-win. Not needed to boot (SATA + e1000e are both in-box in Windows),
+# but virtio-win-gt-x64.msi carries vioser.sys, without which the QEMU guest
+# agent has no channel to talk over.
+winvm_virtio_iso_path: "{{ winvm_iso_dir }}/virtio-win.iso"
+winvm_virtio_iso_url: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso
+
+# --- Networking -------------------------------------------------------------
+# The guest is on the `sandbox` network, which the sandbox-network role defines
+# (this role depends on it), with the no-lan filter on its NIC so it cannot
+# reach the home LAN. That role's address table is where this guest's address
+# and MAC come from. The guest is still addressed statically from
+# autounattend.xml, since the address is applied once at first logon.
+#
+# DNS is the network's own gateway, 10.77.0.1: libvirt runs dnsmasq there and
+# it forwards to the host's resolver. Pointing the guest at a resolver on the LAN
+# instead would get every query dropped by the filter, and the guest would
+# resolve nothing.
+winvm_network_name: "{{ sandbox_net_name }}"
+winvm_net_gateway: "{{ sandbox_net_gateway }}"
+winvm_net_prefix: "{{ sandbox_net_prefix }}"
+winvm_ip: "{{ sandbox_net_leases[winvm_name].ip }}"
+winvm_mac: "{{ sandbox_net_leases[winvm_name].mac }}"
+winvm_dns_server: "{{ sandbox_net_gateway }}"     # 10.77.0.1
+winvm_disable_default_network: false
+
+# An unfiltered NAT network by this name, which this VM does not use, is a route
+# to the LAN. Removed once no running guest is on it; set to "" to leave it
+# alone.
+winvm_legacy_network: winvm
+
+# --- Ports ------------------------------------------------------------------
+# Opened inbound in the guest's firewall by autounattend.xml.
+winvm_guest_open_ports:
+  - name: rdp
+    port: 3389
+  - name: ssh
+    port: 22
+
+# Host -> guest forwards, one socat systemd unit each. Only needed when the VM
+# runs on a different machine than you sit at; leave empty for a local VM.
+winvm_forwarded_ports: []
+winvm_forward_listen_address: "0.0.0.0"
+
+# --- Console ----------------------------------------------------------------
+# spice: best local console, carries audio. vnc: bound to loopback, reach it
+# over an SSH tunnel — for a VM on a remote host.
+winvm_graphics: spice
+winvm_vnc_port: 5900
+winvm_install_desktop_tools: true    # virt-manager / virt-viewer on the host
+
+# --- Guest software ---------------------------------------------------------
+# WinUAE is embedded in the unattend ISO rather than downloaded by the guest,
+# so first logon needs no working internet.
+winvm_install_winuae: true
+winvm_winuae_url: https://download.abime.net/winuae/releases/InstallWinUAE6030_x64.msi
+winvm_winuae_msi: InstallWinUAE6030_x64.msi
+winvm_winuae_install_dir: 'C:\Program Files\WinUAE'
+
+# VICE ships as a zip rather than an installer, so it is unpacked by
+# guest-setup.ps1 instead of handed to msiexec. Staged into the unattend ISO
+# for the same reason as WinUAE: first logon needs no working internet.
+# The zip holds a single versioned top-level directory; the unpack step
+# flattens it, so the path below stays the same across VICE releases and
+# nothing downstream has to be edited when 3.10 becomes 3.11.
+winvm_install_vice: true
+winvm_vice_url: https://downloads.sourceforge.net/project/vice-emu/releases/binaries/windows/GTK3VICE-3.10-win64.zip
+winvm_vice_zip: GTK3VICE-3.10-win64.zip
+winvm_vice_install_dir: 'C:\VICE'
+
+# The QXL display driver. virtio-win-gt-x64.msi does NOT install it, so without
+# this the guest comes up on "Microsoft Basic Display Adapter": one fixed mode,
+# no SPICE auto-resize, and dialogs taller than the screen with no way to reach
+# their buttons. docs/219-the-agent-sandbox.md has the finding.
+# There is no w11 package on the virtio ISO; w10\amd64 is the Windows 11 one.
+winvm_install_qxl: true
+winvm_qxl_inf: 'qxldod\w10\amd64\qxldod.inf'
+
+# JiffyDOS ROMs for VICE. Copyrighted, so they stay outside every repository,
+# like the Kickstart ROMs below; the inventory sets this to the directory that
+# holds them. "" skips them; VICE then falls back to the stock kernal, which
+# works and simply has no fastloader.
+winvm_jiffydos_src: ""
+winvm_jiffydos_dest: 'C:\C64\JiffyDOS'
+winvm_jiffydos_kernal: JiffyDOS_C64_6.01.bin
+winvm_jiffydos_1541: JiffyDOS_1541-II_6.00.bin
+
+# VICE settings seeded into the guest at first logon, from templates/vice.ini.j2
+# to %APPDATA%\vice\vice.ini. Values mirror the workstation's own vicerc so a
+# measurement taken in the VM is comparable with one taken here.
+winvm_vice_config_version: '3.10'
+winvm_vice_video_standard: 2
+winvm_vice_power_frequency: 60
+# The binary monitor is what wish's automapper attaches to, and a stock VICE has
+# it off. The resource names are BinaryMonitorServer and
+# BinaryMonitorServerAddress -- `BinaryMonitor` is not a VICE resource.
+winvm_vice_binary_monitor: true
+winvm_vice_binary_monitor_port: 6502
+winvm_vice_text_monitor_port: 6510
+
+# Amiga Kickstart ROMs staged into the unattend ISO and copied into the guest
+# at first logon. Set winvm_kickstart_src to "" to skip.
+# WinUAE identifies ROMs by CRC, so raw dumps are recognised on their own.
+# Cloanto/Amiga Forever ROMs are encrypted (they begin "AMIROMTYPE1") and need
+# rom.key alongside them — drop it in the same directory if yours are.
+# The inventory sets it to the directory that holds them.
+winvm_kickstart_src: ""
+winvm_kickstart_dest: 'C:\Amiga\Kickstarts'
+
+# Paths excluded from Microsoft Defender real-time scanning in the guest.
+# Add your ADF/ROM directories here — those are what real-time scanning
+# actually slows down.
+# C:\Amiga wholesale rather than per-subdirectory: Kickstarts, disk images and
+# memory dumps all live under it, and real-time scanning of ADF/HDF images is
+# what actually costs performance.
+winvm_defender_exclusions:
+  - "{{ winvm_winuae_install_dir }}"
+  - "{{ winvm_vice_install_dir }}"
+  - 'C:\Amiga'
+  - "{{ winvm_jiffydos_dest }}"
+
+# --- Guest account / locale -------------------------------------------------
+# The guest's local administrator; its password is vault_windows_admin_password.
+# The inventory sets the account.
+winvm_admin_user: CHANGE-ME-GUEST-ADMIN-ACCOUNT
+
+# Public key injected into the guest's administrators_authorized_keys, so
+# Claude Code agents can drive the VM over ssh/scp.
+winvm_ssh_pubkey_path: ~/.ssh/id_ed25519.pub
+winvm_ssh_pubkey: "{{ lookup('file', winvm_ssh_pubkey_path) }}"
+# A Windows time zone name, not a tz database one. The inventory sets it.
+winvm_timezone: UTC
+winvm_locale: en-US
+winvm_input_locale: "0409:00000409"
+
+# Started with the host: it is the peripheral the agent VM's WinUAE work drives,
+# and the agents never start or revert it themselves -- that is what this is for.
+winvm_autostart: true

@@ -1,0 +1,173 @@
+{# Managed by Ansible — roles/windows-vm #}
+<domain type='kvm'>
+  <name>{{ winvm_name }}</name>
+  <!-- Same reason as the network: `virsh define` rejects a name that
+       already exists under a different UUID. -->
+  <uuid>{{ (winvm_name ~ '-winvm-domain') | to_uuid }}</uuid>
+  <metadata>
+    <libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0">
+      <libosinfo:os id="http://microsoft.com/win/11"/>
+    </libosinfo:libosinfo>
+  </metadata>
+
+  <memory unit='MiB'>{{ winvm_memory_mb }}</memory>
+  <currentMemory unit='MiB'>{{ winvm_memory_mb }}</currentMemory>
+  <vcpu placement='static'>{{ winvm_vcpus }}</vcpu>
+
+  <!-- Windows 11 requires UEFI + Secure Boot. firmware='efi' lets libvirt pick
+       the matching OVMF descriptor instead of hardcoding a path that moves
+       between Ubuntu releases; enrolled-keys seeds the Microsoft CA so Secure
+       Boot is actually on rather than merely available. -->
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <firmware>
+      <feature enabled='yes' name='enrolled-keys'/>
+      <feature enabled='yes' name='secure-boot'/>
+    </firmware>
+    <!-- Disk first: on the first boot it is blank and has no EFI entry, so
+         the firmware falls through to the install ISO. Afterwards Windows
+         boots directly without waiting on the CD prompt. -->
+    <boot dev='hd'/>
+    <boot dev='cdrom'/>
+  </os>
+
+  <features>
+    <acpi/>
+    <apic/>
+    <!-- Hyper-V enlightenments — without these Windows spins on the emulated
+         timers and idles far hotter than it needs to. -->
+    <hyperv mode='custom'>
+      <relaxed state='on'/>
+      <vapic state='on'/>
+      <spinlocks state='on' retries='8191'/>
+      <vpindex state='on'/>
+      <synic state='on'/>
+      <stimer state='on'/>
+      <frequencies state='on'/>
+    </hyperv>
+    <vmport state='off'/>
+    <!-- SMM is required for Secure Boot. -->
+    <smm state='on'/>
+  </features>
+
+  <cpu mode='host-passthrough' check='none' migratable='on'>
+    <topology sockets='1' dies='1' cores='{{ winvm_vcpus }}' threads='1'/>
+  </cpu>
+
+  <!-- UTC, paired with RealTimeIsUniversal=1 set by autounattend.xml. With
+       localtime the guest clock slipped by exactly the timezone offset once
+       Windows began syncing time, and localtime also breaks across DST. -->
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+    <timer name='hypervclock' present='yes'/>
+  </clock>
+
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+
+  <!-- No S3/S4: a suspended VM stops answering RDP and there is no one at the
+       console to wake it. -->
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+
+    <!-- SATA, not virtio-blk. virtio would need its driver injected into
+         WinPE, and the DriverPaths drive letters are not predictable at that
+         point — the single most common way an unattended KVM install fails.
+         The virtio ISO is still attached if you want to switch later. -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='none' io='threads' discard='unmap'/>
+      <source file='{{ winvm_disk_path }}'/>
+      <target dev='sda' bus='sata'/>
+    </disk>
+
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ winvm_iso_path }}'/>
+      <target dev='sdb' bus='sata'/>
+      <readonly/>
+    </disk>
+
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ winvm_virtio_iso_path }}'/>
+      <target dev='sdc' bus='sata'/>
+      <readonly/>
+    </disk>
+
+    <!-- Windows Setup scans removable media for autounattend.xml at the root. -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ winvm_state_dir }}/unattend.iso'/>
+      <target dev='sdd' bus='sata'/>
+      <readonly/>
+    </disk>
+
+    <controller type='sata' index='0'/>
+    <controller type='usb' index='0' model='qemu-xhci' ports='15'/>
+
+    <!-- e1000e has an in-box Windows driver, so the guest is on the network
+         from first logon with no driver install step. -->
+    <!-- The no-lan filter is what keeps this guest off the home LAN. It is
+         evaluated as packets leave the NIC, before any rule in the host's
+         forwarding chain, and it is part of the domain, so `winvm promote` and
+         `winvm revert` — which only touch the disk and the varstore — leave
+         it alone. -->
+    <interface type='network'>
+      <mac address='{{ winvm_mac }}'/>
+      <source network='{{ winvm_network_name }}'/>
+      <model type='e1000e'/>
+      <filterref filter='{{ sandbox_net_filter_name }}'/>
+    </interface>
+
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+
+    <input type='tablet' bus='usb'/>
+    <input type='keyboard' bus='usb'/>
+
+{% if winvm_graphics == 'spice' %}
+    <!-- SPICE for a VM on the machine you sit at: better console than VNC and
+         it carries audio, which VNC does not — WinUAE is not much use mute. -->
+    <graphics type='spice' autoport='yes'>
+      <listen type='address' address='127.0.0.1'/>
+      <image compression='off'/>
+      <gl enable='no'/>
+    </graphics>
+    <sound model='ich9'/>
+    <audio id='1' type='spice'/>
+    <channel type='spicevmc'>
+      <target type='virtio' name='com.redhat.spice.0'/>
+    </channel>
+{% else %}
+    <!-- Loopback only. Tunnel to it over SSH; see ansible/README.md. -->
+    <graphics type='vnc' port='{{ winvm_vnc_port }}' autoport='no'>
+      <listen type='address' address='127.0.0.1'/>
+    </graphics>
+    <sound model='ich9'/>
+{% endif %}
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+    </video>
+
+    <tpm model='tpm-crb'>
+      <backend type='emulator' version='2.0'/>
+    </tpm>
+
+    <rng model='virtio'>
+      <backend model='random'>/dev/urandom</backend>
+    </rng>
+
+    <!-- virtio balloon needs the virtio drivers; nothing here reclaims guest
+         memory anyway, so leave it out rather than ship a broken device. -->
+    <memballoon model='none'/>
+  </devices>
+</domain>
