@@ -298,3 +298,78 @@ def test_the_sweep_reports_each_forbidden_form(source):
 ])
 def test_the_sweep_leaves_the_correct_forms_alone(source):
     assert bad_disk_folders(source) == []
+
+
+# -- tools that read the disks from an option, a title variable or the registry -
+
+CURSE_DISKS = "no Curse disks; pass --disks"
+
+
+def _nothing_launches(monkeypatch):
+    """Everything that claims a slot, stages disks, starts an emulator or a
+    child process raises, so a missing guard shows up as the claim it made."""
+
+    def refuse(what):
+        def raiser(*a, **k):
+            raise AssertionError(f"{what} was reached with no disks")
+        return raiser
+
+    # `ssbrun` subclasses `Session` when it is first imported, so it comes
+    # before the stubs replace `Session` with a function.
+    importlib.import_module("tools.secret_of_the_silver_blades.ssbrun")
+    from tools.c64 import session as por
+    from tools.curse_of_the_azure_bonds import curserun
+
+    for owner, names in ((por, ("claim_slot", "stage_disks", "stage_writable",
+                                "Session")),
+                         (curserun, ("stage", "CurseSession"))):
+        for name in names:
+            monkeypatch.setattr(owner, name, refuse(f"{owner.__name__}.{name}"))
+    import subprocess
+    monkeypatch.setattr(subprocess, "Popen", refuse("subprocess.Popen"))
+
+
+@pytest.fixture
+def no_title_disks(monkeypatch):
+    for var in ("COAB_DISKS", "SSB_DISKS", "POR_DISKS"):
+        monkeypatch.delenv(var, raising=False)
+    _nothing_launches(monkeypatch)
+
+
+@pytest.mark.parametrize("module, argv, message", [
+    ("tools.c64.c64addprobe", ["--save", "SAVE.D64"], "no Curse disks found; pass --disks"),
+    ("tools.c64.c64addchar", [], NO_DISKS),
+    ("tools.c64.c64strength", ["--cha", "X.CHA"], NO_DISKS),
+    ("tools.c64.splatload", ["--save", "SAVE.D64"], NO_DISKS),
+    ("tools.curse_of_the_azure_bonds.cursepaladin", ["run", "--save", "S.D64"],
+     CURSE_DISKS),
+    ("tools.curse_of_the_azure_bonds.cursetrain", ["run", "--save", "S.D64"],
+     CURSE_DISKS),
+    ("tools.secret_of_the_silver_blades.ssbtrain", ["run", "--save", "S.D64"],
+     "no Silver Blades disks: set $SSB_DISKS or pass --disks"),
+])
+def test_a_tool_with_a_title_lookup_stops_with_no_disks(
+        no_title_disks, fresh, module, argv, message):
+    (tool,) = fresh(module)
+    with pytest.raises(SystemExit) as stopped:
+        tool.main(argv)
+    assert str(stopped.value) == message
+
+
+@pytest.mark.parametrize("module, argv", [
+    ("tools.c64.c64addprobe", ["--save", "SAVE.D64"]),
+    ("tools.c64.c64addchar", []),
+    ("tools.c64.c64strength", ["--cha", "X.CHA"]),
+    ("tools.c64.splatload", ["--save", "SAVE.D64"]),
+    ("tools.curse_of_the_azure_bonds.cursepaladin", ["run", "--save", "S.D64"]),
+    ("tools.curse_of_the_azure_bonds.cursetrain", ["run", "--save", "S.D64"]),
+])
+def test_a_given_disks_folder_gets_past_the_guard(
+        no_title_disks, fresh, monkeypatch, tmp_path, module, argv):
+    """With `--disks DIR` the tool goes on to the slot claim, which the stubs
+    turn into an error of their own."""
+    (tool,) = fresh(module)
+    given = tmp_path / "disks"
+    given.mkdir()
+    with pytest.raises(AssertionError, match="was reached with no disks"):
+        tool.main([*argv, "--disks", str(given)])

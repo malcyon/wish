@@ -106,6 +106,10 @@ def watch(sess, note, budget: float = 120.0) -> tuple[str, str]:
 
 
 def run(args) -> int:
+    found = args.disks or gamedisks.find("pool-of-radiance")
+    if not found:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
+    disks = pathlib.Path(found)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     log = (out / "run.jsonl").open("a")
@@ -116,7 +120,6 @@ def run(args) -> int:
         log.flush()
         print(json.dumps(kw), flush=True)
 
-    disks = pathlib.Path(args.disks or gamedisks.find("pool-of-radiance"))
     slot = S.claim_slot(args.slot, note=os.environ.get("POR_AGENT", "splatload"))
     note(event="slot", n=slot.n, display=slot.display, dir=str(slot.dir),
          save=args.save, repair=bool(args.repair))

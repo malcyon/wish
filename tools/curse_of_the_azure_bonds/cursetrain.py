@@ -294,7 +294,7 @@ def main(argv=None) -> int:
 
     rn = sub.add_parser("run", help="boot a Curse session on a pooled slot")
     rn.add_argument("--pool", type=int, default=None)
-    rn.add_argument("--disks", default=os.environ.get("COAB_DISKS", ""))
+    rn.add_argument("--disks", default=os.environ.get("COAB_DISKS") or None)
     rn.add_argument("--save", required=True)
     rn.add_argument("--out", default=str(scratch.scratch_dir("cursetrain", "run")))
     rn.set_defaults(func=drive)
@@ -368,6 +368,8 @@ def drive(args) -> int:
     from tools.c64 import session as por
     from tools.curse_of_the_azure_bonds import curserun  # noqa: PLC0415
 
+    if not args.disks:
+        raise SystemExit("no Curse disks; pass --disks")
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     log = (out / "run.jsonl").open("a")

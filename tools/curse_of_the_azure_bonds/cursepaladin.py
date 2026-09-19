@@ -309,6 +309,8 @@ def drive(args) -> int:
     from tools.c64 import session as por  # noqa: PLC0415
     from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: PLC0415
 
+    if not args.disks:
+        raise SystemExit("no Curse disks; pass --disks")
     run = Run(pathlib.Path(args.out))
     slot = None
     try:
@@ -448,7 +450,7 @@ def main(argv=None) -> int:
 
     rn = sub.add_parser("run", help="drive the change, the regain and a read")
     rn.add_argument("--pool", type=int, default=None)
-    rn.add_argument("--disks", default=os.environ.get("COAB_DISKS", ""))
+    rn.add_argument("--disks", default=os.environ.get("COAB_DISKS") or None)
     rn.add_argument("--save", required=True)
     rn.add_argument("--change", action="append", default=[],
                     metavar="NAME:CLASS")

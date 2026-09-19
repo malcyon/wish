@@ -241,7 +241,10 @@ def main(argv=None) -> int:
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
 
-    disks = pathlib.Path(args.disks or gamedisks.find("pool-of-radiance"))
+    found = args.disks or gamedisks.find("pool-of-radiance")
+    if not found:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
+    disks = pathlib.Path(found)
     out = pathlib.Path(args.out) if args.out else scratch.scratch_dir("c64addchar", "run")
     run = Run(out, args.quiet)
 

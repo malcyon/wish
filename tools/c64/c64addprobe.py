@@ -159,9 +159,10 @@ def main(argv=None) -> int:
     SC.catch_signals()
     out = pathlib.Path(args.out)
     shots = [0]
-    where = args.disks or str(gamedisks.find("curse-of-the-azure-bonds"))
-    if not where:
+    found = args.disks or gamedisks.find("curse-of-the-azure-bonds")
+    if not found:
         raise SystemExit("no Curse disks found; pass --disks")
+    where = str(found)
     scratch.ensure(out)
     save = args.save
     pick = args.pick or args.remove
