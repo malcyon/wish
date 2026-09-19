@@ -8,7 +8,7 @@ and Curse of the Azure Bonds) and `C64ToAmiga` (Silver Blades) each needed
 the same driver: `EditorBinding.convert` is called the way the window calls
 it, `ConvertDialog.exec` returns Accepted, and the post-write
 `QMessageBox.information` and the `.critical`/`.warning` pair
-(`#542 (tools/convertrun.py hangs forever on any successful C64 write,
+(`#542 (tools/convert/convertrun.py hangs forever on any successful C64 write,
 because it never patches EditorBinding.convert's post-write
 QMessageBox.information)`) record what they were asked to show instead of
 blocking on a real `exec()` loop under the offscreen platform, the way
@@ -25,7 +25,7 @@ worktree pinned to the commit under test; it defaults to this one. `--disks`
 is the C64 game-disks folder a C64 source needs (`--c64-game` looks it up in
 `tools/gamedisks.py` instead); a DOS source needs neither.
 
-    .venv/bin/python -m tools.convertdialogdrive \\
+    .venv/bin/python -m tools.convert.convertdialogdrive \\
         --specimen ~/wish-specimens/por-dos/WISH-SPEC-ssb-234-party-pair/SAVGAMC.DAT \\
         --amiga-disk2 /path/to/SecretOfTheSilverBlades_B.adf
 
@@ -40,7 +40,7 @@ import os
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 def main(argv=None) -> int:

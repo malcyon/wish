@@ -4,7 +4,7 @@ party, arrive, read one sheet, walk one square and let the engine resave.
 
 Written for `#52 (File ▸ Import and File ▸ Export for every direction the
 library supports)`, the `DosToC64` Silver Blades walk, when
-`tools/convertrun.py` had no Silver Blades driver. It drives
+`tools/convert/convertrun.py` had no Silver Blades driver. It drives
 `tools.ssbwarp.SSBSession` directly and reuses `tools/c64/savecheck.py`'s screen
 readers, the pattern the sibling `AmigaToC64` Silver Blades walk set. The
 worked-around bug in `tools/ssbwarp.py`'s save prompt

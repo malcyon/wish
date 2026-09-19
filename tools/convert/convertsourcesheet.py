@@ -3,13 +3,13 @@
 something to be read against for step 4 of `#36 (Write an Amiga disk image,
 not just the character files)`.
 
-    .venv/bin/python tools/convertsourcesheet.py SOURCE --disk por2.adf
+    .venv/bin/python tools/convert/convertsourcesheet.py SOURCE --disk por2.adf
 
 SOURCE is a C64 disk image or a DOS saved game; `--disk` is the Amiga Pool of
 Radiance disk 2 image the conversion is rehearsed against (nothing is written
 to it, and it has no default). Runs the Amiga conversion's rehearsal on the
 first slot and prints every field of every converted character.
-`tools/convertamigadisks.py` writes the disks these values are read against.
+`tools/convert/convertamigadisks.py` writes the disks these values are read against.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import argparse
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from editor import convert as convert_mod  # noqa: E402

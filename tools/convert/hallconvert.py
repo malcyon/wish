@@ -10,7 +10,7 @@ its own map the two words hold the same number and the two disks are
 identical; where they part -- the training hall and Phlan City Hall, whose
 scripts contain no `LOADFILES` at all -- the difference is the whole defect.
 
-    tools/hallconvert.py --folder ~/wish-specimens/por-dos/WISH-SPEC-... \
+    tools/convert/hallconvert.py --folder ~/wish-specimens/por-dos/WISH-SPEC-... \
         --slot F --out DIR
 
 The `geo` disk is built by monkeypatching `current_area` back to
@@ -36,7 +36,7 @@ import os
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

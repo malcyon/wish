@@ -17,9 +17,9 @@ byte-identical, so this run is expected to pass -- and a byte-identity test
 is not a loaded game (`.claude/rules/conversions.md`: "A conversion is not
 proven until it runs").
 
-    tools/convertrun.py --source ~/wish-specimens/por-dos/WISH-SPEC-por-party-l1-intown \
+    tools/convert/convertrun.py --source ~/wish-specimens/por-dos/WISH-SPEC-por-party-l1-intown \
                         --to c64 --out DIR --walk II
-    tools/convertrun.py --source DIR/wish-2026-09-05/PORSAVEE.D64 \
+    tools/convert/convertrun.py --source DIR/wish-2026-09-05/PORSAVEE.D64 \
                         --to dos --out DIR2 --steps 2
 
 What it does, in order:
@@ -76,7 +76,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ["GDK_BACKEND"] = "x11"
 os.environ.setdefault("POR_HEADLESS", "1")
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

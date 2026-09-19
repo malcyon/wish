@@ -13,7 +13,7 @@ the Azure Bonds (`test_dos_to_c64_direction_is_the_transfer_test`,
 `test_curse_dos_to_c64_direction_is_the_transfer_test`,
 `test_c64_to_dos_direction_is_the_transfer_test`) -- but never for Secret of
 the Silver Blades in either direction, and never through the `ConvertDialog`
-widget itself rather than the bare `Direction`. `tools/convertrun.py`, which
+widget itself rather than the bare `Direction`. `tools/convert/convertrun.py`, which
 built the six `*-52-dialog-converted-resave` specimens this module reads,
 already drives the real dialog and an emulator; this is the byte-level half
 that tool's own docstring says the transfer tests stand in for -- generalised
@@ -140,7 +140,7 @@ def _fixture_payloads() -> tuple[bytes, bytes]:
 # DOS -> C64, all three titles: `WISH-SPEC-por-party-l1-intown`,
 # `WISH-SPEC-curse-131-dualclassed-in-area-1` and
 # `WISH-SPEC-ssb-234-party-pair` (slot C of its two) -- the same three DOS
-# specimens `tools/convertrun.py` fed the dialog to build the three
+# specimens `tools/convert/convertrun.py` fed the dialog to build the three
 # `*-52-dialog-converted-resave` C64 specimens this module's docstring names.
 # ---------------------------------------------------------------------------
 

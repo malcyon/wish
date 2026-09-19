@@ -12,15 +12,15 @@ manifests:
 
     git worktree add -q --detach "$WT" <sha>
     ln -sfn "$PWD/gamedisks.yaml" "$WT/gamedisks.yaml"
-    .venv/bin/python tools/convertbytes.py --tree "$WT" --out old.json
-    .venv/bin/python tools/convertbytes.py --out new.json
-    .venv/bin/python tools/convertbytes.py --diff old.json new.json
+    .venv/bin/python tools/convert/convertbytes.py --tree "$WT" --out old.json
+    .venv/bin/python tools/convert/convertbytes.py --out new.json
+    .venv/bin/python tools/convert/convertbytes.py --diff old.json new.json
 
 `--tree` puts another checkout's `goldbox/`, `editor/` and `tools/` in front
 of this one on `sys.path`, so the *measuring* code is this file in both runs
 and the *measured* code is each tree's own.
 
-The conversions are `tools/convertdrops.py`'s: every specimen under
+The conversions are `tools/convert/convertdrops.py`'s: every specimen under
 `$WISH_SPECIMENS` that `editor.convert.Source.detect` accepts, crossed
 against `editor.convert.destinations_for`, rehearsed exactly as
 `ConvertDialog._rehearse_and_report` rehearses -- the source title's own
@@ -48,7 +48,7 @@ import tempfile
 
 def _load(tree: pathlib.Path | None):
     """Import the modules under test, out of `tree` when one is named."""
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = pathlib.Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(tree.resolve() if tree else root))
     from editor import convert, dosimport
     from goldbox import c64_port, dos_codec
@@ -76,7 +76,7 @@ DOS_DIRS = {
 def sources(root: pathlib.Path, scratch: pathlib.Path):
     """Every specimen path `editor.convert.Source.detect` accepts.
 
-    `tools/convertdrops.py`'s enumerator, copied whole, including its
+    `tools/convert/convertdrops.py`'s enumerator, copied whole, including its
     second branch: the later titles' Amiga specimens are engine-written
     containers rather than images, so each goes into a fresh disk first.
     Without it there is no Amiga Curse or Amiga Silver Blades source at
@@ -145,7 +145,7 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
     def amiga_game_disks(scratch: pathlib.Path) -> dict:
         """One read-only game-data image per Amiga destination title.
 
-        `tools/convertdrops.py`'s own search.  The single-disk `ecl_disk`
+        `tools/convert/convertdrops.py`'s own search.  The single-disk `ecl_disk`
         this replaces returned Pool of Radiance disk 2 (volume `POOLDATA`)
         and handed it to every Amiga destination, so Curse's writer, which
         wants `/DISKB/ECL.GLB`, died with `'DISKB' is not in the root of

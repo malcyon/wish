@@ -26,7 +26,7 @@ directly rather than through `QMessageBox.warning`, which blocks on
 `.exec()` waiting for somebody to click it.
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
-        GDK_BACKEND=x11 .venv/bin/python tools/convertshots.py OUT_DIR
+        GDK_BACKEND=x11 .venv/bin/python tools/convert/convertshots.py OUT_DIR
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import argparse  # noqa: E402
 import pathlib  # noqa: E402
@@ -122,7 +122,7 @@ def _ready_states(root: pathlib.Path):
     neither, which is correct rather than a failure
     (`.claude/rules/testing.md`: "a test that skips is not a test that
     passes", said here about a screenshot instead)."""
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent
                            / "tests"))
     from gamedata import disk_dir  # noqa: E402
     from test_dossave import _save_dir  # noqa: E402

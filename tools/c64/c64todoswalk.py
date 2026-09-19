@@ -4,7 +4,7 @@ at a time, and record every attempt.
 
 Written for `#52 (File ▸ Import and File ▸ Export for every direction the
 library supports)`, the `C64ToDos` Pool of Radiance walk. It replaces
-`tools/convertrun.py`'s automatic `play_dos()` step count, whose
+`tools/convert/convertrun.py`'s automatic `play_dos()` step count, whose
 `step()`/`turn_right()` retry cycled through all four headings with nothing
 found open: the converted save's starting square (New Phlan, 0,4) is walled on
 the side its own facing points, as the sibling `DosToC64` walk had found. That

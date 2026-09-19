@@ -8,14 +8,14 @@ library supports)`. `ConvertDialog.exec` is patched to Accepted and the three
 Blades walks and `tests/test_convert.py`'s `_no_real_modals` fixture do:
 `EditorBinding.convert`'s own success pop-up and `ConvertDialog._maybe_warn`'s
 `.critical`/`.warning` all block on a real `exec()` loop nobody can dismiss
-under the offscreen platform. `tools/convertdialogdrive.py` is the same
+under the offscreen platform. `tools/convert/convertdialogdrive.py` is the same
 driver for the Amiga-destination directions and records each popup instead of
 dropping it.
 
 `--tree` runs the conversion from another checkout, such as a detached
 worktree pinned to the commit under test.
 
-    .venv/bin/python -m tools.convertamigatoc64 --tree . \\
+    .venv/bin/python -m tools.convert.convertamigatoc64 --tree . \\
         --specimen path/to/por1-outdoor.adf --disks path/to/c64-por-disks \\
         --out-dir OUT --summary OUT/summary.json
 

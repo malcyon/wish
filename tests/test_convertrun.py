@@ -1,13 +1,13 @@
-"""`tools/convertrun.py`'s own stubs for the three `QMessageBox` calls
+"""`tools/convert/convertrun.py`'s own stubs for the three `QMessageBox` calls
 `EditorBinding.convert` can reach once its `exec()` is stubbed to accept.
 
-`#542 (tools/convertrun.py hangs forever on any successful C64 write,
+`#542 (tools/convert/convertrun.py hangs forever on any successful C64 write,
 because it never patches EditorBinding.convert's post-write QMessageBox.
 information)`. A separate file from `tests/test_convert.py` on purpose:
 that file's autouse `_no_real_modals` fixture (line 928 there) already
 silences all three `QMessageBox` methods for every test in it, which would
 hide exactly what these two tests are meant to catch -- a real box reaching
-past `tools/convertrun.py`'s own stubs. Both need a DOS save and the
+past `tools/convert/convertrun.py`'s own stubs. Both need a DOS save and the
 player's own C64 disks and skip cleanly without either, matching how
 `tests/test_convert.py`'s C64-branch tests behave.
 """
@@ -41,7 +41,7 @@ def _guarded(monkeypatch):
     `write_via_dialog` finds them in before its own stubs go in, and what
     should be back in place once it returns (`write_via_dialog` only ever
     restores what it found there, which by then is these sentinels, not
-    whatever PyQt6 shipped). Without the fix in `tools/convertrun.py`,
+    whatever PyQt6 shipped). Without the fix in `tools/convert/convertrun.py`,
     `write_via_dialog` never touches these at all, so the first one
     `window.convert` reaches raises immediately instead of the test
     hanging."""

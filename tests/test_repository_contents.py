@@ -187,7 +187,7 @@ _NOT_A_LOOKUP = {
     ("tools/taskbaricon.py", "~/Downloads/wish_logo"): "the logo artwork",
     ("tests/test_taskbaricon.py", "`tools/taskbaricon.py`"): "the logo artwork",
     # The text of a dialog a screenshot shows, not a path it opens.
-    ("tools/convertshots.py", "~/dos_por_play/wish-2026-09-10"):
+    ("tools/convert/convertshots.py", "~/dos_por_play/wish-2026-09-10"):
         "a dialog's folder text",
 }
 

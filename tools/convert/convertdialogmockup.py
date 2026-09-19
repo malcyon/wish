@@ -15,9 +15,9 @@ and adds new ones locally. Every string that has not been ruled on carries
 ` (APPROVAL UNRECORDED)` instead. The paths drawn in the fields are made up.
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
-        GDK_BACKEND=x11 .venv/bin/python tools/convertdialogmockup.py [--out DIR]
+        GDK_BACKEND=x11 .venv/bin/python tools/convert/convertdialogmockup.py [--out DIR]
 
-`tools/convertdialogbuiltshot.py` is the same sheet drawn from the real,
+`tools/convert/convertdialogbuiltshot.py` is the same sheet drawn from the real,
 built `ConvertDialog`. Needs Pillow and the DejaVu fonts.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ import os
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402

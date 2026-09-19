@@ -36,8 +36,8 @@ Inputs come from `$WISH_SPECIMENS` (default `~/wish-specimens`,
 DOS archives `tools/dosbox.find_game` finds.  Nothing is written outside a
 temporary directory, and no specimen is opened for writing.
 
-    tools/convertdrops.py
-    tools/convertdrops.py --reach
+    tools/convert/convertdrops.py
+    tools/convert/convertdrops.py --reach
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ import re
 import sys
 import tempfile
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from editor import convert, dosimport  # noqa: E402
 from goldbox import amiga_savegame, c64_codec, c64_port, dos_codec  # noqa: E402

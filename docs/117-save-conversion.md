@@ -2770,7 +2770,7 @@ player does not: they press Convert, and the bytes come out of
 byte-identical, and a byte-identity test is not a loaded game
 (`.claude/rules/conversions.md`). So both Pool of Radiance directions were
 driven through the dialog's own path and then booted, by
-`tools/convertrun.py`, for step D of
+`tools/convert/convertrun.py`, for step D of
 `#52 (File ▸ Import and File ▸ Export for every direction the library
 supports)`.
 
@@ -2797,7 +2797,7 @@ top of ours, all of them its ordinary post-load bookkeeping.
 `CHRDAT<slot><n>.*` before it moves its own files in; copying the dialog's
 output into a staged game tree does not, and a freshly staged archive tree
 carries the shipped party's records at slot A — thirteen of them, `.ITM` files
-among them, which no conversion writes. `tools/convertrun.py` repeats that
+among them, which no conversion writes. `tools/convert/convertrun.py` repeats that
 enumeration for the same reason.
 
 The two later titles' DOS → C64 rows also write correctly through the dialog,

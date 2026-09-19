@@ -3,7 +3,7 @@
 step 4 of `#36 (Write an Amiga disk image, not just the character files)`
 loads in WinUAE -- one from a C64 source, one from a DOS source.
 
-    .venv/bin/python tools/convertamigadisks.py --disk POR2.ADF \\
+    .venv/bin/python tools/convert/convertamigadisks.py --disk POR2.ADF \\
         [--out DIR]
 
 `--disk` is the Amiga Pool of Radiance disk 2 the conversion writes into (it
@@ -15,7 +15,7 @@ specimens in `$WISH_SPECIMENS` (default `~/wish-specimens`):
 
 No picker ever opens: `EditorBinding.convert` takes every row as an
 argument. Prints each conversion's own report so the WinUAE run has something
-to check the screen against. `tools/convertsourcesheet.py` prints the source
+to check the screen against. `tools/convert/convertsourcesheet.py` prints the source
 records' own sheets for the same comparison. Offscreen.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ import os
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from PyQt6.QtWidgets import QApplication, QDialog, QWidget  # noqa: E402

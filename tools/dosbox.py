@@ -1128,7 +1128,7 @@ def run_walked(built: dict, resaved: dict) -> bool:
     """Whether a run's own before/after readings prove the party moved.
 
     `built` and `resaved` are `describe()`/`describe_dos()`-shaped dicts --
-    `tools/dosnewsave.py` and `tools/convertrun.py` both produce one before
+    `tools/dosnewsave.py` and `tools/convert/convertrun.py` both produce one before
     the walk and one from the engine's own resave after it.  Both come
     straight out of a save file's bytes, never the screen, so an area change
     that redrew the status line late cannot be missed here the way it can be

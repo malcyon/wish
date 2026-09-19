@@ -558,7 +558,7 @@ def test_a_c64_silver_blades_paladin_converts_with_protection_from_evil():
     """The Silver Blades half, and it has to come off the player's own game
     disk rather than the specimen tree: every C64 Silver Blades specimen here
     descends from a DOS record through Wish and already holds 8, which is
-    why `tools/convertdrops.py` reported this direction clean over six of
+    why `tools/convert/convertdrops.py` reported this direction clean over six of
     them while the loss was real.
 
     `SAVEDBASH` on the `SILVER-6` side is SSI's own pre-generated party.  It

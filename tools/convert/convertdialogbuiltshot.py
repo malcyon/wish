@@ -3,7 +3,7 @@
 window changes shape depending on which platforms you are converting between)`,
 once every decision on it was made and the four-row form was built.
 
-Unlike `tools/convertdialogmockup.py`, this drives the actual
+Unlike `tools/convert/convertdialogmockup.py`, this drives the actual
 `editor.convert.ConvertDialog` class -- no shell built from `ui_convert` by hand,
 no strings typed into widgets. The C64 destination's row is shown prefilled from
 a fake `game_folder` callable standing in for Preferences, proving that path
@@ -12,7 +12,7 @@ dialogs: the six directions, and an Amiga source holding three saved games so
 the `Slot` combo and the DOS game folder show together.
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
-        GDK_BACKEND=x11 .venv/bin/python tools/convertdialogbuiltshot.py [--out DIR]
+        GDK_BACKEND=x11 .venv/bin/python tools/convert/convertdialogbuiltshot.py [--out DIR]
 
 The synthetic DOS and C64 sources are built from `tests/fixtures`; the Amiga
 disk comes from `tests/test_amigatoc64` and the three-slot one from the
@@ -28,7 +28,7 @@ import pathlib
 import sys
 import tempfile
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
