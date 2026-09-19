@@ -73,15 +73,22 @@ def commands_only(command: str) -> str:
     return HEREDOC.sub(keep, command)
 
 
-def strip_comments(text: str) -> str:
+def strip_comments(text: str, join_lines: str | None = None) -> str:
     """`text` without its shell comments, which run from a `#` that begins a word to the end of the line.
+
+    With `join_lines`, each newline outside quotes is replaced by that string,
+    so a caller that would otherwise lose the line break to `shlex` sees one
+    command per line. A newline inside quotes is left alone: it is the line
+    structure of a script argument (`bash -c '# c` newline `git push'`), which
+    the caller reads again and strips per line. Without it, every newline stays.
 
     `shlex` cannot be trusted with them: an apostrophe inside a comment
     (`git push; # it's done`) is read as an unterminated quote and the whole line
     falls back to a split that misses the push. A `#` inside quotes, after a
     backslash or in the middle of a word (`a#b`, `$#`, `${#x}`) is not a
-    comment. Text that ends inside an unterminated quote is returned unchanged
-    rather than guessed at.
+    comment. Text that ends inside an unterminated quote is returned with its
+    comments untouched rather than guessed at, and with every newline replaced
+    by `join_lines` when that is given.
 
     Three forms are still read wrongly, and each drops a banned command that
     comes after it, so the guards allow what an unfiltered reading would refuse: a
@@ -104,7 +111,8 @@ def strip_comments(text: str) -> str:
             if char == quote:
                 quote = ""
         elif char == "\\":
-            out.append(text[i:i + 2])
+            pair = text[i:i + 2]
+            out.append(pair.replace("\n", join_lines) if join_lines is not None else pair)
             i += 2
             begins_word = False
             continue
@@ -117,6 +125,10 @@ def strip_comments(text: str) -> str:
             continue
         else:
             begins_word = char.isspace() or char in COMMENT_AFTER
+            if char == "\n" and join_lines is not None:
+                char = join_lines
         out.append(char)
         i += 1
-    return text if quote else "".join(out)
+    if quote:
+        return text if join_lines is None else text.replace("\n", join_lines)
+    return "".join(out)

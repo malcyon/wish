@@ -41,9 +41,7 @@ interpreter (`python3 <<'EOF'`), a shell fed through a pipe
 `exec`, `command`, `xargs`, with or without options) or a push of a branch
 other than the checked-out one walks past it. A heredoc nested inside a shell
 heredoc is read as part of the script, so its text is judged as commands,
-which errs toward refusing. A `#` line inside a quoted `bash -c` or `sh -c`
-script hides what follows it, because the outer line's newlines are joined
-before the script is read. When git itself cannot answer -- not a repository,
+which errs toward refusing. When git itself cannot answer -- not a repository,
 no upstream and no `origin/main` -- it lets the push through rather than
 guessing. It exists so the habit of pushing without the run stops working.
 """
@@ -101,7 +99,7 @@ def subcommands(command: str, depth: int = 0) -> list[str]:
     if depth > 3:
         return []
     # A newline separates commands as `;` does, and `shlex` would fold it.
-    script = shellcommands.strip_comments(shellcommands.commands_only(command)).replace("\n", " ; ")
+    script = shellcommands.strip_comments(shellcommands.commands_only(command), join_lines=" ; ")
     tokens = shellcommands.tokens(script)
     found = []
     i = 0

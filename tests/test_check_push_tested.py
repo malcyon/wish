@@ -211,6 +211,9 @@ def test_the_push_is_seen_however_it_is_reached(clone, monkeypatch):
         "echo ${#PATH} ; git push",
         "sh 2>&1 <<'EOF'\ngit push\nEOF",
         "if true; then sh <<'EOF'\ngit push\nEOF\nfi",
+        "bash -c '# c\ngit push'",
+        "sh -c '#!x\ngit push'",
+        "sh -c \"echo a\n# b\ngit push\"",
     ]:
         assert run(monkeypatch, command, clone) == 2, command
 
@@ -234,6 +237,7 @@ def test_commands_that_do_not_push_are_ignored(clone, monkeypatch):
         "# a ; git push\ngit status",
         "git status # git push later",
         "echo a # b && git push",
+        "bash -c '# git push is blocked\ngit status'",
     ]:
         assert run(monkeypatch, command, clone) == 0, command
 
@@ -307,3 +311,25 @@ def test_the_hook_runs_under_the_system_interpreter(clone, home):
                           text=True, timeout=60)
     assert done.returncode == 2, done.stderr
     assert sha in done.stderr
+
+
+def test_strip_comments_joins_only_the_newlines_outside_quotes():
+    """With `join_lines`, a quoted script keeps its own line structure for the next level down."""
+    sys.path.insert(0, str(HOOK.parent))
+    try:
+        import shellcommands
+    finally:
+        sys.path.remove(str(HOOK.parent))
+    strip = shellcommands.strip_comments
+    # Without it, output is unchanged: newlines stay, quoted or not.
+    assert strip("a # b\nc") == "a \nc"
+    assert strip("bash -c '# c\ngit push'") == "bash -c '# c\ngit push'"
+    assert strip("echo 'a\n# b' # c\nd") == "echo 'a\n# b' \nd"
+    assert strip("echo 'a # b\nc") == "echo 'a # b\nc"
+    # With it, an unquoted newline becomes the join and a quoted one stays.
+    assert strip("a # b\nc", join_lines=" ; ") == "a  ; c"
+    assert strip("bash -c '# c\ngit push'\nls", join_lines=" ; ") == "bash -c '# c\ngit push' ; ls"
+    assert strip('sh -c "echo a\n# b\ngit push"', join_lines=" ; ") == 'sh -c "echo a\n# b\ngit push"'
+    assert strip("echo 'a\n# b' # c\nd", join_lines=" ; ") == "echo 'a\n# b'  ; d"
+    # An unterminated quote leaves comments alone and joins every newline.
+    assert strip("echo 'a # b\nc\nd", join_lines=" ; ") == "echo 'a # b ; c ; d"
