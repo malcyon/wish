@@ -59,7 +59,8 @@ three ways on 2026-09-11 against a scratch issue:
 
 Labelling and closing a locked issue both return `200`, so it is the comment
 path specifically. `Contents: write` was granted to test the theory that
-GitHub's lock check is a push check; it is not, and the grant should be revoked.
+GitHub's lock check is a push check, and it is not: that grant changed nothing
+for comments. It is kept for a different reason, below.
 
 The bot **can** unlock its own issue, comment, and re-lock -- all three return
 `204`/`201` with `issues: write` alone, in a window of about 2.3 seconds. That
@@ -148,18 +149,51 @@ is therefore somebody outside the project, which is what `human` should mark.
 | Private key | `~/.config/wish-agent/private-key.pem`, mode `0600`, directory `0700`. Never in this repository; `*.pem` is gitignored as a second line of defence |
 | App ID, installation ID | `~/.config/wish-agent/config.json`, or `$WISH_AGENT_APP_ID` / `$WISH_AGENT_INSTALLATION_ID`. Neither is a secret — both are integers that appear in GitHub URLs |
 | Installed on | `malcyon/wish` only — *Only select repositories*, not *All repositories* |
-| Permissions | `Issues: Read & write`, `Metadata: Read-only`, `Actions: Read-only`, and `Contents: Read & write` **which should be revoked** -- granted only to test the locked-comment theory above, it changed nothing, and the bot never pushes: commits go out over SSH as Donald |
-| Token lifetime | One hour. `tools/wishagent.py` caches it in the process only and never writes it to a file |
+| Permissions | `Issues: Read & write`, `Contents: Read & write`, `Workflows: Read & write`, `Metadata: Read-only`, `Actions: Read-only`. Contents and Workflows are what let the App push -- a push touching `.github/workflows/` is refused without Workflows |
+| Token lifetime | One hour. An issues token is cached in the process only; a push token is minted on every call and cached nowhere. This tool writes neither to a file |
 
-Tokens are narrowed further at mint time — the request body asks for
-`{"repositories": ["wish"], "permissions": {"issues": "write"}}`, and a token can
-only ever be narrower than the installation.
+Tokens are narrowed further at mint time, and there are two modes. The issues
+mode asks for `{"repositories": ["wish"], "permissions": {"issues": "write"}}`.
+The push mode asks for `{"repositories": ["wish"], "permissions": {"contents":
+"write", "workflows": "write"}}`. A token can only ever be narrower than the
+installation, and each mode is exactly as wide as its job: an issues token
+cannot rewrite the repository, and a push token cannot touch an issue.
 
-Every write path this project uses works with `issues: write` alone: creating,
-commenting, labelling, closing, and even unlocking and re-locking. `Actions:
-Read-only` and `Contents: Read & write` are both unused, and `Contents` should
-go. Dropping one costs a click -- GitHub asks the account owner to approve any
-change to an installation's set, and until he does it keeps what it had.
+Every issue path this project uses works with `issues: write` alone: creating,
+commenting, labelling, closing, and even unlocking and re-locking.
+
+**Pushing as the App.** `tools/wishagent.py push-token` prints a push token, and
+`tools/wishagent.py git-credential` is a git credential helper built on it. git
+asks for host `github.com`; the helper answers with the username `x-access-token`
+and a token minted for that one request, so `git push` over HTTPS needs no token,
+key or login stored by this tool. Any other host, a request that does not say
+`https`, and the `store` and `erase` actions get no answer. A machine that pushes
+this way holds only the App's private key. Set it up with:
+
+```sh
+git config --global --add credential.https://github.com.helper ''   # reset any inherited list
+git config --global --add credential.https://github.com.helper \
+    '!/path/to/python /path/to/tools/wishagent.py git-credential'
+git remote set-url origin https://github.com/malcyon/wish.git
+```
+
+Two things the helper cannot do for itself. git offers what it was given to
+*every* helper it has configured, so on a machine that also has one which stores
+credentials (`store`, `manager`, `osxkeychain`) the token would be written by
+that one; the empty-string line above resets the list so only this helper is
+left. And it answers for every `github.com` repository, since git does not send
+the path unless `credential.useHttpPath` is set, but the token is minted for
+`wish` alone, so pushing any other repository through it is refused by GitHub.
+
+Commits are authored as `wish-agent[bot]` by setting `user.name` to that and
+`user.email` to `<id>+wish-agent[bot]@users.noreply.github.com`, where the id is
+the bot user's numeric id: `gh api /users/wish-agent%5Bbot%5D --jq .id`.
+
+Changing an App's permissions does not apply them to an existing installation:
+GitHub asks the account owner to approve the change at
+`github.com/settings/installations`, and until he does, asking for what was newly
+granted is refused, which looks exactly like a broken tool. The tool prints
+whatever GitHub answered.
 
 **To rotate the key:** generate a new one on the app's settings page, put it at
 the path above, `chmod 600`, then delete the old one from GitHub. The tool needs

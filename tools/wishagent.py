@@ -3,6 +3,8 @@
 
     tools/wishagent.py whoami
     tools/wishagent.py token
+    tools/wishagent.py push-token
+    tools/wishagent.py git-credential [get|store|erase]
     tools/wishagent.py create  --title T --body-file F [--label L]...
     tools/wishagent.py comment N --body-file F
     tools/wishagent.py close   N [--comment-file F]
@@ -17,6 +19,27 @@ App's short-lived JWT, exchanges it for an installation token scoped to
 `issues: write` on this one repository, and makes the REST call -- never
 GraphQL, and never `gh issue`'s own sub-commands, which resolve labels
 through GraphQL where an installation token is accepted unevenly.
+
+Two modes, and a token is only ever as wide as the mode that minted it:
+
+* **issues** -- `token`, and every issue command above. `issues: write` only.
+* **push** -- `push-token` and `git-credential`. `contents: write` and
+  `workflows: write`, for a machine that pushes as the App instead of holding
+  anybody's SSH key or `gh` login. `git-credential` is a git credential helper:
+
+      git config credential.https://github.com.helper \
+          '!/path/to/python /path/to/tools/wishagent.py git-credential'
+
+  git asks it for host `github.com` and it answers with username
+  `x-access-token` and a token minted for that one request, so a push over
+  HTTPS needs no token stored anywhere *by this tool*. A push-mode token is
+  minted on every call and cached nowhere -- not in the process, not on disk --
+  because a credential helper is a fresh process for each request anyway, and
+  because the token can rewrite the repository. git offers what it was given to
+  every helper it has configured, so a machine that also has a helper which
+  stores credentials (`store`, `manager`, `osxkeychain`) should reset the list
+  first: `git config --global --add credential.https://github.com.helper ''`,
+  then the line above.
 
 Configuration, each resolved in order, first hit wins:
 
@@ -56,6 +79,15 @@ IAT_SKEW_SECONDS = 60
 EXP_AHEAD_SECONDS = 500
 MAX_5XX_RETRIES = 2
 REQUEST_TIMEOUT = 30
+
+# What each mode asks the installation for. A token can only be narrower than
+# the installation it comes from, so asking for exactly this costs nothing and
+# limits what a leaked token can do.
+ISSUES_PERMISSIONS = {"issues": "write"}
+PUSH_PERMISSIONS = {"contents": "write", "workflows": "write"}
+
+# The user name a GitHub App installation token is presented under over HTTPS.
+GIT_USERNAME = "x-access-token"
 
 # Populated by get_installation_token() and read by nothing else; an
 # installation token lives an hour and one process invocation lives seconds,
@@ -167,24 +199,17 @@ def make_jwt():
     return jwt.encode(payload, key, algorithm="RS256")
 
 
-def get_installation_token():
-    """An installation token scoped to `issues: write` on this repository.
+def _mint_installation_token(permissions):
+    """Ask GitHub for an installation token with exactly `permissions`.
 
-    Cached in this process only, and re-minted once it is within a minute of
-    the expiry GitHub gave it.
+    Returns `(token, expires_at)`. Both modes come through here, so a bad
+    App ID, a skewed clock and an uninstalled App read the same way in each.
     """
-    now = time.time()
-    if _token_cache["token"] and _token_cache["expires_at"] - 60 > now:
-        return _token_cache["token"]
-
     jwt_token = make_jwt()
     iid = installation_id()
-    # A token can only ever be narrower than the installation it comes from,
-    # so asking for less than was granted costs nothing and limits what a
-    # leaked token can do.
     body = {
         "repositories": [repo().rsplit("/", 1)[-1]],
-        "permissions": {"issues": "write"},
+        "permissions": dict(permissions),
     }
     status, _headers, raw = _call(
         "POST", f"/app/installations/{iid}/access_tokens", jwt_token, body=body
@@ -207,11 +232,65 @@ def get_installation_token():
             f"{status} minting an installation token: {_error_detail(raw)}",
             status,
         )
-
     data = json.loads(raw)
-    _token_cache["token"] = data["token"]
-    _token_cache["expires_at"] = _parse_github_time(data["expires_at"])
-    return _token_cache["token"]
+    return data["token"], _parse_github_time(data["expires_at"])
+
+
+def get_installation_token():
+    """An installation token scoped to `issues: write` on this repository.
+
+    Cached in this process only, and re-minted once it is within a minute of
+    the expiry GitHub gave it.
+    """
+    now = time.time()
+    if _token_cache["token"] and _token_cache["expires_at"] - 60 > now:
+        return _token_cache["token"]
+
+    token, expires_at = _mint_installation_token(ISSUES_PERMISSIONS)
+    _token_cache["token"] = token
+    _token_cache["expires_at"] = expires_at
+    return token
+
+
+def get_push_token():
+    """A token that can push: `contents: write` and `workflows: write`.
+
+    Minted on every call and cached nowhere. `_token_cache` is the issues
+    token's and stays that way: a push token found there would be handed to
+    anything that asks for an issues token, and the reverse would not push.
+    """
+    token, _expires_at = _mint_installation_token(PUSH_PERMISSIONS)
+    return token
+
+
+def answer_git_credential(action, request_text):
+    """What a git credential helper prints for `action`, given git's request.
+
+    git sends `key=value` lines ending in a blank line. Only `get` for
+    `github.com` over HTTPS is answered; `store` and `erase` are ignored, since
+    nothing is kept to store or erase, and any other host, or a request that
+    does not say `https`, gets no answer at all.
+
+    The request is split on `\n` and nothing else. `str.splitlines()` also
+    splits on `\v`, `\f`, `\x1c`-`\x1e`, `\x85` and U+2028/9, which git
+    passes through inside a value, and a later `host=` would then overwrite the
+    real one: a user name of `a<VT>host=github.com` on a URL for another host
+    would be answered with a push token. A stray `\r` is left in the value, so
+    it fails the comparison and gets no answer either.
+    """
+    if action != "get":
+        return ""
+    request = {}
+    for line in request_text.split("\n"):
+        if line == "":
+            break
+        key, _, value = line.partition("=")
+        request[key] = value
+    if request.get("host") != "github.com":
+        return ""
+    if request.get("protocol") != "https":
+        return ""
+    return f"username={GIT_USERNAME}\npassword={get_push_token()}\n"
 
 
 def _parse_github_time(value):
@@ -423,6 +502,12 @@ def build_parser():
 
     sub.add_parser("whoami")
     sub.add_parser("token")
+    sub.add_parser("push-token")
+
+    p_credential = sub.add_parser("git-credential")
+    # Any action, not just get/store/erase: git's credential protocol asks a
+    # helper to ignore one it does not know, and answer_git_credential does.
+    p_credential.add_argument("action", nargs="?", default="get")
 
     p_create = sub.add_parser("create")
     p_create.add_argument("--title", required=True)
@@ -463,6 +548,11 @@ def main(argv=None):
             print(whoami())
         elif args.command == "token":
             print(get_installation_token())
+        elif args.command == "push-token":
+            print(get_push_token())
+        elif args.command == "git-credential":
+            # No print(): git wants exactly the answer and no trailing blank.
+            sys.stdout.write(answer_git_credential(args.action, sys.stdin.read()))
         elif args.command == "create":
             body_text = _read_body_file(args.body_file)
             print(create_issue(args.title, body_text, args.labels))

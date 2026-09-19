@@ -2,6 +2,7 @@
 test replaces `wishagent._request`, the single function that would.
 """
 
+import io
 import json
 import os
 import re
@@ -377,3 +378,280 @@ def test_malformed_config_json_raises_config_error_naming_the_path(monkeypatch, 
 def test_repo_empty_env_var_falls_back_to_default(monkeypatch):
     monkeypatch.setenv("WISH_AGENT_REPO", "")
     assert wishagent.repo() == wishagent.DEFAULT_REPO
+
+
+# ---------------------------------------------------------------------------
+# Push mode: a token that can push, and a git credential helper built on it
+
+TOKEN_REPLY = {"token": "push-token-abc", "expires_at": "2099-01-01T00:00:00Z"}
+
+
+def test_push_token_asks_for_contents_and_workflows_write_on_this_repository(
+    monkeypatch, configured
+):
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    token = wishagent.get_push_token()
+
+    assert token == "push-token-abc"
+    method, url, _headers, body = calls[0]
+    assert method == "POST"
+    assert url.endswith("/app/installations/67890/access_tokens")
+    assert body == {
+        "repositories": ["wish"],
+        "permissions": {"contents": "write", "workflows": "write"},
+    }
+
+
+def test_the_issues_token_still_asks_for_issues_write_and_nothing_more(
+    monkeypatch, configured
+):
+    """The push mode was added beside this one, not into it: an issues token
+    that quietly gained `contents: write` could rewrite the repository."""
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    wishagent.get_installation_token()
+
+    assert calls[0][3]["permissions"] == {"issues": "write"}
+
+
+def test_a_push_token_is_minted_on_every_call_and_cached_nowhere(
+    monkeypatch, configured
+):
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    wishagent.get_push_token()
+    wishagent.get_push_token()
+
+    assert len(calls) == 2
+    assert wishagent._token_cache["token"] is None
+
+
+def test_the_push_token_leaves_the_issues_token_cache_alone(monkeypatch, configured):
+    _prime_token_cache()
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    assert wishagent.get_push_token() == "push-token-abc"
+    assert wishagent._token_cache["token"] == "sentinel-installation-token"
+
+    # ...and the issues mode still takes the cached one without a call.
+    calls.clear()
+    assert wishagent.get_installation_token() == "sentinel-installation-token"
+    assert calls == []
+
+
+def test_a_push_token_is_written_to_no_file(monkeypatch, configured):
+    """The point of a helper that mints per request is that no token exists at
+    rest. Any open for writing, appending or creating, anywhere, fails the run:
+    watching one directory would miss a write to the real config directory, to
+    /tmp, or to a path this test did not think of."""
+    import builtins
+
+    real_open = builtins.open
+    writes = []
+
+    def guarded_open(file, mode="r", *args, **kwargs):
+        if any(flag in str(mode) for flag in "wax+"):
+            writes.append(str(file))
+            raise AssertionError(f"opened {file!r} for writing")
+        return real_open(file, mode, *args, **kwargs)
+
+    _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+    monkeypatch.setattr(builtins, "open", guarded_open)
+    monkeypatch.setattr(io, "open", guarded_open)
+
+    wishagent.get_push_token()
+    wishagent.answer_git_credential("get", "protocol=https\nhost=github.com\n\n")
+
+    assert writes == []
+
+
+def test_push_token_command_prints_only_the_token(monkeypatch, configured, capsys):
+    _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    assert wishagent.main(["push-token"]) == 0
+
+    assert capsys.readouterr().out == "push-token-abc\n"
+
+
+@pytest.mark.parametrize("status, wording", [(401, "clock"), (404, "not installed")])
+def test_push_mode_fails_as_plainly_as_the_issues_mode(
+    monkeypatch, configured, capsys, status, wording
+):
+    _install_fake_transport(monkeypatch, (status, {"message": "nope"}))
+
+    assert wishagent.main(["push-token"]) == 1
+
+    captured = capsys.readouterr()
+    assert wording in captured.err
+    assert captured.out == ""
+
+
+def _credential(monkeypatch, action, request):
+    monkeypatch.setattr(sys, "stdin", io.StringIO(request))
+    return wishagent.main(["git-credential", action])
+
+
+def test_git_credential_get_answers_github_with_x_access_token_and_a_fresh_token(
+    monkeypatch, configured, capsys
+):
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    rc = _credential(monkeypatch, "get", "protocol=https\nhost=github.com\n\n")
+
+    assert rc == 0
+    assert capsys.readouterr().out == "username=x-access-token\npassword=push-token-abc\n"
+    assert calls[0][3]["permissions"] == {"contents": "write", "workflows": "write"}
+
+
+def test_git_credential_get_mints_a_token_per_request(monkeypatch, configured, capsys):
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    _credential(monkeypatch, "get", "protocol=https\nhost=github.com\n\n")
+    _credential(monkeypatch, "get", "protocol=https\nhost=github.com\n\n")
+
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "protocol=https\nhost=gitlab.com\n\n",
+        "protocol=https\nhost=github.com.evil.example\n\n",
+        "protocol=https\nhost=github.com:443\n\n",
+        "protocol=http\nhost=github.com\n\n",
+        "protocol=ssh\nhost=github.com\n\n",
+        # A request that does not say https is not answered as if it had.
+        "host=github.com\n\n",
+        "",
+    ],
+)
+def test_git_credential_answers_nobody_but_github_over_https(
+    monkeypatch, configured, capsys, request_text
+):
+    """A token that can push must not be offered to any other host, or to a
+    plaintext one: no answer lets git ask whichever helper is next."""
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    rc = _credential(monkeypatch, "get", request_text)
+
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+    assert calls == []
+
+
+@pytest.mark.parametrize("action", ["store", "erase"])
+def test_git_credential_store_and_erase_do_nothing(
+    monkeypatch, configured, capsys, action
+):
+    """git offers back what it was given after a successful push. Nothing is
+    kept, so there is nothing to store or erase, and no call to make."""
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    rc = _credential(
+        monkeypatch, action,
+        "protocol=https\nhost=github.com\nusername=x-access-token\npassword=whatever\n\n",
+    )
+
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+    assert calls == []
+
+
+def test_git_credential_reads_only_up_to_the_blank_line(monkeypatch, configured, capsys):
+    """The protocol ends a request with a blank line; what follows is not part
+    of it, and a host smuggled in after it must not be believed."""
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    _credential(monkeypatch, "get", "protocol=https\nhost=gitlab.com\n\nhost=github.com\n")
+
+    assert capsys.readouterr().out == ""
+    assert calls == []
+
+
+def test_git_credential_failure_prints_no_answer_and_says_why(
+    monkeypatch, configured, capsys
+):
+    _install_fake_transport(monkeypatch, (401, {"message": "Bad credentials"}))
+
+    rc = _credential(monkeypatch, "get", "protocol=https\nhost=github.com\n\n")
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "401" in captured.err
+
+
+@pytest.mark.parametrize(
+    "separator",
+    ["\r", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"],
+)
+def test_git_credential_splits_lines_on_newline_only(
+    monkeypatch, configured, capsys, separator
+):
+    """`str.splitlines()` splits on all of these, and git passes them through
+    inside a value. A user name of `a<sep>host=github.com` on a URL for another
+    host would then carry a later `host=` past the real one and be answered
+    with a push token."""
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+    request = f"protocol=https\nhost=evil.example\nusername=a{separator}host=github.com\n\n"
+
+    rc = _credential(monkeypatch, "get", request)
+
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+    assert calls == []
+
+
+def test_git_credential_ignores_an_action_it_does_not_know(
+    monkeypatch, configured, capsys
+):
+    """git's credential protocol asks a helper to ignore an action it does not
+    know, not to fail with a usage error."""
+    calls = _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    rc = _credential(monkeypatch, "some-future-action", "protocol=https\nhost=github.com\n\n")
+
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+    assert calls == []
+
+
+def test_git_credential_with_no_action_defaults_to_get(monkeypatch, configured, capsys):
+    _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+    monkeypatch.setattr(sys, "stdin", io.StringIO("protocol=https\nhost=github.com\n\n"))
+
+    rc = wishagent.main(["git-credential"])
+
+    assert rc == 0
+    assert "password=push-token-abc" in capsys.readouterr().out
+
+
+def test_git_credential_reports_a_server_error_and_answers_nothing(
+    monkeypatch, configured, capsys
+):
+    _install_fake_transport(monkeypatch, (500, {"message": "boom"}))
+    monkeypatch.setattr(wishagent.time, "sleep", lambda _seconds: None)
+
+    rc = _credential(monkeypatch, "get", "protocol=https\nhost=github.com\n\n")
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "500" in captured.err
+
+
+def test_the_push_token_is_printed_only_where_it_was_asked_for(
+    monkeypatch, configured, capsys
+):
+    """It reaches stdout in the two places that exist to print it, exactly
+    once each, and nothing reaches stderr."""
+    _install_fake_transport(monkeypatch, (201, TOKEN_REPLY))
+
+    wishagent.main(["push-token"])
+    first = capsys.readouterr()
+    _credential(monkeypatch, "get", "protocol=https\nhost=github.com\n\n")
+    second = capsys.readouterr()
+
+    assert first.out == "push-token-abc\n" and first.err == ""
+    assert second.out.count("push-token-abc") == 1 and second.err == ""
