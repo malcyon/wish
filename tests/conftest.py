@@ -249,14 +249,24 @@ def _one_qapplication():
     yield QApplication.instance() or QApplication([])
 
 
+def pytest_collection_finish(session):
+    """Move every object the collected modules hold out of the collector's walk.
+
+    Imported modules, classes and constants never become garbage, so each
+    per-test `gc.collect()` below no longer has to trace them; what a test
+    builds after this point is still collected.
+    """
+    gc.collect()
+    gc.freeze()
+
+
 @pytest.fixture(autouse=True)
 def _collect_between_tests():
     """Collect at a moment of our choosing rather than mid-`findChild`.
 
-    Kept from the first attempt at the segfault. It is not the cure -- it only
-    moved the rate from one run in three to one in four -- but a deterministic
-    collection point costs nothing measurable and keeps the windows a test
-    dropped from piling up.
+    A deterministic collection point that keeps the windows a test dropped
+    from piling up, and takes them down at a time the test chose rather than
+    in the middle of a tree walk.
     """
     yield
     gc.collect()
