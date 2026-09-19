@@ -38,7 +38,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from automap.paths import disk_globs, find_disks  # noqa: E402
+from automap.paths import disk_globs, tool_disks  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.c64 import d6502  # noqa: E402
 
@@ -103,11 +103,12 @@ def main(argv: list[str]) -> int:
                                         "program looks)")
     args = ap.parse_args(argv[1:])
 
-    root = args.disks or str(find_disks() or "")
-    if not root or not os.path.isdir(root):
+    root = args.disks or tool_disks()
+    if root is None or not os.path.isdir(str(root)):
         print("No game disks. Set $POR_DISKS or pass --disks.",
               file=sys.stderr)
         return 2
+    root = str(root)
 
     declared, body = load(args.file, root)
     base = declared if args.base == "header" else number(args.base)

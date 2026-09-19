@@ -29,13 +29,12 @@ Needs a set of disks for `WALLS00`: `$POR_DISKS`, or
 """
 from __future__ import annotations
 
-import os
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 
 #: Where slot 9 loads, and where a capture of it starts.
@@ -73,8 +72,8 @@ def row(blob: bytes, walls: bytes) -> tuple[str, int, int]:
 def main(argv: list[str]) -> int:
     if not argv:
         raise SystemExit(__doc__)
-    disks = pathlib.Path(os.environ.get("POR_DISKS") or (find_disks() or ""))
-    if not disks.is_dir():
+    disks = tool_disks()
+    if disks is None or not disks.is_dir():
         raise SystemExit("no game disks: set $POR_DISKS")
     walls = walls00(disks)
 

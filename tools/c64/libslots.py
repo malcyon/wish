@@ -34,13 +34,12 @@ Needs a set of disks: `$POR_DISKS`, or `automap.paths.find_disks()`.
 """
 from __future__ import annotations
 
-import os
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 
 #: `LIBRARY`'s load address, so a run address becomes an offset in the file.
@@ -82,8 +81,8 @@ def stems(body: bytes) -> list[str]:
 
 
 def main() -> int:
-    disks = pathlib.Path(os.environ.get("POR_DISKS") or (find_disks() or ""))
-    if not disks.is_dir():
+    disks = tool_disks()
+    if disks is None or not disks.is_dir():
         raise SystemExit("no game disks: set $POR_DISKS")
     body = read_library(disks)
 

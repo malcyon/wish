@@ -48,7 +48,6 @@ staged into the slot.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import struct
 import sys
@@ -58,12 +57,12 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from automap.vice import CMD_CHECKPOINT_GET  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The rest loop's own addresses in `CAMP`, which `LINKER` loads at $0800.
 TICK = 0x1E0F           # LDA $6DD2 -- once per five minutes of game time
@@ -664,7 +663,7 @@ def show_code(args) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=None if DISKS is None else str(DISKS),
                    help="where the player's disks are; read, never written")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -701,6 +700,8 @@ def main(argv=None) -> int:
     d.add_argument("--quiet", action="store_true")
 
     args = p.parse_args(argv)
+    if args.disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     if args.cmd == "code":
         return show_code(args)
     return drive(args)

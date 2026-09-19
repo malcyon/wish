@@ -50,7 +50,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import pathlib
 import sys
 
@@ -58,7 +57,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import areas, dos_codec, world_state  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
@@ -68,7 +67,7 @@ from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 disks.  Read only, and found the way every
 #: other tool here finds them.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The eight-way travel heading, per `docs/137-wilderness-automap.md`.  Page
 #: 3, so no saved game holds it: `SAVEDGAME0` is an image of `$4900`-`$64FF`.
@@ -262,6 +261,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", default=str(scratch.scratch_dir("c64outdoor")),
                    help="where the specimens and the log go")
     args = p.parse_args(argv)
+    if DISKS is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     return run(args)
 
 

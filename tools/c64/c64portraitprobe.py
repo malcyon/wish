@@ -45,7 +45,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from automap.vice import MonitorError  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.dos_codec import SAVE0_BASE, SLOT_AREA, SLOT_STRIDE  # noqa: E402
@@ -70,7 +70,7 @@ ART_LEN = 0x0400
 
 #: The player's own disks: `$POR_DISKS` first, then wherever the rest of the
 #: program looks.  Never a path spelled out -- that names one machine.
-DISKS = os.environ.get("POR_DISKS", str(find_disks() or ""))
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The word that gates the sheet portrait on DOS, at the same address in the
 #: C64's `SAVEDGAME0`.  Fourteen of Donald's nineteen C64 saves hold 1 there
@@ -369,6 +369,8 @@ def main(argv=None) -> int:
                    help="seconds to wait for the sheet's own bar to come back")
     p.add_argument("--out", default=str(scratch.scratch_dir("c64portraitprobe")))
     args = p.parse_args(argv)
+    if args.disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     os.environ.setdefault("POR_HEADLESS", "1")
     return run(args)
 

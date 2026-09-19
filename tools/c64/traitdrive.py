@@ -48,7 +48,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import gamedisks  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import c64_port, traits  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
@@ -58,7 +58,7 @@ from tools.c64.traitquery import TRAIT_SLOT, find_predicate, staging  # noqa: E4
 from tools.registry import scratch  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: `SAVEDGAME0` loads at `$4900` and the twelve character slots start at
 #: `$4D00`, so a slot's record begins `0x400 + N * 0x100` bytes into the file.
@@ -184,7 +184,7 @@ def main(argv=None) -> int:
                    help="the save disk to load, inside --disks")
     p.add_argument("--stage", default=None, metavar="SLOT:INDEX=ID",
                    help="effect ids to write into trait slots of the copy")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                    help="where the player's disks are; read, never written")
     p.add_argument("--slot", type=int, default=None,
                    help="demand this pool slot rather than the first free one")
@@ -197,6 +197,8 @@ def main(argv=None) -> int:
                    help="run directory (default: this tool's scratch directory)")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
+    if args.disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     SC.catch_signals()
 
     disks = pathlib.Path(args.disks)

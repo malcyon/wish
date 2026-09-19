@@ -45,7 +45,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 
 #: What CAST's list leads to and VIEW's does not. The one string that tells
@@ -79,8 +79,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="directory to photograph each check into")
     args = ap.parse_args(argv)
 
-    disks = pathlib.Path(os.environ.get("POR_DISKS") or (find_disks() or ""))
-    if not disks.is_dir():
+    disks = tool_disks()
+    if disks is None or not disks.is_dir():
         raise SystemExit("no game disks: set $POR_DISKS")
     shots = pathlib.Path(args.shots) if args.shots else None
     if shots:

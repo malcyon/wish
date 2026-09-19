@@ -50,7 +50,6 @@ dropped converting to C64, and nobody knows what they hold)`.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import sys
 
@@ -58,7 +57,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
@@ -66,7 +65,7 @@ from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: `SAVEDGAME1`'s roster page, live.  Eight blocks of `$20`, one per save slot,
 #: and `goldbox/savegame.py` names the fields inside one.
@@ -197,7 +196,7 @@ def main(argv=None) -> int:
                    help="write these bytes into record 0x100 of --save-path "
                         "before booting, and read the sheets back: what the "
                         "game draws for a value nobody has seen it write")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                    help="where the player's disks are; read, never written")
     p.add_argument("--slot", type=int, default=None,
                    help="demand this pool slot rather than the first free one")
@@ -218,6 +217,8 @@ def main(argv=None) -> int:
                         "scratch directory)")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
+    if args.disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     SC.catch_signals()
 
     disks = pathlib.Path(args.disks)

@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import pathlib
 import sys
 
@@ -56,8 +55,10 @@ def find_disk(name: str) -> pathlib.Path:
     path = pathlib.Path(name).expanduser()
     if path.exists():
         return path
-    from automap.paths import find_disks
-    disks = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+    from automap.paths import tool_disks
+    disks = tool_disks()
+    if disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     found = disks / name
     if not found.exists():
         raise SystemExit(f"no such disk: {name} (nor {found})")
@@ -70,9 +71,11 @@ def default_icon() -> bytes:
     The tables are on `POOL3`, so this walks the directory rather than naming
     a side -- the same shape as `tools/dos/dosdisk.py`'s `game_files`.
     """
-    from automap.paths import find_disks
+    from automap.paths import tool_disks
     from goldbox.iconparts import IconParts
-    disks = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+    disks = tool_disks()
+    if disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     for path in sorted(disks.glob("*.[dD]64")):
         try:
             return IconParts.load(str(path)).default_icon()

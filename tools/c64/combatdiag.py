@@ -39,7 +39,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import pathlib
 import sys
 import time
@@ -47,7 +46,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -56,13 +55,14 @@ MAX_STEPS = 400
 
 
 def _disks() -> pathlib.Path:
-    disks = pathlib.Path(os.environ.get("POR_DISKS") or (find_disks() or ""))
-    if not disks.is_dir():
+    disks = tool_disks()
+    if disks is None or not disks.is_dir():
         raise SystemExit("no game disks: set $POR_DISKS")
     return disks
 
 
 def run(args) -> int:
+    disks = _disks()
     out_path = pathlib.Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out = out_path.open("w")
@@ -76,7 +76,7 @@ def run(args) -> int:
     slot = S.claim_slot(args.slot, note=f"combatdiag {out_path.name}")
     print(f"slot {slot.n} bin {slot.port} text {slot.text_port} "
           f"display {slot.display}", flush=True)
-    boot = S.stage_disks(slot, _disks(), args.save)
+    boot = S.stage_disks(slot, disks, args.save)
     sess = S.Session(boot, slot=slot)
 
     # -- instrumentation ---------------------------------------------------

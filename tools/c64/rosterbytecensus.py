@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import os
 import pathlib
 import sys
 
@@ -46,13 +45,11 @@ from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 
 
-def disks_root(given: str | None) -> pathlib.Path:
+def disks_root(given: str | None) -> pathlib.Path | None:
     if given:
         return pathlib.Path(given)
-    if os.environ.get("POR_DISKS"):
-        return pathlib.Path(os.environ["POR_DISKS"])
-    from automap.paths import find_disks
-    return pathlib.Path(find_disks())
+    from automap.paths import tool_disks
+    return tool_disks()
 
 
 def census(root: pathlib.Path, offset: int):
@@ -94,6 +91,8 @@ def main(argv=None) -> int:
         ap.error(f"a roster block is 32 bytes; {offset:#04x} is outside it")
 
     root = disks_root(args.disks)
+    if root is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     rows, skipped = census(root, offset)
     print(f"{root}: {len(rows)} occupied roster slots, "
           f"{len(skipped)} image(s) with no save to read")

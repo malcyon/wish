@@ -34,7 +34,6 @@ into the pool instance's own directory first.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import sys
 
@@ -42,7 +41,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.layout import FIELDS_BY_NAME  # noqa: E402
@@ -50,7 +49,7 @@ from tools.c64 import savecheck as SC  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The working character record while `COMBAT` runs, and the byte in it this
 #: whole run is about. `tools/c64/trainerscan.py` carries the same constant.
@@ -136,7 +135,7 @@ def main(argv=None) -> int:
     p.add_argument("--stage", default=None, metavar="SLOT=VALUE,...",
                    help="write these turning bytes into a copy of the save "
                         "before booting")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                    help="where the player's disks are; read, never written")
     p.add_argument("--slot", type=int, default=None,
                    help="demand this pool slot rather than the first free one")
@@ -151,6 +150,8 @@ def main(argv=None) -> int:
     p.add_argument("--out", default=None, help="run directory")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
+    if args.disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     SC.catch_signals()
 
     disks = pathlib.Path(args.disks)

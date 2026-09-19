@@ -28,7 +28,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 
 #: The fixed-value parts of the header as `docs/10-disk-format.md` gives them:
@@ -46,8 +46,8 @@ FIXED = (
 def images(args: list[str]) -> list[str]:
     """Every image named, or found under a directory, or on the player's disks."""
     if not args:
-        root = os.environ.get("POR_DISKS") or str(find_disks() or "")
-        args = [root] if root else []
+        root = tool_disks()
+        args = [str(root)] if root is not None else []
     out: dict[str, str] = {}
     for arg in args:
         found = (sorted(glob.glob(os.path.join(arg, "*.[Dd]64")))

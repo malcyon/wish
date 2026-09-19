@@ -58,7 +58,7 @@ os.environ.pop("WAYLAND_DISPLAY", None)
 os.environ.pop("XDG_SESSION_TYPE", None)
 
 from automap import gamedisks  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -79,13 +79,12 @@ def record_offset(slot: int) -> int:
     return SLOT_BASE - SAVE0_LOAD + slot * SLOT_STRIDE
 
 
-def disks_dir(given: str | None = None) -> pathlib.Path:
+def disks_dir(given: str | None = None) -> pathlib.Path | None:
     """`--disks`, then `$POR_DISKS`, then the search every other tool does."""
     if given:
         return pathlib.Path(given)
-    return pathlib.Path(gamedisks.find("pool-of-radiance")
-                        or os.environ.get("POR_DISKS")
-                        or find_disks() or "")
+    found = gamedisks.find("pool-of-radiance")
+    return pathlib.Path(found) if found else tool_disks()
 
 
 def trait_blocks(path: pathlib.Path) -> dict[int, list[int]]:
@@ -470,6 +469,9 @@ def main(argv=None) -> int:
                    help="demand this pool slot rather than the first free one")
 
     args = p.parse_args(argv)
+    args.disks = disks_dir(args.disks)
+    if args.disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     return write(args) if args.mode == "write" else boot(args)
 
 

@@ -32,7 +32,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from automap.paths import disk_globs, find_disks  # noqa: E402
+from automap.paths import disk_globs, tool_disks  # noqa: E402
 from goldbox import c64_codec, c64_port, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 
@@ -139,7 +139,12 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     game = c64_port.by_key("pool-of-radiance")
-    roots = args.disks or [os.environ.get("POR_DISKS") or str(find_disks())]
+    roots = args.disks
+    if not roots:
+        found = tool_disks()
+        if found is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
+        roots = [str(found)]
 
     rows: list[Row] = []
     for root in roots:

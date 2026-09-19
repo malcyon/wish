@@ -40,7 +40,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import pathlib
 import signal
 import struct
@@ -52,12 +51,12 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import combat as C  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The world screen's party panel is the right-hand columns of the top rows,
 #: and it is **not** the window `Session.acting` reads: that one is combat's,
@@ -1169,7 +1168,7 @@ def run(args, log: Log) -> int:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--disk", required=True, help="the save .d64 to boot")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                    help="where the player's game disks are; read, never written")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     p.add_argument("--tag", default=None, help="prefix for the screenshots")
@@ -1209,6 +1208,8 @@ def main(argv=None) -> int:
                    help="seconds to wait for the world bar after BEGIN "
                         "ADVENTURING; an arrival that animates needs longer")
     args = p.parse_args(argv)
+    if args.disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     stem = pathlib.Path(args.disk).stem
     args.tag = args.tag or stem
     out = pathlib.Path(args.out) if args.out else (

@@ -39,7 +39,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 from tools.c64 import d6502  # noqa: E402
 
@@ -144,8 +144,8 @@ def main(argv: list[str]) -> int:
     if both or args.table:
         bad += table(cs)
     if both or args.code:
-        root = args.disks or str(find_disks() or "")
-        if not root or not os.path.isdir(root):
+        root = args.disks or tool_disks()
+        if root is None or not os.path.isdir(root):
             print("No game disks, so only the table was checked. Set "
                   "$POR_DISKS or pass --disks.", file=sys.stderr)
             return 2 if bad == 0 else 1
