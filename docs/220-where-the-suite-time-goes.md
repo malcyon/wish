@@ -216,11 +216,19 @@ everything before it, and the run's wall was set by Windows 3.13 at about
 9:30 of `pytest`. A standard runner has four cores, so `-n auto` gives four
 workers, and 2,208 worker-seconds over four of them is the right order.
 
+### Three sentences elsewhere that are wrong, and when they get fixed
+
 `.claude/rules/commits.md` says the suite "takes about 90 seconds on each of
-four jobs". It takes five times that, and the same file's "about 1:40 on
-twelve cores" and `pyproject.toml`'s "about 7:00 sequential" were measured
-on 3,303 tests where the suite now has 8,234. Those three sentences want
-correcting alongside whatever else lands.
+four jobs". It takes five times that. The same file's "about 1:40 on twelve
+cores against about 7:30 run one test at a time, both measured on 3,303
+tests" and `pyproject.toml`'s "about 7:00 sequential on twelve cores" were
+measured when the suite had 3,303 tests and it now has 8,234.
+
+All three are corrected **once items 1 to 4 have landed and a fresh
+whole-suite measurement exists**, and with the numbers that run produces.
+They are left as they stand until then rather than replaced by an estimate:
+the figures above are upper bounds taken under load, and a rule file quoting
+a guess is the same defect one commit later.
 
 ## The plan
 
@@ -284,36 +292,84 @@ worker-seconds after the saving, well short of anything that could be a tail.
 is the whole of what candidate 1 is available to save: setup is 4.6% of the
 run and three quarters of the interesting part is this one computation.
 
-### 4. Whether pass two may shrink to the files that actually skip
+### 4. Pass two runs the files the first pass recorded reaching the data
 
-**A question for Donald, not a verdict.** The second pass exists to prove
-nothing breaks when the game data is absent. It selects by source regex, and
-half of what it selects observes no difference at all.
+**Do it, fourth.** Donald's answer is yes, on one condition: the set of files
+is **computed at run time and never a list anybody maintains**. The second
+pass exists to prove nothing breaks when the game data is absent; it selects
+by source regex today, and half of what it selects observes no difference at
+all.
 
-*The question:* may the second pass run only the files that contain a test
-which actually skips without data, rather than every file whose source
-mentions skipping or data?
+The mechanism is a recorder rather than a better regex. A pytest plugin,
+`tools/suite/datatouch.py`, is loaded into the *first* pass with
+`-p tools.suite.datatouch` and writes one file per worker under the
+directory `$WISH_DATA_TOUCH_LOG` names, naming the test file of every test
+that reached the data. Three things reach it:
 
-*What it saves:* 948.9 worker-seconds today, and about 615 after item 1 —
-roughly **58 s of the pre-push run**, taking it under 3:30.
+* an **audit hook** (`sys.addaudithook`) on `open`, `os.listdir`,
+  `os.scandir`, `os.walk`, `pathlib.Path.glob` and `glob.glob`, marking the
+  file when the path is `gamedisks.yaml`, the example, or under any path
+  `automap.gamedisks.candidates()` gives for any entry — which is exactly
+  what the second pass hides, read from the same registry rather than
+  restated in a second place;
+* a wrapper around **`os.stat` and `os.lstat`**, because a stat raises no
+  audit event and `REGISTRY.is_file()` is a route into the data that opens
+  nothing;
+* **`subprocess.Popen`, `os.system`, `os.exec*` and `os.posix_spawn`**,
+  marking the file whatever the child goes on to do, since a child inherits
+  the environment and cannot be watched from here.
 
-*What it risks:* the regex is a deliberate over-approximation. A file that
-skips nothing today could acquire a data dependency tomorrow and would no
-longer be re-run without data; CI would catch it, but a push later than the
-pre-push run does. Any narrowing of this kind trades a local check for a
-remote one, which is a policy choice and not an optimisation.
+A test that did not *pass* in the first pass — skipped, failed, errored —
+marks its file as well, which covers a gate that runs the other way round
+(skipping with the data present and running without it). The first pass
+skips nothing on this machine, so that rule costs nothing here.
 
-If the answer is yes, the mechanism is in `tools/suite/suiterun.py`,
-function `data_deciding_tests`, and the builder is `junior-dev`.
+Attribution is by pytest hook: `pytest_make_collect_report` while a module
+is being imported, so a module-level `skipif` that asks the registry lands
+on the file that asked, and `pytest_runtest_protocol` for setup, call and
+teardown, so a fixture's reads land on the test that wanted them.
 
-### 5. Whether the local run before a push may be change-scoped
+`tools/suite/suiterun.py` reads the log and runs those files, falling back
+to `data_deciding_tests()`'s source scan when the log is missing or empty —
+a commit older than the plugin has none to load, so the `-p` is added only
+when the worktree has the file. Every failure direction is towards running
+more files rather than fewer.
 
-**The issue's candidate 3, and still a question for Donald.** Nothing in
-this measurement makes it more or less attractive: it is a choice about
-where a regression is caught, not about where the seconds go. What the
-measurement does say is that items 1 to 3 take the pre-push run from about
-7:45 to about 4:15 without touching what is checked, so the choice can be
-made afterwards against a smaller prize.
+*Cost of watching:* 0.153 µs per audited event, and a 68-test run raises
+10,903 events, most of them at import. An ordinary `pytest` does not load
+the plugin, so a developer's run is untouched.
+
+*What it saves:* the ceiling is the 948.9 worker-seconds those 79 files hold
+today, about 615 after item 1, **58 s of the pre-push run**. The recorder
+gives part of that back, because a file that starts a child process is
+selected whole: 26 test files use `subprocess`, and
+`tests/test_toolshadowing.py` is the largest of them. The run prints the
+count it chose beside the 230 the source scan would have chosen, and that
+number replaces this estimate once it exists.
+
+*What it still misses,* each of them either over-inclusive or caught by CI,
+which runs the whole suite with no data on four jobs at every push:
+
+* a test that reads one of the fifteen variables **as a string**, asserts on
+  it, and touches no file;
+* a session-scoped fixture that reads data, attributed to whichever test in
+  that worker asked for it first — the suite has one session-scoped fixture
+  and it builds a `QApplication`;
+* a read made while a worker starts, before any file is being collected,
+  which is attributed to no file and discarded. `tests/conftest.py`'s own
+  `REGISTRY.is_file()` is one, and what it decides applies to every file
+  alike.
+
+**Builder: `junior-dev`.** The plugin, its hooks, the fallback and the tests
+are named.
+
+### 5. The local run before a push stays the whole suite
+
+**Rejected, by Donald's answer to the issue's candidate 3.** Nothing in this
+measurement argued for it either way: it is a choice about where a
+regression is caught rather than about where the seconds go. Items 1 to 4
+take the pre-push run from about 7:45 to under 4:00 without changing what is
+checked.
 
 ### 6. Group balance under `--dist loadgroup`
 
