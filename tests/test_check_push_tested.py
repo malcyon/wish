@@ -146,6 +146,7 @@ def test_a_commit_and_a_push_in_one_call_are_refused_even_with_a_marker(clone, m
         "git commit -am x; git push",
         "bash -c 'git commit -m x && git push'",
         "git commit -m x\ngit push",
+        "sh <<'EOF'\ngit commit -m x\ngit push\nEOF",
     ]:
         assert run(monkeypatch, command, clone) == 2, command
         assert "one command" in capsys.readouterr().err
@@ -179,6 +180,37 @@ def test_the_push_is_seen_however_it_is_reached(clone, monkeypatch):
         "git push&",
         "git push|cat",
         "eval 'git push'",
+        "sh <<'EOF'\ngit push\nEOF",
+        "bash <<EOF\ngit push\nEOF",
+        "sh <<-'EOF'\n\tgit push\n\tEOF",
+        "sh <<'EOF' > log.txt\ngit push\nEOF",
+        "zsh <<'END'\ncd /tmp\ngit push origin main\nEND",
+        "sh <<'EOF'\n# note\ngit push\nEOF",
+        "sh <<'EOF'\ngit status # a note\ngit push\nEOF",
+        "gh issue comment 1 --body 'Notes\n# Heading' && git push",
+        "echo 'a\n# b' ; git push",
+        "git status\n# done\ngit push",
+        "git push; # it's done",
+        "git push;echo x # don't",
+        "git push&&echo ok # don't",
+        "git push|cat # it's",
+        "git push;# it's",
+        "git push; echo x\n# it's",
+        "git push;echo x # \"q",
+        "git push;\n# don't",
+        "'#x' && git push",
+        "\"#x\" ; git push",
+        "\\#x && git push",
+        "echo \"a\\\"# b\" ; git push",
+        "gh issue comment 1 --body '# Heading' && git push",
+        "echo '# b' && git push",
+        "git commit -m '# x' && git push",
+        "git push origin #123",
+        "echo a#b ; git push",
+        "echo $# && git push",
+        "echo ${#PATH} ; git push",
+        "sh 2>&1 <<'EOF'\ngit push\nEOF",
+        "if true; then sh <<'EOF'\ngit push\nEOF\nfi",
     ]:
         assert run(monkeypatch, command, clone) == 2, command
 
@@ -195,6 +227,32 @@ def test_commands_that_do_not_push_are_ignored(clone, monkeypatch):
         "git tag push",
         "git log push",
         "cat > f.md <<'EOF'\ngit push origin main\nEOF",
+        "python3 <<'EOF'\nprint('git push')\nEOF",
+        "cat <<'EOF' | tee f.md\ngit push\nEOF",
+        "bash <<'EOF'\n# git push is blocked here\nEOF",
+        "# git push later\ngit status",
+        "# a ; git push\ngit status",
+        "git status # git push later",
+        "echo a # b && git push",
+    ]:
+        assert run(monkeypatch, command, clone) == 0, command
+
+
+def test_a_shell_fed_on_stdin_by_another_command_is_a_known_limit(clone, monkeypatch):
+    """The boundary of the tripwire, recorded so a reader does not mistake it for cover.
+
+    `printf 'git push\\n' | sh` would need a quoted data argument read as a
+    script, which would also catch `echo 'git push'`, a command that is
+    allowed on purpose. `ssh host 'git push'` names another machine's
+    repository, and no marker here describes that one. A wrapper in front of
+    the shell (`sudo`, `env`, `nohup`, `exec`, `command`, `xargs`) is not
+    looked through either.
+    """
+    commit(clone, "mod.py")
+    for command in [
+        "printf 'git push\\n' | sh",
+        "ssh host 'git push'",
+        "sudo sh <<'EOF'\ngit push\nEOF",
     ]:
         assert run(monkeypatch, command, clone) == 0, command
 

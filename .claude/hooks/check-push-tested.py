@@ -31,11 +31,21 @@ Otherwise it refuses with exit 2, and its stderr, which goes back to the
 assistant as the tool's result, says to send the suite to `test-runner`.
 
 **This is a tripwire, not a boundary.** It reads one Bash call as a shell
-would tokenise it; a push through another interpreter, or a push of a branch
-other than the checked-out one, walks past it. When git itself cannot answer
--- not a repository, no upstream and no `origin/main` -- it lets the push
-through rather than guessing. It exists so the habit of pushing without the
-run stops working.
+would tokenise it. A heredoc body is data unless a shell is reading it, in
+which case it is a script and is read as one. A comment is dropped by a scan
+that respects quoting, so a `#` line inside a shell heredoc hides nothing after
+it and a `#` inside ordinary quotes hides nothing. A push through another
+interpreter (`python3 <<'EOF'`), a shell fed through a pipe
+(`printf 'git push' | sh`), a command line quoted for another machine
+(`ssh host 'git push'`), a shell behind a wrapper (`sudo`, `env`, `nohup`,
+`exec`, `command`, `xargs`, with or without options) or a push of a branch
+other than the checked-out one walks past it. A heredoc nested inside a shell
+heredoc is read as part of the script, so its text is judged as commands,
+which errs toward refusing. A `#` line inside a quoted `bash -c` or `sh -c`
+script hides what follows it, because the outer line's newlines are joined
+before the script is read. When git itself cannot answer -- not a repository,
+no upstream and no `origin/main` -- it lets the push through rather than
+guessing. It exists so the habit of pushing without the run stops working.
 """
 import json
 import os
@@ -60,10 +70,11 @@ def marker_dir() -> str:
     """
     return os.path.join(os.path.expanduser("~"), ".cache", "wish", "testrun")
 
-#: Heredoc bodies are data being written to a file, not commands being run,
-#: and this project's documents quote `git push` constantly.
+#: A heredoc body is data being written to a file unless a shell is reading
+#: it, and this project's documents quote `git push` constantly. Group 3 is the
+#: body, kept by `commands_only` when the reader is in `SHELLS`.
 HEREDOC = re.compile(
-    r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1.*?^\s*\2\s*$",
+    r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1(.*?)^\s*\2\s*$",
     re.DOTALL | re.MULTILINE)
 
 #: Where one shell command stops and the next begins. `shlex` with
@@ -76,6 +87,14 @@ GLUED = "`(){}[]<>$"
 
 #: Interpreters whose argument is a new command line.
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+
+#: What a word may follow for a `#` after it to begin a comment, besides the
+#: start of the text and whitespace.
+COMMENT_AFTER = ";&|("
+
+#: Shell syntax that comes before a command and is not one, so
+#: `if true; then sh <<'EOF'` still names `sh` as the reader.
+BEFORE_A_COMMAND = {"then", "do", "else", "elif", "!", "{", "time"}
 
 #: `git`'s own options that take a separate argument, so `git -C dir push`
 #: is still a push and `git stash push` is not.
@@ -92,18 +111,82 @@ MOVES_HEAD = {"commit", "merge", "rebase", "cherry-pick", "reset",
 MARKERS_CHECKED = 20
 
 
-def commands_only(command: str) -> str:
-    """What the shell would execute, with heredoc bodies removed."""
-    return HEREDOC.sub("\n", command)
-
-
 def _tokens(command: str) -> list[str]:
     try:
         lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
+        # `_strip_comments` has already removed the comments, so a `#` that is
+        # left is an ordinary word.
+        lexer.commenters = ""
         return list(lexer)
     except ValueError:
         return command.split()
+
+
+def _reader(before: str) -> str:
+    """The command a heredoc is fed to, given the text in front of its `<<`.
+
+    That is the first word of the last command on the line, past any leading
+    `NAME=value` assignments, or `""` when there is none.
+    """
+    # A `&` beside a `<` or `>` is a redirection (`2>&1`, `&>`), not a separator.
+    last = re.split(r"\n|;|&&|\|\||\||(?<![<>])&(?!>)|\(", before)[-1]
+    for token in _tokens(last):
+        if token in BEFORE_A_COMMAND or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token):
+            continue
+        return os.path.basename(token.strip(GLUED))
+    return ""
+
+
+def commands_only(command: str) -> str:
+    """What the shell would execute: a heredoc body stays when a shell reads it and goes otherwise."""
+    def keep(match: re.Match) -> str:
+        if _reader(command[:match.start()]) in SHELLS:
+            return "\n" + match.group(3) + "\n"
+        return "\n"
+    return HEREDOC.sub(keep, command)
+
+
+def _strip_comments(text: str) -> str:
+    """`text` without its shell comments, which run from a `#` that begins a word to the end of the line.
+
+    `shlex` cannot be trusted with them: an apostrophe inside a comment
+    (`git push; # it's done`) is read as an unterminated quote and the whole line
+    falls back to a split that misses the push. A `#` inside quotes, after a
+    backslash or in the middle of a word (`a#b`, `$#`, `${#x}`) is not a
+    comment. Text that ends inside an unterminated quote is returned unchanged
+    rather than guessed at.
+    """
+    out = []
+    quote = ""
+    begins_word = True
+    i = 0
+    while i < len(text):
+        char = text[i]
+        if quote:
+            if char == "\\" and quote == '"':
+                out.append(text[i:i + 2])
+                i += 2
+                continue
+            if char == quote:
+                quote = ""
+        elif char == "\\":
+            out.append(text[i:i + 2])
+            i += 2
+            begins_word = False
+            continue
+        elif char in "'\"":
+            quote = char
+            begins_word = False
+        elif char == "#" and begins_word:
+            end = text.find("\n", i)
+            i = len(text) if end == -1 else end
+            continue
+        else:
+            begins_word = char.isspace() or char in COMMENT_AFTER
+        out.append(char)
+        i += 1
+    return text if quote else "".join(out)
 
 
 def subcommands(command: str, depth: int = 0) -> list[str]:
@@ -115,7 +198,8 @@ def subcommands(command: str, depth: int = 0) -> list[str]:
     if depth > 3:
         return []
     # A newline separates commands as `;` does, and `shlex` would fold it.
-    tokens = _tokens(commands_only(command).replace("\n", " ; "))
+    script = _strip_comments(commands_only(command)).replace("\n", " ; ")
+    tokens = _tokens(script)
     found = []
     i = 0
     while i < len(tokens):
