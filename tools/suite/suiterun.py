@@ -11,6 +11,8 @@ the tip, so `~/.cache/wish/testrun/<sha>.green` is what lets a push through.
 
 What it does, in order, and all of it against the same checkout:
 
+0. Checks that `.venv/bin/ruff` exists, so a missing one stops the run at once
+   and not after the whole of pytest.
 1. `git fetch origin`, then, when `<sha>` is the checked-out branch's tip and
    `origin/main` is not already behind it, `git rebase origin/main`, so the
    marker names the commit that will actually be pushed. A dirty tree, a
@@ -58,6 +60,7 @@ sys.path.insert(0, str(REPO))
 from tools.registry import scratch  # noqa: E402
 
 PYTHON = REPO / ".venv" / "bin" / "python"
+RUFF = REPO / ".venv" / "bin" / "ruff"
 
 
 def marker_dir() -> pathlib.Path:
@@ -226,7 +229,7 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
                       if line.startswith(("FAILED", "ERROR"))]
             return (False, summary + " (fails without data)",
                     "\n".join(failed) or bare.stderr[-2000:])
-    ruff = _run([str(REPO / ".venv" / "bin" / "ruff"), "check", "."], worktree, 300)
+    ruff = _run([str(RUFF), "check", "."], worktree, 300)
     print("ruff:", (ruff.stdout or ruff.stderr).strip().splitlines()[-1])
     if ruff.returncode != 0:
         return False, summary, ruff.stdout[-2000:]
@@ -246,6 +249,9 @@ def main(argv=None) -> int:
                         help="do not fetch or rebase onto origin/main first")
     args = parser.parse_args(argv)
 
+    if not RUFF.is_file():
+        raise SystemExit(f"{RUFF} is missing, so nothing was tested: "
+                         'run pip install -e ".[dev,gui]" in the virtual environment')
     sha = resolve(args.sha)
     if not args.no_rebase:
         sha, note = rebase_onto_origin(REPO, sha)

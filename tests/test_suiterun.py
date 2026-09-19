@@ -275,3 +275,22 @@ def test_a_failed_fetch_stops_the_run(tmp_path):
     with pytest.raises(SystemExit) as stopped:
         suiterun.rebase_onto_origin(lone, tip)
     assert "could not fetch origin" in str(stopped.value)
+
+
+def test_a_missing_ruff_stops_the_run_before_git_or_pytest_starts(tmp_path, monkeypatch):
+    absent = tmp_path / "bin" / "ruff"
+    monkeypatch.setattr(suiterun, "RUFF", absent)
+    monkeypatch.setattr(suiterun, "marker_dir", lambda: tmp_path / "testrun")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("something was started with ruff missing")
+
+    monkeypatch.setattr(suiterun, "_run", forbidden)
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    monkeypatch.setattr(suiterun.tempfile, "mkdtemp", forbidden)
+    with pytest.raises(SystemExit) as stopped:
+        suiterun.main(["HEAD"])
+    message = str(stopped.value)
+    assert str(absent) in message and "ruff" in message
+    assert "\n" not in message and ".[dev" in message
+    assert not (tmp_path / "testrun").exists()
