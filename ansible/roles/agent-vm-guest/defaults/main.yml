@@ -68,6 +68,9 @@ agent_guest_apt_packages:
   - unzip
   - qemu-guest-agent
   - jq                     # read by the Claude Code status line script
+  # Syntax-checking and linting wish's own sandbox playbooks under ansible/.
+  - ansible
+  - ansible-lint
   # Building DOSBox-X.
   - build-essential
   - libncurses-dev
