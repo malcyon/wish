@@ -36,7 +36,8 @@ It resolves the sha, adds a detached worktree there, symlinks
 disk-backed test skips), runs `pytest
 -q`, `ruff check .` and `tools/generate/genui.py --check` all inside that worktree,
 removes the worktree, and only if all three passed writes
-`~/.cache/wish/testrun/<sha>.green` with pytest's summary line. That marker is what
+`~/.cache/wish/testrun/<tree>.green` with pytest's summary line, where `<tree>` is the
+tip's tree hash (`git rev-parse HEAD^{tree}`) rather than its commit sha. That marker is what
 `.claude/hooks/check-push-tested.py` looks for before a push, and it is
 written by the command that saw the checks pass, never by you. **Do not
 write or touch a marker yourself, and do not run the three checks by hand
