@@ -162,6 +162,20 @@ def test_the_first_pass_loads_the_recorder_and_names_where_it_writes(tmp_path, m
     assert "-p" not in calls.args[1]
 
 
+def test_a_machine_with_no_registry_gets_no_plugin_even_where_the_recorder_exists(
+        tmp_path, monkeypatch):
+    """The plugin is for the first of two passes; with one pass there is nothing
+    to choose files for, and the run gets the empty environment."""
+    calls = _recording(monkeypatch)
+    worktree = _fake_worktree(tmp_path, registry=False)
+    _with_the_recorder(worktree)
+    suiterun.run_checks(worktree)
+    assert len(calls) == 1
+    assert "-p" not in calls.args[0]
+    assert datatouch.LOG_ENV not in calls[0]
+    assert set(calls[0]) == set(_variables().values())
+
+
 def test_a_worktree_with_no_recorder_gets_no_plugin_to_load(tmp_path, monkeypatch):
     """A commit older than the recorder has nothing for `-p` to import, and
     pytest stops on a plugin it cannot find."""

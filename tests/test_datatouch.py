@@ -16,6 +16,11 @@ import pytest
 from automap import gamedisks
 from tools.suite import datatouch, suiterun
 
+# The recorder serves `suiterun.py`, which is POSIX-only, and its `os.stat`
+# wrapping is not what `os.path.isfile` reaches on Windows.
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="the recorder is used only by the POSIX-only suiterun.py")
+
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
 HEAD = "import glob, os, pathlib, subprocess, sys\nimport pytest\nDATA = os.environ['POR_DISKS']\n"
@@ -144,6 +149,64 @@ def test_nothing_recorded_selects_nothing(tmp_path):
     assert datatouch.recorded(tmp_path / "missing", tmp_path) == []
     (tmp_path / "empty").mkdir()
     assert datatouch.recorded(tmp_path / "empty", tmp_path) == []
+
+
+def test_an_unreadable_log_selects_nothing(tmp_path):
+    """A log cut off mid-character is not UTF-8 and must not crash the run."""
+    project, _ = _suite(tmp_path)
+    (project / "tests" / "test_a.py").write_text("")
+    log = tmp_path / "log"
+    log.mkdir()
+    (log / "1.txt").write_text("tests/test_a.py\tstat\n", encoding="utf-8")
+    assert datatouch.recorded(log, project) == ["tests/test_a.py"]
+    (log / "2.txt").write_bytes(b"\xff\xfe")
+    assert datatouch.recorded(log, project) == []
+
+
+def test_a_process_that_failed_to_write_its_log_selects_nothing(tmp_path, monkeypatch):
+    """Another worker's good log must not stand for the whole run."""
+    project, _ = _suite(tmp_path)
+    (project / "tests" / "test_a.py").write_text("")
+    log = tmp_path / "log"
+    log.mkdir()
+    (log / "1.txt").write_text("tests/test_a.py\tstat\n", encoding="utf-8")
+
+    class Broken(dict):
+        def items(self):
+            raise OSError("disk full")
+
+    monkeypatch.setattr(datatouch, "_log_dir", log)
+    monkeypatch.setattr(datatouch, "_marks", Broken())
+    monkeypatch.setattr(datatouch, "_current", None)
+    datatouch.pytest_sessionfinish(None)
+    assert list(log.glob("*.failed")) == [log / f"{os.getpid()}.failed"]
+    assert datatouch.recorded(log, project) == []
+
+
+def test_a_recorder_that_cannot_start_leaves_the_failure_marker(tmp_path, monkeypatch):
+    log = tmp_path / "log"
+    monkeypatch.setenv(datatouch.LOG_ENV, str(log))
+    monkeypatch.setattr(datatouch, "_log_dir", None)
+
+    def broken():
+        raise OSError("no registry")
+
+    monkeypatch.setattr(datatouch, "watched_paths", broken)
+    datatouch.pytest_configure(None)
+    assert datatouch._log_dir is None
+    assert (log / f"{os.getpid()}.failed").is_file()
+
+
+def test_suiterun_imports_where_pytest_does_not_exist(tmp_path):
+    """`suiterun.py` runs under whatever `python3` is on the path, and reads the
+    log through this module."""
+    code = ("import sys\nsys.modules['pytest'] = None\n"
+            "from tools.suite import datatouch, suiterun\n"
+            "assert datatouch.recorded(sys.argv[1], sys.argv[1]) == []\n")
+    done = subprocess.run([sys.executable, "-c", code, str(tmp_path / "none")],
+                          cwd=REPO, env={**os.environ, "PYTHONPATH": str(REPO)},
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
 
 
 def test_an_ordinary_run_records_nothing_and_leaves_os_stat_alone(tmp_path):

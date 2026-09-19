@@ -18,9 +18,22 @@ its tests is being set up, run or torn down, the process
 
 The watched paths are everything the no-data pass hides, read from
 `automap.gamedisks` when the run starts, so nothing here names a path and the two
-cannot drift apart. Every way this can go wrong marks more files, never fewer:
-a failed log write or an unreadable log leaves no selection and `suiterun.py`
-falls back to the source scan.
+cannot drift apart. A recorder that cannot start, a log that cannot be written
+(a `<pid>.failed` marker is left beside the logs, best effort) and a log that
+cannot be read all leave no selection, and `suiterun.py` falls back to the
+source scan.
+
+**This is a known limit, not a guarantee that no file is missed.** Routes that
+are not recorded, and can therefore leave a file out of the selection:
+
+* a `spawn` or `forkserver` multiprocessing child, which is a new interpreter
+  that never loads this plugin (a `fork` child is not one: `os.fork` marks its
+  parent's file);
+* a path that reaches the data through a symlink, because the match is on the
+  text of the path and its `realpath` at start, not on what the kernel resolves;
+* a thread that outlives its test, whose reads land on whichever file runs next
+  or on none;
+* file loading done in Qt's C++, which raises no audit event.
 
 Each process writes `<$WISH_DATA_TOUCH_LOG>/<pid>.txt`, one `path<TAB>reason`
 line per marked file, so xdist workers never interleave a write.
@@ -33,8 +46,12 @@ import os
 import pathlib
 import sys
 
-import pytest
-import yaml
+try:
+    import pytest
+except ImportError:
+    # `suiterun.py` imports this module for `LOG_ENV` and `recorded` and may run
+    # under an interpreter with no pytest; only the plugin hooks need it.
+    pytest = None
 
 LOG_ENV = "WISH_DATA_TOUCH_LOG"
 
@@ -66,6 +83,8 @@ _wrappers: dict[str, object] = {}
 def watched_paths() -> list[str]:
     """Every path the no-data pass hides: both registry files and every
     candidate location of every entry in either of them."""
+    import yaml
+
     from automap import gamedisks
 
     names: dict[str, None] = {}
@@ -92,17 +111,34 @@ def watched_paths() -> list[str]:
 
 def recorded(log_dir: pathlib.Path, worktree: pathlib.Path) -> list[str]:
     """The test files the logs in `log_dir` name, as posix paths under `tests/`
-    that exist in `worktree`, sorted; `[]` when there is nothing to read."""
+    that exist in `worktree`, sorted; `[]` when there is nothing to read.
+
+    Any process that failed to write its log, or any log that cannot be read or
+    decoded, makes the whole selection `[]`: a partial selection would run fewer
+    files than the run needs."""
     found: set[str] = set()
     try:
-        for log in pathlib.Path(log_dir).glob("*.txt"):
+        directory = pathlib.Path(log_dir)
+        if any(directory.glob("*.failed")):
+            return []
+        for log in directory.glob("*.txt"):
             for line in log.read_text(encoding="utf-8").splitlines():
                 path = line.partition("\t")[0]
                 if path.startswith("tests/") and (worktree / path).is_file():
                     found.add(path)
-    except OSError:
+    except (OSError, ValueError):
         return []
     return sorted(found)
+
+
+def _leave_failure_marker(directory: pathlib.Path) -> None:
+    """Best effort: without a marker, a process that recorded nothing looks like
+    one with nothing to record."""
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"{os.getpid()}.failed").write_text("", encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _watched_text(arg: object) -> str | None:
@@ -202,10 +238,11 @@ def pytest_configure(config) -> None:
         _install(watched_paths())
         _log_dir = pathlib.Path(raw)
     except Exception:
-        # A recorder that cannot start records nothing, and nothing recorded
-        # selects the whole source scan.
+        # A recorder that cannot start records nothing, and the marker keeps the
+        # other workers' logs from standing for the whole run.
         _uninstall()
         _log_dir = None
+        _leave_failure_marker(pathlib.Path(raw))
 
 
 def pytest_unconfigure(config) -> None:
@@ -214,7 +251,11 @@ def pytest_unconfigure(config) -> None:
     _log_dir = None
 
 
-@pytest.hookimpl(hookwrapper=True)
+def _hookwrapper(function):
+    return pytest.hookimpl(hookwrapper=True)(function) if pytest else function
+
+
+@_hookwrapper
 def pytest_make_collect_report(collector):
     """Importing a test module is where a module-level `skipif` asks the registry."""
     global _current
@@ -228,7 +269,7 @@ def pytest_make_collect_report(collector):
         _current = previous
 
 
-@pytest.hookimpl(hookwrapper=True)
+@_hookwrapper
 def pytest_runtest_protocol(item, nextitem):
     """Setup, call and teardown, so a fixture's reads land on the test that wanted it."""
     global _current
@@ -267,4 +308,4 @@ def pytest_sessionfinish(session) -> None:
         (_log_dir / f"{os.getpid()}.txt").write_text(
             "".join(line + "\n" for line in lines), encoding="utf-8")
     except Exception:
-        pass
+        _leave_failure_marker(_log_dir)
