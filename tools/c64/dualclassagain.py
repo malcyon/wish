@@ -87,16 +87,15 @@ from tools.registry import scratch  # noqa: E402
 #: `gate` is the `BNE` that jumps to the message when `dual_class_level` is
 #: non-zero; `original` is what has to be there before `--gate-off` writes over
 #: it, so a patch never lands on whatever else happens to be at the address.
+#: Which disk sides a title has is not recorded here: its harness stages them.
 C64_GATES = {
     "curse-of-the-azure-bonds": {
         "gate": 0x2396, "original": b"\xd0\x07",
         "menu": "HUMAN CHANGE CLASS",
-        "sides": "CURSE_?.D64",
     },
     "secret-of-the-silver-blades": {
         "gate": 0x1F8B, "original": b"\xd0\x07",
         "menu": "HUMAN CHANGE CLASS",
-        "sides": "SILVER*.D64",
     },
 }
 
@@ -202,6 +201,7 @@ def record(sess) -> dict:
 def drive(args) -> int:
     from tools.c64 import session as por  # noqa: PLC0415
     from tools.curse_of_the_azure_bonds import curserun  # noqa: PLC0415
+    from tools.secret_of_the_silver_blades import ssbwarp  # noqa: PLC0415
 
     found = args.disks or gamedisks.find(args.title)
     if not found:
@@ -209,6 +209,11 @@ def drive(args) -> int:
     disks = str(found)
 
     gate = C64_GATES[args.title]
+    # Each title's harness owns the side-name patterns and the session class
+    # that knows its prompts, so the disks are staged by the one that matches.
+    curse = args.title == "curse-of-the-azure-bonds"
+    stage = curserun.stage if curse else ssbwarp.stage
+    session_class = curserun.CurseSession if curse else ssbwarp.SSBSession
     out = pathlib.Path(args.out)
     scratch.ensure(out)
     log = (out / "run.jsonl").open("a")
@@ -222,10 +227,10 @@ def drive(args) -> int:
     slot = por.claim_slot(args.pool, note=os.environ.get("POR_AGENT", "i256"))
     note(event="slot", n=slot.n, monitor=slot.port, cmd=slot.cmd_port,
          display=slot.display, dir=str(slot.dir))
-    disk = curserun.stage(slot, disks, args.save)
+    disk = stage(slot, disks, args.save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
     os.chmod(save_disk, 0o644)   # the specimen tree is read-only; the copy is ours
-    sess = curserun.CurseSession(disk, slot=slot)
+    sess = session_class(disk, slot=slot)
     note(event="booting")
     if not sess.boot():
         note(event="boot-failed")
