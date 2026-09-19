@@ -323,7 +323,7 @@ def test_the_map_reads_each_disk_once(tmp_path, monkeypatch):
 
 
 def test_genmaps_reads_each_disk_once(tmp_path, monkeypatch):
-    from tools import genmaps
+    from tools.generate import genmaps
     _touch(tmp_path, "POOL1.D64", "POOL2.D64")
     monkeypatch.setattr(genmaps, "disk_globs", lambda game=None: BOTH_MATCH)
     found = [os.path.basename(d) for d in genmaps.game_disks(str(tmp_path))]
@@ -341,8 +341,8 @@ def test_geomap_reads_each_disk_once(tmp_path, monkeypatch):
 def test_a_lower_cased_disk_is_found_as_well(tmp_path):
     """The reason there are two patterns: a directory unpacked from an archive
     that lower-cased every name is still a set of game disks."""
-    from tools import genmaps
     from tools.areas import geomap
+    from tools.generate import genmaps
     _touch(tmp_path, "POOL1.D64", "pool2.d64")
     assert len(live._disk_images(tmp_path)) == 2
     assert len(genmaps.game_disks(str(tmp_path))) == 2
@@ -356,8 +356,8 @@ def test_the_map_globs_the_title_it_is_given(tmp_path):
 
 
 def test_no_tool_still_hard_codes_the_pool_glob():
-    from tools import genmaps
     from tools.areas import geomap
+    from tools.generate import genmaps
     for module in (live, genmaps, geomap):
         source = pathlib.Path(module.__file__).read_text()
         assert "POOL*.D64" not in source, f"{module.__name__} globs one title"

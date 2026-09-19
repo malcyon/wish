@@ -5,10 +5,10 @@ import sys
 
 
 def test_generated_ui_is_current():
-    """Fail if UI files were changed but tools/genui.py wasn't run."""
-    result = subprocess.run([sys.executable, "tools/genui.py", "--check"],
+    """Fail if UI files were changed but tools/generate/genui.py wasn't run."""
+    result = subprocess.run([sys.executable, "tools/generate/genui.py", "--check"],
                             capture_output=True, text=True)
-    assert result.returncode == 0, f"Generated UI files are out of date: {result.stdout}\nRun tools/genui.py to update them."
+    assert result.returncode == 0, f"Generated UI files are out of date: {result.stdout}\nRun tools/generate/genui.py to update them."
 
 #: Each pair is a generator and the one file under docs/ it writes. Limited
 #: to generators that run from code already in the repository -- gendocs.py
@@ -16,15 +16,15 @@ def test_generated_ui_is_current():
 #: reads goldbox/levels.py, and none of the three needs a game disk, so this
 #: test behaves the same with or without one.
 #:
-#: tools/genitems.py, genmaps.py, genspells.py and gentemplates.py also write
+#: tools/generate/genitems.py, genmaps.py, genspells.py and gentemplates.py also write
 #: into docs/, but each reads a game disk to do it. Checking them here would
 #: make a machine with no disks skip instead of pass, which is not the same
 #: thing -- so they are deliberately left out; a maintainer regenerates them
 #: by hand when the disk-derived tables need it.
 GENERATED_DOCS = (
-    ("tools/gendocs.py", "docs/20-character-record.md"),
-    ("tools/genmemory.py", "docs/41-memory-regions.md"),
-    ("tools/genlevels.py", "docs/89-level-tables.md"),
+    ("tools/generate/gendocs.py", "docs/20-character-record.md"),
+    ("tools/generate/genmemory.py", "docs/41-memory-regions.md"),
+    ("tools/generate/genlevels.py", "docs/89-level-tables.md"),
 )
 
 

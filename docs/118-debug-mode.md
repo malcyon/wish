@@ -342,7 +342,7 @@ question the dialog asked was the one the game asks again a second later. The
 
 The area table is data, not UI: **`goldbox/areas.py`**, a frozen dataclass per area
 carrying id, `ECL`, `GEO`s, disk, name, confidence and arrival square.
-**The table above is not generated from it** -- `grep 118 tools/gendocs.py`
+**The table above is not generated from it** -- `grep 118 tools/generate/gendocs.py`
 finds nothing, and only `goldbox/layout.py` is generated into `docs/20-character-record.md`
 that way -- so a row changed in one place has to be changed by hand in the
 other; corrected here while fixing `#178 (Fast Travel to the wilderness

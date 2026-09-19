@@ -5,15 +5,15 @@ import os
 import pathlib
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from goldbox.levels import POOL_OF_RADIANCE, TABLES  # noqa: E402
 
-OUT = pathlib.Path(__file__).resolve().parent.parent / "docs" / "89-level-tables.md"
+OUT = pathlib.Path(__file__).resolve().parent.parent.parent / "docs" / "89-level-tables.md"
 
 HEADER = """# Level progression
 
-**Generated** by `tools/genlevels.py` from `goldbox/levels.py` — do not edit.
+**Generated** by `tools/generate/genlevels.py` from `goldbox/levels.py` — do not edit.
 
 What each class needs to advance and what it gets. Pool of Radiance stops well
 short of the rulebook — a fighter at 8, a cleric at 6 — because it was built to

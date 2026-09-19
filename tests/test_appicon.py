@@ -32,7 +32,7 @@ pytest.importorskip("PyQt6.QtGui")
 
 from PyQt6.QtGui import QGuiApplication, QImage  # noqa: E402
 
-from tools import genicons  # noqa: E402
+from tools.generate import genicons  # noqa: E402
 from ui import appicon  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -420,7 +420,7 @@ def test_the_16_is_drawn_and_not_a_squeezed_256(app):
 
 def test_the_committed_assets_are_todays_drawing(app):
     """`assets/` is committed, so it can go stale. Regenerate it with
-    `python3 tools/genicons.py` when this fails.
+    `python3 tools/generate/genicons.py` when this fails.
 
     **Pixels, not bytes.** This compared the files byte for byte until CI
     turned red on every runner. A PNG's bytes are libpng's and zlib's, and
@@ -438,7 +438,7 @@ def test_the_committed_assets_are_todays_drawing(app):
     """
     stale = {str(path.relative_to(ROOT)): why
              for path, why in genicons.differences(ASSETS).items()}
-    assert not stale, f"run tools/genicons.py: {stale}"
+    assert not stale, f"run tools/generate/genicons.py: {stale}"
 
 
 def test_the_comparison_still_catches_a_change_to_the_drawing(app, monkeypatch):

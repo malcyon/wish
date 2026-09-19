@@ -459,7 +459,7 @@ before a `v*` tag still stands.
 ## 8. Files that changed
 
 **The dialog's shell is a `.ui` file; its contents are not.**
-`wish/preferences.ui` (compiled to `ui_preferences.py` by `tools/genui.py`) is
+`wish/preferences.ui` (compiled to `ui_preferences.py` by `tools/generate/genui.py`) is
 just the `QDialog`, the `QTabWidget` and the `Close` button — the group boxes
 inside each tab are still built in `_disks_group`, `_saves_group`,
 `_backups_group` and the rest, in Python, because this dialog re-probes

@@ -3,12 +3,12 @@
 
 The spell names live in SPELLN00 and are not in this repo as data.
 
-    python3 tools/genspells.py [GAME.D64]
+    python3 tools/generate/genspells.py [GAME.D64]
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import d64  # noqa: E402
 from goldbox.spells import (  # noqa: E402
@@ -28,7 +28,7 @@ def default_disk() -> str:
     return str(where / "POOL1.D64")
 
 
-OUT = Path(__file__).resolve().parent.parent / "docs" / "86-spell-table.md"
+OUT = Path(__file__).resolve().parent.parent.parent / "docs" / "86-spell-table.md"
 
 
 def main() -> int:
@@ -39,7 +39,7 @@ def main() -> int:
     w = out.append
     w("# Spell table")
     w("")
-    w("**Generated** — run `python3 tools/genspells.py`. Read straight off a")
+    w("**Generated** — run `python3 tools/generate/genspells.py`. Read straight off a")
     w("game disk, so the spellings are the game's own.")
     w("")
     w("A character's memorised spells are a packed list of these ids at record")

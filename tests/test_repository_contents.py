@@ -138,7 +138,7 @@ def test_no_hardcoded_user_paths(files):
     for path in (p for p in files
                  if p.suffix == ".toml" or p.name.endswith(".yaml.example")):
         # `.codex/agents/<name>.toml` (#506) is generated verbatim from
-        # `.claude/agents/<name>.md`'s body by `tools/gencodex.py`, so a line
+        # `.claude/agents/<name>.md`'s body by `tools/generate/gencodex.py`, so a line
         # this loop would otherwise flag is only a problem if it is *new* --
         # if the same text is not already sitting, unflagged, in the source
         # `.md` (this test does not walk `.md` at all). This is narrower than

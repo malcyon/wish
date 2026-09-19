@@ -21,7 +21,7 @@ beside his own PNG exports of it at 80, 150, 200 and 500.
 `image()` has the reason and the measurement; the short form is that Qt's
 SVG renderer drops the mark's hairline rings at a taskbar size and the
 artist's exporter did not. Every size is still made on its own terms from
-the smallest delivered file no smaller than it, the way `tools/genicons.py`
+the smallest delivered file no smaller than it, the way `tools/generate/genicons.py`
 always insisted on -- so a 16 is never a squeezed 256 of ours.
 
 **The assets are not modified.** Resizing a delivered file into the sizes a

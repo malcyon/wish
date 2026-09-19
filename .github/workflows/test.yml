@@ -75,10 +75,10 @@ jobs:
       - name: the compiled forms match their .ui files
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python tools/genui.py --check
+        run: python tools/generate/genui.py --check
 
       - name: the generated docs match the code
         run: |
-          python tools/gendocs.py
-          python tools/genmemory.py
+          python tools/generate/gendocs.py
+          python tools/generate/genmemory.py
           git diff --exit-code -- docs/

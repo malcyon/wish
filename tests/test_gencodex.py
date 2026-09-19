@@ -1,4 +1,4 @@
-"""`tools/gencodex.py`: every Codex subagent stays in step with its Claude one.
+"""`tools/generate/gencodex.py`: every Codex subagent stays in step with its Claude one.
 
 `#506 (Set Codex up as a second orchestrator with its own subagents, without a
 second copy of the rules)`, step 4: `.codex/agents/<name>.toml` is generated
@@ -14,7 +14,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from tools import gencodex
+from tools.generate import gencodex
 
 ROOT = Path(__file__).resolve().parent.parent
 CLAUDE_AGENTS = ROOT / ".claude" / "agents"
@@ -54,11 +54,11 @@ EXPECTED_MODELS = {
 
 def test_generated_codex_agents_are_current():
     """Fail if a `.claude/agents/*.md` was changed but gencodex.py wasn't run."""
-    result = subprocess.run([sys.executable, "tools/gencodex.py", "--check"],
+    result = subprocess.run([sys.executable, "tools/generate/gencodex.py", "--check"],
                             capture_output=True, text=True)
     assert result.returncode == 0, (
         f"Generated Codex agents are out of date: {result.stdout}\n"
-        "Run tools/gencodex.py to update them.")
+        "Run tools/generate/gencodex.py to update them.")
 
 
 def test_every_claude_agent_has_a_codex_counterpart_and_no_others_exist():
@@ -170,10 +170,10 @@ def test_check_mode_fails_when_a_toml_is_stale(tmp_path):
 
     shutil.copytree(CLAUDE_AGENTS, tmp_path / ".claude" / "agents")
     shutil.copytree(CODEX_AGENTS, tmp_path / ".codex" / "agents")
-    (tmp_path / "tools").mkdir()
-    shutil.copy(ROOT / "tools" / "gencodex.py", tmp_path / "tools" / "gencodex.py")
+    (tmp_path / "tools" / "generate").mkdir(parents=True)
+    shutil.copy(ROOT / "tools" / "generate" / "gencodex.py", tmp_path / "tools" / "generate" / "gencodex.py")
 
-    script = tmp_path / "tools" / "gencodex.py"
+    script = tmp_path / "tools" / "generate" / "gencodex.py"
     target = tmp_path / ".codex" / "agents" / "junior-dev.toml"
 
     result = subprocess.run([sys.executable, str(script), "--check"],

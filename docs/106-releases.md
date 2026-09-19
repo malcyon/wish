@@ -73,8 +73,8 @@ Three workflows in `.github/workflows/`.
   wheel carries Qt but not the libraries Qt links against. Python 3.14 is left
   out deliberately — the PyQt6 wheels are `abi3`/cp310 so it would work, but it
   buys no coverage.
-* job `generated`: `tools/genui.py --check`, then `tools/gendocs.py` and
-  `tools/genmemory.py` followed by `git diff --exit-code -- docs/`. Neither
+* job `generated`: `tools/generate/genui.py --check`, then `tools/generate/gendocs.py` and
+  `tools/generate/genmemory.py` followed by `git diff --exit-code -- docs/`. Neither
   generator has a `--check` flag and the diff is the same test without adding
   one.
 
@@ -83,7 +83,7 @@ result** — `AGENTS.md` forbids committing the data that would make them run. I
 was 27 when this was planned and is 30 now; the number moves as tests are added.
 Locally, with disks, the same suite runs them.
 
-`tools/genui.py --check` compares the generated code *without* pyuic6's header,
+`tools/generate/genui.py --check` compares the generated code *without* pyuic6's header,
 which carries the absolute path of the `.ui` and the PyQt6 version and so
 differs on every machine. The drift worth catching is in the widgets.
 
@@ -161,13 +161,13 @@ console to borrow and nothing inherited.
 
 **No data files.** `wish/window.ui` is compiled ahead of time into
 `wish/ui_window.py`, and `wish/__main__.py` now skips the Designer
-recompile when `tools.genui` is not importable — which it is not in a frozen
+recompile when `tools.generate.genui` is not importable — which it is not in a frozen
 build, and which used to be an unconditional `ImportError` in an installed wheel
 too. Settings and map notes live in the user's own directories
 (`automap/paths.py`), never beside the executable.
 
 `pyproject.toml` also gained `tools` to the wheel's package list: `tools.wish`
-is the body of the subcommands and the window imports `tools.genui`, so without
+is the body of the subcommands and the window imports `tools.generate.genui`, so without
 it both were broken in an installed wheel.
 
 ## 5. PyPI

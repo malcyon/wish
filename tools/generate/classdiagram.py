@@ -11,11 +11,11 @@ for steps 2 and 3 -- are on the issue and in `cited/488/README.md`, not
 repeated here. This tool does not decide any of that; it only runs the
 command.
 
-    tools/classdiagram.py goldbox/titles.py
-    tools/classdiagram.py goldbox                        # whole package -- 112 classes, illegible, see the issue
-    tools/classdiagram.py goldbox --pyreverse-args "--no-standalone -k"
-    tools/classdiagram.py goldbox/amiga_por.py --dirty     # against the working tree, not HEAD
-    tools/classdiagram.py goldbox --pyreverse /tmp/pyreverse-env/bin/pyreverse
+    tools/generate/classdiagram.py goldbox/titles.py
+    tools/generate/classdiagram.py goldbox                        # whole package -- 112 classes, illegible, see the issue
+    tools/generate/classdiagram.py goldbox --pyreverse-args "--no-standalone -k"
+    tools/generate/classdiagram.py goldbox/amiga_por.py --dirty     # against the working tree, not HEAD
+    tools/generate/classdiagram.py goldbox --pyreverse /tmp/pyreverse-env/bin/pyreverse
 
 Runs against a detached worktree at `HEAD` by default, because `goldbox/` is
 renamed most nights on this project and a diagram of a half-finished rename
@@ -67,11 +67,11 @@ import subprocess
 import sys
 import tempfile
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from tools import scratch  # noqa: E402
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 
 #: A file `pyreverse` writes for a module with no classes in it: the single
 #: line `classDiagram` and nothing under it. Feeding that to a Mermaid
@@ -99,7 +99,7 @@ def find_pyreverse(explicit: str | None) -> str:
         "added to it. Build one elsewhere and point at it:\n"
         "    python3 -m venv /tmp/pyreverse-env\n"
         "    /tmp/pyreverse-env/bin/pip install pylint\n"
-        "    tools/classdiagram.py <target> "
+        "    tools/generate/classdiagram.py <target> "
         "--pyreverse /tmp/pyreverse-env/bin/pyreverse"
     )
 

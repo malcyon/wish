@@ -1,4 +1,4 @@
-"""`tools/classdiagram.py`: the parts that do not need a real `pyreverse` run.
+"""`tools/generate/classdiagram.py`: the parts that do not need a real `pyreverse` run.
 
 `#488 (Generate class diagrams from the code with pyreverse, since the
 published docs show every class alone and never how they hold each other)`'s
@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import classdiagram  # noqa: E402
+from tools.generate import classdiagram  # noqa: E402
 
 #: A real `classes_titles.mmd`, as `pyreverse` wrote it on 2026-09-10 --
 #: two classes, one of them empty, no edges.

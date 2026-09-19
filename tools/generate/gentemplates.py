@@ -3,12 +3,12 @@
 
 These are the records `wish` copies when a YAML item entry names a `template`.
 
-    python3 tools/gentemplates.py [GAME.D64]
+    python3 tools/generate/gentemplates.py [GAME.D64]
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from goldbox.items import (  # noqa: E402
     Item,
@@ -18,7 +18,7 @@ from goldbox.items import (  # noqa: E402
 )
 from tools import gamedisks  # noqa: E402
 
-OUT = Path(__file__).resolve().parent.parent / "docs" / "87-item-templates.md"
+OUT = Path(__file__).resolve().parent.parent.parent / "docs" / "87-item-templates.md"
 
 
 def default_disk() -> str:
@@ -39,7 +39,7 @@ def main() -> int:
     w = out.append
     w("# Item templates")
     w("")
-    w("**Generated** — run `python3 tools/gentemplates.py`. Every distinct item")
+    w("**Generated** — run `python3 tools/generate/gentemplates.py`. Every distinct item")
     w("record on the eight game disks, read out of the `ITEMFILE*` shop and")
     w("encounter lists.")
     w("")

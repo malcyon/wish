@@ -30,7 +30,7 @@ gap cost a decision twice on 2026-09-10.
 | Add, change or propose any image, sprite or icon, or touch `ui/`, `assets/` or a `.svg` | `art.md` |
 | Say a field or a record cannot be converted, or touch `goldbox/` | `conversions.md` |
 | Write a finding anywhere, or touch `docs/`, a `README.md`, or `INDEX.md` | `documentation.md` |
-| Touch a `.ui` file, a generated `ui_*.py`, or `tools/genui.py` | `qt-designer.md` |
+| Touch a `.ui` file, a generated `ui_*.py`, or `tools/generate/genui.py` | `qt-designer.md` |
 | Write, change or run a test, or touch `tests/` | `testing.md` |
 | Drive an emulator, or touch `automap/`, `tools/c64/session.py` or `tools/instance.py` | `emulator.md` |
 
@@ -230,7 +230,7 @@ that was not its own costs more than the re-route.
 
 **What differs between the two tools is mechanism, not the practice above.**
 The agent definitions have one source, `.claude/agents/<name>.md`, which
-Claude Code reads directly and `tools/gencodex.py` generates into
+Claude Code reads directly and `tools/generate/gencodex.py` generates into
 `.codex/agents/<name>.toml` for Codex -- `--check` fails if the two drift --
 and the two name different models, since a Claude model name (`sonnet`,
 `opus`, `fable`, `haiku`) has no Codex counterpart. `.claude/rules/` also
@@ -258,7 +258,7 @@ It is not what you set out to learn.
 
 1. `pytest` **on the files you touched**
 2. `.venv/bin/ruff check .`
-3. `.venv/bin/python3 tools/genui.py --check`
+3. `.venv/bin/python3 tools/generate/genui.py --check`
 
 **The whole suite runs once, in a detached worktree, before the push.** Six
 agents each running all 3,190 tests is six copies of Qt on one machine, and on

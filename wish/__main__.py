@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     # The Designer loop: edit character.ui, restart, and the running window is
     # already the new layout. No build step to forget.
     try:
-        from tools.genui import ensure_current
+        from tools.generate.genui import ensure_current
     except ImportError:
         pass  # A frozen build has no .ui and no pyuic6; the form is compiled in.
     else:

@@ -394,7 +394,7 @@ class MemorisedEditor:
 
 ### Component 4: Build System
 
-#### [MODIFY] tools/genui.py
+#### [MODIFY] tools/generate/genui.py
 
 Update `UI_DIRS`:
 ```python
@@ -425,7 +425,7 @@ No structural change needed — the tool discovers `.ui` files by glob and compi
 5. **Rewrite `WishWindow`** to use the unified `.ui` directly.
 6. **Delete absorbed `.ui` files, generated `ui_*.py` files, standalone `__main__.py` files.**
 7. **Update imports everywhere** — panels, widgets, tests.
-8. **Update `tools/genui.py`** — adjust `UI_DIRS` if needed.
+8. **Update `tools/generate/genui.py`** — adjust `UI_DIRS` if needed.
 9. **Run tests, fix breakage.**
 
 ---
@@ -439,7 +439,7 @@ No structural change needed — the tool discovers `.ui` files by glob and compi
 python -m pytest tests/ -x -v
 
 # UI compilation check (CI gate)
-python tools/genui.py --check
+python tools/generate/genui.py --check
 ```
 
 ### Manual Verification

@@ -1,4 +1,4 @@
-"""`tools/areas/genexits.py` re-derives `automap.fasttravel.EXIT_ROUTES` off the
+"""`tools/generate/genexits.py` re-derives `automap.fasttravel.EXIT_ROUTES` off the
 player's own disks; this checks the two agree, the same shape
 `tests/test_newecl.py` already holds `automap/fasttravel.py`'s address table
 to. A mismatch here means the table was pasted from an older run of the
@@ -17,7 +17,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox.geo import GEO_SIZE, Geo  # noqa: E402
 from tests.gamedata import needs_disks  # noqa: E402
-from tools.areas import genexits as G  # noqa: E402
+from tools.generate import genexits as G  # noqa: E402
 
 
 def flat_geo(open_dirs: dict[tuple[int, int, int], bool] = None) -> Geo:
@@ -87,7 +87,7 @@ def test_the_committed_table_matches_a_fresh_generation():
     committed = {key: (r.entry, r.square) for key, r in F.EXIT_ROUTES.items()}
     assert rows == committed, (
         "automap/fasttravel.py's EXIT_ROUTES is stale -- rerun "
-        "tools/areas/genexits.py and paste its output in")
+        "tools/generate/genexits.py and paste its output in")
 
 
 @needs_disks

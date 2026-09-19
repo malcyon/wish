@@ -8,7 +8,7 @@
 # falls back to a generic icon -- the gear.
 #
 # Everything goes under $HOME, so no root and nothing outside the user's own
-# directories. Run it again after `tools/genicons.py` to refresh the icons.
+# directories. Run it again after `tools/generate/genicons.py` to refresh the icons.
 set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)

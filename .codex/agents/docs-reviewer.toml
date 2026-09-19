@@ -154,8 +154,8 @@ under the paths that load it. `docs/160-why-these-rules.md` carries the
 incidents behind them, if you need to know why a rule is there.
 
 * **Generated documents must not be corrected in place.** `docs/20-character-record.md`
-  comes from `goldbox/layout.py` via `tools/gendocs.py`, `docs/85-item-tables.md`
-  from `tools/genitems.py`, and several others say **Generated** at the top. A
+  comes from `goldbox/layout.py` via `tools/generate/gendocs.py`, `docs/85-item-tables.md`
+  from `tools/generate/genitems.py`, and several others say **Generated** at the top. A
   wrong sentence in one of those is a finding **against the generator**, and the
   suggested fix names the generator and the line.
 * **`docs/50-experiments.md` is the only document that gets length.** Everything

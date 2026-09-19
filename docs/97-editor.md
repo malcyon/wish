@@ -14,7 +14,7 @@ and it is why the live automapper is a separate `automap/` package.
 ## The `.ui` file is the layout, and it is meant to be edited
 
 The form is `wish/window.ui`, a Qt Designer file **compiled to Python** by
-`tools/genui.py`, which wraps `pyuic6`:
+`tools/generate/genui.py`, which wraps `pyuic6`:
 
 ```
 wish/window.ui   --pyuic6-->   wish/ui_window.py
@@ -25,9 +25,9 @@ That matches how everything else generated in this repo works — `gendocs.py`,
 can be read, and gives autocompletion for every widget on the form.
 
 **The loop is: open `wish/window.ui` in Designer, drag fields around, save,
-restart Wish.** `tools.genui.ensure_current()` compares mtimes at startup and
+restart Wish.** `tools.generate.genui.ensure_current()` compares mtimes at startup and
 regenerates when the `.ui` is newer than the `.py`, so there is no separate
-build step to forget and no way to run a stale form. `tools/genui.py` exists for
+build step to forget and no way to run a stale form. `tools/generate/genui.py` exists for
 CI and for building a wheel, where `pyuic6` should not be a runtime dependency.
 
 Both routes were tested before choosing. Runtime `uic.loadUi` also works and
@@ -488,7 +488,7 @@ editor/
 wish/
   window.ui         the form -- EDIT THIS in Qt Designer
   ui_window.py      generated from it; do not edit
-tools/genui.py      window.ui -> ui_window.py
+tools/generate/genui.py      window.ui -> ui_window.py
 ```
 
 `goldbox/` gains nothing except the shared-colour constants once they are measured.
@@ -507,7 +507,7 @@ The editor is a consumer of the library, not an extension of it.
 3. `roster.py` -- the party model, headless-testable: open each of the three
    file kinds, list who is in them, and report AC and HP where a `SAVEDGAME1`
    exists. `PORSAVE10.D64` is the specimen that proves the roster-disk path.
-4. `wish/window.ui` with a first pass at the sheet, `tools/genui.py`, and
+4. `wish/window.ui` with a first pass at the sheet, `tools/generate/genui.py`, and
    `window.py` to build and bind it. **Prove the rearrange-in-Designer loop
    works before adding more fields** — move one field in Designer, save,
    restart, confirm it still binds and is still read-only or editable as

@@ -72,7 +72,7 @@ version-file = "wish/_version.py"
 #
 # tools/ is discovery scaffolding but ships anyway, because `wish` reaches into
 # it twice: `tools.wish` is the body of the `export` and `import` subcommands,
-# and the window imports `tools.genui` at startup. Without it both were broken
+# and the window imports `tools.generate.genui` at startup. Without it both were broken
 # in an installed wheel.
 packages = ["goldbox", "editor", "automap", "wish", "tools", "ui"]
 

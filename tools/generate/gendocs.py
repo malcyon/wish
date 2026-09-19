@@ -4,19 +4,19 @@
 The field table is generated rather than hand-written so the documentation
 cannot drift from the code. Re-run after changing the layout:
 
-    python3 tools/gendocs.py
+    python3 tools/generate/gendocs.py
 """
 from __future__ import annotations
 
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import layout
 from goldbox.layout import Confidence
 
-OUT = pathlib.Path(__file__).resolve().parent.parent / "docs" / "20-character-record.md"
+OUT = pathlib.Path(__file__).resolve().parent.parent.parent / "docs" / "20-character-record.md"
 
 KIND_DESC = {
     "U8": "unsigned byte",
@@ -51,7 +51,7 @@ def main() -> int:
 
     add("# Character record")
     add("")
-    add("**Generated from `goldbox/layout.py` by `tools/gendocs.py` — do not edit by hand.**")
+    add("**Generated from `goldbox/layout.py` by `tools/generate/gendocs.py` — do not edit by hand.**")
     add("")
     add(f"A character record is **{layout.RECORD_SIZE} bytes**. Exported to disk it is a PRG "
         f"with a 2-byte load address of `${layout.LOAD_ADDRESS:04X}` "

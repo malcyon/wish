@@ -20,7 +20,7 @@ What it does, in order, and all of it against the same checkout:
    environment. `-n auto --dist loadgroup` is in `pyproject.toml`. Then the
    whole suite once more with `gamedisks.yaml` unlinked, as CI has none.
 4. `ruff check .` in the worktree.
-5. `tools/genui.py --check` in the worktree.
+5. `tools/generate/genui.py --check` in the worktree.
 6. If all three passed, write `~/.cache/wish/testrun/<sha>.green`,
    holding pytest's summary line. On any failure, write nothing.
 7. Remove the worktree, whatever happened, unless `--keep`.
@@ -108,7 +108,7 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
     print("ruff:", (ruff.stdout or ruff.stderr).strip().splitlines()[-1])
     if ruff.returncode != 0:
         return False, summary, ruff.stdout[-2000:]
-    genui = _run([python, "tools/genui.py", "--check"], worktree, 300)
+    genui = _run([python, "tools/generate/genui.py", "--check"], worktree, 300)
     print("genui:", (genui.stdout or genui.stderr).strip().splitlines()[-1])
     if genui.returncode != 0:
         return False, summary, (genui.stdout + genui.stderr)[-2000:]

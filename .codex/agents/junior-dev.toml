@@ -144,7 +144,7 @@ file that states it:
 * **Comment the why, not the what.** A comment restating the code should not be
   written. `goldbox/layout.py` is the deliberate exception — its notes are field
   documentation generated into `docs/20-character-record.md` by
-  `tools/gendocs.py`.
+  `tools/generate/gendocs.py`.
 
 ## Memory
 

@@ -1,6 +1,6 @@
 # Item templates
 
-**Generated** — run `python3 tools/gentemplates.py`. Every distinct item
+**Generated** — run `python3 tools/generate/gentemplates.py`. Every distinct item
 record on the eight game disks, read out of the `ITEMFILE*` shop and
 encounter lists.
 

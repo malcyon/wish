@@ -29,7 +29,7 @@
 #
 # `editor/character.ui` is not a data file: it is compiled ahead of time into
 # `editor/ui_character.py`, and `wish/__main__.py` skips the Designer
-# recompile when `tools.genui` is not importable, which it is not here. The
+# recompile when `tools.generate.genui` is not importable, which it is not here. The
 # map notes and settings live in the user's own directories at run time
 # (`automap/paths.py`), never beside the executable.
 
@@ -91,7 +91,7 @@ window = Analysis(
 # draws on the file, from the executable's own resource -- not from Qt. The
 # running window's icon is `QApplication.setWindowIcon` in `wish/window.py`,
 # from the same drawing; both are needed and neither substitutes for the other.
-# PyInstaller ignores this on Linux. `tools/genicons.py` writes the file from
+# PyInstaller ignores this on Linux. `tools/generate/genicons.py` writes the file from
 # the same PNGs, so a pinned shortcut matches the running window's button, and
 # `tests/test_appicon.py` fails the build if it has drifted from the drawing.
 ICON = "assets/wish.ico"

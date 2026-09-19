@@ -1,6 +1,6 @@
 # Character record
 
-**Generated from `goldbox/layout.py` by `tools/gendocs.py` — do not edit by hand.**
+**Generated from `goldbox/layout.py` by `tools/generate/gendocs.py` — do not edit by hand.**
 
 A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte load address of `$6B00` (582 bytes total). In `SAVEDGAME0` the same 580 bytes sit at the head of each character slot.
 

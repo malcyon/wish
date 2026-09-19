@@ -6,8 +6,8 @@ rather than drawn by hand, because a hand-drawn one is only ever true on the
 day it was drawn -- and the thing it exists to catch, a codec importing
 another codec, is exactly the edge somebody adds without noticing.
 
-    python3 tools/genimports.py            # the edge list
-    python3 tools/genimports.py --mermaid  # the fenced block docs/117 holds
+    python3 tools/generate/genimports.py            # the edge list
+    python3 tools/generate/genimports.py --mermaid  # the fenced block docs/117 holds
 
 An import inside a function or a class body is reported separately: it is a
 real edge, but a deferred one, usually there to break a cycle or to keep an

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate .codex/agents/*.toml from .claude/agents/*.md.
 
-    tools/gencodex.py [--check]
+    tools/generate/gencodex.py [--check]
 
 Codex reads a subagent from `.codex/agents/<name>.toml`; Claude Code reads the
 same agent from `.claude/agents/<name>.md`. This tool keeps the two from
@@ -47,7 +47,7 @@ import argparse
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
 CLAUDE_AGENTS_DIR = ROOT / ".claude" / "agents"
 CODEX_AGENTS_DIR = ROOT / ".codex" / "agents"
@@ -164,7 +164,7 @@ def toml_for(md_path: pathlib.Path) -> str:
         model, effort = CODEX_MODELS[name]
     except KeyError:
         raise ValueError(
-            f"{md_path.name} has no entry in tools/gencodex.py's CODEX_MODELS "
+            f"{md_path.name} has no entry in tools/generate/gencodex.py's CODEX_MODELS "
             "-- Donald has to pick a Codex model and reasoning effort for "
             "any newly added agent before this tool can generate its TOML"
         ) from None
@@ -216,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if args.check:
             if not toml.exists() or toml.read_text(encoding="utf-8") != generated:
-                print(f"{toml.name} is stale; run tools/gencodex.py",
+                print(f"{toml.name} is stale; run tools/generate/gencodex.py",
                       file=sys.stderr)
                 failed = True
             else:

@@ -63,7 +63,7 @@ is what keeps the rings continuous; its `OVERSAMPLE` note has the measurement.
 **The `.desktop` file already exists** -- `assets/wish.desktop`, committed on
 `#9 (Finish the packaging icons: .desktop, .icns and a README lockup)` itself,
 2026-08-23, before the artist delivered. It points `Icon=wish` at the hicolor
-tree `tools/genicons.py` writes, which now renders from the delivered mark, so
+tree `tools/generate/genicons.py` writes, which now renders from the delivered mark, so
 nothing about the entry itself needed to change.
 
 **The `.icns` is new** -- `assets/wish.icns`, from `packaging/geniconset.py`,
@@ -263,7 +263,7 @@ that a cheap job will skip: **hand-tuned 16, 24 and 32**, not exports of the
 | the panel icon on Linux | `app.setDesktopFileName("wish")` — GNOME and KDE match a window to its `.desktop` by app id, and a Wayland window gets a generic icon without it. There is still no `.desktop` file and the Linux artefact is a tarball, so the hicolor PNGs sit under `assets/` waiting for a package | `wish/window.py::dress` |
 | Help > About | a hand-built `QMessageBox` with `setIconPixmap` of the colour combo mark at 256, rendered from `assets/logo/combo-mark-color.svg`; `QMessageBox.about` paints the platform's information icon and takes no picture | `wish/about.py` |
 | the README | an `<img>` at the top — **Donald's file; ask** | `README.md` |
-| the icon files themselves | a generator, offscreen, in the shape of `tools/icons/iconsheet.py` | `tools/genicons.py` |
+| the icon files themselves | a generator, offscreen, in the shape of `tools/icons/iconsheet.py` | `tools/generate/genicons.py` |
 
 ---
 
@@ -281,7 +281,7 @@ SVG with `QSvgRenderer` only above 500 -- since 2026-09-06, for the reason
 in §7. The mark is not modified -- resizing a delivered file into an icon's
 sizes is placement, not art, the same rule §6 holds `pointy-hat` to.
 
-**The generator** is `tools/genicons.py`, unchanged in shape from the
+**The generator** is `tools/generate/genicons.py`, unchanged in shape from the
 stand-in days: it still makes every size on its own through
 `ui.appicon.image`, never a downscale of another size of ours, and still
 writes:
@@ -336,7 +336,7 @@ measured, not chosen:
 The magnitude bound has six times the room the noise needs and still catches
 every edit in that table at one size or another; the 10 % bound is what
 catches the last row, where a great many pixels move by very little.
-`tools/genicons.py --check` uses the same `differences()` and prints both
+`tools/generate/genicons.py --check` uses the same `differences()` and prints both
 numbers. **The table is history now** -- `INSET`, `RADIUS` and `TILE` were
 `ui/appicon.py`'s own tunable fractions and went with the procedural tile when
 the fixed asset replaced it, so there is nothing left in that module to
@@ -397,7 +397,7 @@ survive rasterising and the silhouette measures as **one** connected piece.
 From 32px up there is room to resolve them, and it measures as **three**:
 the main hat body, and two slivers where a fold line's antialiasing clears
 the paper-versus-tile threshold on both sides. Measured with
-`tools/genicons.py`'s own renderer, not assumed from the path.
+`tools/generate/genicons.py`'s own renderer, not assumed from the path.
 
 **It is shipped that way regardless**, for the same reason `hat-wizard` was:
 Donald — *"Is the agent modifying the art? We don't want to change the art.
@@ -565,7 +565,7 @@ Donald, 2026-09-06: *"Go with row B, please."* What that is in the code:
   40, 48 and 64 come from the 80; 128 from the 150; 256 and 500 from the
   500; 512 and 1024 from the SVG. The 200 is never used by any size asked
   for today and is committed so the rule has no gap if one is added. The
-  same `image()` feeds `setWindowIcon`, `tools/genicons.py`'s `.ico`,
+  same `image()` feeds `setWindowIcon`, `tools/generate/genicons.py`'s `.ico`,
   `wish.png` and hicolor tree, and `packaging/geniconset.py`'s `.icns`, so
   a pinned shortcut, Explorer, a GNOME panel and a Dock all match the
   running window's button.

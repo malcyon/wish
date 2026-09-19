@@ -7,7 +7,7 @@ retyped: the list is built from `ui.icons.ARTISTS`, the table the program
 actually draws from. Add a glyph without naming its artist there and
 `tests/test_licenses.py` goes red.
 
-`markdown()` writes `THIRD_PARTY_LICENSES.md` through `tools/genlicenses.py`;
+`markdown()` writes `THIRD_PARTY_LICENSES.md` through `tools/generate/genlicenses.py`;
 `html()` fills the dialog. One source, two renderings, so the file on disk and
 the box on screen cannot disagree.
 

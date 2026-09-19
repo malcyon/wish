@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Which classes hold which, read out of the AST the way `pyreverse` does.
 
-`tools/classdiagram.py` draws the picture and needs `pylint`, which is not a
+`tools/generate/classdiagram.py` draws the picture and needs `pylint`, which is not a
 dependency of `wish` and must not become one of `.venv`. This answers the one
 question that gets asked of the picture without drawing it: **for a named
 class, which annotated attributes anywhere in a package are of that type?**
 Those annotations are what `pyreverse` turns into an aggregation edge, so a
 class with none is drawn alone whatever else refers to it.
 
-    tools/classedges.py Title goldbox
-    tools/classedges.py Title goldbox automap        # more than one package
-    tools/classedges.py --all goldbox                # every class-to-class edge
+    tools/generate/classedges.py Title goldbox
+    tools/generate/classedges.py Title goldbox automap        # more than one package
+    tools/generate/classedges.py --all goldbox                # every class-to-class edge
 
 `#470 (Give the project a neutral title beside its neutral character record,
 with one port per platform a title shipped on)` asks it at every stage: the

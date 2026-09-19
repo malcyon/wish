@@ -21,7 +21,7 @@ three whatever happens to the first:
 
 1. `pytest`, scoped or whole as the brief says
 2. `.venv/bin/ruff check .`
-3. `.venv/bin/python3 tools/genui.py --check`
+3. `.venv/bin/python3 tools/generate/genui.py --check`
 
 **Do not stop at the first failure.** A brief that gets one failure back and
 then a second one an hour later has cost two round trips for one report.
@@ -39,7 +39,7 @@ half-finished code and says nothing about the commits about to be pushed.
 It resolves the sha, adds a detached worktree there, symlinks
 `gamedisks.yaml` into it (gitignored, and without it every specimen- and
 disk-backed test skips), runs `pytest
--q`, `ruff check .` and `tools/genui.py --check` all inside that worktree,
+-q`, `ruff check .` and `tools/generate/genui.py --check` all inside that worktree,
 removes the worktree, and only if all three passed writes
 `~/.cache/wish/testrun/<sha>.green` with pytest's summary line. That marker is what
 `.claude/hooks/check-push-tested.py` looks for before a push, and it is

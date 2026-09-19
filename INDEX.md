@@ -9,15 +9,15 @@ What each directory in this repository is for.
 | [`automap/`](automap/README.md) | The live automapper: everything that knows about a running machine — the VICE client, the map state, the rendering geometry, the window. |
 | [`wish/`](wish/README.md) | The application that wraps the other two — the tabbed window, preferences, the debug log, the backend session, the CLI entry point. |
 | [`ui/`](ui/README.md) | Shared widget-level helpers both GUIs use: the app icon, icon painting, the Font Awesome set. |
-| [`tools/`](tools/README.md) | Developer scripts, but ships anyway — the emulator harness, the instance pool, the disassembly and dump helpers, the code generators, and `tools.wish`/`tools.genui`, which `wish` reaches into at runtime. |
+| [`tools/`](tools/README.md) | Developer scripts, but ships anyway — the emulator harness, the instance pool, the disassembly and dump helpers, the code generators, and `tools.wish`/`tools.generate.genui`, which `wish` reaches into at runtime. |
 | `tests/` | The test suite, plus `gamedata.py`, which reads game data off the player's own disks so none of it is committed. |
 | `docs/` | The knowledge base: numbered documents recording what is known and how it was established. Outlives every issue that cites it. |
 | [`packaging/`](packaging/README.md) | The PyInstaller entry script, the Windows console-borrowing shim, and the `.icns` generator. |
 | `assets/` | Shipped non-code files — the application icons, the `.desktop` entry, and the artist's own logo files under `assets/logo/`. |
 | `images/` | The screenshots the README links. |
 | `designer` | A launcher for Qt Designer, opening `wish/window.ui`, the unified layout (`docs/146-unified-ui.md`) — `editor/character.ui` is gone, absorbed into it. |
-| `.claude/agents/` | Source subagent definitions -- each one supplies Claude Code's model, tool list, and prompt; `tools/gencodex.py` generates the Codex profiles from them. |
-| `.codex/agents/` | Generated project subagent profiles for Codex. Do not edit them by hand; run `tools/gencodex.py`. |
+| `.claude/agents/` | Source subagent definitions -- each one supplies Claude Code's model, tool list, and prompt; `tools/generate/gencodex.py` generates the Codex profiles from them. |
+| `.codex/agents/` | Generated project subagent profiles for Codex. Do not edit them by hand; run `tools/generate/gencodex.py`. |
 | `.claude/rules/` | The working standards, split out of `CLAUDE.md` under `#208 (Split CLAUDE.md into .claude/rules, so 21,800 tokens do not load before every task)`. A file carrying `paths:` frontmatter loads only when a file it names is read; one without loads at launch -- for the main window and for every subagent alike, observed directly on 2026-09-10. Only the seven `paths:`-scoped files are absent from a subagent until it touches a matching file, which is why `AGENTS.md`'s routing table names all thirteen. |
 | `.agents/rules/` | The same twelve files, as symlinks, because Antigravity reads `AGENTS.md` and `.agents/rules/` where Claude Code reads `CLAUDE.md` and `.claude/rules/`. One copy of the bytes, two sets of names. `AGENTS.md` holds the rules themselves; `CLAUDE.md` imports it with `@AGENTS.md` and adds only what is true of Claude Code alone. |
 | `.agents/skills/` | Skills Codex and Antigravity read. `caveman` is shared with Claude Code by symlink from `.claude/skills/`; `orchestrate` here is Codex's own orchestrator skill, a deliberate second copy of `.claude/skills/orchestrate/` written for Codex's mechanisms, and the two are allowed to drift. |

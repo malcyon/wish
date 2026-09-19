@@ -1,7 +1,7 @@
 """Render the application icon into the files the platforms want.
 
-    .venv/bin/python tools/genicons.py            # rewrite assets/
-    .venv/bin/python tools/genicons.py --check    # is assets/ in step?
+    .venv/bin/python tools/generate/genicons.py            # rewrite assets/
+    .venv/bin/python tools/generate/genicons.py --check    # is assets/ in step?
 
 Offscreen, through `ui.appicon`, which is also what `setWindowIcon` gets: the
 artist's files under `assets/logo/` are the source and this is a size-tuned
@@ -46,14 +46,14 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from PyQt6.QtCore import QBuffer, QIODevice  # noqa: E402
 from PyQt6.QtGui import QGuiApplication, QImage  # noqa: E402
 
 from ui import appicon  # noqa: E402
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 ASSETS = ROOT / "assets"
 
 #: What goes in `wish.ico`. 16 and 32 are the ones that matter -- the title bar
@@ -273,7 +273,7 @@ def main(argv: list[str]) -> int:
     if args.check:
         stale = differences(into)
         if stale:
-            print("out of date -- run tools/genicons.py:", file=sys.stderr)
+            print("out of date -- run tools/generate/genicons.py:", file=sys.stderr)
             for path, why in stale.items():
                 print(f"  {_name(path)}: {why}", file=sys.stderr)
             return 1

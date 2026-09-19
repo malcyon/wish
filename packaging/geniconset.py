@@ -3,7 +3,7 @@
     .venv/bin/python packaging/geniconset.py            # rewrite assets/wish.icns
     .venv/bin/python packaging/geniconset.py --check    # is it in step?
 
-Offscreen, through `ui.appicon`, exactly as `tools/genicons.py` makes the
+Offscreen, through `ui.appicon`, exactly as `tools/generate/genicons.py` makes the
 `.ico` and the hicolor tree: the artist's files under `assets/logo/` are the
 source and this is a size-tuned export of them, so the Dock icon can never
 drift from the drawing the taskbar uses.
@@ -17,7 +17,7 @@ pixel sizes are stored twice under different Apple type codes -- `32x32` and
 behind both is one call to `ui.appicon.image(32)`.
 
 **The container is written here**, in `icns_bytes`, the same reason
-`tools/genicons.py` writes its own `.ico`: an `.icns` is a short sequence of
+`tools/generate/genicons.py` writes its own `.ico`: an `.icns` is a short sequence of
 four-byte type, four-byte length and a PNG payload, and there is nothing a
 library buys over forty lines of `struct` -- see Apple's Icon Services header,
 which this follows.
@@ -67,7 +67,7 @@ TAGS: tuple[tuple[str, int], ...] = (
 
 
 def png_bytes(size: int) -> bytes:
-    """The icon at `size`, PNG-encoded by Qt -- `tools/genicons.py`'s own
+    """The icon at `size`, PNG-encoded by Qt -- `tools/generate/genicons.py`'s own
     helper, kept separate rather than imported so this file builds a `.icns`
     without reaching into a module it does not own."""
     buffer = QBuffer()

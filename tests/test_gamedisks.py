@@ -119,7 +119,7 @@ def test_an_empty_registry_has_no_entries(tmp_path, monkeypatch):
 
 def test_the_environment_variable_works_with_no_registry_at_all(
         tmp_path, monkeypatch):
-    """`POR_DISKS=/where tools/genitems.py` on a checkout that has not copied
+    """`POR_DISKS=/where tools/generate/genitems.py` on a checkout that has not copied
     the example yet: the variable's name comes from the example, and the run
     goes ahead rather than stopping at the missing file."""
     (tmp_path / "POOL1.D64").write_bytes(b"")

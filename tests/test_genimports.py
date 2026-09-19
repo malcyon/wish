@@ -1,4 +1,4 @@
-"""`tools/genimports.py`, and the document it keeps honest.
+"""`tools/generate/genimports.py`, and the document it keeps honest.
 
 The tool exists to catch one edge -- a codec reaching into another format's
 record table -- so the two things worth testing are that it sees an import
@@ -50,5 +50,5 @@ def test_the_documented_graph_is_the_one_the_tool_prints():
     package = pathlib.Path(__file__).resolve().parent.parent / "goldbox"
     printed = genimports.mermaid(genimports.edges(package))
     assert printed in DOC.read_text(), (
-        "docs/117-save-conversion.md is out of step with tools/genimports.py --"
-        " re-run `python3 tools/genimports.py --mermaid` and replace the block")
+        "docs/117-save-conversion.md is out of step with tools/generate/genimports.py --"
+        " re-run `python3 tools/generate/genimports.py --mermaid` and replace the block")

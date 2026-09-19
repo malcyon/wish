@@ -41,7 +41,7 @@ We use a consolidated UI approach for the main window and its tabs, while keepin
 ### 1. File Structure
 
 * `wish/window.ui` — The consolidated XML definition created in Qt Designer that contains the main window, the Automapper tab, the Editor tab, and their panels.
-* `ui_window.py` — The auto-generated Python code compiled by `tools/genui.py` (via `pyuic6`).
+* `ui_window.py` — The auto-generated Python code compiled by `tools/generate/genui.py` (via `pyuic6`).
 * Python wrapper classes (like `WishWindow`, `AutomapBinding`, `CharacterEditor`) — Hand-coded Python classes that attach to specific subsets of the UI.
 
 ### 2. Implementation Pattern
@@ -127,5 +127,5 @@ To modify the layout of any screen:
 1. Open the corresponding `.ui` file in Qt Designer.
 2. Make your layout changes (change margins, colors, swap widget types).
 3. Save the `.ui` file.
-4. Run `env QT_QPA_PLATFORM=offscreen .venv/bin/python tools/genui.py` to regenerate the `ui_*.py` file.
+4. Run `env QT_QPA_PLATFORM=offscreen .venv/bin/python tools/generate/genui.py` to regenerate the `ui_*.py` file.
 5. Restart Wish.

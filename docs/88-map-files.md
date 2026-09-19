@@ -1,6 +1,6 @@
 # The `GEO` map files
 
-**Generated** by `tools/genmaps.py` — do not edit. Decoded in
+**Generated** by `tools/generate/genmaps.py` — do not edit. Decoded in
 [GEO is solved](50-experiments.md); the reader is `goldbox/geo.py`, `tools/areas/geomap.py`
 renders them, and [`goldbox/areas.py`](../goldbox/areas.py) says which area loads which
 file and what it is called.

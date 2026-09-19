@@ -774,10 +774,10 @@ author gave it.
 ## Qt Designer
 
 No incident sits behind this one. Building layouts in `.ui` files and compiling
-them with `tools/genui.py` is a design decision taken at the start, so that a
+them with `tools/generate/genui.py` is a design decision taken at the start, so that a
 human can rearrange a form in Designer without a line of Python changing;
 `editor/character.ui` has worked that way since the character editor was
-written, and `tools/genui.py --check` catches drift in CI.
+written, and `tools/generate/genui.py --check` catches drift in CI.
 
 ## Feature flags
 

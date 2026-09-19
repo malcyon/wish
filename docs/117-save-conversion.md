@@ -2048,7 +2048,7 @@ save has to call the C64 reader. What crosses each of those edges is a
 which is the distinction the invariant is actually about. `goldbox/dos_codec.py` also
 re-exports `c64_codec.Report` and `INFRAVISION` under their old names.
 
-The graph is read out of the AST by `tools/genimports.py` rather than drawn by
+The graph is read out of the AST by `tools/generate/genimports.py` rather than drawn by
 hand, because a codec quietly reaching into another format's layout is exactly
 the edge somebody adds without noticing.
 
@@ -2198,7 +2198,7 @@ A dotted edge is an import inside a function or a class body: real, but
 deferred, and usually there to break a cycle.
 
 The review that drew these diagrams found the graph one edge short, and the
-gap was the shape of the thing it guards: `tools/genimports.py` matched
+gap was the shape of the thing it guards: `tools/generate/genimports.py` matched
 `from .layout import …` and `import goldbox.layout` but not `from goldbox.layout
 import …`, an absolute import of a sibling. `goldbox/areas.py` writes exactly
 that, so `areas --> layout` was missing — and a codec written the same way

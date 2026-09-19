@@ -6,7 +6,7 @@ game-icons.net's glyphs are CC BY 3.0, and attribution is the whole of what
 that licence asks for -- so an attribution file with a gap in it looks
 discharged and is not, and nothing in a running program says so.
 
-The list is generated from `ui.icons.ARTISTS` by `tools/genlicenses.py`, so the
+The list is generated from `ui.icons.ARTISTS` by `tools/generate/genlicenses.py`, so the
 tests here are about the two ends of that: what ships is credited, and nothing
 is credited that does not ship.
 """
@@ -61,10 +61,10 @@ def test_every_shipped_icon_has_an_artist():
 
 def test_the_file_is_what_the_generator_would_write():
     """It is generated; a hand edit is a difference that will be overwritten."""
-    result = subprocess.run([sys.executable, "tools/genlicenses.py", "--check"],
+    result = subprocess.run([sys.executable, "tools/generate/genlicenses.py", "--check"],
                             cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, (
-        f"{result.stdout}{result.stderr}\nRun tools/genlicenses.py to update it.")
+        f"{result.stdout}{result.stderr}\nRun tools/generate/genlicenses.py to update it.")
 
 
 def test_font_awesome_is_credited_nowhere_now_that_nothing_draws_it():

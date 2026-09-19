@@ -133,10 +133,10 @@ def _dead(text: str) -> list[str]:
 @pytest.mark.parametrize("text", [
     "see `tools/wishagent.py` for the bot",
     "at `tools/wishagent.py:12`",
-    "the function `tools/gamedisks.find` reads the registry",
-    "`tools/gamedisks`, as a module",
+    "the function `tools/wish.subcommand` names a module attribute",
+    "`tools/wish`, as a module",
     "everything in `tools/` and in `tools`",
-    "the guard scripts, `tools/gen*.py`",
+    "the two scripts that stay at the top, `tools/wish*.py`",
     "<checkout>/tools/wishagent.py",
     "`git show {sha}~1:tools/{name}`",
     "a template, `tools/<name>.py` or `tools/{name}.py`",
@@ -154,7 +154,7 @@ def test_the_forms_that_are_citations_or_exempt_pass(text):
     ("`tools/no_such_*.py`", ["tools/no_such_*.py"]),
     # A real module name with a file suffix that does not exist is not rescued
     # by the module reading.
-    ("`tools/gamedisks.yaml`", ["tools/gamedisks.yaml"]),
+    ("`tools/wish.yaml`", ["tools/wish.yaml"]),
     # The path of a file that used to be at the top of `tools/`.
     ("`tools/wishagent/wishagent.py`", ["tools/wishagent/wishagent.py"]),
 ])

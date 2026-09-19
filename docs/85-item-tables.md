@@ -1,6 +1,6 @@
 # Item tables
 
-**Generated** — run `python3 tools/genitems.py` after changing
+**Generated** — run `python3 tools/generate/genitems.py` after changing
 `goldbox/items.py`. Both tables are read directly off a game disk, so the
 spellings are the game's own.
 

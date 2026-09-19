@@ -113,7 +113,7 @@ evidence -- "10 for every player character; monsters carry their real AC here"
 
 `goldbox/layout.py` is the exception: its notes are the field documentation and
 are generated into `docs/20-character-record.md`. They can be long. Run
-`python3 tools/gendocs.py` after touching them.
+`python3 tools/generate/gendocs.py` after touching them.
 
 Why these rules exist, and the incidents behind them:
 `docs/160-why-these-rules.md`, "Documentation".

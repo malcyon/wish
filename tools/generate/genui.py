@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compile every .ui file in the project to its ui_*.py companion.
 
-    tools/genui.py [--check]
+    tools/generate/genui.py [--check]
 
 `--check` regenerates into memory and fails if the committed file differs,
 which is what CI wants. The editor calls `ensure_current()` at startup, so in
@@ -16,7 +16,7 @@ import pathlib
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
 #: Every directory that may contain .ui files. The search is explicit rather
 #: than a recursive glob so that `.venv/`, `build/` and friends are never
@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         source = compile_ui(ui)
         if args.check:
             if not py.exists() or body(py.read_text(encoding="utf-8")) != body(source):
-                print(f"{py.name} is stale; run tools/genui.py",
+                print(f"{py.name} is stale; run tools/generate/genui.py",
                       file=sys.stderr)
                 failed = True
             else:

@@ -109,10 +109,10 @@ not in the repository.
 | [176-changing-class-twice.md](176-changing-class-twice.md) | Whether a Gold Box character can change class more than once, for `#256 (The neutral record has nowhere to put a dual-classed character's former levels)`: **no**, in all four ports asked, and each refuses by reading the field the first change wrote -- the C64's `LDA $7CBA / BNE` at Curse `GEN $2393` and Silver Blades `GEN $1F88`, answering `UNABLE TO CHANGE CLASS.`; DOS Curse dropping the menu line for the selected character at `GAME.OVR 0x20243`; DOS Silver Blades keeping the line and refusing inside the command at `0x3CDAF`. Carries the six-character DOS Curse sweep in which the line is missing for the one dual-classed human and the one elf and present for the other four, the Silver Blades pair one action apart where PAINE gets a class list before and nothing after, the single store to `$7CBA` in each C64 title and the regain routine `GEN $20A3` that does not clear it, and the census of 62 DOS records with a former array in which none holds two. Ends with the C64 replay that could not be run, and why. |
 | [177-a-load-that-goes-wrong.md](177-a-load-that-goes-wrong.md) | What was measured when Pool of Radiance stops on Donald's C64 Ultimate, for `#286 (Pool of Radiance on the C64 Ultimate sometimes hangs on a disk load)`, and what it does **not** say -- four candidates stay live, and one machine cannot separate a firmware defect from a fault in that machine. The reproduction is the opening demo rather than his walk to a stable: boot `POOL1.D64`, answer `Y`, touch nothing, and it stopped three times in three runs in six to ten minutes each, once frozen with an interrupt asserted and never acknowledged and twice dropped out to a BASIC warm start with `READY.` printed into the game's own screen buffer. Carries the test that tells a hang from a load -- six seconds of legitimate quiet against eighty of silence -- the `$DD00` readings idle, loading and hung, the proof that neither hang put a bad byte anywhere looked at, the loaded-files cache naming three different places in the game, and the chain from a Short Bow +1 through `ITEMFILE29` and `ECL14`'s `TREASURE` operands to `GEO14` squares (5,2) and (6,2). Ends with the loop nobody could name, and why no route on the device can name it. |
 
-`20-character-record.md` is generated — run `python3 tools/gendocs.py` after
+`20-character-record.md` is generated — run `python3 tools/generate/gendocs.py` after
 changing `goldbox/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
-`python3 tools/genitems.py`, `python3 tools/genspells.py`,
-`python3 tools/gentemplates.py` and `python3 tools/genmaps.py`, which need a
+`python3 tools/generate/genitems.py`, `python3 tools/generate/genspells.py`,
+`python3 tools/generate/gentemplates.py` and `python3 tools/generate/genmaps.py`, which need a
 game disk. Everything else is
 written by hand.
 
@@ -131,7 +131,7 @@ dragging in throwaway discovery scripts.
 | `ui/` | drawing code both the editor and the map need, owned by neither |
 | `designer` | a launcher script for Qt Designer, opening `wish/window.ui` |
 | `packaging/` | the PyInstaller entry points and the Windows console-stream repair |
-| `tools/` | discovery scripts — dumps, diffs, generators, experiment runners. `tools.wish` is the body of the `wish export`/`wish import` subcommands and `tools.genui` runs at window startup, so the package ships even though the rest of it is scaffolding; [129-one-binary.md](129-one-binary.md) is the CLI folded into `wish` itself |
+| `tools/` | discovery scripts — dumps, diffs, generators, experiment runners. `tools.wish` is the body of the `wish export`/`wish import` subcommands and `tools.generate.genui` runs at window startup, so the package ships even though the rest of it is scaffolding; [129-one-binary.md](129-one-binary.md) is the CLI folded into `wish` itself |
 
 **Two decisions shape all of it, and both still hold.**
 

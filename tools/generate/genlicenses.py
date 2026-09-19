@@ -7,7 +7,7 @@ licence asks for: a list that has drifted from what ships looks discharged and
 is not. `ui.icons.ARTISTS` names who drew each glyph, so the file says exactly
 what the program draws. Re-run after adding an icon:
 
-    python3 tools/genlicenses.py
+    python3 tools/generate/genlicenses.py
 
 `--check` regenerates into memory and fails if the committed file differs,
 which is what `tests/test_licenses.py` runs.
@@ -18,11 +18,11 @@ import argparse
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from wish import licenses
 
-OUT = pathlib.Path(__file__).resolve().parent.parent / "THIRD_PARTY_LICENSES.md"
+OUT = pathlib.Path(__file__).resolve().parent.parent.parent / "THIRD_PARTY_LICENSES.md"
 
 
 def main(argv: list[str] | None = None) -> int:

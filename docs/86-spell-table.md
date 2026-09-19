@@ -1,6 +1,6 @@
 # Spell table
 
-**Generated** — run `python3 tools/genspells.py`. Read straight off a
+**Generated** — run `python3 tools/generate/genspells.py`. Read straight off a
 game disk, so the spellings are the game's own.
 
 A character's memorised spells are a packed list of these ids at record

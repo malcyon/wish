@@ -9,7 +9,7 @@ normal job. `tools/curse_of_the_azure_bonds/curserun.py` and `tools/c64/session.
 manual-scan shape, and `tools/c64/session.py`'s is worse: with no `--pool` it
 drives the *legacy* session on Donald's own 6502/6510/6600, so its
 `--help` used to reach for his own machine rather than a pooled one.
-`tools/genui.py` and `tools/genlicenses.py` shared a smaller version of the
+`tools/generate/genui.py` and `tools/generate/genlicenses.py` shared a smaller version of the
 same fault: anything but the literal string `"--check"` fell through to the
 write branch, so `--help` rewrote generated source and a licence file.
 
@@ -225,10 +225,10 @@ def test_the_family_named_in_403_is_covered():
 # These two run the real fix instead of reading its source.
 
 def test_genui_help_exits_before_compiling_anything(monkeypatch):
-    from tools import genui
+    from tools.generate import genui
 
     def _boom(*_a, **_k):
-        raise AssertionError("tools/genui.py --help reached compile_ui")
+        raise AssertionError("tools/generate/genui.py --help reached compile_ui")
 
     monkeypatch.setattr(genui, "compile_ui", _boom)
     with pytest.raises(SystemExit) as exc:
@@ -237,10 +237,10 @@ def test_genui_help_exits_before_compiling_anything(monkeypatch):
 
 
 def test_genui_rejects_an_unrecognised_argument_without_writing(monkeypatch):
-    from tools import genui
+    from tools.generate import genui
 
     def _boom(*_a, **_k):
-        raise AssertionError("tools/genui.py --bogus reached compile_ui")
+        raise AssertionError("tools/generate/genui.py --bogus reached compile_ui")
 
     monkeypatch.setattr(genui, "compile_ui", _boom)
     with pytest.raises(SystemExit) as exc:
@@ -249,10 +249,10 @@ def test_genui_rejects_an_unrecognised_argument_without_writing(monkeypatch):
 
 
 def test_genlicenses_help_exits_before_writing(monkeypatch):
-    from tools import genlicenses
+    from tools.generate import genlicenses
 
     def _boom(*_a, **_k):
-        raise AssertionError("tools/genlicenses.py --help wrote a file")
+        raise AssertionError("tools/generate/genlicenses.py --help wrote a file")
 
     monkeypatch.setattr(genlicenses.pathlib.Path, "write_text", _boom)
     with pytest.raises(SystemExit) as exc:
@@ -262,10 +262,10 @@ def test_genlicenses_help_exits_before_writing(monkeypatch):
 
 def test_genlicenses_rejects_an_unrecognised_argument_without_writing(
         monkeypatch):
-    from tools import genlicenses
+    from tools.generate import genlicenses
 
     def _boom(*_a, **_k):
-        raise AssertionError("tools/genlicenses.py --bogus wrote a file")
+        raise AssertionError("tools/generate/genlicenses.py --bogus wrote a file")
 
     monkeypatch.setattr(genlicenses.pathlib.Path, "write_text", _boom)
     with pytest.raises(SystemExit) as exc:

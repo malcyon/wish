@@ -11,12 +11,12 @@ Two tables live on the game disk and neither is in this repo as data:
 Both are read straight off the disk, so the names here carry no
 transcription errors. Run after changing goldbox/items.py:
 
-    python3 tools/genitems.py [GAME.D64]
+    python3 tools/generate/genitems.py [GAME.D64]
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import d64  # noqa: E402
 from goldbox.items import (  # noqa: E402
@@ -26,7 +26,7 @@ from goldbox.items import (  # noqa: E402
 )
 from tools import gamedisks  # noqa: E402
 
-OUT = Path(__file__).resolve().parent.parent / "docs" / "85-item-tables.md"
+OUT = Path(__file__).resolve().parent.parent.parent / "docs" / "85-item-tables.md"
 
 CLASS_BITS = ((1, "magic-user"), (2, "cleric"), (4, "thief"), (8, "fighter"))
 DAMAGE_TYPES = {0: "slashing", 1: "piercing", 128: "bludgeoning"}
@@ -72,7 +72,7 @@ def main() -> int:
     w = out.append
     w("# Item tables")
     w("")
-    w("**Generated** — run `python3 tools/genitems.py` after changing")
+    w("**Generated** — run `python3 tools/generate/genitems.py` after changing")
     w("`goldbox/items.py`. Both tables are read directly off a game disk, so the")
     w("spellings are the game's own.")
     w("")

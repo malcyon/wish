@@ -31,7 +31,7 @@ Run all three locally, or CI will find what you did not:
 
 1. `pytest` (all tests pass)
 2. `.venv/bin/ruff check .` (no unused imports or linting errors)
-3. `.venv/bin/python3 tools/genui.py --check` (every `.ui` compiled and current)
+3. `.venv/bin/python3 tools/generate/genui.py --check` (every `.ui` compiled and current)
 
 **Run the whole suite, not the files you touched.** A scoped run is for
 working; it is not the check. `pytest tests/test_combatdrive.py` was green and
