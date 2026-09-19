@@ -500,7 +500,7 @@ light taskbar and a dark one, and transparent line art is invisible on the
 taskbar that matches it.
 
 The sheet, `cited/351/taskbar-marks.png`, was drawn by
-`tools/gui/taskbaricon.py`, which was deleted once the choice below was made:
+the taskbar icon sheet tool, which was deleted once the choice below was made:
 twelve lettered rows, every square file rendered from its SVG and scaled
 from its nearest delivered PNG, at 16, 20, 24, 32, 48 and 256, each at true
 size on a light and a dark taskbar and magnified beside it. The taskbar
@@ -578,7 +578,7 @@ Donald, 2026-09-06: *"Go with row B, please."* What that is in the code:
 
 `cited/351/taskbar-shipped.png` showed the result -- the icon at 16, 20, 24,
 32, 48 and 256 through `ui.appicon.image`, on a light taskbar and a dark
-one. `tools/gui/taskbaricon.py`, which drew it and the sheet above, was
+one. The taskbar icon sheet tool, which drew it and the sheet above, was
 deleted once the choice was made; `tests/test_taskbaricon.py` now holds one
 test, that the window's icon is the committed `assets/logo/mark-*.png`
 scaled down. Not yet seen on a Windows taskbar itself; that is Donald's to
