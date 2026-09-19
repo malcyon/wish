@@ -35,7 +35,10 @@ What it does, in order, and all of it against the same checkout:
 7. `tools/generate/genui.py --check` in the worktree.
 8. If all of it passed, write `~/.cache/wish/testrun/<sha>.green`,
    holding pytest's summary line. On any failure, write nothing.
-9. Remove the worktree, whatever happened, unless `--keep`.
+9. Remove the worktree and the directory that held it, whatever happened,
+   unless `--keep`. A `SIGTERM` is turned into an exit so this still runs, and
+   the next run sweeps whatever a `SIGKILL` left under the tool's own scratch
+   directory.
 
 Exit status is 0 when the marker was written and 1 otherwise; the decisive
 lines of whichever check failed are the last thing printed.
@@ -45,9 +48,12 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import os
 import pathlib
 import re
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -240,6 +246,41 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
     return True, summary, ""
 
 
+def _prefix() -> str:
+    """What names this checkout's bases under the shared scratch directory, so a run in another checkout leaves them alone."""
+    return f"run-{hashlib.sha1(str(REPO).encode()).hexdigest()[:8]}-"
+
+
+def _sweep(root: pathlib.Path) -> None:
+    """Remove this checkout's bases under `root` that no registered worktree lives in.
+
+    What an earlier run that was killed outright left behind. A suite running
+    now has its worktree registered, so it is left alone; this assumes one
+    run at a time per checkout, which is the rule. Nothing is removed when git
+    cannot list the worktrees, since an empty list would read as "none is
+    live", and a symlink is skipped rather than followed out of `root`.
+    """
+    _run(["git", "worktree", "prune"], REPO, 60)
+    if not root.is_dir():
+        return
+    listed = _run(["git", "worktree", "list", "--porcelain"], REPO, 60)
+    if listed.returncode != 0:
+        return
+    live = [pathlib.Path(line[len("worktree "):]).resolve()
+            for line in listed.stdout.splitlines() if line.startswith("worktree ")]
+    for child in root.iterdir():
+        if child.is_symlink() or not child.name.startswith(_prefix()):
+            continue
+        held = child.resolve()
+        if not any(path == held or held in path.parents for path in live):
+            shutil.rmtree(child, ignore_errors=True)
+
+
+def _terminate(signum: int, frame: object) -> None:
+    """Turn `SIGTERM` into an exit, so a `timeout` that sends it still runs the `finally` in `main`."""
+    raise SystemExit(128 + signum)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("sha", help="the commit to test; resolved with git rev-parse")
@@ -256,20 +297,25 @@ def main(argv=None) -> int:
     if not args.no_rebase:
         sha, note = rebase_onto_origin(REPO, sha)
         print(note)
-    base = pathlib.Path(tempfile.mkdtemp(prefix="suiterun-"))
+    root = scratch.scratch_dir("suiterun")
+    _sweep(root)
+    base = pathlib.Path(tempfile.mkdtemp(prefix=_prefix(), dir=scratch.ensure(root)))
     worktree = base / "wt"
-    added = _run(["git", "worktree", "add", "-q", "--detach", str(worktree), sha], REPO, 120)
-    if added.returncode != 0:
-        print(added.stderr.strip())
-        return 1
+    previous = signal.signal(signal.SIGTERM, _terminate)
     try:
+        added = _run(["git", "worktree", "add", "-q", "--detach", str(worktree), sha], REPO, 120)
+        if added.returncode != 0:
+            print(added.stderr.strip())
+            return 1
         if (REPO / "gamedisks.yaml").is_file():
             (worktree / "gamedisks.yaml").symlink_to(REPO / "gamedisks.yaml")
         green, summary, failure = run_checks(worktree)
     finally:
+        signal.signal(signal.SIGTERM, previous)
         if not args.keep:
             _run(["git", "worktree", "remove", "--force", str(worktree)], REPO, 120)
             _run(["git", "worktree", "prune"], REPO, 60)
+            shutil.rmtree(base, ignore_errors=True)
     print(f"target {sha}")
     if not green:
         print("RED, no marker written")

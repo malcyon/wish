@@ -11,14 +11,20 @@ set variable lets the loader look. It must be missing rather than empty:
 with an empty one, ran over the specimen tree alone and failed its counts.
 """
 
+import os
 import pathlib
+import signal
 import subprocess
 import sys
+import tempfile
+import textwrap
+import time
 
 import pytest
 import yaml
 
 from automap import gamedisks
+from tools.registry import scratch
 from tools.suite import suiterun
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -294,3 +300,147 @@ def test_a_missing_ruff_stops_the_run_before_git_or_pytest_starts(tmp_path, monk
     assert str(absent) in message and "ruff" in message
     assert "\n" not in message and ".[dev" in message
     assert not (tmp_path / "testrun").exists()
+
+
+def _worktrees(repo):
+    return [line for line in _git(repo, "worktree", "list", "--porcelain").splitlines()
+            if line.startswith("worktree ")]
+
+
+def test_a_sigterm_mid_run_removes_the_worktree_and_its_parent(clones, tmp_path, monkeypatch):
+    """A `SIGTERM`, as `timeout` sends it, ends `main` through its `finally`: the checkout and the directory holding it go."""
+    _, mine = clones
+    monkeypatch.setattr(suiterun, "REPO", mine)
+    monkeypatch.setattr(suiterun, "RUFF", pathlib.Path(sys.executable))
+    monkeypatch.setattr(suiterun, "marker_dir", lambda: tmp_path / "testrun")
+    # `tempfile.gettempdir()` caches, so `TMPDIR` set now would not be read.
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    seen = {}
+
+    def interrupted(worktree):
+        seen["worktree"] = worktree
+        assert signal.getsignal(signal.SIGTERM) is not signal.SIG_DFL
+        raise SystemExit(128 + signal.SIGTERM)
+
+    monkeypatch.setattr(suiterun, "run_checks", interrupted)
+    before = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(SystemExit) as stopped:
+        suiterun.main(["HEAD", "--no-rebase"])
+    assert stopped.value.code == 128 + signal.SIGTERM
+    worktree = seen["worktree"]
+    assert worktree.parent.parent == scratch.scratch_dir("suiterun")
+    assert not worktree.exists() and not worktree.parent.exists()
+    assert len(_worktrees(mine)) == 1
+    assert not (tmp_path / "testrun").exists()
+    assert signal.getsignal(signal.SIGTERM) is before
+
+
+CHILD = textwrap.dedent("""
+    import pathlib, sys, time
+    from tools.suite import suiterun
+
+    suiterun.REPO = pathlib.Path(sys.argv[1])
+    suiterun.RUFF = pathlib.Path(sys.executable)
+    suiterun.marker_dir = lambda: pathlib.Path(sys.argv[2])
+    suiterun.run_checks = lambda worktree: time.sleep(120)
+    sys.exit(suiterun.main(["HEAD", "--no-rebase"]))
+""")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="SIGTERM is not a signal Windows delivers to a process")
+def test_a_real_sigterm_to_the_wrapper_leaves_no_worktree(clones, tmp_path):
+    """Send `SIGTERM` to a `main` running in its own process, and read back what is left in the repository and the temp directory."""
+    _, mine = clones
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    errors = tmp_path / "child.stderr"
+    with errors.open("wb") as fh:
+        child = subprocess.Popen(
+            [sys.executable, "-c", CHILD, str(mine), str(tmp_path / "testrun")],
+            cwd=REPO, stderr=fh,
+            env={**os.environ, "TMPDIR": str(temp), "TEMP": str(temp), "TMP": str(temp)})
+    try:
+        # A deadline rather than a sleep: how long a checkout takes on a
+        # loaded machine is not something this test should assert.
+        deadline = time.time() + 60
+        while len(_worktrees(mine)) < 2:
+            if child.poll() is not None:
+                pytest.fail(f"the wrapper exited {child.returncode} before it "
+                            f"made a worktree:\n{errors.read_text() or '(empty)'}")
+            if time.time() > deadline:
+                pytest.fail("no worktree appeared in 60s")
+            time.sleep(0.05)
+        child.send_signal(signal.SIGTERM)
+        assert child.wait(60) == 128 + signal.SIGTERM, errors.read_text()
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+    assert len(_worktrees(mine)) == 1
+    scratch_root = temp / "wish" / "suiterun"
+    assert list(scratch_root.iterdir()) == []
+
+
+def test_the_sweep_removes_an_abandoned_base_and_leaves_a_live_one(clones, tmp_path, monkeypatch):
+    """A killed run leaves a directory git no longer knows; a running one is registered."""
+    _, mine = clones
+    monkeypatch.setattr(suiterun, "REPO", mine)
+    root = tmp_path / "scratch-root"
+    live = root / (suiterun._prefix() + "live")
+    live.mkdir(parents=True)
+    _git(mine, "worktree", "add", "-q", "--detach", str(live / "wt"), "HEAD")
+    dead = root / (suiterun._prefix() + "dead")
+    (dead / "wt" / "tests").mkdir(parents=True)
+    (dead / "wt" / "tests" / "test_x.py").write_text("x\n")
+    suiterun._sweep(root)
+    assert not dead.exists()
+    assert (live / "wt" / "base.txt").is_file()
+    assert len(_worktrees(mine)) == 2
+    suiterun._sweep(tmp_path / "never-made")
+
+
+def test_the_sweep_removes_nothing_when_git_cannot_list_the_worktrees(clones, tmp_path, monkeypatch):
+    """An empty answer from a failed `git worktree list` would read as "nothing is live"."""
+    _, mine = clones
+    monkeypatch.setattr(suiterun, "REPO", mine)
+    real = suiterun._run
+
+    def failing(args, cwd, timeout, extra_env=None):
+        if args[:3] == ["git", "worktree", "list"]:
+            return subprocess.CompletedProcess(args, 128, "", "fatal: not a git repository")
+        return real(args, cwd, timeout, extra_env)
+
+    monkeypatch.setattr(suiterun, "_run", failing)
+    root = tmp_path / "scratch-root"
+    base = root / (suiterun._prefix() + "live")
+    base.mkdir(parents=True)
+    (base / "file").write_text("x\n")
+    suiterun._sweep(root)
+    assert (base / "file").is_file()
+
+
+def test_the_sweep_leaves_another_checkouts_base_alone(clones, tmp_path, monkeypatch):
+    """Two checkouts share one scratch directory, and only one of them has the base registered."""
+    _, mine = clones
+    monkeypatch.setattr(suiterun, "REPO", mine)
+    root = tmp_path / "scratch-root"
+    theirs = root / "run-00000000-abc"
+    theirs.mkdir(parents=True)
+    (theirs / "file").write_text("x\n")
+    assert not theirs.name.startswith(suiterun._prefix())
+    suiterun._sweep(root)
+    assert (theirs / "file").is_file()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="creating a symlink needs a privilege on Windows")
+def test_the_sweep_does_not_follow_a_symlink_out_of_the_scratch_directory(clones, tmp_path, monkeypatch):
+    _, mine = clones
+    monkeypatch.setattr(suiterun, "REPO", mine)
+    root = tmp_path / "scratch-root"
+    root.mkdir()
+    target = tmp_path / "somebody-elses-files"
+    target.mkdir()
+    (target / "file").write_text("x\n")
+    (root / (suiterun._prefix() + "link")).symlink_to(target, target_is_directory=True)
+    suiterun._sweep(root)
+    assert (target / "file").is_file()
