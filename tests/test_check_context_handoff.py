@@ -65,17 +65,17 @@ def test_the_context_is_the_sum_of_the_three_input_counts(tmp_path, monkeypatch)
 
 def test_a_session_past_the_line_is_refused(tmp_path, monkeypatch, capsys):
     path = transcript(tmp_path, _turn(
-        "assistant", input_tokens=32, cache_read_input_tokens=300_000))
+        "assistant", input_tokens=32, cache_read_input_tokens=400_000))
     assert run(monkeypatch, spawn(path)) == 2
     err = capsys.readouterr().err
-    assert "300,032" in err
+    assert "400,032" in err
     assert "/orchestrate" in err
     assert "ScheduleWakeup stop:true" in err
 
 
 def test_a_session_under_the_line_is_let_through(tmp_path, monkeypatch):
     path = transcript(tmp_path, _turn(
-        "assistant", input_tokens=32, cache_read_input_tokens=299_000))
+        "assistant", input_tokens=32, cache_read_input_tokens=399_000))
     assert run(monkeypatch, spawn(path)) == 0
 
 
@@ -92,7 +92,7 @@ def test_a_turn_recorded_as_zero_is_skipped(tmp_path, monkeypatch):
     """An interrupted turn records a usage block of zeros; it is not an answer."""
     path = transcript(
         tmp_path,
-        _turn("assistant", cache_read_input_tokens=400_000),
+        _turn("assistant", cache_read_input_tokens=500_000),
         json.dumps({"type": "user", "message": {"content": "x"}}),
         _turn("assistant", input_tokens=0, cache_read_input_tokens=0))
     assert run(monkeypatch, spawn(path)) == 2

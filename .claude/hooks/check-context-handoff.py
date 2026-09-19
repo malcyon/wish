@@ -24,7 +24,7 @@ tool's result -- says what to do instead. `code-reviewer` and `test-runner`
 are let through, because the wind-down still has to review the last commits
 and run the suite before the push.
 
-The line is 300,000 tokens; `WISH_HANDOFF_TOKENS` overrides it, for a
+The line is 400,000 tokens; `WISH_HANDOFF_TOKENS` overrides it, for a
 session Donald wants to run longer or a test that wants a smaller number.
 
 `SendMessage` is refused too, because a message to a finished agent gives it
@@ -45,7 +45,7 @@ import os
 import sys
 import tempfile
 
-DEFAULT_LIMIT = 300_000
+DEFAULT_LIMIT = 400_000
 
 #: Tools that give a subagent work. Claude Code names the launcher `Agent`
 #: today and named it `Task` before that; `SendMessage` resumes a finished
