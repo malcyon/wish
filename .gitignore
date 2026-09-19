@@ -272,3 +272,8 @@ wish/_version.py
 # Credentials never live in this tree -- the wish-agent app's key is at
 # ~/.config/wish-agent/. This is a second line of defence, not the mechanism.
 *.pem
+
+# The sandbox playbooks' machine-specific values: the committed `.example`
+# beside each one is the template.
+ansible/inventory.yml
+ansible/group_vars/all/vault.yml

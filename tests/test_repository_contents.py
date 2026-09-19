@@ -13,6 +13,7 @@ what is committed.
 
 
 import ast
+import ipaddress
 import pathlib
 import re
 import subprocess
@@ -694,6 +695,12 @@ def test_the_scratch_directory_does_not_exist():
 
 # -- the guard itself ---------------------------------------------------------
 
+def _numbered(prefix: str, count: int) -> list[str]:
+    """Test ids that say which case, never what it contains: pytest writes ids
+    into its cache and prints them, and a case may hold a planted credential."""
+    return [f"{prefix}-{n}" for n in range(1, count + 1)]
+
+
 @pytest.mark.parametrize("text", [
     "work/foo",
     "cd work/issue12 && ls",
@@ -703,7 +710,7 @@ def test_the_scratch_directory_does_not_exist():
     "work/.hidden",
     "out = \"work/x\"",
     "and/or work/school",      # prose is matched too: the regex cannot tell
-])
+], ids=_numbered("scratch-path", 8))
 def test_the_text_check_flags_a_path_into_the_scratch_directory(text):
     assert work_path_lines(text) == [1]
 
@@ -720,7 +727,7 @@ def test_the_text_check_flags_a_path_into_the_scratch_directory(text):
     "work/ is deleted",
     "work",
     "at work",
-])
+], ids=_numbered("other-path", 11))
 def test_the_text_check_leaves_other_paths_alone(text):
     assert work_path_lines(text) == []
 
@@ -742,7 +749,7 @@ def test_the_text_check_reports_the_right_line():
     'p = join("work", "x")',
     'p = root.joinpath("work")',
     'p /= "work"',
-])
+], ids=_numbered("work-segment", 12))
 def test_the_source_check_flags_work_as_a_path_segment(source):
     assert work_segment_lines(source) == [1]
 
@@ -757,7 +764,7 @@ def test_the_source_check_flags_work_as_a_path_segment(source):
     'print("work")',
     'x = ["work", "play"]',
     'p = ", ".join(["work", "play"])',
-])
+], ids=_numbered("other-use", 9))
 def test_the_source_check_leaves_other_uses_of_the_word_alone(source):
     assert work_segment_lines(source) == []
 
@@ -852,3 +859,349 @@ def test_a_file_or_a_missing_directory_is_not_the_scratch_directory(tmp_path):
     assert conftest.scratch_directory_present(tmp_path) is None
     (tmp_path / conftest._SCRATCH_NAME).write_text("x")
     assert conftest.scratch_directory_present(tmp_path) is None
+
+
+# -- nothing of one machine or one person in `ansible/` -------------------------
+
+#: The playbooks that build the agent sandbox are a developer's to run on their
+#: own machine. Everything that names that machine lives in a gitignored
+#: inventory, so the tree carries none of it. These five checks read the files
+#: git tracks, like the ones above.
+ANSIBLE_DIR = "ansible"
+
+#: Not scanned: this file, whose fixtures below are violations on purpose.
+ANSIBLE_SCAN_SKIPS = {"tests/test_repository_contents.py"}
+
+#: The files that hold one machine's values, which must never be tracked, and
+#: the committed templates beside them.
+ANSIBLE_MACHINE_FILES = ("ansible/inventory.yml",
+                         "ansible/group_vars/all/vault.yml")
+ANSIBLE_EXAMPLE_FILES = tuple(f"{name}.example"
+                              for name in ANSIBLE_MACHINE_FILES)
+
+#: A home directory with somebody's name in it. The name is anything up to a
+#: separator that is not a word, dot or hyphen, so `/home/{{ operator }}`,
+#: `/home/$USER`, `/home/<name>` and a bare `/home` do not match: they name a
+#: variable or a directory rather than a person.
+ANSIBLE_HOME_PATH = re.compile(
+    r"(?:/home/|/Users/|C:\\Users\\)[A-Za-z0-9_][A-Za-z0-9_.-]*",
+    re.IGNORECASE)
+
+#: A dotted quad, with the prefix length after it when it is a network. The
+#: look-around keeps it out of a longer dotted number such as a version.
+ANSIBLE_IPV4 = re.compile(
+    r"(?<![\d.])(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?:/(\d{1,2}))?(?![\d])")
+
+#: The sandbox's own subnet. It is this project's invention and the same on
+#: every machine, so an address inside it says nothing about anybody's LAN.
+ANSIBLE_SANDBOX_SUBNET = ipaddress.ip_network("10.77.0.0/24")
+
+#: Networks written with their prefix that may appear: the four ranges the
+#: sandbox's filter drops (every private range, plus the one Tailscale uses),
+#: libvirt's `default` network, and the whole internet.
+ANSIBLE_ALLOWED_NETWORKS = {
+    "192.168.0.0/16", "172.16.0.0/12", "10.0.0.0/8", "100.64.0.0/10",
+    "192.168.122.0/24", "0.0.0.0/0",
+}
+
+#: Single addresses that may appear: the unspecified address, loopback, and the
+#: netmask of a /24.
+ANSIBLE_ALLOWED_ADDRESSES = {"0.0.0.0", "127.0.0.1", "255.255.255.0"}
+
+#: The GitHub token pattern the network role's own defaults file defines as
+#: `sandbox_net_token_pattern`, so a token is recognised the same way here and
+#: there. A private key's header and an Ansible Vault header are the other two
+#: things that must not be committed.
+ANSIBLE_CREDENTIAL = re.compile(
+    r"(?P<token>gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"
+    r"|(?P<key>-----BEGIN [A-Z ]*PRIVATE KEY)"
+    r"|(?P<vault>\$ANSIBLE_VAULT)")
+
+#: A `work/` path component anywhere: the scratch directory, which the playbooks
+#: must not read from or write to, however far up the path it is reached. The
+#: lookbehind only excludes a longer name (`homework/x`, `my-work/x`, `.work/x`),
+#: not a slash, so `../work/x` and `{{ playbook_dir }}/../work/x` match, which
+#: the repository-wide WORK_PATH above lets through.
+ANSIBLE_WORK_COMPONENT = re.compile(r"(?<![\w.~-])work/")
+
+
+def _ansible_files(rels) -> list[pathlib.Path]:
+    return [rel for rel in rels
+            if rel.parts[:1] == (ANSIBLE_DIR,)
+            and rel.as_posix() not in ANSIBLE_SCAN_SKIPS]
+
+
+def ansible_home_path_lines(text: str) -> list[int]:
+    """Line numbers (from 1) of `text` that name somebody's home directory."""
+    return [n for n, line in enumerate(text.splitlines(), 1)
+            if ANSIBLE_HOME_PATH.search(line)]
+
+
+def _address_is_allowed(address: str, prefix: str | None) -> bool:
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return True             # `999.1.1.1` is not an address, so not a LAN
+    if prefix is None:
+        return (address in ANSIBLE_ALLOWED_ADDRESSES
+                or ip in ANSIBLE_SANDBOX_SUBNET)
+    if f"{address}/{prefix}" in ANSIBLE_ALLOWED_NETWORKS:
+        return True
+    try:
+        network = ipaddress.ip_network(f"{address}/{prefix}", strict=False)
+    except ValueError:
+        return True
+    return network.subnet_of(ANSIBLE_SANDBOX_SUBNET)
+
+
+def ansible_address_lines(text: str) -> list[int]:
+    """Line numbers of `text` that write an IPv4 address or network that is not
+    one of the allowed ones."""
+    return [n for n, line in enumerate(text.splitlines(), 1)
+            if any(not _address_is_allowed(m.group(1), m.group(2))
+                   for m in ANSIBLE_IPV4.finditer(line))]
+
+
+def ansible_credential_lines(text: str) -> list[int]:
+    """Line numbers of `text` that hold a token, a private key header or an
+    Ansible Vault header."""
+    return [n for n, line in enumerate(text.splitlines(), 1)
+            if ANSIBLE_CREDENTIAL.search(line)]
+
+
+def ansible_work_component_lines(text: str) -> list[int]:
+    """Line numbers of `text` that name a `work/` path component."""
+    return [n for n, line in enumerate(text.splitlines(), 1)
+            if ANSIBLE_WORK_COMPONENT.search(line)]
+
+
+def scan_ansible(root: pathlib.Path, rels, line_finder) -> list[str]:
+    """`path:line` for every text file under `ansible/` in `rels` where
+    `line_finder(text)` reports a line. The line's text is not echoed: for a
+    credential that would copy it into the failure output."""
+    hits = []
+    for rel in _ansible_files(rels):
+        text = _readable_text(root, rel)
+        if text is not None:
+            hits += [f"{rel.as_posix()}:{n}" for n in line_finder(text)]
+    return hits
+
+
+def ansible_machine_files_tracked(rels) -> list[str]:
+    """The files that hold one machine's values, if any of them is tracked."""
+    return [rel.as_posix() for rel in rels
+            if rel.as_posix() in ANSIBLE_MACHINE_FILES]
+
+
+def ansible_examples_missing(rels) -> list[str]:
+    """The committed templates that are absent once anything under `ansible/`
+    is tracked. With nothing there yet there is nothing to template."""
+    if not any(rel.parts[:1] == (ANSIBLE_DIR,) for rel in rels):
+        return []
+    have = {rel.as_posix() for rel in rels}
+    return [name for name in ANSIBLE_EXAMPLE_FILES if name not in have]
+
+
+def test_no_ansible_file_names_a_persons_home_directory(files):
+    hits = scan_ansible(ROOT, files, ansible_home_path_lines)
+    assert not hits, (
+        f"{len(hits)} places under ansible/ name a home directory. Use the "
+        "operator variable, so the playbooks work for whoever runs them:\n  "
+        + _listing(hits))
+
+
+def test_no_ansible_file_names_an_address_outside_the_sandbox(files):
+    hits = scan_ansible(ROOT, files, ansible_address_lines)
+    assert not hits, (
+        f"{len(hits)} places under ansible/ write an IPv4 address that is not "
+        "the sandbox's own. A LAN address belongs in the gitignored "
+        "ansible/inventory.yml:\n  " + _listing(hits))
+
+
+def test_no_ansible_file_holds_a_credential(files):
+    hits = scan_ansible(ROOT, files, ansible_credential_lines)
+    assert not hits, (
+        f"{len(hits)} places under ansible/ hold a token, a private key or an "
+        "encrypted vault. Secrets stay in the gitignored "
+        "ansible/group_vars/all/vault.yml:\n  " + _listing(hits))
+
+
+def test_no_ansible_file_reaches_into_the_scratch_directory(files):
+    hits = scan_ansible(ROOT, files, ansible_work_component_lines)
+    assert not hits, (
+        f"{len(hits)} places under ansible/ name a work/ path, which is the "
+        "scratch directory. Point at a variable set in the gitignored "
+        "ansible/inventory.yml instead:\n  " + _listing(hits))
+
+
+def test_the_machines_own_ansible_files_are_not_tracked(files):
+    tracked_now = ansible_machine_files_tracked(files)
+    assert not tracked_now, (
+        f"{tracked_now} hold one machine's values and are gitignored; "
+        "commit the `.example` beside each instead")
+    missing = ansible_examples_missing(files)
+    assert not missing, f"the committed templates are missing: {missing}"
+
+
+_PLANTED_HOME = "/home/" + "someone/src/wish"
+
+
+@pytest.mark.parametrize("text", [
+    f"dest: {_PLANTED_HOME}",
+    "dest: /Users/someone/Documents",
+    "dest: C:\\Users\\someone\\wish",
+    "dest: /HOME/someone/wish",
+    "ok: /home/{{ x }}/y\ndest: /home/someone",
+], ids=_numbered("home-path", 5))
+def test_the_home_path_check_flags_a_person_s_directory(text):
+    assert ansible_home_path_lines(text)
+
+
+@pytest.mark.parametrize("text", [
+    "audit_dirs: [/home, /root]",
+    "dest: /home/{{ agent_vm_operator }}/src",
+    "dest: /home/$USER/src",
+    "dest: /home/<name>/src",
+    "dest: /homework/notes",
+    "nothing here",
+], ids=_numbered("variable-or-bare", 6))
+def test_the_home_path_check_leaves_variables_and_bare_directories_alone(text):
+    assert not ansible_home_path_lines(text)
+
+
+def test_the_home_path_check_reports_the_right_line():
+    assert ansible_home_path_lines(f"a\nb\nc: {_PLANTED_HOME}\nd") == [3]
+
+
+@pytest.mark.parametrize("text", [
+    "ansible_host: 192.168.1.231",
+    "gateway: 192.168.1.254 tcp 80",
+    "pinholes: [10.0.0.5]",
+    "dns: 172.16.4.9",
+    "tailnet: 100.64.1.1",
+    "range: 192.168.0.0/24",
+    "range: 10.77.1.5",
+    "range: 10.77.0.0/16",
+    "the cidr 10.0.0.0/9 is not the drop range",
+    "ok 10.77.0.5 and bad 192.168.1.182",
+], ids=_numbered("lan-address", 10))
+def test_the_address_check_flags_a_lan_address(text):
+    assert ansible_address_lines(text)
+
+
+@pytest.mark.parametrize("text", [
+    "gateway: 10.77.0.1",
+    "lease: 10.77.0.11",
+    "range: 10.77.0.0/24",
+    "drops: [192.168.0.0/16, 172.16.0.0/12, 10.0.0.0/8, 100.64.0.0/10]",
+    "bind: 0.0.0.0",
+    "route: 0.0.0.0/0",
+    "loopback: 127.0.0.1",
+    "netmask: 255.255.255.0",
+    "libvirt's default network is 192.168.122.0/24",
+    "Ubuntu 24.04.1.2 is a version, and 999.1.1.1 is not an address",
+    "nothing here",
+], ids=_numbered("sandbox-range", 11))
+def test_the_address_check_leaves_the_sandbox_s_own_ranges_alone(text):
+    assert not ansible_address_lines(text)
+
+
+def test_the_address_check_reports_the_right_line():
+    assert ansible_address_lines("a\nb: 10.77.0.1\nc: 192.168.1.254") == [3]
+
+
+_PLANTED_TOKEN = "ghp_" + "a1B2" * 9
+_PLANTED_PAT = "github_pat_" + "A1b2C3d4E5" * 3
+
+
+#: Keyed by a neutral name, and the test looks the value up inside its body: a
+#: value passed as an argument is printed by a failing assertion and by `-l`.
+_PLANTED_SECRETS = {
+    "github-classic-prefix": f"token: {_PLANTED_TOKEN}",
+    "fine-grained-prefix": f"token: {_PLANTED_PAT}",
+    "openssh-key-header": "-----BEGIN " + "OPENSSH PRIVATE KEY-----",
+    "pem-key-header": "-----BEGIN " + "PRIVATE KEY-----",
+    "vault-header": "$" + "ANSIBLE_VAULT;1.1;AES256",
+}
+
+
+@pytest.mark.parametrize("case", list(_PLANTED_SECRETS),
+                         ids=list(_PLANTED_SECRETS))
+def test_the_credential_check_flags_a_secret(case):
+    hits = ansible_credential_lines(_PLANTED_SECRETS[case])
+    assert hits, f"the credential check missed the {case} case"
+
+
+@pytest.mark.parametrize("text", [
+    "sandbox_net_token_pattern: '(gh[pousr]_[A-Za-z0-9]{20,})'",
+    "token: ghp_short",
+    "-----BEGIN CERTIFICATE-----",
+    "the vault is encrypted with ansible-vault",
+], ids=["pattern-definition", "short-value", "certificate-header",
+        "vault-mentioned-in-prose"])
+def test_the_credential_check_leaves_patterns_and_short_strings_alone(text):
+    assert not ansible_credential_lines(text)
+
+
+@pytest.mark.parametrize("text", [
+    "src: work/keys/agent-vm",
+    "src: ../work/keys/agent-vm",
+    'src: "{{ playbook_dir }}/../work/keys/agent-vm"',
+    "src: /data/work/keys",
+    "src: 'work/{{ name }}'",
+], ids=_numbered("scratch-component", 5))
+def test_the_work_component_check_flags_a_scratch_path(text):
+    assert ansible_work_component_lines(text)
+
+
+@pytest.mark.parametrize("text", [
+    "bridge: network/x",
+    "dest: homework/x",
+    "dest: frameworks/x",
+    "dest: my-work/x",
+    "dest: .work/x",
+    "the work is done",
+    "nothing here",
+], ids=_numbered("longer-name", 7))
+def test_the_work_component_check_leaves_longer_names_alone(text):
+    assert not ansible_work_component_lines(text)
+
+
+def test_the_work_component_check_reports_the_right_line():
+    assert ansible_work_component_lines("a\nb: ../work/x\nc") == [2]
+
+
+def test_a_scan_of_ansible_reports_path_and_line_and_skips_the_rest(tmp_path):
+    (tmp_path / "ansible").mkdir()
+    (tmp_path / "docs").mkdir()
+    bad = tmp_path / "ansible" / "play.yml"
+    bad.write_text(f"a\nb: {_PLANTED_HOME}\n")
+    (tmp_path / "docs" / "note.md").write_text(f"{_PLANTED_HOME}\n")
+    (tmp_path / "ansible" / "blob.bin").write_bytes(b"\0" + _PLANTED_HOME.encode())
+    rels = [pathlib.Path("ansible/play.yml"), pathlib.Path("docs/note.md"),
+            pathlib.Path("ansible/blob.bin"), pathlib.Path("ansible/gone.yml")]
+    assert scan_ansible(tmp_path, rels, ansible_home_path_lines) == [
+        "ansible/play.yml:2"]
+
+
+@pytest.mark.parametrize("name", ANSIBLE_MACHINE_FILES,
+                         ids=["inventory", "vault"])
+def test_the_machine_file_check_flags_a_tracked_inventory_or_vault(name):
+    other = pathlib.Path("ansible/site.yml")
+    assert ansible_machine_files_tracked([other, pathlib.Path(name)]) == [name]
+
+
+def test_the_machine_file_check_accepts_the_examples():
+    rels = [pathlib.Path(name) for name in ANSIBLE_EXAMPLE_FILES]
+    assert not ansible_machine_files_tracked(rels)
+    assert not ansible_examples_missing(rels)
+
+
+def test_the_example_check_wants_both_templates_once_ansible_is_tracked():
+    rels = [pathlib.Path("ansible/site.yml"),
+            pathlib.Path(ANSIBLE_EXAMPLE_FILES[0])]
+    assert ansible_examples_missing(rels) == [ANSIBLE_EXAMPLE_FILES[1]]
+
+
+def test_the_example_check_passes_while_ansible_is_empty():
+    assert ansible_examples_missing([pathlib.Path("README.md")]) == []

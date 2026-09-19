@@ -1,0 +1,168 @@
+# The one file that names this machine, for the playbooks that build the agent
+# sandbox: the isolated libvirt network, the Ubuntu guest the agents run in, and
+# the Windows guest that runs WinUAE. Everything a role cannot know about your
+# desktop is a variable below; everything else is a default inside its role.
+#
+# THIS IS THE EXAMPLE. Copy it to `inventory.yml` in this directory -- that file
+# is gitignored, is the only inventory the playbooks are run with, and is one
+# machine's own -- and replace every value that starts with CHANGE-ME or that
+# sits in angle brackets. `tests/test_repository_contents.py` refuses a tracked
+# file under `ansible/` that names a home directory or a LAN address, so keep
+# both out of anything you commit.
+#
+# Run a playbook with `ansible-playbook -i ansible/inventory.yml
+# ansible/<playbook>.yml` from the repository root. The Windows guest's
+# administrator password, which is not an Ansible vault password, is stored in
+# `group_vars/all/vault.yml`; `group_vars/all/vault.yml.example` is its template.
+
+all:
+  vars:
+    # The spinning disk the guests' images, keys and ROMs live on. Everything
+    # below that is a path outside this checkout points under it, so no key or
+    # ROM is ever inside the repository.
+    agent_vm_base_dir: /data/agent-vm
+
+    # Where the player's own game disks are. Set once here, in `all`, so the
+    # host play that builds the disks image and the guest play that rewrites
+    # `gamedisks.yaml` read the same value. It must be the directory the paths in
+    # `gamedisks.yaml.example` start with, or the guest's rewrite refuses to run.
+    agent_vm_disks_dir: /data/agent-disks
+
+    # The login keypair for the Ubuntu guest, both halves. The private half is
+    # what Ansible logs in with; the public half goes into the guest's
+    # `authorized_keys` when it is built. Generated on the first run if absent,
+    # so move an existing pair here before a run against a guest you have built.
+    agent_vm_keypair_path: "{{ agent_vm_base_dir }}/keys/agent-vm"
+
+  children:
+    # The desktop that runs both VMs. The libvirt and sshfs work happens here.
+    workstations:
+      hosts:
+        home:
+          ansible_connection: local
+      vars:
+        # Your account on the desktop: the read-only sshfs mount of the
+        # checkout runs as this user, so the guest can see the code and cannot
+        # change it.
+        agent_vm_operator: CHANGE-ME-DESKTOP-ACCOUNT
+
+        # A tz database name, for the Ubuntu guest's clock.
+        agent_vm_timezone: Region/City
+
+        # -- The sandbox network ------------------------------------------------
+        # The guests' fixed addresses on the sandbox subnet, keyed by libvirt
+        # domain name. The subnet is this project's own (the gateway is
+        # 10.77.0.1) and the same on every machine. These are the role's own
+        # defaults, so the block can stay as it is; change a MAC only to another
+        # in libvirt's locally administered range.
+        sandbox_net_leases:
+          agent-vm:
+            mac: "52:54:00:7b:12:10"
+            ip: 10.77.0.10
+          win11:
+            mac: "52:54:00:7b:11:50"
+            ip: 10.77.0.11
+
+        # Each address is one hole in the filter: a LAN host, given as a bare
+        # IPv4 address, that the guests may reach, such as the C64 Ultimate.
+        # Leave the list empty for no hole.
+        sandbox_net_pinholes:
+          - "CHANGE-ME-LAN-ADDRESS-OF-THE-C64-ULTIMATE"
+
+        # LAN hosts the isolation test tries to reach and must fail to, as its
+        # controls: any machines on your LAN that answer a ping and accept a
+        # connection on `tcp_port`.
+        sandbox_net_lan_targets:
+          - name: CHANGE-ME-NAME-OF-A-LAN-MACHINE
+            ip: "CHANGE-ME-LAN-ADDRESS-OF-A-LAN-MACHINE"
+            tcp_port: 0
+          - name: CHANGE-ME-NAME-OF-ANOTHER-LAN-MACHINE
+            ip: "CHANGE-ME-LAN-ADDRESS-OF-ANOTHER-LAN-MACHINE"
+            tcp_port: 0
+
+        # The filter's drop list is committed as a role default: every private
+        # range plus Tailscale's, which is right on any machine. Override
+        # `sandbox_net_drops` here only to change it.
+
+        # `sandbox_net_probe_guests` is a role default too. It reads its login key
+        # from `agent_vm_keypair_path` and the Windows guest's account from
+        # `winvm_admin_user`, so neither is repeated here.
+
+        # -- The Windows guest --------------------------------------------------
+        # The desktop account added to the `libvirt` and `kvm` groups, so it can
+        # run the guest without root.
+        winvm_user: CHANGE-ME-DESKTOP-ACCOUNT
+
+        # The guest's local administrator. Its password is
+        # `vault_windows_admin_password` in `group_vars/all/vault.yml`.
+        winvm_admin_user: CHANGE-ME-GUEST-ADMIN-ACCOUNT
+
+        # The Windows installation ISO, which you download yourself.
+        winvm_iso_src: "<your-home>/Downloads/CHANGE-ME-windows.iso"
+
+        # A directory of Amiga Kickstart ROMs. Copyrighted, so it stays outside
+        # every repository.
+        winvm_kickstart_src: "<your-home>/CHANGE-ME-kickstarts"
+
+        # A directory of JiffyDOS ROMs for VICE. Copyrighted, so it stays outside
+        # every repository. An empty string skips installing them.
+        winvm_jiffydos_src: /data/agent-vm/jiffydos
+
+        # A Windows time zone name, such as `UTC` or `Pacific Standard Time`
+        # (`tzutil /l` on Windows lists them), not a tz database name, for the
+        # Windows guest's clock. Optional: leave it commented out to take the
+        # role's default.
+        # winvm_timezone: UTC
+
+        # -- Knobs a different machine might turn ---------------------------------
+        # Each line is the role's own default, so nothing changes if it stays
+        # commented out.
+        # winvm_memory_mb: 6144
+        # winvm_disk_gb: 64
+        # winvm_graphics: spice
+        # winvm_forwarded_ports: []
+        # winvm_disable_default_network: false
+        # winvm_install_winuae: true
+
+    # The groups the playbooks name in `hosts:`. Each holds the desktop, so a
+    # play runs on the same machine whichever group it names: `agent_vm_hosts`
+    # for the sandbox network and the Ubuntu guest, `winvm_hosts` for the
+    # Windows guest. They add no variables of their own.
+    agent_vm_hosts:
+      children:
+        workstations:
+    winvm_hosts:
+      children:
+        workstations:
+
+    # The Ubuntu guest the agents run in, reached over ssh once it is built.
+    agent_vms:
+      hosts:
+        agent-vm:
+          # An address inside the sandbox subnet: the `ip` of the `agent-vm`
+          # lease above.
+          ansible_host: 10.77.0.10
+          # The account the guest is built with: it must equal `agent_vm_user`,
+          # whose role default is `agent`, so leave it as `agent` unless you set
+          # that variable too.
+          ansible_user: agent
+          ansible_ssh_private_key_file: "{{ agent_vm_keypair_path }}"
+          # A rebuilt guest has new host keys, and nothing else on the sandbox
+          # network can impersonate it.
+          ansible_ssh_common_args: >-
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+      vars:
+        # The name of a private repository holding the code-wheel arithmetic,
+        # which the guest clones. Empty skips the clone, which is what you want
+        # if you have no access to one.
+        agent_guest_codewheel_slug: ""
+
+        # Further private repositories the guest clones over https, with the
+        # same GitHub App. The list replaces the role's default, which holds
+        # only the codewheel entry above, so keep that entry when you add one.
+        # An entry with an empty slug is skipped.
+        # agent_guest_private_repos:
+        #   - slug: "{{ agent_guest_codewheel_slug }}"
+        #     dir: "{{ agent_guest_codewheel_dir }}"
+        #   - slug: <owner>/<private-repository>
+        #     dir: "{{ ansible_user_dir }}/src/<private-repository>"

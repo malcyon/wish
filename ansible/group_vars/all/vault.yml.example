@@ -1,0 +1,10 @@
+# The one secret the sandbox playbooks read.
+#
+# THIS IS THE EXAMPLE. Copy it to `vault.yml` in this directory -- that file is
+# gitignored and holds one machine's own password, and nothing secret is ever
+# committed here, encrypted or not.
+
+# The Windows guest's administrator password, for the account `winvm_admin_user`
+# names in the inventory. The role refuses to run with it undefined or shorter
+# than eight characters.
+vault_windows_admin_password: "CHANGE-ME-AT-LEAST-8-CHARACTERS"
