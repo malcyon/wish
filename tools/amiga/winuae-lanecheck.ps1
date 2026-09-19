@@ -3,7 +3,7 @@
 # same check can be run against an older copy to watch it fail.
 #
 #   export SSH_ASKPASS_REQUIRE=never
-#   scp tools/amiga/winuae-lanecheck.ps1 donald@192.168.123.50:'C:/Amiga/'
+#   scp tools/amiga/winuae-lanecheck.ps1 donald@10.77.0.11:'C:/Amiga/'
 #   winvm ssh 'powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae-lanecheck.ps1'
 #   winvm ssh 'powershell ... -File C:\Amiga\winuae-lanecheck.ps1 -Driver C:\Amiga\winuae-old.ps1'
 #

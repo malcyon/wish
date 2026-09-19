@@ -216,7 +216,7 @@ tools/amiga/toamigapor.py $TMPDIR/por2.adf --to B \
 
 winvm ssh 'powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path C:\Amiga\Disks\i36"'
 for f in por1.adf por2.adf poolsave-B.adf; do
-    scp -o BatchMode=yes $TMPDIR/$f donald@192.168.123.50:"C:/Amiga/Disks/i36/$f"
+    scp -o BatchMode=yes $TMPDIR/$f donald@10.77.0.11:"C:/Amiga/Disks/i36/$f"
 done
 winvm ssh "$ps start -Holder por36 -log -f C:\Amiga\configs\goldbox-a500.uae \
     -s nr_floppies=3 -s floppy2type=0 \

@@ -237,12 +237,12 @@ desktop.
 ```sh
 winvm acquire wish-test
 winvm scp ~/Downloads/wish-win/'wish-<version>-windows-x86_64.zip' \
-          donald@192.168.123.50:'C:/Users/donald/Desktop/'
+          donald@10.77.0.11:'C:/Users/donald/Desktop/'
 winvm release wish-test        # when you are done
 ```
 
 `winvm scp` hands its arguments straight to `scp`, so the destination needs the
-full `donald@192.168.123.50:` prefix — unlike `winvm ssh`, which fills the guest
+full `donald@10.77.0.11:` prefix — unlike `winvm ssh`, which fills the guest
 in for you. Quote the filename: a development version carries a `+`.
 
 To unpack without opening Explorer:

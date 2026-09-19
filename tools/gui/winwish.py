@@ -49,7 +49,7 @@ import tarfile
 import tempfile
 
 WINVM = "/usr/local/bin/winvm"
-GUEST = "donald@192.168.123.50"
+GUEST = "donald@10.77.0.11"
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
 #: Excluded from the archive sent to the guest: the virtualenv and the build
