@@ -214,6 +214,10 @@ def test_the_push_is_seen_however_it_is_reached(clone, monkeypatch):
         "bash -c '# c\ngit push'",
         "sh -c '#!x\ngit push'",
         "sh -c \"echo a\n# b\ngit push\"",
+        # Each nesting level is stripped on its own, so an inner script keeps its lines.
+        "bash -c \"bash -c '# c\ngit push'\"",
+        "eval \"# c\ngit push\"",
+        "bash -c '# x\r\ngit push'",
     ]:
         assert run(monkeypatch, command, clone) == 2, command
 
@@ -238,6 +242,7 @@ def test_commands_that_do_not_push_are_ignored(clone, monkeypatch):
         "git status # git push later",
         "echo a # b && git push",
         "bash -c '# git push is blocked\ngit status'",
+        "bash -c \"bash -c '# git push\ngit status'\"",
     ]:
         assert run(monkeypatch, command, clone) == 0, command
 
