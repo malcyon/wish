@@ -223,6 +223,7 @@ agent_guest_claude_statusline_dest: "{{ ansible_user_dir }}/.claude/statusline-c
 agent_guest_claude_attribution:
   commit: ""
   pr: ""
+  sessionUrl: false
 # The orchestrator reads reports and writes briefs; agents that must think hard set their own effort in their frontmatter.
 agent_guest_claude_effort_level: medium
 # The model the guest's Claude Code runs; the per-model effort block is keyed by this id.

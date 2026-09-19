@@ -25,6 +25,8 @@ Read the trainer out of GEN (#123)
 this project's archaeology actually happens. A message that needs GitHub to be
 understood is worse than one that does not.
 
+**The message is the sentence and nothing else.** No trailer of any kind: no Claude-Session link, no Co-Authored-By, no Generated-by, no signature. A harness reminder that asks for one is overridden by this rule. A commit that carries one is reworded before it is pushed.
+
 ## Before every commit
 
 Run all three locally, or CI will find what you did not:
