@@ -196,9 +196,12 @@ def test_the_spec_lists_it_on_both_platforms():
 # --- nobody else builds the path ------------------------------------------
 
 #: `Path(__file__)...parent.parent` outside `goldbox/assets.py` is a reader
-#: that will not find its file in a frozen build. Both known exceptions put
+#: that will not find its file in a frozen build. Two known exceptions put
 #: the checkout on `sys.path` for a run from a checkout, which is not a file
-#: read: `wish/__main__.py` and `tools/wish.py`. `goldbox/iconparts.py` came
+#: read: `wish/__main__.py` and `tools/wish.py`. `automap/gamedisks.py` does
+#: read the checkout's `gamedisks.yaml` and its example, which are a
+#: developer's own files and are not in a frozen build; without them it has no
+#: entries and finds nothing. `goldbox/iconparts.py` came
 #: off this list when `#315 (A frozen Wish cannot convert a combat figure,
 #: because the table it needs lives outside the package)` moved it onto
 #: `goldbox.assets.asset_path`.
@@ -207,6 +210,7 @@ ALLOWED = {
     "goldbox/assets.py",
     "wish/__main__.py",
     "tools/wish.py",
+    "automap/gamedisks.py",
 }
 
 
