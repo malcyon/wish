@@ -143,7 +143,8 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default=str(scratch.scratch_dir("c64addprobe")),
                     help="where the screens and the saved disk are written")
     ap.add_argument("--disks", default="",
-                    help="the player's own game disks; $POR_DISKS otherwise")
+                    help="the player's own game disks; $COAB_DISKS or the "
+                         "registry otherwise")
     ap.add_argument("--remove", default="",
                     help="a party member to take out first, which frees a "
                          "slot and writes their own file to the disk")
