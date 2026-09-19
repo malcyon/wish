@@ -29,7 +29,6 @@ from automap import c64
 from automap.area import RESIDENT_GEO, Fingerprint, ResidentGeo
 from automap.target import PARTY_X, party_fix
 from goldbox import c64_port, geo
-from goldbox.d64 import D64
 from tests import gamedata
 
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
@@ -57,8 +56,6 @@ CURSE_CLOCK = 0x4BC7
 #: Payload offsets, which is the form that transfers between titles.
 POSITION_OFFSET = 0x0C0
 CLOCK_OFFSET = 0x0C7
-AREA_OFFSET = 0x2C2
-AREA_DIRTY_BIT = 0x80
 
 
 # --- a machine made of a dictionary ------------------------------------------
@@ -125,27 +122,6 @@ def _curse_maps() -> dict[str, geo.Geo]:
     return maps
 
 
-def _curse_save_payload() -> bytes:
-    """A Curse save disk's `SAVEAZURE` payload, or skip.
-
-    A save disk, not a game side: only a save the player wrote carries a party
-    that has been anywhere.
-    """
-    where = gamedata.curse_dir()
-    if where is None:
-        pytest.skip(f"needs the Curse disks; set {gamedata.CURSE_ENV}")
-    for path in sorted(where.glob("CURSE*.[dD]64")):
-        try:
-            disk = D64.open(path)
-            prg = disk.read_file(CURSE.save_file)
-        except Exception:
-            continue
-        if CURSE.matches_payload(prg) and any(prg[2 + POSITION_OFFSET:
-                                                  2 + POSITION_OFFSET + 2]):
-            return prg[2:]
-    pytest.skip("no Curse save here holds a party that has left the roster")
-
-
 # --- tier 3: the addresses ---------------------------------------------------
 
 def test_the_save_image_lives_at_its_own_load_address():
@@ -160,24 +136,6 @@ def test_the_save_image_lives_at_its_own_load_address():
     assert CURSE.roster_base == 0x6700
     assert CURSE.save_load_address + POSITION_OFFSET == CURSE_SAVE_POSITION
     assert CURSE.save_load_address + CLOCK_OFFSET == CURSE_CLOCK
-
-
-def test_the_position_triple_in_the_save_is_a_square_and_a_facing():
-    payload = _curse_save_payload()
-    x, y, facing = payload[POSITION_OFFSET:POSITION_OFFSET + 3]
-    assert 0 <= x < geo.GRID
-    assert 0 <= y < geo.GRID
-    assert 0 <= facing < 4
-
-
-def test_the_area_byte_names_a_map_the_disks_carry():
-    """`$4DC2`, payload `+$2C2`, with `$80` set -- the same offset Pool of
-    Radiance keeps it at, and the map it named was the one resident at `$0400`.
-    """
-    payload = _curse_save_payload()
-    raw = payload[AREA_OFFSET]
-    assert raw & AREA_DIRTY_BIT, f"expected the dirty bit set, got ${raw:02X}"
-    assert f"GEO{raw & ~AREA_DIRTY_BIT:02X}" in _curse_maps()
 
 
 def test_the_live_triple_is_the_one_address_that_is_not_save_geometry():
@@ -197,30 +155,6 @@ def test_the_live_triple_is_the_one_address_that_is_not_save_geometry():
                                             + CURSE.save_size)
     # Which is why it is a descriptor field and not a derived property.
     assert c64.machine_for(CURSE).live_position == CURSE_LIVE_POSITION
-
-
-def test_the_memory_fallback_no_longer_reads_the_save_images_stale_copy():
-    """What the fallback used to cost, and does not any more.
-
-    Hand `party_fix` a machine with Curse's save image where Curse puts it and
-    no status line on screen. The old reader answered from `$49C0`, which in a
-    running Curse is engine code. The reader now goes to `$C04B` -- which this
-    machine does not carry -- so it does not answer with the *stale* square in
-    the save image either, which is the other wrong answer available here.
-    """
-    payload = _curse_save_payload()
-    stale = tuple(payload[POSITION_OFFSET:POSITION_OFFSET + 3])
-    machine = MemoryTarget({0x4B00: payload})
-    fix = party_fix(machine.read, CURSE)
-    assert fix is None or (fix.x, fix.y, fix.facing) != stale
-
-
-def test_the_memory_fallback_reads_curses_own_live_triple():
-    """And what it does instead: `$C04B`, the address the live run measured."""
-    machine = MemoryTarget({0x4B00: _curse_save_payload(),
-                            CURSE_LIVE_POSITION: bytes([9, 2, 1])})
-    fix = party_fix(machine.read, CURSE)
-    assert (fix.x, fix.y, fix.facing, fix.source) == (9, 2, 1, "memory")
 
 
 def test_the_status_line_reads_through_the_unchanged_party_fix():

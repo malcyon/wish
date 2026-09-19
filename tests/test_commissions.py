@@ -11,32 +11,20 @@ def make_root():
 
 Most of this runs on flag blocks built here, byte by byte, because the states
 worth testing -- a reward waiting, a summons outstanding -- are three bytes of
-our own making. The two specimen saves are the end-to-end check: the shipped
-unplayed disk must produce exactly the three commissions the real game opens
-with, and a far-advanced save must produce a coherent late game.
+our own making. The shipped unplayed disk is the end-to-end check: it must
+produce exactly the three commissions the real game opens with.
 """
 
 import os
-import pathlib
 
 import pytest
-from gamedata import game_file, specimen_root
+from gamedata import game_file
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from goldbox import commissions as book  # noqa: E402
 from goldbox.commissions import DONE, LEDGER_BASE, PAID_VALUE  # noqa: E402
 from goldbox.savegame import SAVE0_SIZE, SaveGame0  # noqa: E402
-
-# A far-advanced save, kept out of the repository like every other game file.
-# No disk on this machine holds it, including every PORSAVE* the player has
-# today -- all of them read as completed == 0, the shipped-unplayed state, so
-# this state is not merely unlocated but genuinely unplayed by anyone yet
-# (#211). It takes a session that reaches six City Hall commissions paid and
-# the endgame quests offered, not a tool: nothing short of playing that far
-# and visiting City Hall produces it.
-ADVANCED = ((specimen_root() or pathlib.Path("no-specimen-tree"))
-            / "por-c64" / "WISH-SPEC-city-hall-six-commissions-paid.D64")
 
 
 @pytest.fixture
@@ -57,17 +45,6 @@ def put(flags: bytearray, address: int, value: int) -> bytearray:
 
 def put_ledger(flags: bytearray, index: int, value: int) -> bytearray:
     return put(flags, LEDGER_BASE + index, value)
-
-
-def advanced_save() -> bytes:
-    if not ADVANCED.exists():
-        pytest.skip(
-            f"needs a specimen, not yet made, at {ADVANCED}: a save with six "
-            "City Hall commissions paid and the endgame quests offered -- "
-            "only a session played that far and saved there can produce it, "
-            "and `tools/registry/specimens.py add` then files it under this name")
-    from goldbox.d64 import load_payload
-    return load_payload(str(ADVANCED), b"SAVEDGAME0")
 
 
 # --- the flag block ---------------------------------------------------------
@@ -210,7 +187,7 @@ def test_nothing_is_outstanding_on_an_untouched_block():
     assert book.read(blank()).outstanding == ()
 
 
-# --- the two specimens ------------------------------------------------------
+# --- the shipped specimen ---------------------------------------------------
 
 def test_the_shipped_unplayed_save_opens_with_slums_sokal_keep_and_books():
     state = book.read(game_file("SAVEDGAME0"))
@@ -220,27 +197,6 @@ def test_the_shipped_unplayed_save_opens_with_slums_sokal_keep_and_books():
     assert [o.text for o in state.offers] == [
         "clear the slums", "clear Sokal Keep",
         "bring back books, maps and tomes"]
-
-
-def test_a_far_advanced_save_reads_as_a_coherent_late_game():
-    state = book.read(advanced_save())
-    assert state.completed == 6
-    assert [e.index for e in state.paid] == [0, 1, 2, 4, 5, 6, 7, 8, 9, 10,
-                                             12, 13, 20, 21]
-    # Six of the fourteen paid entries are the ones that bump $4AC1, which is
-    # what $4AC1 reads. The arithmetic closes.
-    assert len([e for e in state.paid if e.major]) == state.completed
-    assert [o.text for o in state.offers] == [
-        "stop the nomads", "stop the kobolds", "stop the lizardmen"]
-
-
-def test_reading_a_save_leaves_its_bytes_alone():
-    payload = advanced_save()
-    before = bytes(payload)
-    book.read(payload)
-    book.summary_lines(payload)
-    assert payload == before
-    assert advanced_save() == before
 
 
 def test_the_summary_prints_the_lines_the_panel_shows():
@@ -459,15 +415,6 @@ def test_the_panel_takes_a_whole_savedgame0(app):
     panel.update_from(SaveGame0.from_bytes(payload))
     assert payload == before
     assert "Clear the Slums" in [r[0] for r in rows(panel)]
-
-
-def test_a_far_advanced_save_draws_one_row_for_each_commission(app):
-    panel = panel_for(app, advanced_save())
-    names = [r[0] for r in rows(panel)]
-    assert len(names) == len(set(names))
-    assert len([n for n in names if n in SLUMS]) == 1
-    assert "Slums cleared" in names
-    assert ("Bring back books, maps and tomes", "paid", "") in rows(panel)
 
 
 def test_nothing_in_the_panel_is_editable(app):

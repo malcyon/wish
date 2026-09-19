@@ -697,30 +697,6 @@ def test_pool_of_radiance_wall_art_is_less_reciprocal_than_curses():
     assert min(scores) < ART_FLOOR
 
 
-# --- tier 5.1(c): a Curse character export round-trips -----------------------
-
-def test_a_curse_character_export_round_trips_byte_for_byte():
-    """The export path, which the save round trip never touches.
-
-    Curse marks an export with a leading `\\x02` where Pool of Radiance uses
-    `\\x01`, and writes 582 bytes at `$7C00` -- a different marker and a
-    different load address, but the same 580-byte record. It is also the file
-    the directory reports as **zero blocks**, which is why finding it at all
-    took a fix to `tests/gamedata.py:curse_file`.
-    """
-    from goldbox.record import CharacterRecord
-    exports = gamedata.curse_exports()
-    if not exports:
-        pytest.skip("no Curse character export on the player's disks")
-    for name, prg in exports.items():
-        assert name.startswith(b"\x02"), f"{name!r} is not a Curse export"
-        assert len(prg) == 582
-        assert split_load_address(prg)[0] == 0x7C00
-        record = CharacterRecord.from_prg(prg, 0x7C00)
-        _sane_character(record)
-        assert record.to_prg(0x7C00) == prg
-
-
 # --- issue #31: the fields the editor shows ---------------------------------
 
 

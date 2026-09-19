@@ -261,27 +261,6 @@ def curse_file(name: str, engine_only: bool = True) -> bytes:
     return best
 
 
-def curse_exports():
-    """Every exported Curse character on the player's disks, by file name.
-
-    Curse marks an export with a leading `\x02` where Pool of Radiance uses
-    `\x01`, and writes a 582-byte PRG: the 580-byte record behind its `$7C00`
-    load address. These live on save disks, so this looks at every side.
-    """
-    out = {}
-    for disk in curse_disks(engine_only=False):
-        for entry in disk.directory():
-            if not bytes(entry.name).startswith(b"\x02"):
-                continue
-            try:
-                data = disk.read_file(entry)
-            except Exception:
-                continue
-            if len(data) == 582:
-                out[bytes(entry.name)] = data
-    return out
-
-
 needs_curse_disks = pytest.mark.skipif(curse_dir() is None,
                                        reason="needs the Curse disks")
 
