@@ -69,8 +69,8 @@ sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec as gdos  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
-from tools import specimens  # noqa: E402
 from tools.dos import dostailcensus  # noqa: E402
+from tools.registry import specimens  # noqa: E402
 
 #: The four titles' effect-file suffixes, from each shape.  Named here so the
 #: sweep can find a record's effects without opening every file twice.
@@ -101,7 +101,7 @@ def _provenance_for(path: pathlib.Path) -> tuple[str | None, dict]:
 
 
 #: Phrases in a `provenance.toml`'s `made_by` that mean the record is ours.
-#: `tools/specimens.py` asks for that field in exactly these words, and two
+#: `tools/registry/specimens.py` asks for that field in exactly these words, and two
 #: specimens in the tree are our writer's output kept deliberately.
 OURS_IN_MADE_BY = ("our own writer", "our writer", "this project's own writer",
                    "goldbox.dos.new_dos_save", "dosrecordwrite.py")

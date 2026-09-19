@@ -25,8 +25,8 @@ import pytest
 
 from goldbox.d64 import D64
 from tests import gamedata
-from tools import gamedisks
 from tools.c64 import c64nametable as nt
+from tools.registry import gamedisks
 
 TITLES = ("curse-of-the-azure-bonds", "secret-of-the-silver-blades")
 
@@ -44,7 +44,7 @@ def specimen_disk(name: str) -> pathlib.Path:
     an edited copy would still make the point it makes."""
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted(root.glob(f"*-c64/WISH-SPEC-{name}.[dD]64"))
     if not found:
         pytest.skip(f"needs the C64 specimen WISH-SPEC-{name}")

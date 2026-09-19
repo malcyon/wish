@@ -53,7 +53,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from goldbox.dos_savegame import dax_blocks  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 GLIB_MAGIC = b"GLIB"
 

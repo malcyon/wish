@@ -127,11 +127,11 @@ def _clean_c64_disks(prefix: str):
     disk has changed since it was recorded, the same two rules
     `gamedata.specimen` applies to a single named specimen.
     """
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted((root / "por-c64").glob(f"WISH-SPEC-{prefix}-*.[dD]64"))
     if not found:
         pytest.skip(f"needs a WISH-SPEC-{prefix}-* specimen")
@@ -141,7 +141,7 @@ def _clean_c64_disks(prefix: str):
         actual = specimens.sha256_file(path)
         if recorded.get(path.name) not in (None, actual):
             pytest.fail(f"{path.name} has changed since it was recorded; "
-                        f"run tools/specimens.py check")
+                        f"run tools/registry/specimens.py check")
     return found
 
 
@@ -149,11 +149,11 @@ def _named_specimen_disk(name: str):
     """One named C64 specimen disk under `por-c64`, verified against its own
     provenance -- the same rule `gamedata.specimen` applies, for a specimen
     that is one disk image rather than a directory."""
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted((root / "por-c64").glob(f"WISH-SPEC-{name}.[dD]64"))
     if not found:
         pytest.skip(f"needs specimen WISH-SPEC-{name}")
@@ -163,7 +163,7 @@ def _named_specimen_disk(name: str):
     actual = specimens.sha256_file(path)
     if recorded.get(path.name) not in (None, actual):
         pytest.fail(f"WISH-SPEC-{name}: {path.name} has changed since it was "
-                    f"recorded; run tools/specimens.py check")
+                    f"recorded; run tools/registry/specimens.py check")
     return path
 
 

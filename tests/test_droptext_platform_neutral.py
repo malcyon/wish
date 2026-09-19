@@ -104,7 +104,7 @@ def test_a_c64_party_converted_to_the_amiga_names_no_platform():
     """
     root = specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     path = _c64_disk("ssb-d-engine-resave")
     _game, party = _c64_party(path)
     assert len(party) == 6
@@ -137,7 +137,7 @@ def test_an_amiga_pool_of_radiance_source_names_no_platform():
     paths = amiga_por_records()
     if not paths:
         pytest.skip("needs an Amiga Pool of Radiance disk; see "
-                    "tools/gamedisks.py")
+                    "tools/registry/gamedisks.py")
     checked = 0
     for path in paths:
         char = amiga_por.read_amiga_por(path)
@@ -231,7 +231,7 @@ def test_an_amiga_source_character_converted_to_the_amiga_names_no_platform():
     """
     parties = engine_written_parties()
     if not parties:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     checked = 0
     for label, char in parties:
         neutral_char = amiga_later.to_neutral_later(char)

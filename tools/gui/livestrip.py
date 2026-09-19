@@ -38,8 +38,8 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from automap import live  # noqa: E402
 from automap.target import ViceTarget  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.gui import shotstrip  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 
 def read_snapshot(port: int, host: str = "127.0.0.1"):

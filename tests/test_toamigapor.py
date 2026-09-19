@@ -42,8 +42,8 @@ def _por_disk_1(tmp_path: pathlib.Path) -> pathlib.Path:
     """
     from goldbox.amiga_adf import AmigaDisk
     from goldbox.amiga_savegame import POR_SAVEGAME_SIZE
-    from tools import gamedisks
     from tools.amiga import amigasaves
+    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")
@@ -72,8 +72,8 @@ def _por_disk_2(tmp_path: pathlib.Path) -> pathlib.Path:
     carrying that file rather than by its name, which differs between rips.
     """
     from goldbox.amiga_adf import AmigaDisk
-    from tools import gamedisks
     from tools.amiga import amigasaves
+    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")
@@ -92,7 +92,7 @@ def _c64_specimen(name: str) -> pathlib.Path:
     """A C64 specimen disk, which is one file rather than a directory."""
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted((root / "por-c64").glob(f"WISH-SPEC-{name}.[dD]64"))
     if not found:
         pytest.skip(f"needs the C64 specimen WISH-SPEC-{name}")

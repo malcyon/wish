@@ -5,7 +5,7 @@ costing they always were.** What changed when it was built is in §0; the rest
 of this document is the design, corrected in place where building it proved a
 claim wrong.
 
-**Update, 2026-09-18:** the `inst/<n>/` and `drive/` directories below are the design's own names. The scratch directory they sat in no longer exists; the pool now keeps its slots under the temp directory (`tools/scratch.py`, `tools/instance.py`'s `pool_root()`), and anything there may vanish.
+**Update, 2026-09-18:** the `inst/<n>/` and `drive/` directories below are the design's own names. The scratch directory they sat in no longer exists; the pool now keeps its slots under the temp directory (`tools/registry/scratch.py`, `tools/registry/instance.py`'s `pool_root()`), and anything there may vanish.
 
 Donald asked whether Proxmox VMs, each with its own VICE and the game inside,
 would let tests run in parallel, and separately asked for "Windows VMs for
@@ -42,7 +42,7 @@ automapper against a running game.
 
 ## 0. What was built, and what the building corrected
 
-`tools/instance.py` is the pool; `tests/test_instance.py` is 26 tests of it and
+`tools/registry/instance.py` is the pool; `tests/test_instance.py` is 26 tests of it and
 none of them needs an emulator.  `tools/c64/session.py` takes a `Slot` and is
 otherwise unchanged, so `tools/c64/walkrun.py` and `tools/c64/porcmd` still work on the
 human's numbers.  `pytest tests/ -q` is green.
@@ -246,7 +246,7 @@ reproduces this exact issue the moment any one pool needs to grow again.
 
 ### 3.2 Claiming and releasing
 
-A new module, `tools/instance.py`.
+A new module, `tools/registry/instance.py`.
 
 ```
 slot = instance.claim(game="por")     # raises PoolFull if every slot is leased
@@ -256,8 +256,8 @@ Session(disk, slot=slot).launch()     # records the pgid in the lease
 slot.release()                        # or just exit
 ```
 
-`tools/instance.py status` prints every slot and which row of §3.4 it is on;
-`tools/instance.py reap [n]` frees the ones that are nobody's;
+`tools/registry/instance.py status` prints every slot and which row of §3.4 it is on;
+`tools/registry/instance.py reap [n]` frees the ones that are nobody's;
 `python3 tools/c64/session.py --pool` claims a slot and serves on its command port.
 
 **The lease is an `fcntl.flock` on `inst/<n>/lease`, held by the claiming
@@ -337,7 +337,7 @@ because they do, on two different files that happen to share a path history.
 A cleaner script would recreate exactly the bug the flock design exists to
 prevent.
 
-**So the answer is a read, not a cleanup: `tools/instance.py status
+**So the answer is a read, not a cleanup: `tools/registry/instance.py status
 --displays`.** For every number in all three bands it says whether the file
 exists, and if it does, whether `/proc/locks` names a pid still holding it —
 found by matching the file's device and inode in that table, never by
@@ -349,7 +349,7 @@ and left alone on purpose.
 
 Added 2026-09-04. `held` already meant "somebody's, do not touch it" -- it
 never said whether that somebody was doing anything. Found the way it always
-is here: a person asked, and `tools/instance.py status` showed three slots
+is here: a person asked, and `tools/registry/instance.py status` showed three slots
 `held`, all with live process groups, and nothing on the page said that was
 odd. An agent that claims a slot, hits a problem, claims another and never
 releases the first leaves a display occupied all night; at eight agents that
@@ -411,7 +411,7 @@ Small, as the premise claimed. Six existing files, one new one.
 | `automap/__main__.py` | two message lines, same | 2 lines — **not done**, same |
 | `tools/c64/session.py` | `HERE`, `TEXT_PORT`, `CMD_PORT`, `display`, `MONFLAGS` become instance attributes taken from a slot; the four `pkill` calls become a process-group kill | ~35 lines changed |
 | `tools/c64/porlaunch.sh` | drop the two `pkill` lines; take `POR_SLOT`; pass `-config` and `--die-with-parent` | ~8 lines |
-| `tools/instance.py` | **new** — claim, release, reap, seed a `vicerc`, and a `main()` so a shell script can claim a slot too | ~150 lines |
+| `tools/registry/instance.py` | **new** — claim, release, reap, seed a `vicerc`, and a `main()` so a shell script can claim a slot too | ~150 lines |
 | `tests/test_instance.py` | **new** — allocation, contention, reap's table, `vicerc` seeding. All of it is files and flocks, so none of it needs VICE | 26 tests |
 
 Roughly **270 new lines and 50 changed**, and nothing in `goldbox/`, `editor/`,
@@ -519,7 +519,7 @@ rules files are what binds.
 > **Emulator work goes through the instance pool.** VICE serves exactly one
 > binary-monitor connection *per process*, so running two things at once means
 > two emulators, not two connections. Claim a slot with
-> `tools/instance.py claim`; it hands back a port, a display, a work directory
+> `tools/registry/instance.py claim`; it hands back a port, a display, a work directory
 > and a `vicerc`, and it holds the lease for as long as your process lives.
 > Say in the brief which slot the agent has.
 >
@@ -529,7 +529,7 @@ rules files are what binds.
 >
 > **Never kill a process by name.** Not `pkill -x x64sc`, not `pkill -x
 > Xephyr`. Kill only the process group your own slot launched, and reclaim
-> another slot only when `tools/instance.py reap` says its lease is unheld. A
+> another slot only when `tools/registry/instance.py reap` says its lease is unheld. A
 > slot whose lease is held is somebody's, however dead it looks. The one time
 > this rule was broken, what died was Donald's own window.
 >

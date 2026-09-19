@@ -10,7 +10,7 @@ every record on the machine, a converter may compute the byte instead of
 copying it, and a C64-to-C64 conversion still round-trips.
 
 So this walks every C64 save and exported character it can find -- the player's
-own disks through `tools/gamedisks.py`, and the specimen tree -- and prints one
+own disks through `tools/registry/gamedisks.py`, and the specimen tree -- and prints one
 row per record: the title, where it came from, the cleric and paladin levels,
 the byte stored at `0x0A4`, and `goldbox.levels.turning_level`'s answer. The
 exit status is non-zero when any record disagrees, so the census is a check as
@@ -37,7 +37,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 from goldbox import levels  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: The C64 disks to look at, by the registry key that finds them.
 C64_DISKS = (
@@ -96,7 +96,7 @@ def _c64_records():
 
 def _specimen_root():
     try:
-        from tools import specimens
+        from tools.registry import specimens
     except Exception:
         return None
     root = specimens.tree_root()

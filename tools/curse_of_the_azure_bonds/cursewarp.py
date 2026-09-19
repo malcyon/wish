@@ -58,10 +58,10 @@ sys.path.insert(0, str(ROOT))
 from automap.actions import pc_register  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.areas import newecl  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.curse_of_the_azure_bonds import curserun  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where Curse's live party square is.  **Not relocated**: `DUNGEON`'s own
 #: position flush reads `$C04B,X` in Curse exactly as it does in Pool of

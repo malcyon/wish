@@ -92,7 +92,7 @@ serialised, slow, and unfalsifiable without the artefacts above it.
 **Why this order.** Steps 1-5 need no emulator and no permission from anyone;
 they are reproducible, parallelisable across agents, and every result is a file
 you can re-derive. Step 6 costs a single serialised VICE connection — one
-binary-monitor client per process, claimed through `tools/instance.py`
+binary-monitor client per process, claimed through `tools/registry/instance.py`
 ([123-parallel-sessions.md](123-parallel-sessions.md)). Step 7 costs a driven
 session that can wedge the emulator. **Spending emulator time on a question a
 disk read would answer is the commonest way to lose a day here.**
@@ -355,7 +355,7 @@ artefact before moving on.
 | 11 | Inventory the maps: walls, doors, locked, indoor, reciprocity | a parse check per file — **not** an identification |
 | 12 | Anchor one map | file-to-area assignment, with a score **and** a next-best score |
 | 13 | Decode the item tables and spell ids with the existing readers, changing only base addresses | item names, item types, spell names |
-| 14 | Claim a pool slot (`tools/instance.py claim`) and start VICE through it | one connection, held open, on a port that is not a human's |
+| 14 | Claim a pool slot (`tools/registry/instance.py claim`) and start VICE through it | one connection, held open, on a port that is not a human's |
 | 15 | Find the save image in RAM by searching for a run from the save file | the live base, exactly |
 | 16 | Confirm the resident map block: search RAM for a copy of the `GEO` you are standing on | `$0400`, in all three titles measured |
 | 17 | Build the party fix: measure which copy is live, then `_plausible` on both | a `Fix` with a `source` tag |

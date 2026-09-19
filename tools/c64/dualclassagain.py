@@ -80,7 +80,7 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from tools import gamedisks, scratch  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: Where each C64 title's refusal lives, read out of its own `GEN`.
 #: `gate` is the `BNE` that jumps to the message when `dual_class_level` is

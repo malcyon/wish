@@ -3,7 +3,7 @@
 #   porlaunch.sh <disk.d64>
 #
 # Everything that makes this instance *this* instance comes in through the
-# environment, so `tools/instance.py` can hand a slot its own copy of all of it:
+# environment, so `tools/registry/instance.py` can hand a slot its own copy of all of it:
 #
 #   POR_DISPLAY  X display          (:7 by default -- the human's session)
 #   POR_VICERC   config file        (-config; unset means VICE's own)
@@ -20,7 +20,7 @@
 # It kills nothing.  It used to `pkill -x x64sc` and `pkill -x Xephyr` on every
 # launch, which under the instance pool would kill every other agent's emulator
 # and Donald's own game with it.  Teardown is a process-group kill by whoever
-# started this script -- see `tools/instance.py`, "never by name".
+# started this script -- see `tools/registry/instance.py`, "never by name".
 set -euo pipefail
 DISK="${1:?usage: porlaunch.sh <disk.d64>}"
 NESTED_DISPLAY="${POR_DISPLAY:-:7}"

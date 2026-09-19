@@ -25,7 +25,7 @@ sys.path.insert(0, str(HERE.parent.parent))
 
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 WORD = "OUTDOORS"
 #: PETSCII (upper/graphics mode): A-Z is the same as ASCII.

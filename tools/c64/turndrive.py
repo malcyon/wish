@@ -46,9 +46,9 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.layout import FIELDS_BY_NAME  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 

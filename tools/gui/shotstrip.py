@@ -75,7 +75,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow  # noqa: E402
 from automap import live  # noqa: E402
 from automap.panel import BottomStrip  # noqa: E402
 from automap.state import AutomapState  # noqa: E402
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 from wish.ui_window import Ui_WishWindow  # noqa: E402
 
 #: One id out of each badge group, so the default picture is every glyph the

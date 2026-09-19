@@ -74,7 +74,7 @@ from PyQt6.QtGui import (  # noqa: E402
 )
 from PyQt6.QtSvg import QSvgRenderer  # noqa: E402
 
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where the artist's delivery sits. Read in place: the six files the program
 #: uses are committed under `assets/logo/`, the rest stay his, and nothing the

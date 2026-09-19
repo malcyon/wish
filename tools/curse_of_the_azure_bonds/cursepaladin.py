@@ -54,7 +54,6 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.curse_of_the_azure_bonds.cursetrain import (  # noqa: E402
     FIELDS,
     MONEY,
@@ -68,6 +67,7 @@ from tools.curse_of_the_azure_bonds.cursetrain import (  # noqa: E402
     slot_names,
     write_u,
 )
+from tools.registry import scratch  # noqa: E402
 
 #: The roster copies in the running machine: `SAVEAZURE` loads at `$4B00` and
 #: its eight slots start `$400` in, so slot *n* is `$4F00 + n * $100`.  The

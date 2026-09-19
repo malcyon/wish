@@ -37,7 +37,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from editor import convert  # noqa: E402
 from goldbox import dos_port  # noqa: E402
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Set by `main`, before anything draws.
 app = None

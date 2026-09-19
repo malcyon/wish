@@ -23,7 +23,7 @@ the SHA-256 of every file written. The report is also printed.
 `--tree` runs the conversion from another checkout, such as a detached
 worktree pinned to the commit under test; it defaults to this one. `--disks`
 is the C64 game-disks folder a C64 source needs (`--c64-game` looks it up in
-`tools/gamedisks.py` instead); a DOS source needs neither.
+`tools/registry/gamedisks.py` instead); a DOS source needs neither.
 
     .venv/bin/python -m tools.convert.convertdialogdrive \\
         --specimen ~/wish-specimens/por-dos/WISH-SPEC-ssb-234-party-pair/SAVGAMC.DAT \\
@@ -61,7 +61,7 @@ def main(argv=None) -> int:
     ap.add_argument("--disks", type=pathlib.Path,
                     help="C64 game-disks folder, for a C64 source")
     ap.add_argument("--c64-game",
-                    help="look the C64 disks up in tools/gamedisks.py by this "
+                    help="look the C64 disks up in tools/registry/gamedisks.py by this "
                          "title key, e.g. secret-of-the-silver-blades")
     ap.add_argument("--tree", type=pathlib.Path, default=ROOT,
                     help="checkout to run the conversion from (default: this "
@@ -80,7 +80,7 @@ def main(argv=None) -> int:
 
     from editor import convert as convert_mod
     from editor.window import EditorBinding
-    from tools import gamedisks, scratch
+    from tools.registry import gamedisks, scratch
 
     out = args.out_dir or scratch.scratch_dir("convertdialogdrive")
     report_path = args.report or out / "convert-report.json"

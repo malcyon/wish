@@ -63,8 +63,8 @@ def pc_bytes() -> dict[str, bytes]:
     fallback can use one.
     """
     from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
-    from tools import gamedisks
     from tools.amiga import amigasaves
+    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         return {}
@@ -558,8 +558,8 @@ def test_every_offset_matches_the_engines_own_silver_blades_importer():
     """
     capstone = pytest.importorskip("capstone")
     assert capstone
-    from tools import gamedisks
     from tools.amiga import podimportmap
+    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disk images; set $AMIGA_DISKS")

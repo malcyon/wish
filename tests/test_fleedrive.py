@@ -193,7 +193,7 @@ def test_each_title_prints_the_same_line_by_the_same_branch(title):
     Skips with no disks, which is the ordinary state on a machine that has
     only some of the six titles.
     """
-    from tools import gamedisks
+    from tools.registry import gamedisks
     root = gamedisks.find(title)
     if root is None:
         pytest.skip(f"no disks for {title}")

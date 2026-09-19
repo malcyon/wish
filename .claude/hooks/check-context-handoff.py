@@ -55,7 +55,7 @@ SPAWN_TOOLS = {"Agent", "Task", "SendMessage"}
 #: Once a session has been refused, it stays refused: a compaction can bring
 #: the measured context back under the line, and the wind-down must not turn
 #: back into a working session because of it. One empty file per session.
-#: Computed rather than taken from `tools.scratch.scratch_dir`, because the
+#: Computed rather than taken from `tools.registry.scratch.scratch_dir`, because the
 #: harness runs this hook under the system interpreter with the repository on
 #: no path; it must stay equal to `scratch.scratch_dir("check-context-handoff")`.
 STICKY_DIR = os.path.join("wish", "check-context-handoff")

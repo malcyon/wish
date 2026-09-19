@@ -54,7 +54,7 @@ def _saved_games() -> list[tuple[str, bytes]]:
     """
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found: dict[str, tuple[str, bytes]] = {}
     for image in sorted(root.rglob("*.[aA][dD][fF]")):
         try:
@@ -81,8 +81,8 @@ def corpus() -> list[tuple[str, bytes]]:
 
 @pytest.fixture(scope="module")
 def ecl_dax() -> bytes:
-    from tools import gamedisks
     from tools.amiga import amigasaves
+    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")
@@ -207,7 +207,7 @@ def test_the_amiga_does_not_keep_doss_three_way_copy_of_the_square_byte():
     """
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     where = root.joinpath(*OUTDOOR_ENGINE_SAVE)
     if not where.is_file():
         pytest.skip(f"needs {'/'.join(OUTDOOR_ENGINE_SAVE[1:])}")

@@ -35,8 +35,8 @@ from automap.actions import KEY_FETCH, KEY_WAIT, pc_register  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from automap.target import NotConnected, ViceTarget, monitor_listening  # noqa: E402
 from automap.vice import Monitor, MonitorError  # noqa: E402
-from tools import instance, scratch  # noqa: E402
 from tools.c64.session import Session  # noqa: E402
+from tools.registry import instance, scratch  # noqa: E402
 
 DEFAULT_OUT = scratch.scratch_dir("automappoll")
 

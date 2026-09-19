@@ -36,7 +36,7 @@ from the wilderness back indoors with the writes `ECL1A $A0A4` makes; and,
 if that lands, an edge exit out of New Phlan.
 
 Nothing is written to the player's disks: `stage_disks` copies the sides
-into the slot.  The pool owns the emulator.  Captures go to the temp directory (`tools/scratch.py`).
+into the slot.  The pool owns the emulator.  Captures go to the temp directory (`tools/registry/scratch.py`).
 """
 from __future__ import annotations
 
@@ -53,8 +53,8 @@ sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 

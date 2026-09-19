@@ -46,7 +46,7 @@ sys.path.insert(0, str(TOOLS.parent))
 
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: `LINKER` loads every overlay it dispatches at `$0800`, whatever the header
 #: says. `#334` re-confirmed it for the later titles' `COMBAT`: its internal

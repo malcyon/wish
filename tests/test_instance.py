@@ -89,7 +89,7 @@ def test_module_imports_without_fcntl(monkeypatch):
 
     With no `$POR_INST` the pool lives in scratch, outside the repository,
     and asking where it is creates nothing."""
-    from tools import scratch
+    from tools.registry import scratch
     monkeypatch.delenv("POR_INST", raising=False)
     root = instance.pool_root()
     assert root == scratch.scratch_dir("instance")
@@ -114,7 +114,7 @@ def test_a_slot_owns_six_things(pool):
     with instance.claim() as slot:
         assert slot.n == 0
         assert (slot.port, slot.text_port, slot.cmd_port) == (6520, 6540, 6560)
-        # The display is searched, not computed -- `tools/instance.py`'s
+        # The display is searched, not computed -- `tools/registry/instance.py`'s
         # `claim` takes the first free `DISPLAY_BASE + i` within the band's
         # own `slots` width, so only its bounds are deterministic (#138).
         # #213 clamped that search to the band it advertises.
@@ -277,7 +277,7 @@ HOLDER = textwrap.dedent("""
 
 def _holder(pool_dir: Path) -> subprocess.Popen:
     proc = subprocess.Popen(
-        [sys.executable, "-c", HOLDER.format(tools=str(TOOLS))],
+        [sys.executable, "-c", HOLDER.format(tools=str(TOOLS / "registry"))],
         env=dict(os.environ, POR_INST=str(pool_dir)),
         stdout=subprocess.PIPE, text=True,
     )
@@ -350,7 +350,7 @@ def test_killpg_refuses_our_own_group(pool):
 
 # -- a shell `timeout` wrapped around `claim` --------------------------------
 #
-# `#381 (A shell timeout wrapped around tools/instance.py claim exits without
+# `#381 (A shell timeout wrapped around tools/registry/instance.py claim exits without
 # stopping the VICE run it wraps)`: `timeout` execs its command directly and
 # sends it `SIGTERM`. Python's *default* action for `SIGTERM` is immediate
 # process death with no `finally` and no context-manager `__exit__` at all --
@@ -494,7 +494,7 @@ def test_a_shell_timeout_killing_the_claim_wrapper_still_tears_the_group_down(po
     with errors.open("wb") as fh:
         claimer = subprocess.Popen(
             [sys.executable, "-c",
-             CLAIM_WRAPPER.format(tools=str(TOOLS), python=sys.executable,
+             CLAIM_WRAPPER.format(tools=str(TOOLS / "registry"), python=sys.executable,
                                   base=_isolated_display_base(),
                                   ports=_isolated_port_base())],
             env=dict(os.environ, POR_INST=str(os.environ["POR_INST"])),
@@ -708,7 +708,7 @@ def test_a_slot_held_by_a_different_process_is_not_flagged_shared(pool):
         proc = subprocess.Popen(
             [sys.executable, "-c", textwrap.dedent(f"""
                 import sys, time
-                sys.path.insert(0, {str(TOOLS)!r})
+                sys.path.insert(0, {str(TOOLS / "registry")!r})
                 import instance
                 instance.DISPLAY_BASE = 935
                 slot = instance.claim()
@@ -772,7 +772,7 @@ def test_the_cli_prints_held_and_idle_columns_and_a_shared_pgid_warning(pool):
 
 # `_lock_holder` and `display_rows` never take a lock to answer -- taking one
 # is not a test of it, and the lock lives on the inode rather than the path
-# (see `tools/instance.py`'s own section docstring). These tests use plain
+# (see `tools/registry/instance.py`'s own section docstring). These tests use plain
 # `tmp_path` files rather than the real `/tmp/.wish-x11-<n>.lock` naming
 # except where a test needs the CLI's real path, in which case it picks
 # numbers -- 1080 upward -- past every other band this suite uses.
@@ -1321,7 +1321,7 @@ def test_instance_main_builds_its_launch_env_through_launch_env():
     `dict(os.environ, **slot.env())` by hand -- the exact merge this module's
     own docstring warned against.  Reading the source rather than launching a
     process: `main()` needs a real emulator to run past this line."""
-    src = (TOOLS / "instance.py").read_text()
+    src = (TOOLS / "registry" / "instance.py").read_text()
     assert "env = launch_env(slot.env())" in src
     assert "env = dict(os.environ, **slot.env())" not in src
 
@@ -1461,7 +1461,7 @@ def test_stage_disks_is_unaffected_when_nothing_was_left_behind(pool):
 # `tools/secret_of_the_silver_blades/ssbwarp.py`'s `stage()` never got the `_restage()` treatment #430
 # gave `session.stage_disks`: it copies every side and the save with a bare
 # `shutil.copy`, which carries the source's mode onto the slot.  A specimen
-# out of `$WISH_SPECIMENS` is read-only by design (`tools/specimens.py` makes
+# out of `$WISH_SPECIMENS` is read-only by design (`tools/registry/specimens.py` makes
 # it so), so the game was handed a write-protected save disk (#455) and the
 # next run in the same slot died on `PermissionError` staging over it (#469).
 

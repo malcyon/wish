@@ -84,7 +84,7 @@ NOT_A_PLAYER_RACE = frozenset({"monster", "tribble"})
 
 def _candidates():
     """`gamedisks.yaml`'s own search list for the DOS archives (#212)."""
-    from tools import gamedisks
+    from tools.registry import gamedisks
     return gamedisks.candidates("dos-archives")
 
 

@@ -48,9 +48,9 @@ from goldbox import (
 from goldbox import portraits as portrait_tables  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.icons import portraitshot as shot  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The key the character screen answers with the next character in the party.
 #: **There is not one.**  Sixteen keys were pressed on a DOS sheet on

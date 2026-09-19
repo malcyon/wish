@@ -49,8 +49,8 @@ from automap.paths import find_disks  # noqa: E402
 from automap.vice import MonitorError  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.dos_codec import SAVE0_BASE, SLOT_AREA, SLOT_STRIDE  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The loaded-files cache while the game runs, and the two slots that hold a
 #: portrait.  `docs/140-loaded-files-cache.md`: twenty-five slots, one per file

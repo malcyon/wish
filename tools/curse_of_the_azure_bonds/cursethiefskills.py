@@ -224,11 +224,11 @@ def _screen_codes(word: bytes) -> bytes:
 
 def _print_labels(title: str) -> None:
     from goldbox.d64 import D64
-    from tools import gamedisks
+    from tools.registry import gamedisks
 
     where = gamedisks.find(title)
     if where is None:
-        raise SystemExit(f"no {title} disks; see tools/gamedisks.py")
+        raise SystemExit(f"no {title} disks; see tools/registry/gamedisks.py")
     counts: dict[bytes, int] = {w: 0 for w in LABELS + CONTROLS}
     files = 0
     for path in sorted(where.glob("*.[dD]64")):

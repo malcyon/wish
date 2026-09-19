@@ -22,8 +22,8 @@ from __future__ import annotations
 import pytest
 
 from goldbox import areas, c64_port
-from tools import gamedisks
 from tools.areas import areatable
+from tools.registry import gamedisks
 
 TITLES = {
     c64_port.POOL_OF_RADIANCE: areas.POOL_OF_RADIANCE,

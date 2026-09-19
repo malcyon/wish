@@ -673,7 +673,7 @@ def test_no_tracked_file_names_the_scratch_directory(files):
     hits = scan_for_work_paths(ROOT, files)
     assert not hits, (
         f"{len(hits)} places name a path into the deleted scratch directory. "
-        "A run's output goes to a temp directory (tools/scratch.py) and a "
+        "A run's output goes to a temp directory (tools/registry/scratch.py) and a "
         "finding goes in a comment on its issue or in docs/:\n  "
         + _listing(hits))
 

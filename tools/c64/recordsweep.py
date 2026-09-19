@@ -46,9 +46,9 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks  # noqa: E402
 from tools.c64.d6502 import M_ABS, M_ABX, M_ABY, M_IZX, M_IZY, T, lines  # noqa: E402
 from tools.c64.trainerscan import TITLES  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: How many bytes either side of a hit `--context` disassembles.
 CONTEXT = 12

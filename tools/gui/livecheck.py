@@ -62,8 +62,8 @@ from automap.target import party_fix  # noqa: E402
 from automap.vice import banked  # noqa: E402
 from goldbox import c64_port, items, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: Where this run's notes and explored squares go.
 #:

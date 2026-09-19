@@ -67,8 +67,8 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS as GAME  # noqa: E402
 from goldbox.d64 import D64, attach_load_address, split_load_address  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: Where `SAVEAZURE` loads, and the two regions inside it this asks about.
 #: The eight 256-byte character slots start `$400` in and the eight 32-byte

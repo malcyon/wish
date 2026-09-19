@@ -26,8 +26,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import gamedisks  # noqa: E402
 from tools.amiga import amigabladesjournal as journal  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 
 def _stripes(path: pathlib.Path, rows: list[int], *,

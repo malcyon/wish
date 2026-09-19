@@ -52,8 +52,8 @@ TRAIT_COUNT = 10
 
 
 def specimen_tree() -> pathlib.Path:
-    """The specimen tree `tools/specimens.py` keeps, `$WISH_SPECIMENS`."""
-    from tools import specimens
+    """The specimen tree `tools/registry/specimens.py` keeps, `$WISH_SPECIMENS`."""
+    from tools.registry import specimens
     return specimens.tree_root()
 
 
@@ -163,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.all:
         tree = specimen_tree()
         if not tree.is_dir():
-            print(f"no specimen tree at {tree}; see tools/specimens.py")
+            print(f"no specimen tree at {tree}; see tools/registry/specimens.py")
             return 2
         roots.append(tree)
     if not roots:

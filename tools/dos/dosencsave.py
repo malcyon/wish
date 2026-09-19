@@ -42,10 +42,10 @@ and a save after `VIEW`.  Order matters -- the first save that recomputes
 destroys the spoiled value for every test after it, so the cheapest screens go
 first and a later save is only evidence while the value is still spoiled.
 
-Output goes under this tool's scratch directory (`tools/scratch.py`), which
+Output goes under this tool's scratch directory (`tools/registry/scratch.py`), which
 may vanish at any time.
 **Copy anything you mean to keep into `$WISH_SPECIMENS` with
-`tools/specimens.py add` before the slot goes down.**
+`tools/registry/specimens.py add` before the slot goes down.**
 """
 
 from __future__ import annotations
@@ -62,11 +62,11 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.dos.dosparty import wipe_roster  # noqa: E402
 from tools.dos.dosshop import ENCUMBRANCE_AT, stage_encumbrance  # noqa: E402
 from tools.dos.dostrainprobe import install  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: What every ladder rung was restaged to, `tools/dos/dosladder.py --gold`.
 LADDER_GOLD = 20000

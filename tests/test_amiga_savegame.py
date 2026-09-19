@@ -9,8 +9,8 @@ from gamedata import specimen_root
 
 from goldbox import amiga_later, amiga_savegame, dos_savegame
 from goldbox.amiga_adf import AmigaDisk
-from tools import specimens
 from tools.amiga import amigasaves
+from tools.registry import specimens
 
 
 def _fake_record(shape, name: str) -> bytes:

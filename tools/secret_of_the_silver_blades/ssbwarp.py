@@ -69,9 +69,9 @@ sys.path.insert(0, str(ROOT))
 from automap.actions import pc_register  # noqa: E402
 from goldbox import areas, c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.areas import newecl  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The live party square. **Not relocated in any title read so far**: page
 #: `$C0` is `GDRIVE00`, and `DUNGEON`'s own position flush reads `$C04B,X`
@@ -251,7 +251,7 @@ def stage(slot, disks: str, save: str = "") -> str:
     target = here / "SIDE0.D64"
     if save:
         # A specimen out of `$WISH_SPECIMENS` is read-only by design
-        # (`tools/specimens.py` makes it so).  Staged unchanged, that gives
+        # (`tools/registry/specimens.py` makes it so).  Staged unchanged, that gives
         # the game a write-protected save disk, and nothing says so: the run
         # boots, the party loads, and every write the game makes is silently
         # refused (#455, #469).
@@ -1214,11 +1214,11 @@ def main(argv: list[str]) -> int:
                     help="where captures go (default: %(default)s)")
     args = ap.parse_args(argv[1:])
     if not args.disks or not os.path.isdir(args.disks):
-        # `tools/gamedisks.py` is the registry; `automap.paths.find_disks`
+        # `tools/registry/gamedisks.py` is the registry; `automap.paths.find_disks`
         # looks for a directory named after the game and nobody names one
         # that -- `#251 (Curse's and Silver Blades' disks are where nothing
         # looks for them, so every per-title test skips)`.
-        from tools import gamedisks
+        from tools.registry import gamedisks
         found = gamedisks.find("secret-of-the-silver-blades")
         args.disks = str(found) if found else ""
     if not args.disks or not os.path.isdir(args.disks):

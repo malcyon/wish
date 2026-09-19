@@ -35,7 +35,7 @@ The definitions are .codex/agents/<name>.toml, generated from .claude/agents/<na
 - Every finding goes on its issue when it arrives. Every agent gets its own files and an escape hatch, and an agent stopping to say the work is not its kind is a success. If an agent hits a refusal it cannot clear, it stops and reports.
 - Do not make a decision that is Donald's: wording, priorities, or anything a player reads. Leave it, mark the row, and say so in your status.
 - The order before every push is: commit the work, send the whole suite to test-runner at the tip, push. check-push-tested.py refuses a push that carries a .py, .ui or tests/ change with no green marker for the tip or for a tested ancestor with only documentation on top of it. Do not look for a way round it; run the suite.
-- A subagent past its budget with no report is not waiting to be asked. Judge it by what it has written: the files it owns, and tools/instance.py status if it holds a slot. If Codex gives you a way to stop it, stop it and relaunch with a tighter brief; if not, say so to Donald, who can. Check the pool afterwards, because a run it started with nohup keeps its slot after the agent dies.
+- A subagent past its budget with no report is not waiting to be asked. Judge it by what it has written: the files it owns, and tools/registry/instance.py status if it holds a slot. If Codex gives you a way to stop it, stop it and relaunch with a tighter brief; if not, say so to Donald, who can. Check the pool afterwards, because a run it started with nohup keeps its slot after the agent dies.
 
 ## On start
 

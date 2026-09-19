@@ -24,7 +24,7 @@ conditions, report the gap before launch.
 Capture the screenshot and specified memory from the same run and checkpoint.
 Record their ordering and any state advance; do not claim atomic capture unless
 the harness proves it. Preserve successful specimens before teardown with
-`tools/specimens.py add`, then validate provenance and hashes with `check`.
+`tools/registry/specimens.py add`, then validate provenance and hashes with `check`.
 Use `$WISH_SPECIMENS` or an explicitly authorized writable destination. If
 preservation fails, retain evidence and escalate before teardown destroys it.
 Distinguish engine-written outputs, staged edits, and supplied saves whose

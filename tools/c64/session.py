@@ -48,7 +48,6 @@ sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 from automap import c64 as machines  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64, D64Error  # noqa: E402
-from tools import gamedisks, instance, scratch  # noqa: E402
 from tools.c64.drive import (  # noqa: E402
     Keyboard,
     Monitor,
@@ -58,11 +57,12 @@ from tools.c64.drive import (  # noqa: E402
     is_bitmap,
     read_screen,
 )
+from tools.registry import gamedisks, instance, scratch  # noqa: E402
 
 # Disk images and logs live in scratch; the code does not.
 HERE = str(scratch.scratch_dir("session", "drive"))
 # The human's numbers, and the defaults when no slot is passed.  The pool never
-# allocates these: `tools/instance.py` starts at 6520, so anything still on 6502
+# allocates these: `tools/registry/instance.py` starts at 6520, so anything still on 6502
 # is a game a human started from the desktop menu.
 MON_PORT = 6502
 TEXT_PORT = 6510
@@ -611,7 +611,7 @@ class Session:
 
     With no `slot` this is what it always was: `HERE`, ports 6502, 6510
     and 6600, display `:7` -- the human's numbers, kept so `tools/c64/walkrun.py`
-    and `tools/c64/porcmd` need no change.  Pass a `tools.instance.Slot` and every
+    and `tools/c64/porcmd` need no change.  Pass a `tools.registry.instance.Slot` and every
     one of those six becomes that slot's own, which is the whole of what makes
     two sessions able to run at once.
     """
@@ -719,7 +719,7 @@ class Session:
         else:
             # No slot claimed: the legacy path, reachable by anyone -- agent
             # or human -- who runs this file's own CLI without `--pool`, on
-            # the reserved display (`RESERVED_DISPLAY` in `tools/instance.py`).
+            # the reserved display (`RESERVED_DISPLAY` in `tools/registry/instance.py`).
             # `porlaunch.sh`'s own default when `POR_HEADLESS` is entirely
             # unset is the *visible* branch, which is what `#266 (An orphaned
             # Xephyr, launched outside the pool, left a visible window on
@@ -2701,7 +2701,7 @@ def writable(path) -> str:
     Everything in a slot's directory is a throwaway copy the emulator owns;
     the mode that came with it belongs to the file it was copied from.  A
     specimen out of `$WISH_SPECIMENS` is read-only by design
-    (`tools/specimens.py` makes it so), and `shutil.copy` carries that mode
+    (`tools/registry/specimens.py` makes it so), and `shutil.copy` carries that mode
     onto the staged copy unchanged -- which gives the game a write-protected
     save disk with nothing to say so (`#455`, `#469`, `#472`).
     """

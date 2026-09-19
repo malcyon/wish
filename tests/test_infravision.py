@@ -103,8 +103,8 @@ def test_the_generator_reads_that_table_with_the_race_byte_as_its_index():
         pytest.skip(str(e))
     assert tuple(table) == GENERATOR_TABLE
     from goldbox.d64 import D64, split_load_address
-    from tools import gamedisks
     from tools.c64 import d6502
+    from tools.registry import gamedisks
     disks = gamedisks.find("pool-of-radiance")
     if disks is None:
         pytest.skip("no Pool of Radiance disks")

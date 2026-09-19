@@ -57,7 +57,7 @@ from goldbox import c64_port, dos_codec  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: `GEN` is resident here whatever its PRG header claims.
 GEN_BASE = 0x0800
@@ -128,7 +128,7 @@ def _gen(title: str) -> bytes:
     """The title's own `GEN`, off whichever of the player's disks carries it."""
     where = gamedisks.find(title)
     if where is None:
-        raise SystemExit(f"no {title} disks; see tools/gamedisks.py")
+        raise SystemExit(f"no {title} disks; see tools/registry/gamedisks.py")
     for path in sorted(where.glob("*.[dD]64")):
         try:
             disk = D64.open(str(path))

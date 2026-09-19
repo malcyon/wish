@@ -95,7 +95,7 @@ CLASSES = ("cleric", "druid", "fighter", "paladin", "ranger", "mage", "thief",
 
 def _candidates():
     """`gamedisks.yaml`'s own search list for the DOS archives (#212)."""
-    from tools import gamedisks
+    from tools.registry import gamedisks
     return gamedisks.candidates("dos-archives")
 
 
@@ -187,7 +187,7 @@ needs_dos_saves = pytest.mark.skipif(
 
 # --- the clean corpus ---------------------------------------------------------
 # Records this project watched being written, from character creation onward.
-# `tools/specimens.py list` describes them; `tests/gamedata.py`'s `specimen`
+# `tools/registry/specimens.py list` describes them; `tests/gamedata.py`'s `specimen`
 # re-hashes one against its own manifest before a test reads it.
 
 #: The `#249` party, in three states: as the game wrote it to slot C at the
@@ -230,7 +230,7 @@ def _clean_records(*groups):
 
 needs_clean_party = pytest.mark.skipif(
     not all(have_specimen(name) for name in CLEAN_PARTY),
-    reason="needs the #249 specimen party; see tools/specimens.py")
+    reason="needs the #249 specimen party; see tools/registry/specimens.py")
 
 
 # --- the record ---------------------------------------------------------------

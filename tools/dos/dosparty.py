@@ -55,7 +55,7 @@ so, not because the screenshots look right.
         --out DIR/build
 
 Output goes under the temp directory, never into the repository: a saved game
-is the game's data.  **Copy it into `$WISH_SPECIMENS` with `tools/specimens.py add`
+is the game's data.  **Copy it into `$WISH_SPECIMENS` with `tools/registry/specimens.py add`
 before the slot goes down** -- `Session.stage` is a copy into the pool
 instance's own directory and tearing the slot down takes it with it.
 """
@@ -76,8 +76,8 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The race list, in the order CREATE NEW CHARACTER draws it.  Read off the
 #: screen in `#84 (Roll a gnome in DOS and read the two innate effect ids

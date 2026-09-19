@@ -48,8 +48,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import areas  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 

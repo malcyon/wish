@@ -159,7 +159,7 @@ def siblings(root: pathlib.Path):
 
 
 def default_roots() -> list[pathlib.Path]:
-    from tools import specimens
+    from tools.registry import specimens
     out = []
     tree = specimens.tree_root()
     if tree.is_dir():

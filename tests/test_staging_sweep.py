@@ -1,7 +1,7 @@
 """Sweep of every script under `tools/` for the read-only-specimen staging bug (#472, #476,
 #487, #492).
 
-`tools/specimens.py add` makes every specimen read-only on purpose, so nobody
+`tools/registry/specimens.py add` makes every specimen read-only on purpose, so nobody
 edits the evidence by accident.  `shutil.copy` carries that mode onto the
 copy.  A tool that stages such a copy where the running game has to write --
 a pool slot's `SIDE0.D64`, a DOSBox instance's `SAVE` directory -- hands the
@@ -53,7 +53,7 @@ machine:
 `copyfile` and `write_bytes` open the destination for writing and leave the
 default mode on it, so neither can put a read-only file anywhere.  Both can
 *fail* on a read-only leftover, but only one of the three above can have left
-one, so flagging the three covers the cause.  `tools/instance.py` and
+one, so flagging the three covers the cause.  `tools/registry/instance.py` and
 `tools/dos/dosabilitypair.py` already stage this way deliberately.
 
 `tools/c64/session.py` is exempt: `stage_writable` is the function everything

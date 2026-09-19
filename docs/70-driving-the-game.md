@@ -21,7 +21,7 @@ for the automapper.
 
 ## Run it in a nested X server
 
-Claim a slot from the instance pool (`tools/instance.py`) and launch through
+Claim a slot from the instance pool (`tools/registry/instance.py`) and launch through
 `tools/c64/porlaunch.sh`, which starts VICE on that slot's own **Xephyr** display —
 see [`123-parallel-sessions.md`](123-parallel-sessions.md) for how to claim
 one. Running nested is not cosmetic:

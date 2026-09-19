@@ -2,7 +2,7 @@
 paths:
   - "automap/**"
   - "tools/c64/session.py"
-  - "tools/instance.py"
+  - "tools/registry/instance.py"
 ---
 
 # Driving the emulator
@@ -11,7 +11,7 @@ paths:
 binary-monitor connection *per process*, so running two things at once means two
 emulators, not two connections.
 
-**`tools/instance.py claim` hands back a slot** -- a binary-monitor port, a text-
+**`tools/registry/instance.py claim` hands back a slot** -- a binary-monitor port, a text-
 monitor port, a command port, an X display, a work directory and a `vicerc` --
 and holds the lease for as long as your process lives. `Session(disk,
 slot=slot)` takes it from there. Two instances have been proven to coexist;
@@ -78,7 +78,7 @@ an emulator you did not launch, and do not launch one outside the pool -- an
 instance nobody leased cannot be told from a human's.
 
 **Tear down only what your own slot launched**, with `Session.terminate()` or
-`slot.teardown()`. Reclaim another slot only when `tools/instance.py reap` says
+`slot.teardown()`. Reclaim another slot only when `tools/registry/instance.py reap` says
 its lease is unheld; a slot whose lease is held is somebody's, however dead it
 looks.
 

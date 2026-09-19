@@ -66,9 +66,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.dos.dosbox import BAR, Screen, Session, claim, find_game  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where a copied-out specimen lands: scratch, never the repository, like
 #: everything derived from the game's bytes.

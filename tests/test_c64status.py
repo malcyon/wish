@@ -484,7 +484,7 @@ def _unconscious_specimen():
     import sys
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-    from tools import specimens
+    from tools.registry import specimens
 
     for entry in specimens.list_specimens():
         if entry.get("name") == "porunconscious1":

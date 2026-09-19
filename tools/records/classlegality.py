@@ -44,8 +44,8 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64, load_payload  # noqa: E402
-from tools import gamedisks  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: `GEN` runs here whatever its PRG header says (`docs/135-levelling.md`).
 GEN_BASE = 0x0800

@@ -16,7 +16,7 @@ from goldbox.items import (  # noqa: E402
     load_item_templates,
     load_item_types,
 )
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 OUT = Path(__file__).resolve().parent.parent.parent / "docs" / "87-item-templates.md"
 

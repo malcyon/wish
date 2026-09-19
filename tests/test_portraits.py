@@ -28,7 +28,7 @@ from gamedata import _disk_with, disk_dir, disk_path
 from goldbox import portraits
 from goldbox.d64 import D64
 from goldbox.dos_savegame import dax_index
-from tools import gamedisks
+from tools.registry import gamedisks
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the C64 game disks")

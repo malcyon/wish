@@ -42,7 +42,7 @@ from tests import gamedata
 from tools.c64 import inventorycheck
 
 #: The two specimens, the character on each who carries anything, and the
-#: `tools/gamedisks.py` key that finds that title's sides.
+#: `tools/registry/gamedisks.py` key that finds that title's sides.
 CURSE = ("curse-party-with-items", "MALE ELF MAGE",
          "curse-of-the-azure-bonds")
 SSB = ("ssb-d-engine-resave", "Guy de Valois",
@@ -63,11 +63,11 @@ def _specimen_disk(name: str) -> pathlib.Path:
     here -- a specimen somebody has edited is no longer evidence, which is
     the whole of `#246`.
     """
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py and "
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py and "
                     "$WISH_SPECIMENS")
     found = sorted(root.glob(f"*-c64/WISH-SPEC-{name}.[dD]64"))
     if not found:
@@ -82,12 +82,12 @@ def _specimen_disk(name: str) -> pathlib.Path:
         if actual != expected:
             pytest.fail(f"WISH-SPEC-{name}: {filename} has changed -- recorded "
                         f"{expected[:12]}, now {actual[:12]}; it is no longer "
-                        f"evidence. Run tools/specimens.py check")
+                        f"evidence. Run tools/registry/specimens.py check")
     return disk
 
 
 def _disks(key: str) -> str:
-    from tools import gamedisks
+    from tools.registry import gamedisks
     where = gamedisks.find(key)
     if not where:
         pytest.skip(f"needs the player's own {key} disks")

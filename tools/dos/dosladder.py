@@ -36,7 +36,7 @@ wrote is inside the hall already, so no walk into the hall is needed and the
 outside one.  `--enter` does that walk when it is wanted.
 
 Output goes under this tool's scratch directory, which may vanish at any
-time: **copy a rung you mean to keep into `$WISH_SPECIMENS` with `tools/specimens.py add`
+time: **copy a rung you mean to keep into `$WISH_SPECIMENS` with `tools/registry/specimens.py add`
 before the slot goes down.**
 """
 
@@ -57,11 +57,11 @@ sys.path.insert(0, str(REPO))
 from automap import maps  # noqa: E402
 from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_savegame as _sav  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.dos.dosparty import wipe_roster  # noqa: E402
 from tools.dos.dostrain import move_to  # noqa: E402
 from tools.dos.dostrainprobe import install  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The training hall's own squares, by what `ECL0B` does on each.  Taken from
 #: `docs/50-experiments.md` P18, which read them out of the script's

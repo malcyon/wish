@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from tools import instance
 from tools.c64 import walkrun
+from tools.registry import instance
 
 posix = pytest.mark.skipif(instance.fcntl is None, reason="flock is POSIX only")
 

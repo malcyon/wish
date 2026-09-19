@@ -203,7 +203,7 @@ _TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
 def _roots():
     """Deliberately shallow. `rglob` from `$HOME` walks the whole account for
     the sake of one disk image, which on this machine cost fifteen seconds."""
-    from tools import gamedisks
+    from tools.registry import gamedisks
     return [root for title in _TITLES for root in gamedisks.candidates(title)]
 
 

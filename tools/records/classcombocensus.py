@@ -14,7 +14,7 @@ with its count.
 The roots searched by default are the specimen tree (`$WISH_SPECIMENS`,
 `por-c64` and `por-dos`), the Pool of Radiance disks directory
 (`automap.paths.find_disks()`), and the shipped archives' `games/*/GAME/*`
-directories (`tools/gamedisks.py`'s `dos-archives`). `--c64-root` and
+directories (`tools/registry/gamedisks.py`'s `dos-archives`). `--c64-root` and
 `--dos-root` add directories, which is how a scratch directory is counted.
 
 **This counts what is there, and it is not evidence about the game**: a
@@ -37,7 +37,7 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import c64_codec, dos_codec, dos_port, items  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import gamedisks, specimens  # noqa: E402
+from tools.registry import gamedisks, specimens  # noqa: E402
 
 
 def default_roots():

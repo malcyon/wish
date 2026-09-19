@@ -16,7 +16,7 @@ around that pairing, not a second `Flight`.
         --save path/to/CURSEI.D64 --out DIR
 
 `--save` is a Curse save disk (SIDE0) to copy into the slot.  The disks come
-from `--disks`, else `$POR_DISKS`, else `tools/gamedisks.py`'s Curse entry.
+from `--disks`, else `$POR_DISKS`, else `tools/registry/gamedisks.py`'s Curse entry.
 Loads the save with `tools/curse_of_the_azure_bonds/curseload.py`, walks until an encounter starts,
 then fights it with `Flight` and writes a JSON log, a screenshot and the final
 screen under `--out`.
@@ -32,10 +32,10 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: E402
 from tools.pool_of_radiance.fleedrive import Flight, Log, rows_of  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 
 def run(args) -> int:
@@ -159,7 +159,7 @@ def main(argv=None) -> int:
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
     if not args.disks or args.disks == ".":
-        from tools import gamedisks
+        from tools.registry import gamedisks
         found = gamedisks.find("curse-of-the-azure-bonds")
         if not found:
             print("no Curse disks found; pass --disks")

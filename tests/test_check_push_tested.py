@@ -229,8 +229,8 @@ def test_the_test_runner_is_told_to_write_the_marker():
 
 
 def test_the_hook_and_suiterun_read_and_write_one_directory(home):
-    """The hook cannot import `tools.scratch`, so it computes the path itself."""
-    from tools import scratch
+    """The hook cannot import `tools.registry.scratch`, so it computes the path itself."""
+    from tools.registry import scratch
     from tools.suite import suiterun
     assert pathlib.Path(_module().marker_dir()) == scratch.cache_dir("testrun")
     assert suiterun.marker_dir() == scratch.cache_dir("testrun")

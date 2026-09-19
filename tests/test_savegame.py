@@ -437,8 +437,8 @@ class TestRosterSpellCounts:
         the case the player's own disks cannot supply, since nobody watched
         them being written."""
         from goldbox.c64_codec import get_memorised
-        from tools import specimens
         from tools.c64.rosterspellcount import recompute
+        from tools.registry import specimens
 
         disk = next((path
                      for entry in specimens.list_specimens()
@@ -467,7 +467,7 @@ class TestRosterSpellCounts:
         STA $6C0B`, read back at $2A38 into $FB/$FC). In porunconscious1 -- one
         fight, five characters standing and BRUTUS unconscious at the end --
         exactly one block carries a pair there, and it is his."""
-        from tools import specimens
+        from tools.registry import specimens
 
         disk = next((path
                      for entry in specimens.list_specimens()

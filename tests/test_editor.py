@@ -1471,11 +1471,11 @@ def _curse_trained_party_specimen():
     (`docs/187-the-class-code-byte.md`)."""
     import gamedata
 
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted((root / "por-c64").glob(
         "WISH-SPEC-curse-trained-party.[dD]64"))
     if not found:
@@ -1487,7 +1487,7 @@ def _curse_trained_party_specimen():
     if recorded.get(path.name) not in (None, actual):
         pytest.fail("WISH-SPEC-curse-trained-party: "
                      f"{path.name} has changed since it was recorded; "
-                     "run tools/specimens.py check")
+                     "run tools/registry/specimens.py check")
     return path
 
 
@@ -1539,11 +1539,11 @@ def _curse_dual_classed_specimen():
     2026-09-05)."""
     import gamedata
 
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted((root / "por-c64").glob(
         "WISH-SPEC-curse-dual-classed.[dD]64"))
     if not found:
@@ -1555,7 +1555,7 @@ def _curse_dual_classed_specimen():
     if recorded.get(path.name) not in (None, actual):
         pytest.fail("WISH-SPEC-curse-dual-classed: "
                      f"{path.name} has changed since it was recorded; "
-                     "run tools/specimens.py check")
+                     "run tools/registry/specimens.py check")
     return path
 
 
@@ -1588,7 +1588,7 @@ def test_an_untouched_partys_roster_is_byte_identical_with_the_former_class_code
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted((root / "por-c64").glob(
         "WISH-SPEC-curse-trained-party.[dD]64"))
     if not found:
@@ -1611,11 +1611,11 @@ def _curse_409_regained_paladin_specimen():
     not)`)."""
     import gamedata
 
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted((root / "coab-c64").glob(
         "WISH-SPEC-curse-409-regained-paladin.[dD]64"))
     if not found:
@@ -1627,7 +1627,7 @@ def _curse_409_regained_paladin_specimen():
     if recorded.get(path.name) not in (None, actual):
         pytest.fail("WISH-SPEC-curse-409-regained-paladin: "
                      f"{path.name} has changed since it was recorded; "
-                     "run tools/specimens.py check")
+                     "run tools/registry/specimens.py check")
     return path
 
 

@@ -52,8 +52,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.dos_savegame import dax_block  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 OUT = scratch.scratch_dir("dositemcap")
 
@@ -74,7 +74,7 @@ def specimen_dir(name: str = SPECIMEN) -> pathlib.Path:
     """Where the specimen tree keeps `name`.
 
     `$WISH_SPECIMENS` then `~/wish-specimens`, the same rule
-    `tools/specimens.py` uses, searched one level down because the tree is
+    `tools/registry/specimens.py` uses, searched one level down because the tree is
     grouped by title and port.
     """
     import os

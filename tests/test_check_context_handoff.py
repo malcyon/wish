@@ -155,9 +155,9 @@ def test_a_session_id_that_is_only_dots_makes_no_marker(tmp_path, monkeypatch):
 
 
 def test_the_sticky_directory_is_the_one_scratch_names(tmp_path, monkeypatch):
-    """The hook cannot import `tools.scratch` (the system interpreter has no
+    """The hook cannot import `tools.registry.scratch` (the system interpreter has no
     repository on its path), so nothing else keeps the two spellings equal."""
-    from tools import scratch
+    from tools.registry import scratch
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     mod = _module()
     ours = pathlib.Path(mod.sticky_path({"session_id": "abc"}))

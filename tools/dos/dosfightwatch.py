@@ -70,8 +70,8 @@ from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox, dosboxx  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 

@@ -65,7 +65,7 @@ sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec as gdos  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: Suffixes a DOS character record is stored under.  `.GUY` is Gateway's
 #: export, which reads through the Curse table (`dos_layout.shape_for`).
@@ -136,7 +136,7 @@ def specimen_tree() -> pathlib.Path | None:
     Every record in there says who made it and how, which is the only corpus
     on this machine that does -- `.claude/rules/testing.md`.
     """
-    from tools import specimens  # noqa: PLC0415
+    from tools.registry import specimens  # noqa: PLC0415
     root = pathlib.Path(specimens.tree_root())
     return root if root.is_dir() else None
 
@@ -164,7 +164,7 @@ def dos_record_roots() -> list[pathlib.Path]:
 
     **A scratch directory is not here and must not be** (#575).  It may vanish
     at any time, so records that live only there stop existing; a run whose records are evidence copies them into the
-    specimen tree with `tools/specimens.py add`.  Pass a scratch directory on
+    specimen tree with `tools/registry/specimens.py add`.  Pass a scratch directory on
     the command line to sweep one anyway.
     """
     roots = [specimen_tree(), archives(), played_game_dir()]

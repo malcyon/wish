@@ -584,7 +584,7 @@ ENGINE = _engine_save()
 needs_engine_save = pytest.mark.skipif(
     ENGINE is None,
     reason="needs por-c64/WISH-SPEC-ssb-d-converted-resave.D64; set "
-           "$WISH_SPECIMENS or see tools/specimens.py")
+           "$WISH_SPECIMENS or see tools/registry/specimens.py")
 
 
 @needs_engine_save
@@ -638,7 +638,7 @@ def ssb_parts():
     out of the editor overlay's own pointer table and this title puts the
     parts file at `$8E00`.
     """
-    gamedisks = pytest.importorskip("tools.gamedisks")
+    gamedisks = pytest.importorskip("tools.registry.gamedisks")
 
     from goldbox.iconparts import IconParts
 

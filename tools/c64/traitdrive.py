@@ -50,11 +50,11 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import find_disks  # noqa: E402
 from goldbox import c64_port, traits  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.absrefsweep import files  # noqa: E402
 from tools.c64.traitquery import TRAIT_SLOT, find_predicate, staging  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")

@@ -76,8 +76,8 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 

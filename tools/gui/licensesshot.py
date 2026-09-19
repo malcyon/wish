@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 from wish import licenses  # noqa: E402
 
 

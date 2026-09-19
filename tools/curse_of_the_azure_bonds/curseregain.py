@@ -42,7 +42,7 @@ once after a redraw, so the run photographs every press.  `--dry-run` stages
 into `--out/staged` and stops, for checking the poke without a slot.
 
 Output goes to `--out`, by default a scratch directory outside the repository.  **Copy anything to keep into
-`$WISH_SPECIMENS` with `tools/specimens.py add` before the slot goes down.**
+`$WISH_SPECIMENS` with `tools/registry/specimens.py add` before the slot goes down.**
 """
 
 from __future__ import annotations
@@ -58,9 +58,9 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64.dualclassagain import install  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: What to write at `SAVGAM<slot>.DAT+0xD51`.  The low byte is ANDed with the
 #: per-class bit table at `DS:0x3EAA` to decide which classes this school

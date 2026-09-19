@@ -17,7 +17,7 @@ from goldbox import layout
 from goldbox.d64 import D64
 from goldbox.layout import Confidence
 from goldbox.record import RECORD_SIZE, CharacterRecord
-from tools import gamedisks
+from tools.registry import gamedisks
 
 
 def load_specimens() -> dict[str, CharacterRecord]:

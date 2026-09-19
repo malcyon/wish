@@ -175,5 +175,5 @@ fixed by `#429 (tools/dos/dosshop.py stages its spoiled encumbrance after the
 load, so the engine never reads it)` -- which is what makes a right answer
 afterwards a recompute rather than our own staging surviving. Output goes
 under the temp directory, which may vanish (the old gitignored directory was lost twice): copy a run you
-mean to keep into `$WISH_SPECIMENS` with `tools/specimens.py add` before the
+mean to keep into `$WISH_SPECIMENS` with `tools/registry/specimens.py add` before the
 slot goes down.

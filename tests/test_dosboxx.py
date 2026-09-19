@@ -455,8 +455,8 @@ def test_the_three_pools_bands_never_overlap():
     of a session he started by hand. Pinned here so that re-space cannot
     happen quietly.
     """
-    from tools import instance
     from tools.dos import dosbox
+    from tools.registry import instance
 
     vice_band, plain_band, x_band = _band(instance), _band(dosbox), _band(dosboxx)
     assert not set(vice_band) & set(plain_band)

@@ -64,14 +64,14 @@ left a directory-shaped specimen under `por-c64` hashed by nothing
 (`#450 (A directory-shaped specimen under por-c64 is invisible to
 specimens.py check, so eight files in the tree are never verified)`).
 
-    tools/specimens.py add dos gnomf1 \\
+    tools/registry/specimens.py add dos gnomf1 \\
         DIR/halfelf-GNOMF1.CHA DIR/halfelf-GNOMF1.SPC \\
         --title "Pool of Radiance" --issue "#84 (...)" \\
         --made-by "tools/dos/dosgnome.py, driven under DOSBox from character creation" \\
         --what "Rolled a gnome fighter in the game's own creation screens"
-    tools/specimens.py check
-    tools/specimens.py list
-    tools/specimens.py repair <name> --note "..."
+    tools/registry/specimens.py check
+    tools/registry/specimens.py list
+    tools/registry/specimens.py repair <name> --note "..."
 
 `add` only copies -- it never moves or deletes a source, and it never
 overwrites an existing specimen.  If a specimen needs correcting, that is a
@@ -99,7 +99,7 @@ import stat
 import sys
 import tomllib
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 PROVENANCE_NAME = "provenance.toml"
@@ -148,10 +148,10 @@ editing session.
 **Opening one in Gold Box Companion, or in Wish's own character editor, and
 saving costs the whole reason it is here** -- the file would look exactly like
 a specimen while no longer being one, and nothing outside `provenance.toml`
-would say so. `tools/specimens.py check` catches a changed file, but only if
+would say so. `tools/registry/specimens.py check` catches a changed file, but only if
 somebody runs it.
 
-If you want to look at what is here: `tools/specimens.py list` describes every
+If you want to look at what is here: `tools/registry/specimens.py list` describes every
 specimen without touching one.
 
 If you played a character you want kept safe, save it somewhere else. This

@@ -24,7 +24,7 @@ recording which ones move it.
 **The compass is clockwise from north**: 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW,
 7 W, 8 NW.  A square that can be left in at least one direction is not a trap.
 
-Captures go to the temp directory (`tools/scratch.py`).  Nothing is
+Captures go to the temp directory (`tools/registry/scratch.py`).  Nothing is
 written to the player's disks: `stage_disks` copies the sides into the slot
 and `Session.attach` refuses a path outside it.  The pool owns the emulator --
 claim, launch, tear down.
@@ -44,8 +44,8 @@ sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 

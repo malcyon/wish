@@ -30,7 +30,7 @@ import sys
 from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 
 def montage(paths: list[pathlib.Path], rect: tuple[int, int, int, int] | None,

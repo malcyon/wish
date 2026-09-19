@@ -24,7 +24,7 @@ from goldbox.items import (  # noqa: E402
     ItemType,
     load_item_names,
 )
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 OUT = Path(__file__).resolve().parent.parent.parent / "docs" / "85-item-tables.md"
 

@@ -56,7 +56,7 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import icons  # noqa: E402
 from goldbox.dos_savegame import dax_blocks  # noqa: E402
 from goldbox.iconparts import CELLS_PER_POSE, SPACE, IconParts  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: A block's pixels start here.  Byte 0 is the row count and byte 2 the width
 #: in fours; `tools/icons/portraitshot.py` fitted the 17 against every `HEAD`,

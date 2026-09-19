@@ -72,7 +72,7 @@ _DRAWERS = (("coab-amiga", amiga_port.CURSE_DELTAS, ".dat"),
 
 def _verified(where: pathlib.Path) -> None:
     """Fail if a specimen no longer hashes to what its manifest recorded."""
-    from tools import specimens
+    from tools.registry import specimens
 
     prov = where / "provenance.toml"
     if not prov.is_file():
@@ -82,12 +82,12 @@ def _verified(where: pathlib.Path) -> None:
         path = where / filename
         if not path.is_file():
             pytest.fail(f"{where.name}: {filename} is missing; "
-                        f"run tools/specimens.py check")
+                        f"run tools/registry/specimens.py check")
         actual = specimens.sha256_file(path)
         if actual != expected:
             pytest.fail(f"{where.name}: {filename} has changed -- recorded "
                         f"{expected[:12]}, now {actual[:12]}; it is no longer "
-                        f"evidence. Run tools/specimens.py check")
+                        f"evidence. Run tools/registry/specimens.py check")
 
 
 def engine_written_parties():
@@ -429,7 +429,7 @@ def test_every_engine_written_specimen_round_trips():
     corpus = engine_written_parties()
     if not corpus:
         pytest.skip("no Amiga Curse or Silver Blades specimens; "
-                    "see tools/specimens.py and $WISH_SPECIMENS")
+                    "see tools/registry/specimens.py and $WISH_SPECIMENS")
     for label, char in corpus:
         _round_trip(label, char)
 
@@ -531,7 +531,7 @@ def test_the_engine_agrees_with_the_encumbrance_this_writer_computes():
     """
     root = specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     where = root / "coab-amiga" / "WISH-SPEC-coab-amiga-resave"
     if not where.is_dir():
         pytest.skip("needs WISH-SPEC-coab-amiga-resave")

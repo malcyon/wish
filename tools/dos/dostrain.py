@@ -45,7 +45,7 @@ trains whoever is highlighted and `y` accepts.
         '@End' t '~5' y '~7' s '~2' f '~7'
 
 Output goes under the temp directory, never into the repository.  **Copy anything worth
-keeping into `$WISH_SPECIMENS` with `tools/specimens.py add` before the slot
+keeping into `$WISH_SPECIMENS` with `tools/registry/specimens.py add` before the slot
 goes down.**
 """
 
@@ -64,10 +64,10 @@ sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_savegame as _sav  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.dos.dosparty import wipe_roster  # noqa: E402
 from tools.dos.dostrainprobe import install  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 
 def snapshot(session: dosbox.Session, out: pathlib.Path, tag: str) -> None:

@@ -443,7 +443,7 @@ def test_silver_blades_head_ten_wins_for_silver_blades_and_only_silver_blades():
 
 def _title_dos_game(title: str) -> pathlib.Path:
     dosicontitles = pytest.importorskip("tools.icons.dosicontitles")
-    gamedisks = pytest.importorskip("tools.gamedisks")
+    gamedisks = pytest.importorskip("tools.registry.gamedisks")
     root = gamedisks.find("dos-archives")
     if root is None or not root.is_dir():
         pytest.skip("needs the DOS archives; set $FR_ARCHIVES")

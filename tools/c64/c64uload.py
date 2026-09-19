@@ -97,8 +97,8 @@ import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from tools import gamedisks  # noqa: E402
 from tools.c64.c64urest import find_host, first_prg, screen_text  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 DEFAULT_PORT = 80
 

@@ -41,9 +41,9 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port, savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks  # noqa: E402
 from tools.c64 import d6502  # noqa: E402
 from tools.c64.session import stage_writable  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: Where the record keeps it.  `goldbox/layout.py`'s `infravision`.
 INFRAVISION = 0x0D5
@@ -51,7 +51,7 @@ INFRAVISION = 0x0D5
 #: Where the race code lives, for the report's own lookup.
 RACE = 0x072
 
-#: Per title: the disk-set key `tools/gamedisks.py` knows it by, the file the
+#: Per title: the disk-set key `tools/registry/gamedisks.py` knows it by, the file the
 #: character generator is in, the address the generator's table is indexed
 #: from, and the address of the instruction that reads it.  Both addresses are
 #: **as the overlay runs**, which is `$0800` whatever the file header says
@@ -81,7 +81,7 @@ def race_table(key: str = "pool-of-radiance") -> list[int]:
     disks_key, image, name, table, _ = GENERATORS[key]
     where = gamedisks.find(disks_key)
     if where is None:
-        raise SystemExit(f"no disks for {disks_key}; see tools/gamedisks.py")
+        raise SystemExit(f"no disks for {disks_key}; see tools/registry/gamedisks.py")
     payload = _overlay(pathlib.Path(where), image, name)
     at = table - OVERLAY_BASE
     return list(payload[at + 1:at + 8])

@@ -118,7 +118,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where the working character record sits while `GEN` runs.  `#18`'s own
 #: census fixed it: `GEN $151D CMP $7CC9,X` is the per-class level array at

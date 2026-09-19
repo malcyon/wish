@@ -33,7 +33,7 @@ from gamedata import curse_dir, disk_dir
 
 from goldbox.d64 import D64, load_payload
 from goldbox.spells import load_spell_names, spellbook_bytes
-from tools import gamedisks
+from tools.registry import gamedisks
 
 # --- the STING negative ------------------------------------------------------
 

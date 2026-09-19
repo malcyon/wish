@@ -49,7 +49,7 @@ from PyQt6.QtGui import (  # noqa: E402
     QPen,
 )
 
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 from ui import icons  # noqa: E402
 from ui.iconpaint import draw_icon  # noqa: E402
 

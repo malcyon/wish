@@ -49,9 +49,9 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 
-from tools import gamedisks  # noqa: E402
 from tools.amiga import amigadrive  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursewheel  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: Where the private repository is.  `tools/curse_of_the_azure_bonds/cursewheel.py` settled this name
 #: and the registry lookup for the DOS side; a second spelling of the same

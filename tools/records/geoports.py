@@ -61,8 +61,8 @@ from goldbox.geo import (  # noqa: E402
     WALLS_SOUTH_WEST,
     Geo,
 )
-from tools import gamedisks  # noqa: E402
 from tools.records.geoplausible import amiga_maps, c64_maps  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: The three titles this project maps, and the directory name the DOS release
 #: installs each under. `--all-dos-titles` widens the DOS side to whatever else

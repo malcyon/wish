@@ -61,8 +61,8 @@ from goldbox import dos_codec  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE as GAME  # noqa: E402
 from goldbox.d64 import D64, attach_load_address, split_load_address  # noqa: E402
 from goldbox.layout import NAME_SIZE  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: `LIBRARY` is resident at `$2C48` and `$375C` is the strength gate.
 STRENGTH_GATE = 0x375C

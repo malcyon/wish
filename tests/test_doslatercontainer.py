@@ -45,7 +45,7 @@ SOURCES = {
 def _c64_disk(name: str) -> pathlib.Path:
     root = specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = list((root / "por-c64").glob(f"WISH-SPEC-{name}.[dD]64"))
     if not found:
         pytest.skip(f"needs the C64 specimen WISH-SPEC-{name}")
@@ -79,7 +79,7 @@ def _later_containers(shape):
     as `(name, bytes)`, hand-built ones excluded by provenance."""
     root = specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     out = []
     for path in sorted((root / "por-dos").glob("WISH-SPEC-*/SAVGAM?.DAT")):
         data = path.read_bytes()

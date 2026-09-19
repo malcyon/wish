@@ -28,9 +28,9 @@ _ROOT = _TOOLS.parent
 sys.path.insert(0, str(_ROOT))
 from automap.paths import find_disks  # noqa: E402
 from goldbox import c64_port  # noqa: E402
-from tools import instance  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.session import HERE, Session, claim_slot, stage_writable  # noqa: E402
+from tools.registry import instance  # noqa: E402
 
 WALKS = f"{HERE}/walks"
 _disks = find_disks(c64_port.POOL_OF_RADIANCE)

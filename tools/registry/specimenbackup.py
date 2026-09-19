@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """How many copies of the specimen tree exist, and how to make one more.
 
-`tools/specimens.py` answers "are these still the bytes we recorded".  This
+`tools/registry/specimens.py` answers "are these still the bytes we recorded".  This
 answers the other question `#249 (Build a DOS party from creation and level it
 ourselves, so DOS measurements rest on records we watched being written)` step
 5 asks -- *somewhere durable to keep it* -- which is "how many places do these
@@ -10,10 +10,10 @@ directory goes".
 
 Three commands, none of which decides where a copy should live:
 
-    tools/specimenbackup.py audit --in DIR        # what already covers the tree
-    tools/specimenbackup.py audit --tar SNAP.tar.zst
-    tools/specimenbackup.py archive /somewhere/wish-specimens-2026-09-08.tar.gz
-    tools/specimenbackup.py verify /somewhere/wish-specimens-2026-09-08.tar.gz
+    tools/registry/specimenbackup.py audit --in DIR        # what already covers the tree
+    tools/registry/specimenbackup.py audit --tar SNAP.tar.zst
+    tools/registry/specimenbackup.py archive /somewhere/wish-specimens-2026-09-08.tar.gz
+    tools/registry/specimenbackup.py verify /somewhere/wish-specimens-2026-09-08.tar.gz
 
 **`audit` matches on content, never on a filename.**  A specimen's bytes
 routinely sit in the run directory they were copied out of under a different
@@ -51,10 +51,10 @@ import subprocess
 import sys
 import tarfile
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import specimens  # noqa: E402
+from tools.registry import specimens  # noqa: E402
 
 #: Suffixes `audit --tar` and `verify` know how to stream.  `.zst` is here
 #: because the hourly snapshot this machine took of its scratch directory was
@@ -336,7 +336,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
         return 1
     print(f"{result['specimens']} specimen(s), {result['files']} file(s), "
           f"{result['bytes']} bytes -> {result['dest']}")
-    print("check it with: tools/specimenbackup.py verify "
+    print("check it with: tools/registry/specimenbackup.py verify "
           f"{result['dest']}")
     return 0
 

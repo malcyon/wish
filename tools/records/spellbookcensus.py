@@ -27,7 +27,7 @@ sets it.
 The DOS half reuses `tools/dos/dostailcensus.py`'s finder, its roots -- the
 specimen tree, the archives and the played DOS directory -- and its exclusions
 (an emulator instance's staged tree, and records we wrote).  The C64 half
-reads every save disk `tools/gamedisks.py` finds plus the specimen tree; the
+reads every save disk `tools/registry/gamedisks.py` finds plus the specimen tree; the
 Amiga half reads the records out of the disk images through
 `tools/amiga/amigasaves.py` and `tools/amiga/amigarecords.py`.
 
@@ -62,15 +62,15 @@ from goldbox import (  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import (  # noqa: E402
-    gamedisks,
-)
 from tools.amiga import (  # noqa: E402
     amigarecords,
     amigasaves,
 )
 from tools.dos import (  # noqa: E402
     dostailcensus,
+)
+from tools.registry import (  # noqa: E402
+    gamedisks,
 )
 
 #: The C64 record's spellbook, both declared halves: seven bytes Pool of
@@ -290,7 +290,7 @@ def c64_rows(extra_disks=(), unreadable: list[str] | None = None):
 
 def _specimen_root():
     try:
-        from tools import specimens
+        from tools.registry import specimens
     except Exception:                                    # pragma: no cover
         return None
     root = specimens.tree_root()

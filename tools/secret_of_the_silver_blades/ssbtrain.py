@@ -109,7 +109,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where the working character record sits while `GEN` runs.  `$11D8` reads
 #: the race at `$7C72` and the constitution at `$7C18` and writes `$7C9A,X`,

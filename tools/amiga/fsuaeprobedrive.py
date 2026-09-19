@@ -26,8 +26,8 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from tools import scratch  # noqa: E402
 from tools.amiga.fsuaegdbprobe import Gdb  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 

@@ -43,8 +43,8 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import gamedisks  # noqa: E402
 from tools.c64 import absrefsweep  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: The record's two ability arrays, and the seven scores in the order both
 #: hold them -- `GEN $1E9C` copies `0x065`-`0x070` straight onto

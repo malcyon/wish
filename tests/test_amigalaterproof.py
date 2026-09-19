@@ -174,7 +174,7 @@ def test_the_curse_engine_resave_leaves_only_combat_figure_outside_the_lists():
     """
     root = specimen_root()
     if root is None:
-        pytest.skip("no $WISH_SPECIMENS; see tools/specimens.py")
+        pytest.skip("no $WISH_SPECIMENS; see tools/registry/specimens.py")
     source = (root / "coab-c64" /
               "WISH-SPEC-curse-52-dialog-converted-resave.D64")
     theirs_path = (root / "coab-amiga" /

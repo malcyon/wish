@@ -46,9 +46,9 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import scratch  # noqa: E402
 from tools.c64 import savecheck as V  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: `MON_CMD_CHECKPOINT_GET`.  `automap/vice.py` sets, deletes and lists
 #: checkpoints but never asks one for its hit count, which is the whole of

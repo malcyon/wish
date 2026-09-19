@@ -160,7 +160,7 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
     disagreement is about -- ten paladins carrying id 8 across Curse and
     Silver Blades, and six rangers carrying 134 or 105.
     """
-    from tools import specimens
+    from tools.registry import specimens
 
     root = specimen_root()
     checked = carriers = 0
@@ -181,7 +181,7 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
             actual = specimens.sha256_file(folder / filename)
             assert actual == expected, (
                 f"{folder.name}/{filename} has changed -- recorded "
-                f"{expected[:12]}, now {actual[:12]}; run tools/specimens.py "
+                f"{expected[:12]}, now {actual[:12]}; run tools/registry/specimens.py "
                 f"check")
         for path in records:
             char = dos_codec.read_character(path)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""`tools/gamedisks.py`, the one registry #212 asked for.
+"""`tools/registry/gamedisks.py`, the one registry #212 asked for.
 
 Two layers, and the point of the module is their precedence: `$<env>` wins
 outright and is taken whole, and `gamedisks.yaml` -- gitignored, one machine's
@@ -17,7 +17,7 @@ import pathlib
 import pytest
 import yaml
 
-from tools import gamedisks
+from tools.registry import gamedisks
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 SHIPPED_PACKAGES = ("automap", "editor", "goldbox", "wish", "ui")
@@ -302,7 +302,7 @@ def test_nothing_shipped_imports_this_module():
     get a silent nothing on a player's machine -- the worst shape a lookup can
     fail in. Checked by AST, the way `test_wish.py`'s transport check is: a
     root module name is not enough here, since the import that matters is
-    `from tools import gamedisks`, not a bare `tools`.
+    `from tools.registry import gamedisks`, not a bare `tools`.
     """
     offenders = []
     for package in SHIPPED_PACKAGES:
@@ -316,15 +316,15 @@ def test_nothing_shipped_imports_this_module():
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        if alias.name in ("gamedisks", "tools.gamedisks"):
+                        if alias.name in ("gamedisks", "tools.registry.gamedisks"):
                             offenders.append((path, alias.name))
                 elif isinstance(node, ast.ImportFrom):
-                    if node.module == "tools.gamedisks":
+                    if node.module == "tools.registry.gamedisks":
                         offenders.append((path, node.module))
-                    elif node.module == "tools":
+                    elif node.module in ("tools", "tools.registry"):
                         for alias in node.names:
                             if alias.name == "gamedisks":
-                                offenders.append((path, "tools.gamedisks"))
+                                offenders.append((path, "tools.registry.gamedisks"))
     assert offenders == []
 
 

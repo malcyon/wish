@@ -102,7 +102,7 @@ def roots(extra: list[str] | None = None) -> list[pathlib.Path]:
     **The scratch directory is not one of them** (#575).  A run's output there
     may vanish at any time, which is the reason this sweep gets written down
     rather than re-typed; a container that is evidence goes into the specimen
-    tree with `tools/specimens.py add`.  Name a directory on the command line to sweep one anyway.
+    tree with `tools/registry/specimens.py add`.  Name a directory on the command line to sweep one anyway.
     """
     if extra:
         repo = pathlib.Path(__file__).resolve().parent.parent.parent

@@ -178,7 +178,7 @@ def test_a_write_is_told_from_a_read():
 def _executable(name: str) -> Executable:
     """One later Amiga title's executable off whichever disk carries it."""
     from goldbox.amiga_adf import AmigaDisk
-    from tools import gamedisks
+    from tools.registry import gamedisks
     want = TITLES[name]["disk"]
     for root in gamedisks.candidates("amiga"):
         if not root.is_dir():
@@ -285,8 +285,8 @@ def _later_savegames(converted: bool = False) -> list[tuple[str, bytes]]:
     """
     from tests.gamedata import specimen_root
     from tests.test_amigalaterwrite import _DRAWERS, OURS, _verified
-    from tools import gamedisks
     from tools.amiga import amigarecords
+    from tools.registry import gamedisks
     out: list[tuple[str, bytes]] = []
     if not converted:
         for _, volume, name, data, what in amigarecords.specimens(

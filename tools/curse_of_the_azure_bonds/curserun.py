@@ -123,7 +123,7 @@ def stage(slot, disks: str, save: str = "") -> str:
     target = here / "SIDE0.D64"
     if save:
         # A specimen out of `$WISH_SPECIMENS` is read-only by design
-        # (`tools/specimens.py` makes it so).  Staged unchanged, that gives
+        # (`tools/registry/specimens.py` makes it so).  Staged unchanged, that gives
         # the game a write-protected save disk, and nothing says so: the run
         # boots, the party loads, and every write the game makes is silently
         # refused.  A driven `REMOVE CHARACTER FROM PARTY` went the whole way

@@ -140,7 +140,7 @@ SPECIMEN = "curse-408-regained-paladin"
 def _dos_specimen(name: str):
     """The DOS specimen folder, in whichever `*-dos` container it landed in.
 
-    `tools/specimens.py` files a specimen under a directory named for its
+    `tools/registry/specimens.py` files a specimen under a directory named for its
     *title*, so a Curse of the Azure Bonds one is `coab-dos/` and only Pool of
     Radiance's are under `por-dos/`; `tests.gamedata.have_specimen` assumes
     the latter and cannot see this one.  Globbing is what
@@ -157,7 +157,7 @@ def _specimen():
     where = _dos_specimen(SPECIMEN)
     if where is None:
         pytest.skip(f"needs $WISH_SPECIMENS/*-dos/WISH-SPEC-{SPECIMEN}; "
-                    f"see tools/specimens.py")
+                    f"see tools/registry/specimens.py")
     return where
 
 

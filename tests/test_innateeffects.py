@@ -51,7 +51,7 @@ from test_doslatertitles import _mask
 from goldbox import c64_codec, c64_port, dos_codec, dos_port, neutral
 from goldbox.d64 import D64
 from goldbox.savegame import load_save
-from tools import gamedisks
+from tools.registry import gamedisks
 
 CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
 SSB = dos_port.SECRET_OF_THE_SILVER_BLADES
@@ -211,7 +211,7 @@ def _c64_disk(name: str):
     """
     root = specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted(root.glob(f"*/WISH-SPEC-{name}.[dD]64"))
     if not found:
         pytest.skip(f"needs the C64 specimen WISH-SPEC-{name}")

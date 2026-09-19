@@ -53,10 +53,10 @@ except ImportError:                 # pragma: no cover - Windows
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: #233 (The test suite takes the emulator displays agents need, and eight
 #: slots is no longer enough): eight was too few for the agent count this
@@ -271,7 +271,7 @@ def launch_env(extra: dict[str, str], base: dict[str, str] | None = None) -> dic
     project builds ever puts one of `UNSAFE_DISPLAY_ENV` into `extra`.
 
     Both launch sites go through this rather than building
-    `dict(os.environ, **slot.env())` by hand: `tools/instance.py main()` and
+    `dict(os.environ, **slot.env())` by hand: `tools/registry/instance.py main()` and
     `tools/c64/session.py`'s `Session.launch()`.
     """
     env = dict(os.environ if base is None else base)
@@ -1061,7 +1061,7 @@ def main(argv: list[str] | None = None) -> int:
             """Make `SIGTERM` end this `finally` the way `SIGINT` already
             does, instead of the process dying with none of it run.
 
-            `#381 (A shell timeout wrapped around tools/instance.py claim
+            `#381 (A shell timeout wrapped around tools/registry/instance.py claim
             exits without stopping the VICE run it wraps)`: Python's own
             default action for `SIGTERM` is immediate termination with no
             Python-level cleanup at all -- no `finally`, no context manager

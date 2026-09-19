@@ -46,8 +46,8 @@ from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox import portraits as portrait_tables  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 

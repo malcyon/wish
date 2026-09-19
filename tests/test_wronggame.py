@@ -457,8 +457,8 @@ def _pages_on(where, patterns):
 
 def silver_dir():
     """Where Silver Blades' disks are, found the way `gamedata.disk_dir` finds
-    Pool of Radiance's -- `tools.gamedisks` is the suite's own registry."""
-    from tools import gamedisks
+    Pool of Radiance's -- `tools.registry.gamedisks` is the suite's own registry."""
+    from tools.registry import gamedisks
     return gamedisks.find("secret-of-the-silver-blades")
 
 
@@ -469,7 +469,7 @@ def _amiga_comspr(at: int = 5824) -> bytes | None:
     a byte-identical copy; either will do.
     """
     from goldbox.amiga_adf import AmigaDisk
-    from tools import gamedisks
+    from tools.registry import gamedisks
     for root in gamedisks.candidates("amiga"):
         if not root.is_dir():
             continue

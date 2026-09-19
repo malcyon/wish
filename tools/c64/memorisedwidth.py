@@ -39,8 +39,8 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox.c64_port import GAMES  # noqa: E402
-from tools import gamedisks  # noqa: E402
 from tools.c64.coldread import GEN_BASE, overlay, staging  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: The titles whose list this has been read for, in release order.
 MEASURED = ("pool-of-radiance", "curse-of-the-azure-bonds",

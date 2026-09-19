@@ -49,7 +49,7 @@ names, and nobody has ruled on whether it should offer Pool of Radiance's
 | Secret of the Silver Blades | 113 | 80 | 90 | 6, and all 90 after #497 |
 
 Nothing here needs an emulator or a save: it reads the overlays off the
-player's own disks through `tools/gamedisks.py`, and nothing it prints is
+player's own disks through `tools/registry/gamedisks.py`, and nothing it prints is
 committed.
 
 ## Naming an id, which is what `--compare` and `--spells` are for
@@ -133,9 +133,9 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port, spells, traits  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import gamedisks  # noqa: E402
 from tools.c64 import d6502  # noqa: E402
 from tools.c64.absrefsweep import disks, files, is_art  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: Where `LINKER` puts an overlay it dispatches to, used only to print a call
 #: site's address in the same coordinates `tools/c64/absrefsweep.py` prints.

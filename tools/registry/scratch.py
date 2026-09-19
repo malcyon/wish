@@ -1,6 +1,6 @@
 """Where a tool writes what it produces, and where what must outlive a reboot goes.
 
-    from tools import scratch
+    from tools.registry import scratch
 
     out = scratch.scratch_dir("dosbox", "shots")   # <tmp>/wish/dosbox/shots
     scratch.ensure(out)                            # only when about to write

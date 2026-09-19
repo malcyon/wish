@@ -35,7 +35,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: `(effect slot, id, owner, duration)`. The ids are all CONFIRMED names, and
 #: the owners are the three shapes the panel has to tell apart: a character in

@@ -44,8 +44,8 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 from automap import combat, live  # noqa: E402
 from automap.target import MemoryTarget, ViceTarget  # noqa: E402
 from automap.window import CombatCanvas  # noqa: E402
-from tools import scratch  # noqa: E402,F401  (shotwindow: side effect)
 from tools.gui import shotwindow  # noqa: E402,F401  (shotwindow: side effect)
+from tools.registry import scratch  # noqa: E402,F401  (shotwindow: side effect)
 
 
 def from_machine(port: int, host: str = "127.0.0.1"):

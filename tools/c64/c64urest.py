@@ -74,7 +74,7 @@ import urllib.request
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox.d64 import D64  # noqa: E402  (after the path fix-up)
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 DEFAULT_PORT = 80
 FTP_PORT = 21

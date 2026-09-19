@@ -39,9 +39,9 @@ nothing.  `--shop` picks the approach square and the facing out of the table
 below; nothing else about the save is touched, so a run on
 `WISH-SPEC-por-party-l1-intown` buys with the gold the engine rolled.
 
-Output goes under the temp directory (`tools/scratch.py`), which may vanish.
+Output goes under the temp directory (`tools/registry/scratch.py`), which may vanish.
 **Copy anything you mean to keep into `$WISH_SPECIMENS` with
-`tools/specimens.py add` before the slot goes down.**
+`tools/registry/specimens.py add` before the slot goes down.**
 """
 
 from __future__ import annotations
@@ -62,11 +62,11 @@ from automap import maps  # noqa: E402
 from goldbox import dos_codec  # noqa: E402
 from goldbox.dos_savegame import dax_block  # noqa: E402
 from goldbox.geo import Geo  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.dos.dosparty import wipe_roster  # noqa: E402
 from tools.dos.dostrain import Runner, collect, move_to, snapshot  # noqa: E402
 from tools.dos.dostrainprobe import install  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where a `ECL` script is loaded on the C64, `docs/140-loaded-files-cache.md`
 #: slot 8.  The DOS block carries two bytes in front of the same code, so its

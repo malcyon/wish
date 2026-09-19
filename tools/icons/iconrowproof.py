@@ -21,7 +21,7 @@ leg, and nothing of the weapon class.
         --stage DIR --control
 
 `--specimen` names a directory under the specimen tree
-(`tools/specimens.py`), `--from` a save folder anywhere; either is **copied**
+(`tools/registry/specimens.py`), `--from` a save folder anywhere; either is **copied**
 into `--stage` and only the copy is edited, because a specimen is evidence
 and this rewrites a field.  `--body` and `--head` are the DOS `icon_body` and
 `icon_head` to stage, and `--size small` or `--size large` picks which
@@ -68,8 +68,8 @@ from goldbox.iconparts import (  # noqa: E402
     c64_icon_tables,
     dos_icon_tables,
 )
-from tools import scratch  # noqa: E402
 from tools.icons import iconproposal as ip  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The three titles whose DOS-to-C64 conversion this can drive.  Pools of
 #: Darkness has no C64 port at all, and its combat art is a different
@@ -221,11 +221,11 @@ def source_folder(specimen: str | None, given: str | None) -> pathlib.Path:
         return pathlib.Path(given).expanduser()
     if not specimen:
         raise SystemExit("pass --specimen or --from")
-    from tools import specimens
+    from tools.registry import specimens
 
     where = specimens.tree_root() / "por-dos" / f"WISH-SPEC-{specimen}"
     if not where.is_dir():
-        raise SystemExit(f"no specimen at {where}; tools/specimens.py list")
+        raise SystemExit(f"no specimen at {where}; tools/registry/specimens.py list")
     return where
 
 

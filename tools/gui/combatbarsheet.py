@@ -91,7 +91,7 @@ from automap.window import (  # noqa: E402
     PAPER,
     CombatCanvas,
 )
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The cells the canvas paints, smallest to largest. 12 is `combat.CELL_MIN`,
 #: the window's minimum; 30 is what `cell_for` gives every fight seen so far;

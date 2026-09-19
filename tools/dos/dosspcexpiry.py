@@ -42,8 +42,8 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import dos_codec as pordos  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox, dosboxx  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where a DOS character record keeps the far pointer to its first effect node.
 EFFECT_HEAD = 0x7F
@@ -376,7 +376,7 @@ def cmd_ready(args: argparse.Namespace) -> int:
             # item-granted `.SPC` this project has ever had that way -- the
             # incident behind `.claude/rules/testing.md`'s "A specimen dies
             # with the emulator slot that made it".  The scratch directory is a staging
-            # post, not a home: `tools/specimens.py add` is what makes it
+            # post, not a home: `tools/registry/specimens.py add` is what makes it
             # keep.
             if args.save:
                 saved = out / "save"

@@ -42,7 +42,7 @@ from PyQt6.QtWidgets import (  # noqa: E402
 )
 
 from editor.ui_convert import Ui_ConvertDialog  # noqa: E402
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Set by `main`, before anything draws.
 app = None

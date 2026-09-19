@@ -55,7 +55,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import dos_port  # noqa: E402
 from goldbox.dos_savegame import DaxError, dax_index, dax_unpack  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: The four DOS Gold Box titles this project reads, and the directory name the
 #: archives give each.  Keyed by `goldbox.dos_port` shape key so the record

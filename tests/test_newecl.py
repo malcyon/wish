@@ -39,7 +39,7 @@ import wish  # noqa: F401
 from automap import c64, fasttravel
 from automap.actions import KEY_FETCH, KEY_WAIT, NEWECL_TAIL
 from goldbox import c64_port
-from tools import gamedisks
+from tools.registry import gamedisks
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 

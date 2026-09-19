@@ -58,8 +58,8 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The game directory inside the player's archives.  `dosbox.find_game` looks
 #: for `START.EXE` and this title ships `STARTUP.EXE` and a `START.BAT`, so

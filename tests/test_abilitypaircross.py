@@ -48,7 +48,7 @@ CONTAINER = c64_save.CURSE_OF_THE_AZURE_BONDS
 def _dos_crossed_specimen():
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     where = (root / "coab-dos" /
              "WISH-SPEC-curse-401-crossed-ability-pairs")
     if not where.is_dir():
@@ -59,7 +59,7 @@ def _dos_crossed_specimen():
 def _c64_crossed_specimen():
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     where = (root / "coab-c64" /
              "WISH-SPEC-curse-367-crossed-abilities-resave.D64")
     if not where.is_file():

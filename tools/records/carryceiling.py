@@ -65,7 +65,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox import c64_port, dos_codec, dos_port  # noqa: E402
 from goldbox import items as c64items  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: Item record byte `+15`, bit 7: "readying this dispatches a power handler".
 #: `CAMP $10B5` is `LDA $6D8B / BPL`, so an item without it is refused with
@@ -194,7 +194,7 @@ def _specimen_grades() -> dict[str, str]:
     """
     out: dict[str, str] = {}
     try:
-        from tools import specimens
+        from tools.registry import specimens
     except Exception:                                    # pragma: no cover
         return out
     try:
@@ -348,7 +348,7 @@ def c64_rows(specimen_grades: dict[str, str], problems: list[str],
 
 def _specimen_root():
     try:
-        from tools import specimens
+        from tools.registry import specimens
     except Exception:                                    # pragma: no cover
         return None
     root = specimens.tree_root()

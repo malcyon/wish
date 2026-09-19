@@ -65,7 +65,7 @@ def advanced_save() -> bytes:
             f"needs a specimen, not yet made, at {ADVANCED}: a save with six "
             "City Hall commissions paid and the endgame quests offered -- "
             "only a session played that far and saved there can produce it, "
-            "and `tools/specimens.py add` then files it under this name")
+            "and `tools/registry/specimens.py add` then files it under this name")
     from goldbox.d64 import load_payload
     return load_payload(str(ADVANCED), b"SAVEDGAME0")
 

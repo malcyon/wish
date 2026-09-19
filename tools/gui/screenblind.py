@@ -36,8 +36,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap import screen as _screen  # noqa: E402
 from automap.vice import CMD_BANKS_AVAILABLE  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 
 def banks(mon) -> dict[str, int]:

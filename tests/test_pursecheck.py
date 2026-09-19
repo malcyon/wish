@@ -67,11 +67,11 @@ def _specimen_disk(name: str) -> pathlib.Path:
     ones are a `.D64` beside a `.provenance.toml`, so the hash check is done
     here -- a specimen somebody has edited is no longer evidence.
     """
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py and "
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py and "
                     "$WISH_SPECIMENS")
     found = sorted(root.glob(f"*-c64/WISH-SPEC-{name}.[dD]64"))
     if not found:
@@ -86,7 +86,7 @@ def _specimen_disk(name: str) -> pathlib.Path:
         if actual != expected:
             pytest.fail(f"WISH-SPEC-{name}: {filename} has changed -- recorded "
                         f"{expected[:12]}, now {actual[:12]}; it is no longer "
-                        f"evidence. Run tools/specimens.py check")
+                        f"evidence. Run tools/registry/specimens.py check")
     return disk
 
 

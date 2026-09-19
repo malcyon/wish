@@ -37,7 +37,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import portraits  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 
 def _dos_game(given: str | None) -> pathlib.Path | None:

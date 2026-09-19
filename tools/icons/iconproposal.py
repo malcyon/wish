@@ -85,9 +85,9 @@ from goldbox.iconparts import (  # noqa: E402
     dos_icon_tables,
     dos_part_colours,
 )
-from tools import gamedisks  # noqa: E402
 from tools.icons import dosicontitles as dit  # noqa: E402
 from tools.icons import iconcorrespond as ic  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 # -- the proposal -------------------------------------------------------------
 #
@@ -329,7 +329,7 @@ C64_ICON_FILES = (PARTS_FILE, EDITOR_FILE, icons.ICON_CHARSET_FILE)
 def title_c64_disk(title: str, given: str | None) -> pathlib.Path | None:
     """The side of `title`'s own C64 disk set that carries the icon art.
 
-    `--disk` wins; otherwise the folder comes from `tools/gamedisks.py` --
+    `--disk` wins; otherwise the folder comes from `tools/registry/gamedisks.py` --
     `$POR_DISKS`, `$COAB_DISKS`, `$SSB_DISKS`, then `gamedisks.yaml` -- the
     same resolution `tools/icons/iconredrawn.py` uses for `SILVER-1.D64`, and the
     file name inside it is not guessed: every side matching the title's own

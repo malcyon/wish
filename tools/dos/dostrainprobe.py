@@ -40,9 +40,9 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.dos.dosparty import wipe_roster  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where Curse and Silver Blades keep the training hall's maximum level.  A
 #: word, little-endian, and zero everywhere a hall is not.

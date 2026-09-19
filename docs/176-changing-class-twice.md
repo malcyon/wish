@@ -194,7 +194,7 @@ PAINE -- hold exactly one each.
 
 Both parties were rescued into `$WISH_SPECIMENS` before the run directories
 could be lost, since scratch is not kept.
-`tools/specimens.py check` passes on 37 specimens.
+`tools/registry/specimens.py check` passes on 37 specimens.
 
 | specimen | what |
 |---|---|

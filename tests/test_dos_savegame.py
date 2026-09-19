@@ -948,13 +948,13 @@ def _played():
     """
     from gamedata import specimen_root
 
-    from tools import specimens
+    from tools.registry import specimens
     root = specimen_root()
     where = root / "pod-dos" if root is not None else None
     dirs = sorted(where.glob("WISH-SPEC-*")) if where and where.is_dir() else []
     if not dirs:
         pytest.skip("needs the Pools of Darkness specimens a tools/dos/dospod.py "
-                    "drive left; set WISH_SPECIMENS, or see tools/specimens.py "
+                    "drive left; set WISH_SPECIMENS, or see tools/registry/specimens.py "
                     "for the pod-dos tree")
     out = {}
     for specimen_dir in dirs:
@@ -964,7 +964,7 @@ def _played():
             if specimens.sha256_file(path) != recorded.get(path.name):
                 pytest.fail(f"{path} no longer hashes to what its "
                             f"provenance.toml recorded, so it is not evidence; "
-                            f"run tools/specimens.py check")
+                            f"run tools/registry/specimens.py check")
             data = path.read_bytes()
             assert len(data) == sg.SAVE_POOLS_OF_DARKNESS.size, path
             out.setdefault(data, path)

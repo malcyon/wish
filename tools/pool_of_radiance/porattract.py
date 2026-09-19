@@ -19,7 +19,7 @@ for long enough to call it a stall.
 
 One JSON line per sample, written as it is taken, because a run that ends in a
 stall ends by being killed and nothing would be written at the end.  The slot
-comes from `tools/instance.py`, the disk is copied into it, and teardown kills
+comes from `tools/registry/instance.py`, the disk is copied into it, and teardown kills
 only the process group this slot started.
 """
 
@@ -35,8 +35,8 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from tools import gamedisks, instance  # noqa: E402
 from tools.c64.session import Session  # noqa: E402
+from tools.registry import gamedisks, instance  # noqa: E402
 
 #: The jiffy clock, and the screen.  `$00A0`-`$00A2` stops for the length of
 #: every KERNAL serial load, so a stall is only a stall when the screen has

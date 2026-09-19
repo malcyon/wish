@@ -588,7 +588,7 @@ def _item_granted_specimen():
     import sys
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-    from tools import specimens
+    from tools.registry import specimens
 
     for entry in specimens.list_specimens():
         if entry.get("name") == "por-item-granted":
@@ -1229,7 +1229,7 @@ def test_field_83_87s_third_byte_splits_on_who_wrote_the_record():
     share = dos_port.FIELDS_BY_NAME["field_83_87"].offset + 2
     ours = {k: v[share] for k, v in
             _clean_records(CLEAN_PARTY, CLEAN_ROLLS, CLEAN_TRAINED).items()}
-    assert len(ours) >= 26, "the clean corpus shrank; see tools/specimens.py"
+    assert len(ours) >= 26, "the clean corpus shrank; see tools/registry/specimens.py"
     assert set(ours.values()) == {0}, \
         {k: v for k, v in ours.items() if v != 0}
 

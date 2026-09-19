@@ -63,8 +63,8 @@ from goldbox import areas, dos_codec, world_state  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 disks.  Read only, and found the way every
 #: other tool here finds them.

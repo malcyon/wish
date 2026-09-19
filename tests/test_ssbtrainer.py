@@ -56,11 +56,11 @@ def _specimen_disk(name: str):
     under `ssb-c64`, so the search is a glob the way `tools/secret_of_the_silver_blades/ssbtrainerinputs.
     specimen_party` does it.
     """
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted(root.rglob(f"WISH-SPEC-{name}.[dD]64"))
     if not found:
         pytest.skip(f"needs specimen WISH-SPEC-{name}")
@@ -70,7 +70,7 @@ def _specimen_disk(name: str):
     actual = specimens.sha256_file(path)
     if recorded.get(path.name) not in (None, actual):
         pytest.fail(f"WISH-SPEC-{name}: {path.name} has changed since it was "
-                    f"recorded; run tools/specimens.py check")
+                    f"recorded; run tools/registry/specimens.py check")
     return path
 
 

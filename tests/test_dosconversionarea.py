@@ -54,7 +54,7 @@ def _save_dir():
     Repeated here rather than imported: a test module's private helpers are
     not another agent's to depend on.
     """
-    from tools import gamedisks
+    from tools.registry import gamedisks
     for root in gamedisks.candidates("dos-archives"):
         try:
             if not root.is_dir():

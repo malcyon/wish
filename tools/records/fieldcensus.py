@@ -49,8 +49,8 @@ from goldbox import dos_codec  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
-from tools import gamedisks  # noqa: E402
 from tools.records.thac0census import C64_LEVEL_FIELDS  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: Save disks carry a party; every other `.d64` on the pile is a game side.
 SAVE_DISK_PREFIXES = ("PORSAVE", "NEWSAVE", "TEST_DOS")

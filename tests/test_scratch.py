@@ -1,4 +1,4 @@
-"""`tools/scratch.py`: where scratch and the reboot-proof cache live, and that
+"""`tools/registry/scratch.py`: where scratch and the reboot-proof cache live, and that
 asking for either creates nothing."""
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import pathlib
 
 import pytest
 
-from tools import scratch
+from tools.registry import scratch
 
 
 def test_scratch_is_one_directory_per_tool_under_the_temp_directory(

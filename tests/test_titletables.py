@@ -36,7 +36,7 @@ from goldbox import c64_port, items, levels, spells
 from goldbox.d64 import D64
 from tests import gamedata
 from tests.test_silverblades import ssb_dir
-from tools import gamedisks
+from tools.registry import gamedisks
 
 POOL = c64_port.POOL_OF_RADIANCE
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS

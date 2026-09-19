@@ -31,7 +31,7 @@ thing DOSBox will not give us is a frame counter, so a run is reproducible in
 what it produces, not cycle-exact in how long it takes.
 
 **Isolation.** Every instance owns its X display, its game tree, its DOSBox
-config and its capture directory, all under `inst/<n>/` in the `dosbox` scratch directory (`tools/scratch.py`), and the
+config and its capture directory, all under `inst/<n>/` in the `dosbox` scratch directory (`tools/registry/scratch.py`), and the
 slot is held by an `fcntl.flock` so a crashed run frees it with no cleanup --
 the lease pattern `docs/123-parallel-sessions.md` chose for the VICE pool.  The
 player's archives are copied, never opened for writing, and nothing here reads
@@ -69,7 +69,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
-from tools import gamedisks, scratch  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 WORK = scratch.scratch_dir("dosbox")
 INST = WORK / "inst"

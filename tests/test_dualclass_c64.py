@@ -166,11 +166,11 @@ def test_dual_class_pair_is_a_read_target_not_only_a_drop():
 # --- the specimen: PHILIPPE, watched dual-classing at Curse's own hall -----
 
 def _curse_dual_classed_disk():
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted((root / "por-c64").glob(
         "WISH-SPEC-curse-dual-classed.[dD]64"))
     if not found:
@@ -181,7 +181,7 @@ def _curse_dual_classed_disk():
     actual = specimens.sha256_file(path)
     if recorded.get(path.name) not in (None, actual):
         pytest.fail(f"WISH-SPEC-curse-dual-classed: {path.name} has changed "
-                    f"since it was recorded; run tools/specimens.py check")
+                    f"since it was recorded; run tools/registry/specimens.py check")
     return path
 
 

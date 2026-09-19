@@ -58,7 +58,7 @@ from automap.area import (  # noqa: E402
     map_evidence,
 )
 from goldbox.geo import GEO_SIZE, Geo  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: The C64 titles whose disks `gamedisks.yaml` knows how to find, and the glob
 #: that picks out their game disks rather than a save disk sitting beside them.

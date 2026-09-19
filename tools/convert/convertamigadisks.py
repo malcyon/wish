@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import QApplication, QDialog, QWidget  # noqa: E402
 
 from editor import convert as convert_mod  # noqa: E402
 from editor.window import EditorBinding  # noqa: E402
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 SPECS = pathlib.Path(os.environ.get("WISH_SPECIMENS",
                                     os.path.expanduser("~/wish-specimens")))

@@ -47,9 +47,9 @@ from automap import screen as SCR  # noqa: E402
 from automap import vice as V  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox import world as W  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.pool_of_radiance import worldtiles as WT  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The outdoor save this boots when `--disk` names none: `#190`'s own resave,
 #: the first C64 saved game anybody made standing on the travel grid, written
@@ -212,11 +212,11 @@ def outdoor_save(given: str | None) -> pathlib.Path | None:
 
     `--disk` wins outright.  With no flag the specimen tree answers, so the
     tool finds the same disk on any machine that has run
-    `tools/specimens.py add`.
+    `tools/registry/specimens.py add`.
     """
     if given:
         return pathlib.Path(given).expanduser()
-    from tools import specimens
+    from tools.registry import specimens
 
     where = specimens.tree_root() / OUTDOOR_SPECIMEN
     return where if where.is_file() else None
@@ -228,7 +228,7 @@ def run(args) -> int:
         print(f"No outdoor save disk to boot. Pass --disk, or put "
               f"{OUTDOOR_SPECIMEN} in the specimen tree -- $WISH_SPECIMENS, "
               f"or ~/wish-specimens by default. tools/c64/c64outdoor.py makes "
-              f"one and tools/specimens.py add puts it there.", flush=True)
+              f"one and tools/registry/specimens.py add puts it there.", flush=True)
         return 1
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

@@ -53,7 +53,7 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The move keys, as PETSCII codes for the KERNAL buffer.  `I` is forward,
 #: `J` turns left, `K` turns right, `M` reverses.

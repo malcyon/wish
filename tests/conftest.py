@@ -77,7 +77,7 @@ assert hasattr(wish, "__path__"), (
 # `/data/agent-disks/<entry>`, which a machine with no registry has no reason to
 # have, so every lookup answers "not here" and those tests skip, as they always
 # have on a machine with no disks. A machine with the real file is untouched.
-from tools import gamedisks as _gamedisks  # noqa: E402
+from tools.registry import gamedisks as _gamedisks  # noqa: E402
 
 if not _gamedisks.REGISTRY.is_file():
     _gamedisks.REGISTRY = _gamedisks.EXAMPLE
@@ -322,7 +322,7 @@ def pytest_sessionfinish(session, exitstatus):
     line = (f"FAILED: {found} exists at the end of the session. The scratch "
             f"directory is deleted for good and nothing may recreate it; find "
             f"what wrote there and point it at a temp directory "
-            f"(tools/scratch.py).")
+            f"(tools/registry/scratch.py).")
     reporter = session.config.pluginmanager.get_plugin("terminalreporter")
     if reporter is not None:
         reporter.write_line(line, red=True)

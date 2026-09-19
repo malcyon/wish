@@ -35,9 +35,9 @@ PRG load address and knows nothing about squares or clocks.
 Where the files come from
 -------------------------
 * the C64 saves: `$WISH_SPECIMENS` then `~/wish-specimens`, `por-c64/`, the
-  same rule `tools/specimens.py` uses -- or any `.d64` named on the command
+  same rule `tools/registry/specimens.py` uses -- or any `.d64` named on the command
   line;
-* the Amiga disks: `tools/gamedisks.py`'s `amiga` entry, which is `$AMIGA_DISKS`
+* the Amiga disks: `tools/registry/gamedisks.py`'s `amiga` entry, which is `$AMIGA_DISKS`
   then the committed search list, unless `--data-disk` and `--game-disk` name
   images.  `$POR_DISKS` is the C64 game disks and holds no `.adf`, so it is
   not the lookup for this one.
@@ -243,7 +243,7 @@ def specimen_saves(root: pathlib.Path) -> list[pathlib.Path]:
 
 
 def specimen_root(named: str | None = None) -> pathlib.Path:
-    from tools import specimens
+    from tools.registry import specimens
 
     return pathlib.Path(named) if named else specimens.tree_root()
 
@@ -270,7 +270,7 @@ def amiga_files(data_disk: str | None, game_disk: str | None
     """`(ecl.dax, the shipped savgamA.dat)`, either of which may be `None`.
 
     Named images are read first and on their own; without them the search is
-    `tools/gamedisks.py`'s `amiga` entry, which is where every other tool here
+    `tools/registry/gamedisks.py`'s `amiga` entry, which is where every other tool here
     looks for an `.adf`.
     """
     named = []
@@ -280,8 +280,8 @@ def amiga_files(data_disk: str | None, game_disk: str | None
     if named:
         images = named
     else:
-        from tools import gamedisks
         from tools.amiga import amigasaves
+        from tools.registry import gamedisks
 
         if not gamedisks.candidates("amiga"):
             return None, None

@@ -11,7 +11,7 @@ A field the record cannot read prints as `<ErrorName>`.
 
 The disks default to the five `#142` compared (`NEWSAVE6`, `NEWSAVE5`,
 `NEWSAVE3`, `PORSAVE13`, `PORSAVE14`); pass others as `NAME.D64` arguments.
-They are looked for in `--disks`, else in the folder `tools/gamedisks.py`
+They are looked for in `--disks`, else in the folder `tools/registry/gamedisks.py`
 finds for `pool-of-radiance` (`$POR_DISKS` wins). Reads only.
 
     .venv/bin/python -m tools.c64.c64savespells [NAME.D64 ...]
@@ -26,7 +26,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 DEFAULT_DISKS = ("NEWSAVE6.D64", "NEWSAVE5.D64", "NEWSAVE3.D64",
                  "PORSAVE13.D64", "PORSAVE14.D64")
@@ -40,7 +40,7 @@ def main(argv=None) -> int:
                     help="images to list (default: the five #142 compared)")
     ap.add_argument("--disks", type=pathlib.Path,
                     help="folder of Pool of Radiance C64 images (default: "
-                         "tools/gamedisks.py's pool-of-radiance)")
+                         "tools/registry/gamedisks.py's pool-of-radiance)")
     args = ap.parse_args(argv)
 
     folder = args.disks or gamedisks.find("pool-of-radiance")

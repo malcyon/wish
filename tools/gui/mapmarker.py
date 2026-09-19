@@ -46,9 +46,9 @@ sys.path.insert(0, str(ROOT))
 
 from automap import actions  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.savecheck import Log, answer_bars  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 disks.  Read, never written -- the sides are
 #: copied into the slot and the game only ever sees the copies.

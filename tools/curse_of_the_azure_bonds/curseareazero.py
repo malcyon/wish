@@ -52,7 +52,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_save  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: Where Curse's `SAVEAZURE` payload loads, and how much of it this tool reads.
 #: The whole payload is 7424 bytes; the first page carries every word the

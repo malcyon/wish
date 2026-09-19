@@ -249,7 +249,7 @@ def _ladder_records():
             if path.stat().st_size == dos_port.RECORD_SIZE:
                 out.append(dos_codec.read_character(path))
     if not out:
-        pytest.skip("needs the ladder specimens; see tools/specimens.py")
+        pytest.skip("needs the ladder specimens; see tools/registry/specimens.py")
     return out
 
 
@@ -332,7 +332,7 @@ def test_a_fighter_1_arrives_with_the_zero_his_own_engine_leaves():
             assert rec.get("attack_level") == 0, (char.name, char.source)
             seen += 1
     if not seen:
-        pytest.skip("needs the level-one party; see tools/specimens.py")
+        pytest.skip("needs the level-one party; see tools/registry/specimens.py")
     assert seen >= 6, f"{seen} records of a fighter 1"
 
 

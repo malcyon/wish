@@ -17,7 +17,7 @@ from goldbox.spells import (  # noqa: E402
     SPELL_RESTORATION,
     load_spell_names,
 )
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 
 def default_disk() -> str:

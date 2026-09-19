@@ -72,8 +72,8 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import amiga_savegame, c64_port, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosdisk  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")

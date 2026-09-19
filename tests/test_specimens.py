@@ -1,4 +1,4 @@
-"""`tools/specimens.py`, the tree of DOS and C64 records this project watched
+"""`tools/registry/specimens.py`, the tree of DOS and C64 records this project watched
 being written (#249, #246).
 
 Every test here points `root=` at `tmp_path` rather than the real
@@ -21,7 +21,7 @@ import sys
 import pytest
 
 from goldbox.d64 import D64
-from tools import specimens
+from tools.registry import specimens
 
 
 def _unlock(root: pathlib.Path) -> None:

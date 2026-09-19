@@ -45,10 +45,10 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import (  # noqa: E402
+from tools.c64 import session as por  # noqa: E402
+from tools.registry import (  # noqa: E402
     gamedisks,
 )
-from tools.c64 import session as por  # noqa: E402
 from tools.secret_of_the_silver_blades import (  # noqa: E402
     ssbwarp,
 )

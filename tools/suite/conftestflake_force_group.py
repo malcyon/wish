@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tools import scratch
+from tools.registry import scratch
 
 
 @pytest.hookimpl(tryfirst=True)

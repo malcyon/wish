@@ -42,7 +42,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import dos_savegame as _sav  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.dos.dosbox import (  # noqa: E402
     BAR,
@@ -52,6 +51,7 @@ from tools.dos.dosbox import (  # noqa: E402
     claim,
     find_game,
 )
+from tools.registry import scratch  # noqa: E402
 
 #: Where a run's frames, log and saves land.  Under the temp directory, which is
 #: outside the repository, because a frame of the game is the game's own art.

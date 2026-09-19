@@ -184,7 +184,7 @@ def test_the_amiga_curse_engine_resave_keeps_attack_level_through_dual_class():
     """
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("no $WISH_SPECIMENS; see tools/specimens.py")
+        pytest.skip("no $WISH_SPECIMENS; see tools/registry/specimens.py")
     where = (root / "coab-amiga" /
              "WISH-SPEC-coab-amiga-converted-resave" / "savgamC.dat")
     if not where.is_file():

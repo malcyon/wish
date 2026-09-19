@@ -52,7 +52,7 @@ def screen_of(row24: str) -> Screen:
 
 class FakeSlot:
     """The handful of attributes `Session.__init__` and `.launch()` read off
-    a real `tools.instance.Slot`, minus the lease and the flock."""
+    a real `tools.registry.instance.Slot`, minus the lease and the flock."""
 
     def __init__(self, here):
         self.dir = here

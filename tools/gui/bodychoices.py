@@ -56,8 +56,8 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import amiga_dax, portraits  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.amiga import amigaportraitmenu as menu  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where the picture goes unless the caller says otherwise.
 OUT = scratch.scratch_dir("bodychoices") / "bodies.png"

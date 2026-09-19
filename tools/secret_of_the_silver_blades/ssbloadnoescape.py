@@ -21,7 +21,7 @@ Expected if the Escape is the cause: the `tail` checkpoint over
 Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbloadnoescape.py`. It takes no arguments,
 claims an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes dumps and `noesc.jsonl` under this tool's scratch directory
-(`tools/scratch.py`).
+(`tools/registry/scratch.py`).
 `ssbloadwatch.py` is the same boot with the loader watched from the party
 menu, and `ssbloadescape.py` adds one Escape.
 """
@@ -38,13 +38,13 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import (  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
+from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
+from tools.registry import (  # noqa: E402
     gamedisks,
     scratch,
     specimens,
 )
-from tools.c64 import session as S  # noqa: E402
-from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
 from tools.secret_of_the_silver_blades import (  # noqa: E402
     ssbwarp,
 )

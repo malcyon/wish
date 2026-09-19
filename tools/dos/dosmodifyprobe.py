@@ -48,8 +48,8 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_port  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox, dosparty  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The byte under test: the third of `field_83_87`, which the Curse
 #: decompilation calls `npcTreasureShareCount`.

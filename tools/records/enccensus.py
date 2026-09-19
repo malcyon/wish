@@ -20,7 +20,7 @@ the rule file rests on, and asks it of the whole machine:
   from, because a record nobody watched being written is not evidence about
   what the engine does.  A record that exists only in a scratch directory is in none
   of them: scratch is not a default root (#575), so a run whose records are evidence copies them into the
-  specimen tree with `tools/specimens.py add`.  `dos_rows(roots=[...])` still
+  specimen tree with `tools/registry/specimens.py add`.  `dos_rows(roots=[...])` still
   takes any directory a caller wants swept.
 * **the direction of the miss**, because `#323`'s standing hypothesis is that
   a training fee always leaves the stored number *above* the sum and an edit

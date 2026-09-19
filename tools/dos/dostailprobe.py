@@ -48,8 +48,8 @@ sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where a run's report and frames land.  Under the temp directory, never the
 #: repository, because a frame of the game is the game's own art.

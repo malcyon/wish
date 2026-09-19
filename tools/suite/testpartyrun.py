@@ -62,7 +62,6 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import SLOT_AREA_BASE, SLOT_STRIDE  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.c64addprobe import answer as answer_yn  # noqa: E402
 from tools.c64.c64nametable import character_files  # noqa: E402
@@ -73,6 +72,7 @@ from tools.c64.traitask import (  # noqa: E402
     open_items,
     toggle_item,
 )
+from tools.registry import scratch  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 

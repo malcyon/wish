@@ -46,7 +46,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox import areas, c64_port, dos_codec, dos_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 

@@ -43,8 +43,8 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap.paths import find_disks  # noqa: E402
-from tools import instance  # noqa: E402
 from tools.c64.session import Session  # noqa: E402
+from tools.registry import instance  # noqa: E402
 
 #: `MON_CMD_BANKS_AVAILABLE`.  `tools/areas/wallpins.py` carries the same constant
 #: and the same unpacking; this is the tool that says what the answer means.

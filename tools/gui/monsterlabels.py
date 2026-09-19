@@ -55,7 +55,7 @@ sys.path.insert(0, str(TOOLS.parent))
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.layout import RECORD_SIZE  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 TABLE_PATH = TOOLS / "gui" / "monsterlabels.yaml"
 

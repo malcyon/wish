@@ -57,9 +57,9 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import c64 as machines  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.curse_of_the_azure_bonds import curseload, curserun, cursewarp  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: The live square triple -- x, y, facing -- which is where Curse keeps the
 #: party while it is running.  `tools/curse_of_the_azure_bonds/cursewarp.py` established it for

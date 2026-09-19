@@ -24,8 +24,8 @@ import pytest
 # See the note in `tests/test_innateids.py`.
 pytest.importorskip("capstone")
 
-from tools import gamedisks  # noqa: E402
 from tools.icons import amigaicons  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: The sixteen-entry table both executables hold: a DOS pixel value's Amiga
 #: palette entry.  Read at `/Curse` `g0ee4` and `/Secret` `g2374`.

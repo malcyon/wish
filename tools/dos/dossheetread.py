@@ -51,8 +51,8 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The training hall's maximum level, at this file offset of
 #: `SAVGAM<slot>.DAT` in Pool of Radiance, Curse and Silver Blades alike

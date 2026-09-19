@@ -45,7 +45,7 @@ from PyQt6.QtWidgets import (  # noqa: E402
 )
 
 from automap import live, paths  # noqa: E402
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 from wish.session import Session  # noqa: E402
 from wish.window import MAP_TAB, WishWindow  # noqa: E402
 

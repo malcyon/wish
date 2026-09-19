@@ -43,7 +43,7 @@ from goldbox import c64_port, dos_codec, dos_port, layout  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0, SaveGame1  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 GAME = c64_port.SECRET_OF_THE_SILVER_BLADES
 SHIPPED_SIDE = "SILVER-6.D64"

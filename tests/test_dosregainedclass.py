@@ -47,11 +47,11 @@ def _specimen_root() -> pathlib.Path | None:
 
 def _c64_disk(name: str) -> pathlib.Path:
     """One flat C64 specimen disk, checked against its own recorded hash."""
-    from tools import specimens
+    from tools.registry import specimens
 
     root = _specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted(root.glob(f"*-c64/WISH-SPEC-{name}.[dD]64"))
     if not found:
         pytest.skip(f"needs specimen WISH-SPEC-{name}")
@@ -61,7 +61,7 @@ def _c64_disk(name: str) -> pathlib.Path:
     actual = specimens.sha256_file(path)
     if recorded.get(path.name) not in (None, actual):
         pytest.fail(f"WISH-SPEC-{name}: {path.name} has changed since it "
-                    f"was recorded; run tools/specimens.py check")
+                    f"was recorded; run tools/registry/specimens.py check")
     return path
 
 
@@ -83,7 +83,7 @@ def _mathew() -> dos_codec.DosCharacter:
     """MATHEW, the DOS engine's own regained dual-classed record."""
     root = _specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted(root.glob(
         "coab-dos/WISH-SPEC-curse-408-regained-paladin/CHRDATJ1.SAV"))
     if not found:

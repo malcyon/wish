@@ -49,8 +49,8 @@ from automap.paths import find_disks  # noqa: E402
 from automap.state import Automapper  # noqa: E402
 from automap.vice import Monitor  # noqa: E402
 from automap.window import AutomapBinding  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 from wish.ui_window import Ui_WishWindow  # noqa: E402
 
 

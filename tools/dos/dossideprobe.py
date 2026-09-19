@@ -41,9 +41,9 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_port as dl  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.dos.dosquickprobe import LADDER, walk_to_encounter  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 OUT = scratch.scratch_dir("dossideprobe")
 

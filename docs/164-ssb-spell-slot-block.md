@@ -132,7 +132,7 @@ be watched being zeroed.
 | run | what was done | result |
 |---|---|---|
 | 1 | `LOAD SAVED GAME` D, then every party record found by name | PAINE at `5EEAC` reads `00 00 00 00 00 00 00 \| 01 00 00 00 00 00 00 \| 00 00 00 00 00 00 00 \| 00 00 00 00 00 00 00`: the druid slot kept, both patched bytes gone. The other five read exactly what their files hold |
-| 1 | `SAVE CURRENT GAME` to E | `CHRDATE2.SAV` differs from the patched input in seven bytes: `0x140` `05 -> 00`, `0x143` `07 -> 00`, and five bytes of live heap pointers (`0xFD`-`0xFE`, `0x19D`, `0x19F`-`0x1A0`). Now the specimen `ssb-slote-zeroed140` in `tools/specimens.py list` |
+| 1 | `SAVE CURRENT GAME` to E | `CHRDATE2.SAV` differs from the patched input in seven bytes: `0x140` `05 -> 00`, `0x143` `07 -> 00`, and five bytes of live heap pointers (`0xFD`-`0xFE`, `0x19D`, `0x19F`-`0x1A0`). Now the specimen `ssb-slote-zeroed140` in `tools/registry/specimens.py list` |
 | 2 | fresh boot, `BPM` on `5EFE:000C` armed before the load, then D | two hits: `00 -> 05` at `F000:CA40` (DOS's file read landing the byte) and **`05 -> 00` at `0F11:04D8`, far return `319B:0021`** -- `FillChar`'s `rep stosw` (`0F11 = 0x822 + 0x6EF`, the twelve bytes at `IP` are `START.img:0x73BC`-`0x73C7`), returning to code offset `0x21` of unit `0x164`, the byte after the builder's `lcall 0x6EF:0x4C4` at `0x3BE67`. Then 25 seconds of quiet and the record at `5EEAC` again, zero at `0x140`-`0x146` |
 
 Two writes to the byte across a load: the file arriving and the builder's

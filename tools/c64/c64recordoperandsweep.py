@@ -27,7 +27,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 RECORDS = {'curse': 0x7C00, 'pool': 0x6B00, 'ssb': 0x7C00}
 KEYS = {'curse': 'curse-of-the-azure-bonds', 'pool': 'pool-of-radiance',

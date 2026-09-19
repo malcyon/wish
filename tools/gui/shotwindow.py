@@ -112,7 +112,7 @@ from PyQt6.QtGui import (  # noqa: E402
 )
 from PyQt6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 from wish.session import Session  # noqa: E402
 from wish.window import EDITOR_TAB, MAP_TAB, WishWindow  # noqa: E402
 

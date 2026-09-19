@@ -31,8 +31,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from tools import instance, scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import instance, scratch  # noqa: E402
 
 OUT = scratch.scratch_dir("attackwatch")
 

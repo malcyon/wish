@@ -43,7 +43,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import d64  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: An overlay's PRG header is a family stamp rather than a load address, and
 #: the game's `LINKER` puts the payload at `$0800` -- so `file[0]` sits at

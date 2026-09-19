@@ -16,7 +16,7 @@ and stays under `tools/` per `.claude/rules/scratch.md` rather than being
 thrown away, in case the question needs asking again.
 
 Point it at an output directory with `ISSUE522_LOGDIR`; defaults to
-this tool's scratch directory (`tools/scratch.py`).
+this tool's scratch directory (`tools/registry/scratch.py`).
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ import threading
 import time
 from pathlib import Path
 
-from tools import scratch
+from tools.registry import scratch
 
 TESTS_DIR = Path(__file__).resolve().parent.parent.parent / "tests"
 PROBE_RE = re.compile(r"^test_zzz_conftest_guard_probe_[0-9a-f]{32}\.py$")

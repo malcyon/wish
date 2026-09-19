@@ -61,8 +61,8 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where a run's screenshots, `SAVE` snapshots and reports land.
 OUT = scratch.scratch_dir("dosgnome")

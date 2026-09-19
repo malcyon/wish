@@ -611,7 +611,7 @@ def test_every_engine_written_record_of_a_later_title_round_trips(shape):
     `#256`.
     """
     if specimen_root() is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     seen = clean = 0
     exceptions: list[str] = []
     for path in _records_of(shape, _specimen_dirs()):
@@ -690,7 +690,7 @@ def test_the_shipped_records_of_the_later_titles_round_trip_too():
 def _c64_disk(name: str):
     root = specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = [p for p in (root / "por-c64").glob(f"WISH-SPEC-{name}.[dD]64")]
     if not found:
         pytest.skip(f"needs the C64 specimen WISH-SPEC-{name}")

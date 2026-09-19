@@ -10,7 +10,7 @@ that is not a save disk, or has no `SAVEDGAME0`, prints its error instead.
 `tools/c64/livelevel.py` is what raises a level once it is known none does, and
 `tools/c64/c64savespells.py` is the per-character detail for named disks.
 
-The folder is `--disks`, else the one `tools/gamedisks.py` finds for
+The folder is `--disks`, else the one `tools/registry/gamedisks.py` finds for
 `pool-of-radiance` (`$POR_DISKS` wins). Reads only.
 
     .venv/bin/python -m tools.c64.c64savescan
@@ -25,7 +25,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 
 def main(argv=None) -> int:
@@ -34,7 +34,7 @@ def main(argv=None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--disks", type=pathlib.Path,
                     help="folder of Pool of Radiance C64 images (default: "
-                         "tools/gamedisks.py's pool-of-radiance)")
+                         "tools/registry/gamedisks.py's pool-of-radiance)")
     args = ap.parse_args(argv)
 
     folder = args.disks or gamedisks.find("pool-of-radiance")

@@ -53,8 +53,8 @@ sys.path.insert(0, str(ROOT))
 
 from automap import combat as C  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -303,7 +303,7 @@ def catch_signals() -> None:
     no traceback, and -- worse -- no `finally`, so VICE is left running on a
     slot the kernel has already unleased, where the next run finds it.  (The
     lease itself is an `fcntl.flock` and goes when the process does, however
-    it goes -- `tools/instance.py` says so; what outlives the process is the
+    it goes -- `tools/registry/instance.py` says so; what outlives the process is the
     emulator it started.)  Raising instead means the run stops
     through its own `except`, writes what went wrong, and tears its slot
     down.  `#380` is the ticket where a lost traceback cost a repeat run.

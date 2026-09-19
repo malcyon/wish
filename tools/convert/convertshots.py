@@ -46,7 +46,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from editor import convert  # noqa: E402
 from goldbox import c64_port, dos_codec, dos_port  # noqa: E402
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 
 def _dos_folder(root: pathlib.Path, shape, slot: str = "A",

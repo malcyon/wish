@@ -48,7 +48,7 @@ SAVGAM_SIZE = 13137
 
 def _candidates():
     """`gamedisks.yaml`'s own search list for the DOS archives (#212)."""
-    from tools import gamedisks
+    from tools.registry import gamedisks
     return gamedisks.candidates("dos-archives")
 
 
@@ -151,7 +151,7 @@ def _need_saves():
 
 
 #: Saved games this project watched the engine write, and where each party was
-#: standing when it did -- from `tools/specimens.py`'s tree, for `#246 (Nothing
+#: standing when it did -- from `tools/registry/specimens.py`'s tree, for `#246 (Nothing
 #: tells an engine-written DOS record from one edited with Gold Box Companion,
 #: and conclusions already rest on edited ones)`.  `_saves()` above sweeps the
 #: archives, whose `SAVE` folder was open in Gold Box Companion on 2026-08-17,

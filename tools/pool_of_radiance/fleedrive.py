@@ -71,9 +71,9 @@ from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import scratch  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -138,7 +138,7 @@ LINKER_BASE = 0x0800
 #: LOST` and `THE PARTY HAS WON !` next to it (`#128`).
 RAN_INDEX = 2
 
-#: Where each C64 title's disks are, by the name `tools/gamedisks.py` uses.
+#: Where each C64 title's disks are, by the name `tools/registry/gamedisks.py` uses.
 TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
           "secret-of-the-silver-blades")
 
@@ -866,7 +866,7 @@ def main(argv=None) -> int:
     c = sub.add_parser("code", help="read the three C64 titles' POST.COM")
     c.add_argument("--disks", action="append", default=[], metavar="DIR",
                    help="a directory of disk images; repeatable. The default "
-                        "asks tools/gamedisks.py for all three titles")
+                        "asks tools/registry/gamedisks.py for all three titles")
 
     d = sub.add_parser("drive", help="drive a fight to a flight")
     d.add_argument("--save", default="PORSAVE13.D64",
@@ -916,7 +916,7 @@ def main(argv=None) -> int:
             roots = {os.path.basename(str(x).rstrip("/")): x
                      for x in args.disks}
         else:
-            from tools import gamedisks
+            from tools.registry import gamedisks
             for title in TITLES:
                 found = gamedisks.find(title)
                 roots[title] = str(found) if found else ""

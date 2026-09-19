@@ -55,8 +55,8 @@ def _load(tree: pathlib.Path | None):
     from goldbox import portraits as portraits_mod
     from goldbox.d64 import load_payload
     from goldbox.iconparts import IconParts
-    from tools import gamedisks
     from tools.dos import dosbox
+    from tools.registry import gamedisks
     return dict(convert=convert, dosimport=dosimport, dos=dos_codec, games=c64_port,
                 load_payload=load_payload, IconParts=IconParts,
                 portraits=portraits_mod, dosbox=dosbox, gamedisks=gamedisks)

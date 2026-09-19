@@ -1,7 +1,7 @@
-"""`tools/specimenbackup.py`, which counts the copies of the specimen tree and
+"""`tools/registry/specimenbackup.py`, which counts the copies of the specimen tree and
 makes one more (#249 step 5, "somewhere durable to keep it").
 
-Every test builds its own tree in `tmp_path` through `tools.specimens.add`, the
+Every test builds its own tree in `tmp_path` through `tools.registry.specimens.add`, the
 way `tests/test_specimens.py` does, and never reads the real `$WISH_SPECIMENS`
 -- the tree lives on Donald's machine, outside the repository, and nothing here
 should depend on it existing.  The bytes standing in for game records are
@@ -21,7 +21,7 @@ import tarfile
 
 import pytest
 
-from tools import specimenbackup, specimens
+from tools.registry import specimenbackup, specimens
 
 
 def _unlock(root: pathlib.Path) -> None:

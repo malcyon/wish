@@ -33,8 +33,8 @@ SHIPPED_SAVEGAME = "/save/savgamA.dat"
 # ---------------------------------------------------------------------------
 
 def _amiga_images():
-    from tools import gamedisks
     from tools.amiga import amigasaves
+    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")
@@ -75,7 +75,7 @@ def shipped() -> bytes:
 def _c64_specimen(name: str) -> pathlib.Path:
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted((root / "por-c64").glob(f"WISH-SPEC-{name}.[dD]64"))
     if not found:
         pytest.skip(f"needs the C64 specimen WISH-SPEC-{name}")
@@ -85,7 +85,7 @@ def _c64_specimen(name: str) -> pathlib.Path:
 def _dos_specimen(name: str) -> pathlib.Path:
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     where = root / "por-dos" / f"WISH-SPEC-{name}"
     if not where.is_dir():
         pytest.skip(f"needs the DOS specimen WISH-SPEC-{name}")
@@ -98,7 +98,7 @@ def _amiga_outdoor_specimen(name: str) -> bytes:
     grid, because no outdoor Amiga saved game has ever been read)`."""
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     where = root / "por-amiga" / "WISH-SPEC-por-amiga-outdoor" / name
     if not where.is_file():
         pytest.skip(f"needs WISH-SPEC-por-amiga-outdoor/{name}")

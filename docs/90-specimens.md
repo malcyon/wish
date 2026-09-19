@@ -292,7 +292,7 @@ onward.** Everything else on this machine came from a download or a play
 directory — `.claude/rules/testing.md`, "A specimen is only evidence if we know
 who wrote it", has the account of what one edited record cost. These live in
 `$WISH_SPECIMENS` (default `~/wish-specimens/`), outside the repository,
-read-only and hashed; `tools/specimens.py check` re-verifies them.
+read-only and hashed; `tools/registry/specimens.py check` re-verifies them.
 
 Six characters, rolled in Pool of Radiance's own CREATE NEW CHARACTER screens
 under DOSBox by `tools/dos/dosparty.py` on 2026-09-04, with the archives' shipped

@@ -62,11 +62,11 @@ def _later_c64_disks():
     """Every Curse and Silver Blades C64 specimen disk, each verified against
     its own provenance hash -- the rule `gamedata.specimen` applies, for
     specimens that are one disk image rather than a directory."""
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = []
     for where in sorted(root.iterdir()):
         if not where.is_dir():
@@ -81,7 +81,7 @@ def _later_c64_disks():
         actual = specimens.sha256_file(path)
         if recorded.get(path.name) not in (None, actual):
             pytest.fail(f"{path.name} has changed since it was recorded; "
-                        f"run tools/specimens.py check")
+                        f"run tools/registry/specimens.py check")
     return sorted(set(found))
 
 
@@ -134,11 +134,11 @@ def test_the_engine_wrote_the_weight_index_from_the_current_array():
     fails, either the specimen has been replaced or somebody has swapped
     which array the project calls current.
     """
-    from tools import specimens
+    from tools.registry import specimens
 
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted(root.glob(
         "*/WISH-SPEC-curse-367-crossed-abilities-resave.[dD]64"))
     if not found:
@@ -149,7 +149,7 @@ def test_the_engine_wrote_the_weight_index_from_the_current_array():
     recorded = specimens.read_provenance(prov).get("sha256", {})
     if recorded.get(path.name) not in (None, specimens.sha256_file(path)):
         pytest.fail(f"{path.name} has changed since it was recorded; "
-                    f"run tools/specimens.py check")
+                    f"run tools/registry/specimens.py check")
 
     crossed = [(who, cur, bas, stored)
                for who, cur, bas, stored in _records(path)
@@ -170,7 +170,7 @@ def test_the_two_arrays_come_off_that_disk_still_disagreeing():
     a record whose arrays differ stays that way across a level."""
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted(root.glob(
         "*/WISH-SPEC-curse-367-crossed-abilities-resave.[dD]64"))
     if not found:
@@ -186,7 +186,7 @@ def test_a_pool_of_radiance_disk_is_refused_rather_than_read_as_a_pair():
     of zeroes for every character."""
     root = gamedata.specimen_root()
     if root is None:
-        pytest.skip("needs the specimen tree; see tools/specimens.py")
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
     found = sorted(root.glob("*/WISH-SPEC-por-*.[dD]64"))
     if not found:
         pytest.skip("needs a Pool of Radiance C64 specimen disk")

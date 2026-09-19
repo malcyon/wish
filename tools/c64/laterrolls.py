@@ -36,9 +36,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import laterbattle as LB  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: Read live off the machine in `ECL64` (resident at `$8000`), per
 #: `#39`'s 2026-09-09 comment. Both CONFIRMED from the binary alone before

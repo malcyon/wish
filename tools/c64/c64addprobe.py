@@ -47,11 +47,11 @@ sys.path.insert(0, str(ROOT))
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.c64.c64nametable import character_files, from_bar, load_party  # noqa: E402
 from tools.curse_of_the_azure_bonds import curserun  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: Curse's own prefix byte for a parked character's filename, from
 #: `tools/c64/c64nametable.py`'s `PREFIX`.

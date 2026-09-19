@@ -10,7 +10,7 @@ import argparse
 import time
 
 from tools.c64.session import Session
-from tools.instance import claim
+from tools.registry.instance import claim
 
 
 def run():

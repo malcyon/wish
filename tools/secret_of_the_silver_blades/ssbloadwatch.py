@@ -18,7 +18,7 @@ and `$3E00`-`$3F80` come along so the loader's own tables can be read out of
 the running machine rather than off a transcription.
 
 Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbloadwatch.py`. It takes no arguments, claims
-an emulator pool slot and boots Silver Blades on the disks `tools/gamedisks.py`
+an emulator pool slot and boots Silver Blades on the disks `tools/registry/gamedisks.py`
 finds, with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes dumps and `load-probe.jsonl` under the `ssbloadwatch` scratch directory.
 `ssbloadnoescape.py` and `ssbloadescape.py` are the same boot with one thing
@@ -36,13 +36,13 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
-from tools import (  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
+from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
+from tools.registry import (  # noqa: E402
     gamedisks,
     scratch,
     specimens,
 )
-from tools.c64 import session as S  # noqa: E402
-from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
 from tools.secret_of_the_silver_blades import (  # noqa: E402
     ssbwarp,
 )

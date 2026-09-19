@@ -22,7 +22,7 @@ finder so the two censuses are over the same corpus.
 **Provenance caps every grade this produces.** `tools/dos/dostailcensus.py` marks
 what this project wrote and excludes it, which is necessary and not sufficient:
 `.claude/rules/testing.md` says a specimen is evidence only if we watched it
-being written, and `tools/specimens.py list` holds no Curse record at all. So a
+being written, and `tools/registry/specimens.py list` holds no Curse record at all. So a
 non-zero column here is a claim that *something on this machine* holds that
 value, and a zero column is a claim that nothing does -- neither is a claim
 about what the game writes. The header says so on every run.

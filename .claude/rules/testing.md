@@ -142,7 +142,7 @@ a stranger's edited party. Both halves of that are gone:
   **The two figures do not come from the same place**, and an earlier version
   of this passage read as though they did. `~/Downloads/fr-archives` holds no
   `.adf` at all: the Amiga records come from the disk-image directories
-  `tools/gamedisks.py` lists as its `amiga` candidates. The DOS figure is
+  `tools/registry/gamedisks.py` lists as its `amiga` candidates. The DOS figure is
   pinned by `tests/test_enccensus.py::test_every_record_the_archives_ship_
   balances_exactly`, so a reader change that brings the six back turns it red.
   **The Amiga figure has no test**, so treat it as a measurement taken once
@@ -278,7 +278,7 @@ Its nine bytes survive only because they were quoted in
 put it in the tree below rather than anywhere in scratch.
 
 **The tree is `$WISH_SPECIMENS`, default `~/wish-specimens/`**, outside the
-repository because the game's data must never be committed. `tools/specimens.py
+repository because the game's data must never be committed. `tools/registry/specimens.py
 add` copies a save in, records who made it and how, hashes every file and makes
 it read-only; `check` re-hashes and reports anything that moved; `list` says
 what is there. A file with no `provenance.toml` is not a specimen, and `check`

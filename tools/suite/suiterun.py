@@ -46,7 +46,7 @@ import tempfile
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from tools import scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 PYTHON = REPO / ".venv" / "bin" / "python"
 
@@ -91,7 +91,7 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
         return False, summary, "\n".join(failed) or pytest.stderr[-2000:]
     # CI has no `gamedisks.yaml`, and the run above had one. Take it away and run
     # everything again: a scoped rerun of the tests thought likely to care missed
-    # `tests/test_fleedrive.py`, which loads `tools/gamedisks.py` under a second
+    # `tests/test_fleedrive.py`, which loads `tools/registry/gamedisks.py` under a second
     # module name that the conftest fallback does not reach, and CI found it
     # (#575).
     link = worktree / "gamedisks.yaml"

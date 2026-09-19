@@ -351,7 +351,7 @@ def _engine_written():
     path = root / ENGINE_WRITTEN if root else None
     if path is None or not path.is_file():
         pytest.skip(f"needs {ENGINE_WRITTEN}; set $WISH_SPECIMENS or see "
-                    f"tools/specimens.py -- #32 is the run that makes one")
+                    f"tools/registry/specimens.py -- #32 is the run that makes one")
     return split_load_address(D64.open(path).read_file("SAVEAZURE"))[1]
 
 

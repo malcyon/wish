@@ -44,8 +44,8 @@ sys.path.insert(0, str(ROOT))
 from goldbox import c64_port, c64_save  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import gamedisks  # noqa: E402
 from tools.c64 import d6502  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: Where `LINKER` runs an overlay, whatever its own two-byte header claims.
 #: Silver Blades' `GEN` header says `$4000` and Curse's says `$1220`; both run

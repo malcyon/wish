@@ -23,7 +23,7 @@ Two layers, highest precedence first:
    `gamedisks.yaml` the loader stops with a one-line message saying so, rather
    than quietly finding nothing.
 
-    tools/gamedisks.py            one row per entry: variable, layer, path,
+    tools/registry/gamedisks.py            one row per entry: variable, layer, path,
                                   found -- turns "103 skipped" into a question
                                   anybody can answer in a second
 
@@ -63,7 +63,7 @@ import sys
 
 import yaml
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 REGISTRY = REPO / "gamedisks.yaml"
 EXAMPLE = REPO / "gamedisks.yaml.example"
 

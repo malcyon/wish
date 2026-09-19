@@ -70,7 +70,6 @@ sys.path.insert(0, str(ROOT))
 from goldbox import items as I  # noqa: E402
 from goldbox import traits  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.traitdrive import (  # noqa: E402
     SLOT_BASE,
@@ -81,6 +80,7 @@ from tools.c64.traitdrive import (  # noqa: E402
     trait_blocks,
 )
 from tools.c64.traitquery import TRAIT_SLOT  # noqa: E402
+from tools.registry import gamedisks, scratch  # noqa: E402
 
 #: `SAVEDGAME0` loads at `$4900`; the item area is `$5900 + slot * $100`.
 SAVE0_LOAD = 0x4900

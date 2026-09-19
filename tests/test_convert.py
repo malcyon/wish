@@ -69,7 +69,7 @@ def _curse_save_dir() -> pathlib.Path | None:
 needs_curse_dos_save = pytest.mark.skipif(
     not gamedata.have_specimen(CURSE_SPECIMEN),
     reason=f"needs specimen WISH-SPEC-{CURSE_SPECIMEN}; set $WISH_SPECIMENS "
-           f"or see tools/specimens.py")
+           f"or see tools/registry/specimens.py")
 
 
 def _game_dir() -> pathlib.Path:
@@ -875,7 +875,7 @@ def _curse_game_dir() -> pathlib.Path | None:
 needs_dual_classed_curse_specimen = pytest.mark.skipif(
     _dual_classed_curse_disk() is None or _curse_game_dir() is None,
     reason="needs ~/wish-specimens/por-c64/WISH-SPEC-curse-dual-classed.D64 "
-          "(tools/specimens.py) and the DOS Curse archives ($FR_ARCHIVES)")
+          "(tools/registry/specimens.py) and the DOS Curse archives ($FR_ARCHIVES)")
 
 
 @needs_dual_classed_curse_specimen

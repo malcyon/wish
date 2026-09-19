@@ -51,7 +51,7 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 def npc_party_disk():
     """`npc_party.d64` -- the hacked save whose party stands in the Kobold
     Caves with an NPC -- from the `npc-party-save` registry entry, or None."""
-    from tools import gamedisks
+    from tools.registry import gamedisks
     where = gamedisks.find("npc-party-save")
     return where / "npc_party.d64" if where else None
 
@@ -60,10 +60,10 @@ def npc_party_disk():
 def disk_dir():
     """Where Pool of Radiance's disks are on this machine, or None.
 
-    `tools.gamedisks.find` (#212) is the test suite's own lookup, not
+    `tools.registry.gamedisks.find` (#212) is the test suite's own lookup, not
     `automap.paths.find_disks` -- that one is the player's, and is for the
     shipped code under `automap/`, `editor/` and `wish/` (#251)."""
-    from tools import gamedisks
+    from tools.registry import gamedisks
     return gamedisks.find("pool-of-radiance")
 
 
@@ -119,7 +119,7 @@ def _curse_candidates():
     test that skips is not a test that passes, and a suite green because
     ninety of them skipped has said nothing.
     """
-    from tools import gamedisks
+    from tools.registry import gamedisks
     base = gamedisks.candidates(CURSE_KEY)
     if os.environ.get(CURSE_ENV):
         return base                      # taken whole; no further guessing
@@ -765,7 +765,7 @@ def save_disk(stem: str = "PORSAVE"):
 # and conclusions already rest on edited ones)` is the fix, and this is how a
 # test reaches the clean corpus.
 #
-# The tree is `tools/specimens.py`'s, at `$WISH_SPECIMENS` or `~/wish-specimens`
+# The tree is `tools/registry/specimens.py`'s, at `$WISH_SPECIMENS` or `~/wish-specimens`
 # -- outside the repository, because the game's data must never be committed.
 # It is read-only on disk and every specimen carries a SHA-256 manifest, so a
 # helper here can say not only "the specimen is present" but "it is still the
@@ -777,7 +777,7 @@ def save_disk(stem: str = "PORSAVE"):
 
 def specimen_root():
     """The specimen tree, or None. Never skips, so it is safe at module level."""
-    from tools import specimens
+    from tools.registry import specimens
     root = specimens.tree_root()
     return root if root.is_dir() else None
 
@@ -807,12 +807,12 @@ def specimen(name: str, platform: str = "dos"):
     engine-written DOS record from one edited with Gold Box Companion, and
     conclusions already rest on edited ones)` is about.
     """
-    from tools import specimens
+    from tools.registry import specimens
 
     where = _specimen_path(name, platform)
     if where is None:
         pytest.skip(f"needs specimen WISH-SPEC-{name}; "
-                    f"see tools/specimens.py and $WISH_SPECIMENS")
+                    f"see tools/registry/specimens.py and $WISH_SPECIMENS")
     prov = where / "provenance.toml"
     if not prov.is_file():
         pytest.fail(f"{where}: no provenance.toml -- not a specimen")
@@ -821,12 +821,12 @@ def specimen(name: str, platform: str = "dos"):
         path = where / filename
         if not path.is_file():
             pytest.fail(f"WISH-SPEC-{name}: {filename} is missing; "
-                        f"run tools/specimens.py check")
+                        f"run tools/registry/specimens.py check")
         actual = specimens.sha256_file(path)
         if actual != expected:
             pytest.fail(f"WISH-SPEC-{name}: {filename} has changed -- recorded "
                         f"{expected[:12]}, now {actual[:12]}; it is no longer "
-                        f"evidence. Run tools/specimens.py check")
+                        f"evidence. Run tools/registry/specimens.py check")
     return where
 
 
@@ -852,4 +852,4 @@ def specimen_files(names, suffixes, size=None, platform="dos"):
 
 needs_specimens = pytest.mark.skipif(
     specimen_root() is None,
-    reason="needs the specimen tree; see tools/specimens.py and $WISH_SPECIMENS")
+    reason="needs the specimen tree; see tools/registry/specimens.py and $WISH_SPECIMENS")

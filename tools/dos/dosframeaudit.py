@@ -20,7 +20,7 @@ The frames are captured while the game is doing something: the party turns on
 the spot between batches, so the viewport is redrawn and the sample is not
 three hundred pictures of one still screen.  Nothing is written but the
 report; a frame of the running game is the game's own art and stays in
-this tool's scratch directory (`tools/scratch.py`).
+this tool's scratch directory (`tools/registry/scratch.py`).
 
     tools/dos/dosframeaudit.py --save J --frames 300
 """
@@ -35,8 +35,8 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from tools import scratch  # noqa: E402
 from tools.dos import dosbox, dosboxx  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 

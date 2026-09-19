@@ -32,7 +32,7 @@ from goldbox.c64_port import classes_to_names, race_table  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.items import items_for_slot, load_item_names  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: Which registry entry holds each title's sides, for the item-name table.
 #: The names live on the game disks rather than in the save, so a run with

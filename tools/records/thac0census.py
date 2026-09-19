@@ -45,7 +45,7 @@ from goldbox import dos_codec, levels  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
-from tools import gamedisks  # noqa: E402
+from tools.registry import gamedisks  # noqa: E402
 
 #: `GEN` is resident here whatever its PRG header claims.
 GEN_BASE = 0x0800

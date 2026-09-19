@@ -36,10 +36,10 @@ agent, and the same one holding whatever the maintainer has not committed yet.
 There is no private copy to absorb a mistake, which is why the rules above are
 absolute rather than cautionary.
 
-Game disks and specimens come from the registry (`tools/gamedisks.py`,
+Game disks and specimens come from the registry (`tools/registry/gamedisks.py`,
 `automap.paths.find_disks()`) and are read-only, always. So are the archives
 outside the repository, `~/Downloads/fr-archives/` among them. Anything you
-must write goes under the temp directory (`tools/scratch.py`).
+must write goes under the temp directory (`tools/registry/scratch.py`).
 
 If you cannot establish something without modifying the tree, **say so in the
 report as an unverified claim.** That is a useful finding. A destroyed working

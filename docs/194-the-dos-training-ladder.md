@@ -250,4 +250,4 @@ clamp apart from a price.
 
 **A specimen dies with the emulator slot that made it.** Scratch is gitignored
 and the old directory was lost twice; copy a rung worth keeping into `$WISH_SPECIMENS` with
-`tools/specimens.py add` before the slot goes down.
+`tools/registry/specimens.py add` before the slot goes down.

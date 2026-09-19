@@ -21,8 +21,8 @@ to all six directions in one place, since Secret of the Silver Blades had
 none.
 
 **Six of six directions run on this machine.** DOS → C64 reads a real DOS
-save for each title (`~/wish-specimens`, `tools/specimens.py`) and each
-title's own C64 game disks (`tools/gamedisks.py`, never a hardcoded path);
+save for each title (`~/wish-specimens`, `tools/registry/specimens.py`) and each
+title's own C64 game disks (`tools/registry/gamedisks.py`, never a hardcoded path);
 Curse of the Azure Bonds and Secret of the Silver Blades resolved through
 `/mnt/media/roms/c64/...`, on `gamedisks.yaml`'s own committed search list.
 C64 → DOS reads a real C64 save for Curse and Silver Blades and the
@@ -34,7 +34,7 @@ title's DOS archive tree (`tools/dos/dosbox.find_game`, `$FR_ARCHIVES`). Every
 **The specimen tree files every C64 and DOS specimen under `por-c64`/
 `por-dos` regardless of title** -- `curse-h-engine-resave` and
 `ssb-d-engine-resave` are `platform = "c64"` and their own title in
-`provenance.toml`, physically inside `por-c64/`, where `tools/specimens.py`'s
+`provenance.toml`, physically inside `por-c64/`, where `tools/registry/specimens.py`'s
 own `container = f"{slug}-{platform}"` would have put them in `coab-c64`/
 `ssb-c64` (and some specimens, `curse-52-dialog-converted-resave` among them,
 really are there). `_dos_specimen`/`_c64_specimen` below glob across every
@@ -58,8 +58,8 @@ from goldbox.d64 import load_payload
 from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitError, tables_from_disks
 from goldbox.savegame import SaveGame0, SaveGame1
-from tools import gamedisks
 from tools.dos import dosbox
+from tools.registry import gamedisks
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
 
@@ -95,7 +95,7 @@ def _c64_specimen(name: str) -> pathlib.Path | None:
 
 def _c64_game_files(game: "c64_port.Game") -> "dosimport.GameFiles | None":
     """The icon, `ANIMATE00` and the creation menu off `game`'s own C64
-    disks, found through `tools/gamedisks.py` -- the project's own registry
+    disks, found through `tools/registry/gamedisks.py` -- the project's own registry
     for a test or tool that needs the player's disks, never a path typed into
     this file. `None` when this machine has neither -- the same refusal
     `editor.window.EditorBinding.game_files_for` gives the running dialog,
@@ -172,11 +172,11 @@ def test_dos_to_c64_matches_the_library_for_every_title(
     folder = _dos_specimen(specimen_name)
     if folder is None:
         pytest.skip(f"needs ~/wish-specimens/*-dos/WISH-SPEC-{specimen_name} "
-                    f"(tools/specimens.py)")
+                    f"(tools/registry/specimens.py)")
     game_files = _c64_game_files(game)
     if game_files is None:
         pytest.skip(f"needs {game.title}'s own C64 disks, found through "
-                    f"tools/gamedisks.py")
+                    f"tools/registry/gamedisks.py")
 
     source_path = (folder / file_name) if file_name else folder
     out = tmp_path / "out"
@@ -261,7 +261,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
         disk_path = _c64_specimen(specimen_name)
         if disk_path is None:
             pytest.skip(f"needs ~/wish-specimens/*-c64/"
-                        f"WISH-SPEC-{specimen_name}.D64 (tools/specimens.py)")
+                        f"WISH-SPEC-{specimen_name}.D64 (tools/registry/specimens.py)")
         source = convert.Source.detect(disk_path)
         save0, save1 = source.save0, source.save1
 
