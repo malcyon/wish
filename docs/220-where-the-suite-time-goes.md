@@ -216,19 +216,23 @@ everything before it, and the run's wall was set by Windows 3.13 at about
 9:30 of `pytest`. A standard runner has four cores, so `-n auto` gives four
 workers, and 2,208 worker-seconds over four of them is the right order.
 
-### Three sentences elsewhere that are wrong, and when they get fixed
+### Three sentences elsewhere that were wrong
 
-`.claude/rules/commits.md` says the suite "takes about 90 seconds on each of
-four jobs". It takes five times that. The same file's "about 1:40 on twelve
-cores against about 7:30 run one test at a time, both measured on 3,303
-tests" and `pyproject.toml`'s "about 7:00 sequential on twelve cores" were
-measured when the suite had 3,303 tests and it now has 8,234.
+`.claude/rules/commits.md` said the suite "takes about 90 seconds on each of
+four jobs" and, elsewhere, "about 1:40 on twelve cores against about 7:30 run
+one test at a time, both measured on 3,303 tests"; `pyproject.toml` said "about 7:00 sequential on twelve cores". The first was
+five times too low, and the other two were measured when the suite had 3,303
+tests and it now has 7,975.
 
-All three are corrected **once items 1 to 4 have landed and a fresh
-whole-suite measurement exists**, and with the numbers that run produces.
-They are left as they stand until then rather than replaced by an estimate:
-the figures above are upper bounds taken under load, and a rule file quoting
-a guess is the same defect one commit later.
+They were left alone until items 1 to 4 had landed and a whole-suite run
+existed to quote, rather than replaced by an estimate. That run now exists
+(item 4 above), so the two twelve-core figures say what it measured: about
+2:15 for the pass with data, then about 1:20 for the pass without. The
+sequential figure has been removed, because nothing has measured the
+sequential suite since it had 3,303 tests. The CI sentence now gives the
+range of the last four whole runs, which is 5:16 to 10:00 for a `pytest` job
+from start to finish, Windows the slowest, and the generated-files job 25 to
+40 s.
 
 ## The plan
 
@@ -343,22 +347,48 @@ the plugin, so a developer's run is untouched.
 today, about 615 after item 1, **58 s of the pre-push run**. The recorder
 gives part of that back, because a file that starts a child process is
 selected whole: 26 test files use `subprocess`, and
-`tests/test_toolshadowing.py` is the largest of them. The run prints the
-count it chose beside the 230 the source scan would have chosen, and that
-number replaces this estimate once it exists.
+`tests/test_toolshadowing.py` is the largest of them.
+
+*What it measured,* in two whole-suite runs of `tools/suite/suiterun.py` on
+the twelve-core machine, otherwise idle, both green with no crash:
+
+| run | pass one, with data | files chosen for pass two (scan would choose) | pass two, no data |
+|---|---|---|---|
+| first | 7,975 tests, 136.99 s | 192 (231) | 3,997 passed, 1,779 skipped, 77.90 s |
+| second | 7,975 tests, 138.41 s | 193 (231) | 4,002 passed, 1,781 skipped, 81.23 s |
+
+The recorder chooses 38 or 39 files fewer than the scan, not the 79 the
+ceiling above counted. It drops a file only when nothing in it opened, listed,
+scanned, walked, globbed or stat-ed a path the second pass hides and no test
+in it started a child process or failed to pass in pass one; the scan
+selects every file whose source merely mentions skipping or game data, and
+a file can mention either and never reach the data. The measurement does not
+say which of the 79 files are among the ones dropped, so it does not say that
+the gap between 39 and 79 is the child-process files. The count also moved
+by one between the two runs, which two runs cannot explain.
+
+Against the estimates above, pass one takes about 137 s where 262.0 s was
+measured under load, and pass two about 78 to 81 s where about 186 s was
+estimated. The two passes' own `pytest` times come to about 215 to 219 s
+against about 448 s, before the roughly 17 s of imports, `ruff` and
+`genui.py --check` that this measurement did not repeat. **These are two runs
+on one machine.** Items 1 to 3 landed as well, so the runs cannot say how much
+of the fall is the recorder alone, and the earlier figures were taken under a
+one-minute load average of up to 7 while these were not.
 
 *What it still misses,* each of them either over-inclusive or caught by CI,
-which runs the whole suite with no data on four jobs at every push:
+which runs the whole suite with no data on four jobs at every push. These are
+the routes the plugin does not record:
 
-* a test that reads one of the fifteen variables **as a string**, asserts on
-  it, and touches no file;
-* a session-scoped fixture that reads data, attributed to whichever test in
-  that worker asked for it first — the suite has one session-scoped fixture
-  and it builds a `QApplication`;
-* a read made while a worker starts, before any file is being collected,
-  which is attributed to no file and discarded. `tests/conftest.py`'s own
-  `REGISTRY.is_file()` is one, and what it decides applies to every file
-  alike.
+* a `spawn` or `forkserver` multiprocessing child, which is a new interpreter
+  that never loads the plugin (a `fork` child is not one: `os.fork` marks its
+  parent's file);
+* a path that reaches the data through a symlink, because the match is on the
+  text of the path and its `realpath` at start, not on what the kernel
+  resolves;
+* a thread that outlives its test, whose reads land on whichever file runs
+  next or on none;
+* file loading done in Qt's C++, which raises no audit event.
 
 **Builder: `junior-dev`.** The plugin, its hooks, the fallback and the tests
 are named.

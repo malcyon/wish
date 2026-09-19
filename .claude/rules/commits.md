@@ -84,8 +84,8 @@ git worktree remove "$WT" --force
 **A bare `pytest -q` is already this fast: parallel is the default, not an
 extra flag.** `-n auto --dist loadgroup` lives in `pyproject.toml`'s
 `addopts`, so the command above already runs on every core the machine has --
-about 1:40 on twelve cores against about 7:30 run one test at a time, both
-measured on 3,303 tests with the machine otherwise busy. `--dist loadgroup`
+about 2:15 on twelve cores for the pass with data and about 1:20 for the pass
+without it, measured on 7,975 tests with the machine otherwise idle. `--dist loadgroup`
 keeps `tests/test_instance.py`, `tests/test_dosbox.py`, `tests/test_dosboxx.py`
 and `tests/test_walkrun.py` -- which claim a synthetic emulator-pool slot by a
 fixed, shared display number -- in one worker together, because two workers
@@ -172,7 +172,7 @@ gh run list --limit 5 --json headSha,name,conclusion \
 
 Both jobs, both named, both against that sha. A run whose `conclusion` is empty
 has not finished, however `completed` the list looks. Give it a minute or two
--- the suite takes about 90 seconds on each of four jobs.
+-- a `pytest` job takes between five and ten minutes, Windows the slowest.
 
 If it failed, `gh run view <id> --log-failed` says why, and **the fix goes to a
 subagent**: the failure is usually platform-specific, the diagnosis is reading,

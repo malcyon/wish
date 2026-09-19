@@ -106,8 +106,8 @@ norecursedirs = [
     "{arch}", "livetests",
 ]
 # The suite is overwhelmingly independent test files, so parallel is the
-# normal way to run it -- about 7:00 sequential on twelve cores, and pushing
-# often depends on that being cheap. `--dist loadgroup` keeps every test
+# normal way to run it -- about 2:15 on twelve cores, and pushing often
+# depends on that being cheap. `--dist loadgroup` keeps every test
 # carrying `@pytest.mark.xdist_group` in its own worker instead of scattering
 # it, which is how the emulator-pool tests (`tests/test_instance.py`,
 # `tests/test_dosbox.py`, `tests/test_dosboxx.py`, `tests/test_walkrun.py`)
