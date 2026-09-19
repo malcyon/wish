@@ -57,7 +57,7 @@ from goldbox import world as W  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from tools import scratch  # noqa: E402
 
-#: The C64's sixteen colours, the same table `tools/cursepic.py` draws its
+#: The C64's sixteen colours, the same table `tools/curse_of_the_azure_bonds/cursepic.py` draws its
 #: Curse pictures with -- one palette for the project rather than two that
 #: disagree by a few units of blue.
 PALETTE = [

@@ -24,20 +24,20 @@ tables through.  With it zero the rebuild adds nothing; with it one it adds
 `$3840[strength_index]`.  So the pair separates "the engine rebuilt this" from
 "the engine rebuilt it and the gate decided what it was worth", in one fight.
 
-    tools/cursethac0.py stage --base WISH-SPEC-curse-trained-party.D64 \
+    tools/curse_of_the_azure_bonds/cursethac0.py stage --base WISH-SPEC-curse-trained-party.D64 \
         --out spoiled.D64 --spoil MATHEW --spoil MARK:gate=1
 
-    tools/cursethac0.py run --pool 2 --save spoiled.D64 \
+    tools/curse_of_the_azure_bonds/cursethac0.py run --pool 2 --save spoiled.D64 \
         --out DIR --goto 6,10 --quick 6
 
 And the other half of the question, which is what the **training hall** writes
 rather than what the fight does.  The hall refuses a character who cannot
 advance, so it takes an experience total as a third input:
 
-    tools/cursethac0.py stage --base <same> --out hall.D64 \
+    tools/curse_of_the_azure_bonds/cursethac0.py stage --base <same> --out hall.D64 \
         --spoil MARK:gate=1,xp=46000 --spoil MATHEW:gate=1
 
-    tools/cursethac0.py run --pool 2 --save hall.D64 \
+    tools/curse_of_the_azure_bonds/cursethac0.py run --pool 2 --save hall.D64 \
         --out DIR --train MARK --steps 0 --punch "" --wait 0
 
 `run` claims a pooled VICE slot, stages the six Curse sides beside the spoiled
@@ -62,7 +62,7 @@ import struct
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS as GAME  # noqa: E402
@@ -89,7 +89,7 @@ ROSTER_LIVE = SAVE_LOAD + ROSTER_AT              # $6700
 SLOTS_LIVE = SAVE_LOAD + SLOT0                   # $4F00
 
 #: Where `GEN`, `DUNGEON` and `COMBAT` stage the character whose turn it is,
-#: and the roster block that follows it.  `tools/cursetrain.py` fixed the
+#: and the roster block that follows it.  `tools/curse_of_the_azure_bonds/cursetrain.py` fixed the
 #: first from `GEN $151D`; the second is `$7C00 + 0x100`.
 RECORD_LIVE = 0x7C00
 RESIDENT_ROSTER = 0x7D00
@@ -105,7 +105,7 @@ EXPERIENCE = 0x0E8
 COMBAT_BIAS = 60
 
 #: `GEN $12CA`'s gate on the party menu's `TRAIN CHARACTER`, and what the
-#: area scripts themselves write into it (`tools/cursetrain.py`, `#18
+#: area scripts themselves write into it (`tools/curse_of_the_azure_bonds/cursetrain.py`, `#18
 #: (Measure Curse's trainer so Level Up works there)`).  Writing it from the
 #: monitor opens the hall wherever the party stands, which saves walking to
 #: one -- `docs/70-driving-the-game.md`'s "open the gate rather than walk to
@@ -244,8 +244,8 @@ def stage(args) -> int:
     out.write_bytes(image.to_bytes())
     # Every image copied out of a pool slot after `SAVE CURRENT GAME` has a
     # `SAVEAZURE` the drive never closed, and the game refuses one with
-    # `60, WRITE FILE OPEN` (`tools/curseload.py`, `#298`).
-    from tools import curseload  # noqa: PLC0415
+    # `60, WRITE FILE OPEN` (`tools/curse_of_the_azure_bonds/curseload.py`, `#298`).
+    from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
     closed = curseload.close_splat(str(out))
     print(json.dumps({"staged": str(out), "spoiled": made,
                       "closed": closed}, indent=2))
@@ -611,7 +611,7 @@ def sheet_numbers(lines) -> dict:
 
 
 def drive(args) -> int:
-    from tools import curseload, curserun  # noqa: PLC0415
+    from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: PLC0415
 
     out = pathlib.Path(args.out)
     run = Run(out, args.quiet)

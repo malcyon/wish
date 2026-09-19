@@ -26,7 +26,7 @@ and `class_bits`, and **both go in holding the answer that would refute the
 prediction**: the old slot is 0 and the mask carries the new class alone, so
 anything else read back is something the engine did.
 
-    tools/curseregain.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-curse-131-dualclassed-in-area-1 \
+    tools/curse_of_the_azure_bonds/curseregain.py --party $WISH_SPECIMENS/por-dos/WISH-SPEC-curse-131-dualclassed-in-area-1 \
         --from-slot J --slot J --who 1,6 --set-level 5 --xp 45000 --save-to K
 
 `--who` is a comma-separated list of roster lines to stage and train, counted
@@ -54,7 +54,7 @@ import shutil
 import sys
 import time
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec  # noqa: E402

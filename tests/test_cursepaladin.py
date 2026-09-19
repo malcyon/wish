@@ -1,4 +1,4 @@
-"""`tools/cursepaladin.py`'s offline half, for `#409`.
+"""`tools/curse_of_the_azure_bonds/cursepaladin.py`'s offline half, for `#409`.
 
 The driven half needs an emulator and is not tested here; what is tested is
 everything a wrong answer would quietly poison the run with -- which record
@@ -20,10 +20,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
-from tools import cursepaladin as cp  # noqa: E402
+from tools.curse_of_the_azure_bonds import cursepaladin as cp  # noqa: E402
 
 #: `SAVEAZURE`'s payload length, from `goldbox/c64_save.py` by way of
-#: `tools/cursetrain.py`'s geometry: eight 256-byte slots at `$400` and the
+#: `tools/curse_of_the_azure_bonds/cursetrain.py`'s geometry: eight 256-byte slots at `$400` and the
 #: name table at `$C00`.
 PAYLOAD = 7424
 LOAD = 0x4B00

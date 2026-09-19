@@ -78,7 +78,7 @@ archives and the specimen tree.
 
 ## Watched in the running game
 
-`WISH-SPEC-curse-408-regained-paladin`, made by `tools/curseregain.py` on
+`WISH-SPEC-curse-408-regained-paladin`, made by `tools/curse_of_the_azure_bonds/curseregain.py` on
 2026-09-07. MATHEW is the human magic-user of
 `WISH-SPEC-curse-131-dualclassed-in-area-1` whose former array holds paladin 5.
 He was trained once at Curse's own `TRAIN CHARACTER`.
@@ -195,7 +195,7 @@ choice rather than a measurement.
 | file | what |
 |---|---|
 | `tools/dualclassregain.py` | the family scan of the derive, and the mask census against every record |
-| `tools/curseregain.py` | the driven run that made the specimen |
+| `tools/curse_of_the_azure_bonds/curseregain.py` | the driven run that made the specimen |
 | `docs/209-the-regained-dual-class-on-dos.md` | this page |
 | `WISH-SPEC-curse-408-regained-paladin` | the first DOS record past the threshold anybody here watched being written |
 

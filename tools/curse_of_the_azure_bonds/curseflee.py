@@ -3,7 +3,7 @@
 
 The Pool of Radiance half of that issue is `tools/fleedrive.py`, which cannot be
 reused whole for Curse: it boots `tools/c64/session.py`'s own `Session`, and Curse
-boots through `tools/curserun.py`'s `CurseSession`.  What does reuse whole is
+boots through `tools/curse_of_the_azure_bonds/curserun.py`'s `CurseSession`.  What does reuse whole is
 `Flight`, `tools/fleedrive.py`'s tactic -- it is written against the generic
 `Session` interface (`battle()`, `acting()`, `combat_bar()`, `await_bar()`,
 `press_kernal()`, `kbd.key()`, `combat_turn()`), all of which `CurseSession`
@@ -12,12 +12,12 @@ and `Session.fight(budget, tactic=...)` is already written to take it: its
 `BAR_YESNO` branch names `Flight` and that issue.  So this file is the harness
 around that pairing, not a second `Flight`.
 
-    POR_HEADLESS=1 .venv/bin/python tools/curseflee.py --slot 6 \\
+    POR_HEADLESS=1 .venv/bin/python tools/curse_of_the_azure_bonds/curseflee.py --slot 6 \\
         --save path/to/CURSEI.D64 --out DIR
 
 `--save` is a Curse save disk (SIDE0) to copy into the slot.  The disks come
 from `--disks`, else `$POR_DISKS`, else `tools/gamedisks.py`'s Curse entry.
-Loads the save with `tools/curseload.py`, walks until an encounter starts,
+Loads the save with `tools/curse_of_the_azure_bonds/curseload.py`, walks until an encounter starts,
 then fights it with `Flight` and writes a JSON log, a screenshot and the final
 screen under `--out`.
 """
@@ -29,11 +29,12 @@ import os
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import curseload, curserun, scratch  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: E402
 from tools.fleedrive import Flight, Log, rows_of  # noqa: E402
 
 
@@ -52,7 +53,7 @@ def run(args) -> int:
         log.say("reached the party menu")
         # `Session.load_save` expects `LOAD SAVED GAME: YES`, which is Pool
         # of Radiance's wording; Curse draws `LOAD SAVED GAME ? YES NO` and
-        # needs its own sequence -- `tools/curseload.py`'s, built for exactly
+        # needs its own sequence -- `tools/curse_of_the_azure_bonds/curseload.py`'s, built for exactly
         # this (`#291`).
         outcome = curseload.load_saved_game(
             sess, note=lambda **kw: log.emit("curseload", **kw))

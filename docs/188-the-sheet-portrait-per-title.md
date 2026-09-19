@@ -184,14 +184,14 @@ unchanged, both cache slots are still `$FF`, and the live record window at
 `$7CFE` reads `41 41`, so the game did read the record. The same on Silver
 Blades, which ships no `HEAD<xx>` or `BODY<xx>` file at all.
 
-The recipe, for anyone repeating it: boot with `tools/curserun.py --pool N
+The recipe, for anyone repeating it: boot with `tools/curse_of_the_azure_bonds/curserun.py --pool N
 --disks <dir> --save <d64>` or `tools/ssbrun.py --pool N --save <d64>`, then
 through `tools/c64/porcmd` -- walk the party menu with `key Down` and answer with
 `kernal 0D` in Curse or `key Return 0.25 0.3` in Silver Blades, `VIEW
 CHARACTER`, then the character. `peek 7F13 25` is the cache and `peek 7CFE 2`
 is the displayed character's pair. For the world sheet in Curse, `BEGIN
 ADVENTURING`, `poke 459A EAEA` and `poke 459F EAEA` for the side prompt
-(`tools/curserun.py` explains those two), then `bar VIEW`.
+(`tools/curse_of_the_azure_bonds/curserun.py` explains those two), then `bar VIEW`.
 
 ## The machinery both later titles still carry, and why the disks mislead
 

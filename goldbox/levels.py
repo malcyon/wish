@@ -1701,7 +1701,7 @@ TRAINER_MEASURED: frozenset[str] = frozenset(
 #: 2026-09-04**, and five driven Curse level-ups on 2026-09-05 agreed with
 #: the engine on 75 of 75 derived fields including the five saving throws
 #: (`#18 (Measure Curse's trainer so Level Up works there)`,
-#: `tools/cursetrain.py`). Curse now belongs in `TRAINER_MEASURED` too, once
+#: `tools/curse_of_the_azure_bonds/cursetrain.py`). Curse now belongs in `TRAINER_MEASURED` too, once
 #: `#415 (automap/window.py picks the level-up spell dialog's class the same
 #: wrong way plan would have, blocking Curse's trainer)` closed the gap that
 #: held it out -- `TRAINER_MEASURED`'s own comment has the history.

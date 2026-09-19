@@ -4,7 +4,7 @@
 party-menu loader's prompt, `INSERT BLADES SAVE DISK. PRESS A KEY.`, but not
 of camp's, `INSERT YOUR SAVE GAME DISK` -- so `SSBSession.handle_prompt`
 recognised the loader prompt fine and only missed the camp one, and
-`ENCAMP > SAVE` sat on the camp prompt forever. `tools/curserun.py` carried
+`ENCAMP > SAVE` sat on the camp prompt forever. `tools/curse_of_the_azure_bonds/curserun.py` carried
 the same wrong constant for Curse, and `CurseSession.save_game`'s `wait_bar`
 calls `handle_prompt` on every poll, so the same narrower gap applied there
 too.

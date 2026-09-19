@@ -230,7 +230,7 @@ def _own_statements(scope):
     """A scope's own statements, without descending into a nested scope.
 
     Tracking names file-wide, which an earlier version of this sweep did,
-    makes one function's `dest` stand in for another's -- `tools/doscurse.py`
+    makes one function's `dest` stand in for another's -- `tools/curse_of_the_azure_bonds/doscurse.py`
     copies into `$WISH_SPECIMENS` through a variable of that name, and was
     reported as a staging copy for no better reason than the spelling.
     """
@@ -540,7 +540,7 @@ def test_a_copyfile_or_a_write_bytes_into_out_is_not_flagged(tmp_path):
 
 def test_a_copy_into_an_unrelated_directory_is_not_flagged(tmp_path):
     """`$WISH_SPECIMENS` is where a specimen is *meant* to go, read-only and
-    all -- `tools/doscurse.py`'s `copy` command does exactly this."""
+    all -- `tools/curse_of_the_azure_bonds/doscurse.py`'s `copy` command does exactly this."""
     (tmp_path / "toolstub.py").write_text(
         "import pathlib\n"
         "import shutil\n"

@@ -13,7 +13,7 @@ agent driving it *looks at the picture*, decides the next key, and appends a
 line.  Nothing here reads a word off the screen either -- a person does, which
 is the one reader that can be trusted with a menu nobody has mapped.
 
-    tools/doscurse.py console --game CURSE --note "issue 113"
+    tools/curse_of_the_azure_bonds/doscurse.py console --game CURSE --note "issue 113"
 
 writes `console.cmd` (the input), `console.log` (what it did) and `shots/`
 (what it saw) under `inst/<n>/` in `tools/dosbox.py`'s scratch directory, and
@@ -45,7 +45,7 @@ The player's archives are read only, as everywhere in this harness: the game
 tree is copied into the instance directory before DOSBox sees it, and a
 specimen is copied *out* of that tree, never out of the archives.
 
-    tools/doscurse.py pane --slot 0 --rect view --last 8
+    tools/curse_of_the_azure_bonds/doscurse.py pane --slot 0 --rect view --last 8
 
 is the reading half, and it is offline: it crops one named region out of the
 last few shots and montages them, so eight steps of a walk are one picture
@@ -63,7 +63,7 @@ import sys
 import time
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from tools import dosbox, scratch  # noqa: E402

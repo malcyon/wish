@@ -29,7 +29,6 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
 from tools import (  # noqa: E402
-    cursethac0,
     gamedisks,
     scratch,
     specimens,
@@ -39,6 +38,9 @@ from tools.c64 import (  # noqa: E402
     laterbattle,
 )
 from tools.c64 import session as S  # noqa: E402
+from tools.curse_of_the_azure_bonds import (  # noqa: E402
+    cursethac0,
+)
 
 OUT = scratch.scratch_dir("ssbrevalidate")
 
@@ -51,7 +53,7 @@ FACING_SOUTH = 2
 MOVE_SUBBAR_TEXT = "I,J,K,M"
 
 #: `cursethac0.Run.clear_bar` calls `self.sess.press_bar`, which exists only
-#: on `tools/curserun.py`'s `CurseSession` (a one-line alias for
+#: on `tools/curse_of_the_azure_bonds/curserun.py`'s `CurseSession` (a one-line alias for
 #: `select_bar`) -- `tools.c64.session.Session` and `ssbwarp.SSBSession` have no
 #: such method, so calling it on a Silver Blades session raises
 #: `AttributeError`. Hit live in this run's first `clear_bar()` call at

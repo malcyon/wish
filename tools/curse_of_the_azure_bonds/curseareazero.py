@@ -10,16 +10,16 @@ what says whether a conversion of such a save should write 0 too.
 
 Three things, each a flag, because they answer three different questions:
 
-    tools/curseareazero.py --pool 3
+    tools/curse_of_the_azure_bonds/curseareazero.py --pool 3
         Boot to the party menu and read `$4B00`-`$4DDF` -- the header of
         the save `SAVE CURRENT GAME` would write for a party that has not
         begun adventuring.  Nothing is loaded and nothing is pressed.
 
-    tools/curseareazero.py --pool 3 --save WISH-SPEC-curse-h-engine-resave.D64
+    tools/curse_of_the_azure_bonds/curseareazero.py --pool 3 --save WISH-SPEC-curse-h-engine-resave.D64
         The control: the same page again after `LOAD SAVED GAME` has put an
         area-1 party in, so the two readings differ by one known thing.
 
-    tools/curseareazero.py --pool 3 --save DISK --begin
+    tools/curse_of_the_azure_bonds/curseareazero.py --pool 3 --save DISK --begin
         And then walk the menu to `BEGIN ADVENTURING` and photograph where the
         party lands, which is how a save's area word is read back off the
         screen the game draws.
@@ -46,7 +46,7 @@ import shutil
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -186,9 +186,9 @@ def read_header(sess) -> dict:
 
 
 def run(args) -> int:
-    from tools import curseload, curserun  # noqa: PLC0415
     from tools.c64 import dualclassagain  # noqa: PLC0415
     from tools.c64 import session as por  # noqa: PLC0415
+    from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: PLC0415
 
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

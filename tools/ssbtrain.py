@@ -7,7 +7,7 @@ game)`.  `goldbox/levels.py` reads `GEN $11D8` as *the constitution bonus
 goes to race 3 -- the dwarf -- alone, on columns 0, 2 and 4*, which is not
 what Pool of Radiance or Curse does, and until 2026-09-06 no Silver Blades
 trainer had been watched writing the five bytes.  This is
-`tools/cursetrain.py` for the third title, and the lever is the same one:
+`tools/curse_of_the_azure_bonds/cursetrain.py` for the third title, and the lever is the same one:
 Silver Blades' party-menu builder is Curse's `$12AF` moved to `GEN $0991`,
 
     $0991  LDA #$7F / LDX #$07        the in-game menu, all but LOAD
@@ -279,7 +279,9 @@ def stage(args) -> int:
                             load.to_bytes(2, "little") + bytes(body))
     pathlib.Path(args.out).write_bytes(disk.to_bytes())
     if args.repair:
-        from tools.curseload import close_splat  # noqa: PLC0415
+        from tools.curse_of_the_azure_bonds.curseload import (
+            close_splat,  # noqa: PLC0415
+        )
 
         for entry in close_splat(args.out):
             name = entry["name"]

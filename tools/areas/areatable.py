@@ -905,7 +905,7 @@ def check(game: c64_port.C64Container, root: str) -> int:
     """Diff a fresh derivation against the table `goldbox/areas.py` ships.
 
     A copied table nothing re-derives is a table that quietly goes stale, and
-    three titles now carry one. `tools/cursedisk.py --check-areas` did this
+    three titles now carry one. `tools/curse_of_the_azure_bonds/cursedisk.py --check-areas` did this
     for Curse alone and for the id, the side and the maps; this asks it of any
     title and of the arrival square as well.
 

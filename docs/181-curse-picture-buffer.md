@@ -101,7 +101,7 @@ cycle over. The delay per frame is `PIC+$20 + (entry - $41)`, looped
 means `n` literal bytes, each XORed into the destination; `n` from `$80` up
 means the next byte XORed in `256 - n` times; `0` ends the stream. XOR onto
 a zeroed buffer is the picture; XOR onto the picture is the next frame.
-`tools/cursepic.py` is that routine transcribed.
+`tools/curse_of_the_azure_bonds/cursepic.py` is that routine transcribed.
 
 ## The format, as the engine reads it
 
@@ -126,7 +126,7 @@ and are drawn by something else.
 
 ## The specimens
 
-`tools/cursepic.py match SAVE PIC` compares a save's region with every frame.
+`tools/curse_of_the_azure_bonds/cursepic.py match SAVE PIC` compares a save's region with every frame.
 
 | specimen | non-zero bytes | matches | differing bytes |
 |---|---|---|---|
@@ -147,7 +147,7 @@ has one frame, which is why its four specimens agree.
 
 ## Watched in the running game
 
-`tools/cursepicrun.py`, pool slot 1, 2026-09-05, loading `CURSEH.D64` --
+`tools/curse_of_the_azure_bonds/cursepicrun.py`, pool slot 1, 2026-09-05, loading `CURSEH.D64` --
 the Wish-built save whose region is all zeroes -- through the game's own
 front end. The buffer was then overwritten with `$A5` x 1024 through the
 monitor, so any read or copy of it would show, and two counting
@@ -225,7 +225,7 @@ arriving with zeroes there sees the camp scene drawn from `PIC1D` exactly as
 a player whose save holds frame 1 does.
 
 Writing the decoded `PIC1D` frame instead would make a converted save
-byte-identical to an engine-written one, and `tools/cursepic.py` could
+byte-identical to an engine-written one, and `tools/curse_of_the_azure_bonds/cursepic.py` could
 produce it off the player's own disk. There is no reason to: it would be
 copying the game's art into the save to satisfy a diff, and the region
 should be relabelled rather than filled. The labels that still call it the
@@ -233,10 +233,10 @@ map, for whoever owns those files:
 
 | where | says | should say |
 |---|---|---|
-| `tools/cursesavediff.py` `REGIONS`, `tools/ssbsavediff.py` | "the area map the engine builds on load" | `ANIMATE00`'s picture buffer: the camp scene's current animation frame at the moment of the save |
+| `tools/curse_of_the_azure_bonds/cursesavediff.py` `REGIONS`, `tools/ssbsavediff.py` | "the area map the engine builds on load" | `ANIMATE00`'s picture buffer: the camp scene's current animation frame at the moment of the save |
 | `goldbox/c64_save.py` module note and the `CURSE_OF_THE_AZURE_BONDS` note, `goldbox/README.md` | "a page of map memory", "map memory at `+$1800`" | the picture buffer |
 | `goldbox/dos_codec.py` near the `7424` accounting | "the area map it builds" | the picture buffer |
-| `tools/cursedisk.py`, `tools/ssbdisk.py` docstrings, `tools/README.md` rows | "the explored map", "the area map" | the picture buffer |
+| `tools/curse_of_the_azure_bonds/cursedisk.py`, `tools/ssbdisk.py` docstrings, `tools/README.md` rows | "the explored map", "the area map" | the picture buffer |
 | `docs/116-second-game.md` §3 | "the region above `$6300` did change between two saves, which is what slots 8-11 would do" | it is the picture buffer, and it changes because the picture animates |
 | `docs/175-silver-blades-save-conversion.md` | "594 [engine] the area map the engine builds on load" | `PIC3B` frame 0, 594 non-zero bytes |
 
@@ -244,6 +244,6 @@ map, for whoever owns those files:
 
 | tool | what |
 |---|---|
-| `tools/cursepic.py` | `frames PIC [--png DIR]` decodes a picture and renders each frame; `match SAVE [PIC]` says which frame a save's region holds and exits 0 only on a byte-for-byte match |
-| `tools/cursepicrun.py` | the driven session above, with its counting checkpoints and the one-shot stop on the first store |
+| `tools/curse_of_the_azure_bonds/cursepic.py` | `frames PIC [--png DIR]` decodes a picture and renders each frame; `match SAVE [PIC]` says which frame a save's region holds and exits 0 only on a byte-for-byte match |
+| `tools/curse_of_the_azure_bonds/cursepicrun.py` | the driven session above, with its counting checkpoints and the one-shot stop on the first store |
 | `tools/c64/absrefsweep.py` | the census that showed no overlay names the window |

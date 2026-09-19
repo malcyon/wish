@@ -426,7 +426,7 @@ class UnnamedConversionError(Exception):
 DOS_TO_C64_NAMES: dict[str, str] = {
     # The player's own disks are named this way (`PORSAVE2.D64`).
     dos_port.POOL_OF_RADIANCE.key: "PORSAVE{slot}.D64",
-    # What `tools/cursedisk.py` writes.
+    # What `tools/curse_of_the_azure_bonds/cursedisk.py` writes.
     dos_port.CURSE_OF_THE_AZURE_BONDS.key: "CURSE{slot}.D64",
     # What `tools/ssbdisk.py` writes.
     dos_port.SECRET_OF_THE_SILVER_BLADES.key: "SSB{slot}.D64",

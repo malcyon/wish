@@ -37,7 +37,7 @@ attempt starts further on:
 
 * `LOAD SAVED GAME` -> `YES` gives `UNABLE TO LOAD SAVED GAME.` and redraws
   the same question, with the save disk attached to unit 8 before the command
-  is entered, after it, with the disk-swap `NOP`s of `tools/curserun.py`
+  is entered, after it, with the disk-swap `NOP`s of `tools/curse_of_the_azure_bonds/curserun.py`
   applied and without, and with `$03B4` -- the byte `GEN $182D` compares
   against 2 to decide whether to ask for the save disk -- poked to 1 first.
 * **It is not the specimen.**  `WISH-SPEC-curse-dual-classed`,
@@ -56,7 +56,7 @@ Two things about that front end are settled and are worth keeping either way.
 row's dominant colour**: `Session.select_row` reads the dominant colour, every
 border row of this screen answers white as well, and the walk never starts.
 And **Return is not read from XTEST here**, only from the KERNAL buffer, which
-is the same finding `tools/cursewarp.py` records for the `YES NO` bar.
+is the same finding `tools/curse_of_the_azure_bonds/cursewarp.py` records for the `YES NO` bar.
 
 `--gate-off` writes two `NOP`s over the branch that refuses -- Curse
 `GEN $2396`, Silver Blades `GEN $1F8B` -- so that the same drive can be run
@@ -121,7 +121,7 @@ def walk_menu(sess, label: str, timeout: float = 40.0) -> bool:
     """Move the menu highlight onto `label` and press Return.
 
     Return goes through the KERNAL buffer: this front end does not read an
-    XTEST Return, which is the same finding `tools/cursewarp.py` records for
+    XTEST Return, which is the same finding `tools/curse_of_the_azure_bonds/cursewarp.py` records for
     the `LOAD SAVED GAME ? YES NO` bar.  The arrows *are* read from XTEST.
     """
     deadline = time.time() + timeout
@@ -199,8 +199,8 @@ def record(sess) -> dict:
 
 
 def drive(args) -> int:
-    from tools import curserun  # noqa: PLC0415
     from tools.c64 import session as por  # noqa: PLC0415
+    from tools.curse_of_the_azure_bonds import curserun  # noqa: PLC0415
 
     gate = C64_GATES[args.title]
     out = pathlib.Path(args.out)

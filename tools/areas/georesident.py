@@ -53,8 +53,9 @@ from automap.area import NEAR_ENOUGH, RESIDENT_GEO, ResidentGeo, _distance  # no
 from automap.maps import load_maps  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox.geo import GEO_SIZE  # noqa: E402
-from tools import curseload, scratch  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
+from tools.curse_of_the_azure_bonds import curseload  # noqa: E402
 
 #: The page the loader leaves a `GEO` file on and never moves it.
 BLOCK, BLOCK_END = RESIDENT_GEO, RESIDENT_GEO + GEO_SIZE - 1

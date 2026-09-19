@@ -10,9 +10,9 @@ answers the half that a listing cannot: whether the writes made from outside,
 with the PC dropped into the handler's tail, actually land a party in another
 area of a running Curse.
 
-    tools/cursewarp.py --pool 3 --to 0x03 --disk 2 --out DIR
-    tools/cursewarp.py --pool 3 --probe --out DIR
-    tools/cursewarp.py --pool 5 --to 0x10 --disk 3 --via-actions --out DIR
+    tools/curse_of_the_azure_bonds/cursewarp.py --pool 3 --to 0x03 --disk 2 --out DIR
+    tools/curse_of_the_azure_bonds/cursewarp.py --pool 3 --probe --out DIR
+    tools/curse_of_the_azure_bonds/cursewarp.py --pool 5 --to 0x10 --disk 3 --via-actions --out DIR
 
 `--probe` boots, loads the party, and reports what the machine holds without
 warping -- which is what to run first, because the current area and the
@@ -51,16 +51,17 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.actions import pc_register  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import curserun, scratch  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools.areas import newecl  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
+from tools.curse_of_the_azure_bonds import curserun  # noqa: E402
 
 #: Where Curse's live party square is.  **Not relocated**: `DUNGEON`'s own
 #: position flush reads `$C04B,X` in Curse exactly as it does in Pool of
@@ -182,7 +183,7 @@ def load_curse_save(sess, timeout: float = 240.0) -> bool:
     * The `YES` on that bar **does not answer to an XTEST Return**.
       `select_bar` walks the highlight on to it and presses, the bar does not
       move, and the run ends there. It answers to the KERNAL buffer, which is
-      the same thing `tools/curserun.py` found for the release's start-up
+      the same thing `tools/curse_of_the_azure_bonds/curserun.py` found for the release's start-up
       check.
 
     Written here rather than in `tools/c64/session.py`, which is Pool of
@@ -288,7 +289,7 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
     because a disk load has not finished drawing anything yet.
 
     **`addr` is optional only for the callers that do not yet pass one** --
-    `tools/livecheck.py`, `tools/c64/inventorycheck.py` and `tools/cursecheck.py`
+    `tools/livecheck.py`, `tools/c64/inventorycheck.py` and `tools/curse_of_the_azure_bonds/cursecheck.py`
     all call this without an `Addresses`, and giving `addr` no default would
     break them outright; without it, this falls back to the old unconditional
     Escape and cannot tell a stuck menu from a slow load.

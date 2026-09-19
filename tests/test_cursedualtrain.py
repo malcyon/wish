@@ -102,7 +102,7 @@ def measured(monkeypatch):
     change to `goldbox/levels.py`. Everything here is about whether this module
     *would* reproduce the trainer, which is the question that has to be
     answered before the key is added, so it is asked the way
-    `tools/cursetrain.py diff` asks it: in this process only.
+    `tools/curse_of_the_azure_bonds/cursetrain.py diff` asks it: in this process only.
     """
     monkeypatch.setattr(levels, "TRAINER_MEASURED",
                         frozenset(set(levels.TRAINER_MEASURED) | {CURSE.key}))

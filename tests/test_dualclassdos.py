@@ -11,7 +11,7 @@ Three claims, none of which needs the player's disks:
 * `tools/dosdis16.py`'s `listing` puts an instruction boundary **on** the
   offset asked for.  A listing that starts mid-instruction decodes to
   plausible nonsense, which is the one failure mode that costs a day.
-* `tools/doscurse.py`'s `PANES` all lie inside the 320x200 frame DOSBox is
+* `tools/curse_of_the_azure_bonds/doscurse.py`'s `PANES` all lie inside the 320x200 frame DOSBox is
   configured to give, so a crop cannot silently come back empty.
 """
 
@@ -25,7 +25,8 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools import doscurse, dosdis16, dualclassdos  # noqa: E402
+from tools import dosdis16, dualclassdos  # noqa: E402
+from tools.curse_of_the_azure_bonds import doscurse  # noqa: E402
 
 # --------------------------------------------------------------------------
 # Which game a record came out of

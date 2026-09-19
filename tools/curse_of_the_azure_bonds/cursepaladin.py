@@ -28,17 +28,17 @@ The route, and why each step is where it is:
   once.  The staged number is an input; `class_bits`, the restored level slot
   and `char_class` are all written by the engine on that press.
 
-    tools/cursepaladin.py stage --base <in.d64> --out <out.d64> --repair \\
+    tools/curse_of_the_azure_bonds/cursepaladin.py stage --base <in.d64> --out <out.d64> --repair \\
         --give MARK:wis=18
 
-    tools/cursepaladin.py run --pool N --disks <PIS> --save <out.d64> \\
+    tools/curse_of_the_azure_bonds/cursepaladin.py run --pool N --disks <PIS> --save <out.d64> \\
         --change MATHEW:FIGHTER --regain MATHEW --out DIR
 
 `stage` writes **inputs only** and says which; `run` prints the class fields
 before the change, after the change and after the training, photographs every
 screen it presses a key on, and writes one JSON line per event as it goes so a
 run that falls over says where it was.  Nothing writes to the player's disks:
-`tools/curserun.py` copies the six sides into the pooled slot read only.
+`tools/curse_of_the_azure_bonds/curserun.py` copies the six sides into the pooled slot read only.
 """
 from __future__ import annotations
 
@@ -49,13 +49,13 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
 from tools import scratch  # noqa: E402
-from tools.cursetrain import (  # noqa: E402
+from tools.curse_of_the_azure_bonds.cursetrain import (  # noqa: E402
     FIELDS,
     MONEY,
     PLATINUM,
@@ -76,7 +76,7 @@ from tools.cursetrain import (  # noqa: E402
 ROSTER = 0x4F00
 
 #: `GEN $12CA` gates TRAIN CHARACTER on this byte; the area scripts write 127
-#: when the party is in a hall (`tools/cursetrain.py`).
+#: when the party is in a hall (`tools/curse_of_the_azure_bonds/cursetrain.py`).
 HALL = 0x7EA8
 HALL_OPEN = 0x7F
 
@@ -158,7 +158,9 @@ def stage(args) -> int:
                             load.to_bytes(2, "little") + bytes(body))
     pathlib.Path(args.out).write_bytes(disk.to_bytes())
     if args.repair:
-        from tools.curseload import close_splat  # noqa: PLC0415
+        from tools.curse_of_the_azure_bonds.curseload import (
+            close_splat,  # noqa: PLC0415
+        )
 
         for entry in close_splat(args.out):
             name = entry["name"]
@@ -280,7 +282,7 @@ def save_current_game(run: "Run") -> bool:
     classed` (`docs/172-curse-trainer.md`), and a save made here stands in
     area 0, before the party has begun adventuring.
     """
-    from tools.curseload import answer_yes  # noqa: PLC0415
+    from tools.curse_of_the_azure_bonds.curseload import answer_yes  # noqa: PLC0415
 
     sess = run.sess
     if not sess.select_row("SAVE CURRENT GAME"):
@@ -304,8 +306,8 @@ def save_current_game(run: "Run") -> bool:
 
 def drive(args) -> int:
     """Boot Curse, change class, stage the regain, train, and read it back."""
-    from tools import curseload, curserun  # noqa: PLC0415
     from tools.c64 import session as por  # noqa: PLC0415
+    from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: PLC0415
 
     run = Run(pathlib.Path(args.out))
     slot = None

@@ -64,7 +64,7 @@ x3. Pool of Radiance's `$3729` has 44 callers in the same shape.
 
 ## What the running game did
 
-`tools/cursethac0.py`, pool slot 2, `cited/368/run5`, `run6` and `run7`
+`tools/curse_of_the_azure_bonds/cursethac0.py`, pool slot 2, `cited/368/run5`, `run6` and `run7`
 -- three boots, three tavern brawls, the same numbers each time. Two of six
 characters had their stored roster THAC0 replaced with `0x0A` -- THAC0 50,
 which nothing the engine computes can reach, since the worst row of the
@@ -185,7 +185,7 @@ strength bonus for ever, and looks right on the sheet until it does.
   `tools/c64/absrefsweep.py curse-of-the-azure-bonds 7D00 7D1F`, over 412 files;
 * `tools/c64/absrefsweep.py curse-of-the-azure-bonds 3918 3918` and its Pool of
   Radiance twin at `$3729`;
-* `tools/cursethac0.py stage` and `run`, whose readings are in
+* `tools/curse_of_the_azure_bonds/cursethac0.py stage` and `run`, whose readings are in
   `cited/368/run5/thac0.jsonl` for the fight and
   `cited/368/hall1/thac0.jsonl` for the training;
 * `tests/test_cursethac0.py` re-derives the three instructions and the five

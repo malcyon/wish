@@ -13,9 +13,9 @@ save carries one frame of a campfire.
 This is that unpacker, transcribed from `ANIMATE00 $6AC0`, so the claim can be
 checked against any save without an emulator:
 
-    tools/cursepic.py frames PIC1D                    each frame's shape
-    tools/cursepic.py frames PIC1D --png DIR         and a PNG of each
-    tools/cursepic.py match SAVE.D64 PIC1D            which frame the save holds
+    tools/curse_of_the_azure_bonds/cursepic.py frames PIC1D                    each frame's shape
+    tools/curse_of_the_azure_bonds/cursepic.py frames PIC1D --png DIR         and a PNG of each
+    tools/curse_of_the_azure_bonds/cursepic.py match SAVE.D64 PIC1D            which frame the save holds
 
 `match` prints, for every frame, how many of the 1024 bytes differ; the answer
 is the row that reads 0.  A save Wish wrote reads 526 against every frame,
@@ -60,7 +60,7 @@ import os
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

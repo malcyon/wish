@@ -7,7 +7,7 @@ pooled session, so no C64 Curse party can be got in)`. All three printed the
 same sentence, `UNABLE TO LOAD SAVED GAME.`, which is why one of them was
 taken for all three.
 
-**A Curse party can be got in.** `tools/curseload.py` does it, and did it four
+**A Curse party can be got in.** `tools/curse_of_the_azure_bonds/curseload.py` does it, and did it four
 times on 2026-09-05 on pool slot 1 with two different specimens.
 
 ## The refusal is the drive's own error number
@@ -114,7 +114,7 @@ run drew and dismissed inside one screen poll.
 drawn again, `#291 (A Curse save disk will not load through the game's own front end in a pooled session, so no C64 Curse party can be got in)` reported that it was not. It was: `$183A` fired, and the
 spare Return took it in under 1.5 seconds. The poke works.
 
-`tools/curseload.py`'s `answer_yes` walks the bar with the arrows, which Curse
+`tools/curse_of_the_azure_bonds/curseload.py`'s `answer_yes` walks the bar with the arrows, which Curse
 *does* read from XTEST, and answers with exactly one `press_kernal`.
 
 ### 74, and a wait the machine slept through
@@ -156,7 +156,7 @@ the drive still believed was open for writing, which a listing shows as
 The two right-hand disks read `$02` and a block count of zero when this
 measurement was first taken, on 2026-09-05. The payload was intact even
 then — the data blocks are written before the directory entry is finished —
-so the disks were recoverable rather than lost: `tools/curseload.py --repair`
+so the disks were recoverable rather than lost: `tools/curse_of_the_azure_bonds/curseload.py --repair`
 closed the entry in a staged copy inside the pool slot, never in the
 specimen, and the repaired `WISH-SPEC-curse-dual-classed.D64` loaded its
 party in the running game where the specimen itself had not.
@@ -182,7 +182,7 @@ carried the identical fault for the identical reason, and was closed by the
 same `#298 (A save disk copied out of an emulator slot before the drive
 closes the file cannot be loaded by the game)` repair on 2026-09-08
 (`$16642` `02`→`82`, `$1665E` `00`→`1D`). `tools/c64/splatload.py` is Pool of
-Radiance's counterpart to `tools/curseload.py`, driving the front end that
+Radiance's counterpart to `tools/curse_of_the_azure_bonds/curseload.py`, driving the front end that
 title actually uses.
 
 **The sentence on the screen is different, and does not name the fault.**
@@ -212,7 +212,7 @@ show, not what booting this disk shows today.
 
 ## Getting a party in
 
-`tools/curseload.py` is the tool, and `load_saved_game()` inside it is the
+`tools/curse_of_the_azure_bonds/curseload.py` is the tool, and `load_saved_game()` inside it is the
 sequence, for any other tool that needs one:
 
 1. walk the party menu to `LOAD SAVED GAME`, Return through the KERNAL buffer;

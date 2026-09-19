@@ -43,7 +43,7 @@ from tools import (  # noqa: E402
     ssbwarp,
 )
 from tools.c64 import session as S  # noqa: E402
-from tools.cursethac0 import checkpoint_hits  # noqa: E402
+from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
 
 OUT = scratch.scratch_dir("ssbloadwatch")
 SAVE = str(specimens.tree_root() / "por-c64"

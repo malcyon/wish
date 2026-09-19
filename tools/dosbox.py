@@ -512,7 +512,7 @@ def window_pid(wid: str, env: dict[str, str]) -> int | None:
 
 #: The DOS engine's generic list menu protocol, one copy rather than a
 #: private guess in each of `tools/dosaddchar.py`, `tools/dosparty.py`,
-#: `tools/dosgnome.py`, `tools/dosladder.py` and `tools/curseregain.py`
+#: `tools/dosgnome.py`, `tools/dosladder.py` and `tools/curse_of_the_azure_bonds/curseregain.py`
 #: (#555). `N`/`P` (the bar's own `NEXT`/`PREV`) turn the page and any other
 #: key picks whatever is highlighted, measured at Pool of Radiance's
 #: creation lists and DOS Curse's own roster and confirmed again at Curse's
@@ -790,7 +790,7 @@ class Session:
     def env(self) -> dict[str, str]:
         """The `DISPLAY`-scoped environment `_env()` builds.
 
-        Public because `tools/doscurse.py` drives its own `xdotool type` and
+        Public because `tools/curse_of_the_azure_bonds/doscurse.py` drives its own `xdotool type` and
         `import` calls against this session's window and used to reach past
         `_env` for it (#226 (Two tools reach into tools/dosbox.py's private
         methods for want of a public seam)).

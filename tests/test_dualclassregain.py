@@ -10,7 +10,7 @@ test here, and only the first needs nothing:
   character has not got back;
 * the family scan over the player's own overlays, which skips without them;
 * the engine-written specimen `WISH-SPEC-curse-408-regained-paladin`, made by
-  `tools/curseregain.py` under DOSBox, which skips without the tree.
+  `tools/curse_of_the_azure_bonds/curseregain.py` under DOSBox, which skips without the tree.
 
 Nothing here reads a byte this project wrote.
 """

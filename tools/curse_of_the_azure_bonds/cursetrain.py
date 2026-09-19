@@ -30,7 +30,7 @@ it" and saves a session of map-reading.
 
 Two subcommands:
 
-    tools/cursetrain.py stage --base <in.d64> --out <out.d64> --repair \\
+    tools/curse_of_the_azure_bonds/cursetrain.py stage --base <in.d64> --out <out.d64> --repair \\
         --give SHARA:xp=30000,plat=2000 ...
 
         Copy a Curse save disk and write named fields into named slots of
@@ -44,7 +44,7 @@ Two subcommands:
         `dcs`, `dcl`, `hpr` and `lvl_<class>`; `plat` zeroes the four lesser
         coins so the total is exactly what it says.
 
-    tools/cursetrain.py run --pool N --disks <PIS> --save <out.d64> \\
+    tools/curse_of_the_azure_bonds/cursetrain.py run --pool N --disks <PIS> --save <out.d64> \\
         --out DIR
 
         Claim a pooled VICE slot, stage the six sides and the save disk,
@@ -57,7 +57,7 @@ Two subcommands:
         `YOU ARE NOW A LEVEL n` is read twice often enough to start a second
         training nobody asked for.  The recipe is in `docs/172-curse-trainer.md`.
 
-    tools/cursetrain.py diff --before <stem> --after <stem> --class cleric
+    tools/curse_of_the_azure_bonds/cursetrain.py diff --before <stem> --after <stem> --class cleric
 
         Read a pair of `$7C00`/`$7D00` hex dumps taken with
         `tools/c64/porcmd peek`, print the field-by-field delta, and replay it
@@ -102,7 +102,7 @@ it and `run` does not apply it; from the command port it is
 `d0 a4`.
 
 Nothing here writes to the player's own disks: the six sides are copied into
-the slot by `tools/curserun.py`, which opens them read only.
+the slot by `tools/curse_of_the_azure_bonds/curserun.py`, which opens them read only.
 """
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -265,7 +265,9 @@ def stage(args) -> int:
         # `UNABLE TO LOAD SAVED GAME.` -- `#298`.  The payload is already
         # there, so setting the bit and the count is the whole repair, and it
         # is done to our copy and never to what it was copied from.
-        from tools.curseload import close_splat  # noqa: PLC0415
+        from tools.curse_of_the_azure_bonds.curseload import (
+            close_splat,  # noqa: PLC0415
+        )
 
         for entry in close_splat(args.out):
             name = entry["name"]
@@ -324,7 +326,7 @@ def compare(args) -> int:
     """Print the delta, then replay it through `goldbox.levelup.plan`.
 
     The replay reaches past `levels.TRAINER_MEASURED` **in this process
-    only**, the way `tools/cursedisk.py` reaches past `dos.CONVERTS`: the
+    only**, the way `tools/curse_of_the_azure_bonds/cursedisk.py` reaches past `dos.CONVERTS`: the
     whole point is to find out whether the module reproduces the trainer
     before the key that trusts it is added.
     """
@@ -363,8 +365,8 @@ def compare(args) -> int:
 
 def drive(args) -> int:
     """Stage a slot, boot Curse and serve the command port."""
-    from tools import curserun  # noqa: PLC0415
     from tools.c64 import session as por
+    from tools.curse_of_the_azure_bonds import curserun  # noqa: PLC0415
 
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

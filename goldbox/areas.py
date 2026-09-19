@@ -599,7 +599,7 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: control flow from its five entry `GOTO`s and reads the `LOADFILES`
 #: operands, corroborated by the loader's own disk byte `$7F12` agreeing
 #: with the target script's side on all 23 static `NEWECL`s it precedes, and
-#: re-checked directly off the disks by `tools/cursedisk.py --check-areas`
+#: re-checked directly off the disks by `tools/curse_of_the_azure_bonds/cursedisk.py --check-areas`
 #: on 2026-09-05 with 0 disagreements against this table.
 #:
 #: `confidence` grades the **name**, exactly as it does for `AREAS` -- see

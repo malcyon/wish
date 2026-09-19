@@ -3,12 +3,12 @@
 
 `tools/fightrun.py` and `tools/c64/combatdiag.py` do this for Pool of Radiance and
 both boot their own `Session`, which is that title's front end.  Curse and
-Silver Blades boot differently (`tools/curserun.py`, `tools/ssbrun.py`), and
+Silver Blades boot differently (`tools/curse_of_the_azure_bonds/curserun.py`, `tools/ssbrun.py`), and
 by the time either has a party in the world the session is already **served**
 on its command port -- so this drives that port rather than booting anything,
 and the same file works for both titles.
 
-    tools/curseload.py --save CURSEI.D64 --pool 2 --repair --serve
+    tools/curse_of_the_azure_bonds/curseload.py --save CURSEI.D64 --pool 2 --repair --serve
     POR_CMD_PORT=6562 tools/c64/laterfight.py --out DIR/curse
 
     tools/ssbrun.py --pool 3 --save SSBD.D64 --out DIR/run1
@@ -179,7 +179,7 @@ class Run:
 
         `Session.select_bar` walks the highlight with XTEST arrows, which
         these two titles do read, and then presses Return with XTEST, which
-        they do **not** -- the same finding `tools/curseload.py` records for
+        they do **not** -- the same finding `tools/curse_of_the_azure_bonds/curseload.py` records for
         `LOAD SAVED GAME ? YES NO`, and it holds on the combat bar too.  So a
         `bar QUICK` looks as if it worked, returns True, and nothing happens.
 

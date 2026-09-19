@@ -10,7 +10,7 @@ save into a C64 one, which the importer refuses today)` steps 1 and 2), so
 the two tools differ by more than a flag and this is a second file rather
 than a `--game` on the first.
 
-    tools/cursedisk.py --folder DIR --slot H \\
+    tools/curse_of_the_azure_bonds/cursedisk.py --folder DIR --slot H \\
         --out CURSESAVE.D64 --report --sheet
 
 **Two reach-arounds this tool used to need, both closed by step 4.**
@@ -37,7 +37,7 @@ import pathlib
 import sys
 from types import MappingProxyType
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

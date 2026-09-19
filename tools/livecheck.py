@@ -269,7 +269,7 @@ class PoolOfRadiance(Title):
 
 class Curse(Title):
     def boot(self, slot, disks, save, note, wait):
-        from tools import curseload, curserun, cursewarp
+        from tools.curse_of_the_azure_bonds import curseload, curserun, cursewarp
 
         first = curserun.stage(slot, disks, save)
         save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
@@ -314,7 +314,7 @@ def _own_title(sess, game) -> None:
     """Tell the driver which title it is driving.
 
     `Session.game` is what `indoors()` and `square_and_world()` ask, and it
-    defaults to Pool of Radiance. `tools/curserun.py`'s subclass sets it;
+    defaults to Pool of Radiance. `tools/curse_of_the_azure_bonds/curserun.py`'s subclass sets it;
     `tools/ssbwarp.py`'s `SSBSession` does not, so a Silver Blades party
     standing in a dungeon read as being on the travel grid and `walk_one`
     refused every key without pressing one -- `#360`'s defect, fixed for one
@@ -330,7 +330,7 @@ def _stage_save(slot, save: str) -> str:
 
     A pool slot is reused, so whatever the last tenant left in `SIDE0` is
     another game's save disk -- which is how a Curse run once wrote four
-    characters beside Pool of Radiance's (`tools/curserun.py`).
+    characters beside Pool of Radiance's (`tools/curse_of_the_azure_bonds/curserun.py`).
     `por.stage_writable` unlinks it first and gives the copy the write bit
     back, since a specimen out of `$WISH_SPECIMENS` is read-only by design
     (`#472`).

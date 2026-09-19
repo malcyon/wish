@@ -28,7 +28,6 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
 from tools import (  # noqa: E402
-    cursethac0,
     gamedisks,
     scratch,
     specimens,
@@ -38,6 +37,9 @@ from tools.c64 import (  # noqa: E402
     laterbattle,
 )
 from tools.c64 import session as S  # noqa: E402
+from tools.curse_of_the_azure_bonds import (  # noqa: E402
+    cursethac0,
+)
 
 OUT = scratch.scratch_dir("ssbstep1512")
 

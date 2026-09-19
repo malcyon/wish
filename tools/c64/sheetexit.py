@@ -445,7 +445,7 @@ def leave(sess, log: Log, how: str, name: str, addrs: dict,
 
 
 def curse_boot(slot, log: Log, save: str, where: str, wait: float):
-    from tools import curseload, curserun
+    from tools.curse_of_the_azure_bonds import curseload, curserun
     first = curserun.stage(slot, where, save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
     os.chmod(save_disk, 0o644)

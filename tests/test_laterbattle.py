@@ -2,7 +2,7 @@
 
 `#554 (laterbattle.py's --goto tour charges a leg its whole step allowance, so
 a run's budget is a fiction and the walk falls through into the pattern
-walker)`. `Run.goto` (`tools/cursethac0.py`) returns as soon as it arrives at
+walker)`. `Run.goto` (`tools/curse_of_the_azure_bonds/cursethac0.py`) returns as soon as it arrives at
 its target -- it can take far fewer than the `budget` steps it was given --
 and the tour loop used to add the whole `budget` to `spent` regardless, which
 both misreports how far the party actually walked and can end the tour before
@@ -16,8 +16,9 @@ from types import SimpleNamespace
 
 sys.path.insert(0, ".")
 
-from tools import cursethac0, ssbwarp  # noqa: E402
+from tools import ssbwarp  # noqa: E402
 from tools.c64 import laterbattle  # noqa: E402
+from tools.curse_of_the_azure_bonds import cursethac0  # noqa: E402
 
 
 class FakeGotoRun(laterbattle.Battle):

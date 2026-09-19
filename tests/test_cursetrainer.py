@@ -751,7 +751,7 @@ _ORDER_INDEPENDENT_FIELDS = (
 def trainer_measured_for_this_test(monkeypatch):
     """Reach past `TRAINER_MEASURED` for the length of one test, the way
     `tests/test_cursedualtrain.py`'s own `measured` fixture does and
-    `tools/cursetrain.py diff` does outside the test suite: the question
+    `tools/curse_of_the_azure_bonds/cursetrain.py diff` does outside the test suite: the question
     below is whether `goldbox/levelup.py` *would* reproduce the trainer, and
     that has to be answerable before the set gains Curse, not after -- see
     `goldbox.levels.TRAINER_MEASURED`'s own comment for why it has not yet.

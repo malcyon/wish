@@ -296,7 +296,7 @@ class SSBSession(por.Session):
         Curse's, so `CurseSession.sheet_is_up`'s own test transfers unchanged:
         the world bar has no `EXIT` on it, the camp bar begins `ENCAMP:` and
         is excluded by the second clause, and `EXIT` is the one word every
-        version of the sheet bar ends with. `tools/curserun.py`'s method is
+        version of the sheet bar ends with. `tools/curse_of_the_azure_bonds/curserun.py`'s method is
         not reused directly, so this driver does not gain a dependency on
         Curse's.
         """
@@ -759,7 +759,7 @@ def warp(sess, addr: Addresses, target: int, disk: int,
 class SessTarget:
     """`automap.actions`' Target contract over this session's monitor.
 
-    The same four methods `tools/cursewarp.py` wraps a Curse session in. It is
+    The same four methods `tools/curse_of_the_azure_bonds/cursewarp.py` wraps a Curse session in. It is
     what makes `--via-actions` exercise the code the window ships rather than
     this file's own `warp`: the two write the same bytes, and only one of them
     is what a player clicking Fast Travel runs.

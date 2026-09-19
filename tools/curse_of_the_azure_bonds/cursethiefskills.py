@@ -12,11 +12,11 @@ is.  Silver Blades' copy of the same routine opens with `mov byte [bp-2], 0`
 and Pool of Radiance's has no such term at all, which is why neither title
 shows the offset.
 
-    tools/cursethiefskills.py routine    the three DOS routines, and which
+    tools/curse_of_the_azure_bonds/cursethiefskills.py routine    the three DOS routines, and which
                                          initialises the local
-    tools/cursethiefskills.py records    every Curse record, DOS and C64,
+    tools/curse_of_the_azure_bonds/cursethiefskills.py records    every Curse record, DOS and C64,
                                          against the port's own tables
-    tools/cursethiefskills.py labels     whether either port ever draws a
+    tools/curse_of_the_azure_bonds/cursethiefskills.py labels     whether either port ever draws a
                                          thief skill
 
 `routine` reads the player's own `GAME.OVR` for each title -- nothing here is
@@ -47,7 +47,7 @@ import pathlib
 import re
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import dos_codec  # noqa: E402
 from tools import thiefskillcensus as census  # noqa: E402

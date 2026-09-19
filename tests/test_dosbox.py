@@ -812,7 +812,7 @@ class _DisplayStub:
 def test_session_env_is_public_and_returns_what_env_builds():
     """`_env()` stays the implementation; `env()` is the seam (#226).
 
-    `tools/doscurse.py` used to write `session._env()` for the same
+    `tools/curse_of_the_azure_bonds/doscurse.py` used to write `session._env()` for the same
     dictionary it now gets from `session.env()`.  `_env()` is not renamed
     away, only wrapped: `tools/dosboxx.py`'s `XSession` overrides `_env`, not
     `env`, to swap in its own `debug_env()`, and a plain rename of the name
@@ -834,7 +834,8 @@ def test_dosoutdoorprobe_and_doscurse_no_longer_reach_past_the_seam():
     """
     import inspect
 
-    from tools import doscurse, dosoutdoorprobe
+    from tools import dosoutdoorprobe
+    from tools.curse_of_the_azure_bonds import doscurse
 
     assert "._move(" not in inspect.getsource(dosoutdoorprobe)
     assert "._env(" not in inspect.getsource(doscurse)

@@ -1,11 +1,11 @@
-"""`tools/cursewheel.py`'s command line, which answers DOS Curse's code wheel
+"""`tools/curse_of_the_azure_bonds/cursewheel.py`'s command line, which answers DOS Curse's code wheel
 and says nothing about the challenge or the answer (#108's ruling).
 
 Nothing here reads a real code-wheel prompt off a real screenshot -- that
 would be a specimen of the very thing `#108` keeps out of this repository.
 The frames below are built from plain shapes, enough ink in each rune tile
 and a path band drawn at the exact per-cell geometry measured off three live
-DOS Curse prompts on 2026-09-14 (`#537 (tools/cursewheel.py never recognises
+DOS Curse prompts on 2026-09-14 (`#537 (tools/curse_of_the_azure_bonds/cursewheel.py never recognises
 a real DOS Curse code-wheel screenshot, so its own command line refuses every
 prompt)`, both comments on that issue): a dot is a 3x3 diamond at columns
 2-4, rows 4-6 of its 8x8 text cell; a dash is a 7px-wide bar across rows 2-3.
@@ -24,7 +24,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import cursewheel  # noqa: E402
+from tools.curse_of_the_azure_bonds import cursewheel  # noqa: E402
 
 needs_wheel_repo = pytest.mark.skipif(
     not (cursewheel.wheel_repo() / "coab" / "images").is_dir(),

@@ -622,7 +622,7 @@ class Session:
     #: *addresses* are not, because Curse and Silver Blades load their save
     #: page at `$4B00` where Pool of Radiance loads it at `$4900`.
     #:
-    #: A subclass says which title it is (`tools/curserun.py` does), and
+    #: A subclass says which title it is (`tools/curse_of_the_azure_bonds/curserun.py` does), and
     #: `indoors()` and `square_and_world()` ask this rather than a module
     #: constant.  `#360 (The session
     #: driver will not walk a Curse or Silver Blades party in a dungeon,
@@ -1236,7 +1236,7 @@ class Session:
         (`docs/188-the-sheet-portrait-per-title.md`) -- so a driver looking
         for `VIEW:` there waits out its whole timeout with the sheet drawn in
         front of it, reports no sheet, and leaves the session standing on a
-        screen the caller does not know it is on.  `tools/curserun.py`
+        screen the caller does not know it is on.  `tools/curse_of_the_azure_bonds/curserun.py`
         overrides this.
         """
         return SHEET_BAR in s.row(24)
@@ -1540,7 +1540,7 @@ class Session:
 
         **A title with no travel grid reads its own live triple instead** --
         `$C04B`, `automap.c64.C64Machine.live_position`, which
-        `tools/cursewarp.py` has driven Curse from since
+        `tools/curse_of_the_azure_bonds/cursewarp.py` has driven Curse from since
         `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
         Radiance's alone?)`.  There is no second pair to choose between there,
         and `$49C0` in Curse or Silver Blades is not the party's square at all
@@ -1611,7 +1611,7 @@ class Session:
         there moves the party not at all and does not even turn it, which
         from outside looks exactly like a party hemmed in by walls
         (`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
-        which the importer refuses today)`, and `tools/curserun.py` overrides
+        which the importer refuses today)`, and `tools/curse_of_the_azure_bonds/curserun.py` overrides
         this).
         """
         self.kbd.key(move.lower(), hold, gap)
@@ -2100,7 +2100,7 @@ class Session:
     #: worst.**  `combat_bar` walks the highlight with XTEST arrows, which
     #: both titles do read, and then pressed Return with XTEST, which they do
     #: not -- so it returned True having done nothing at all, once per turn,
-    #: for a whole fight (`#334`, and `tools/curseload.py` records the same
+    #: for a whole fight (`#334`, and `tools/curse_of_the_azure_bonds/curseload.py` records the same
     #: thing for `LOAD SAVED GAME ? YES NO`).
     BAR_RETURN_KERNAL = False
 

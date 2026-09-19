@@ -12,7 +12,7 @@ multi-classed character.**
 
 ## What the engine wrote
 
-Driven on 2026-09-08 with `tools/cursepaladin.py` off
+Driven on 2026-09-08 with `tools/curse_of_the_azure_bonds/cursepaladin.py` off
 `WISH-SPEC-curse-trained-party`, on a pooled VICE slot, twice from the same
 staged disk.
 

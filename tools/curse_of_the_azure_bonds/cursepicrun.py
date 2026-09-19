@@ -4,12 +4,12 @@
 `#283 (What Curse keeps in the area map region at +$1800 is unread, and a
 conversion writes zeroes there)`: the region is the picture buffer at
 `$6300`-`$66FF` that `ANIMATE00` decodes the view-window picture into, and
-`tools/cursepic.py` proves that on the bytes.  What the bytes cannot prove is
+`tools/curse_of_the_azure_bonds/cursepic.py` proves that on the bytes.  What the bytes cannot prove is
 the claim that matters to a conversion -- that **the engine never reads what
 a save put there**, so writing zeroes loses nothing.  This run takes that
 measurement in the running game:
 
-1. load a save through the game's own front end (`tools/curseload.py`);
+1. load a save through the game's own front end (`tools/curse_of_the_azure_bonds/curseload.py`);
 2. read the buffer the load left, then overwrite it with `$A5` so any copy
    or read of it would show;
 3. arm two counting checkpoints on `$6300`-`$66FF`, one for loads and one
@@ -27,8 +27,8 @@ measurement in the running game:
 6. read `$6700`-`$6740` at each step, because the decoder's colour bytes run
    65 bytes into the roster page and the specimens hold an intact roster.
 
-    tools/cursepicrun.py --save /path/to/CURSEH.D64 --out DIR/run1
-    tools/cursepicrun.py --save ... --out DIR/run4 --no-stop
+    tools/curse_of_the_azure_bonds/cursepicrun.py --save /path/to/CURSEH.D64 --out DIR/run1
+    tools/curse_of_the_azure_bonds/cursepicrun.py --save ... --out DIR/run4 --no-stop
 
 Writes `run.jsonl`, screenshots and the sampled buffers into `--out`.  Nothing
 outside the slot's own directory is written, and the player's disks are read
@@ -43,11 +43,12 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from tools import curseload, cursepic, curserun, gamedisks, scratch  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
+from tools.curse_of_the_azure_bonds import curseload, cursepic, curserun  # noqa: E402
 
 BUFFER, BUFFER_END = 0x6300, 0x66FF
 ROSTER = 0x6700

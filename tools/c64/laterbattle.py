@@ -46,9 +46,10 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.savegame import ROSTER_HP_CURRENT, ROSTER_STRIDE  # noqa: E402
-from tools import cursethac0, gamedisks, scratch  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import latercombat  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.curse_of_the_azure_bonds import cursethac0  # noqa: E402
 
 #: The tavern in Tilverton, and the script bar it puts up. `#131 (Lift
 #: WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all three
@@ -65,7 +66,7 @@ KEYS = ("KP_8", "KP_2", "KP_6", "KP_4", "KP_9", "KP_7", "KP_3", "KP_1")
 
 
 class Battle(cursethac0.Run):
-    """`tools/cursethac0.py`'s driven run, asking a different question.
+    """`tools/curse_of_the_azure_bonds/cursethac0.py`'s driven run, asking a different question.
 
     The walk to the tavern is not this file's work: `Run.goto` plans it over
     the area's own `GEO`, bans an edge that goes nowhere and plans again, and
@@ -255,7 +256,7 @@ class Battle(cursethac0.Run):
 
 def curse_fight(run: Battle, args, disks: str) -> int:
     """Boot, load, walk to the tavern and punch the barkeep."""
-    from tools import curseload, curserun  # noqa: PLC0415
+    from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: PLC0415
 
     area, geo = cursethac0.area_geo(args.save, disks)
     boot = curserun.stage(run.slot, disks, args.save)

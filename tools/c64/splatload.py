@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Boot Pool of Radiance with a save disk and say whether the drive would open it.
 
-`tools/curseload.py` asks this question of Curse of the Azure Bonds, whose
+`tools/curse_of_the_azure_bonds/curseload.py` asks this question of Curse of the Azure Bonds, whose
 front end is its own; this asks it of Pool of Radiance, where the party menu
 is the one `tools/c64/session.py` already drives.  The reason there are two is
 `#298 (A save disk copied out of an emulator slot before the drive closes the
@@ -26,7 +26,7 @@ neither names the drive error.
     tools/c64/splatload.py --save ... --repair
 
 `--repair` closes the entry in the **staged copy inside the pool slot**, using
-`tools/curseload.py`'s `close_splat()`, and never touches the file it was
+`tools/curse_of_the_azure_bonds/curseload.py`'s `close_splat()`, and never touches the file it was
 copied from.  Run it both ways over the same disk and the pair is the
 differential: one refusal and one party, with nothing else changed.
 
@@ -49,7 +49,7 @@ sys.path.insert(0, str(ROOT))
 
 from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
-from tools.curseload import close_splat  # noqa: E402
+from tools.curse_of_the_azure_bonds.curseload import close_splat  # noqa: E402
 
 #: Where the load's result becomes a number.  0 is success; anything else is
 #: the drive's own error code, and 60 (`$3C`) is `WRITE FILE OPEN`.

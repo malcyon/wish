@@ -226,7 +226,7 @@ def _unclosed_c64_entries(path: pathlib.Path) -> list:
     the block count in only when the file is closed. A disk pulled out of an
     emulator slot before the drive finished writing back looks exactly like
     that, and the game refuses to load it -- `60, WRITE FILE OPEN`. See
-    `tools/curseload.py`'s `close_splat()`, which repairs a copy of one.
+    `tools/curse_of_the_azure_bonds/curseload.py`'s `close_splat()`, which repairs a copy of one.
 
     A path that does not parse as a recognised D64 size is not this check's
     business and is left to whatever already validates it -- `add` has never
@@ -284,7 +284,7 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
                     f"run and let the drive finish -- re-read the "
                     f"directory until the entry closes -- before copying "
                     f"the image out, or repair a *copy* of this file with "
-                    f"tools/curseload.py's close_splat() and add the "
+                    f"tools/curse_of_the_azure_bonds/curseload.py's close_splat() and add the "
                     f"repaired copy instead.")
     root = root or tree_root()
     today = datetime.date.today().isoformat()
@@ -494,7 +494,7 @@ def repair_unloadable(name: str, *, note: str, root: pathlib.Path | None = None,
     specimen `edited` rather than `engine`.
 
     **Nothing is written until the repair has been proved on a copy.**  The
-    image is copied to a temporary file, `tools/curseload.py`'s `close_splat()`
+    image is copied to a temporary file, `tools/curse_of_the_azure_bonds/curseload.py`'s `close_splat()`
     is run on the copy, and three things are checked before the tree is
     touched: that the only bytes differing are inside a directory entry's type
     byte and block count, that every entry that was already closed is
@@ -514,7 +514,7 @@ def repair_unloadable(name: str, *, note: str, root: pathlib.Path | None = None,
     import tempfile  # noqa: PLC0415
 
     from goldbox.d64 import D64  # noqa: PLC0415
-    from tools.curseload import close_splat  # noqa: PLC0415
+    from tools.curse_of_the_azure_bonds.curseload import close_splat  # noqa: PLC0415
 
     root = root or tree_root()
     entries = [e for e in list_specimens(root) if e.get("name") == name]

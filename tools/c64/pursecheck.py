@@ -422,7 +422,7 @@ def leave_sheet(sess, r: Run, walk) -> bool:
 
 def curse_boot(slot, r: Run, save: str, where: str, wait: float):
     """Boot Curse and load the party as far as the formation menu."""
-    from tools import curseload, curserun
+    from tools.curse_of_the_azure_bonds import curseload, curserun
 
     first = curserun.stage(slot, where, save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")

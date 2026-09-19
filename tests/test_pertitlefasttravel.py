@@ -6,7 +6,7 @@ disks; these check what the code does with them, and need nothing at all.
 
 **What these cannot show.** That a fast travel driven this way lands a party in
 Curse or Silver Blades. Curse's half is measured -- four driven warps on a
-pooled emulator, `#19` -- but through `tools/cursewarp.py`'s own writes rather
+pooled emulator, `#19` -- but through `tools/curse_of_the_azure_bonds/cursewarp.py`'s own writes rather
 than through `automap/actions.py`, and no Silver Blades party has been
 fast-travelled at all. What is asserted here is that the right title's
 addresses are written, in the handler's order, and that a title nobody has

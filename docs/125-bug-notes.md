@@ -750,7 +750,7 @@ DOS engine's inflated row and comes out of the C64 trainer in
 `WISH-SPEC-curse-trained-party` at thief 6 holding exactly what the C64's own
 tables give. So the offset is DOS Curse's alone, and a C64 record carrying it
 got it from a DOS record and kept it -- the C64 engine rewrites these bytes
-only when the trainer runs. `tools/cursethiefskills.py` re-runs all of it.
+only when the trainer runs. `tools/curse_of_the_azure_bonds/cursethiefskills.py` re-runs all of it.
 
 **What is not established.** Whether the byte is always 7. It is a stack
 leftover, so it is whatever the call path before it left at that address; 7 is

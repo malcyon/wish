@@ -141,7 +141,7 @@ The disk hint of 2 is the useful part: side 2 is where `ECL01` and `GEO01`
 live, and that is the first thing the game will want.
 
 **But a C64 save that *names* area 0 cannot be entered.**
-`tools/curseareazero.py --doctor --recipe` stamps the never-adventured header
+`tools/curse_of_the_azure_bonds/curseareazero.py --doctor --recipe` stamps the never-adventured header
 into a copy of an engine-written area-1 save disk, with exactly the cache
 `goldbox.dos_codec.apply_file_cache` would write -- `$FF` in all twenty-five, then
 slot 2 the map, slot 8 the area and slot 11 `ANIMATE00`, each with bit 7 set.
@@ -241,8 +241,8 @@ regression the naive fix would cause.
 
 `WISH-SPEC-curse-234-party-dualclassed` slot D -- the DOS engine's own
 `SAVE CURRENT GAME` at the party menu, six characters, area 0 -- converted
-by `tools/cursedisk.py` and driven on pool slot 1 by
-`tools/curseareazero.py --save CURSE-D-notsetout.D64 --begin --side 2`:
+by `tools/curse_of_the_azure_bonds/cursedisk.py` and driven on pool slot 1 by
+`tools/curse_of_the_azure_bonds/curseareazero.py --save CURSE-D-notsetout.D64 --begin --side 2`:
 
 | moment | area | map | disk hint | cache |
 |---|---|---|---|---|
@@ -291,6 +291,6 @@ in the world -- is unaffected.
 | tool | what it does |
 |---|---|
 | `tools/neveradventured.py` | the census above: every distinct container on the machine, per title, split by the staged script (`--by buffer`), by `$4FE1` (`--by word`) or by the rule the import applies (`--by rule`) |
-| `tools/curseareazero.py` | boots C64 Curse to the party menu and reads `$4B00`-`$4DDF`; `--save`/`--begin` load a disk and press `BEGIN ADVENTURING`; `--doctor` stamps the never-adventured header into a copy of a save disk, one field at a time with `--zero` |
-| `tools/doscurse.py console` | the DOSBox session the DOS half was driven in |
+| `tools/curse_of_the_azure_bonds/curseareazero.py` | boots C64 Curse to the party menu and reads `$4B00`-`$4DDF`; `--save`/`--begin` load a disk and press `BEGIN ADVENTURING`; `--doctor` stamps the never-adventured header into a copy of a save disk, one field at a time with `--zero` |
+| `tools/curse_of_the_azure_bonds/doscurse.py console` | the DOSBox session the DOS half was driven in |
 | `tools/daxls.py` | the `ECL`/`GEO` container indexes the "no block 0" row rests on |

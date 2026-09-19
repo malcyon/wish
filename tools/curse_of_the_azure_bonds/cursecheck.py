@@ -6,12 +6,12 @@ the game's own screens.
 equivalent, which is the whole of why
 `#52 (File ▸ Import and File ▸ Export for every direction the library
 supports)`'s fifth flag condition graded DOS → C64 Curse PROBABLE rather than
-confirmed: `tools/curseload.py` gets a party in through the game's own
+confirmed: `tools/curse_of_the_azure_bonds/curseload.py` gets a party in through the game's own
 `LOAD SAVED GAME` and then serves, and nothing ever read the roster panel, a
 character sheet or a step off it.  The bytes were believed right; nobody had
 looked.
 
-    tools/cursecheck.py --disk CURSEJ.D64 --walk KIKI \\
+    tools/curse_of_the_azure_bonds/cursecheck.py --disk CURSEJ.D64 --walk KIKI \\
                         --resave RESAVE.D64
 
 What it reads, in order, and every one of them is a thing bytes cannot
@@ -34,7 +34,7 @@ answer:
   diffed against what the conversion wrote.
 
 Two things about driving this title that are not Pool of Radiance's and are
-carried in `tools/curserun.py` rather than here: the move handler answers only
+carried in `tools/curse_of_the_azure_bonds/curserun.py` rather than here: the move handler answers only
 the KERNAL buffer, and there is no travel grid, so `Session.indoors()` must
 not read `$49E6`
 (`#360 (The session driver will not walk a Curse or Silver Blades party in a
@@ -52,16 +52,17 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import c64 as machines  # noqa: E402
-from tools import curseload, curserun, cursewarp, gamedisks, scratch  # noqa: E402
+from tools import gamedisks, scratch  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
+from tools.curse_of_the_azure_bonds import curseload, curserun, cursewarp  # noqa: E402
 
 #: The live square triple -- x, y, facing -- which is where Curse keeps the
-#: party while it is running.  `tools/cursewarp.py` established it for
+#: party while it is running.  `tools/curse_of_the_azure_bonds/cursewarp.py` established it for
 #: `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
 #: Radiance's alone?)`
 #: and `automap.c64` carries it as `C64Machine.live_position`; it is read

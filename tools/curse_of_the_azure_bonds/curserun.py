@@ -21,8 +21,8 @@ Three things differ, and they are the whole file:
 
 Usage:
 
-    tools/curserun.py --pool 3            claim slot 3, stage, boot, serve
-    tools/curserun.py --pool 3 --watch    same, but do not attempt the boot
+    tools/curse_of_the_azure_bonds/curserun.py --pool 3            claim slot 3, stage, boot, serve
+    tools/curse_of_the_azure_bonds/curserun.py --pool 3 --watch    same, but do not attempt the boot
 
 Then drive it with `POR_CMD_PORT=6563 tools/c64/porcmd screen`, exactly as for
 Pool of Radiance.
@@ -36,7 +36,7 @@ import re
 import sys
 import time
 
-TOOLS = str(pathlib.Path(__file__).resolve().parent)
+TOOLS = str(pathlib.Path(__file__).resolve().parent.parent)
 sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 
 from goldbox.d64 import D64  # noqa: E402
@@ -246,7 +246,7 @@ class CurseSession(por.Session):
         could never answer.
 
         `$C04B` is the triple the game itself walks, and
-        `tools/cursewarp.py` has judged Curse's steps by it since
+        `tools/curse_of_the_azure_bonds/cursewarp.py` has judged Curse's steps by it since
         `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
         Radiance's alone?)`.  A wall is then a real reading: the party tried
         and the triple did not move.
@@ -417,7 +417,7 @@ class CurseSession(por.Session):
 
         **Move mode is not left between steps**, which is the opposite of
         what `Session.walk_one` does and is the same thing
-        `tools/cursewarp.py` learned: `leave_move` presses Return up to eight
+        `tools/curse_of_the_azure_bonds/cursewarp.py` learned: `leave_move` presses Return up to eight
         times, and a Return on Curse's own command bar *runs the command the
         highlight is sitting on* rather than backing out of anything.  On
         2026-09-07 that left a driven session on a screen nobody had asked

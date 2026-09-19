@@ -10,7 +10,7 @@ loop answers and nothing else does:
   `+0xA2`, counted over every image. `MAKE SAVE GAME DISK` sends
   `N0:SG,Q9` in all three C64 titles, so the header never names one; what a
   save disk carries is whatever formatted it, and 44 of the images on this
-  machine say `CURSE SAVE` because `tools/curserun.py` wrote them.
+  machine say `CURSE SAVE` because `tools/curse_of_the_azure_bonds/curserun.py` wrote them.
 * **files** -- every PRG that parses as an occupied `CharacterRecord`, by its
   one-byte filename prefix (`$01` Pool of Radiance, `$02` Curse, `$05` Silver
   Blades -- `docs/216-the-c64-name-table.md`), its PRG load address, and which

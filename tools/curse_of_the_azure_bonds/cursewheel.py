@@ -14,7 +14,7 @@ this reaches into it at run time and **records nothing** here -- the shape
 (#108, Amiga Curse asks its code wheel, so the title cannot be driven
 unattended).
 
-    tools/cursewheel.py --shot 008-wheel.png --box 4
+    tools/curse_of_the_azure_bonds/cursewheel.py --shot 008-wheel.png --box 4
 
 prints `challenge on screen, answered`, `challenge on screen, not answered`
 (no `--box` given, or the path could not be read) or `no challenge on
@@ -57,7 +57,7 @@ import pathlib
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE.parent.parent))
 
 from tools import gamedisks  # noqa: E402
 

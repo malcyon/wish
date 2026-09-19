@@ -510,7 +510,7 @@ def test_the_report_says_the_id_was_translated(shape):
 def test_a_c64_curse_paladin_converts_with_protection_from_evil():
     """`WISH-SPEC-curse-party-with-items` is the C64 game's own
     `ENCAMP > SAVE` of the shipped Tilverton party after shopping, made under
-    VICE by `tools/curserun.py` with `edited_afterwards = false` -- it never
+    VICE by `tools/curse_of_the_azure_bonds/curserun.py` with `edited_afterwards = false` -- it never
     went through Wish.  Its PALADIN carries trait 45 and its RANGER 134, and
     the ranger is the control: his id is the same number on both ports and
     must arrive unchanged.

@@ -18,8 +18,8 @@ import pytest
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
 
 from goldbox.d64 import D64  # noqa: E402
-from tools import curseload  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
+from tools.curse_of_the_azure_bonds import curseload  # noqa: E402
 
 
 class FakeMonitor:

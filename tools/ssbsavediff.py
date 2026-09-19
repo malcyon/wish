@@ -13,7 +13,7 @@ measured one, the sentence that says whose byte it is.
     tools/ssbsavediff.py ours.D64 engine.D64
     tools/ssbsavediff.py ours.D64 engine.D64 --context 32
 
-`tools/cursesavediff.py` is the same tool for Curse of the Azure Bonds and
+`tools/curse_of_the_azure_bonds/cursesavediff.py` is the same tool for Curse of the Azure Bonds and
 the two region tables are **not** the same, which is why this is a second
 file: five header rows change hands between the titles, each measured on
 Silver Blades' own overlays and its own `ECL` bytecode.

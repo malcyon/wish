@@ -98,7 +98,7 @@ def weight_index(strength: int, exceptional: int) -> int:
         out += 1
     return out
 
-#: `SAVEAZURE`'s geometry, the same numbers `tools/cursetrain.py` uses and for
+#: `SAVEAZURE`'s geometry, the same numbers `tools/curse_of_the_azure_bonds/cursetrain.py` uses and for
 #: the same reason: the eight character slots start `0x400` into the payload
 #: and each keeps the record's first 256 bytes, which is where both arrays
 #: are.
@@ -204,7 +204,9 @@ def stage(args) -> int:
     disk.write_file_inplace(name, load.to_bytes(2, "little") + bytes(body))
     pathlib.Path(args.out).write_bytes(disk.to_bytes())
     if args.repair:
-        from tools.curseload import close_splat  # noqa: PLC0415
+        from tools.curse_of_the_azure_bonds.curseload import (
+            close_splat,  # noqa: PLC0415
+        )
 
         for entry in close_splat(args.out):
             label = entry["name"]
@@ -264,7 +266,7 @@ def main(argv=None) -> int:
                     help="NAME:ability=current/base, repeatable")
     st.add_argument("--repair", action="store_true",
                     help="close a saved game the drive never finished "
-                         "writing, as tools/cursetrain.py stage does")
+                         "writing, as tools/curse_of_the_azure_bonds/cursetrain.py stage does")
     st.set_defaults(func=stage)
 
     rf = sub.add_parser("refs", help="census both arrays across a title")

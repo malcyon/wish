@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A driven Secret of the Silver Blades session, on a pooled VICE instance.
 
-`tools/curserun.py` is Curse of the Azure Bonds' equivalent and this is the
+`tools/curse_of_the_azure_bonds/curserun.py` is Curse of the Azure Bonds' equivalent and this is the
 third of three, because a boot is the one part of driving a Gold Box title
 that is genuinely per-release.  Everything below the title screen -- the
 monitor, the keyboard, the screen reader, the menu walker, the disk-prompt

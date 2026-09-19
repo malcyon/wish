@@ -120,7 +120,7 @@ def test_a_curse_party_is_walked_with_the_letter_the_caller_gave():
 
 
 def test_curse_reads_its_own_live_square_and_not_pool_of_radiances():
-    """`$C04B`, which `tools/cursewarp.py` has driven this title from since
+    """`$C04B`, which `tools/curse_of_the_azure_bonds/cursewarp.py` has driven this title from since
     `#19` -- not `$49C0`, which in Curse is not the party's square."""
     sess = FakeSession(memory={LIVE_XY: 3, LIVE_XY + 1: 12})
     assert sess.square_and_world() == (3, 12, True)

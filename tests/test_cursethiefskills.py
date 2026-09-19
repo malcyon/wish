@@ -34,8 +34,8 @@ from test_neutral import _filled  # noqa: E402
 
 from goldbox import c64_codec, dos_codec, dos_port  # noqa: E402
 from goldbox import levels as level_tables  # noqa: E402
-from tools import cursethiefskills as cts  # noqa: E402
 from tools import thiefskillcensus as census  # noqa: E402
+from tools.curse_of_the_azure_bonds import cursethiefskills as cts  # noqa: E402
 
 CURSE = "curse-of-the-azure-bonds"
 POOL = "pool-of-radiance"

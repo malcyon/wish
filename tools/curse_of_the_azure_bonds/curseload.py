@@ -40,9 +40,9 @@ outcome together with the bytes that name the cause -- `$03F1`, `$7E9F`,
 target at `$4B00`, and the drive's own error-message buffer read out of
 memspace 1 at `$02D5`.
 
-    tools/curseload.py --save ~/wish-specimens/por-c64/WISH-SPEC-...D64
-    tools/curseload.py --save ... --repair            # close a splat entry first
-    tools/curseload.py --save ... --serve             # and hand the session over
+    tools/curse_of_the_azure_bonds/curseload.py --save ~/wish-specimens/por-c64/WISH-SPEC-...D64
+    tools/curse_of_the_azure_bonds/curseload.py --save ... --repair            # close a splat entry first
+    tools/curse_of_the_azure_bonds/curseload.py --save ... --serve             # and hand the session over
 
 The rest of the flags are the differentials that separated the three faults
 and are kept so the measurement can be taken again.  `--attach` says how the
@@ -67,7 +67,7 @@ import struct
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
 from tools import gamedisks, scratch  # noqa: E402
@@ -380,8 +380,8 @@ def load_saved_game(sess, *, note=None, shot=None, wait: float = 90.0,
 
 
 def run(args) -> int:
-    from tools import curserun  # noqa: PLC0415
     from tools.c64 import session as por  # noqa: PLC0415
+    from tools.curse_of_the_azure_bonds import curserun  # noqa: PLC0415
 
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

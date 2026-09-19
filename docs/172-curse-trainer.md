@@ -89,7 +89,7 @@ dismisses `YOU ARE NOW A LEVEL n` was read twice and started a second training
 call, which charged for the class it then skipped. Nothing else in the session
 took a charge it did not level for.
 
-`tools/cursetrain.py diff` replays each pair:
+`tools/curse_of_the_azure_bonds/cursetrain.py diff` replays each pair:
 
 | character | classes given to `plan` | fields | mismatches |
 |---|---|---|---|
@@ -279,11 +279,11 @@ naming the two fields we wrote:
 
 ## Driving Curse's front end
 
-Four things cost time and are why `tools/cursetrain.py run` boots and serves
+Four things cost time and are why `tools/curse_of_the_azure_bonds/cursetrain.py run` boots and serves
 rather than pressing the keys itself.
 
 * **`YES` on `LOAD SAVED GAME ? YES NO` answers only the KERNAL buffer**, as
-  `tools/cursewarp.py` already records.
+  `tools/curse_of_the_azure_bonds/cursewarp.py` already records.
 * **The save-disk prompt is not answered by a keypress alone** -- the save disk
   has to be attached first, by hand, because `porcmd` does not poll
   `handle_prompt`.

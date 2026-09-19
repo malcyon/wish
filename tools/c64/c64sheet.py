@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Print a C64 save's party the way a character sheet lays it out.
 
-The mirror of `tools/dosdisk.py --sheet`, `tools/cursedisk.py --sheet` and
+The mirror of `tools/dosdisk.py --sheet`, `tools/curse_of_the_azure_bonds/cursedisk.py --sheet` and
 `tools/ssbdisk.py --sheet`, which all read a **DOS** folder.  This one reads
 a `.d64`, so a C64 → DOS conversion can be checked the way
 `.claude/rules/conversions.md` asks for -- every field on the destination's
@@ -63,7 +63,7 @@ def item_names(game, disks: str | None) -> dict[int, str] | None:
     return None
 
 #: `60 - value`, the family's encoding for armour class and THAC0, as
-#: `tools/cursedisk.py` has it.  The sheet shows the decoded number.
+#: `tools/curse_of_the_azure_bonds/cursedisk.py` has it.  The sheet shows the decoded number.
 AC_BIAS = 60
 SEXES = ("MALE", "FEMALE")
 ALIGNMENTS = tuple(f"{law} {mood}"

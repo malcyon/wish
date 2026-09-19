@@ -39,7 +39,7 @@ What it does, in order:
    a box nobody can answer;
 3. boots what came out. A C64 destination goes to the reader that knows
    its title -- `tools/c64/savecheck.py` for Pool of Radiance,
-   `tools/cursecheck.py` for Curse of the Azure Bonds -- which reads the
+   `tools/curse_of_the_azure_bonds/cursecheck.py` for Curse of the Azure Bonds -- which reads the
    party panel and the `VIEW` sheets off the C64's own
    screen memory; a DOS destination is copied into a `tools.dosbox` staged
    game tree and loaded through the game's own `LOAD SAVED GAME`, walked,
@@ -241,8 +241,8 @@ def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
 
     `tools/c64/savecheck.py` boots through `tools/c64/session.py`, which knows Pool of
     Radiance's fastloader prompt, main menu and copy protection and none of
-    Curse's -- so a Curse disk goes to `tools/cursecheck.py`, which boots
-    through `tools/curserun.py` and reads the same things off the same kinds
+    Curse's -- so a Curse disk goes to `tools/curse_of_the_azure_bonds/cursecheck.py`, which boots
+    through `tools/curse_of_the_azure_bonds/curserun.py` and reads the same things off the same kinds
     of screen.  Secret of the Silver Blades has no such tool yet and falls
     through to `savecheck.py`, where it will not boot; that is the row this
     file cannot run unattended.
@@ -251,7 +251,7 @@ def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
     log = out / ("cursecheck.jsonl" if curse else "savecheck.jsonl")
     if curse:
         argv = [str(ROOT / ".venv" / "bin" / "python"),
-                str(TOOLS / "cursecheck.py"),
+                str(TOOLS / "curse_of_the_azure_bonds" / "cursecheck.py"),
                 "--disk", str(disk), "--disks", str(disks),
                 "--out", str(out / "cursecheck")]
         if walk:

@@ -1,4 +1,4 @@
-"""`tools/cursewarp.py`'s stuck-screen Escape has the identical vulnerability
+"""`tools/curse_of_the_azure_bonds/cursewarp.py`'s stuck-screen Escape has the identical vulnerability
 `tests/test_ssbwarp.py` covers for Silver Blades (#568, general defect;
 `#334`'s own Silver Blades half is where it was first traced).
 
@@ -10,7 +10,7 @@ that Escape on `idle_in_key_window`, a single PC read against the same
 `key_wait`/`key_fetch` windows `wait_idle` already polls after a warp.
 
 **`addr` is optional on `enter_world` here**, because `tools/livecheck.py`,
-`tools/c64/inventorycheck.py` and `tools/cursecheck.py` -- none of them this
+`tools/c64/inventorycheck.py` and `tools/curse_of_the_azure_bonds/cursecheck.py` -- none of them this
 file's own -- call it without one; those calls keep the old unconditional
 Escape.
 """
@@ -156,7 +156,7 @@ def test_enter_world_escapes_once_the_pc_is_genuinely_idle(monkeypatch):
 def test_enter_world_without_addr_keeps_the_old_unconditional_escape(
         monkeypatch):
     """The three callers that do not pass `addr` -- `tools/livecheck.py`,
-    `tools/c64/inventorycheck.py`, `tools/cursecheck.py` -- must see the same
+    `tools/c64/inventorycheck.py`, `tools/curse_of_the_azure_bonds/cursecheck.py` -- must see the same
     behaviour as before this fix, since none of them is this ticket's file
     to change."""
     clock = FakeClock()

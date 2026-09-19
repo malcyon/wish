@@ -127,7 +127,7 @@ codewheel:
   # Donald's separate private repository holding the code-wheel arithmetic and
   # the tables extracted from the player's own disks. It is copy-protection
   # research and `CLAUDE.md` keeps it out of this repository, so it can only ever
-  # be a local path. `tools/cursewheel.py`, `amigacursewheel.py` and
+  # be a local path. `tools/curse_of_the_azure_bonds/cursewheel.py`, `amigacursewheel.py` and
   # `amigabladesjournal.py` reach into it at run time.
   env: WISH_CODEWHEEL
   paths:

@@ -1,6 +1,6 @@
 """`Session`'s base class built its disk and log paths with an f-string and a
 hardcoded `/`, which is a Windows separator mismatch -- the same bug Windows
-CI caught in `tools/ssbwarp.py` and `tools/curserun.py` (#539), which this
+CI caught in `tools/ssbwarp.py` and `tools/curse_of_the_azure_bonds/curserun.py` (#539), which this
 project's own review then found still live in the shared base class both
 those subclasses inherit from (#546 (tools/c64/session.py's Session base class
 still builds disk/log paths with a hardcoded forward slash, the same bug

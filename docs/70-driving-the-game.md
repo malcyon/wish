@@ -250,7 +250,7 @@ then the status line, then the 3D viewport, which is why `Session.
 select_party` takes its "no such slot" verdict from `Session.
 stable_party_rows` -- two reads of the panel agreeing, not the first frame
 after the bar changes -- rather than trusting a read that can land mid-redraw
-(`#538 (tools/cursecheck.py's sheet reader stops after three of a six-person
+(`#538 (tools/curse_of_the_azure_bonds/cursecheck.py's sheet reader stops after three of a six-person
 Curse party, though the same run's own panel lists all six)`).
 
 **Nothing on the sheet itself changes character**, and this is the expensive

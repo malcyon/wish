@@ -19,8 +19,8 @@ sys.path.insert(0, ".")
 
 from goldbox.d64 import split_load_address  # noqa: E402
 from tests import gamedata  # noqa: E402
-from tools import cursethac0  # noqa: E402
 from tools.c64.recordsweep import hits  # noqa: E402
+from tools.curse_of_the_azure_bonds import cursethac0  # noqa: E402
 
 #: `LINKER` puts an overlay's payload at `$0800` and `LIBRARY`'s at `$2DC8`
 #: in Curse and Silver Blades alike (`docs/40-memory-map.md`).  The PRG
@@ -313,7 +313,7 @@ def test_clear_bar_reaches_a_script_bar_on_a_session_with_no_press_bar():
     """`tools/c64/laterbattle.py --title ssb` crashed here (`#569`).
 
     `SSBSession` (`tools/ssbwarp.py`) carries no `press_bar` -- only
-    `CurseSession` (`tools/curserun.py`) ever did, and it was a thin wrapper
+    `CurseSession` (`tools/curse_of_the_azure_bonds/curserun.py`) ever did, and it was a thin wrapper
     around `select_bar`. `clear_bar` used to call `press_bar` by name, so a
     Silver Blades walk raised `AttributeError` on the first script bar it
     met. This fake session is built the way `SSBSession` is: `select_bar`

@@ -2,7 +2,7 @@
 """Build a *Secret of the Silver Blades* C64 save disk from a DOS save folder.
 
 The third of three: `tools/dosdisk.py` writes Pool of Radiance's
-`SAVEDGAME0`/`SAVEDGAME1` pair and `tools/cursedisk.py` writes Curse of the
+`SAVEDGAME0`/`SAVEDGAME1` pair and `tools/curse_of_the_azure_bonds/cursedisk.py` writes Curse of the
 Azure Bonds' single `SAVEAZURE`.  Silver Blades' container is Curse's byte for
 byte under the name `SAVEDBASH` -- one 7424-byte file at `$4B00`, eight
 character pages, a name table at `+$C00`, eight item pages, `ANIMATE00`'s
@@ -18,7 +18,7 @@ the Silver Blades DOS save into a C64 one, which the importer refuses today)`).
 not carry Silver Blades: the refusal in `goldbox/dos_codec.py` stands until a party
 this tool built has been loaded in the running game and read off the screen,
 which is `#193` step 3.  This tool puts the shape on `CONVERTS` **in its own
-process only**, the same way `tools/cursedisk.py` did while `#192` was open.
+process only**, the same way `tools/curse_of_the_azure_bonds/cursedisk.py` did while `#192` was open.
 When `CONVERTS` takes Silver Blades the call becomes a no-op and can stay.
 
 `goldbox/areas.py` already carries this title's twenty-two rows, every one

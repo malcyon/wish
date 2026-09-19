@@ -12,7 +12,7 @@ nonzero value first, and the load is what changes it back.
     tools/dosslotwatch.py --game SECRET --save SPECIMEN_DIR \\
         --slot D --patch 2:0x140=5 --minutes 40
 
-is `tools/doscurse.py`'s console over `tools/dosboxx.py`'s DOSBox-X: it
+is `tools/curse_of_the_azure_bonds/doscurse.py`'s console over `tools/dosboxx.py`'s DOSBox-X: it
 boots with the save staged and patched, then executes lines appended to
 `console.cmd` in the instance directory it prints, shooting the screen after each.  The
 console's own commands (`key`, `type`, `sleep`, `settle`, `shot`, `files`,
@@ -45,8 +45,9 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import dosbox, dosboxx, doscurse  # noqa: E402
+from tools import dosbox, dosboxx  # noqa: E402
 from tools.c64.session import stage_writable  # noqa: E402
+from tools.curse_of_the_azure_bonds import doscurse  # noqa: E402
 from tools.dosspcexpiry import claim_free, name_key  # noqa: E402
 from tools.dosvmwatch import boot_settled, code_at  # noqa: E402
 

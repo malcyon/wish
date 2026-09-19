@@ -311,7 +311,7 @@ def load_party(sess, timeout: float = 300.0) -> bool:
 
     The game reads its save file off whatever is in unit 8 rather than
     prompting for it, and the confirmation goes through the KERNAL buffer
-    because an XTEST Return does not move it (`tools/cursewarp.py`).
+    because an XTEST Return does not move it (`tools/curse_of_the_azure_bonds/cursewarp.py`).
     """
     if sess.wait_text("LOAD SAVED GAME", timeout)[0] is None:
         return False
@@ -359,8 +359,9 @@ def from_bar(text: str) -> str:
 
 def drive(save: str, out: str, pool: int | None, disks: str | None,
           remove: str, source: str, resave: bool) -> int:
-    from tools import curserun, ssbwarp
+    from tools import ssbwarp
     from tools.c64 import session as por
+    from tools.curse_of_the_azure_bonds import curserun
 
     game, _at, entries = table_entries(D64.open(save))
     if game.key not in ("curse-of-the-azure-bonds",

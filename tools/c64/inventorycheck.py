@@ -43,7 +43,7 @@ Two subcommands:
         --out DIR --who "MALE ELF MAGE"
 
 `run` reads the title off the save disk and drives it accordingly: Curse
-through `tools/curserun.py` and `tools/curseload.py`, Silver Blades through
+through `tools/curse_of_the_azure_bonds/curserun.py` and `tools/curse_of_the_azure_bonds/curseload.py`, Silver Blades through
 `tools/ssbwarp.py`. **Both have to reach the world**, because the item list
 hangs off the world's `VIEW` and off nothing else -- the party-formation
 menu's `VIEW CHARACTER` draws a sheet whose bar is `TRADE DROP EXIT` with no
@@ -404,7 +404,7 @@ def open_items(sess, r: Run, who: str) -> list[str] | None:
 
 def curse_world(slot, r: Run, save: str, where: str, game, wait: float):
     """Boot Curse, load the party and get it to the world command bar."""
-    from tools import curseload, curserun, cursewarp
+    from tools.curse_of_the_azure_bonds import curseload, curserun, cursewarp
 
     first = curserun.stage(slot, where, save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")

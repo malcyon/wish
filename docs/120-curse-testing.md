@@ -302,7 +302,7 @@ side. Later side transitions have not been proven without that patch.
 **Curse asks for a disk in three wordings and Pool of Radiance's needle matches
 only one.** `INSERT SIDE # n, AND PRESS ANY KEY.`, `INSERT CURSE SAVE DISK,
 PRESS A KEY` from the party-formation menu, and `INSERT YOUR SAVE GAME DISK`
-from camp. `tools/curserun.py`'s `CurseSession.handle_prompt` now checks both
+from camp. `tools/curse_of_the_azure_bonds/curserun.py`'s `CurseSession.handle_prompt` now checks both
 save-disk wordings -- `session.SAVE_PROMPT` for the camp one and its own
 `LOADER_SAVE_PROMPT` for the party-menu one. `CurseSession.save_game`'s
 `wait_bar` calls `handle_prompt` on every poll, so a driven camp save now

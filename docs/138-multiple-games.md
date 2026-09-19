@@ -257,7 +257,7 @@ the target `GEO` byte for byte off the disk each time, the arriving script's
 own text appeared, and the party then turned and walked one key at a time.
 One of the trips crossed a disk, so `$7F12` is the disk byte end to end and
 Curse's numbering is 1-based over its six sides. **GRADE: CONFIRMED**, in the
-running machine. `tools/cursewarp.py` is the driver.
+running machine. `tools/curse_of_the_azure_bonds/cursewarp.py` is the driver.
 
 Two differences that are not relocations, and neither can be assumed away:
 
@@ -267,7 +267,7 @@ Two differences that are not relocations, and neither can be assumed away:
   `$102E`–`$103A`, gated on the indoors flag and calling `GDRIVE00 $C003`. So
   the claim that warping out of the travel grid wedges the loader — Pool of
   Radiance's, and unrecoverable — must be tested in Curse rather than carried
-  across. `tools/cursewarp.py` refuses it without `--force`.
+  across. `tools/curse_of_the_azure_bonds/cursewarp.py` refuses it without `--force`.
 
 The disk column of a Curse area table is still a separate measurement, but a
 smaller one than this section used to say: the number is the side that carries

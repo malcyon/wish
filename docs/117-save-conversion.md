@@ -2803,7 +2803,7 @@ enumeration for the same reason.
 The two later titles' DOS → C64 rows also write correctly through the dialog,
 and neither has been walked: Curse of the Azure Bonds got as far as the game's
 own `LOAD SAVED GAME` accepting the disk with no drive error
-(`tools/curseload.py`), and Secret of the Silver Blades was not attempted,
+(`tools/curse_of_the_azure_bonds/curseload.py`), and Secret of the Silver Blades was not attempted,
 because `tools/ssbrun.py` serves for ever rather than exiting.
 
 ## A DOS save from nothing (#26 (Write a DOS save, not just read one))

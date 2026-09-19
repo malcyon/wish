@@ -630,7 +630,7 @@ def test_repair_refuses_a_change_outside_the_directory_entry(
     day somebody changes that: a repair that moves a byte of the payload is
     refused rather than written and re-hashed under a new SHA-256.
     """
-    from tools import curseload
+    from tools.curse_of_the_azure_bonds import curseload
 
     dest = _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
     before = dest.read_bytes()

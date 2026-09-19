@@ -1224,7 +1224,7 @@ LATER_WRITE_UNSOURCED: dict[str, tuple[tuple[int, int, str], ...]] = {
 #:
 #: **Silver Blades is UNMEASURED, not confirmed absent.** Its converted
 #: party happened to already agree, which proves nothing; staging an
-#: impossible value (`tools/cursethac0.py` uses `0x0A`, THAC0 50) into a
+#: impossible value (`tools/curse_of_the_azure_bonds/cursethac0.py` uses `0x0A`, THAC0 50) into a
 #: converted Silver Blades record and reading a resave back would settle it
 #: in one boot.
 #:

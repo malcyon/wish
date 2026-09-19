@@ -10,8 +10,8 @@ how anybody tells those apart, so this labels each run of differing bytes with
 the region it lands in and, where the project has measured one, the sentence
 that says whose byte it is.
 
-    tools/cursesavediff.py ours.D64 engine.D64
-    tools/cursesavediff.py ours.D64 engine.D64 --context 32
+    tools/curse_of_the_azure_bonds/cursesavediff.py ours.D64 engine.D64
+    tools/curse_of_the_azure_bonds/cursesavediff.py ours.D64 engine.D64 --context 32
 
 Either argument may be a `.d64` carrying `SAVEAZURE` or the raw 7424-byte
 payload.  Offsets are printed as payload offsets, which is how
@@ -27,7 +27,7 @@ import argparse
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
