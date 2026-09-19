@@ -144,7 +144,7 @@ straight out.
 `closes #N` leaves its issue open while everything looks finished. Push in the
 batches the reviews land in.
 
-**The push is refused until the run is recorded.** `tools/suiterun.py`
+**The push is refused until the run is recorded.** `tools/suite/suiterun.py`
 writes `~/.cache/wish/testrun/<sha>.green` after a green whole-suite run at that
 commit, and `.claude/hooks/check-push-tested.py` refuses a `git push` with no
 marker for the tip, or for an ancestor with only prose between it and the

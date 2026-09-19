@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the whole suite against one commit, in a detached worktree, and record a green run.
 
-    tools/suiterun.py <sha> [--keep]
+    tools/suite/suiterun.py <sha> [--keep]
 
 This is the one run that gates a push (`.claude/rules/commits.md`), made
 into a single command so that the green marker is written by the command
@@ -43,7 +43,7 @@ import subprocess
 import sys
 import tempfile
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from tools import scratch  # noqa: E402

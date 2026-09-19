@@ -3,7 +3,7 @@ tests in `tests/test_conftest_state_guard.py` at collection time, without
 editing that file, so the marker claim in the issue can be checked by
 experiment rather than only by reading `pytest-xdist`'s source.
 
-Load alongside `tools.conftestflake_probe` to see whether grouping removes
+Load alongside `tools.suite.conftestflake_probe` to see whether grouping removes
 the overlap the watcher otherwise reports. Not meant to ship -- the fix, if
 any, belongs in the test file itself.
 """

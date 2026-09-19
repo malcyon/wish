@@ -18,7 +18,7 @@ Two kinds of fragment are extracted from the old file:
 
 Run it from the repository root, naming the revision to compare against:
 
-    python3 tools/rulescheck.py --base 186d62a~1   # the commit before the split
+    python3 tools/suite/rulescheck.py --base 186d62a~1   # the commit before the split
 
 **`--base` is required on purpose.** It defaulted to `HEAD` once, which reads
 the *post-split* file and compares it against a corpus that contains it -- so
@@ -93,7 +93,7 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    root = pathlib.Path(__file__).resolve().parent.parent
+    root = pathlib.Path(__file__).resolve().parent.parent.parent
     old = old_claude_md(args.base)
     new = corpus_text(root)
 

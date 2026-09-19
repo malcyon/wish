@@ -5,7 +5,7 @@ something)`.
 Watches `tests/` for the appearance and disappearance of the throwaway probe
 files that `tests/test_conftest_state_guard.py`'s `_run_throwaway_test`
 writes and removes, without changing that file at all. Loaded with
-`-p tools.conftestflake_probe` on a command line that also runs
+`-p tools.suite.conftestflake_probe` on a command line that also runs
 `tests/test_conftest_state_guard.py`; every worker `pytest -n auto` starts
 gets its own copy of this plugin and its own polling thread, and each writes
 its own log file so two workers polling the same directory never interleave
@@ -29,7 +29,7 @@ from pathlib import Path
 
 from tools import scratch
 
-TESTS_DIR = Path(__file__).resolve().parent.parent / "tests"
+TESTS_DIR = Path(__file__).resolve().parent.parent.parent / "tests"
 PROBE_RE = re.compile(r"^test_zzz_conftest_guard_probe_[0-9a-f]{32}\.py$")
 POLL_INTERVAL = 0.001  # 1ms
 

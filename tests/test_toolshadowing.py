@@ -230,7 +230,7 @@ def test_the_tool_that_was_caught_doing_it_no_longer_can():
     This asserts the property `#203 (Six test files shadow the wish package
     with tools/wish.py, which stops the suite collecting)` established, now
     of a *tool*: after importing it, `tools/` is not on `sys.path`. Thirty
-    others still leave it there and `tools/pathleak.py` counts them; this one
+    others still leave it there and `tools/suite/pathleak.py` counts them; this one
     is fixed because it is the one that was measured causing the failure.
     """
     result = _in_a_fresh_process(
@@ -249,14 +249,14 @@ def test_no_tool_leaves_tools_on_sys_path_after_import(name):
     `test_the_tool_that_was_caught_doing_it_no_longer_can` above, over every
     script in `tools/` rather than the one that was measured, computed by
     walking the directory so the next tool anybody adds is covered without
-    anybody remembering to list it. `tools/pathleak.py` is the same
+    anybody remembering to list it. `tools/suite/pathleak.py` is the same
     assertion, run as a one-off census rather than as part of the suite.
 
     `amigabladesjournal`, `abilitypair` and `amigalaterproof` were the last
     three still leaking, held back across two earlier passes because another
     agent owned those files at the time; `#262`'s own comment thread has the
     full census. All three now go through the same `tools/dos/dosraces.py`
-    pattern as everything else, and `tools/pathleak.py` confirms 0 of 221
+    pattern as everything else, and `tools/suite/pathleak.py` confirms 0 of 221
     scripts leak.
     """
     result = _in_a_fresh_process(

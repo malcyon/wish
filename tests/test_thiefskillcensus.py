@@ -130,7 +130,7 @@ def test_every_dos_pool_of_radiance_record_reproduces():
     57 of 57 `.SAV` records and both archive `.CHA` exports on this machine
     when this was written.  The four `.CHA` files that miss are ours: they are
     the pre-party exports of characters `tools/dos/dosgnome.py` and
-    `tools/testparty.py` rolled and then poked, and their own `.SAV` twins
+    `tools/suite/testparty.py` rolled and then poked, and their own `.SAV` twins
     agree, so the stored bytes are older than the record's race and dexterity.
     """
     tables = _dos()

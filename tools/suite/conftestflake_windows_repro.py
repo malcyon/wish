@@ -38,7 +38,7 @@ from pathlib import Path
 
 import pytest
 
-TESTS_DIR = Path(__file__).resolve().parent.parent / "tests"
+TESTS_DIR = Path(__file__).resolve().parent.parent.parent / "tests"
 
 _MODE = os.environ.get("ISSUE522_MODE", "control")
 _SIBLING = os.environ.get("ISSUE522_SIBLING", "")

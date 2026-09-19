@@ -96,7 +96,7 @@ import pathlib
 import random
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from goldbox import (  # noqa: E402
@@ -576,7 +576,7 @@ def level_one(spec: Spec, game, rng) -> tuple[CharacterRecord, object]:
     """
     tables = levels.for_game(game)
     class_levels = {name: 1 for name in spec.levels}
-    char = NeutralCharacter("generated", source="tools/testparty.py",
+    char = NeutralCharacter("generated", source="tools/suite/testparty.py",
                             game=game)
 
     def put(name, value, origin):

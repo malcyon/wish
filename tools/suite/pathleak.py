@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Census: which `tools/` scripts leave `tools/` on `sys.path` after import.
 
-    tools/pathleak.py              # the leaking scripts, one per line
-    tools/pathleak.py --all        # every script, with what it did
-    tools/pathleak.py --shadow     # only the ones that would capture `wish`
+    tools/suite/pathleak.py              # the leaking scripts, one per line
+    tools/suite/pathleak.py --all        # every script, with what it did
+    tools/suite/pathleak.py --shadow     # only the ones that would capture `wish`
 
 A script in here that wants to reach a sibling by its bare name -- `import
 dosbox` rather than `from tools.dos import dosbox` -- does it by inserting its own
@@ -41,7 +41,7 @@ import pathlib
 import subprocess
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 
 #: Run in the child: import one script, then report what `sys.path` and the

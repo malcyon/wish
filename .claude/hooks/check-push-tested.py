@@ -50,7 +50,7 @@ MARKER_DIR = "~/.cache/wish/testrun"
 
 
 def marker_dir() -> str:
-    """Where `tools/suiterun.py` writes a green marker: `scratch.cache_dir("testrun")`.
+    """Where `tools/suite/suiterun.py` writes a green marker: `scratch.cache_dir("testrun")`.
 
     Computed here rather than imported because the harness runs this hook under
     the system interpreter from whatever directory the command was in, with the

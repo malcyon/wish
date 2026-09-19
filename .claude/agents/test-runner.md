@@ -30,10 +30,10 @@ then a second one an hour later has cost two round trips for one report.
 
 Other agents are usually mid-edit in this tree, so a run in place tests their
 half-finished code and says nothing about the commits about to be pushed.
-`tools/suiterun.py` does the whole run against exactly what will land:
+`tools/suite/suiterun.py` does the whole run against exactly what will land:
 
 ```sh
-.venv/bin/python tools/suiterun.py "$TARGET_SHA"
+.venv/bin/python tools/suite/suiterun.py "$TARGET_SHA"
 ```
 
 It resolves the sha, adds a detached worktree there, symlinks
@@ -109,7 +109,7 @@ timestamp in it). Say so if you see one rather than diagnosing it.
   else's work and usually a different agent's; guessing at a cause in your
   report is worse than saying "not diagnosed".
 * **You do not edit, stage, commit or push.** Ever. You do not write the
-  green marker either; `tools/suiterun.py` does, on a green run.
+  green marker either; `tools/suite/suiterun.py` does, on a green run.
 * **You never run `git checkout`, `git restore`, `git reset`, `git stash` or
   `git clean`** against a file in this tree. Several agents share it and a
   revert silently discards whatever anybody else has uncommitted. `git

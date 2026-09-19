@@ -1,16 +1,16 @@
 # A high-level party for automated testing — plan
 
 **Status: the generator exists and makes all six characters.**
-`tools/testparty.py`, 2026-09-08. Twenty-nine trainings driven through the
+`tools/suite/testparty.py`, 2026-09-08. Twenty-nine trainings driven through the
 game's own school in 2026-08-22 gave the level-up specification, every one
 diffed across the 580-byte record — the tables, the rules and the corrections
 are in §7 — and the generator replays that specification rather than reading
 the tables again. **The disk that party was on, `drive/P18PARTY.D64`, is
 gone from this machine**, which is the argument for a generator made for us:
-`python3 tools/testparty.py --disk $TMPDIR/TESTPARTY.D64` rebuilds an
+`python3 tools/suite/testparty.py --disk $TMPDIR/TESTPARTY.D64` rebuilds an
 equivalent one in about a second.
 
-**And the game agrees with it.** `tools/testpartyrun.py` booted the generated
+**And the game agrees with it.** `tools/suite/testpartyrun.py` booted the generated
 disk on 2026-09-08, loaded it, put the party in the world at (9, 13) indoors
 and drew all six `VIEW` sheets. Level, experience, hit points, armour class and
 THAC0 come back through the game's own sheet routine and its own charset, and
@@ -19,7 +19,7 @@ HITPOINTS 72, AC 8 and THACO 11, which is his base 13 with the 18/76 strength
 bonus on it. §6's third gate, the one that breaks the circle, is passed.
 
 **The party is equipped as of 2026-09-08.** `Spec.equipment` names items and
-`tools/testparty.equip` copies the game's own sixteen-byte records out of the
+`tools/suite/testparty.equip` copies the game's own sixteen-byte records out of the
 `ITEMFILE*` lists on the player's sides, so nothing is built from a name and a
 type and the bytes nobody here understands -- `+13` to `+15`, where an item's
 granted effect lives -- come along whole. BULWARK carries a **full sixteen**,
@@ -66,7 +66,7 @@ the bits are `goldbox.c64_port.CLASS_BITS_CLASSIC` — 1 magic-user, 2 cleric, 4
 measured across twenty-nine of them — so a generated party needs money as well
 as experience.
 
-**The generator is `tools/testparty.py`.** The deliverable was always **a
+**The generator is `tools/suite/testparty.py`.** The deliverable was always **a
 generator, not a disk**, and it builds both: the six records, and the
 test-time disk builder that copies a save disk and writes them into it. A disk
 is game data and cannot be committed; a party we can rebuild from code at any
@@ -274,7 +274,7 @@ Instead, three pieces:
 
 | piece | where | why it is allowed |
 |---|---|---|
-| the six records | `tools/testparty.py`, built at run time through `goldbox/c64_codec.py` and `goldbox/levelup.py` | generated from a format we documented — the same argument as `tests/gamedata.synthetic_geo` |
+| the six records | `tools/suite/testparty.py`, built at run time through `goldbox/c64_codec.py` and `goldbox/levelup.py` | generated from a format we documented — the same argument as `tests/gamedata.synthetic_geo` |
 | the disk | a scratch file, built by `--disk` or at test time | never committed; scratch lives under the temp directory and may vanish, so the disk is rebuilt |
 | the base disk | **the player's own**, via `tests/gamedata.save_disk("PORSAVE")` | read-only, never written, skipped when absent |
 
@@ -407,7 +407,7 @@ the superseded text is how contradictions got in before.
 3. **Write the level-up table from the diff**, and empty the entries of
    `LEVEL_UP_BLOCKERS` that the diff answers.
 4. ~~`goldbox/testparty.py` — the six records, generated, no disk.~~ **Done**,
-   as `tools/testparty.py`.
+   as `tools/suite/testparty.py`.
 5. ~~The test-time disk builder~~ **Done**, as the same tool's `--disk`, and
    `tests/test_testparty.py` drives it off `tests/gamedata.save_disk`,
    skipping without disks.
@@ -498,7 +498,7 @@ Six of the blockers in §3's table are now answerable, and one is not:
 
 ### Still not built
 
-**All four of these are built now** — `tools/testparty.py`, 2026-09-08 — and
+**All four of these are built now** — `tools/suite/testparty.py`, 2026-09-08 — and
 what is left is narrower than the list they replaced:
 
 | was missing | now |
@@ -506,7 +506,7 @@ what is left is narrower than the list they replaced:
 | a half-elf cleric/fighter/magic-user | ASTRA, cleric 5 / fighter 6 / magic-user 6 |
 | a dwarf fighter/thief | GRIMSTONE, fighter 7 / thief 8 |
 | a wounded fighter 8 on disk | BULWARK, 72 of 112, wounded after the last training because the trainer heals |
-| the generator itself | `tools/testparty.py`, six records in about a second |
+| the generator itself | `tools/suite/testparty.py`, six records in about a second |
 
 **What is left, in order.** The generator's characters carry nothing, so
 nobody is armed, the roster's damage dice are zero and the sixteen-item

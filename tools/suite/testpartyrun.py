@@ -2,16 +2,16 @@
 """Boot the generated test party in VICE and read all six sheets off the screen.
 
 `docs/119-test-party.md` §6's third gate, and the only one that is evidence
-about the game: `tools/testparty.py` builds a party out of our own tables, and
+about the game: `tools/suite/testparty.py` builds a party out of our own tables, and
 a test that reads those bytes back through the same tables passes whether or
 not the game agrees.  This asks the C64 instead.  The name, class, level, hit
 points, armour class and THAC0 come back through the game's own character-sheet
 routine and its own charset, which shares nothing with `goldbox/layout.py`.
 
-    tools/testpartyrun.py --disk path/to/TESTPARTY.D64
+    tools/suite/testpartyrun.py --disk path/to/TESTPARTY.D64
 
 **Nothing is written to the player's disks.**  `--disk` is a copy
-`tools/testparty.py` already made; `tools/c64/session.stage_disks` copies the eight
+`tools/suite/testparty.py` already made; `tools/c64/session.stage_disks` copies the eight
 sides and that save into the pool slot's own directory, and `Session.attach`
 refuses any path outside it.  `POR_HEADLESS` is the slot's default, so no
 window lands on the desktop.
@@ -27,7 +27,7 @@ the slot.
 `--full` adds the four remaining `#10 (Finish the high-level test party)`
 questions the 2026-09-09T03:00:20Z comment named as sharing one boot:
 
-    tools/testpartyrun.py --disk path/to/TESTPARTY-ARMED.D64 --full \\
+    tools/suite/testpartyrun.py --disk path/to/TESTPARTY-ARMED.D64 --full \\
         --out DIR
 
 1. the six sheets (as above), now armed;
@@ -43,7 +43,7 @@ questions the 2026-09-09T03:00:20Z comment named as sharing one boot:
    (`goldbox.savegame.RosterBlock`, `tools/c64/traitask.py`'s own item-list
    driving);
 4. walk until something ambushes the party and screenshot the fight, which is
-   the only way to see the icons `tools/testparty.py --disk` (no
+   the only way to see the icons `tools/suite/testparty.py --disk` (no
    `--keep-icons`) cleared actually drawn.
 """
 from __future__ import annotations
@@ -55,7 +55,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

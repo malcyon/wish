@@ -1,0 +1,1 @@
+"""Scripts that run and check the test suite: the whole-suite run that gates a push, the generated test party, the rules check, the sys.path census and the pytest plugins that chase a flaky guard test."""

@@ -53,7 +53,7 @@ is the escape hatch: preserve whatever evidence the run produced, say exactly
 what the driver would have to do differently, and hand back. Building or
 extending a driver is junior-dev's or reverse-engineering's work, and the
 root routes it there. On 2026-09-16 a session on #10 extended
-`tools/testpartyrun.py` eighteen times across eight boots instead.
+`tools/suite/testpartyrun.py` eighteen times across eight boots instead.
 
 ## A run has a budget
 

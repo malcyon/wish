@@ -1,4 +1,4 @@
-"""What `tools/testparty.py` generates, checked against what the engine wrote.
+"""What `tools/suite/testparty.py` generates, checked against what the engine wrote.
 
 The generator's whole risk is the circle `docs/119-test-party.md` §2 names: a
 test that reads back the bytes the generator wrote through the same tables the
@@ -30,7 +30,7 @@ from goldbox import c64_port, derive, levels, levelup, savegame
 from goldbox.c64_port import CLASS_BITS_CLASSIC
 from goldbox.d64 import D64
 from goldbox.record import CharacterRecord
-from tools import testparty
+from tools.suite import testparty
 
 GAME = c64_port.by_key("pool-of-radiance")
 
@@ -194,7 +194,7 @@ def _spec_from(record, name: str) -> testparty.Spec:
     The hit die comes in as `hit_points_rolled` rather than through the rng,
     because it is the one number nothing derives -- and because creation's
     own multi-class rule is not the trainer's, which is what
-    `tools/testparty._seed_hit_points` records.
+    `tools/suite/testparty._seed_hit_points` records.
     """
     get = record.get
     bits = get("class_bits")

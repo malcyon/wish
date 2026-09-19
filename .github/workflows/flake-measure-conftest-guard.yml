@@ -18,7 +18,7 @@ name: measure conftest guard flake
 # probe (on a different `-n auto` worker) is deleted by its own `finally`
 # block in that instant, the stat sees a file that is already gone.
 #
-# `tools/conftestflake_windows_repro.py` forces this deterministically instead of
+# `tools/suite/conftestflake_windows_repro.py` forces this deterministically instead of
 # waiting on `-n auto`'s scheduler: it deletes a disposable sibling file
 # right after `tests/`'s own collect report is produced (`ISSUE522_MODE=force`),
 # or leaves it alone (`ISSUE522_MODE=control`), and logs both arguments
@@ -96,7 +96,7 @@ jobs:
               $env:ISSUE522_SIBLING = $siblingName
               $env:ISSUE522_LOG = $log
 
-              $output = pytest -q -p no:cacheprovider -p tools.conftestflake_windows_repro -n0 $target 2>&1 | Out-String
+              $output = pytest -q -p no:cacheprovider -p tools.suite.conftestflake_windows_repro -n0 $target 2>&1 | Out-String
 
               Remove-Item -Path $target -ErrorAction SilentlyContinue
               Remove-Item -Path $sibling -ErrorAction SilentlyContinue

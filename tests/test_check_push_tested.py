@@ -4,7 +4,7 @@
 that carries code. On 2026-09-16 the orchestrator pushed eighteen times and
 launched `test-runner` once, and the batch closing `#89` turned `main` red
 on a test neither the builder nor the reviewer had run. The hook is that
-sentence's enforcement: `tools/suiterun.py` writes `~/.cache/wish/testrun/<sha>.green`
+sentence's enforcement: `tools/suite/suiterun.py` writes `~/.cache/wish/testrun/<sha>.green`
 after a green run, and a push without one stops here rather than on CI.
 """
 import importlib.util
@@ -230,7 +230,8 @@ def test_the_test_runner_is_told_to_write_the_marker():
 
 def test_the_hook_and_suiterun_read_and_write_one_directory(home):
     """The hook cannot import `tools.scratch`, so it computes the path itself."""
-    from tools import scratch, suiterun
+    from tools import scratch
+    from tools.suite import suiterun
     assert pathlib.Path(_module().marker_dir()) == scratch.cache_dir("testrun")
     assert suiterun.marker_dir() == scratch.cache_dir("testrun")
     assert scratch.cache_dir("testrun") == home / ".cache" / "wish" / "testrun"
