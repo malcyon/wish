@@ -9,7 +9,8 @@ output never enters the main window: a long grep out there costs nothing that a
 long grep in here does.
 
 Stays in the main window: Donald's questions, short edits, and anything where
-writing the brief costs more than doing the work.
+writing the brief costs more than doing the work -- except an orchestrator
+session, which edits nothing, so that exemption does not apply to it.
 
 ## Choosing the agent
 

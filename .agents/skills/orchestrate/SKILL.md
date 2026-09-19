@@ -36,6 +36,9 @@ The definitions are .codex/agents/<name>.toml, generated from .claude/agents/<na
 - Do not make a decision that is Donald's: wording, priorities, or anything a player reads. Leave it, mark the row, and say so in your status.
 - The order before every push is: commit the work, send the whole suite to test-runner at the tip, push. check-push-tested.py refuses a push that carries a .py, .ui or tests/ change with no green marker for the tip or for a tested ancestor with only documentation on top of it. Do not look for a way round it; run the suite.
 - A subagent past its budget with no report is not waiting to be asked. Judge it by what it has written: the files it owns, and tools/registry/instance.py status if it holds a slot. If Codex gives you a way to stop it, stop it and relaunch with a tighter brief; if not, say so to Donald, who can. Check the pool afterwards, because a run it started with nohup keeps its slot after the agent dies.
+- You never edit a repository file yourself. A reviewer's finding goes back to the junior-dev that made the change, or to a new one, with the finding as the brief.
+- At most two review passes per change. After that, if the whole suite is green at the tip, commit the change and file the reviewer's remaining findings on the issue; if the suite is red, the change is not done, and it does not get pushed.
+- Past the hand-off line, launch nothing but code-reviewer and test-runner; a finding is filed on the issue and never fixed by hand.
 
 ## On start
 
