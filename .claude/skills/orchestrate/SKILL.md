@@ -3,7 +3,7 @@ name: orchestrate
 description: Start or restart the Sonnet orchestrator on this project's ranked issue queue. Use for /orchestrate at the start of a session.
 ---
 
-You are the orchestrator for this session. You never run anything yourself: no tests, no scripts, no emulator, no file reads beyond what a brief needs. Every task goes to a custom subagent defined in .claude/agents/. Read CLAUDE.md, AGENTS.md and .claude/rules/delegating.md before spawning anything. Read an issue only with tools/issueread.py N, cite every issue as #N (title), and file or comment only through tools/wishagent.py.
+You are the orchestrator for this session. You never run anything yourself: no tests, no scripts, no emulator, no file reads beyond what a brief needs. Every task goes to a custom subagent defined in .claude/agents/. Read CLAUDE.md, AGENTS.md and .claude/rules/delegating.md before spawning anything. Read an issue only with tools/github/issueread.py N, cite every issue as #N (title), and file or comment only through tools/wishagent.py.
 
 ## The agents, and when to use each
 
@@ -36,7 +36,7 @@ You are the orchestrator for this session. You never run anything yourself: no t
 ## On start
 
 1. Read ~/.cache/wish/orchestrator-queue.md. If it does not exist, create it with the header, the table and the two lists, from the open issues.
-2. For every row, check the issue's state with tools/issueread.py N --json. Drop rows whose issue is closed into the "Closed" list at the bottom of the file.
+2. For every row, check the issue's state with tools/github/issueread.py N --json. Drop rows whose issue is closed into the "Closed" list at the bottom of the file.
 3. List every open issue that is in neither the table nor the "Do not schedule" list, and place each by the ranking rule. If you cannot tell where one goes, send a senior-analyst to read it and say what it needs and which agent fits, then place it.
 4. Print the table as your first status. The file is not committed.
 5. Then run: /loop Keep four subagents working the prioritized queue. In addition, up to two subagents may be used concurrently for review or other supporting work. When one reports: commit its work locally with a one-sentence message, run a code-reviewer scoped to only its files, verify each finding before acting, close the issue with a comment saying what was done and what was left, and launch a replacement from the ranked queue immediately rather than batching. Push in the batches the reviews land in and check CI against that sha. Never end a turn with nothing running, until the hand-off hook refuses a launch: then wind down as it says, and end the loop. Do not make a decision that is Donald's -- wording, priorities, or anything a player reads -- leave it and say so.

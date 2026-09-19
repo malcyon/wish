@@ -181,7 +181,7 @@ def test_a_failed_fetch_prints_nothing_rather_than_blocking(monkeypatch, capsys)
 
 
 def test_missing_ghtrust_module_exits_0_printing_nothing(monkeypatch, capsys):
-    """`tools/ghtrust.py` not being findable or importable must never be
+    """`tools/github/ghtrust.py` not being findable or importable must never be
     the thing that breaks somebody starting work -- same silent-failure
     contract as an unauthenticated or offline `gh`.
 

@@ -1,6 +1,6 @@
 """`.claude/hooks/check-issue-reads.py` refuses the reads that leak comment text.
 
-The hook is the enforcement half of `tools/issueread.py`: without it the
+The hook is the enforcement half of `tools/github/issueread.py`: without it the
 filtered reader is a convention somebody has to remember, and
 `.claude/rules/sessions.md` tells every fresh session to run the unfiltered
 form. So what matters is both halves of the list -- that it refuses each form
@@ -82,10 +82,10 @@ ALLOWED = [
     "gh label list",
     "gh run list",
     "gh pr list",
-    ".venv/bin/python tools/issueread.py 510",
+    ".venv/bin/python tools/github/issueread.py 510",
     # The one-line citation form #523 gave both rule files, in place of the
     # `--json number,title` command above.
-    ".venv/bin/python tools/issueread.py 510 --cite",
+    ".venv/bin/python tools/github/issueread.py 510 --cite",
     "git log --oneline -3",
     "gh issue list --json number,labels,state",
     # `comments` as a substring of another field must not trip it -- and
@@ -192,7 +192,7 @@ def test_the_refusal_names_the_filtered_reader(capsys, monkeypatch):
     """A refusal nobody can act on is a refusal that gets worked around."""
     assert run("gh issue view 510 --comments", monkeypatch=monkeypatch) == 2
     err = capsys.readouterr().err
-    assert "tools/issueread.py" in err
+    assert "tools/github/issueread.py" in err
     assert "public" in err
 
 

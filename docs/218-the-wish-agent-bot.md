@@ -80,7 +80,7 @@ agent **reads** instead.
 | Bot identity as author | a reader mistaking an agent's ticket for Donald's | nothing an attacker does |
 | `AI` / `human` labels | a human misreading the tracker; agents posting into an outsider's thread | nothing; labels are cosmetic by design |
 | `issue-titles-context.py` withholding a title | an outside title reaching a session unannounced, before the user has typed anything | text Donald pastes in himself |
-| `tools/issueread.py` withholding a body | an outside comment's text entering an agent's context at all | the agent knowing the comment exists, which is the point |
+| `tools/github/issueread.py` withholding a body | an outside comment's text entering an agent's context at all | the agent knowing the comment exists, which is the point |
 | `check-issue-reads.py` refusing `gh issue view --comments` | the filter being something to remember | an agent reading the issue on the web and telling Donald |
 | Rules saying issue text is data | a compliant agent obeying a sentence in an issue | nothing mechanically -- a rule is a prompt, and a prompt is not a boundary |
 
@@ -125,7 +125,7 @@ author the change as Donald. Do not add the `AI` label by hand; the workflow
 owns it. **And it does not comment at all on a thread labelled `human`**, which
 is a conversation between Donald and somebody outside the project.
 
-**An agent reads** with `tools/issueread.py N`, which
+**An agent reads** with `tools/github/issueread.py N`, which
 `.claude/hooks/check-issue-reads.py` enforces by refusing the unfiltered form.
 
 **A person** opens an issue the ordinary way, on the web or with `gh`. The

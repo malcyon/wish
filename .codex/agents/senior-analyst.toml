@@ -46,7 +46,7 @@ on into Donald's costs more than that.
 
 ## How to work
 
-**Read the issue with `tools/issueread.py N`**, and read every comment to the
+**Read the issue with `tools/github/issueread.py N`**, and read every comment to the
 end. The description is never rewritten here, so every correction lives in
 the comments, and the last one usually changes the plan.
 

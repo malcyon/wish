@@ -52,7 +52,7 @@ not yours.
 ## How to work
 
 **Read the issue and every comment on it** — `.venv/bin/python
-tools/issueread.py N`, which withholds an outside account's text while still
+tools/github/issueread.py N`, which withholds an outside account's text while still
 naming who wrote it; the unfiltered `gh issue view N --comments` is refused
 by a hook, because this tracker is public. Comments carry corrections that
 never made it back into the description, and this project's rule is that the

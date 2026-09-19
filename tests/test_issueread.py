@@ -1,4 +1,4 @@
-"""Tests for `tools/issueread.py`.
+"""Tests for `tools/github/issueread.py`.
 
 `gh` is monkeypatched throughout -- nothing here talks to a real repository.
 The sentinel-absence tests are the ones that matter: they would fail if any
@@ -10,7 +10,7 @@ import subprocess
 
 import pytest
 
-from tools import issueread
+from tools.github import issueread
 
 SENTINEL = "the attacker's chosen instruction, never to be repeated"
 

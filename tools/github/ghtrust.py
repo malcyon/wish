@@ -4,7 +4,7 @@
 `malcyon/wish` is public with issues enabled, so an issue's title, body and
 every comment on it are text a stranger can write. `.claude/hooks/
 issue-titles-context.py` pastes issue titles into a session's context before
-the assistant has read anything the user typed, and `tools/issueread.py`
+the assistant has read anything the user typed, and `tools/github/issueread.py`
 prints a whole issue -- body and comments -- for an agent that is about to
 work it. Both need the same answer to "is this author trusted", the same
 scrubbing of control characters, and the same sentence for "this text is

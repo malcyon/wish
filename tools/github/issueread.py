@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Read one GitHub issue the way an agent should -- with a stranger's text withheld.
 
-    tools/issueread.py N            # one issue, its body and all its comments
-    tools/issueread.py N --json     # the same, as JSON, for a script
-    tools/issueread.py N --cite     # one line: `#N (Title)`, for citing it to Donald
+    tools/github/issueread.py N            # one issue, its body and all its comments
+    tools/github/issueread.py N --json     # the same, as JSON, for a script
+    tools/github/issueread.py N --cite     # one line: `#N (Title)`, for citing it to Donald
 
 `.claude/rules/sessions.md` tells a fresh session to run `gh issue view N
 --comments` for any issue it is about to work, because this project never
@@ -15,7 +15,7 @@ gets `403 Unable to create comment because issue is locked` whatever
 permissions it holds, so locking would also stop our own bot reporting a
 finding into an issue, while doing nothing for one that is not locked yet.
 
-So the filter goes where the reading happens. `tools/ghtrust.py` decides who
+So the filter goes where the reading happens. `tools/github/ghtrust.py` decides who
 is trusted; this prints a trusted author's text in full and an outside
 author's title, body or comment as a `ghtrust.withheld(...)` line naming the
 author, the length, and the exact command that would show it -- **withheld,
@@ -47,14 +47,14 @@ import pathlib
 import subprocess
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 # The repository root and nothing else -- see tools/dos/dosraces.py's comment on
 # why `tools/` itself never goes on sys.path: that lets tools/wish.py shadow
 # the `wish` package for whatever imports it next (#259).
 sys.path.insert(0, str(ROOT))
 
-from tools import ghtrust  # noqa: E402
+from tools.github import ghtrust  # noqa: E402
 
 DEFAULT_REPO = "malcyon/wish"
 TIMEOUT = 30

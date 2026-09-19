@@ -10,7 +10,7 @@ and `gh api` against the same endpoints does too -- and
 those before working an issue, because descriptions here are never rewritten,
 so every correction lives in the comments.
 
-`tools/issueread.py` is the same read with an untrusted author's text
+`tools/github/issueread.py` is the same read with an untrusted author's text
 withheld: the author, the date and the length still print, and the body does
 not. **Withheld rather than dropped** -- an agent must still be able to say
 "there are two comments here from an outside account, look at them", or a real
@@ -58,7 +58,7 @@ name this hook does not recognise, reaching GitHub through an MCP server, or
 opening a browser some other way. None of that is guarded here. What stops an
 *honest* mistake -- typing the command sessions.md itself used to recommend --
 is not the same thing as what stops a deliberate one, and this hook is only
-the first. The actual filtering is `tools/issueread.py`; this exists so the
+the first. The actual filtering is `tools/github/issueread.py`; this exists so the
 unfiltered habit stops working before it becomes the habit.
 """
 import json
@@ -66,7 +66,7 @@ import re
 import shlex
 import sys
 
-READER = "tools/issueread.py"
+READER = "tools/github/issueread.py"
 
 #: A quoted heredoc body is data being written to a file, not commands being
 #: run -- and it is how this project writes every document and every issue

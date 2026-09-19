@@ -1,13 +1,13 @@
-"""Tests for `tools/ghtrust.py`.
+"""Tests for `tools/github/ghtrust.py`.
 
 `is_trusted` decides which authors go into an agent's context in full and
 which get withheld; `flatten` and `withheld` are the shared scrubbing and
 wording both `.claude/hooks/issue-titles-context.py` and
-`tools/issueread.py` rest on. Everything here is pure and needs no `gh`.
+`tools/github/issueread.py` rest on. Everything here is pure and needs no `gh`.
 """
 import re
 
-from tools import ghtrust
+from tools.github import ghtrust
 
 # ---------------------------------------------------------------------------
 # is_trusted
