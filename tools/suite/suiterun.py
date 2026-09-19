@@ -129,8 +129,9 @@ def rebase_onto_origin(repo: pathlib.Path, sha: str) -> tuple[str, str]:
     done = _git(repo, "rebase", "origin/main")
     if done.returncode != 0:
         _git(repo, "rebase", "--abort")
-        raise SystemExit("rebasing onto origin/main conflicts; the branch is "
-                         "unchanged. Resolve it, then run again:\n"
+        raise SystemExit("rebasing onto origin/main failed, most likely on a "
+                         "conflict; the branch is unchanged. Resolve it, then "
+                         "run again:\n"
                          + (done.stdout + done.stderr).strip()[-1500:])
     new = _git(repo, "rev-parse", "HEAD").stdout.strip()
     return new, f"rebased onto origin/main: {head[:7]} -> {new[:7]}"
@@ -147,7 +148,7 @@ DATA_DECIDING = re.compile(
 def data_deciding_tests(tests: pathlib.Path) -> list[str]:
     """The test files under `tests` that ask for game data or decide to skip
     without it, as paths from the repository root, sorted."""
-    return sorted(str(path.relative_to(tests.parent))
+    return sorted(path.relative_to(tests.parent).as_posix()
                   for path in tests.rglob("test_*.py")
                   if DATA_DECIDING.search(
                       path.read_text(encoding="utf-8", errors="replace")))

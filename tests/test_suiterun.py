@@ -195,8 +195,13 @@ def _commit(repo, name, text="x\n"):
 
 
 @pytest.fixture
-def clones(tmp_path):
-    """A bare `origin`, the clone that pushes to it, and the clone under test."""
+def clones(tmp_path, monkeypatch):
+    """A bare `origin`, the clone that pushes to it, and the clone under test.
+
+    The identity goes in the environment because `suiterun` runs `git rebase`,
+    which makes commits, and CI has no global git identity."""
+    for name, value in _identity().items():
+        monkeypatch.setenv(name, value)
     origin = tmp_path / "origin.git"
     _git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
     other = tmp_path / "other"
@@ -234,7 +239,7 @@ def test_a_conflict_stops_and_leaves_the_branch_as_it_was(clones):
     _git(other, "push", "-q", "origin", "main")
     with pytest.raises(SystemExit) as stopped:
         suiterun.rebase_onto_origin(mine, old)
-    assert "conflicts" in str(stopped.value)
+    assert "rebasing onto origin/main failed" in str(stopped.value)
     assert _git(mine, "rev-parse", "HEAD") == old
     assert not (mine / ".git" / "rebase-merge").exists()
     assert _git(mine, "status", "--porcelain") == ""
