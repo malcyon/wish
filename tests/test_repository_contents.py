@@ -183,9 +183,6 @@ _NOT_A_LOOKUP = {
         "a fake path the census classifies by its name",
     # A `[Version]` config file inside a string, which contains `/mnt/`.
     ("tests/test_instance.py", "    [Version]"): "VICE config text",
-    # Third-party art, not game data.
-    ("tools/gui/taskbaricon.py", "~/Downloads/wish_logo"): "the logo artwork",
-    ("tests/test_taskbaricon.py", "`tools/gui/taskbaricon.py`"): "the logo artwork",
     # The text of a dialog a screenshot shows, not a path it opens.
     ("tools/convert/convertshots.py", "~/dos_por_play/wish-2026-09-10"):
         "a dialog's folder text",

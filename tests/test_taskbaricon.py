@@ -1,135 +1,44 @@
 from __future__ import annotations
 
-"""`tools/gui/taskbaricon.py`: the comparison sheet is made by resizing the
-artist's delivered files and by nothing else.
+"""The icon the window gets is the artist's committed PNG, scaled down."""
 
-The first sheet drawn for `#351 (The Windows build shows no logo in About
-and a black square on the taskbar, because the artist's SVGs are not in the
-package)` switched off two elements of the artist's SVG in memory, cropped
-his lettering with a viewBox and drew a pentagram of its own, and was
-refused for it. What is checked here is the rule that replaced it: every
-row is one delivered file, whole, rendered or scaled to a square -- so a
-row's cell is pixel-identical to a fresh render of that file with nothing
-done to it -- and the delivery on disk is unchanged afterwards.
-
-The delivery lives outside the repository (`~/Downloads/wish_logo/`, or
-`$WISH_LOGO_DELIVERY`), so every test that reads it skips where it is
-absent, which is CI. The two tests that need no delivery run everywhere.
-
-Row B is what shipped, and the four Color Mark PNGs it is scaled from are
-committed under `assets/logo/`; the last test here checks those are the
-delivery's bytes, so the copy the program reads cannot quietly stop being
-what the artist sent.
-"""
-
-import hashlib
 import pathlib
 
 import pytest
 
-pytest.importorskip("PyQt6.QtSvg")
+pytest.importorskip("PyQt6.QtWidgets")
 
-from PyQt6.QtCore import QRectF, Qt  # noqa: E402
-from PyQt6.QtGui import QGuiApplication, QImage, QPainter  # noqa: E402
-from PyQt6.QtSvg import QSvgRenderer  # noqa: E402
+from PyQt6.QtCore import Qt  # noqa: E402
+from PyQt6.QtGui import QImage  # noqa: E402
+from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from tools.gui import taskbaricon  # noqa: E402
-
-delivered = pytest.mark.skipif(
-    not (taskbaricon.DELIVERY / "Marks").is_dir(),
-    reason=f"the artist's delivery is not at {taskbaricon.DELIVERY}")
+LOGO = pathlib.Path(__file__).resolve().parent.parent / "assets" / "logo"
+ARGB = QImage.Format.Format_ARGB32_Premultiplied
 
 
-@pytest.fixture
-def app():
-    return QGuiApplication.instance() or QGuiApplication([])
+def _committed_pngs() -> dict[int, QImage]:
+    """Every `mark-N.png` under `assets/logo`, by side, found by name so
+    nothing here reads the module that ships them."""
+    return {int(path.stem.split("-")[1]): QImage(str(path)).convertToFormat(ARGB)
+            for path in LOGO.glob("mark-[0-9]*.png")}
 
 
-def _digests() -> dict[pathlib.Path, str]:
-    return {p: hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(taskbaricon.DELIVERY.rglob("*")) if p.is_file()}
+def test_the_window_icon_is_the_committed_png_scaled_down():
+    """At every size the window's icon holds, the pixels are the smallest
+    committed PNG no smaller than that size, scaled down whole and nothing
+    else -- the file the artist sent, not a redrawing of it."""
+    from wish.window import dress
 
-
-def test_the_rows_are_lettered_in_order_and_every_file_has_a_vector_row():
-    rows = taskbaricon.rows()
-    assert [r.letter for r in rows] == list("ABCDEFGHIJKL"[:len(rows)])
-    vector = [(r.family, r.colourway) for r in rows if not r.raster]
-    assert vector == taskbaricon.FILES
-
-
-def test_a_raster_is_only_ever_scaled_down():
-    """The smallest delivered PNG no smaller than the cell: 80 for the
-    taskbar sizes, 500 for 256, never an upscale of a smaller one."""
-    assert [taskbaricon.nearest_png(s) for s in taskbaricon.SIZES] == \
-        [80, 80, 80, 80, 80, 500]
-
-
-@delivered
-@pytest.mark.parametrize("size", (24, 32))
-def test_every_row_is_the_delivered_file_resized_and_nothing_else(app, size):
-    """A row's cell equals a fresh render of the file it names, done here
-    with no viewBox, no substitution and no element left out: the one way a
-    crop or an edit in memory could get onto the sheet is by making the two
-    differ."""
-    for row in taskbaricon.rows():
-        source = row.source(size)
-        assert source.is_relative_to(taskbaricon.DELIVERY)
-        got = row.draw(size)
-        if row.raster:
-            want = QImage(str(source)).convertToFormat(
-                QImage.Format.Format_ARGB32_Premultiplied).scaled(
-                    size, size, Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation)
-        else:
-            renderer = QSvgRenderer(str(source))
-            want = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
-            want.fill(0)
-            painter = QPainter(want)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            renderer.render(painter, QRectF(0, 0, size, size))
-            painter.end()
-        assert got == want, f"row {row.letter} is not {source.name} resized"
-
-
-@delivered
-def test_the_ground_is_read_off_the_file(app):
-    """The Color files bring an opaque near-black square; Black and White
-    are line art on transparency. The caption says which, from the pixels."""
-    grounds = {(r.colourway, r.raster): taskbaricon.ground(r.draw(48))
-               for r in taskbaricon.rows() if r.family == "Marks"}
-    for raster in (False, True):
-        assert grounds[("Color", raster)].startswith("opaque")
-        assert grounds[("Black", raster)].startswith("transparent")
-        assert grounds[("White", raster)].startswith("transparent")
-
-
-@delivered
-def test_drawing_the_sheet_leaves_the_delivery_alone(app):
-    before = _digests()
-    image = taskbaricon.sheet()
-    assert image.width() > 1500 and image.height() > 1500
-    assert _digests() == before
-
-
-@delivered
-def test_the_committed_pngs_are_the_delivered_pngs():
-    """`assets/logo/mark-N.png` is `Marks/Color/Color Mark NxN.png`, byte
-    for byte -- row B as delivered, copied and nothing else."""
-    from ui import appicon
-
-    for side, committed in appicon.RASTERS.items():
-        delivered_file = taskbaricon.png_path("Marks", "Color", side)
-        assert committed.read_bytes() == delivered_file.read_bytes(), (
-            f"{committed.name} is not {delivered_file.name}")
-
-
-def test_the_shipped_sheet_is_the_icon_the_window_gets(app):
-    """`--shipped` draws `ui.appicon.image` and nothing of its own: each
-    cell is the window's icon at that size, so the sheet is
-    a picture of what ships rather than a picture of something like it."""
-    from ui import appicon
-
-    for size in taskbaricon.SIZES:
-        assert taskbaricon.shipped_row().draw(size) == appicon.image(size)
-    image = taskbaricon.sheet([taskbaricon.shipped_row()])
-    assert image.width() > 1500 and image.height() > 256
+    app = QApplication.instance() or QApplication([])
+    dress(app)
+    icon = app.windowIcon()
+    sizes = sorted(size.width() for size in icon.availableSizes())
+    committed = _committed_pngs()
+    assert sizes and sorted(committed) == [80, 150, 200, 500]
+    for size in sizes:
+        side = min(s for s in committed if s >= size)
+        want = committed[side].scaled(
+            size, size, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation)
+        got = icon.pixmap(size, size).toImage().convertToFormat(ARGB)
+        assert got == want, f"the window's {size}px icon is not mark-{side}.png scaled"

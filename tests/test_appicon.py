@@ -82,8 +82,8 @@ def test_the_asset_is_a_valid_svg(app):
 
 #: `Marks/Color/Color Mark NxN.png` as delivered on 2026-08-31 and committed
 #: on 2026-09-06 as `assets/logo/mark-N.png`, byte for byte. Pinned for the
-#: reason `MARK_SHA256` is; `tests/test_taskbaricon.py` checks the same
-#: bytes against the delivery itself where that is present.
+#: reason `MARK_SHA256` is; `tests/test_taskbaricon.py` checks the window's
+#: icon against these files.
 RASTER_SHA256 = {
     80: "f07337ae041ff3c25dffe0c9a76ec93951ec6808b9267f4f21f7d2ccb4dca872",
     150: "b55060d40dbe234344058b63f0bfcee58cca15802096b730558d173ada2c8d65",
@@ -193,8 +193,8 @@ def test_the_ring_is_a_circle_at_the_taskbar_sizes(app, size):
 @pytest.mark.parametrize("size", (24, 32))
 def test_the_taskbar_sizes_are_the_80_scaled_and_nothing_else(app, size):
     """Row B on the sheet, exactly: the delivered 80 scaled to the size,
-    whole, area-averaged. The same comparison `tests/test_taskbaricon.py`
-    makes of every row on the sheet."""
+    whole, area-averaged. `tests/test_taskbaricon.py` makes the same
+    comparison of the icon the window gets."""
     from PyQt6.QtCore import Qt
 
     want = QImage(str(appicon.RASTERS[80])).convertToFormat(

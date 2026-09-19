@@ -368,11 +368,6 @@ executables, audio and PDFs, which is the part that was ever about the game.
   ships as one `EXE` and a `COLLECT`, not a `.app` -- so nothing installs the
   file yet and nobody has dropped it on a real Dock. Wire it up when there is
   a macOS package.
-* **The Windows taskbar drawing is still Donald's to choose.** §7: the
-  colour mark's rings dissolve below 48 when rendered from the SVG, and
-  `tools/gui/taskbaricon.py` draws every square file he delivered, resized and
-  nothing else, on a light and a dark taskbar. Until he picks one, every
-  size is the full mark rendered from the SVG.
 * **Nobody has seen the fixed build on a Windows taskbar.** The first build
   seen there showed a black square -- §7 -- and the fix has been proven only
   as far as a Linux build with the SVGs inside it. That is a row for
@@ -504,7 +499,8 @@ decides the taskbar question: an opaque square is the same picture on a
 light taskbar and a dark one, and transparent line art is invisible on the
 taskbar that matches it.
 
-`tools/gui/taskbaricon.py` draws the sheet, `cited/351/taskbar-marks.png`:
+The sheet, `cited/351/taskbar-marks.png`, was drawn by
+`tools/gui/taskbaricon.py`, which was deleted once the choice below was made:
 twelve lettered rows, every square file rendered from its SVG and scaled
 from its nearest delivered PNG, at 16, 20, 24, 32, 48 and 256, each at true
 size on a light and a dark taskbar and magnified beside it. The taskbar
@@ -520,8 +516,8 @@ the ones that matter. Read off the sheet on 2026-09-06:
 | G-L | the three combo marks | as their mark | the lettering is a smear at every size up to 32 and first legible at 48; the ring and star behave as the mark of the same colour |
 
 **The SVG and PNG rows differ visibly for every file** -- the largest
-per-channel gap between the two renders at 24 is 89 of 255 or more,
-`--measure` prints the table -- so no PNG row was dropped. For the Color
+per-channel gap between the two renders at 24 was 89 of 255 or more -- so
+no PNG row was dropped. For the Color
 mark the PNG is the better of the two at every taskbar size, because the
 artist's exporter downsampled the ring bitmaps and Qt's renderer does not.
 
@@ -546,9 +542,7 @@ cannot draw:
 
 Simplest to ship is 1 with row B: it is a `.ico` and `setWindowIcon` built
 from a file he already delivered, with nothing to detect. The choice is
-Donald's; `tests/test_taskbaricon.py` checks that every cell on the sheet
-is a delivered file resized and that the delivery's hashes are unchanged
-after drawing it.
+Donald's.
 
 ### Row B shipped
 
@@ -582,8 +576,10 @@ Donald, 2026-09-06: *"Go with row B, please."* What that is in the code:
   `tests/test_assets.py` fails for each PNG missing from that list, as it
   did for the SVGs.
 
-`tools/gui/taskbaricon.py --shipped` draws the result --
-`cited/351/taskbar-shipped.png`, the icon at 16, 20, 24, 32, 48 and 256
-through `ui.appicon.image`, on a light taskbar and a dark one -- so what
-shipped can be looked at rather than described. Not yet seen on a Windows
-taskbar itself; that is Donald's to photograph.
+`cited/351/taskbar-shipped.png` showed the result -- the icon at 16, 20, 24,
+32, 48 and 256 through `ui.appicon.image`, on a light taskbar and a dark
+one. `tools/gui/taskbaricon.py`, which drew it and the sheet above, was
+deleted once the choice was made; `tests/test_taskbaricon.py` now holds one
+test, that the window's icon is the committed `assets/logo/mark-*.png`
+scaled down. Not yet seen on a Windows taskbar itself; that is Donald's to
+photograph.

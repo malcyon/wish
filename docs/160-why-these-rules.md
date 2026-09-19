@@ -2578,7 +2578,7 @@ The combat map draws each square as a letter over a miniature health bar. The si
 
 ###### Taskbar icon sheet (gui, taskbaricon.py)
 
-Only whole delivered files are resized: an earlier sheet switched off elements and cropped in memory and was refused, and `tests/test_taskbaricon.py` now checks each cell equals a fresh render of the whole file and that the delivery's hashes are unchanged. Row B was chosen, and `--shipped` draws what `ui.appicon.image` produces at the same sizes. `--measure` prints the SVG-versus-PNG gap that decided which PNG rows were kept.
+Only whole delivered files were resized: an earlier sheet switched off elements and cropped in memory and was refused, and the test checked each cell equalled a fresh render of the whole file and that the delivery's hashes were unchanged. Row B was chosen, and `--shipped` drew what `ui.appicon.image` produces at the same sizes. `--measure` printed the SVG-versus-PNG gap that decided which PNG rows were kept. The tool was deleted once the choice was made, and `tests/test_taskbaricon.py` now holds one test, that the window's icon is the committed PNG scaled down.
 
 ###### Amiga body choice (gui, bodychoices.py)
 
