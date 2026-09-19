@@ -1,1 +1,1 @@
-"""Scripts that run and check the test suite: the whole-suite run that gates a push, the generated test party, the rules check, the sys.path census and the pytest plugins that chase a flaky guard test."""
+"""Scripts that run and check the test suite: the whole-suite run that gates a push, the generated test party, the rules check, the sys.path census and the diagnostic pytest plugins, loaded on demand with `-p` rather than wired into `pyproject.toml` or `tests/conftest.py`, that measure and reproduce the race behind a flaky conftest guard test."""

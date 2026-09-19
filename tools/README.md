@@ -12,7 +12,7 @@ Scripts that may drive a live emulator, an X server or the player's own disks, o
 | [convert](convert/README.md) | Scripts for File > Convert: running every conversion direction, hashing what each one writes, and drawing the dialog. |
 | [curse_of_the_azure_bonds](curse_of_the_azure_bonds/README.md) | Scripts for Curse of the Azure Bonds: loading, driving and checking its saves. |
 | [dos](dos/README.md) | Scripts for the DOS ports: DOSBox and the drivers built on it, overlay and record readers, and the save and party tools. |
-| [generate](generate/README.md) | Scripts that generate files from the code and the game's data: the compiled Qt forms, the generated docs, tables and licence file, the icon set, the Codex agent profiles and the class diagrams. |
+| [generate](generate/README.md) | Scripts that generate files from the code and the game's data: the compiled Qt forms, the generated docs, tables and licence file, the icon set, the Codex agent profiles, the fast-travel exit table and the class diagrams. |
 | [github](github/README.md) | Scripts that read GitHub issues so that a stranger's text is withheld: the trust check and the issue reader. |
 | [gui](gui/README.md) | Scripts that draw or measure Wish's own windows, and the Windows guest scripts that run them. |
 | [icons](icons/README.md) | Scripts for combat icons and portraits: the correspondence tables between the DOS and C64 art, and the tools that build, check and draw them. |
@@ -20,7 +20,7 @@ Scripts that may drive a live emulator, an X server or the player's own disks, o
 | [records](records/README.md) | Censuses and cross-checks over character records that span titles and ports, such as class combinations, fields and encumbrance. |
 | [registry](registry/README.md) | Scripts that say where things are and who holds them: the game disks, the specimen tree and its backups, the emulator instance pool and the scratch directories. |
 | [secret_of_the_silver_blades](secret_of_the_silver_blades/README.md) | Scripts for Secret of the Silver Blades: staging, loading, training and comparing its saves. |
-| [suite](suite/README.md) | Scripts that run and check the test suite: the whole-suite run that gates a push, the generated test party, the rules check, the sys.path census and the pytest plugins that chase a flaky guard test. |
+| [suite](suite/README.md) | Scripts that run and check the test suite: the whole-suite run that gates a push, the generated test party, the rules check, the sys.path census and the diagnostic pytest plugins, loaded on demand with `-p` rather than wired into `pyproject.toml` or `tests/conftest.py`, that measure and reproduce the race behind a flaky conftest guard test. |
 
 ## Top level
 

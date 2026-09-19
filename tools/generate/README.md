@@ -1,6 +1,6 @@
 # generate
 
-Scripts that generate files from the code and the game's data: the compiled Qt forms, the generated docs, tables and licence file, the icon set, the Codex agent profiles and the class diagrams.
+Scripts that generate files from the code and the game's data: the compiled Qt forms, the generated docs, tables and licence file, the icon set, the Codex agent profiles, the fast-travel exit table and the class diagrams.
 
 | file | purpose |
 |---|---|
