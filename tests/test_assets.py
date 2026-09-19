@@ -120,10 +120,13 @@ def test_the_readers_resolve_through_it(monkeypatch, tmp_path):
     import importlib
 
     pytest.importorskip("PyQt6.QtSvg")
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    # Imported before the frozen root is simulated: a module first imported
+    # under it keeps the temporary paths, and the snapshots below would then
+    # restore those instead of the real ones.
     import wish.about
     from ui import appicon
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
     # Snapshot and write back, rather than reloading a second time to undo the
     # first: a second reload builds *new* objects, so anything another module
     # bound at import time keeps pointing at the ones from before. Neither
