@@ -430,7 +430,7 @@ never touches the byte. CONFIRMED, from the routine's instructions and a
 reading taken in the running machine.
 
 So **a driver must read `$C04B`-`$C04D` and never the status line** in the
-eleven Silver Blades areas that set the flag. `tools/ssbwarp.py` does.
+eleven Silver Blades areas that set the flag. `tools/secret_of_the_silver_blades/ssbwarp.py` does.
 
 ### And clearing it is the one behavioural change between the two engines
 

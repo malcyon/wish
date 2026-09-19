@@ -2,7 +2,7 @@
 
 Belongs to #334 (The session driver cannot fight in Curse or Silver Blades, and says the party is not in a fight while it is standing on the combat floor).
 
-`tools/ssbwarp.py`'s `enter_world` no longer sends an unconditional Escape at
+`tools/secret_of_the_silver_blades/ssbwarp.py`'s `enter_world` no longer sends an unconditional Escape at
 a stuck screen (`#568 (cursewarp.py and ssbwarp.py can abort a mid-load ECL
 script by sending Escape to a screen that is merely slow, not stuck)`, committed on `main` as `f7f49c7`);
 the root cause comment on the issue traced every earlier no-fight result on
@@ -12,7 +12,7 @@ same staging square and same step, with the fix in place, checking
 `Session.in_combat()` (the `$7F11` mode byte, not row 24 or a screenshot) and
 driving a real fight with `Session.fight()` if one starts.
 
-Run: `.venv/bin/python tools/ssbrevalidate.py`. It takes no arguments, claims
+Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbrevalidate.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes its log and dumps under its own scratch directory. The
 walk itself is the one `ssbstep1512.py` and `ssbreturnprobe.py` make.
@@ -24,7 +24,7 @@ import pathlib
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
@@ -32,7 +32,6 @@ from tools import (  # noqa: E402
     gamedisks,
     scratch,
     specimens,
-    ssbwarp,
 )
 from tools.c64 import (  # noqa: E402
     laterbattle,
@@ -40,6 +39,9 @@ from tools.c64 import (  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds import (  # noqa: E402
     cursethac0,
+)
+from tools.secret_of_the_silver_blades import (  # noqa: E402
+    ssbwarp,
 )
 
 OUT = scratch.scratch_dir("ssbrevalidate")

@@ -7,7 +7,7 @@ that is genuinely per-release.  Everything below the title screen -- the
 monitor, the keyboard, the screen reader, the menu walker, the disk-prompt
 answerer -- is `tools/c64/session.py`'s and is shared.
 
-**The boot and the prompts are `tools/ssbwarp.py`'s already**, measured for
+**The boot and the prompts are `tools/secret_of_the_silver_blades/ssbwarp.py`'s already**, measured for
 `#20 (Build an area table for Silver Blades)` over eight sessions, so this
 file imports `SSBSession`, `stage` and `load_party` rather than restating
 them.  What it adds is the one thing `#20` never needed: **a save disk this
@@ -15,9 +15,9 @@ project built, staged as `SIDE0`, and a session left serving so the party on
 it can be read off the running game** (`#193 (Convert a Secret of the Silver
 Blades DOS save into a C64 one, which the importer refuses today)` step 3).
 
-    tools/ssbdisk.py --folder DIR --slot D \\
+    tools/secret_of_the_silver_blades/ssbdisk.py --folder DIR --slot D \\
         --out SSBD.D64
-    tools/ssbrun.py --pool 4 --save SSBD.D64 --out RUNDIR
+    tools/secret_of_the_silver_blades/ssbrun.py --pool 4 --save SSBD.D64 --out RUNDIR
 
 Then drive it with `POR_CMD_PORT=65<slot> tools/c64/porcmd screen`, exactly as
 for the other two titles.  `--watch` launches and serves with no boot, for
@@ -41,21 +41,23 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from tools import (  # noqa: E402
     gamedisks,
-    ssbwarp,
 )
 from tools.c64 import session as por  # noqa: E402
+from tools.secret_of_the_silver_blades import (  # noqa: E402
+    ssbwarp,
+)
 
 
 def run(argv: list[str] | None = None) -> None:
     """Claim a slot, stage the six sides and a save, boot, and serve.
 
-    `tools/ssbtrain.py`'s `drive` builds `argv` itself and calls this
+    `tools/secret_of_the_silver_blades/ssbtrain.py`'s `drive` builds `argv` itself and calls this
     directly, so the signature stays `run(argv)` rather than the `main`
     other `*run.py` scripts in `tools/` use.
     """

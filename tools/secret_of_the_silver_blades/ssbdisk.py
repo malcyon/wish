@@ -11,7 +11,7 @@ differ and the name table may be keyed the other way round, so the geometry
 lives in `goldbox/c64_save.py` and this file is the runner (`#193 (Convert a Secret of
 the Silver Blades DOS save into a C64 one, which the importer refuses today)`).
 
-    tools/ssbdisk.py --folder path/to/dos-ssb-save --slot D \\
+    tools/secret_of_the_silver_blades/ssbdisk.py --folder path/to/dos-ssb-save --slot D \\
         --out SSBD.D64 --report --sheet
 
 **`enable_ssb()` is a reach-around and says so.** `goldbox.dos_codec.CONVERTS` does
@@ -39,7 +39,7 @@ import argparse
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

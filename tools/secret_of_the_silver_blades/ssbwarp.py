@@ -9,8 +9,8 @@ built the table off its own scripts; both are static readings, so every row of
 that then draws that area's map is what makes a row CONFIRMED**, and that is
 what this measures.
 
-    tools/ssbwarp.py --pool 3 --probe --out DIR
-    tools/ssbwarp.py --pool 3 --to 0x22,0x50,0x60 --via-actions \
+    tools/secret_of_the_silver_blades/ssbwarp.py --pool 3 --probe --out DIR
+    tools/secret_of_the_silver_blades/ssbwarp.py --pool 3 --to 0x22,0x50,0x60 --via-actions \
         --spoil-from 2 --walk --out DIR
 
 `--probe` boots, loads a party and reports what the machine holds without
@@ -62,7 +62,7 @@ import re
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

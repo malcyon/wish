@@ -185,7 +185,7 @@ unchanged, both cache slots are still `$FF`, and the live record window at
 Blades, which ships no `HEAD<xx>` or `BODY<xx>` file at all.
 
 The recipe, for anyone repeating it: boot with `tools/curse_of_the_azure_bonds/curserun.py --pool N
---disks <dir> --save <d64>` or `tools/ssbrun.py --pool N --save <d64>`, then
+--disks <dir> --save <d64>` or `tools/secret_of_the_silver_blades/ssbrun.py --pool N --save <d64>`, then
 through `tools/c64/porcmd` -- walk the party menu with `key Down` and answer with
 `kernal 0D` in Curse or `key Return 0.25 0.3` in Silver Blades, `VIEW
 CHARACTER`, then the character. `peek 7F13 25` is the cache and `peek 7CFE 2`

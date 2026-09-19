@@ -196,7 +196,7 @@ strength, the first byte of `abilities_second`.
 ## What the running game showed, six checks
 
 One VICE session per build, pool slots 1 and 0, 2026-09-05, on a save disk
-`tools/ssbdisk.py` built from `curse/SSB-D-paine-memorised` (scratch, deleted) slot D with
+`tools/secret_of_the_silver_blades/ssbdisk.py` built from `curse/SSB-D-paine-memorised` (scratch, deleted) slot D with
 `unwritten == []` and no template.
 
 | check | what it showed |
@@ -213,7 +213,7 @@ The party then walked two squares south from 3,3 to 3,5 with the clock moving
 
 ## The engine's own resave
 
-`tools/ssbsavediff.py` against what Wish wrote, taken standing on the same
+`tools/secret_of_the_silver_blades/ssbsavediff.py` against what Wish wrote, taken standing on the same
 square at the same minute, before the party walked:
 
 ```
@@ -262,12 +262,12 @@ from camp -- confirmed in the running game and at `SILVER-1.D64` offset
 `0x2230F` on all six sides. The party-menu loader draws a second, different
 prompt for the same disk, `INSERT BLADES SAVE DISK. PRESS A KEY.` (offset
 `0x23A21`), which a driven run answers wherever it needs to reattach the save
-disk to reload a party. `tools/ssbwarp.py`'s `SSBSession.handle_prompt` used
+disk to reload a party. `tools/secret_of_the_silver_blades/ssbwarp.py`'s `SSBSession.handle_prompt` used
 to check for only one of the two -- its own `SAVE_PROMPT = "SAVE DISK"` is a
 substring of the loader wording but not of camp's -- so it recognised the
 loader prompt fine and only missed the camp one, and a driven `ENCAMP > SAVE`
 sat on the camp prompt forever
-(`#539 (tools/ssbwarp.py's SAVE_PROMPT does not match Silver Blades' actual
+(`#539 (tools/secret_of_the_silver_blades/ssbwarp.py's SAVE_PROMPT does not match Silver Blades' actual
 save-disk prompt, so ENCAMP > SAVE silently refuses)`). `save_disk_wanted`
 now checks both, and no driven run has ever put the loader's own wording on
 screen -- every party load attaches the save disk before picking `LOAD SAVED
@@ -302,8 +302,8 @@ unconfirmed.
 | the record shape | `goldbox/c64_codec.py`, `SILVER_BLADES_RECORD` |
 | the DOS record table | `goldbox/dos_port.py`, `SECRET_OF_THE_SILVER_BLADES` |
 | the areas | `goldbox/areas.py`, `AREAS_SILVER_BLADES`, twenty-two rows |
-| building a save disk | `tools/ssbdisk.py` |
-| driving the game | `tools/ssbrun.py`, on `tools/ssbwarp.py`'s boot |
-| diffing a resave | `tools/ssbsavediff.py` |
-| the shipped twins | `tools/ssbtwins.py` |
+| building a save disk | `tools/secret_of_the_silver_blades/ssbdisk.py` |
+| driving the game | `tools/secret_of_the_silver_blades/ssbrun.py`, on `tools/secret_of_the_silver_blades/ssbwarp.py`'s boot |
+| diffing a resave | `tools/secret_of_the_silver_blades/ssbsavediff.py` |
+| the shipped twins | `tools/secret_of_the_silver_blades/ssbtwins.py` |
 | the tests | `tests/test_ssbconvert.py` |

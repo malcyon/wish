@@ -308,7 +308,7 @@ save-disk wordings -- `session.SAVE_PROMPT` for the camp one and its own
 `wait_bar` calls `handle_prompt` on every poll, so a driven camp save now
 goes through this needle too and attaches the save disk as soon as the camp
 prompt is recognised, rather than waiting for `save_game`'s own
-belt-and-brace attach lower down (`#539 (tools/ssbwarp.py's SAVE_PROMPT does
+belt-and-brace attach lower down (`#539 (tools/secret_of_the_silver_blades/ssbwarp.py's SAVE_PROMPT does
 not match Silver Blades' actual save-disk prompt, so ENCAMP > SAVE silently
 refuses)`).
 

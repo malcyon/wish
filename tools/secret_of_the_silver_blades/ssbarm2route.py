@@ -14,7 +14,7 @@ Static only -- no emulator. Two questions:
 Prints statement lengths for strings, never their text, the same way
 `tools/areas/eclwalk.py` and `tools/areas/eclcensus.py` do.
 
-Run: `.venv/bin/python tools/ssbarm2route.py [--from HEX] [--to HEX] [--also
+Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbarm2route.py [--from HEX] [--to HEX] [--also
 LO:HI ...]`. Reads the Silver Blades disks `tools/gamedisks.py` finds and
 `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 for the party's square; writes nothing.
@@ -25,7 +25,7 @@ import argparse
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402

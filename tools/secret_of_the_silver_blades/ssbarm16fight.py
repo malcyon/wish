@@ -20,7 +20,7 @@ dispatch; the step does, on the square arrived at. Nothing is written to any
 disk and no script flag is touched -- the only bytes this changes are the
 three the engine itself writes on every step.
 
-Run: `.venv/bin/python tools/ssbarm16fight.py`. It takes no arguments, claims
+Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbarm16fight.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes its log and dumps under
 `<tmp>/wish/ssbarm16fight`. It waits 90 seconds for the fight and gives `melee_turn` 300 seconds, which did not
@@ -35,7 +35,7 @@ import pathlib
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
@@ -44,7 +44,6 @@ from tools import (  # noqa: E402
     gamedisks,
     scratch,
     specimens,
-    ssbwarp,
 )
 from tools.c64 import (  # noqa: E402
     laterbattle,
@@ -52,6 +51,9 @@ from tools.c64 import (  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds import (  # noqa: E402
     cursethac0,
+)
+from tools.secret_of_the_silver_blades import (  # noqa: E402
+    ssbwarp,
 )
 
 OUT = scratch.scratch_dir("ssbarm16fight")

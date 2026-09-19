@@ -339,7 +339,7 @@ def ssb_fight(run: Battle, args, disks: str) -> int:
     `$7F11`, so a fight that starts while the screen is still a bitmap is seen
     on the next step rather than walked out of.
     """
-    from tools import ssbwarp  # noqa: PLC0415
+    from tools.secret_of_the_silver_blades import ssbwarp  # noqa: PLC0415
 
     # The guard that used to live here -- clearing whatever the last run left
     # in SIDE0 before `ssbwarp.stage` -- came out once `#469 (A second Silver

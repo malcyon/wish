@@ -14,7 +14,7 @@ KERNAL `LOAD` loop polls RUN/STOP between bytes. If the Escape is the cause,
 the tail count stays below 157, slot 8's end address stays 0, and the script
 in RAM stops part-way through the file.
 
-Run: `.venv/bin/python tools/ssbloadescape.py`. It takes no arguments, claims
+Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbloadescape.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes dumps and `esc.jsonl` under `<tmp>/wish/ssbloadescape/`.
 `ssbloadnoescape.py` is the `ssb15` half.
@@ -27,7 +27,7 @@ import pathlib
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
@@ -36,10 +36,12 @@ from tools import (  # noqa: E402
     gamedisks,
     scratch,
     specimens,
-    ssbwarp,
 )
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
+from tools.secret_of_the_silver_blades import (  # noqa: E402
+    ssbwarp,
+)
 
 OUT = scratch.scratch_dir("ssbloadescape")
 SAVE = str(specimens.tree_root() / "por-c64"

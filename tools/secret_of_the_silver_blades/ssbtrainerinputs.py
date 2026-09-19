@@ -32,9 +32,9 @@ the racial table into the first row of the dexterity table. `--rows` prints what
 each race code actually gets, which is what `thief_skill_race` has to hold if
 Wish is to write the numbers the trainer writes.
 
-    tools/ssbtrainerinputs.py               everything, with the checks
-    tools/ssbtrainerinputs.py --rows        the tables alone, paste-ready
-    tools/ssbtrainerinputs.py --check       exit non-zero if a check fails
+    tools/secret_of_the_silver_blades/ssbtrainerinputs.py               everything, with the checks
+    tools/secret_of_the_silver_blades/ssbtrainerinputs.py --rows        the tables alone, paste-ready
+    tools/secret_of_the_silver_blades/ssbtrainerinputs.py --check       exit non-zero if a check fails
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ import os
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
 from goldbox import c64_port, levels  # noqa: E402

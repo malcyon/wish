@@ -359,9 +359,9 @@ def from_bar(text: str) -> str:
 
 def drive(save: str, out: str, pool: int | None, disks: str | None,
           remove: str, source: str, resave: bool) -> int:
-    from tools import ssbwarp
     from tools.c64 import session as por
     from tools.curse_of_the_azure_bonds import curserun
+    from tools.secret_of_the_silver_blades import ssbwarp
 
     game, _at, entries = table_entries(D64.open(save))
     if game.key not in ("curse-of-the-azure-bonds",

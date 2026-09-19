@@ -5,7 +5,7 @@ Belongs to #334 (The session driver cannot fight in Curse or Silver Blades, and 
 `ssb14` showed `ECL10` landing at `$8000` and stopping at `$97CD` -- 6094 of
 its 7013 body bytes -- with slot 8's recorded KERNAL `LOAD` end address
 (`$2D9E`/`$2DB7`) left at 0 while every other slot loaded in that session
-recorded its file's exact length. `tools/ssbwarp.py`'s `enter_world` presses
+recorded its file's exact length. `tools/secret_of_the_silver_blades/ssbwarp.py`'s `enter_world` presses
 `Escape` when a screen has sat unchanged for fifteen seconds, and VICE's C64
 keymap puts `Escape` on RUN/STOP, which aborts a KERNAL `LOAD` in flight.
 
@@ -18,7 +18,7 @@ Expected if the Escape is the cause: the `tail` checkpoint over
 `$9AC8`-`$9B64` fires 157 times, `$2D9E`/`$2DB7` reads `$65`/`$9B`, and
 `$8000`-`$9B64` matches `ECL10`'s body for all 7013 bytes.
 
-Run: `.venv/bin/python tools/ssbloadnoescape.py`. It takes no arguments,
+Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbloadnoescape.py`. It takes no arguments,
 claims an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes dumps and `noesc.jsonl` under this tool's scratch directory
 (`tools/scratch.py`).
@@ -33,7 +33,7 @@ import pathlib
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
@@ -42,10 +42,12 @@ from tools import (  # noqa: E402
     gamedisks,
     scratch,
     specimens,
-    ssbwarp,
 )
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
+from tools.secret_of_the_silver_blades import (  # noqa: E402
+    ssbwarp,
+)
 
 OUT = scratch.scratch_dir("ssbloadnoescape")
 SAVE = str(specimens.tree_root() / "por-c64"

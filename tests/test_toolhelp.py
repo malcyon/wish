@@ -2,7 +2,7 @@
 file.
 
 `#403 (A tool with no argument parser reads --help as input and boots an
-emulator)`: `tools/ssbrun.py --help` claimed a pooled VICE instance and
+emulator)`: `tools/secret_of_the_silver_blades/ssbrun.py --help` claimed a pooled VICE instance and
 booted it, because the tool scanned `sys.argv` by hand and silently ignored
 any token it did not recognise -- so `--help` fell through to the tool's
 normal job. `tools/curse_of_the_azure_bonds/curserun.py` and `tools/c64/session.py` shared the identical

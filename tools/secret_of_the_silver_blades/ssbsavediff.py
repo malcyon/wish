@@ -10,8 +10,8 @@ output is not how anybody tells those apart, so this labels each run of
 differing bytes with the region it lands in and, where the project has
 measured one, the sentence that says whose byte it is.
 
-    tools/ssbsavediff.py ours.D64 engine.D64
-    tools/ssbsavediff.py ours.D64 engine.D64 --context 32
+    tools/secret_of_the_silver_blades/ssbsavediff.py ours.D64 engine.D64
+    tools/secret_of_the_silver_blades/ssbsavediff.py ours.D64 engine.D64 --context 32
 
 `tools/curse_of_the_azure_bonds/cursesavediff.py` is the same tool for Curse of the Azure Bonds and
 the two region tables are **not** the same, which is why this is a second
@@ -32,7 +32,7 @@ import argparse
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

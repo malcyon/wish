@@ -18,7 +18,7 @@ was the whole of the break and the fix belongs in the driver. If nothing
 moves, the diagnosis needs revisiting and this script says so rather than
 trying anything further.
 
-Run: `.venv/bin/python tools/ssbreturnprobe.py`. It takes no arguments,
+Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbreturnprobe.py`. It takes no arguments,
 claims an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes its log, dumps and `readings.json` under
 this tool's scratch directory.
@@ -31,7 +31,7 @@ import pathlib
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.actions import pc_register  # noqa: E402
@@ -40,7 +40,6 @@ from tools import (  # noqa: E402
     gamedisks,
     scratch,
     specimens,
-    ssbwarp,
 )
 from tools.c64 import (  # noqa: E402
     laterbattle,
@@ -48,6 +47,9 @@ from tools.c64 import (  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds import (  # noqa: E402
     cursethac0,
+)
+from tools.secret_of_the_silver_blades import (  # noqa: E402
+    ssbwarp,
 )
 
 OUT = scratch.scratch_dir("ssbreturnprobe")

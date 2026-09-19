@@ -447,7 +447,7 @@ def curse_boot(slot, r: Run, save: str, where: str, wait: float):
 
 def ssb_boot(slot, r: Run, save: str, where: str, wait: float):
     """Boot Silver Blades and load the party as far as the formation menu."""
-    from tools import ssbwarp
+    from tools.secret_of_the_silver_blades import ssbwarp
 
     first = ssbwarp.stage(slot, where, save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")

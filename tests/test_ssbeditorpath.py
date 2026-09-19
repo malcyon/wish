@@ -17,7 +17,7 @@ disk this project wrote would be a round trip proven against our own beliefs;
 `.claude/rules/testing.md` is the reason it is that specimen and not another.
 
 Step 5 -- an edited field read off the game's own screens -- cannot be a test,
-because it needs the running game. `tools/ssbedit.py` is that run and `#33`
+because it needs the running game. `tools/secret_of_the_silver_blades/ssbedit.py` is that run and `#33`
 carries what it saw: `BRIGHID`, `STR 12` and `GOLD 4321` on the sheet, on VICE
 pool slot 3, 2026-09-08. What is asserted here is the half of that run a
 machine with no emulator can check: that the three edits land in the record the
@@ -101,7 +101,7 @@ def _copy(path, tmp_path) -> str:
 
 
 def _name_table(path) -> list[bytes]:
-    from tools import ssbedit
+    from tools.secret_of_the_silver_blades import ssbedit
     return ssbedit.name_table(path)
 
 
@@ -211,14 +211,14 @@ def test_a_pool_of_radiance_party_will_not_import_into_a_silver_blades_disk(
 
 def test_the_three_edits_the_run_read_off_the_screens_land_in_the_record(
         app, tmp_path):
-    """`tools/ssbedit.py stage`, pinned against what VICE actually drew.
+    """`tools/secret_of_the_silver_blades/ssbedit.py stage`, pinned against what VICE actually drew.
 
     The numbers are not decoration. On 2026-09-08, pool slot 3, the game drew
     `BRIGHID` on the party panel, `STR 12` and `GOLD 4321` on the sheet from a
     disk staged with exactly these arguments. If this ever writes something
     else, the run on `#33` stops being evidence about the program that ships.
     """
-    from tools import ssbedit
+    from tools.secret_of_the_silver_blades import ssbedit
 
     report = ssbedit.stage(str(_specimen_disk()),
                            str(tmp_path / "edited.D64"),
@@ -237,7 +237,7 @@ def test_a_lower_case_name_is_folded_to_capitals(app, tmp_path):
     `Guy de Valois` reads `G59 $% V!,/)3` on this very party's panel, which is
     what that looks like. So `stage` folds, and this is the assertion.
     """
-    from tools import ssbedit
+    from tools.secret_of_the_silver_blades import ssbedit
 
     report = ssbedit.stage(str(_specimen_disk()), str(tmp_path / "lower.D64"),
                            who="MORGAINE", new_name="Brighid",
@@ -260,7 +260,7 @@ def test_a_rename_leaves_the_name_table_holding_the_old_name(app, tmp_path):
     The index is not the slot. Silver Blades sets `names_in_marching_order`,
     so slot 0 of a six-character party is table entry 5.
     """
-    from tools import ssbedit
+    from tools.secret_of_the_silver_blades import ssbedit
 
     out = str(tmp_path / "renamed.D64")
     before = _name_table(_specimen_disk())
@@ -296,7 +296,7 @@ def test_the_name_table_read_matches_the_bytes_in_the_file(tmp_path):
     A helper that computed the wrong offset would make every claim above about
     `+$C00` a claim about the wrong bytes, and it would look like agreement.
     """
-    from tools import ssbedit
+    from tools.secret_of_the_silver_blades import ssbedit
 
     disk = _specimen_disk()
     _load, payload = split_load_address(D64.open(str(disk)).read_file(

@@ -17,7 +17,7 @@ is 0 on every specimen driven so far -- which is why `#334`'s wandering walks
 every seventeen steps: repeatable, and a state the game itself sets
 (`ECL10` entry 4, `+$00BB`) rather than an invented value.
 
-    tools/ssbstage.py ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64 \
+    tools/secret_of_the_silver_blades/ssbstage.py ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64 \
         STAGED.D64
 
 The output is a plain copy with that one byte changed; nothing else in the
@@ -29,7 +29,7 @@ import argparse
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.c64_save import SECRET_OF_THE_SILVER_BLADES as GAME  # noqa: E402

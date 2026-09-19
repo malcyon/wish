@@ -1458,7 +1458,7 @@ def test_stage_disks_is_unaffected_when_nothing_was_left_behind(pool):
 
 # -- ssbwarp.stage: the same read-only-specimen bug as #430, a third place ---
 #
-# `tools/ssbwarp.py`'s `stage()` never got the `_restage()` treatment #430
+# `tools/secret_of_the_silver_blades/ssbwarp.py`'s `stage()` never got the `_restage()` treatment #430
 # gave `session.stage_disks`: it copies every side and the save with a bare
 # `shutil.copy`, which carries the source's mode onto the slot.  A specimen
 # out of `$WISH_SPECIMENS` is read-only by design (`tools/specimens.py` makes

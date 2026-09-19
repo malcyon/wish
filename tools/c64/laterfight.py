@@ -3,7 +3,7 @@
 
 `tools/pool_of_radiance/fightrun.py` and `tools/c64/combatdiag.py` do this for Pool of Radiance and
 both boot their own `Session`, which is that title's front end.  Curse and
-Silver Blades boot differently (`tools/curse_of_the_azure_bonds/curserun.py`, `tools/ssbrun.py`), and
+Silver Blades boot differently (`tools/curse_of_the_azure_bonds/curserun.py`, `tools/secret_of_the_silver_blades/ssbrun.py`), and
 by the time either has a party in the world the session is already **served**
 on its command port -- so this drives that port rather than booting anything,
 and the same file works for both titles.
@@ -11,7 +11,7 @@ and the same file works for both titles.
     tools/curse_of_the_azure_bonds/curseload.py --save CURSEI.D64 --pool 2 --repair --serve
     POR_CMD_PORT=6562 tools/c64/laterfight.py --out DIR/curse
 
-    tools/ssbrun.py --pool 3 --save SSBD.D64 --out DIR/run1
+    tools/secret_of_the_silver_blades/ssbrun.py --pool 3 --save SSBD.D64 --out DIR/run1
     POR_CMD_PORT=6563 tools/c64/laterfight.py --out DIR/ssb
 
 **Three things about these two titles that Pool of Radiance's drivers do not

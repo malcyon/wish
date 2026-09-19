@@ -76,7 +76,7 @@ applicable.
 | A17 | an unchanged save writes back byte-identically | V | V | V | `test_curse.py::test_the_editor_writes_a_curse_save_back_unchanged`; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** — `test_ssbeditorpath.py::test_the_editor_writes_a_silver_blades_save_back_unchanged`, on `WISH-SPEC-ssb-d-engine-resave`, the C64 engine's own `ENCAMP > SAVE` |
 | A18 | YAML export → import → byte-identical disk | V | V | V | `test_curse.py::test_a_curse_save_disk_survives_yaml_byte_for_byte`; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** — `test_ssbeditorpath.py::test_a_silver_blades_save_disk_survives_yaml_byte_for_byte`. The row's old reason, that SSB had no save disk in the tests, stopped being true on 2026-09-05 when `#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer refuses today)` left six engine-written Silver Blades disks in the specimen tree |
 | A19 | a save of one title refuses to import into another | V | V | V | `test_curse.py::test_a_curse_party_will_not_import_into_a_pool_of_radiance_disk` and its mirror; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** in both directions — `test_ssbeditorpath.py::test_a_silver_blades_party_will_not_import_into_a_pool_of_radiance_disk` and `…test_a_pool_of_radiance_party_will_not_import_into_a_silver_blades_disk`, each asserting the refusal names both titles |
-| A20 | an edited field appears in the running game | V | V | V | `docs/120` §5.2 — name, gold and current hit points, all three read off Curse's own screens. **SSB closed by #33 (One Silver Blades session, for the whole editor path)** on 2026-09-08, VICE pool slot 3: MORGAINE renamed to `BRIGHID`, gold 0 → 4321 and strength 17 → 12 through `EditorBinding`, and the game drew `BRIGHID` on the party-formation panel and in the `VIEW WHICH CHARACTER?` list, `STR 12` and `GOLD          4321` on the sheet. `tools/ssbedit.py` is the run |
+| A20 | an edited field appears in the running game | V | V | V | `docs/120` §5.2 — name, gold and current hit points, all three read off Curse's own screens. **SSB closed by #33 (One Silver Blades session, for the whole editor path)** on 2026-09-08, VICE pool slot 3: MORGAINE renamed to `BRIGHID`, gold 0 → 4321 and strength 17 → 12 through `EditorBinding`, and the game drew `BRIGHID` on the party-formation panel and in the `VIEW WHICH CHARACTER?` list, `STR 12` and `GOLD          4321` on the sheet. `tools/secret_of_the_silver_blades/ssbedit.py` is the run |
 
 ### B. The DOS converter
 
@@ -353,7 +353,7 @@ What was run, on that specimen:
   and all three read off the game's own screens. `docs/120` §5.2's third field
   was current hit points; Silver Blades keeps that in the roster block rather
   than the 256-byte save slot, so an ability score took its place.
-  `tools/ssbedit.py` is the run.
+  `tools/secret_of_the_silver_blades/ssbedit.py` is the run.
 
 **One thing came out of it that is not a Silver Blades finding.** Curse and
 Silver Blades keep the party's names again at payload `+$C00`, and the editor's

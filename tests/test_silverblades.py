@@ -1057,7 +1057,7 @@ def test_a_shipped_casters_spellbook_is_read_whole():
 
 
 # --- `#89`'s five trainer inputs, read live and checked against what --------
-# `goldbox/levels.py` transcribed. `tools/ssbtrainerinputs.py` did the finding;
+# `goldbox/levels.py` transcribed. `tools/secret_of_the_silver_blades/ssbtrainerinputs.py` did the finding;
 # these tests do the checking, every run, against whatever is on the disk
 # today rather than what was on it when somebody last looked.
 
@@ -1070,13 +1070,13 @@ def _ecl65() -> bytes:
 def test_the_five_trainer_inputs_match_what_levels_py_transcribed():
     """`goldbox.levels.SECRET_OF_THE_SILVER_BLADES`'s `hp_bonus_by_score`,
     `thief_skills`, `thief_skill_dexterity`, `thief_skill_race` and
-    `wisdom_bonus_level` against `tools/ssbtrainerinputs.py`'s own live
+    `wisdom_bonus_level` against `tools/secret_of_the_silver_blades/ssbtrainerinputs.py`'s own live
     reading of `GEN` and `ECL65` -- the tool that measured them, run again
     rather than trusted from its last report.
     """
     from goldbox import levels
     from tests import gamedata
-    from tools import ssbtrainerinputs as inputs
+    from tools.secret_of_the_silver_blades import ssbtrainerinputs as inputs
 
     ssb = levels.SECRET_OF_THE_SILVER_BLADES
     gen = _gen()
@@ -1128,7 +1128,7 @@ def test_malachites_trained_thief_skills_reproduce_at_race_times_eight():
     reproduces.
     """
     from goldbox import levels
-    from tools import ssbtrainerinputs as inputs
+    from tools.secret_of_the_silver_blades import ssbtrainerinputs as inputs
 
     party = inputs.specimen_party()
     if not party:

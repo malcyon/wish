@@ -462,7 +462,7 @@ def curse_boot(slot, log: Log, save: str, where: str, wait: float):
 
 
 def ssb_boot(slot, log: Log, save: str, where: str, wait: float):
-    from tools import ssbwarp
+    from tools.secret_of_the_silver_blades import ssbwarp
     first = ssbwarp.stage(slot, where, save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
     os.chmod(save_disk, 0o644)

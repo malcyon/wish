@@ -312,7 +312,7 @@ def test_clear_bar_does_nothing_once_a_fight_has_started():
 def test_clear_bar_reaches_a_script_bar_on_a_session_with_no_press_bar():
     """`tools/c64/laterbattle.py --title ssb` crashed here (`#569`).
 
-    `SSBSession` (`tools/ssbwarp.py`) carries no `press_bar` -- only
+    `SSBSession` (`tools/secret_of_the_silver_blades/ssbwarp.py`) carries no `press_bar` -- only
     `CurseSession` (`tools/curse_of_the_azure_bonds/curserun.py`) ever did, and it was a thin wrapper
     around `select_bar`. `clear_bar` used to call `press_bar` by name, so a
     Silver Blades walk raised `AttributeError` on the first script bar it

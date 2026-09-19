@@ -245,7 +245,7 @@ CURSE_OF_THE_AZURE_BONDS = FastTravelAddresses(
 #:
 #: PROBABLE rather than CONFIRMED: every address is read off Silver Blades' own
 #: overlays and the handler is the same routine, and **no Silver Blades party
-#: has been fast-travelled through this code**. `tools/ssbwarp.py` is the
+#: has been fast-travelled through this code**. `tools/secret_of_the_silver_blades/ssbwarp.py` is the
 #: driver that would settle it.
 SECRET_OF_THE_SILVER_BLADES = FastTravelAddresses(
     key="secret-of-the-silver-blades",

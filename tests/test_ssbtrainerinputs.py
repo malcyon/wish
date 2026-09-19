@@ -2,7 +2,7 @@
 
 `#89 (Silver Blades' trainer grants spells from a table, and goldbox/levelup.py
 offers them from a menu)`. Every number is read off the player's own disks by
-`tools/ssbtrainerinputs.py` at run time -- nothing here is transcribed, which is
+`tools/secret_of_the_silver_blades/ssbtrainerinputs.py` at run time -- nothing here is transcribed, which is
 why the assertions compare Silver Blades' bytes against *Curse's* copies and
 against records the game itself wrote rather than against a literal table.
 
@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from goldbox import c64_port, levels
-from tools import ssbtrainerinputs as T
+from tools.secret_of_the_silver_blades import ssbtrainerinputs as T
 
 CURSE = levels.CURSE_OF_THE_AZURE_BONDS
 POOL = levels.POOL_OF_RADIANCE

@@ -16,9 +16,9 @@ from types import SimpleNamespace
 
 sys.path.insert(0, ".")
 
-from tools import ssbwarp  # noqa: E402
 from tools.c64 import laterbattle  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursethac0  # noqa: E402
+from tools.secret_of_the_silver_blades import ssbwarp  # noqa: E402
 
 
 class FakeGotoRun(laterbattle.Battle):

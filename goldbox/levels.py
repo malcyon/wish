@@ -772,7 +772,7 @@ _TURN_POWER_CURSE = (1, 2, 3, 5, 6, 7, 8, 9, 10, 10)
 _TURN_POWER_SILVER = (1, 2, 3, 5, 6, 7, 8, 9, 10, 10, 10, 10, 10, 12)
 
 #: The three trainer inputs `#89`'s 2026-09-08 measurement found, read off
-#: `SILVER*.D64`'s own `GEN` and `ECL65` with `tools/ssbtrainerinputs.py`.
+#: `SILVER*.D64`'s own `GEN` and `ECL65` with `tools/secret_of_the_silver_blades/ssbtrainerinputs.py`.
 #: `--rows` reprints every number below from the disk at run time; these are a
 #: transcription of what it printed, not a decoding done here.
 
@@ -1667,7 +1667,7 @@ DEFAULT = POOL_OF_RADIANCE
 #: GUY DE VALOIS paladin 8 to 9 and 11 to 12, PAINE ranger 8 to 9, 11 to 12
 #: and 12 to 13. `goldbox/levelup.py` reproduced **196 of 196 derived fields,
 #: 70 of 70 saving-throw columns and 224 of 224 spellbook bytes**
-#: (`tools/ssbtrain.py diff`).
+#: (`tools/secret_of_the_silver_blades/ssbtrain.py diff`).
 #:
 #: **The spellbook is the half nothing had ever compared**, in this title or
 #: in Curse: `Plan.spellbook` is a separate attribute from `Plan.fields`, so
@@ -1709,7 +1709,7 @@ TRAINER_MEASURED: frozenset[str] = frozenset(
 #: Silver Blades' `$11D8` was watched on 2026-09-06 (`#344 (A converted
 #: Silver Blades dwarf, gnome or halfling keeps DOS's saving throws, because
 #: that title's racial bonus has never been watched in the game)`,
-#: `tools/ssbtrain.py`): MALACHITE, thief 8 / fighter 7 with constitution
+#: `tools/secret_of_the_silver_blades/ssbtrain.py`): MALACHITE, thief 8 / fighter 7 with constitution
 #: 17, was trained to thief 9 five times on one boot with only the race byte
 #: changed between presses, and the engine wrote `6 10 6 12 7` for the dwarf
 #: (twice) and `10 10 10 12 11` for the gnome, the halfling and the human --

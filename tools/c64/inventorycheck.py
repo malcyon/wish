@@ -9,7 +9,7 @@ a Curse or Silver Blades save and nobody has ever watched the game draw the
 result. `#32 (One Curse session, to get a party with items)` step 4 is the
 same sentence -- *"round-trip an item edit and confirm it in the game"*.
 
-`tools/ssbedit.py` is the shape this follows and could not be reused: it
+`tools/secret_of_the_silver_blades/ssbedit.py` is the shape this follows and could not be reused: it
 stages `name`, `gold` and `strength`, which are fields of the character
 record. Items are not in the record at all -- they live in `SAVEDGAME0` at
 the container's own `item_area` -- so nothing about the staging transfers,
@@ -44,7 +44,7 @@ Two subcommands:
 
 `run` reads the title off the save disk and drives it accordingly: Curse
 through `tools/curse_of_the_azure_bonds/curserun.py` and `tools/curse_of_the_azure_bonds/curseload.py`, Silver Blades through
-`tools/ssbwarp.py`. **Both have to reach the world**, because the item list
+`tools/secret_of_the_silver_blades/ssbwarp.py`. **Both have to reach the world**, because the item list
 hangs off the world's `VIEW` and off nothing else -- the party-formation
 menu's `VIEW CHARACTER` draws a sheet whose bar is `TRADE DROP EXIT` with no
 `ITEMS` on it (`cited/33/run1/03-sheet.txt`).
@@ -444,7 +444,7 @@ def ssb_world(slot, r: Run, save: str, where: str, game, wait: float):
     machine from one half-way through a disk load, which is what gets a run
     past the prologue's four one-option screens.
     """
-    from tools import ssbwarp
+    from tools.secret_of_the_silver_blades import ssbwarp
 
     first = ssbwarp.stage(slot, where, save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")

@@ -365,7 +365,7 @@ and to all five columns. It reproduces all six shipped characters' stored saves.
 **And the dwarf-only rule has now been watched, not only read** (`#344 (A
 converted Silver Blades dwarf, gnome or halfling keeps DOS's saving throws,
 because that title's racial bonus has never been watched in the game)`,
-2026-09-06, `tools/ssbtrain.py`). The training hall opens here the way Curse's
+2026-09-06, `tools/secret_of_the_silver_blades/ssbtrain.py`). The training hall opens here the way Curse's
 does -- the party-menu builder is `$12AF` moved to `GEN $0991` and still reads
 `$7EA8` -- so MALACHITE, thief 8 / fighter 7 at constitution 17, was raised to
 thief 9 five times on one boot with only the race byte poked between presses,

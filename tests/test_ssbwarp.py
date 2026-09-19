@@ -1,4 +1,4 @@
-"""`tools/ssbwarp.py`'s stuck-screen Escape must not abort a load in
+"""`tools/secret_of_the_silver_blades/ssbwarp.py`'s stuck-screen Escape must not abort a load in
 progress (#568, the Silver Blades half of #334).
 
 Escape is VICE's RUN/STOP key, which aborts a KERNAL `LOAD` still running.

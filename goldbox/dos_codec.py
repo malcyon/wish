@@ -887,7 +887,7 @@ CLASS_BIT_FOR_SLOT: dict[int, int] = {0: 0x02, 2: 0x08, 3: 0x40, 4: 0x40,
 #: shipped Silver Blades ranger 8, arrived on the C64 with `class_bits`
 #: `$40` and `level_ranger` 8, which is a paladin holding a ranger's levels
 #: and is a combination no C64 save on either title holds.  Found by
-#: `tools/ssbtwins.py`, which converts the six DOS characters SSI shipped and
+#: `tools/secret_of_the_silver_blades/ssbtwins.py`, which converts the six DOS characters SSI shipped and
 #: diffs each against the C64 record SSI shipped for the same character:
 #: PAINE's C64 twin reads `$80`.  Curse of the Azure Bonds has the same
 #: defect and it shipped, because the party `#192` proved the conversion on
@@ -2333,7 +2333,7 @@ def c64_name(name: str) -> str:
     `SILVER-6.D64` holds `GUY DE VALOIS` for the character DOS calls
     `Guy de Valois `, and that name is the only field of the six shipped
     characters where the two ports' records differ for a reason that is not
-    a separate roll (`tools/ssbtwins.py`).  So capitals are what the
+    a separate roll (`tools/secret_of_the_silver_blades/ssbtwins.py`).  So capitals are what the
     destination port's own copy of this party has.
 
     The trailing blanks go for the same reason: DOS counts a trailing space

@@ -23,7 +23,7 @@ monitor opens the hall wherever the party stands.
 
 Three subcommands:
 
-    tools/ssbtrain.py stage --base <in.d64> --out <out.d64> \\
+    tools/secret_of_the_silver_blades/ssbtrain.py stage --base <in.d64> --out <out.d64> \\
         --give MALACHITE:xp=124000,plat=3000
 
         Copy a Silver Blades save disk and write named fields into named
@@ -42,13 +42,13 @@ Three subcommands:
         `0x015`/`0x016`, so the sheet agrees with it.  `--repair` closes a
         `SAVEDBASH` the drive never finished (`#298`).
 
-    tools/ssbtrain.py run --pool N --save <out.d64> --out DIR
+    tools/secret_of_the_silver_blades/ssbtrain.py run --pool N --save <out.d64> --out DIR
 
-        `tools/ssbrun.py`: claim a pooled slot, stage the six sides and the
+        `tools/secret_of_the_silver_blades/ssbrun.py`: claim a pooled slot, stage the six sides and the
         save disk, boot through the cracker intro, load the party and serve
         the command port at the party menu.  It presses nothing further.
 
-    tools/ssbtrain.py diff --before <stem> --after <stem> --class thief
+    tools/secret_of_the_silver_blades/ssbtrain.py diff --before <stem> --after <stem> --class thief
 
         Read a pair of `$7C00`/`$7D00` hex dumps taken with `tools/c64/porcmd
         peek`, print the field-by-field delta, and check the five stored
@@ -92,7 +92,7 @@ the roster slot to `$7C00` when the character is picked and writes it back
 on success.
 
 Nothing here writes to the player's own disks: the six sides are copied into
-the slot by `tools/ssbwarp.stage`, which opens them read only.
+the slot by `tools/secret_of_the_silver_blades/ssbwarp.stage`, which opens them read only.
 """
 from __future__ import annotations
 
@@ -103,7 +103,7 @@ import socket
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -538,7 +538,7 @@ def press(args) -> int:
 
 
 def drive(args) -> int:
-    from tools import ssbrun  # noqa: PLC0415
+    from tools.secret_of_the_silver_blades import ssbrun  # noqa: PLC0415
 
     argv = ["--save", args.save, "--out", args.out]
     if args.pool is not None:

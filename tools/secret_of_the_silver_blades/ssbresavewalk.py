@@ -5,10 +5,10 @@ party, arrive, read one sheet, walk one square and let the engine resave.
 Written for `#52 (File ▸ Import and File ▸ Export for every direction the
 library supports)`, the `DosToC64` Silver Blades walk, when
 `tools/convert/convertrun.py` had no Silver Blades driver. It drives
-`tools.ssbwarp.SSBSession` directly and reuses `tools/c64/savecheck.py`'s screen
+`tools.secret_of_the_silver_blades.ssbwarp.SSBSession` directly and reuses `tools/c64/savecheck.py`'s screen
 readers, the pattern the sibling `AmigaToC64` Silver Blades walk set. The
-worked-around bug in `tools/ssbwarp.py`'s save prompt
-(`#539 (tools/ssbwarp.py's SAVE_PROMPT does not match Silver Blades' actual
+worked-around bug in `tools/secret_of_the_silver_blades/ssbwarp.py`'s save prompt
+(`#539 (tools/secret_of_the_silver_blades/ssbwarp.py's SAVE_PROMPT does not match Silver Blades' actual
 save-disk prompt, so ENCAMP > SAVE silently refuses)`) has been fixed since,
 so the assignment that patched it is gone. The sheet is still read by
 pressing VIEW and reading the raw screen, the workaround for
@@ -20,7 +20,7 @@ the converted save disk under test; both are copied, not written. Claims one
 pool slot. `--out` receives the screenshots, `ssbcheck.jsonl`, `summary.json`
 and, when the engine's own save succeeds, `resave-SSBC.D64`.
 
-    .venv/bin/python -m tools.ssbresavewalk --disks path/to/ssb-disks \\
+    .venv/bin/python -m tools.secret_of_the_silver_blades.ssbresavewalk --disks path/to/ssb-disks \\
         --produced path/to/SSBC.D64 --out DIR
 """
 import argparse
@@ -30,11 +30,11 @@ import pathlib
 import sys
 import time
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from tools import ssbwarp  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.savecheck import Log, answer_bars, panel, walk_step_routed  # noqa: E402
+from tools.secret_of_the_silver_blades import ssbwarp  # noqa: E402
 
 
 def sheet_workaround(sess, index: int, tag: str, log: Log,

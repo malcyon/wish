@@ -1,6 +1,6 @@
 """Silver Blades and Curse each draw two different save-disk prompts (#539).
 
-`tools/ssbwarp.py`'s own `SAVE_PROMPT = "SAVE DISK"` is a substring of the
+`tools/secret_of_the_silver_blades/ssbwarp.py`'s own `SAVE_PROMPT = "SAVE DISK"` is a substring of the
 party-menu loader's prompt, `INSERT BLADES SAVE DISK. PRESS A KEY.`, but not
 of camp's, `INSERT YOUR SAVE GAME DISK` -- so `SSBSession.handle_prompt`
 recognised the loader prompt fine and only missed the camp one, and

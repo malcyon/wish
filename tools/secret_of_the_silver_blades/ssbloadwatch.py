@@ -17,7 +17,7 @@ stops agreeing with `ECL10`'s body can be computed offline. `$2D00`-`$2E00`
 and `$3E00`-`$3F80` come along so the loader's own tables can be read out of
 the running machine rather than off a transcription.
 
-Run: `.venv/bin/python tools/ssbloadwatch.py`. It takes no arguments, claims
+Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbloadwatch.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades on the disks `tools/gamedisks.py`
 finds, with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes dumps and `load-probe.jsonl` under the `ssbloadwatch` scratch directory.
@@ -32,7 +32,7 @@ import pathlib
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
@@ -40,10 +40,12 @@ from tools import (  # noqa: E402
     gamedisks,
     scratch,
     specimens,
-    ssbwarp,
 )
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
+from tools.secret_of_the_silver_blades import (  # noqa: E402
+    ssbwarp,
+)
 
 OUT = scratch.scratch_dir("ssbloadwatch")
 SAVE = str(specimens.tree_root() / "por-c64"

@@ -5,7 +5,7 @@ from __future__ import annotations
 `#89 (Silver Blades' trainer grants spells from a table, and
 goldbox/levelup.py offers them from a menu)`. Every table this title's
 trainer reads was already in `goldbox/levels.py` and `goldbox/spells.py`,
-read out of `GEN` and `ECL65` by `tools/ssbtrainerinputs.py` and
+read out of `GEN` and `ECL65` by `tools/secret_of_the_silver_blades/ssbtrainerinputs.py` and
 `tools/c64/trainerspells.py`. What had never happened was the other half:
 putting a party in front of the hall, pressing `TRAIN CHARACTER`, and asking
 whether `goldbox.levelup.plan` writes what the engine wrote.
@@ -16,7 +16,7 @@ spell step for -- the cleric at both sides of its Wisdom gate, the magic-user
 at four intelligences over four levels, the paladin at two levels and the
 ranger at three. All fourteen reproduced: **196 of 196 derived fields, 70 of
 70 saving-throw columns and 224 of 224 spellbook bytes**
-(`tools/ssbtrain.py diff`). The two specimens below are four of those
+(`tools/secret_of_the_silver_blades/ssbtrain.py diff`). The two specimens below are four of those
 presses made again in one sitting so the pair could be registered and
 replayed here.
 
@@ -53,7 +53,7 @@ def _specimen_disk(name: str):
 
     `tests/gamedata.specimen` looks for a *directory* under `por-<platform>`,
     which is the DOS layout; a C64 specimen is one file and this title's live
-    under `ssb-c64`, so the search is a glob the way `tools/ssbtrainerinputs.
+    under `ssb-c64`, so the search is a glob the way `tools/secret_of_the_silver_blades/ssbtrainerinputs.
     specimen_party` does it.
     """
     from tools import specimens

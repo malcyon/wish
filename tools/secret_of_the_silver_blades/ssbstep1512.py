@@ -9,7 +9,7 @@ reading. Also arms a non-stopping store watchpoint on $4C05 across the
 approach walk and the final step, to see whether it is written where the
 static reading says it should not be.
 
-Run: `.venv/bin/python tools/ssbstep1512.py`. It takes no arguments, claims
+Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbstep1512.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes its log, dumps and `readings.json` under
 `scratch.scratch_dir("ssbstep1512")`, in the temp directory.
@@ -23,7 +23,7 @@ import pathlib
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
@@ -31,7 +31,6 @@ from tools import (  # noqa: E402
     gamedisks,
     scratch,
     specimens,
-    ssbwarp,
 )
 from tools.c64 import (  # noqa: E402
     laterbattle,
@@ -39,6 +38,9 @@ from tools.c64 import (  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds import (  # noqa: E402
     cursethac0,
+)
+from tools.secret_of_the_silver_blades import (  # noqa: E402
+    ssbwarp,
 )
 
 OUT = scratch.scratch_dir("ssbstep1512")

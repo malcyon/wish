@@ -226,7 +226,7 @@ def load_curse_save(sess, timeout: float = 240.0) -> bool:
 def idle_in_key_window(sess, addr: Addresses) -> int | None:
     """The PC, if the machine is sitting in a key window right now.
 
-    A single read rather than `tools/ssbwarp.py`'s multi-sample poll of the
+    A single read rather than `tools/secret_of_the_silver_blades/ssbwarp.py`'s multi-sample poll of the
     same name. `ssbwarp.py` needs several readings with the screen unchanged
     across them because it uses a confirmed idle PC to *warp* -- jump the
     party's own execution -- and its worry is the ECL interpreter's own print

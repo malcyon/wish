@@ -10,7 +10,7 @@ store checkpoint over that range between the first and second so a second
 writer -- if there is one -- shows up as a hit count above 157 (the load
 itself) rather than only as changed bytes.
 
-Run: `.venv/bin/python tools/ssbtailprobe.py`. It takes no arguments, claims
+Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbtailprobe.py`. It takes no arguments, claims
 an emulator pool slot and boots Silver Blades with `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 as the save. Writes readings, screens and `tail-probe.jsonl` under
 `<tmp>/wish/ssbtailprobe/`.
@@ -23,7 +23,7 @@ import pathlib
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port as G  # noqa: E402
@@ -31,7 +31,6 @@ from tools import (  # noqa: E402
     gamedisks,
     scratch,
     specimens,
-    ssbwarp,
 )
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.laterbattle import Battle  # noqa: E402
@@ -39,6 +38,9 @@ from tools.curse_of_the_azure_bonds import (  # noqa: E402
     cursethac0,
 )
 from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
+from tools.secret_of_the_silver_blades import (  # noqa: E402
+    ssbwarp,
+)
 
 OUT = scratch.scratch_dir("ssbtailprobe")
 SAVE = str(specimens.tree_root() / "por-c64"

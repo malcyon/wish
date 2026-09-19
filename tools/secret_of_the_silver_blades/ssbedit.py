@@ -24,7 +24,7 @@ the run answers, and it is why `--name` is one of the three.
 
 Two subcommands:
 
-    tools/ssbedit.py stage --base ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \\
+    tools/secret_of_the_silver_blades/ssbedit.py stage --base ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \\
         --out EDITED.D64 --who MORGAINE \\
         --name BRIGHID --gold 4321 --strength 12
 
@@ -34,7 +34,7 @@ Two subcommands:
         field held before and after, and what the `+$C00` table entry for that
         character says once the save is written.
 
-    tools/ssbedit.py run --save EDITED.D64 --pool N \\
+    tools/secret_of_the_silver_blades/ssbedit.py run --save EDITED.D64 --pool N \\
         --out DIR --who BRIGHID --was MORGAINE
 
         Claim a pooled VICE slot, stage the six sides, boot through the
@@ -43,7 +43,7 @@ Two subcommands:
         sheet.  Writes one JSON line per event as it goes, so a run that dies
         halfway still says how far it got.
 
-Nothing writes to the player's disks: `tools/ssbwarp.stage` copies the six
+Nothing writes to the player's disks: `tools/secret_of_the_silver_blades/ssbwarp.stage` copies the six
 sides into the pool slot and opens them read only, and `--base` is copied
 before a byte of it is touched.
 """
@@ -57,7 +57,7 @@ import shutil
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -230,8 +230,9 @@ class Run:
 
 def run(save: str, out: str, who: str, was: str, pool: int | None,
         disks: str = "") -> int:
-    from tools import gamedisks, ssbwarp
+    from tools import gamedisks
     from tools.c64 import session as por
+    from tools.secret_of_the_silver_blades import ssbwarp
 
     where = disks or str(gamedisks.find("secret-of-the-silver-blades") or "")
     if not where:
