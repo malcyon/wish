@@ -27,8 +27,7 @@ own, before a single line of the tool's own code runs, so putting a
 dangerous call behind it is sufficient without having to run either path.
 
 `tests/test_toolshadowing.py` is the pattern this follows: walk every file in
-`tools/` rather than a typed list, so the next tool anybody adds is covered,
-and name the exceptions individually with the reason each is safe.
+`tools/` rather than a typed list, so the next tool anybody adds is covered.
 """
 
 from __future__ import annotations
@@ -49,7 +48,7 @@ TOOLS = tuple(sorted(
     p.relative_to(TOOLS_DIR).with_suffix("").as_posix()
     for p in TOOLS_DIR.rglob("*.py") if p.stem != "__init__"))
 
-#: The same scripts by bare name, which is what `EXEMPT` is keyed by.
+#: The same scripts by bare name.
 STEMS = {name.rsplit("/", 1)[-1]: name for name in TOOLS}
 
 #: The last dotted component of a call this project treats as dangerous
@@ -60,39 +59,6 @@ DANGEROUS_NAMES = frozenset({
     "claim", "claim_slot", "boot", "launch", "serve",
     "Session", "QApplication", "QGuiApplication", "QCoreApplication",
 })
-
-#: Tools that reference `sys.argv`/`argv`, or hand-roll their own option
-#: recognition, without an `argparse.ArgumentParser` -- checked individually
-#: and exempted with the reason `--help` (or any other stray token) cannot
-#: reach anything this file calls dangerous.
-EXEMPT: dict[str, str] = {
-    "d6502": "checks `sys.argv[1] in ('-h', '--help')` itself and exits "
-             "before doing anything; a wrong argument count is also caught "
-             "and refused",
-    "drive": "matches only the literal subcommands 'screen' and "
-             "'clear-checkpoints'; anything else, `--help` included, falls "
-             "through to printing the module's own docstring",
-    "genitems": "an unrecognised argument is read as the disk path and "
-                "`goldbox.d64.D64.open` raises `FileNotFoundError` before "
-                "the generated doc is written",
-    "genspells": "same shape as genitems: the disk is opened before "
-                 "anything is written, and a bad path raises first",
-    "gentemplates": "same shape as genitems",
-    "genmaps": "an unrecognised argument is read as the disks directory; "
-               "`glob.glob` on it finds nothing, so the tool prints an "
-               "error and exits before writing its doc",
-    "loadfiles": "an unrecognised argument is looked up as a game filename "
-                 "on the disks; nothing is ever named that, so it prints "
-                 "'Not on any side' and writes nothing",
-    "unexepack": "requires exactly two positional arguments; `--help` alone "
-                 "fails that count and prints usage before either file is "
-                 "opened",
-    "wallsmap": "treats every argument as a file to read; a nonexistent one "
-                "raises before anything is written",
-    "wish": "no `__main__` block -- `wish/__main__.py` dispatches on the "
-            "first argument instead (docs/129-one-binary.md), so there is "
-            "no way to hand this file `--help` directly",
-}
 
 
 def _dotted(node: ast.expr) -> str:
@@ -166,18 +132,30 @@ def _entry_candidates(tree: ast.Module, block: ast.If) -> list[ast.AST]:
     return candidates
 
 
-@pytest.mark.parametrize("name", TOOLS)
-def test_help_cannot_reach_a_dangerous_call_unguarded(name):
-    stem = name.rsplit("/", 1)[-1]
-    if stem in EXEMPT:
-        pytest.skip(EXEMPT[stem])
+def _has_main_block(name: str) -> bool:
+    """Does the script have an `if __name__ == "__main__":` block?
 
+    A file that cannot be read or parsed counts as having one, so it stays in
+    `RUNNABLE` and fails its own case rather than every case at collection."""
+    try:
+        tree = ast.parse((TOOLS_DIR / f"{name}.py").read_text(encoding="utf-8"),
+                         filename=f"{name}.py")
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return True
+    return _main_block(tree) is not None
+
+
+#: The scripts that can be run directly, which is the only kind `--help` can
+#: be handed to: the ones with an `if __name__ == "__main__":` block.
+RUNNABLE = tuple(name for name in TOOLS if _has_main_block(name))
+
+
+@pytest.mark.parametrize("name", RUNNABLE)
+def test_help_cannot_reach_a_dangerous_call_unguarded(name):
     tree = ast.parse((TOOLS_DIR / f"{name}.py").read_text(encoding="utf-8"),
                      filename=f"{name}.py")
     block = _main_block(tree)
-    if block is None:
-        pytest.skip(f"tools/{name}.py has no `if __name__ == '__main__':`, "
-                    f"so there is no way to run it directly")
+    assert block is not None, name
 
     candidates = _entry_candidates(tree, block)
     dangerous = [d for c in candidates for d in _dangerous_calls(c)]
@@ -209,7 +187,7 @@ def test_the_family_named_in_403_is_covered():
     by the general sweep above."""
     for name in ("ssbrun", "curserun", "session", "genui", "genlicenses"):
         assert name in STEMS, name
-        assert name not in EXEMPT, name
+        assert STEMS[name] in RUNNABLE, name
 
 
 # ---------------------------------------------------------------------------
