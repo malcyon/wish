@@ -2,7 +2,7 @@
 """Refuse a new worker subagent once the session's context has passed the hand-off line.
 
 `.claude/skills/orchestrate/SKILL.md` tells the orchestrator to hand off at
-400k tokens of context: launch nothing new, let the agents in flight
+600k tokens of context: launch nothing new, let the agents in flight
 report, commit, push, and start a fresh session. The orchestrator is never
 shown its own context size, so that rule alone cannot hold, and every turn
 past the line resends the whole context.
@@ -21,7 +21,7 @@ tool's result -- says what to do instead. `code-reviewer` and `test-runner`
 are let through, because the wind-down still has to review the last commits
 and run the suite before the push.
 
-The line is 400,000 tokens; `WISH_HANDOFF_TOKENS` overrides it, for a
+The line is 600,000 tokens; `WISH_HANDOFF_TOKENS` overrides it, for a
 session Donald wants to run longer or a test that wants a smaller number.
 
 `SendMessage` is refused too, because a message to a finished agent gives it
@@ -42,7 +42,7 @@ import os
 import sys
 import tempfile
 
-DEFAULT_LIMIT = 400_000
+DEFAULT_LIMIT = 600_000
 
 #: Tools that give a subagent work. Claude Code names the launcher `Agent`
 #: today and named it `Task` before that; `SendMessage` resumes a finished
