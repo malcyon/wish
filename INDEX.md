@@ -1,39 +1,28 @@
 # Index
 
-What each directory in this repository is for.
+What each directory in this repository is for; the API documentation is at https://wish-goldbox.readthedocs.io/en/latest/.
 
 | directory | purpose |
 |---|---|
-| [`goldbox/`](goldbox/README.md) | The game's formats, decoded — character records, save games, maps, items, spells. No Qt, no emulator, no transport. |
-| [`editor/`](editor/README.md) | The character editor GUI. Opens a `.D64` and writes it back; imports nothing from `automap/`, so it works with no emulator anywhere. |
+| [`goldbox/`](goldbox/README.md) | The game's formats, decoded — character records, save games, maps, items, spells — with no Qt, no emulator and no transport. |
+| [`editor/`](editor/README.md) | The character editor GUI, which opens a `.D64` and writes it back and imports nothing from `automap/`, so it works with no emulator anywhere. |
 | [`automap/`](automap/README.md) | The live automapper: everything that knows about a running machine — the VICE client, the map state, the rendering geometry, the window. |
 | [`wish/`](wish/README.md) | The application that wraps the other two — the tabbed window, preferences, the debug log, the backend session, the CLI entry point. |
-| [`ui/`](ui/README.md) | Shared widget-level helpers both GUIs use: the app icon, icon painting, the Font Awesome set. |
-| [`tools/`](tools/README.md) | Developer scripts, but ships anyway — the emulator harness, the instance pool, the disassembly and dump helpers, the code generators, and `tools.wish`/`tools.generate.genui`, which `wish` reaches into at runtime. |
+| [`ui/`](ui/README.md) | Shared widget-level helpers both GUIs use: the app icon, icon painting, the icon path data. |
+| [`tools/`](tools/README.md) | Developer scripts that ship anyway — the emulator harness, the instance pool, the disassembly and dump helpers, the code generators, and `tools.wish`/`tools.generate.genui`, which `wish` reaches into at runtime. |
 | `tests/` | The test suite, plus `gamedata.py`, which reads game data off the player's own disks so none of it is committed. |
-| `docs/` | The knowledge base: numbered documents recording what is known and how it was established. Outlives every issue that cites it. |
+| `docs/` | The knowledge base: numbered documents recording what is known and how it was established. |
 | [`packaging/`](packaging/README.md) | The PyInstaller entry script, the Windows console-borrowing shim, and the `.icns` generator. |
 | `assets/` | Shipped non-code files — the application icons, the `.desktop` entry, and the artist's own logo files under `assets/logo/`. |
 | `images/` | The screenshots the README links. |
-| `designer` | A launcher for Qt Designer, opening `wish/window.ui`, the unified layout (`docs/146-unified-ui.md`) — `editor/character.ui` is gone, absorbed into it. |
-| `.claude/agents/` | Source subagent definitions -- each one supplies Claude Code's model, tool list, and prompt; `tools/generate/gencodex.py` generates the Codex profiles from them. |
-| `.codex/agents/` | Generated project subagent profiles for Codex. Do not edit them by hand; run `tools/generate/gencodex.py`. |
-| `.claude/rules/` | The working standards, split out of `CLAUDE.md` under `#208 (Split CLAUDE.md into .claude/rules, so 21,800 tokens do not load before every task)`. A file carrying `paths:` frontmatter loads only when a file it names is read; one without loads at launch -- for the main window and for every subagent alike, observed directly on 2026-09-10. Only the seven `paths:`-scoped files are absent from a subagent until it touches a matching file, which is why `AGENTS.md`'s routing table names all thirteen. |
-| `.agents/rules/` | The same twelve files, as symlinks, because Antigravity reads `AGENTS.md` and `.agents/rules/` where Claude Code reads `CLAUDE.md` and `.claude/rules/`. One copy of the bytes, two sets of names. `AGENTS.md` holds the rules themselves; `CLAUDE.md` imports it with `@AGENTS.md` and adds only what is true of Claude Code alone. |
-| `.agents/skills/` | Skills Codex and Antigravity read. `caveman` is shared with Claude Code by symlink from `.claude/skills/`; `orchestrate` here is Codex's own orchestrator skill, a deliberate second copy of `.claude/skills/orchestrate/` written for Codex's mechanisms, and the two are allowed to drift. |
-| `.gemini/` | One file, `settings.json`, telling Gemini CLI to read `AGENTS.md` as its context file -- it takes a list of filenames, so it needs no symlink at all. Nothing else; `.gemini/agents/` was deleted, having been read by neither tool. |
-| `.claude/` (the rest) | Local state -- agent memory, machine settings. Gitignored; `agents/`, `rules/`, `hooks/` and `settings.json` are the tracked exceptions. |
-| `<temp>/wish/` | Not in the repository: where a tool's runs write (`tools/registry/scratch.py`), under the machine's temp directory. It may vanish at any time; anything derived from the game stays there so it never enters the repository. |
+| `designer` | A launcher for Qt Designer that opens `wish/window.ui`, the unified layout (`docs/146-unified-ui.md`). |
+| `.claude/agents/` | Source subagent definitions — each supplies Claude Code's model, tool list and prompt, and `tools/generate/gencodex.py` generates the Codex profiles from them. |
+| `.codex/agents/` | Generated project subagent profiles for Codex; do not edit them by hand, run `tools/generate/gencodex.py`. |
+| `.claude/rules/` | The working standards split out of `CLAUDE.md`; a file with `paths:` frontmatter loads only when a file it names is read, and one without loads at launch for the main window and every subagent. |
+| `.agents/rules/` | The same files as `.claude/rules/`, as symlinks, for tools that read `AGENTS.md` and `.agents/rules/`; `AGENTS.md` holds the rules themselves and `CLAUDE.md` imports it and adds only what is true of Claude Code alone. |
+| `.agents/skills/` | Skills Codex and Antigravity read; `caveman` is shared with Claude Code by symlink from `.claude/skills/`, and `orchestrate` here is Codex's own copy of `.claude/skills/orchestrate/`, allowed to differ from it. |
+| `.gemini/` | One file, `settings.json`, telling Gemini CLI to read `AGENTS.md` as its context file. |
+| `.claude/` (the rest) | Local state — agent memory, machine settings; gitignored, except `agents/`, `rules/`, `hooks/` and `settings.json`. |
+| `<temp>/wish/` | Not in the repository: where a tool's runs write (`tools/registry/scratch.py`), under the machine's temp directory, where it may vanish at any time and where anything derived from the game stays so it never enters the repository. |
 | `build/` | PyInstaller's intermediate output. Gitignored. |
 | `dist/` | The frozen build — `wish` and `_internal/`. Gitignored. |
-
-## API Documentation
-
-https://wish-goldbox.readthedocs.io/en/latest/
-
-## The split that is a rule, not tidiness
-
-`goldbox/` stays transport-free, `editor/` stays emulator-free, and everything that
-talks to VICE lives in `automap/`. That is what keeps the editor a file tool
-that runs with no emulator installed, and it is why the automapper is its own
-package rather than part of the editor.

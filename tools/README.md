@@ -1,36 +1,6 @@
 # tools
 
-Developer scripts, but the package ships anyway — the emulator harness, the
-instance pool, the disassembly and dump helpers, the code generators, and
-`tools.wish`/`tools.generate.genui`, which `wish` reaches into at runtime
-(`tools.wish` is named explicitly in `wish.spec`'s `hiddenimports`, since it
-is the body of the `wish export`/`wish import` subcommands and no static scan
-sees the import that reaches it; `tools.generate.genui` is imported directly by
-`wish/__main__.py`). Anything here may talk to a live emulator, an X server or
-the player's own disks, which is exactly why none of it is in `goldbox/`,
-`editor/` or `wish/`.
-
-**The scratch directory's 95 Python files were swept on 2026-09-02** for
-`#181 (Sweep the 95 Python files in scratch for tools nobody can find)` (title paraphrased, because the original names the deleted directory), asking of each whether somebody would otherwise write it
-again. Nine said yes, and they became the six tools `combatshot.py`,
-`d6502check.py`, `m68discheck.py`, `overlay.py`, `rostercard.py` and
-`whatis.py` below -- six rather than nine because several files in one
-directory were one tool between them. The other 86 were a run's output: an
-emulator driver edited into its own successor, a measurement of one window, a
-copy of a package file taken before a change.
-
-**Those 86 were read again on 2026-09-03** for
-`#199 (Promote the tools stranded in scratch into tools/)`, and six more said yes -- `bigfont.py`, `combatdiag.py`,
-`libslots.py`, `menucheck.py`, `monitorchain.py` and `wallsmap.py` -- because
-each one **checks a tool that ships**, or reads what one writes, and the first
-pass had sorted them as "an issue's measurement" from their filenames. So the
-sort that matters is *what does this point at*: a thing in `tools/` or in the
-packages makes it a tool, and one row of one issue's evidence does not.
-
-The scratch directory has since been deleted for good; scratch now lives under
-the temp directory (`tools/registry/scratch.py`) and may vanish at any time.
-
-The scripts are grouped by the game or job they serve, one directory each, and every directory has a README.md with a row for each script in it; the table below lists the directories in the order of the tree. What belongs to no one game or job stays at the top and has its rows here. Run a script from the repository root as `python tools/dos/dosbox.py`, or import it as `tools.dos.dosbox`. A row's file name is relative to its own README, and a mention of a file in another directory gives its `tools/` path.
+Scripts that may drive a live emulator, an X server or the player's own disks, one directory per game or job with a README row for each script; run one from the repository root as `python tools/dos/dosbox.py` or import it as `tools.dos.dosbox`.
 
 ## Directories
 
@@ -58,8 +28,8 @@ What belongs to no one game or job: the body of `wish export` and `wish import`,
 
 | file | purpose |
 |---|---|
-| `__init__.py` | Binds the real `wish` package before any tool body runs, so that `from tools import anything` cannot leave a process with `tools/wish.py` in its place; the module's own docstring has the incident. |
-| `install-desktop.sh` | Installs `wish.desktop` and the icons under `$HOME` so a Linux desktop finds them. Needed because Wayland has no protocol for a client-supplied window icon — the compositor matches the app id against an installed desktop file, and with none it shows a generic gear. |
-| `installdesktop.py` | Puts Wish's desktop entry and its icon where a Linux desktop looks for them -- `~/.local/share/applications` and `~/.local/share/icons/hicolor` -- which is what makes Alt-Tab and the taskbar draw the pentagram instead of a generic gear. The desktop matches a window to a `.desktop` file by application id and then looks the icon up by **name**, so `setWindowIcon` alone cannot help it. A wheel ships both into `<prefix>/share`, which is on the search path for a `pip install --user` and not for a virtualenv or a `pipx` install, and this covers those: `wish` calls `ensure()` as it starts and installs on the first run that finds nothing. Writes `Exec` from `sys.prefix` so a virtualenv's launcher is named rather than a `wish` command that may not exist. `--check` says what is installed, `--remove` takes it back out, and `wish --install-desktop` is the same code from the command line (`#9 (Finish the packaging icons: .desktop, .icns and a README lockup)`). |
-| `wish.py` | The implementation of `wish export` and `wish import` — a save disk to YAML and back. No longer a program of its own; `wish/__main__.py` dispatches to it. An existing disk is never modified: `import` always writes a new one. |
-| `wishagent.py` | Speaks to GitHub as the `wish-agent` App rather than as Donald's own account, so an issue or comment an agent files is authored by `wish-agent[bot]`. Mints a short-lived JWT from the App's private key (`~/.config/wish-agent/private-key.pem` by default), exchanges it for an installation token narrowed to `issues: write` on this one repository, and calls the REST API directly with `urllib.request` -- never GraphQL, and never `gh issue`'s own sub-commands, which resolve labels through GraphQL where an installation token is accepted unevenly. `whoami`, `token`, `create`, `comment`, `close`, `label`, `edit` and `edit-comment` cover everything an agent needs to file and update an issue. `push-token` mints the second kind of token, `contents: write` and `workflows: write`, and `git-credential` is a git credential helper built on it: it answers git's request for `github.com` over HTTPS with the user `x-access-token` and a token minted for that request, so a machine can push as the App with no token stored by this tool. A push token is minted on every call and cached nowhere; the request is split on newlines only, and only `github.com` over `https` is answered. `docs/218-the-wish-agent-bot.md` has the setup, including resetting git's helper list. The private key is refused outright if it is group- or world-readable (skipped on Windows, where the mode bits do not mean this), the token is cached in the process and never written to disk, and every body is read from `--body-file` rather than a shell argument. |
+| `__init__.py` | Binds the real `wish` package before any tool body runs, so `from tools import anything` cannot leave a process with `tools/wish.py` in its place; its docstring has the incident. |
+| `install-desktop.sh` | Installs `wish.desktop` and the icons under `$HOME` so a Linux desktop finds them, because Wayland has no protocol for a client-supplied window icon and the compositor matches the app id against an installed desktop file. |
+| `installdesktop.py` | Installs Wish's desktop entry and icon under `~/.local/share/applications` and `~/.local/share/icons/hicolor` for a virtualenv or `pipx` install, writing `Exec` from `sys.prefix`; `wish` calls `ensure()` at start, `--check` reports, `--remove` undoes it. |
+| `wish.py` | The body of `wish export` and `wish import`, a save disk to YAML and back, dispatched from `wish/__main__.py` and named in `wish.spec`'s `hiddenimports` because no static scan sees that import; `import` always writes a new disk. |
+| `wishagent.py` | Speaks to GitHub as the `wish-agent` App so issues and comments are authored by `wish-agent[bot]`, through the REST API with an installation token narrowed to `issues: write`; `git-credential` lets git push as the App; refuses a group- or world-readable key, reads every body from `--body-file`; `docs/218-the-wish-agent-bot.md`. |
