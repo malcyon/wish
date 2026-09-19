@@ -158,10 +158,8 @@ def test_the_small_counts_the_mixed_row_tool_uses_are_the_files_own():
     a copy that drifted would make the tool name the wrong rows as mixed.
     Checked against the disk when there is one, skipped when there is not.
     """
-    import sys
 
-    sys.path.insert(0, str(ROOT / "tools"))
-    import dosmixedicon  # noqa: E402
+    from tools import dosmixedicon  # noqa: E402
 
     disks = disk_dir()
     if disks is None:

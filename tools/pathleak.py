@@ -86,7 +86,8 @@ spec.loader.exec_module(mod)
 def inspect(name: str, guard: bool) -> dict:
     """Import one script in a fresh interpreter and report what it left."""
     importer = (_VIA_PACKAGE.format(name=name) if guard
-                else _VIA_FILE.format(name=name, path=str(TOOLS / f"{name}.py")))
+                else _VIA_FILE.format(name=name.rsplit(".", 1)[-1],
+                                      path=str(_script_path(name))))
     code = _CHILD.format(root=str(ROOT), tools=str(TOOLS), importer=importer,
                          probe="" if guard else _PROBE)
     proc = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT),
@@ -98,7 +99,15 @@ def inspect(name: str, guard: bool) -> dict:
 
 
 def scripts() -> list[str]:
-    return sorted(p.stem for p in TOOLS.glob("*.py") if p.stem != "__init__")
+    """Every script under `tools/`, as the dotted name below `tools`
+    (`dos.dosbox`, or `dosbox` for one at the top)."""
+    return sorted(
+        ".".join(p.relative_to(TOOLS).with_suffix("").parts)
+        for p in TOOLS.rglob("*.py") if p.stem != "__init__")
+
+
+def _script_path(name: str) -> pathlib.Path:
+    return TOOLS.joinpath(*name.split(".")).with_suffix(".py")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -113,7 +122,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="scripts to check (default: all of them)")
     args = ap.parse_args(argv)
 
-    names = args.names or scripts()
+    known = scripts()
+    by_stem = {n.rsplit(".", 1)[-1]: n for n in known}
+    names = [by_stem.get(n, n) for n in args.names] or known
     leaking = shadowing = 0
     for name in names:
         row = inspect(name, guard=not args.shadow)

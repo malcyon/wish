@@ -18,18 +18,14 @@ from __future__ import annotations
 import contextlib
 import io
 import pathlib
-import sys
 
 import pytest
 import yaml
 from gamedata import disk_dir
 
 from goldbox import c64_port
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
-
-import iconcorrespond as ic  # noqa: E402
-import iconproposal as ip  # noqa: E402
+from tools import iconcorrespond as ic  # noqa: E402
+from tools import iconproposal as ip  # noqa: E402
 
 #: The shape of the proposal, which does not change when Donald edits it.
 #:

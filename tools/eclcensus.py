@@ -428,7 +428,7 @@ def registry(key: str) -> str:
     so every per-title test skips)`.
     """
     try:
-        import gamedisks
+        from tools import gamedisks
     except ImportError:                     # pragma: no cover - defensive
         return ""
     found = gamedisks.find(key)

@@ -231,11 +231,8 @@ def test_the_transfer_test_says_the_dialog_writes_what_the_library_writes(
     too, which is the argument
     `test_c64_to_dos_direction_is_the_transfer_test` makes for the C64 row.
     """
-    import sys
 
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
-                           / "tools"))
-    import fromamigapor
+    from tools import fromamigapor
 
     source = convert.Source.detect(shipped_adf)
     direction = _direction()

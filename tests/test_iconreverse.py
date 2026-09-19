@@ -14,8 +14,6 @@ weapon over every icon the game's own menus can reach, and that a row the
 forward table already decided is not quietly re-decided here.
 """
 
-import pathlib
-import sys
 
 import pytest
 from gamedata import game_file
@@ -32,8 +30,6 @@ from goldbox.iconparts import (
     dos_icon_tables,
     dos_part_colours,
 )
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
 
 #: The four C64 lists, with what `SPELLN64`'s `$B0DA` says each holds.
 LISTS = (("large", "weapons", 35), ("large", "heads", 23),
@@ -53,7 +49,7 @@ def parts() -> IconParts:
 
 @pytest.fixture(scope="module")
 def table():
-    import iconreverse
+    from tools import iconreverse
     return iconreverse.load_tables()
 
 
@@ -406,7 +402,7 @@ def test_every_icon_on_the_players_disks_reads_back_into_menu_choices(parts):
     -- and the recogniser has to name those too, because a conversion that
     refused them would drop a real character's figure.
     """
-    import iconreverse
+    from tools import iconreverse
     folders = iconreverse.save_folders()
     if not any(folders.values()):
         pytest.skip("needs the C64 disks; set $POR_DISKS")
@@ -422,7 +418,7 @@ def test_every_icon_on_the_players_disks_reads_back_into_menu_choices(parts):
 
 def test_the_coverage_report_accounts_for_every_row(table):
     """100 rows over the four lists, each classed exactly once."""
-    import iconreverse
+    from tools import iconreverse
     counts = {"forced": 0, "choice": 0, "fresh": 0}
     for (size, kind), row in iconreverse.coverage(table).items():
         assert not row["missing"], (size, kind, row["missing"])

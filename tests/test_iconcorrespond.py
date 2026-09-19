@@ -24,18 +24,12 @@ them, and nothing is asserted about any particular figure's pixels.
 
 from __future__ import annotations
 
-import pathlib
-import sys
-
 import pytest
 from gamedata import disk_dir
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
-
-import iconcorrespond as ic  # noqa: E402
-
 from goldbox import icons  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
+from tools import iconcorrespond as ic  # noqa: E402
 
 
 def _dos_game():

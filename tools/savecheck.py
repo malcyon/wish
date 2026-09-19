@@ -212,7 +212,7 @@ def icon_bytes(disks: pathlib.Path) -> bytes:
     passing an `IconParts` into `icon_evidence`, where a run that had already
     walked to an encounter died on `'IconParts' object is not subscriptable`.
     """
-    import dosdisk
+    from tools import dosdisk
 
     return dosdisk.game_files(disks)[0].default_icon()
 

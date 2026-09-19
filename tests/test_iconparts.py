@@ -382,14 +382,10 @@ def test_the_shipped_table_reads_the_base_rows_for_every_title_but_its_own():
     draws those two options differently)`, and then it failed for having
     pinned a state rather than a rule.
     """
-    import sys
 
     from goldbox.c64_port import GAMES
     from goldbox.iconparts import dos_icon_tables
-
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
-                           / "tools"))
-    import iconproposal as ip
+    from tools import iconproposal as ip
 
     overrides = ip.load_overrides()
     base = dos_icon_tables()
@@ -417,13 +413,9 @@ def test_dos_icon_tables_with_no_title_reads_the_base_table():
     differently)`, `tests/test_ssbconvert.py::
     test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion`).
     """
-    import sys
 
     from goldbox.iconparts import dos_icon_tables
-
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
-                           / "tools"))
-    import iconproposal as ip
+    from tools import iconproposal as ip
 
     untitled = dos_icon_tables()
     base_weapons, _, base_heads, _, _ = ip.load_tables()
@@ -542,13 +534,9 @@ def test_iconproposal_and_iconparts_agree_on_every_title_and_size():
     and `goldbox.iconparts.dos_icon_tables`'s, which a conversion reads,
     must never diverge -- a document that shows one answer and a conversion
     that makes another would be worse than either alone being wrong."""
-    import sys
 
     from goldbox.iconparts import dos_icon_tables
-
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
-                          / "tools"))
-    import iconproposal as ip
+    from tools import iconproposal as ip
 
     for title in ip.DOS_TITLES:
         for size in (None, "small", "large"):

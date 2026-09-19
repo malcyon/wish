@@ -14,17 +14,11 @@ so it can be checked directly, without drawing anything.
 
 from __future__ import annotations
 
-import pathlib
-import sys
-
 import pytest
 from gamedata import disk_dir
 
 from goldbox.iconparts import IconParts, dos_icon_tables
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
-
-import dosfigures as df  # noqa: E402
+from tools import dosfigures as df  # noqa: E402
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the game disks")

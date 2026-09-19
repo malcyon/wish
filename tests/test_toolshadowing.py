@@ -99,11 +99,18 @@ def test_importing_one_of_the_six_leaves_tools_off_sys_path(name):
         f"import {name} left tools/ on sys.path:\n{result.stderr}")
 
 
-#: Every script in `tools/`, by module name. Read at collection so a tool
-#: added tomorrow is covered without anybody remembering to list it -- which
-#: is the whole difference between this and `SIX` above.
-TOOLS = tuple(sorted(p.stem for p in (REPO / "tools").glob("*.py")
-                     if p.stem != "__init__"))
+#: Every script under `tools/`, by its path below `tools/` without the suffix
+#: (`dos/dosbox`). Read at collection so a tool added tomorrow, in any
+#: subdirectory, is covered without anybody remembering to list it -- which is
+#: the whole difference between this and `SIX` above.
+TOOLS = tuple(sorted(
+    p.relative_to(REPO / "tools").with_suffix("").as_posix()
+    for p in (REPO / "tools").rglob("*.py") if p.stem != "__init__"))
+
+
+def _module(name: str) -> str:
+    """`dos/dosbox` as the dotted name `tools.dos.dosbox`."""
+    return "tools." + name.replace("/", ".")
 
 
 def _in_a_fresh_process(body: str) -> subprocess.CompletedProcess:
@@ -159,9 +166,10 @@ def test_importing_a_tool_leaves_the_wish_package_reachable(name):
     """
     result = _in_a_fresh_process(
         "try:\n"
-        f"    from tools import {name}\n"
+        f"    import {_module(name)}\n"
         "except ModuleNotFoundError as exc:\n"
-        "    if exc.name in ('tools', 'wish'):\n"
+        "    if exc.name in ('tools', 'wish') or "
+        "exc.name.startswith('tools.'):\n"
         "        raise\n"
         # A tool that needs something CI does not install -- `capstone` for
         # the three disassemblers -- cannot be imported there at all, and
@@ -176,7 +184,7 @@ def test_importing_a_tool_leaves_the_wish_package_reachable(name):
         pytest.skip(f"{name} needs {result.stdout.split()[1]}, "
                     f"which is not installed here")
     assert result.returncode == 0 and "OK" in result.stdout, (
-        f"after `from tools import {name}`, `wish` is not the package:\n"
+        f"after `import {_module(name)}`, `wish` is not the package:\n"
         f"{result.stderr}")
 
 
@@ -253,9 +261,10 @@ def test_no_tool_leaves_tools_on_sys_path_after_import(name):
     """
     result = _in_a_fresh_process(
         "try:\n"
-        f"    from tools import {name}\n"
+        f"    import {_module(name)}\n"
         "except ModuleNotFoundError as exc:\n"
-        "    if exc.name in ('tools', 'wish'):\n"
+        "    if exc.name in ('tools', 'wish') or "
+        "exc.name.startswith('tools.'):\n"
         "        raise\n"
         # A tool needing something CI does not install -- `capstone` for the
         # disassemblers -- cannot be imported there at all, and that is not

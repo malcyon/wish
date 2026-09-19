@@ -83,6 +83,16 @@ if not _gamedisks.REGISTRY.is_file():
     _gamedisks.REGISTRY = _gamedisks.EXAMPLE
 
 
+def _tool_path(name: str) -> pathlib.Path:
+    """`tools/<name>.py`, in whichever subdirectory of `tools/` it lives."""
+    found = sorted(_TOOLS.rglob(f"{name}.py"))
+    if len(found) != 1:
+        raise LookupError(f"{name}.py is "
+                          f"{'nowhere' if not found else 'in more than one place'}"
+                          f" under tools/")
+    return found[0]
+
+
 def load_tools_module(name: str):
     """Import ``tools/<name>.py`` by file path, without leaving ``tools/`` on
     ``sys.path`` for whatever pytest collects next.
@@ -110,7 +120,7 @@ def load_tools_module(name: str):
     if added:
         sys.path.insert(0, str(_TOOLS))
     try:
-        spec = importlib.util.spec_from_file_location(name, _TOOLS / f"{name}.py")
+        spec = importlib.util.spec_from_file_location(name, _tool_path(name))
         module = importlib.util.module_from_spec(spec)
         sys.modules[name] = module
         try:

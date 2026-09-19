@@ -70,7 +70,7 @@ def check_areas(disks: pathlib.Path) -> list[str]:
     re-derives is a table that quietly goes stale, and this one is consumed
     by `apply_file_cache` on every conversion.
     """
-    import areatable
+    from tools import areatable
 
     _base, scripts = areatable.load_scripts(
         str(disks), SSB, areatable.Machine(str(disks), SSB))

@@ -1217,7 +1217,7 @@ def main(argv: list[str]) -> int:
         # looks for a directory named after the game and nobody names one
         # that -- `#251 (Curse's and Silver Blades' disks are where nothing
         # looks for them, so every per-title test skips)`.
-        import gamedisks
+        from tools import gamedisks
         found = gamedisks.find("secret-of-the-silver-blades")
         args.disks = str(found) if found else ""
     if not args.disks or not os.path.isdir(args.disks):

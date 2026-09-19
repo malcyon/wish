@@ -1,4 +1,4 @@
-"""`tools/*.py`: `--help` must never claim a slot, open a window or write a
+"""Every script under `tools/`: `--help` must never claim a slot, open a window or write a
 file.
 
 `#403 (A tool with no argument parser reads --help as input and boots an
@@ -41,11 +41,16 @@ import pytest
 REPO = pathlib.Path(__file__).resolve().parent.parent
 TOOLS_DIR = REPO / "tools"
 
-#: Every script in `tools/`, by module name -- computed at collection, the
-#: same way `tests/test_toolshadowing.py`'s `TOOLS` is, so a script added
-#: tomorrow is covered without anybody remembering to list it.
-TOOLS = tuple(sorted(p.stem for p in TOOLS_DIR.glob("*.py")
-                     if p.stem != "__init__"))
+#: Every script under `tools/`, by its path below `tools/` without the
+#: suffix (`dos/dosbox`) -- computed at collection, the same way
+#: `tests/test_toolshadowing.py`'s `TOOLS` is, so a script added tomorrow, in
+#: any subdirectory, is covered without anybody remembering to list it.
+TOOLS = tuple(sorted(
+    p.relative_to(TOOLS_DIR).with_suffix("").as_posix()
+    for p in TOOLS_DIR.rglob("*.py") if p.stem != "__init__"))
+
+#: The same scripts by bare name, which is what `EXEMPT` is keyed by.
+STEMS = {name.rsplit("/", 1)[-1]: name for name in TOOLS}
 
 #: The last dotted component of a call this project treats as dangerous
 #: enough that `--help` must never reach it unguarded: claiming an
@@ -163,8 +168,9 @@ def _entry_candidates(tree: ast.Module, block: ast.If) -> list[ast.AST]:
 
 @pytest.mark.parametrize("name", TOOLS)
 def test_help_cannot_reach_a_dangerous_call_unguarded(name):
-    if name in EXEMPT:
-        pytest.skip(EXEMPT[name])
+    stem = name.rsplit("/", 1)[-1]
+    if stem in EXEMPT:
+        pytest.skip(EXEMPT[stem])
 
     tree = ast.parse((TOOLS_DIR / f"{name}.py").read_text(encoding="utf-8"),
                      filename=f"{name}.py")
@@ -202,7 +208,7 @@ def test_the_family_named_in_403_is_covered():
     reintroduces a manual scan on one of them fails here by name, not only
     by the general sweep above."""
     for name in ("ssbrun", "curserun", "session", "genui", "genlicenses"):
-        assert name in TOOLS, name
+        assert name in STEMS, name
         assert name not in EXEMPT, name
 
 

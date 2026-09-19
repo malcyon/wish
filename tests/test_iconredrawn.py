@@ -17,14 +17,11 @@ like is Donald's to judge and nothing here asserts it.
 from __future__ import annotations
 
 import pathlib
-import sys
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
-
-import iconproposal as ip  # noqa: E402
-import iconredrawn as ir  # noqa: E402
+from tools import iconproposal as ip  # noqa: E402
+from tools import iconredrawn as ir  # noqa: E402
 
 #: What Silver Blades re-drew, the same set `tests/test_iconparts.py` pins:
 #: `(kind, option, size)`, both poses of each.

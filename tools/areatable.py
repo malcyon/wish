@@ -1045,7 +1045,7 @@ def registry(key: str) -> str:
     registry rather than the player's lookup.
     """
     try:
-        import gamedisks
+        from tools import gamedisks
     except ImportError:                     # pragma: no cover - defensive
         return ""
     found = gamedisks.find(key)

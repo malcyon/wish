@@ -558,7 +558,7 @@ KNOWN_MISSES = {
 
 def _dos_records(title: str):
     """Every DOS record of one title this machine has: the specimen tree
-    and the DOS archives, the same two places `tools/laterthac0.py.records`
+    and the DOS archives, the same two places `tools/laterthac0.py records`
     walks."""
     tree = pathlib.Path(os.environ.get(
         "WISH_SPECIMENS", pathlib.Path.home() / "wish-specimens"))

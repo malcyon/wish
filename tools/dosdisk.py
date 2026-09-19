@@ -65,7 +65,7 @@ def dos_folder() -> pathlib.Path:
     it rather than spelling a second search out; the saves live in `SAVE`
     beside `START.EXE`.
     """
-    import dosbox
+    from tools import dosbox
 
     return dosbox.find_game("POOLRAD") / "SAVE"
 

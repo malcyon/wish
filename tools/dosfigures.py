@@ -139,7 +139,7 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
 
 def dosdisk_animate(disks: pathlib.Path) -> bytes:
     """`ANIMATE00`, the way `tools/dosdisk.py` fetches it."""
-    import dosdisk
+    from tools import dosdisk
 
     return dosdisk.game_files(disks)[1]
 
@@ -152,11 +152,11 @@ def png(rows: list[dict], disks: pathlib.Path,
     C64 side in the colours the conversion gave it, so a row can be judged by
     looking.  The image is the game's art and goes outside the repository.
     """
-    import iconcorrespond as ic
-    import iconproposal as ip
     from PIL import Image, ImageDraw
 
     from goldbox import icons
+    from tools import iconcorrespond as ic
+    from tools import iconproposal as ip
 
     game = ic.dos_game(None)
     charset = charset_from(disks)
@@ -338,7 +338,7 @@ def main(argv=None) -> int:
 
 
 def _dos_folder() -> pathlib.Path:
-    import dosdisk
+    from tools import dosdisk
 
     return dosdisk.dos_folder()
 

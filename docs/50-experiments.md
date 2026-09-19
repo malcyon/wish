@@ -105,8 +105,8 @@ Feedback channel is unaffected: screenshots come through the MCP and memory
 through the binary monitor, neither of which depends on the display.
 
 Baked into `tools/porlaunch.sh`, which the instance pool launches. It was
-`tools/rungame.sh` until that script was deleted for killing every emulator
-on the machine by name (#143 (tools/rungame.sh kills every emulator by name and takes Donald's own ports)).
+`rungame.sh`, also in `tools/`, until that script was deleted for killing every emulator
+on the machine by name (#143 (rungame.sh kills every emulator by name and takes Donald's own ports), title paraphrased because the original names the deleted path).
 
 ---
 

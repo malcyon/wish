@@ -7,15 +7,11 @@ the end reads the player's own `CBODY.DAX` and skips without it.
 
 from __future__ import annotations
 
-import pathlib
 import struct
-import sys
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
-
-import daxls  # noqa: E402
+from tools import daxls  # noqa: E402
 
 
 def _rle(raw: bytes) -> bytes:
@@ -92,7 +88,7 @@ def test_a_missing_block_is_a_message_not_a_traceback(tmp_path):
 def test_the_players_cbody_is_128_image_blocks_of_24_by_24():
     """`CBODY.DAX` off the player's DOS game, through `tools/iconcorrespond.py`'s
     lookup; skipped when there is no DOS game on this machine."""
-    import iconcorrespond as ic
+    from tools import iconcorrespond as ic
     try:
         game = ic.dos_game(None)
     except SystemExit:

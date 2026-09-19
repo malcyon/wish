@@ -30,7 +30,7 @@ and they are two different fields; this is what says so.
 
 Usage:
 
-    tools/c64clock.py                 # every title tools/gamedisks.yaml knows
+    tools/c64clock.py                 # every title gamedisks.yaml knows
     tools/c64clock.py pool-of-radiance curse-of-the-azure-bonds
 """
 

@@ -107,7 +107,7 @@ def check_areas(disks: pathlib.Path) -> list[str]:
     same twenty-five rows and diffs the id, the side and the maps.  A copied
     table that nothing ever re-derives is a table that quietly goes stale.
     """
-    import areatable
+    from tools import areatable
 
     _base, scripts = areatable.load_scripts(
         str(disks), CURSE, areatable.Machine(str(disks), CURSE))

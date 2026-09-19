@@ -1,4 +1,4 @@
-"""Sweep of `tools/*.py` for the read-only-specimen staging bug (#472, #476,
+"""Sweep of every script under `tools/` for the read-only-specimen staging bug (#472, #476,
 #487, #492).
 
 `tools/specimens.py add` makes every specimen read-only on purpose, so nobody
@@ -312,7 +312,7 @@ def reused_destination_copies(root: pathlib.Path = TOOLS) -> dict:
     rather than only asking whether the whole expression *is* a tracked name.
     """
     found: dict[tuple[str, str], set[int]] = {}
-    for path in sorted(root.glob("*.py")):
+    for path in sorted(root.rglob("*.py")):
         if path.name in EXEMPT:
             continue
         # `encoding="utf-8"` and not the platform default: Windows reads as

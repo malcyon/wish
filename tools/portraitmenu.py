@@ -44,7 +44,7 @@ def _dos_game(given: str | None) -> pathlib.Path | None:
     if given:
         return pathlib.Path(given)
     try:
-        import dosbox
+        from tools import dosbox
         return dosbox.find_game("POOLRAD")
     except (FileNotFoundError, ImportError):
         return None

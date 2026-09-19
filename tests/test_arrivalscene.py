@@ -33,6 +33,16 @@ import wish  # noqa: F401,E402
 _TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 
 
+def _tool_path(name: str) -> pathlib.Path:
+    """`tools/<name>.py`, in whichever subdirectory of `tools/` it lives."""
+    found = sorted(_TOOLS.rglob(f"{name}.py"))
+    if len(found) != 1:
+        raise LookupError(f"{name}.py is "
+                          f"{'nowhere' if not found else 'in more than one place'}"
+                          f" under tools/")
+    return found[0]
+
+
 def _load_tools_module(name: str):
     """Import a `tools/` module by its file path, and leave `sys.path`
     exactly as this function found it.
@@ -48,7 +58,7 @@ def _load_tools_module(name: str):
     if added:
         sys.path.insert(0, str(_TOOLS))
     try:
-        spec = importlib.util.spec_from_file_location(name, _TOOLS / f"{name}.py")
+        spec = importlib.util.spec_from_file_location(name, _tool_path(name))
         module = importlib.util.module_from_spec(spec)
         sys.modules[name] = module
         try:

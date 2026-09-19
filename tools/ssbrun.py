@@ -57,7 +57,7 @@ def run(argv: list[str] | None = None) -> None:
 
     `tools/ssbtrain.py`'s `drive` builds `argv` itself and calls this
     directly, so the signature stays `run(argv)` rather than the `main`
-    other `tools/*run.py` scripts use.
+    other `*run.py` scripts in `tools/` use.
     """
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--watch", action="store_true",

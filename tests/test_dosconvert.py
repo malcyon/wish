@@ -19,7 +19,6 @@ CI does -- the table tests above them do not need a save at all.
 """
 
 
-import pathlib
 
 import gamedata
 import pytest
@@ -470,10 +469,7 @@ def test_the_class_level_permutation_covers_every_c64_slot():
 
 def test_item_to_c64_is_the_harness_projection():
     """One copy of the projection. `tools/dosbox.py` re-exports this one."""
-    import sys
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
-                           / "tools"))
-    import dosbox
+    from tools import dosbox
     assert dosbox.item_to_c64 is dos_codec.item_to_c64
 
 
