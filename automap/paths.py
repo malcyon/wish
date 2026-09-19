@@ -146,6 +146,21 @@ def find_disks(game: c64_port.C64Container | None = None) -> pathlib.Path | None
     return hit[0] if hit is not None else None
 
 
+def tool_disks(game: c64_port.C64Container | None = None) -> pathlib.Path | None:
+    """`$POR_DISKS`, then the search, and `None` when neither answers.
+
+    `$POR_DISKS` is taken at its word: a directory named there is the answer
+    whether or not it holds any images, which is what a person setting the
+    variable means. `find_disks` disagrees -- it returns the directory only
+    when a disk is actually in it -- so this is not `find_disks` with a
+    different return value.
+    """
+    env = os.environ.get("POR_DISKS")
+    if env:
+        return pathlib.Path(env)
+    return find_disks(game)
+
+
 # -- one precedence, in one place --------------------------------------------
 #
 # There used to be three orders: the editor's, the map's, and the roster's.

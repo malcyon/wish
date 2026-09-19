@@ -221,6 +221,8 @@ def main(argv=None):
     gate.add_argument("--depth", type=int, default=10)
     gate.set_defaults(run=cmd_gate)
     args = parser.parse_args(argv)
+    if eclwalk.DISKS is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     args.run(args)
 
 

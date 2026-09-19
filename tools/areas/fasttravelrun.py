@@ -42,12 +42,12 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from automap.target import ViceTarget  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 CAVES, EAST = 13, 27
 SLOT_RECORD, SLOT_ROSTER, SLOTS = 0x4D00, 0x8300, 8
@@ -137,10 +137,15 @@ def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0) -> None:
         time.sleep(0.6)
 
 
+def disks_of(args) -> pathlib.Path | None:
+    """The disk folder to stage from: `--disks` when given, else the default."""
+    return pathlib.Path(args.disks) if args.disks else DISKS
+
+
 def run(args) -> int:
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    disks = pathlib.Path(args.disks) if args.disks else DISKS
+    disks = disks_of(args)
     slot = S.claim_slot(args.slot, "issue207 fasttravelrun.py")
     print(f"slot {slot.n} display {slot.display}", flush=True)
     sess = None
@@ -227,7 +232,7 @@ def run(args) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                     help="the game disk directory ($POR_DISKS if unset)")
     p.add_argument("--save", default=str(S.npc_party_save()),
                     help="the save disk to load, staged in as SIDE0.D64")
@@ -242,7 +247,10 @@ def main(argv=None) -> int:
     p.add_argument("--answer-timeout", type=float, default=60.0,
                     help="seconds to wait for the handler's own prompt "
                          "and the warp to land")
-    return run(p.parse_args(argv))
+    args = p.parse_args(argv)
+    if disks_of(args) is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
+    return run(args)
 
 
 if __name__ == "__main__":

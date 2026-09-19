@@ -14,11 +14,12 @@ party is not inside a wall, which narrows 29 files to a handful.
 import argparse
 import glob
 import os
+import pathlib
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from automap.paths import disk_globs, find_disks  # noqa: E402
+from automap.paths import disk_globs, tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.geo import (  # noqa: E402
     DIRECTIONS,
@@ -31,16 +32,17 @@ from goldbox.geo import (  # noqa: E402
 )
 from goldbox.savegame import SaveGame0  # noqa: E402
 
-DISKS = os.environ.get("POR_DISKS", str(find_disks() or ""))
+DISKS: pathlib.Path | None = tool_disks()
 
 
-def game_disks(root: str = DISKS) -> list[str]:
+def game_disks(root: str | os.PathLike | None = None) -> list[str]:
     """Every game disk under `root`, each of them once.
 
     `disk_globs` gives an upper- and a lower-cased pattern, and on a
     case-insensitive filesystem both match the same file -- so dedupe, or every
     disk is read twice.
     """
+    root = DISKS if root is None else root
     seen: dict[str, str] = {}
     for pattern in disk_globs():
         for path in glob.glob(os.path.join(root, pattern)):
@@ -89,6 +91,8 @@ def main() -> int:
     ap.add_argument("--save", help="mark this save's party position")
     ap.add_argument("--find", help="report which maps this save could be on")
     args = ap.parse_args()
+    if DISKS is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
 
     if args.find:
         x, y, facing = party_of(args.find)

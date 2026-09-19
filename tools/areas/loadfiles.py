@@ -14,16 +14,15 @@ thirty area scripts. Anything else is skipped rather than guessed at.
 `tools/areas/eclwalk.py` reads the same scripts statement by statement and is the
 fuller answer; this one is the quick question, and it needs no `DUNGEON`.
 """
-import os
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or (find_disks() or ""))
+DISKS: pathlib.Path | None = tool_disks()
 BASE = 0x9900
 OPS = {0x21: "LOADFILES", 0x37: "LOADPIECES"}
 
@@ -42,7 +41,7 @@ def load(name):
 
 
 def main():
-    if not DISKS or not DISKS.exists():
+    if DISKS is None or not DISKS.exists():
         raise SystemExit("No game disks found. Set $POR_DISKS.")
     for name in sys.argv[1:]:
         body = load(name)

@@ -43,11 +43,11 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 WINDOWS = (25, 26, 27)
 
@@ -326,7 +326,7 @@ def run(args) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                    help="where the player's game disks are; read, never written")
     p.add_argument("--save", default="PORSAVE13.D64",
                    help="the save disk to copy in as SIDE0")
@@ -337,7 +337,10 @@ def main(argv=None) -> int:
     p.add_argument("--patience", type=float, default=25.0,
                    help="seconds to wait for one overland step to land")
     p.add_argument("--arrive", type=float, default=240.0)
-    return run(p.parse_args(argv))
+    args = p.parse_args(argv)
+    if args.disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
+    return run(args)
 
 
 if __name__ == "__main__":

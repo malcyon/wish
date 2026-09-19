@@ -12,7 +12,7 @@ $6DE6; (4) every SAVETABLE statement with its 16-bit index, since an indexed
 store could reach $6DE6 from a base further away.
 
 The disks come from `automap/gamedisks.py`'s Pool of Radiance entry, else
-`automap.paths.find_disks()`.  Reads them and writes nothing.
+`automap.paths.tool_disks()`.  Reads them and writes nothing.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from tools.areas import eclcensus as E  # noqa: E402
 
@@ -34,7 +34,10 @@ LO, HI = 0x6DE0, 0x6DEF
 def main(argv=None) -> int:
     argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args(argv)
     game = next(g for g in c64_port.GAMES if g.key == "pool-of-radiance")
-    root = E.registry(game.key) or str(find_disks())
+    root = E.registry(game.key) or tool_disks()
+    if root is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
+    root = str(root)
     machine, base, bodies, sides, _dos = E.load_port(root, game, None)
     print(f"scripts run at ${base:04X}; {len(bodies)} bodies, "
           f"DUNGEON ${machine.base:04X}")

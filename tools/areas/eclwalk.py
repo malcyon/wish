@@ -41,16 +41,15 @@ output goes into a repository that must not carry them. A string operand prints
 as its length.
 """
 import argparse
-import os
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or (find_disks() or ""))
+DISKS: pathlib.Path | None = tool_disks()
 
 #: Where a script is loaded, `docs/140-loaded-files-cache.md` slot 8.
 BASE = 0x9900
@@ -430,7 +429,7 @@ def main():
     parser.add_argument("command", choices=("list", "listing", "exits"))
     parser.add_argument("script", nargs="*", help="ECL00 … ; default is all")
     args = parser.parse_args()
-    if not DISKS or not DISKS.exists():
+    if DISKS is None or not DISKS.exists():
         raise SystemExit("No game disks found. Set $POR_DISKS.")
     every = scripts()
     if not every:

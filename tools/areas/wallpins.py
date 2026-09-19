@@ -47,11 +47,11 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 GRAVEYARD, PODOL, SLUMS, GRID = 10, 18, 20, 26
 
@@ -341,15 +341,21 @@ def plan_walkin(sess, target, ft, out) -> int:
     return 0
 
 
+def disks_of(args) -> pathlib.Path | None:
+    """The disk folder to stage from: `--disks` when given, else the default."""
+    return pathlib.Path(args.disks) if args.disks else DISKS
+
+
 def run(args) -> int:
     out = pathlib.Path(args.out)
     scratch.ensure(out)
+    disks = disks_of(args)
     slot = S.claim_slot(args.slot, "issue179 wall pins")
     print(f"Slot {slot.n} display {slot.display}", flush=True)
     sess = None
     try:
-        boot = S.stage_disks(slot, DISKS)
-        S.stage_writable(pathlib.Path(args.disks) / args.save,
+        boot = S.stage_disks(slot, disks)
+        S.stage_writable(disks / args.save,
                           pathlib.Path(slot.dir) / "SIDE0.D64")
         for p in pathlib.Path(slot.dir).glob("*.D64"):
             os.chmod(p, 0o644)
@@ -425,7 +431,7 @@ def run(args) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                    help="where the player's game disks are; read, never written")
     p.add_argument("--save", default="PORSAVE13.D64",
                    help="the save disk to copy in as SIDE0")
@@ -435,7 +441,10 @@ def main(argv=None) -> int:
                    default="full",
                    help="the whole comparison, or only the walk in")
     p.add_argument("--arrive", type=float, default=240.0)
-    return run(p.parse_args(argv))
+    args = p.parse_args(argv)
+    if disks_of(args) is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
+    return run(args)
 
 
 if __name__ == "__main__":
