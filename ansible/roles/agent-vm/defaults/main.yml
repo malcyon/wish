@@ -1,0 +1,138 @@
+---
+# The Ubuntu guest the coding agents run in. docs/219-the-agent-sandbox.md is
+# the design; where it is silent the defaults below follow roles/windows-vm.
+
+# --- Identity / sizing ------------------------------------------------------
+agent_vm_name: agent-vm
+# Sized for a twelve-thread host: the guest is idle except while the suite runs,
+# and the suite scales with workers.
+agent_vm_vcpus: 12
+agent_vm_memory_mb: 12288
+# The cap the design asks for: <memory> is the most the guest can be given, and
+# the cgroup limit below it is that plus what QEMU itself needs (its own heap,
+# the virtio queues, page tables). A limit at exactly the guest's size would
+# get QEMU OOM-killed the moment the guest touched all of it.
+agent_vm_memory_qemu_overhead_mb: 1536
+agent_vm_disk_gb: 100
+
+# --- Paths ------------------------------------------------------------------
+# A disk with room for the guest's 100 GB image and the Windows VM's, kept apart
+# from the system disk; the guest's first reads are slow and after that its files
+# sit in the host's page cache. A path every user can traverse -- qemu runs as
+# libvirt-qemu -- and one a host without /data can override.
+agent_vm_base_dir: /data/agent-vm
+agent_vm_image_dir: "{{ agent_vm_base_dir }}/images"
+agent_vm_state_dir: "{{ agent_vm_base_dir }}/state"
+agent_vm_disk_path: "{{ agent_vm_base_dir }}/{{ agent_vm_name }}.qcow2"
+agent_vm_seed_path: "{{ agent_vm_state_dir }}/seed.iso"
+
+# --- Networking -------------------------------------------------------------
+# On the `sandbox` network (roles/sandbox-network), which is where the address and
+# the MAC come from. DHCP with a fixed lease by MAC, so the inventory and the
+# isolation test can name the guest.
+agent_vm_network_name: "{{ sandbox_net_name }}"
+agent_vm_ip: "{{ sandbox_net_leases[agent_vm_name].ip }}"
+agent_vm_mac: "{{ sandbox_net_leases[agent_vm_name].mac }}"
+
+# --- Image ------------------------------------------------------------------
+# Ubuntu 24.04 (noble), from the official cloud image, so Python 3.12 is the
+# system Python. `current` moves as Canonical rebuilds it; the SHA256SUMS
+# beside it verifies whichever build is downloaded, and it is downloaded once.
+# The guest's disk is a standalone copy of it (see the task), so nothing
+# depends on this file afterwards.
+agent_vm_image_url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+agent_vm_image_checksum: "sha256:https://cloud-images.ubuntu.com/noble/current/SHA256SUMS"
+agent_vm_image_path: "{{ agent_vm_image_dir }}/noble-server-cloudimg-amd64.img"
+
+# --- Guest account ----------------------------------------------------------
+agent_vm_user: agent
+# The same number as the operator's uid on this host. The specimen share below
+# is virtiofs passthrough, which maps guest uids straight to host uids, so a
+# file the guest's user writes there is owned by the operator on the desktop.
+agent_vm_uid: 1000
+# A tz database name. The inventory sets it to the machine's own.
+agent_vm_timezone: Etc/UTC
+agent_vm_hostname: "{{ agent_vm_name }}"
+
+# The key this host logs in with. Generated once, kept outside the checkout
+# under the base directory. Nothing of the operator's goes into the guest: its
+# authorized_keys holds this public key and no other, and there is no private
+# key in it at all.
+agent_vm_keypair_path: "{{ agent_vm_base_dir }}/keys/{{ agent_vm_name }}"
+
+# --- The specimen tree ------------------------------------------------------
+# The one thing shared into the guest, and the one thing the guest can write:
+# agents make specimens by driving a game in an emulator and reading the record
+# back, which is the VM's job. It stays on this host, in one copy, and is
+# shared with virtiofs -- host-local, so nothing on the LAN is reached -- and
+# mounted at /mnt/specimens. Everything else the guest is given is copied in
+# read-only, and this directory is deliberately not part of that image.
+agent_vm_specimens_dir: "{{ agent_vm_disks_dir }}/specimens"
+agent_vm_specimens_tag: specimens
+
+# --- The game disks ---------------------------------------------------------
+# What the guest may read of the player's game data. The person puts it, one
+# directory per gamedisks.yaml entry, in agent_vm_disks_dir on this host; the
+# role packs it into one ext4 image and the domain attaches that image
+# read-only, so the guest cannot change it as any user. specimens/ is left out
+# of the image because it is shared writable instead (above), and a file is
+# never both.
+agent_vm_disks_dir: /data/agent-disks
+# Top-level names that must never be in agent_vm_disks_dir, because the guest is
+# given them another way. codewheel is the person's private repository: the
+# guest clones it with the App's credential, and a copy here would put it in the
+# image as well.
+agent_vm_disks_never:
+  - codewheel
+agent_vm_disks_image: "{{ agent_vm_base_dir }}/disks.img"
+# `mkfs.ext4 -d` packs whatever directory it is given and has no exclude, so a
+# staging copy of the source without specimens/ is made beside the image. It is
+# hard links, on the same filesystem as the source, so it costs no space, and it
+# is removed once the image is built.
+agent_vm_disks_staging: "{{ agent_vm_base_dir }}/disks-staging"
+# The fingerprint of the source the image was last built from. The image is
+# rebuilt when the source changes and not otherwise.
+agent_vm_disks_stamp: "{{ agent_vm_state_dir }}/disks.fingerprint"
+# The guest mounts by this label, so the device's name never matters.
+agent_vm_disks_label: agent-disks
+# Headroom over what the staging copy occupies: ext4's own tables, and rounding.
+agent_vm_disks_growth_percent: 5
+agent_vm_disks_slack_mb: 64
+
+# --- Public test data --------------------------------------------------------
+# Two public, non-secret datasets the wish test suite reads, fetched into
+# agent_vm_disks_dir so a rebuilt host gets them without anyone copying files
+# in by hand. Packed into the disks image the same as anything else there.
+agent_vm_coab_sha: 9dc46f1d5911710fb2fcb7a9c0ec0ef74264d17c
+agent_vm_coab_url: "https://github.com/simeonpilgrim/coab/archive/{{ agent_vm_coab_sha }}.tar.gz"
+agent_vm_coab_dir: "{{ agent_vm_disks_dir }}/coab-source"
+agent_vm_coab_stamp: "{{ agent_vm_state_dir }}/coab-source.stamp"
+
+agent_vm_icons_url: https://game-icons.net/archives/000000/transparent/game-icons.net.svg.zip
+agent_vm_icons_dir: "{{ agent_vm_disks_dir }}/game-icons"
+agent_vm_icons_stamp: "{{ agent_vm_state_dir }}/game-icons.stamp"
+
+# --- A read-only view of the guest's code -----------------------------------
+# The way to look at what the agents are writing, from an editor on this desktop:
+# an sshfs mount of the guest's wish checkout, read-only, mounted by the person
+# who sits here and not by root. VS Code Remote SSH into the guest is deliberately
+# not the way: it installs a server in the guest and forwards the person's GitHub
+# sign-in into it, and nothing of theirs belongs in the guest.
+# The desktop account that mounts it. Empty by default: the inventory sets it,
+# and the role's first task asserts it is not empty.
+agent_vm_operator: ""
+agent_vm_wish_remote: "/home/{{ agent_vm_user }}/src/wish"
+agent_vm_wish_mount: "/home/{{ agent_vm_operator }}/agent-wish"
+# ssh notices a dead guest after ServerAliveInterval x ServerAliveCountMax
+# seconds, so this is how long a request on the mount waits before it errors.
+agent_vm_wish_mount_alive: 2
+# How long systemd waits before trying to mount again while the guest is down.
+agent_vm_wish_mount_retry: 10
+
+# --- Console / lifecycle ----------------------------------------------------
+# Started with the host, so the agents have a machine to work in whenever the
+# desktop is up. Agents never start it or the Windows VM themselves.
+agent_vm_autostart: true
+# How long to wait for the guest's sshd after `virsh start`. First boot runs
+# package_upgrade and may reboot once, on a spinning disk.
+agent_vm_boot_timeout: 900

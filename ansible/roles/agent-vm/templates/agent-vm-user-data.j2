@@ -1,0 +1,42 @@
+#cloud-config
+{# Managed by Ansible — roles/agent-vm #}
+hostname: {{ agent_vm_hostname }}
+manage_etc_hosts: true
+timezone: {{ agent_vm_timezone }}
+ssh_pwauth: false
+
+# Listing the user replaces the image's default `ubuntu` account. The only key
+# that can log in is the one generated for this VM; nothing of the operator's is here.
+users:
+  - name: {{ agent_vm_user }}
+    uid: {{ agent_vm_uid }}
+    gecos: {{ agent_vm_user }}
+    shell: /bin/bash
+    groups: [adm, sudo]
+    lock_passwd: true
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys:
+      - "{{ agent_vm_public_key | trim }}"
+
+# One upgrade at first boot, then never again unattended: a reboot in the
+# middle of an overnight run kills the session. The apt.conf.d file below turns
+# the periodic jobs off before unattended-upgrades can run once, and runcmd
+# removes the package so nothing can turn them back on. No reboot here: the
+# guest setup does it, once, if the upgrade wants one.
+package_update: true
+package_upgrade: true
+package_reboot_if_required: false
+packages:
+  - qemu-guest-agent
+
+write_files:
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    permissions: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "0";
+      APT::Periodic::Unattended-Upgrade "0";
+
+runcmd:
+  - [systemctl, disable, --now, apt-daily.timer, apt-daily-upgrade.timer]
+  - [sh, -c, "apt-get purge -y unattended-upgrades || true"]
+  - [systemctl, enable, --now, qemu-guest-agent]

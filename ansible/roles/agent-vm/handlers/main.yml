@@ -1,0 +1,5 @@
+---
+- name: Reload AppArmor
+  ansible.builtin.service:
+    name: apparmor
+    state: reloaded

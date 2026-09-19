@@ -1,0 +1,30 @@
+# Managed by Ansible — roles/agent-vm.
+#
+# A read-only view of the agent VM's wish checkout, to open in a local editor, so
+# that nothing of the person's ever runs inside the guest.
+#
+# Mounted by the person, not by root, so no allow_other is needed. Each way it can
+# go wrong is answered here:
+#   * The guest is down when this starts, or reboots later: sshfs exits or
+#     reconnects, and systemd starts it again every {{ agent_vm_wish_mount_retry }} seconds until it can.
+#   * The guest dies while it is mounted: ssh notices within a few seconds
+#     (ServerAlive*), the reconnect fails within ConnectTimeout, and a request on
+#     the mount point returns an error instead of hanging. A stale mount from a
+#     crashed sshfs is cleared before each start, and again on stop.
+#   * ro: the kernel refuses every write, whatever the guest's permissions say.
+[Unit]
+Description=Read-only view of the {{ agent_vm_name }} wish checkout at {{ agent_vm_wish_mount }}
+# A guest that stays down is not a reason to give up.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/fusermount3 -uz {{ agent_vm_wish_mount }}
+ExecStart=/usr/bin/sshfs -f {{ agent_vm_name }}:{{ agent_vm_wish_remote }} {{ agent_vm_wish_mount }} \
+    -o ro,reconnect,ServerAliveInterval={{ agent_vm_wish_mount_alive }},ServerAliveCountMax=2,ConnectTimeout=3,BatchMode=yes,cache_timeout=2
+ExecStopPost=-/usr/bin/fusermount3 -uz {{ agent_vm_wish_mount }}
+Restart=always
+RestartSec={{ agent_vm_wish_mount_retry }}
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,31 @@
+---
+# The agent VM: the Ubuntu guest the coding agents run in, on the desktop,
+# behind the `no-lan` filter (docs/219-the-agent-sandbox.md).
+#
+#   ansible-playbook -i ansible/inventory.yml ansible/agent-vm.yml
+#   ansible-playbook -i ansible/inventory.yml ansible/agent-vm.yml -t dosbox
+#
+# Play one builds and starts the guest on the host. Play two configures the
+# inside of it over ssh. Play three proves the isolation from inside.
+- name: Build and start the agent VM
+  hosts: agent_vm_hosts
+  become: true
+  roles:
+    - role: agent-vm
+      tags: agent_vm
+
+- name: Set up the inside of the agent VM
+  hosts: agent_vms
+  roles:
+    - role: agent-vm-guest
+      tags: agent_vm_guest
+
+- name: Prove the isolation from inside the guests
+  hosts: agent_vm_hosts
+  become: true
+  tasks:
+    - name: Run the isolation test
+      ansible.builtin.include_role:
+        name: sandbox-network
+        tasks_from: isolation-test
+      tags: isolation

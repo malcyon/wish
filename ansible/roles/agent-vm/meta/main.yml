@@ -1,0 +1,5 @@
+---
+# The network the guest lives on, and the filter on its NIC, are defined once
+# for both VMs.
+dependencies:
+  - role: sandbox-network

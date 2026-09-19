@@ -1,0 +1,7 @@
+{# Managed by Ansible — roles/agent-vm #}
+{# Fixed on purpose: cloud-init runs its per-instance modules (users, keys,
+   package_upgrade, runcmd) once per instance-id. A rebuilt seed therefore
+   changes nothing on a VM that has already booted; to reapply it, tear the
+   VM down and build it again. #}
+instance-id: {{ agent_vm_name }}
+local-hostname: {{ agent_vm_hostname }}

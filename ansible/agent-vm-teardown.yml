@@ -1,0 +1,13 @@
+---
+# Removes the agent VM and what roles/agent-vm created for it on this host.
+#
+#   ansible-playbook -i ansible/inventory.yml ansible/agent-vm-teardown.yml
+#
+- name: Remove the agent VM
+  hosts: agent_vm_hosts
+  become: true
+  tasks:
+    - name: Run the agent-vm teardown
+      ansible.builtin.include_role:
+        name: agent-vm
+        tasks_from: teardown

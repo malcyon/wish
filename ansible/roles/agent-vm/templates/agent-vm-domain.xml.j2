@@ -1,0 +1,135 @@
+{# Managed by Ansible — roles/agent-vm #}
+<domain type='kvm'>
+  <name>{{ agent_vm_name }}</name>
+  <!-- `virsh define` rejects a name that already exists under a different
+       UUID, so derive it from the name and it never changes. -->
+  <uuid>{{ (agent_vm_name ~ '-agent-vm-domain') | to_uuid }}</uuid>
+  <metadata>
+    <libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0">
+      <libosinfo:os id="http://ubuntu.com/ubuntu/24.04"/>
+    </libosinfo:libosinfo>
+  </metadata>
+
+  <!-- The hard cap: the guest can never be given more than this, so it cannot
+       squeeze the host. The cgroup limit is the same plus QEMU's own
+       footprint, which is not part of the guest's memory. -->
+  <memory unit='MiB'>{{ agent_vm_memory_mb }}</memory>
+  <currentMemory unit='MiB'>{{ agent_vm_memory_mb }}</currentMemory>
+  <memtune>
+    <hard_limit unit='MiB'>{{ agent_vm_memory_mb + agent_vm_memory_qemu_overhead_mb }}</hard_limit>
+  </memtune>
+  <!-- virtiofs shares the guest's memory with virtiofsd, which needs a shared
+       memfd backing. Without this block the filesystem below fails at start
+       with "memory backing is not shared". -->
+  <memoryBacking>
+    <source type='memfd'/>
+    <access mode='shared'/>
+  </memoryBacking>
+  <vcpu placement='static'>{{ agent_vm_vcpus }}</vcpu>
+
+  <!-- BIOS, not UEFI: the cloud image boots either way, and a BIOS domain has
+       no NVRAM file to orphan on undefine. -->
+  <os>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <boot dev='hd'/>
+  </os>
+
+  <features>
+    <acpi/>
+    <apic/>
+    <vmport state='off'/>
+  </features>
+
+  <cpu mode='host-passthrough' check='none' migratable='on'>
+    <topology sockets='1' dies='1' cores='{{ agent_vm_vcpus }}' threads='1'/>
+  </cpu>
+
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+
+    <!-- virtio-blk: the cloud image carries the driver, and the image sits on
+         a spinning disk where every emulated-SATA round trip would show.
+         cache='writeback', not 'none': the design counts on the guest's
+         checkout, venv and emulator files sitting in the HOST's page cache
+         after their first read, and O_DIRECT would bypass it. -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='writeback' io='threads' discard='unmap'/>
+      <source file='{{ agent_vm_disk_path }}'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+
+    <!-- The NoCloud seed. cloud-init reads it on the first boot only. -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ agent_vm_seed_path }}'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+
+    <!-- The game disks, read-only. QEMU opens the image read-only on this host,
+         so the guest's block device is write-protected: not even root in the
+         guest can change it. The guest mounts it by its label, {{ agent_vm_disks_label }}. -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='raw' cache='writeback'/>
+      <source file='{{ agent_vm_disks_image }}'/>
+      <target dev='vdb' bus='virtio'/>
+      <readonly/>
+    </disk>
+
+    <controller type='sata' index='0'/>
+
+    <!-- The specimen tree, read-write, and the only share. passthrough maps
+         guest uids to host uids, so the guest's uid-{{ agent_vm_uid }} user writes files
+         that the operator owns here. Mounted in the guest with
+         `mount -t virtiofs {{ agent_vm_specimens_tag }} /mnt/specimens`. -->
+    <filesystem type='mount' accessmode='passthrough'>
+      <driver type='virtiofs'/>
+      <source dir='{{ agent_vm_specimens_dir }}'/>
+      <target dir='{{ agent_vm_specimens_tag }}'/>
+    </filesystem>
+
+    <!-- The no-lan filter is what keeps this guest off the home LAN. It is
+         evaluated as packets leave the NIC, before any rule in the host's
+         forwarding chain, and it is part of the domain. -->
+    <interface type='network'>
+      <mac address='{{ agent_vm_mac }}'/>
+      <source network='{{ agent_vm_network_name }}'/>
+      <model type='virtio'/>
+      <filterref filter='{{ sandbox_net_filter_name }}'/>
+    </interface>
+
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+
+    <!-- No display: the guest is headless, and its emulators run under Xvfb.
+         `virsh console` is the way in for a guest whose network is wrong. -->
+    <serial type='pty'>
+      <target type='isa-serial' port='0'/>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+
+    <rng model='virtio'>
+      <backend model='random'>/dev/urandom</backend>
+    </rng>
+
+    <memballoon model='virtio'/>
+  </devices>
+</domain>

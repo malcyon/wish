@@ -1,0 +1,12 @@
+# Managed by Ansible — roles/agent-vm.
+# `ssh agent-vm` from this host. The guest is rebuilt from time to time and
+# gets new host keys each time, and nothing else is on its network to
+# impersonate it, so its host key is not remembered.
+Host {{ agent_vm_name }}
+    HostName {{ agent_vm_ip }}
+    User {{ agent_vm_user }}
+    IdentityFile {{ agent_vm_keypair_path | realpath }}
+    IdentitiesOnly yes
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR

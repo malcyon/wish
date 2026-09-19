@@ -1,0 +1,671 @@
+---
+# Builds the agent-vm guest on this host: cloud image, cloud-init seed, domain,
+# start. sandbox-network (a dependency, see meta/main.yml) has already put
+# libvirt, the `sandbox` network and the `no-lan` filter in place. What goes
+# *inside* the guest is roles/agent-vm-guest, run against it over ssh by
+# agent-vm.yml.
+
+- name: Assert the desktop account is set in the inventory
+  ansible.builtin.assert:
+    that:
+      - agent_vm_operator | length > 0
+    fail_msg: >-
+      agent_vm_operator is empty. Set it to the desktop account that mounts the
+      guest's checkout in `ansible/inventory.yml`, which is gitignored;
+      `inventory.yml.example` beside it is the template.
+
+# --- Directories ------------------------------------------------------------
+
+# `file: state=directory` would happily create /data itself on the root
+# filesystem if the disk were not mounted, and put a 100 GB guest on the system
+# disk. The guest belongs on a separate disk, so a missing parent stops the play.
+- name: Check that the parent of the base directory exists
+  ansible.builtin.stat:
+    path: "{{ agent_vm_base_dir | dirname }}"
+  register: agent_vm_parent
+
+- name: Assert the parent of the base directory exists
+  ansible.builtin.assert:
+    that:
+      - agent_vm_parent.stat.isdir | default(false)
+    fail_msg: >-
+      {{ agent_vm_base_dir | dirname }} does not exist. Is the disk mounted?
+      Refusing to create the guest's image directory without it.
+
+- name: Create the agent-vm directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: kvm
+    mode: "0755"
+  loop:
+    - "{{ agent_vm_base_dir }}"
+    - "{{ agent_vm_image_dir }}"
+    - "{{ agent_vm_state_dir }}"
+
+# --- The specimen tree ------------------------------------------------------
+
+- name: Check for the specimens directory
+  ansible.builtin.stat:
+    path: "{{ agent_vm_specimens_dir }}"
+  register: agent_vm_specimens
+
+# virtiofsd cannot start without its source directory, and the guest with it.
+# Created only when absent, and as the owner the guest's files will have: a
+# missing parent made by `file` would be root's, and nobody could then put a
+# disk in it without sudo.
+- name: Create the specimens directory, owned by the guest's uid, if it is missing
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ agent_vm_uid }}"
+    group: "{{ agent_vm_uid }}"
+    mode: "0755"
+  loop:
+    - "{{ agent_vm_specimens_dir | dirname }}"
+    - "{{ agent_vm_specimens_dir }}"
+  when: not agent_vm_specimens.stat.exists
+
+- name: Check the specimens directory again
+  ansible.builtin.stat:
+    path: "{{ agent_vm_specimens_dir }}"
+  register: agent_vm_specimens
+
+# An existing tree is never chowned: that would rewrite ownership across
+# somebody's data. It is checked instead, since a tree owned by anyone else
+# would be written by the guest as a stranger.
+- name: Assert the specimens directory is owned by the guest's uid
+  ansible.builtin.assert:
+    that:
+      - agent_vm_specimens.stat.uid == agent_vm_uid | int
+    fail_msg: >-
+      {{ agent_vm_specimens_dir }} is owned by uid {{ agent_vm_specimens.stat.uid }},
+      not {{ agent_vm_uid }}. The guest writes it as uid {{ agent_vm_uid }} through
+      virtiofs passthrough, so files it makes would belong to someone else on
+      this host. Fix the ownership deliberately; this role will not.
+
+# virt-aa-helper builds a per-domain AppArmor profile from the domain XML, but
+# it is conservative about paths outside /var/lib/libvirt. Grant the tree
+# explicitly so qemu can open the disk and the seed from /data.
+- name: Allow qemu under AppArmor to reach {{ agent_vm_base_dir }}
+  ansible.builtin.blockinfile:
+    path: /etc/apparmor.d/local/abstractions/libvirt-qemu
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK agent-vm"
+    block: |
+      "{{ agent_vm_base_dir }}/" r,
+      "{{ agent_vm_base_dir }}/**" rwk,
+  notify: Reload AppArmor
+
+- name: Flush handlers so AppArmor allows the tree before qemu opens it
+  ansible.builtin.meta: flush_handlers
+
+# --- The key this host logs in with -----------------------------------------
+
+# The base directory belongs to root, so the directory is created with
+# privilege; it is then owned by the person running the playbook, not root, so
+# ssh-keygen and ssh can read it without privilege.
+- name: Create the key directory on the controller
+  ansible.builtin.file:
+    path: "{{ agent_vm_keypair_path | dirname }}"
+    state: directory
+    owner: "{{ lookup('env', 'USER') }}"
+    group: "{{ lookup('env', 'USER') }}"
+    mode: "0700"
+  delegate_to: localhost
+  become: true
+
+# ssh-keygen with creates rather than community.crypto, so the playbook needs
+# no collection the controller may not have. Regenerating would lock the host
+# out of a guest that already trusts the old key, which is why it is
+# creates-guarded and the teardown leaves it alone.
+- name: Generate the guest's login key on the controller
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -q
+      - -t
+      - ed25519
+      - -N
+      - ""
+      - -C
+      - "{{ agent_vm_name }}"
+      - -f
+      - "{{ agent_vm_keypair_path }}"
+  args:
+    creates: "{{ agent_vm_keypair_path }}"
+  delegate_to: localhost
+  become: false
+
+- name: Read the public key
+  ansible.builtin.set_fact:
+    agent_vm_public_key: "{{ lookup('file', agent_vm_keypair_path ~ '.pub') }}"
+
+# --- Base image -------------------------------------------------------------
+
+- name: Check for the cloud image
+  ansible.builtin.stat:
+    path: "{{ agent_vm_image_path }}"
+    get_checksum: false
+  register: agent_vm_image
+
+# Only when absent, and the checksum verifies that one download.
+- name: Download the Ubuntu cloud image
+  ansible.builtin.get_url:
+    url: "{{ agent_vm_image_url }}"
+    checksum: "{{ agent_vm_image_checksum }}"
+    dest: "{{ agent_vm_image_path }}"
+    owner: root
+    group: kvm
+    mode: "0644"
+    timeout: 120
+  when: not agent_vm_image.stat.exists
+
+# A standalone copy, not an overlay on the cloud image. An overlay names the
+# image as its backing store, so a later `current` download replacing it, or
+# an image directory cleaned out, would corrupt a VM that is in use. The copy
+# costs the image's size again and buys the guest its independence. Converted
+# to a temporary name and moved into place, so an interrupted run leaves no
+# disk that `creates` would take for a finished one.
+- name: Create the guest's disk from the cloud image
+  ansible.builtin.shell: |
+    set -e
+    qemu-img convert -O qcow2 "{{ agent_vm_image_path }}" "{{ agent_vm_disk_path }}.tmp"
+    qemu-img resize "{{ agent_vm_disk_path }}.tmp" {{ agent_vm_disk_gb }}G
+    chown root:kvm "{{ agent_vm_disk_path }}.tmp"
+    chmod 0644 "{{ agent_vm_disk_path }}.tmp"
+    mv "{{ agent_vm_disk_path }}.tmp" "{{ agent_vm_disk_path }}"
+  args:
+    creates: "{{ agent_vm_disk_path }}"
+
+# --- cloud-init seed --------------------------------------------------------
+
+- name: Create the seed staging directory
+  ansible.builtin.file:
+    path: "{{ agent_vm_state_dir }}/seed"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Render the cloud-init seed files
+  ansible.builtin.template:
+    src: "agent-vm-{{ item }}.j2"
+    dest: "{{ agent_vm_state_dir }}/seed/{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - user-data
+    - meta-data
+    - network-config
+  register: agent_vm_seed_files
+
+- name: Check for the seed ISO
+  ansible.builtin.stat:
+    path: "{{ agent_vm_seed_path }}"
+    get_checksum: false
+  register: agent_vm_seed_iso
+
+# NoCloud finds its files by the volume label `cidata` and their names at the
+# root of the disc. Rebuilt only when an input changed; cloud-init reads it on
+# the first boot only, so a rebuilt seed changes nothing on a VM that has
+# already booted (meta-data explains why).
+- name: Build the seed ISO
+  ansible.builtin.command:
+    argv:
+      - xorriso
+      - -as
+      - mkisofs
+      - -quiet
+      - -V
+      - cidata
+      - -J
+      - -r
+      - -o
+      - "{{ agent_vm_seed_path }}"
+      - "{{ agent_vm_state_dir }}/seed"
+  when: agent_vm_seed_files.changed or not agent_vm_seed_iso.stat.exists
+  changed_when: true
+
+# libvirt chowns it to libvirt-qemu while the domain runs.
+- name: Restrict the seed ISO
+  ansible.builtin.file:
+    path: "{{ agent_vm_seed_path }}"
+    owner: root
+    group: kvm
+    mode: "0640"
+
+# --- The game disks --------------------------------------------------------
+
+- name: Check for the game disks directory
+  ansible.builtin.stat:
+    path: "{{ agent_vm_disks_dir }}"
+  register: agent_vm_disks_src
+
+# A guest attached to an empty image would look like a guest with no game data,
+# which is a different thing from a host that was never given any.
+- name: Assert the game disks directory exists
+  ansible.builtin.assert:
+    that:
+      - agent_vm_disks_src.stat.isdir | default(false)
+    fail_msg: >-
+      {{ agent_vm_disks_dir }} does not exist. Put the game data there, one
+      directory per gamedisks.yaml entry, and run this again.
+
+- name: Look for what must not be in the game disks directory
+  ansible.builtin.stat:
+    path: "{{ agent_vm_disks_dir }}/{{ item }}"
+  loop: "{{ agent_vm_disks_never }}"
+  register: agent_vm_disks_forbidden
+
+- name: Assert none of it is there
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists
+    fail_msg: >-
+      {{ agent_vm_disks_dir }}/{{ item.item }} exists, and the guest is given it
+      another way (agent-vm-guest clones it with the wish-agent App's
+      credential). Remove it, so it is not packed into the image as well.
+    quiet: true
+  loop: "{{ agent_vm_disks_forbidden.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# --- Public test data --------------------------------------------------------
+
+# The stamp records the commit the tree was last fetched at, so a changed pin
+# triggers a re-fetch and an unchanged one does not.
+- name: Check the coab source stamp
+  ansible.builtin.stat:
+    path: "{{ agent_vm_coab_stamp }}"
+  register: agent_vm_coab_stamp_file
+
+- name: Read the coab source stamp
+  ansible.builtin.slurp:
+    src: "{{ agent_vm_coab_stamp }}"
+  register: agent_vm_coab_stamp_read
+  when: agent_vm_coab_stamp_file.stat.exists
+
+- name: Decide whether the coab source tree must be fetched
+  ansible.builtin.set_fact:
+    agent_vm_coab_fetch: >-
+      {{ not agent_vm_coab_stamp_file.stat.exists
+         or (agent_vm_coab_stamp_read.content | b64decode | trim) != agent_vm_coab_sha }}
+
+# The commit's tarball, unpacked with the top-level directory stripped so the
+# tree layout matches the repository's own, which is what the test fixtures expect.
+- name: Fetch the coab source tree
+  when: agent_vm_coab_fetch | bool
+  block:
+    - name: Remove the old coab source tree
+      ansible.builtin.file:
+        path: "{{ agent_vm_coab_dir }}"
+        state: absent
+
+    - name: Create the coab source directory
+      ansible.builtin.file:
+        path: "{{ agent_vm_coab_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Download and unpack the coab source tarball
+      ansible.builtin.unarchive:
+        src: "{{ agent_vm_coab_url }}"
+        dest: "{{ agent_vm_coab_dir }}"
+        remote_src: true
+        extra_opts:
+          - --strip-components=1
+
+    - name: Record the coab commit the tree was fetched at
+      ansible.builtin.copy:
+        dest: "{{ agent_vm_coab_stamp }}"
+        content: "{{ agent_vm_coab_sha }}\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+# The stamp records the URL the archive was last fetched from, so a changed
+# pin triggers a re-fetch and an unchanged one does not.
+- name: Check the game-icons stamp
+  ansible.builtin.stat:
+    path: "{{ agent_vm_icons_stamp }}"
+  register: agent_vm_icons_stamp_file
+
+- name: Read the game-icons stamp
+  ansible.builtin.slurp:
+    src: "{{ agent_vm_icons_stamp }}"
+  register: agent_vm_icons_stamp_read
+  when: agent_vm_icons_stamp_file.stat.exists
+
+- name: Decide whether the game-icons archive must be fetched
+  ansible.builtin.set_fact:
+    agent_vm_icons_fetch: >-
+      {{ not agent_vm_icons_stamp_file.stat.exists
+         or (agent_vm_icons_stamp_read.content | b64decode | trim) != agent_vm_icons_url }}
+
+# game-icons.net's public SVG archive, unpacked as-is: the zip's own icons/
+# directory holds one folder per artist.
+- name: Fetch the game-icons archive
+  when: agent_vm_icons_fetch | bool
+  block:
+    - name: Remove the old game-icons tree
+      ansible.builtin.file:
+        path: "{{ agent_vm_icons_dir }}"
+        state: absent
+
+    - name: Create the game-icons directory
+      ansible.builtin.file:
+        path: "{{ agent_vm_icons_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Download and unpack the game-icons archive
+      ansible.builtin.unarchive:
+        src: "{{ agent_vm_icons_url }}"
+        dest: "{{ agent_vm_icons_dir }}"
+        remote_src: true
+
+    - name: Record the URL the game-icons archive was fetched from
+      ansible.builtin.copy:
+        dest: "{{ agent_vm_icons_stamp }}"
+        content: "{{ agent_vm_icons_url }}\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+# Every file's type, path, size, mode and mtime, so a file added, removed or
+# replaced changes it. specimens/ is pruned: the guest writes there, and a
+# specimen made in the guest must not rebuild the read-only image.
+- name: Fingerprint the game disks directory
+  ansible.builtin.shell: |
+    set -o pipefail
+    find {{ agent_vm_disks_dir | quote }} -mindepth 1 \
+      -path {{ (agent_vm_disks_dir ~ '/specimens') | quote }} -prune -o \
+      -printf '%y\t%P\t%s\t%m\t%T@\n' | LC_ALL=C sort | sha256sum | cut -d' ' -f1
+  args:
+    executable: /bin/bash
+  register: agent_vm_disks_fingerprint
+  changed_when: false
+  check_mode: false
+
+- name: Check for the game disks image and the fingerprint it was built from
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ agent_vm_disks_image }}"
+    - "{{ agent_vm_disks_stamp }}"
+  register: agent_vm_disks_files
+
+- name: Read the fingerprint the image was built from
+  ansible.builtin.slurp:
+    src: "{{ agent_vm_disks_stamp }}"
+  register: agent_vm_disks_built_from
+  when: agent_vm_disks_files.results[1].stat.exists
+
+# The label is part of it, so a changed label rebuilds the image.
+- name: Decide whether the game disks image is out of date
+  ansible.builtin.set_fact:
+    agent_vm_disks_want: "{{ agent_vm_disks_fingerprint.stdout }} {{ agent_vm_disks_label }}"
+    agent_vm_disks_rebuild: >-
+      {{ not (agent_vm_disks_files.results[0].stat.exists and agent_vm_disks_files.results[1].stat.exists)
+         or (agent_vm_disks_built_from.content | b64decode | trim)
+            != (agent_vm_disks_fingerprint.stdout ~ ' ' ~ agent_vm_disks_label) }}
+
+- name: Build the game disks image
+  when: agent_vm_disks_rebuild | bool
+  block:
+    - name: Clear what an interrupted build left behind
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ agent_vm_disks_staging }}"
+        - "{{ agent_vm_disks_image }}.new"
+
+    - name: Create the staging directory
+      ansible.builtin.file:
+        path: "{{ agent_vm_disks_staging }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Hard-link everything except specimens/ into it
+      ansible.builtin.shell: |
+        find {{ agent_vm_disks_dir | quote }} -mindepth 1 -maxdepth 1 ! -name specimens \
+          -exec cp -al -t {{ agent_vm_disks_staging | quote }} {} +
+      changed_when: true
+
+    # Nothing of the person's goes into the guest, and an image is a place
+    # something could ride in on. grep exits 1 when it finds nothing.
+    - name: Look for a token or a private key in what is about to be packed
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -rIlsE
+          - "{{ sandbox_net_token_pattern }}|BEGIN [A-Z ]*PRIVATE KEY"
+          - "{{ agent_vm_disks_staging }}"
+      register: agent_vm_disks_secrets
+      failed_when: agent_vm_disks_secrets.rc not in [0, 1]
+      changed_when: false
+
+    - name: Assert the game disks hold no token or private key
+      ansible.builtin.assert:
+        that:
+          - agent_vm_disks_secrets.rc == 1
+        fail_msg: >-
+          These files look like they hold a token or a private key, so no image
+          was built: {{ agent_vm_disks_secrets.stdout_lines | join(', ') }}
+
+    - name: Measure the staging directory
+      ansible.builtin.command: "du -s --block-size=1M {{ agent_vm_disks_staging }}"
+      register: agent_vm_disks_du
+      changed_when: false
+
+    - name: Create the image file
+      ansible.builtin.command:
+        argv:
+          - truncate
+          - -s
+          - "{{ ((agent_vm_disks_du.stdout.split()[0] | int) * (100 + agent_vm_disks_growth_percent) / 100)
+                | round(0, 'ceil') | int + agent_vm_disks_slack_mb }}M"
+          - "{{ agent_vm_disks_image }}.new"
+      changed_when: true
+
+    # No journal and no reserved blocks: it is written once and only ever read.
+    # root_owner=0:0 so the top directory is root's, not the invoking user's.
+    - name: Make the filesystem, filled from the staging directory
+      ansible.builtin.command:
+        argv:
+          - mkfs.ext4
+          - -q
+          - -F
+          - -b
+          - "4096"
+          - -L
+          - "{{ agent_vm_disks_label }}"
+          - -m
+          - "0"
+          - -O
+          - ^has_journal
+          - -E
+          - root_owner=0:0
+          - -d
+          - "{{ agent_vm_disks_staging }}"
+          - "{{ agent_vm_disks_image }}.new"
+      changed_when: true
+
+    - name: Restrict the image
+      ansible.builtin.file:
+        path: "{{ agent_vm_disks_image }}.new"
+        owner: root
+        group: kvm
+        mode: "0644"
+
+    # A rename, so a running guest keeps the file it has open and a reader never
+    # sees a half-built one.
+    - name: Put the image in place
+      ansible.builtin.command: "mv -f {{ agent_vm_disks_image }}.new {{ agent_vm_disks_image }}"
+      changed_when: true
+
+    - name: Record what the image was built from
+      ansible.builtin.copy:
+        dest: "{{ agent_vm_disks_stamp }}"
+        content: "{{ agent_vm_disks_want }}\n"
+        owner: root
+        group: root
+        mode: "0644"
+  always:
+    - name: Remove the staging directory
+      ansible.builtin.file:
+        path: "{{ agent_vm_disks_staging }}"
+        state: absent
+
+# --- Domain -----------------------------------------------------------------
+
+- name: Render the domain definition
+  ansible.builtin.template:
+    src: agent-vm-domain.xml.j2
+    dest: "{{ agent_vm_state_dir }}/{{ agent_vm_name }}.xml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: agent_vm_domain_xml
+
+- name: List defined domains
+  ansible.builtin.command: virsh -c qemu:///system list --all --name
+  register: agent_vm_domains
+  changed_when: false
+  check_mode: false
+
+- name: List the domains running before the definition changes
+  ansible.builtin.command: virsh -c qemu:///system list --name
+  register: agent_vm_domains_running
+  changed_when: false
+  check_mode: false
+
+# A redefine of a running domain takes effect at its next start.
+- name: Define the domain {{ agent_vm_name }}
+  ansible.builtin.command: "virsh -c qemu:///system define {{ agent_vm_state_dir }}/{{ agent_vm_name }}.xml"
+  when: agent_vm_domain_xml.changed or agent_vm_name not in agent_vm_domains.stdout_lines
+  changed_when: true
+
+# libvirt applies a redefined domain at its next start, and a guest's own
+# `reboot` is not one: qemu keeps running with the old definition. The same is
+# true of a rebuilt game disks image, which the running qemu still has open as
+# the file it was.
+- name: Say that a running guest needs a shutdown and start to take the change
+  ansible.builtin.debug:
+    msg: >-
+      The {{ agent_vm_name }} definition or its game disks image changed and the
+      guest is running, so the change applies at its next start. `virsh shutdown
+      {{ agent_vm_name }}`, wait for it to power off, then `virsh start
+      {{ agent_vm_name }}` -- a reboot from inside the guest is not enough.
+  when:
+    - agent_vm_domain_xml.changed or (agent_vm_disks_rebuild | bool)
+    - agent_vm_name in agent_vm_domains_running.stdout_lines
+
+- name: Check the autostart of the domain {{ agent_vm_name }}
+  ansible.builtin.stat:
+    path: "/etc/libvirt/qemu/autostart/{{ agent_vm_name }}.xml"
+  register: agent_vm_domain_autostart
+
+- name: Set domain autostart
+  ansible.builtin.command: >-
+    virsh -c qemu:///system autostart
+    {{ '' if agent_vm_autostart | bool else '--disable' }} {{ agent_vm_name }}
+  when: agent_vm_domain_autostart.stat.exists != (agent_vm_autostart | bool)
+  changed_when: true
+
+- name: List running domains
+  ansible.builtin.command: virsh -c qemu:///system list --name
+  register: agent_vm_running
+  changed_when: false
+  check_mode: false
+
+- name: Start the domain {{ agent_vm_name }}
+  ansible.builtin.command: "virsh -c qemu:///system start {{ agent_vm_name }}"
+  when: agent_vm_name not in agent_vm_running.stdout_lines
+  changed_when: true
+
+# `ssh agent-vm` from this host.
+- name: Install the ssh alias
+  ansible.builtin.template:
+    src: agent-vm-ssh-config.j2
+    dest: "/etc/ssh/ssh_config.d/{{ agent_vm_name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+
+# The banner check matters: a half-booted guest accepts the TCP connection
+# before sshd is up.
+- name: Wait for sshd in the guest
+  ansible.builtin.wait_for:
+    host: "{{ agent_vm_ip }}"
+    port: 22
+    search_regex: OpenSSH
+    timeout: "{{ agent_vm_boot_timeout }}"
+  when: not ansible_check_mode
+
+# --- A read-only view of the guest's code -----------------------------------
+
+- name: Install sshfs
+  ansible.builtin.apt:
+    name: sshfs
+    state: present
+    cache_valid_time: 3600
+
+- name: Look up the operator
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ agent_vm_operator }}"
+
+# As the operator throughout. A FUSE mount made by a user is closed to everybody
+# else, root included, so a task run as root on a mounted path would be refused.
+#
+# No `mode` on the mount point: once it is mounted it is the guest's directory,
+# read-only, and setting a mode is a chmod on it, which the mount refuses. The
+# directory is only created if it is missing.
+- name: Create the mount point
+  ansible.builtin.file:
+    path: "{{ agent_vm_wish_mount }}"
+    state: directory
+  become: true
+  become_user: "{{ agent_vm_operator }}"
+
+- name: Create the user unit directory
+  ansible.builtin.file:
+    path: "/home/{{ agent_vm_operator }}/.config/systemd/user"
+    state: directory
+    mode: "0755"
+  become: true
+  become_user: "{{ agent_vm_operator }}"
+
+- name: Install the mount unit
+  ansible.builtin.template:
+    src: agent-vm-wish-mount.service.j2
+    dest: "/home/{{ agent_vm_operator }}/.config/systemd/user/agent-wish.service"
+    mode: "0644"
+  become: true
+  become_user: "{{ agent_vm_operator }}"
+  register: agent_vm_wish_unit
+
+# Wanted by the login session, so it mounts when the operator logs in and needs
+# nothing typed. Enabled and started in the operator's own user manager.
+- name: Enable the mount at login, and start it
+  ansible.builtin.systemd:
+    name: agent-wish.service
+    scope: user
+    daemon_reload: true
+    enabled: true
+    state: "{{ 'restarted' if agent_vm_wish_unit.changed else 'started' }}"
+  become: true
+  become_user: "{{ agent_vm_operator }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ getent_passwd[agent_vm_operator][1] }}"
+  when: not ansible_check_mode

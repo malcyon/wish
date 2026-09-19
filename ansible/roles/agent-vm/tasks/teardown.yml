@@ -1,0 +1,95 @@
+---
+# Removes the agent VM and what roles/agent-vm created for it on this host:
+# domain, disk, the game disks image built from the person's files, seed and
+# generated XML, and the ssh alias. Leaves alone what is shared or expensive to
+# get back -- the `sandbox` network and `no-lan` filter, which the Windows VM
+# uses, the downloaded cloud image, and the login key under the base
+# directory's keys/, because a rebuilt guest should be reachable the way the
+# last one was. The directory the
+# game disks image is built from, and the specimens in it, are the person's and
+# are never touched. The empty mount point for the read-only view is left too:
+# it is the operator's directory, and the unit that used it is removed.
+#
+#   ansible-playbook -i ansible/inventory.yml ansible/agent-vm-teardown.yml
+
+- name: Assert the desktop account is set in the inventory
+  ansible.builtin.assert:
+    that:
+      - agent_vm_operator | length > 0
+    fail_msg: >-
+      agent_vm_operator is empty. Set it to the desktop account that mounted the
+      guest's checkout in `ansible/inventory.yml`, which is gitignored;
+      `inventory.yml.example` beside it is the template.
+
+- name: List defined domains
+  ansible.builtin.command: virsh -c qemu:///system list --all --name
+  register: agent_vm_td_domains
+  changed_when: false
+  failed_when: false
+
+- name: List running domains
+  ansible.builtin.command: virsh -c qemu:///system list --name
+  register: agent_vm_td_running
+  changed_when: false
+  failed_when: false
+
+- name: Force off the domain {{ agent_vm_name }}
+  ansible.builtin.command: "virsh -c qemu:///system destroy {{ agent_vm_name }}"
+  when: agent_vm_name in (agent_vm_td_running.stdout_lines | default([]))
+  changed_when: true
+
+- name: Undefine the domain {{ agent_vm_name }}
+  ansible.builtin.command: "virsh -c qemu:///system undefine {{ agent_vm_name }}"
+  when: agent_vm_name in (agent_vm_td_domains.stdout_lines | default([]))
+  changed_when: true
+
+- name: Look up the operator
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ agent_vm_operator }}"
+
+- name: Stop and disable the read-only mount of the guest's code
+  ansible.builtin.systemd:
+    name: agent-wish.service
+    scope: user
+    enabled: false
+    state: stopped
+  become: true
+  become_user: "{{ agent_vm_operator }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ getent_passwd[agent_vm_operator][1] }}"
+  failed_when: false
+
+- name: Remove the mount unit
+  ansible.builtin.file:
+    path: "/home/{{ agent_vm_operator }}/.config/systemd/user/agent-wish.service"
+    state: absent
+  become: true
+  become_user: "{{ agent_vm_operator }}"
+
+- name: Remove the guest's disk, the game disks image, its state directory and the ssh alias
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ agent_vm_disk_path }}"
+    - "{{ agent_vm_disks_image }}"
+    - "{{ agent_vm_disks_image }}.new"
+    - "{{ agent_vm_disks_staging }}"
+    - "{{ agent_vm_state_dir }}"
+    - "/etc/ssh/ssh_config.d/{{ agent_vm_name }}.conf"
+
+- name: Remove the AppArmor override
+  ansible.builtin.blockinfile:
+    path: /etc/apparmor.d/local/abstractions/libvirt-qemu
+    marker: "# {mark} ANSIBLE MANAGED BLOCK agent-vm"
+    state: absent
+  failed_when: false
+  notify: Reload AppArmor
+
+- name: Report what was left in place
+  ansible.builtin.debug:
+    msg: >-
+      Left alone: {{ agent_vm_image_path }} (the downloaded cloud image), the
+      {{ sandbox_net_name }} network and {{ sandbox_net_filter_name }} filter, and
+      the login key at {{ agent_vm_keypair_path }}.
