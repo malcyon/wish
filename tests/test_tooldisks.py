@@ -356,6 +356,10 @@ def no_title_disks(monkeypatch):
      CURSE_DISKS),
     ("tools.secret_of_the_silver_blades.ssbtrain", ["run", "--save", "S.D64"],
      "no Silver Blades disks: set $SSB_DISKS or pass --disks"),
+    ("tools.curse_of_the_azure_bonds.curseload", ["--save", "S.D64"], CURSE_DISKS),
+    ("tools.curse_of_the_azure_bonds.curseareazero", [], CURSE_DISKS),
+    ("tools.c64.dualclassagain", ["c64", "--save", "S.D64"],
+     "no disks for curse-of-the-azure-bonds; pass --disks"),
 ])
 def test_a_tool_with_a_title_lookup_stops_with_no_disks(
         no_title_disks, fresh, module, argv, message):
@@ -372,6 +376,9 @@ def test_a_tool_with_a_title_lookup_stops_with_no_disks(
     ("tools.c64.splatload", ["--save", "SAVE.D64"]),
     ("tools.curse_of_the_azure_bonds.cursepaladin", ["run", "--save", "S.D64"]),
     ("tools.curse_of_the_azure_bonds.cursetrain", ["run", "--save", "S.D64"]),
+    ("tools.curse_of_the_azure_bonds.curseload", ["--save", "S.D64"]),
+    ("tools.curse_of_the_azure_bonds.curseareazero", []),
+    ("tools.c64.dualclassagain", ["c64", "--save", "S.D64"]),
 ])
 def test_a_given_disks_folder_gets_past_the_guard(
         no_title_disks, fresh, monkeypatch, tmp_path, module, argv):

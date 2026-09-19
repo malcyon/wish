@@ -203,6 +203,11 @@ def drive(args) -> int:
     from tools.c64 import session as por  # noqa: PLC0415
     from tools.curse_of_the_azure_bonds import curserun  # noqa: PLC0415
 
+    found = args.disks or gamedisks.find(args.title)
+    if not found:
+        raise SystemExit(f"no disks for {args.title}; pass --disks")
+    disks = str(found)
+
     gate = C64_GATES[args.title]
     out = pathlib.Path(args.out)
     scratch.ensure(out)
@@ -214,7 +219,6 @@ def drive(args) -> int:
         log.flush()
         print(json.dumps(kw), flush=True)
 
-    disks = args.disks or str(gamedisks.find(args.title) or "")
     slot = por.claim_slot(args.pool, note=os.environ.get("POR_AGENT", "i256"))
     note(event="slot", n=slot.n, monitor=slot.port, cmd=slot.cmd_port,
          display=slot.display, dir=str(slot.dir))
