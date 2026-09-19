@@ -14,6 +14,7 @@ What each directory in this repository is for; the API documentation is at https
 | `livetests/` | The tests that start an emulator or talk to a device, which the normal pytest run never collects. |
 | `docs/` | The knowledge base: numbered documents recording what is known and how it was established. |
 | [`packaging/`](packaging/README.md) | The PyInstaller entry script, the Windows console-borrowing shim, and the `.icns` generator. |
+| [`ansible/`](ansible/README.md) | The playbooks that build the agent sandbox: the isolated libvirt network and its filter, the Ubuntu guest the agents run in, and the Windows guest that runs WinUAE; one machine's own values live in a gitignored `inventory.yml`. |
 | `assets/` | Shipped non-code files — the application icons, the `.desktop` entry, and the artist's own logo files under `assets/logo/`. |
 | `images/` | The screenshots the README links. |
 | `designer` | A launcher for Qt Designer that opens `wish/window.ui`, the unified layout (`docs/146-unified-ui.md`). |
