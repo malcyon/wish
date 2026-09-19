@@ -10,9 +10,9 @@ payload puts a chosen legal value in a chosen byte, which is the only way to
 find an enum: a wrong index draws unrelated game text rather than a number.
 `docs/124-amiga-port.md` records the runs and the screenshots.
 
-A second set of tests reads the player's own `Save/*.pc` files when
-`$POD_SAVES` names a directory holding them, and skips otherwise. No game
-data lives in this repository.
+A second set of tests reads the `Save/*.pc` files out of the player's own Amiga
+disk images (the `amiga` registry entry), and skips otherwise. No game data
+lives in this repository.
 """
 
 
@@ -263,22 +263,13 @@ def test_the_writer_refuses_an_index_no_table_has():
 # -- the player's own files, when they have them -------------------------
 
 def pc_files() -> list[pathlib.Path]:
-    """`gamedisks.yaml`'s `pod-saves` entry (#212), or the disks.
+    """The twelve `.pc` files the game itself ships, read out of the Amiga
+    disk images: they are in the `Save` drawer of Pools of Darkness disk 3.
 
-    That entry has no default candidates and says no exported Pools of
-    Darkness `.pc` file exists on any machine.  **True of an exported one,
-    and it left the twelve the game itself ships unused**: they are in the
-    `Save` drawer of Amiga Pools of Darkness disk 3, and ten tests here
-    skipped on the machine that holds every byte of them -- the shape of
-    `#211`, and the same answer `amiga_por_records` already got below.
-
-    `$POD_SAVES` still wins, so a run that wants a hand-picked corpus can
-    say so.
+    No exported `.pc` file exists as a loose file on any machine, so the disk
+    images are the only source.
     """
-    from tools.registry import gamedisks
-    found = sorted(p for root in gamedisks.candidates("pod-saves")
-                   for p in root.rglob("*.pc") if p.is_file())
-    return found or list(_extracted_pc_records())
+    return list(_extracted_pc_records())
 
 
 @functools.lru_cache(maxsize=1)
@@ -307,7 +298,7 @@ def _extracted_pc_records() -> tuple[pathlib.Path, ...]:
 def real_records() -> list[pathlib.Path]:
     found = pc_files()
     if not found:
-        pytest.skip("no Pools of Darkness .pc files; set $POD_SAVES")
+        pytest.skip("no Pools of Darkness .pc files; set $AMIGA_DISKS at the Amiga disks")
     return found
 
 
@@ -776,10 +767,7 @@ def _extracted_records() -> tuple[pathlib.Path, ...]:
 
     They are not loose files on any machine: six live in the `save/` drawer of
     Pool of Radiance disk 1 and fourteen in the Curse of the Azure Bonds save
-    disk.  They were once extracted into a gitignored scratch directory that has
-    been lost, so `$AMIGA_POR_SAVES` named nothing and thirty-one tests here
-    skipped on the machine that holds every byte of the corpus -- the shape of
-    #211.  `tools/amiga/amigasaves.py` finds them again from `gamedisks.yaml`'s
+    disk.  `tools/amiga/amigasaves.py` finds them from `gamedisks.yaml`'s
     `amiga` entry, and this unpacks them into a directory that lives as long
     as the test process.
     """
@@ -787,7 +775,7 @@ def _extracted_records() -> tuple[pathlib.Path, ...]:
     from tools.registry import gamedisks
     if not gamedisks.candidates("amiga"):
         return ()
-    tmp = tempfile.TemporaryDirectory(prefix="amiga-por-saves-")
+    tmp = tempfile.TemporaryDirectory(prefix="amiga-por-records-")
     _KEEP.append(tmp)                       # deleted when the process exits
     return tuple(amigasaves.extract(pathlib.Path(tmp.name)))
 
@@ -798,24 +786,13 @@ _KEEP: list[tempfile.TemporaryDirectory] = []
 
 
 def amiga_por_records() -> list[pathlib.Path]:
-    """`gamedisks.yaml`'s `amiga-por-saves` entry (#212), or the disks.
-
-    `$AMIGA_POR_SAVES` still wins, because a run that wants a hand-picked
-    corpus -- one character, or a set nobody has shipped -- has to be able to
-    say so.  With nothing set, the specimens come out of the game's own disk
-    images instead of the tests skipping.
-    """
-    from tools.registry import gamedisks
-    where = gamedisks.candidates("amiga-por-saves")
-    found = sorted(p for root in where for p in root.rglob("*")
-                   if p.is_file() and p.suffix.lower() in (".cha", ".sav")
-                   and p.stat().st_size == AMIGA_POR_RECORD_SIZE)
-    if not found:
-        found = list(_extracted_records())
+    """The 288-byte Pool of Radiance records, read out of the Amiga disk images
+    (the `amiga` registry entry) and unpacked into a temporary directory."""
+    found = list(_extracted_records())
     if not found:
         pytest.skip(
-            "no Amiga Pool of Radiance records: set $AMIGA_POR_SAVES, or "
-            "$AMIGA_DISKS at disks tools/amiga/amigasaves.py can read them out of")
+            "no Amiga Pool of Radiance records: set $AMIGA_DISKS at disks "
+            "tools/amiga/amigasaves.py can read them out of")
     return found
 
 
@@ -911,7 +888,7 @@ def test_the_reader_agrees_with_what_the_game_drew_for_the_shipped_party():
         assert 60 - c.get("armour_class") == want["armour_class"], path
         assert c.get("hp_max") == want["hp_max"], path
     if not seen:
-        pytest.skip("none of the shipped disk-1 party is in $AMIGA_POR_SAVES")
+        pytest.skip("none of the shipped disk-1 party is in the Amiga disk images")
 
 
 def test_garwans_sheet_matches_field_for_field():
@@ -933,7 +910,7 @@ def test_garwans_sheet_matches_field_for_field():
         assert c.money["gold"] == 1
         assert c.money["silver"] == 24
         return
-    pytest.skip("GARWAN is not in $AMIGA_POR_SAVES")
+    pytest.skip("GARWAN is not in the Amiga disk images")
 
 
 # ---------------------------------------------------------------------------
@@ -943,13 +920,13 @@ def amiga_por_with_items() -> list[pathlib.Path]:
     """The specimens that have a `.itm` beside them.
 
     Six of the twenty: the party shipped on Amiga disk 1.  The fourteen
-    staged on the Curse save disk carry no item file, so a run whose
-    `$AMIGA_POR_SAVES` holds only those skips rather than passing vacuously.
+    staged on the Curse save disk carry no item file, so a run whose disks
+    hold only those skips rather than passing vacuously.
     """
     found = [p for p in amiga_por_records()
              if p.with_suffix(".itm").exists()]
     if not found:
-        pytest.skip("no .itm beside any record under $AMIGA_POR_SAVES")
+        pytest.skip("no .itm beside any record under the Amiga disk images")
     return found
 
 
@@ -1174,7 +1151,7 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
         assert n.get("strength") == 18
         assert n.get("age") == 18
         return
-    pytest.skip("GARWAN is not in $AMIGA_POR_SAVES")
+    pytest.skip("GARWAN is not in the Amiga disk images")
 
 
 def dos_field_disposition() -> dict:
@@ -1203,7 +1180,7 @@ def test_the_innate_effects_reach_the_neutral_record():
         assert n.get("innate_effects") == [
             e[0] for e in c.effects if e[0] in dos_codec.INNATE_EFFECTS], path
     if not seen:
-        pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")
+        pytest.skip("no .spc beside any record under the Amiga disk images")
 
 
 def test_an_effect_a_ring_granted_is_converted_and_only_the_c64_reports_it():
@@ -1446,7 +1423,7 @@ def test_the_effect_nodes_round_trip_past_their_next_pointer():
             assert written[6:] == bytes(4), (path, n)
             nodes += 1
     if not files:
-        pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")
+        pytest.skip("no .spc beside any record under the Amiga disk images")
     assert nodes
     assert whole == files, f"{whole} of {files} .spc files survive whole"
 

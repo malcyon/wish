@@ -52,12 +52,8 @@ def pc_bytes() -> dict[str, bytes]:
     and this narrows to the `.pc` files, which its own `specimens` does not
     yield: that one keeps to the 288-byte Pool of Radiance record.
 
-    **They are not loose files on any machine and `gamedisks.yaml`'s
-    `pod-saves` entry says so**, which is true of an *exported* `.pc` and
-    left the twelve the game itself ships unused. Same shape as `#211 (103
-    tests skip on the machine that has the game files, and the game files
-    are not why)`, and the same answer `amiga-por-saves` already got: read
-    them out of the disk images instead of skipping.
+    **They are not loose files on any machine**, so they are read out of the
+    disk images rather than skipping.
 
     Returns empty rather than skipping, so a caller that has its own
     fallback can use one.

@@ -11,13 +11,8 @@ AmigaDOS disk images:
 * fourteen `.cha` exports staged in the `save/` drawer of the **Curse of the
   Azure Bonds save disk**, which is where nobody was looking for them.
 
-They were once extracted into a gitignored scratch directory that has been lost
-twice, so `$AMIGA_POR_SAVES` pointed at nothing and thirty-one tests skipped on
-the machine that has every byte of them -- the shape of
-`#211 (103 tests skip on the machine that has the game files, and the game
-files are not why)`.  This is the tool that produces them again, and
-`tests/test_amiga.py` calls :func:`extract` itself when the environment names
-no directory, so they are never only in a scratch directory again.
+They are not loose files on any machine, so this is the tool that produces
+them, and `tests/test_amiga.py` calls :func:`extract` itself.
 
     tools/amiga/amigasaves.py -o DIR
 
@@ -193,8 +188,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(
             f"No {AMIGA_POR_RECORD_SIZE}-byte records in a save/ drawer under "
             + ", ".join(str(p) for p in where))
-    print(f"{len(found)} records into {args.out}; "
-          f"set $AMIGA_POR_SAVES to it to un-skip the Amiga tests")
+    print(f"{len(found)} records into {args.out}")
     return 0
 
 
