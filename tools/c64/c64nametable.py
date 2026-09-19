@@ -136,8 +136,9 @@ def party(disk: D64) -> list[str]:
 
 def gen_body(title: str, disks: str | None) -> bytes:
     """`GEN` for a title, header stripped, from the player's own disks."""
-    root = pathlib.Path(disks or gamedisks.find(title) or "")
-    if not root.is_dir():
+    given = disks or gamedisks.find(title)
+    root = pathlib.Path(given) if given else None
+    if root is None or not root.is_dir():
         raise SystemExit(f"no disks for {title}; pass --disks")
     for path in sorted(root.glob("*.[dD]64")):
         image = D64.open(str(path))

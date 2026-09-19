@@ -209,9 +209,11 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
 
     enable_ssb()
-    disks = pathlib.Path(
-        args.disks or gamedisks.find("secret-of-the-silver-blades") or "")
+    given = args.disks or gamedisks.find("secret-of-the-silver-blades")
+    disks = pathlib.Path(given) if given else None
     folder = pathlib.Path(args.folder)
+    if disks is None and (args.check_areas or not args.no_write):
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
 
     if args.check_areas:
         bad = check_areas(disks)

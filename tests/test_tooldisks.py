@@ -8,6 +8,7 @@ answers `None` when neither finds anything.
 """
 from __future__ import annotations
 
+import ast
 import importlib
 import pathlib
 import sys
@@ -173,3 +174,127 @@ def test_fasttravelrun_stops_with_no_disks(fresh, monkeypatch):
     with pytest.raises(SystemExit) as stopped:
         run.main([])
     assert str(stopped.value) == NO_DISKS
+
+
+# -- no tool builds a disk folder that can be the current directory ------------
+
+TOOLS_DIR = pathlib.Path(__file__).resolve().parent.parent / "tools"
+
+#: The lookups that answer `None` when there are no disks.
+_LOOKUPS = frozenset({"find_disks", "tool_disks"})
+
+
+def _last_name(func: ast.expr) -> str | None:
+    """`f` for `f(...)`, and `f` for `a.b.f(...)`."""
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _is_lookup(node: ast.expr) -> bool:
+    return isinstance(node, ast.Call) and _last_name(node.func) in _LOOKUPS
+
+
+def _holds_lookup(node: ast.expr) -> bool:
+    """The node is a lookup call, or an `or`/`and` chain with one among its
+    operands. A lookup nested inside some other call is not counted: what that
+    call does with the `None` is its own business."""
+    if isinstance(node, ast.BoolOp):
+        return any(_holds_lookup(v) for v in node.values)
+    return _is_lookup(node)
+
+
+def _ends_in_empty_string(node: ast.expr) -> bool:
+    return (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)
+            and isinstance(node.values[-1], ast.Constant)
+            and node.values[-1].value == "")
+
+
+def _is_string_or_path_call(node: ast.Call, *, path_only: bool) -> bool:
+    """`Path(x)`, `pathlib.Path(x)` or `_p.Path(x)`, and `str(x)` unless
+    `path_only`, each with exactly one positional argument."""
+    if len(node.args) != 1 or node.keywords:
+        return False
+    name = _last_name(node.func)
+    if name == "Path":
+        return True
+    return not path_only and name == "str" and isinstance(node.func, ast.Name)
+
+
+def bad_disk_folders(source: str) -> list[tuple[int, str]]:
+    """Line and reason for every expression in `source` that turns "no disks"
+    into the current directory or into the text `None`."""
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if (isinstance(node, ast.BoolOp) and _ends_in_empty_string(node)
+                and any(_is_lookup(v) for v in node.values[:-1])):
+            found.append((node.lineno, "a disk lookup `or` an empty string"))
+        if isinstance(node, ast.Call):
+            if (_is_string_or_path_call(node, path_only=False)
+                    and _holds_lookup(node.args[0])):
+                found.append((node.lineno, "a disk lookup, which may be "
+                              "`None`, turned into a string or a Path"))
+            if (_is_string_or_path_call(node, path_only=True)
+                    and _ends_in_empty_string(node.args[0])):
+                found.append((node.lineno, "a Path built from a value that "
+                              "falls back to an empty string"))
+    return sorted(set(found))
+
+
+def scan_tools(root: pathlib.Path) -> tuple[int, list[str]]:
+    """How many files under `root` were read, and `file:line: reason` for each
+    bad disk folder in them. Nothing is imported or run."""
+    files = sorted(root.rglob("*.py"))
+    hits = []
+    for path in files:
+        for line, reason in bad_disk_folders(path.read_text(encoding="utf-8")):
+            hits.append(f"{path.relative_to(root).as_posix()}:{line}: {reason}")
+    return len(files), hits
+
+
+def test_no_tool_builds_a_disk_folder_that_can_be_the_current_directory():
+    scanned, hits = scan_tools(TOOLS_DIR)
+    assert scanned > 100, f"only {scanned} files scanned under {TOOLS_DIR}"
+    assert not hits, (
+        f"{len(hits)} disk folders that turn no disks into `Path(\"\")`, "
+        f"which is the current directory, or into `None` as text; use "
+        f"`automap.paths.tool_disks()` and check for `None`:\n"
+        + "\n".join(hits))
+
+
+@pytest.mark.parametrize("source", [
+    "root = os.environ.get('POR_DISKS') or find_disks() or ''",
+    "root = paths.find_disks() or ''",
+    "root = args.disks or tool_disks() or \"\"",
+    "root = str(find_disks())",
+    "root = str(paths.find_disks())",
+    "root = pathlib.Path(find_disks())",
+    "root = _p.Path(tool_disks())",
+    "root = Path(args.disks or find_disks())",
+    "root = str(args.disks or tool_disks() or '')",
+    "root = Path(args.disks or '')",
+    "root = pathlib.Path(os.environ.get('POR_DISKS') or '')",
+    "def f():\n    return Path(args.disks or tool_disks())",
+])
+def test_the_sweep_reports_each_forbidden_form(source):
+    assert bad_disk_folders(source)
+
+
+@pytest.mark.parametrize("source", [
+    "root = tool_disks()",
+    "root = args.disks or tool_disks()",
+    "root = find_disks()\nif root is None:\n    raise SystemExit('none')\n"
+    "root = str(root)",
+    "root = str(root)",
+    "root = pathlib.Path(args.disks)",
+    "root = Path(found)",
+    "name = str(os.environ.get('USER') or '')",
+    "name = os.environ.get('POR_DISKS') or ''",
+    "root = str(resolve(find_disks()))",
+    "root = find_disks() or fallback",
+    "root = str(find_disks(), 'utf-8')",
+])
+def test_the_sweep_leaves_the_correct_forms_alone(source):
+    assert bad_disk_folders(source) == []

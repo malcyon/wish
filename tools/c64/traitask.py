@@ -831,8 +831,9 @@ def main(argv=None) -> int:
     if args.select:
         SELECT["key"] = args.select
 
-    disks = pathlib.Path(gamedisks.find("pool-of-radiance") or "")
-    if not disks.is_dir():
+    found = gamedisks.find("pool-of-radiance")
+    disks = pathlib.Path(found) if found else None
+    if disks is None or not disks.is_dir():
         raise SystemExit("traitask.py: no Pool of Radiance disks")
     out = pathlib.Path(args.out) if args.out else (
         scratch.scratch_dir("traitask", "ask"))
