@@ -1,0 +1,244 @@
+---
+# The inside of the agent VM, configured over ssh once roles/agent-vm has built
+# the guest. A role of its own, not a task file of agent-vm, because agent-vm
+# depends on sandbox-network, and a dependency runs wherever its role does: this
+# has to run inside the guest, where nothing of libvirt exists.
+#
+# Everything here is read from the guest itself — its user's home, its vCPU
+# count — so no variable of the host-side role is needed.
+
+# How long to wait for the guest to answer over ssh, first boot included: it
+# runs the package upgrade, and may reboot once, on a spinning disk.
+agent_guest_boot_timeout: 900
+
+# /tmp is a tmpfs of this size, so scratch never reaches the spinning disk and
+# never grows without bound.
+agent_guest_tmp_size: 4G
+
+# The specimen tree, shared read-write from the host. The tag is the target dir
+# of the domain's <filesystem>, agent_vm_specimens_tag on the host side.
+agent_guest_specimens_tag: specimens
+agent_guest_specimens_mount: /mnt/specimens
+
+# The game disks: the read-only image the domain attaches, found by its label
+# (agent_vm_disks_label on the host side) so the device's name never matters.
+# gamedisks.yaml.example names every path under agent_guest_disks_source, which
+# is where the host keeps them; the guest's own copy names them under the mount.
+# The same directory the host-side role builds the image from, so the inventory
+# sets it once, as agent_vm_disks_dir.
+agent_guest_disks_label: agent-disks
+agent_guest_disks_mount: /mnt/disks
+agent_guest_disks_source: "{{ agent_vm_disks_dir }}"
+
+# pytest is pinned to the guest's vCPU count rather than left on `-n auto`.
+# The pin is what stops a suite run and a WinUAE session on the Windows guest
+# from starving each other. It is PYTEST_ADDOPTS, which comes after the
+# repository's own addopts, so its `-n` wins.
+agent_guest_pytest_workers: "{{ ansible_processor_nproc }}"
+
+agent_guest_apt_packages:
+  # Python, and what PyQt6's wheel does not carry (the CI list, wish's
+  # .github/workflows/test.yml).
+  - python3.12
+  - python3.12-venv
+  - python3-pip
+  - libegl1
+  - libgl1
+  - libxkbcommon-x11-0
+  - libdbus-1-3
+  - libglib2.0-0
+  # Emulators need an X server but not a monitor: wish already runs them under
+  # Xvfb (tools/registry/instance.py allocates a display per slot), and tools/dos/dosoutdoor.py
+  # names Xvfb and xdotool beside dosbox as its requirements.
+  - xvfb
+  - xserver-xephyr
+  - xdotool
+  - imagemagick
+  - libsdl2-2.0-0
+  - libgl1-mesa-dri        # llvmpipe, for FS-UAE's OpenGL: no GPU needed
+  - dosbox
+  - fs-uae
+  # The rest of the toolchain.
+  - git
+  - tmux
+  - flatpak
+  - zstd
+  - curl
+  - ca-certificates
+  - unzip
+  - qemu-guest-agent
+  - jq                     # read by the Claude Code status line script
+  # Building DOSBox-X.
+  - build-essential
+  - libncurses-dev
+
+# --- VICE -------------------------------------------------------------------
+# From Flathub, as tools/c64/porlaunch.sh runs it (`flatpak run net.sf.VICE`).
+# A user install, so it lands under the agent's home.
+agent_guest_vice_flatpak: net.sf.VICE
+agent_guest_flathub_url: https://dl.flathub.org/repo/flathub.flatpakrepo
+
+# Where the flatpak's own binaries land -- `current/active` is the symlink
+# flatpak keeps pointed at the installed version, never a version hash.
+agent_guest_vice_bin_dir: "{{ ansible_user_dir }}/.local/share/flatpak/app/{{ agent_guest_vice_flatpak }}/current/active/files/bin"
+
+# --- DOSBox-X ---------------------------------------------------------------
+# Built from source: neither the noble package nor the Flathub build has the
+# heavy debugger (docs/142-dosbox-x-debugger.md).
+agent_guest_dosbox_x_tag: dosbox-x-v2026.08.02
+agent_guest_dosbox_x_url: "https://github.com/joncampbell123/dosbox-x/archive/refs/tags/{{ agent_guest_dosbox_x_tag }}.tar.gz"
+agent_guest_dosbox_x_src: "/usr/local/src/dosbox-x-{{ agent_guest_dosbox_x_tag }}"
+
+# --- wish -------------------------------------------------------------------
+# Cloned over HTTPS from origin's default branch; the push credential is the
+# wish-agent App's, set up in the credential section below.
+agent_guest_wish_repo: https://github.com/malcyon/wish.git
+agent_guest_wish_dir: "{{ ansible_user_dir }}/src/wish"
+agent_guest_python: python3.12
+
+# --- Node and the VICE MCP server -------------------------------------------
+# nvm, not NodeSource or a package: no apt repository, no root. Node's only
+# job in this guest is running the VICE MCP server wish's .mcp.json names,
+# ~/src/mcp-vice-emu/dist/index.js. The version pins and the repository are
+# the usual ones for this tool.
+agent_guest_nvm_version: v0.40.3
+agent_guest_node_version: "20"
+agent_guest_mcp_vice_repo: https://github.com/axewater/mcp-vice-emu.git
+agent_guest_mcp_vice_dir: "{{ ansible_user_dir }}/src/mcp-vice-emu"
+# Pinned, not pulled: the guest applies one patch on top of upstream
+# (files/mcp-vice-emu-attach.patch), so a moving clone would need rebasing it on
+# every run. An upstream update is a change to this commit, made by hand (the
+# `git rev-parse HEAD` of a checkout at the commit wanted).
+agent_guest_mcp_vice_commit: 5706ee9e5bbffb0e0498ba0b64691b35094ba2d9
+# The commit message the patch is applied with, and what marks a checkout as
+# already carrying it (its last commit's subject) -- one string, not
+# duplicated between the tasks that write it and the one that checks for it.
+agent_guest_mcp_vice_patch_subject: "Attach to a running VICE instead of spawning one, and drop the .exe suffix outside Windows"
+
+# --- Agent tools taken from their releases ---------------------------------
+# herdr, the agent multiplexer, and Codex, OpenAI's CLI, both single binaries
+# from GitHub releases rather than a package manager, so the guest needs no
+# node. Neither is pinned. For each, /usr/local/bin/<name>-update asks GitHub
+# for the newest release, installs it under ~/.local/share/<name>/<tag> only if
+# that tag is not already there, and moves the ~/.local/bin/<name> symlink. The
+# playbook runs it, so a fresh deployment gets the latest, and a systemd user
+# timer runs it weekly, so the guest stays current between playbook runs. The
+# download is checked against the SHA-256 GitHub publishes for the asset, and
+# nothing is installed without one.
+#
+# `archive` says whether the asset is a tarball holding `binary`, or the binary
+# itself. Claude Code is not here: its native installer updates itself.
+agent_guest_release_tools:
+  herdr:
+    repo: herdrdev/herdr
+    asset: herdr-linux-x86_64
+    binary: herdr-linux-x86_64
+    archive: false
+  codex:
+    repo: openai/codex
+    asset: codex-x86_64-unknown-linux-musl.tar.gz
+    binary: codex-x86_64-unknown-linux-musl
+    archive: true
+# Versions kept on disk, each about 270 MB for Codex: the newest, and the one
+# before it.
+agent_guest_release_keep: 2
+agent_guest_release_schedule: weekly
+
+# The hooks that tell herdr what each agent is doing, one per agent CLI, each
+# with the file `herdr integration status` looks for, relative to the home
+# directory. `herdr integration install <name>` writes it and edits that CLI's
+# own config, so the file is what says it has been done.
+agent_guest_herdr_integrations:
+  claude: .claude/hooks/herdr-agent-state.sh
+  codex: .codex/herdr-agent-state.sh
+
+# --- The credential ---------------------------------------------------------
+# The wish-agent GitHub App is the only credential in the guest: no ssh key, no
+# `gh auth login`, nothing of the operator's. Its private key and config are copied
+# from the machine running the playbook, from this directory, so neither is ever
+# in this repository. The App has Contents and Workflows read and write, which is
+# what lets it push.
+agent_guest_wish_agent_src: "{{ lookup('env', 'HOME') }}/.config/wish-agent"
+agent_guest_wish_agent_dir: "{{ ansible_user_dir }}/.config/wish-agent"
+agent_guest_wish_agent_files:
+  - private-key.pem
+  - config.json
+
+# Commits are authored as the bot. Its numeric id is asked of GitHub, as the
+# App, when the role runs: user.email is <id>+<login>@users.noreply.github.com.
+agent_guest_bot_login: "wish-agent[bot]"
+
+# The git credential helper: wish's own, run with wish's own venv, so there is
+# one implementation of what a token is for.
+agent_guest_git_helper: "!{{ agent_guest_wish_dir }}/.venv/bin/python {{ agent_guest_wish_dir }}/tools/wishagent.py git-credential"
+
+# --- Monitoring -------------------------------------------------------------
+# The guest runs an exporter and nothing that ships: a collector on the desktop
+# scrapes this port and holds whatever credential the monitoring system needs,
+# so none of it is ever in here. The exporter listens on the guest's own sandbox
+# address and on nothing else, which is read from the guest (ansible_default_ipv4).
+agent_guest_exporter_port: 9100
+
+# --- private repositories ----------------------------------------------------
+# Private repositories the guest clones, over https, with the same App and no
+# copy in the game disks. The helper mints a token for one repository, wish
+# unless told otherwise, so each checkout gets a helper list of its own that
+# runs it with $WISH_AGENT_REPO set to that repository's slug.
+# The codewheel entry is first: the person's private research repository. Its
+# slug is set in the inventory; empty, the role does not clone it. Further
+# entries, each a slug and a directory, are set by overriding this list in the
+# inventory (see `inventory.yml.example`). A list set in the inventory replaces
+# this one, so it must keep the codewheel entry.
+agent_guest_codewheel_slug: ""
+agent_guest_codewheel_dir: "{{ ansible_user_dir }}/src/goldbox-codewheel"
+
+agent_guest_private_repos:
+  - slug: "{{ agent_guest_codewheel_slug }}"
+    dir: "{{ agent_guest_codewheel_dir }}"
+
+# What a VS Code Remote SSH session leaves in the agent's home, all relative to it.
+# Removed, and never wanted: see the "No editor server" section of the tasks.
+agent_guest_editor_leftovers:
+  - .vscode-server
+  - .copilot
+  - .config/Code
+  - .cache/copilot
+
+# The real gh, which the wrapper in /usr/local/bin runs with a fresh token.
+agent_guest_real_gh: /usr/bin/gh
+
+# --- gh / Claude Code -------------------------------------------------------
+agent_guest_gh_keyring_url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+agent_guest_claude_install_url: https://claude.ai/install.sh
+
+# The operator's status line and display preferences, the only part of the
+# operator's own Claude Code settings the guest gets, with modelSettings. The
+# hook and model already in settings.json come from elsewhere (herdr's
+# integration, the login flow) and this role leaves them as it finds them.
+agent_guest_claude_settings_file: "{{ ansible_user_dir }}/.claude/settings.json"
+agent_guest_claude_statusline_dest: "{{ ansible_user_dir }}/.claude/statusline-command.sh"
+agent_guest_claude_attribution:
+  commit: ""
+  pr: ""
+# The orchestrator reads reports and writes briefs; agents that must think hard set their own effort in their frontmatter.
+agent_guest_claude_effort_level: medium
+# The model the guest's Claude Code runs; the per-model effort block is keyed by this id.
+agent_guest_claude_model_id: claude-sonnet-5
+agent_guest_claude_theme: light
+
+# --- The weekly live tests --------------------------------------------------
+# The suite's `livetests/` directory holds the tests that boot an emulator or
+# talk to hardware, too slow for every pre-push run, so a systemd user timer
+# runs them weekly instead. A single directory target, not a file list, so a
+# test the wish repo adds under `livetests/` is picked up with no change here.
+agent_guest_live_tests:
+  - livetests
+agent_guest_emulator_tests_schedule: weekly
+agent_guest_emulator_tests_log_dir: "{{ ansible_user_dir }}/.cache/wish/emulator-tests"
+# Logs kept on disk: the newest, and the four before it.
+agent_guest_emulator_tests_keep: 5
+# A sentence a person would say, not a test name: also how a re-run finds an
+# issue it already filed, with `gh issue list --search`.
+agent_guest_emulator_tests_issue_title: "The weekly live tests are failing"
+# malcyon/wish, read off agent_guest_wish_repo rather than written out again.
+agent_guest_wish_slug: "{{ agent_guest_wish_repo | regex_replace('^https://github.com/', '') | regex_replace('\\.git$', '') }}"

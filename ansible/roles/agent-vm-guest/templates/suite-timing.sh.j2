@@ -1,0 +1,34 @@
+#!/bin/bash
+# Managed by Ansible — roles/agent-vm-guest.
+#
+# Runs wish's suite once and reports how long it took and how much memory the
+# guest used while it did. This is how the suite numbers in
+# docs/219-the-agent-sandbox.md were taken; run it twice for a cold and a warm
+# figure. Extra arguments go to pytest.
+#
+#   suite-timing            # the whole suite
+#   suite-timing -k specimens
+set -u
+
+# So it works from a non-login shell too: the pin on pytest's worker count and
+# WISH_SPECIMENS live in the profile.
+. /etc/profile.d/agent-vm.sh
+
+cd {{ agent_guest_wish_dir }}
+mem=$(mktemp)
+( while :; do echo "$(date +%s) $(free -m | awk '/Mem:/{print $3, $7}')"; sleep 1; done ) > "$mem" &
+sampler=$!
+start=$(date +%s)
+.venv/bin/pytest -q -p no:cacheprovider "$@"
+rc=$?
+end=$(date +%s)
+kill "$sampler" 2>/dev/null
+
+awk -v wall=$((end - start)) '
+  NR == 1 { idle = $2 }
+  $2 > peak { peak = $2 }
+  min == "" || $3 < min { min = $3 }
+  END { printf "wall %ds; guest memory used: idle %d MB, peak %d MB (+%d MB); minimum available %d MB\n", wall, idle, peak, peak - idle, min }
+' "$mem"
+rm -f "$mem"
+exit $rc

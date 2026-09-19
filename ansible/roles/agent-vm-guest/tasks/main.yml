@@ -1,0 +1,1059 @@
+---
+# The inside of the agent-vm guest, run against it over ssh (the `agent_vms`
+# group) once roles/agent-vm has built it and cloud-init has made its `agent`
+# user.
+# Every task is guarded so a re-run changes nothing, and each section is a
+# tagged block so one of them can be run alone (`-t dosbox`).
+#
+# What is left out on purpose: seeding `gamedisks.yaml` and mounting the game
+# disks image, which are a separate step, and every credential of the operator's
+# own. Nothing of the operator's is in this guest.
+
+# --- first boot -------------------------------------------------------------
+
+- name: First boot
+  tags: boot
+  block:
+    - name: Wait for the guest to answer over ssh
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ agent_guest_boot_timeout }}"
+
+    # The upgrade runs on the first boot and takes a while. rc 2 is "finished,
+    # with recoverable errors", which is how a package hook that complains
+    # about a cloud image ends.
+    - name: Wait for cloud-init to finish
+      ansible.builtin.command: cloud-init status --wait
+      register: agent_guest_cloud_init
+      failed_when: agent_guest_cloud_init.rc not in [0, 2]
+      changed_when: false
+
+    - name: Check whether the upgrade wants a reboot
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: agent_guest_reboot_required
+
+    # Once, before anything is installed, so the toolchain is built against the
+    # kernel the guest will keep running.
+    - name: Reboot into the upgraded kernel
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+      become: true
+      when: agent_guest_reboot_required.stat.exists
+
+    # Scratch never reaches the spinning disk and never grows without bound.
+    # Nothing in it survives a reboot, and that is the point.
+    - name: Mount /tmp as a tmpfs
+      ansible.posix.mount:
+        path: /tmp
+        src: tmpfs
+        fstype: tmpfs
+        opts: "size={{ agent_guest_tmp_size }},mode=1777,nosuid,nodev"
+        state: mounted
+      become: true
+
+# --- packages ---------------------------------------------------------------
+
+- name: Packages
+  tags: packages
+  become: true
+  block:
+    # noble keeps its sources in deb822 form; `apt build-dep` needs the deb-src
+    # half switched on, which the cloud image ships off.
+    - name: Enable deb-src for noble
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list.d/ubuntu.sources
+        regexp: '^Types: deb$'
+        replace: 'Types: deb deb-src'
+
+    - name: Install the packages the suite, the emulators and the build need
+      ansible.builtin.apt:
+        name: "{{ agent_guest_apt_packages }}"
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # The packaged dosbox-x is never installed (no debugger); its build
+    # dependencies are exactly what the source build wants.
+    # update_cache with no cache_valid_time: the source indexes only exist once
+    # deb-src is on, and a cache refreshed an hour ago -- cloud-init's, at
+    # first boot -- would otherwise be taken as fresh.
+    - name: Install DOSBox-X's build dependencies
+      ansible.builtin.apt:
+        name: dosbox-x
+        state: build-dep
+        update_cache: true
+
+# --- gh and Claude Code -----------------------------------------------------
+
+- name: The gh CLI
+  tags: gh
+  become: true
+  block:
+    - name: Create the apt keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install GitHub's apt signing key
+      ansible.builtin.get_url:
+        url: "{{ agent_guest_gh_keyring_url }}"
+        dest: /etc/apt/keyrings/githubcli-archive-keyring.gpg
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Add GitHub's apt repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg]
+          https://cli.github.com/packages stable main
+        filename: github-cli
+        state: present
+
+    # Installed, not logged in: the agents use the wish-agent App, whose
+    # credential is set up in its own section below.
+    - name: Install gh
+      ansible.builtin.apt:
+        name: gh
+        state: present
+        update_cache: true
+
+- name: Claude Code
+  tags: claude
+  block:
+    # The native installer, so `claude update` keeps working.
+    - name: Install Claude Code
+      ansible.builtin.shell: "curl -fsSL {{ agent_guest_claude_install_url }} | bash"
+      args:
+        creates: "{{ ansible_user_dir }}/.local/bin/claude"
+
+    # The operator's status line script, unchanged; it needs only jq and
+    # whoami/hostname, nothing of the guest's.
+    - name: Install the status line script
+      ansible.builtin.copy:
+        src: statusline-command.sh
+        dest: "{{ agent_guest_claude_statusline_dest }}"
+        mode: "0755"
+
+    - name: Look for an existing Claude Code settings file
+      ansible.builtin.stat:
+        path: "{{ agent_guest_claude_settings_file }}"
+      register: agent_guest_claude_settings_stat
+
+    - name: Read it, if it is there
+      ansible.builtin.slurp:
+        src: "{{ agent_guest_claude_settings_file }}"
+      register: agent_guest_claude_settings_raw
+      when: agent_guest_claude_settings_stat.stat.exists
+
+    # Merges in the status line, the display keys and modelSettings, which the
+    # role owns; the hook and model already there (from herdr's integration
+    # and the login flow) are left exactly as found. copy only writes -- and
+    # only reports changed -- when the merged content differs, so a second run
+    # is a no-op.
+    - name: Merge the status line and display settings into settings.json
+      ansible.builtin.copy:
+        dest: "{{ agent_guest_claude_settings_file }}"
+        mode: "0644"
+        content: "{{ (agent_guest_claude_settings_current | combine(agent_guest_claude_settings_wanted)) | to_nice_json }}\n"
+      vars:
+        agent_guest_claude_settings_current: >-
+          {{ (agent_guest_claude_settings_raw.content | b64decode | from_json)
+             if agent_guest_claude_settings_stat.stat.exists else {} }}
+        agent_guest_claude_settings_wanted:
+          statusLine:
+            type: command
+            command: "bash {{ agent_guest_claude_statusline_dest }}"
+          attribution: "{{ agent_guest_claude_attribution }}"
+          effortLevel: "{{ agent_guest_claude_effort_level }}"
+          # /effort writes the per-model block, and it overrides the top-level
+          # key, so the role owns it too.
+          modelSettings: "{{ {agent_guest_claude_model_id: {'effortLevel': agent_guest_claude_effort_level}} }}"
+          theme: "{{ agent_guest_claude_theme }}"
+
+# --- herdr and Codex, from their releases ----------------------------------
+# Each has its own tag, and both share a task file and the user-timer setup.
+
+# Without linger the agent's user manager exists only while somebody is logged
+# in, and a timer in it would never fire on an idle guest.
+- name: Let the agent's user timers run without a login
+  tags: [herdr, codex, emulator_tests]
+  become: true
+  block:
+    - name: Enable linger
+      ansible.builtin.command: "loginctl enable-linger {{ ansible_user_id }}"
+      args:
+        creates: "/var/lib/systemd/linger/{{ ansible_user_id }}"
+
+- name: The user timer directory
+  tags: [herdr, codex, emulator_tests]
+  block:
+    - name: Wait for the agent's user manager
+      ansible.builtin.wait_for:
+        path: "/run/user/{{ ansible_user_uid }}/bus"
+        timeout: 60
+
+    - name: Create the user unit directory
+      ansible.builtin.file:
+        path: "{{ ansible_user_dir }}/.config/systemd/user"
+        state: directory
+        mode: "0755"
+
+- name: The herdr multiplexer
+  ansible.builtin.include_tasks:
+    file: release-tool.yml
+    apply:
+      tags: herdr
+  vars:
+    agent_guest_tool_name: herdr
+  tags: herdr
+
+- name: Codex
+  ansible.builtin.include_tasks:
+    file: release-tool.yml
+    apply:
+      tags: codex
+  vars:
+    agent_guest_tool_name: codex
+  tags: codex
+
+# --- herdr's hooks ----------------------------------------------------------
+# After the agents themselves, so each hook has a CLI to sit in.
+
+- name: The hooks herdr installs for each agent
+  tags: [herdr, herdr_integrations]
+  block:
+    - name: Install herdr's hook for each agent
+      ansible.builtin.command: "{{ ansible_user_dir }}/.local/bin/herdr integration install {{ item.key }}"
+      args:
+        creates: "{{ ansible_user_dir }}/{{ item.value }}"
+      loop: "{{ agent_guest_herdr_integrations | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+# --- VICE -------------------------------------------------------------------
+
+- name: VICE
+  tags: vice
+  block:
+    - name: List the user's flatpak remotes
+      ansible.builtin.command: flatpak --user remotes --columns=name
+      register: agent_guest_flatpak_remotes
+      changed_when: false
+
+    - name: Add flathub as a user remote
+      ansible.builtin.command: >-
+        flatpak --user remote-add --if-not-exists flathub {{ agent_guest_flathub_url }}
+      when: "'flathub' not in agent_guest_flatpak_remotes.stdout_lines"
+      changed_when: true
+
+    - name: Install VICE from flathub
+      ansible.builtin.command: >-
+        flatpak --user install -y --noninteractive flathub {{ agent_guest_vice_flatpak }}
+      args:
+        creates: "{{ ansible_user_dir }}/.local/share/flatpak/app/{{ agent_guest_vice_flatpak }}"
+      async: 3600
+      poll: 15
+
+    - name: Create ~/.local/bin
+      ansible.builtin.file:
+        path: "{{ ansible_user_dir }}/.local/bin"
+        state: directory
+        mode: "0755"
+
+    - name: Look for the flatpak's own bin directory
+      ansible.builtin.stat:
+        path: "{{ agent_guest_vice_bin_dir }}"
+      register: agent_guest_vice_bin_stat
+
+    # x64sc and the rest fail outside the sandbox -- "error while loading
+    # shared libraries: libGLEW.so.2.2" -- so PATH cannot point at
+    # files/bin directly. One wrapper per binary the flatpak ships there
+    # instead, each a `flatpak run --command=` of itself; ~/.local/bin is
+    # already on PATH for every shell (below, and stock ~/.profile for login).
+    - name: List the flatpak's own binaries
+      ansible.builtin.find:
+        paths: "{{ agent_guest_vice_bin_dir }}"
+        file_type: any
+        depth: 1
+      register: agent_guest_vice_bin_files
+      when: agent_guest_vice_bin_stat.stat.exists
+
+    - name: Install a PATH wrapper for each VICE binary
+      ansible.builtin.copy:
+        dest: "{{ ansible_user_dir }}/.local/bin/{{ item.path | basename }}"
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          # Managed by Ansible -- roles/agent-vm-guest. The flatpak's own
+          # {{ item.path | basename }} fails outside its sandbox, so this runs
+          # it through flatpak rather than putting files/bin on PATH.
+          exec flatpak run --command={{ item.path | basename }} {{ agent_guest_vice_flatpak }} "$@"
+      loop: "{{ agent_guest_vice_bin_files.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      when: agent_guest_vice_bin_stat.stat.exists
+
+# --- DOSBox-X ---------------------------------------------------------------
+
+- name: DOSBox-X
+  tags: dosbox
+  become: true
+  block:
+    - name: Download the DOSBox-X source tarball
+      ansible.builtin.get_url:
+        url: "{{ agent_guest_dosbox_x_url }}"
+        dest: "/usr/local/src/{{ agent_guest_dosbox_x_tag }}.tar.gz"
+        mode: "0644"
+        timeout: 120
+
+    - name: Unpack the DOSBox-X source
+      ansible.builtin.unarchive:
+        src: "/usr/local/src/{{ agent_guest_dosbox_x_tag }}.tar.gz"
+        dest: /usr/local/src
+        remote_src: true
+        creates: "{{ agent_guest_dosbox_x_src }}"
+
+    # build-debug-sdl2 is `configure --enable-debug=heavy --enable-sdl2`; heavy
+    # is the flag that compiles BPM, the watchpoint, and a simple --enable-debug
+    # leaves it out (docs/142-dosbox-x-debugger.md). There is no output
+    # until it is done, so it runs asynchronously rather than holding an ssh
+    # session open for it.
+    - name: Build and install DOSBox-X with the heavy debugger
+      ansible.builtin.shell: >-
+        ./build-debug-sdl2 --prefix=/usr/local && make install
+      args:
+        chdir: "{{ agent_guest_dosbox_x_src }}"
+        creates: /usr/local/bin/dosbox-x
+      async: 5400
+      poll: 30
+
+    - name: Ask dosbox-x for its help text
+      ansible.builtin.command: /usr/local/bin/dosbox-x --help
+      environment:
+        SDL_VIDEODRIVER: dummy
+      register: agent_guest_dosbox_x_help
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the debugger is compiled in
+      ansible.builtin.assert:
+        that:
+          - (agent_guest_dosbox_x_help.stdout ~ agent_guest_dosbox_x_help.stderr) | regex_findall('helpdebug') | length == 1
+        fail_msg: >-
+          `dosbox-x --help | grep -c helpdebug` must print 1. This build has no
+          debugger; remove /usr/local/bin/dosbox-x and re-run with -t dosbox.
+
+# --- wish -------------------------------------------------------------------
+
+- name: The wish checkout
+  tags: wish
+  block:
+    - name: Create ~/src
+      ansible.builtin.file:
+        path: "{{ agent_guest_wish_dir | dirname }}"
+        state: directory
+        mode: "0755"
+
+    # Full history and tags: hatch-vcs reads the version off the nearest v*
+    # tag, and a shallow clone reports 0.0.0. update: false -- a checkout
+    # somebody is working in is not moved by a re-run; pull by hand.
+    - name: Clone wish
+      ansible.builtin.git:
+        repo: "{{ agent_guest_wish_repo }}"
+        dest: "{{ agent_guest_wish_dir }}"
+        update: false
+
+    # `update: false` above leaves a checkout somebody is working in alone, and
+    # it would also leave one that predates something this role needs from wish,
+    # like the credential helper. So a checkout that is a clean main is brought
+    # forward, by fast-forward only, and anything else is left as it is.
+    - name: Look at the wish checkout
+      ansible.builtin.shell: |
+        if [ "$(git rev-parse --abbrev-ref HEAD)" = main ] && [ -z "$(git status --porcelain)" ]; then
+          echo clean-main
+        else
+          echo other
+        fi
+      args:
+        chdir: "{{ agent_guest_wish_dir }}"
+      register: agent_guest_wish_state
+      changed_when: false
+
+    - name: Fetch origin for the wish checkout
+      ansible.builtin.command: git fetch origin main
+      args:
+        chdir: "{{ agent_guest_wish_dir }}"
+      changed_when: false
+      when: agent_guest_wish_state.stdout == 'clean-main'
+
+    # A main with commits of its own is the guest's work in progress and is left
+    # for the guest to rebase; only a main behind origin is moved.
+    - name: Fast-forward a clean main that is behind origin
+      ansible.builtin.shell: |
+        if git merge-base --is-ancestor HEAD origin/main; then
+          git merge --ff-only origin/main
+        else
+          echo "left alone: main has commits origin does not"
+        fi
+      args:
+        chdir: "{{ agent_guest_wish_dir }}"
+      register: agent_guest_wish_pull
+      changed_when: >-
+        'Already up to date' not in agent_guest_wish_pull.stdout
+        and 'left alone' not in agent_guest_wish_pull.stdout
+      when: agent_guest_wish_state.stdout == 'clean-main'
+
+    - name: Create .venv
+      ansible.builtin.command: "{{ agent_guest_python }} -m venv .venv"
+      args:
+        chdir: "{{ agent_guest_wish_dir }}"
+        creates: "{{ agent_guest_wish_dir }}/.venv/bin/python"
+
+    # `creates` is the entry point the install writes. An editable install
+    # rebuilds and reports "Successfully installed" on every run, so the output
+    # cannot tell a real change from a no-op.
+    - name: Install wish into .venv
+      ansible.builtin.command: .venv/bin/pip install -e ".[dev,gui]"
+      args:
+        chdir: "{{ agent_guest_wish_dir }}"
+        creates: "{{ agent_guest_wish_dir }}/.venv/bin/wish"
+
+    # The dev extra is expected to carry ruff, but this venv may predate
+    # that, so it is also installed by name: .venv/bin/ruff exists either way.
+    - name: Install ruff into .venv, in case the dev extra does not list it yet
+      ansible.builtin.command: .venv/bin/pip install ruff
+      args:
+        chdir: "{{ agent_guest_wish_dir }}"
+        creates: "{{ agent_guest_wish_dir }}/.venv/bin/ruff"
+
+# --- Node and the VICE MCP server -------------------------------------------
+# nvm, not NodeSource or a package: no apt repository, no root. Node's only
+# job in this guest is running the VICE MCP server, wish's .mcp.json names.
+- name: Node and the VICE MCP server
+  tags: node
+  block:
+    - name: Install nvm
+      ansible.builtin.shell: >-
+        curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/{{ agent_guest_nvm_version }}/install.sh | bash
+      args:
+        creates: "{{ ansible_user_dir }}/.nvm/nvm.sh"
+
+    - name: Install node and make it the default, at version {{ agent_guest_node_version }}
+      ansible.builtin.shell: >-
+        . "{{ ansible_user_dir }}/.nvm/nvm.sh"
+        && nvm install {{ agent_guest_node_version }}
+        && nvm alias default {{ agent_guest_node_version }}
+      args:
+        executable: /bin/bash
+        creates: "{{ ansible_user_dir }}/.nvm/versions/node/v{{ agent_guest_node_version }}.*"
+
+    # Its own copy, not a dependency on the wish tag: -t node has to work
+    # alone.
+    - name: Create ~/src
+      ansible.builtin.file:
+        path: "{{ agent_guest_wish_dir | dirname }}"
+        state: directory
+        mode: "0755"
+
+    # Pinned at a commit rather than pulled, and patched: see
+    # agent_guest_mcp_vice_commit. Guarded on the checkout already carrying
+    # the patch commit, like the codewheel checkout below is guarded on existing,
+    # so a second run touches none of this -- and a checkout that predates
+    # the patch (or is pinned to an older commit) is wiped and redone rather
+    # than patched twice or left stale.
+    - name: Look for the mcp-vice-emu checkout
+      ansible.builtin.stat:
+        path: "{{ agent_guest_mcp_vice_dir }}/.git"
+      register: agent_guest_mcp_vice_git
+
+    - name: Read its last commit, if it is there
+      ansible.builtin.command: git log -1 --format=%s
+      args:
+        chdir: "{{ agent_guest_mcp_vice_dir }}"
+      register: agent_guest_mcp_vice_last_commit
+      changed_when: false
+      failed_when: false
+      when: agent_guest_mcp_vice_git.stat.exists
+
+    - name: Remove a checkout that does not already carry the attach patch
+      ansible.builtin.file:
+        path: "{{ agent_guest_mcp_vice_dir }}"
+        state: absent
+      when: >-
+        agent_guest_mcp_vice_git.stat.exists and
+        agent_guest_mcp_vice_last_commit.stdout | default('') != agent_guest_mcp_vice_patch_subject
+
+    - name: Look for the mcp-vice-emu checkout, after any reset above
+      ansible.builtin.stat:
+        path: "{{ agent_guest_mcp_vice_dir }}/.git"
+      register: agent_guest_mcp_vice_git
+
+    - name: Clone mcp-vice-emu, without checking anything out yet
+      ansible.builtin.command:
+        argv:
+          - git
+          - clone
+          - --no-checkout
+          - "{{ agent_guest_mcp_vice_repo }}"
+          - "{{ agent_guest_mcp_vice_dir }}"
+      when: not agent_guest_mcp_vice_git.stat.exists
+      changed_when: true
+
+    - name: Check out the pinned commit
+      ansible.builtin.command: "git checkout {{ agent_guest_mcp_vice_commit }}"
+      args:
+        chdir: "{{ agent_guest_mcp_vice_dir }}"
+      when: not agent_guest_mcp_vice_git.stat.exists
+      changed_when: true
+
+    # A patch to vice-connection.ts (files/mcp-vice-emu-attach.patch): attach to
+    # a VICE already listening on the monitor port instead of spawning one, and
+    # drop the .exe suffix outside Windows.
+    - name: Copy the attach patch
+      ansible.builtin.copy:
+        src: mcp-vice-emu-attach.patch
+        dest: /tmp/mcp-vice-emu-attach.patch
+        mode: "0644"
+      when: not agent_guest_mcp_vice_git.stat.exists
+
+    - name: Apply the attach patch
+      ansible.builtin.command: git apply /tmp/mcp-vice-emu-attach.patch
+      args:
+        chdir: "{{ agent_guest_mcp_vice_dir }}"
+      when: not agent_guest_mcp_vice_git.stat.exists
+      changed_when: true
+
+    # A local identity, not the bot's: this commit never leaves the guest, and
+    # runs before the credential section below sets the global one up.
+    - name: Commit the attach patch, so the checkout is a clean tree
+      ansible.builtin.shell: |
+        set -e
+        git config user.email "agent-vm-guest@localhost"
+        git config user.name "agent-vm-guest role"
+        git commit -am "{{ agent_guest_mcp_vice_patch_subject }}"
+      args:
+        chdir: "{{ agent_guest_mcp_vice_dir }}"
+      when: not agent_guest_mcp_vice_git.stat.exists
+      changed_when: true
+
+    - name: Run npm install for mcp-vice-emu
+      ansible.builtin.shell: >-
+        . "{{ ansible_user_dir }}/.nvm/nvm.sh" && npm install
+      args:
+        executable: /bin/bash
+        chdir: "{{ agent_guest_mcp_vice_dir }}"
+        creates: "{{ agent_guest_mcp_vice_dir }}/node_modules"
+
+    # dist/index.js is the path wish's .mcp.json points at.
+    - name: Build mcp-vice-emu
+      ansible.builtin.shell: >-
+        . "{{ ansible_user_dir }}/.nvm/nvm.sh" && npm run build
+      args:
+        executable: /bin/bash
+        chdir: "{{ agent_guest_mcp_vice_dir }}"
+        creates: "{{ agent_guest_mcp_vice_dir }}/dist/index.js"
+
+# --- the credential --------------------------------------------------------
+
+- name: The wish-agent credential
+  tags: credential
+  block:
+    # The files are on the machine running the playbook, not in the guest and
+    # not in this repository, so say what is missing rather than fail in copy.
+    - name: Check the App's key and config are where they should be
+      ansible.builtin.stat:
+        path: "{{ agent_guest_wish_agent_src }}/{{ item }}"
+      loop: "{{ agent_guest_wish_agent_files }}"
+      register: agent_guest_wish_agent_stat
+      delegate_to: localhost
+
+    - name: Assert they are there
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+        fail_msg: >-
+          {{ item.item }} is not in {{ agent_guest_wish_agent_src }} on this
+          machine. That directory is the wish-agent App's key and config
+          (docs/218-the-wish-agent-bot.md in wish), and it is copied from there
+          so it never enters this repository. Set agent_guest_wish_agent_src if
+          it is somewhere else.
+        quiet: true
+      loop: "{{ agent_guest_wish_agent_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Create the wish-agent config directory
+      ansible.builtin.file:
+        path: "{{ agent_guest_wish_agent_dir }}"
+        state: directory
+        mode: "0700"
+
+    # 0600, owned by the guest's user: wishagent.py refuses a key that group or
+    # other can read. no_log, since a diff of a key is the key.
+    - name: Copy the App's private key and config into the guest
+      ansible.builtin.copy:
+        src: "{{ agent_guest_wish_agent_src }}/{{ item }}"
+        dest: "{{ agent_guest_wish_agent_dir }}/{{ item }}"
+        mode: "0600"
+      loop: "{{ agent_guest_wish_agent_files }}"
+      loop_control:
+        label: "{{ item }}"
+      no_log: true
+
+    - name: Read the wish checkout's origin
+      ansible.builtin.command: git remote get-url origin
+      args:
+        chdir: "{{ agent_guest_wish_dir }}"
+      register: agent_guest_origin
+      changed_when: false
+
+    - name: Point the wish checkout's origin at HTTPS
+      ansible.builtin.command: "git remote set-url origin {{ agent_guest_wish_repo }}"
+      args:
+        chdir: "{{ agent_guest_wish_dir }}"
+      when: agent_guest_origin.stdout | trim != agent_guest_wish_repo
+      changed_when: true
+
+    # Ahead of the real gh on PATH for every shell, login or not. It mints a
+    # token per call, so there is no stored login for anybody to find.
+    - name: Install the gh wrapper
+      ansible.builtin.template:
+        src: gh-wrapper.sh.j2
+        dest: /usr/local/bin/gh
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    # git asks the helper for a token for github.com and nothing else; the
+    # token is minted for that request and stored nowhere. git also offers what
+    # it was given to every other helper it has, and a helper that stores
+    # credentials would write the token to disk -- so the list starts with an
+    # empty entry, which resets whatever was inherited, and this is the only one.
+    - name: Read git's helper list for github.com
+      ansible.builtin.command: git config --global --get-all credential.https://github.com.helper
+      register: agent_guest_git_helpers
+      changed_when: false
+      failed_when: agent_guest_git_helpers.rc not in [0, 1]
+
+    - name: Let git take its credential from wishagent.py, and from nothing else
+      ansible.builtin.shell: |
+        set -e
+        git config --global --unset-all credential.https://github.com.helper || true
+        git config --global --add credential.https://github.com.helper ''
+        git config --global --add credential.https://github.com.helper '{{ agent_guest_git_helper }}'
+      when: agent_guest_git_helpers.stdout_lines != ['', agent_guest_git_helper]
+      changed_when: true
+
+    # Asked of GitHub as the App, through the wrapper: a public user record, so
+    # it needs no login of anybody's.
+    - name: Ask GitHub for the bot's numeric id
+      ansible.builtin.command: "gh api /users/{{ agent_guest_bot_login | urlencode }} --jq .id"
+      register: agent_guest_bot_id
+      changed_when: false
+
+    - name: Commit as the bot
+      community.general.git_config:
+        scope: global
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+      loop:
+        - name: user.name
+          value: "{{ agent_guest_bot_login }}"
+        - name: user.email
+          value: "{{ agent_guest_bot_id.stdout | trim }}+{{ agent_guest_bot_login }}@users.noreply.github.com"
+      loop_control:
+        label: "{{ item.name }}"
+
+# --- no editor server -------------------------------------------------------
+
+# VS Code's Remote SSH installs a server here and forwards the person's GitHub
+# sign-in into it: a token in its environment and in its logs, readable by every
+# agent that runs as this user. Nothing of the operator's belongs in this guest, so the
+# guest is looked at through a read-only sshfs mount instead (ansible/README.md),
+# and if a server turns up anyway this takes it, and what its Copilot extension
+# cached about the account, away. The isolation test fails on a token either way.
+- name: No editor server
+  tags: credential
+  block:
+    - name: Stop anything still running from a VS Code server
+      ansible.builtin.command: "pkill -u {{ ansible_user_id }} -f '/[.]vscode-server/'"
+      register: agent_guest_vscode_procs
+      changed_when: agent_guest_vscode_procs.rc == 0
+      failed_when: agent_guest_vscode_procs.rc not in [0, 1]
+
+    - name: Remove the server and what its Copilot extension left
+      ansible.builtin.file:
+        path: "{{ ansible_user_dir }}/{{ item }}"
+        state: absent
+      loop: "{{ agent_guest_editor_leftovers }}"
+
+# --- mounts and environment -------------------------------------------------
+
+- name: Mounts and environment
+  tags: environment
+  become: true
+  block:
+    # No `mode`, no `owner`: once the share is mounted this path is the host's
+    # directory, and a mode given here would be written straight through
+    # virtiofs to the host's copy of the specimen tree.
+    - name: Create the specimens mount point
+      ansible.builtin.file:
+        path: "{{ agent_guest_specimens_mount }}"
+        state: directory
+
+    # The one writable share, from the host's virtiofs export. nofail: a guest
+    # whose host has not exported it still boots, rather than dropping into
+    # emergency mode with nobody at the console.
+    - name: Mount the specimen tree
+      ansible.posix.mount:
+        path: "{{ agent_guest_specimens_mount }}"
+        src: "{{ agent_guest_specimens_tag }}"
+        fstype: virtiofs
+        opts: defaults,nofail
+        state: mounted
+
+    # Sourced by every shell — login, and interactive non-login through the
+    # ~/.bashrc hook below — so pytest is pinned to the guest's vCPU count here
+    # rather than left on `-n auto`; it comes from PYTEST_ADDOPTS, which is read
+    # after the repository's own addopts, so its `-n` wins. Stock ~/.profile
+    # already puts ~/.local/bin on PATH for login shells, unconditionally, so
+    # the PATH stanza here only fires for non-login shells, or it would end up
+    # on PATH twice in a login shell.
+    - name: Install the suite timing script
+      ansible.builtin.template:
+        src: suite-timing.sh.j2
+        dest: /usr/local/bin/suite-timing
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the guest's profile
+      ansible.builtin.copy:
+        dest: /etc/profile.d/agent-vm.sh
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible — roles/agent-vm-guest.
+          export WISH_SPECIMENS={{ agent_guest_specimens_mount }}
+          export PYTEST_ADDOPTS="-n {{ agent_guest_pytest_workers }}"
+          # wish's .mcp.json reads this as the directory holding the VICE
+          # binaries; here that is the flatpak wrapper scripts, not /usr/bin.
+          export VICE_PATH={{ ansible_user_dir }}/.local/bin
+          # nvm's own node, unconditionally: stock ~/.profile knows nothing
+          # of it, for a login shell or otherwise. The glob silently matches
+          # nothing if nvm is not installed.
+          for _agent_vm_node_bin in "$HOME"/.nvm/versions/node/*/bin; do
+            [ -d "$_agent_vm_node_bin" ] && PATH="$_agent_vm_node_bin:$PATH"
+          done
+          unset _agent_vm_node_bin
+          export PATH
+          if ! shopt -q login_shell 2>/dev/null; then
+            case ":$PATH:" in
+              *":$HOME/.local/bin:"*) ;;
+              *) export PATH="$HOME/.local/bin:$PATH" ;;
+            esac
+          fi
+
+    # /etc/profile.d only runs for login shells, so tmux panes and herdr — both
+    # interactive non-login — never saw claude, codex, herdr or the wish
+    # variables above without this. blockinfile leaves the rest of the stock
+    # ~/.bashrc alone.
+    - name: Read the guest's profile from interactive non-login shells too
+      ansible.builtin.blockinfile:
+        path: "{{ ansible_user_dir }}/.bashrc"
+        marker: "# {mark} Ansible: roles/agent-vm-guest"
+        block: |
+          [ -f /etc/profile.d/agent-vm.sh ] && . /etc/profile.d/agent-vm.sh
+
+# --- the weekly live tests --------------------------------------------------
+# The suite's livetests/ directory, too slow for every pre-push run above. A
+# systemd user timer runs it weekly instead, the same pattern as herdr-update
+# and codex-update: linger and the unit directory are set up above, tagged for
+# this too.
+- name: The weekly live tests
+  tags: emulator_tests
+  block:
+    - name: Install the emulator test runner
+      ansible.builtin.template:
+        src: emulator-tests.sh.j2
+        dest: /usr/local/bin/emulator-tests
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Install the emulator-tests units
+      ansible.builtin.template:
+        src: "emulator-tests.{{ item }}.j2"
+        dest: "{{ ansible_user_dir }}/.config/systemd/user/emulator-tests.{{ item }}"
+        mode: "0644"
+      loop:
+        - service
+        - timer
+
+    - name: Enable the weekly emulator tests
+      ansible.builtin.systemd:
+        name: emulator-tests.timer
+        scope: user
+        daemon_reload: true
+        enabled: true
+        state: started
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"
+
+# --- a quiet login ---------------------------------------------------------
+
+# Ubuntu prints its welcome banner, the system information, the update counts
+# and the last login to every interactive ssh login. The guest is a tool that is
+# logged into many times a day, and none of that is about it. An empty
+# ~/.hushlogin is the switch login and sshd both honour.
+- name: No welcome message on login
+  tags: login
+  ansible.builtin.file:
+    path: "{{ ansible_user_dir }}/.hushlogin"
+    state: touch
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+
+# --- the game disks -------------------------------------------------------
+
+- name: The game disks
+  tags: disks
+  become: true
+  block:
+    # No mode and no owner: once the image is mounted this path is its root
+    # directory, which the host's build made root's.
+    - name: Create the game disks mount point
+      ansible.builtin.file:
+        path: "{{ agent_guest_disks_mount }}"
+        state: directory
+
+    # ro here and a write-protected device under it. nofail, and a short device
+    # timeout, so a guest started before the image was attached still boots.
+    - name: Put the game disks in fstab
+      ansible.posix.mount:
+        path: "{{ agent_guest_disks_mount }}"
+        src: "LABEL={{ agent_guest_disks_label }}"
+        fstype: ext4
+        opts: ro,nodev,nosuid,nofail,x-systemd.device-timeout=5s
+        state: present
+
+    - name: Look for the game disks device
+      ansible.builtin.stat:
+        path: "/dev/disk/by-label/{{ agent_guest_disks_label }}"
+      register: agent_guest_disks_device
+
+    - name: Mount the game disks
+      ansible.posix.mount:
+        path: "{{ agent_guest_disks_mount }}"
+        src: "LABEL={{ agent_guest_disks_label }}"
+        fstype: ext4
+        opts: ro,nodev,nosuid,nofail,x-systemd.device-timeout=5s
+        state: mounted
+      when: agent_guest_disks_device.stat.exists
+
+    - name: Say that the guest has not been given the game disks yet
+      ansible.builtin.debug:
+        msg: >-
+          No disk labelled {{ agent_guest_disks_label }} is attached, so
+          {{ agent_guest_disks_mount }} is not mounted. The domain gained it
+          after this guest started: `virsh shutdown agent-vm`, wait for it to
+          power off, `virsh start agent-vm`, and run this again.
+      when: not agent_guest_disks_device.stat.exists
+
+    - name: Read how the game disks are mounted
+      ansible.builtin.command: "findmnt -no OPTIONS {{ agent_guest_disks_mount }}"
+      register: agent_guest_disks_options
+      changed_when: false
+      failed_when: false
+      when: agent_guest_disks_device.stat.exists
+
+    - name: Read whether the device itself is write-protected
+      ansible.builtin.command: "blockdev --getro /dev/disk/by-label/{{ agent_guest_disks_label }}"
+      register: agent_guest_disks_ro
+      changed_when: false
+      when: agent_guest_disks_device.stat.exists
+
+    # The mount option is the guest's own doing and could be undone by root. The
+    # device flag is the host's: QEMU opened the image read-only.
+    - name: Assert the game disks are read-only, mounted and at the device
+      ansible.builtin.assert:
+        that:
+          - agent_guest_disks_options.rc == 0
+          - "'ro' in agent_guest_disks_options.stdout.split(',')"
+          - agent_guest_disks_ro.stdout | trim == '1'
+        fail_msg: >-
+          {{ agent_guest_disks_mount }} is not a read-only mount of a
+          write-protected device (mount options
+          '{{ agent_guest_disks_options.stdout | default('') }}', device
+          read-only flag '{{ agent_guest_disks_ro.stdout | default('') | trim }}').
+      when: agent_guest_disks_device.stat.exists
+
+# The example is the registry's format, with every path where the host keeps
+# it. This machine's copy is the same file with every path under the mount,
+# except codewheel, which is not a copy on the disks at all but the guest's own
+# clone. gamedisks.yaml is gitignored, so the checkout stays clean.
+- name: The guest's gamedisks.yaml
+  tags: disks
+  block:
+    - name: Read gamedisks.yaml.example
+      ansible.builtin.slurp:
+        src: "{{ agent_guest_wish_dir }}/gamedisks.yaml.example"
+      register: agent_guest_gamedisks_example
+
+    - name: Work out this machine's gamedisks.yaml
+      ansible.builtin.set_fact:
+        agent_guest_gamedisks_text: >-
+          {{ agent_guest_gamedisks_example.content | b64decode
+             | replace('"' ~ agent_guest_disks_source ~ '/codewheel"', '"' ~ agent_guest_codewheel_dir ~ '"')
+             | replace(agent_guest_disks_source ~ '/', agent_guest_disks_mount ~ '/') }}
+
+    - name: Assert every path is under the game disks mount, and codewheel is the clone
+      ansible.builtin.assert:
+        that:
+          - agent_guest_gamedisks_other | length > 0
+          - agent_guest_gamedisks_stray | length == 0
+          - agent_guest_gamedisks_codewheel == [agent_guest_codewheel_dir]
+        fail_msg: >-
+          gamedisks.yaml would name paths outside {{ agent_guest_disks_mount }}
+          ({{ agent_guest_gamedisks_stray | join(', ') }}), or a codewheel path
+          other than {{ agent_guest_codewheel_dir }}
+          ({{ agent_guest_gamedisks_codewheel | join(', ') }}). The example changed
+          in a way this role does not know how to rewrite.
+      vars:
+        agent_guest_gamedisks_parsed: "{{ agent_guest_gamedisks_text | from_yaml }}"
+        agent_guest_gamedisks_codewheel: "{{ agent_guest_gamedisks_parsed['codewheel'].paths | default([]) }}"
+        agent_guest_gamedisks_other: >-
+          {{ agent_guest_gamedisks_parsed | dict2items | rejectattr('key', 'eq', 'codewheel')
+             | map(attribute='value') | map(attribute='paths', default=[]) | flatten | list }}
+        agent_guest_gamedisks_stray: >-
+          {{ agent_guest_gamedisks_other | reject('match', '^' ~ agent_guest_disks_mount ~ '/') | list }}
+
+    - name: Write gamedisks.yaml
+      ansible.builtin.copy:
+        dest: "{{ agent_guest_wish_dir }}/gamedisks.yaml"
+        mode: "0644"
+        content: |
+          # Written by Ansible (roles/agent-vm-guest) from gamedisks.yaml.example, with
+          # every path under {{ agent_guest_disks_mount }}, the read-only game disks, except
+          # codewheel, which is the guest's own clone of the private repository.
+          {{ agent_guest_gamedisks_text }}
+
+# --- monitoring --------------------------------------------------------------
+
+# prometheus-node-exporter from Ubuntu's own archive, and only that: the guest
+# is scraped, and holds no credential for the monitoring system. The desktop's
+# collector reads it over the sandbox network. It is bound to the guest's sandbox address
+# and not to 0.0.0.0, so nothing that can reach the guest by another route can
+# read it, and the packaged unit's ARGS is empty, which is every interface.
+- name: The node exporter
+  tags: exporter
+  become: true
+  block:
+    - name: Assert the guest has an address of its own to listen on
+      ansible.builtin.assert:
+        that:
+          - ansible_default_ipv4.address is defined
+          - ansible_default_ipv4.address != '0.0.0.0'
+
+    - name: Install prometheus-node-exporter
+      ansible.builtin.apt:
+        name: prometheus-node-exporter
+        state: present
+
+    - name: Listen on the sandbox address only
+      ansible.builtin.copy:
+        dest: /etc/default/prometheus-node-exporter
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible -- roles/agent-vm-guest. The address is this guest's own,
+          # so the exporter is not on any other interface.
+          ARGS="--web.listen-address={{ ansible_default_ipv4.address }}:{{ agent_guest_exporter_port }}"
+      register: agent_guest_exporter_args
+
+    # The packaged unit is ordered after nothing and gives up after five quick
+    # failures, and the address it binds comes from DHCP, so at boot it can try
+    # before the address exists. After network-online.target the address is
+    # there (systemd-networkd-wait-online waits for eth0), and if it is somehow
+    # not, it keeps trying instead of stopping.
+    - name: Create the node exporter's unit drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/prometheus-node-exporter.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Start it after the network is up, and keep trying
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/prometheus-node-exporter.service.d/sandbox-address.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible -- roles/agent-vm-guest.
+          [Unit]
+          After=network-online.target
+          Wants=network-online.target
+          StartLimitIntervalSec=0
+
+          [Service]
+          RestartSec=5
+      register: agent_guest_exporter_dropin
+
+    - name: Enable and start the node exporter, and restart it when its address changed
+      ansible.builtin.systemd:
+        name: prometheus-node-exporter
+        enabled: true
+        state: "{{ 'restarted' if (agent_guest_exporter_args.changed or agent_guest_exporter_dropin.changed) else 'started' }}"
+        daemon_reload: true
+
+    - name: Read what is listening on the exporter's port
+      ansible.builtin.command: "ss -Hltn 'sport = :{{ agent_guest_exporter_port }}'"
+      register: agent_guest_exporter_listeners
+      changed_when: false
+      retries: 5
+      delay: 2
+      until: agent_guest_exporter_listeners.stdout_lines | length > 0
+
+    - name: Assert it listens on the sandbox address and on nothing else
+      ansible.builtin.assert:
+        that:
+          - agent_guest_exporter_listeners.stdout_lines | length == 1
+          - (agent_guest_exporter_listeners.stdout_lines[0].split()[3]) == ansible_default_ipv4.address ~ ':' ~ agent_guest_exporter_port
+        fail_msg: >-
+          The exporter must listen on {{ ansible_default_ipv4.address }}:{{ agent_guest_exporter_port }}
+          and on no other address, and ss says: {{ agent_guest_exporter_listeners.stdout_lines | join(' | ') }}
+
+# --- private repositories ----------------------------------------------------
+
+# agent_guest_private_repos, cloned in order; the codewheel is first, and skipped
+# while its slug is empty. See private-repo.yml for what each checkout gets.
+- name: The private repository checkouts
+  ansible.builtin.include_tasks:
+    file: private-repo.yml
+    apply:
+      tags: codewheel
+  loop: "{{ agent_guest_private_repos }}"
+  when: agent_guest_repo.slug | length > 0
+  loop_control:
+    loop_var: agent_guest_repo
+    label: "{{ agent_guest_repo.slug }}"
+  tags: codewheel
+
+- name: Report the steps only a person can do
+  tags: always
+  ansible.builtin.debug:
+    msg:
+      - "Left for a person, once per rebuild of this guest:"
+      - "1. ssh agent-vm, start `herdr` (or `tmux`), run `claude` -- it prints a URL; open it on the desktop and paste the code back."
+      - "2. `codex login`, the same way."

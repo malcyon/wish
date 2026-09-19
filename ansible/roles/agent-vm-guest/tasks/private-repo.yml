@@ -1,0 +1,65 @@
+---
+# One entry from agent_guest_private_repos (agent_guest_repo: slug, dir),
+# looped in from main.yml. Cloned over https with the helper the credential
+# section set up: the helper mints a token for one repository, and left alone
+# it mints one for wish, which GitHub answers "Repository not found" for any
+# other. So the checkout gets a helper list of its own, reset first like the
+# global one, that runs the same helper with $WISH_AGENT_REPO naming this
+# repository. The token is minted for each request and stored nowhere.
+# GIT_TERMINAL_PROMPT=0, so a wrong helper fails and does not sit waiting for
+# somebody to type a password.
+- name: "{{ agent_guest_repo.slug }}"
+  environment:
+    GIT_TERMINAL_PROMPT: "0"
+  vars:
+    agent_guest_repo_helper: >-
+      !WISH_AGENT_REPO={{ agent_guest_repo.slug }}
+      {{ agent_guest_wish_dir }}/.venv/bin/python
+      {{ agent_guest_wish_dir }}/tools/wishagent.py git-credential
+  block:
+    - name: Look for the checkout
+      ansible.builtin.stat:
+        path: "{{ agent_guest_repo.dir }}/.git"
+      register: agent_guest_repo_git
+
+    - name: Clone it
+      ansible.builtin.command:
+        argv:
+          - git
+          - clone
+          - --config
+          - "credential.https://github.com.helper="
+          - --config
+          - "credential.https://github.com.helper={{ agent_guest_repo_helper }}"
+          - "https://github.com/{{ agent_guest_repo.slug }}.git"
+          - "{{ agent_guest_repo.dir }}"
+      when: not agent_guest_repo_git.stat.exists
+      changed_when: true
+
+    - name: Read the checkout's own helper list
+      ansible.builtin.command: git config --local --get-all credential.https://github.com.helper
+      args:
+        chdir: "{{ agent_guest_repo.dir }}"
+      register: agent_guest_repo_helpers
+      changed_when: false
+      failed_when: agent_guest_repo_helpers.rc not in [0, 1]
+
+    - name: Give the checkout its own helper, and no other
+      ansible.builtin.shell: |
+        set -e
+        git config --local --unset-all credential.https://github.com.helper || true
+        git config --local --add credential.https://github.com.helper ''
+        git config --local --add credential.https://github.com.helper '{{ agent_guest_repo_helper }}'
+      args:
+        chdir: "{{ agent_guest_repo.dir }}"
+      when: agent_guest_repo_helpers.stdout_lines != ['', agent_guest_repo_helper]
+      changed_when: true
+
+    # Fast-forward only: the guest may commit here, and a pull that would merge
+    # or overwrite its work stops and says so, for somebody to look at.
+    - name: Bring it up to date
+      ansible.builtin.command: git pull --ff-only
+      args:
+        chdir: "{{ agent_guest_repo.dir }}"
+      register: agent_guest_repo_pull
+      changed_when: "'Already up to date' not in agent_guest_repo_pull.stdout"

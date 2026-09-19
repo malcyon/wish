@@ -1,0 +1,12 @@
+# Managed by Ansible — roles/agent-vm-guest.
+[Unit]
+Description=Bring {{ agent_guest_tool_name }} up to date
+# A failed run (GitHub or the network down) is tried again, but not for ever.
+StartLimitIntervalSec=1d
+StartLimitBurst=4
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/{{ agent_guest_tool_name }}-update
+Restart=on-failure
+RestartSec=15min

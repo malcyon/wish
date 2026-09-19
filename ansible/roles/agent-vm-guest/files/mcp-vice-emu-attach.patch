@@ -1,0 +1,55 @@
+diff --git a/src/vice-connection.ts b/src/vice-connection.ts
+index 3619720..a6f7d9d 100644
+--- a/src/vice-connection.ts
++++ b/src/vice-connection.ts
+@@ -35,9 +35,23 @@ export class ViceConnection {
+       throw new Error('Already connected to VICE');
+     }
+ 
+-    const emulatorPath = path.join(this.config.vicePath, `${this.config.emulator}.exe`);
+     const monitorAddress = `127.0.0.1:${this.config.monitorPort}`;
+ 
++    // If a binary monitor is already listening, attach to that emulator rather
++    // than spawning our own. Lets us drive an externally-launched VICE (e.g. a
++    // Flatpak build started by its own wrapper script). `this.process` stays
++    // null, so cleanup() will not kill an emulator we did not start.
++    if (await this.isMonitorListening()) {
++      console.error(`[VICE] Existing monitor on ${monitorAddress}, attaching`);
++      await this.waitForMonitor();
++      return;
++    }
++
++    const exeName = process.platform === 'win32'
++      ? `${this.config.emulator}.exe`
++      : this.config.emulator;
++    const emulatorPath = path.join(this.config.vicePath, exeName);
++
+     // Create log file for VICE output
+     const logDir = path.join(os.tmpdir(), 'vice-mcp');
+     if (!fs.existsSync(logDir)) {
+@@ -80,6 +94,25 @@ export class ViceConnection {
+     await this.waitForMonitor();
+   }
+ 
++  /**
++   * Probe whether something is already accepting connections on the monitor port.
++   */
++  private isMonitorListening(): Promise<boolean> {
++    return new Promise((resolve) => {
++      const probe = new Socket();
++      const finish = (result: boolean) => {
++        probe.removeAllListeners();
++        probe.destroy();
++        resolve(result);
++      };
++      probe.setTimeout(500);
++      probe.once('connect', () => finish(true));
++      probe.once('timeout', () => finish(false));
++      probe.once('error', () => finish(false));
++      probe.connect(this.config.monitorPort, '127.0.0.1');
++    });
++  }
++
+   /**
+    * Wait for VICE monitor to become available
+    */

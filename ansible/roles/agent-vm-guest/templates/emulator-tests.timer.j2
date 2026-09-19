@@ -1,0 +1,12 @@
+# Managed by Ansible — roles/agent-vm-guest.
+[Unit]
+Description=Run the suite's live tests weekly
+
+[Timer]
+OnCalendar={{ agent_guest_emulator_tests_schedule }}
+# A guest that was off at the time runs it when it next starts.
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

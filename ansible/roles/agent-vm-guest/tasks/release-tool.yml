@@ -1,0 +1,50 @@
+---
+# One tool from agent_guest_release_tools, named by agent_guest_tool_name:
+# installs its updater, runs it, and puts the updater on a weekly user timer.
+
+- name: Set the tool being installed
+  ansible.builtin.set_fact:
+    agent_guest_tool: "{{ agent_guest_release_tools[agent_guest_tool_name] }}"
+
+# The one place the resolve-and-install logic lives: the playbook runs the same
+# script the timer does.
+- name: Install the updater for {{ agent_guest_tool_name }}
+  ansible.builtin.template:
+    src: release-update.py.j2
+    dest: "/usr/local/bin/{{ agent_guest_tool_name }}-update"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Bring up to date, and say which release, for {{ agent_guest_tool_name }}
+  ansible.builtin.command: "/usr/local/bin/{{ agent_guest_tool_name }}-update"
+  register: agent_guest_tool_update
+  changed_when: "'downloaded' in agent_guest_tool_update.stdout"
+
+- name: Report the release now installed for {{ agent_guest_tool_name }}
+  ansible.builtin.debug:
+    msg: "{{ agent_guest_tool_update.stdout_lines }}"
+
+- name: Ask for the version of {{ agent_guest_tool_name }}
+  ansible.builtin.command: "{{ ansible_user_dir }}/.local/bin/{{ agent_guest_tool_name }} --version"
+  changed_when: false
+
+- name: Install the update units for {{ agent_guest_tool_name }}
+  ansible.builtin.template:
+    src: "release-update.{{ item }}.j2"
+    dest: "{{ ansible_user_dir }}/.config/systemd/user/{{ agent_guest_tool_name }}-update.{{ item }}"
+    mode: "0644"
+  loop:
+    - service
+    - timer
+
+- name: Enable the weekly update for {{ agent_guest_tool_name }}
+  ansible.builtin.systemd:
+    name: "{{ agent_guest_tool_name }}-update.timer"
+    scope: user
+    daemon_reload: true
+    enabled: true
+    state: started
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"

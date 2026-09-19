@@ -1,0 +1,15 @@
+#!/bin/bash
+# Managed by Ansible — roles/agent-vm-guest.
+#
+# gh, authenticated as the wish-agent GitHub App and as nobody else. A token is
+# minted for each call and handed to the real gh in GH_TOKEN, so every gh call
+# is the App's and there is no stored login to find. This sits ahead of
+# {{ agent_guest_real_gh }} on PATH.
+#
+# It is the push-scoped token (contents and workflows, write), not the issues
+# one: issues are filed with tools/wishagent.py, which is what it is for.
+token=$({{ agent_guest_wish_dir }}/.venv/bin/python {{ agent_guest_wish_dir }}/tools/wishagent.py push-token) || {
+    echo "gh: could not mint a wish-agent token. Is ~/.config/wish-agent set up, and is {{ agent_guest_wish_dir }} current?" >&2
+    exit 1
+}
+GH_TOKEN=$token exec {{ agent_guest_real_gh }} "$@"
