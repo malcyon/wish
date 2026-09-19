@@ -19,7 +19,7 @@ loop answers and nothing else does:
     tools/c64/d64census.py header /mnt/media/roms/c64 ~/wish-specimens
     tools/c64/d64census.py files  /mnt/media/roms/c64 work
 
-With no roots it sweeps what `tools/registry/gamedisks.py` knows about.
+With no roots it sweeps what `automap/gamedisks.py` knows about.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def images(roots) -> list[pathlib.Path]:
 
 
 def default_roots() -> list[str]:
-    from tools.registry import gamedisks
+    from automap import gamedisks
     return [path for _name, _var, _layer, path, ok in gamedisks.report()
             if ok] or ["."]
 

@@ -1,6 +1,6 @@
 # Where this machine keeps the player's own game disks and saves, for this
-# project's tests and tools. `tools/registry/gamedisks.py` is the loader and the report
-# (`tools/registry/gamedisks.py` prints one row per entry: found or missing); #212 is why
+# project's tests and tools. `automap/gamedisks.py` is the loader and the report
+# (`python -m automap.gamedisks` prints one row per entry: found or missing); #212 is why
 # a registry exists instead of the seven searches it replaced.
 #
 # Each entry names an environment variable, which wins outright and is taken

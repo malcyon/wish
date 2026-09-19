@@ -46,6 +46,7 @@ from typing import NamedTuple
 TOOLS = str(pathlib.Path(__file__).resolve().parent.parent)
 sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 from automap import c64 as machines  # noqa: E402
+from automap import gamedisks  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64, D64Error  # noqa: E402
 from tools.c64.drive import (  # noqa: E402
@@ -57,7 +58,7 @@ from tools.c64.drive import (  # noqa: E402
     is_bitmap,
     read_screen,
 )
-from tools.registry import gamedisks, instance, scratch  # noqa: E402
+from tools.registry import instance, scratch  # noqa: E402
 
 # Disk images and logs live in scratch; the code does not.
 HERE = str(scratch.scratch_dir("session", "drive"))

@@ -472,7 +472,7 @@ def ssb_world(slot, r: Run, save: str, where: str, game, wait: float):
     return sess, True
 
 
-#: Which driver boots which title, and the `tools/registry/gamedisks.py` key its sides
+#: Which driver boots which title, and the `automap/gamedisks.py` key its sides
 #: are found under.
 DRIVERS = {
     "curse-of-the-azure-bonds": ("curse-of-the-azure-bonds", curse_world),
@@ -483,8 +483,8 @@ DRIVERS = {
 def run(save: str, out: str, who: str, pool: int | None,
         disks: str = "", wait: float = 240.0) -> int:
     """Boot whichever title the save is, and read `who`'s item list."""
+    from automap import gamedisks
     from tools.c64 import session as por
-    from tools.registry import gamedisks
 
     game = c64_port.detect(D64.open(save))
     if game is None or game.key not in DRIVERS:

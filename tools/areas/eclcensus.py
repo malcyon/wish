@@ -419,7 +419,7 @@ def load_port(root: str, game: c64_port.C64Container, dos: str | None):
 
 
 def registry(key: str) -> str:
-    """`tools/registry/gamedisks.py`'s answer for this title, or "".
+    """`automap/gamedisks.py`'s answer for this title, or "".
 
     `automap.paths.find_disks` is the player's search and looks for a directory
     named after the game; nobody names one that, so on this machine it finds
@@ -428,7 +428,7 @@ def registry(key: str) -> str:
     so every per-title test skips)`.
     """
     try:
-        from tools.registry import gamedisks
+        from automap import gamedisks
     except ImportError:                     # pragma: no cover - defensive
         return ""
     found = gamedisks.find(key)

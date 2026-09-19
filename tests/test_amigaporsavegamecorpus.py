@@ -81,8 +81,8 @@ def corpus() -> list[tuple[str, bytes]]:
 
 @pytest.fixture(scope="module")
 def ecl_dax() -> bytes:
+    from automap import gamedisks
     from tools.amiga import amigasaves
-    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")

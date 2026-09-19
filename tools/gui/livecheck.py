@@ -53,7 +53,11 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as act  # noqa: E402
-from automap import live, render  # noqa: E402
+from automap import (  # noqa: E402
+    gamedisks,  # noqa: E402
+    live,
+    render,
+)
 from automap import state as mapstate  # noqa: E402
 from automap.area import OURS, ResidentGeo  # noqa: E402
 from automap.maps import load_maps  # noqa: E402
@@ -63,7 +67,7 @@ from automap.vice import banked  # noqa: E402
 from goldbox import c64_port, items, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
-from tools.registry import gamedisks, scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where this run's notes and explored squares go.
 #:

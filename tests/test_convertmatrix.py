@@ -22,7 +22,7 @@ none.
 
 **Six of six directions run on this machine.** DOS → C64 reads a real DOS
 save for each title (`~/wish-specimens`, `tools/registry/specimens.py`) and each
-title's own C64 game disks (`tools/registry/gamedisks.py`, never a hardcoded path);
+title's own C64 game disks (`automap/gamedisks.py`, never a hardcoded path);
 Curse of the Azure Bonds and Secret of the Silver Blades resolved through
 `/mnt/media/roms/c64/...`, on `gamedisks.yaml`'s own committed search list.
 C64 → DOS reads a real C64 save for Curse and Silver Blades and the
@@ -52,6 +52,7 @@ import pytest
 from gamedata import specimen_root
 from PyQt6.QtWidgets import QApplication
 
+from automap import gamedisks
 from editor import convert, dosimport
 from goldbox import c64_port, dos_codec, dos_port
 from goldbox.d64 import load_payload
@@ -59,7 +60,6 @@ from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitError, tables_from_disks
 from goldbox.savegame import SaveGame0, SaveGame1
 from tools.dos import dosbox
-from tools.registry import gamedisks
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
 
@@ -95,7 +95,7 @@ def _c64_specimen(name: str) -> pathlib.Path | None:
 
 def _c64_game_files(game: "c64_port.Game") -> "dosimport.GameFiles | None":
     """The icon, `ANIMATE00` and the creation menu off `game`'s own C64
-    disks, found through `tools/registry/gamedisks.py` -- the project's own registry
+    disks, found through `automap/gamedisks.py` -- the project's own registry
     for a test or tool that needs the player's disks, never a path typed into
     this file. `None` when this machine has neither -- the same refusal
     `editor.window.EditorBinding.game_files_for` gives the running dialog,
@@ -176,7 +176,7 @@ def test_dos_to_c64_matches_the_library_for_every_title(
     game_files = _c64_game_files(game)
     if game_files is None:
         pytest.skip(f"needs {game.title}'s own C64 disks, found through "
-                    f"tools/registry/gamedisks.py")
+                    f"automap/gamedisks.py")
 
     source_path = (folder / file_name) if file_name else folder
     out = tmp_path / "out"

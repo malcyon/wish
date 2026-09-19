@@ -638,7 +638,7 @@ def ssb_parts():
     out of the editor overlay's own pointer table and this title puts the
     parts file at `$8E00`.
     """
-    gamedisks = pytest.importorskip("tools.registry.gamedisks")
+    gamedisks = pytest.importorskip("automap.gamedisks")
 
     from goldbox.iconparts import IconParts
 

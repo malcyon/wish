@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""`tools/registry/gamedisks.py`, the one registry #212 asked for.
+"""`automap/gamedisks.py`, the one registry #212 asked for.
 
 Two layers, and the point of the module is their precedence: `$<env>` wins
 outright and is taken whole, and `gamedisks.yaml` -- gitignored, one machine's
@@ -12,15 +12,18 @@ except the tests that read the example.
 
 
 import ast
+import json
 import pathlib
+import sys
 
 import pytest
 import yaml
 
-from tools.registry import gamedisks
+import automap
+from automap import gamedisks, paths
+from goldbox import c64_port
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-SHIPPED_PACKAGES = ("automap", "editor", "goldbox", "wish", "ui")
 
 
 def _write(path: pathlib.Path, text: str) -> pathlib.Path:
@@ -294,38 +297,151 @@ def test_this_machines_registry_only_names_entries_the_example_has():
     assert unknown == set()
 
 
-def test_nothing_shipped_imports_this_module():
-    """`gamedisks.py`'s own docstring: this is ours, not the player's.
+def test_the_shipped_loader_imports_nothing_from_tools():
+    """`automap` ships and `tools/` does not, so the loader `automap.paths`
+    reaches for cannot depend on anything under `tools/`. Checked by AST: a
+    root module name is not enough, since the import that matters is
+    `from tools.registry import x`."""
+    tree = ast.parse((REPO / "automap" / "gamedisks.py").read_text(encoding="utf-8"))
+    imported = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            imported.append("." * node.level + (node.module or ""))
+    assert [m for m in imported if m == "tools" or m.startswith("tools.")] == []
 
-    `gamedisks.yaml` carries no package-data entry, so a shipped `automap`,
-    `editor`, `goldbox`, `wish` or `ui` module calling `gamedisks.find` would
-    get a silent nothing on a player's machine -- the worst shape a lookup can
-    fail in. Checked by AST, the way `test_wish.py`'s transport check is: a
-    root module name is not enough here, since the import that matters is
-    `from tools.registry import gamedisks`, not a bare `tools`.
-    """
-    offenders = []
-    for package in SHIPPED_PACKAGES:
-        for path in (REPO / package).rglob("*.py"):
-            # `encoding=` is not decoration: `read_text()` uses the locale's
-            # encoding, which on the Windows CI runner is cp1252, and this
-            # repository's source has bytes cp1252 has no character for. The
-            # sweep died on the first such file rather than reporting.
-            tree = ast.parse(path.read_text(encoding="utf-8"),
-                             filename=str(path))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        if alias.name in ("gamedisks", "tools.registry.gamedisks"):
-                            offenders.append((path, alias.name))
-                elif isinstance(node, ast.ImportFrom):
-                    if node.module == "tools.registry.gamedisks":
-                        offenders.append((path, node.module))
-                    elif node.module in ("tools", "tools.registry"):
-                        for alias in node.names:
-                            if alias.name == "gamedisks":
-                                offenders.append((path, "tools.registry.gamedisks"))
-    assert offenders == []
+
+def test_the_loader_has_no_candidates_and_does_not_raise_with_no_files_at_all(
+        tmp_path, monkeypatch):
+    """An installed copy has neither `gamedisks.yaml` nor the example."""
+    monkeypatch.setattr(gamedisks, "REGISTRY", tmp_path / "gamedisks.yaml")
+    monkeypatch.setattr(gamedisks, "EXAMPLE", tmp_path / "gamedisks.yaml.example")
+    monkeypatch.delenv("POR_DISKS", raising=False)
+    assert gamedisks.names() == []
+    assert gamedisks.candidates("pool-of-radiance") == []
+    assert gamedisks.find("pool-of-radiance") is None
+
+
+# -- `automap.paths.disk_candidates` ------------------------------------------
+
+def _guesses(game, home, cwd) -> list[pathlib.Path]:
+    """The home-folder guesses `disk_candidates` made before it read the
+    registry, spelt out again so a change to them shows up here."""
+    roots = [cwd, home, home / "Documents", home / "Games",
+             home / "c64", home / "roms", home / "Downloads"]
+    out = [r / n for r in roots for n in paths._dir_names(game)]
+    return out + [cwd, home]
+
+
+@pytest.fixture
+def searching(tmp_path, monkeypatch):
+    """A home folder and working directory of their own, no `$POR_DISKS`, and
+    no registry file or example."""
+    home = tmp_path / "home"
+    home.mkdir()
+    work = tmp_path / "startdir"
+    work.mkdir()
+    monkeypatch.setattr(paths, "_home", lambda: home)
+    monkeypatch.chdir(work)
+    monkeypatch.delenv("POR_DISKS", raising=False)
+    monkeypatch.delenv("COAB_DISKS", raising=False)
+    monkeypatch.setattr(gamedisks, "REGISTRY", tmp_path / "gamedisks.yaml")
+    monkeypatch.setattr(gamedisks, "EXAMPLE", tmp_path / "gamedisks.yaml.example")
+    return home, work.resolve(), tmp_path
+
+
+def _flow(*where: pathlib.Path) -> str:
+    """A YAML flow list of paths. JSON quoting doubles a Windows backslash, so
+    `C:\\Users\\...` is not read as an escape sequence."""
+    return json.dumps([str(p) for p in where])
+
+
+def _register(tmp_path, monkeypatch, text: str) -> None:
+    monkeypatch.setattr(gamedisks, "REGISTRY", _write(tmp_path / "reg.yaml", text))
+
+
+def test_the_registrys_directories_come_before_the_home_folder_guesses(
+        searching, monkeypatch):
+    home, work, tmp = searching
+    _register(tmp, monkeypatch, f"""
+pool-of-radiance:
+  env: POR_DISKS
+  paths: {_flow(tmp / 'one', tmp / 'two')}
+curse-of-the-azure-bonds:
+  env: COAB_DISKS
+  paths: {_flow(tmp / 'curse')}
+""")
+    got = paths.disk_candidates()
+    assert got[:2] == [tmp / "one", tmp / "two"]
+    assert got[2:] == _guesses(None, home, work)
+    curse = paths.disk_candidates(c64_port.CURSE_OF_THE_AZURE_BONDS)
+    assert curse[0] == tmp / "curse"
+    assert tmp / "one" not in curse
+
+
+def test_with_no_registry_the_guesses_are_unchanged(searching):
+    home, work, _ = searching
+    assert paths.disk_candidates() == _guesses(None, home, work)
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    assert paths.disk_candidates(game) == _guesses(game, home, work)
+
+
+def test_por_disks_still_wins_over_the_registry(searching, monkeypatch):
+    _, _, tmp = searching
+    _register(tmp, monkeypatch, f"""
+pool-of-radiance:
+  env: POR_DISKS
+  paths: {_flow(tmp / 'one')}
+""")
+    monkeypatch.setenv("POR_DISKS", str(tmp / "mine"))
+    assert paths.disk_candidates() == [tmp / "mine"]
+
+
+def test_a_registry_that_lacks_the_title_gives_the_guesses(searching, monkeypatch):
+    home, work, tmp = searching
+    _register(tmp, monkeypatch, """
+some-other-game:
+  paths: ["/nowhere"]
+""")
+    assert paths.disk_candidates() == _guesses(None, home, work)
+
+
+@pytest.mark.parametrize("body", [
+    "pool-of-radiance: [not, a, mapping]\n",
+    "pool-of-radiance:\n  paths: 5\n",
+    "pool-of-radiance: just text\n",
+    "[not, a, mapping]\n",
+    "pool-of-radiance: {paths: [: :\n",
+], ids=["list", "paths-an-int", "string", "top-level-list", "not-yaml"])
+def test_a_malformed_registry_gives_the_guesses(searching, monkeypatch, body):
+    home, work, tmp = searching
+    _register(tmp, monkeypatch, body)
+    assert paths.disk_candidates() == _guesses(None, home, work)
+
+
+def test_a_missing_registry_file_with_the_example_present_gives_the_guesses(
+        searching, monkeypatch):
+    """The loader's own stop for a missing `gamedisks.yaml` is a `SystemExit`,
+    which `except Exception` would let through to the player."""
+    home, work, tmp = searching
+    _write(tmp / "gamedisks.yaml.example",
+           "pool-of-radiance:\n  paths: [/from/the/example]\n")
+    assert not gamedisks.REGISTRY.exists()
+    assert paths.disk_candidates() == _guesses(None, home, work)
+
+
+def test_a_machine_without_the_yaml_module_gives_the_guesses(
+        searching, monkeypatch):
+    home, work, tmp = searching
+    _register(tmp, monkeypatch, f"""
+pool-of-radiance:
+  paths: {_flow(tmp / 'one')}
+""")
+    monkeypatch.delitem(sys.modules, "automap.gamedisks")
+    monkeypatch.delattr(automap, "gamedisks")
+    monkeypatch.setitem(sys.modules, "yaml", None)
+    assert paths.disk_candidates() == _guesses(None, home, work)
 
 
 def test_no_example_path_points_into_the_repository():

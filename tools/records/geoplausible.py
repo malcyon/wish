@@ -50,6 +50,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from automap.area import (  # noqa: E402
     MAP_RECIPROCITY,
     MAP_WALL_ART_AGREEMENT,
@@ -58,7 +59,6 @@ from automap.area import (  # noqa: E402
     map_evidence,
 )
 from goldbox.geo import GEO_SIZE, Geo  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: The C64 titles whose disks `gamedisks.yaml` knows how to find, and the glob
 #: that picks out their game disks rather than a save disk sitting beside them.

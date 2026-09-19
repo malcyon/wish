@@ -164,7 +164,7 @@ This project documents a game it does not ship. **Never commit, in any form:**
   the same copy under a new name.
 
 Disk images are gitignored; read them at run time from the player's own,
-through the registry (`gamedisks.yaml`, `tools/registry/gamedisks.py`). **Describe, cite, measure and generate. Do not copy.**
+through the registry (`gamedisks.yaml`, `automap/gamedisks.py`). **Describe, cite, measure and generate. Do not copy.**
 
 ## Git in a shared tree
 

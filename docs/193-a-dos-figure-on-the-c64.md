@@ -376,7 +376,7 @@ is what `docs/186-ready-and-action.md` describes it doing.
 
 The four sheets Donald judges the rows on, and the party that proved them.
 `$SAVE` below is the `SAVE/` subfolder of the `por-dos-play` registry entry
-(`$POR_DOS_GAME`, else `gamedisks.yaml`; `tools/registry/gamedisks.py` prints where it
+(`$POR_DOS_GAME`, else `gamedisks.yaml`; `automap/gamedisks.py` prints where it
 resolves). It is input only, never evidence about the game:
 
 ```sh

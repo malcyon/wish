@@ -27,7 +27,7 @@ sets it.
 The DOS half reuses `tools/dos/dostailcensus.py`'s finder, its roots -- the
 specimen tree, the archives and the played DOS directory -- and its exclusions
 (an emulator instance's staged tree, and records we wrote).  The C64 half
-reads every save disk `tools/registry/gamedisks.py` finds plus the specimen tree; the
+reads every save disk `automap/gamedisks.py` finds plus the specimen tree; the
 Amiga half reads the records out of the disk images through
 `tools/amiga/amigasaves.py` and `tools/amiga/amigarecords.py`.
 
@@ -51,6 +51,7 @@ ROOT = TOOLS.parent
 # below come through the package instead.
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import (  # noqa: E402
     amiga_later,
     amiga_por,
@@ -68,9 +69,6 @@ from tools.amiga import (  # noqa: E402
 )
 from tools.dos import (  # noqa: E402
     dostailcensus,
-)
-from tools.registry import (  # noqa: E402
-    gamedisks,
 )
 
 #: The C64 record's spellbook, both declared halves: seven bytes Pool of

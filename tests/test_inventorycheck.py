@@ -42,7 +42,7 @@ from tests import gamedata
 from tools.c64 import inventorycheck
 
 #: The two specimens, the character on each who carries anything, and the
-#: `tools/registry/gamedisks.py` key that finds that title's sides.
+#: `automap/gamedisks.py` key that finds that title's sides.
 CURSE = ("curse-party-with-items", "MALE ELF MAGE",
          "curse-of-the-azure-bonds")
 SSB = ("ssb-d-engine-resave", "Guy de Valois",
@@ -87,7 +87,7 @@ def _specimen_disk(name: str) -> pathlib.Path:
 
 
 def _disks(key: str) -> str:
-    from tools.registry import gamedisks
+    from automap import gamedisks
     where = gamedisks.find(key)
     if not where:
         pytest.skip(f"needs the player's own {key} disks")

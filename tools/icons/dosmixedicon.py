@@ -48,9 +48,10 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import dos_codec  # noqa: E402
 from goldbox.iconparts import dos_icon_tables  # noqa: E402
-from tools.registry import gamedisks, specimens  # noqa: E402
+from tools.registry import specimens  # noqa: E402
 
 ICON_HEAD = 0x0BD
 ICON_BODY = 0x0BE

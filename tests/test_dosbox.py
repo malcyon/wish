@@ -49,7 +49,7 @@ SAVGAM_SIZE = 13137
 
 def _candidates():
     """`gamedisks.yaml`'s own search list for the DOS archives (#212)."""
-    from tools.registry import gamedisks
+    from automap import gamedisks
     return gamedisks.candidates("dos-archives")
 
 

@@ -10,13 +10,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from goldbox.items import (  # noqa: E402
     Item,
     load_item_names,
     load_item_templates,
     load_item_types,
 )
-from tools.registry import gamedisks  # noqa: E402
 
 OUT = Path(__file__).resolve().parent.parent.parent / "docs" / "87-item-templates.md"
 

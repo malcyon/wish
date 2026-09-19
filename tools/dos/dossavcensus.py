@@ -61,7 +61,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 
 def _roots() -> list[pathlib.Path]:
     """Where the DOS archives might be, by the project's own search list."""
-    from tools.registry import gamedisks
+    from automap import gamedisks
     return [p for p in gamedisks.candidates("dos-archives") if p.is_dir()]
 
 

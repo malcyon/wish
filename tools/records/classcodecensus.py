@@ -36,11 +36,12 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import c64_codec, dos_codec, dos_port, items  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools.dos import dostailcensus  # noqa: E402
-from tools.registry import gamedisks, specimens  # noqa: E402
+from tools.registry import specimens  # noqa: E402
 
 #: Curse of the Azure Bonds' own class table, `GEN $1951`, indexed by the
 #: class code and holding the class bitmask.  Index 10 is `0x82`

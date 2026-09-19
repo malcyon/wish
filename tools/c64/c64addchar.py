@@ -44,10 +44,11 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.layout import NAME_SIZE  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
-from tools.registry import gamedisks, scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The three watched windows of the working record at `$6B00`.
 WINDOWS = {"e4_e5": (0x6BE4, 0x6BE5),

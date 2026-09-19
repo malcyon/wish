@@ -13,7 +13,7 @@ selected once, which the game keeps active until Return.
 The party's facing decides which of `I J K M` each leg needs, so the route is
 turned into keys as it is walked rather than up front.
 
-It reads the `GEO` off the player's own disks through `tools/registry/gamedisks.py` and
+It reads the `GEO` off the player's own disks through `automap/gamedisks.py` and
 writes nothing.
 """
 from __future__ import annotations
@@ -26,9 +26,9 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.geo import Geo  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: North, east, south, west -- the order the record, the `GEO` and the status
 #: line all use.

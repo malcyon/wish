@@ -425,7 +425,7 @@ def test_area_eleven_is_the_training_hall_not_the_arena():
 # `#20 (Build an area table for Silver Blades)`. Every claim in
 # `areas.AREAS_SILVER_BLADES` is re-derived here from the player's own six
 # sides, so a row that drifts from what the scripts say fails rather than
-# merely looking plausible. The disks are found through `tools/registry/gamedisks.py`;
+# merely looking plausible. The disks are found through `automap/gamedisks.py`;
 # there are none on a CI runner, so all of these skip there.
 
 
@@ -433,7 +433,7 @@ def test_area_eleven_is_the_training_hall_not_the_arena():
 def ssb_table():
     """The Silver Blades table read again off the disks, or skip."""
     areatable = pytest.importorskip("tools.areas.areatable")
-    gamedisks = pytest.importorskip("tools.registry.gamedisks")
+    gamedisks = pytest.importorskip("automap.gamedisks")
     where = gamedisks.find("secret-of-the-silver-blades")
     if where is None or not where.is_dir():
         pytest.skip("needs the Silver Blades disks; set $SSB_DISKS")
@@ -968,7 +968,7 @@ def test_the_silver_blades_ids_are_sparse_and_must_not_be_enumerated():
 def pool_table():
     """Pool of Radiance's scripts read by `tools/areas/areatable.py`, or skip."""
     areatable = pytest.importorskip("tools.areas.areatable")
-    gamedisks = pytest.importorskip("tools.registry.gamedisks")
+    gamedisks = pytest.importorskip("automap.gamedisks")
     where = gamedisks.find("pool-of-radiance")
     if where is None or not where.is_dir():
         pytest.skip("needs the Pool of Radiance disks; set $POR_DISKS")

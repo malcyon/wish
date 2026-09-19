@@ -24,11 +24,11 @@ from __future__ import annotations
 
 import pytest
 
+from automap import gamedisks
 from editor import effects
 from goldbox import c64_port, traits
 from goldbox.d64 import D64
 from tools.c64 import traitquery
-from tools.registry import gamedisks
 
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 POOL = c64_port.POOL_OF_RADIANCE

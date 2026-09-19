@@ -137,7 +137,7 @@ def test_an_amiga_pool_of_radiance_source_names_no_platform():
     paths = amiga_por_records()
     if not paths:
         pytest.skip("needs an Amiga Pool of Radiance disk; see "
-                    "tools/registry/gamedisks.py")
+                    "automap/gamedisks.py")
     checked = 0
     for path in paths:
         char = amiga_por.read_amiga_por(path)

@@ -12,7 +12,7 @@ goes through that instead -- `#373 (tools/amiga/porslot.py reads an Amiga slot
 through a temporary directory, where goldbox.amiga.read_por_slot now reads
 the blocks)`.
 
-**Reads the player's own Amiga disk**, through `tools/registry/gamedisks.py`'s
+**Reads the player's own Amiga disk**, through `automap/gamedisks.py`'s
 `amiga` entry, and skips on a machine that has none. Nothing here is
 committed: an Amiga disk image is the game's own code and data
 (`AGENTS.md`).

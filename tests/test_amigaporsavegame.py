@@ -33,8 +33,8 @@ SHIPPED_SAVEGAME = "/save/savgamA.dat"
 # ---------------------------------------------------------------------------
 
 def _amiga_images():
+    from automap import gamedisks
     from tools.amiga import amigasaves
-    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")

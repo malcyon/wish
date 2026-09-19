@@ -201,7 +201,7 @@ SILVER_BLADES_REDREW = {("CHEAD.DAX", 10, "large"), ("CBODY.DAX", 11, "small")}
 def dos_art():
     """Every title's `CHEAD.DAX` and `CBODY.DAX`, compared, or skip."""
     dosicontitles = pytest.importorskip("tools.icons.dosicontitles")
-    gamedisks = pytest.importorskip("tools.registry.gamedisks")
+    gamedisks = pytest.importorskip("automap.gamedisks")
     root = gamedisks.find("dos-archives")
     if root is None or not root.is_dir():
         pytest.skip("needs the DOS games; set $FR_ARCHIVES")
@@ -284,7 +284,7 @@ def test_every_title_numbers_its_icon_fields_where_our_layout_says(dos_art):
     wrong offset in our own table shows up here rather than silently.
     """
     dosicontitles = pytest.importorskip("tools.icons.dosicontitles")
-    gamedisks = pytest.importorskip("tools.registry.gamedisks")
+    gamedisks = pytest.importorskip("automap.gamedisks")
     root = gamedisks.find("dos-archives")
     folders = dosicontitles.find_folders(root, list(DOS_TITLES))
     code = dosicontitles.read_code(folders, list(DOS_TITLES))
@@ -302,7 +302,7 @@ def test_each_later_title_copies_the_earlier_ones_icon_bytes_unchanged():
     with a Curse record.  A game that renumbered its art could not do that.
     """
     dosicontitles = pytest.importorskip("tools.icons.dosicontitles")
-    gamedisks = pytest.importorskip("tools.registry.gamedisks")
+    gamedisks = pytest.importorskip("automap.gamedisks")
     root = gamedisks.find("dos-archives")
     if root is None or not root.is_dir():
         pytest.skip("needs the DOS games; set $FR_ARCHIVES")
@@ -659,7 +659,7 @@ def silver_blades_parts():
     loads it `$1900` lower, so this is also the fit `IconParts` makes from
     the overlay's pointers rather than from a constant.
     """
-    gamedisks = pytest.importorskip("tools.registry.gamedisks")
+    gamedisks = pytest.importorskip("automap.gamedisks")
     from goldbox.d64 import D64
 
     where = gamedisks.find("secret-of-the-silver-blades")
@@ -941,7 +941,7 @@ def test_c64_party_reads_a_converted_silver_blades_figure_home_as_itself(
     with `goldbox/dos_codec.py` reverted to its pre-fix state, via
     `tools/icons/iconrowproof.py --home`.
     """
-    pytest.importorskip("tools.registry.gamedisks")
+    pytest.importorskip("automap.gamedisks")
     iconproposal = pytest.importorskip("tools.icons.iconproposal")
     specimens = pytest.importorskip("tools.registry.specimens")
     iconrowproof = pytest.importorskip("tools.icons.iconrowproof")

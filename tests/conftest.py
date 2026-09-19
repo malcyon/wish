@@ -77,7 +77,7 @@ assert hasattr(wish, "__path__"), (
 # `/data/agent-disks/<entry>`, which a machine with no registry has no reason to
 # have, so every lookup answers "not here" and those tests skip, as they always
 # have on a machine with no disks. A machine with the real file is untouched.
-from tools.registry import gamedisks as _gamedisks  # noqa: E402
+from automap import gamedisks as _gamedisks  # noqa: E402
 
 if not _gamedisks.REGISTRY.is_file():
     _gamedisks.REGISTRY = _gamedisks.EXAMPLE
@@ -277,6 +277,21 @@ def _isolate_config(tmp_path, monkeypatch):
     """
     for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"):
         monkeypatch.setenv(var, str(tmp_path))
+
+
+@pytest.fixture
+def no_registry(tmp_path_factory, monkeypatch):
+    """The machine has no `gamedisks.yaml` and no example, so a disk search
+    falls back to the home-folder guesses.
+
+    A test that builds a scratch HOME and expects no disks would otherwise find
+    the machine's own registry. The loader re-reads its files on every call, so
+    pointing both paths at files that do not exist is the whole isolation;
+    `POR_DISKS` and the other `*_DISKS` variables are left as the test sets them.
+    """
+    empty = tmp_path_factory.mktemp("no_registry")
+    monkeypatch.setattr(_gamedisks, "REGISTRY", empty / "gamedisks.yaml")
+    monkeypatch.setattr(_gamedisks, "EXAMPLE", empty / "gamedisks.yaml.example")
 
 
 # -- the scratch directory must not come back ------------------------------------

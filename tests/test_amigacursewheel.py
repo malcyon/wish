@@ -17,8 +17,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from tools.amiga import amigacursewheel  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 
 def test_a_winuae_capture_is_scaled_up_to_the_readers_range():

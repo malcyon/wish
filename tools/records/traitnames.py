@@ -43,7 +43,7 @@ Neither route names a code that no spell writes and no creature carries.
 the code dispatches, and it is the tie-breaker when these two disagree.
 
 Nothing here needs an emulator or a save: the disks are opened read-only
-through `tools/registry/gamedisks.py`, and nothing the game ships is written anywhere.
+through `automap/gamedisks.py`, and nothing the game ships is written anywhere.
 """
 
 from __future__ import annotations
@@ -57,10 +57,10 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import spells, traits  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import traitquery  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: The ten trait slots, at C64 record offset 0x0AD -- `docs/171-c64-trait-slots.md`.
 #: `tools/c64/traitquery.py` locates the engine's own `LDX #$09` scan over the same

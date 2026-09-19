@@ -230,8 +230,8 @@ class Run:
 
 def run(save: str, out: str, who: str, was: str, pool: int | None,
         disks: str = "") -> int:
+    from automap import gamedisks
     from tools.c64 import session as por
-    from tools.registry import gamedisks
     from tools.secret_of_the_silver_blades import ssbwarp
 
     where = disks or str(gamedisks.find("secret-of-the-silver-blades") or "")

@@ -62,10 +62,10 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import c64_port, dos_codec, dos_port  # noqa: E402
 from goldbox import items as c64items  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: Item record byte `+15`, bit 7: "readying this dispatches a power handler".
 #: `CAMP $10B5` is `LDA $6D8B / BPL`, so an item without it is refused with

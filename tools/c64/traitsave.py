@@ -57,10 +57,11 @@ os.environ["GDK_BACKEND"] = "x11"
 os.environ.pop("WAYLAND_DISPLAY", None)
 os.environ.pop("XDG_SESSION_TYPE", None)
 
+from automap import gamedisks  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
-from tools.registry import gamedisks, scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: `SAVEDGAME0` loads at `$4900`; the twelve character slots start at `$4D00`.
 #: `docs/30-savegame-layout.md`, and `tools/c64/traitdrive.py` has the same three.

@@ -293,7 +293,7 @@ def test_a_missing_disk_says_where_it_looked(tmp_path, monkeypatch):
 
 
 def test_no_path_to_the_players_disks_is_written_into_the_source():
-    """This tool reads `$POR_DISKS` then `tools/registry/gamedisks.py`'s registry
+    """This tool reads `$POR_DISKS` then `automap/gamedisks.py`'s registry
     (#251 (Curse's and Silver Blades' disks are where nothing looks for them,
     so every per-title test skips)); a fourth way, or a path in the source, is
     useless to everybody but one machine."""

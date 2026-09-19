@@ -11,7 +11,7 @@ NOT WALKED; (3) every SAVETABLE (opcode $35) base, flagging any within 255 of
 $6DE6; (4) every SAVETABLE statement with its 16-bit index, since an indexed
 store could reach $6DE6 from a base further away.
 
-The disks come from `tools/registry/gamedisks.py`'s Pool of Radiance entry, else
+The disks come from `automap/gamedisks.py`'s Pool of Radiance entry, else
 `automap.paths.find_disks()`.  Reads them and writes nothing.
 """
 

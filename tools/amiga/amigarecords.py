@@ -44,11 +44,11 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from goldbox.amiga_later import looks_like_amiga_record, party_in_savegame  # noqa: E402
 from goldbox.amiga_port import AMIGA_DELTAS  # noqa: E402
 from tools.amiga import amigasaves  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: The drawer both titles keep their saves in.  Uppercase on the game disks,
 #: where Pool of Radiance uses a lowercase `save`.

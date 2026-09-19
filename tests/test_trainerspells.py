@@ -17,10 +17,10 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import c64_port, levelup, spells  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from tools.c64 import trainerspells  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 POOL = c64_port.POOL_OF_RADIANCE
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS

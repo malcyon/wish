@@ -1214,11 +1214,11 @@ def main(argv: list[str]) -> int:
                     help="where captures go (default: %(default)s)")
     args = ap.parse_args(argv[1:])
     if not args.disks or not os.path.isdir(args.disks):
-        # `tools/registry/gamedisks.py` is the registry; `automap.paths.find_disks`
+        # `automap/gamedisks.py` is the registry; `automap.paths.find_disks`
         # looks for a directory named after the game and nobody names one
         # that -- `#251 (Curse's and Silver Blades' disks are where nothing
         # looks for them, so every per-title test skips)`.
-        from tools.registry import gamedisks
+        from automap import gamedisks
         found = gamedisks.find("secret-of-the-silver-blades")
         args.disks = str(found) if found else ""
     if not args.disks or not os.path.isdir(args.disks):

@@ -40,11 +40,11 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools.dos import dostailcensus  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: The C64 control byte, at the same record offset in every C64 title
 #: (`#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the

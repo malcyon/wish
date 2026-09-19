@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import pytest
 
+from automap import gamedisks
 from goldbox import c64_port
 from tools.records import traitnames
-from tools.registry import gamedisks
 
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 

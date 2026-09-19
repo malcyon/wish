@@ -128,7 +128,7 @@ def find_maps(layout: amiga.AmigaMachine,
     """The title's maps, off a disk image the player already has.
 
     `where` is a disk image, a folder of them, or None -- in which case every
-    directory `tools/registry/gamedisks.py` lists for the Amiga is searched for an
+    directory `automap/gamedisks.py` lists for the Amiga is searched for an
     image whose name carries the title's own word.  The maps come back keyed
     `GEO{id:02X}`, which is the C64's own filename for the same area, so an
     Amiga run draws on the same sheet and reads the same notes.
@@ -138,7 +138,7 @@ def find_maps(layout: amiga.AmigaMachine,
         if path.is_dir():
             return amiga.load_maps_in(path)
         return amiga.load_maps(path), path
-    from tools.registry import gamedisks
+    from automap import gamedisks
     want = layout.title.split()[-1].lower()          # "blades", "bonds"
     for root in gamedisks.candidates("amiga"):
         if not root.is_dir():

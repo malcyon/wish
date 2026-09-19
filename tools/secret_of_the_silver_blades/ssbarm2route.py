@@ -15,7 +15,7 @@ Prints statement lengths for strings, never their text, the same way
 `tools/areas/eclwalk.py` and `tools/areas/eclcensus.py` do.
 
 Run: `.venv/bin/python tools/secret_of_the_silver_blades/ssbarm2route.py [--from HEX] [--to HEX] [--also
-LO:HI ...]`. Reads the Silver Blades disks `tools/registry/gamedisks.py` finds and
+LO:HI ...]`. Reads the Silver Blades disks `automap/gamedisks.py` finds and
 `$WISH_SPECIMENS/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64`
 for the party's square; writes nothing.
 """
@@ -28,6 +28,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.geo import Geo  # noqa: E402
@@ -37,7 +38,6 @@ from tools.areas import (  # noqa: E402
     eclwalk,
 )
 from tools.registry import (  # noqa: E402
-    gamedisks,
     specimens,
 )
 

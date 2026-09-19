@@ -50,13 +50,13 @@ def _load(tree: pathlib.Path | None):
     """Import the modules under test, out of `tree` when one is named."""
     root = pathlib.Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(tree.resolve() if tree else root))
+    from automap import gamedisks
     from editor import convert, dosimport
     from goldbox import c64_port, dos_codec
     from goldbox import portraits as portraits_mod
     from goldbox.d64 import load_payload
     from goldbox.iconparts import IconParts
     from tools.dos import dosbox
-    from tools.registry import gamedisks
     return dict(convert=convert, dosimport=dosimport, dos=dos_codec, games=c64_port,
                 load_payload=load_payload, IconParts=IconParts,
                 portraits=portraits_mod, dosbox=dosbox, gamedisks=gamedisks)

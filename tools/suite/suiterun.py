@@ -82,7 +82,7 @@ def no_data_env(example: pathlib.Path, absent: pathlib.Path) -> dict[str, str]:
     """Every environment variable `example` names, each set to `absent`, a path
     that does not exist.
 
-    A variable that is set is the only place `tools/registry/gamedisks.py`
+    A variable that is set is the only place `automap/gamedisks.py`
     looks, so with all of them pointing at nothing no lookup finds any game
     data and every data-backed test skips, as it does on CI. Taking away
     `gamedisks.yaml` alone stopped being enough once `/data/agent-disks`, where

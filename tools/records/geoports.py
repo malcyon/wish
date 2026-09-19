@@ -42,6 +42,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from automap.area import (  # noqa: E402
     NEAR_ENOUGH,
     _distance,
@@ -62,7 +63,6 @@ from goldbox.geo import (  # noqa: E402
     Geo,
 )
 from tools.records.geoplausible import amiga_maps, c64_maps  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: The three titles this project maps, and the directory name the DOS release
 #: installs each under. `--all-dos-titles` widens the DOS side to whatever else

@@ -11,7 +11,7 @@ The Pool of Radiance half of every check is the control. An invariant asserted
 on one title only is an invariant that will be quietly broken for the other.
 
 **Where the disks are found.** `gamedisks.yaml`'s `secret-of-the-silver-blades`
-entry, behind `$SSB_DISKS` -- `tools/registry/gamedisks.py` is the one registry now
+entry, behind `$SSB_DISKS` -- `automap/gamedisks.py` is the one registry now
 (#212), so this module no longer carries its own copy of the search.
 
 Every test skips when the disks are absent. Nothing here reads a committed
@@ -65,7 +65,7 @@ def _candidates():
     No candidate here may sit under a scratch directory: it has been deleted
     twice, so a default that resolved into it stopped resolving the day it was.
     """
-    from tools.registry import gamedisks
+    from automap import gamedisks
     return gamedisks.candidates(SSB_KEY)
 
 

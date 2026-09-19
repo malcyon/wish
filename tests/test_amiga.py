@@ -771,8 +771,8 @@ def _extracted_records() -> tuple[pathlib.Path, ...]:
     `amiga` entry, and this unpacks them into a directory that lives as long
     as the test process.
     """
+    from automap import gamedisks
     from tools.amiga import amigasaves
-    from tools.registry import gamedisks
     if not gamedisks.candidates("amiga"):
         return ()
     tmp = tempfile.TemporaryDirectory(prefix="amiga-por-records-")
@@ -1978,8 +1978,8 @@ def _later_specimens() -> tuple[pathlib.Path, ...]:
     entry, into a directory that lives as long as the test process -- so the
     files are never only in a gitignored scratch directory, which has been lost.
     """
+    from automap import gamedisks
     from tools.amiga import amigarecords
-    from tools.registry import gamedisks
     if not gamedisks.candidates("amiga"):
         return ()
     tmp = tempfile.TemporaryDirectory(prefix="amiga-later-saves-")
@@ -2022,7 +2022,7 @@ def silver_blades_characters():
 
 def _dos_records(title: str, size: int) -> dict[str, bytes]:
     """The shipped DOS party for a title, by file name."""
-    from tools.registry import gamedisks
+    from automap import gamedisks
     for root in gamedisks.candidates("dos-archives"):
         if not root.is_dir():
             continue
@@ -2048,9 +2048,9 @@ ITEM_UNPACKERS = {
 
 def _unpacker_rows(shape, table):
     """`(dos offset, amiga offset)` for every byte the unpacker copies."""
+    from automap import gamedisks
     from goldbox.amiga_adf import AmigaDisk
     from tools.amiga import amiga68k, amigaunpack
-    from tools.registry import gamedisks
     name, start, end, size = table[shape.key]
     want = "curse" if name == "/Curse" else "silver"
     for root in gamedisks.candidates("amiga"):
@@ -2572,8 +2572,8 @@ def test_the_curse_size_byte_is_one_for_the_small_races():
 
 def _amiga_disk_file(want: str, path: str) -> bytes:
     """One file off whichever Amiga disk on this machine carries it."""
+    from automap import gamedisks
     from goldbox.amiga_adf import AmigaDisk
-    from tools.registry import gamedisks
     for root in gamedisks.candidates("amiga"):
         if not root.is_dir():
             continue

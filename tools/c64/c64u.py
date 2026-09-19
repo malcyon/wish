@@ -28,7 +28,7 @@ things it does that a bare CLI call does not, each of them a rule from
    dump cannot say.  A dump with no recorded bank state is a dump nobody can
    interpret later.
 4. **Reads the disks the way this project's own tools do** -- `$POR_DISKS`,
-   then `tools/registry/gamedisks.py`'s registry, never a path in the source.  The image
+   then `automap/gamedisks.py`'s registry, never a path in the source.  The image
    is staged into a scratch directory and uploaded from there, so the player's own
    directory is never opened for writing, exactly as `tools/c64/session.py` stages
    `SIDE1.D64` for VICE.
@@ -64,10 +64,11 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from automap import gamedisks  # noqa: E402
 from automap.live import memory_blocks  # noqa: E402
 from automap.paths import disk_globs  # noqa: E402
 from goldbox import c64_port  # noqa: E402
-from tools.registry import gamedisks, scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Exit code for "no C64 Ultimate answered", distinct from a failed check.
 NO_DEVICE = 3
@@ -430,7 +431,7 @@ class Ultimate:
 
 
 def disk_dir(game: c64_port.C64Container | None = None) -> str:
-    """`$POR_DISKS`, then `tools/registry/gamedisks.py`'s registry for this title.
+    """`$POR_DISKS`, then `automap/gamedisks.py`'s registry for this title.
 
     `automap.paths.find_disks` is the player's own search and looks for a
     directory named after the game, which is why it never finds Curse's or

@@ -18,7 +18,7 @@ import sys
 import pytest
 import yaml
 
-from tools.registry import gamedisks
+from automap import gamedisks
 from tools.suite import suiterun
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -136,7 +136,7 @@ def test_the_selection_takes_a_skip_a_needs_marker_or_a_data_lookup(tmp_path):
     for name, body in {
         "test_a.py": "import pytest\npytest.skip('no disks')\n",
         "test_b.py": "from x import needs_dos_saves\n",
-        "test_c.py": "from tools.registry import gamedisks\n",
+        "test_c.py": "from automap import gamedisks\n",
         "test_d.py": "PATH = 'FR_ARCHIVES'\n",
         "test_e.py": "def test_x(): assert 1 + 1 == 2\n",
         "helper.py": "import gamedisks\n",

@@ -11,7 +11,7 @@ frozenset -- if somebody points `gamedisks.yaml` at a different rip, or a
 title's `LIBRARY` turns out to be built differently, this is what says so.
 
 The disk-backed tests skip cleanly with no disks, which is
-`tests/gamedata.py`'s rule and `tools/registry/gamedisks.py`'s job here.
+`tests/gamedata.py`'s rule and `automap/gamedisks.py`'s job here.
 """
 
 from __future__ import annotations
@@ -20,9 +20,9 @@ import functools
 
 import pytest
 
+from automap import gamedisks
 from goldbox import c64_port, portraits
 from tools.icons import portraitdraw
-from tools.registry import gamedisks
 
 #: Loader slots 13 and 14 are `BODY<xx>` and `HEAD<xx>`
 #: (`docs/140-loaded-files-cache.md`).

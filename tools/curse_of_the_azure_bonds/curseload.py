@@ -70,7 +70,8 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from tools.registry import gamedisks, scratch  # noqa: E402
+from automap import gamedisks  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Every byte worth reading when the load has just failed, and why.
 PROBES = {

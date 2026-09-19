@@ -9,7 +9,7 @@ crossed since 2026-08-26 -- `goldbox.amiga_por.to_neutral` then
 cover is the game around them: the party's own square, the area it is
 standing in, the clock and the 217 quest flags.
 
-**Everything reads the player's own disks**, through `tools/registry/gamedisks.py`'s
+**Everything reads the player's own disks**, through `automap/gamedisks.py`'s
 `amiga` entry, and skips on a machine that has none.  Nothing here is
 committed: an Amiga disk image is the game's own code and data
 (`AGENTS.md`), and a slice of one is the same copy under a new name.
@@ -89,8 +89,8 @@ def _pool_of_radiance_disk_1() -> AmigaDisk:
     fails several calls down with a 428-byte record. 288 bytes is Pool of
     Radiance's own (`goldbox.amiga_shared.deltas_for`).
     """
+    from automap import gamedisks
     from tools.amiga import amigasaves
-    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")

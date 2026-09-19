@@ -47,9 +47,10 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds.curseload import close_splat  # noqa: E402
-from tools.registry import gamedisks, scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Where the load's result becomes a number.  0 is success; anything else is
 #: the drive's own error code, and 60 (`$3C`) is `WRITE FILE OPEN`.

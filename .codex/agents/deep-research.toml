@@ -83,7 +83,7 @@ reverse-engineering session can run entirely through the VICE MCP tools
 without ever touching a file that would load `emulator.md` for you:
 
 * **Game disks are read-only and come from the registry**
-  (`tools/registry/gamedisks.py`, `automap.paths.find_disks()`). If you must write,
+  (`automap/gamedisks.py`, `automap.paths.find_disks()`). If you must write,
   work on a copy under the temp directory (`tools/registry/scratch.py`).
 * **Do not leave a background wait loop running when you report.** A `sleep`
   loop watching an emulator or a DOSBox run keeps waking the session long

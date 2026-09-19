@@ -38,7 +38,7 @@ two hits, both inside `PIC78` and `BODY41`, which is what a coincidence looks
 like.
 
 Nothing here needs an emulator: it reads the overlay off the player's own
-disks through `tools/registry/gamedisks.py`.
+disks through `automap/gamedisks.py`.
 
     tools/c64/trainerscan.py --game curse --file GEN --refs
     tools/c64/trainerscan.py --game curse --file GEN --callers 0x0DD0
@@ -53,10 +53,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import layout  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.c64.d6502 import M_ABS, M_ABX, M_ABY, T  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: Where each title's overlays actually run, whatever their PRG header says,
 #: and where the working character record sits while they do.

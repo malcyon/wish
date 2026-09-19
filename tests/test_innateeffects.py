@@ -48,10 +48,10 @@ import pytest
 from gamedata import specimen, specimen_root
 from test_doslatertitles import _mask
 
+from automap import gamedisks
 from goldbox import c64_codec, c64_port, dos_codec, dos_port, neutral
 from goldbox.d64 import D64
 from goldbox.savegame import load_save
-from tools.registry import gamedisks
 
 CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
 SSB = dos_port.SECRET_OF_THE_SILVER_BLADES

@@ -23,10 +23,10 @@ import pathlib
 
 import pytest
 
+from automap import gamedisks
 from goldbox.d64 import D64
 from tests import gamedata
 from tools.c64 import c64nametable as nt
-from tools.registry import gamedisks
 
 TITLES = ("curse-of-the-azure-bonds", "secret-of-the-silver-blades")
 

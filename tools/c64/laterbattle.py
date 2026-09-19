@@ -44,12 +44,13 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.savegame import ROSTER_HP_CURRENT, ROSTER_STRIDE  # noqa: E402
 from tools.c64 import latercombat  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursethac0  # noqa: E402
-from tools.registry import gamedisks, scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: The tavern in Tilverton, and the script bar it puts up. `#131 (Lift
 #: WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all three

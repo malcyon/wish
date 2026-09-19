@@ -63,11 +63,11 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import amiga_dax, amiga_savegame, c64_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools.amiga import amigasaves  # noqa: E402
 from tools.areas import eclcensus  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: The head of the sweep sentence `por_savegame_zeroes` gives every word no
 #: earlier writer claimed.  Matched rather than reproduced, so a reword of
@@ -120,7 +120,7 @@ def ecl_dax() -> bytes:
             return AmigaDisk(bytearray(data)).read_file("/ecl.dax")
         except Exception:                       # not that disk
             continue
-    raise SystemExit("No /ecl.dax on any Amiga disk; see tools/registry/gamedisks.py")
+    raise SystemExit("No /ecl.dax on any Amiga disk; see automap/gamedisks.py")
 
 
 def amiga_program() -> bytes:
@@ -130,7 +130,7 @@ def amiga_program() -> bytes:
             return AmigaDisk(bytearray(data)).read_file("/program")
         except Exception:                       # not that disk
             continue
-    raise SystemExit("No /program on any Amiga disk; see tools/registry/gamedisks.py")
+    raise SystemExit("No /program on any Amiga disk; see automap/gamedisks.py")
 
 
 def amiga_corpus() -> "list[tuple[str, bytes]]":
@@ -228,7 +228,7 @@ class Census:
         game = c64_port.by_key("pool-of-radiance")
         root = gamedisks.find("pool-of-radiance")
         if root is None:
-            raise SystemExit("No Pool of Radiance disks; see tools/registry/gamedisks.py")
+            raise SystemExit("No Pool of Radiance disks; see automap/gamedisks.py")
         # The opcode tables and operand counts come out of the C64 DUNGEON,
         # exactly as tools/areas/eclcensus.py reads the DOS blocks with them.
         machine, _base, _c64, _sides, _dos = eclcensus.load_port(

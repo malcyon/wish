@@ -20,7 +20,7 @@ import sys
 
 import pytest
 
-from tools.registry import gamedisks
+from automap import gamedisks
 from ui import icons
 from wish import licenses
 

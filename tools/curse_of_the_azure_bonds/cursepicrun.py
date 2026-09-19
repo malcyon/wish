@@ -46,9 +46,10 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
+from automap import gamedisks  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.curse_of_the_azure_bonds import curseload, cursepic, curserun  # noqa: E402
-from tools.registry import gamedisks, scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 BUFFER, BUFFER_END = 0x6300, 0x66FF
 ROSTER = 0x6700

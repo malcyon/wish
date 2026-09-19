@@ -42,7 +42,7 @@ Three measurements per title, none of which needs an emulator:
    is searched for a `JSR` or `JMP` to each.
 
 Nothing is written anywhere: the disks are opened read only, and the disk
-directory comes from `tools/registry/gamedisks.py` unless `--disks` says otherwise.
+directory comes from `automap/gamedisks.py` unless `--disks` says otherwise.
 """
 
 from __future__ import annotations
@@ -54,9 +54,9 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import d6502  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: The three C64 titles this project converts, and where their sides are.
 TITLES: tuple[tuple[str, str], ...] = (

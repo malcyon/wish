@@ -477,7 +477,7 @@ def ssb_walk(sess, label: str) -> bool:
     return sess.select_row(label, timeout=30.0)
 
 
-#: Which driver boots which title, the `tools/registry/gamedisks.py` key its sides are
+#: Which driver boots which title, the `automap/gamedisks.py` key its sides are
 #: found under, and how a vertical list takes Return there.
 DRIVERS = {
     "curse-of-the-azure-bonds": ("curse-of-the-azure-bonds", curse_boot,
@@ -490,8 +490,8 @@ DRIVERS = {
 def run(save: str, out: str, who: str, also: list[str], pool: int | None,
         disks: str = "", wait: float = 300.0) -> int:
     """Boot whichever title the save is and read `who`'s money box."""
+    from automap import gamedisks
     from tools.c64 import session as por
-    from tools.registry import gamedisks
 
     game = c64_port.detect(D64.open(save))
     if game is None or game.key not in DRIVERS:

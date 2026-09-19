@@ -31,7 +31,7 @@ REDREW = {("head", 10, "large"), ("weapon", 11, "small")}
 @pytest.fixture(scope="module")
 def folders():
     """Pool of Radiance's and Silver Blades' DOS game directories, or skip."""
-    gamedisks = pytest.importorskip("tools.registry.gamedisks")
+    gamedisks = pytest.importorskip("automap.gamedisks")
     root = gamedisks.find("dos-archives")
     if root is None or not root.is_dir():
         pytest.skip("needs the DOS games; set $FR_ARCHIVES")
@@ -71,7 +71,7 @@ def test_the_page_names_the_option_the_table_names_now(folders):
     the table is a file he edits by hand.
     """
     pytest.importorskip("PIL")
-    gamedisks = pytest.importorskip("tools.registry.gamedisks")
+    gamedisks = pytest.importorskip("automap.gamedisks")
     disks = gamedisks.find(ir.SUBJECT)
     if disks is None or not (disks / "SILVER-1.D64").is_file():
         pytest.skip("needs the C64 Silver Blades disks; set $SSB_DISKS")

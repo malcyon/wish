@@ -32,7 +32,7 @@ Two modes:
   cannot gate the flag, however long the list looks.
 
 Inputs come from `$WISH_SPECIMENS` (default `~/wish-specimens`,
-`tools/registry/specimens.py`), the C64 game disks `tools/registry/gamedisks.py` finds and the
+`tools/registry/specimens.py`), the C64 game disks `automap/gamedisks.py` finds and the
 DOS archives `tools/dos/dosbox.find_game` finds.  Nothing is written outside a
 temporary directory, and no specimen is opened for writing.
 
@@ -52,13 +52,13 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
+from automap import gamedisks  # noqa: E402
 from editor import convert, dosimport  # noqa: E402
 from goldbox import amiga_savegame, c64_codec, c64_port, dos_codec  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 
 def specimen_root() -> pathlib.Path:

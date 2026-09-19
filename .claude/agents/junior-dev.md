@@ -144,7 +144,7 @@ carries, because a port or a dedup can touch either without ever opening the
 file that states it:
 
 * **Game disks are read-only and come from the registry**
-  (`tools/registry/gamedisks.py`, `automap.paths.find_disks()`). If you must write,
+  (`automap/gamedisks.py`, `automap.paths.find_disks()`). If you must write,
   work on a copy under the temp directory (`tools/registry/scratch.py`).
 * **Comment the why, not the what.** A comment restating the code should not be
   written. `goldbox/layout.py` is the deliberate exception — its notes are field

@@ -359,7 +359,7 @@ afterwards. The window steps ran on a headless `Xvfb` driven by `xdotool`.*
 
 **L1.** Make the working copy. Everything downstream uses it. `$POR` is the
 folder the `pool-of-radiance` registry entry resolves to (`$POR_DISKS`, else
-`gamedisks.yaml`; `tools/registry/gamedisks.py` prints it), where the save disk
+`gamedisks.yaml`; `automap/gamedisks.py` prints it), where the save disk
 `PORSAVE11.D64` is.
 
 ```sh

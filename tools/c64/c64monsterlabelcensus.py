@@ -12,7 +12,7 @@ different names share.
 
     tools/c64/c64monsterlabelcensus.py [--pool DIR] [--curse DIR] [--ssb DIR]
 
-Each directory defaults to the title's entry in `tools/registry/gamedisks.py` (so
+Each directory defaults to the title's entry in `automap/gamedisks.py` (so
 `$POR_DISKS`, `$COAB_DISKS` and `$SSB_DISKS` win). For Pool of Radiance the
 unmodified `POOL1.D64.orig` is used when it sits beside the disks, otherwise
 `POOL1.D64`. Disks are opened read only; a title with no directory is reported
@@ -29,8 +29,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 
 def label(name):

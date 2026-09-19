@@ -18,13 +18,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import d64  # noqa: E402
 from goldbox.items import (  # noqa: E402
     NAMES_TABLE_ENTRIES,
     ItemType,
     load_item_names,
 )
-from tools.registry import gamedisks  # noqa: E402
 
 OUT = Path(__file__).resolve().parent.parent.parent / "docs" / "85-item-tables.md"
 

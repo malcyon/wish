@@ -51,7 +51,7 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 def npc_party_disk():
     """`npc_party.d64` -- the hacked save whose party stands in the Kobold
     Caves with an NPC -- from the `npc-party-save` registry entry, or None."""
-    from tools.registry import gamedisks
+    from automap import gamedisks
     where = gamedisks.find("npc-party-save")
     return where / "npc_party.d64" if where else None
 
@@ -60,10 +60,10 @@ def npc_party_disk():
 def disk_dir():
     """Where Pool of Radiance's disks are on this machine, or None.
 
-    `tools.registry.gamedisks.find` (#212) is the test suite's own lookup, not
+    `automap.gamedisks.find` (#212) is the test suite's own lookup, not
     `automap.paths.find_disks` -- that one is the player's, and is for the
     shipped code under `automap/`, `editor/` and `wish/` (#251)."""
-    from tools.registry import gamedisks
+    from automap import gamedisks
     return gamedisks.find("pool-of-radiance")
 
 
@@ -119,7 +119,7 @@ def _curse_candidates():
     test that skips is not a test that passes, and a suite green because
     ninety of them skipped has said nothing.
     """
-    from tools.registry import gamedisks
+    from automap import gamedisks
     base = gamedisks.candidates(CURSE_KEY)
     if os.environ.get(CURSE_ENV):
         return base                      # taken whole; no further guessing

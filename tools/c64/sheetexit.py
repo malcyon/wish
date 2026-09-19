@@ -496,8 +496,8 @@ DRIVERS = {
 def run(save: str, out: str, who: list[str], how: str, pool: int | None,
         disks: str = "", wait: float = 300.0) -> int:
     """Boot once and read every named character's sheet."""
+    from automap import gamedisks
     from tools.c64 import session as por
-    from tools.registry import gamedisks
 
     game = c64_port.detect(D64.open(save))
     if game is None or game.key not in DRIVERS:

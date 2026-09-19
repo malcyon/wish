@@ -346,7 +346,7 @@ DISK = {"secret-of-the-silver-blades": "silver",
 
 
 def _adf(key: str):
-    from tools.registry import gamedisks
+    from automap import gamedisks
     want = DISK[key]
     exe = amiga.MACHINES[key].executable
     for root in gamedisks.candidates("amiga"):
@@ -537,7 +537,7 @@ def test_a_stranger_s_map_is_not_drawn_as_ours():
 
 def _map_disk(key: str):
     """The first Amiga image of this title carrying `GEO.GLB`, or a skip."""
-    from tools.registry import gamedisks
+    from automap import gamedisks
     want = DISK[key]
     for root in gamedisks.candidates("amiga"):
         if not root.is_dir():

@@ -36,10 +36,9 @@ import pytest
 # the package's name and a bare `import wish` that resolves to it stays
 # resolved for the whole process.
 import wish  # noqa: F401
-from automap import c64, fasttravel
+from automap import c64, fasttravel, gamedisks
 from automap.actions import KEY_FETCH, KEY_WAIT, NEWECL_TAIL
 from goldbox import c64_port
-from tools.registry import gamedisks
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 

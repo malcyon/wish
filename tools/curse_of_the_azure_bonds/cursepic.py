@@ -64,8 +64,8 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import gamedisks  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
-from tools.registry import gamedisks  # noqa: E402
 
 #: Where the buffer sits in the running machine and in the save's payload.
 BUFFER = 0x6300

@@ -1172,7 +1172,7 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 >   **The two figures do not come from the same place**, and an earlier version
 >   of this passage read as though they did. `~/Downloads/fr-archives` holds no
 >   `.adf` at all: the Amiga records come from the disk-image directories
->   `tools/registry/gamedisks.py` lists as its `amiga` candidates. The DOS figure is
+>   `automap/gamedisks.py` lists as its `amiga` candidates. The DOS figure is
 >   pinned by `tests/test_enccensus.py::test_every_record_the_archives_ship_
 >   balances_exactly`, so a reader change that brings the six back turns it red.
 >   **The Amiga figure has no test**, so treat it as a measurement taken once

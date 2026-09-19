@@ -19,39 +19,31 @@ Two layers, highest precedence first:
    each a list of candidate paths tried in order. `gamedisks.yaml.example` is
    committed and is the whole registry: every entry, its variable, its glob and
    the comment saying what the dataset is. Somebody who clones this repository
-   copies the example to `gamedisks.yaml` and edits the paths. With no
-   `gamedisks.yaml` the loader stops with a one-line message saying so, rather
-   than quietly finding nothing.
+   copies the example to `gamedisks.yaml` and edits the paths. With the example
+   but no `gamedisks.yaml` the loader stops with a one-line message saying so,
+   rather than quietly finding nothing; with neither file, as on a player's
+   machine, it has no entries and finds nothing without raising.
 
-    tools/registry/gamedisks.py            one row per entry: variable, layer, path,
+    python -m automap.gamedisks            one row per entry: variable, layer, path,
                                   found -- turns "103 skipped" into a question
                                   anybody can answer in a second
 
 Every path is `~`-expanded so the same file works on any machine; nothing here
 is Linux-specific.
 
-**This is ours, and `automap/paths.py` is the player's. They are separate on
-purpose and must stay that way.** Donald, 2026-09-04: *"gamedisks.toml is for
-our tests and our tools and our reverse-engineering. It's not for the end
-user. It's not getting shipped in the release package."*
+**This is the registry of where the test suite and the reverse-engineering
+tools find their data; it is not where the player's disks are.**
+`automap.paths.resolve_disks()` answers that -- the Game directory the player
+set in Preferences, the folder beside the save they opened, the command-line
+flag. `automap.paths.disk_candidates()` asks this module for a title's
+candidates after `$POR_DISKS` and before its home-folder guesses, and a
+missing `gamedisks.yaml`, a missing entry or a missing `yaml` module leaves
+the home-folder guesses as they were.
 
-So the two lookups answer two different questions:
-
-* `automap.paths.resolve_disks()` answers **where this player keeps their
-  disks** -- the Game directory they set in Preferences, the folder beside the
-  save they opened, the command-line flag. `wish/__main__.py`,
-  `editor/files.py`, `automap/maps.py` and `automap/actions.py` all go through
-  it, and `#22 (A disk folder setting per game, not one shared by all six)` is
-  the ticket that gives it one answer per title.
-* This module answers **where the games are on a machine running the
-  test suite or a reverse-engineering tool**, so a specimen is never known
-  only inside one test file again.
-
-Nothing under `automap/`, `editor/`, `goldbox/`, `wish/` or `ui/` imports this
-module, and nothing should. `gamedisks.yaml` sits at the repository root with
-no package-data entry, so it is not in a wheel at all: shipped code calling
-`find()` would get a silent nothing on a player's machine, which is the worst
-shape a lookup can fail in.
+`gamedisks.yaml` sits at the repository root with no package-data entry, so a
+wheel does not carry it: shipped code calling `find()` on a player's machine
+gets nothing, and must treat that as "not registered" rather than as an error.
+This module imports nothing from `tools/`.
 """
 
 from __future__ import annotations
@@ -63,7 +55,7 @@ import sys
 
 import yaml
 
-REPO = pathlib.Path(__file__).resolve().parent.parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent
 REGISTRY = REPO / "gamedisks.yaml"
 EXAMPLE = REPO / "gamedisks.yaml.example"
 
@@ -93,9 +85,20 @@ def _load(path: pathlib.Path) -> dict:
     return loaded
 
 
+def _example() -> dict:
+    """The committed example's entries; none where the checkout has no example,
+    which is every installed copy: neither file ships in a wheel."""
+    return _load(EXAMPLE) if EXAMPLE.is_file() else {}
+
+
 def _registry() -> dict:
     """Re-read every call: this is a developer tool, not a hot path, and a
-    cache would hide an edit to `gamedisks.yaml` made mid-session."""
+    cache would hide an edit to `gamedisks.yaml` made mid-session.
+
+    With neither `gamedisks.yaml` nor the example there is nothing to copy and
+    nothing to look up, so the registry is empty rather than a stop."""
+    if not REGISTRY.is_file() and not EXAMPLE.is_file():
+        return {}
     if not REGISTRY.is_file():
         raise RegistryMissing(
             f"{REGISTRY.name} is missing: copy {EXAMPLE.name} to "
@@ -117,7 +120,7 @@ def _row(name: str) -> dict:
     line when there is none. A machine whose file was copied before the entry
     existed gets the example's row, so a new entry works without an edit."""
     machine = _registry()
-    return dict(machine.get(name) or _load(EXAMPLE).get(name) or {})
+    return dict(machine.get(name) or _example().get(name) or {})
 
 
 def _env_value(name: str) -> str | None:
@@ -129,7 +132,7 @@ def _env_value(name: str) -> str | None:
     if REGISTRY.is_file():
         row = _load(REGISTRY).get(name)
     var = (row or {}).get(ENV) or (
-        _load(EXAMPLE).get(name) or {}).get(ENV)
+        _example().get(name) or {}).get(ENV)
     return os.environ.get(var) if var else None
 
 
@@ -138,7 +141,7 @@ def _globs(name: str) -> list[str]:
     if REGISTRY.is_file():
         row = _load(REGISTRY).get(name)
     if row is None:
-        row = _load(EXAMPLE).get(name)
+        row = _example().get(name)
     return _as_list((row or {}).get(GLOB))
 
 

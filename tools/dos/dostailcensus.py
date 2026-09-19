@@ -63,9 +63,10 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import dos_codec as gdos  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
-from tools.registry import gamedisks, scratch  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 #: Suffixes a DOS character record is stored under.  `.GUY` is Gateway's
 #: export, which reads through the Curse table (`dos_layout.shape_for`).

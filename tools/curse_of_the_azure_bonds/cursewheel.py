@@ -59,7 +59,7 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 
-from tools.registry import gamedisks  # noqa: E402
+from automap import gamedisks  # noqa: E402
 
 #: The two rune tiles' **interiors**, as (left, top, width, height) in the
 #: 320x200 frame.  Measured off a live prompt on 2026-09-05 and inset three

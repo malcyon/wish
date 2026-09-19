@@ -40,10 +40,10 @@ def _por_disk_1(tmp_path: pathlib.Path) -> pathlib.Path:
     the Curse save disk carries a `save/savgamA.dat` too and it is 15221 bytes
     where this title's is 13141.
     """
+    from automap import gamedisks
     from goldbox.amiga_adf import AmigaDisk
     from goldbox.amiga_savegame import POR_SAVEGAME_SIZE
     from tools.amiga import amigasaves
-    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")
@@ -71,9 +71,9 @@ def _por_disk_2(tmp_path: pathlib.Path) -> pathlib.Path:
     Amiga keeps in a single `ecl.dax` on the `POOLDATA` volume.  Identified by
     carrying that file rather than by its name, which differs between rips.
     """
+    from automap import gamedisks
     from goldbox.amiga_adf import AmigaDisk
     from tools.amiga import amigasaves
-    from tools.registry import gamedisks
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disks; set $AMIGA_DISKS")

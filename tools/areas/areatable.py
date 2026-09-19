@@ -1035,7 +1035,7 @@ DISK_BYTES = {
 
 
 def registry(key: str) -> str:
-    """`tools/registry/gamedisks.py`'s answer for this title, or "".
+    """`automap/gamedisks.py`'s answer for this title, or "".
 
     Second, after `--disks`/`$POR_DISKS`. `automap.paths.find_disks` is the
     *player's* search and looks for a directory named after the game; nobody
@@ -1045,7 +1045,7 @@ def registry(key: str) -> str:
     registry rather than the player's lookup.
     """
     try:
-        from tools.registry import gamedisks
+        from automap import gamedisks
     except ImportError:                     # pragma: no cover - defensive
         return ""
     found = gamedisks.find(key)

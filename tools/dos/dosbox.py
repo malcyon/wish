@@ -69,7 +69,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
-from tools.registry import gamedisks, scratch  # noqa: E402
+from automap import gamedisks  # noqa: E402
+from tools.registry import scratch  # noqa: E402
 
 WORK = scratch.scratch_dir("dosbox")
 INST = WORK / "inst"

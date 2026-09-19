@@ -64,7 +64,7 @@ def amiga_dirs() -> list[pathlib.Path]:
     defaults are narrowed to the game directories, because their roots hold
     every Amiga disk on the machine.
     """
-    from tools.registry import gamedisks
+    from automap import gamedisks
     where = os.environ.get("AMIGA_DISKS")
     if where:
         return [pathlib.Path(where)]
@@ -74,7 +74,7 @@ def amiga_dirs() -> list[pathlib.Path]:
 
 
 def real_disks() -> list[pathlib.Path]:
-    from tools.registry import gamedisks
+    from automap import gamedisks
     where = amiga_dirs()
     if not where:
         pytest.skip(
