@@ -8,16 +8,19 @@ to 6, the Krynn titles number a different list from 0, and Curse's `ITEMNAMES`
 loads at $9E00 rather than $6F00 -- so the shared tables were wrong for four
 titles and the item names on five. They now live on the `Game` descriptor.
 
-The evidence is on the player's disks, so the tests that check it read them and
-skip when they are absent. Nothing here is a fixture.
+The evidence is on the player's disks, so the tests that check it read them. A
+machine with no `gamedisks.yaml` of its own skips them; one that has a registry
+which cannot lead to a title's disks fails them. Nothing here is a fixture.
 """
 
 
 import dataclasses
+import fnmatch
 import functools
 import pathlib
 
 import pytest
+from gamedata import require_registered
 
 from automap import gamedisks
 from goldbox import c64_port, items, yaml_io
@@ -27,22 +30,17 @@ KEYS = [g.key for g in c64_port.GAMES]
 
 
 # --- finding the player's disks ---------------------------------------------
-# `tests/gamedata.py` knows where Pool of Radiance's and Curse's disks are;
-# nothing knows where the other four are, and their published directory names
-# ("SecretOfTheSilverBlades-Lithium") are nothing a fixed list would guess. So
-# look one level down from the places disks live and match `Game.disk_glob`,
-# which is already per-title and already right.
+# Each title's directory comes from `gamedisks.yaml` and nowhere else. The
+# published directory names ("SecretOfTheSilverBlades-Lithium") are nothing a
+# fixed list would guess, so one level below each registered directory is
+# searched as well, and `Game.disk_glob`, which is per-title, decides what
+# counts as a disk.
 
 def _roots(key: str) -> list[pathlib.Path]:
-    """The registry's paths for this title, then the places somebody would put
-    disks by hand."""
-    home = pathlib.Path.home()
-    bases = [*gamedisks.candidates(key),
-             pathlib.Path.cwd(), home, home / "c64",
-             home / "Documents", home / "Games", home / "roms",
-             home / "Downloads"]
+    """The registry's paths for this title, then the directories one level
+    below each."""
     out: list[pathlib.Path] = []
-    for base in bases:
+    for base in gamedisks.candidates(key):
         out.append(base)
         try:
             out += [p for p in sorted(base.iterdir()) if p.is_dir()]
@@ -55,9 +53,13 @@ def _roots(key: str) -> list[pathlib.Path]:
 def disks_for(key: str) -> tuple[pathlib.Path, ...]:
     """Every disk image of one title that this machine holds.
 
-    Every root, not the first that hits: `~/c64` holds both a loose
-    `Death Knights of Krynn Monitor [the sir].d64` and the real disks a
+    Every root, not the first that hits: a registered directory can hold both
+    a loose `Death Knights of Krynn Monitor [the sir].d64` and the real disks a
     directory below, and stopping at the first match found only the monitor.
+
+    Raises `RegistryError` where the machine has its own `gamedisks.yaml` and
+    it does not lead to any of the title's disks; returns nothing, and the
+    tests skip, where it has none.
     """
     glob = c64_port.by_key(key).disk_glob
     out: list[pathlib.Path] = []
@@ -66,6 +68,8 @@ def disks_for(key: str) -> tuple[pathlib.Path, ...]:
             out += sorted(root.glob(glob))
         except OSError:
             continue
+    if not out:
+        require_registered(key)
     return tuple(dict.fromkeys(out))
 
 
@@ -97,6 +101,67 @@ def need(key: str, name: bytes) -> bytes:
     if not found:
         pytest.skip(f"no {key} disk here carries {name.decode()}")
     return found[0]
+
+
+# --- where the disks are looked for ------------------------------------------
+
+@pytest.fixture
+def fresh_disks():
+    disks_for.cache_clear()
+    yield
+    disks_for.cache_clear()
+
+
+@pytest.mark.parametrize("key", KEYS)
+def test_a_registry_with_no_entry_for_a_title_fails_the_lookup(
+        key, own_registry, fresh_disks):
+    own_registry("codewheel:\n  env: WISH_CODEWHEEL\n  paths: []\n")
+    with pytest.raises(gamedisks.RegistryError) as stopped:
+        disks_for(key)
+    assert key in str(stopped.value)
+
+
+def test_the_home_folder_is_not_searched_for_a_titles_disks(
+        own_registry, fresh_disks, tmp_path, monkeypatch):
+    """Disks under `~/c64` are not found unless the registry names them."""
+    key = "champions-of-krynn"
+    decoy = tmp_path / "c64" / "Any Name At All"
+    decoy.mkdir(parents=True)
+    stem = "Champions of Krynn 1.d64"
+    assert fnmatch.fnmatch(stem, c64_port.by_key(key).disk_glob)
+    (decoy / stem).write_bytes(b"")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.chdir(tmp_path / "c64")
+    own_registry("codewheel:\n  env: WISH_CODEWHEEL\n  paths: []\n")
+    with pytest.raises(gamedisks.RegistryError):
+        disks_for(key)
+
+
+def test_a_registered_directory_and_the_one_below_it_are_searched(
+        own_registry, fresh_disks, tmp_path):
+    key = "champions-of-krynn"
+    stem = "Champions of Krynn 1.d64"
+    assert fnmatch.fnmatch(stem, c64_port.by_key(key).disk_glob)
+    below = tmp_path / "rips" / "one release"
+    below.mkdir(parents=True)
+    (below / stem).write_bytes(b"")
+    own_registry(f"{key}:\n  env: COK_DISKS\n  glob: [\"*.d64\"]\n"
+                 f"  paths: [\"{(tmp_path / 'rips').as_posix()}\"]\n")
+    assert disks_for(key) == (below / stem,)
+
+
+@pytest.mark.parametrize("key", KEYS)
+def test_a_machine_with_no_registry_finds_nothing_and_the_tests_skip(
+        key, no_registry, fresh_disks):
+    assert disks_for(key) == ()
+
+
+def test_the_example_replacing_a_missing_registry_finds_nothing(
+        example_registry, fresh_disks):
+    """What CI has: the loader points at the example, whose paths are not on
+    the machine."""
+    assert all(disks_for(key) == () for key in KEYS)
 
 
 # --- the tables themselves, no disks needed ---------------------------------

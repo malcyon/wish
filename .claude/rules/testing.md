@@ -66,7 +66,12 @@ count them and name them rather than rounding them away.
 
 **A test that skips is not a test that passes.** `tests/gamedata.py` skips
 cleanly with no disks, which is right -- but a suite that is green because
-forty tests skipped has told you nothing. Say how many skipped and why.
+forty tests skipped has told you nothing. Say how many skipped and why. On a
+machine with its own `gamedisks.yaml`, an entry the registry cannot lead to
+-- every entry of the example, the ones that are not titles included -- fails
+`tests/test_gamedata.py`'s per-entry guard, and the lookups that are not
+reached at import raise `RegistryError` as well (`gamedata.curse_dir`,
+`test_gametables.disks_for`), so a missing entry is not a silent skip.
 
 **Never weaken a test to make a change fit.** If a change makes a test fail the
 change is wrong until proven otherwise, and the proof is an argument about

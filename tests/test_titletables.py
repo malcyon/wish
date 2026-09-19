@@ -170,6 +170,7 @@ def _death_knights_side():
 def champions_disk() -> pathlib.Path:
     path = _champions_side_a()
     if path is None:
+        gamedata.require_registered("champions-of-krynn")
         pytest.skip("needs a Champions of Krynn side carrying ITEMNAMES; "
                     "set COK_DISKS or add the champions-of-krynn entry "
                     "to gamedisks.yaml")
@@ -179,6 +180,7 @@ def champions_disk() -> pathlib.Path:
 def death_knights_disk() -> pathlib.Path:
     path = _death_knights_side()
     if path is None:
+        gamedata.require_registered("death-knights-of-krynn")
         pytest.skip("needs a Death Knights of Krynn side carrying ITEMNAMES, "
                     "beside a champions-of-krynn candidate; set COK_DISKS or "
                     "add the entry to gamedisks.yaml")

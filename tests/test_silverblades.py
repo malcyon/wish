@@ -78,6 +78,7 @@ def ssb_dir():
                 return path
         except OSError:
             continue
+    gamedata.require_registered(SSB_KEY)
     return None
 
 

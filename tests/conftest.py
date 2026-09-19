@@ -73,7 +73,7 @@ assert hasattr(wish, "__path__"), (
 # worktree and any fresh clone have none, and the loader stops with a one-line
 # message when it is missing. A test module asks the registry while it is being
 # collected, so that stop would take the whole run down rather than skip the
-# tests that need game data. Here the example stands in: its paths are
+# tests that need game data. Here the example is used in its place: its paths are
 # `/data/agent-disks/<entry>`, which a machine with no registry has no reason to
 # have, so every lookup answers "not here" and those tests skip, as they always
 # have on a machine with no disks. A machine with the real file is untouched.
@@ -292,6 +292,42 @@ def no_registry(tmp_path_factory, monkeypatch):
     empty = tmp_path_factory.mktemp("no_registry")
     monkeypatch.setattr(_gamedisks, "REGISTRY", empty / "gamedisks.yaml")
     monkeypatch.setattr(_gamedisks, "EXAMPLE", empty / "gamedisks.yaml.example")
+
+
+def _clear_disk_variables(monkeypatch) -> None:
+    """Unset every `$..._DISKS` variable the example registry names, so one
+    exported in the shell cannot answer for an entry a test left out."""
+    for row in _gamedisks._example().values():
+        monkeypatch.delenv(row.get(_gamedisks.ENV, ""), raising=False)
+
+
+@pytest.fixture
+def example_registry(monkeypatch):
+    """The loader reads the committed example, as it does on CI, where its paths
+    are not on the machine and no `$..._DISKS` variable is set."""
+    monkeypatch.setattr(_gamedisks, "REGISTRY", _gamedisks.EXAMPLE)
+    _clear_disk_variables(monkeypatch)
+
+
+@pytest.fixture
+def own_registry(tmp_path_factory, monkeypatch):
+    """Call it with the text of a `gamedisks.yaml` and the loader reads that.
+
+    The file is a real one, so a test using it is on the same side of the line
+    as a machine that keeps its own registry -- not the example that replaces it
+    on CI. The variables the example names are cleared, so `$COAB_DISKS` set in
+    the shell cannot answer for an entry the test left out.
+    """
+    home = tmp_path_factory.mktemp("own_registry")
+
+    def install(text: str) -> pathlib.Path:
+        path = home / "gamedisks.yaml"
+        path.write_text(text, encoding="utf-8")
+        monkeypatch.setattr(_gamedisks, "REGISTRY", path)
+        _clear_disk_variables(monkeypatch)
+        return path
+
+    return install
 
 
 # -- the scratch directory must not come back ------------------------------------

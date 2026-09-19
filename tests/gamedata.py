@@ -29,11 +29,11 @@ still holds.
 
 
 import functools
-import os
 import pathlib
 
 import pytest
 
+from automap import gamedisks
 from goldbox.d64 import D64, load_payload
 from goldbox.geo import (
     ATTRIBUTES,
@@ -50,10 +50,15 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 def npc_party_disk():
     """`npc_party.d64` -- the hacked save whose party stands in the Kobold
-    Caves with an NPC -- from the `npc-party-save` registry entry, or None."""
-    from automap import gamedisks
+    Caves with an NPC -- from the `npc-party-save` registry entry, or None.
+
+    Where the machine has its own registry and the entry finds nothing this
+    raises `RegistryError` (`require_registered`) rather than returning None."""
     where = gamedisks.find("npc-party-save")
-    return where / "npc_party.d64" if where else None
+    if where is None:
+        require_registered("npc-party-save")
+        return None
+    return where / "npc_party.d64"
 
 
 @functools.lru_cache(maxsize=1)
@@ -62,9 +67,39 @@ def disk_dir():
 
     `automap.gamedisks.find` (#212) is the test suite's own lookup, not
     `automap.paths.find_disks` -- that one is the player's, and is for the
-    shipped code under `automap/`, `editor/` and `wish/` (#251)."""
-    from automap import gamedisks
+    shipped code under `automap/`, `editor/` and `wish/` (#251).
+
+    It never raises, because test modules call it while they are imported and a
+    `RegistryError` there is a `SystemExit` that ends the run; the check that
+    the registry names Pool of Radiance is
+    `test_the_registry_says_where_each_titles_disks_are` in `test_gamedata.py`."""
     return gamedisks.find("pool-of-radiance")
+
+
+def has_own_registry() -> bool:
+    """Whether this machine keeps a `gamedisks.yaml` of its own.
+
+    Path identity against the committed example, and nothing else: a file at
+    another path is a registry whatever it contains, an unedited copy of the
+    example included. CI and a fresh clone have no such file, and
+    `tests/conftest.py` points the loader at the example itself there, so the
+    guard skips. A missing disk on such a machine is not a fault; on one that has
+    its own registry it is an entry to fix.
+    """
+    return (gamedisks.REGISTRY.is_file()
+            and gamedisks.REGISTRY != gamedisks.EXAMPLE)
+
+
+def require_registered(key: str) -> None:
+    """Raise `RegistryError` naming `key`'s entry, when this machine has its own
+    registry and it cannot find a directory holding the entry's disks. Does
+    nothing otherwise, so the caller's own skip still applies where there is no
+    registry."""
+    if not has_own_registry() or gamedisks.find(key) is not None:
+        return
+    raise gamedisks.RegistryError(
+        f"{gamedisks.REGISTRY.name} does not list a directory holding {key}'s "
+        f"disks: add one under `{key}:`.")
 
 
 @functools.lru_cache(maxsize=None)
@@ -99,38 +134,11 @@ needs_disks = pytest.mark.skipif(disk_dir() is None,
 # --- the second game ---------------------------------------------------------
 # Curse of the Azure Bonds shares this project's decoders (docs/116). The tests
 # that check it must not break when the disks are absent, and must not read
-# anything out of the repository, so they look for the disks the same way the
-# Pool of Radiance ones are found.
+# anything out of the repository, so they look for the disks through the
+# registry, as the Pool of Radiance ones are found.
 
 CURSE_ENV = "COAB_DISKS"
 CURSE_KEY = "curse-of-the-azure-bonds"
-
-
-def _curse_candidates():
-    """Where Curse disks might be: `gamedisks.yaml`'s own list (#212), plus
-    one level of subdirectory under `~/c64/All Games`.
-
-    A rip is often unpacked under a name nobody would guess -- the one on this
-    machine is `~/c64/All Games/Curse_of_the_Azure_Bonds.SSI.PIS`, which
-    matches no name the registry's own list would try, and was found by hand
-    after every Curse test had been quietly skipping. Scanning one level under
-    that one directory is cheap and finds it without a matching name; the
-    `CURSE*.D64` glob in `curse_dir` still decides which candidate is real. A
-    test that skips is not a test that passes, and a suite green because
-    ninety of them skipped has said nothing.
-    """
-    from automap import gamedisks
-    base = gamedisks.candidates(CURSE_KEY)
-    if os.environ.get(CURSE_ENV):
-        return base                      # taken whole; no further guessing
-    out = list(base)
-    all_games = pathlib.Path.home() / "c64" / "All Games"
-    try:
-        out.extend(sorted(child for child in all_games.iterdir()
-                          if child.is_dir()))
-    except OSError:
-        pass
-    return out
 
 
 def _curse_sides(path):
@@ -146,13 +154,18 @@ def _curse_sides(path):
 def curse_dir():
     """Where the player keeps their Curse of the Azure Bonds disks, or None.
 
-    **Prefers a rip with no error bytes on any side.** Widening the search to
-    one level of subdirectory made two full sets match on this machine, and
-    `Curse_of_the_Azure_Bonds_with_docs.SSI` carries a 175531-byte
-    `CURSE4.D64` -- 174848 plus a 683-byte error table. Taking the first match
-    in path order would have chosen between them on where a `.` sorts against
-    a `_` and said nothing about it: rename a folder, and the whole Curse
-    suite moves onto the damaged release in silence.
+    Only the registry's paths are searched, or `$COAB_DISKS` alone when it is
+    set. Where the machine has its own `gamedisks.yaml` and none of those paths
+    holds a `CURSE*.D64`, this raises `RegistryError` naming the entry
+    (`require_registered`); where it has none, as on CI, it returns None and the
+    tests skip.
+
+    **Prefers a rip with no error bytes on any side.** The registry can list
+    two full sets, and `Curse_of_the_Azure_Bonds_with_docs.SSI` carries a
+    175531-byte `CURSE4.D64` -- 174848 plus a 683-byte error table. Taking the
+    first match in path order would choose between them on the order the
+    registry happens to list them, and reordering it would move the whole Curse
+    suite onto the damaged release in silence.
 
     `curse_disks`'s docstring says `goldbox.d64` refuses that side. It does
     not -- `D64.open` reads it as the error-bytes variant, `writable` False and
@@ -165,7 +178,7 @@ def curse_dir():
     guessed at.
     """
     best, best_score, others = None, (False, False, -1, 0), []
-    for path in _curse_candidates():
+    for path in gamedisks.candidates(CURSE_KEY):
         if not path.is_dir():
             continue
         sides = _curse_sides(path)
@@ -188,6 +201,8 @@ def curse_dir():
         else:
             others.append(path)
     curse_dir.also_matched = others
+    if best is None:
+        require_registered(CURSE_KEY)
     return best
 
 
@@ -261,7 +276,17 @@ def curse_file(name: str, engine_only: bool = True) -> bytes:
     return best
 
 
-needs_curse_disks = pytest.mark.skipif(curse_dir() is None,
+def curse_absent() -> bool:
+    """Whether a Curse test should skip for want of disks. False on a machine
+    with its own registry that cannot find them: the test runs and `curse_dir`
+    fails it with the registry's message."""
+    try:
+        return curse_dir() is None
+    except gamedisks.RegistryError:
+        return False
+
+
+needs_curse_disks = pytest.mark.skipif(curse_absent(),
                                        reason="needs the Curse disks")
 
 

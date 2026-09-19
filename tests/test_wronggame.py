@@ -36,7 +36,7 @@ import os
 import pathlib
 
 import pytest
-from gamedata import curse_dir, disk_dir, game_file, synthetic_geo
+from gamedata import curse_dir, disk_dir, game_file, needs_curse_disks, synthetic_geo
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -547,7 +547,7 @@ def test_every_map_the_automapper_loads_reads_as_a_map():
     assert rejected == [], f"{len(rejected)} of {len(maps)} rejected: {rejected}"
 
 
-@pytest.mark.skipif(curse_dir() is None, reason="needs the Curse disks")
+@needs_curse_disks
 def test_every_curse_map_reads_as_a_map():
     """Curse's `GEO33` was the sixth map the old threshold turned away."""
     maps = _maps_on(curse_dir(), ("CURSE*.[dD]64",))
