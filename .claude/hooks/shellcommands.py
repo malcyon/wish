@@ -55,10 +55,12 @@ def reader(before: str) -> str:
     That is the first word of the last command on the line, past any leading
     `NAME=value` assignments, or `""` when there is none.
     """
-    # A backslash-newline pair is deleted before the line is read, so `bash \`
-    # newline `<<EOF` still names `bash`. A backslash that is itself escaped
-    # (`\\` newline) does not continue the line and stays.
-    before = re.sub(r"(?<!\\)((?:\\\\)*)\\\n", r"\1", before)
+    # A backslash-newline pair outside a comment is deleted before the line is
+    # read, so `bash \` newline `<<EOF` still names `bash`. Comments go first
+    # and by the same scan as everywhere else: a comment ends at its newline
+    # whatever precedes it, so `# note \` newline `bash <<EOF` is a comment and
+    # then a `bash` command, and an escaped backslash (`\\` newline) stays.
+    before = strip_comments(before, join_lines="\n")
     # A `&` beside a `<` or `>` is a redirection (`2>&1`, `&>`), not a separator.
     last = re.split(r"\n|;|&&|\|\||\||(?<![<>])&(?!>)|\(", before)[-1]
     for token in tokens(last):

@@ -229,6 +229,13 @@ def test_the_push_is_seen_however_it_is_reached(clone, monkeypatch):
         "bash \\\n<<EOF\ngit push\nEOF",
         "sh -s \\\n <<EOF\ngit push\nEOF",
         "sh \\\n  -s \\\n<<'EOF'\ngit push\nEOF",
+        # A backslash at the end of a comment does not continue it, so the next
+        # line is a command of its own and its heredoc is still read by a shell.
+        "# note \\\nbash <<EOF\ngit push\nEOF",
+        "# c \\\nsh <<'EOF'\ngit push\nEOF",
+        "#\\\nbash <<EOF\ngit push\nEOF",
+        "echo hi #\\\nbash <<EOF\ngit push\nEOF",
+        "echo hi #\\\nsh <<'EOF'\ngit push\nEOF",
         # A continuation before an unterminated quote is still deleted.
         "git \\\npush origin\necho '",
         "git \\\npush origin\necho \"x",
