@@ -496,17 +496,14 @@ class NotLineDoubled(RuntimeError):
     """`halve()` was handed an even-sized frame that is not a 2x2 replication.
 
     `#215 (Nothing checks that a frame halve() is about to halve was really
-    line-doubled)`: parity alone used to be the whole guard, so a frame that
-    was even-sized without being doubled would have been halved anyway and
-    handed back a plausible, wrong picture.
+    line-doubled)`: a frame that is even-sized without being doubled would
+    otherwise be halved anyway and handed back as a plausible, wrong picture.
 
-    It fires on a capture torn between two of the window's blits, or taken in
-    the middle of a mode change, where the frame mixes two moments. That
-    happens when a whole-screen repaint is captured, such as the title
-    sequence, so `XSession.capture()` grabs again a few times before letting
-    it out; `halve()` itself stays strict. A window that stays not
-    line-doubled through every retry still raises, which is the named refusal
-    instead of a wrong measurement nobody notices.
+    It fires on a grab torn between two of the window's blits, where the frame
+    mixes two moments.  That happens when a whole-screen repaint is captured,
+    such as the title sequence, so `XSession.capture()` grabs again a few times
+    before letting it out; `halve()` itself stays strict.  A window that stays
+    not line-doubled through every retry still raises.
     """
 
 
@@ -779,9 +776,11 @@ class XSession(dosbox.Session):
         for attempt in range(self.CAPTURE_TRIES):
             try:
                 return halve(super().capture())
-            except NotLineDoubled:
+            except NotLineDoubled as e:
                 if attempt == self.CAPTURE_TRIES - 1:
                     raise
+                print(f"capture try {attempt + 1} of {self.CAPTURE_TRIES}: {e}; "
+                      "grabbing again", file=sys.stderr)
                 time.sleep(self.CAPTURE_RETRY_GAP)
         raise AssertionError("unreachable: CAPTURE_TRIES is at least one")
 

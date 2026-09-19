@@ -374,7 +374,7 @@ def _two_moments():
     return before, after, torn
 
 
-def test_capture_grabs_again_when_a_grab_was_torn_between_two_blits(monkeypatch):
+def test_capture_grabs_again_when_a_grab_was_torn_between_two_blits(monkeypatch, capsys):
     """A seam between two doubled frames is a property of one grab, not of the window.
 
     The refusal is right for that grab -- halving it would mix two moments --
@@ -392,6 +392,8 @@ def test_capture_grabs_again_when_a_grab_was_torn_between_two_blits(monkeypatch)
 
     assert got.px == dosboxx.halve(after).px
     assert len(slept) == 1 and slept[0] > 0
+    logged = capsys.readouterr().err
+    assert "try 1 of" in logged and "not one pixel" in logged
 
 
 def test_capture_still_refuses_a_window_that_is_never_line_doubled(monkeypatch):
@@ -416,7 +418,7 @@ def test_capture_still_refuses_a_window_that_is_never_line_doubled(monkeypatch):
     with pytest.raises(dosboxx.NotLineDoubled, match="not one pixel"):
         dosboxx.XSession.__new__(dosboxx.XSession).capture()
 
-    assert 3 <= len(grabs) <= 5
+    assert len(grabs) == dosboxx.XSession.CAPTURE_TRIES
     assert len(slept) == len(grabs) - 1
 
 
