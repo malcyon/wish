@@ -5,19 +5,19 @@
 # This is the single source: edit `dos:` and `alt:` here, never in the
 # generated document. Regenerate it with:
 #
-#     tools/iconreverse.py --markdown "${TMPDIR:-/tmp}/wish/iconreverse/proposal.md"
+#     tools/icons/iconreverse.py --markdown "${TMPDIR:-/tmp}/wish/iconreverse/proposal.md"
 #
 # `dos` is the proposed DOS option number, `alt` (when present) lists any
 # other DOS option that looked as close, and the trailing comment says what
 # the C64 figure shows and why this row picks what it picks.
 #
 # **The key is a C64 option and the value is a DOS one**, which is the
-# opposite way round from `tools/iconproposal.yaml`. Read the two together:
+# opposite way round from `tools/icons/iconproposal.yaml`. Read the two together:
 # that file answers "a DOS player picked body 7, what should the C64 draw",
 # and this one answers "a C64 player picked weapon 7, what should DOS draw".
 #
 # **And the two size sections are complete lists, not exceptions.** In
-# `tools/iconproposal.yaml` the base table serves both sizes and `small:`
+# `tools/icons/iconproposal.yaml` the base table serves both sizes and `small:`
 # holds the handful of rows that differ, because a DOS option number means
 # the same design at either size. Here it cannot: C64 large weapon 3 and C64
 # small weapon 3 are different drawings out of different tables, so the base
@@ -304,7 +304,7 @@ colours:
   7: {dos: [6, 14]}    # yellow      -> EGA brown / yellow
 
 # ---------------------------------------------------------------------------
-# Per-title overrides (#452), the mirror of `tools/iconproposal.yaml`'s own
+# Per-title overrides (#452), the mirror of `tools/icons/iconproposal.yaml`'s own
 # `overrides:` section. The base table above serves every title, and it is
 # right for two of the three -- Curse ships Pool of Radiance's combat art
 # byte for byte and its own reverse rows already say so. Secret of the
@@ -343,7 +343,7 @@ overrides:
                          # override here.
     small:
       weapons:
-        1: {dos: 11}     # Tracks `tools/iconproposal.yaml`'s own
+        1: {dos: 11}     # Tracks `tools/icons/iconproposal.yaml`'s own
                          # `overrides: secret-of-the-silver-blades: small:
                          # weapons: 11:`, Donald's own as of 2026-09-08
                          # (`6e3b305`) rather than an agent's proposal. Still

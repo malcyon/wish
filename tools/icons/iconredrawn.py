@@ -9,7 +9,7 @@ draws the three figures each of the two rows is about, side by side and
 scaled up, into one self-contained HTML file:
 
 * the DOS figure **as Pool of Radiance draws it** -- the drawing every row of
-  `tools/iconproposal.yaml` was chosen by looking at;
+  `tools/icons/iconproposal.yaml` was chosen by looking at;
 * the DOS figure **as Secret of the Silver Blades draws it** -- the drawing a
   Silver Blades player actually picked;
 * the **C64 figure** the row currently names, composed the way a conversion
@@ -18,13 +18,13 @@ scaled up, into one self-contained HTML file:
 Both poses of each, and then a gallery of the C64 options that could be
 chosen instead, numbered, so an answer can be a number.
 
-    tools/iconredrawn.py
-    tools/iconredrawn.py --out PAGE.html
+    tools/icons/iconredrawn.py
+    tools/icons/iconredrawn.py --out PAGE.html
 
-The rows come from `tools/iconproposal.yaml` at run time, so the page can
+The rows come from `tools/icons/iconproposal.yaml` at run time, so the page can
 never show a mapping that is no longer the one in the table.  Which two
 options diverge is not assumed either: the two `.DAX` files are compared
-block for block, the way `tools/dosicontitles.py` compares them, and the page
+block for block, the way `tools/icons/dosicontitles.py` compares them, and the page
 is drawn from whatever that comparison finds.
 
 The DOS art is read out of the player's own game folders under
@@ -41,16 +41,16 @@ import pathlib
 import sys
 import tempfile
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import icons  # noqa: E402
 from goldbox.iconparts import PART_CLASSES, IconParts  # noqa: E402
-from tools import dosicontitles as dit  # noqa: E402
 from tools import gamedisks, scratch  # noqa: E402
-from tools import iconcorrespond as ic  # noqa: E402
-from tools import iconproposal as ip  # noqa: E402
+from tools.icons import dosicontitles as dit  # noqa: E402
+from tools.icons import iconcorrespond as ic  # noqa: E402
+from tools.icons import iconproposal as ip  # noqa: E402
 
 #: The title whose art every row of the table was chosen by looking at, and
 #: the title whose art this page compares against it.
@@ -186,7 +186,7 @@ INTRO = """
 Blades</em> to the Commodore 64. The character's record says which combat
 figure the player chose &mdash; a body and a head, picked from the DOS game's
 own menu. Wish looks those two numbers up in your table
-(<code>tools/iconproposal.yaml</code>, read as it stands now) and draws the
+(<code>tools/icons/iconproposal.yaml</code>, read as it stands now) and draws the
 Commodore 64 figure the table names.</p>
 
 <p>Every row of that table was chosen by looking at <em>Pool of Radiance's</em>

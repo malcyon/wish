@@ -7,7 +7,7 @@ the numbers said 1447 and the picture said the Character box was drawing on top
 of itself -- and the script that made the pictures lived in `/tmp` and is gone.
 This is that script, kept.
 
-Like `tools/iconsheet.py` it renders what the program ships, through the
+Like `tools/icons/iconsheet.py` it renders what the program ships, through the
 program's own painting code: a real `WishWindow`, grabbed offscreen. What comes
 out is what the program would do.
 

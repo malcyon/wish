@@ -10,9 +10,9 @@ other, and what a converted party looked like in a fight.
 Taken for `#130 (A converted DOS party arrives with six identical combat
 figures, not its own)`. The destination end is
 `docs/186-ready-and-action.md` and `docs/174-combat-figures-in-the-running-game.md`;
-the code is `goldbox/iconparts.py`, the table is `tools/iconproposal.yaml` and
-the tools are `tools/dosfigures.py`, `tools/dosiconstage.py` and
-`tools/dosmixedicon.py`.
+the code is `goldbox/iconparts.py`, the table is `tools/icons/iconproposal.yaml` and
+the tools are `tools/icons/dosfigures.py`, `tools/icons/dosiconstage.py` and
+`tools/icons/dosmixedicon.py`.
 
 ## What the DOS record holds, per character
 
@@ -45,7 +45,7 @@ measurements rest on records we watched being written)` rolled in the game's
 own creation screens — holds `icon_head` 0 and `icon_body` 0 for all six,
 because the driver never entered the creation screens' icon step. Converting it
 would produce six identical figures **correctly**, and no run over it could
-tell the fix from the defect. `tools/dosiconstage.py` exists for that reason:
+tell the fix from the defect. `tools/icons/dosiconstage.py` exists for that reason:
 it writes six deliberately different figures into a staged copy, which is
 editing an *input* and then watching the game compute from it.
 
@@ -77,11 +77,11 @@ chance, and two of those are ties the sort decides. The highest overlap of all
 unarmed figures, where the same art rendered twice would be above 0.95. So the
 C64's figures are a redrawing rather than the DOS bitmaps at another
 resolution, and best-matching is not a bijection: 21 of the 35 C64 large
-weapons are nobody's best match while weapon 11 wins seven. `tools/iconcorrespond.py`
+weapons are nobody's best match while weapon 11 wins seven. `tools/icons/iconcorrespond.py`
 is the measurement.
 
-**So the 46 rows are a judgement, and they live in `tools/iconproposal.yaml`,
-which Donald edits by hand.** `tools/iconproposal.py` draws them;
+**So the 46 rows are a judgement, and they live in `tools/icons/iconproposal.yaml`,
+which Donald edits by hand.** `tools/icons/iconproposal.py` draws them;
 `goldbox.iconparts.dos_icon_tables` reads the same file at run time, so his
 next edit reaches the conversion with no regeneration step and nothing to keep
 in step. The file is outside the package and a frozen build does not carry it,
@@ -112,7 +112,7 @@ The C64 offers a small character 28 weapons and 14 heads against a large one's
 | head rows only the large list holds | 3 of 14 | heads 2, 8, 10 — the plumed helmet, the long hair down the back and the banded helmet |
 
 Both counts are read out of the table rather than written down here, by
-`tools/dosmixedicon.py`, so they follow Donald's next edit instead of going
+`tools/icons/dosmixedicon.py`, so they follow Donald's next edit instead of going
 stale beside it. The rows above are the table as he committed it on
 2026-09-05.
 
@@ -124,13 +124,13 @@ cell 1 in both lists**, so a large head on a small figure sits where a head
 always sits; what differs between the lists is the art, a small head being
 drawn lower in its cell to meet a shorter body.
 
-`tools/dosfigures.py --mixed-png` draws all nine of those on a small figure,
+`tools/icons/dosfigures.py --mixed-png` draws all nine of those on a small figure,
 with four small options above them to compare against, which is the picture to
 judge them on. They read as complete figures; whether they are the right ones
-is Donald's, and the code uses whatever `tools/iconproposal.yaml` says.
+is Donald's, and the code uses whatever `tools/icons/iconproposal.yaml` says.
 
 **No Pool of Radiance party on this machine wears one, so one had to be
-staged.** `tools/dosmixedicon.py --census` read every `.SAV` and `.CHA` under
+staged.** `tools/icons/dosmixedicon.py --census` read every `.SAV` and `.CHA` under
 the `SAVE/` folder of the `por-dos-play` registry entry, `$WISH_SPECIMENS`' `por-dos` folder and the `dos-archives` entry:
 **2 of 372 records** are small characters already on a large-only row, and both
 are the same *Pools of Darkness* character, ABAGAIL, in two copies of one
@@ -139,7 +139,7 @@ copies a party out and rewrites the `icon_head` and `icon_body` of its small
 characters only, leaving `size` and the colours alone.
 
 **Staged onto slot J's two small characters and read in the game's own icon
-editor, both compose and both draw.** `tools/iconswing.py --camp --who N` takes
+editor, both compose and both draw.** `tools/icons/iconswing.py --camp --who N` takes
 the party to `ENCAMP > ALTER > ICON`, where the game draws four 3x3 figures
 under `NEW`/`OLD` and `READY`/`ACTION`:
 
@@ -182,7 +182,7 @@ censused, 222 have no pair whose two nibbles land on different C64 colours.
 
 **For the other 74 the low nibble is the minority colour on two parts, and that
 is a decision rather than a defect.** Counting every pixel of every option
-(`tools/dosnibbles.py`):
+(`tools/icons/dosnibbles.py`):
 
 | part | main pixels | highlight pixels | highlight share |
 |---|---|---|---|
@@ -290,7 +290,7 @@ wearing the figure this whole ticket was filed about.
 
 The party is `WISH-SPEC-por-party-l1-intown` with six figures staged into it:
 an archer, a sword and shield, a robed staff, a raised axe, a crossbow and a
-flail, three of them repainted. Converted with `tools/dosfigures.py`, which
+flail, three of them repainted. Converted with `tools/icons/dosfigures.py`, which
 hands `goldbox.dos_codec.new_save` the option tables themselves and lets the shipped
 conversion compose the six icons; it then composes them a second time and
 compares, so the run is a check on `convert_save` rather than on the tool.
@@ -311,7 +311,7 @@ this was taken wrote one into all six.
 
 ### In the game's own icon editor
 
-`tools/iconswing.py --camp --who N` takes the party to
+`tools/icons/iconswing.py --camp --who N` takes the party to
 `ENCAMP > ALTER > ICON` for the Nth character, which draws four 3x3 figures
 under `NEW`/`OLD` and `READY`/`ACTION`, and scores every 3x3 block of nine
 consecutive screen codes on that screen against both poses of all eight save
@@ -339,7 +339,7 @@ against all six.
 ### On the combat floor
 
 The party above cannot be fought: it stands in New Phlan, which has no
-wandering monsters, and `tools/iconswing.py` walked it 60 steps for **no
+wandering monsters, and `tools/icons/iconswing.py` walked it 60 steps for **no
 encounter in 60 steps**. So the fight was driven on a second converted party —
 slot B of the same `SAVE/` folder, six played characters in a dungeon, whose
 provenance is untrusted as evidence *about the game* and adequate as *input to
@@ -381,9 +381,9 @@ resolves). It is input only, never evidence about the game:
 
 ```sh
 for k in weapon head; do for s in small large; do
-    tools/iconproposal.py --kind $k --size $s --png $TMPDIR/$k-$s.png
+    tools/icons/iconproposal.py --kind $k --size $s --png $TMPDIR/$k-$s.png
 done; done
-tools/dosfigures.py --folder "$SAVE" --slot J \
+tools/icons/dosfigures.py --folder "$SAVE" --slot J \
     --out $TMPDIR/PLAYJ.D64 --png $TMPDIR/playj.png
 POR_HEADLESS=1 tools/c64/savecheck.py --disk $TMPDIR/PLAYJ.D64 \
     --icon --fight --steps 60
@@ -392,12 +392,12 @@ POR_HEADLESS=1 tools/c64/savecheck.py --disk $TMPDIR/PLAYJ.D64 \
 The nine mixed rows, which no Pool of Radiance party here wears:
 
 ```sh
-tools/dosmixedicon.py --census
-tools/dosmixedicon.py --stage $TMPDIR/mixedparty \
+tools/icons/dosmixedicon.py --census
+tools/icons/dosmixedicon.py --stage $TMPDIR/mixedparty \
     --from "$SAVE" --slot J
-tools/dosfigures.py --folder $TMPDIR/mixedparty --slot J \
+tools/icons/dosfigures.py --folder $TMPDIR/mixedparty --slot J \
     --out $TMPDIR/MIXEDJ.D64 --png $TMPDIR/mixedj.png
-POR_HEADLESS=1 tools/iconswing.py --disk $TMPDIR/MIXEDJ.D64 \
+POR_HEADLESS=1 tools/icons/iconswing.py --disk $TMPDIR/MIXEDJ.D64 \
     --camp --who 0 --tag mix0
 ```
 
@@ -405,17 +405,17 @@ The earlier run, on the staged clean party:
 
 ```sh
 cp ~/wish-specimens/por-dos/WISH-SPEC-por-party-l1-intown/* $TMPDIR/dosparty/
-tools/dosiconstage.py --folder $TMPDIR/dosparty --slot E
-tools/dosfigures.py --folder $TMPDIR/dosparty --slot E \
+tools/icons/dosiconstage.py --folder $TMPDIR/dosparty --slot E
+tools/icons/dosfigures.py --folder $TMPDIR/dosparty --slot E \
     --out $TMPDIR/FIGURES.D64 --png $TMPDIR/converted-party.png
-tools/dosfigures.py --mixed-png $TMPDIR/mixed-size.png
-tools/dosnibbles.py --per-option
+tools/icons/dosfigures.py --mixed-png $TMPDIR/mixed-size.png
+tools/icons/dosnibbles.py --per-option
 for w in 0 1 2 3 4 5; do
-    POR_HEADLESS=1 tools/iconswing.py --disk $TMPDIR/FIGURES.D64 \
+    POR_HEADLESS=1 tools/icons/iconswing.py --disk $TMPDIR/FIGURES.D64 \
         --camp --who $w --tag who$w
 done
 ```
 
-**`tools/iconswing.py` claims its own pool slot**, so it is run directly rather
+**`tools/icons/iconswing.py` claims its own pool slot**, so it is run directly rather
 than inside `tools/instance.py claim`; wrapping it takes two slots and leaves
 the inner one running when the outer `timeout` fires.

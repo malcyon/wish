@@ -11,7 +11,7 @@ So this tool answers it by measurement rather than by argument.  It reads
 
 * the DOS art out of `CHEAD.DAX` and `CBODY.DAX` in the player's own game
   directory -- 4-bit EGA pixels, `17 + rows * stride` bytes a block, the same
-  reader `tools/portraitshot.py` uses for the sheet portraits;
+  reader `tools/icons/portraitshot.py` uses for the sheet portraits;
 * the C64 art out of `SPELLE64`, `SPELLN64` and `CHARPIC00` on `POOL3.D64`,
   through `goldbox.iconparts`, which composes one menu option at a time onto
   an otherwise empty shape;
@@ -29,10 +29,10 @@ stays on the player's own disks.
 
 Usage:
 
-    tools/iconcorrespond.py                     # the counts and the scores
-    tools/iconcorrespond.py --catalogue dos     # every DOS body, as ASCII
-    tools/iconcorrespond.py --show 72           # DOS body 72 beside its match
-    tools/iconcorrespond.py --png sheet.png    # both lists, in colour
+    tools/icons/iconcorrespond.py                     # the counts and the scores
+    tools/icons/iconcorrespond.py --catalogue dos     # every DOS body, as ASCII
+    tools/icons/iconcorrespond.py --show 72           # DOS body 72 beside its match
+    tools/icons/iconcorrespond.py --png sheet.png    # both lists, in colour
 
 The `--png` contact sheet is the one output meant for a person rather than
 for a grep: whichever C64 figure each DOS one should become is a decision
@@ -50,7 +50,7 @@ import os
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox import icons  # noqa: E402
@@ -59,7 +59,7 @@ from goldbox.iconparts import CELLS_PER_POSE, SPACE, IconParts  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
 #: A block's pixels start here.  Byte 0 is the row count and byte 2 the width
-#: in fours; `tools/portraitshot.py` fitted the 17 against every `HEAD`,
+#: in fours; `tools/icons/portraitshot.py` fitted the 17 against every `HEAD`,
 #: `BODY`, `CHEAD` and `CBODY` block in the game.
 PIXEL_START = 17
 
@@ -286,7 +286,7 @@ def show(game: pathlib.Path, disk: pathlib.Path, size: str, kind: str,
 
 
 #: The EGA palette the DOS art is drawn in, as `#rrggbb`.  Same sixteen
-#: colours `tools/portraitshot.py` matches captured frames against.
+#: colours `tools/icons/portraitshot.py` matches captured frames against.
 EGA = ("#000000", "#0000AA", "#00AA00", "#00AAAA", "#AA0000", "#AA00AA",
        "#AA5500", "#AAAAAA", "#555555", "#5555FF", "#55FF55", "#55FFFF",
        "#FF5555", "#FF55FF", "#FFFF55", "#FFFFFF")

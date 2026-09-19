@@ -514,7 +514,7 @@ def tables_from_amiga_disks(disks: str | pathlib.Path) -> PortraitTables:
 #: of the Azure Bonds' and Secret of the Silver Blades' `LIBRARY` never call
 #: the loader at all, and no file on any of their twelve sides calls either
 #: of those two `ANIMATE` entries -- 558 and 571 files searched
-#: (`tools/portraitdraw.py`, which prints the census).
+#: (`tools/icons/portraitdraw.py`, which prints the census).
 #:
 #: Watched as well as read: a Curse sheet and a Silver Blades sheet with
 #: `$41` -- art that exists on `CURSE_B` -- written into both record bytes
@@ -590,8 +590,8 @@ def draws_sheet_portrait(game=None) -> bool:
 #: here, and nothing here would let anybody rebuild one.
 #:
 #: **Where the numbers came from, so anybody can re-derive them.**
-#: `tools/portraitmenu.py` reads both binaries and prints this block;
-#: `tools/portraitmenu.py --check` says whether the disks on the machine
+#: `tools/icons/portraitmenu.py` reads both binaries and prints this block;
+#: `tools/icons/portraitmenu.py --check` says whether the disks on the machine
 #: still agree with it.  Read 2026-09-06 off:
 #:
 #: * the C64's `POOL3.D64:GEN`, run at file offset 2877, bodies first --

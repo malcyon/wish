@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Open every character's sheet in DOS Pool of Radiance and name the face drawn.
 
-`tools/portraitshot.py` photographs **one** character's sheet and matches the
+`tools/icons/portraitshot.py` photographs **one** character's sheet and matches the
 drawn portrait against every `HEAD<n>.DAX`/`BODY<n>.DAX` block, which is what
 settled the one-based reading of `portrait_head` for `#57 (Convert the
 character portrait across ports)`.  What that leaves is the acceptance
@@ -16,9 +16,9 @@ every candidate key is pressed from a sheet in turn and the frame identified,
 so "which key turns the page" is answered by the art that appears rather than
 by a guess.
 
-    tools/dosportraitparty.py --c64 PORSAVE12.D64 --out DIR
-    tools/dosportraitparty.py --slot A --out DIR          # the shipped party
-    tools/dosportraitparty.py --slot A --probe n,Down,Right,plus --out DIR
+    tools/icons/dosportraitparty.py --c64 PORSAVE12.D64 --out DIR
+    tools/icons/dosportraitparty.py --slot A --out DIR          # the shipped party
+    tools/icons/dosportraitparty.py --slot A --probe n,Down,Right,plus --out DIR
 
 With `--c64` the party is converted **from nothing** through
 `goldbox.dos_codec.new_dos_save`, which is the code `File ▸ Convert…` runs -- not a
@@ -39,7 +39,7 @@ import pathlib
 import shutil
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import (
     dos_codec,  # noqa: E402
@@ -48,9 +48,9 @@ from goldbox import (
 from goldbox import portraits as portrait_tables  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools import portraitshot as shot  # noqa: E402
 from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
+from tools.icons import portraitshot as shot  # noqa: E402
 
 #: The key the character screen answers with the next character in the party.
 #: **There is not one.**  Sixteen keys were pressed on a DOS sheet on

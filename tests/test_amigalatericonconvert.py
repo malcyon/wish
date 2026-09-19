@@ -216,7 +216,7 @@ def test_amiga_icon_fields_compose_a_legal_c64_figure_for_every_specimen():
 
 
 def test_silver_blades_large_head_ten_needs_its_own_titles_table():
-    """The one row this measurably changes: `tools/iconproposal.yaml`'s
+    """The one row this measurably changes: `tools/icons/iconproposal.yaml`'s
     Silver Blades override sends DOS/Amiga head 10 at the large size to C64
     head 2 (a head that wears something), where the base table alone sends
     every title's head 10 to C64 head 15 (hair, nothing on top) -- wrong for

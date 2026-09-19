@@ -3,7 +3,7 @@ figure was recognised off C64 screen codes)`.
 
 `goldbox.dos_codec.write`'s byte-accounting report used to say every `DosIcon` it
 was handed had been read back off eighteen C64 screen codes and looked up
-through `tools/iconreverse.yaml`, whatever port actually built it. An Amiga
+through `tools/icons/iconreverse.yaml`, whatever port actually built it. An Amiga
 Pool of Radiance record stores `icon_head`, `icon_body` and `icon_colours` at
 the same offsets DOS does, so `editor.convert.amiga_combat_icon` copies the
 numbers across unchanged -- nothing is recognised, composed or looked up, and
@@ -87,13 +87,13 @@ def test_a_c64_sourced_icon_report_is_unchanged():
     assert head_line == (
         f"icon_head: {rec[f_head.offset]} -- the C64 source record's own "
         f"combat icon, recognised off its eighteen screen codes and looked "
-        f"up through tools/iconreverse.yaml (#320, weapon "
+        f"up through tools/icons/iconreverse.yaml (#320, weapon "
         f"{icon.choice.weapon_size} {icon.choice.weapon}, head "
         f"{icon.choice.head_size} {icon.choice.head})")
     assert body_line == (
         f"icon_body: {rec[f_body.offset]} -- the C64 source record's own "
         f"combat icon, recognised off its eighteen screen codes and looked "
-        f"up through tools/iconreverse.yaml (#320, weapon "
+        f"up through tools/icons/iconreverse.yaml (#320, weapon "
         f"{icon.choice.weapon_size} {icon.choice.weapon}, head "
         f"{icon.choice.head_size} {icon.choice.head})")
     assert colours_line == (

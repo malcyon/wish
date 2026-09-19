@@ -1,4 +1,4 @@
-"""`tools/iconredrawn.py` draws the page `#335` is decided from.
+"""`tools/icons/iconredrawn.py` draws the page `#335` is decided from.
 
 `#335 (Two combat-figure rows describe Pool of Radiance's art, and Silver
 Blades draws those two options differently)` is a judgement about two
@@ -20,8 +20,8 @@ import pathlib
 
 import pytest
 
-from tools import iconproposal as ip  # noqa: E402
-from tools import iconredrawn as ir  # noqa: E402
+from tools.icons import iconproposal as ip  # noqa: E402
+from tools.icons import iconredrawn as ir  # noqa: E402
 
 #: What Silver Blades re-drew, the same set `tests/test_iconparts.py` pins:
 #: `(kind, option, size)`, both poses of each.

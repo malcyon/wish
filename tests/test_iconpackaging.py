@@ -2,7 +2,7 @@
 
 `#315 (A frozen Wish cannot convert a combat figure, because the table it
 needs lives outside the package)`: `goldbox.iconparts.PROPOSAL_PATH` used to
-resolve to `<package parent>/tools/iconproposal.yaml`, so what a user got
+resolve to `<package parent>/tools/icons/iconproposal.yaml`, so what a user got
 when he imported a DOS save depended on how his copy of Wish was built. He
 picks `File > Import`, chooses his DOS party, and either every character
 arrives with his own figure or the conversion stops with `the combat-figure
@@ -12,14 +12,14 @@ Two build shapes, both now carrying the file:
 
 * **The wheel carries it.**  `pyproject.toml` lists `tools` among the wheel's
   packages and hatchling ships every file in a package directory, so
-  `tools/iconproposal.yaml` is in the built wheel and `<site-packages>/tools`
+  `tools/icons/iconproposal.yaml` is in the built wheel and `<site-packages>/tools`
   is exactly where `PROPOSAL_PATH` looks.  Unpacked onto `sys.path`,
   `dos_icon_tables()` read 32 weapon rows and 14 head rows.
 * **The PyInstaller build now does too.**  `PROPOSAL_PATH` resolves through
   `goldbox.assets.asset_path`, the resolver `#351 (The Windows build shows no
   logo in About and a black square on the taskbar, because the artist's SVGs
   are not in the package)` added, and `wish.spec`'s `DATAS` carries
-  `("tools/iconproposal.yaml", "tools")` -- so `dist/wish/tools/` has the
+  `("tools/icons/iconproposal.yaml", "tools/icons")` -- so `dist/wish/tools/icons/` has the
   file and a frozen import converts a figure the way a checkout always has.
 
 So what these tests hold: the table stays inside a directory both builds
@@ -54,7 +54,7 @@ def test_the_combat_figure_table_is_inside_a_directory_the_wheel_ships():
     """Move the table out of a shipped package and an installed Wish breaks.
 
     Not a restatement of where the file is: it is the one check that fails
-    the day somebody tidies `tools/iconproposal.yaml` into `docs/`
+    the day somebody tidies `tools/icons/iconproposal.yaml` into `docs/`
     or the repository root, all of which leave a checkout working and every
     installed copy raising on the first DOS import.
     """
@@ -124,14 +124,14 @@ def test_it_resolves_under_a_frozen_root(monkeypatch, tmp_path):
     verbatim leaves every class the exact object it was, which a second
     reload cannot.
     """
-    (tmp_path / "tools").mkdir()
-    shutil.copy(iconparts.PROPOSAL_PATH, tmp_path / "tools" / "iconproposal.yaml")
+    (tmp_path / "tools" / "icons").mkdir(parents=True)
+    shutil.copy(iconparts.PROPOSAL_PATH, tmp_path / "tools" / "icons" / "iconproposal.yaml")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
     original = dict(vars(iconparts))
     try:
         reloaded = importlib.reload(iconparts)
-        assert reloaded.PROPOSAL_PATH == tmp_path / "tools" / "iconproposal.yaml"
+        assert reloaded.PROPOSAL_PATH == tmp_path / "tools" / "icons" / "iconproposal.yaml"
         assert reloaded.PROPOSAL_PATH.is_file()
     finally:
         monkeypatch.undo()
@@ -152,14 +152,14 @@ def test_a_build_that_lost_the_table_says_where_it_should_have_been(tmp_path):
 
 
 def test_the_small_counts_the_mixed_row_tool_uses_are_the_files_own():
-    """`tools/dosmixedicon.py` hardcodes 28 and 14 so it can run disk-less.
+    """`tools/icons/dosmixedicon.py` hardcodes 28 and 14 so it can run disk-less.
 
     They are `SPELLE64`'s, read off the player's own disk by `IconParts`, and
     a copy that drifted would make the tool name the wrong rows as mixed.
     Checked against the disk when there is one, skipped when there is not.
     """
 
-    from tools import dosmixedicon  # noqa: E402
+    from tools.icons import dosmixedicon  # noqa: E402
 
     disks = disk_dir()
     if disks is None:

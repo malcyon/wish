@@ -721,13 +721,13 @@ def test_every_figure_a_silver_blades_player_can_choose_composes(
 def test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion(
         converts_ssb, ssb_parts):
     """#335: DOS head 10 becomes C64 head 9 for a small character and C64
-    head 2 for a large one -- Donald's decision, given `tools/iconproposal.
+    head 2 for a large one -- Donald's decision, given `tools/icons/iconproposal.
     yaml`'s `small:`/`large:` split under `overrides: secret-of-the-silver-
     blades:`.
 
     This drives the figure through `_icon_for` with the same `tables`
     argument `write_c64_save` builds -- `dos_icon_tables(title=..., size=
-    ...)` -- rather than through `tools/iconproposal.py`'s own
+    ...)` -- rather than through `tools/icons/iconproposal.py`'s own
     `tables_for_title`, which is a different reader of the same file and
     proves nothing about whether a converted character ever sees it.
 

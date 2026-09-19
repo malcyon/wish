@@ -27,9 +27,10 @@ import pathlib
 
 import pytest
 
-from tools import gamedisks, portraitdraw
+from tools import gamedisks
 from tools.c64 import session as por
 from tools.c64 import sheetexit
+from tools.icons import portraitdraw
 
 #: The three titles, and the one measurement each has to agree on.
 TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",

@@ -26,7 +26,7 @@ The map used to draw at 13 and the 13px rule was written for it. It draws at 26
 now, so the rule binds on the notes list and nowhere else -- see
 `docs/109-icon-choices.md`.
 
-    .venv/bin/python tools/iconsheet.py icon-sheet.png
+    .venv/bin/python tools/icons/iconsheet.py icon-sheet.png
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from PyQt6.QtCore import QRectF, Qt  # noqa: E402
 from PyQt6.QtGui import (  # noqa: E402

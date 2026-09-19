@@ -1452,17 +1452,17 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     # `goldbox/iconparts.py`; `IconParts.dos_icon` is what `to_c64_record`
     # calls through `_icon_for`.
     ("icon_head", "DOS art: CHEAD.DAX, the combat icon's head. Converted "
-                  "through the head table in tools/iconproposal.yaml into "
+                  "through the head table in tools/icons/iconproposal.yaml into "
                   "one of the C64's own head options"),
     ("icon_body", "DOS art: CBODY.DAX, the combat icon's body. Converted "
-                  "through the body table in tools/iconproposal.yaml -- the "
+                  "through the body table in tools/icons/iconproposal.yaml -- the "
                   "C64 draws a whole pose, arms and any held item included, "
                   "as one WEAPON option -- into one of the C64's own weapon "
                   "options"),
     ("icon_colours", "the DOS combat figure's own colours: six pairs of "
                      "4-bit indices, one pair per part, the low nibble the "
                      "main colour and the high one the highlight. Converted "
-                     "through the colour table in tools/iconproposal.yaml -- "
+                     "through the colour table in tools/icons/iconproposal.yaml -- "
                      "the low nibble of each pair for most parts, the high "
                      "one for the leg and the shield, which it covers more "
                      "of -- into the C64's own eighteen colours over its "
@@ -2240,7 +2240,7 @@ def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",
     menu composes one, so every icon written here is one the game can make.
 
     `tables` is this title's own correspondence, read once by the caller --
-    `tools/iconproposal.yaml` names a different C64 option for a few DOS
+    `tools/icons/iconproposal.yaml` names a different C64 option for a few DOS
     figures at the small size, and for one of Silver Blades' heads, and
     without it every character would be composed from the base table
     whatever he is being converted into (#335).
@@ -2887,7 +2887,7 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "row fires **only when `write` was given no `icon`**: a C64 source "
      "whose caller recognised the record's own combat icon converts its "
      "seven colour parts to these six instead, through "
-     "`tools/iconreverse.yaml`'s colour table (#320) -- the C64's one "
+     "`tools/icons/iconreverse.yaml`'s colour table (#320) -- the C64's one "
      "3-bit colour a part becomes both nibbles of the pair, the shape "
      "every freshly-made DOS record's own default set already has",
      "zero is not neutral here: all six parts become EGA 8, dark grey, "
@@ -5659,7 +5659,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         report.note(at, ICON_SIZE, f"{who} -- " + (
             "the combat figure this character's own DOS record names: "
             "icon_body and icon_head through the table in "
-            "tools/iconproposal.yaml, and the low nibble of most of the six "
+            "tools/icons/iconproposal.yaml, and the low nibble of most of the six "
             "icon_colours pairs through the same file's colour table -- the "
             "high nibble for the leg and the shield (#130)"
             if isinstance(icon, IconParts) else
@@ -6207,7 +6207,7 @@ PARTY_TABLE_SCRATCH = ("display scratch: 32 heap bytes after each filename "
 #: `$49FF` was in :data:`SAVGAM_UNSOURCED` as "unnamed: 3 in every specimen,
 #: and referenced by none of the thirty scripts", and zero there is what made
 #: a converted party **faceless whatever its records said** (#57).  Measured,
-#: DOSBox, `tools/portraitshot.py`: the same six converted records that draw
+#: DOSBox, `tools/icons/portraitshot.py`: the same six converted records that draw
 #: their portraits on the shipped saved game draw nothing on a from-nothing
 #: one, and the difference bisects to this single word -- `$49FF = 0` no
 #: portrait, `= 3` the portrait, `= 1` the portrait, everything else in the
@@ -6881,7 +6881,7 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     character, the way `write_c64_save` reads `dos_icon_tables` once for the
     whole party.  With it, each slot's own eighteen screen codes are read
     back through `IconParts.recognise` and looked up in
-    `tools/iconreverse.yaml` (`IconParts.dos_icon_from_c64`) before
+    `tools/icons/iconreverse.yaml` (`IconParts.dos_icon_from_c64`) before
     `c64_codec.read` drops them -- see `write`'s own `icon` parameter for
     why that has to happen here rather than through the neutral vocabulary.
     The second list this returns is each character's own `DosIcon`, `None`

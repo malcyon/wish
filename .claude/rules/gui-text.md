@@ -112,7 +112,7 @@ env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \
 
 `tests/conftest.py` forces `QT_QPA_PLATFORM=offscreen`, so `pytest` is safe;
 anything that builds a `QApplication` outside the suite is not.
-`tools/iconsheet.py` is the pattern.
+`tools/icons/iconsheet.py` is the pattern.
 
 Why these rules exist, and the incidents behind them:
 `docs/160-why-these-rules.md`, "Help text in the GUI".

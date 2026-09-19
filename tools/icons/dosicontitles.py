@@ -3,7 +3,7 @@
 DOS Pool of Radiance record does?  (`#330`.)
 
 The conversion composes a C64 combat figure out of a DOS record's `icon_head`
-and `icon_body` through one correspondence table, `tools/iconproposal.yaml`,
+and `icon_body` through one correspondence table, `tools/icons/iconproposal.yaml`,
 which was read off Pool of Radiance's art.  `IconParts.dos_icon` takes no
 title, so the same table serves Curse of the Azure Bonds and Secret of the
 Silver Blades.  A wrong-but-in-range row there is invisible: the figure that
@@ -30,9 +30,9 @@ the two numbering schemes are the same.  The record displacements come from
 `goldbox.dos_port`, so a wrong offset in our own table shows up here as a
 missing scan rather than as a silent pass.
 
-    tools/dosicontitles.py                       # art, all four DOS titles
-    tools/dosicontitles.py --code
-    tools/dosicontitles.py --json icontitles.json
+    tools/icons/dosicontitles.py                       # art, all four DOS titles
+    tools/icons/dosicontitles.py --code
+    tools/icons/dosicontitles.py --json icontitles.json
 
 The game folders are found under `$FR_ARCHIVES`, then `gamedisks.yaml`'s
 `dos-archives` entry.  Everything is read and nothing is written except what
@@ -49,7 +49,7 @@ import re
 import struct
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

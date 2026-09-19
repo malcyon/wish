@@ -2243,12 +2243,12 @@ def test_ours_and_font_awesome_do_not_share_a_name():
 
 
 def test_the_sheet_only_names_icons_that_exist():
-    """`tools/iconsheet.py` is how a drawing gets judged; a renamed icon must
+    """`tools/icons/iconsheet.py` is how a drawing gets judged; a renamed icon must
     break the build rather than the sheet."""
     import importlib.util
 
     path = pathlib.Path(__file__).resolve().parent.parent / "tools" \
-        / "iconsheet.py"
+        / "icons" / "iconsheet.py"
     spec = importlib.util.spec_from_file_location("iconsheet", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

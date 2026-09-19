@@ -29,7 +29,7 @@ from gamedata import disk_dir
 
 from goldbox import icons  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
-from tools import iconcorrespond as ic  # noqa: E402
+from tools.icons import iconcorrespond as ic  # noqa: E402
 
 
 def _dos_game():

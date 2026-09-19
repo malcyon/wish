@@ -86,9 +86,9 @@ def test_a_missing_block_is_a_message_not_a_traceback(tmp_path):
 
 
 def test_the_players_cbody_is_128_image_blocks_of_24_by_24():
-    """`CBODY.DAX` off the player's DOS game, through `tools/iconcorrespond.py`'s
+    """`CBODY.DAX` off the player's DOS game, through `tools/icons/iconcorrespond.py`'s
     lookup; skipped when there is no DOS game on this machine."""
-    from tools import iconcorrespond as ic
+    from tools.icons import iconcorrespond as ic
     try:
         game = ic.dos_game(None)
     except SystemExit:

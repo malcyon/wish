@@ -1,4 +1,4 @@
-"""`tools/iconswing.py`: the icon's second pose, counted and compared.
+"""`tools/icons/iconswing.py`: the icon's second pose, counted and compared.
 
 `#184 (A converted combat icon's colours are proven in the game and its
 shapes are not)` was answered for nine of an icon's eighteen screen codes by

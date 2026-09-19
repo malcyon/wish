@@ -1,10 +1,10 @@
-"""`tools/iconproposal.py` reads its three tables from YAML, not Python (#130).
+"""`tools/icons/iconproposal.py` reads its three tables from YAML, not Python (#130).
 
 `#130 (A converted DOS party arrives with six identical combat figures, not
 its own)`'s proposal used to live as three Python literals inside
-`tools/iconproposal.py`. Donald asked for a YAML file he can edit by hand
-instead, with `tools/iconproposal.py` reading it and `--markdown` generating
-the judged document from it -- so `tools/iconproposal.yaml` is now the single
+`tools/icons/iconproposal.py`. Donald asked for a YAML file he can edit by hand
+instead, with `tools/icons/iconproposal.py` reading it and `--markdown` generating
+the judged document from it -- so `tools/icons/iconproposal.yaml` is now the single
 source, and this is where that is checked.
 
 These tests pin the **shape** of the file rather than the matches in it: every
@@ -24,15 +24,15 @@ import yaml
 from gamedata import disk_dir
 
 from goldbox import c64_port
-from tools import iconcorrespond as ic  # noqa: E402
-from tools import iconproposal as ip  # noqa: E402
+from tools.icons import iconcorrespond as ic  # noqa: E402
+from tools.icons import iconproposal as ip  # noqa: E402
 
 #: The shape of the proposal, which does not change when Donald edits it.
 #:
 #: **These deliberately do not pin the values.** An earlier version of this
 #: file held the whole table as it stood in Python before the move to YAML and
 #: asserted the two were equal, which was the right check for the migration
-#: and the wrong one to leave behind: `tools/iconproposal.yaml` exists for
+#: and the wrong one to leave behind: `tools/icons/iconproposal.yaml` exists for
 #: Donald to edit, so a test demanding it still equal the old Python turns his
 #: first edit into a red build. It did -- he moved DOS weapon 2 from C64 5 to
 #: 10 and CI went red on the migration oracle (#130).
@@ -116,7 +116,7 @@ def test_a_malformed_yaml_row_is_caught_by_the_type(tmp_path):
 
 # -- the per-title override section (#330, #335) -----------------------------
 #
-# `tools/iconproposal.yaml` gained an `overrides:` section for a title whose
+# `tools/icons/iconproposal.yaml` gained an `overrides:` section for a title whose
 # art disagrees with Pool of Radiance's. Donald picked the first row on
 # 2026-09-05 -- Silver Blades' head 10, for `#335 (Two combat-figure rows
 # describe Pool of Radiance's art, and Silver Blades draws those two options
@@ -206,7 +206,7 @@ def test_a_title_with_no_override_of_its_own_gets_the_base_tables_unchanged():
     judging".
 
     Read against a table of its own rather than the real
-    `tools/iconproposal.yaml`. It used to read the real file and find a
+    `tools/icons/iconproposal.yaml`. It used to read the real file and find a
     title with no section -- which worked while the section was nearly
     empty and stopped working the moment every title had one. A test that
     depends on Donald not having filled something in is a test that expires,
@@ -442,7 +442,7 @@ def test_silver_blades_head_ten_wins_for_silver_blades_and_only_silver_blades():
 # trusted on a claim nobody checked here.
 
 def _title_dos_game(title: str) -> pathlib.Path:
-    dosicontitles = pytest.importorskip("tools.dosicontitles")
+    dosicontitles = pytest.importorskip("tools.icons.dosicontitles")
     gamedisks = pytest.importorskip("tools.gamedisks")
     root = gamedisks.find("dos-archives")
     if root is None or not root.is_dir():

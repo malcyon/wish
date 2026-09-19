@@ -97,7 +97,7 @@ looks like an empty portrait frame; MALACHITE's identical panel reads
 `#300 (A Curse or Silver Blades party imported to the C64 arrives with no
 sheet portrait, because the creation menu is read only off a POOL<n>.D64)`.
 
-(All of these are lost, with the scratch directory they lived in; `tools/portraitdraw.py` and
+(All of these are lost, with the scratch directory they lived in; `tools/icons/portraitdraw.py` and
 the run recipe below rebuild the census, and the sheets need the emulator.)
 
 ## What Pool of Radiance does
@@ -145,7 +145,7 @@ the world -- go through it.
 | the sheet routine | `LIBRARY $4435`, menu `VIEW: ITEMS SPELLS TRADE DROP EXIT` | `LIBRARY $4600`, menu `ITEMS SPELLS TRADE DROP CURE HEAL EXIT` | present, same shape; measured bar `EXIT` alone for a character with nothing to list (GUY DE VALOIS, `cited/52/walk-dostoc64-ssb/ssbcheck.jsonl`, `cited/52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl`) |
 | `LIBRARY` naming the save's `+$0FF` | yes, the `BPL` above | no | no |
 
-`tools/portraitdraw.py` prints that table off the player's own disks. It
+`tools/icons/portraitdraw.py` prints that table off the player's own disks. It
 finds each overlay's load address by scoring its own `JSR`/`JMP` targets for
 legal opcodes, finds the loader's two entries by their code, and takes
 `ANIMATE`'s run address out of that title's own load-address table, so

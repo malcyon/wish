@@ -49,14 +49,14 @@ def parts() -> IconParts:
 
 @pytest.fixture(scope="module")
 def table():
-    from tools import iconreverse
+    from tools.icons import iconreverse
     return iconreverse.load_tables()
 
 
 @pytest.fixture(scope="module")
 def reverse_tables():
     """`goldbox.iconparts.c64_icon_tables()` -- the reader `IconParts.
-    dos_icon_from_c64` uses, independent of `tools/iconreverse.py`'s own
+    dos_icon_from_c64` uses, independent of `tools/icons/iconreverse.py`'s own
     `load_tables` the way `table` above is not."""
     return c64_icon_tables()
 
@@ -185,11 +185,11 @@ def test_the_default_icon_reads_back_as_the_choices_that_made_it(parts):
 #
 # `IconParts.dos_icon_from_c64` is the write side's own source for
 # `icon_head`/`icon_body`/`icon_colours` (`goldbox.dos_codec.write`'s `icon`
-# argument) -- `recognise` plus a lookup in `tools/iconreverse.yaml`,
+# argument) -- `recognise` plus a lookup in `tools/icons/iconreverse.yaml`,
 # read here through `c64_icon_tables`.
 
 def _composed(parts, size, weapon, head, colours=None):
-    """One whole 36-byte icon, the way `tools/iconpoke.py` composes one."""
+    """One whole 36-byte icon, the way `tools/icons/iconpoke.py` composes one."""
     shape = parts.compose(size, weapon, head)
     per_class = colours or DEFAULT_PART_COLOURS
     seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
@@ -198,7 +198,7 @@ def _composed(parts, size, weapon, head, colours=None):
 
 def test_the_default_icon_becomes_dos_head_5_body_0(parts, reverse_tables):
     """Weapon 0 and head 1 are both forced rows -- `0: {dos: 0}` and
-    `1: {dos: 5}` in `tools/iconreverse.yaml` -- so this is the one answer
+    `1: {dos: 5}` in `tools/icons/iconreverse.yaml` -- so this is the one answer
     a correct reader can give, not a preference among several."""
     icon = parts.default_icon()
     result = parts.dos_icon_from_c64(icon, reverse_tables)
@@ -238,7 +238,7 @@ def test_a_judgement_row_gives_the_nearest_figure_not_an_error(parts,
                                                                 reverse_tables):
     """Weapon 0 with head 0 is not a forced pair -- large head 0 is a
     "judgement" row, Donald's nearest figure rather than a round-tripping
-    one (`tools/iconreverse.py --coverage`) -- so this only has to compose
+    one (`tools/icons/iconreverse.py --coverage`) -- so this only has to compose
     without raising and land on the row the table actually names, not on
     whether it comes home byte for byte."""
     original = _composed(parts, "large", 0, 0)
@@ -343,7 +343,7 @@ def test_a_c64_figure_survives_a_round_trip_through_dos(parts, table):
             if source[dos] != c64:
                 lost.append((size, kind, c64, dos, source[dos]))
     # 35 + 23 + 28 + 14 = 100 rows. Thirty-two cannot come home because DOS
-    # has no figure for them -- the count `tools/iconreverse.py --coverage`
+    # has no figure for them -- the count `tools/icons/iconreverse.py --coverage`
     # calls "fresh" -- and seven more because Donald chose the picture over
     # the round trip; see `DONALDS_OVERRIDES`.
     assert len(lost) == 32 + sum(len(v) for v in DONALDS_OVERRIDES.values())
@@ -402,7 +402,7 @@ def test_every_icon_on_the_players_disks_reads_back_into_menu_choices(parts):
     -- and the recogniser has to name those too, because a conversion that
     refused them would drop a real character's figure.
     """
-    from tools import iconreverse
+    from tools.icons import iconreverse
     folders = iconreverse.save_folders()
     if not any(folders.values()):
         pytest.skip("needs the C64 disks; set $POR_DISKS")
@@ -418,7 +418,7 @@ def test_every_icon_on_the_players_disks_reads_back_into_menu_choices(parts):
 
 def test_the_coverage_report_accounts_for_every_row(table):
     """100 rows over the four lists, each classed exactly once."""
-    from tools import iconreverse
+    from tools.icons import iconreverse
     counts = {"forced": 0, "choice": 0, "fresh": 0}
     for (size, kind), row in iconreverse.coverage(table).items():
         assert not row["missing"], (size, kind, row["missing"])
@@ -433,7 +433,7 @@ def test_the_coverage_report_accounts_for_every_row(table):
 
 
 def test_the_recogniser_and_the_table_agree_on_which_lists_exist(parts, table):
-    """The counts in `tools/iconreverse.py` are the overlay's own, so a build
+    """The counts in `tools/icons/iconreverse.py` are the overlay's own, so a build
     that numbered its lists differently fails here rather than writing a row
     for an option that does not exist."""
     for size, kind, count in LISTS:

@@ -99,7 +99,7 @@ def test_every_icon_we_hold_is_one_the_game_could_have_made(legal):
 
 
 def test_size_for_is_large_only_when_the_small_list_is_too_short(parts):
-    """Public because `tools/iconproposal.py` needs the same rule (#325).
+    """Public because `tools/icons/iconproposal.py` needs the same rule (#325).
 
     A weapon or head numbered past the small list's own count composes
     large; anything the small list already holds stays small.
@@ -183,7 +183,7 @@ def test_the_editor_offers_only_icons_the_game_can_make(parts, legal, tmp_path):
 #
 # `IconParts.dos_icon`'s C64 half is title-specific and safe --
 # `IconParts.load` fits the base from the disk it was handed -- and its DOS
-# half reads one correspondence table, `tools/iconproposal.yaml`, built from
+# half reads one correspondence table, `tools/icons/iconproposal.yaml`, built from
 # Pool of Radiance's art, with a per-title section for the rows a later title
 # redrew.  These are what would fail if a title numbered its own art
 # differently, because a wrong-but-in-range row composes a complete,
@@ -191,7 +191,7 @@ def test_the_editor_offers_only_icons_the_game_can_make(parts, legal, tmp_path):
 DOS_TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
               "secret-of-the-silver-blades")
 
-#: What Silver Blades re-drew, `tools/dosicontitles.py` against the archives:
+#: What Silver Blades re-drew, `tools/icons/dosicontitles.py` against the archives:
 #: `(file, option, size)`, both poses of each.  Nothing else in either file
 #: differs from Pool of Radiance's in any of the three titles.
 SILVER_BLADES_REDREW = {("CHEAD.DAX", 10, "large"), ("CBODY.DAX", 11, "small")}
@@ -200,7 +200,7 @@ SILVER_BLADES_REDREW = {("CHEAD.DAX", 10, "large"), ("CBODY.DAX", 11, "small")}
 @pytest.fixture(scope="module")
 def dos_art():
     """Every title's `CHEAD.DAX` and `CBODY.DAX`, compared, or skip."""
-    dosicontitles = pytest.importorskip("tools.dosicontitles")
+    dosicontitles = pytest.importorskip("tools.icons.dosicontitles")
     gamedisks = pytest.importorskip("tools.gamedisks")
     root = gamedisks.find("dos-archives")
     if root is None or not root.is_dir():
@@ -245,7 +245,7 @@ def test_silver_blades_redrew_two_options_and_only_those_two(dos_art):
     """182 of 184 blocks byte-identical; the two that are not are named.
 
     This is the test that fails if a later title diverges further, because
-    every row of `tools/iconproposal.yaml` was chosen against Pool of
+    every row of `tools/icons/iconproposal.yaml` was chosen against Pool of
     Radiance's drawing of that option.  Silver Blades' head 10 at size 2
     wears a hat Pool of Radiance's does not, and its body 11 at size 1 holds
     no weapon where Pool of Radiance's holds one -- so those two rows
@@ -283,7 +283,7 @@ def test_every_title_numbers_its_icon_fields_where_our_layout_says(dos_art):
     the record displacement `goldbox/dos_port.py` gives that title, so a
     wrong offset in our own table shows up here rather than silently.
     """
-    dosicontitles = pytest.importorskip("tools.dosicontitles")
+    dosicontitles = pytest.importorskip("tools.icons.dosicontitles")
     gamedisks = pytest.importorskip("tools.gamedisks")
     root = gamedisks.find("dos-archives")
     folders = dosicontitles.find_folders(root, list(DOS_TITLES))
@@ -301,7 +301,7 @@ def test_each_later_title_copies_the_earlier_ones_icon_bytes_unchanged():
     record with no table in between; Silver Blades' importer does the same
     with a Curse record.  A game that renumbered its art could not do that.
     """
-    dosicontitles = pytest.importorskip("tools.dosicontitles")
+    dosicontitles = pytest.importorskip("tools.icons.dosicontitles")
     gamedisks = pytest.importorskip("tools.gamedisks")
     root = gamedisks.find("dos-archives")
     if root is None or not root.is_dir():
@@ -316,7 +316,7 @@ def test_each_later_title_copies_the_earlier_ones_icon_bytes_unchanged():
 
 # -- the per-title override section (#330, #335) -----------------------------
 #
-# `tools/iconproposal.yaml` gained an `overrides:` section for a title whose
+# `tools/icons/iconproposal.yaml` gained an `overrides:` section for a title whose
 # C64 art disagrees with Pool of Radiance's, keyed by `goldbox.c64_port.Game.key`.
 # It is empty until Donald picks Silver Blades' two rows on
 # `#335 (Two combat-figure rows describe Pool of Radiance's art, and Silver
@@ -372,7 +372,7 @@ def test_a_title_with_an_override_uses_it_for_that_row_alone(tmp_path):
 
 
 def test_the_shipped_table_reads_the_base_rows_for_every_title_but_its_own():
-    """The rule, against the real `tools/iconproposal.yaml`: a title with no
+    """The rule, against the real `tools/icons/iconproposal.yaml`: a title with no
     `overrides:` section of its own reads the base table untouched, and a
     title with one differs from it by exactly the rows that section names.
 
@@ -385,7 +385,7 @@ def test_the_shipped_table_reads_the_base_rows_for_every_title_but_its_own():
 
     from goldbox.c64_port import GAMES
     from goldbox.iconparts import dos_icon_tables
-    from tools import iconproposal as ip
+    from tools.icons import iconproposal as ip
 
     overrides = ip.load_overrides()
     base = dos_icon_tables()
@@ -415,7 +415,7 @@ def test_dos_icon_tables_with_no_title_reads_the_base_table():
     """
 
     from goldbox.iconparts import dos_icon_tables
-    from tools import iconproposal as ip
+    from tools.icons import iconproposal as ip
 
     untitled = dos_icon_tables()
     base_weapons, _, base_heads, _, _ = ip.load_tables()
@@ -530,13 +530,13 @@ def test_dos_icon_tables_with_no_size_ignores_the_bases_own_sections(
 
 
 def test_iconproposal_and_iconparts_agree_on_every_title_and_size():
-    """`tools/iconproposal.py`'s own merge, which a document is drawn from,
+    """`tools/icons/iconproposal.py`'s own merge, which a document is drawn from,
     and `goldbox.iconparts.dos_icon_tables`'s, which a conversion reads,
     must never diverge -- a document that shows one answer and a conversion
     that makes another would be worse than either alone being wrong."""
 
     from goldbox.iconparts import dos_icon_tables
-    from tools import iconproposal as ip
+    from tools.icons import iconproposal as ip
 
     for title in ip.DOS_TITLES:
         for size in (None, "small", "large"):
@@ -575,7 +575,7 @@ def test_only_three_small_c64_weapon_options_draw_no_weapon_at_all(parts):
     Measured off `SPELLE64`'s own class table rather than by eye, and it is
     what makes the row a choice between three rather than an open question:
     C64 small weapon 0, 1 and 21 are the whole of the empty-handed small
-    list.  `tools/iconredrawn.py` draws the same three as its gallery.
+    list.  `tools/icons/iconredrawn.py` draws the same three as its gallery.
     """
     empty = [o for o in range(parts.count("small", "weapon"))
              if "weapon" not in _draws(parts, "small", "weapon", o)]
@@ -613,7 +613,7 @@ def test_a_silver_blades_dwarf_with_body_eleven_arrives_holding_nothing(parts):
 def test_the_body_eleven_row_reaches_a_converted_silver_blades_dwarf(parts):
     """Through `goldbox.dos_codec._icon_for`, with the `tables` argument
     `write_c64_save` builds -- `dos_icon_tables(title=..., size=...)` --
-    rather than through `tools/iconproposal.py`'s own reader, which is a
+    rather than through `tools/icons/iconproposal.py`'s own reader, which is a
     different reading of the same file and says nothing about what a
     converted character gets.
 
@@ -696,7 +696,7 @@ def test_a_staged_silver_blades_party_arrives_holding_what_it_held(
     | body 11, `size` 1 | no weapon | no `weapon` |
     | body 11, `size` 2 | Pool of Radiance's, armed | `weapon` |
 
-    `tools/iconrowproof.py` is the same run with a `--control` that ignores
+    `tools/icons/iconrowproof.py` is the same run with a `--control` that ignores
     the title's `overrides:` section; against that control the small
     character arrives as C64 small weapon 25 drawing a weapon, and every
     large one keeps head 15 and no hat.
@@ -751,10 +751,10 @@ def _drawn_parts(parts, shape) -> set[str]:
 
 # -- the reverse table's own per-title overrides (#452) ----------------------
 #
-# `tools/iconproposal.yaml` grew an `overrides:` section for `#335 (Two
+# `tools/icons/iconproposal.yaml` grew an `overrides:` section for `#335 (Two
 # combat-figure rows describe Pool of Radiance's art, and Silver Blades
 # draws those two options differently)` and `dos_icon_tables` a `title`
-# argument to read it. `tools/iconreverse.yaml` and `c64_icon_tables` had
+# argument to read it. `tools/icons/iconreverse.yaml` and `c64_icon_tables` had
 # neither, so a Silver Blades character round-tripped through the C64 came
 # home as somebody else's figure: head 10 (`size` 2) returned as head 4, and
 # body 11 (`size` 1) as body 0 -- the two readings `#452 (A Silver Blades
@@ -817,7 +817,7 @@ def test_a_title_with_a_c64_override_uses_it_for_that_row_alone(tmp_path):
 
 
 def test_a_c64_titles_top_level_row_wins_at_large_only(tmp_path):
-    """Unlike `tools/iconproposal.yaml`'s own `overrides:` section, a
+    """Unlike `tools/icons/iconproposal.yaml`'s own `overrides:` section, a
     top-level row here answers for the **large** list alone -- there is no
     size-free row within an override, because the base table has none
     either: its own top level is the large lists in full and `small:` is a
@@ -837,10 +837,10 @@ def test_a_c64_titles_top_level_row_wins_at_large_only(tmp_path):
 
 
 def test_the_shipped_reverse_table_gives_silver_blades_its_own_two_rows():
-    """Against the real `tools/iconreverse.yaml`: Silver Blades' C64 large
+    """Against the real `tools/icons/iconreverse.yaml`: Silver Blades' C64 large
     head 2 comes home as DOS head 10, its own row, rather than the base
     table's DOS head 4; its C64 small weapon 1 comes home as DOS body 11,
-    the row that tracks `tools/iconproposal.yaml`'s own, Donald's since
+    the row that tracks `tools/icons/iconproposal.yaml`'s own, Donald's since
     2026-09-08 (`6e3b305`). Every other row, and every other title, reads
     the base table."""
     from goldbox.c64_port import GAMES
@@ -867,7 +867,7 @@ def test_the_shipped_reverse_table_gives_silver_blades_its_own_two_rows():
 
 
 def test_the_silver_blades_body_override_tracks_the_forward_row():
-    """`tools/iconproposal.yaml`'s small body 11 row for Silver Blades is
+    """`tools/icons/iconproposal.yaml`'s small body 11 row for Silver Blades is
     Donald's own (`6e3b305`, #335); the reverse row beside it still has to
     answer for whichever C64 option that row names rather than for 1
     specifically, so a future change to it moves the reverse row with it
@@ -939,12 +939,12 @@ def test_c64_party_reads_a_converted_silver_blades_figure_home_as_itself(
     `c64_icon_tables()` with no title and every large character came home
     head 4 and the small one came home body 0; watched red in that shape
     with `goldbox/dos_codec.py` reverted to its pre-fix state, via
-    `tools/iconrowproof.py --home`.
+    `tools/icons/iconrowproof.py --home`.
     """
     pytest.importorskip("tools.gamedisks")
-    iconproposal = pytest.importorskip("tools.iconproposal")
+    iconproposal = pytest.importorskip("tools.icons.iconproposal")
     specimens = pytest.importorskip("tools.specimens")
-    iconrowproof = pytest.importorskip("tools.iconrowproof")
+    iconrowproof = pytest.importorskip("tools.icons.iconrowproof")
 
     disk = iconproposal.title_c64_disk("secret-of-the-silver-blades", None)
     if disk is None:

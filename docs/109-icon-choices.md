@@ -43,7 +43,7 @@ artist is commissioned; see `132-logo.md` and `ui/appicon.py`.
 
 The sheet is still buildable and now shows the chosen set:
 
-    .venv/bin/python tools/iconsheet.py
+    .venv/bin/python tools/icons/iconsheet.py
 
 Every icon at 13, 15 and 26 pixels, in `NOTE` ink in a map cell with a wall
 against it and in `MUTED` on a roster card, and then magnified 8× and 5×. **The
@@ -69,7 +69,7 @@ square they are marking is much larger than the actual icon."* So the map draws
 at 26 in a 34px cell, and 13 survives in one place only — the notes list.
 
 Two things had to move with it, both visible in a rendering from
-`tools/iconsheet.py` and both now pinned by a test:
+`tools/icons/iconsheet.py` and both now pinned by a test:
 
 * **the count on a multi-note square.** It hung off the bottom-right of the
   *icon*, which put it outside the cell as soon as the icon grew. It is placed

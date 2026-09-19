@@ -16,9 +16,9 @@ two `ANIMATE` entries.
 
 This is the census that says so, re-runnable against the player's own disks:
 
-    tools/portraitdraw.py                        all three C64 titles
-    tools/portraitdraw.py --title curse          one of them
-    tools/portraitdraw.py --verbose              every call site, with its file
+    tools/icons/portraitdraw.py                        all three C64 titles
+    tools/icons/portraitdraw.py --title curse          one of them
+    tools/icons/portraitdraw.py --verbose              every call site, with its file
 
 Three measurements per title, none of which needs an emulator:
 
@@ -51,7 +51,7 @@ import argparse
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402

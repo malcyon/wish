@@ -10,7 +10,7 @@ characters rolled in the game's own creation screens -- holds `icon_head` 0
 and `icon_body` 0 for all six, because the driver never entered the creation
 screens' MODIFY ICON step.  So the figures have to be put there.
 
-    tools/dosiconstage.py --folder path/to/dosparty --slot C
+    tools/icons/dosiconstage.py --folder path/to/dosparty --slot C
 
 This writes four record bytes a character and nothing else: `icon_head`
 `0x0BD`, `icon_body` `0x0BE` and the six `icon_colours` pairs at `0x0C1`.
@@ -29,7 +29,7 @@ import argparse
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

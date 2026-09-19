@@ -4,7 +4,7 @@ from __future__ import annotations
 
 `#396 (Whether an Amiga Curse or Silver Blades record's combat-icon fields
 share DOS's own numbering is unmeasured)`.  Every assertion here is a
-measurement taken off the player's own disks by `tools/amigaicons.py`, and
+measurement taken off the player's own disks by `tools/icons/amigaicons.py`, and
 every one of them would go red if a later change to the reader silently
 started reading the tiles at the wrong stride, in the wrong plane order, or
 through a translation table that was fitted to the art rather than read out of
@@ -19,12 +19,13 @@ import functools
 
 import pytest
 
-# `tools/amigaicons.py` reaches `capstone` through `tools/amiga/amigarecordrefs.py`,
+# `tools/icons/amigaicons.py` reaches `capstone` through `tools/amiga/amigarecordrefs.py`,
 # which imports it at module level -- so this skip must precede the import.
 # See the note in `tests/test_innateids.py`.
 pytest.importorskip("capstone")
 
-from tools import amigaicons, gamedisks  # noqa: E402
+from tools import gamedisks  # noqa: E402
+from tools.icons import amigaicons  # noqa: E402
 
 #: The sixteen-entry table both executables hold: a DOS pixel value's Amiga
 #: palette entry.  Read at `/Curse` `g0ee4` and `/Secret` `g2374`.
@@ -207,7 +208,7 @@ def test_silver_blades_redrew_the_same_four_blocks_on_both_ports():
     """`docs/168-dos-dax-and-combat-icons.md` measured Silver Blades redrawing
     DOS head 10 large and body 11 small.  The Amiga carries the same two
     re-draws and nothing else, so the per-title override
-    `tools/iconproposal.yaml` holds for a Silver Blades record whichever port
+    `tools/icons/iconproposal.yaml` holds for a Silver Blades record whichever port
     it came off."""
     curse_heads, curse_bodies = _title_art("curse-of-the-azure-bonds")
     ssb_heads, ssb_bodies = _title_art("secret-of-the-silver-blades")

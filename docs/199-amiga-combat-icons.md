@@ -10,7 +10,7 @@ the DOS record wants.
 
 Every offset below is a file offset into `/Curse` on Curse of the Azure Bonds
 disk 1 or `/Secret` on Secret of the Silver Blades disk 1, read with
-`tools/amiga/amiga68k.py`. `tools/amigaicons.py` re-takes all three measurements --
+`tools/amiga/amiga68k.py`. `tools/icons/amigaicons.py` re-takes all three measurements --
 `--tables`, `--art`, `--census` -- and `tests/test_amigaicons.py` pins them.
 Every site named below was found with `tools/amiga/amigarecordrefs.py`, which is
 what asks "who reads this record byte" on a port where a field is `d16(An)`
@@ -122,7 +122,7 @@ reading the planes interleaved by row instead of one after another, turns
 
 **Silver Blades redrew the same four blocks on the Amiga as on DOS** -- head
 10 at the large size and body 11 at the small, blocks 74, 202, 11 and 139, and
-nothing else. So `tools/iconproposal.yaml`'s Silver Blades override is right
+nothing else. So `tools/icons/iconproposal.yaml`'s Silver Blades override is right
 for an Amiga Silver Blades record as much as a DOS one.
 
 ### The one difference: the plume highlight
@@ -182,7 +182,7 @@ the later two titles are the same case.
 ## The specimens
 
 All 21 Amiga Curse and Silver Blades records, read with
-`tools/amigaicons.py --census`: `icon_head` 0-9, `icon_body` 0-31,
+`tools/icons/amigaicons.py --census`: `icon_head` 0-9, `icon_body` 0-31,
 `icon_dimension` 1 in 21 of 21, `size` 1 or 2, and **every `(head, body,
 size)` triple names four blocks the libraries actually hold**. Twelve of the
 21 carry `91 A2 B3 C4 E6 F7`, `goldbox.dos_codec`'s own DOS default -- the eleven

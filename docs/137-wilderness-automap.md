@@ -210,7 +210,7 @@ it.
 | unknown | the experiment |
 |---|---|
 | **which colour bucket is which terrain** | a screenshot of the travel screen, next to a rendering of the tile table's colours. The screenshot no longer has to be taken -- `cited/178` has three -- but a rendering to put beside them does not exist yet. This is still the blocker on everything downstream |
-| whether the buckets are even the right partition | render all 120 tiles of one window as coloured 3 × 3 blocks, offscreen, and look at them as a sheet. Same rig as `tools/iconsheet.py`. **The sheet is a working file and is not committed** — it is the game's art |
+| whether the buckets are even the right partition | render all 120 tiles of one window as coloured 3 × 3 blocks, offscreen, and look at them as a sheet. Same rig as `tools/icons/iconsheet.py`. **The sheet is a working file and is not committed** — it is the game's art |
 | the eight-way facing encoding | `$033D` is page 3 and is not in the save; W2/W3 proved the travel facing is not saved at all. A live read while turning |
 | whether the impassable lists are per-window complete | `ECL19`/`1A`/`1B` each carry one; map `1B` reserves a stamp for a site that does not exist |
 | what a `SECSET0n` glyph looks like | **needed after all**, if look 1 is chosen (the game's own tiles, reopened `docs/217-drawing-the-wilderness.md` §1) -- rendering it is measurement A there, not built yet |

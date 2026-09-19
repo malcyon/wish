@@ -19,7 +19,7 @@ the row count, byte 2 the width in eights, bytes 8-16 nine bytes that are
 the same across a file and unread here, and `17 + rows * width_in_eights * 4`
 the block's whole length.  `--png` reads the 4-bit values as EGA indices
 straight off the block, which is what the sheet portraits are; for a combat
-figure the values are part numbers and `tools/iconproposal.py` recolours
+figure the values are part numbers and `tools/icons/iconproposal.py` recolours
 them the way the engine does (`docs/168-dos-dax-and-combat-icons.md`).
 
 Anything written goes where the command names, and the game's bytes belong

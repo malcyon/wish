@@ -261,7 +261,7 @@ def test_swap_party_entries_on_a_curse_sized_buffer_uses_curses_own_offset():
 
     Curse's party table starts twelve bytes later than Pool of Radiance's
     (`SAVE_CURSE_OF_THE_AZURE_BONDS.unnamed`).  A swap addressed at the
-    Pool of Radiance offset -- `tools/dosportraitparty.py`'s old
+    Pool of Radiance offset -- `tools/icons/dosportraitparty.py`'s old
     `PARTY_AT = 12809` -- lands twelve bytes short of the real table, so it
     swaps only the last 29 of each entry's 41 bytes and leaves the first 12
     of the *next* entry untouched: not a swap at all, but two entries each

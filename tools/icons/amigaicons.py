@@ -27,9 +27,9 @@ Three questions, three modes.
     Every Amiga specimen's four icon fields, and whether the pair names art
     that is actually in the libraries.
 
-    tools/amigaicons.py --tables
-    tools/amigaicons.py --art
-    tools/amigaicons.py --census
+    tools/icons/amigaicons.py --tables
+    tools/icons/amigaicons.py --art
+    tools/icons/amigaicons.py --census
 
 The `.TLB` container is `GLIB`, not the `.dax` `goldbox/amiga_dax.py` reads:
 magic, a `u32` total size, a `u16` block count, a `u16`, a four-byte tag, then
@@ -49,7 +49,7 @@ import struct
 import sys
 from collections import Counter
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from goldbox.dos_savegame import dax_blocks  # noqa: E402

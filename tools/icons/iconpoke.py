@@ -10,7 +10,7 @@ default into all six slots today, which is
 `#130 (A converted DOS party arrives with six identical combat figures, not
 its own)`, so the party has to be made by hand.
 
-    tools/iconpoke.py --disk SIX.D64
+    tools/icons/iconpoke.py --disk SIX.D64
 
 Every icon it writes is one the game's own ICON menu can reach:
 `IconParts.compose` applies a weapon option and then a head option out of
@@ -30,7 +30,7 @@ import os
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

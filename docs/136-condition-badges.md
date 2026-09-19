@@ -36,7 +36,7 @@ one card.
 behind only `death-skull` — but what survives is the silhouette and not the
 subject: magnified, it reads as a shape rather than legibly as a silenced
 face. `snail`'s shell is unmistakable at 13 px. The numbers come from
-`tools/inkcount.py` and the pictures from `tools/iconsheet.py`.
+`tools/icons/inkcount.py` and the pictures from `tools/icons/iconsheet.py`.
 
 **`invisible` drew nothing at 13 px, and was replaced.** 816 ink pixels at
 128 px against 5,000–9,500 for the rest of the set: it was a **dashed**
@@ -46,11 +46,11 @@ Donald chose `eyelashes` (Delapouite) in its place — *"how about this one for
 invisibility?"* — and it reads as a closed eye. `oppression`,
 `embrassed-energy`, `running-ninja` and `sparkling-sabre` all come apart into
 two to six pieces at 13 px and are legible only as a general shape. The sheet
-is `tools/iconsheet.py`, which carries all ten, and a magnified render is
+is `tools/icons/iconsheet.py`, which carries all ten, and a magnified render is
 `eyelashes-13px-x6.png` (lost — `#136 (Thirty-two cited
 write-ups are gone, because the knowledge base pointed into gitignored
 scratch)`; re-render it with
-`tools/iconsheet.py`).
+`tools/icons/iconsheet.py`).
 
 **`eyelashes` is a genuine improvement, and it is worth saying by how much
 depending on how you count.** Counting any pixel the antialiased fill touches
@@ -69,7 +69,7 @@ here than either count — see it before choosing another glyph.
 at least half covered, pieces are 8-connected blobs — and it agrees pixel for
 pixel with Qt's own SVG renderer reading the same `d`, at 13, 26, 128 and
 512 px, for all ten. `tests/test_conditionbadges.py` keeps it that way, and
-the rig is `tools/inkcount.py`, which reproduces every number in the table
+the rig is `tools/icons/inkcount.py`, which reproduces every number in the table
 above.
 
 **Five badged effect ids are PROBABLE rather than CONFIRMED, and that is

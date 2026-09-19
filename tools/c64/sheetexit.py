@@ -51,8 +51,8 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import portraitdraw  # noqa: E402
 from tools.c64.savecheck import Log, catch_signals  # noqa: E402
+from tools.icons import portraitdraw  # noqa: E402
 
 #: The three C64 titles, and the label each is reported under.
 TITLES: tuple[tuple[str, str], ...] = (

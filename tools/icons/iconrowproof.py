@@ -2,7 +2,7 @@
 """Stage one combat-figure row into a DOS party and convert it, to see what
 arrives (`#335`).
 
-A row of `tools/iconproposal.yaml` says which C64 option a DOS body or head
+A row of `tools/icons/iconproposal.yaml` says which C64 option a DOS body or head
 becomes.  Reading the row proves nothing about a *converted character*: the
 table is merged from four levels, the merge takes a title and a size, and a
 caller that forgets either gets the base answer and a complete, plausible
@@ -16,7 +16,7 @@ So the output is what the *game* would show, in the game's own vocabulary:
 this character arrived as C64 small weapon 1, drawing arm, body, hair and
 leg, and nothing of the weapon class.
 
-    tools/iconrowproof.py --specimen ssb-299-engine-resave --slot D \\
+    tools/icons/iconrowproof.py --specimen ssb-299-engine-resave --slot D \\
         --title secret-of-the-silver-blades --body 11 --size small \\
         --stage DIR --control
 
@@ -35,7 +35,7 @@ ignored, and prints both, so a row's effect is a difference rather than an
 assertion.
 
 `--home` reads each arriving C64 icon straight back into DOS through
-`IconParts.dos_icon_from_c64` -- the other direction, `tools/iconreverse.yaml`
+`IconParts.dos_icon_from_c64` -- the other direction, `tools/icons/iconreverse.yaml`
 (`#320`) -- twice: once through `goldbox.iconparts.c64_icon_tables()` with no
 title, the base table, and once with the title this run staged for, which is
 what `goldbox.dos_codec.c64_party` itself now passes
@@ -56,7 +56,7 @@ import pathlib
 import shutil
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -68,8 +68,8 @@ from goldbox.iconparts import (  # noqa: E402
     c64_icon_tables,
     dos_icon_tables,
 )
-from tools import iconproposal as ip  # noqa: E402
 from tools import scratch  # noqa: E402
+from tools.icons import iconproposal as ip  # noqa: E402
 
 #: The three titles whose DOS-to-C64 conversion this can drive.  Pools of
 #: Darkness has no C64 port at all, and its combat art is a different

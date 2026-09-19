@@ -158,13 +158,13 @@ DEFAULT_BACKGROUND = 6
 # about what the figure *shows* -- a bow is a bow, a robed caster is a robed
 # caster -- and it is Donald's judgement rather than a measurement.
 #
-# It lives in `tools/iconproposal.yaml`, one line a row, and is read from
+# It lives in `tools/icons/iconproposal.yaml`, one line a row, and is read from
 # there at run time rather than copied into this file.  A copy would be a
 # second source: Donald edits the YAML by hand, and a table here would either
 # go quietly out of step with his edit or fail the build for having been
 # edited, both of which have already happened once.
 
-#: Donald's table, the single source.  `tools/iconproposal.py` draws it and
+#: Donald's table, the single source.  `tools/icons/iconproposal.py` draws it and
 #: `dos_icon_tables` reads it; nothing else may hold a second copy.
 #:
 #: It stays in `tools/` -- Donald edits it where he has already been shown it
@@ -172,18 +172,18 @@ DEFAULT_BACKGROUND = 6
 #: resolver `#351 (The Windows build shows no logo in About and a black
 #: square on the taskbar, because the artist's SVGs are not in the package)`
 #: added: `sys._MEIPASS` when frozen, this checkout otherwise. `wish.spec`'s
-#: `DATAS` carries `tools/iconproposal.yaml` alongside it, which is what
+#: `DATAS` carries `tools/icons/iconproposal.yaml` alongside it, which is what
 #: `#315 (A frozen Wish cannot convert a combat figure, because the table it
 #: needs lives outside the package)` was waiting on.
-PROPOSAL_PATH = asset_path("tools", "iconproposal.yaml")
+PROPOSAL_PATH = asset_path("tools", "icons", "iconproposal.yaml")
 
-#: Donald's table for the other direction, `tools/iconreverse.yaml` -- which
-#: DOS option each C64 one becomes, drafted by `tools/iconreverse.py` and
+#: Donald's table for the other direction, `tools/icons/iconreverse.yaml` -- which
+#: DOS option each C64 one becomes, drafted by `tools/icons/iconreverse.py` and
 #: corrected by hand the way `PROPOSAL_PATH` was (#320, "Draft it, you
 #: correct it").  Reached the same way and for the same reason: a frozen
 #: build has no `tools/` checkout, so `goldbox.assets.asset_path` plus
 #: `wish.spec`'s `DATAS` is what `#315`'s resolver was for.
-REVERSE_PATH = asset_path("tools", "iconreverse.yaml")
+REVERSE_PATH = asset_path("tools", "icons", "iconreverse.yaml")
 
 #: Record bytes `0x0C1`-`0x0C6` in order, and which C64 part class each one
 #: paints.  `GAME.OVR:0x1E55C` builds its recolour lookup from the table at
@@ -298,7 +298,7 @@ class C64IconTables:
     #: `(size, C64 weapon option) -> DOS icon_body`.  Keyed by size because a
     #: C64 option number means a different drawing at each size -- large
     #: weapon 3 and small weapon 3 are different pictures out of different
-    #: tables -- so `tools/iconreverse.yaml` gives the two sizes complete,
+    #: tables -- so `tools/icons/iconreverse.yaml` gives the two sizes complete,
     #: separate lists rather than one table with exceptions.
     weapons: dict[tuple[str, int], int]
     #: `(size, C64 head option) -> DOS icon_head`, the same shape.
@@ -312,8 +312,8 @@ def c64_icon_tables(path: "pathlib.Path | str | None" = None,
                     title: str | None = None) -> C64IconTables:
     """Read the reverse table out of :data:`REVERSE_PATH`.
 
-    Independent of `tools/iconreverse.py`'s own reader, the way
-    :func:`dos_icon_tables` is independent of `tools/iconproposal.py`'s: that
+    Independent of `tools/icons/iconreverse.py`'s own reader, the way
+    :func:`dos_icon_tables` is independent of `tools/icons/iconproposal.py`'s: that
     module's `load_tables` also draws the sheets Donald corrects, and a
     second copy of the parsing here would go out of step with a YAML
     structure change nobody remembered to mirror.
@@ -326,7 +326,7 @@ def c64_icon_tables(path: "pathlib.Path | str | None" = None,
     `title` is a `goldbox.c64_port.C64Container.key`, the mirror of
     :func:`dos_icon_tables`'s own argument (`#452 (A Silver Blades combat
     figure does not survive a round trip through the C64, because the
-    reverse table has no per-title rows)`). `tools/iconproposal.yaml`'s
+    reverse table has no per-title rows)`). `tools/icons/iconproposal.yaml`'s
     `overrides:` section is many-to-one *per title* -- Silver Blades' own
     `heads: 10: {c64: 2}` (`#335`) lands on the same C64 large head 2 that
     DOS heads 4 and 6 already reach in the base table -- so the base
@@ -654,7 +654,7 @@ class IconParts:
     def size_for(self, size: str, kind: str, option: int) -> str:
         """`size`, unless only the large list is long enough to hold `option`.
 
-        Public because `tools/iconproposal.py` needs the same rule to draw a
+        Public because `tools/icons/iconproposal.py` needs the same rule to draw a
         mixed row on a proposal sheet -- the crash `#325 (The small head
         sheet will not draw at all, because two of its rows use a head the
         small list does not have)` fixed was that sheet's own `c64_figure`
@@ -768,8 +768,8 @@ class IconParts:
         screen codes then eighteen colours, the shape :meth:`dos_icon` and
         :meth:`default_icon` both return.  It is read back into the menu
         choices that drew it (:meth:`recognise`) and each is looked up in
-        `tools/iconreverse.yaml` through `tables`, Donald's own judgement
-        (#320) the way `tools/iconproposal.yaml` is his for the DOS-to-C64
+        `tools/icons/iconreverse.yaml` through `tables`, Donald's own judgement
+        (#320) the way `tools/icons/iconproposal.yaml` is his for the DOS-to-C64
         direction.
 
         **Where the head is ambiguous**, `recognise` already resolved it:
@@ -804,13 +804,13 @@ class IconParts:
             body = tables.weapons[(choice.weapon_size, choice.weapon)]
         except KeyError:
             raise ValueError(
-                f"no row in tools/iconreverse.yaml for the C64 "
+                f"no row in tools/icons/iconreverse.yaml for the C64 "
                 f"{choice.weapon_size} weapon {choice.weapon}") from None
         try:
             head = tables.heads[(choice.head_size, choice.head)]
         except KeyError:
             raise ValueError(
-                f"no row in tools/iconreverse.yaml for the C64 "
+                f"no row in tools/icons/iconreverse.yaml for the C64 "
                 f"{choice.head_size} head {choice.head}") from None
         per_class = self.part_colours(colours, shape)
         dos_colours = bytearray(6)
@@ -824,7 +824,7 @@ class IconParts:
         figure_source = (
             "the C64 source record's own combat icon, recognised off its "
             "eighteen screen codes and looked up through "
-            f"tools/iconreverse.yaml (#320, weapon {choice.weapon_size} "
+            f"tools/icons/iconreverse.yaml (#320, weapon {choice.weapon_size} "
             f"{choice.weapon}, head {choice.head_size} {choice.head})")
         colours_source = (
             "the C64 source record's own combat icon colours, converted "
@@ -909,7 +909,7 @@ class IconParts:
 #:
 #: A DOS colour byte holds two 4-bit colours, and the C64 has one colour for
 #: the whole part, so the conversion has to pick the one that covers more of
-#: the shape.  Counted pixel by pixel over the shipped art (`tools/dosnibbles.py`):
+#: the shape.  Counted pixel by pixel over the shipped art (`tools/icons/dosnibbles.py`):
 #: the high nibble covers **56-65% of the leg in 32 of 32 bodies** and
 #: **68-72% of the shield in 8 of 8 that carry one**, and the low nibble wins
 #: everywhere else.

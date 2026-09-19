@@ -2647,7 +2647,7 @@ tables** — 7 distinct head values of 7, 8 body values of 8, no exception.
 found is a table naming real portraits. Nothing of the game's is copied into
 this repository.
 
-**CONFIRMED in the running game**, `tools/portraitshot.py`, which opens the
+**CONFIRMED in the running game**, `tools/icons/portraitshot.py`, which opens the
 sheet under DOSBox and matches the drawn portrait against every block of
 `HEAD<n>.DAX` rendered from the player's own files — every non-background
 pixel has to agree:

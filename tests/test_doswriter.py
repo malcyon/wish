@@ -938,7 +938,7 @@ def test_a_converted_party_arrives_with_its_own_faces(tmp_path):
 def test_the_saved_game_carries_the_word_the_portrait_needs(tmp_path):
     """Right records are not enough: `$49FF` has to be nonzero as well.
 
-    Measured in DOSBox with `tools/portraitshot.py`, and it is the reason a
+    Measured in DOSBox with `tools/icons/portraitshot.py`, and it is the reason a
     converted party stayed faceless after the records were right: the same
     six records draw their portraits on the engine's own saved game and
     nothing at all on a from-nothing one, and the difference bisects to this
@@ -1102,7 +1102,7 @@ def test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures(
     """The issue's own Testing section, built on the one committed C64
     fixture: BRUTUS's own 256-byte slot, cloned into all eight, given six
     different names and six different combat icons composed the way
-    `tools/iconpoke.py` composes them -- nothing here is the game's own
+    `tools/icons/iconpoke.py` composes them -- nothing here is the game's own
     saved bytes, only its documented format applied six times.
     """
     parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))

@@ -1,13 +1,13 @@
-"""`tools/dosfigures.py` asks `IconParts.size_for` for the large-list
+"""`tools/icons/dosfigures.py` asks `IconParts.size_for` for the large-list
 promotion rule, rather than keeping a third copy of its arithmetic.
 
 `#328 (A third copy of the large-list promotion rule sits in
-tools/dosfigures.py, which is the defect #325 was)`: `mixed_png`'s
+tools/icons/dosfigures.py, which is the defect #325 was)`: `mixed_png`'s
 `big = (option >= (small_heads if kind == "head" else small_weapons))` was a
 hand-written copy of `goldbox.iconparts.IconParts.size_for`'s own rule --
 `#325 (The small head sheet will not draw at all, because two of its rows
 use a head the small list does not have)`'s crash, one copy earlier, was
-`tools/iconproposal.py` writing the same arithmetic and forgetting the head
+`tools/icons/iconproposal.py` writing the same arithmetic and forgetting the head
 half of it. `mixed_rows` is the promotion decision pulled out of `mixed_png`
 so it can be checked directly, without drawing anything.
 """
@@ -18,7 +18,7 @@ import pytest
 from gamedata import disk_dir
 
 from goldbox.iconparts import IconParts, dos_icon_tables
-from tools import dosfigures as df  # noqa: E402
+from tools.icons import dosfigures as df  # noqa: E402
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the game disks")

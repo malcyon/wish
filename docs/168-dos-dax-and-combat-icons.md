@@ -123,8 +123,8 @@ is such a mix.
 
 The figure sets are the same vocabulary in a different order: both have a
 bow, a crossbow, a flail, a sling, spears, axes, hammers, the shield set and
-a robed set. No index corresponds (`tools/iconcorrespond.py` measured that),
-and the mapping is a look. `tools/iconproposal.py` holds the proposed tables
+a robed set. No index corresponds (`tools/icons/iconcorrespond.py` measured that),
+and the mapping is a look. `tools/icons/iconproposal.py` holds the proposed tables
 -- 32 body rows, 14 head rows, a 16-to-8 colour table -- and draws each DOS
 figure beside its proposed C64 one; the decision is Donald's and is tracked
 on the issue.
@@ -136,7 +136,7 @@ Radiance's art, so `#330 (A converted Curse or Silver Blades figure is
 composed through Pool of Radiance's icon table, which nobody has checked
 transfers)` asked whether a Curse of the Azure Bonds or Secret of the Silver
 Blades record numbers its own art the same way. It does.
-`tools/dosicontitles.py` is the measurement, run against the archives'
+`tools/icons/dosicontitles.py` is the measurement, run against the archives'
 `POOLRAD`, `CURSE` and `SECRET` game directories.
 
 **The art.** Both containers hold the same block ids in all three titles --
@@ -201,7 +201,7 @@ size of each is untouched -- Silver Blades' *small* head 10 and *large* body
 sizes of those options now draw different things.
 
 **What that cost a converted character, and what fixed it.** Every row of
-`tools/iconproposal.yaml` was chosen against Pool of Radiance's drawing, so a
+`tools/icons/iconproposal.yaml` was chosen against Pool of Radiance's drawing, so a
 Silver Blades character at `size` 2 with head 10 lost a hat the C64 head
 option does not have, and one at `size` 1 with body 11 gained a weapon his
 DOS figure does not hold. Both are now rows of that file's
@@ -222,14 +222,14 @@ those two options differently)`).
 Nothing else in either table is affected, and no record in the 54 shipped DOS
 saves across the four titles holds either combination -- though a player
 reaches both from the ICON menu, and those saves have no chain of custody.
-`tools/iconrowproof.py` is how each of the four readings above was taken: it
+`tools/icons/iconrowproof.py` is how each of the four readings above was taken: it
 stages an `icon_head`/`icon_body` onto a copy of an engine-written DOS party,
 converts it through `goldbox.dos_codec.convert_save`, and reads the arriving C64
 icon back into the menu choices that drew it, with a `--control` run that
 ignores the title's `overrides:` section.
 
 **What the pair cost in the other direction, and what fixed it.**
-`tools/iconreverse.yaml` gained its own `overrides:` section for Secret of the
+`tools/icons/iconreverse.yaml` gained its own `overrides:` section for Secret of the
 Silver Blades -- C64 large head 2 back to DOS head 10, C64 small weapon 1 back
 to DOS body 11 -- and `goldbox.iconparts.c64_icon_tables` and
 `goldbox.dos_codec.c64_party` both take the title now, `c64_party` reading
@@ -271,7 +271,7 @@ Blades disk**: weapon 13 at both sizes, and large heads 8 and 13. The other 97
 are pixel for pixel what Pool of Radiance draws, and Curse of the Azure Bonds
 redraws none of the 100.
 
-The measurement is `tools/iconproposal.py --compare-c64`, and it compares
+The measurement is `tools/icons/iconproposal.py --compare-c64`, and it compares
 **rendered pixels** rather than composed shapes -- which is what the earlier
 grade got wrong, because the shapes agree and the pictures do not. Sample:
 each of the 100 options composed alone on an empty figure, both poses, at both
@@ -305,7 +305,7 @@ figure is drawn by whichever game owns the disk the record was written to --
 destination title's own disks, and the engine draws the codes through its own
 `CHARPIC00`. A Silver Blades character converted onto a Silver Blades disk
 already gets Silver Blades' weapon 13. What changes is only what a *document*
-must show, and that is `tools/iconproposal.py --title`, which now draws both
+must show, and that is `tools/icons/iconproposal.py --title`, which now draws both
 sides off the named title's own art.
 
 **Negative result worth keeping.** Curse of the Azure Bonds' C64 icon art is
@@ -316,7 +316,7 @@ figures differing. Only the load address moves, `$A700` to `$8E00`, which
 
 ## The override reaches a document and not yet a conversion
 
-`tools/iconproposal.yaml` grew an `overrides:` section for `#335 (Two
+`tools/icons/iconproposal.yaml` grew an `overrides:` section for `#335 (Two
 combat-figure rows describe Pool of Radiance's art, and Silver Blades draws
 those two options differently)`, and Donald picked its first row on
 2026-09-05: Secret of the Silver Blades' DOS head 10

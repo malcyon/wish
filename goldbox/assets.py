@@ -23,7 +23,7 @@ This lives in `goldbox/` rather than `ui/` or `wish/` because `goldbox` is
 the bottom of the import order and the next reader is there: `#315 (A frozen
 Wish cannot convert a combat figure, because the table it needs lives outside
 the package)` is `goldbox/iconparts.py` building the same kind of path to
-`tools/iconproposal.yaml`, and it can use this once that file is in `datas`.
+`tools/icons/iconproposal.yaml`, and it can use this once that file is in `datas`.
 """
 
 from __future__ import annotations

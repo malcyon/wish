@@ -8,8 +8,8 @@ game disk in reach to give a character his own face.  A number nobody can
 re-derive is a number nobody can check, and this is how the stored block is
 re-derived:
 
-    tools/portraitmenu.py            # print the menu off whatever is here
-    tools/portraitmenu.py --check    # exit 1 if the disks disagree with it
+    tools/icons/portraitmenu.py            # print the menu off whatever is here
+    tools/icons/portraitmenu.py --check    # exit 1 if the disks disagree with it
 
 It reads the C64 side (`GEN`, off `$POR_DISKS` or wherever `gamedisks.yaml`
 says the `POOL*.D64` sides are) and the DOS side (`START.EXE`, in the
@@ -32,7 +32,7 @@ import argparse
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

@@ -263,7 +263,7 @@ that a cheap job will skip: **hand-tuned 16, 24 and 32**, not exports of the
 | the panel icon on Linux | `app.setDesktopFileName("wish")` — GNOME and KDE match a window to its `.desktop` by app id, and a Wayland window gets a generic icon without it. There is still no `.desktop` file and the Linux artefact is a tarball, so the hicolor PNGs sit under `assets/` waiting for a package | `wish/window.py::dress` |
 | Help > About | a hand-built `QMessageBox` with `setIconPixmap` of the colour combo mark at 256, rendered from `assets/logo/combo-mark-color.svg`; `QMessageBox.about` paints the platform's information icon and takes no picture | `wish/about.py` |
 | the README | an `<img>` at the top — **Donald's file; ask** | `README.md` |
-| the icon files themselves | a generator, offscreen, in the shape of `tools/iconsheet.py` | `tools/genicons.py` |
+| the icon files themselves | a generator, offscreen, in the shape of `tools/icons/iconsheet.py` | `tools/genicons.py` |
 
 ---
 

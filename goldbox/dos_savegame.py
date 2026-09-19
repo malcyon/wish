@@ -947,7 +947,7 @@ def swap_party_entries(save: bytearray, i: int, j: int,
     The engine loads the party in the order named here rather than in
     `CHRDAT` file order (`put_character_files`'s own docstring), so this is
     the same reordering a player makes in camp -- no character record is
-    touched, and nothing but the two 41-byte entries moves. `tools/
+    touched, and nothing but the two 41-byte entries moves. `tools/icons/
     dosportraitparty.py:put_first` did this against a hardcoded Pool of
     Radiance offset (12809); a Curse save's table starts twelve bytes later,
     at `party_table`, so that offset swapped the wrong bytes on any other

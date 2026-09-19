@@ -262,7 +262,7 @@ def bases(body: bytes) -> list[tuple[int, int, int]]:
     """`(good - bad, good, base)` for every load address that resolves this
     file's own `JSR`/`JMP` targets, best first.
 
-    `tools/portraitdraw.py`'s `base_of` returns only the winner, and for a
+    `tools/icons/portraitdraw.py`'s `base_of` returns only the winner, and for a
     file with few branches of its own that winner is a coin toss: Pool of
     Radiance's `SQRPACI01` has six and an unrelated base resolves all six,
     beating the true `$0400`, which resolves four. So this returns the whole

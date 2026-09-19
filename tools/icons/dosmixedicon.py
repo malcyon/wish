@@ -14,8 +14,8 @@ player's disks (HOGARTH's).
 Whether such a figure *reads* as a whole figure on the screen is a look, and
 a look needs a specimen.  This finds one or makes one.
 
-    tools/dosmixedicon.py --census
-    tools/dosmixedicon.py --stage DIR --slot J \\
+    tools/icons/dosmixedicon.py --census
+    tools/icons/dosmixedicon.py --stage DIR --slot J \\
         --from "$POR_DOS_GAME/SAVE"
 
 `--census` reads every `.SAV` and `.CHA` under the DOS corpora and reports
@@ -32,7 +32,7 @@ is which figure a small character asks for.  Editing an *input* and watching
 the game compute from it is the valid half of the distinction
 `.claude/rules/testing.md` draws.
 
-`tools/dosiconstage.py` is the neighbouring tool and a different job: it
+`tools/icons/dosiconstage.py` is the neighbouring tool and a different job: it
 gives a party of six identical figures six different ones, so that "each
 character got his own" can be told from "all six got one".  This one is
 about a single row of the table rather than about the party.
@@ -44,7 +44,7 @@ import pathlib
 import shutil
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

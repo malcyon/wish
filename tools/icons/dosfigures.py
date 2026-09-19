@@ -8,7 +8,7 @@ the combat floor as six identical unarmed men.  This builds the same disk
 `tools/dos/dosdisk.py` builds and then gives every character the figure his own
 DOS record names, through `goldbox.iconparts.IconParts.dos_icon`.
 
-    tools/dosfigures.py --folder ~/wish-specimens/... --slot C \\
+    tools/icons/dosfigures.py --folder ~/wish-specimens/... --slot C \\
         --out DIR/FIGURES.D64 --json DIR/figures.json
 
 **The disk is built by the shipped conversion, not by this tool.**
@@ -33,7 +33,7 @@ import os
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -155,8 +155,8 @@ def png(rows: list[dict], disks: pathlib.Path,
     from PIL import Image, ImageDraw
 
     from goldbox import icons
-    from tools import iconcorrespond as ic
-    from tools import iconproposal as ip
+    from tools.icons import iconcorrespond as ic
+    from tools.icons import iconproposal as ip
 
     game = ic.dos_game(None)
     charset = charset_from(disks)
@@ -203,9 +203,9 @@ def mixed_rows(parts: IconParts, tables: DosIconTables) -> list[dict]:
     Split out of `mixed_png` so a test can check this decision against
     `goldbox.iconparts.IconParts.size_for` directly, without drawing
     anything.  `#328 (A third copy of the large-list promotion rule sits in
-    tools/dosfigures.py, which is the defect #325 was)`: this used to
+    tools/icons/dosfigures.py, which is the defect #325 was)`: this used to
     recompute `option >= parts.count("small", kind)` inline, the same third
-    copy `#325`'s fix removed from `tools/iconproposal.py`.
+    copy `#325`'s fix removed from `tools/icons/iconproposal.py`.
     """
     rows = []
     for kind, option in ([("head", h) for h in (0, 3, 5, 13)]

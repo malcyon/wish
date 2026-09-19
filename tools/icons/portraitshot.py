@@ -24,7 +24,7 @@ Nothing here writes to the player's archives -- `tools.dos.dosbox.Session.stage`
 copies the tree -- and nothing opens a window on the desktop.  Screenshots go
 under `--out`, which defaults to a scratch directory.
 
-    tools/portraitshot.py --out DIR --heads 1,2,3,4,5,6
+    tools/icons/portraitshot.py --out DIR --heads 1,2,3,4,5,6
 
 `--keys` is the escape hatch for a route that has moved: every key is pressed
 in turn from the character sheet and a frame captured after each, which is
@@ -39,7 +39,7 @@ import pathlib
 import shutil
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
@@ -49,7 +49,7 @@ from goldbox.d64 import load_payload  # noqa: E402
 from tools import scratch  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 
 #: The block header is four bytes and the pixels start at seventeen: the
 #: four-byte header, then thirteen bytes nothing here reads.  Measured rather

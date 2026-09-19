@@ -21,7 +21,8 @@ import functools
 import pytest
 
 from goldbox import c64_port, portraits
-from tools import gamedisks, portraitdraw
+from tools import gamedisks
+from tools.icons import portraitdraw
 
 #: Loader slots 13 and 14 are `BODY<xx>` and `HEAD<xx>`
 #: (`docs/140-loaded-files-cache.md`).

@@ -9,26 +9,26 @@ robed caster -- in different orders and from different art, so no
 measurement picks the rows, and the ticket says the choice is Donald's.
 
 This tool holds the **proposal** -- three tables read from
-`tools/iconproposal.yaml`, which is the single source Donald edits by hand --
+`tools/icons/iconproposal.yaml`, which is the single source Donald edits by hand --
 and draws every row as the two games would draw it: the DOS figure in its own
 record colours on the left, the proposed C64 figure on the right in the
 colours the same record converts to.  Nothing here converts a save; when the
 tables are approved they move into `goldbox/`, and until then they are a
 picture on the issue.
 
-    tools/iconproposal.py --markdown proposal.md
-    tools/iconproposal.py --title secret-of-the-silver-blades --markdown silver-blades.md
-    tools/iconproposal.py --png proposal-weapons.png
-    tools/iconproposal.py --kind head --png proposal-heads.png
-    tools/iconproposal.py --compare-c64                # every title's C64 art
-    tools/iconproposal.py --colours 91a2b3c4e6f7      # a record's own six bytes
-    tools/iconproposal.py                             # the tables, as text
+    tools/icons/iconproposal.py --markdown proposal.md
+    tools/icons/iconproposal.py --title secret-of-the-silver-blades --markdown silver-blades.md
+    tools/icons/iconproposal.py --png proposal-weapons.png
+    tools/icons/iconproposal.py --kind head --png proposal-heads.png
+    tools/icons/iconproposal.py --compare-c64                # every title's C64 art
+    tools/icons/iconproposal.py --colours 91a2b3c4e6f7      # a record's own six bytes
+    tools/icons/iconproposal.py                             # the tables, as text
 
 **`--markdown` is the form a person can only look at, generated fresh each
 time from the YAML.** A document with one image per figure lets a row be
 judged, because judging needs the figure you might move *to* beside the one
 you are judging *from*, and a gallery of every option at the end. To change a
-row, edit `tools/iconproposal.yaml` and regenerate the document; there used to
+row, edit `tools/icons/iconproposal.yaml` and regenerate the document; there used to
 be a `--from-markdown` that read the document back, and it is gone, because a
 YAML file a person edits directly cannot be overwritten by regenerating the
 document the way the markdown round trip could.
@@ -45,7 +45,7 @@ and Silver Blades draws those two options differently)` is where Secret of
 the Silver Blades' two redrawn rows get their C64 answer.
 
 **Both sides come off the named title's own art, and that is not a
-formality.** The DOS side is read the way `tools/iconcorrespond.py` reads
+formality.** The DOS side is read the way `tools/icons/iconcorrespond.py` reads
 it, off that title's `CHEAD.DAX`/`CBODY.DAX`. The C64 side is composed by
 `goldbox.iconparts` from that title's own disk -- `POOL3.D64`, `CURSE_A.D64`
 or `SILVER-1.D64`, whichever side of its own disk set carries `SPELLE64`,
@@ -72,7 +72,7 @@ import sys
 
 import yaml
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import c64_port, icons  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
@@ -85,19 +85,19 @@ from goldbox.iconparts import (  # noqa: E402
     dos_icon_tables,
     dos_part_colours,
 )
-from tools import dosicontitles as dit  # noqa: E402
 from tools import gamedisks  # noqa: E402
-from tools import iconcorrespond as ic  # noqa: E402
+from tools.icons import dosicontitles as dit  # noqa: E402
+from tools.icons import iconcorrespond as ic  # noqa: E402
 
 # -- the proposal -------------------------------------------------------------
 #
 # The three tables -- which C64 weapon each DOS body becomes, which C64 head
 # each DOS head becomes, and EGA colour to C64 colour -- are Donald's
-# judgement and live in `tools/iconproposal.yaml`, beside this file, so he can
+# judgement and live in `tools/icons/iconproposal.yaml`, beside this file, so he can
 # edit them without touching Python. Every row there is a look at
 # `issue130/big-*.png` (scratch, deleted), not a measurement.
 
-#: `tools/iconproposal.yaml`, the single source for the three tables below.
+#: `tools/icons/iconproposal.yaml`, the single source for the three tables below.
 TABLE_PATH = pathlib.Path(__file__).with_name("iconproposal.yaml")
 
 Table = dict[int, int]
@@ -213,7 +213,7 @@ def tables_for_title(title: str, path: pathlib.Path = TABLE_PATH,
     title's document shows the C64 option a save of that title would
     actually become. Takes `path` itself, rather than reading the
     module-level `WEAPONS`/`HEADS`, so it can be pointed at a table other
-    than `tools/iconproposal.yaml` in a test.
+    than `tools/icons/iconproposal.yaml` in a test.
     """
     weapons, _, heads, _, _ = load_tables(path)
     overrides = load_overrides(path)
@@ -287,7 +287,7 @@ def redrawn_sizes(game: pathlib.Path, reference: pathlib.Path, kind: str,
     Radiance's own art (#330, #335).
 
     Compares the DOS part-value pixels, both poses -- the way
-    `tools/dosicontitles.py` compares whole blocks -- rather than a
+    `tools/icons/dosicontitles.py` compares whole blocks -- rather than a
     recoloured picture, so a difference is never hidden by a coincidence of
     which colours a record happens to carry.  Empty whenever `game` and
     `reference` are the same folder, which is Pool of Radiance's own
@@ -331,7 +331,7 @@ def title_c64_disk(title: str, given: str | None) -> pathlib.Path | None:
 
     `--disk` wins; otherwise the folder comes from `tools/gamedisks.py` --
     `$POR_DISKS`, `$COAB_DISKS`, `$SSB_DISKS`, then `gamedisks.yaml` -- the
-    same resolution `tools/iconredrawn.py` uses for `SILVER-1.D64`, and the
+    same resolution `tools/icons/iconredrawn.py` uses for `SILVER-1.D64`, and the
     file name inside it is not guessed: every side matching the title's own
     `Game.disk_glob` is opened in name order and the first holding all of
     :data:`C64_ICON_FILES` is the answer.  `POOL3.D64`, `CURSE_A.D64` and
@@ -525,7 +525,7 @@ def markdown(game: pathlib.Path, disk: pathlib.Path | None, size: str,
     proposed *for*, as its own image. The gallery at the end is every option
     the C64 offers, numbered, so a preferred alternative can be named.
 
-    The loop is: edit `tools/iconproposal.yaml`, and run this again -- there
+    The loop is: edit `tools/icons/iconproposal.yaml`, and run this again -- there
     is no reading a document back, because the YAML is the only place the
     numbers live.
 
@@ -568,8 +568,8 @@ def markdown(game: pathlib.Path, disk: pathlib.Path | None, size: str,
         f"# The proposed combat-figure table for {display_title}, for #130",
         "",
         "Each row is one DOS figure and the C64 figure it would become.",
-        "**Edit `tools/iconproposal.yaml`** and run",
-        f"`tools/iconproposal.py --title {title} --markdown {out}` to "
+        "**Edit `tools/icons/iconproposal.yaml`** and run",
+        f"`tools/icons/iconproposal.py --title {title} --markdown {out}` to "
         f"redraw this document.",
         "The gallery at the end is every option the C64 offers.",
         "",
@@ -821,7 +821,7 @@ def title_dos_game(title: str, given: str | None,
     the archives -- unchanged, so the single-title tool this always was still
     works the same way with no `--title` given. Curse of the Azure Bonds and
     Secret of the Silver Blades have no played copy on this machine, so they
-    are found the way `tools/dosicontitles.py` finds them: under the
+    are found the way `tools/icons/dosicontitles.py` finds them: under the
     unpacked Forgotten Realms archives, `--archives` then `$FR_ARCHIVES` then
     `gamedisks.yaml`'s `dos-archives` entry.
     """
@@ -864,7 +864,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--png", metavar="PATH", help="draw the table to this path")
     ap.add_argument("--markdown", metavar="PATH",
                     help="write the proposal as a document, generated fresh "
-                         "from tools/iconproposal.yaml, with one image per "
+                         "from tools/icons/iconproposal.yaml, with one image per "
                          "figure")
     ap.add_argument("--compare-c64", action="store_true",
                     help="print every title's own C64 art against Pool of "

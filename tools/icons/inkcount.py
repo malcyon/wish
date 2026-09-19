@@ -23,8 +23,8 @@ drawn in fine strokes -- `eyelashes` -- loses most of its length to the 50%
 rule while a human eye reads the antialiased blur as continuous. The picture
 is the fairer judge; this is the number beside it.
 
-    .venv/bin/python tools/inkcount.py mute snail
-    .venv/bin/python tools/inkcount.py --size 26 --all
+    .venv/bin/python tools/icons/inkcount.py mute snail
+    .venv/bin/python tools/icons/inkcount.py --size 26 --all
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ if "WISH_SHOT_PLATFORM" not in os.environ:
     os.environ.pop("XDG_SESSION_TYPE", None)
     os.environ["GDK_BACKEND"] = "x11"
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from PyQt6.QtGui import (  # noqa: E402
     QColor,

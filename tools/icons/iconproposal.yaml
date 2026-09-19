@@ -4,7 +4,7 @@
 # This is the single source: edit `c64:` and `alt:` here, never in the
 # generated document. Regenerate it with:
 #
-#     tools/iconproposal.py --markdown "${TMPDIR:-/tmp}/wish/iconproposal/proposal.md"
+#     tools/icons/iconproposal.py --markdown "${TMPDIR:-/tmp}/wish/iconproposal/proposal.md"
 #
 # `c64` is the proposed C64 option number, `alt` (when present) lists any
 # other option that looked as close, and the trailing comment names what the
@@ -233,7 +233,7 @@ overrides:
                            # empty"), 1 ("a second empty-handed stance the
                            # large list does not have") and 21 ("hands
                            # empty, arms out wide") -- the descriptions are
-                           # this project's own, from tools/iconreverse.yaml.
+                           # this project's own, from tools/icons/iconreverse.yaml.
                            # The pixel score cannot choose between them.
                            # 1 is proposed because it is the only one of the
                            # three no other DOS body reaches at this size:

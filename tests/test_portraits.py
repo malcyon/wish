@@ -453,7 +453,7 @@ def test_the_stored_menu_has_the_measured_counts_and_order():
 def test_the_stored_menu_is_what_the_disks_carry():
     """The stored block and the player's own `GEN` are one table, so the
     two cannot drift apart in silence: whoever changes either has to change
-    both, and `tools/portraitmenu.py --check` is the same comparison from
+    both, and `tools/icons/portraitmenu.py --check` is the same comparison from
     the command line.  Skips where the disks are absent, which is right --
     the block is what a machine with no disks has instead."""
     read = portraits.tables_from_disks(disk_dir())
@@ -473,7 +473,7 @@ def test_the_stored_menu_is_what_dos_offers_too():
 
 def test_the_extraction_tool_prints_the_stored_block_and_agrees_with_it(
         tmp_path):
-    """`tools/portraitmenu.py` is how the numbers are re-derived, and its
+    """`tools/icons/portraitmenu.py` is how the numbers are re-derived, and its
     literal is the one the stored block is written in -- run here over the
     stored menu itself so the tool is exercised with no disks at all, and
     over the real disks through `--check` where they are present."""
@@ -481,7 +481,7 @@ def test_the_extraction_tool_prints_the_stored_block_and_agrees_with_it(
     import subprocess
     import sys
 
-    from tools import portraitmenu
+    from tools.icons import portraitmenu
 
     text = portraitmenu.literal(portraits.POOL_OF_RADIANCE_MENU)
     assert text.startswith("heads=(0x00, 0x08")
@@ -492,7 +492,7 @@ def test_the_extraction_tool_prints_the_stored_block_and_agrees_with_it(
         return
     root = pathlib.Path(__file__).resolve().parents[1]
     done = subprocess.run(
-        [sys.executable, str(root / "tools" / "portraitmenu.py"), "--check",
+        [sys.executable, str(root / "tools" / "icons" / "portraitmenu.py"), "--check",
          "--disks", str(disk_dir())],
         capture_output=True, text=True, timeout=120, cwd=str(root))
     assert done.returncode == 0, done.stdout + done.stderr

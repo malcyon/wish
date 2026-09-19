@@ -53,7 +53,7 @@ glyphs. That makes the enemies a free negative control, and they scored at best
 ## What 405 readings said
 
 One fight, 80 turns, a party of six deliberately different icons written by
-`tools/iconpoke.py`. Every party figure was scored against 32 candidates --
+`tools/icons/iconpoke.py`. Every party figure was scored against 32 candidates --
 both poses of all eight save slots, plain and mirrored -- and **every one of
 the 405 named exactly one**.
 
@@ -103,7 +103,7 @@ the engine fetches them once per turn for whichever character is acting.
 ## Reproducing it
 
 ```sh
-tools/iconpoke.py --disk $TMPDIR/SIX.D64        # six different figures
+tools/icons/iconpoke.py --disk $TMPDIR/SIX.D64        # six different figures
 POR_HEADLESS=1 tools/c64/savecheck.py --disk $TMPDIR/SIX.D64 --fight --icon
 ```
 

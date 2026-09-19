@@ -7,7 +7,7 @@ game and closed by saying the other nine had never been seen. This is where
 they go, what the game calls them, and where a player looks at them. Taken for
 `#184 (A converted combat icon's colours are proven in the game and its shapes
 are not)`; the file-level side of the icon is `goldbox/icons.py`, and the tool
-is `tools/iconswing.py`.
+is `tools/icons/iconswing.py`.
 
 ## The game's own words for the two poses
 
@@ -46,7 +46,7 @@ from the engine's own reads below.
 ## What the engine reads, counted
 
 VICE load checkpoints, armed before the encounter and counted for the whole
-fight, on the six-different-icons disk `tools/iconpoke.py` writes.
+fight, on the six-different-icons disk `tools/icons/iconpoke.py` writes.
 
 | window | slots watched | loads each | when |
 |---|---|---|---|
@@ -120,9 +120,9 @@ on that: all eighteen codes are read, expanded correctly and drawn.
 ## Reproducing it
 
 ```sh
-tools/iconpoke.py --disk $TMPDIR/SIX.D64          # six different figures
-POR_HEADLESS=1 tools/iconswing.py --disk $TMPDIR/SIX.D64
-POR_HEADLESS=1 tools/iconswing.py --disk $TMPDIR/SIX.D64 --camp
+tools/icons/iconpoke.py --disk $TMPDIR/SIX.D64          # six different figures
+POR_HEADLESS=1 tools/icons/iconswing.py --disk $TMPDIR/SIX.D64
+POR_HEADLESS=1 tools/icons/iconswing.py --disk $TMPDIR/SIX.D64 --camp
 ```
 
 The first drives a fight with `Session.melee_turn`, so the party strikes rather

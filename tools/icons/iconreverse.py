@@ -13,22 +13,22 @@ The second is a judgement, and Donald ruled on 2026-09-07 how it gets made --
 *"Draft it, you correct it"*: an agent proposes every row with its reasoning
 and any close alternatives, and he edits the ones he disagrees with. This tool
 holds nothing but the drawing and the accounting; the table itself is
-`tools/iconreverse.yaml`, beside this file, which is the single source and is
+`tools/icons/iconreverse.yaml`, beside this file, which is the single source and is
 edited by hand.
 
-    tools/iconreverse.py                       the table, as text
-    tools/iconreverse.py --coverage            how many rows are forced, and by what
-    tools/iconreverse.py --census              every icon on the player's own disks,
+    tools/icons/iconreverse.py                       the table, as text
+    tools/icons/iconreverse.py --coverage            how many rows are forced, and by what
+    tools/icons/iconreverse.py --census              every icon on the player's own disks,
                                                read back into menu choices
-    tools/iconreverse.py --markdown proposal.md
-    tools/iconreverse.py --png reverse-weapons.png
+    tools/icons/iconreverse.py --markdown proposal.md
+    tools/icons/iconreverse.py --png reverse-weapons.png
 
 **`--markdown` is the form a person can only look at.** One row per C64
 option: the C64 figure on the left, the DOS figure it is proposed to become
 beside it, any alternatives after that, and the comment saying why. A gallery
 of every DOS option follows each table, numbered, so a preferred alternative
 can be named. To change a row, edit the YAML and run this again -- there is no
-reading the document back, for the reason `tools/iconproposal.py` gives.
+reading the document back, for the reason `tools/icons/iconproposal.py` gives.
 
 **The pictures are the game's own art.** They go outside the repository and are
 never committed. The table of numbers is a measurement and is committed, which is
@@ -45,16 +45,16 @@ import sys
 
 import yaml
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import c64_port, icons  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import IconParts, dos_icon_tables  # noqa: E402
 from tools import gamedisks  # noqa: E402
-from tools import iconproposal as ip  # noqa: E402
+from tools.icons import iconproposal as ip  # noqa: E402
 
-#: `tools/iconreverse.yaml`, the single source. It stays in `tools/` for the
-#: same reason `tools/iconproposal.yaml` does -- Donald edits it where he has
+#: `tools/icons/iconreverse.yaml`, the single source. It stays in `tools/` for the
+#: same reason `tools/icons/iconproposal.yaml` does -- Donald edits it where he has
 #: already been shown it. Nothing in `goldbox/` reads it yet; when the
 #: conversion does, it needs `goldbox.assets.asset_path` and a `wish.spec`
 #: row the way `#315 (A frozen Wish cannot convert a combat figure, because
@@ -114,7 +114,7 @@ def load_tables(path: pathlib.Path = TABLE_PATH) -> dict:
 
     `{("large", "weapons"): {c64: (dos, alternatives)}, ...}` plus a
     `"colours"` entry mapping a C64 colour 0-7 to its `(low, high)` EGA pair.
-    The shape mirrors `tools/iconproposal.py`'s `load_tables`, one level
+    The shape mirrors `tools/icons/iconproposal.py`'s `load_tables`, one level
     deeper because a C64 option number means a different drawing at each
     size.
     """
@@ -154,7 +154,7 @@ def coverage(tables: dict) -> dict:
     judge:
 
     * **forced** -- exactly one DOS option becomes this C64 one in
-      `tools/iconproposal.yaml`, so reversing it is the only answer that
+      `tools/icons/iconproposal.yaml`, so reversing it is the only answer that
       gives a player their own figure back on a round trip;
     * **choice** -- several DOS options become this C64 one, and which of
       them comes back is a pick among them. Any pick round-trips, so this is
@@ -350,8 +350,8 @@ def markdown(parts: IconParts, charset: bytes, game: pathlib.Path,
         f"the Commodore 64, for #320",
         "",
         "Each row is one figure a Commodore 64 player can pick, and the DOS",
-        "figure it would become. **Edit `tools/iconreverse.yaml`** and run",
-        f"`tools/iconreverse.py --markdown {out}` to redraw this document.",
+        "figure it would become. **Edit `tools/icons/iconreverse.yaml`** and run",
+        f"`tools/icons/iconreverse.py --markdown {out}` to redraw this document.",
         "The gallery at the end of each table is every option DOS offers.",
         "",
         "The Commodore 64 figure is drawn in the colours a converted record",
@@ -541,7 +541,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--png", metavar="PATH", help="draw one list, outside the repository")
     ap.add_argument("--markdown", metavar="PATH",
                     help="write the proposal as a document, generated fresh "
-                         "from tools/iconreverse.yaml")
+                         "from tools/icons/iconreverse.yaml")
     args = ap.parse_args(argv)
     colours = bytes.fromhex(args.colours)
     if len(colours) != 6:

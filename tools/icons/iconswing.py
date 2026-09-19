@@ -27,9 +27,9 @@ drawing when it was taken is in the log rather than in somebody's memory:
 2 is COMBAT and 9 is CAMP (`#265 (The combat-icon glyph check reads VIC
 registers instead of the character set, and half of it passes anyway)`).
 
-    tools/iconpoke.py --disk SIX.D64
-    POR_HEADLESS=1 tools/iconswing.py --disk SIX.D64
-    POR_HEADLESS=1 tools/iconswing.py --disk SIX.D64 --camp
+    tools/icons/iconpoke.py --disk SIX.D64
+    POR_HEADLESS=1 tools/icons/iconswing.py --disk SIX.D64
+    POR_HEADLESS=1 tools/icons/iconswing.py --disk SIX.D64 --camp
 
 Nothing is written to the player's disks: the save disk named here is copied
 into the slot's own directory before the emulator sees it.
@@ -42,7 +42,7 @@ import struct
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

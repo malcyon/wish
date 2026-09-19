@@ -94,7 +94,7 @@ def test_two_characters_with_different_figures_get_different_icons(
         parts, tables):
     """The defect this issue is about: six characters, six figures.
 
-    The party staged by `tools/dosiconstage.py`, which is the one driven
+    The party staged by `tools/icons/dosiconstage.py`, which is the one driven
     through the game in `docs/193-a-converted-party-in-a-fight.md`.
     """
     party = [(0, 1, "large"), (3, 24, "large"), (6, 28, "large"),
@@ -145,7 +145,7 @@ def test_each_part_takes_the_nibble_that_covers_most_of_it(parts, tables):
     part, so the conversion has to choose. The leg and the shield take the
     high nibble because that is the colour covering most of those two shapes
     -- 56-65% of the leg in 32 of 32 bodies, 68-72% of the shield in 8 of 8
-    (`tools/dosnibbles.py`, #130). Everything else takes the low one.
+    (`tools/icons/dosnibbles.py`, #130). Everything else takes the low one.
     Reading the low nibble for all six turned MAGNUS's yellow shield black.
     """
     #        body    arm     leg     hair    shield  weapon
@@ -214,7 +214,7 @@ def test_the_shipped_table_answers_differently_by_size_and_by_title():
 
     If every title and size resolved to the same table, passing them
     through would change nothing and the test below would pass against
-    unwired code. So this asserts the shipped `tools/iconproposal.yaml`
+    unwired code. So this asserts the shipped `tools/icons/iconproposal.yaml`
     really does answer differently -- by size for Pool of Radiance, and by
     title for Silver Blades -- which is what Donald spent the evening
     deciding (`#335 (Two combat-figure rows describe Pool of Radiance's

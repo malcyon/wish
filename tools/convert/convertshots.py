@@ -6,7 +6,7 @@ hex colour or a field name is not a picture, and `QWidget.grab()` works
 under `QT_QPA_PLATFORM=offscreen`, so there is never a reason to reason about
 a layout instead of looking at it. This is `#52 (File ▸ Import and File ▸
 Export for every direction the library supports)` step B's own tool,
-`tools/iconsheet.py`'s pattern applied to a dialog instead of a custom-painted
+`tools/icons/iconsheet.py`'s pattern applied to a dialog instead of a custom-painted
 canvas.
 
 Six states need nothing but synthetic inputs -- a fake `game_files` lookup

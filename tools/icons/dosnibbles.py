@@ -11,17 +11,17 @@ own)` picks the low one on the grounds that it is the part's main colour.
 This counts the pixels and says whether that is true, per part and per option,
 over every block of `CHEAD.DAX` and `CBODY.DAX` at both sizes and both poses.
 
-    tools/dosnibbles.py                 # the totals, per part
-    tools/dosnibbles.py --per-option    # one line per CBODY option
+    tools/icons/dosnibbles.py                 # the totals, per part
+    tools/icons/dosnibbles.py --per-option    # one line per CBODY option
 
 It also counts how often the choice makes any difference at all: with the
-EGA-to-C64 table in `tools/iconproposal.yaml`, both nibbles of a pair often
+EGA-to-C64 table in `tools/icons/iconproposal.yaml`, both nibbles of a pair often
 land on the same C64 colour, and then there is nothing to choose.
 
-    tools/dosnibbles.py --records <a directory of DOS saves>
+    tools/icons/dosnibbles.py --records <a directory of DOS saves>
 
 The DOS game directory is `--dos`, then `$POR_DOS_GAME`, then the search
-`tools/iconcorrespond.py` does.  Nothing is written.
+`tools/icons/iconcorrespond.py` does.  Nothing is written.
 """
 from __future__ import annotations
 
@@ -30,12 +30,12 @@ import collections
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox.iconparts import DOS_PAIR_CLASSES, dos_icon_tables  # noqa: E402
-from tools import iconcorrespond as ic  # noqa: E402
+from tools.icons import iconcorrespond as ic  # noqa: E402
 
 #: The pixel value each part's main colour is drawn in; the highlight is that
 #: value plus eight.  `goldbox/iconparts.py` has where this comes from.
