@@ -148,7 +148,7 @@ def find_game(stem: str = "POOLRAD") -> Path:
 
     Returns the directory holding `START.EXE` -- for Pool of Radiance that is
     `<collection>/games/POOLRAD/GAME/POOLRAD`.  Raises `FileNotFoundError` when
-    the archives are not on this machine, which is how the tests skip.
+    the archives are not on this machine, which the caller reports.
     """
     archives = _archives()
     if not archives.is_dir():

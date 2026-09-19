@@ -1,6 +1,7 @@
 """A fight driven in DOSBox: load, fight, save, and read the records after."""
 
 import pytest
+from needs import fail_if_missing_tools, fail_if_save_missing, find_game_or_fail
 
 from tools.dos import dosbox, dosfightrun
 
@@ -15,12 +16,8 @@ def test_a_driven_fight_raises_experience_in_the_records():
     direction: a fight the party wins without being touched moves none of
     them, and a fight it stands through moves plenty.
     """
-    if dosbox.missing_tools():
-        pytest.skip("needs " + ", ".join(dosbox.missing_tools()))
-    try:
-        dosbox.find_game()
-    except FileNotFoundError as e:
-        pytest.skip(str(e))
+    fail_if_missing_tools(dosbox.missing_tools())
+    fail_if_save_missing(find_game_or_fail(), "J")
     out = dosfightrun.fight_run(save="J", rounds=1)
     run = out["runs"][0]
     assert run.get("fight") is True, run

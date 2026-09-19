@@ -1,8 +1,12 @@
 """The DOSBox-X debugger harness, booted for real."""
 
-import pytest
+import shutil
+from pathlib import Path
 
-from tools.dos import dosbox, dosboxx
+import pytest
+from needs import fail_if_save_missing, find_game_or_fail
+
+from tools.dos import dosboxx
 
 pytestmark = pytest.mark.xdist_group(name="emulator-pool")
 
@@ -15,14 +19,12 @@ def test_the_harness_reproduces_the_clock_tick_docs_142_recorded():
     recipe -- the array is found, the live byte agrees with the save, the
     spurious `00 ->` hit is absorbed, and the real tick is caught.
     """
-    if dosboxx.unavailable():
-        pytest.skip(dosboxx.unavailable())
-    try:
-        game = dosbox.find_game("POOLRAD")
-    except FileNotFoundError as e:
-        pytest.skip(str(e))
-    if not (game / "SAVE" / "SAVGAMJ.DAT").is_file():
-        pytest.skip("needs the player's slot J")
+    if not Path(dosboxx.DOSBOXX).is_file() and shutil.which(dosboxx.DOSBOXX) is None:
+        pytest.fail(f"the DOSBox-X executable {dosboxx.DOSBOXX} is not installed")
+    reason = dosboxx.unavailable()
+    if reason:
+        pytest.fail(f"DOSBox-X with the debugger is not usable: {reason}")
+    fail_if_save_missing(find_game_or_fail("POOLRAD"), "J")
 
     out = dosboxx.clock_demo("J")
     assert out["attached"]

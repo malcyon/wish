@@ -193,7 +193,7 @@ def require_debugger() -> None:
 
 
 def unavailable() -> str | None:
-    """A one-line reason this cannot run here, or None.  How tests skip."""
+    """A one-line reason this cannot run here, or None, for the caller to report."""
     try:
         require_debugger()
     except DebuggerUnavailable as e:

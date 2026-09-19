@@ -1,6 +1,7 @@
 """The obstacle-2 experiment: drive DOSBox one step and read the save back."""
 
 import pytest
+from needs import fail_if_missing_tools, fail_if_save_missing, find_game_or_fail
 
 from tools.dos import dosbox
 
@@ -11,8 +12,8 @@ pytestmark = pytest.mark.xdist_group(name="emulator-pool")
 
 def test_driving_the_game_one_step_moves_the_square_and_nothing_else():
     """Boots DOSBox, takes one step, and reads the party's square before and after."""
-    if dosbox.missing_tools():
-        pytest.skip("needs " + ", ".join(dosbox.missing_tools()))
+    fail_if_missing_tools(dosbox.missing_tools())
+    fail_if_save_missing(find_game_or_fail(), "A")
     out = dosbox.one_step(load="A", before="C", after="D", turns=2)
     bx, by, _ = out["before"]
     ax, ay, af = out["after"]
