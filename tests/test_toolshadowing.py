@@ -30,6 +30,7 @@ tool somebody writes is the one a list would miss.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import subprocess
 import sys
@@ -148,22 +149,27 @@ def test_the_tools_package_binds_the_wish_package_before_any_tool_body_runs():
 
 
 @pytest.mark.parametrize("name", TOOLS)
-def test_importing_a_tool_leaves_the_wish_package_reachable(name):
-    """`from tools import <tool>`, then `import wish`, in one fresh process.
+def test_importing_a_tool_keeps_wish_a_package_and_tools_off_sys_path(name):
+    """`from tools import <tool>` in one fresh process, then check two things.
 
-    Seven tools failed this before `#259 (A cold test run intermittently
-    loses the wish package to tools/wish.py, and a different test fails each
-    time)` was fixed -- `cursewarp`, `d6502check`, `dosdisk`, `mapmarker`,
-    `newecl`, `outdoorsgrep` and `overlay`, each of which put `tools/` in
-    front of the repository root and then imported nothing that had already
-    pulled the real package in. The other twenty-seven leaking tools passed
-    by accident, on something they happened to import first, which is why
-    the check is over every tool rather than over the ones that failed.
+    * **`wish` is still the package.** A tool that put `tools/` in front of
+      the repository root and then imported nothing that had already pulled
+      the real package in would leave `tools/wish.py` to win the name. The
+      assertion is on `__path__` rather than on any particular attribute: a
+      module has none and a package always has one, so it says which of the
+      two got the name without depending on what either of them contains.
+    * **`tools/` is not left on `sys.path`.** Some tools kept the package
+      importable only by accident, on something they happened to import
+      first, and the path entry is what lets a later bare import find
+      `tools/wish.py` at all.
 
-    The assertion is on `__path__` rather than on any particular attribute:
-    a module has none and a package always has one, so it says which of the
-    two got the name without depending on what either of them contains.
+    Both are read from the same import, so one interpreter answers both and
+    the parent reports each failure under its own message. The path is
+    checked before `import wish`, so importing the package cannot hide an
+    entry the tool left. Every tool under `tools/` is covered rather than a
+    list, so the next one somebody writes is checked too.
     """
+    tools_dir = str(REPO / "tools")
     result = _in_a_fresh_process(
         "try:\n"
         f"    import {_module(name)}\n"
@@ -177,15 +183,32 @@ def test_importing_a_tool_leaves_the_wish_package_reachable(name):
         # losing `wish` is exactly how this failure presents.
         "    print('SKIP', exc.name)\n"
         "    raise SystemExit(0)\n"
+        "import json\n"
+        f"left = [p for p in sys.path if p == {tools_dir!r}]\n"
         "import wish\n"
-        "assert hasattr(wish, '__path__'), f'wish is {wish.__file__}'\n"
-        "print('OK')\n")
-    if result.stdout.startswith("SKIP"):
-        pytest.skip(f"{name} needs {result.stdout.split()[1]}, "
-                    f"which is not installed here")
-    assert result.returncode == 0 and "OK" in result.stdout, (
-        f"after `import {_module(name)}`, `wish` is not the package:\n"
-        f"{result.stderr}")
+        "print('RESULT', json.dumps({'left': left, "
+        "'wish_is_package': hasattr(wish, '__path__'), "
+        "'wish_file': str(getattr(wish, '__file__', None))}))\n")
+    lines = result.stdout.splitlines()
+    for line in lines:
+        if line.startswith("SKIP "):
+            pytest.skip(f"{name} needs {line.split()[1]}, "
+                        f"which is not installed here")
+    reports = [line for line in lines if line.startswith("RESULT ")]
+    # The import itself crashed, so neither property could be read.
+    assert result.returncode == 0 and reports, (
+        f"importing {_module(name)} failed before either property could be "
+        f"read:\n{result.stderr}")
+    report = json.loads(reports[-1][len("RESULT "):])
+    failures = []
+    if not report["wish_is_package"]:
+        failures.append(
+            f"after `import {_module(name)}`, `wish` is not the package: "
+            f"it is {report['wish_file']}")
+    if report["left"]:
+        failures.append(
+            f"tools/{name}.py left tools/ on sys.path: {report['left']}")
+    assert not failures, "\n".join(failures)
 
 
 def test_conftest_binds_the_package_even_with_tools_already_in_front():
@@ -240,42 +263,3 @@ def test_the_tool_that_was_caught_doing_it_no_longer_can():
         "print('OK')\n")
     assert result.returncode == 0 and "OK" in result.stdout, (
         f"tools/dos/dosraces.py left tools/ on sys.path:\n{result.stderr}")
-
-
-@pytest.mark.parametrize("name", TOOLS)
-def test_no_tool_leaves_tools_on_sys_path_after_import(name):
-    """The general form `#262 (Thirty-three tools still leave tools/ on
-    sys.path, so one run directly can lose the wish package)` asked for:
-    `test_the_tool_that_was_caught_doing_it_no_longer_can` above, over every
-    script in `tools/` rather than the one that was measured, computed by
-    walking the directory so the next tool anybody adds is covered without
-    anybody remembering to list it. `tools/suite/pathleak.py` is the same
-    assertion, run as a one-off census rather than as part of the suite.
-
-    `amigabladesjournal`, `abilitypair` and `amigalaterproof` were the last
-    three still leaking, held back across two earlier passes because another
-    agent owned those files at the time; `#262`'s own comment thread has the
-    full census. All three now go through the same `tools/dos/dosraces.py`
-    pattern as everything else, and `tools/suite/pathleak.py` confirms 0 of 221
-    scripts leak.
-    """
-    result = _in_a_fresh_process(
-        "try:\n"
-        f"    import {_module(name)}\n"
-        "except ModuleNotFoundError as exc:\n"
-        "    if exc.name in ('tools', 'wish') or "
-        "exc.name.startswith('tools.'):\n"
-        "        raise\n"
-        # A tool needing something CI does not install -- `capstone` for the
-        # disassemblers -- cannot be imported there at all, and that is not
-        # this test's subject.
-        "    print('SKIP', exc.name)\n"
-        "    raise SystemExit(0)\n"
-        f"left = [p for p in sys.path if p == {str(REPO / 'tools')!r}]\n"
-        "assert not left, f'tools/ left on sys.path: {left}'\n"
-        "print('OK')\n")
-    if result.stdout.startswith("SKIP"):
-        pytest.skip(f"{name} needs {result.stdout.split()[1]}, "
-                    f"which is not installed here")
-    assert result.returncode == 0 and "OK" in result.stdout, (
-        f"tools/{name}.py left tools/ on sys.path:\n{result.stderr}")
