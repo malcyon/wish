@@ -14,6 +14,7 @@ them.
 
 
 import pathlib
+import time
 
 import pytest
 
@@ -1067,6 +1068,44 @@ def kobold_caves_machine() -> ReenterTarget:
     })
 
 
+class TwoHopTarget(ReenterTarget):
+    """A `ReenterTarget` that also has a CPU, which a second hop's idleness
+    check reads. `pc` starts in `DUNGEON`'s key-wait loop."""
+
+    def __init__(self, memory=None, pc: int | None = None):
+        super().__init__(memory)
+        self._pc = (fasttravel.POOL_OF_RADIANCE.key_wait[0]
+                    if pc is None else pc)
+
+    def pc(self) -> int:
+        return self._pc
+
+    def set_pc(self, address: int) -> None:
+        self._pc = address
+        self.jumps.append(address)
+
+
+def two_hop_machine(area: int = 13, indoors: int = 1,
+                    mode: int = WORLD) -> TwoHopTarget:
+    """The party in `area`, idle in `DUNGEON`'s key-wait loop."""
+    addr = fasttravel.POOL_OF_RADIANCE
+    return TwoHopTarget({
+        c64.MODE_FLAG_POOL: bytes([mode]),
+        addr.slot: bytes([area]),
+        addr.disk: bytes([3]),
+        addr.indoors: bytes([indoors]),
+        addr.live_square: bytes([5, 6, 1]),
+        addr.saved_sp: bytes([0xF0]),
+    })
+
+
+@pytest.fixture(autouse=True)
+def _two_hop_off_unless_asked(monkeypatch):
+    """A `WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL` exported in the shell that
+    runs the suite must not change what the tests in this file mean."""
+    monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
+
+
 def test_fasttravel_runs_the_kobold_caves_handler_instead_of_the_tail_jump():
     """The case `#207`'s whole ticket is about: fast-travelling out of the
     Kobold Caves used to enter `NEWECL` at its tail and skip `ECL0D $9A9D`,
@@ -1124,13 +1163,15 @@ def test_fasttravel_exit_failure_message_does_not_claim_the_party_stood_still(
         "ERROR: Unable to Fast Travel. The party is back where it started.")
 
 
-def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table():
-    """A destination with no row in `EXIT_ROUTES` -- New Phlan (0) is not
-    reachable by one of area 13's own scripted exits -- still enters `NEWECL`
-    at its tail, today's behaviour, unchanged."""
-    target = kobold_caves_machine()
+def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table(
+        monkeypatch):
+    """A departure with no row in `EXIT_ROUTES` at all -- Valhingen Graveyard
+    (10) has no scripted exit -- still enters `NEWECL` at its tail, with the
+    two-hop flag on as well: there is no door to walk through."""
+    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
+    target = two_hop_machine(10)
     addr = fasttravel.POOL_OF_RADIANCE
-    assert (13, 0) not in fasttravel.EXIT_ROUTES
+    assert fasttravel.exits_from(10) == ()
     outcome = actions.FastTravel().run(target, area=actions.area_by_id(0))
     assert outcome.ok, outcome.message
     assert target.reenters == []
@@ -1171,6 +1212,245 @@ def test_fasttravel_falls_back_to_the_tail_jump_when_the_backend_cannot_reenter(
     assert target.read(addr.saved_sp, 1) == bytes([0xF0]), (
         "nothing should have been pushed to the stack page: the capability "
         "check happens before any write, not after a failed one")
+
+
+def test_a_one_door_area_is_the_only_kind_that_is_walked_out_of(monkeypatch):
+    """Ten areas have exactly one exit once the ones that come back into the
+    same area are dropped, and those are the only ones a two-hop trip covers:
+    where there is one door Wish is not choosing anything."""
+    one = {a for a in range(31) if len(fasttravel.exits_from(a)) == 1}
+    assert one == {1, 2, 9, 13, 14, 16, 17, 21, 23, 28}
+    assert fasttravel.exits_from(13) == (
+        (27, fasttravel.EXIT_ROUTES[(13, 27)]),)
+    # `(25, 25)` comes back into the same area and can carry nobody anywhere.
+    assert [to for to, _ in fasttravel.exits_from(25)] == [19, 26, 28]
+    assert [to for to, _ in fasttravel.exits_from(7)] == [0, 5]
+
+
+def test_the_leave_the_travel_grid_writes_are_only_where_the_row_has_read_them():
+    pool = fasttravel.POOL_OF_RADIANCE
+    assert actions.leave_travel_grid_writes(pool) == (
+        (pool.indoors, b"\x01"), (0x6E22, b"\x7f" * 6))
+    for other in (fasttravel.CURSE_OF_THE_AZURE_BONDS,
+                  fasttravel.SECRET_OF_THE_SILVER_BLADES):
+        assert other.grid_exit_slots is None
+        assert actions.leave_travel_grid_writes(other) == ()
+
+
+def test_the_two_hop_runs_the_one_door_the_area_has(monkeypatch):
+    """Kobold Caves to New Phlan: the caves' only door leads to the East
+    Window, so the party is walked out of it and the trip is finished from the
+    poll -- the handler that drops Princess Fatima runs on the way."""
+    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
+    target = two_hop_machine(13)
+    addr = fasttravel.POOL_OF_RADIANCE
+    ft = actions.FastTravel()
+    outcome = ft.run(target, area=actions.area_by_id(0))
+    assert outcome.ok, outcome.message
+    assert target.reenters == [(addr.after_step, 0xF0 - 2)]
+    assert target.jumps == []
+    assert target.read(addr.slot, 1) == bytes([13])
+    assert ft.pending is not None
+    assert (ft.pending.from_area, ft.pending.through) == (13, 27)
+    assert ft.pending.area is actions.area_by_id(0)
+    assert outcome.message.endswith("(NOT APPROVED)")
+
+
+def test_the_two_hop_is_off_without_the_flag_and_a_forgotten_zero_is_off(
+        monkeypatch):
+    """Forgotten values -- an empty string, `0`, `off` -- must not turn an
+    unfinished feature on."""
+    addr = fasttravel.POOL_OF_RADIANCE
+    for value in (None, "", "0", "off", "no", "false"):
+        if value is None:
+            monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
+        else:
+            monkeypatch.setenv(actions.TWO_HOP_ENV, value)
+        assert not actions.two_hop_enabled(), value
+        target = two_hop_machine(13)
+        ft = actions.FastTravel()
+        outcome = ft.run(target, area=actions.area_by_id(0))
+        assert outcome.ok, outcome.message
+        assert target.jumps == [addr.tail], value
+        assert target.reenters == [], value
+        assert ft.pending is None, value
+    for value in ("1", "true", "yes", "on", "ON"):
+        monkeypatch.setenv(actions.TWO_HOP_ENV, value)
+        assert actions.two_hop_enabled(), value
+
+
+def test_the_two_hop_refuses_an_area_with_more_than_one_door(monkeypatch):
+    """Valjevo Castle the Pool (7) has two exits, and one of them is the
+    endgame fight. Wish does not pick a door for the player, so the trip
+    enters `NEWECL` at its tail as it always did."""
+    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
+    target = two_hop_machine(7)
+    addr = fasttravel.POOL_OF_RADIANCE
+    ft = actions.FastTravel()
+    assert len(fasttravel.exits_from(7)) == 2
+    assert (7, 13) not in fasttravel.EXIT_ROUTES
+    outcome = ft.run(target, area=actions.area_by_id(13))
+    assert outcome.ok, outcome.message
+    assert target.jumps == [addr.tail]
+    assert target.reenters == []
+    assert ft.pending is None
+
+
+def test_a_backend_that_cannot_reenter_never_starts_a_two_hop(monkeypatch):
+    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
+    addr = fasttravel.POOL_OF_RADIANCE
+
+    class NoReentryTarget(TwoHopTarget):
+        reenter = None
+
+    target = NoReentryTarget({
+        c64.MODE_FLAG_POOL: bytes([WORLD]), addr.slot: bytes([13]),
+        addr.disk: bytes([3]), addr.indoors: bytes([1]),
+        addr.saved_sp: bytes([0xF0])})
+    ft = actions.FastTravel()
+    assert not actions.can_reenter(target)
+    assert ft.run(target, area=actions.area_by_id(0)).ok
+    assert target.jumps == [addr.tail]
+    assert ft.pending is None
+
+
+def test_a_failed_first_hop_leaves_nothing_pending(monkeypatch):
+    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
+    monkeypatch.setattr(actions, "reenter", lambda *a, **k: False)
+    target = two_hop_machine(13)
+    ft = actions.FastTravel()
+    outcome = ft.run(target, area=actions.area_by_id(0))
+    assert not outcome.ok
+    assert ft.pending is None
+
+
+def _first_hop(monkeypatch, area_id: int = 0, indoors: int = 1):
+    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
+    target = two_hop_machine(13, indoors=indoors)
+    ft = actions.FastTravel()
+    assert ft.run(target, area=actions.area_by_id(area_id)).ok
+    return target, ft
+
+
+def test_the_second_hop_waits_for_the_load(monkeypatch):
+    """`$6E1B` reads `27 | $80` while the loader is mid-change, and
+    `current_area` would already answer 27 -- so a read through it hops before
+    the East Window has loaded."""
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    target.memory[addr.slot] = bytes([27 | 0x80])
+    before = dict(target.memory)
+    assert ft.continue_pending(target) is None
+    assert target.memory == before
+    assert target.jumps == []
+    assert ft.pending is not None
+    target.memory[addr.slot] = bytes([27])
+    outcome = ft.continue_pending(target)
+    assert outcome is not None and outcome.ok, outcome
+    assert target.jumps == [addr.tail]
+    assert ft.pending is None
+    assert outcome.message == "Traveling to New Phlan."
+    # The destination is written the way `NEWECL` would, from area 27.
+    assert target.read(addr.slot, 1) == bytes([0x80])
+
+
+def test_the_second_hop_waits_for_an_idle_machine(monkeypatch):
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    target.memory[addr.slot] = bytes([27])
+    target._pc = 0x0400                     # outside the key-wait windows
+    assert ft.continue_pending(target) is None
+    assert target.jumps == []
+    assert ft.pending is not None
+
+
+def test_off_the_travel_grid_the_second_hop_writes_the_flag_and_the_slots_first(
+        monkeypatch):
+    """The party is on the East Window's own square because Wish walked it
+    there, and the window's entry script -- which is what would have put
+    `$49E6` at 1 and emptied the cache slots -- did not run for it."""
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    target.memory[addr.slot] = bytes([27])
+    target.memory[addr.indoors] = bytes([0])
+    outcome = ft.continue_pending(target)
+    assert outcome is not None and outcome.ok, outcome
+    assert outcome.writes[:2] == actions.leave_travel_grid_writes(addr)
+    assert target.read(addr.indoors, 1) == bytes([1])
+    assert target.read(0x6E22, 6) == b"\x7f" * 6
+    assert target.jumps == [addr.tail]
+
+
+def test_indoors_the_second_hop_leaves_the_grid_bytes_alone(monkeypatch):
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    target.memory[addr.slot] = bytes([27])
+    target.memory[addr.indoors] = bytes([1])
+    outcome = ft.continue_pending(target)
+    assert outcome is not None and outcome.ok, outcome
+    written = [a for a, _ in outcome.writes]
+    assert addr.indoors not in written
+    assert 0x6E22 not in written
+
+
+def test_the_waypoint_is_the_one_from_the_first_hop(monkeypatch):
+    """Fast Travel Back goes to the Kobold Caves, not to the window the party
+    was put through."""
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    assert ft.back is not None and ft.back.area == 13
+    target.memory[addr.slot] = bytes([27])
+    assert ft.continue_pending(target).ok
+    assert ft.back.area == 13
+
+
+def test_a_declined_exit_gives_up_at_the_deadline_and_writes_nothing(
+        monkeypatch):
+    target, ft = _first_hop(monkeypatch)
+    before = dict(target.memory)
+    assert ft.continue_pending(target) is None      # still asking, in time
+    assert ft.pending is not None
+    ft.pending.deadline = time.monotonic() - 1
+    outcome = ft.continue_pending(target)
+    assert outcome is not None and not outcome.ok
+    assert outcome.message.endswith("(NOT APPROVED)")
+    assert ft.pending is None
+    assert target.memory == before
+    assert target.jumps == []
+
+
+def test_a_fight_does_not_eat_the_wait(monkeypatch):
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    target.memory[addr.slot] = bytes([27])
+    target.memory[c64.MODE_FLAG_POOL] = bytes([COMBAT])
+    ft.pending.deadline = time.monotonic() + 1
+    before = dict(target.memory)
+    assert ft.continue_pending(target) is None
+    assert target.memory == before
+    assert target.jumps == []
+    assert ft.pending.deadline > time.monotonic() + actions.SECOND_HOP_SECONDS - 5
+
+
+def test_an_unexpected_area_drops_the_hop(monkeypatch):
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    target.memory[addr.slot] = bytes([20])
+    before = dict(target.memory)
+    assert ft.continue_pending(target) is None
+    assert ft.pending is None
+    assert target.memory == before
+    assert target.jumps == []
+
+
+def test_nothing_pending_or_no_target_is_silent_and_cancel_clears(monkeypatch):
+    ft = actions.FastTravel()
+    assert ft.continue_pending(two_hop_machine(13)) is None
+    target, ft = _first_hop(monkeypatch)
+    assert ft.continue_pending(None) is None
+    assert ft.pending is not None
+    ft.cancel_pending()
+    assert ft.pending is None
 
 
 def test_can_reenter_is_true_for_a_vice_backed_target():

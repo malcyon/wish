@@ -162,3 +162,44 @@ def test_verdict_fails_when_the_member_was_never_there():
                               "FATIMA")
     assert ok is False
     assert "was not in the party to begin with" in message
+
+
+# ---------------------------------------------------------------------------
+# second_hop() -- one poll of a two-hop trip through a short-lived target
+
+def test_second_hop_polls_the_engine_and_always_closes_the_target():
+    from automap import actions
+
+    opened = []
+
+    class Target:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    def open_target():
+        opened.append(Target())
+        return opened[-1]
+
+    ft = actions.FastTravel()
+    assert FT.second_hop(ft, open_target) is None       # nothing pending
+    assert opened[0].closed
+
+    class Boom(actions.FastTravel):
+        def continue_pending(self, target):
+            raise RuntimeError("monitor went away")
+
+    try:
+        FT.second_hop(Boom(), open_target)
+    except RuntimeError:
+        pass
+    assert opened[1].closed
+
+
+def test_verdict_fails_a_two_hop_that_stopped_at_the_area_its_door_leads_to():
+    ok, message = FT.verdict([{"name": "FATIMA", "status": 1}],
+                             [{"name": "<empty>", "status": 0}],
+                             13, 27, 13, 0, "FATIMA")
+    assert not ok
+    assert "did not land in area 0" in message

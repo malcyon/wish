@@ -599,9 +599,30 @@ class FastTravelBar(QObject):
     # -- the poll ----------------------------------------------------------
 
     def attach(self, target) -> None:
+        if target is None:
+            # The machine a two-hop trip started in is gone, so nothing may be
+            # written into whatever is attached next.
+            self.fasttravel.cancel_pending()
         self.target = target
         self.refresh()
         self.check_arrival()
+        self.check_second_hop()
+
+    def check_second_hop(self) -> None:
+        """Let a two-hop trip make its second hop, if the party has walked
+        through the door.
+
+        Given the **real** target and never `_NotAskingThePC`: this one
+        writes, and it needs the true program counter -- the rule `apply`
+        follows.
+        """
+        pending = self.fasttravel.pending
+        outcome = self.fasttravel.continue_pending(self.target)
+        if outcome is None:
+            return
+        if outcome.ok and pending is not None:
+            self._expect(pending.area)
+        self._report("fast travel", outcome)
 
     def check_arrival(self) -> str | None:
         """Did the last fasttravel land? An exact 1024-byte match, or nothing yet.

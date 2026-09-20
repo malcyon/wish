@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import struct
 import time
 from dataclasses import dataclass
@@ -1433,6 +1434,29 @@ class Waypoint:
         return self.area
 
 
+@dataclass
+class PendingHop:
+    """The second half of a two-hop fast travel, waiting for the party to
+    walk out through the door the first hop stood them on.
+
+    Not frozen: `deadline` moves when a fight starts, because a fight on the
+    way out must not use up the wait.
+    """
+
+    #: The area the party started in, and where `FastTravel Back` returns to.
+    from_area: int
+    #: The area the door leads to, which the party must be standing in and
+    #: idle before the second hop is made.
+    through: int
+    #: The destination's own row, which is what carries `disk`, `name` and
+    #: `outdoors`.
+    area: object
+    #: What `FastTravel.run` was given for the destination's square, or None.
+    arrival: object
+    #: `time.monotonic()` after which the trip is given up.
+    deadline: float
+
+
 def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
                   arrival=None,
                   overland: tuple[int, int] | None = None,
@@ -1772,6 +1796,52 @@ def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
     return True
 
 
+#: **`WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL`**: a fast travel out of an area
+#: whose one door does not lead to the destination walks the party through
+#: that door first and finishes the trip from the poll afterwards. It is
+#: behind a flag because it writes to a running machine minutes after the
+#: click, and one of its writes is the one `FastTravel.OUTDOORS_TRAP` exists
+#: to refuse everywhere else.
+#:
+#: **It comes off when one two-hop trip has been driven through
+#: `tools/areas/fasttravelrun.py` by somebody other than the agent that built
+#: it, and the party has walked afterwards.** Then the flag, `two_hop_enabled`
+#: and the tests that force it are deleted and the branch runs always.
+TWO_HOP_ENV = "WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL"
+
+#: Anything else -- including an empty string, `0` and `off` -- is off. The
+#: same tuple as `wish/debugmode.py`'s, which `automap/` must not import
+#: (`automap/actionbar.py` keeps that boundary), so it is copied.
+TRUE = ("1", "true", "yes", "on")
+
+#: How long a two-hop trip waits for the party to leave the first area. This
+#: waits on a person answering a menu in another window, not on the machine,
+#: so it is longer than `FastTravelBar.check_arrival`'s 30 seconds -- and it
+#: is a guess rather than a measurement.
+SECOND_HOP_SECONDS = 120.0
+
+
+def two_hop_enabled() -> bool:
+    """Whether `TWO_HOP_ENV` asks for two-hop fast travel."""
+    return os.environ.get(TWO_HOP_ENV, "").strip().lower() in TRUE
+
+
+def leave_travel_grid_writes(addr: fasttravel.FastTravelAddresses
+                             ) -> tuple[tuple[int, bytes], ...]:
+    """What a window's own entry script sets when a party walks out of it
+    onto the travel grid: the indoors flag to 1 and the loaded-file cache
+    slots to empty.
+
+    A two-hop trip that lands on a window and goes on to an indoor area has
+    to make these itself, because the window's script was never run for the
+    party. Empty where this title's row has not read that script.
+    """
+    if addr.grid_exit_slots is None:
+        return ()
+    start, count = addr.grid_exit_slots
+    return ((addr.indoors, b"\x01"), (start, b"\x7f" * count))
+
+
 class FastTravel(Action):
     """Put the party in another area, the way the game's own exits do.
 
@@ -1850,6 +1920,9 @@ class FastTravel(Action):
         #: Where the last fasttravel came from. `FastTravel Back` reads it; None until a
         #: fasttravel has been made, which is why the button starts disabled.
         self.back: Waypoint | None = None
+        #: The second half of a two-hop trip, or None. Made by
+        #: `continue_pending`, which the poll calls.
+        self.pending: PendingHop | None = None
 
     # -- reading the machine ---------------------------------------------
     #
@@ -1900,17 +1973,9 @@ class FastTravel(Action):
 
     # -- may we -----------------------------------------------------------
 
-    def legality(self, target, area=None) -> Verdict:
-        base = super().legality(target)
-        if not base:
-            return base
-        addr = self.addresses
-        if addr is None:
-            # Nobody has read this title's overlays, so there is no tail to
-            # jump to and no cache slot to flag. `UNSUPPORTED` is the sentence
-            # every other action already answers with when the title has no
-            # measured address, which is exactly what this is.
-            return Verdict(False, UNSUPPORTED.format(title=self.game.title))
+    def _idle_verdict(self, target, addr) -> Verdict:
+        """Whether `DUNGEON` is resident and the PC is somewhere a trip may
+        start from: the two checks `legality` and `continue_pending` share."""
         if mode(target, self.game) != DUNGEON:
             _log.debug("fasttravel refused: $%04X is not 1, so DUNGEON is "
                       "not the resident overlay and $%04X is not NEWECL",
@@ -1927,6 +1992,22 @@ class FastTravel(Action):
                       pc, addr.key_wait[0], addr.key_wait[1] - 1,
                       addr.key_fetch[0], addr.key_fetch[1] - 1)
             return Verdict(False, FASTTRAVEL_BUSY)
+        return Verdict(True)
+
+    def legality(self, target, area=None) -> Verdict:
+        base = super().legality(target)
+        if not base:
+            return base
+        addr = self.addresses
+        if addr is None:
+            # Nobody has read this title's overlays, so there is no tail to
+            # jump to and no cache slot to flag. `UNSUPPORTED` is the sentence
+            # every other action already answers with when the title has no
+            # measured address, which is exactly what this is.
+            return Verdict(False, UNSUPPORTED.format(title=self.game.title))
+        idle = self._idle_verdict(target, addr)
+        if not idle:
+            return idle
         if area is None:
             return Verdict(False, "choose an area")
         if not getattr(area, "fasttravelable", True):
@@ -1968,6 +2049,20 @@ class FastTravel(Action):
             route = fasttravel.EXIT_ROUTES.get((here, to))
             if route is not None:
                 return self._run_via_exit(target, addr, area, here, to, route)
+            # One door and it is not the destination's: walk out of it and
+            # finish from the poll. Where an area has several doors, which one
+            # a player leaves by is not a choice this makes, so those fall
+            # through to the tail jump as before.
+            doors = fasttravel.exits_from(here) if two_hop_enabled() else ()
+            if len(doors) == 1:
+                through, door = doors[0]
+                outcome = self._run_via_exit(target, addr, area, here,
+                                             through, door, detour=True)
+                if outcome.ok:
+                    self.pending = PendingHop(
+                        here, through, area, arrival,
+                        time.monotonic() + SECOND_HOP_SECONDS)
+                return outcome
         arrival, overland = self._square_writes(area, arrival=arrival)
         notes = list(self.warnings(target, area, arrival, overland))
         # Read before writing: the first write is $6E12 and the second is
@@ -2002,10 +2097,7 @@ class FastTravel(Action):
             _log.debug("fast travel: could not set the PC; $%04X is flagged "
                        "for reload and the next area change will act on it",
                        addr.slot)
-            return Outcome(False,
-                           "ERROR: Unable to Fast Travel. The teleport will "
-                           "happen the next time you move to a new area.",
-                           writes, tuple(notes))
+            return Outcome(False, self.TELEPORT_LATER, writes, tuple(notes))
         self.back = was
         # Never the `ecl` fallback: it is a script filename, and
         # `.claude/rules/gui-text.md` keeps those out of anything a player
@@ -2017,7 +2109,8 @@ class FastTravel(Action):
                        writes, tuple(notes))
 
     def _run_via_exit(self, target, addr, area, here: int, to: int,
-                      route: fasttravel.ExitRoute) -> Outcome:
+                      route: fasttravel.ExitRoute,
+                      detour: bool = False) -> Outcome:
         """Stand the party on `route.square` and let `DUNGEON`'s own dispatch
         run the departing handler, instead of entering `NEWECL` at its tail --
         `#207 (Run an exit's own handler before Fast Travel warps out)`.
@@ -2032,6 +2125,9 @@ class FastTravel(Action):
         square is written back if the game itself is asked to redraw it, but
         nothing here has to do that: the player is looking at the same
         square the game would have put them on.
+
+        `detour` is a two-hop trip's first hop: `to` is the area the door
+        leads to, which is not the destination, and only the message differs.
         """
         was = Waypoint(here, self.current_disk(target, addr),
                        self.current_square(target, addr),
@@ -2059,11 +2155,85 @@ class FastTravel(Action):
                            ())
         self.back = was
         name = getattr(area, "name", None) or "this area"
+        if detour:
+            # The door does not lead to `name`, so the line above would be
+            # untrue: the party is walking out towards somewhere else first.
+            return Outcome(True,
+                           f"Walking out of this area on foot -- answer "
+                           f"whatever the game asks, and Wish will take the "
+                           f"party on to {name} once they are through the "
+                           f"door "
+                           f"(NOT APPROVED)",
+                           ())
         return Outcome(True,
                        f"Walking out towards {name}, the way the party "
                        f"would on foot -- answer whatever the game asks "
                        f"(NOT APPROVED)",
                        ())
+
+    def cancel_pending(self) -> None:
+        """Forget a two-hop trip, for a target that has gone away."""
+        self.pending = None
+
+    def continue_pending(self, target) -> Outcome | None:
+        """Make the second hop of a two-hop trip once the party is through the
+        door, or say it will not happen.
+
+        None means nothing is pending or nothing is to be done yet. It is
+        called on every poll, so it is cheap and silent.
+
+        **`addr.slot` is read raw, not through `current_area`**: bit 7 set
+        means the loader is mid-change, and `current_area` masks it off and
+        would answer with the destination before it had loaded.
+        """
+        pending = self.pending
+        addr = self.addresses
+        if pending is None or target is None or addr is None:
+            return None
+        raw = _read(target, addr.slot, 1)
+        if not raw or raw[0] & 0x80:
+            return None
+        area_now = raw[0] & 0x7F
+        name = getattr(pending.area, "name", None) or "this area"
+        if area_now == pending.from_area:
+            # Still where it started: the handler is asking its question, or
+            # was answered no.
+            if time.monotonic() > pending.deadline:
+                self.pending = None
+                return Outcome(False,
+                               f"The party never left, so the trip to {name} "
+                               f"did not happen "
+                               f"(NOT APPROVED)")
+            return None
+        if area_now != pending.through:
+            _log.debug("two-hop fast travel dropped: the game went to area "
+                       "%d, not %d", area_now, pending.through)
+            self.pending = None
+            return None
+        if not self._idle_verdict(target, addr):
+            # Five of the exits can start a fight on the way out, and a fight
+            # must not use up the wait. An idle check that fails for one poll
+            # is otherwise normal: the next tick looks again.
+            if in_combat(target, self.game):
+                pending.deadline = time.monotonic() + SECOND_HOP_SECONDS
+            return None
+        arrival, overland = self._square_writes(pending.area,
+                                                arrival=pending.arrival)
+        notes = self.warnings(target, pending.area, arrival, overland)
+        writes = newecl_writes(pending.through,
+                               getattr(pending.area, "id", pending.area),
+                               getattr(pending.area, "disk", None), arrival,
+                               overland=overland, addresses=addr)
+        if self.current_indoors(target, addr) == 0:
+            writes = leave_travel_grid_writes(addr) + writes
+        self.pending = None
+        _write_all(target, writes)
+        # `self.back` is not touched: the first hop recorded the square the
+        # party started on, which is where Fast Travel Back must return to,
+        # not the window it was put through.
+        if not jump(target, addr.tail):
+            return Outcome(False, self.TELEPORT_LATER, writes, tuple(notes))
+        return Outcome(True, f"Traveling to {name}.", writes, tuple(notes))
 
     @staticmethod
     def arrival_of(area):
@@ -2150,6 +2320,11 @@ class FastTravel(Action):
         # `self.current_indoors` and `self.addresses.indoors` are still here
         # for whoever measures it.
         return tuple(out)
+
+    #: What `run` and `continue_pending` say when the writes are made and the
+    #: PC cannot be set: the reload flag they wrote is what finishes the trip.
+    TELEPORT_LATER = ("ERROR: Unable to Fast Travel. The teleport will "
+                      "happen the next time you move to a new area.")
 
     #: `ECL1E` is the attract-mode demo and fasttraveling into it ends the session:
     #: P20 read `$C04B`-`$C04D` as `254, 127, 16` with no `GEO` resident, no

@@ -814,6 +814,40 @@ def test_the_row_travels_on_the_click_with_nothing_to_dismiss(app):
     assert not showing()
 
 
+def test_the_bar_makes_a_pending_second_hop_on_the_poll_and_attach_none_clears_it(
+        app, monkeypatch):
+    """The poll that already calls `attach` is what makes the second hop of a
+    two-hop trip, and puts one line in the Messages panel; a target that goes
+    away takes the pending hop with it."""
+    import time
+
+    from automap import fasttravel
+
+    monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
+    addr = fasttravel.POOL_OF_RADIANCE
+
+    said = []
+    target = machine(area=27)
+    ft = actions.FastTravel()
+    ft.pending = actions.PendingHop(13, 27, area(0), None,
+                                    time.monotonic() + 60)
+    row = bar(app, say=lambda text, detail="", alarm=False:
+              said.append((text, alarm)), fasttravel=ft)
+    row.attach(target)
+    assert target.jumps == [addr.tail]
+    assert ft.pending is None
+    assert said == [("Traveling to New Phlan.", False)]
+
+    # `attach(None)`: the machine the trip started in is gone.
+    target2 = machine(area=27)
+    ft.pending = actions.PendingHop(13, 27, area(0), None,
+                                    time.monotonic() + 60)
+    row.attach(None)
+    assert ft.pending is None
+    row.attach(target2)
+    assert target2.jumps == []
+
+
 def test_a_refused_fasttravel_is_reported_as_an_alarm(app):
     said = []
     row = bar(app, machine(mode=COMBAT),

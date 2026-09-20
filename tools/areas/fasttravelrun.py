@@ -93,6 +93,10 @@ def verdict(before: list[dict], after: list[dict], area_before: int,
     """The pass/fail judgement over four readings, with no monitor in it at
     all -- the part of this tool that can be proven right without a slot.
 
+    `to_area` is the destination that was asked for, so a two-hop trip that
+    stopped in the area its door leads to fails the second check rather than
+    passing on the way through.
+
     Four ways to fail, checked in the order a run would actually discover
     them: the save was not staged where the check assumes, the warp did not
     land, the named member was never in the party to begin with (a mistyped
@@ -112,17 +116,45 @@ def verdict(before: list[dict], after: list[dict], area_before: int,
                   f"handler and dropped {member!r}")
 
 
-def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0) -> None:
+def second_hop(ft, open_target=ViceTarget):
+    """One poll of a two-hop trip's second hop, the way the automapper's own
+    poll makes it: `ft.continue_pending` through the real target.
+
+    The target is opened for this one call and closed straight after, for the
+    same reason `run` does it around `FastTravel.run`: VICE serves one monitor
+    connection, and every `sess.mon()` call opens its own.
+    """
+    target = open_target()
+    try:
+        return ft.continue_pending(target)
+    finally:
+        target.close()
+
+
+def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
+                    between=None):
     """Answer whatever the exit's handler puts on row 24, the way a player
     would, until the area byte says the warp landed.
 
     Only the shape the Kobold Caves' own handler is known to show --
     `YES`/`NO` in the command bar -- is handled; anything else times out
     rather than guessing at a menu this tool has never seen.
+
+    `between`, when given, is called once a lap until it answers an `Outcome`
+    -- a two-hop trip's `second_hop`. That outcome is returned at once when it
+    is a failure (the trip gave up) and otherwise once the area byte lands.
     """
     deadline = time.time() + deadline_s
     answered = False
+    hop = None
     while time.time() < deadline:
+        if between is not None and hop is None:
+            hop = between()
+            if hop is not None:
+                print(f"  second hop: ok={hop.ok} message={hop.message}",
+                      flush=True)
+                if not hop.ok:
+                    return hop
         s = sess.screen()
         row = s.row(24).strip() if s is not None else ""
         if row:
@@ -133,8 +165,9 @@ def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0) -> None:
             time.sleep(1.0)
             continue
         if area_of(sess) == to_area:
-            return
+            return hop
         time.sleep(0.6)
+    return hop
 
 
 def disks_of(args) -> pathlib.Path | None:
@@ -179,12 +212,13 @@ def run(args) -> int:
               [r for r in before if r["name"] != "<empty>"], flush=True)
 
         target = ViceTarget()
+        ft = A.FastTravel()
         try:
             # `ViceTarget` holds one persistent monitor connection and VICE
             # serves exactly one, so it is opened only for the one call
             # that needs it and closed straight after -- every `sess.mon()`
             # call above and below opens and closes its own.
-            outcome = A.FastTravel().run(target, area=A.area_by_id(args.to_area))
+            outcome = ft.run(target, area=A.area_by_id(args.to_area))
         finally:
             target.close()
             target = None
@@ -196,7 +230,17 @@ def run(args) -> int:
                       "before": before, "area_before": area_before}
             return 1
 
-        answer_and_wait(sess, args.to_area, deadline_s=args.answer_timeout)
+        # A two-hop trip (`WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL`) has walked
+        # the party out through the area's one door and is waiting on the
+        # poll to make its second hop, so this loop is that poll.
+        hop = answer_and_wait(
+            sess, args.to_area, deadline_s=args.answer_timeout,
+            between=(lambda: second_hop(ft)) if ft.pending is not None
+            else None)
+        if hop is not None and not hop.ok:
+            result = {"ok": False, "message": hop.message,
+                      "before": before, "area_before": area_before}
+            return 1
         sess.settle(6)
 
         after = party(sess)

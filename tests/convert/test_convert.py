@@ -1840,7 +1840,13 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # `former_levels` twice, `spells_castable['druid']`, the shared
     # `portrait_head`/`portrait_body` line and `Dead`'s status line) went to
     # 0 on 2026-09-14 for the `File ▸ Export`-deletion reason above.
-    WAITING = {"goldbox.c64_codec": 0, "goldbox.amiga_pod": 1,
+    # `goldbox.amiga_pod` 1 -> 0: the Amiga reader's marked warning was
+    # deleted, because it stopped being true, rather than worded by Donald.
+    #
+    # `automap.actions` 1 -> 3: the two strings of the two-hop Fast Travel
+    # (walking out through the area's one door first, and giving up when the
+    # party never leaves) wait on Donald's wording.
+    WAITING = {"goldbox.c64_codec": 0, "goldbox.amiga_pod": 0,
                "goldbox.dos_codec": 0,
                # 3 -> 2 on 2026-09-10: Donald approved the failure line for
                # a Fast Travel that cannot walk the party through a door
@@ -1852,7 +1858,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
                # as worded (`#477 (Twenty interface strings still carry a
                # (NOT APPROVED) marker)`); Fast Travel's "Walking out
                # towards" line is the one left.
-               "automap.actions": 1}
+               "automap.actions": 3}
 
     found: dict[str, list[str]] = {}
     for module in (c64_codec, amiga_pod, dos_codec, actions):

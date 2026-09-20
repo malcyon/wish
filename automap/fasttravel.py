@@ -168,6 +168,20 @@ class FastTravelAddresses:
     saved_sp: int | None = None
     main_loop_return: int | None = None
 
+    #: The first address and the count of the loaded-file cache slots a
+    #: wilderness window's own entry script marks empty, which a party walking
+    #: out of a window onto the travel grid leaves behind and a party warped
+    #: past the window's script never sets. **Pool of Radiance only**, and
+    #: PROBABLE rather than CONFIRMED: `ECL1A $A0A4` does `SAVE 1, [$49E6]`,
+    #: six `SAVE 127` into `$6E22`-`$6E27` and `LOADFILES 127, 127, 127`, and
+    #: three driven trips (`run2`, `run3` and `run5`, phase E of `#207 (Run an
+    #: exit's own handler before Fast Travel warps out)`) wrote the flag and
+    #: the six slots together and landed, but neither half has been tried
+    #: alone. None in Curse and Silver Blades, because nobody has read their
+    #: windows' scripts and a number here would be written into whatever those
+    #: titles keep at it.
+    grid_exit_slots: tuple[int, int] | None = None
+
     @property
     def has_travel_grid(self) -> bool:
         """Can this title put a party on an overland square at all?"""
@@ -207,6 +221,7 @@ POOL_OF_RADIANCE = FastTravelAddresses(
     redraw=0x0A4C,
     saved_sp=0x03BF,
     main_loop_return=0x08A6,
+    grid_exit_slots=(0x6E22, 6),
 )
 
 #: Curse of the Azure Bonds. `DUNGEON $21BA`, instruction for instruction Pool
@@ -385,3 +400,17 @@ EXIT_ROUTES: Mapping[tuple[int, int], ExitRoute] = MappingProxyType({
     (27, 27): ExitRoute(1, (0, 0)),
     (28, 25): ExitRoute(1, (4, 0)),
 })
+
+
+def exits_from(area_id: int) -> tuple[tuple[int, ExitRoute], ...]:
+    """Every `(to, route)` in `EXIT_ROUTES` that leaves `area_id`, sorted by
+    `to`.
+
+    **An exit that comes back into the same area is left out** -- `(25, 25)`,
+    `(26, 26)` and `(27, 27)` can never carry a party anywhere, so counting
+    them would make an area with one real door look as if it had two. Sorted
+    so the answer does not depend on the order the table was written in.
+    """
+    return tuple(sorted(((to, route) for (frm, to), route in
+                         EXIT_ROUTES.items() if frm == area_id and to != frm),
+                        key=lambda row: row[0]))
