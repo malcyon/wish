@@ -153,8 +153,15 @@ def _permanent_ids(char: dos_codec.DosCharacter) -> list[int]:
 @needs_specimens
 def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
     """The census #394 asks for, over every DOS save we watched being
-    written: 236 records, 128 of them carrying at least one effect, and no id
-    that should have crossed missing from the ten bytes.
+    written: 326 records, 182 of them carrying at least one permanent effect,
+    and no id that should have crossed missing from the ten bytes.
+
+    The same loop asserts that no record holds more current hit points than
+    its maximum.  That is the signature of a party converted from a C64 disk
+    whose save slots were swapped without swapping the roster, which gave a
+    character another's `hp_current`, armour class and items.  It is a
+    DOS-side check only: the C64 record has four engine-written slots that
+    break it, so it is not an invariant there.
 
     Sixteen of those records are the two classes the older half of #394's own
     disagreement is about -- ten paladins carrying id 8 across Curse and
@@ -165,6 +172,7 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
     root = specimen_root()
     checked = carriers = 0
     lost: list[str] = []
+    overhealed: list[str] = []
     for folder in sorted(p for p in root.rglob("*") if p.is_dir()):
         records = sorted(folder.glob("CHRDAT*.SAV")) + \
             sorted(folder.glob("*.CHA"))
@@ -185,9 +193,15 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
                 f"check")
         for path in records:
             char = dos_codec.read_character(path)
-            rec, _ = c64_codec.write(dos_codec.to_neutral(char))
+            neutral_char = dos_codec.to_neutral(char)
+            rec, _ = c64_codec.write(neutral_char)
             slots = _slots(rec)
             checked += 1
+            hp_now, hp_max = (neutral_char.get("hp_current"),
+                              neutral_char.get("hp_max"))
+            if hp_now > hp_max:
+                overhealed.append(
+                    f"{folder.name}/{path.name}: {hp_now} of {hp_max}")
             ids = _permanent_ids(char)
             carriers += bool(ids)
             lost += [f"{folder.name}/{path.name}: {i}" for i in ids
@@ -195,6 +209,9 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
     assert checked >= 200, f"only {checked} DOS records found under {root}"
     assert carriers >= 100, f"only {carriers} of {checked} carry an effect"
     assert not lost, f"{len(lost)} permanent effect ids reached no slot: {lost}"
+    assert not overhealed, (
+        f"{len(overhealed)} records hold more current hit points than their "
+        f"maximum: {overhealed}")
 
 
 @needs_specimens
