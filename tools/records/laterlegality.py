@@ -348,7 +348,8 @@ def silver_capacity(class_levels: dict[str, int], wisdom: int = 18,
 
     The cleric's row takes the wisdom bonus, at a spell level the cleric can
     already reach -- `goldbox.spells.capacity_by_class`'s own rule, applied
-    here because that function has no Silver Blades table to read.  A
+    here to the rows `silver_slot_rows` read off the disk rather than to
+    the ones `goldbox/spells.py` holds for the title.  A
     paladin's row is added into the cleric array and takes no bonus, which is
     the order the engine's own passes run in.
     """

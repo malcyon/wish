@@ -570,8 +570,8 @@ def test_k_the_later_creation_tables_are_the_games_own(game):
 def test_k_the_deepest_caster_is_the_one_the_engine_allows(game):
     """`laterchars.DEEPEST` re-derived from the game: every creation entry at
     its ceilings and every dual-class route, measured by how many spells each
-    may hold.  Silver Blades' slot rows come out of its own `ECL65`, which is
-    the half `goldbox/spells.py` has never carried (`#572`)."""
+    may hold.  Silver Blades' slot rows are read out of its own `ECL65`,
+    independently of the ones `goldbox/spells.py` holds for it."""
     try:
         rows = (laterlegality.silver_slot_rows()
                 if game == "secret-of-the-silver-blades" else None)

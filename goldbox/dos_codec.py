@@ -2754,9 +2754,9 @@ def write_absent(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
 #: class, `C64Deltas.spell_slots` being `False` for both.  Curse's zeros are
 #: recomputed below (`_SPELL_SLOT_RECOMPUTE_FROM_PORTS`, #547) rather than
 #: written as they stand, because `goldbox.spells.capacity_by_class`'s table
-#: reproduces every engine-written Curse array on this machine; Silver
-#: Blades has no such table (`_SLOTS` carries no row for it) and keeps its
-#: zeros.  `goldbox.c64_codec.NO_SPELL_SLOTS`, the `spells_castable` line on
+#: reproduces every engine-written Curse array on this machine, and Silver
+#: Blades' zeros are recomputed the same way from the rows `_SLOTS` holds
+#: for it.  `goldbox.c64_codec.NO_SPELL_SLOTS`, the `spells_castable` line on
 #: the DOS-to-C64 direction, went the same way for the same reason (#324):
 #: #192 step 3 and #193 step 3 both watched the memorise screen enforce a
 #: ceiling nothing in the converted save wrote, so it is a note over the six
