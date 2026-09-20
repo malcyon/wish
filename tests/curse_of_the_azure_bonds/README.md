@@ -10,6 +10,7 @@ Tests for Curse of the Azure Bonds: its C64 disks, saves, tables and level-up ru
 | `test_curselevels.py` | Checks Curse's ceilings, racial limits, THAC0, experience, hit dice and spell slots against the game's own tables and the shipped records. |
 | `test_curselive.py` | Checks the addresses a live Curse session measured, the code paths that use them, and the walked route replayed through `GEO01`. |
 | `test_curseload.py` | Checks the disk repair and the two causes that can be shown without an emulator when a Curse save disk will not load in a driven session. |
+| `test_cursememorize.py` | Checks the key-list expansion and the per-press log of the DOS Curse `MEMORIZE` page-turn driver against a fake session, including the stop after two screens with no highlight on them. |
 | `test_cursepaladin.py` | Checks which record offsets `tools/curse_of_the_azure_bonds/cursepaladin.py` reads and stages, on a save disk built here from zeroes. |
 | `test_curserun.py` | Checks that a Curse session mounts the saved side before entering and leaves an invalid side to the disk prompt. |
 | `test_cursespellslots.py` | Checks the spell slots a conversion writes for a Curse magic-user, cleric, paladin and ranger from the game's own tables. |
