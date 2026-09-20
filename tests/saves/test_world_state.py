@@ -215,13 +215,22 @@ def test_a_pools_of_darkness_dos_save_reads_as_its_own_state():
     assert (state.wall_ahead, state.square_property) == (0x5A, 0x6B)
     assert (state.previous_mode, state.mode) == (2, dos_savegame.POD_MODE_DUNGEON)
     assert (state.dungeon_map, state.map_block) == (0x1234, 0x5678)
-    assert state.count == 6
+    assert state.count == 6 == save[1035]
     assert state.source == "synthetic"
     assert state.clock == (1, 2, 3, 4, 5, 6, 7)
     assert state.in_dungeon is True
     assert state.wilderness_square == (21, 22)
     with pytest.raises(dataclasses.FrozenInstanceError):
         state.x = 0
+
+
+def test_the_wilderness_square_is_read_whichever_way_in_dungeon_reads():
+    box = dos_savegame.SAVE_POOLS_OF_DARKNESS
+    save = _synthetic_pod_save()
+    dos_savegame.put_pod_var(save, dos_savegame.POD_IN_DUNGEON, 0, box)
+    state = world_state.pod_from_dos(bytes(save))
+    assert state.in_dungeon is False
+    assert state.wilderness_square == (21, 22)
 
 
 def test_a_pools_of_darkness_state_takes_an_explicit_container():

@@ -9,9 +9,13 @@ map, quest flags and script scratch. Donald named the concept on
 
 The lift `#352 (Handle world state for Amiga saves)` asks for:
 `goldbox.amiga_por.PorSaveState` proved the shape for a Pool of Radiance party
-standing indoors, and this module is that shape generalised over every
-title and every direction, so the C64 and DOS container writers no longer
-have to read their source straight out of the other port's file.
+standing indoors, and `WorldState` is that shape generalised over the three
+titles whose saved game is an array of ECL words (Pool of Radiance, Curse of
+the Azure Bonds, Secret of the Silver Blades): `from_c64` and `from_dos` read
+all three and `from_amiga` reads Pool of Radiance, so the C64 and DOS container
+writers no longer have to read their source straight out of the other port's
+file.  `PodWorldState` is the separate class for Pools of Darkness, whose saved
+game is a byte-wide array.
 
 `goldbox/neutral.py` grades a **character** field because its meaning was
 measured per port and some are still guesses.  Nothing here is graded:
@@ -123,11 +127,19 @@ class PodWorldState:
     Beside :class:`WorldState` rather than inside it, because this title's
     saved game is a different structure: a 1024-byte array of one-byte ECL
     variables in place of the 5120-byte word array, a seven-digit clock, no
-    wallset, no quest-flag window and no per-script scratch.  Holds exactly
-    what the DOS and Amiga containers both write, and nothing derivable from
-    it -- see `clock`, `in_dungeon` and `wilderness_square`.
+    wallset, no quest-flag window and no per-script scratch.  Holds the fields
+    both `pod_from_dos` and `goldbox.amiga_savegame.pod_from_amiga` fill, and
+    nothing derivable from `variables` -- see `clock`, `in_dungeon` and
+    `wilderness_square`.
 
-    `facing` is 0-3, as on :class:`WorldState`; both ports store it doubled.
+    `facing` is 0-3, as on :class:`WorldState`.  `pod_from_dos` takes it from
+    `dos_savegame.position`, which divides the stored byte by
+    `dos_savegame.FACING_SCALE`, and `pod_from_amiga` divides the Amiga's
+    square by the same factor.
+
+    `x` and `y` are the square `dos_savegame.position` reads.  It documents
+    them as stale outdoors for Pool of Radiance; whether they go stale in this
+    title's wilderness is not established.
     """
 
     title: str
@@ -383,6 +395,11 @@ def pod_from_dos(savgam: bytes,
     container's size is refused there.  A container with no byte-wide variable
     array, which is every title but this one, raises.  `WorldState.from_dos`
     is the reader for those and still refuses this title's file.
+
+    **The size names the container, not the title**: a Treasures of the Savage
+    Frontier `SAVGAM<slot>.PTY` is also 1364 bytes and `dos_savegame.container_for`
+    answers it with this row, so `title` reads "Pools of Darkness" for it too;
+    `source` is what says which game the file came from.
     """
     shape = dos_savegame.container_for(
         shape if shape is not None else len(savgam))
