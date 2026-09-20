@@ -106,8 +106,13 @@ class PoolUnavailable(RuntimeError):
 
 
 def pool_root() -> Path:
-    """Where the slots live. `$POR_INST` overrides, which is how tests isolate."""
-    return Path(os.environ.get("POR_INST") or scratch.scratch_dir("instance"))
+    """Where the slots live. `$POR_INST` overrides, which is how tests isolate.
+
+    The default is under the home directory, not the temp directory: the VICE
+    flatpak is granted `filesystems=home` and has a private `/tmp`, so a slot in
+    `<tmp>` holds a disk and a `vicerc` the emulator cannot open.
+    """
+    return Path(os.environ.get("POR_INST") or scratch.cache_dir("instance"))
 
 
 def template_vicerc() -> Path:

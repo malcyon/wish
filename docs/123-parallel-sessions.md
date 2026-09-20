@@ -5,7 +5,7 @@ costing they always were.** What changed when it was built is in §0; the rest
 of this document is the design, corrected in place where building it proved a
 claim wrong.
 
-**Update, 2026-09-18:** the `inst/<n>/` and `drive/` directories below are the design's own names. The scratch directory they sat in no longer exists; the pool now keeps its slots under the temp directory (`tools/registry/scratch.py`, `tools/registry/instance.py`'s `pool_root()`), and anything there may vanish.
+**Update, 2026-09-18:** the `inst/<n>/` and `drive/` directories below are the design's own names. The scratch directory they sat in no longer exists; the pool now keeps its slots under `~/.cache/wish/instance` (`tools/registry/scratch.py`'s `cache_dir`, `tools/registry/instance.py`'s `pool_root()`), because the VICE flatpak sees the home directory and has a private `/tmp`, so a slot under the temp directory holds a disk and a `vicerc` it cannot open. `$POR_INST` still overrides.
 
 Donald asked whether Proxmox VMs, each with its own VICE and the game inside,
 would let tests run in parallel, and separately asked for "Windows VMs for

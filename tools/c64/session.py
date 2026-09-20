@@ -740,11 +740,13 @@ class Session:
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        self._proc = proc
         self.pgid = os.getpgid(proc.pid)
         if self.slot is not None:
             self.slot.record(pgid=self.pgid, launched=time.time())
         for _ in range(60):
             time.sleep(1)
+            self._require_alive()
             try:
                 with self.mon(3):
                     break
@@ -756,6 +758,30 @@ class Session:
         self.text.settimeout(3)
         self.attached = self.disk
         self.log("VICE up; text monitor connected")
+
+    #: The process `launch()` started, so a wait can tell an emulator that is
+    #: slow from one that has already exited.
+    _proc = None
+
+    def _require_alive(self) -> None:
+        """Raise at once, with the end of `vice.log`, if VICE has exited.
+
+        VICE opens its monitor ports early and can exit seconds later (an
+        autostart it cannot open, a flatpak that cannot see the slot's
+        directory), so a connection proves nothing and a wait for a prompt on a
+        dead emulator would run to its whole timeout.
+        """
+        proc = self._proc
+        if proc is None or proc.poll() is None:
+            return
+        try:
+            with open(os.path.join(self.here, "vice.log"), "rb") as f:
+                tail = b"".join(f.readlines()[-15:]).decode("utf-8", "replace")
+        except OSError:
+            tail = "(vice.log unreadable)"
+        raise RuntimeError(
+            f"VICE exited with status {proc.returncode} before it was ready; "
+            f"the end of vice.log:\n{tail.rstrip()}")
 
     def close(self, kill: bool = True) -> None:
         try:
@@ -949,6 +975,7 @@ class Session:
         needles = [needle] if isinstance(needle, str) else list(needle)
         deadline = time.time() + timeout
         while time.time() < deadline:
+            self._require_alive()
             s = self.screen()
             if s is not None:
                 for n in needles:

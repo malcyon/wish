@@ -192,6 +192,9 @@ def test_launch_builds_the_porlaunch_and_log_paths_with_os_path_join(
     class FakeProc:
         pid = 999999
 
+        def poll(self):
+            return None                 # still running
+
     def fake_popen(args, **kw):
         popen_calls.append((args, kw))
         return FakeProc()

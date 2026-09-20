@@ -87,13 +87,28 @@ def pool(tmp_path, monkeypatch, ports):
 def test_module_imports_without_fcntl(monkeypatch):
     """The guard `tools/dos/dosbox.py` was caught by, asserted rather than assumed.
 
-    With no `$POR_INST` the pool lives in scratch, outside the repository,
-    and asking where it is creates nothing."""
+    With no `$POR_INST` the pool lives under the home cache directory, outside
+    the repository, and asking where it is creates nothing."""
     from tools.registry import scratch
     monkeypatch.delenv("POR_INST", raising=False)
     root = instance.pool_root()
-    assert root == scratch.scratch_dir("instance")
+    assert root == scratch.cache_dir("instance")
     assert instance.REPO not in root.parents
+
+
+def test_the_default_pool_is_not_under_the_temp_directory(monkeypatch):
+    """The VICE flatpak sees `$HOME` and has a private `/tmp`, so a slot under
+    the temp directory holds a disk it cannot open."""
+    import tempfile
+    monkeypatch.delenv("POR_INST", raising=False)
+    tmp = Path(tempfile.gettempdir()).resolve()
+    assert tmp not in Path(instance.pool_root()).resolve().parents
+    assert Path.home().resolve() in Path(instance.pool_root()).resolve().parents
+
+
+def test_por_inst_still_wins_over_the_default(monkeypatch, tmp_path):
+    monkeypatch.setenv("POR_INST", str(tmp_path / "elsewhere"))
+    assert instance.pool_root() == tmp_path / "elsewhere"
 
 
 def test_the_pool_never_allocates_the_human_s_ports():
