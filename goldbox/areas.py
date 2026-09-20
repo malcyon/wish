@@ -55,9 +55,11 @@ digits, rather than to a confident wrong answer.
 `AREAS_SILVER_BLADES` is the second table, built for
 `#20 (Build an area table for Silver Blades)` and read off that title's own
 six sides by `tools/areas/areatable.py`. It shares the `Area` shape and nothing else:
-sparse ids, no names, disk sides 1-6, and five areas whose map is not their own
-id. Its own comment carries what does not carry over, and every row is
-PROBABLE.
+sparse ids, disk sides 1-6, and five areas whose map is not their own id. Its
+own comment carries what does not carry over. Twenty of its twenty-two rows
+carry a name read out of the title's own scripts and approved by Donald, on
+`#15 (Fast Travel for more than one Gold Box title)`; `$04` and `$11` are the
+opening scene and the opening vision, name no place, and stay unnamed.
 
 `AREAS_CURSE` is the third, measured for `#192 (Convert a Curse of the Azure
 Bonds DOS save into a C64 one, which the importer refuses today)` step 0b by
@@ -382,15 +384,20 @@ AREAS_BY_ID: Mapping[int, Area] = MappingProxyType({a.id: a for a in AREAS})
 
 def _s(id: int, disk: int, geos: tuple[str, ...],
        arrival: Arrival | None,
-       confidence: Confidence = Confidence.PROBABLE, **kw) -> Area:
-    """One Silver Blades row. No name is known for any of them yet.
+       confidence: Confidence = Confidence.PROBABLE,
+       name: str | None = None, **kw) -> Area:
+    """One Silver Blades row.
 
-    `confidence` grades the **id, the side and the map** -- the three columns
-    a driven arrival measures. It does not grade `arrival`; see the table's
-    own comment, where five of ten measured squares differ from the static
-    reading because the arriving script computes them.
+    `name` is `None` for `$04` and `$11`, which name no place. For a named row
+    `confidence` grades the **name and only the name**, the convention
+    `AREAS` and `AREAS_CURSE` use; the two unnamed rows keep the grade they
+    had before any row was named, which graded the id, the side and the map
+    -- the three columns a driven arrival measures. Neither grade covers
+    `arrival`; see the table's own comment, where five of ten measured
+    squares differ from the static reading because the arriving script
+    computes them.
     """
-    return Area(id=id, name=None, disk=disk, geos=geos, arrival=arrival,
+    return Area(id=id, name=name, disk=disk, geos=geos, arrival=arrival,
                 confidence=confidence, side_name="SILVER-{}", **kw)
 
 
@@ -400,12 +407,27 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
 #: their first four bytes do not decode as the `GOTO` an area script opens
 #: with -- they are on every side and are the machine, not a place.
 #:
-#: **Every row is CONFIRMED**, and each one the same way: a party has been put
-#: in that area on a running machine and the landing measured. Twenty-one were
+#: **Every row's id, side and map are CONFIRMED**, and each one the same way: a
+#: party has been put in that area on a running machine and the landing
+#: measured. Twenty-one were
 #: entered by a trip through `automap.actions.FastTravel` -- 22 hops across
 #: nine driven sessions -- and `$11` is where a loaded party starts, so it was
 #: read where it stood. `#20 (Build an area table for Silver Blades)`,
 #: `cited/20/land1`-`land9`.
+#:
+#: **`confidence` grades the name, as it does in the other two tables**, and
+#: that is not the paragraph above: none of the twenty names was seen on a
+#: driven screen, all twenty are a static read of the `ECL` text and bytecode
+#: by `tools/areas/ecltext.py` and `tools/areas/areatable.py`
+#: (`#15 (Fast Travel for more than one Gold Box title)`). Sixteen are
+#: CONFIRMED, where a script or a sibling script names the place outright.
+#: Four are PROBABLE -- `$20`, `$40`, `$41` and `$44` -- because no script
+#: gives the place its own name: `ECL20` never says "ruins" itself and the
+#: three names come from siblings naming the place around it, no script names
+#: the dungeon or the compound beyond "the dungeon" and "the compound", and
+#: the two sphinx hints that order `$40`, `$41` and `$42` do not add up to a
+#: three-level dungeon. `$04` and `$11` keep the CONFIRMED they carried for
+#: their id, side and map, with no name to grade.
 #:
 #: **The map column is 21 of 21 exact**, an unmasked 1024-byte compare of
 #: `$0400` against the copy on the player's own disk, no fingerprint and no
@@ -501,11 +523,14 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     # carried is answered; what is still unknown is whether the opening scene
     # leaves anything in a state a later area minds.
     _s(0x04, 1, ("GEO10",), Arrival(10, 8, 1), Confidence.CONFIRMED),
-    _s(0x10, 1, ("GEO10",), Arrival(15, 8, 3), Confidence.CONFIRMED),
+    _s(0x10, 1, ("GEO10",), Arrival(15, 8, 3), Confidence.CONFIRMED,
+       name="New Verdigris"),
     _s(0x11, 1, (), None, Confidence.CONFIRMED),
-    _s(0x20, 2, ("GEO20",), None, Confidence.CONFIRMED),
-    _s(0x21, 2, ("GEO21",), None, Confidence.CONFIRMED),
-    _s(0x22, 2, ("GEO22",), Arrival(14, 14, 0), Confidence.CONFIRMED),
+    _s(0x20, 2, ("GEO20",), None, Confidence.PROBABLE, name="The Ruins"),
+    _s(0x21, 2, ("GEO21",), None, Confidence.CONFIRMED,
+       name="Well of Knowledge"),
+    _s(0x22, 2, ("GEO22",), Arrival(14, 14, 0), Confidence.CONFIRMED,
+       name="Black Circle Headquarters"),
     # `ECL30` is a twelve-option menu that dispatches on to `$31`, `$32`,
     # `$33` and `$20`, storing which option was chosen in `[$4C69]` -- and
     # `ECL31`'s entry 4 reads `[$4C69]` back. So one script and one map serve
@@ -527,7 +552,8 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     # and the party at 3,3 E -- and then `NEWECL 51` on the spot, so `$7F1B`
     # read `$33` a moment later. `GEO30` was never loaded. So the row is right
     # about what `ECL30` does and a caller must not assume the party stays.
-    _s(0x30, 3, ("GEO31", "GEO30"), Arrival(3, 3, 1), Confidence.CONFIRMED),
+    _s(0x30, 3, ("GEO31", "GEO30"), Arrival(3, 3, 1), Confidence.CONFIRMED,
+       name="The mines, wheel lift"),
     # **Measured, and it is worse than "no map of their own".** Fast-travelled
     # into `$31` and then `$32` from `$33`, the block at `$0400` stayed
     # `GEO31` -- `$33`'s map, left behind -- through both, because neither
@@ -541,27 +567,41 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     # the scratch a fast travel has just wiped. The warning above this table
     # said a trip that does not set `[$4C69]` arrives on a level nobody chose;
     # the game says so itself.
-    _s(0x31, 3, (), None, Confidence.CONFIRMED, dynamic_geo=True),
-    _s(0x32, 3, (), None, Confidence.CONFIRMED, dynamic_geo=True),
-    _s(0x33, 3, ("GEO31",), None, Confidence.CONFIRMED),
-    _s(0x34, 3, ("GEO32",), None, Confidence.CONFIRMED),
+    _s(0x31, 3, (), None, Confidence.CONFIRMED, dynamic_geo=True,
+       name="The mines, levels 1-4"),
+    _s(0x32, 3, (), None, Confidence.CONFIRMED, dynamic_geo=True,
+       name="The mines, levels 5-8"),
+    _s(0x33, 3, ("GEO31",), None, Confidence.CONFIRMED,
+       name="The mines, temple and bottom levels"),
+    _s(0x34, 3, ("GEO32",), None, Confidence.CONFIRMED, name="Temple of Tyr"),
     # `ECL44` writes 7,15 N before `NEWECL 64`; `ECL40`'s own entry 4 writes
     # 12,0 S. Two routes in, two squares, and nothing says which a fast
     # travel should imitate -- so neither.
-    _s(0x40, 4, ("GEO40",), None, Confidence.CONFIRMED),
-    _s(0x41, 4, ("GEO41",), Arrival(13, 9, 1), Confidence.CONFIRMED),
-    _s(0x42, 4, ("GEO42",), Arrival(12, 13, 0), Confidence.CONFIRMED),
-    _s(0x44, 4, ("GEO44",), Arrival(7, 15, 0), Confidence.CONFIRMED),
-    _s(0x50, 5, ("GEO50",), Arrival(1, 11, 1), Confidence.CONFIRMED),
-    _s(0x51, 5, ("GEO51",), None, Confidence.CONFIRMED),
-    _s(0x52, 5, ("GEO52",), None, Confidence.CONFIRMED),
-    _s(0x60, 6, ("GEO60",), Arrival(15, 0, 3), Confidence.CONFIRMED),
-    _s(0x61, 6, ("GEO61",), Arrival(15, 0, 3), Confidence.CONFIRMED),
-    _s(0x62, 6, ("GEO62",), Arrival(0, 15, 1), Confidence.CONFIRMED),
+    _s(0x40, 4, ("GEO40",), None, Confidence.PROBABLE,
+       name="The Dungeon, lowest level"),
+    _s(0x41, 4, ("GEO41",), Arrival(13, 9, 1), Confidence.PROBABLE,
+       name="The Dungeon, middle level"),
+    _s(0x42, 4, ("GEO42",), Arrival(12, 13, 0), Confidence.CONFIRMED,
+       name="The Dungeon, top level"),
+    _s(0x44, 4, ("GEO44",), Arrival(7, 15, 0), Confidence.PROBABLE,
+       name="The Compound"),
+    _s(0x50, 5, ("GEO50",), Arrival(1, 11, 1), Confidence.CONFIRMED,
+       name="The Crevasses"),
+    _s(0x51, 5, ("GEO51",), None, Confidence.CONFIRMED,
+       name="Frost giant village"),
+    _s(0x52, 5, ("GEO52",), None, Confidence.CONFIRMED,
+       name="The Crevasses, castle gates"),
+    _s(0x60, 6, ("GEO60",), Arrival(15, 0, 3), Confidence.CONFIRMED,
+       name="Castle of the Twins, entry level"),
+    _s(0x61, 6, ("GEO61",), Arrival(15, 0, 3), Confidence.CONFIRMED,
+       name="Castle of the Twins, second level"),
+    _s(0x62, 6, ("GEO62",), Arrival(0, 15, 1), Confidence.CONFIRMED,
+       name="Castle of the Twins, Sanctum of the Dreadlord"),
     # `ECL63` loads `GEO62`, one of the five rows where the map is not the
     # area's own id -- CONFIRMED, the block at `$0400` was `GEO62` byte for
     # byte after a driven arrival in `$63`.
-    _s(0x63, 6, ("GEO62",), Arrival(0, 0, 2), Confidence.CONFIRMED),
+    _s(0x63, 6, ("GEO62",), Arrival(0, 0, 2), Confidence.CONFIRMED,
+       name="Castle of the Twins, throne room"),
 )
 
 
@@ -957,9 +997,30 @@ def _names_for_curse() -> Mapping[str, str]:
     title)` rather than resolved -- every row's own `name` stays
     unambiguous, since it is keyed by area id and not by map file.
     """
+    return _names_unless_shared(AREAS_CURSE)
+
+
+def _names_for_silver_blades() -> Mapping[str, str]:
+    """The same derivation as `_names_for_curse`, over Silver Blades' rows.
+
+    Two map files are each two named areas -- `GEO31` (`$30`, `$33`) and
+    `GEO62` (`$62`, `$63`) -- and both are left out rather than one name
+    winning. `GEO10` is `$04`'s and `$10`'s, but `$04` is unnamed, so it takes
+    `$10`'s "New Verdigris" without any exclusion. Mine levels 1-8 share one
+    map and `$31` and `$32` load none, so no map-keyed name can be right for
+    them: their own `name` is keyed by area id, which is the only key that can
+    hold them.
+
+    `GEO30` is `$30`'s second map and is loaded by no other row, so it takes
+    `$30`'s name even though `$31` and `$32` walk on it.
+    """
+    return _names_unless_shared(AREAS_SILVER_BLADES)
+
+
+def _names_unless_shared(table: tuple[Area, ...]) -> Mapping[str, str]:
     out: dict[str, str] = {}
     ambiguous: set[str] = set()
-    for a in AREAS_CURSE:
+    for a in table:
         for name in a.geos:
             label = a.name_for(name)
             if not label:
@@ -973,17 +1034,16 @@ def _names_for_curse() -> Mapping[str, str]:
     return MappingProxyType(out)
 
 
-#: Game title -> map file -> the name to show. Silver Blades is present and
-#: empty: its twenty-two areas are decoded down to the map and the disk side
-#: and not one of them has a name yet. Curse carries names for the maps
-#: whose area is unambiguous -- see `_names_for_curse` for the two files it
-#: leaves out on purpose. An empty table degrades to `"area 21"` where a
-#: missing title would degrade to the same thing. Listing them is the
-#: difference between "we know we do not know" and "we never looked".
+#: Game title -> map file -> the name to show. Curse and Silver Blades carry
+#: names for the maps whose area is unambiguous -- see `_names_for_curse` and
+#: `_names_for_silver_blades` for the files each leaves out on purpose. A map
+#: with no entry degrades to `"area 21"`, where a missing title would degrade
+#: to the same thing. Listing a title is the difference between "we know we do
+#: not know" and "we never looked".
 GEO_NAMES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     POOL_OF_RADIANCE: _names_for_pool(),
     CURSE_OF_THE_AZURE_BONDS: _names_for_curse(),
-    SECRET_OF_THE_SILVER_BLADES: MappingProxyType({}),
+    SECRET_OF_THE_SILVER_BLADES: _names_for_silver_blades(),
 })
 
 

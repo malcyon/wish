@@ -568,19 +568,78 @@ def test_every_silver_blades_row_has_had_a_party_put_in_it():
     twenty-two have: twenty-one by a trip through `automap.actions.FastTravel`
     and `$11`, the prologue, by starting there."""
     table = areas.AREAS_SILVER_BLADES
-    assert {a.confidence for a in table} == {Confidence.CONFIRMED}
+    # `confidence` grades the name now, so the four names no script gives
+    # outright read PROBABLE; the party-in-the-area evidence is the set below.
+    assert {a.id for a in table if a.confidence is Confidence.PROBABLE} \
+        == {0x20, 0x40, 0x41, 0x44}
+    assert {a.confidence for a in table if a.id not in (0x20, 0x40, 0x41, 0x44)} \
+        == {Confidence.CONFIRMED}
     assert SILVER_BLADES_WARPED_INTO | {0x11} == {a.id for a in table}
     assert 0x11 not in SILVER_BLADES_WARPED_INTO
 
 
-def test_no_silver_blades_area_has_a_name_yet():
-    """Five arriving scripts name their own place on the first screen a
-    driven party sees, but naming is the other half of this ticket and takes
-    a systematic pass rather than four rows out of twenty-two: a dropdown
-    with five names and seventeen `ECLxx` reads worse than one with none."""
-    table = areas.AREAS_SILVER_BLADES
-    assert all(a.name is None for a in table)
-    assert areas.GEO_NAMES[areas.SECRET_OF_THE_SILVER_BLADES] == {}
+#: Silver Blades' twenty approved names and their grades, read out of the
+#: title's own scripts and approved by Donald on `#15 (Fast Travel for more
+#: than one Gold Box title)`. `$04` and `$11` name no place and stay unnamed.
+#: `$20`, `$40`, `$41` and `$44` are PROBABLE because no script names the place
+#: itself; the other sixteen are CONFIRMED.
+_SILVER_BLADES_NAMES = {
+    0x10: ("New Verdigris", areas.Confidence.CONFIRMED),
+    0x20: ("The Ruins", areas.Confidence.PROBABLE),
+    0x21: ("Well of Knowledge", areas.Confidence.CONFIRMED),
+    0x22: ("Black Circle Headquarters", areas.Confidence.CONFIRMED),
+    0x30: ("The mines, wheel lift", areas.Confidence.CONFIRMED),
+    0x31: ("The mines, levels 1-4", areas.Confidence.CONFIRMED),
+    0x32: ("The mines, levels 5-8", areas.Confidence.CONFIRMED),
+    0x33: ("The mines, temple and bottom levels", areas.Confidence.CONFIRMED),
+    0x34: ("Temple of Tyr", areas.Confidence.CONFIRMED),
+    0x40: ("The Dungeon, lowest level", areas.Confidence.PROBABLE),
+    0x41: ("The Dungeon, middle level", areas.Confidence.PROBABLE),
+    0x42: ("The Dungeon, top level", areas.Confidence.CONFIRMED),
+    0x44: ("The Compound", areas.Confidence.PROBABLE),
+    0x50: ("The Crevasses", areas.Confidence.CONFIRMED),
+    0x51: ("Frost giant village", areas.Confidence.CONFIRMED),
+    0x52: ("The Crevasses, castle gates", areas.Confidence.CONFIRMED),
+    0x60: ("Castle of the Twins, entry level", areas.Confidence.CONFIRMED),
+    0x61: ("Castle of the Twins, second level", areas.Confidence.CONFIRMED),
+    0x62: ("Castle of the Twins, Sanctum of the Dreadlord",
+           areas.Confidence.CONFIRMED),
+    0x63: ("Castle of the Twins, throne room", areas.Confidence.CONFIRMED),
+}
+
+
+def test_the_approved_silver_blades_names_are_landed_and_graded():
+    """Pinned as literals, separately from `goldbox/areas.py`, so a change to
+    either side is caught rather than both agreeing with themselves."""
+    table = {a.id: a for a in areas.AREAS_SILVER_BLADES}
+    landed = {id: (a.name, a.confidence)
+              for id, a in table.items() if a.name is not None}
+    assert landed == _SILVER_BLADES_NAMES
+    assert len(landed) == 20
+    assert {id for id, a in table.items() if a.name is None} == {0x04, 0x11}
+
+
+def test_geo_names_shared_by_two_silver_blades_areas_are_left_out_of_both():
+    """`GEO31` (`$30`, `$33`) and `GEO62` (`$62`, `$63`) are each two named
+    areas on one map file, so the derived table leaves both out rather than
+    letting iteration order pick a winner. `GEO10` is `$04`'s and `$10`'s, but
+    `$04` is unnamed, so `$10`'s name stands. Each area's own `name` is keyed
+    by id and is unaffected."""
+    silver = areas.GEO_NAMES[SECRET_OF_THE_SILVER_BLADES]
+    assert "GEO31" not in silver
+    assert "GEO62" not in silver
+    assert silver["GEO10"] == "New Verdigris"
+    assert silver["GEO32"] == "Temple of Tyr"
+    assert areas.geo_name("GEO31", SECRET_OF_THE_SILVER_BLADES) is None
+    assert areas.area_name("GEO62", SECRET_OF_THE_SILVER_BLADES) == "area 98"
+    assert areas.area_in(0x30, SECRET_OF_THE_SILVER_BLADES).name \
+        == "The mines, wheel lift"
+    assert areas.area_in(0x33, SECRET_OF_THE_SILVER_BLADES).name \
+        == "The mines, temple and bottom levels"
+    assert areas.area_in(0x62, SECRET_OF_THE_SILVER_BLADES).name \
+        == "Castle of the Twins, Sanctum of the Dreadlord"
+    assert areas.area_in(0x63, SECRET_OF_THE_SILVER_BLADES).name \
+        == "Castle of the Twins, throne room"
 
 
 def test_the_silver_blades_arrival_column_is_not_what_confidence_grades():
@@ -623,8 +682,11 @@ def test_the_two_silver_blades_areas_that_load_no_map_say_so():
 def test_a_silver_blades_label_names_its_own_disk_not_a_pool_one():
     """`POOL3` under a Silver Blades session would name a disk the player does
     not own."""
+    row = areas.area_in(0x04, areas.SECRET_OF_THE_SILVER_BLADES)
+    assert row.name is None
+    assert row.label == "ECL04 - GEO10, SILVER-1"
     row = areas.area_in(0x22, areas.SECRET_OF_THE_SILVER_BLADES)
-    assert row.label == "ECL22 - GEO22, SILVER-2"
+    assert row.label == "Black Circle Headquarters - GEO22, SILVER-2"
     assert areas.area(0).label == "New Phlan - GEO00, POOL3"
 
 
@@ -652,7 +714,7 @@ def test_a_curse_label_names_its_lettered_disk_not_a_number():
     # The two titles this could regress stay right.
     assert areas.area(0).label == "New Phlan - GEO00, POOL3"
     silver = areas.area_in(0x22, areas.SECRET_OF_THE_SILVER_BLADES)
-    assert silver.label == "ECL22 - GEO22, SILVER-2"
+    assert silver.label == "Black Circle Headquarters - GEO22, SILVER-2"
 
 
 def test_fast_travel_is_offered_silver_blades_now_that_one_has_been_driven():
