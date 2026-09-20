@@ -1027,6 +1027,18 @@ class Session:
 BAR = (0, 192, 320, 7)
 STATUS = (128, 120, 128, 8)
 
+#: Three character cells of the command bar -- the letters of the first
+#: command after its initial, `REA` of `AREA` -- and nothing of the block's
+#: edge.  The game draws the last-used command knocked out of a filled block,
+#: which changes `Screen.ink` over the whole strip; `Screen.glyphs` is blind to
+#: that only where the rectangle lies wholly inside the block or wholly
+#: outside it, and the whole strip straddles the edges.  On the Curse world
+#: map this hashes `dd3404b3a32c0e83` whether or not `AREA` is drawn as a
+#: block, and it hashed that on no other screen of 27 measured (camp menu, magic
+#: menu, save prompt, quit prompt, grimoire), where the whole-bar `ink` was
+#: `bcd768d8e2fb5743` in one map frame and `9ad0b8cf14a63ad9` in the other.
+MAP_WORD = (8, 192, 24, 7)
+
 #: **The byte map is `goldbox/dos_savegame.py`'s and only its** (#76).  This
 #: harness held a second copy -- and `AREA_ID` had already drifted out of the
 #: map's units: it is the *word index* 395, which is `word_offset($49C5)`, so a
@@ -1257,12 +1269,26 @@ class PoolOfRadiance:
         #: every bar measured, and the movement and camp paths were proven
         #: against `ink`.
         self.world_glyphs: str | None = None
+        #: The map's `Screen.glyphs(MAP_WORD)`, which the command bar's own
+        #: cursor does not move (see `MAP_WORD`); what `on_map` compares.
+        self.world_word: str | None = None
 
     # -- screen predicates, as digests rather than text ------------------
 
     def bar(self) -> str:
         """The command bar, by shape.  See `Screen.ink` for why not by colour."""
         return self.s.capture().ink(BAR)
+
+    def on_map(self, screen: Screen | None = None) -> bool:
+        """Whether the screen is the world map, by a rectangle the cursor leaves alone.
+
+        False until a map has been recorded (`load_game`, `move`).  Whole-bar
+        `bar()` cannot answer this on Curse, where the bar's cursor changes
+        the digest of the same map; see `MAP_WORD`.
+        """
+        if self.world_word is None:
+            return False
+        return (screen or self.s.capture()).glyphs(MAP_WORD) == self.world_word
 
     def combat_bar(self) -> str:
         """The command bar by `Screen.glyphs`, which a fight needs.
@@ -1328,6 +1354,7 @@ class PoolOfRadiance:
         screen = self.s.settle()
         self.world_bar = screen.ink(BAR)
         self.world_glyphs = screen.glyphs(BAR)
+        self.world_word = screen.glyphs(MAP_WORD)
 
     # -- the map ----------------------------------------------------------
 
@@ -1365,6 +1392,7 @@ class PoolOfRadiance:
             screen = self.s.capture()
             self.world_bar = screen.ink(BAR)
             self.world_glyphs = screen.glyphs(BAR)
+            self.world_word = screen.glyphs(MAP_WORD)
             return True
         return self.s.wait_until_ink(BAR, self.world_bar, timeout)
 
@@ -1429,16 +1457,23 @@ class PoolOfRadiance:
         while "THE PARTY MAKES CAMP..." is still being drawn.  Alternating the
         two keys needs no such knowledge: `n` is not a command on the map or in
         the camp menu, and `Escape` backs out of the quit prompt as well.
+
+        The map is recognised by the whole bar matching `world`, or by
+        `on_map()`: Curse redraws the bar's commands with a cursor block the
+        recorded digest may not have, so the same map hashes differently.
         """
         for _ in range(tries):
-            if self.bar() == world:
+            screen = self.s.capture()
+            if screen.ink(BAR) == world or self.on_map(screen):
                 return
-            was = self.bar()
+            was = screen.ink(BAR)
             self.s.key("Escape")
             self.s.settle()
             if self.bar() == was:
                 self.s.key("n")
                 self.s.settle()
+        if self.on_map():
+            return
         self.s.shot("leave_camp_stuck", allow_blank=True)
         raise TimeoutError("could not get back to the map from camp")
 

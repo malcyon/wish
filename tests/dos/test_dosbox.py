@@ -1264,3 +1264,125 @@ def test_memorize_does_not_press_return_when_the_highlight_is_unreadable():
     with pytest.raises(TimeoutError):
         dosbox.Camp(sess).memorize(row=4)
     assert sess.pressed == []
+
+
+# --------------------------------------------------------------------------
+# `leave_camp` and the map's cursor-invariant word.  The digests are measured
+# ones off Curse frames: the camp menu, and the world map with the bar drawn
+# two ways.
+# --------------------------------------------------------------------------
+
+_MAP_INK_A = "bcd768d8e2fb5743"
+_MAP_INK_B = "9ad0b8cf14a63ad9"
+_MAP_WORD = "dd3404b3a32c0e83"
+_CAMP = ("23a03b6481be7abf", "c7750c0fbd268686")
+_MAP_A = (_MAP_INK_A, _MAP_WORD)
+_MAP_B = (_MAP_INK_B, _MAP_WORD)
+
+
+class _Frame:
+    """One canned screen: its whole-bar `ink` and its `MAP_WORD` `glyphs`."""
+
+    def __init__(self, ink: str, word: str):
+        self._ink, self._word = ink, word
+
+    def ink(self, rect) -> str:
+        return self._ink if rect == dosbox.BAR else "unexpected-ink-rect"
+
+    def glyphs(self, rect) -> str:
+        return self._word if rect == dosbox.MAP_WORD else "unexpected-glyphs-rect"
+
+
+class _CampSession:
+    """A `Session` stand-in handing out canned frames to `leave_camp`.
+
+    `capture()` consumes the next frame and repeats the last when the list runs
+    out; `settle()` returns the frame `capture()` would give next without
+    consuming it.
+    """
+
+    def __init__(self, frames):
+        self.frames = [_Frame(*f) for f in frames]
+        self.at = 0
+        self.pressed: list[str] = []
+        self.shots: list[str] = []
+
+    def capture(self):
+        frame = self.frames[min(self.at, len(self.frames) - 1)]
+        self.at += 1
+        return frame
+
+    def settle(self, quiet: float = 0.6, timeout: float = 30.0):
+        return self.frames[min(self.at, len(self.frames) - 1)]
+
+    def key(self, *keys: str, gap: float = 0.0) -> None:
+        self.pressed.extend(keys)
+
+    def shot(self, name: str, allow_blank: bool = False) -> None:
+        self.shots.append(name)
+
+
+def test_leave_camp_recognises_the_map_whose_bar_is_drawn_the_other_way():
+    """The whole bar hashes differently with the cursor block elsewhere.
+
+    Recorded before encamping as `_MAP_INK_A`; back on the same map it reads
+    `_MAP_INK_B`.  Before `on_map`, this pressed 24 keys and raised.
+    """
+    sess = _CampSession([_CAMP, _MAP_B])
+    por = dosbox.PoolOfRadiance(sess)
+    por.world_bar, por.world_word = _MAP_INK_A, _MAP_WORD
+    por.leave_camp(_MAP_INK_A)
+    assert sess.pressed == ["Escape"]
+    assert sess.shots == []
+
+
+def test_leave_camp_still_stops_on_the_bar_it_was_given_when_no_map_word_is_recorded():
+    sess = _CampSession([_CAMP, (_MAP_INK_A, "anything")])
+    por = dosbox.PoolOfRadiance(sess)
+    assert por.world_word is None
+    por.leave_camp(_MAP_INK_A)
+    assert sess.pressed == ["Escape"]
+
+
+def test_leave_camp_declines_the_quit_prompt_when_escape_changes_nothing():
+    sess = _CampSession([_CAMP, _CAMP, _CAMP, _MAP_A])
+    por = dosbox.PoolOfRadiance(sess)
+    por.leave_camp(_MAP_INK_A)
+    assert sess.pressed == ["Escape", "n", "Escape"]
+
+
+def test_leave_camp_gives_up_and_shoots_when_the_map_never_comes_back():
+    sess = _CampSession([_CAMP])
+    por = dosbox.PoolOfRadiance(sess)
+    por.world_word = _MAP_WORD
+    with pytest.raises(TimeoutError):
+        por.leave_camp(_MAP_INK_A, tries=2)
+    assert sess.shots == ["leave_camp_stuck"]
+
+
+class _SaveSession(_CampSession):
+    """Adds what `save_game` reads: a save directory and a slot file the
+    slot-letter keypress writes."""
+
+    def __init__(self, tmp_path, frames):
+        super().__init__(frames)
+        self.save_dir = tmp_path
+
+    def save_file(self, letter: str):
+        return self.save_dir / f"SAVGAM{letter.upper()}.DAT"
+
+    def key(self, *keys: str, gap: float = 0.0) -> None:
+        super().key(*keys, gap=gap)
+        if "b" in keys:
+            self.save_file("b").write_bytes(b"saved")
+
+    def wait_while_ink(self, rect, digest, timeout: float = 30.0) -> bool:
+        return True
+
+
+def test_save_game_still_returns_the_bytes_and_leaves_camp(tmp_path):
+    sess = _SaveSession(tmp_path, [_CAMP, _CAMP, _MAP_B])
+    por = dosbox.PoolOfRadiance(sess)
+    por.world_bar, por.world_word = _MAP_INK_A, _MAP_WORD
+    assert por.save_game("b", timeout=5) == b"saved"
+    assert sess.pressed[:3] == ["e", "s", "b"]
