@@ -128,6 +128,26 @@ def test_a_grade_a_writer_will_take_is_written():
     assert not any("wisdom" in d for d in rep.dropped)
 
 
+def test_a_value_graded_exactly_at_the_floor_asked_for_is_taken():
+    """The floor is the lowest grade a writer will stand behind, so a value
+    graded at it is written; only a lower grade is refused."""
+    char = NeutralCharacter("test")
+    char.set("wisdom", 9, "somewhere", Confidence.PROBABLE)
+    taken = char.take("wisdom", Confidence.PROBABLE)
+    assert taken is not None
+    assert taken.value == 9
+
+
+def test_a_probable_value_is_refused_when_confirmed_is_asked_for():
+    """PROBABLE and CONFIRMED are different grades: a writer that will only
+    stand behind CONFIRMED must not be handed a PROBABLE value."""
+    char = NeutralCharacter("test")
+    char.set("wisdom", 9, "somewhere", Confidence.PROBABLE)
+    assert char.take("wisdom", Confidence.CONFIRMED) is None
+    char.set("strength", 16, "somewhere", Confidence.CONFIRMED)
+    assert char.take("strength", Confidence.CONFIRMED) is not None
+
+
 def test_a_lowercase_name_from_a_non_dos_source_is_folded_to_capitals():
     """`#290 (A character named in lower case draws as punctuation on the
     C64, and only the DOS import folds the name)`: `goldbox.dos_codec.c64_name`
@@ -509,6 +529,31 @@ def test_the_closing_sweep_names_a_field_the_codec_never_declared():
     w, rep = _writer(char)
     w.finish()
     assert any("takes nothing from it" in d for d in rep.dropped)
+
+
+def test_emitting_a_value_reports_the_drops_that_rode_on_it():
+    """A value the writer does write still carries what the reader left behind
+    to produce it, and that reaches the report beside the bytes it became."""
+    char = NeutralCharacter("test")
+    char.set("innate_effects", [18], "the .SPC file",
+             dropped=[".SPC effect 90: a running effect"])
+    w, rep = _writer(char)
+    v = w.use("innate_effects")
+    assert v is not None
+    w.emit(v, "traits", 0, 2)
+    assert rep.dropped == [".SPC effect 90: a running effect"]
+
+
+def test_the_summary_lists_the_count_then_each_warning_then_each_drop():
+    rep = neutral.Report(total=4)
+    rep.note(0, 2, "first two bytes")
+    rep.warnings.append("a value was clamped")
+    rep.dropped.append("a field with no home")
+    assert rep.summary().split("\n") == [
+        "2/4 bytes accounted for",
+        "  WARNING: a value was clamped",
+        "  dropped: a field with no home",
+    ]
 
 
 # --- the C64 reader, as far as the Amiga and YAML writers need it ------------
