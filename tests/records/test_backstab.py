@@ -78,7 +78,7 @@ def test_the_attack_path_reads_the_level_arrays_and_computes_the_multiplier(
     once the regain helper returns true. The damage path multiplies by
     ``((effective level - 1) // 4) + 2``, where effective level is the current
     thief slot plus the former thief slot times that same helper's result.
-    ``class_bits`` is not read anywhere in this path.
+    ``class_bits`` is not read by the bounded predicate routine.
     """
     finding = _finding(stem)
     for key, value in expected.items():

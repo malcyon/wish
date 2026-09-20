@@ -22,8 +22,10 @@ measured.
 
 This also settles the step boundaries. Levels 1-4 give ×2, 5-8 give ×3, 9-12
 give ×4 and 13-16 give ×5. The subtraction before division is present in both
-later titles. DOS Pool of Radiance lacks it and steps at levels 4, 8 and 12;
-that earlier reading is in
+later titles. The prior DOS Pool of Radiance evidence from
+`#560 (Does Pool of Radiance grant thief abilities off class_bits, or off the
+level array and skill bytes?)` found no subtraction and steps at levels 4, 8
+and 12; that reading is in
 `docs/221-thief-abilities-in-dos-pool-of-radiance.md`.
 
 ## The two attack paths
@@ -64,15 +66,16 @@ The predicate has three callers in each overlay:
 
 So the gate is shared by damage, the attack adjustment and the printed
 `-Backstabs-` action. `class_bits` (`0x12B` in Curse, `0x130` in Silver Blades)
-does not occur in any of these instruction paths. CONFIRMED from the named
-sites; this is a bounded claim about backstab, not a census of every use of
+does not occur in either bounded predicate routine. CONFIRMED from the direct
+ES-relative operands between each predicate's prologue and the next routine;
+this is not a census of the three caller routines or of every use of
 `class_bits` in either overlay.
 
 ## Scope and negative results
 
-Issue `#607 (Show a thief's backstab bonus in the Character Editor)` now has static
-proof for all three DOS titles the editor opens. The C64 and Amiga engines
-remain unread. No multiplier table exists in these two DOS paths; the formula
-is inline. A live damage experiment is unnecessary to identify the record
-fields or arithmetic, but would independently corroborate the instruction
-read.
+Issue `#607 (Show a thief's backstab bonus in the Character Editor)` now has
+static proof for the DOS Curse and Silver Blades engines read here. No
+multiplier table exists in these two paths; the formula is inline. A live
+damage experiment is unnecessary to identify their record fields or
+arithmetic, but would independently corroborate the instruction read. This
+write-up makes no claim about another title or port.
