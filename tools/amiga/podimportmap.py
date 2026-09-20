@@ -22,10 +22,12 @@ which Pools of Darkness splits between `0x5E`-`0x5F` and `0x184`-`0x185`.
     tools/amiga/podimportmap.py --json out.json
 
 `--thac0` answers the one field the importer could not: **this title keeps no
-`attack_level`**.  Its attack table is indexed by the class level, in two
-routines that share one table, and the arithmetic reproduces the stored
-`thac0_base` byte of every `.pc` on the player's disks -- see
-:func:`thac0_table` and :func:`check_thac0`.
+`attack_level`**.  The two routines that derive `thac0_base` index one attack
+table with a class level, and the arithmetic reproduces the stored byte of
+every `.pc` on the player's disks -- see :func:`thac0_table`,
+:func:`dual_class_level_counts` and :func:`check_thac0`.  `--thac0` combines
+with `--check` and `--json`, and the exit status is non-zero if any of them
+disagrees with the engine.
 
 The executable is read out of the player's own disk images, read-only, and
 nothing is written anywhere but `--json`.  Needs `capstone`.
@@ -254,18 +256,22 @@ def check(found: list[dict]) -> int:
 
 
 #: The attack table, as a displacement off the small-data register: the two
-#: routines that fill `thac0_base` both reach it with `lea.l -$621e(a4), a0`,
+#: routines that derive `thac0_base` both reach it with `lea.l -$621e(a4), a0`,
 #: which is `data + 0x1DE0`.  Seven rows, one a class slot, twenty-two bytes
 #: each -- one a level, indexed from 1, with the engine's own cap of 21 --
 #: and every entry is the family's stored `60 - THAC0`.
 THAC0_TABLE = 0x1DE0
 THAC0_TABLE_STRIDE = 0x16
 THAC0_TABLE_CAP = 0x15
-#: The two sites, for anybody re-deriving this: `0x03C294` in the routine
-#: that rebuilds a character's derived fields, and `0x00EFDC` in character
-#: creation.  Both index the same table with the class level and nothing
-#: else, which is what says this title has no `attack_level` byte.
+#: The two routines that derive `thac0_base`, at the instruction in each that
+#: stores the table entry: `0x03C294` rebuilds a character's derived fields
+#: and `0x00EFDC` is character creation.  Both index the same table with a
+#: class level and nothing else, which is what says this title has no
+#: `attack_level` byte.
 THAC0_SITES = (0x03C294, 0x00EFDC)
+#: The race the gate at `0x03CFB2` tests for, `cmpi.b #$5, $58(a2)`: the
+#: human, which is the only race AD&D lets dual-class.
+DUAL_CLASS_RACE = amiga_pod.RACES.index("HUMAN")
 
 
 def thac0_table(data: bytes) -> list[list[int]]:
@@ -279,23 +285,59 @@ def thac0_table(data: bytes) -> list[list[int]]:
         raise SystemExit("this build is not a small-data program")
     at = hunk.file_offset + THAC0_TABLE
     rows = len(amiga_pod.CLASS_LEVEL_SLOTS)
+    if not 0 <= at or at + rows * THAC0_TABLE_STRIDE > len(data):
+        raise SystemExit(
+            f"the attack table would run from {at:#x} to "
+            f"{at + rows * THAC0_TABLE_STRIDE:#x} in a {len(data)}-byte "
+            f"executable: this is not the build the displacement was read in")
     return [list(data[at + n * THAC0_TABLE_STRIDE:
                       at + (n + 1) * THAC0_TABLE_STRIDE])
             for n in range(rows)]
 
 
-def thac0_base(table: list[list[int]], class_levels, former_levels) -> int:
-    """What the engine computes into `thac0_base`, from the class levels.
+def dual_class_level_counts(char: "amiga_pod.PodCharacter") -> bool:
+    """Whether the engine lets this character's former class levels count.
+
+    `0x03D046` asks `0x03D020` before it reads the former array, and the
+    answer is two tests, both read off the listing:
+
+    * `0x03CFB2` returns 0 unless the record's race byte at `0x58` is
+      :data:`DUAL_CLASS_RACE`; for a human it returns the level in the first
+      non-zero class slot, scanning slots 0 to 5 and falling through to slot 6.
+    * `0x03D020` returns 1 only when that level is **greater than** the byte
+      at `0x8A`, which is the level he left his old class at.
+
+    When it returns 0 the former array contributes nothing at all, which is
+    what makes this a gate rather than the plain `max` of the two arrays.
+
+    **Read from the listing and not measured**: `former_class_levels` is zero
+    in all nineteen `.pc` files on the Amiga disks, so no record on this
+    machine exercises either test.
+    """
+    if char.race != DUAL_CLASS_RACE:
+        return False
+    levels = char.class_levels
+    current = next((level for level in levels[:6] if level), levels[6])
+    return current > char.former_level
+
+
+def thac0_base(table: list[list[int]],
+               char: "amiga_pod.PodCharacter") -> int:
+    """What the engine derives into `thac0_base`, from the class levels.
 
     `0x03C238` walks the seven class slots, asks `0x03D046` for each one's
-    level -- `max(class_levels[i], former_class_levels[i])`, since a
-    dual-classed character keeps the fighting level he earned -- caps it at
-    21 and keeps the best row entry.  No byte of the record takes part but
-    the two level arrays, which is the whole finding.
+    level, caps it at 21 and keeps the best row entry.  That level is the
+    slot's own `class_levels` entry, and the `former_class_levels` entry as
+    well when :func:`dual_class_level_counts` says the engine's gate lets it
+    in.  No byte of the record takes part but the two level arrays, the race
+    and `former_level`, which is the whole finding.
     """
+    dual = dual_class_level_counts(char)
     best = 0
     for n, row in enumerate(table):
-        level = max(class_levels[n], former_levels[n])
+        level = char.class_levels[n]
+        if dual:
+            level = max(level, char.former_class_levels[n])
         if level:
             best = max(best, row[min(level, THAC0_TABLE_CAP)])
     return best
@@ -306,7 +348,7 @@ def check_thac0(table: list[list[int]], records: dict[str, bytes]) -> int:
     bad = 0
     for name, raw in sorted(records.items()):
         char = amiga_pod.PodCharacter.from_bytes(raw)
-        want = thac0_base(table, char.class_levels, char.former_class_levels)
+        want = thac0_base(table, char)
         if want != char.thac0_base:
             print(f"  {name}: the class levels give {want}, the record holds "
                   f"{char.thac0_base}")
@@ -325,26 +367,32 @@ def main() -> int:
     ap.add_argument("--json", type=pathlib.Path, help="write the map here")
     args = ap.parse_args()
 
+    bad = 0
     if args.thac0:
         table = thac0_table(executable())
+        print("the attack table at data + "
+              f"{THAC0_TABLE:#x}, indexed by class level, read at "
+              + " and ".join(f"{site:#08x}" for site in THAC0_SITES) + ":")
         for name, row in zip(amiga_pod.CLASS_LEVEL_SLOTS, table):
             print(f"{name:<11} " + " ".join(f"{b:3d}" for b in row))
         from tools.amiga.podpcregions import pc_files
 
-        return check_thac0(table, pc_files())
+        bad |= check_thac0(table, pc_files())
 
+    if not (args.check or args.json) and args.thac0:
+        return bad
     found = read()
     if args.json:
         args.json.write_text(json.dumps(found, indent=1))
     if args.check:
-        return check(found)
+        return bad | check(found)
     print(f"{'Silver Blades field':<30} {'idx':>3} {'len':>4}  "
           f"{'SSB':>6} {'PoD':>6}")
     for move in found:
         print(f"{move['field']:<30} {move['index']:>3} {move['size']:>4}  "
               f"{move['src']:#06x} {move['dst']:#06x}"
               f"{'  block' if move['block'] else ''}")
-    return 0
+    return bad
 
 
 if __name__ == "__main__":

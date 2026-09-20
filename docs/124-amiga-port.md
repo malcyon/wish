@@ -1785,7 +1785,7 @@ name `goldbox.dos_port.POOLS_OF_DARKNESS` gives the field.
 | `0x0B9`, `0x0BA` | 1, 1 | `portrait_head`, `portrait_body` | importer; zero in 19 of 19, and this title draws no sheet face |
 | `0x0BB`, `0x0BC` | 1, 1 | `icon_head`, `icon_body` | importer |
 | `0x0BD` | 1 | `combat_figure` | importer; the code compares it at 7 and 8 |
-| `0x0BE` | 1 | `size` | importer; 1 for the corpus's one dwarf, 2 for the rest |
+| `0x0BE` | 1 | `size` | importer; 1 for the one dwarf on the disks, 2 for the rest |
 | `0x0BF` | 6 | `icon_colours` | importer; `91 a2 b3 c4 e6 f7` in 15 of 19 |
 | `0x0C5` | 2 | `unnamed_1a4` | importer; `02 02` in 19 of 19, as DOS in 12 of 12 |
 | `0x0C7` | 1 | a **stale** cached item count | importer; 3 in 17 of 19 against four to six items |
@@ -1817,8 +1817,8 @@ level and keeps no fighting level anywhere. The bytes nothing claims are
   told them apart; the importer copies Silver Blades' thirteen-byte derived
   tail one for one, and `hp_current` is one byte in it. `0x190` is
   `roster_tail`'s last byte and is zero in 19 of 19.
-* **`0x0B8` is `hp_rolled`, not a portrait.** The corpus is the AD&D table
-  exactly: `hp_max - 0x0B8` is 22 for each magic-user 14 (eleven hit dice at
+* **`0x0B8` is `hp_rolled`, not a portrait.** The nineteen files are the
+  AD&D table exactly: `hp_max - 0x0B8` is 22 for each magic-user 14 (eleven hit dice at
   +2 for constitution 18), 18 for each cleric 14 (nine at +2), 40 for each
   ranger 13 (ten at +4), 36 for the paladin 12 and the fighter 14 (nine at
   +4), 20 for the thief 16 (ten at +2), and 15 for HOPE, a fighter 5 whose
@@ -1839,8 +1839,8 @@ and lady gwendolyne on an alternate rip. All three carry an identical mask,
 and it is the DOS cleric's spellbook **plus exactly seventeen ids**: 9-21,
 which is the magic-user's whole level-1 group, and 77-80, which is the
 druid's. That is a fact about those three characters rather than about the
-encoding — no other class in the corpus shows anything like it — and it is
-UNKNOWN. **The experiment**: read Pools of Darkness' own cleric grant table
+encoding — no other class among the nineteen shows anything like it — and it
+is UNKNOWN. **The experiment**: read Pools of Darkness' own cleric grant table
 the way `tests/secret_of_the_silver_blades/test_silverblades.py::_grant_table` reads Silver Blades', and
 see whether a cleric is handed those two groups. If he is, the game gives its
 clerics magic-user and druid spells and the three records are right; if he is
@@ -1857,11 +1857,9 @@ not fill then: nine are fields *this title* has on neither port (four coins,
 reader had not been taught to walk, one was `attack_level`, and one is
 `npc_control_byte`, which a player character does not have.
 
-**The writer is untouched and still emits zero for all 27**, which is
+**What the writer does with all of this is §1.19**, which is
 `#475 (The Amiga Pools of Darkness writer leaves 27 decoded fields zero, and
-one of them may mark a converted character as out of the party)` — including
-`active`, where 19 of 19 records the game wrote hold 1 and this writer leaves
-the other two ports' out-of-the-party value.
+one of them may mark a converted character as out of the party)`.
 
 ### 1.18 The tail, walked, and the attack table that has no field (#462 (Decode the rest of the Amiga Pools of Darkness .pc: 37 of 75 neutral fields have no home in it, so a converted character loses his spells and possessions))
 
@@ -1903,14 +1901,14 @@ nodes on this machine.
 
 #### `attack_level`: the engine works it out and stores nothing
 
-**Two routines fill `thac0_base` at `0x07F` and both index one attack table
-with the class level.** The derived-fields rebuild at `0x03C238` walks the
-seven class slots, asks `0x03D046` for each one's level — which returns
-`max(class_levels[i], former_class_levels[i])`, so a dual-classed character
-keeps the fighting level he earned — caps it at 21 and keeps the best entry
-of `data + 0x1DE0`, a table of seven rows of 22 bytes in the family's stored
-`60 - THAC0` form. Character creation does the same at `0x00EF82`, on its own
-global, with no cap. **Neither reads any other byte of the record.**
+**The two routines that derive `thac0_base` at `0x07F` both index one attack
+table with a class level**, and a displacement search over the executable
+finds no third. The derived-fields rebuild at `0x03C238` walks the seven
+class slots, asks `0x03D046` for each one's level, caps it at 21 and keeps
+the best entry of `data + 0x1DE0`, a table of seven rows of 22 bytes in the
+family's stored `60 - THAC0` form. Character creation does the same at
+`0x00EF82`, on its own global, with no cap. **Neither reads any other byte
+of the record.**
 
 ```
 03c26a: muls.w #$16, d0           ; 22 bytes a class row
@@ -1920,19 +1918,47 @@ global, with no cap. **Neither reads any other byte of the record.**
 03c294: move.b (a0, d0.l), $7f(a2)
 ```
 
-The arithmetic reproduces the stored `thac0_base` byte of **19 of 19** `.pc`
-files — single-classed, dual-classed and the two multi-classed ones — so the
-reading is corroborated by every record on the disks and not by the listing
-alone. `tools/amiga/podimportmap.py --thac0` prints the table off the
-player's own executable and runs the check.
+**`0x03D046` is not `max(class_levels[i], former_class_levels[i])`, and this
+page said it was.** It reads the former array only when `0x03D020` returns 1,
+and that is two tests rather than one:
+
+* `0x03CFB2` returns 0 unless the record's race byte at `0x058` is **5, the
+  human** (`cmpi.b #$5, $58(a2)`), which is the only race AD&D lets
+  dual-class. For a human it returns the level in the first non-zero class
+  slot, scanning slots 0 to 5 and falling through to slot 6.
+* `0x03D020` compares that level with the byte at `0x08A`, `former_level`,
+  and returns 1 only when it is **greater** — which is AD&D's rule that a
+  dual-classed character uses his old class again only once his new level
+  passes the level he left at.
+
+With the gate shut the former array contributes nothing at all. Corrected
+here because the plain `max` would give a converted character the wrong
+THAC0 the moment his new class was the lower of the two, and because
+`tools/amiga/podimportmap.py`'s own arithmetic was written from it.
+
+**What the nineteen files corroborate, and what they do not.** The
+arithmetic reproduces the stored `thac0_base` byte of **19 of 19** `.pc`
+files, which fixes the table's address, its stride and the rule that the
+best of the seven class slots wins — three of the nineteen are multi-classed
+(BOHLO BART AB a fighter 9/thief 13, SILBERMO and TRIPEL TURBO
+fighter/magic-user/thieves), so that last part is not a single-class claim.
+**None of the nineteen is dual-classed**: `former_class_levels` is zero in
+all of them, so the gate above and the cap at level 21 are read off the
+listing and are measured by nothing.
+`tools/amiga/podimportmap.py --thac0` prints the table off the player's own
+executable and runs the check.
 
 So the record's last UNKNOWN is not a field nobody has found: **Pools of
 Darkness keeps no `attack_level`**, and the reader names it as a field the
 title has on neither port rather than as one still unlocated. It bears on
 `#527 (Every Gold Box engine keeps a fighting level in attack_level and our
 Pools of Darkness conversion writes 0)` from the other side: DOS Pools of
-Darkness holds 0 at `0x130` in 52 of 52 records, which is this same engine
-keeping no fighting level.
+Darkness holds 0 at `0x130` in 52 of 52 records, and the **prediction** is
+that its `GAME.OVR` derives the fighting level the same way this binary
+does. That is inference from the Amiga executable and nothing has read the
+DOS one — `tools/dos/dosfieldrefs.py` over this title's own `GAME.OVR` is
+the run that would settle it, and what it should find is no site indexing an
+attack table by `0x130`.
 
 #### What it leaves
 
@@ -1949,6 +1975,69 @@ got.
 **The single unapproved warning is gone rather than reworded.** It said the
 part of the file holding possessions and running magic had not been read, and
 that stopped being true.
+
+### 1.19 The writer, filling what the reader reads (#475 (The Amiga Pools of Darkness writer leaves 27 decoded fields zero, and one of them may mark a converted character as out of the party))
+
+§1.17 decoded the record and §1.18 taught the reader its tail; the writer
+emitted zero for all 27 of the decoded fields until this run. **A character
+converted into the Amiga now arrives with his spells, his possessions, his
+running magic and his state**, and the one that was not merely missing is
+`active` at `0x184`: 19 of 19 records the game itself wrote hold 1 there, 63
+`tst.b $184(aN)` sites read it, and this writer left the value the other two
+ports draw a name red for.
+
+#### What it writes now
+
+| what | where | how it is checked |
+|---|---|---|
+| `status`, `hostile`, `active`, `quickfight` | `0x05E`, `0x05F`, `0x184`, `0x185` | round trip, and `active` is 1 on both routes into the writer |
+| `thac0_base`, `hp_rolled`, `unnamed_0ab`, `experience_award` | `0x07F`, `0x0B8`, `0x0B5`, `0x054` | round trip, 19 of 19 |
+| `size` | `0x0BE` | round trip; the neutral 0/1 is this port's 1/2 |
+| the NPC control byte | `0x093` | written when the source has one |
+| `former_levels`, and the level he left at | `0x0A4`, `0x08A` | the two dual-classed DOS records, ABAGAIL and PAINE |
+| the permanent half of each ability pair | `0x070`, `0x07C` | round trip |
+| `attack_forms`, as a block | `0x0AB` | round trip, 19 of 19 |
+| the spellbook | `0x159` | round trip, 19 of 19 |
+| the three spell-slot arrays | `0x169`, `0x172`, `0x17B` | round trip, 19 of 19 |
+| the item region, and its count | `404`, `0x008` | **93 of 93 items byte for byte** |
+| the effect chain, and its head | after the items, `0x004` | 11 of 11 nodes but for two bytes named below |
+
+**The tail is the strongest of these.** A `.pc` read into the neutral record
+and written back out reproduces every one of the 93 item nodes on the disks
+byte for byte, because the sixteen-byte projection both ports share carries
+all fifteen DOS item fields a node holds and the three insertion bytes are
+zero on both sides. The file's length matches its source in 19 of 19.
+
+Two bytes of an effect node do not survive and both are named rather than
+left to a diff: the byte at node offset 1, which nothing in the engine reads
+and the neutral record has nowhere for — non-zero in 7 of the 11 nodes here —
+and the four-byte `next`, which is a live Amiga heap address in a file the
+game wrote and `1` in one this writes. **The stored pointer is a boolean**:
+the loader allocates each node and overwrites the value before the read that
+fills it, which is read out of the two later Amiga titles' own loaders
+(`goldbox.amiga_later`'s `AMIGA_LATER_CHAIN_PRESENT`) and is how §1.16 reads
+this one. A scroll is written with its own `quantity` further twenty-byte
+nodes after it, empty, so that the loader's walk stays in step; nothing else
+in the file would be where the loader expected it otherwise.
+
+#### What is still zero, and why
+
+| field | why not |
+|---|---|
+| `spells_memorised`, `0x0CC` | **which end the region fills from is not established.** DOS fills its own 141 bytes backwards from the end; all nineteen files here are zero, so no specimen can say. Writing it the wrong way round hands a character somebody else's spells |
+| `combat_figure`, `0x0BD` | the two ports' bytes are **not the same number**: this port holds 13 in 17 of 19 and DOS holds the marching slot, 0 to 5 across each party of six, in 12 of 12. What 13 means here is UNKNOWN |
+| the icon art, `0x0BB`-`0x0BC` and `0x0BF`-`0x0C4` | a value past the end of `CHEAD.TLB`'s 29 items makes the loader refuse the file with `ERROR: INVALID ITEM`, and nothing has established what it accepts |
+| `encumbrance`, `thac0_current`, `armour_class`, `movement_current` | the game recomputes them on load, each demonstrated by a probe that wrote a wrong value and read the right one back off the sheet |
+| `armour_class_base`, `0x0B3` | written as the unarmoured `60 - 10`, which is what 19 of 19 `.pc` files — whose characters all carry items — and 12 of 12 DOS records hold |
+| `roster_tail`, `0x188` | three of its nine bytes are in the recomputed set; the rest has not been watched being rebuilt |
+| five bytes no neutral field names | `paladin_cures` `0x080`, `icon_dimension` `0x082` (1 in 19 of 19), `unnamed_1a4` `0x0C5` (`02 02` in 19 of 19), the stale item count `0x0C7` and `hands_used` `0x0C8` |
+
+**None of this has been in front of the game yet**, and that is the boundary
+of the claim: the bytes match and the lengths match, and a conversion is not
+proven until a party made this way walks. The two experiments a driven
+session owes are the memorised list's fill direction and whether writing the
+combat block shows on the sheet — the STATUS line for `status`, and the party
+panel's red name for `active`.
 
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 

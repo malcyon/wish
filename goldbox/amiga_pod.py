@@ -86,8 +86,9 @@ SCROLL_TYPE_INDEX = 0x49
 #: One effect node, the same ten bytes all three Amiga titles keep: the id at
 #: 0, one byte nobody has named at 1, the duration as a big-endian word at 2,
 #: DOS's two remaining payload bytes at 4 and 5, and the four-byte `next` at
-#: 6. All eleven nodes in the corpus read `<id> ?? 00 00 FF 00`, and
-#: `<id> 00 00 FF 00` is `goldbox.dos_codec.INNATE_PAYLOAD` exactly.
+#: 6. All eleven nodes in the nineteen `.pc` files on the Amiga disks read
+#: `<id> ?? 00 00 FF 00`, and `<id> 00 00 FF 00` is
+#: `goldbox.dos_codec.INNATE_PAYLOAD` exactly.
 EFFECT_FILE_SIZE = 10
 EFFECT_DURATION = 2
 EFFECT_NEXT = 0x006
@@ -102,6 +103,13 @@ EFFECT_UNNAMED = 1
 #: loader only tests it, so a `.pc` may carry anything non-zero for "there are
 #: effects".
 EFFECT_CHAIN = 0x004
+#: What this writer puts in the effect chain head, and in a node's own `next`,
+#: when another node follows. Any non-zero longword does: the loader allocates
+#: each node and overwrites the stored pointer with the address it got back
+#: before the read that fills it, so the value is a boolean the loader tests
+#: and never an address it follows. 1 cannot be mistaken for an Amiga heap
+#: address in a dump, which is why it rather than another number.
+POD_CHAIN_PRESENT = 1
 #: The head of the item chain in memory, and **the item count in a file**:
 #: `404 + 20 * this + 10 * effects` accounts for every byte of every one of the
 #: nineteen `.pc` files on the Amiga disks, with no remainder. The stale cached
@@ -163,9 +171,10 @@ UNNAMED_07E = 0x07E
 #: 12: 44 for a magic-user 14, 48 for a cleric 14, 50 for a paladin 12, 52 for
 #: a ranger 13.
 THAC0_BASE = 0x07F
-#: A paladin's remaining cure-disease uses. 1 for JORILD and TURBO K, the
-#: corpus's two paladins, and 0 for the other seventeen -- which is DOS, where
-#: `paladin_cures` is 1 for Guy de Valois and DEMELTINA and 0 for the rest.
+#: A paladin's remaining cure-disease uses. 1 for JORILD and TURBO K, the two
+#: paladins on the Amiga disks, and 0 for the other seventeen -- which is DOS,
+#: where `paladin_cures` is 1 for Guy de Valois and DEMELTINA and 0 for the
+#: rest.
 PALADIN_CURES = 0x080
 #: One byte, not a word: the ramp put 128 at 0x080 and 129 at 0x081 and the
 #: sheet said `129`, where a big-endian word would have said 32897.
@@ -212,8 +221,9 @@ UNNAMED_0AB = 0x0B5
 #: Hit points' high-water mark, the third of the level-drain trio: `0x015FB4`
 #: raises it to `HP_MAX` whenever the maximum rises.
 HP_MAX_HIGHEST = 0x0B6
-#: Hit points as rolled, before the constitution bonus. The arithmetic in the
-#: corpus is the AD&D table exactly: `hp_max - 0x0B8` is 22 for each
+#: Hit points as rolled, before the constitution bonus. The arithmetic across
+#: the nineteen `.pc` files is the AD&D table exactly: `hp_max - 0x0B8` is 22
+#: for each
 #: magic-user 14 (eleven hit dice at +2), 18 for each cleric 14 (nine at +2),
 #: 40 for each ranger 13 (ten at +4), 36 for the paladin 12 and the fighter 14
 #: (nine at +4), 20 for the thief 16 (ten at +2) and 15 for HOPE, a fighter 5
@@ -232,8 +242,8 @@ ICON_BODY = 0x0BC
 #: code compares it against 7 and 8 and writes 0xFF for none.
 COMBAT_FIGURE = 0x0BD
 #: 1 small, 2 medium -- DOS's own encoding, one greater than the neutral
-#: `size_small`. 1 for BOHLO BART AB, the corpus's one dwarf, and 2 for the
-#: eighteen humans, elves and half-elves.
+#: `size_small`. 1 for BOHLO BART AB, the one dwarf on the Amiga disks, and 2
+#: for the eighteen humans, elves and half-elves.
 SIZE = 0x0BE
 ICON_COLOURS = 0x0BF
 ICON_COLOUR_COUNT = 6
@@ -245,7 +255,7 @@ UNNAMED_1A4 = 0x0C5
 #: exactly in 19 of 19.
 ITEM_COUNT_CACHE = 0x0C7
 #: How many hands the readied weapon takes. 2 in 18 of 19, as DOS's is in 12
-#: of 12; the one exception is `?T`, the corpus's thief.
+#: of 12; the one exception is `?T`, the thief among the nineteen.
 HANDS_USED = 0x0C8
 UNNAMED_0C9 = 0x0C9
 UNNAMED_0CA = 0x0CA
@@ -350,10 +360,10 @@ THIEF_SKILLS = 0x08B
 THIEF_SKILL_COUNT = 8
 ATTACKS_PER_ROUND_HALVES = ATTACK_FORMS
 CLASS_BITS = 0x0B7
-#: **This said 0x0B8 until #462, and 0x0B8 is `hp_rolled`** -- see
-#: :data:`HP_ROLLED`. The portrait pair is 0x0B9-0x0BA, which the Silver
-#: Blades importer fills from that title's own `portrait_head` and
-#: `portrait_body` and which nothing in this title ever reads back.
+#: The portrait pair is 0x0B9-0x0BA, which the Silver Blades importer fills
+#: from that title's own `portrait_head` and `portrait_body` and which nothing
+#: in this title ever reads back. The byte in front of it is
+#: :data:`HP_ROLLED`.
 PORTRAIT_BODY = PORTRAIT_HEAD + 1
 
 #: The game recomputes these on load and ignores what the file holds, so the
@@ -556,6 +566,28 @@ class PodItem:
             out[f.offset:f.offset + f.size] = chunk
         return bytes(out)
 
+    @classmethod
+    def from_dos_bytes(cls, record: bytes) -> "PodItem":
+        """One DOS item record as the twenty bytes a `.pc` holds.
+
+        The inverse of :meth:`to_dos_bytes`: the fields below `0x02E` are the
+        rendered display line and the chain pointer, which no file carries and
+        the game rebuilds, and every `u16` is byte-swapped back -- it is a
+        68000. The three insertion bytes stay zero, which is what the game's
+        own item constructor leaves in them.
+        """
+        if len(record) != dos_port.ITEM_SIZE:
+            raise ValueError(
+                f"a DOS item is {dos_port.ITEM_SIZE} bytes, got {len(record)}")
+        out = bytearray(ITEM_FILE_SIZE)
+        for name, f in ITEM_FIELDS.items():
+            at = ITEM_FIELD_AT[name]
+            chunk = record[f.offset:f.offset + f.size]
+            if f.kind in (Kind.U16LE, Kind.UINT_LE):
+                chunk = chunk[::-1]
+            out[at:at + f.size] = chunk
+        return cls(bytes(out))
+
 
 def pod_effect_to_dos(node: bytes) -> bytes:
     """One ten-byte effect node as the nine bytes a DOS `.EFX` record holds.
@@ -572,6 +604,21 @@ def pod_effect_to_dos(node: bytes) -> bytes:
             f"a Pools of Darkness .pc effect node is {EFFECT_FILE_SIZE} "
             f"bytes, got {len(node)}")
     return bytes((node[0], node[3], node[2], node[4], node[5])) + bytes(4)
+
+
+def pod_effect_from_dos(node: bytes) -> bytes:
+    """One nine-byte DOS `.EFX` record as the ten bytes a `.pc` holds.
+
+    The inverse of :func:`pod_effect_to_dos`: the byte at 1 is the one nothing
+    has named and is written zero, the duration is byte-swapped into `0x002`,
+    and the four-byte `next` is left NULL for :meth:`PodWriter.to_bytes` to
+    set, which is the only place that knows whether a node follows.
+    """
+    if len(node) != dos_port.EFFECT_SIZE:
+        raise ValueError(
+            f"a DOS effect record is {dos_port.EFFECT_SIZE} bytes, "
+            f"got {len(node)}")
+    return bytes((node[0], 0, node[2], node[1], node[3], node[4])) + bytes(4)
 
 
 @dataclass(frozen=True)
@@ -897,7 +944,7 @@ class PodCharacter:
         Each holds three more spell ids in the bytes the item constructor
         calls `charges`, `effect` and `power`, and the neutral record has
         nowhere to put them. **Empty in 19 of 19 files on the Amiga disks**:
-        no item in the corpus is a scroll.
+        no item in the nineteen files is a scroll.
         """
         return self._tail()[1]
 
@@ -911,11 +958,19 @@ class PodCharacter:
 class PodWriter:
     """Build a `Save/NAME.pc` Amiga Pools of Darkness will load.
 
-    Only fields a probe has put on the character sheet are written. Everything
-    else is left zero, which is what the payloads that loaded had: the heap
-    pointers at 0x00-0x5F, the item region from 0x0B6, and the derived block
-    the game recomputes anyway. `provenance()` says where every non-zero byte
-    of the output came from, so nothing lands in the file uncredited.
+    Every field the record is decoded for is written. What is left zero is the
+    heap pointers at 0x00-0x5F, which the loader overwrites; the derived block
+    the game recomputes on load (:data:`DERIVED`); the icon art at 0x0BB-0x0BD
+    and 0x0BF-0x0C4, where a value past the end of `CHEAD.TLB` makes the loader
+    refuse the file; and the memorised list at 0x0CC, whose fill direction
+    nothing has watched this port choose. `provenance()` says where every non-zero byte of the
+    output came from, so nothing lands in the file uncredited.
+
+    The tail past the 404-byte record is built here too: `items` are twenty
+    bytes each and the count goes in the longword at 0x008, a scroll is
+    followed by its own `quantity` further nodes so the loader's walk stays in
+    step, and `effects` are ten bytes each with a chain head and a `next` that
+    are non-zero exactly when a node follows.
     """
 
     name: str
@@ -942,6 +997,39 @@ class PodWriter:
     thief_skills: tuple[int, ...] | None = None
     class_bits: int | None = None
     treasure_share: int | None = None
+    #: The combat block, which this title splits between 0x05E-0x05F and
+    #: 0x184-0x185. `active` is 1 in 19 of 19 records the game itself wrote and
+    #: 0 is the out-of-the-party value on the other two ports, so a record this
+    #: writer makes joins the party unless the caller says otherwise.
+    status: int = 0
+    hostile: bool = False
+    active: bool = True
+    quickfight: bool = False
+    #: The scalars the record is decoded for, written when the caller has one.
+    thac0_base: int | None = None
+    hit_points_rolled: int | None = None
+    identity: int | None = None
+    experience_award: int | None = None
+    #: The game's own 1 small / 2 medium, not the neutral 0/1.
+    size: int | None = None
+    npc_control_byte: int | None = None
+    former_level: int | None = None
+    former_class_levels: tuple[int, ...] | None = None
+    #: The permanent half of each pair -- the first byte, where the score in
+    #: force is the second. Both halves take `abilities` when this is None,
+    #: which is what every record measured on either port holds.
+    abilities_permanent: tuple[int, ...] | None = None
+    exceptional_strength_permanent: int | None = None
+    #: The eight attack-form bytes as a block, which carry the damage triple
+    #: at 0x0AD/0x0AF/0x0B1 and so override `damage` when they are given.
+    attack_forms: tuple[int, ...] | bytes | None = None
+    #: Spell ids for the sixteen-byte mask at 0x159, and slots free per level
+    #: for the three nine-byte arrays at 0x169, 0x172 and 0x17B, by class name.
+    spells_known: tuple[int, ...] | None = None
+    spells_castable: dict[str, tuple[int, ...]] | None = None
+    #: The tail: twenty bytes an item, head items only, and ten an effect.
+    items: tuple[bytes, ...] = ()
+    effects: tuple[bytes, ...] = ()
 
     def _check(self) -> None:
         if not 0 <= self.race < len(RACES):
@@ -961,6 +1049,38 @@ class PodWriter:
         if (self.treasure_share is not None
                 and not 0 <= self.treasure_share <= 0xFF):
             raise ValueError("treasure share does not fit in one byte")
+        if not 0 <= self.status < len(neutral.STATUS_NAMES):
+            raise ValueError(
+                f"status {self.status} is not one of the game's own "
+                f"{len(neutral.STATUS_NAMES)} states")
+        if (self.abilities_permanent is not None
+                and len(self.abilities_permanent) != ABILITY_COUNT):
+            raise ValueError("six permanent abilities, in the sheet's order")
+        if (self.former_class_levels is not None
+                and len(self.former_class_levels) != CLASS_LEVEL_COUNT):
+            raise ValueError(f"{CLASS_LEVEL_COUNT} former class levels")
+        if (self.attack_forms is not None
+                and len(self.attack_forms) != ATTACK_FORM_COUNT):
+            raise ValueError(f"{ATTACK_FORM_COUNT} attack-form bytes")
+        for spell in self.spells_known or ():
+            if not 1 <= spell <= SPELLBOOK_BYTES * 8:
+                raise ValueError(
+                    f"spell id {spell} is outside the {SPELLBOOK_BYTES * 8} "
+                    f"the mask at {SPELLBOOK:#05x} has room for")
+        for class_name, slots in (self.spells_castable or {}).items():
+            if len(slots) > SPELL_SLOT_LEVELS:
+                raise ValueError(
+                    f"{class_name} has {len(slots)} spell levels; this title "
+                    f"keeps {SPELL_SLOT_LEVELS}")
+        for item in self.items:
+            if len(item) != ITEM_FILE_SIZE:
+                raise ValueError(
+                    f"an item is {ITEM_FILE_SIZE} bytes, got {len(item)}")
+        for node in self.effects:
+            if len(node) != EFFECT_FILE_SIZE:
+                raise ValueError(
+                    f"an effect node is {EFFECT_FILE_SIZE} bytes, "
+                    f"got {len(node)}")
 
     def provenance(self) -> dict[int, str]:
         """Every non-zero byte of the output, and the field that put it there.
@@ -1005,11 +1125,83 @@ class PodWriter:
             plan.append((CLASS_BITS, 1, "class_bits"))
         if self.treasure_share is not None:
             plan.append((FIELD_83_87_SECOND, 1, "treasure_share"))
+        plan.extend([(STATUS, 1, "status"), (HOSTILE, 1, "hostile"),
+                     (ACTIVE, 1, "active"), (QUICKFIGHT, 1, "quickfight")])
+        for value, at, width, what in (
+                (self.thac0_base, THAC0_BASE, 1, "thac0_base"),
+                (self.hit_points_rolled, HP_ROLLED, 1, "hit_points_rolled"),
+                (self.identity, UNNAMED_0AB, 1, "identity"),
+                (self.experience_award, EXPERIENCE_AWARD, 2,
+                 "experience_award"),
+                (self.size, SIZE, 1, "size"),
+                (self.npc_control_byte, NPC_CONTROL, 1, "npc_control_byte"),
+                (self.former_level, FORMER_LEVEL, 1, "former_level")):
+            if value is not None:
+                plan.append((at, width, what))
+        if self.former_class_levels is not None:
+            plan.append((FORMER_CLASS_LEVELS, CLASS_LEVEL_COUNT,
+                         "former_class_levels"))
+        if self.abilities_permanent is not None:
+            plan.extend((ABILITIES + 2 * i, 1, "abilities_permanent")
+                        for i in range(ABILITY_COUNT))
+        if self.exceptional_strength_permanent is not None:
+            plan.append((EXCEPTIONAL_STRENGTH + 1, 1,
+                         "exceptional_strength_permanent"))
+        # After `damage`, which it carries at 0x0AD, 0x0AF and 0x0B1.
+        if self.attack_forms is not None:
+            plan.append((ATTACK_FORMS, ATTACK_FORM_COUNT, "attack_forms"))
+        if self.spells_known is not None:
+            plan.append((SPELLBOOK, SPELLBOOK_BYTES, "spells_known"))
+        if self.spells_castable is not None:
+            plan.append((SPELLS_CASTABLE,
+                         SPELL_SLOT_LEVELS * len(SPELL_SLOT_CLASSES),
+                         "spells_castable"))
+        nodes, effects = self._tail_nodes()
+        if self.items:
+            plan.append((ITEM_CHAIN, 4, "item_count"))
+            carried = 0
+            for at, head in nodes:
+                plan.append((at, ITEM_FILE_SIZE, f"item {carried}" if head else
+                             f"item {carried - 1}'s own spell node"))
+                carried += head
+        if self.effects:
+            plan.append((EFFECT_CHAIN, 4, "effect_chain"))
+            for n, at in enumerate(effects):
+                plan.append((at, EFFECT_FILE_SIZE, f"effect {n}"))
         return plan
+
+    def _tail_nodes(self) -> tuple[list[tuple[int, bool]], list[int]]:
+        """Where each tail node lands, and whether an item node is a head one.
+
+        A scroll is followed by its own `quantity` further twenty-byte nodes,
+        which the loader reads before the next item (`docs/124-amiga-port.md`
+        §1.16 row 3), so the count at 0x008 and the file's length are two
+        different arithmetics and this is the one that knows both.
+        """
+        items: list[tuple[int, bool]] = []
+        at = RECORD_BYTES
+        for node in self.items:
+            items.append((at, True))
+            at += ITEM_FILE_SIZE
+            item = PodItem.from_bytes(node)
+            if item.is_scroll:
+                for _ in range(item.quantity):
+                    items.append((at, False))
+                    at += ITEM_FILE_SIZE
+        effects = []
+        for _ in self.effects:
+            effects.append(at)
+            at += EFFECT_FILE_SIZE
+        return items, effects
 
     def to_bytes(self) -> bytes:
         self._check()
-        out = bytearray(RECORD_LENGTH)
+        nodes, effect_at = self._tail_nodes()
+        length = max(RECORD_LENGTH,
+                     (effect_at[-1] + EFFECT_FILE_SIZE if effect_at else
+                      nodes[-1][0] + ITEM_FILE_SIZE if nodes else
+                      RECORD_BYTES))
+        out = bytearray(length)
         tag = self.name.encode("ascii")[:NAME_LENGTH]
         out[NAME:NAME + NAME_LENGTH] = tag.ljust(NAME_LENGTH, b"\0")
         out[RACE] = self.race
@@ -1048,6 +1240,58 @@ class PodWriter:
             out[CLASS_BITS] = self.class_bits
         if self.treasure_share is not None:
             out[FIELD_83_87_SECOND] = self.treasure_share
+
+        out[STATUS] = self.status
+        out[HOSTILE] = int(bool(self.hostile))
+        out[ACTIVE] = int(bool(self.active))
+        out[QUICKFIGHT] = int(bool(self.quickfight))
+        for value, at in ((self.thac0_base, THAC0_BASE),
+                          (self.hit_points_rolled, HP_ROLLED),
+                          (self.identity, UNNAMED_0AB),
+                          (self.size, SIZE),
+                          (self.npc_control_byte, NPC_CONTROL),
+                          (self.former_level, FORMER_LEVEL)):
+            if value is not None:
+                out[at] = min(value, 0xFF)
+        if self.experience_award is not None:
+            struct.pack_into(">H", out, EXPERIENCE_AWARD,
+                             min(self.experience_award, 0xFFFF))
+        if self.former_class_levels is not None:
+            out[FORMER_CLASS_LEVELS:
+                FORMER_CLASS_LEVELS + CLASS_LEVEL_COUNT] = bytes(
+                    self.former_class_levels)
+        if self.abilities_permanent is not None:
+            for i, score in enumerate(self.abilities_permanent):
+                out[ABILITIES + 2 * i] = score
+        if self.exceptional_strength_permanent is not None:
+            out[EXCEPTIONAL_STRENGTH + 1] = self.exceptional_strength_permanent
+        # After the damage triple, which lives inside these eight bytes.
+        if self.attack_forms is not None:
+            out[ATTACK_FORMS:ATTACK_FORMS + ATTACK_FORM_COUNT] = bytes(
+                self.attack_forms)
+        if self.spells_known is not None:
+            for spell in self.spells_known:
+                index = spell - 1
+                out[SPELLBOOK + index // 8] |= 1 << (index % 8)
+        if self.spells_castable is not None:
+            for i, class_name in enumerate(SPELL_SLOT_CLASSES):
+                slots = tuple(self.spells_castable.get(class_name, ()))
+                at = SPELLS_CASTABLE + SPELL_SLOT_LEVELS * i
+                out[at:at + len(slots)] = bytes(slots)
+
+        if self.items:
+            struct.pack_into(">I", out, ITEM_CHAIN, len(self.items))
+            carried = iter(self.items)
+            for at, head in nodes:
+                if head:
+                    out[at:at + ITEM_FILE_SIZE] = next(carried)
+        if self.effects:
+            struct.pack_into(">I", out, EFFECT_CHAIN, POD_CHAIN_PRESENT)
+            for n, at in enumerate(effect_at):
+                node = bytearray(self.effects[n])
+                following = POD_CHAIN_PRESENT if n + 1 < len(effect_at) else 0
+                struct.pack_into(">I", node, EFFECT_NEXT, following)
+                out[at:at + EFFECT_FILE_SIZE] = node
         return bytes(out)
 
 
@@ -1211,6 +1455,17 @@ POD_WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("level", "level"),
     ("sex", "sex"),
     ("alignment", "alignment"),
+    ("active", "the byte at 0x184, 1 for a character in the party"),
+    ("hostile", "the byte at 0x05F, the combat side"),
+    ("quickfight", "the byte at 0x185"),
+    ("thac0_base", "the byte at 0x07F, stored 60 - value, which the game "
+                   "recomputes from the class levels on load"),
+    ("hp_rolled", "the byte at 0x0B8, hit points before the constitution "
+                  "bonus"),
+    ("unnamed_0ab", "the identity draw, at 0x0B5"),
+    ("experience_award", "the word at 0x054"),
+    ("attack_forms", "the eight bytes at 0x0AB as a block, which carry the "
+                     "damage triple this record keeps unarmed"),
 )
 
 #: Neutral fields converted by a rule rather than by a copy.
@@ -1235,28 +1490,64 @@ POD_WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
           "and level in exactly this order") for k in SAVE_KEYS),
     *((k, "one of the eight thief skills at 0x08B, in the same order: hear "
           "noise is low and climb walls high in both") for k in THIEF_KEYS),
+    ("status", "one of the game's own nine status words -> the byte at 0x05E, "
+               "which indexes DOS's nine in DOS's order"),
+    ("size_small", "the neutral 0 small / 1 large -> this port's 1 small / "
+                   "2 medium at 0x0BE"),
+    ("npc", "bit 7 of the control byte at 0x093: the source's own byte where "
+            "it has one, and bit 7 alone where it says `npc` without one"),
+    ("spells_known", "the ids packed into the sixteen-byte mask at 0x159: bit "
+                     "i of byte i >> 3 is id i + 1, which is the numbering "
+                     "the DOS record's own array has"),
+    ("spells_castable", "the three nine-byte arrays at 0x169, 0x172 and "
+                        "0x17B, by class name: cleric, druid, magic-user. A "
+                        "source keeping fewer spell levels fills the low "
+                        "ones and the rest stay zero"),
+    ("inventory", "the shared sixteen-byte items -> the twenty bytes a `.pc` "
+                  "holds, through the DOS record both ports' item nodes are "
+                  "cut from. The count goes in the longword at 0x008 and a "
+                  "scroll is followed by its own `quantity` further nodes"),
+    ("innate_effects", "an id each -> a ten-byte node carrying DOS's own "
+                       "innate payload, after the item region. Nothing is "
+                       "derived from a race table: what the source's own "
+                       "record holds is what is written"),
 )
 
-#: Neutral fields deliberately left behind, and why. Reported, never silent:
-#: `neutral.Writer.finish` quotes these for whatever the character carries,
-#: and :func:`pod_write_field_disposition` states the whole contract whether
-#: or not any
-#: one character happens to carry it.
+#: Neutral fields this writer converts **when the character has one**, which
+#: is why they are not in the two tables above: a reader sets each of these
+#: only for the character it belongs to -- `former_levels` for a dual-classed
+#: one, `npc_control_byte` for a companion, `granted_effects` for a character
+#: with something running on him, `abilities_second` for a port that keeps two
+#: copies of each score -- so a table asserting that every source supplies them
+#: would be asserting something no port does.
+POD_WRITE_WHEN_PRESENT: tuple[tuple[str, str], ...] = (
+    ("former_levels", "the seven-slot array at 0x0A4, named the same way as "
+                      "the current levels, and the level he left his old "
+                      "class at into 0x08A -- which is what the engine's own "
+                      "dual-class routine writes there"),
+    ("npc_control_byte", "the byte at 0x093 unchanged: bit 7 plus the low "
+                         "seven bits of morale, stored halved"),
+    ("abilities_second", "the *first* byte of each pair at 0x070, the "
+                         "permanent score behind the one in force -- and byte "
+                         "1 of the exceptional-strength pair, which stores "
+                         "its two the other way round"),
+    ("granted_effects", "each whole nine-byte record -> a ten-byte node after "
+                        "the item region, the duration byte-swapped, with a "
+                        "chain head and a `next` that are non-zero exactly "
+                        "when another node follows"),
+)
+
+#: Neutral fields this writer takes nothing from, and why. Reported, never
+#: silent: `neutral.Writer.finish` quotes these for whatever the character
+#: carries, and :func:`pod_write_field_disposition` states the whole contract
+#: whether or not any one character happens to carry it.
 #:
-#: **Most of these said "no located home" until #462 and had one all along.**
-#: The record is decoded now -- `tools/amiga/podimportmap.py` reads the engine's own
-#: Silver Blades importer and every offset is named -- so what is left is a
-#: writer that has not been extended to fill them, which is a different and
-#: smaller thing than a decode that has not happened. Each row below says
-#: which it is, and #475 is the ticket for the writer.
+#: Two kinds of row are **not** here, because neither is a loss and counting
+#: them as one would tell a player something untrue: a field the game
+#: recomputes on load is in :data:`POD_WRITE_DERIVED`, and one that holds the
+#: same value in every record anybody has read is in
+#: :data:`POD_WRITE_CONSTANTS`.
 POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
-    ("abilities_second", "the *first* byte of each ability pair at 0x070 "
-                         "(#462), which the reader takes; the writer puts the "
-                         "one score it is given in both halves of the pair, "
-                         "so nothing here differs from what it writes"),
-    ("former_levels", "the seven bytes at 0x0A4 (#462), which the writer does "
-                      "not fill yet. `to_pc` reports each class left behind "
-                      "by name instead"),
     ("copper", "Pools of Darkness keeps platinum, gems and jewelry and no "
                "other coin, on both of its ports, so a source of this title "
                "has none to give"),
@@ -1265,129 +1556,106 @@ POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("gold", "see `copper`: this title has three money slots"),
     ("infravision", "a C64 field; neither this title's `.pc` nor its DOS "
                     "record has one, and PoD takes what it needs from race"),
-    ("hp_rolled", "the byte at 0x0B8 (#462), which the writer does not fill "
-                  "yet -- this row said the Amiga kept only the maximum, and "
-                  "the record keeps the pre-constitution roll as well"),
     ("hp_lost_to_drain", "this title counts level drain the other way round, "
                          "keeping the highest levels reached at 0x096, the "
                          "highest experience at 0x048 and the highest hit "
-                         "points at 0x0B6 (#462). Its DOS record has no "
+                         "points at 0x0B6. Its DOS record has no "
                          "drained-level pair either, so a source of this "
                          "title has nothing to give"),
     ("levels_drained", "see `hp_lost_to_drain`: the high-water marks are what "
                        "this title stores instead"),
     # #451 (The Amiga Pools of Darkness notes call the combat icon a sheet
-    # portrait, and describe a menu the title has not got).  These two rows
-    # used to say PoD's portrait art is `CHEAD.TLB` with a numbering of its
-    # own, and both halves were wrong: `CHEAD.TLB`/`CBODY.TLB` are the
-    # **combat icon** (`docs/199-amiga-combat-icons.md`), and the title has
-    # no sheet portrait at all.  CONFIRMED three ways (#194): neither port
-    # ships head or body art -- 52 DOS files and 55 Amiga ones with no
-    # `HEAD*`/`BODY*` among them; `goldbox.dos_port.POOLS_OF_DARKNESS`
-    # gives the pair a width of zero; and the fourteen-and-twelve creation
-    # menu is cut out of the Amiga engine's own copy of the data block that
-    # carries it, in 60 bytes otherwise byte-identical across four binaries.
+    # portrait, and describe a menu the title has not got).  `CHEAD.TLB` and
+    # `CBODY.TLB` are the **combat icon** (`docs/199-amiga-combat-icons.md`),
+    # and the title has no sheet portrait at all.  CONFIRMED three ways
+    # (#194): neither port ships head or body art -- 52 DOS files and 55
+    # Amiga ones with no `HEAD*`/`BODY*` among them;
+    # `goldbox.dos_port.POOLS_OF_DARKNESS` gives the pair a width of zero;
+    # and the fourteen-and-twelve creation menu is cut out of the Amiga
+    # engine's own copy of the data block that carries it, in 60 bytes
+    # otherwise byte-identical across four binaries.
     #
     # The rows stay, because `pod_write_field_disposition` is the whole
-    # contract and a
-    # neutral field this writer takes nothing from has to be named whether or
-    # not a Pools of Darkness source could hold one.  What changed is what
-    # they say.
+    # contract and a neutral field this writer takes nothing from has to be
+    # named whether or not a Pools of Darkness source could hold one.
     ("portrait_head", "Pools of Darkness has no character-sheet portrait on "
                       "either of its ports -- neither ships the art and its "
                       "own DOS record has no such field -- so a source of "
                       "this title never holds one"),
     ("portrait_body", "see `portrait_head`: the title draws no sheet face"),
-    ("inventory", "the item region past 404 bytes is decoded -- twenty bytes "
-                  "a record, the later Amiga titles' own item node (#462) -- "
-                  "and the writer does not build one yet. The character "
-                  "arrives carrying nothing"),
-    ("innate_effects", "the effect chain past the item region is decoded, ten "
-                       "bytes a node (#462), and the writer does not build "
-                       "one yet"),
-    ("granted_effects", "see `innate_effects`. Which node is innate and which "
-                        "a readied item granted cannot be told apart for this "
-                        "title, the same `LATER_EFFECT_SPLIT_UNKNOWN` that "
-                        "binds Curse and Silver Blades"),
-    ("spells_memorised", "the 141 bytes at 0x0CC (#462), which the writer does "
-                         "not fill yet. **The fill direction is not "
-                         "confirmed**: DOS fills its own region from the end "
-                         "backwards and nothing has watched this port do it, "
-                         "so writing one wrong way round would hand a "
-                         "character somebody else's spells"),
-    ("spells_known", "the sixteen-byte mask at 0x159 (#462), which the writer "
-                     "does not fill yet. The ids are the DOS record's own, so "
-                     "the conversion is a repack rather than a lookup"),
-    ("spells_castable", "the three nine-byte arrays at 0x169, 0x172 and 0x17B "
-                        "(#462), which the writer does not fill yet. Slots "
-                        "free per level follow from class and level, which "
-                        "PoD recomputes on load"),
-    ("npc", "bit 7 of the control byte at 0x093 (#462), which the writer does "
-            "not fill yet"),
-    ("npc_control_byte", "the whole byte at 0x093 -- see `npc`"),
-    ("combat_figure", "the byte at 0x0BD (#462), which the writer does not "
-                      "fill yet: PoD allocates its own slot of eight on "
-                      "import, and a source value out of that range is one "
-                      "the engine's own compares at 7 and 8 would not expect"),
-    ("encumbrance", "the word at 0x056, which PoD recomputes: a probe that "
-                    "set it to 1234 drew 233, which is the character's own "
-                    "coins, gems and jewelry"),
-    ("size_small", "the byte at 0x0BE (#462), which the writer does not fill "
-                   "yet; PoD takes size from race"),
+    ("spells_memorised", "the 141 bytes at 0x0CC. **Which end the region "
+                         "fills from is not established**: DOS fills its own "
+                         "141 backwards from the end, all nineteen `.pc` "
+                         "files on the Amiga disks are zero here, and nothing "
+                         "has watched this port do it -- so writing the list "
+                         "the wrong way round would hand a character "
+                         "somebody else's spells. The experiment is a `.pc` "
+                         "with one known id at 0x158 and another with it at "
+                         "0x0CC, each added through `Add Character -> Pools`, "
+                         "and the MEMORIZE screen says which"),
+    ("combat_figure", "the byte at 0x0BD. This port's own records hold 13 in "
+                      "17 of 19 where DOS holds the marching slot -- 0 to 5 "
+                      "across each party of six, in 12 of 12 -- so the two "
+                      "ports' bytes are not the same number and copying one "
+                      "into the other would write a figure the engine's own "
+                      "compares at 7 and 8 do not expect. What 13 means here "
+                      "is UNKNOWN"),
     ("turn_power", "a cleric's turning strength is worked out from the class "
                    "levels when TURN is pressed, on both ports; the record's "
                    "0x05A is DOS's `turn_class`, which is a property of what "
                    "is being turned, and DOS's own reader takes nothing from "
                    "it either (#297)"),
-    ("attack_level", "**the one field of the record still unlocated** (#462): "
-                     "Silver Blades keeps it at Amiga 0x080 and this title's "
-                     "importer does not copy it. PoD reads its attack tables "
-                     "at the class level, and DOS Pools of Darkness holds 0 "
-                     "in 12 of 12"),
-    ("attack_forms", "the eight bytes at 0x0AB (#462), which the writer does "
-                     "not fill yet; the 0x0AD damage triple inside it is "
-                     "written unarmed instead"),
-    ("roster_tail", "the nine bytes at 0x188 (#462): the armour bonus and the "
-                    "running attack forms, all of which PoD recomputes"),
-    ("thac0_base", "the byte at 0x07F (#462). PoD recomputes THAC0 on load "
-                   "from the class levels and ignores what the file holds"),
-    ("thac0_current", "the byte at 0x186, recomputed on load -- see "
-                      "`thac0_base`"),
-    ("armour_class", "the byte at 0x187, recomputed on load; the record gets "
-                     "the unarmoured constant at 0x0B3 instead"),
-    ("armour_class_base", "recomputed on load -- see `armour_class`"),
-    ("movement_current", "the byte at 0x192, recomputed on load: a probe that "
-                         "set it to 99 drew the base's 12"),
-    ("status", "the byte at 0x05E (#462), which the writer does not fill yet, "
-               "so a converted character arrives Okay -- which is what the "
-               "zero there means. The sheet's STATUS line indexes a "
-               "nine-entry table with this byte and the table is DOS's own "
-               "nine in DOS's own order"),
-    ("active", "the byte at 0x184 (#462), which the writer does not fill "
-               "yet. **19 of 19 records the game wrote hold 1 there and this "
-               "writer leaves 0**, which is the flag's out-of-the-party "
-               "value on the other two ports"),
-    ("hostile", "the byte at 0x05F (#462), which the writer does not fill "
-                "yet. A player character is never on the enemy's side, so 0 "
-                "is the right value in any case -- see "
-                "`docs/169-dos-combat-side.md`"),
-    ("quickfight", "the byte at 0x185 (#462), which the writer does not fill "
-                   "yet"),
-    ("unnamed_0ab", "the identity draw, at 0x0B5 (#462), which the writer "
-                    "does not fill yet. Zero in 19 of 19 records the game "
-                    "wrote, where DOS holds 0, 47, 85, 138 and 249"),
-    # #254: a creature's own field, zero in every player record measured on
-    # any port.  `experience_per_hit_point` is narrower: the later engine
-    # drops the byte outright, so DOS Pools of Darkness has nowhere for it
-    # either (`goldbox/dos_port.py`'s 510-byte shape declares
-    # `experience_award` alone) and the `.pc` has nothing to hold.
-    ("experience_award", "the word at 0x054 (#462), which the writer does not "
-                         "fill yet; it is zero in every player record on "
-                         "either port"),
+    ("attack_level", "**this title keeps no such field, and that is read out "
+                     "of its own engine** (#462): the two routines that "
+                     "derive `thac0_base` -- the derived-fields rebuild at "
+                     "0x03C238 and character creation at 0x00EF82 -- index "
+                     "one attack table with `22 * class + level` and neither "
+                     "reads any other byte of the record. Silver Blades keeps "
+                     "an `attack_level` at Amiga 0x080 and this title's "
+                     "importer copies nothing into it: 0x080 is "
+                     "`paladin_cures` here and 0x082 is `icon_dimension`. So "
+                     "there is nothing to write rather than a byte nobody has "
+                     "found"),
+    ("roster_tail", "the nine bytes at 0x188: the armour bonus and the "
+                    "running attack forms. 0x18B, 0x18D and 0x18F are in "
+                    ":data:`DERIVED`, read off a probe; the rest of the block "
+                    "has not been watched being rebuilt, so it is named here "
+                    "rather than called derived"),
     ("experience_per_hit_point", "Pools of Darkness' own engine keeps no "
                                  "such byte in any of its records; the "
                                  "later engine adds the base award alone"),
 )
+
+#: Neutral fields the game works out for itself on load, which is why writing
+#: them would be pointless rather than a loss.  Each row carries the run that
+#: demonstrated it in the running game, as
+#: `.claude/rules/conversions.md` requires of this category.
+POD_WRITE_DERIVED: tuple[tuple[str, str], ...] = (
+    ("encumbrance", "the word at 0x056: a probe that set it to 1234 drew 233, "
+                    "which is the character's own coins, gems and jewelry"),
+    ("thac0_current", "the byte at 0x186: the game recomputes THAC0 from the "
+                      "class levels on load and ignores what the file holds"),
+    ("armour_class", "the byte at 0x187, the second half of the pair, "
+                     "recomputed from what the character is wearing"),
+    ("movement_current", "the byte at 0x192: a probe that set it to 99 drew "
+                         "the base's 12"),
+)
+
+#: Neutral fields written as a value every record measured holds, rather than
+#: from the source.  A Gold Box armour class is a cache that already includes
+#: worn armour and a dexterity bonus, and this byte is the one before any of
+#: that: 60 - 10 in 19 of 19 `.pc` files -- whose characters all carry items --
+#: and in 12 of 12 DOS records.
+POD_WRITE_CONSTANTS: tuple[tuple[str, str], ...] = (
+    ("armour_class_base", "the unarmoured 60 - 10 at 0x0B3, which is what "
+                          "every record on either port holds"),
+)
+
+#: The reasons `neutral.Writer` quotes for a field it was given and did not
+#: write: what is genuinely left behind, plus the two kinds that are not
+#: losses, so a report line says which of the three it is.
+POD_WRITE_UNTAKEN = (POD_WRITE_DROPPED + POD_WRITE_DERIVED
+                     + POD_WRITE_CONSTANTS)
 
 
 def pod_write_field_disposition() -> dict[str, str]:
@@ -1397,8 +1665,10 @@ def pod_write_field_disposition() -> dict[str, str]:
     and this table does not name would be a field silently dropped.  The
     shape is `goldbox/neutral.py`'s, so every direction reports the same way.
     """
-    return neutral.disposition(POD_WRITE_DIRECT, POD_WRITE_TRANSFORMED,
-                               POD_WRITE_DROPPED, "the Amiga's")
+    return neutral.disposition(
+        POD_WRITE_DIRECT, POD_WRITE_TRANSFORMED + POD_WRITE_WHEN_PRESENT,
+        POD_WRITE_DROPPED, "the Amiga's",
+        derived=POD_WRITE_DERIVED, constants=POD_WRITE_CONSTANTS)
 
 
 # ---------------------------------------------------------------------------
@@ -1441,11 +1711,10 @@ POD_READ_DIRECT: tuple[tuple[str, str], ...] = (
     *((k, f"{k}, the current half of its pair at 0x070") for k in ABILITY_KEYS),
     *((k, f"{k}, one of the five saving throws at 0x083") for k in SAVE_KEYS),
     *((k, f"{k}, one of the eight thief skills at 0x08B") for k in THIEF_KEYS),
-    # **These were one byte until #462 and are two.** Both used to be read
-    # from 0x0B3, because that was the only armour class anybody had located;
-    # the Silver Blades importer copies that title's `armour_class_base` to
-    # 0x0B3 and its `armour_class` to 0x187, so the pair is separated now and
-    # an Amiga character in plate mail no longer converts as unarmoured.
+    # **Two bytes, not one.** The Silver Blades importer copies that title's
+    # `armour_class_base` to 0x0B3 and its `armour_class` to 0x187, so a
+    # character in plate mail reads the armour class he is wearing and not the
+    # unarmoured one every record holds at 0x0B3.
     ("armour_class",
      "armour_class, the .pc's byte at 0x187 in the family's stored "
      "60 - value form -- what the game last computed"),
@@ -1517,15 +1786,12 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
 
 #: Neutral fields the `.pc` reader takes nothing from, and why.
 #:
-#: **This was computed from the writer's :data:`POD_WRITE_DROPPED` until #462**, on the
-#: reasoning that a home nobody has found is missing in both directions.  That
-#: stopped being true the day the record was decoded: reading a byte is free
-#: and writing one into a field the loader acts on is a change that has to be
-#: watched in the running game first, so the two lists now say different
-#: things and each says its own.
+#: **This is not the writer's :data:`POD_WRITE_DROPPED` and must not be
+#: computed from it.**  Reading a byte is free; writing one into a field the
+#: loader acts on is a change somebody has to watch in the running game first,
+#: so each list says its own.
 #:
-#: What is left is four kinds of row, and none of them is a decode that has
-#: not happened:
+#: Four kinds of row, and none of them is a decode that has not happened:
 #:
 #: * **this title has no such field, on either port.**  Pools of Darkness
 #:   keeps three money slots rather than seven, replaces `levels_drained` and
@@ -1611,16 +1877,13 @@ def pod_field_disposition() -> dict[str, str]:
     and the test that keeps this half honest: a field `goldbox/neutral.py` declares
     and this names nowhere would be one dropped in silence.
 
-    **It was a short account of a long record and is not any more.** 38 of
-    the 75 neutral fields were filled when this reader was written and 37
-    were not; `#462` decoded the rest of the record off the engine's own
-    Silver Blades importer and then taught this reader the tail past it, and
-    what is left is eleven names: **nine** are fields this *title* stores on
-    neither port, **one** is `attack_level`, which its engine works out from
-    the class level rather than keeping anywhere, and **one** is
-    `innate_effects`, a label rather than a byte, since every effect that
-    never expires is converted as a grant.  `docs/124-amiga-port.md` §1 is
-    the map.
+    This reader fills 63 of the 75 neutral fields, and 64 for a character
+    with something running on him.  The eleven names it takes nothing from:
+    **nine** are fields this *title* stores on neither port, **one** is
+    `attack_level`, which its engine works out from the class level rather
+    than keeping anywhere, and **one** is `innate_effects`, a label rather
+    than a byte, since every effect that never expires is converted as a
+    grant.  `docs/124-amiga-port.md` §1 is the map.
     """
     return neutral.disposition(POD_READ_DIRECT, POD_READ_TRANSFORMED,
                                pod_read_dropped(), "the neutral")
@@ -1739,10 +2002,10 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     # record keeps the family's stored `60 - value` form, which is what
     # every other codec sets.
     #
-    # **Both of these came from 0x0B3 until #462**, so an Amiga character in
-    # plate mail converted as though he were unarmoured.  The Silver Blades
-    # importer separates them: that title's `armour_class_base` goes to 0x0B3
-    # and its `armour_class` to 0x187.
+    # **Two bytes, and the Silver Blades importer is what separates them**:
+    # that title's `armour_class_base` goes to 0x0B3, which is the unarmoured
+    # 50 in every record, and its `armour_class` to 0x187, which is what the
+    # character is wearing.
     out.set("armour_class_base", char.raw[ARMOUR_CLASS],
             f"Amiga .pc armour class base @{ARMOUR_CLASS:#05x}, stored "
             f"60 - value, and the unarmoured "
@@ -1825,13 +2088,12 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
 
     # -- size: the Amiga's 1 small / 2 medium, the neutral 0 small / 1 large -
     out.set("size_small", max(0, char.size - 1),
-            f"Amiga .pc size @{SIZE:#05x} less one. 1 for the corpus's one "
+            f"Amiga .pc size @{SIZE:#05x} less one. 1 for the one "
             f"dwarf and 2 for the eighteen humans, elves and half-elves",
             Confidence.PROBABLE, neutral.Provenance.RESHAPED)
 
     # -- what the character is carrying, and what is running on him ---------
-    # The tail past the 404-byte record, which this reader walked past until
-    # #462's second run: twenty bytes an item and ten an effect.
+    # The tail past the 404-byte record: twenty bytes an item, ten an effect.
     items, scrolls, effects = char._tail()
     out.set("inventory", [_dos.item_to_c64(it.to_dos_bytes()) for it in items],
             f"the {ITEM_FILE_SIZE}-byte item records from {RECORD_BYTES}, "
@@ -1871,16 +2133,6 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
                 f"region, re-cut to the nine a DOS .EFX record holds",
                 Confidence.PROBABLE, neutral.Provenance.RESHAPED)
 
-    # **The one unapproved warning this reader carried is gone, and nothing
-    # replaced it.**  It said the part of the file holding possessions and
-    # running magic had not been read; the reader walks the item region and
-    # the effect chain above, so the sentence had stopped being true.  What is
-    # left unread is `attack_level`, which no byte of this record has been
-    # located for and which DOS Pools of Darkness holds 0 in for 12 of 12 --
-    # nothing a player can see -- and the innate/granted split, which is a
-    # classification rather than a byte.  Both are named by
-    # :func:`pod_read_dropped`, which goes to `wish/debuglog.py`.
-    #
     # **No `out.drop` line for a *field*, and that is deliberate rather than
     # an omission.**  `goldbox.dos_codec.to_neutral` and
     # `goldbox.c64_codec.read` each keep a second table --
@@ -1889,8 +2141,8 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     # This reader has no such table: every sentence a player reads is Donald's
     # to approve (`.claude/rules/gui-text.md`).  The two `out.drop` lines
     # above are the other kind -- a count of records this file holds and the
-    # neutral vocabulary has no field for, neither of which any genuine file
-    # has ever carried -- and they are accounting for the debug log.  The
+    # neutral vocabulary has no field for, neither of which any file on the
+    # Amiga disks carries -- and they are accounting for the debug log.  The
     # whole contract is stated by :func:`pod_field_disposition` and tested
     # there, so nothing is lost in silence.
     return out
@@ -1963,13 +2215,26 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     Everything the Amiga cannot hold lands in `Report.dropped`; everything it
     holds differently lands in `Report.warnings`.
     """
+    # The heavier module, for the item and effect re-cuts; this is its only
+    # caller on this side.
+    from . import dos_codec as _dos
+
     rep = Report()
-    w = neutral.Writer(char, rep, into="Amiga", dropped=POD_WRITE_DROPPED)
+    w = neutral.Writer(char, rep, into="Amiga", dropped=POD_WRITE_UNTAKEN)
 
     def num(name: str, default: int = 0) -> int:
         """One neutral field as a number, taken and counted as consumed."""
         v = w.use(name)
         return default if v is None else int(v.value)
+
+    def opt(name: str) -> int | None:
+        """One neutral field as a number, or None where the source has none."""
+        v = w.use(name)
+        return None if v is None else int(v.value)
+
+    def flag(name: str, default: bool = False) -> bool:
+        v = w.use(name)
+        return default if v is None else bool(v.value)
 
     name_value = w.use("name")
     name = str(name_value.value if name_value else "").rstrip("\0").strip()
@@ -2007,11 +2272,13 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
 
     bits = w.use("class_bits")
     named = _class_names(char, bits.value if bits else 0)
-    # **A class the character only *was* is not one this record can hold.**
+    # **A class the character only *was* is not one the class code can hold.**
     # The neutral mask carries a dual-classed character's old class as well
     # as his current one -- `goldbox.dos_codec.neutral_class_bits_from` unions the
-    # former level array in, because the C64 needs it -- and `former_levels`
-    # is on `POD_WRITE_DROPPED` here, so the `.pc` keeps the class he *is*.
+    # former level array in, because the C64 needs it -- so the code at 0x059
+    # names the class he *is* and the old class's level goes into the former
+    # array at 0x0A4, which is where this engine's own dual-class routine
+    # puts it.
     #
     # Measured on the two dual-classed characters in DOS Pools of Darkness'
     # shipped party (#194): ABAGAIL is a magic-user 12 who was a cleric 11
@@ -2032,17 +2299,6 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         keep = [n for n in named
                 if str(n).strip().lower() not in left_behind]
         if keep:
-            # Only a class the mask actually offered. `neutral_class_bits_from`
-            # unions the former class in first, so on every record measured
-            # `left_behind` is a subset of `named` -- but an edited record
-            # whose `class_bits` has lost that bit would otherwise be told a
-            # class was left behind that was never on the sheet.
-            for gone in (c for c in left_behind if c in named):
-                rep.warnings.append(
-                    f"Class {gone} was left behind at level {was[gone]}: "
-                    f"Pools of Darkness' record on this port keeps the class "
-                    f"the character is, so the class trained out of is not "
-                    f"converted")
             named = keep
     classes, class_warnings = _classes_of(named)
     rep.warnings.extend(class_warnings)
@@ -2084,13 +2340,9 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
             f"behind: only platinum, gems and jewelry have a located home in "
             f"the .pc")
 
-    rep.dropped.append(
-        "armour class and damage: a Gold Box armour class is a cache that "
-        "already includes worn armour and a strength bonus, no item crosses, "
-        "and PoD re-applies dexterity itself -- so the record gets an "
-        f"unarmoured {UNARMOURED_AC} and "
-        f"{UNARMED_DAMAGE[0]}d{UNARMED_DAMAGE[1]}, which is what all twelve "
-        "genuine records hold")
+    # Armour class needs no line of its own here: `armour_class_base` is a
+    # row of :data:`POD_WRITE_CONSTANTS` and `armour_class` one of
+    # :data:`POD_WRITE_DERIVED`, and `neutral.Writer.finish` quotes both.
 
     current = w.use("hp_current")
     if current is None:
@@ -2102,6 +2354,122 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         hp_current = min(int(current.value), hp_max)
 
     treasure_share = w.use("treasure_share")
+
+    # -- how the character is, and whether the game is still playing him ----
+    # `active` defaults to in the party: 19 of 19 records the game itself
+    # wrote hold 1 at 0x184, and 0 is the value the other two ports draw a
+    # name red for.
+    status_value = w.use("status")
+    status = 0
+    if status_value is not None:
+        word = str(status_value.value).strip().lower()
+        if word in neutral.STATUS_NAMES:
+            status = neutral.STATUS_NAMES.index(word)
+        else:
+            rep.dropped.append(
+                f"status {word!r}: not one of the game's own "
+                f"{len(neutral.STATUS_NAMES)} states, so the record says "
+                f"{neutral.STATUS_NAMES[0]}")
+
+    # The neutral 0 small / 1 large is this port's 1 small / 2 medium.
+    size_small = opt("size_small")
+
+    # -- the class a dual-classed character left, and the level he left at --
+    # The engine's own dual-class routine writes the character level into
+    # 0x08A on its way past (`move.b $89(a2), $8a(a2)` at 0x03CD0A), so the
+    # highest former class level is what belongs there.
+    former_value = w.use("former_levels")
+    former = {str(k).strip().lower(): int(v)
+              for k, v in (former_value.value if former_value else {}).items()
+              if v}
+    former_slots: tuple[int, ...] | None = None
+    former_level: int | None = None
+    if former:
+        slots_was = [0] * CLASS_LEVEL_COUNT
+        for class_name, level in former.items():
+            slot = CLASS_LEVEL_SLOT.get(class_name)
+            if slot is None:
+                rep.dropped.append(
+                    f"the former class {class_name}: Pools of Darkness has no "
+                    f"slot for it in the array at {FORMER_CLASS_LEVELS:#05x}")
+                continue
+            slots_was[CLASS_LEVEL_SLOTS.index(slot)] = min(level, 0xFF)
+        former_slots = tuple(slots_was)
+        former_level = max(slots_was)
+
+    # -- the companion's control byte, bit 7 plus morale --------------------
+    npc = flag("npc")
+    control = opt("npc_control_byte")
+    if control is None and npc:
+        control = 0x80
+
+    # -- the permanent half of each ability pair ----------------------------
+    second_value = w.use("abilities_second")
+    second = dict(second_value.value or {}) if second_value else {}
+    permanent = (tuple(int(second.get(k, w.get(k) or 0))
+                       for k in ABILITY_KEYS) if second else None)
+    permanent_exceptional = (int(second["exceptional_strength"])
+                             if "exceptional_strength" in second else None)
+
+    # -- the eight attack-form bytes, which carry the damage triple ---------
+    forms_value = w.use("attack_forms")
+    forms: tuple[int, ...] | None = None
+    if forms_value is not None:
+        block = bytes(forms_value.value or b"")
+        if len(block) != ATTACK_FORM_COUNT:
+            rep.warnings.append(
+                f"The source's attack forms are {len(block)} bytes and this "
+                f"record keeps {ATTACK_FORM_COUNT}, so it is cut to fit")
+        forms = tuple(block[:ATTACK_FORM_COUNT].ljust(ATTACK_FORM_COUNT, b"\0"))
+
+    # -- magic ---------------------------------------------------------------
+    book_value = w.use("spells_known")
+    book: tuple[int, ...] | None = None
+    if book_value is not None:
+        ids = sorted({int(i) for i in (book_value.value or ())})
+        over = [i for i in ids if not 1 <= i <= SPELLBOOK_BYTES * 8]
+        if over:
+            rep.dropped.append(
+                f"{len(over)} spell ids outside 1-{SPELLBOOK_BYTES * 8}, "
+                f"which is what the mask at {SPELLBOOK:#05x} has room for: "
+                f"{', '.join(str(i) for i in over)}")
+        book = tuple(i for i in ids if i not in over)
+
+    slots_value = w.use("spells_castable")
+    castable: dict[str, tuple[int, ...]] | None = None
+    if slots_value is not None:
+        castable = {}
+        for class_name, levels_free in (slots_value.value or {}).items():
+            key = str(class_name).strip().lower()
+            free = tuple(int(n) for n in levels_free)
+            if key not in SPELL_SLOT_CLASSES:
+                if any(free):
+                    rep.dropped.append(
+                        f"{key}'s free spell slots: this record keeps three "
+                        f"arrays, {', '.join(SPELL_SLOT_CLASSES)}")
+                continue
+            if len(free) > SPELL_SLOT_LEVELS:
+                rep.dropped.append(
+                    f"{key}'s spell levels past {SPELL_SLOT_LEVELS}, which is "
+                    f"what this title's array at {SPELLS_CASTABLE:#05x} holds")
+                free = free[:SPELL_SLOT_LEVELS]
+            castable[key] = free
+
+    # -- what he is carrying, and what is running on him --------------------
+    carried_value = w.use("inventory")
+    carried: list[bytes] = []
+    for entry in (carried_value.value if carried_value else None) or ():
+        carried.append(PodItem.from_dos_bytes(
+            _dos.item_from_c64(bytes(entry), dos_port.ITEM_SIZE)).raw)
+    scrolls = sum(PodItem.from_bytes(node).quantity for node in carried
+                  if PodItem.from_bytes(node).is_scroll)
+    if scrolls:
+        rep.dropped.append(
+            f"the spell ids on {scrolls} scroll nodes: the neutral record has "
+            f"nowhere to hold them, so the nodes the loader reads after the "
+            f"scroll are written empty")
+
+    nodes = _pod_effect_nodes(char, w, rep)
 
     writer = PodWriter(
         name=name[:NAME_LENGTH],
@@ -2128,9 +2496,68 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         class_bits=sum(CLASS_BIT[c] for c in set(classes)),
         treasure_share=(None if treasure_share is None
                         else int(treasure_share.value)),
+        status=status,
+        hostile=flag("hostile"),
+        active=flag("active", True),
+        quickfight=flag("quickfight"),
+        thac0_base=opt("thac0_base"),
+        hit_points_rolled=opt("hp_rolled"),
+        identity=opt("unnamed_0ab"),
+        experience_award=opt("experience_award"),
+        size=(None if size_small is None else size_small + 1),
+        npc_control_byte=control,
+        former_level=former_level,
+        former_class_levels=former_slots,
+        abilities_permanent=permanent,
+        exceptional_strength_permanent=permanent_exceptional,
+        attack_forms=forms,
+        spells_known=book,
+        spells_castable=castable,
+        items=tuple(carried),
+        effects=tuple(nodes),
     )
     w.finish()
     return writer, rep
+
+
+def _pod_effect_nodes(char: NeutralCharacter, w: neutral.Writer,
+                      rep: Report) -> list[bytes]:
+    """The effect chain for this character, one ten-byte node each.
+
+    What the character's own record holds and nothing else: `granted_effects`
+    whole, then `innate_effects` as DOS's own `id + INNATE_PAYLOAD` for any id
+    the grants do not already carry. **Nothing is derived from a race table**
+    -- `goldbox.dos_codec.RACE_COMBAT_EFFECTS` is Pool of Radiance's, and
+    writing a dwarf's infravision from it as well as from his own record would
+    put the node in the chain twice, which is what `goldbox.dos_codec.write`
+    does to an Amiga source (`amiga_later.LATER_EFFECTS_FROM_NEUTRAL`).
+
+    An id already in the chain is skipped rather than written twice, and the
+    skip is reported: every reader in the tree fills the two lists as disjoint
+    sets, so it has never fired, and a node vanishing in silence is what the
+    report line is against.
+    """
+    from . import dos_codec as _dos
+
+    nodes: list[bytes] = []
+    seen: set[int] = set()
+    granted = w.use("granted_effects")
+    for record in (granted.value if granted else None) or ():
+        payload = bytes(record)[:dos_port.EFFECT_SIZE].ljust(
+            dos_port.EFFECT_SIZE, b"\0")
+        seen.add(payload[0])
+        nodes.append(pod_effect_from_dos(payload))
+    innate = w.use("innate_effects")
+    for effect_id in (innate.value if innate else None) or ():
+        if int(effect_id) in seen:
+            rep.dropped.append(
+                f"innate effect {int(effect_id)}: already in the chain as a "
+                f"grant, and the engine would apply it twice")
+            continue
+        seen.add(int(effect_id))
+        nodes.append(pod_effect_from_dos(
+            bytes((int(effect_id),)) + _dos.INNATE_PAYLOAD + bytes(4)))
+    return nodes
 
 
 def _class_names(char: NeutralCharacter, bits: int) -> list[str]:
@@ -2169,9 +2596,16 @@ def _races(char: NeutralCharacter) -> dict[int, str]:
 
 
 def to_pc(char: NeutralCharacter) -> tuple[bytes, Report]:
-    """One neutral character as the 484 bytes of a `Save/NAME.pc`."""
+    """One neutral character as the bytes of a `Save/NAME.pc`.
+
+    404 bytes of record, then twenty a carried item and ten a running effect,
+    which is what the loader reads -- and never fewer than the 484 the game's
+    own shortest file is, since a record with nothing after it is padded
+    rather than cut.
+    """
     writer, rep = write_pod(char)
     record = writer.to_bytes()
+    rep.total = len(record)
     for offset, who in writer.provenance().items():
         rep.sources[offset] = f"{who} <- {char.port} {_SOURCE_OF.get(who, who)}"
     return record, rep
@@ -2197,13 +2631,34 @@ _SOURCE_OF: dict[str, str] = {
     "hit_points_current": "hp_current",
     "movement": "movement",
     "class_levels": "levels",
-    "damage": "nothing -- unarmed 1d2, the constant all twelve records hold",
-    "armour_class": "nothing -- unarmoured 10, the constant all twelve hold",
+    "damage": "nothing -- unarmed 1d2 where the source has no attack forms",
+    "armour_class": "nothing -- the unarmoured 10 every record on either "
+                    "port holds",
     "level": "level",
     "saving_throws": "save_paralysis..save_spell",
     "thief_skills": "thief_pick_pockets..thief_read_languages",
     "class_bits": "class_bits",
     "treasure_share": "treasure_share",
+    "status": "status",
+    "hostile": "hostile",
+    "active": "active",
+    "quickfight": "quickfight",
+    "thac0_base": "thac0_base",
+    "hit_points_rolled": "hp_rolled",
+    "identity": "unnamed_0ab",
+    "experience_award": "experience_award",
+    "size": "size_small",
+    "npc_control_byte": "npc_control_byte",
+    "former_level": "former_levels, the highest of them",
+    "former_class_levels": "former_levels",
+    "abilities_permanent": "abilities_second",
+    "exceptional_strength_permanent": "abilities_second",
+    "attack_forms": "attack_forms",
+    "spells_known": "spells_known",
+    "spells_castable": "spells_castable",
+    "item_count": "inventory, how many items follow",
+    "effect_chain": "granted_effects and innate_effects, non-zero when a "
+                    "node follows",
 }
 
 

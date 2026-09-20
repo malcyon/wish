@@ -19,16 +19,13 @@ What is tested, hardest evidence first.
 * **The round trips**, each with its own count: a `.pc` read and written back,
   and a DOS record converted into a `.pc`.
 * **The count of what the reader fills**, stated as a number rather than a
-  shrug. It was 38 of the 75 neutral fields when this file was written and 37
-  had no located home in the `.pc`, so a character converted *out* of the
-  Amiga arrived in DOS with no spellbook and no possessions; `#462` decoded
-  the record off the engine's own Silver Blades importer and then taught the
-  reader the item region and the effect chain, and the count is pinned here so
-  that it moves when somebody decodes another region rather than drifting.
+  shrug, and pinned here so that it moves when somebody decodes another region
+  rather than drifting.
 
-**The specimens are the twelve genuine `.pc` files in the `Save` drawer of
-Amiga Pools of Darkness disk 3**, read out of the player's own `.adf` at run
-time through `gamedisks.yaml`'s `amiga` entry -- the same route
+**The specimens are the `Save/*.pc` files on the player's own Amiga disk
+images** -- twelve in the `Save` drawer of Pools of Darkness disk 3 and seven
+more on alternate rips -- read at run time through `gamedisks.yaml`'s `amiga`
+entry -- the same route
 `tests/amiga/test_amiga.py` uses for the Amiga Pool of Radiance records, and for the
 same reason: they are not loose files on any machine. Everything here skips
 without the disks, which is what CI does.
@@ -181,20 +178,28 @@ def test_the_pod_conversion_keeps_an_explicit_treasure_share(share):
 
 
 def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
-    """The reader's list was computed from the writer's until `#462` and is
-    its own now, so this is what stops the two drifting apart the wrong way.
+    """The two lists say different things, and this is the one crossing
+    between them that is allowed.
 
-    **Reading a byte and writing one are not the same undertaking**, which is
-    why they may differ at all: `#462` decoded the record off the engine's own
-    Silver Blades importer, so the reader can take a field the writer must not
-    fill in until somebody has watched the loader accept it. What must never
-    happen is the reverse -- a name the reader drops and the writer does not
-    -- because that would be a field this module claims to convert in a
-    direction it cannot even read.
+    **Reading a byte and writing one are not the same undertaking**: the
+    reader can take a field the writer must not fill in until somebody has
+    watched the loader accept it. The reverse -- a name the reader drops and
+    the writer converts -- would usually be a field this module claims to
+    convert in a direction it cannot even read.
+
+    `innate_effects` is the one exception, and it is a classification rather
+    than a byte. The reader cannot tell an innate node from a readied item's
+    grant in this title, so it puts every node that never expires into
+    `granted_effects`; a DOS or C64 source *has* made that split, and the
+    writer puts both lists into the one chain the record holds. 1 of 1, named
+    here so a second one cannot appear without this going red.
     """
     writer = {n for n, _ in amiga_pod.POD_WRITE_DROPPED}
     reader = {n for n, _ in amiga_pod.pod_read_dropped()}
-    assert reader < writer
+    assert reader - writer == {"innate_effects"}
+    assert writer - reader
+    assert amiga_pod.pod_write_field_disposition()["innate_effects"].startswith(
+        "an id each")
     for name in READ_ONLY:
         assert amiga_pod.pod_field_disposition()[name].startswith("copied")
 
@@ -253,17 +258,24 @@ def test_the_ranger_gets_the_neutral_bit_and_the_paladin_keeps_dos_bit_six():
 def test_a_record_written_back_keeps_every_field_the_reader_read():
     """`.pc` -> `pod_to_neutral` -> `to_pc`, over the decoded fields.
 
-    **11 of 12 identical at every decoded offset, and the twelfth differs
+    **18 of 19 identical at every decoded offset, and the nineteenth differs
     only in the name bytes past its NUL terminator**: `?T.pc` stores
     `3F 54 00 3F 3F ...`, so the engine left rubbish after the terminator and
     the writer NUL-pads. That is the same thing the DOS round trip masks for
     `name_text` past the count byte, and it is not a loss.
 
-    The whole 484 bytes are **not** compared, and that is the honest
-    boundary: only about 38 of the neutral record's fields have a located
-    home in this record, so the writer zeroes the rest and the report says
-    so. `Report.unaccounted` is the writer's own guarantee and is asserted
-    empty here.
+    The whole record is **not** compared, and the spans below are the honest
+    boundary. What is deliberately outside them, and why: the heap pointers at
+    `0x000`-`0x03F`, which the loader overwrites; the derived block the game
+    recomputes (`DERIVED`); the icon art at `0x0BB`-`0x0BD` and
+    `0x0BF`-`0x0C4`, where a value past the end of `CHEAD.TLB` makes the
+    loader refuse the file; the
+    memorised list at `0x0CC`, whose fill direction nothing has watched this
+    port choose; and five bytes no neutral field names -- `paladin_cures` at
+    `0x080`, `icon_dimension` at `0x082`, `unnamed_1a4` at `0x0C5`, the stale
+    item count at `0x0C7` and `hands_used` at `0x0C8`.
+    `Report.unaccounted` is the writer's own guarantee and is asserted empty
+    here.
     """
     spans = {
         "experience": (amiga_pod.EXPERIENCE, 4),
@@ -281,13 +293,10 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         "movement": (amiga_pod.MOVEMENT, 1),
         "class_levels": (amiga_pod.CLASS_LEVELS, amiga_pod.CLASS_LEVEL_COUNT),
         "treasure_share": (amiga_pod.FIELD_83_87_SECOND, 1),
-        # `0x0B3` is `armour_class_base` since #462, not `armour_class` --
-        # the neutral `armour_class` is read from `ARMOUR_CLASS_CURRENT`
-        # (`0x187`) now. The span passed under the old name only because
-        # `PodWriter` writes the unarmoured constant to `0x0B3` whatever the
-        # source holds, so both sides of the comparison were the same number
-        # and a wrong name could not show. There is no `armour_class_current`
-        # span to sit beside it until the writer fills `0x187` -- #475.
+        # `0x0B3` is `armour_class_base`, which the writer emits as the
+        # unarmoured constant every record on either port holds; the neutral
+        # `armour_class` is the byte at `0x187`, which the game recomputes on
+        # load and this writer leaves alone, so it has no span here.
         "armour_class_base": (amiga_pod.ARMOUR_CLASS, 1),
         "hp_current": (amiga_pod.HP_CURRENT, 1),
         "saving_throws": (amiga_pod.SAVING_THROWS, amiga_pod.SAVING_THROW_COUNT),
@@ -295,6 +304,26 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         "thief_skills": (amiga_pod.THIEF_SKILLS, amiga_pod.THIEF_SKILL_COUNT),
         "class_bits": (amiga_pod.CLASS_BITS, 1),
         "name": (amiga_pod.NAME, amiga_pod.NAME_LENGTH),
+        # What the writer learned from #475: the four combat bytes, the
+        # scalars, the spellbook and the spell slots.
+        "status": (amiga_pod.STATUS, 1),
+        "hostile": (amiga_pod.HOSTILE, 1),
+        "active": (amiga_pod.ACTIVE, 1),
+        "quickfight": (amiga_pod.QUICKFIGHT, 1),
+        "thac0_base": (amiga_pod.THAC0_BASE, 1),
+        "hp_rolled": (amiga_pod.HP_ROLLED, 1),
+        "unnamed_0ab": (amiga_pod.UNNAMED_0AB, 1),
+        "experience_award": (amiga_pod.EXPERIENCE_AWARD, 2),
+        "size": (amiga_pod.SIZE, 1),
+        "npc_control_byte": (amiga_pod.NPC_CONTROL, 1),
+        "former_level": (amiga_pod.FORMER_LEVEL, 1),
+        "former_class_levels": (amiga_pod.FORMER_CLASS_LEVELS,
+                                amiga_pod.CLASS_LEVEL_COUNT),
+        "attack_forms": (amiga_pod.ATTACK_FORMS, amiga_pod.ATTACK_FORM_COUNT),
+        "spells_known": (amiga_pod.SPELLBOOK, amiga_pod.SPELLBOOK_BYTES),
+        "spells_castable": (amiga_pod.SPELLS_CASTABLE,
+                            amiga_pod.SPELL_SLOT_LEVELS
+                            * len(amiga_pod.SPELL_SLOT_CLASSES)),
     }
     seen = clean = 0
     exceptions: list[str] = []
@@ -331,9 +360,16 @@ def test_every_dos_record_converts_into_a_pc():
         char = dos_codec.read_character(path)
         out = dos_codec.to_neutral(char)
         pc, report = amiga_pod.to_pc(out)
-        assert len(pc) == amiga_pod.RECORD_LENGTH, path.name
-        assert report.unaccounted(pc) == [], path.name
+        # 404 of record, twenty a carried item, ten a running effect -- and
+        # never shorter than the 484 the game's own shortest file is.
         back = amiga_pod.PodCharacter.from_bytes(pc)
+        assert len(pc) == max(
+            amiga_pod.RECORD_LENGTH,
+            amiga_pod.RECORD_BYTES
+            + amiga_pod.ITEM_FILE_SIZE * len(back.items)
+            + amiga_pod.EFFECT_FILE_SIZE * len(back.effects)), path.name
+        assert len(back.items) == len(out.get("inventory")), path.name
+        assert report.unaccounted(pc) == [], path.name
         # The writer cuts trailing blanks, which DOS counts into its own
         # length byte: Guy de Valois is stored `Guy de Valois ` there.
         assert back.name == char.name[:amiga_pod.NAME_LENGTH].rstrip(), path.name
@@ -355,18 +391,18 @@ def test_every_dos_record_converts_into_a_pc():
 
 def test_a_dual_classed_character_arrives_as_the_class_he_is():
     """**ABAGAIL is a magic-user 12 who was a cleric 11 and PAINE a
-    magic-user 13 who was a ranger 9**, and they are the two characters this
-    route could not carry before.
+    magic-user 13 who was a ranger 9**, and the class code has to name what
+    each of them is while the old class keeps its level.
 
     The neutral class mask holds a dual-classed character's old class as well
     as his current one, because the C64 needs it. Copied straight into the
-    Amiga's single class code that made ABAGAIL a `CLERIC/MAGIC-USER`, a
-    class she is not, and it refused PAINE outright -- Pools of Darkness has
-    no magic-user/ranger code, and no character can be both at once.
+    Amiga's single class code it makes ABAGAIL a `CLERIC/MAGIC-USER`, a class
+    she is not, and PAINE nothing at all -- Pools of Darkness has no
+    magic-user/ranger code, and no character can be both at once.
 
-    The old class is on `goldbox.amiga_pod.POD_WRITE_DROPPED` as
-    `former_levels`, so what
-    is asserted here is that it is reported rather than silently lost.
+    So the code at `0x059` names the class he is, and the class he trained out
+    of goes where this engine's own dual-class routine puts it: its level into
+    the array at `0x0A4` and the level he left at into `0x08A`.
     """
     seen = 0
     for path in dos_records():
@@ -374,46 +410,86 @@ def test_a_dual_classed_character_arrives_as_the_class_he_is():
         out = dos_codec.to_neutral(char)
         former = {k: v for k, v in (out.get("former_levels") or {}).items()
                   if v}
-        pc, report = amiga_pod.to_pc(out)
+        pc, _report = amiga_pod.to_pc(out)
         back = amiga_pod.PodCharacter.from_bytes(pc)
         held = {k for k, v in out.get("levels").items() if v}
         named = {p.strip().lower() for p in
                  amiga_pod.CLASSES[back.character_class]
                  .replace("M-U", "MAGIC-USER").split("/")}
         assert named == held, (path.name, named, held)
-        if former:
-            seen += 1
-            for gone in former:
-                assert any(gone in w and "left behind" in w
-                           for w in report.warnings), (path.name, gone)
+        was = {name.lower(): level for name, level
+               in zip(amiga_pod.CLASS_LEVEL_SLOTS, back.former_class_levels)
+               if level}
+        assert was == former, (path.name, was, former)
+        assert back.former_level == (max(former.values()) if former else 0), \
+            path.name
+        seen += bool(former)
     assert seen == 2, f"{seen} dual-classed characters, expected ABAGAIL and PAINE"
+
+
+def test_a_converted_character_arrives_in_the_party():
+    """The byte at `0x184` is what the other two ports draw a name red for,
+    and every `.pc` the game itself wrote holds 1 there -- 19 of 19.
+
+    A writer leaving it zero hands the player a party member the game may be
+    showing as out of it, which is the defect `#475` is named for. Checked on
+    both routes into the writer: a DOS record of this title, and a record
+    built from nothing but a name.
+    """
+    assert amiga_pod.PodWriter(name="TEST").to_bytes()[amiga_pod.ACTIVE] == 1
+    seen = 0
+    for name, raw in pc_records():
+        assert raw[amiga_pod.ACTIVE] == 1, name
+        out, _rep = amiga_pod.to_pc(amiga_pod.pod_to_neutral(raw))
+        assert out[amiga_pod.ACTIVE] == 1, name
+        seen += 1
+    for path in dos_records():
+        out, _rep = amiga_pod.to_pc(
+            dos_codec.to_neutral(dos_codec.read_character(path)))
+        assert out[amiga_pod.ACTIVE] == 1, path.name
+        assert amiga_pod.PodCharacter.from_bytes(out).active, path.name
+        seen += 1
+    assert seen >= 24, seen
+
+
+def test_a_character_the_game_has_taken_out_of_the_party_stays_out():
+    """The other polarity, which a default of 1 would paper over: a source
+    that says the character is out of the party writes zero."""
+    raw = bytearray(amiga_pod.PodWriter(
+        name="GONE", character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 3, 0, 0, 0, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"]).to_bytes())
+    raw[amiga_pod.ACTIVE] = 0
+    raw[amiga_pod.STATUS] = neutral.STATUS_NAMES.index("unconscious")
+    char = amiga_pod.pod_to_neutral(bytes(raw))
+    assert char.get("active") is False
+    assert char.get("status") == "unconscious"
+
+    out, _rep = amiga_pod.to_pc(char)
+    assert out[amiga_pod.ACTIVE] == 0
+    assert out[amiga_pod.STATUS] == neutral.STATUS_NAMES.index("unconscious")
 
 
 # --- the negative result, which is the state of the Amiga end ----------------
 
 def test_a_caster_read_out_of_a_pc_reaches_dos_with_his_spellbook():
-    """The loss this ticket was opened for, measured on both sides of it.
+    """A caster read off an Amiga disk reaches DOS with his own spellbook.
 
-    **Before `#462` this test asserted the opposite** -- `assert not
-    any(back.raw("spellbook"))`, because nobody had found the spellbook and a
-    magic-user 14 arrived in DOS with an empty one and a THAC0 the sheet
-    printed as 60. The spellbook is the sixteen-byte mask at `0x159` and the
-    ids are the DOS array's own, so what arrives now is his own book.
-
-    The four casters in the corpus with a DOS record of the same class and
-    the same levels are checked **against that record's spellbook**, which is
-    the strongest form the claim has: the ids that come out of the Amiga mask
-    are the ids the other port stores for the same character.
+    The book is the sixteen-byte mask at `0x159` and the ids are the DOS
+    array's own, so the two ports' lists compare directly. The four casters
+    with a DOS record of the same class and the same levels are checked
+    **against that record's spellbook**, which is the strongest form the
+    claim has: the ids that come out of the Amiga mask are the ids the other
+    port stores for the same character.
     """
     seen = casters = 0
     for name, raw in pc_records():
         out = amiga_pod.pod_to_neutral(raw)
         rec, itm, spc, _report = dos_codec.write(out)
         assert len(rec) == POD.record_size, name
-        # **`itm` and `spc` were both empty until the second half of `#462`**,
-        # when this reader learned to walk the item region and the effect
-        # chain; `tests/amiga/test_podamiga_regions.py` is where the two are
-        # checked field by field.
+        # He arrives carrying what the `.pc` holds: every file on the disks
+        # has items, and `tests/amiga/test_podamiga_regions.py` is where the
+        # `.THG` and the `.EFX` are checked field by field.
         assert itm != b"", name
         back = dos_codec.DosCharacter(rec)
         assert back.spells_known == out.get("spells_known"), name
@@ -464,19 +540,15 @@ def test_the_amiga_spellbook_is_the_dos_spellbook_for_the_same_character():
 
 
 def test_the_reader_has_nothing_left_to_say_to_a_player():
-    """**The one unapproved warning is gone, and nothing replaced it.**
+    """The reader puts no sentence in front of a player, and a sentence in
+    place of the thing it describes is what `.claude/rules/conversions.md`
+    forbids in the first place.
 
-    It said the part of the file holding possessions and running magic had
-    not been read. The reader walks the item region and the effect chain
-    now, so the sentence had stopped being true -- and a sentence to a player
-    in place of the thing it describes is what
-    `.claude/rules/conversions.md` forbids in the first place.
-
-    What is left is eleven names on `pod_read_dropped()`, which goes to
-    `wish/debuglog.py`: nine fields this title has on neither port,
+    What it reports instead is eleven names on `pod_read_dropped()`, which
+    goes to `wish/debuglog.py`: nine fields this title has on neither port,
     `innate_effects` -- a label rather than a byte, since everything that
-    never expires is converted as a grant -- and `attack_level`, the one
-    field of the record still unlocated.
+    never expires is converted as a grant -- and `attack_level`, which this
+    title's engine works out from the class level and keeps nowhere.
     """
     dropped = dict(amiga_pod.pod_read_dropped())
     assert len(dropped) == 11, sorted(dropped)
@@ -493,11 +565,10 @@ def test_the_reader_fills_sixty_three_of_the_neutral_records_fields():
     """The count that says how far the Amiga decode has got, pinned so it
     moves when somebody decodes another region rather than drifting.
 
-    **38 when this reader was written, 62 when `#462` decoded the record and
-    63 now the tail is walked**, of 75 -- 64 for a character with an effect
-    running on him, since `granted_effects` is set only when there is one,
-    the same way the Curse and Silver Blades reader sets it. On this machine
-    that is twelve characters at 63 and seven at 64.
+    63 of the 75, and 64 for a character with an effect running on him, since
+    `granted_effects` is set only when there is one -- the same way the Curse
+    and Silver Blades reader sets it. On this machine that is twelve
+    characters at 63 and seven at 64.
 
     The two it never fills: `npc_control_byte`, which is set only for a
     companion and so is absent from a player character rather than dropped,
@@ -554,21 +625,22 @@ def test_every_offset_matches_the_engines_own_silver_blades_importer():
 
 
 def test_this_title_reads_its_attack_table_at_the_class_level():
-    """**The last unlocated field of the record is not in the record.**
+    """**The record has no `attack_level` because the engine keeps none.**
 
-    `attack_level` was the one field `#462` could not place: Silver Blades
-    keeps it at Amiga `0x080` and this title's importer does not copy it. The
-    reason is that Pools of Darkness has no such field. Two routines fill
-    `thac0_base` at `0x07F` -- the derived-fields rebuild at `0x03C238` and
-    character creation at `0x00EF82` -- and both index one table with
-    `22 * class + level`, where `level` is `max(class_levels[i],
-    former_class_levels[i])` capped at 21 (`0x03D046`), and neither reads any
-    other byte of the record.
+    Silver Blades keeps one at Amiga `0x080` and this title's importer copies
+    nothing into it. The two routines that derive `thac0_base` at `0x07F` --
+    the derived-fields rebuild at `0x03C238` and character creation at
+    `0x00EF82` -- index one table with `22 * class + level` and neither reads
+    any other byte of the record.
 
-    The arithmetic reproduces the stored `thac0_base` of **19 of 19** `.pc`
-    files on this machine, single-classed, dual-classed and multi-classed
-    alike, which is the corroboration the two listings on their own would
-    not be.
+    **What the nineteen files prove is the table's address and the arithmetic
+    over `class_levels`**: every one of them is zero in
+    `former_class_levels`, so neither the gate on the former array
+    (`dual_class_level_counts`) nor the engine's cap at level 21 is exercised
+    by any record on this machine, and both come off the listing alone. Three
+    of the nineteen are multi-classed -- BOHLO BART AB a fighter 9/thief 13
+    and two fighter/magic-user/thieves -- which is what makes the "best row
+    entry of the seven slots" half more than a single-class claim.
 
     Needs `capstone` and the player's own Amiga disk images; skips without
     either, which is what CI does.
@@ -596,12 +668,73 @@ def test_this_title_reads_its_attack_table_at_the_class_level():
     wizard = table[amiga_pod.CLASS_LEVEL_SLOTS.index("MAGIC-USER")]
     assert fighter[14] > wizard[14]
 
-    seen = 0
-    for name, raw in pc_records():
-        char = amiga_pod.PodCharacter.from_bytes(raw)
-        assert podimportmap.thac0_base(
-            table, char.class_levels, char.former_class_levels) == \
-            char.thac0_base, name
-        seen += 1
-    assert seen >= 12, seen
+    records = dict(pc_records())
+    multi = [name for name, raw in records.items()
+             if sum(1 for level in amiga_pod.PodCharacter.from_bytes(
+                 raw).class_levels if level) > 1]
+    former = [name for name, raw in records.items()
+              if any(amiga_pod.PodCharacter.from_bytes(
+                  raw).former_class_levels)]
+    assert len(records) >= 12, len(records)
+    assert len(multi) >= 3, multi
+    assert former == [], former
+    assert podimportmap.check_thac0(table, records) == 0
     assert "attack_level" in dict(amiga_pod.pod_read_dropped())
+
+
+def test_the_attack_table_check_fails_when_a_record_disagrees():
+    """The failure path of `check_thac0`, which the run above never takes.
+
+    Built from the format rather than off a disk: a seven-row table whose
+    entries are the level, and a fighter 3 whose stored byte says 9. A check
+    that could not come back non-zero would prove nothing about the 19.
+    """
+    from tools.amiga import podimportmap
+
+    table = [list(range(podimportmap.THAC0_TABLE_STRIDE))
+             for _ in amiga_pod.CLASS_LEVEL_SLOTS]
+    right = amiga_pod.PodWriter(
+        name="F", race=amiga_pod.RACES.index("HUMAN"),
+        character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 3, 0, 0, 0, 0), thac0_base=3).to_bytes()
+    wrong = bytearray(right)
+    wrong[amiga_pod.THAC0_BASE] = 9
+
+    assert podimportmap.check_thac0(table, {"RIGHT.pc": right}) == 0
+    assert podimportmap.check_thac0(table, {"WRONG.pc": bytes(wrong)}) == 1
+
+
+def test_the_former_class_level_only_counts_when_the_engines_gate_opens():
+    """`0x03D046` reads the former array only when `0x03D020` says so, and
+    that is two tests rather than a plain `max` of the two arrays.
+
+    Read off the listing, and no record on this machine exercises it: a human
+    whose current level is above the byte at `0x08A` gets his old class's
+    level into the arithmetic; a dwarf with the same arrays does not, because
+    `0x03CFB2` returns zero for any race but the human; and neither does a
+    human whose `former_level` is his current level or higher.
+    """
+    from tools.amiga import podimportmap
+
+    def built(race: str, former_level: int):
+        return amiga_pod.PodCharacter.from_bytes(amiga_pod.PodWriter(
+            name="DUAL", race=amiga_pod.RACES.index(race),
+            character_class=amiga_pod.CLASSES.index("MAGIC-USER"),
+            class_levels=(0, 0, 0, 0, 0, 12, 0),
+            former_class_levels=(11, 0, 0, 0, 0, 0, 0),
+            former_level=former_level).to_bytes())
+
+    assert podimportmap.dual_class_level_counts(built("HUMAN", 11)) is True
+    assert podimportmap.dual_class_level_counts(built("HUMAN", 12)) is False
+    assert podimportmap.dual_class_level_counts(built("DWARF", 11)) is False
+
+    # Every row is the level itself except the cleric's, which is 50
+    # throughout: so the answer is 50 when the old cleric level is allowed
+    # into the arithmetic and the magic-user's own 12 when it is not.
+    table = [list(range(podimportmap.THAC0_TABLE_STRIDE))
+             for _ in amiga_pod.CLASS_LEVEL_SLOTS]
+    table[amiga_pod.CLASS_LEVEL_SLOTS.index("CLERIC")] = [
+        50] * podimportmap.THAC0_TABLE_STRIDE
+    assert podimportmap.thac0_base(table, built("HUMAN", 11)) == 50
+    assert podimportmap.thac0_base(table, built("HUMAN", 12)) == 12
+    assert podimportmap.thac0_base(table, built("DWARF", 11)) == 12
