@@ -33,5 +33,6 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_installfsuae.py` | Checks that `tools/amiga/installfsuae.py` refuses a tarball with the wrong digest, a member that escapes or a non-https download, unpacks only `package/bin/fs-uae/`, never deletes what `--into` already holds, and does nothing on a second run, on tarballs built here with no network. |
 | `test_m68dis.py` | Checks the 68000 disassembler on hand-assembled encodings, including a word that is not an instruction. |
 | `test_podamiga.py` | Checks reading an Amiga Pools of Darkness `.pc` back to a neutral record and the DOS route around it. |
+| `test_podsavegame.py` | Checks the Amiga Pools of Darkness saved-game map: a container built here round-trips, every slot on the player's disks parses and rebuilds byte for byte, the square block is DOS's field order with one more byte, and DOS's own strides fail on the same files. |
 | `test_porslot.py` | Checks that `tools/amiga/porslot.py` reads an Amiga save slot straight off the disk, from the player's own image. |
 | `test_winvmsettle.py` | Checks when `tools/amiga/winvmsettle.py` decides a guest screen has settled, what it keeps when it never does, and what it says with no screen. |

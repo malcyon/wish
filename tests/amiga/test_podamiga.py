@@ -271,9 +271,10 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
     `0x0BF`-`0x0C4`, where a value past the end of `CHEAD.TLB` makes the
     loader refuse the file; the
     memorised list at `0x0CC`, whose fill direction nothing has watched this
-    port choose; and five bytes no neutral field names -- `paladin_cures` at
-    `0x080`, `icon_dimension` at `0x082`, `unnamed_1a4` at `0x0C5`, the stale
-    item count at `0x0C7` and `hands_used` at `0x0C8`.
+    port choose; and the bytes no neutral field names -- `paladin_cures` at
+    `0x080`, `icon_dimension` at `0x082`, `unnamed_1a4` at `0x0C5`-`0x0C6`,
+    the stale item count at `0x0C7`, `hands_used` at `0x0C8` and `gap_19a` at
+    `0x0C9`, which is 2 in 5 of the 19.
     `Report.unaccounted` is the writer's own guarantee and is asserted empty
     here.
     """
@@ -304,8 +305,8 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         "thief_skills": (amiga_pod.THIEF_SKILLS, amiga_pod.THIEF_SKILL_COUNT),
         "class_bits": (amiga_pod.CLASS_BITS, 1),
         "name": (amiga_pod.NAME, amiga_pod.NAME_LENGTH),
-        # What the writer learned from #475: the four combat bytes, the
-        # scalars, the spellbook and the spell slots.
+        # The four combat bytes, the scalars, the spellbook and the spell
+        # slots.
         "status": (amiga_pod.STATUS, 1),
         "hostile": (amiga_pod.HOSTILE, 1),
         "active": (amiga_pod.ACTIVE, 1),
@@ -468,6 +469,99 @@ def test_a_character_the_game_has_taken_out_of_the_party_stays_out():
     out, _rep = amiga_pod.to_pc(char)
     assert out[amiga_pod.ACTIVE] == 0
     assert out[amiga_pod.STATUS] == neutral.STATUS_NAMES.index("unconscious")
+
+
+# --- what the writer takes from a synthetic character ------------------------
+#
+# Each test below builds its neutral character from a record `PodWriter`
+# makes from a name, so it needs no disk, and changes exactly one field. The
+# specimens cannot pin these: all 19 genuine records hold the same value in
+# both halves of the exceptional-strength pair, have `hostile` 0, have an
+# experience award of zero and carry no effect id twice.
+
+def a_neutral_fighter() -> neutral.NeutralCharacter:
+    raw = amiga_pod.PodWriter(
+        name="SYNTH", character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 3, 0, 0, 0, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"]).to_bytes()
+    return amiga_pod.pod_to_neutral(raw)
+
+
+def test_a_source_that_does_not_say_whether_he_is_in_the_party_writes_one():
+    """`active` defaults to true when the neutral record has no such field,
+    which is every C64 source: a character being converted is in the party,
+    and a zero here is the flag that may draw his name as out of it."""
+    char = a_neutral_fighter()
+    del char.fields["active"]
+    out, _rep = amiga_pod.to_pc(char)
+    assert out[amiga_pod.ACTIVE] == 1
+
+
+def test_a_hostile_character_is_written_hostile():
+    char = a_neutral_fighter()
+    char.set("hostile", True, "test")
+    out, _rep = amiga_pod.to_pc(char)
+    assert out[amiga_pod.HOSTILE] == 1
+    assert amiga_pod.PodCharacter.from_bytes(out).hostile
+
+
+def test_the_experience_award_is_written_as_a_big_endian_word():
+    char = a_neutral_fighter()
+    char.set("experience_award", 300, "test")
+    out, _rep = amiga_pod.to_pc(char)
+    assert out[amiga_pod.EXPERIENCE_AWARD:amiga_pod.EXPERIENCE_AWARD + 2] == (
+        (300).to_bytes(2, "big"))
+
+
+def test_exceptional_strength_keeps_its_two_halves_in_their_own_bytes():
+    """The in-force percentile is byte 0 of the pair at `0x07C` and the
+    permanent one is byte 1, the other way round from the six ability pairs.
+
+    Written and read with the two values different, because they are equal
+    in all 19 genuine records: a reader and a writer that disagreed about
+    which byte is which changed the record at `0x07C` on a round trip and
+    nothing on any disk showed it.
+    """
+    char = a_neutral_fighter()
+    char.set("exceptional_strength", 0x32, "test")
+    char.set("abilities_second", {"exceptional_strength": 0x64}, "test")
+    out, _rep = amiga_pod.to_pc(char)
+    at = amiga_pod.EXCEPTIONAL_STRENGTH
+    assert out[at] == 0x32
+    assert out[at + 1] == 0x64
+
+    back = amiga_pod.PodCharacter.from_bytes(out)
+    assert back.exceptional_strength == 0x32
+    assert back.exceptional_strength_permanent == 0x64
+    read = amiga_pod.pod_to_neutral(out)
+    assert read.get("exceptional_strength") == 0x32
+    assert read.get("abilities_second")["exceptional_strength"] == 0x64
+    again, _rep = amiga_pod.to_pc(read)
+    assert again[at:at + 2] == out[at:at + 2]
+
+
+def test_an_effect_listed_as_granted_and_as_innate_is_written_once():
+    """The chain holds one node per id: a granted effect also named among the
+    innate ones is not written twice, and the skip is on the report."""
+    char = a_neutral_fighter()
+    granted = bytes((5, 0, 0, 0xFF, 0, 0, 0, 0, 0))
+    char.set("granted_effects", [granted], "test")
+    char.set("innate_effects", [5], "test")
+    out, rep = amiga_pod.to_pc(char)
+    back = amiga_pod.PodCharacter.from_bytes(out)
+    assert [node[0] for node in back.effects] == [5]
+    assert [line for line in rep.dropped if "already in the chain" in line]
+
+
+def test_an_effect_duration_is_byte_swapped_into_the_amiga_node():
+    """DOS keeps the duration little-endian at 1 and the `.pc` node big-endian
+    at 2, so 0x0102 is the bytes `02 01` in one and `01 02` in the other.
+    Every genuine node holds a duration of zero, so only a synthetic one can
+    tell the two orders apart."""
+    dos = bytes((7, 0x02, 0x01, 0xFF, 0x00, 0, 0, 0, 0))
+    node = amiga_pod.pod_effect_from_dos(dos)
+    assert node[2:4] == bytes((0x01, 0x02))
+    assert amiga_pod.pod_effect_to_dos(node)[:5] == dos[:5]
 
 
 # --- the negative result, which is the state of the Amiga end ----------------
@@ -679,6 +773,11 @@ def test_this_title_reads_its_attack_table_at_the_class_level():
     assert len(multi) >= 3, multi
     assert former == [], former
     assert podimportmap.check_thac0(table, records) == 0
+    exe = podimportmap.executable(quiet=True)
+    from tools.amiga import amigarecordrefs
+    start, end = amigarecordrefs.code_range(exe)
+    assert podimportmap.check_attack_table_sites(
+        podimportmap.attack_table_sites(exe, start, end)) == 0
     assert "attack_level" in dict(amiga_pod.pod_read_dropped())
 
 
@@ -704,9 +803,45 @@ def test_the_attack_table_check_fails_when_a_record_disagrees():
     assert podimportmap.check_thac0(table, {"WRONG.pc": bytes(wrong)}) == 1
 
 
+def test_the_attack_table_search_finds_a_small_data_reference_and_only_that(
+        monkeypatch):
+    """`attack_table_sites` is what the claim "no third routine indexes the
+    table" rests on, so it has to find a reference and reject look-alikes.
+
+    Built from the format on a synthetic buffer of `nop`s, with no disk:
+    `lea.l -$621e(a4), a0` at 0x40 and one at a row inside the table
+    (`-$6208`, the second class's row) at 0x80 are references; the same
+    displacement off `a3` at 0xC0, and the word at an odd offset, are not.
+    A reference outside the two routines fails the check, and so does a
+    search that finds none.
+    """
+    pytest.importorskip("capstone")
+    from tools.amiga import podimportmap
+
+    def lea(displacement: int, register: int = 4) -> bytes:
+        return (0x41E8 + register).to_bytes(2, "big") + (
+            displacement & 0xFFFF).to_bytes(2, "big")
+
+    buf = bytearray(b"\x4e\x71" * 0x100)
+    buf[0x40:0x44] = lea(-0x621E)
+    buf[0x80:0x84] = lea(-0x6208)
+    buf[0xC0:0xC4] = lea(-0x621E, register=3)
+    buf[0x101:0x103] = (-0x621E & 0xFFFF).to_bytes(2, "big")
+
+    found = podimportmap.attack_table_sites(bytes(buf))
+    assert [at for at, _ in found] == [0x40, 0x80]
+    assert all("(a4)" in text for _at, text in found)
+
+    monkeypatch.setattr(podimportmap, "THAC0_SITES", (0x50, 0x90))
+    assert podimportmap.check_attack_table_sites(found) == 0
+    monkeypatch.setattr(podimportmap, "THAC0_SITES", (0x50,))
+    assert podimportmap.check_attack_table_sites(found) == 1
+    assert podimportmap.check_attack_table_sites([]) == 1
+
+
 def test_the_former_class_level_only_counts_when_the_engines_gate_opens():
     """`0x03D046` reads the former array only when `0x03D020` says so, and
-    that is two tests rather than a plain `max` of the two arrays.
+    that is two tests rather than a bare `max` of the two arrays.
 
     Read off the listing, and no record on this machine exercises it: a human
     whose current level is above the byte at `0x08A` gets his old class's

@@ -161,7 +161,7 @@ NAME = 0x060
 NAME_LENGTH = 15             # 15 characters, NUL terminator at 0x06F
 ABILITIES = 0x070            # six base/current pairs; the sheet draws the 2nd
 ABILITY_COUNT = 6
-EXCEPTIONAL_STRENGTH = 0x07C  # one more pair, same shape
+EXCEPTIONAL_STRENGTH = 0x07C  # one more pair, in force first
 #: Silver Blades' `gap_069`, the byte before `thac0_base` in DOS's own order.
 #: The importer copies it and nothing else names it. UNKNOWN.
 UNNAMED_07E = 0x07E
@@ -653,7 +653,9 @@ class PodCharacter:
 
     @property
     def exceptional_strength(self) -> int:
-        return self.raw[EXCEPTIONAL_STRENGTH + PAIR_CURRENT]
+        """The percentile in force: byte 0 of its pair, where the six ability
+        pairs keep it in byte 1."""
+        return self.raw[EXCEPTIONAL_STRENGTH]
 
     @property
     def hit_points_max(self) -> int:
@@ -1400,9 +1402,12 @@ ALIGNMENT_NAMES: tuple[str, ...] = ALIGNMENTS
 #: What an unarmoured, unarmed character is, and what all twelve genuine
 #: records hold: armour class 10 and 1d2. **Not** converted from the source. A
 #: Gold Box armour class is a cache that already includes worn armour and a
-#: dexterity bonus, PoD re-applies dexterity itself, and no item crosses -- so
-#: a converted character genuinely arrives with nothing on and 10 is the right
-#: answer rather than a lossy one.
+#: dexterity bonus, so copying it would count the armour twice. The stored
+#: base is a constant of the format, and the bonus a worn item gives is
+#: recomputed by the game from the item nodes the writer now emits. **That last
+#: half is argued, not run**: probe P3 built its record with no items, so
+#: nothing has shown the sheet's armour class moving for a readied piece of
+#: armour.
 UNARMOURED_AC = 10
 UNARMED_DAMAGE = (1, 2, 0)
 
@@ -1653,7 +1658,9 @@ POD_WRITE_CONSTANTS: tuple[tuple[str, str], ...] = (
 
 #: The reasons `neutral.Writer` quotes for a field it was given and did not
 #: write: what is genuinely left behind, plus the two kinds that are not
-#: losses, so a report line says which of the three it is.
+#: losses. A report line is `name: why` and does not say which of the three
+#: it is; `pod_write_field_disposition` does, with its `dropped:`, `derived:`
+#: and `constant:` prefixes.
 POD_WRITE_UNTAKEN = (POD_WRITE_DROPPED + POD_WRITE_DERIVED
                      + POD_WRITE_CONSTANTS)
 
@@ -1707,7 +1714,8 @@ POD_READ_DIRECT: tuple[tuple[str, str], ...] = (
     ("hp_max", "hp_max, the .pc's byte at 0x081"),
     ("hp_current", "hp_current, the .pc's byte at 0x191"),
     ("exceptional_strength",
-     "exceptional_strength, the current half of the pair at 0x07C"),
+     "exceptional_strength, the first byte of the pair at 0x07C -- the one "
+     "in force, where the six ability pairs keep it in the second"),
     *((k, f"{k}, the current half of its pair at 0x070") for k in ABILITY_KEYS),
     *((k, f"{k}, one of the five saving throws at 0x083") for k in SAVE_KEYS),
     *((k, f"{k}, one of the eight thief skills at 0x08B") for k in THIEF_KEYS),
@@ -2668,7 +2676,9 @@ def export_party(save_path, out_dir, game_disk=None) -> list[tuple]:
 
     Returns one `(path, Report)` per character. The C64 disk is opened
     read-only; `out_dir` is created if it is not there.  `game_disk` is
-    accepted and unused: it names items, and no item crosses.
+    accepted and unused: it names items, and this route reads none from
+    the C64 disk (`c64_codec.read` is called without an `inventory`), so the
+    writer is given none to emit.
     """
     import pathlib
 

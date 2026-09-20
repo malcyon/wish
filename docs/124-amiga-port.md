@@ -1902,8 +1902,14 @@ nodes on this machine.
 #### `attack_level`: the engine works it out and stores nothing
 
 **The two routines that derive `thac0_base` at `0x07F` both index one attack
-table with a class level**, and a displacement search over the executable
-finds no third. The derived-fields rebuild at `0x03C238` walks the seven
+table with a class level**, and `tools/amiga/podimportmap.py --thac0` finds
+no third: it searches the code hunk for every `d16(a4)` that lands anywhere in
+the table and finds four references, two in each of those routines (`0x03C274`
+and `0x03C290`, `0x00EFAC` and `0x00EFD4`) and none outside them. That search
+sees one addressing mode only, so a pointer to the table kept in a global, or
+an absolute address the loader relocates, would not show; the claim is that
+no other routine reaches the table through the small-data register, which is
+how the engine reaches it in both. The derived-fields rebuild at `0x03C238` walks the seven
 class slots, asks `0x03D046` for each one's level, caps it at 21 and keeps
 the best entry of `data + 0x1DE0`, a table of seven rows of 22 bytes in the
 family's stored `60 - THAC0` form. Character creation does the same at
@@ -1932,7 +1938,7 @@ and that is two tests rather than one:
   passes the level he left at.
 
 With the gate shut the former array contributes nothing at all. Corrected
-here because the plain `max` would give a converted character the wrong
+here because a bare `max` would give a converted character the wrong
 THAC0 the moment his new class was the lower of the two, and because
 `tools/amiga/podimportmap.py`'s own arithmetic was written from it.
 
@@ -2030,7 +2036,9 @@ in the file would be where the loader expected it otherwise.
 | `encumbrance`, `thac0_current`, `armour_class`, `movement_current` | the game recomputes them on load, each demonstrated by a probe that wrote a wrong value and read the right one back off the sheet |
 | `armour_class_base`, `0x0B3` | written as the unarmoured `60 - 10`, which is what 19 of 19 `.pc` files — whose characters all carry items — and 12 of 12 DOS records hold |
 | `roster_tail`, `0x188` | three of its nine bytes are in the recomputed set; the rest has not been watched being rebuilt |
-| five bytes no neutral field names | `paladin_cures` `0x080`, `icon_dimension` `0x082` (1 in 19 of 19), `unnamed_1a4` `0x0C5` (`02 02` in 19 of 19), the stale item count `0x0C7` and `hands_used` `0x0C8` |
+| bytes no neutral field names, all left zero | `paladin_cures` `0x080` (1 for both paladins on the disks, 0 for the other 17: a converted paladin's count does not convert, and the vocabulary has no field for it), `icon_dimension` `0x082` (1 in 19 of 19), `unnamed_1a4` `0x0C5`-`0x0C6` (`02 02` in 19 of 19), the stale item count `0x0C7`, `hands_used` `0x0C8` (2 in 18 of 19) and `gap_19a` `0x0C9` (2 in 5 of 19, 0 in the other 14; its neighbour `0x0CA` is 0 in 19 of 19) |
+
+**`icon_dimension` and `0x0C5`-`0x0C6` are values every one of the 19 records holds, and `hands_used` is 2 in 18 of them; the writer leaves all three zero.** Now that readied items are written, `hands_used` 0 beside a readied weapon is a state no genuine record shows. What any of these zeros does to the game is **unmeasured**: nothing has loaded a record with them zero and looked at the sheet or fought with it, so the table does not call them harmless.
 
 **None of this has been in front of the game yet**, and that is the boundary
 of the claim: the bytes match and the lengths match, and a conversion is not
@@ -2038,6 +2046,138 @@ proven until a party made this way walks. The two experiments a driven
 session owes are the memorised list's fill direction and whether writing the
 combat block shows on the sheet — the STATUS line for `status`, and the party
 panel's red name for `active`.
+
+### 1.20 The saved game, read from the routine that writes it (#599 (How is the Amiga Pools of Darkness saved game laid out, so a whole save can convert and not only its characters?))
+
+`Save/SavGam<L>.pty` is a straight run of `write(fd, buf, len)` calls, and the
+loader reads the same sequence back into the same globals — the method
+[`165-amiga-savegame.md`](165-amiga-savegame.md) used on the other three
+titles. The save callback is `/Pools of Darkness` file offset `0x270E0` and
+the load callback `0x26904`; each region below is one of their calls.
+`tools/amiga/podsavegame.py` is the reader and `tests/amiga/test_podsavegame.py`
+the proof.
+
+| at | bytes | source | what |
+|---|---|---|---|
+| 0 | 1024 | `[g57ac] + 1` | the byte-wide ECL variable array, variable *N* at offset *N* − 1 |
+| 1024 | 6 | `g5f20` | x, y, facing (0/2/4/6), the wall type ahead, the square's attribute byte, a pad nothing references |
+| 1030 | 1 | `g743c` | the mode the party was in before this one |
+| 1031 | 1 | `g5b12` | the game mode |
+| 1032 | 2 | `g5f2c` | the dungeon map, `u16be`, the loader's first argument to `LoadMap` |
+| 1034 | 2 | `g5f2e` | that loader's second argument, `u16be` |
+| 1036 | 2 | a walk of the party list | the party count, `u16be`, capped at 8 |
+| 1038 | … | each character | a 404-byte record, its items twenty bytes each, its effects ten each |
+| … | … | `[g6e96]` | padding to a fixed **10,828** bytes |
+
+**CONFIRMED from the code, and every byte accounted for in 14 of 14.** Fourteen
+distinct saved games are on the Amiga disk images here — the eight shipped in
+disk 3's `Save` drawer and six more on alternate rips — and all fourteen parse,
+rebuild byte for byte and measure 10,828. Give the same reader DOS's own
+widths, a five-byte square struct and a one-byte count, and **14 of 14 fail**,
+so the map is not true of any reading.
+
+#### It is DOS's container, in DOS's field order
+
+Every name and its order is `goldbox.dos_savegame.SAVE_POOLS_OF_DARKNESS`'s,
+and there are exactly two differences. The Amiga struct at 1024 is **six bytes
+where DOS writes five** — DOS has no pad — so every offset after it is DOS's
+plus one, which is why the mode byte looked one byte late. And the party count
+is a **`u16be` where DOS keeps a byte**, the way Curse and Silver Blades do on
+this port. DOS's file ends at the count; this one carries its party inline
+rather than naming `CHRDAT` files.
+
+The engine's own reads corroborate each field. The loader hands `g5f2c` and
+`g5f2e` to `LoadMap` at `0x26B3A` when variable 34 is set, which is DOS's
+`POD_MAP`/`POD_MAP_BLOCK` pair and its `POD_IN_DUNGEON`. The step routine at
+`0x11532`-`0x1157A` increments and wraps `g5f20` and `g5f21` at 15, so they are
+x and y on a 16 × 16 grid, and it rewrites `g5f23` and `g5f24` on the same
+step. `g5f25` has **no reference anywhere in the executable** and reads 0 in 14
+of 14 — Curse's `g3f65` and Silver Blades' `g57a5` again. `g743c` is only ever
+assigned from `g5b12` (`prev = mode`), which is DOS's
+`POD_PREVIOUS_MODE`/`POD_MODE` order exactly.
+
+The modes read as the DOS enumeration says. **`g5b12` is 2, camp, in 12 of 14**
+— a save is made from camp — and 0 in the two whose square is the new game's
+own `7,13,0` and whose clock is all zeros, which is the value a load leaves
+behind and the same reading `165-amiga-savegame.md` gives the shipped Silver
+Blades save. **`g743c` is 3 in every slot whose variable 34 is 0 and 4 in every
+slot whose is 1**, 12 of 12 that have been in the world: `POD_MODE_WILDERNESS`
+and `POD_MODE_DUNGEON`.
+
+Byte 1028 is the square's attribute byte, read out of the resident 16 × 16 map
+the way [`165-amiga-savegame.md`](165-amiga-savegame.md) reads the later
+titles'. In 14 of 14 some block of disk 3's `GEO.GLB` holds that byte at
+`0x200 + 16y + x`, and in 3 of them exactly one of the 32 blocks does.
+PROBABLE: no saved game here has been matched to the block it actually names.
+
+#### The party region is a `.pc` file, repeated
+
+The write loop at `0x26338` puts the **item count** into the record's long at
+`0x08`, where memory keeps the chain head, writes the 404 bytes, then twenty
+bytes of each item node from node offset `0x2E`, then ten bytes of each effect
+node. An item whose first byte is `0x49` — the scroll bundle — is followed by
+`node[0x0C]` more twenty-byte nodes. The loader at `0x25806` reverses it: it
+takes the count from `0x08` and zeroes it, and it walks the effect chain by
+each node's own long at `0x06`, so the head at record `0x04` is a flag rather
+than a count. That is the `Save/NAME.pc` layout §1.18 already walks, so the
+container's party is the existing `.pc` reader with an offset. CONFIRMED.
+
+#### The padding is the item table, and nothing reads it
+
+The save ends `lseek(fd, 0, 1)` and, when the position is short of 10,828,
+writes the difference from `[g6e96]` — the 0x13EC-byte item template table
+indexed at `id × 20` at `0x100FE`. **The first 5100 bytes of the padding are
+byte-identical in 14 of 14**; past that the write runs off the allocation into
+neighbouring heap and the files diverge. The loader stops at the last
+character and never seeks past it, so a writer may put anything there.
+CONFIRMED from both callbacks.
+
+#### `Vault<L>.DAT` is the item vault, and a slot loads without one
+
+4016 bytes: twelve of header, the marker `$FFFF`, a `u16be` item count, then a
+fixed two hundred twenty-byte item nodes with the unused ones padded from the
+same item table (`0x3DA86`). 12 + 4 + 200 × 20 = 4016, which is what all
+seventeen on these disks measure, all with the marker and counts of 0 to 97.
+**The saved-game loader never opens it** — it is read when the player enters
+the vault and written when they leave (`0x3DD66`, `0x3DF1E`), and the save
+menu copies the old slot's vault to the new one when the letter changes
+(`0x27354`). So a converted slot does not need one to load, and a player who
+walks into the vault without one meets the engine's disk request rather than
+an empty vault. CONFIRMED for the loader; PROBABLE for what the vault screen
+then does, which nobody has watched.
+
+#### Which variables mean the same on both ports
+
+`tools/dos/dosptrfields.py` finds displacements 0-58 and 195-197 off DOS's
+block pointer, which are variables 1-59 and 196-198. The same census on the
+Amiga — every displacement after a `movea.l -$2852(a4), aN` — finds **48
+variables in 1-59, 198, and 418**, over 246 sites.
+
+So the engine-owned region is the same on both ports, and four of its members
+are confirmed to be the same variable by what the Amiga code does with each:
+19 is the dungeon map handed to the loader, 32 is the party count and **the
+loader clears it on load** exactly as the later titles clear `$503E`, 34 runs
+the dungeon or the wilderness, and 58 indexes a wilderness-region table. The
+clock is the same seven digits with the same radices: the table
+`00 0a 00 0a 00 06 00 18 00 1e 00 0c 00 64` is at Amiga file offset `0x4F79A`,
+which is DOS's `(10, 10, 6, 24, 30, 12, 100)` big-endian, and the seven digits
+at variables 5-11 are legal against it in 14 of 14.
+
+**The one disagreement is variable 418**, read at `0x57D6` into `g5f2a` and
+used as an index at `0x506A`. DOS's census does not name it. That is a
+variable this port's engine owns and the other's does not appear to, and it is
+the counterexample to "all 1024 mean the same". Everything outside 1-59 is
+written by the title's own `ECL` scripts, which are the same content on both
+ports, so those are expected to agree — PROBABLE, and untested.
+
+#### What a driven session still owes
+
+The volume the game saves to. `0x25194` guards both the save and the load menu
+with a check for a volume and the prompt **"Please insert disk 3."**, and the
+path builder at `0x3F7D8` prefixes `SAVE` only on a hard-disk install and
+`DF0:` otherwise, leaving the name unqualified — so the file lands in whatever
+directory the game is in, and the shipped slots are in disk 3's `Save` drawer.
+PROBABLE, from the code; one `ENCAMP ▸ SAVE` settles it.
 
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 
@@ -2471,7 +2611,7 @@ So nobody is surprised, and nobody tries.
 | **Experience** | The C64 field is **3 bytes** — 16 777 215 maximum. Pools of Darkness characters exceed that. | the target field is wider; carry the value up, and expect a C64-sourced total to look low rather than wrong |
 | **Race and class codes** | `goldbox/c64_port.py` already documents that the race table changes per title on the C64 alone (human is 7 in Pool of Radiance, 6 in Silver Blades). PoD's Amiga table has not been read. | read PoD's own table before writing a race byte |
 | **Copper, silver, electrum and gold** | only platinum (`0x04C`), gems and jewelry have been located in the `.pc`. R7 was the probe for the lighter coins and did not finish; `0x048` and `0x04A` are zero in all twelve and are the obvious candidates. | reported, with the total, so the player knows what was left on the counter |
-| **Armour class and unarmed damage** | not a loss so much as a category error. The C64's numbers already include worn armour and a strength bonus, PoD re-applies dexterity and strength itself, and no item crosses — so a converted character genuinely arrives unarmoured. | write the unarmoured `10` and `1d2`, which is what all twelve genuine records hold, and let PoD derive the rest. §2.5 shows it coming out at `AC 8` and `1D2+1` |
+| **Armour class and unarmed damage** | not a loss so much as a category error. The C64's numbers already include worn armour and a strength bonus, PoD re-applies dexterity and strength itself. The stored base is a constant of the format and the bonus a worn item gives is recomputed by the game from the item nodes, which the writer now emits. | write the unarmoured `10` and `1d2`, which is what all twelve genuine records hold, and let PoD derive the rest. §2.5 shows it coming out at `AC 8` and `1D2+1` with no items; that the game applies a worn item's bonus is argued from the recompute, not run, because probe P3 carried none |
 | **Everything Silver Blades knew and Pools of Darkness does not** | quest flags, position, journal entries | not converted, and not wanted — see §3 |
 
 ---

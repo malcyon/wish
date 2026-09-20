@@ -18,14 +18,16 @@ which Pools of Darkness splits between `0x5E`-`0x5F` and `0x184`-`0x185`.
 
     tools/amiga/podimportmap.py                 # the map, as the engine writes it
     tools/amiga/podimportmap.py --check         # against goldbox.amiga_pod's constants
-    tools/amiga/podimportmap.py --thac0         # the attack table, and who indexes it
+    tools/amiga/podimportmap.py --thac0         # the attack table, and every reference to it
     tools/amiga/podimportmap.py --json out.json
 
 `--thac0` answers the one field the importer could not: **this title keeps no
 `attack_level`**.  The two routines that derive `thac0_base` index one attack
 table with a class level, and the arithmetic reproduces the stored byte of
 every `.pc` on the player's disks -- see :func:`thac0_table`,
-:func:`dual_class_level_counts` and :func:`check_thac0`.  `--thac0` combines
+:func:`dual_class_level_counts` and :func:`check_thac0` -- and no other
+routine reaches the table through the small-data register, which
+:func:`attack_table_sites` searches for.  `--thac0` combines
 with `--check` and `--json`, and the exit status is non-zero if any of them
 disagrees with the engine.
 
@@ -38,6 +40,7 @@ import argparse
 import json
 import pathlib
 import re
+import struct
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
@@ -272,6 +275,10 @@ THAC0_SITES = (0x03C294, 0x00EFDC)
 #: The race the gate at `0x03CFB2` tests for, `cmpi.b #$5, $58(a2)`: the
 #: human, which is the only race AD&D lets dual-class.
 DUAL_CLASS_RACE = amiga_pod.RACES.index("HUMAN")
+#: How far before the store in :data:`THAC0_SITES` its routine may reach the
+#: table: the earliest reference in either routine is 0x30 bytes before its
+#: store, and 0x40 is the window that holds both with room for a rebuild.
+THAC0_SITE_WINDOW = 0x40
 
 
 def thac0_table(data: bytes) -> list[list[int]]:
@@ -308,7 +315,7 @@ def dual_class_level_counts(char: "amiga_pod.PodCharacter") -> bool:
       at `0x8A`, which is the level he left his old class at.
 
     When it returns 0 the former array contributes nothing at all, which is
-    what makes this a gate rather than the plain `max` of the two arrays.
+    what makes this a gate rather than a bare `max` of the two arrays.
 
     **Read from the listing and not measured**: `former_class_levels` is zero
     in all nineteen `.pc` files on the Amiga disks, so no record on this
@@ -358,12 +365,73 @@ def check_thac0(table: list[list[int]], records: dict[str, bytes]) -> int:
     return 1 if bad else 0
 
 
+def attack_table_sites(data: bytes, start: int = 0,
+                       end: int | None = None) -> list[tuple[int, str]]:
+    """`(file offset, instruction)` for every `d16(a4)` that lands anywhere in
+    the attack table, so that a routine reaching a row by any offset is found.
+
+    The same candidate-and-decode search as `amigarecordrefs.sites`, which
+    matches a positive displacement off an arbitrary register; a small-data
+    global is a **negative** displacement off `a4`, so it cannot be reused
+    and this decodes the same window and looks for `-$xxxx(a4)` instead.
+    It sees only that addressing mode: a pointer to the table stored in a
+    global, or an absolute address relocated by the loader, would not appear.
+    """
+    # Imported here because `amigarecordrefs` imports `capstone`, which is not
+    # a declared dependency, and the rest of this module runs without it.
+    import capstone
+
+    from tools.amiga import amigarecordrefs
+
+    end = len(data) if end is None else end
+    first = THAC0_TABLE - amiga68k.SMALL_DATA_BIAS
+    md = capstone.Cs(capstone.CS_ARCH_M68K, capstone.CS_MODE_M68K_000)
+    found: dict[int, str] = {}
+    for displacement in range(
+            first, first + len(amiga_pod.CLASS_LEVEL_SLOTS) * THAC0_TABLE_STRIDE):
+        word = struct.pack(">h", displacement)
+        at = start - 1
+        while True:
+            at = data.find(word, at + 1, end)
+            if at < 0:
+                break
+            if at % 2:
+                continue
+            for back in amigarecordrefs.BACK:
+                begin = at - back
+                if begin < start:
+                    continue
+                try:
+                    one = next(md.disasm(data[begin:begin + 12], begin, count=1))
+                except StopIteration:
+                    continue
+                if (f"-${-displacement:x}(a4)" in one.op_str
+                        and one.size >= back + 2):
+                    found[begin] = f"{one.mnemonic} {one.op_str}"
+                    break
+    return sorted(found.items())
+
+
+def check_attack_table_sites(sites: list[tuple[int, str]]) -> int:
+    """Whether every reference to the table sits in one of the two routines
+    :data:`THAC0_SITES` names, which is what "no third" rests on."""
+    stray = [(at, text) for at, text in sites
+             if not any(0 <= site - at <= THAC0_SITE_WINDOW
+                        for site in THAC0_SITES)]
+    for at, text in stray:
+        print(f"  {at:06x}: {text} -- outside both routines")
+    print(f"{len(sites) - len(stray)} of {len(sites)} references to the attack "
+          f"table are in the two routines that derive thac0_base")
+    return 1 if stray or not sites else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true",
                     help="compare goldbox.amiga_pod's constants with the engine")
     ap.add_argument("--thac0", action="store_true",
-                    help="the attack table, against every .pc on the disks")
+                    help="the attack table, against every .pc on the disks, "
+                         "and every place the engine reaches it")
     ap.add_argument("--json", type=pathlib.Path, help="write the map here")
     args = ap.parse_args()
 
@@ -378,6 +446,11 @@ def main() -> int:
         from tools.amiga.podpcregions import pc_files
 
         bad |= check_thac0(table, pc_files())
+        from tools.amiga import amigarecordrefs
+
+        data = executable(quiet=True)
+        start, end = amigarecordrefs.code_range(data)
+        bad |= check_attack_table_sites(attack_table_sites(data, start, end))
 
     if not (args.check or args.json) and args.thac0:
         return bad
