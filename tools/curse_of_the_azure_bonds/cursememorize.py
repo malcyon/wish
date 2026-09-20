@@ -14,6 +14,7 @@ screenshot and four values after **every** press:
 | `row` | `Screen.highlight_row(Camp.GRIMOIRE_LIST)`, the physical band the highlight is on, or empty when no band is highlighted |
 | `bar` | `Screen.glyphs(dosbox.BAR)`, the command bar read as glyphs against its own paper |
 | `digest` | `Screen.digest()`, the whole frame |
+| `counter` | `Screen.glyphs(COUNTER)`, the grimoire's `CAN MEMORIZE` digits |
 | `shot` | the PNG written for that press |
 
 `glyphs` rather than `ink` for the bar: `Screen.glyphs`'s own docstring says
@@ -40,8 +41,20 @@ paladin: `--trial "n m"` staged a memorisation with the `m` key, `--after
 "Escape Escape"` opened `MEMORIZE THESE SPELLS? YES NO` with the cursor on
 `YES` (the first `Escape` screen's bar held only `EXIT`), `y` answered it, and
 `e s b` then saved.  The save keys are blocked until the question is answered.
-The saved record's `spells_memorised` field read zero; what that means is not
-settled here.
+
+`y` **queues** the memorisation rather than taking it: entering `MEMORIZE`
+again shows `PALADIN'S SPELLS TO MEMORIZE` with the staged spell still on it,
+and `REST` presets `REST TIME` to the memorisation's own 4h15m or 4h30m.  The
+spell is taken when a rest of that length finishes, and an interrupted rest
+throws the queue away -- in Tilverton's streets the royal guards end every rest
+after 5 game-minutes, so no run has yet reached a *completed* memorisation and
+the saved record's `spells_memorised` has read zero every time.
+
+`--follow FILE` keeps the session up after `--after` and presses each line the
+file grows, so a screen whose keys are not known until it is drawn can be
+answered from its own screenshot without paying for another four-minute boot.
+`!quit` ends the run, `!records` reports the records in the save directory, a
+blank line and a `#` line do nothing, and `--follow-minutes` bounds the wait.
 
 A key list token is an X keysym (`End`, `Return`, `n`), `~N` to sleep N
 seconds, or `KEY*N` for N presses of KEY.  Output goes to `--out`, by default a
@@ -91,6 +104,14 @@ GRIMOIRE_TITLE = (16, 8, 288, 8)
 #: inside the block or wholly outside it -- a rectangle that straddles its edge
 #: hashes differently with the cursor there and without it.
 PAGE_WORD = (188, 192, 24, 7)
+
+#: The digits of `CAN MEMORIZE: CLERIC SPELLS: 2  1`, the grimoire's own count
+#: of what this character may still memorize at each level.  The whole line
+#: would hash differently for a different class, and the digits alone are what
+#: a memorisation moves: taking one is the only difference between two frames
+#: measured on this paladin, at x 186-190 of rows 160-166.  `2  1` glyphs
+#: `c40279283cc3c375` and `2  0` glyphs `ac2df608edc9d3c6` on that grimoire.
+COUNTER = (160, 160, 48, 8)
 
 
 def describe(path: pathlib.Path) -> dict:
@@ -174,6 +195,7 @@ def press_sequence(session, keys, record, *, tag: str,
                "bar": screen.glyphs(dosbox.BAR),
                "digest": screen.digest(),
                "page": screen.glyphs(PAGE_WORD),
+               "counter": screen.glyphs(COUNTER),
                "title": screen.glyphs(GRIMOIRE_TITLE)}
         try:
             row["shot"] = session.shot(shot_name(tag, n, key),
@@ -202,6 +224,7 @@ def sample(session, record, *, tag: str,
            "bar": screen.glyphs(dosbox.BAR),
            "digest": screen.digest(),
            "page": screen.glyphs(PAGE_WORD),
+           "counter": screen.glyphs(COUNTER),
            "title": screen.glyphs(GRIMOIRE_TITLE)}
     try:
         row["shot"] = session.shot(f"{tag}-enter", allow_blank=True).name
@@ -209,6 +232,65 @@ def sample(session, record, *, tag: str,
         row["shot_error"] = repr(exc)
     record(row)
     return row
+
+
+def follow(session, path: pathlib.Path, record, note, *, deadline: float,
+           poll: float = 1.0, report=None) -> int:
+    """Press the key lists a file grows, one line at a time, until `!quit`.
+
+    A boot costs four minutes, and which key a screen wants is often not known
+    until the screen is drawn: the camp `REST` screen is measured this way,
+    from its own screenshot, inside the boot that staged the memorisation.
+    Each line is a key list in `--trial` spelling and is pressed under its own
+    tag, so every press still writes a screenshot and a row.
+
+    `!quit` returns, `!records` calls `report`, and a blank line or one
+    starting with `#` does nothing.  Only a line the file has terminated with a
+    newline is read, so a line still being written is never pressed half way.
+    Returns how many lines were consumed.
+    """
+    seen = 0
+    while time.time() < deadline:
+        text = path.read_text() if path.is_file() else ""
+        done = text.split("\n")[:-1]
+        while seen < len(done):
+            line = done[seen].strip()
+            seen += 1
+            note(event="follow", n=seen, line=line)
+            if not line or line.startswith("#"):
+                continue
+            if line == "!quit":
+                note(event="follow-done", lines=seen)
+                return seen
+            if line == "!records":
+                if report is not None:
+                    report()
+                continue
+            press_sequence(session, expand_keys([line]), record,
+                           tag=f"f{seen:02d}", blank_stop=0, deadline=deadline)
+        time.sleep(poll)
+    note(event="follow-timeout", lines=seen)
+    return seen
+
+
+def wait_for_save(session, letter: str, was: bytes | None, note,
+                  timeout: float = 90.0) -> bool:
+    """Wait for slot `letter`'s `SAVGAM<letter>.DAT` to differ from `was`.
+
+    `was` is what the file held before the keys that should write it, and
+    `None` means it did not exist.  Returns whether it changed; the game
+    writes the character records beside it, so `settle_files` follows.
+    """
+    path = session.save_file(letter)
+    stop = time.time() + timeout
+    while time.time() < stop:
+        if path.is_file() and path.read_bytes() != was:
+            break
+        time.sleep(0.3)
+    dosbox.settle_files(session.save_dir, timeout=60.0)
+    changed = path.is_file() and path.read_bytes() != was
+    note(event="saved", slot=letter, changed=changed)
+    return changed
 
 
 def run_shots(directory: pathlib.Path) -> list[pathlib.Path]:
@@ -296,7 +378,7 @@ def run(args: argparse.Namespace) -> int:
         out.mkdir(parents=True, exist_ok=True)
         log = stack.enter_context((out / "run.jsonl").open("w"))
         tsv = stack.enter_context((out / "keys.tsv").open("w"))
-        tsv.write("tag\tn\tkey\trow\tbar\tdigest\tpage\ttitle\tshot\n")
+        tsv.write("tag\tn\tkey\trow\tbar\tdigest\tpage\tcounter\ttitle\tshot\n")
         kept_ok = _drive(args, specimen, session, out, log, tsv, path_keys,
                          trials, deadline)
     return 0 if kept_ok else 1
@@ -316,7 +398,7 @@ def _drive(args, specimen, session, out, log, tsv, path_keys, trials,
         note(event="press", **row)
         tsv.write("\t".join(str(row.get(k, "")) for k in
                             ("tag", "n", "key", "row", "bar", "digest",
-                             "page", "title", "shot")) + "\n")
+                             "page", "counter", "title", "shot")) + "\n")
         tsv.flush()
 
     kept_ok = True
@@ -376,20 +458,24 @@ def _drive(args, specimen, session, out, log, tsv, path_keys, trials,
                 note(event="out-of-time", trial=i)
                 break
 
-        if args.after:
+        if args.after or args.follow:
             path = session.save_file(args.save_to) if args.save_to else None
             was = path.read_bytes() if path and path.is_file() else None
-            press_sequence(session, expand_keys(args.after), record,
-                           tag="after", blank_stop=0)
+            if args.after:
+                press_sequence(session, expand_keys(args.after), record,
+                               tag="after", blank_stop=0)
+            if args.follow:
+                followed = pathlib.Path(args.follow)
+                followed.parent.mkdir(parents=True, exist_ok=True)
+                followed.touch()
+                note(event="following", file=str(followed),
+                     minutes=args.follow_minutes)
+                follow(session, followed, record, note,
+                       deadline=time.time() + args.follow_minutes * 60,
+                       report=lambda: report_records(session.save_dir, note,
+                                                     "records"))
             if path is not None:
-                stop = time.time() + 90.0
-                while time.time() < stop:
-                    if path.is_file() and path.read_bytes() != was:
-                        break
-                    time.sleep(0.3)
-                dosbox.settle_files(session.save_dir, timeout=60.0)
-                note(event="saved", slot=args.save_to,
-                     changed=path.is_file() and path.read_bytes() != was)
+                wait_for_save(session, args.save_to, was, note)
         note(event="done")
     finally:
         # Kept here rather than at the end of the try: a run that falls over
@@ -426,6 +512,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="keys pressed once the trials are done")
     ap.add_argument("--save-to", default=None,
                     help="wait for this slot's SAVGAM to change after --after")
+    ap.add_argument("--follow", default=None,
+                    help="press each line this file grows, until a !quit line")
+    ap.add_argument("--follow-minutes", type=float, default=30.0,
+                    help="how long --follow waits for lines")
     ap.add_argument("--minutes", type=float, default=20.0,
                     help="stop pressing after this long")
     ap.add_argument("--check", action="store_true",

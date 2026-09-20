@@ -13,6 +13,7 @@ from __future__ import annotations
 import pathlib
 import shutil
 import sys
+import time
 
 import pytest
 
@@ -56,6 +57,17 @@ class FakeSession:
     def shot(self, name, allow_blank=False):
         self.shots.append(name)
         return pathlib.Path(f"{name}.png")
+
+
+class RectScreen(FakeScreen):
+    """A screen whose rectangles read differently, as a real one's do."""
+
+    def __init__(self, row, bar="bar", digest="dig", counter="count"):
+        super().__init__(row, bar, digest)
+        self._counter = counter
+
+    def glyphs(self, rect=None):
+        return self._counter if rect == cm.COUNTER else self._bar
 
 
 def test_expand_keys_splits_words_and_repeats():
@@ -111,6 +123,109 @@ def test_sample_reads_the_entry_state_without_a_keypress():
     assert s.keys == [] and row["n"] == -1 and row["key"] == ""
     assert (row["row"], row["bar"], row["digest"]) == (10, "barA", "d0")
     assert rows == [row]
+
+
+def test_a_press_records_the_memorise_counter_apart_from_the_bar():
+    """The `CAN MEMORIZE` digits are the one thing that says whether a
+    memorisation survived a screen, and the bar's own digest does not carry
+    them: `m` moves both, and leaving the list and coming back moves only the
+    counter."""
+    s = FakeSession([RectScreen(10, "barA", "d0", "2 1"),
+                     RectScreen(10, "barB", "d1", "2 0")])
+    out = cm.press_sequence(s, ["n", "m"], lambda r: None, tag="t0")
+    assert [(r["bar"], r["counter"]) for r in out] == [
+        ("barA", "2 1"), ("barB", "2 0")]
+
+
+def test_the_entry_sample_records_the_counter_too():
+    s = FakeSession([RectScreen(10, "barA", "d0", "2 0")])
+    assert cm.sample(s, lambda r: None, tag="t0")["counter"] == "2 0"
+
+
+def test_follow_presses_each_line_under_its_own_tag_and_stops_at_quit(
+        tmp_path):
+    """One boot, several screens: the keys a screen wants are read off its own
+    screenshot, so the file is written while the session is still up."""
+    path = tmp_path / "keys"
+    path.write_text("n m\n\n# a note\nEnd*2\n!quit\nEscape\n")
+    s = FakeSession([FakeScreen(1)] * 10)
+    rows: list[dict] = []
+    notes: list[dict] = []
+
+    lines = cm.follow(s, path, rows.append, lambda **kw: notes.append(kw),
+                      deadline=time.time() + 5)
+
+    assert s.keys == ["n", "m", "End", "End"]
+    assert lines == 5 and notes[-1]["event"] == "follow-done"
+    assert [r["tag"] for r in rows] == ["f01", "f01", "f04", "f04"]
+
+
+def test_follow_does_not_press_a_line_the_file_has_not_finished(tmp_path):
+    """A line is pressed when its newline arrives, never half written: an
+    `Escape` pressed from `Escape Escape` would answer a prompt the other half
+    was meant for."""
+    path = tmp_path / "keys"
+    path.write_text("n\nEnd Esc")
+    s = FakeSession([FakeScreen(1)] * 5)
+    notes: list[dict] = []
+
+    cm.follow(s, path, lambda r: None, lambda **kw: notes.append(kw),
+              deadline=time.time() + 0.3, poll=0.05)
+
+    assert s.keys == ["n"]
+    assert notes[-1]["event"] == "follow-timeout"
+
+
+def test_follow_reports_the_records_when_a_line_asks(tmp_path):
+    path = tmp_path / "keys"
+    path.write_text("!records\n!quit\n")
+    asked: list[bool] = []
+    cm.follow(FakeSession([]), path, lambda r: None, lambda **kw: None,
+              deadline=time.time() + 5, report=lambda: asked.append(True))
+    assert asked == [True]
+
+
+def test_follow_presses_nothing_once_its_deadline_has_passed(tmp_path):
+    path = tmp_path / "keys"
+    path.write_text("n\n")
+    s = FakeSession([FakeScreen(1)])
+    cm.follow(s, path, lambda r: None, lambda **kw: None,
+              deadline=time.time() - 1)
+    assert s.keys == []
+
+
+class SaveSession:
+    """A slot's save directory, with nothing else a wait needs."""
+
+    def __init__(self, root):
+        self.save_dir = root
+        root.mkdir(parents=True, exist_ok=True)
+
+    def save_file(self, letter):
+        return self.save_dir / f"SAVGAM{letter.upper()}.DAT"
+
+
+def test_a_slot_that_was_written_is_reported_as_changed(tmp_path, monkeypatch):
+    monkeypatch.setattr(cm.dosbox, "settle_files", lambda folder, **kw: True)
+    session = SaveSession(tmp_path / "SAVE")
+    session.save_file("B").write_bytes(b"new")
+    notes: list[dict] = []
+    assert cm.wait_for_save(session, "B", None, lambda **kw: notes.append(kw))
+    assert notes[-1] == {"event": "saved", "slot": "B", "changed": True}
+
+
+def test_a_slot_the_game_never_wrote_is_reported_unchanged(
+        tmp_path, monkeypatch):
+    """The keys that should have saved may have gone to a screen that ignored
+    them, and a run that called that a save would report the staged records as
+    the game's own writing."""
+    monkeypatch.setattr(cm.dosbox, "settle_files", lambda folder, **kw: True)
+    session = SaveSession(tmp_path / "SAVE")
+    session.save_file("B").write_bytes(b"old")
+    notes: list[dict] = []
+    assert not cm.wait_for_save(session, "B", b"old",
+                                lambda **kw: notes.append(kw), timeout=0.2)
+    assert notes[-1]["changed"] is False
 
 
 class FakeSlotSession:
@@ -267,7 +382,8 @@ def _run_args(tmp_path, specimen):
     return cm.argparse.Namespace(
         specimen=str(specimen), game="CURSE", slot="A", who=5, begin="",
         path="", reenter="", trial=["n"], after=None, save_to=None,
-        minutes=1.0, out=str(tmp_path / "out"))
+        follow=None, follow_minutes=1.0, minutes=1.0,
+        out=str(tmp_path / "out"))
 
 
 def test_a_rerun_into_the_same_out_replaces_the_log_and_the_table(
