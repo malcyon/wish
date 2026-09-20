@@ -229,6 +229,8 @@ agent_guest_claude_effort_level: medium
 # The model the guest's Claude Code runs; the per-model effort block is keyed by this id.
 agent_guest_claude_model_id: claude-sonnet-5
 agent_guest_claude_theme: light
+# The session quality survey never appears in the guest: nobody is there to answer it.
+agent_guest_claude_feedback_survey_rate: 0
 
 # --- The weekly live tests --------------------------------------------------
 # The suite's `livetests/` directory holds the tests that boot an emulator or

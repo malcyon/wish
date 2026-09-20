@@ -173,6 +173,7 @@
           # key, so the role owns it too.
           modelSettings: "{{ {agent_guest_claude_model_id: {'effortLevel': agent_guest_claude_effort_level}} }}"
           theme: "{{ agent_guest_claude_theme }}"
+          feedbackSurveyRate: "{{ agent_guest_claude_feedback_survey_rate }}"
 
 # --- herdr and Codex, from their releases ----------------------------------
 # Each has its own tag, and both share a task file and the user-timer setup.
