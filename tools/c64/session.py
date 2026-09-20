@@ -612,6 +612,19 @@ def span_in(screen, row: int, colour: int = 1) -> tuple[int, int] | None:
 #: How long `Session.boot` waits for the `DISABLE FASTLOADER` prompt.
 FASTLOADER_WAIT = 120.0
 
+#: How long `Session.boot` waits for the game to echo the fastloader answer
+#: before sending it again, and how many sends it makes.  One send is not
+#: enough: the prompt is up about two seconds after VICE is, VICE's own error
+#: dialog is up before that and holds a keyboard grab, and a key sent into the
+#: grab is gone.  Six sends four seconds apart outlast any dialog the watchdog
+#: is about to close.
+ANSWER_RESEND = 4.0
+ANSWER_TRIES = 6
+
+#: The PETSCII code for each fastloader answer, for the send that goes through
+#: the KERNAL buffer rather than XTEST.
+FASTLOADER_PETSCII = {"y": 0x59, "n": 0x4E}
+
 #: How long `Session.boot` waits, after the fastloader answer, for the `PLAY GAME`
 #: menu.  The stock kernal loads it in 238.6 s for `Y` and 199.6 s for `N`
 #: (`docs/131-fastloader.md`), and a second emulator on the machine slows that
@@ -1499,8 +1512,9 @@ class Session:
     def _boot(self) -> bool:
         if self.wait_text("DISABLE FASTLOADER", FASTLOADER_WAIT)[0] is None:
             return self._boot_failed("no fastloader prompt", FASTLOADER_WAIT)
-        self.kbd.key(self.fastloader, 0.15, 0.28)
-        self.log(f"fastloader: {self.fastloader.upper()}")
+        if not self._answer_fastloader():
+            return self._boot_failed("the fastloader prompt took no answer",
+                                     ANSWER_TRIES * ANSWER_RESEND)
         if self.wait_text("PLAY GAME", PLAY_GAME_WAIT)[0] is None:
             return self._boot_failed("no PLAY GAME menu", PLAY_GAME_WAIT)
         self.kbd.key("Return")  # left alone, this screen starts the demo
@@ -1508,6 +1522,63 @@ class Session:
         if self.wait_text("INPUT THE CODE WORD", 240)[0] is None:
             return self._boot_failed("no code word prompt", 240)
         return self.pass_protection()
+
+    def _answer_fastloader(self) -> bool:
+        """Send the fastloader answer until the game takes it.
+
+        **One send is not enough, and losing it costs the whole boot.**  VICE
+        puts up its own error dialog on this machine -- a drive ROM it has not
+        got, a `/dev/input` it cannot read -- a modal GTK dialog holds a
+        keyboard grab, and the prompt comes up about two seconds after VICE
+        does, which is before `dismiss_dialogs` has taken its first look.  The
+        key then goes into the dialog, the game never sees it, and the run
+        waits out `PLAY_GAME_WAIT` with `DISABLE FASTLOADER (Y/N) ?` still on
+        the screen.  So the dialog is closed here rather than waited for, and
+        the answer goes again while the prompt has not moved.
+
+        **The last send goes through the KERNAL buffer**, which no X grab can
+        swallow: the prompt reads `$0277`/`$C6`, measured -- with a dialog up
+        the whole time, XTEST delivered nothing and `press_kernal` was echoed
+        as `YES`.
+        """
+        was = self.screen_text()
+        for attempt in range(1, ANSWER_TRIES + 1):
+            if attempt < ANSWER_TRIES:
+                dismiss_error_dialog(str(self.display), self.DIALOG_SETTLE)
+                self.kbd.key(self.fastloader, 0.15, 0.28)
+            else:
+                self.press_kernal(FASTLOADER_PETSCII[self.fastloader])
+            if self._answer_taken(was, ANSWER_RESEND):
+                self.log(f"fastloader: {self.fastloader.upper()}"
+                         + ("" if attempt == 1 else f", after {attempt} sends"))
+                return True
+        return False
+
+    def _answer_taken(self, was: str | None, seconds: float) -> bool:
+        """Whether the fastloader prompt has taken an answer, over `seconds`.
+
+        The game echoes `YES` or `NO` onto the prompt line and then loads for
+        three minutes with the prompt still on the screen, so the test is that
+        the text moved at all rather than that the prompt has gone.  A screen
+        that is no longer text is the title picture, which is further on still
+        -- and is what a monitor that would not answer looks like too, which
+        costs a resend that was not needed and never a wrong one.
+        """
+        end = time.monotonic() + seconds
+        while True:
+            if self.screen_text() != was:
+                return True
+            if time.monotonic() >= end:
+                return False
+            time.sleep(0.4)
+
+    def screen_text(self) -> str | None:
+        """The non-blank rows of the text screen, joined, or None when there is
+        no text screen to read."""
+        s = self.screen()
+        if s is None:
+            return None
+        return " / ".join(line.rstrip() for line in s.rows() if line.strip())
 
     def _boot_failed(self, what: str, waited: float) -> bool:
         """Record and log why a boot wait ran out, with what the screen showed.
@@ -1517,12 +1588,11 @@ class Session:
         boot of several minutes.  The screenshot is of the whole nested display,
         so a dialog shows in it.
         """
-        s = self.screen()
-        if s is None:
+        shown = self.screen_text()
+        if shown is None:
             shown = "no readable text screen (a bitmap, or the monitor did not answer)"
-        else:
-            lines = [line.rstrip() for line in s.rows() if line.strip()]
-            shown = " / ".join(lines) if lines else "a blank text screen"
+        elif not shown:
+            shown = "a blank text screen"
         shot = os.path.join(self.here, "boot-timeout.png")
         shot_said = shot if self.kbd.screenshot(shot) else "(no screenshot taken)"
         windows = []
