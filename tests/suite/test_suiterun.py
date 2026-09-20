@@ -34,7 +34,7 @@ import yaml
 
 from automap import gamedisks
 from tools.registry import scratch
-from tools.suite import datatouch, suiterun
+from tools.suite import suiterun
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 EXAMPLE = REPO / "gamedisks.yaml.example"
@@ -75,9 +75,6 @@ def _fake_worktree(tmp_path, registry):
     worktree = tmp_path / "wt"
     worktree.mkdir()
     (worktree / "gamedisks.yaml.example").write_bytes(EXAMPLE.read_bytes())
-    (worktree / "tests").mkdir()
-    (worktree / "tests" / "test_reads_disks.py").write_text("import gamedisks\n")
-    (worktree / "tests" / "test_plain.py").write_text("def test_x(): pass\n")
     (worktree / "tools").mkdir()
     (worktree / "tools" / "__init__.py").write_text("")
     (worktree / "tools" / "one.py").write_text("")
@@ -100,13 +97,12 @@ class _Calls(list):
         self.probes = []
 
 
-def _recording(monkeypatch, first_writes=None, reachable=(), probe_code=0):
+def _recording(monkeypatch, reachable=(), probe_code=0):
     """Replace `_run` with one that records each pytest call's extra env, the
-    names it removes and every full argument list in `.args`. `first_writes` is
-    called with the first pass's extra env, as the recorder would write its log
-    during that pass. The hiding probe answers with a line for each of
-    `reachable` and exits `probe_code`; by default nothing is reachable. Each
-    probe call's `cwd`, interpreter and removed names are kept in `.probes`."""
+    names it removes and every full argument list in `.args`. The hiding probe
+    answers with a line for each of `reachable` and exits `probe_code`; by
+    default nothing is reachable. Each probe call's `cwd`, interpreter and
+    removed names are kept in `.probes`."""
     calls = _Calls()
 
     def fake(args, cwd, timeout, extra_env=None, without=()):
@@ -117,8 +113,6 @@ def _recording(monkeypatch, first_writes=None, reachable=(), probe_code=0):
             return subprocess.CompletedProcess(
                 args, probe_code, out + suiterun.PROBE_END + "\n", "")
         if "pytest" in args:
-            if first_writes and not calls:
-                first_writes(extra_env)
             calls.append(dict(extra_env or {}))
             calls.args.append(list(args))
             calls.without.append(tuple(without))
@@ -137,7 +131,7 @@ def test_the_pass_without_the_registry_has_the_variables_unset_and_the_first_doe
     calls = _recording(monkeypatch)
     suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
     first, bare = calls
-    assert set(first) == {datatouch.LOG_ENV}
+    assert first == {}
     assert calls.without[0] == ()
     assert bare == {}
     assert set(calls.without[1]) == _hidden()
@@ -474,108 +468,22 @@ def test_a_child_that_needs_the_registry_stops_in_the_pass_as_it_does_on_ci(
     assert "gamedisks.yaml is missing" in done.stderr
 
 
-def test_the_no_data_pass_runs_only_the_files_that_ask_for_data(tmp_path, monkeypatch):
+def test_the_no_data_pass_runs_the_whole_suite_as_the_first_pass_does(tmp_path, monkeypatch):
+    """No file list, so no file that skips without data can be left out and the
+    pass is CI's condition by construction."""
     calls = _recording(monkeypatch)
     suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
-    full, narrow = calls.args
-    assert "-q" in full
-    assert narrow[-1] == "tests/test_reads_disks.py"
-    assert "tests/test_plain.py" not in narrow
+    first, bare = calls.args
+    assert bare == [str(suiterun.PYTHON), "-m", "pytest", "-q"]
+    assert bare == first
 
 
-def _with_the_recorder(worktree):
-    (worktree / "tools" / "suite").mkdir()
-    (worktree / "tools" / "suite" / "datatouch.py").write_text("")
-
-
-def _log(worktree, *files):
-    directory = worktree.parent / "datatouch"
-    directory.mkdir(exist_ok=True)
-    (directory / "1.txt").write_text("".join(f"{name}\tstat\n" for name in files))
-
-
-def test_the_first_pass_loads_the_recorder_and_names_where_it_writes(tmp_path, monkeypatch):
-    calls = _recording(monkeypatch)
-    worktree = _fake_worktree(tmp_path, registry=True)
-    _with_the_recorder(worktree)
-    suiterun.run_checks(worktree)
-    first = calls.args[0]
-    assert first[first.index("-p") + 1] == "tools.suite.datatouch"
-    assert calls[0] == {datatouch.LOG_ENV: str(tmp_path / "datatouch")}
-    assert "-p" not in calls.args[1]
-
-
-def test_a_machine_with_no_registry_gets_no_plugin_even_where_the_recorder_exists(
-        tmp_path, monkeypatch):
-    """The plugin is for the first of two passes; with one pass there is nothing
-    to choose files for, and the run has the variables unset."""
-    calls = _recording(monkeypatch)
-    worktree = _fake_worktree(tmp_path, registry=False)
-    _with_the_recorder(worktree)
-    suiterun.run_checks(worktree)
-    assert len(calls) == 1
-    assert "-p" not in calls.args[0]
-    assert datatouch.LOG_ENV not in calls[0]
-    assert calls[0] == {}
-    assert set(calls.without[0]) == _hidden()
-
-
-def test_a_worktree_with_no_recorder_gets_no_plugin_to_load(tmp_path, monkeypatch):
-    """A commit older than the recorder has nothing for `-p` to import, and
-    pytest stops on a plugin it cannot find."""
+def test_neither_pass_loads_a_plugin_or_names_a_test_file(tmp_path, monkeypatch):
     calls = _recording(monkeypatch)
     suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
-    assert all("-p" not in args for args in calls.args)
-
-
-def test_the_no_data_pass_runs_exactly_the_files_the_first_pass_recorded(
-        tmp_path, monkeypatch, capsys):
-    worktree = _fake_worktree(tmp_path, registry=True)
-    _with_the_recorder(worktree)
-    (worktree / "tests" / "test_gone.py").write_text("def test_x(): pass\n")
-    calls = _recording(monkeypatch, lambda env: _log(
-        worktree, "tests/test_plain.py", "tests/test_missing.py"))
-    green, _, _ = suiterun.run_checks(worktree)
-    assert green
-    assert calls.args[1][-1:] == ["tests/test_plain.py"]
-    assert "tests/test_reads_disks.py" not in calls.args[1]
-    out = capsys.readouterr().out
-    assert "without data, 1 test files (recorded; the source scan would have chosen 1)" in out
-
-
-def test_an_empty_log_falls_back_to_the_source_scan(tmp_path, monkeypatch, capsys):
-    worktree = _fake_worktree(tmp_path, registry=True)
-    _with_the_recorder(worktree)
-    calls = _recording(monkeypatch, lambda env: _log(worktree))
-    suiterun.run_checks(worktree)
-    assert calls.args[1][-1] == "tests/test_reads_disks.py"
-    assert "1 test files (source scan; nothing was recorded)" in capsys.readouterr().out
-
-
-def test_the_selection_takes_a_skip_a_needs_marker_or_a_data_lookup(tmp_path):
-    tests = tmp_path / "tests"
-    tests.mkdir()
-    for name, body in {
-        "test_a.py": "import pytest\npytest.skip('no disks')\n",
-        "test_b.py": "from x import needs_dos_saves\n",
-        "test_c.py": "from automap import gamedisks\n",
-        "test_d.py": "PATH = 'FR_ARCHIVES'\n",
-        "test_e.py": "def test_x(): assert 1 + 1 == 2\n",
-        "helper.py": "import gamedisks\n",
-    }.items():
-        (tests / name).write_text(body)
-    assert suiterun.data_deciding_tests(tests) == [
-        "tests/test_a.py", "tests/test_b.py", "tests/test_c.py", "tests/test_d.py"]
-
-
-def test_the_selection_covers_the_files_that_failed_without_data_before():
-    """Files that ran and failed once the example's paths held data."""
-    chosen = {path.rsplit("/", 1)[-1]
-              for path in suiterun.data_deciding_tests(REPO / "tests")}
-    for name in ("test_fleedrive", "test_cursespellslots", "test_doswriter",
-                 "test_convert", "test_portraits", "test_amigatodos",
-                 "test_dosconvert", "test_dosconversionarea"):
-        assert f"{name}.py" in chosen, name
+    for args in calls.args:
+        assert "-p" not in args
+        assert not any(arg.startswith("tests") or arg.endswith(".py") for arg in args)
 
 
 def test_the_import_check_removes_the_names_it_is_given_from_each_childs_environment(
@@ -827,7 +735,7 @@ def test_a_red_run_writes_no_marker(clones, tmp_path, monkeypatch):
 
 CHILD = textwrap.dedent("""
     import pathlib, sys, time
-    from tools.suite import datatouch, suiterun
+    from tools.suite import suiterun
 
     suiterun.REPO = pathlib.Path(sys.argv[1])
     suiterun.RUFF = pathlib.Path(sys.executable)

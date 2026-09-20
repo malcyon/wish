@@ -162,7 +162,7 @@ cannot be a tail. `livetests/`, which does drive real emulators, is in
 
 ## Readings this data does not support
 
-Three claims that look right and are not, each cheap to repeat:
+Two claims that look right and are not, each cheap to repeat:
 
 * **A large per-file teardown total is not an expensive fixture.** It is the
   file's test count times 0.174 s. `tests/suite/test_toolshadowing.py`'s 138.2 s
@@ -171,26 +171,11 @@ Three claims that look right and are not, each cheap to repeat:
 * **`--durations` attributes per test, not per fixture.** Summing a file's
   teardowns and calling the total one fixture's cost inverts what the
   numbers say.
-* **Tightening `data_deciding_tests`' regex against prose saves nothing.**
-  The selection is 230 of 308 files. Blanking every comment and docstring
-  before matching drops it to 223 files and 1,866.3 worker-seconds against
-  1,886.9 — 20.6 seconds. Every heavy file it picks is picked on real code:
-  `tests/suite/test_toolshadowing.py` on its `pytest.skip(` for a missing tool
-  dependency, `tests/pool_of_radiance/test_combatdrive.py` on importing `tests/gamedata.py`'s
-  synthetic arena, `tests/suite/test_staging_sweep.py` on the word `specimen` in
-  code.
 
 ## What the pre-push run costs
 
-`tools/suite/suiterun.py` does not run the suite twice. Its second pass is
-already scoped, by `data_deciding_tests()`, to the files whose source
-mentions skipping or game data. That selection is **230 of 308 files, 6,843
-tests, 1,886.9 of the no-data run's 2,208.1 worker-seconds — 85% of it.**
-
-Of those 230 files, **79 skip nothing at all without data: 2,568 tests and
-948.9 worker-seconds, half the second pass.** `tests/suite/test_toolshadowing.py`
-alone is 322.6 of them. The 151 files that do skip at least one test come to
-937.9 worker-seconds.
+`tools/suite/suiterun.py` runs the whole suite twice, the second time with
+no game data, so the no-data run's 2,208.1 worker-seconds are all in it.
 
 Estimating the parts at the measured parallelism, and marking each as
 measured or derived:
@@ -199,10 +184,10 @@ measured or derived:
 |---|---|---|
 | pass one, with data | 262.0 | measured |
 | every `tools/` module imported in a fresh interpreter, 8 at a time | ~7 | 46 of the 364 took 0.8 s |
-| pass two, no data, 230 files | ~186 | 1,886.9 worker-seconds at 10.14 |
+| pass two, no data | ~218 | 2,208.1 worker-seconds at 10.14, derived |
 | `ruff` and `genui.py --check` | ~10 | derived |
 
-About 7:45, against the "roughly ten minutes" in `#579 (The test suite takes
+About 8:15, against the "roughly ten minutes" in `#579 (The test suite takes
 four minutes locally and ten before a push, and nobody has measured where
 the time goes)`; the load during the measurement and the worktree setup
 cover the difference.
@@ -296,85 +281,23 @@ worker-seconds after the saving, well short of anything that could be a tail.
 is the whole of what candidate 1 is available to save: setup is 4.6% of the
 run and three quarters of the interesting part is this one computation.
 
-### 4. Pass two runs the files the first pass recorded reaching the data
+### 4. Pass two runs the whole suite with no data
 
-**Do it, fourth.** Donald's answer is yes, on one condition: the set of files
-is **computed at run time and never a list anybody maintains**. The second
-pass exists to prove nothing breaks when the game data is absent; it selects
-by source regex today, and half of what it selects observes no difference at
-all.
+**Done, and it is not a selection.** The second pass exists to prove nothing
+breaks when the game data is absent. It first chose its files by source regex,
+then by a recorder plugin loaded into pass one that noted which test files
+reached the data; both were dropped for running everything. A selection can
+leave out a file that skips without data: a helper that is cached, or run once
+per module, credits a touch to the first file that triggers it, so which files
+the recorder named depended on xdist scheduling, and five tests in three files
+that skip without data were never run in pass two. The regex chose 231 of 308
+files and the recorder 186, agreeing on 174, so neither contained the other.
 
-The mechanism is a recorder rather than a better regex. A pytest plugin,
-`tools/suite/datatouch.py`, is loaded into the *first* pass with
-`-p tools.suite.datatouch` and writes one file per worker under the
-directory `$WISH_DATA_TOUCH_LOG` names, naming the test file of every test
-that reached the data. Three things reach it:
-
-* an **audit hook** (`sys.addaudithook`) on `open`, `os.listdir`,
-  `os.scandir`, `os.walk`, `pathlib.Path.glob` and `glob.glob`, marking the
-  file when the path is `gamedisks.yaml`, the example, or under any path
-  `automap.gamedisks.candidates()` gives for any entry — which is exactly
-  what the second pass hides, read from the same registry rather than
-  restated in a second place;
-* a wrapper around **`os.stat` and `os.lstat`**, because a stat raises no
-  audit event and `REGISTRY.is_file()` is a route into the data that opens
-  nothing;
-* **`subprocess.Popen`, `os.system`, `os.exec*` and `os.posix_spawn`**,
-  marking the file whatever the child goes on to do, since a child inherits
-  the environment and cannot be watched from here.
-
-A test that did not *pass* in the first pass — skipped, failed, errored —
-marks its file as well, which covers a gate that runs the other way round
-(skipping with the data present and running without it). The first pass
-skips nothing on this machine, so that rule costs nothing here.
-
-Attribution is by pytest hook: `pytest_make_collect_report` while a module
-is being imported, so a module-level `skipif` that asks the registry lands
-on the file that asked, and `pytest_runtest_protocol` for setup, call and
-teardown, so a fixture's reads land on the test that wanted them.
-
-`tools/suite/suiterun.py` reads the log and runs those files, falling back
-to `data_deciding_tests()`'s source scan when the log is missing or empty —
-a commit older than the plugin has none to load, so the `-p` is added only
-when the worktree has the file. Every failure direction is towards running
-more files rather than fewer.
-
-*Cost of watching:* 0.153 µs per audited event, and a 68-test run raises
-10,903 events, most of them at import. An ordinary `pytest` does not load
-the plugin, so a developer's run is untouched.
-
-*What it saves:* the ceiling is the 948.9 worker-seconds those 79 files hold
-today, about 615 after item 1, **58 s of the pre-push run**. The recorder
-gives part of that back, because a file that starts a child process is
-selected whole: 26 test files use `subprocess`, and
-`tests/suite/test_toolshadowing.py` is the largest of them.
-
-*What it measured,* in two whole-suite runs of `tools/suite/suiterun.py` on
-the twelve-core machine, otherwise idle, both green with no crash:
-
-| run | pass one, with data | files chosen for pass two (scan would choose) | pass two, no data |
-|---|---|---|---|
-| first | 7,975 tests, 136.99 s | 192 (231) | 3,997 passed, 1,779 skipped, 77.90 s |
-| second | 7,975 tests, 138.41 s | 193 (231) | 4,002 passed, 1,781 skipped, 81.23 s |
-
-The recorder chooses 38 or 39 files fewer than the scan, not the 79 the
-ceiling above counted. It drops a file only when nothing in it opened, listed,
-scanned, walked, globbed or stat-ed a path the second pass hides and no test
-in it started a child process or failed to pass in pass one; the scan
-selects every file whose source merely mentions skipping or game data, and
-a file can mention either and never reach the data. The measurement does not
-say which of the 79 files are among the ones dropped, so it does not say that
-the gap between 39 and 79 is the child-process files. The count also moved
-by one between the two runs, which two runs cannot explain.
-
-Against the estimates above, pass one takes about 137 s where 262.0 s was
-measured under load, and pass two about 78 to 81 s where about 186 s was
-estimated. The two passes' own `pytest` times come to about 215 to 219 s
-against about 448 s, before the roughly 17 s of imports, `ruff` and
-`genui.py --check` that this measurement did not repeat. **These are two runs
-on one machine.** Items 1 to 3 landed as well, so the runs cannot say how much
-of the fall is the recorder alone, and the earlier figures were taken under a
-one-minute load average of up to 7 while these were not.
+Running everything makes pass two CI's condition by construction, so a file
+cannot be left out and the recorder's blind spots (a `spawn` child, a symlink,
+a thread outliving its test, a read inside Qt's C++) stop mattering. The cost
+is about 96 s measured for the whole no-data pass, and 123 s under a one-minute
+load average of 9.2, against 56 to 80 s for the selection: about 40 s a push.
 
 *How the second pass hides the data.* It used to point every variable the
 example names at an absent path and was described as behaving as CI does, which
@@ -392,22 +315,7 @@ which of those it was; so does output that is not valid UTF-8. The fallback sets
 only the example's variables, so the specimen tree under `~/wish-specimens`
 stays reachable in it, as it was before.
 
-*What it still misses,* each of them either over-inclusive or caught by CI,
-which runs the whole suite with no data on four jobs at every push. These are
-the routes the plugin does not record:
-
-* a `spawn` or `forkserver` multiprocessing child, which is a new interpreter
-  that never loads the plugin (a `fork` child is not one: `os.fork` marks its
-  parent's file);
-* a path that reaches the data through a symlink, because the match is on the
-  text of the path and its `realpath` at start, not on what the kernel
-  resolves;
-* a thread that outlives its test, whose reads land on whichever file runs
-  next or on none;
-* file loading done in Qt's C++, which raises no audit event.
-
-**Builder: `junior-dev`.** The plugin, its hooks, the fallback and the tests
-are named.
+**Builder: `junior-dev`.**
 
 ### 5. The local run before a push stays the whole suite
 
@@ -451,7 +359,4 @@ the pre-push run, which is what the issue's target names.
   only Windows evidence, and they measure a four-core runner rather than
   this machine.
 * **The pre-push run end to end.** It was never run as a whole for this
-  measurement — the two passes were separate whole-suite runs. Its second
-  pass is derived by restricting the no-data run to the 230 files
-  `data_deciding_tests()` picks, which is close but not identical to running
-  only those files, because the scheduler sees a different set.
+  measurement — the two passes were separate whole-suite runs.

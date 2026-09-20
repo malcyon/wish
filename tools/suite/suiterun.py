@@ -36,13 +36,11 @@ What it does, in order, and all of it against the same checkout:
    something does, the pass falls back to pointing the example's variables at
    one path that does not exist, says so, and is not the condition CI runs
    under: `WISH_SPECIMENS` is left as it is, so a specimen tree that was found
-   stays reachable in it. A probe that fails says why. Then
-   only the test files the first pass saw reach the game data are run
-   (`tools/suite/datatouch.py`, loaded into step 4), or, when it recorded
-   nothing, the files whose source asks for game data or decides to skip
-   without it, so the pass shows nothing depends on data being present without
-   repeating the whole suite. A machine with no `gamedisks.yaml` has no second
-   pass: its one pytest run is the no-data run and gets the same probe.
+   stays reachable in it. A probe that fails says why. Then the whole suite is
+   run again in that environment, with no selection, so the pass is CI's
+   condition by construction and no file that skips without data can be left
+   out. A machine with no `gamedisks.yaml` has no second pass: its one pytest
+   run is the no-data run and gets the same probe.
 6. `ruff check .` in the worktree.
 7. `tools/generate/genui.py --check` in the worktree.
 8. If all of it passed, write `~/.cache/wish/testrun/<tree>.green`,
@@ -76,7 +74,6 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from tools.registry import scratch  # noqa: E402
-from tools.suite import datatouch  # noqa: E402
 
 PYTHON = REPO / ".venv" / "bin" / "python"
 RUFF = REPO / ".venv" / "bin" / "ruff"
@@ -284,23 +281,6 @@ def rebase_onto_origin(repo: pathlib.Path, sha: str) -> tuple[str, str]:
     return new, f"rebased onto origin/main: {head[:7]} -> {new[:7]}"
 
 
-#: What a test file says when it asks for game data or decides to skip without
-#: it: a skip, a `needs_*` marker, or a lookup of disks, archives, specimens or
-#: the registry.
-DATA_DECIDING = re.compile(
-    r"\bskip\w*\(|importorskip|\bneeds_\w+|pytest\.mark\.skip|gamedisks|find_disks"
-    r"|specimen|gamedata|automap\.paths|ARCHIVES|_DISKS\b|_SAVES\b|WISH_[A-Z_]+")
-
-
-def data_deciding_tests(tests: pathlib.Path) -> list[str]:
-    """The test files under `tests` that ask for game data or decide to skip
-    without it, as paths from the repository root, sorted."""
-    return sorted(path.relative_to(tests.parent).as_posix()
-                  for path in tests.rglob("test_*.py")
-                  if DATA_DECIDING.search(
-                      path.read_text(encoding="utf-8", errors="replace")))
-
-
 def tool_modules(worktree: pathlib.Path) -> list[str]:
     """Every module under `tools/`, as dotted names, packages included."""
     root = worktree / "tools"
@@ -352,21 +332,14 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
     python = str(PYTHON)
     hidden = hidden_variables(worktree / "gamedisks.yaml.example")
     link = worktree / "gamedisks.yaml"
-    log_dir = worktree.parent / "datatouch"
-    # The first pass records which test files reach the game data, when this
-    # commit has the recorder to load: a commit older than it has no plugin for
-    # `-p` to import, and pytest would stop on the missing name. A machine with
-    # no registry has one run and no second pass to choose files for.
-    first_args = [python, "-m", "pytest", "-q"]
-    if link.is_symlink() and (worktree / "tools" / "suite" / "datatouch.py").is_file():
-        first_args += ["-p", "tools.suite.datatouch"]
+    pytest_args = [python, "-m", "pytest", "-q"]
     # A machine with no registry has nothing to link, so its one run is the
     # no-data run and gets the same probe as pass two.
     if link.is_symlink():
-        pytest = _run(first_args, worktree, 1500, {datatouch.LOG_ENV: str(log_dir)})
+        pytest = _run(pytest_args, worktree, 1500)
     else:
         extra, without = hiding_for_pass_two(worktree, python, hidden)
-        pytest = _run(first_args, worktree, 1500, extra, without)
+        pytest = _run(pytest_args, worktree, 1500, extra, without)
     print(pytest.stdout[-4000:], end="")
     summary = summary_of(pytest.stdout + pytest.stderr)
     if pytest.returncode != 0:
@@ -381,17 +354,9 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
         if broken:
             return (False, summary + " (a tool fails to import without data)",
                     "\n".join(broken))
-        scanned = data_deciding_tests(worktree / "tests")
-        touched = datatouch.recorded(log_dir, worktree)
-        chosen = touched or scanned
-        if not chosen:
-            return False, summary, "no test file asks for game data: the selection is broken"
-        how = (f"recorded; the source scan would have chosen {len(scanned)}"
-               if touched else "source scan; nothing was recorded")
         extra, without = hiding_for_pass_two(worktree, python, hidden)
-        bare = _run([python, "-m", "pytest", "-q", *chosen], worktree, 1500,
-                    extra, without)
-        print(f"without data, {len(chosen)} test files ({how}):",
+        bare = _run(pytest_args, worktree, 1500, extra, without)
+        print("without data, the whole suite:",
               summary_of(bare.stdout + bare.stderr))
         if bare.returncode != 0:
             failed = [line for line in bare.stdout.splitlines()
