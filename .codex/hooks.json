@@ -7,19 +7,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 .claude/hooks/check-issue-reads.py",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/check-issue-reads.py\"",
             "timeout": 30,
             "statusMessage": "Checking the issue read"
           },
           {
             "type": "command",
-            "command": "/usr/bin/python3 .claude/hooks/check-issue-writes.py",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/check-issue-writes.py\"",
             "timeout": 30,
             "statusMessage": "Checking the issue write"
           },
           {
             "type": "command",
-            "command": "/usr/bin/python3 .claude/hooks/check-push-tested.py",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/check-push-tested.py\"",
             "timeout": 30,
             "statusMessage": "Checking the push has a green suite"
           }

@@ -331,6 +331,22 @@ def test_the_hook_is_registered_in_both_harnesses():
     assert any("check-issue-reads.py" in c for c in entries)
 
 
+def test_codex_hooks_run_below_the_repository_root():
+    """Codex executes its hooks from the session cwd, which may be a subdirectory."""
+    root = pathlib.Path(__file__).resolve().parents[2]
+    codex = json.loads((root / ".codex" / "hooks.json").read_text())
+    commands = [h["command"]
+                for group in codex["hooks"].get("PreToolUse", [])
+                for h in group["hooks"]]
+    payload = json.dumps({"tool_name": "Bash",
+                          "tool_input": {"command": "git status"}})
+    for command in commands:
+        done = subprocess.run(command, shell=True, cwd=root / "tests" / "hooks",
+                              input=payload, capture_output=True, text=True,
+                              timeout=30)
+        assert done.returncode == 0, done.stderr
+
+
 @pytest.mark.skipif(WINDOWS, reason="/usr/bin/python3 does not exist on Windows")
 def test_the_hook_runs_under_the_system_interpreter():
     """The harness runs it, not `.venv`, so it must be standard library only."""
