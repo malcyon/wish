@@ -20,11 +20,6 @@ pytestmark = pytest.mark.skipif(
            "gamedisks.yaml")
 
 FIXTURES = pathlib.Path(__file__).parents[1] / "fixtures"
-# Read the committed fixture, never the live disk -- an earlier version read
-# PORSAVE2.D64 directly and broke the moment Donald saved over it.
-equipped = pytest.mark.skipif(
-    not (FIXTURES / "party6_after_combat.bin").exists(),
-    reason="needs the equipped-party fixture")
 
 
 @pytest.fixture
@@ -34,7 +29,11 @@ def names():
 
 @pytest.fixture
 def save():
-    return SaveGame0.from_prg((FIXTURES / "party6_after_combat.bin").read_bytes())
+    # The committed fixture, never the live disk: saving over the disk would
+    # change what the test reads. A missing fixture is a failure, not a skip.
+    fixture = FIXTURES / "party6_after_combat.bin"
+    assert fixture.exists(), f"committed fixture missing: {fixture}"
+    return SaveGame0.from_prg(fixture.read_bytes())
 
 
 def test_name_table_is_1_based_compound(names):
@@ -56,7 +55,6 @@ def test_name_table_has_gaps(names):
     assert max(names) == 255
 
 
-@equipped
 def test_scratch_blocks_mirror_a_real_character(save, names):
     """Slots 6 and 7 are a scratch buffer, and their item blocks mirror
     whichever character was handled last -- which is how the block-to-slot
@@ -68,7 +66,6 @@ def test_scratch_blocks_mirror_a_real_character(save, names):
     assert scratch in real
 
 
-@equipped
 @pytest.mark.parametrize("who,expected", [
     ("BRUTUS", ["BANDED MAIL", "SHIELD", "LONG SWORD"]),
     ("LADY KATHERINE", ["SHORT SWORD", "LEATHER ARMOR", "SLING"]),
@@ -81,7 +78,6 @@ def test_decoded_inventories(save, names, who, expected):
     assert [i.name for i in items_for_slot(save.to_bytes(), slot.index, names)] == expected
 
 
-@equipped
 def test_weights_and_costs_match_add_1e(save, names):
     """Weight is tenths of a pound and cost is gp -- confirmed because every
     value matches the AD&D 1st edition equipment tables."""
@@ -92,7 +88,6 @@ def test_weights_and_costs_match_add_1e(save, names):
     assert (by_name["SHIELD"].weight_lb, by_name["SHIELD"].cost_gp) == (10.0, 15)
 
 
-@equipped
 def test_readied_flag(save, names):
     slot = next(s for s in save.characters if s.record.name == "MAGNUS")
     items = {i.name: i for i in items_for_slot(save.to_bytes(), slot.index, names)}
@@ -100,7 +95,6 @@ def test_readied_flag(save, names):
     assert not items["SHORT BOW"].readied      # carried, not readied
 
 
-@equipped
 def test_ammunition_carries_a_quantity(save, names):
     slot = next(s for s in save.characters if s.record.name == "MAGNUS")
     arrows = [i for i in items_for_slot(save.to_bytes(), slot.index, names)
@@ -113,7 +107,6 @@ def test_geometry():
     assert ITEM_SIZE == 16
 
 
-@equipped
 def test_experience_is_present_after_combat(save):
     """One orc fight: 17 xp each, 8 for LADY KATHERINE."""
     def u24(r):
@@ -126,7 +119,6 @@ def test_experience_is_present_after_combat(save):
     assert all(v > 0 for v in xp.values())
 
 
-@equipped
 def test_silver_appeared_from_looting(save):
     assert all(s.record.silver >= 25 for s in save.characters)
 

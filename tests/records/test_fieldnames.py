@@ -194,8 +194,7 @@ def test_the_race_seed_is_indexed_by_the_race_byte(monsters):
     which is 1-based -- so the leading 1 is unreachable and no dwarf carries
     it. MAGNUS is the dwarf that settles it."""
     save = FIXTURES / "party6_savedgame0.bin"
-    if not save.exists():
-        pytest.skip("needs the six-character party fixture")
+    assert save.exists(), f"committed fixture missing: {save}"
     seeded = {}
     for slot in SaveGame0.from_prg(save.read_bytes()).characters:
         record = slot.record_bytes

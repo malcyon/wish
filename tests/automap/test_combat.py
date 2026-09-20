@@ -11,7 +11,6 @@ with the data and nothing here has to repeat them.
 
 
 import dataclasses
-import pathlib
 
 import pytest
 from gamedata import synthetic_arena
@@ -20,8 +19,6 @@ from automap import combat
 from automap.render import Bar
 from automap.state import Automapper
 from automap.target import MemoryTarget
-
-FIXTURES = pathlib.Path(__file__).parents[1] / "fixtures"
 
 
 @pytest.fixture

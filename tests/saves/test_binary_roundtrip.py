@@ -21,7 +21,6 @@ from goldbox.spells import spellbook_bytes, spells_known
 
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
-FIXTURES = pathlib.Path(__file__).parents[1] / "fixtures"
 game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/POOL1.D64").exists(),
                                 reason="needs the game disks")
 
