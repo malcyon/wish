@@ -187,7 +187,13 @@ measured or derived:
 | pass two, no data | ~218 | 2,208.1 worker-seconds at 10.14, derived |
 | `ruff` and `genui.py --check` | ~10 | derived |
 
-About 8:15, against the "roughly ten minutes" in `#579 (The test suite takes
+About 8:15 is the sum of the rows above, with pass two derived from
+worker-seconds at pass one's parallelism; it is not a measured pre-push run.
+The whole no-data pass was also timed directly, at about 96 s, and at 123 s
+under a one-minute load average of 9.2. Those are less than half the ~218 s
+derived here, and this page does not reconcile them, so it cannot say which a
+pre-push run will match: only a measured whole-suite run of
+`tools/suite/suiterun.py` settles it. Against the "roughly ten minutes" in `#579 (The test suite takes
 four minutes locally and ten before a push, and nobody has measured where
 the time goes)`; the load during the measurement and the worktree setup
 cover the difference.
@@ -231,8 +237,11 @@ its docstring saying the collection costs nothing measurable.
 Expected saving, from the 0.139 s a test the probe measured against the
 0.174 s mean the run measured: about **1,150 of the 2,760 worker-seconds in
 pass one**, taking its wall from 262 s to roughly 150-165 s; about **890 of
-the 1,887 in pass two**, taking it from ~186 s to ~95 s; and the pre-push
-run as a whole from about 7:45 to about 4:30. CI's `pytest` step should fall
+the 1,887 worker-seconds** the old selected pass two held. Pass two now runs
+the whole suite (item 4), so the same 47% of 2,208.1 is about 1,040
+worker-seconds, taking it from ~218 s to ~115 s (derived); and the pre-push
+run as a whole from about 8:15 to about 4:50 (derived, from the cost table
+above). CI's `pytest` step should fall
 from 7:49 to somewhere near 3:30 for nothing.
 
 The test: assert `gc.get_freeze_count() > 0` and that it is the imported
@@ -315,15 +324,15 @@ which of those it was; so does output that is not valid UTF-8. The fallback sets
 only the example's variables, so the specimen tree under `~/wish-specimens`
 stays reachable in it, as it was before.
 
-**Builder: `junior-dev`.**
-
 ### 5. The local run before a push stays the whole suite
 
 **Rejected, by Donald's answer to the issue's candidate 3.** Nothing in this
 measurement argued for it either way: it is a choice about where a
-regression is caught rather than about where the seconds go. Items 1 to 4
-take the pre-push run from about 7:45 to under 4:00 without changing what is
-checked.
+regression is caught rather than about where the seconds go. Items 1 to 3
+take the derived pre-push run from about 8:15 to about 4:20 (item 1's 4:50,
+less item 2's 18 s and item 3's 7 s) without changing what is checked. An
+earlier figure of about 7:45 to under 4:00 was taken against the old selected
+pass two and is superseded by this one.
 
 ### 6. Group balance under `--dist loadgroup`
 
