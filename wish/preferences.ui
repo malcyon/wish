@@ -307,10 +307,42 @@
         </widget>
        </item>
        <item>
-        <widget class="QTableWidget" name="travel_table"/>
-       </item>
-       <item>
-        <widget class="QLabel" name="travel_note"/>
+        <widget class="QTabWidget" name="travel_tabs">
+         <property name="currentIndex"><number>0</number></property>
+         <widget class="QWidget" name="travel_tab_pool_of_radiance">
+          <attribute name="title"><string>Pool of Radiance</string></attribute>
+          <layout class="QVBoxLayout" name="travel_tab_layout_pool_of_radiance">
+           <item>
+            <widget class="QTableWidget" name="travel_table_pool_of_radiance"/>
+           </item>
+           <item>
+            <widget class="QLabel" name="travel_note_pool_of_radiance"/>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="travel_tab_curse_of_the_azure_bonds">
+          <attribute name="title"><string>Curse of the Azure Bonds</string></attribute>
+          <layout class="QVBoxLayout" name="travel_tab_layout_curse_of_the_azure_bonds">
+           <item>
+            <widget class="QTableWidget" name="travel_table_curse_of_the_azure_bonds"/>
+           </item>
+           <item>
+            <widget class="QLabel" name="travel_note_curse_of_the_azure_bonds"/>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="travel_tab_secret_of_the_silver_blades">
+          <attribute name="title"><string>Secret of the Silver Blades</string></attribute>
+          <layout class="QVBoxLayout" name="travel_tab_layout_secret_of_the_silver_blades">
+           <item>
+            <widget class="QTableWidget" name="travel_table_secret_of_the_silver_blades"/>
+           </item>
+           <item>
+            <widget class="QLabel" name="travel_note_secret_of_the_silver_blades"/>
+           </item>
+          </layout>
+         </widget>
+        </widget>
        </item>
       </layout>
      </widget>

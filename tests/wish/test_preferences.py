@@ -39,6 +39,7 @@ from wish import backends as bk
 from wish import preferences
 from wish.preferences import PreferencesDialog, report
 
+POOL = c64_port.POOL_OF_RADIANCE
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
 pytestmark = pytest.mark.usefixtures("no_registry")
@@ -1063,19 +1064,20 @@ def test_the_backend_default_checkbox_owns_the_poll_interval(
 
 # --- fast travel -------------------------------------------------------------
 
-def ticked(dialog):
-    """The names with a tick against them, in table order."""
+def ticked(dialog, game=POOL):
+    """The names with a tick against them on `game`'s tab, in table order."""
     from PyQt6.QtCore import Qt
-    return [dialog.travel_table.item(i, 0).text()
-            for i in range(dialog.travel_table.rowCount())
-            if dialog.travel_table.item(i, 0).checkState()
-            == Qt.CheckState.Checked]
+    table = dialog.travel_tables[game.key]
+    return [table.item(i, 0).text()
+            for i in range(table.rowCount())
+            if table.item(i, 0).checkState() == Qt.CheckState.Checked]
 
 
-def tick(dialog, name, on=True):
+def tick(dialog, name, on=True, game=POOL):
     from PyQt6.QtCore import Qt
-    for i in range(dialog.travel_table.rowCount()):
-        item = dialog.travel_table.item(i, 0)
+    table = dialog.travel_tables[game.key]
+    for i in range(table.rowCount()):
+        item = table.item(i, 0)
         if item.text() == name:
             item.setCheckState(Qt.CheckState.Checked if on
                                else Qt.CheckState.Unchecked)
@@ -1091,7 +1093,13 @@ def test_a_fresh_config_ticks_the_three_areas_and_nothing_else(app, tmp_path,
     nowhere(tmp_path, monkeypatch)
     dialog = PreferencesDialog(window(app))
     assert ticked(dialog) == ["New Phlan", "Sokol Keep", "The Slums"]
-    assert "3 areas" in dialog.travel_note.text()
+    assert "3 areas" in dialog.travel_notes[POOL.key].text()
+    # Nobody has played the other two through, so a default tick would be a
+    # claim nothing backs (`DEFAULT_FAST_TRAVEL_BY_GAME`).
+    for game in (CURSE, SILVER_BLADES):
+        assert ticked(dialog, game) == []
+        assert dialog.travel_notes[game.key].text() == (
+            "0 areas in the Fast Travel list.")
 
 
 def test_area_30_is_not_in_the_table_at_all(app, tmp_path, monkeypatch):
@@ -1101,9 +1109,10 @@ def test_area_30_is_not_in_the_table_at_all(app, tmp_path, monkeypatch):
 
     nowhere(tmp_path, monkeypatch)
     dialog = PreferencesDialog(window(app))
-    assert [a.id for a in dialog.travel_rows if not a.fasttravelable] == []
-    assert 30 not in [a.id for a in dialog.travel_rows]
-    assert dialog.travel_table.rowCount() == len(
+    rows = dialog.travel_rows[POOL.key]
+    assert [a.id for a in rows if not a.fasttravelable] == []
+    assert 30 not in [a.id for a in rows]
+    assert dialog.travel_tables[POOL.key].rowCount() == len(
         [a for a in areas.AREAS if a.fasttravelable])
 
 
@@ -1138,7 +1147,8 @@ def test_unticking_everything_is_an_answer_and_is_kept(app, tmp_path,
     assert ticked(dialog) == []
     assert Settings.load().fast_travel_targets == {"pool-of-radiance": []}
     assert Settings.load().chosen_areas() == ()
-    assert dialog.travel_note.text() == "0 areas in the Fast Travel list."
+    assert dialog.travel_notes[POOL.key].text() == (
+        "0 areas in the Fast Travel list.")
     assert win.map.fasttravel_bar.rows == ()
 
 
@@ -1155,12 +1165,19 @@ def test_a_saved_choice_is_what_the_next_window_opens_with(app, tmp_path,
         "Kovel Mansion", "New Phlan", "Sokol Keep", "The Slums"]
 
 
-def test_a_title_with_no_area_table_gets_an_empty_table_and_a_sentence(
+def test_a_title_with_no_area_table_has_no_tab_and_is_never_offered_another_titles_areas(
         app, tmp_path, monkeypatch):
     """#14. Ticking Pool of Radiance's thirty areas for a session of a title
     with no table of its own would file Pool of Radiance's ids under that
-    title's key, and the dropdown would then offer them. The table is the
-    map's title's, and four of the six titles have none --
+    title's key, and the dropdown would then offer them.
+
+    Preferences used to guard that by showing an empty table and "No areas are
+    known for" the open title. It has a tab for a title only when
+    `goldbox.areas.TABLES` has a table for it, so a title with none is not in
+    Preferences at all, and the guard is asserted in the two places a player
+    meets it: the dropdown still says "No areas are known for" the open title
+    and offers no row, and ticking a Pool of Radiance area during that session
+    files it under `pool-of-radiance` and adds nothing to the dropdown.
     `docs/138-multiple-games.md` §7 task 1.
 
     Champions of Krynn stands in here -- Curse of the Azure Bonds had a table
@@ -1169,13 +1186,169 @@ def test_a_title_with_no_area_table_gets_an_empty_table_and_a_sentence(
     Blades did under `#20 (Build an area table for Silver Blades)`.
     """
     nowhere(tmp_path, monkeypatch)
-    win = window(app, title=c64_port.CHAMPIONS_OF_KRYNN.title)
+    champions = c64_port.CHAMPIONS_OF_KRYNN
+    win = window(app, title=champions.title)
     dialog = PreferencesDialog(win)
-    assert dialog.travel_rows == []
-    assert dialog.travel_table.rowCount() == 0
-    assert dialog.travel_note.text() == ("No areas are known for Champions "
-                                         "of Krynn.")
-    assert win.map.fasttravel_bar.rows == ()
+    tabs = dialog.travel_tabs
+    titles = [tabs.tabText(i) for i in range(tabs.count())]
+    assert titles == [g.title for g in preferences.TRAVEL_TITLES]
+    assert champions.title not in titles
+    assert champions.key not in dialog.travel_tables
+
+    bar = win.map.fasttravel_bar
+    assert bar.rows == ()
+    assert bar.combo.itemText(0) == "No areas are known for Champions of Krynn."
+
+    tick(dialog, "The Kobold Caves")
+    assert 13 in Settings.load().chosen_areas(POOL)
+    assert champions.key not in (Settings.load().fast_travel_targets or {})
+    assert bar.rows == ()
+    assert bar.combo.itemText(0) == "No areas are known for Champions of Krynn."
+
+
+def test_there_is_a_tab_for_every_title_with_an_area_table(
+        app, tmp_path, monkeypatch):
+    """One tab per title `goldbox.areas.TABLES` has rows for, labelled with the
+    title's own name -- the string the Game disks tab uses for the same title --
+    in `c64_port.GAMES` order. A fourth table fails this until it has a page in
+    `preferences.ui`."""
+    from goldbox import areas
+
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+    tabs = dialog.travel_tabs
+    with_tables = [g for g in c64_port.GAMES if areas.areas_for_title(g.title)]
+    assert [g.title for g in preferences.TRAVEL_TITLES] == [
+        g.title for g in with_tables]
+    assert [tabs.tabText(i) for i in range(tabs.count())] == [
+        g.title for g in with_tables]
+    for game in preferences.GAME_FOLDER_TITLES:
+        label = getattr(dialog.ui,
+                        f"game_folder_label_{preferences._row_suffix(game)}")
+        assert game.title in [tabs.tabText(i) for i in range(tabs.count())]
+        assert label.text() == game.title
+
+
+def test_ticking_in_another_titles_tab_files_the_tick_under_that_title(
+        app, tmp_path, monkeypatch):
+    """A player in a Pool of Radiance session ticks a Curse of the Azure Bonds
+    area for later. Before the tabs there was no way to reach Curse's rows
+    from that session, and a tick made with the old wiring would have been
+    filed under Pool of Radiance's key."""
+    from PyQt6.QtCore import Qt
+
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    dialog = PreferencesDialog(win)
+    before = list(win.map.fasttravel_bar.rows)
+    curse_area = dialog.travel_rows[CURSE.key][0]
+
+    dialog.travel_tables[CURSE.key].item(0, 0).setCheckState(
+        Qt.CheckState.Checked)
+
+    saved = Settings.load()
+    assert curse_area.id in saved.chosen_areas(CURSE)
+    assert saved.chosen_areas(POOL) == (0, 20, 21)
+    assert saved.chosen_areas(SILVER_BLADES) == ()
+    assert list(win.map.fasttravel_bar.rows) == before
+    assert dialog.travel_notes[CURSE.key].text() == (
+        "1 area in the Fast Travel list.")
+    assert "3 areas" in dialog.travel_notes[POOL.key].text()
+
+
+def test_each_tab_lists_its_own_titles_areas(app, tmp_path, monkeypatch):
+    """Each table holds every fast-travellable row of its own title and nothing
+    of another's. The tooltip is the row's label, which names its disk
+    (`POOL`, `CURSE`, `SILVER`), so it tells the titles apart where the names
+    cannot: "Temple of Bane" is a Pool of Radiance area and a Curse one."""
+    from goldbox import areas
+
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+
+    def labels(game):
+        table = dialog.travel_tables[game.key]
+        return [table.item(i, 0).toolTip() for i in range(table.rowCount())]
+
+    for game in preferences.TRAVEL_TITLES:
+        expected = [a.label for a in areas.areas_for_title(game.title)
+                    if a.fasttravelable]
+        assert len(expected) > 0
+        assert sorted(labels(game)) == sorted(expected)
+    for one, other in ((POOL, CURSE), (POOL, SILVER_BLADES),
+                       (CURSE, SILVER_BLADES)):
+        assert not set(labels(one)) & set(labels(other))
+
+
+def test_the_dialog_opens_on_the_open_titles_tab_and_forgets_the_rest(
+        app, tmp_path, monkeypatch):
+    """The open title's tab when it has one, the first when it has none, and a
+    tab the player left selected is not remembered by the next dialog."""
+    nowhere(tmp_path, monkeypatch)
+    for game in preferences.TRAVEL_TITLES:
+        dialog = PreferencesDialog(window(app, title=game.title))
+        assert dialog.travel_tabs.tabText(
+            dialog.travel_tabs.currentIndex()) == game.title
+    none = PreferencesDialog(window(
+        app, title=c64_port.CHAMPIONS_OF_KRYNN.title))
+    assert none.travel_tabs.currentIndex() == 0
+
+    win = window(app)
+    first = PreferencesDialog(win)
+    first.travel_tabs.setCurrentIndex(2)
+    assert PreferencesDialog(win).travel_tabs.currentIndex() == 0
+
+
+def test_the_tab_bar_fits_and_the_table_keeps_its_rows_at_larger_fonts(
+        app, tmp_path, monkeypatch):
+    """The tab bar inside Fast travel takes a row of height the table used to
+    have. Width is asserted at +0 only, from what the bar asks for; height
+    across +0, +6 (about Windows' base font) and +10, from what the table asks
+    for: it keeps the minimum height it was given, so it is never squeezed
+    below a recognisable list."""
+    from PyQt6.QtGui import QFont
+
+    nowhere(tmp_path, monkeypatch)
+    base = app.font()
+    try:
+        for extra in (0, 6, 10):
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+            dialog = PreferencesDialog(window(app))
+            dialog.tabs.setCurrentIndex(2)
+            dialog.show()
+            try:
+                app.processEvents()
+                for game in preferences.TRAVEL_TITLES:
+                    dialog.travel_tabs.setCurrentIndex(
+                        [g.key for g in preferences.TRAVEL_TITLES].index(game.key))
+                    app.processEvents()
+                    table = dialog.travel_tables[game.key]
+                    assert table.height() >= table.minimumHeight(), extra
+                if extra == 0:
+                    bar = dialog.travel_tabs.tabBar()
+                    assert bar.sizeHint().width() <= dialog.travel_tabs.width()
+            finally:
+                dialog.close()
+    finally:
+        app.setFont(base)
+
+
+def test_one_warning_sits_above_the_tabs_and_not_inside_a_page(
+        app, tmp_path, monkeypatch):
+    """The sentence is true of every title, so it is said once. It is on the
+    Fast travel tab and in none of the three title pages."""
+    from PyQt6.QtWidgets import QLabel
+
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+    sentence = ("Fast travel to areas you haven't been to is dangerous and "
+                "can break the game.")
+    boxes = [w for w in dialog.findChildren(QLabel) if w.text() == sentence]
+    assert boxes == [dialog.travel_warning]
+    assert dialog.tabs.widget(2).isAncestorOf(boxes[0])
+    assert not dialog.travel_tabs.isAncestorOf(boxes[0])
 
 
 def test_the_warning_is_a_framed_box_in_the_same_amber_as_unverified(
@@ -1276,11 +1449,14 @@ def test_every_control_is_wide_enough_for_what_it_has_to_show(app, tmp_path,
         "folder": room_for(folder, folder.placeholderText()),
         "host": room_for(dialog.host, dialog.host.placeholderText()),
         "interval": dialog.interval.minimumSizeHint().width(),
-        "areas": dialog.travel_table.sizeHintForColumn(0),
+        "areas": dialog.travel_tables[POOL.key].sizeHintForColumn(0),
     }
     assert folder.minimumWidth() >= needed["folder"]
     assert dialog.host.minimumWidth() >= needed["host"]
-    assert dialog.travel_table.minimumWidth() >= needed["areas"]
+    for game in preferences.TRAVEL_TITLES:
+        table = dialog.travel_tables[game.key]
+        assert table.minimumWidth() >= table.sizeHintForColumn(0)
+    assert dialog.travel_tables[POOL.key].minimumWidth() >= needed["areas"]
     assert dialog.sizeHint().width() >= max(needed.values())
     assert dialog.width() >= max(needed.values())
 
@@ -1312,9 +1488,10 @@ def test_three_tabs_and_it_opens_on_general_every_time(app, tmp_path,
     assert not dialog.tabs.widget(0).isAncestorOf(folder)
     # The warning belongs beside the thing it warns about.
     travel = dialog.tabs.widget(2)
-    assert travel.isAncestorOf(dialog.travel_table)
-    assert not dialog.tabs.widget(0).isAncestorOf(dialog.travel_table)
-    assert [w for w in travel.findChildren(type(dialog.travel_note))
+    table = dialog.travel_tables[POOL.key]
+    assert travel.isAncestorOf(table)
+    assert not dialog.tabs.widget(0).isAncestorOf(table)
+    assert [w for w in travel.findChildren(type(dialog.travel_warning))
             if w.text().startswith("Fast travel to areas")]
     assert not [f for f in fields(Settings) if "tab" in f.name.lower()]
 
@@ -1356,7 +1533,7 @@ def test_it_opens_inside_the_work_area_with_nothing_squeezed(app, tmp_path,
         # The table takes the tab, which was the point of splitting it: it was
         # capped at 160 px in one column and shows three times as much now.
         dialog.tabs.setCurrentIndex(2)
-        assert dialog.travel_table.height() > 400
+        assert dialog.travel_tables[POOL.key].height() > 400
     finally:
         dialog.close()
 
@@ -1623,9 +1800,14 @@ def test_every_control_is_a_widget_the_ui_file_built(app, tmp_path, monkeypatch)
         assert dialog.clear_automap_button is dialog.ui.clear_automap_button
         assert dialog.report_rows["In use"] is dialog.ui.report_in_use
         assert dialog.report_rows["Titles"] is dialog.ui.report_titles
-        assert dialog.travel_table is dialog.ui.travel_table
-        assert dialog.travel_note is dialog.ui.travel_note
+        assert dialog.travel_tabs is dialog.ui.travel_tabs
         assert dialog.travel_warning is dialog.ui.travel_warning
+        for game in preferences.TRAVEL_TITLES:
+            suffix = preferences._row_suffix(game)
+            assert dialog.travel_tables[game.key] is getattr(
+                dialog.ui, f"travel_table_{suffix}")
+            assert dialog.travel_notes[game.key] is getattr(
+                dialog.ui, f"travel_note_{suffix}")
         for game in preferences.GAME_FOLDER_TITLES:
             suffix = preferences._row_suffix(game)
             assert dialog.game_folder_edits[game.key] is getattr(

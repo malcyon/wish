@@ -27,7 +27,8 @@ Three things about the shape of it:
   Game disks holds each title's own folder (#22; the shared one was removed
   by `#357 (The automapper reads the shared Game disks folder, so setting a
   title's own folder does not make it map that title)`); Fast travel holds
-  the 29-row area table, which stretches to fill it. In one column none
+  one area table per title that has one, each on a tab of its own inside it,
+  and the table showing stretches to fill it. In one column none
   of the three could have the height it wanted, and a dialog compressed below
   its layout's minimum squeezes the controls that can be squeezed rather than
   refusing -- which is what "a lot of fields are squished" was. No width here
@@ -66,11 +67,12 @@ from PyQt6.QtWidgets import (
     QRadioButton,
     QStyle,
     QStyleOptionFrame,
+    QTableWidget,
     QTableWidgetItem,
 )
 
 from automap import paths
-from automap.actionbar import DANGER, no_areas
+from automap.actionbar import DANGER
 from automap.config import clamp_to_screen
 from goldbox import areas as area_table
 from goldbox import c64_port
@@ -179,6 +181,17 @@ def _pretty(glob: str) -> str:
 #: inventing one would be exactly the fabricated data `.claude/rules/
 #: conversions.md` refuses. Left as a finding on #22 rather than built here.
 GAME_FOLDER_TITLES: tuple[c64_port.C64Container, ...] = (
+    c64_port.POOL_OF_RADIANCE,
+    c64_port.CURSE_OF_THE_AZURE_BONDS,
+    c64_port.SECRET_OF_THE_SILVER_BLADES,
+)
+
+#: The titles the Fast travel tab has a page for, in `c64_port.GAMES` order --
+#: the titles `goldbox.areas.TABLES` has a table for, and no others. A title
+#: with no table gets no tab, and a fourth table needs a fourth page in
+#: `preferences.ui`; `test_there_is_a_tab_for_every_title_with_an_area_table`
+#: fails until it has one.
+TRAVEL_TITLES: tuple[c64_port.C64Container, ...] = (
     c64_port.POOL_OF_RADIANCE,
     c64_port.CURSE_OF_THE_AZURE_BONDS,
     c64_port.SECRET_OF_THE_SILVER_BLADES,
@@ -432,6 +445,7 @@ class PreferencesDialog(QDialog):
         # "squished and unusable" by another route.
         _invalidate_layout(self._general.layout())
         _invalidate_layout(self.ui.disks_layout)
+        _invalidate_layout(self.ui.travel_layout)
         self.fit()
 
     def sizeHint(self) -> QSize:
@@ -846,51 +860,70 @@ class PreferencesDialog(QDialog):
         attract-mode demo and entering it ends the session. `Area.fasttravelable`
         says so, and it is asked rather than the id being written down here.
 
-        **The table is the open title's**, and five of the six titles have no
-        area table at all -- `goldbox.areas.areas_for_title`. For those the table
-        is empty and a sentence says which game nothing is known for, rather
-        than offering Pool of Radiance's thirty to be ticked for a game they do
-        not belong to (#14, `docs/138-multiple-games.md` §7 task 1).
+        **One tab per title that has an area table** (`TRAVEL_TITLES`), each
+        with its own table, so any title's areas can be ticked from any
+        session. The tab that is current on opening is the open title's, or the
+        first when the open title has none; the dropdown under the map still
+        offers only the open title's ticks. A title with no area table has no
+        tab: the dropdown says "No areas are known for" it where the player is
+        trying to travel, and Pool of Radiance's thirty are never offered for
+        a game they do not belong to (#14, `docs/138-multiple-games.md` §7
+        task 1).
 
         **The warning is a box, not a tooltip**, and it is here rather than on
-        General: beside the thing it warns about. Same amber as the
-        `unverified` badge -- one visual language for "this is a thing to know
-        before you press it", and a sentence nobody has to hover to find.
+        General: beside the thing it warns about, above the tabs because it is
+        true of every title. Same amber as the `unverified` badge -- one visual
+        language for "this is a thing to know before you press it", and a
+        sentence nobody has to hover to find.
         """
         self.travel_warning = self.ui.travel_warning
         self.travel_warning.setText(DANGER)
         self.travel_warning.setStyleSheet(WARNING_BOX)
 
+        self.travel_tabs = self.ui.travel_tabs
+        #: Each title's own rows, table and note, by `Game.key`.
+        self.travel_rows: dict[str, list[area_table.Area]] = {}
+        self.travel_tables: dict[str, QTableWidget] = {}
+        self.travel_notes: dict[str, QLabel] = {}
+        for game in TRAVEL_TITLES:
+            self._wire_travel_page(game)
+
+        self.travel_game = self.win.map_game()
+        keys = [g.key for g in TRAVEL_TITLES]
+        self.travel_tabs.setCurrentIndex(
+            keys.index(self.travel_game.key)
+            if self.travel_game.key in keys else 0)
+
+    def _wire_travel_page(self, game: c64_port.C64Container) -> None:
+        """One title's table: its rows, its ticks and its count."""
+        suffix = _row_suffix(game)
         #: The table's rows, in the dropdown's own order: by name. Every
         #: fasttravelable area has one, and area 30 -- the only nameless one -- is
         #: also the only unfasttravelable one, so excluding it needs no second rule.
-        self.travel_game = self.win.map_game()
-        self.travel_rows = sorted(
-            (a for a in area_table.areas_for_title(
-                getattr(self.travel_game, "title", None)) if a.fasttravelable),
+        rows = sorted(
+            (a for a in area_table.areas_for_title(game.title)
+             if a.fasttravelable),
             key=lambda a: a.name or "")
-        chosen = set(self.win.settings.chosen_areas(self.travel_game))
-        self.travel_table = self.ui.travel_table
-        self.travel_table.setColumnCount(1)
-        self.travel_table.setRowCount(len(self.travel_rows))
-        self.travel_table.setHorizontalHeaderLabels(["Area"])
-        self.travel_table.verticalHeader().setVisible(False)
-        self.travel_table.horizontalHeader().setSectionResizeMode(
+        chosen = set(self.win.settings.chosen_areas(game))
+        table = getattr(self.ui, f"travel_table_{suffix}")
+        table.setColumnCount(1)
+        table.setRowCount(len(rows))
+        table.setHorizontalHeaderLabels(["Area"])
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.Stretch)
-        self.travel_table.setSelectionMode(
-            QAbstractItemView.SelectionMode.NoSelection)
-        self.travel_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         # No cap any more: the table is the only thing on this tab that
         # stretches, so it takes the height the dialog has. The minimum is
         # measured off a row -- enough that it is recognisably a list even on a
         # display that leaves it nothing.
-        self.travel_table.setMinimumHeight(
-            TABLE_MIN_ROWS * self.travel_table.verticalHeader().defaultSectionSize()
-            + self.travel_table.horizontalHeader().sizeHint().height()
-            + 2 * self.travel_table.frameWidth())
-        self.travel_table.blockSignals(True)
-        for i, row in enumerate(self.travel_rows):
+        table.setMinimumHeight(
+            TABLE_MIN_ROWS * table.verticalHeader().defaultSectionSize()
+            + table.horizontalHeader().sizeHint().height()
+            + 2 * table.frameWidth())
+        table.blockSignals(True)
+        for i, row in enumerate(rows):
             item = QTableWidgetItem(row.name or row.ecl)
             item.setFlags(Qt.ItemFlag.ItemIsUserCheckable
                           | Qt.ItemFlag.ItemIsEnabled)
@@ -899,49 +932,44 @@ class PreferencesDialog(QDialog):
             # The maps and the disk, exactly as the dropdown's items carry
             # them: interesting to whoever wants them, in nobody's way.
             item.setToolTip(row.label)
-            self.travel_table.setItem(i, 0, item)
-        self.travel_table.blockSignals(False)
+            table.setItem(i, 0, item)
+        table.blockSignals(False)
         # Wide enough for the longest area name with its tick box, asked of the
         # view rather than counted here: `sizeHintForColumn` puts the indicator,
         # the cell padding and the font together the way the delegate will draw
-        # them. The bar is up whenever 29 rows do not fit, so it is added.
-        self.travel_table.setMinimumWidth(
-            self.travel_table.sizeHintForColumn(0)
-            + self.travel_table.verticalScrollBar().sizeHint().width()
-            + 2 * self.travel_table.frameWidth())
-        self.travel_table.itemChanged.connect(lambda _item: self._travel_changed())
+        # them. The bar is up whenever the rows do not fit, so it is added.
+        table.setMinimumWidth(
+            table.sizeHintForColumn(0)
+            + table.verticalScrollBar().sizeHint().width()
+            + 2 * table.frameWidth())
+        table.itemChanged.connect(
+            lambda _item, g=game: self._travel_changed(g))
 
-        self.travel_note = self.ui.travel_note
-        self._say_travel()
+        self.travel_rows[game.key] = rows
+        self.travel_tables[game.key] = table
+        self.travel_notes[game.key] = getattr(self.ui, f"travel_note_{suffix}")
+        self._say_travel(game)
 
-    def travel_ticked(self) -> list[int]:
-        """The area ids with a tick against them, in table order."""
-        return [row.id for i, row in enumerate(self.travel_rows)
-                if self.travel_table.item(i, 0).checkState()
-                == Qt.CheckState.Checked]
+    def travel_ticked(self, game: c64_port.C64Container) -> list[int]:
+        """The area ids with a tick against them on `game`'s tab, in table order."""
+        table = self.travel_tables[game.key]
+        return [row.id for i, row in enumerate(self.travel_rows[game.key])
+                if table.item(i, 0).checkState() == Qt.CheckState.Checked]
 
-    def _travel_changed(self) -> None:
-        self.win.set_fast_travel_targets(self.travel_ticked())
-        self._say_travel()
+    def _travel_changed(self, game: c64_port.C64Container) -> None:
+        self.win.set_fast_travel_targets(self.travel_ticked(game), game)
+        self._say_travel(game)
 
-    def _say_travel(self) -> None:
-        """How many areas the dropdown will offer. A count, and no more.
+    def _say_travel(self, game: c64_port.C64Container) -> None:
+        """How many areas `game`'s ticks give the dropdown. A count, and no more.
 
         Nothing ticked used to get a sentence explaining that an empty list was
         the setting doing what was asked. Donald had it out in 2026-08 -- "the
         user will figure it out" -- and the dropdown's own disabled item and
         the disabled button say it where somebody is looking for it.
-
-        A title with no area table is the one case that still needs a sentence:
-        an empty table with "0 areas" under it looks like a feature that failed
-        to load, where it is a game whose areas nobody has tabulated.
         """
-        if not self.travel_rows:
-            self.travel_note.setText(no_areas(
-                getattr(self.travel_game, "title", None)))
-            return
-        ticked = len(self.travel_ticked())
-        self.travel_note.setText(
+        ticked = len(self.travel_ticked(game))
+        self.travel_notes[game.key].setText(
             f"{ticked} area{'' if ticked == 1 else 's'} in the Fast Travel "
             "list.")
 

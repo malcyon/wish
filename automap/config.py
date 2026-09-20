@@ -33,9 +33,9 @@ DEFAULT_FAST_TRAVEL_TARGETS: tuple[int, ...] = (0, 20, 21)
 POOL_OF_RADIANCE = "pool-of-radiance"
 
 #: What a title gets before anybody has ticked anything. Every title but Pool
-#: of Radiance gets nothing, because `goldbox.areas.areas_for_title` has nothing to
-#: offer it -- an id ticked for a title with no area table would be an id from
-#: another game's list.
+#: of Radiance gets nothing: a default tick says a party has almost certainly
+#: walked there by the time it wants to travel, and only Pool of Radiance's
+#: three areas carry that.
 DEFAULT_FAST_TRAVEL_BY_GAME: dict[str, tuple[int, ...]] = {
     POOL_OF_RADIANCE: DEFAULT_FAST_TRAVEL_TARGETS,
 }

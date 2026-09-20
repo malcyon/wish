@@ -519,14 +519,17 @@ class WishWindow(QMainWindow):
         self.settings.save()
         self.session.set_interval(interval_ms)
 
-    def set_fast_travel_targets(self, ids) -> None:
+    def set_fast_travel_targets(self, ids, game=None) -> None:
         """Which areas the Fast Travel dropdown offers, by `goldbox/areas.py` id.
 
         Empty is a choice like any other and is saved as one: the setting is
         None only until somebody has ticked or unticked anything. Filed under
-        the open title's key, because an area id means nothing without one.
+        `game`'s key, or the open title's when none is given, because an area
+        id means nothing without one. The dropdown is rebuilt either way; it
+        offers only the open title's ticks, so another title's change leaves
+        it with the same rows.
         """
-        self.settings.set_chosen_areas(ids, self.map_game())
+        self.settings.set_chosen_areas(ids, game or self.map_game())
         self.settings.save()
         self.map.fasttravel_bar.reload_areas()
 
