@@ -342,9 +342,10 @@ def test_codex_hooks_run_below_the_repository_root(tmp_path):
     bad_commands = {
         "check-issue-reads.py": "gh issue view 576 --comments",
         "check-issue-writes.py": "gh issue comment 576 --body nope",
-        # A temporary HOME has no green marker.  The guard only inspects this
-        # command; it never executes the push it refuses.
-        "check-push-tested.py": "git push",
+        # An empty commit moves HEAD, so this is refused independently of
+        # whether the current commit has already been published. The guard
+        # only inspects this command; it never executes the commit or push.
+        "check-push-tested.py": "git commit --allow-empty -m x && git push",
     }
     for command in commands:
         hook = next(name for name in bad_commands if name in command)
@@ -355,6 +356,8 @@ def test_codex_hooks_run_below_the_repository_root(tmp_path):
                               timeout=30,
                               env=os.environ | {"HOME": str(tmp_path)})
         assert done.returncode == 2, done.stderr
+        if hook == "check-push-tested.py":
+            assert "moves HEAD and pushes in one command" in done.stderr
         safe = subprocess.run(
             command, shell=True, cwd=root / "tests" / "hooks",
             input=json.dumps({"tool_name": "Bash",
