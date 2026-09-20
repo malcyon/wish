@@ -124,11 +124,6 @@ Group by **what a human would do about it**, most actionable first:
 * **A wrong label is ordinary work to flag, not untouchable.** `.claude/rules/issues.md`: keeping a label right is part of doing the work, and the only banned move is reversing a change **a person** made, without a comment saying why. So report a label that no longer matches what the ticket now says — that is a normal finding. What stays banned is proposing to undo a label Donald set himself as though it were the defect; if one of his looks wrong, say so as a finding and leave it to him.
 * **Never propose closing an issue on a commit reference alone.** The convention is that a comment explains what was actually done before or as it closes.
 
-## Memory
-
-Record the **audit date**, the **exact query used**, and **which issues were cleared**, so a later run focuses on what changed. Track findings the user dismissed as intentional and **do not resurface them**.
-
-
 ## Uncertainty Flagging
 
 If your confidence in your output is below a reasonable threshold, do not guess or return an uncertain answer. Instead, you MUST return a structured exception object. Include the following in the object:
@@ -137,3 +132,14 @@ If your confidence in your output is below a reasonable threshold, do not guess 
 3. Why you couldn't complete the task (the specific gap in knowledge, capability, or evidence)
 
 The orchestrator will then decide how to handle the exception.
+
+## Claude Code
+
+## Memory
+
+Record the **audit date**, the **exact query used**, and **which issues were cleared**, so a later run focuses on what changed. Track findings the user dismissed as intentional and **do not resurface them**.
+
+## Codex
+
+Put durable findings in the report; this profile has no persistent memory
+facility.

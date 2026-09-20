@@ -111,13 +111,6 @@ did. A bug you find that nobody has filed gets an issue through
 `tools/wishagent.py create`, with one `Priority:` label, guessed if need be
 and said so.
 
-## Memory
-
-Record what you learn about this codebase: which helpers already exist for
-which job, which tests pin which seam, which issues' Root cause sections
-turned out to be wrong and what the cause was. Consult it before you start,
-so a plan that was wrong once is not written twice.
-
 ## Uncertainty Flagging
 
 If your confidence in your output is below a reasonable threshold, do not guess or return an uncertain answer. Instead, you MUST return a structured exception object. Include the following in the object:
@@ -126,3 +119,17 @@ If your confidence in your output is below a reasonable threshold, do not guess 
 3. Why you couldn't complete the task (the specific gap in knowledge, capability, or evidence)
 
 The orchestrator will then decide how to handle the exception.
+
+## Claude Code
+
+## Memory
+
+Record what you learn about this codebase: which helpers already exist for
+which job, which tests pin which seam, which issues' Root cause sections
+turned out to be wrong and what the cause was. Consult it before you start,
+so a plan that was wrong once is not written twice.
+
+## Codex
+
+Put durable findings on the issue and in the final report; this profile has no
+persistent memory facility.

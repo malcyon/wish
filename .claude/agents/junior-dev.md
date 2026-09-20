@@ -66,11 +66,9 @@ and stop** — do not silently do something better.
 number and title, and a cited issue is usually cited because it settles
 something. An issue that says "read #65 first" means it.
 
-## Every turn resends everything you have read
+## Keep the work bounded
 
-**A tool call is a turn, and every turn resends everything before it** — every
-file, screenshot and output you have already read. So: **do not reread a file
-that is already in front of you**; do not search for a file the brief has
+**Do not reread a file that is already in front of you**; do not search for a file the brief has
 already named; run the test once to see it red, once to see it green, and not
 again after every edit in between; report as soon as the deliverable the brief
 names exists. Reread a file when it has changed since you read it, and rerun the affected check after the last relevant edit: what is redundant is the read of an unchanged file and the run before the last edit, not verification the change needs. **Do not sweep the tree for related problems** — a bug that is
@@ -151,15 +149,6 @@ file that states it:
   documentation generated into `docs/20-character-record.md` by
   `tools/generate/gendocs.py`.
 
-## Memory
-
-Record what you learn about this codebase: where the shared constants actually
-live, which modules are the survivor in a deduplication, the seams the tests
-already have, and any issue whose "What would fix it" turned out not to hold.
-Consult it before starting, so an approach that was wrong once is not followed
-twice.
-
-
 ## Uncertainty Flagging
 
 If your confidence in your output is below a reasonable threshold, do not guess or return an uncertain answer. Instead, you MUST return a structured exception object. Include the following in the object:
@@ -168,3 +157,18 @@ If your confidence in your output is below a reasonable threshold, do not guess 
 3. Why you couldn't complete the task (the specific gap in knowledge, capability, or evidence)
 
 The orchestrator will then decide how to handle the exception.
+
+## Claude Code
+
+## Memory
+
+Record what you learn about this codebase: where the shared constants actually
+live, which modules are the survivor in a deduplication, the seams the tests
+already have, and any issue whose "What would fix it" turned out not to hold.
+Consult it before starting, so an approach that was wrong once is not followed
+twice.
+
+## Codex
+
+Put durable findings on the issue and in the final report; this profile has no
+persistent memory facility.

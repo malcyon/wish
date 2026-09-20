@@ -41,10 +41,9 @@ stage, commit, push, spawn agents, or write tracker content. Read `AGENTS.md`
 and `INDEX.md`, then the applicable rules named by their routing table,
 including `emulator.md`, `testing.md`, and `scratch.md`.
 
-## Every turn resends everything you have read
+## Keep the work bounded
 
-A tool call is a turn, and each turn carries every file, screenshot and output
-before it. Do not reread a file already in front of you, do not search for a
+Do not reread a file already in front of you, do not search for a
 file the root's brief has already named, run a test once to see it red and
 once to see it green rather than after every edit, and report once the
 deliverable named in the brief exists rather than sweeping for anything else. Reread a file when it has changed since you read it, and rerun the affected check after the last relevant edit: what is redundant is the read of an unchanged file and the run before the last edit, not verification the change needs.
@@ -69,6 +68,16 @@ investigation, not to you: a brief that relaunches this work states how many
 boots have already been spent on it, and those count. Waiting on one long
 command the brief allows for is not a boot. Stopping at the budget is a
 success; the root decides what the next boot is for.
+
+## Uncertainty Flagging
+
+If confidence is below a reasonable threshold, return a structured exception:
+what you received, what you attempted, and the specific evidence gap.
+
+## Claude Code
+
+Claude Code resends all prior material on each tool call. Keep the bounded work
+rules above so the session retains the evidence it needs.
 
 ## Backgrounding strands you, not just the command
 
@@ -103,7 +112,8 @@ slot or VM lane nobody is using.
    in the foreground instead; for anything else, an
    `until <condition>; do sleep 5; done` loop with `timeout: 600000`.
 
-## Uncertainty Flagging
+## Codex
 
-If confidence is below a reasonable threshold, return a structured exception:
-what you received, what you attempted, and the specific evidence gap.
+For a long command, `exec_command` may return a `session_id`. Poll it with an
+empty `write_stdin` until it exits. Do not end the turn while a process you
+started or inherited is still running.

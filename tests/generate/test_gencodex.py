@@ -75,7 +75,7 @@ def test_every_claude_agent_has_a_codex_counterpart_and_no_others_exist():
     assert have == EXPECTED_AGENTS
 
 
-def test_every_generated_toml_parses_and_carries_its_source_body():
+def test_every_generated_toml_parses_and_carries_its_selected_source_body():
     """Each TOML parses, and its `developer_instructions` is byte-identical
     to the Markdown body it came from -- not a paraphrase, not truncated by a
     quoting bug in the backticks, apostrophes or `#` that prose like this
@@ -87,9 +87,73 @@ def test_every_generated_toml_parses_and_carries_its_source_body():
         fields = gencodex.parse_frontmatter(text)
         assert data["name"] == fields["name"]
         assert data["description"] == fields["description"]
-        assert data["developer_instructions"] == gencodex.body_of(text), (
+        assert data["developer_instructions"] == gencodex.codex_body_of(text, md), (
             f"{toml_path.name}'s developer_instructions has drifted from "
-            f"{md.name}'s body")
+            f"{md.name}'s selected body")
+
+
+def test_codex_body_of_keeps_unsplit_and_shared_codex_text_byte_for_byte(tmp_path):
+    """Runtime blocks remove only Claude Code instructions from generated TOML."""
+    unsplit = "---\nname: test\n---\n\nShared policy.\n"
+    split = (
+        "---\nname: test\n---\n\nShared policy.\n\n"
+        "## Claude Code\n\nClaude-only text.\n\n"
+        "## Codex\n\nCodex-only text.\n")
+    source = tmp_path / "test.md"
+    assert gencodex.codex_body_of(unsplit, source) == gencodex.body_of(unsplit)
+    assert gencodex.codex_body_of(split, source) == (
+        "Shared policy.\n\n## Codex\n\nCodex-only text.\n")
+
+
+def test_codex_body_of_rejects_malformed_runtime_headings(tmp_path):
+    """A split source has one Claude Code block followed by one Codex block."""
+    source = tmp_path / "broken.md"
+    bodies = {
+        "lone Claude Code": "## Claude Code\n",
+        "lone Claude Code at EOF": "## Claude Code",
+        "lone Codex": "## Codex\n",
+        "lone Codex at EOF": "## Codex",
+        "duplicate Claude Code": "## Claude Code\n## Claude Code\n## Codex\n",
+        "duplicate Codex": "## Claude Code\n## Codex\n## Codex\n",
+        "reversed": "## Codex\n## Claude Code\n",
+        "nonterminal Claude Code block": (
+            "## Claude Code\n## Codex\n## Claude Code\n"),
+    }
+    for label, body in bodies.items():
+        text = f"---\nname: test\n---\n\n{body}"
+        try:
+            gencodex.codex_body_of(text, source)
+        except ValueError as exc:
+            assert source.name in str(exc), label
+        else:
+            raise AssertionError(f"{label} did not fail")
+
+
+def test_generated_runtime_profiles_exclude_claude_only_execution_text():
+    """Generated profiles name Codex tools and carry no Claude profile memory."""
+    generated = {
+        path.stem: tomllib.loads(path.read_text(encoding="utf-8"))["developer_instructions"]
+        for path in CODEX_AGENTS.glob("*.toml")
+    }
+    all_instructions = "\n".join(generated.values())
+    assert "## Claude Code" not in all_instructions
+    assert "## Memory" not in all_instructions
+    assert "tool call is a turn" not in all_instructions
+    assert "`gh issue view N`" not in generated["changelog-writer"]
+    assert "tools/github/issueread.py N" in generated["changelog-writer"]
+    for name in ("emulator-runner", "test-runner"):
+        instructions = generated[name]
+        assert "session_id" in instructions
+        assert "write_stdin" in instructions
+        assert "Monitor" not in instructions
+        assert "run_in_background" not in instructions
+        assert "task ID" not in instructions
+        assert "output-file" not in instructions
+        assert "600000" not in instructions
+    assert "`Write`" not in generated["code-reviewer"]
+    assert "`Edit`" not in generated["code-reviewer"]
+    assert "`Write`" not in generated["docs-reviewer"]
+    assert "`Edit`" not in generated["docs-reviewer"]
 
 
 def test_every_model_and_effort_is_one_of_the_named_values():

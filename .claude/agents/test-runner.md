@@ -60,8 +60,7 @@ named files is still `pytest` in the main tree and writes nothing.
 About four minutes for the whole suite.
 
 **Never background a run.** A backgrounded `pytest` here has come back
-`killed` rather than with a result four times, and an agent waiting on one is
-never woken. Foreground, with an explicit timeout of 600000ms.
+`killed` rather than with a result four times.
 
 `pytest -q -n0` drops back to one process, for a single flaky-looking failure
 that needs to be seen on its own.
@@ -145,3 +144,14 @@ collection, a worktree will not build, the virtual environment is broken —
 stop and say exactly that, with the output. Do not retry a third time, and do
 not work around it. A run that passed on the second attempt is a run that will
 fail again on a slower machine and look identical.
+
+## Claude Code
+
+Run in the foreground with an explicit Bash timeout of 600000ms. A task
+waiting on a backgrounded command is not woken after its turn ends.
+
+## Codex
+
+For a long command, `exec_command` may return a `session_id`. Poll it with an
+empty `write_stdin` until it exits. Do not end the turn while the run is still
+active.

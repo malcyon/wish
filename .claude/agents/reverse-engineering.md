@@ -41,10 +41,9 @@ probable, not confirmed.
 byte" is evidence. "It worked on my character" is not. When a rule has
 exceptions, name them and count them rather than rounding them away.
 
-## Every turn resends everything you have read
+## Keep the work bounded
 
-A tool call is a turn, and each turn resends every file, screenshot and output
-already read. Do not reread a file already in front of you, do not search for
+Do not reread a file already in front of you, do not search for
 a file the brief has already named, run a test once to see it red and once to
 see it green rather than after every edit, and report once the deliverable the
 brief names exists rather than sweeping the tree for anything else. Reread a file when it has changed since you read it, and rerun the affected check after the last relevant edit: what is redundant is the read of an unchanged file and the run before the last edit, not verification the change needs.
@@ -114,7 +113,6 @@ strings are what the reader needs; narrative is not. Tables for anything with
 more than three data points. Say what you did not manage to establish, and what
 you would do next.
 
-
 ## Uncertainty Flagging
 
 If your confidence in your output is below a reasonable threshold, do not guess or return an uncertain answer. Instead, you MUST return a structured exception object. Include the following in the object:
@@ -123,3 +121,13 @@ If your confidence in your output is below a reasonable threshold, do not guess 
 3. Why you couldn't complete the task (the specific gap in knowledge, capability, or evidence)
 
 The orchestrator will then decide how to handle the exception.
+
+## Claude Code
+
+Claude Code resends all prior material on each tool call. Keep the bounded work
+rules above so the session retains the evidence it needs.
+
+## Codex
+
+Keep the bounded work rules above; Codex tool calls do not make them less
+important.

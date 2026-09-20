@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -141,6 +142,39 @@ def body_of(text: str) -> str:
     return rest[1:] if rest.startswith("\n") else rest
 
 
+def codex_body_of(text: str, source: pathlib.Path) -> str:
+    """The source body selected for Codex's developer instructions.
+
+    Most agent definitions are shared verbatim. A definition with runtime
+    instructions puts its terminal Claude Code block before a terminal Codex
+    block. Codex keeps the shared prefix and its own block, byte for byte.
+    """
+    body = body_of(text)
+    claude_marker = "## Claude Code"
+    codex_marker = "## Codex"
+    claude_headings = list(re.finditer(r"^## Claude Code(?:\n|$)", body,
+                                       re.MULTILINE))
+    codex_headings = list(re.finditer(r"^## Codex(?:\n|$)", body,
+                                      re.MULTILINE))
+    claude_count = len(claude_headings)
+    codex_count = len(codex_headings)
+
+    if not claude_count and not codex_count:
+        return body
+    if claude_count != 1 or codex_count != 1:
+        raise ValueError(
+            f"{source.name} must have exactly one {claude_marker.strip()!r} "
+            f"and one {codex_marker.strip()!r} heading")
+
+    claude_start = claude_headings[0].start()
+    codex_start = codex_headings[0].start()
+    if codex_start < claude_start:
+        raise ValueError(
+            f"{source.name} must put {claude_marker.strip()!r} before "
+            f"{codex_marker.strip()!r}")
+    return body[:claude_start] + body[codex_start:]
+
+
 def sandbox_mode_for(name: str) -> str | None:
     """`"read-only"` for a name in `READ_ONLY_AGENTS`, `None` otherwise.
 
@@ -159,7 +193,7 @@ def toml_for(md_path: pathlib.Path) -> str:
     fields = parse_frontmatter(text)
     name = fields["name"]
     description = fields["description"]
-    body = body_of(text)
+    body = codex_body_of(text, md_path)
     try:
         model, effort = CODEX_MODELS[name]
     except KeyError:

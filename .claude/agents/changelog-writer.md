@@ -38,7 +38,7 @@ already.
 
 But **a commit is not an entry**. Several commits are one change; many commits
 are no change at all to a user. Read the issue where a commit names one
-(`gh issue view N`), because the issue says what a user gets and the commit
+(`tools/github/issueread.py N`), because the issue says what a user gets and the commit
 says what the code does.
 
 ## What earns a line
