@@ -229,6 +229,10 @@ agent_guest_claude_effort_level: medium
 # The model the guest's Claude Code runs; the per-model effort block is keyed by this id.
 agent_guest_claude_model_id: claude-sonnet-5
 agent_guest_claude_theme: light
+# Answers lead with the result and skip preamble, which is what the orchestrator reads all day.
+agent_guest_claude_output_style: Concise
+# Every interactive session connects to Remote Control at startup, so it can be followed from a phone; a user-level key, ignored in project settings.
+agent_guest_claude_remote_control_at_startup: true
 # The session quality survey never appears in the guest: nobody is there to answer it.
 agent_guest_claude_feedback_survey_rate: 0
 

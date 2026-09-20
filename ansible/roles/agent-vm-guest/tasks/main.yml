@@ -173,6 +173,8 @@
           # key, so the role owns it too.
           modelSettings: "{{ {agent_guest_claude_model_id: {'effortLevel': agent_guest_claude_effort_level}} }}"
           theme: "{{ agent_guest_claude_theme }}"
+          outputStyle: "{{ agent_guest_claude_output_style }}"
+          remoteControlAtStartup: "{{ agent_guest_claude_remote_control_at_startup | bool }}"
           feedbackSurveyRate: "{{ agent_guest_claude_feedback_survey_rate }}"
 
 # --- herdr and Codex, from their releases ----------------------------------
