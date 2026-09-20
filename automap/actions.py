@@ -1831,7 +1831,7 @@ class FastTravel(Action):
         "Fast travel puts the party in another area the way the game's own "
         "exits do. The area you arrive in assumes you got there by playing: "
         "its script can expect quest flags your party never set, people "
-        "already spoken to and fights already won. In the fourteen areas "
+        "already spoken to and fights already won. In the areas "
         "where the game does not place the party itself, wish picks a square "
         "in the largest open part of the map, which need not be where a "
         "player would normally walk in. Nothing here can be undone from "

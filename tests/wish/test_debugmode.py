@@ -483,6 +483,19 @@ def test_fast_travel_asks_nothing_and_names_no_disk():
     assert "POOL" not in fasttravel.HELP
 
 
+def test_fast_travel_help_gives_no_count_of_areas():
+    """A count of areas goes stale the moment another title's areas are added,
+    so the sentence about where wish picks the square says only "the areas"."""
+    import re
+    fasttravel = actions.FastTravel()
+    assert ("In the areas where the game does not place the party itself, "
+            "wish picks a square in the largest open part of the map, which "
+            "need not be where a player would normally walk in.") \
+        in fasttravel.HELP
+    assert not re.search(r"\b(?:\d+|[a-z]+teen|twenty|thirty|forty)\s+areas\b",
+                         fasttravel.HELP)
+
+
 # --- the area table ----------------------------------------------------------
 
 def test_the_areas_come_from_por_areas_and_are_not_copied_here():
