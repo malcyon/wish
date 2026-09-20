@@ -33,6 +33,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import NamedTuple
@@ -607,6 +608,51 @@ def span_in(screen, row: int, colour: int = 1) -> tuple[int, int] | None:
     return (idx[0], idx[-1]) if idx else None
 
 
+#: How long `Session.boot` waits for the `DISABLE FASTLOADER` prompt.
+FASTLOADER_WAIT = 120.0
+
+#: How long `Session.boot` waits, after the fastloader answer, for the `PLAY GAME`
+#: menu.  The stock kernal loads it in 238.6 s for `Y` and 199.6 s for `N`
+#: (`docs/131-fastloader.md`), and a second emulator on the machine slows that
+#: past 240 s.  Twice the slowest is 477 s.  A dead VICE ends a wait at once
+#: through `_require_alive`, so a long wait costs time only when the emulator
+#: is alive and the menu never comes.
+PLAY_GAME_WAIT = 500.0
+
+
+def _xdo(display: str, *args: str) -> str:
+    return subprocess.run(["xdotool", *args],
+                          env={"DISPLAY": display, "PATH": "/usr/bin:/bin"},
+                          capture_output=True, text=True, check=False).stdout
+
+
+def dismiss_error_dialog(display: str, settle: float = 0.5) -> bool:
+    """Press Return if a VICE error dialog is up; say whether one was.
+
+    A VICE that cannot find a drive ROM or `/dev/input` puts up a modal GTK
+    dialog, and a modal GTK dialog **grabs the keyboard**: every XTEST key
+    after that goes to the dialog whatever the X input focus says, so the
+    fastloader prompt is never answered and the run dies waiting for a menu.
+    There is no window manager on the nested display to close it, and Return
+    reaches the dialog for the same reason nothing else does.  No key is sent
+    when no such window exists, because a Return sent into the game is an
+    answer to something.
+    """
+    for w in _xdo(display, "search", "--onlyvisible", "--name", ".").split():
+        if "Error" in _xdo(display, "getwindowname", w):
+            _xdo(display, "key", "Return")
+            time.sleep(settle)
+            return True
+    return False
+
+
+def dismiss_dialogs(display: str, stop, interval: float = 1.5,
+                    settle: float = 0.5) -> None:
+    """Call `dismiss_error_dialog` every `interval` seconds until `stop` is set."""
+    while not stop.wait(interval):
+        dismiss_error_dialog(display, settle)
+
+
 class Session:
     """One driven game.
 
@@ -762,6 +808,40 @@ class Session:
     #: The process `launch()` started, so a wait can tell an emulator that is
     #: slow from one that has already exited.
     _proc = None
+
+    #: Seconds between looks for an error dialog, and how long to let one close.
+    DIALOG_POLL = 1.5
+    DIALOG_SETTLE = 0.5
+
+    #: Why the last `boot()` returned False, with what the screen showed.
+    boot_failure: str | None = None
+    _dialog_watchers = 0
+
+    @contextlib.contextmanager
+    def watching_dialogs(self):
+        """Answer VICE's own error dialogs for as long as the block runs.
+
+        Re-entrant: `boot()` uses it and so can a driver that wants the
+        watchdog for the whole run, and the inner use starts no second thread,
+        because two of them would each press Return at the same dialog and the
+        second press would land in the game.
+        """
+        outer = self._dialog_watchers == 0
+        self._dialog_watchers += 1
+        stop = threading.Event()
+        if outer:
+            thread = threading.Thread(
+                target=dismiss_dialogs, name="vice-dialogs", daemon=True,
+                args=(str(self.display), stop, self.DIALOG_POLL,
+                      self.DIALOG_SETTLE))
+            thread.start()
+        try:
+            yield
+        finally:
+            self._dialog_watchers -= 1
+            if outer:
+                stop.set()
+                thread.join(5)
 
     def _require_alive(self) -> None:
         """Raise at once, with the end of `vice.log`, if VICE has exited.
@@ -1410,21 +1490,48 @@ class Session:
             m.write(0xC6, bytes([1]))
 
     def boot(self) -> bool:
+        self.boot_failure = None
         self.launch()
-        if self.wait_text("DISABLE FASTLOADER", 120)[0] is None:
-            self.log("no fastloader prompt")
-            return False
+        with self.watching_dialogs():
+            return self._boot()
+
+    def _boot(self) -> bool:
+        if self.wait_text("DISABLE FASTLOADER", FASTLOADER_WAIT)[0] is None:
+            return self._boot_failed("no fastloader prompt", FASTLOADER_WAIT)
         self.kbd.key(self.fastloader, 0.15, 0.28)
         self.log(f"fastloader: {self.fastloader.upper()}")
-        if self.wait_text("PLAY GAME", 240)[0] is None:
-            self.log("no PLAY GAME menu")
-            return False
+        if self.wait_text("PLAY GAME", PLAY_GAME_WAIT)[0] is None:
+            return self._boot_failed("no PLAY GAME menu", PLAY_GAME_WAIT)
         self.kbd.key("Return")  # left alone, this screen starts the demo
         self.log("PLAY GAME")
         if self.wait_text("INPUT THE CODE WORD", 240)[0] is None:
-            self.log("no code word prompt")
-            return False
+            return self._boot_failed("no code word prompt", 240)
         return self.pass_protection()
+
+    def _boot_failed(self, what: str, waited: float) -> bool:
+        """Record and log why a boot wait ran out, with what the screen showed.
+
+        A timeout on its own says nothing about whether the game was slow, stuck
+        on a disk prompt or hidden behind a dialog, and finding out cost another
+        boot of several minutes.  The screenshot is of the whole nested display,
+        so a dialog shows in it.
+        """
+        s = self.screen()
+        if s is None:
+            shown = "no readable text screen (a bitmap, or the monitor did not answer)"
+        else:
+            lines = [line.rstrip() for line in s.rows() if line.strip()]
+            shown = " / ".join(lines) if lines else "a blank text screen"
+        shot = os.path.join(self.here, "boot-timeout.png")
+        shot_said = shot if self.kbd.screenshot(shot) else "(no screenshot taken)"
+        windows = []
+        for w in _xdo(str(self.display), "search", "--onlyvisible", "--name", ".").split():
+            windows.append(_xdo(str(self.display), "getwindowname", w).strip())
+        self.boot_failure = (
+            f"{what} after {waited:g} s.  Screen: {shown}.  "
+            f"Windows on {self.display}: {windows}.  Screenshot: {shot_said}")
+        self.log(self.boot_failure)
+        return False
 
     def load_save(self) -> bool:
         """Drive the party menu's `LOAD SAVED GAME` and say whether it took.

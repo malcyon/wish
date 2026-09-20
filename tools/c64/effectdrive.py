@@ -32,12 +32,11 @@ Everything lands under `--out`: `effects.jsonl` one line per reading, and
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import pathlib
 import struct
-import subprocess
 import sys
-import threading
 import time
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
@@ -90,31 +89,6 @@ ECL65_N = 24
 COMBAT_LO = 0xDA63
 COMBAT_HI = 0xDAEE
 COMBAT_N = 0x8B
-
-
-def _xdo(display: str, *args: str) -> str:
-    return subprocess.run(["xdotool", *args],
-                          env={"DISPLAY": display, "PATH": "/usr/bin:/bin"},
-                          capture_output=True, text=True, check=False).stdout
-
-
-def dismiss_dialogs(display: str, stop: threading.Event) -> None:
-    """Answer VICE's own error dialogs so the keyboard reaches the C64.
-
-    A VICE that cannot find a drive ROM or `/dev/input` puts up a modal GTK
-    dialog, and a modal GTK dialog **grabs the keyboard**: every XTEST key
-    after that goes to the dialog whatever the X input focus says, so the
-    fastloader prompt is never answered and the run dies waiting for a menu.
-    There is no window manager on the nested display to close it. Pressing
-    Return reaches the dialog for the same reason nothing else does.
-    """
-    while not stop.wait(1.5):
-        names = _xdo(display, "search", "--onlyvisible", "--name", ".").split()
-        for w in names:
-            if "Error" in _xdo(display, "getwindowname", w):
-                _xdo(display, "key", "Return")
-                time.sleep(0.5)
-                break
 
 
 def record_offset(slot: int) -> int:
@@ -321,14 +295,14 @@ def main(argv=None) -> int:
     slot = S.claim_slot(args.slot, "effectdrive")
     log.say(f"pool slot {slot.n} display {slot.display}  out {out}")
     sess, rc = None, 0
-    stop = threading.Event()
-    watchdog = threading.Thread(target=dismiss_dialogs,
-                                args=(str(slot.display), stop), daemon=True)
-    watchdog.start()
+    stack = contextlib.ExitStack()
     try:
         sess = S.Session(S.stage_disks(slot, staging_dir, save), slot=slot)
+        # Boot answers a dialog during its own waits; the whole run is covered
+        # because an error can be raised later than the boot.
+        stack.enter_context(sess.watching_dialogs())
         if not sess.boot():
-            raise RuntimeError("boot failed")
+            raise RuntimeError(sess.boot_failure or "boot failed")
         if not sess.load_save():
             raise RuntimeError("load_save failed")
         if not sess.begin_adventuring():
@@ -439,7 +413,7 @@ def main(argv=None) -> int:
         log.say(f"failed: {exc!r}")
         rc = 1
     finally:
-        stop.set()
+        stack.close()
         if sess is not None:
             sess.terminate()
         else:

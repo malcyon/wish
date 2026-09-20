@@ -37,6 +37,7 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_saveprompt.py` | Checks that the Silver Blades and Curse drivers recognise both of each title's save-disk prompts. |
 | `test_screenbank.py` | Checks that the screen reader in `automap/screen.py` finds the screen from the bank and `$D018` instead of assuming where it is. |
 | `test_session.py` | Checks that the session driver's console cannot stop a drive when it goes away, and that a closed disk copy is retried. |
+| `test_session_boot.py` | Checks that `Session.boot` dismisses VICE's own error dialog while it waits and says what the screen showed when a wait runs out, on a fake display and screen. |
 | `test_session_indoors.py` | Checks that `Session.indoors()` and the live-square read use each title's own address, so a Curse or Silver Blades party in a dungeon reads as indoors. |
 | `test_session_paths.py` | Checks that `Session` builds its disk, side and log paths with `os.path.join` and not a hardcoded `/`. |
 | `test_session_sheet_bar.py` | Checks that `Session.character_sheet` reads the sheet of a character who owns nothing, and the Silver Blades sheet, on the bar the game draws. |
