@@ -331,7 +331,7 @@ read gets the same one, which is what `traits.for_game` already does.
 **Secret of the Silver Blades draws Pool of Radiance's seven groups with 35 and
 38 removed.** Sixteen of the seventeen ids in the table above are named in
 `goldbox/traits.py:NAMES_SILVER_BLADES`, read out of the title's own per-spell
-table (`COMBAT2 +2937`) with `tools/traitquery.py secret-of-the-silver-blades
+table (`COMBAT2 +2937`) with `tools/c64/traitquery.py secret-of-the-silver-blades
 --spells`. Which codes earn a glyph is per title just as much as what the glyph
 is called, so `automap/live.py:BADGE_TABLES` carries its own row:
 
@@ -371,5 +371,5 @@ open, and a new glyph is art.
 
 **Why it changed**: this section used to say Silver Blades drew no badges
 because sixteen of the seventeen ids were unnamed. The trait table grew to
-59 names from the title's own spell table, which named sixteen of them, so the
+94 names from the title's own spell table, which named sixteen of them, so the
 refusal no longer had its reason.

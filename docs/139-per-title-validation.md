@@ -147,10 +147,11 @@ and `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
 Radiance's alone?)` and `#20 (Build an area table for Silver Blades)` closed
 C21 for both, with nobody returning to these rows.
 
-**What is left is four cells for Curse and four for Silver Blades**, and none
-of them is reachable from this machine: C10 and C11 (the combat view and log,
-ruled out by G7), D1 (Preferences against a live machine) and D4 (the Ultimate
-backend, which nobody can test).
+**What is left is four cells for Curse and five for Silver Blades.** Both
+have C10 and C11 (the combat view and log, ruled out by G7), D1 (Preferences
+against a live machine) and D4 (the Ultimate backend, which nobody can test),
+none reachable from this machine. Silver Blades' fifth is C13, the badge cell,
+which waits on a `livecheck.py` run against a live Silver Blades machine.
 
 **A8 was the fifth until 2026-09-08**, when `tools/c64/pursecheck.py` set all
 seven purses through the form's own spin boxes on one character of each later

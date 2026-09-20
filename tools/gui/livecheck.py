@@ -799,11 +799,10 @@ class Run:
         `goldbox/effects.py` carries and `#31` measured in all three titles --
         and the card is then read back through `live.read_snapshot`.
 
-        On Silver Blades the pass is the *opposite* outcome: `live.
-        BADGE_TABLES` gives that title no groups, so the id must land in
-        `unbadged_effects` and no glyph may appear. That is `#196`'s deliberate
-        refusal, and a glyph there would be a picture asserting a meaning
-        nobody has read.
+        The expectation is read off `live.condition_badges` for the title:
+        with groups (Pool of Radiance's seven, and Silver Blades' seven minus
+        ids 35 and 38) the staged id must draw a glyph; with none it must land
+        in `unbadged_effects` and draw nothing.
         """
         snap = self.snapshot_until()
         if snap is None:

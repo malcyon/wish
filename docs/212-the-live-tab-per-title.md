@@ -235,7 +235,9 @@ agree on the square and the facing.
 * **The badge *names* on Silver Blades.** `live.BADGE_TABLES` gives that title
   no groups, so it draws none; that is the deliberate refusal `#196 (The automapper's condition badges name a Silver Blades trait with Pool of Radiance's meaning)` built and
   what this run confirms is that it refuses rather than that the refusal is
-  right. Naming its effect codes is still unread work.
+  right. Naming its effect codes is still unread work. The groups
+  `live.BADGE_TABLES` carries for that title today are in
+  `docs/136-condition-badges.md`.
 * **Anything on the three Krynn-era titles.** They have no `mode_flag` and no
   `live_position`, so every action refuses and the memory fallback answers
   None. Nothing here changes that.

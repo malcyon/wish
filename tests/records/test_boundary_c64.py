@@ -19,7 +19,7 @@ import logging
 
 import pytest
 
-from goldbox import c64_codec, dos_codec, dos_port, layout, traits
+from goldbox import c64_codec, dos_codec, dos_port, layout, spells, traits
 from goldbox import items as items_mod
 from goldbox import levels as level_tables
 from tools.records import boundarychars, boundarywidths
@@ -32,7 +32,7 @@ POOL = "pool-of-radiance"
 _ICON = "Combat icon:"
 
 
-def _write(char, caplog=None):
+def _write(char):
     """`(record, report, back)`: the character written and read straight back."""
     rec, rep = c64_codec.write(char)
     return rec, rep, c64_codec.read(rec, game=char.game)
@@ -244,8 +244,7 @@ def test_e_a_spell_id_past_a_byte_is_refused(game):
 @pytest.mark.parametrize("game", GAMES)
 def test_e_the_spellbook_holds_every_id_its_mask_has_a_bit_for(game):
     top = boundarywidths.ceilings(game).spellbook
-    at, size = 0x078, None
-    from goldbox import spells
+    at = layout.FIELDS_BY_NAME["spells_known"].offset
     size = spells.for_game(game).spellbook_size
     ids = list(range(1, top + 1))
     rec_full, back = _array_case(game, "spells_known", ids, (at, at + size))
