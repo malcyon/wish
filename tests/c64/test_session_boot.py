@@ -149,9 +149,9 @@ def _stock_times():
 def test_the_play_game_wait_covers_the_measured_stock_boot_twice_over():
     stock = _stock_times()
     assert sorted(stock) == [199.6, 238.6], "the doc's table has moved; re-read it"
-    # Twice the slowest, because a second emulator on the machine cost more
-    # than 240 s minus the 204 s measured alone, and a failing boot only costs
-    # the wait when VICE is still alive.
+    # Twice the slowest, so a second emulator on the machine slowing the boot
+    # past 240 s still fits; a failing boot only costs the wait when VICE is
+    # still alive.
     assert session.PLAY_GAME_WAIT >= 2 * max(stock)
 
 
@@ -310,3 +310,104 @@ def test_a_timeout_with_no_readable_screen_still_says_so(tmp_path, monkeypatch):
 
     assert "no fastloader prompt" in sess.boot_failure
     assert "no readable text screen" in sess.boot_failure
+
+
+def _watchers():
+    return [t for t in threading.enumerate() if t.name == "vice-dialogs" and t.is_alive()]
+
+
+def test_a_boot_inside_an_outer_watch_starts_no_second_watcher(tmp_path, monkeypatch):
+    display = FakeDisplay(["VICE (C64SC)"])
+    sess = _session(tmp_path, monkeypatch, display)
+    during = []
+    real_screen = sess.screen
+
+    def counting_screen():
+        during.append(len(_watchers()))
+        return real_screen()
+
+    monkeypatch.setattr(sess, "screen", counting_screen)
+
+    with sess.watching_dialogs():
+        assert sess.boot() is True
+        assert len(_watchers()) == 1, "the inner boot stopped the outer watcher"
+
+    assert during and set(during) == {1}, "a second watcher ran during the boot"
+    assert not _watchers()
+
+
+def test_a_watcher_thread_that_cannot_start_does_not_leak_the_count(tmp_path,
+                                                                   monkeypatch):
+    display = FakeDisplay(["VICE (C64SC)"])
+    sess = _session(tmp_path, monkeypatch, display)
+    real_thread = threading.Thread
+
+    class CannotStart(real_thread):
+        def start(self):
+            raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(session.threading, "Thread", CannotStart)
+    try:
+        with sess.watching_dialogs():
+            raise AssertionError("the block ran with no watcher")
+    except RuntimeError as e:
+        assert "can't start" in str(e)
+    assert sess._dialog_watchers == 0
+
+    monkeypatch.setattr(session.threading, "Thread", real_thread)
+    with sess.watching_dialogs():
+        assert len(_watchers()) == 1, "no later watcher started"
+    assert not _watchers()
+
+
+def test_a_boot_with_no_xdotool_fails_and_says_so_instead_of_raising(tmp_path,
+                                                                     monkeypatch):
+    display = FakeDisplay(["VICE (C64SC)"])
+    sess = _session(tmp_path, monkeypatch, display)
+
+    def no_xdotool(display, *args):
+        raise FileNotFoundError("xdotool")
+
+    monkeypatch.setattr(session, "_xdo", no_xdotool)
+    monkeypatch.setattr(sess, "screen", lambda: FakeScreen("LOADING"))
+    monkeypatch.setattr(session, "FASTLOADER_WAIT", 0.05)
+
+    def no_import(path):
+        raise FileNotFoundError("import")
+
+    monkeypatch.setattr(sess.kbd, "screenshot", no_import)
+
+    assert sess.boot() is False
+
+    assert "no fastloader prompt" in sess.boot_failure
+    assert "(unavailable: xdotool)" in sess.boot_failure
+    assert "(unavailable: import)" in sess.boot_failure
+    assert not _watchers()
+
+
+def test_the_dialog_watcher_says_once_and_ends_when_xdotool_is_missing(monkeypatch):
+    def no_xdotool(display, *args):
+        raise FileNotFoundError("xdotool")
+
+    said = []
+    monkeypatch.setattr(session, "_xdo", no_xdotool)
+    monkeypatch.setattr(session.Session, "log", staticmethod(lambda *a: said.append(a)))
+
+    class Ticks:
+        def wait(self, interval):
+            return False            # never stopped: only the error can end the loop
+
+    session.dismiss_dialogs(":9", Ticks(), 0.0)
+
+    assert len(said) == 1 and "xdotool" in said[0][0]
+
+
+def test_a_failed_code_word_patch_is_a_boot_failure_with_a_reason(tmp_path,
+                                                                 monkeypatch):
+    display = FakeDisplay(["VICE (C64SC)"])
+    sess = _session(tmp_path, monkeypatch, display)
+    monkeypatch.setattr(sess, "pass_protection", lambda: False)
+
+    assert sess.boot() is False
+
+    assert "$12D9" in sess.boot_failure

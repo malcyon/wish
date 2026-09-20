@@ -662,9 +662,18 @@ def dismiss_error_dialog(display: str, settle: float = 0.5) -> bool:
 
 def dismiss_dialogs(display: str, stop, interval: float = 1.5,
                     settle: float = 0.5) -> None:
-    """Call `dismiss_error_dialog` every `interval` seconds until `stop` is set."""
+    """Call `dismiss_error_dialog` every `interval` seconds until `stop` is set.
+
+    Ends, having said so once, when `xdotool` cannot be run: nothing can be
+    dismissed without it, and a thread dying on an uncaught error would only
+    print a traceback that reads as a crash in the game.
+    """
     while not stop.wait(interval):
-        dismiss_error_dialog(display, settle)
+        try:
+            dismiss_error_dialog(display, settle)
+        except OSError as e:
+            Session.log(f"dialog watcher stopped, no dialog will be closed: {e}")
+            return
 
 
 class Session:
@@ -843,19 +852,23 @@ class Session:
         outer = self._dialog_watchers == 0
         self._dialog_watchers += 1
         stop = threading.Event()
-        if outer:
-            thread = threading.Thread(
-                target=dismiss_dialogs, name="vice-dialogs", daemon=True,
-                args=(str(self.display), stop, self.DIALOG_POLL,
-                      self.DIALOG_SETTLE))
-            thread.start()
+        thread = None
+        # `start()` is inside the `try` so a thread that cannot start still
+        # gives the count back; left outside, no later watcher would ever run.
         try:
+            if outer:
+                thread = threading.Thread(
+                    target=dismiss_dialogs, name="vice-dialogs", daemon=True,
+                    args=(str(self.display), stop, self.DIALOG_POLL,
+                          self.DIALOG_SETTLE))
+                thread.start()
             yield
         finally:
             self._dialog_watchers -= 1
-            if outer:
+            if thread is not None:
                 stop.set()
-                thread.join(5)
+                if thread.is_alive():
+                    thread.join(5)
 
     def _require_alive(self) -> None:
         """Raise at once, with the end of `vice.log`, if VICE has exited.
@@ -1521,7 +1534,12 @@ class Session:
         self.log("PLAY GAME")
         if self.wait_text("INPUT THE CODE WORD", 240)[0] is None:
             return self._boot_failed("no code word prompt", 240)
-        return self.pass_protection()
+        if self.pass_protection():
+            return True
+        self.boot_failure = ("the code word overlay did not hold the expected "
+                             "bytes at $12D9, so the check was not patched")
+        self.log(self.boot_failure)
+        return False
 
     def _answer_fastloader(self) -> bool:
         """Send the fastloader answer until the game takes it.
@@ -1583,10 +1601,12 @@ class Session:
     def _boot_failed(self, what: str, waited: float) -> bool:
         """Record and log why a boot wait ran out, with what the screen showed.
 
-        A timeout on its own says nothing about whether the game was slow, stuck
-        on a disk prompt or hidden behind a dialog, and finding out cost another
-        boot of several minutes.  The screenshot is of the whole nested display,
-        so a dialog shows in it.
+        A timeout on its own does not say whether the game was slow, stuck on a
+        disk prompt or hidden behind a dialog, so the message carries the text
+        screen, the window names and a screenshot of the whole nested display,
+        in which a dialog shows.  Each of the last two is skipped, and says so,
+        when `xdotool` or ImageMagick's `import` cannot be run: a diagnostic
+        that is missing must not turn a failed boot into an exception.
         """
         shown = self.screen_text()
         if shown is None:
@@ -1594,10 +1614,17 @@ class Session:
         elif not shown:
             shown = "a blank text screen"
         shot = os.path.join(self.here, "boot-timeout.png")
-        shot_said = shot if self.kbd.screenshot(shot) else "(no screenshot taken)"
-        windows = []
-        for w in _xdo(str(self.display), "search", "--onlyvisible", "--name", ".").split():
-            windows.append(_xdo(str(self.display), "getwindowname", w).strip())
+        try:
+            shot_said = shot if self.kbd.screenshot(shot) else "(no screenshot taken)"
+        except (OSError, subprocess.SubprocessError) as e:
+            shot_said = f"(unavailable: {e})"
+        try:
+            windows = []
+            for w in _xdo(str(self.display), "search", "--onlyvisible",
+                          "--name", ".").split():
+                windows.append(_xdo(str(self.display), "getwindowname", w).strip())
+        except (OSError, subprocess.SubprocessError) as e:
+            windows = f"(unavailable: {e})"
         self.boot_failure = (
             f"{what} after {waited:g} s.  Screen: {shown}.  "
             f"Windows on {self.display}: {windows}.  Screenshot: {shot_said}")
