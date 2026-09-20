@@ -2228,6 +2228,10 @@ class FastTravel(Action):
                 _log.debug("two-hop fast travel cancelled: the party left "
                            "area %d for area %d, not %d", pending.from_area,
                            area_now, pending.through)
+                # The trip did not happen, so the square the first hop
+                # remembered is not somewhere Fast Travel Back should return
+                # to: it stays unoffered until the next real trip sets it.
+                self.back = None
                 return Outcome(False, self.LEFT_ANOTHER_WAY.format(name=name))
             _log.debug("two-hop fast travel dropped: the game went to area "
                        "%d, not %d", area_now, pending.through)

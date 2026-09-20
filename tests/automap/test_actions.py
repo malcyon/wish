@@ -1445,6 +1445,21 @@ def test_leaving_by_another_door_cancels_the_hop_and_says_so(monkeypatch):
     assert outcome.writes == ()
 
 
+def test_leaving_by_another_door_forgets_the_start_so_back_is_not_offered(
+        monkeypatch):
+    """The first hop remembered the start square; the trip never happens, so
+    Fast Travel Back has nowhere to go until the next real Fast Travel."""
+    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
+    target = two_hop_machine(0)
+    ft = actions.FastTravel()
+    assert ft.run(target, area=_a_destination_off_every_door(0)).ok
+    assert ft.back is not None and ft.back.area == 0
+    target.memory[fasttravel.POOL_OF_RADIANCE.slot] = bytes([11])
+    assert not ft.continue_pending(target).ok
+    assert ft.back is None
+    assert not ft.back_verdict(target)
+
+
 def test_leaving_by_the_awaited_door_is_still_the_second_hop(monkeypatch):
     monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(0)
