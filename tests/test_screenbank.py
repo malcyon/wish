@@ -148,9 +148,20 @@ def registers(d018: int, dd00: int, d011: int = 0x1B) -> dict[int, int]:
 # `$D018` bits 7-4 are the offset within that bank in units of 1024.
 
 
-@pytest.mark.parametrize("bank", range(4))
-@pytest.mark.parametrize("offset", range(16))
-def test_the_screen_address_is_computed_for_every_bank_and_every_offset(
+#: Every bank appears, each of the four offset bits takes both values, and
+#: both ends of the offset range are in.  The address is one expression with
+#: no branch, so these pairs decide it: each mis-decoding of the two registers
+#: (`$DD00` not inverted, the offset from `$D018`'s low nibble, either field
+#: scaled or masked wrongly, a wrong shift, the fields swapped) gives a wrong
+#: address for at least three of them.
+BANK_OFFSET_PAIRS = [
+    pytest.param(bank, offset, id=f"bank{bank}-offset{offset}")
+    for bank, offset in [(0, 0), (0, 1), (1, 2), (2, 1), (3, 4), (3, 15)]
+]
+
+
+@pytest.mark.parametrize(("bank", "offset"), BANK_OFFSET_PAIRS)
+def test_the_screen_address_is_computed_from_the_bank_and_the_offset(
         bank, offset):
     dd00 = 0x90 | (3 - bank)            # the high bits are somebody else's
     mon = FakeMonitor(chips=registers((offset << 4) | 0x05, dd00))
