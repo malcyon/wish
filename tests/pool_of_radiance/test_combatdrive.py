@@ -15,6 +15,9 @@ the game offered to stop".  Both look identical in a log of command bars.
 
 import dataclasses
 
+# Sorts before `gamedata`, which is what it must do: it installs the example registry
+# that `gamedata` needs at import when this file is imported outside pytest.
+import conftest  # noqa: F401
 import pytest
 from gamedata import synthetic_arena
 from support.combatdrive import (
