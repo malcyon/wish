@@ -387,7 +387,7 @@ def test_a_built_disk_lays_its_directory_out_the_way_the_drive_does():
     assert built._directory_chain() == want
 
 
-# --- three properties `tests/test_d64.py` used to get for free -------------
+# --- three properties `tests/saves/test_d64.py` used to get for free -------------
 #
 # That file read a real `PORSAVE.D64` from scratch (deleted) until #211: a bug in the lock bit,
 # in a name's leading control byte, or in the directory's slot accounting

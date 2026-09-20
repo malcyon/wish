@@ -23,7 +23,7 @@ import sys
 
 import pytest
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from tests import gamedata  # noqa: E402

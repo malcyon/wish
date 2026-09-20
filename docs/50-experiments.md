@@ -179,7 +179,7 @@ which settled two further questions (`docs/40-memory-map.md`):
 Promoted `race`, `char_class`, `age`, the five saving throws and `movement` from
 PROBABLE to CONFIRMED. Coverage 27 -> 37 of 580 bytes CONFIRMED.
 
-Pinned as regression tests in `tests/test_savegame.py::TestSlotStrideE003`,
+Pinned as regression tests in `tests/saves/test_savegame.py::TestSlotStrideE003`,
 with `tests/fixtures/pool1_savedgame0.bin` as the specimen.
 
 **Method note — worth remembering.** Considerable time went into driving the
@@ -779,7 +779,7 @@ editor-hacked were our own bug. The disk is still hacked; we were also wrong.
 Fixed by reading through the pointer table. `load_item_names` now returns a
 **1-based** mapping keyed by the value an item record actually stores, rather
 than a 0-based one the caller had to adjust. Pinned by
-`tests/test_items.py::test_name_table_has_gaps`.
+`tests/records/test_items.py::test_name_table_has_gaps`.
 
 ---
 
@@ -3734,7 +3734,7 @@ game made, **every pair comes out byte-identical** on every field except the
 three the action deliberately does not do: the 1000-gold fee and the platinum
 conversion, the heal to full, and the movement recompute.
 
-`tests/test_levels.py` now re-expands every table off the player's own `GEN`
+`tests/records/test_levels.py` now re-expands every table off the player's own `GEN`
 rather than trusting the longhand rows, which is the check that would have
 caught P76 the day it was typed.
 
@@ -6997,8 +6997,8 @@ PORSAVEA/PORSAVEB carry the same anomaly #348 found)` and `#318 (DOS gives a
 low-level magic-user or thief THAC0 20 where the C64 gives 21, and our table
 holds only the C64's)`.
 
-**Question.** `tests/test_levels.py::test_stored_thac0_matches_the_table_for_every_character`
-and the two population tests in `tests/test_derive.py` were red at `HEAD`, on
+**Question.** `tests/records/test_levels.py::test_stored_thac0_matches_the_table_for_every_character`
+and the two population tests in `tests/records/test_derive.py` were red at `HEAD`, on
 records off the player's own disks. A `junior-dev` agent sent to swap the
 corpus stopped and said the corpus was not the problem: specimens this project
 watched being written show the same disagreement. A level-1 DOS magic-user
@@ -7770,7 +7770,7 @@ branch or this repair's byte boundary.
 since no real save reaches a limit and the corpus cannot find a wrong one)`](https://github.com/malcyon/wish/issues/516),
 slices 1 and 2 of `architect`'s plan. `tools/records/boundarychars.py` builds four
 Pool of Radiance `NeutralCharacter`s at the game's own reachable extremes, and
-`tests/test_boundary.py` runs each through `goldbox.dos_codec.write`.
+`tests/records/test_boundary.py` runs each through `goldbox.dos_codec.write`.
 
 **The cases**, every ceiling computed rather than typed in: a half-elf cleric
 5 / magic-user 6 at wisdom 18 memorising all 20 spells `goldbox.spells.
@@ -7797,7 +7797,7 @@ plan's own measurement, taken 2026-09-16, found every other multi-byte array
 in the Pool of Radiance table reading a neighbouring loop's guard rather than
 its own bound when scanned with `tools/dos/dosarraywidth.py`. `spells_memorised`
 alone reads the same width in all four titles the tool can check (21, 84, 75,
-141, matching the declared table exactly) and is the only assertion `tests/
+141, matching the declared table exactly) and is the only assertion `tests/records/
 test_boundary.py`'s part C makes; a `reverse-engineering` agent is the plan's
 named follow-up for the three uncorroborated rows (`spells_castable_cleric`,
 `attack_forms`, `field_83_87`).

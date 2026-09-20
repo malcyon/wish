@@ -83,7 +83,7 @@ UNKNOWN = "unknown"
 #: also measured over those eight corpora: Pool of Radiance `GEO1A`, C64
 #: against DOS. Curse's three C64/Amiga maps differ by 2. That case is real --
 #: a player running one port's game against the other port's disks -- and
-#: `tests/test_geoports.py` walks all sixteen Curse areas through it.
+#: `tests/records/test_geoports.py` walks all sixteen Curse areas through it.
 #:
 #: **The case this constant was originally for has never once been observed.**
 #: The comment here used to say the running game is allowed to write into the

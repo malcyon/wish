@@ -344,7 +344,7 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
         #: descriptor as well as a path, and the rescale below reopens the
         #: same file.  Holding the descriptor there is what broke a Windows
         #: CI job with `PermissionError: [WinError 32]` once already --
-        #: `tests/test_iconproposal.py` has the note.
+        #: `tests/icons/test_iconproposal.py` has the note.
         handle = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         handle.close()
         shot = pathlib.Path(handle.name)

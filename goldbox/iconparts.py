@@ -784,7 +784,7 @@ class IconParts:
         Raises `ValueError` when `icon` was not composed by the game's own
         ICON menu (see :meth:`recognise`), or when `tables` has no row for
         the weapon or head `recognise` named -- which none of the shipped
-        table's 100 rows should, since `tests/test_iconreverse.py` pins one
+        table's 100 rows should, since `tests/icons/test_iconreverse.py` pins one
         for every option the game offers; a `KeyError` here means `tables`
         came from somewhere else.
 

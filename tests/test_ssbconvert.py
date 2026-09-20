@@ -622,7 +622,7 @@ def test_the_engine_leaves_the_spell_slot_array_zero():
 # ids, its ICON menu wraps at the same 13 and 31, and its own importer copies
 # a Curse record's icon bytes straight across.  Two options it re-drew --
 # head 10 at size 2 and body 11 at size 1 -- are art differences inside a
-# numbering that did not move, and `tests/test_iconparts.py` is where those
+# numbering that did not move, and `tests/icons/test_iconparts.py` is where those
 # two are pinned.
 
 #: The six colour pairs 42 of the 54 shipped DOS records across the four

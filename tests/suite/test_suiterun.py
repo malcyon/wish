@@ -226,11 +226,12 @@ def test_the_selection_takes_a_skip_a_needs_marker_or_a_data_lookup(tmp_path):
 
 def test_the_selection_covers_the_files_that_failed_without_data_before():
     """Files that ran and failed once the example's paths held data."""
-    chosen = set(suiterun.data_deciding_tests(REPO / "tests"))
+    chosen = {path.rsplit("/", 1)[-1]
+              for path in suiterun.data_deciding_tests(REPO / "tests")}
     for name in ("test_fleedrive", "test_cursespellslots", "test_doswriter",
                  "test_convert", "test_portraits", "test_amigatodos",
                  "test_dosconvert", "test_dosconversionarea"):
-        assert f"tests/{name}.py" in chosen, name
+        assert f"{name}.py" in chosen, name
 
 
 def test_a_tool_that_does_not_import_fails_the_pass(tmp_path):

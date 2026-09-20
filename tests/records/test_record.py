@@ -19,7 +19,7 @@ from goldbox.record import (
     strip_load_address,
 )
 
-FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "brutus.chr"
+FIXTURE = pathlib.Path(__file__).parents[1] / "fixtures" / "brutus.chr"
 
 
 @pytest.fixture(scope="module")

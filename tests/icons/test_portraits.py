@@ -490,7 +490,7 @@ def test_the_extraction_tool_prints_the_stored_block_and_agrees_with_it(
 
     if disk_dir() is None:
         return
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = pathlib.Path(__file__).resolve().parents[2]
     done = subprocess.run(
         [sys.executable, str(root / "tools" / "icons" / "portraitmenu.py"), "--check",
          "--disks", str(disk_dir())],
@@ -694,7 +694,7 @@ def test_the_amiga_tool_prints_the_stored_block_and_agrees_with_it():
 
     if any(n not in _amiga_files() for n in amiga_wanted()):
         pytest.skip("needs the Amiga Pool of Radiance disks; set AMIGA_DISKS")
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = pathlib.Path(__file__).resolve().parents[2]
     done = subprocess.run(
         [sys.executable, str(root / "tools" / "amiga" / "amigaportraitmenu.py"),
          "--check"],

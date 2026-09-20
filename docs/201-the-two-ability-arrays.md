@@ -131,7 +131,7 @@ game)`: the disk had been copied out of its pool slot before the emulated
 drive finished writing it, and would not load until the repair. The record
 above is what the engine wrote and nothing in it moved -- every file on the
 disk reads back byte for byte identical either side of that repair.
-`tests/test_abilitypair.py` reads it.
+`tests/records/test_abilitypair.py` reads it.
 
 ### The formula, and the five numbers behind it
 

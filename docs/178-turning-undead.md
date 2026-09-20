@@ -203,4 +203,4 @@ and photograph what the game prints.
 | the writer | `goldbox/c64_codec.py`, the turning block of `write` |
 | the census | `tools/records/turncensus.py` |
 | the running-game run | `tools/c64/turndrive.py` |
-| the tests | `tests/test_turning.py` |
+| the tests | `tests/records/test_turning.py` |

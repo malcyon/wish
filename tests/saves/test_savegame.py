@@ -31,7 +31,7 @@ from goldbox.savegame import (
     looks_occupied,
 )
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+FIXTURES = pathlib.Path(__file__).parents[1] / "fixtures"
 PARTY = ["MALCYON", "LADY KATHERINE", "ROLAND", "SILAS", "MAGNUS", "BRUTUS"]
 
 

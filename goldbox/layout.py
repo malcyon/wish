@@ -449,7 +449,7 @@ _DECLARED: Sequence[Field] = (
            "SSI's shipped demo party agree with no adjustment at all. Only "
            "the +3/+4/+5 bands are exercised and the high-level cases all "
            "come from npc_party.d64, whose values this project treats as "
-           "worthless (docs/90), so tests/test_communityformats.py asserts "
+           "worthless (docs/90), so tests/records/test_communityformats.py asserts "
            "the rule on the fixtures alone, which are clean. "
            "docs/127-community-formats.md"),
     _field(0x09B, 1, _U8, "save_petrification", "Save vs petrify/polymorph", _OK, "fighter 15, cleric 13"),

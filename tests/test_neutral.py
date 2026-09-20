@@ -259,7 +259,7 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
     # Not 6, and not a round trip: the writer computes the turning byte from
     # the cleric and paladin levels rather than copying a source's (#288), and
     # this character is a fighter 7 / thief 3, who turns nothing.
-    # `tests/test_turning.py` is where the value itself is checked.
+    # `tests/records/test_turning.py` is where the value itself is checked.
     assert rec.get("turn_power") == 0
     assert rec.get_raw("attack_forms") == bytes(range(1, 9))
     assert [b for b in rec.get_raw("item_effects") if b] == [18, 47]

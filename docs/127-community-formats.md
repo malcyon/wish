@@ -42,7 +42,7 @@ stands on clean data: SSI's own shipped demo party in `POOL1`'s `SAVEDGAME0`,
 Donald's six-character party, and every save disk. What `npc_party.d64` adds is
 the only evidence above level 1 — and that seven of its eight records satisfy a
 rule derived without them is itself an argument that its derived fields were
-written by the game. `tests/test_communityformats.py` asserts the rule on the
+written by the game. `tests/records/test_communityformats.py` asserts the rule on the
 fixtures alone.
 
 The multi-class rule is visible on its own: LADY KATHERINE (magic-user 1 /

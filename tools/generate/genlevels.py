@@ -21,7 +21,7 @@ hand its party on to *Curse of the Azure Bonds*.
 
 **THAC0 is verified against the game**, which caught two errors in the published
 table it came from: magic-user and thief level 1 are **21**, not 20. Rows the
-game itself confirms are marked ✓; `tests/test_levels.py` asserts them against
+game itself confirms are marked ✓; `tests/records/test_levels.py` asserts them against
 every character record we hold.
 
 **The saving throws are the game's own too.** Pool of Radiance does not
@@ -30,7 +30,7 @@ bitmasks, and `$2359` then takes `constitution * 2 / 7` off all five columns
 for a dwarf, gnome or halfling. That is why two level-1 fighters read
 `(14,15,16,17,17)` and `(11,12,13,14,14)` — the second is a dwarf — and it is
 what settles the fighter's level-4 breath save at **15** where AD&D says 16.
-`tests/test_levels.py` re-expands every row off the player's own `GEN`.
+`tests/records/test_levels.py` re-expands every row off the player's own `GEN`.
 
 **The THAC0 column is the C64's**, expanded from that port's own table at `GEN
 $1F1F`. The DOS build of Pool of Radiance ships a different one and the **DOS**

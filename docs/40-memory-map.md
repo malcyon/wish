@@ -190,10 +190,10 @@ an item's printed name is three indices into it — noun, qualifier, suffix.
 
 **The base is the game's own operand, not a fit.** `LIBRARY` reads the table with
 `LDA $6F00,X / STA $07`, and the same instruction in the later titles reads
-`$9E00`. `tests/test_titletables.py` asserts it per title. The race labels are the
+`$9E00`. `tests/records/test_titletables.py` asserts it per title. The race labels are the
 same pool: `LDA $9E8C,X` is `$9E00 + 140`, so a race name is word-table entry
 `140 + race`, read straight out of `ITEMNAMES`. Asserted per title in
-`tests/test_titletables.py`; the write-up, `reports/p40-title-tables.md`,
+`tests/records/test_titletables.py`; the write-up, `reports/p40-title-tables.md`,
 is lost.
 
 Nothing in the tool depends on the resident copy — `goldbox/items.py` reads the disk

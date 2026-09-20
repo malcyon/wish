@@ -349,7 +349,7 @@ overrides:
                          # (`6e3b305`) rather than an agent's proposal. Still
                          # written to track that row's C64 number rather
                          # than to assume it stays 1, in case he ever
-                         # changes his mind: `tests/test_iconparts.py::
+                         # changes his mind: `tests/icons/test_iconparts.py::
                          # test_the_silver_blades_body_override_tracks_the_
                          # forward_row` fails if the two drift apart.
                          #

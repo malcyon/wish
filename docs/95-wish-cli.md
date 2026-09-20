@@ -34,7 +34,7 @@ own `--help`.
   majority of each character record that is still unidentified pass through
   the conversion untouched.
 * **The round-trip is lossless** — exporting and re-importing unchanged
-  reproduces the disk byte for byte. This is asserted in `tests/test_yaml_io.py`
+  reproduces the disk byte for byte. This is asserted in `tests/saves/test_yaml_io.py`
   and is the property everything else depends on.
 
 ## Options

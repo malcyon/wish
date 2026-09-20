@@ -215,7 +215,7 @@ def width(data: bytes, displacement: int) -> int | None:
 
     Lifted out of :func:`report` for `#516 (Generate boundary characters and
     check every writer's field widths, since no real save reaches a limit
-    and the corpus cannot find a wrong one)`'s `tests/test_boundary.py`,
+    and the corpus cannot find a wrong one)`'s `tests/records/test_boundary.py`,
     which asserts against this rather than parsing what `report` prints.
     `report` calls this for its own top-line answer, through `_pick`, so the
     selection rule lives once.

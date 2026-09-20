@@ -187,7 +187,7 @@ point the test at a set of records where the answer is exact.
 **And the C64 cannot be checked this way at all.** Its record has no such
 field: all three titles sum into a scratch word past the end of the record
 (`$6DF6` in Pool of Radiance, `$7EF6` in the other two) every time `LIBRARY`
-draws the sheet. `tests/test_enccensus.py::test_the_c64_record_has_no_
+draws the sheet. `tests/records/test_enccensus.py::test_the_c64_record_has_no_
 encumbrance_to_check` goes red if one is ever located.
 
 The rule underneath all of this: a save found on a disk has no chain of

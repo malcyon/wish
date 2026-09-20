@@ -683,7 +683,7 @@ def roster_page_plausible(save0: SaveGame0, save1: SaveGame1) -> bool:
 
     * `RosterBlock.slot_index` is the game's own back-reference to the slot
       it lives in, and is always that slot's index on every save read so far
-      (`tests/test_savegame.py`, `tests/test_silverblades.py`, `tests/
+      (`tests/saves/test_savegame.py`, `tests/test_silverblades.py`, `tests/
       test_curse.py`) -- a picture's bytes have no reason to land on that
       pattern.
     * no living character's current hit points can exceed the maximum the

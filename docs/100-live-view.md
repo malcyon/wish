@@ -251,7 +251,7 @@ number is only interesting while editing, it belongs on the editor tab.
 * Against `PORSAVE13.D64`, the area reads `GEO14`, the Slums — proven on the
   decode path `live.py` reuses unchanged rather than through the live reader
   itself: `test_the_boundary_pair_settles_the_area_byte`
-  (`tests/test_savegame.py`), PORSAVE12 and PORSAVE13 either side of the
+  (`tests/saves/test_savegame.py`), PORSAVE12 and PORSAVE13 either side of the
   doorway.
 * A snapshot of all zeros is rejected — `test_a_machine_full_of_zeros_is_not_a_party`.
 * Switching away from the tab stops the polling —
@@ -268,7 +268,7 @@ number is only interesting while editing, it belongs on the editor tab.
   this page's own example.
 * The experience bar draws from `goldbox/levels.py`, checked against
   twenty-nine level-ups driven through the training school and read off the
-  record before and after each one — `tests/test_levels.py`.
+  record before and after each one — `tests/records/test_levels.py`.
 * Not verified, because neither is buildable yet: an empty per-character
   effects strip that leaves no gap in the layout, and a live spell's duration
   counting down to a row that disappears on expiry. Nothing renders a

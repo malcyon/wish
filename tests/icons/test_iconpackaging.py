@@ -41,7 +41,7 @@ from gamedata import disk_dir
 
 from goldbox import iconparts
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 def wheel_packages() -> list[str]:

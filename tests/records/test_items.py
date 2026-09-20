@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(
     reason="needs Pool of Radiance disk 1; set POR_DISKS or add it to "
            "gamedisks.yaml")
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+FIXTURES = pathlib.Path(__file__).parents[1] / "fixtures"
 # Read the committed fixture, never the live disk -- an earlier version read
 # PORSAVE2.D64 directly and broke the moment Donald saved over it.
 equipped = pytest.mark.skipif(

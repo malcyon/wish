@@ -14,7 +14,7 @@ Two community sources, mined for what a C64 project can use.
   *Unlimited Adventures* and `GB_Palette.xlsm`.
 
 Working copies under `scratch-guide/` (scratch, deleted). Assertions harvested
-from both live in [`../tests/test_uascript.py`](../tests/test_uascript.py),
+from both live in [`../tests/records/test_uascript.py`](../tests/records/test_uascript.py),
 which reads the player's disks and skips without them.
 
 **Everything below is DOS work until a C64 file says otherwise.** Where a claim
@@ -396,7 +396,7 @@ protection` and the low **seven** bits hold the same biased `60 - value` the
 record uses for THAC0 and armour class everywhere else. The two agree on every
 armour on the disks — plate `$B9` → AC 3 through leather `$B4` → AC 8 — and
 diverge at AC 13 or worse, or at a shield bonus above 15. The general rule is
-the one to keep. `tests/test_uascript.py` asserts they still agree.
+the one to keep. `tests/records/test_uascript.py` asserts they still agree.
 
 The 16-byte C64 item record is the DOS 17-byte record with one byte removed:
 DOS keeps *equipped*, *name-hiding flags* and *cursed* as three separate bytes

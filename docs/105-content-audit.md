@@ -21,28 +21,28 @@ the start. The findings are all in `tests/fixtures/`, plus one in the docs.
 instructions at `+$24` are `LDA $6B99 / AND #$01 / STA $B5F1`. This is the
 plainest violation of the rule and should go first.
 
-Used by `tests/test_iconparts.py`.
+Used by `tests/icons/test_iconparts.py`.
 
 ### 2. [FIXED] `tests/fixtures/SPELLE64.bin` — a game data file
 
 1882 bytes, verbatim from disk 3. Tables, not code, but a data file copied
 whole.
 
-Used by `tests/test_iconparts.py` and `tests/test_editor.py`.
+Used by `tests/icons/test_iconparts.py` and `tests/test_editor.py`.
 
 ### 3. [FIXED] `tests/fixtures/GEO04.bin` — a game map file
 
 1024 bytes, one map verbatim.
 
 Used by `tests/test_geo.py`, `tests/test_automap.py`,
-`tests/test_binary_roundtrip.py`.
+`tests/saves/test_binary_roundtrip.py`.
 
 ### 4. [FIXED] `tests/fixtures/pool1_savedgame0.bin` — shipped game content
 
 7170 bytes taken from the shipped `POOL1.D64`. Unlike the other saves below,
 this is not a player's own data — it is the party SSI put on the disk.
 
-Used by `tests/test_iconparts.py`.
+Used by `tests/icons/test_iconparts.py`.
 
 ### 5. `docs/70-driving-the-game.md` — not a finding
 

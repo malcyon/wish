@@ -159,7 +159,7 @@ def test_a_default_colours_character_and_a_customised_one_both_convert():
 def test_amiga_combat_icon_written_through_dos_write_matches_the_source():
     """The whole path, not just the builder: `goldbox.dos_codec.write`'s own
     `icon` argument actually lands the bytes in the DOS record it produces,
-    for a Curse and a Silver Blades specimen -- `tests/test_iconprovenance.py`
+    for a Curse and a Silver Blades specimen -- `tests/icons/test_iconprovenance.py`
     already proves this for a synthetic record; this is the same claim on
     two real ones.
     """

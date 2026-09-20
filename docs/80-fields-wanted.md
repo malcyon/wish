@@ -414,7 +414,7 @@ what the game does.
 A real bug was found here anyway, and it was the *other* direction: an import
 that edited nothing rewrote `0x0A0` from the per-class array, so a record that
 arrived already disagreeing was silently "corrected". Now gated behind an actual
-edit, and covered by constructed-state tests in `tests/test_pairs.py`.
+edit, and covered by constructed-state tests in `tests/records/test_pairs.py`.
 
 ### Leads not yet pinned down
 

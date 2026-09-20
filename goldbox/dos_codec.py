@@ -543,7 +543,7 @@ def _innate_effects(shape_key: str | None) -> frozenset[int]:
 #: record's own bit order -- `goldbox.c64_port.CLASS_BITS_WITH_PALADIN_RANGER`,
 #: where 64 is the paladin and 128 the ranger.  DOS gives the two classes one
 #: bit between them, so this is never the DOS record's numbering;
-#: `tests/test_innateeffects.py` pins the two against each other.
+#: `tests/records/test_innateeffects.py` pins the two against each other.
 PALADIN_CLASS_BIT = 64
 
 #: A C64 trait id a title's own `GEN` seeds for a class, and the DOS effect id
@@ -2742,7 +2742,7 @@ def write_absent(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
 #:   measured on a party staged with every character's byte contradicting his
 #:   race -- 6 for the humans, 0 for the dwarf, elf and half-elf -- coming
 #:   back 0, 0, 0, 6, 6, 6, six of six (#52, `tools/records/infravision.py`,
-#:   `tests/test_infravision.py`).
+#:   `tests/records/test_infravision.py`).
 #:
 #: **`spells_castable` is not here and that is not an oversight.**  #307 named
 #: it as the second entry, and this writer composes no line for it: it is
@@ -5989,7 +5989,7 @@ def save_disk(save0: bytes, save1: bytes, game=None):
     `SAVEDGAME0` and nothing else, in that directory order, so that is what
     this writes.  Built onto `D64.blank()` with the drive's own interleave,
     the result reproduces a disk the 1541 wrote everywhere but the two files'
-    final-sector slack, on all 13 (`tests/test_d64_blank.py`).
+    final-sector slack, on all 13 (`tests/saves/test_d64_blank.py`).
     """
     from .d64 import D64, attach_load_address
     game = game or c64_port.POOL_OF_RADIANCE
@@ -6892,7 +6892,7 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
 
     **A record `recognise` cannot read is not a reason to fail the whole
     party.**  Every icon on the player's own disks reads back
-    (`tests/test_iconreverse.py`), but a hand-authored one -- SHARA THE
+    (`tests/icons/test_iconreverse.py`), but a hand-authored one -- SHARA THE
     GRAY's, #130 -- would not, and a converted party missing one
     character's figure is still five characters better off than one with
     none.  That character keeps its `None` and the drop line

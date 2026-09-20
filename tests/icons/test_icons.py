@@ -17,7 +17,7 @@ from goldbox.icons import (
 )
 from goldbox.savegame import SLOT_AREA_BASE, SaveGame0
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+FIXTURES = pathlib.Path(__file__).parents[1] / "fixtures"
 
 
 @pytest.fixture

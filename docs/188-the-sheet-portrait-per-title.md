@@ -51,7 +51,7 @@ back to me again."*
 C64's art id for that position, so `goldbox.portraits.neutral_menu()` is the
 one table every conversion resolves against, whatever the ports on either end.
 `AMIGA_POOL_OF_RADIANCE_MENU` names the Amiga's own **art** and is for drawing
-the Amiga's pictures; it is not a conversion table. In `tests/test_portraits.py`,
+the Amiga's pictures; it is not a conversion table. In `tests/icons/test_portraits.py`,
 `test_a_body_choice_converts_by_menu_position_and_never_by_stored_byte_value`
 goes red if anybody wires it in as one.
 
@@ -313,7 +313,7 @@ block, and it is the one DOS calls `22` (a brown sleeve under a grey tabard).
 So the body a player chose at position 8 has no block anywhere in the Amiga's
 `body.dax`, and no value the record can hold reaches it. `tools/gui/bodychoices.py
 --all` draws every block on both sides and is where that was seen;
-`tests/test_portraits.py::test_the_body_dos_draws_for_position_eight_is_not_
+`tests/icons/test_portraits.py::test_the_body_dos_draws_for_position_eight_is_not_
 on_the_amiga_disk` is the byte comparison behind it, 21 ids each side, 20
 distinct pictures on DOS against 19 on the Amiga.
 

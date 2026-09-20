@@ -154,7 +154,7 @@ def test_a_row_built_outside_the_registry_gets_a_title_with_no_tables():
 
 
 def test_replacing_a_rows_tables_leaves_the_row_answering_none():
-    """`dataclasses.replace(row, races=None)` is how `tests/test_gametables.py`
+    """`dataclasses.replace(row, races=None)` is how `tests/records/test_gametables.py`
     builds the designed failure -- no names at all rather than wrong ones --
     and it has to keep working now that `rules` sits beside `races`."""
     blank = dataclasses.replace(c64_port.POOL_OF_RADIANCE, races=None,

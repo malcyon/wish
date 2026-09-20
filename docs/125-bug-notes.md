@@ -348,7 +348,7 @@ from the DOS build of the same game**.
 
 **What we got wrong.** `goldbox/levels.py` gave a level-4 fighter a breath save of
 16, which is the AD&D 1st edition number, and the game writes 15. It was
-recorded as a divergence in `tests/test_liveparty.py` for a day on the reading
+recorded as a divergence in `tests/records/test_liveparty.py` for a day on the reading
 that the game might be wrong.
 
 **What is actually there.** The game does not tabulate saving throws. It holds
@@ -366,7 +366,7 @@ and no specimen was an even-level fighter with cached combat numbers to catch
 it.
 
 **The lesson, which is the same one twice.** A published table and the game's
-table are different documents. `tests/test_levels.py` now re-expands every row
+table are different documents. `tests/records/test_levels.py` now re-expands every row
 from the player's own `GEN` rather than trusting the longhand.
 
 ---

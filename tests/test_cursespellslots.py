@@ -234,7 +234,7 @@ def test_pool_of_radiance_has_no_paladin_or_ranger_rows():
 # The half of `#548` a hardcoded table cannot do for itself.  `goldbox/
 # spells.py` holds four rows tables and this reads all four out of the DOS
 # Curse `GAME.OVR` and `START.EXE` the player owns, the same way
-# `tests/test_levels.py` re-reads the THAC0 rows, so a transcription slip
+# `tests/records/test_levels.py` re-reads the THAC0 rows, so a transcription slip
 # fails here rather than shipping.
 #
 # **Nothing is located by a committed address.**  `builder_site` picks the one

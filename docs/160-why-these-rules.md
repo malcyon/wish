@@ -1190,7 +1190,7 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 >   of this passage read as though they did. `~/Downloads/fr-archives` holds no
 >   `.adf` at all: the Amiga records come from the disk-image directories
 >   `automap/gamedisks.py` lists as its `amiga` candidates. The DOS figure is
->   pinned by `tests/test_enccensus.py::test_every_record_the_archives_ship_
+>   pinned by `tests/records/test_enccensus.py::test_every_record_the_archives_ship_
 >   balances_exactly`, so a reader change that brings the six back turns it red.
 >   **The Amiga figure has no test**, so treat it as a measurement taken once
 >   rather than a guarantee, and re-take it before resting anything on it.
@@ -1331,7 +1331,7 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 
 The passages below stood in code comments, a hook's docstring and an agent definition until the no-history rule removed them, verbatim.
 
-#### tests/test_enccensus.py (docstring of test_every_record_the_archives_ship_balances_exactly)
+#### tests/records/test_enccensus.py (docstring of test_every_record_the_archives_ship_balances_exactly)
 
 ```
     """`.claude/rules/testing.md` used to say six of the eighteen Pool of

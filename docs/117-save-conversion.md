@@ -415,7 +415,7 @@ four Pool of Radiance characters at the game's own reachable extremes — a
 half-elf cleric/magic-user memorising all 20 spells the title's own table
 allows, a fighter at the hit-point and ability ceiling, a thief with all eight
 skill percentages at their column-wise maximum, and the deepest legal
-three-class combination — and `tests/test_boundary.py` runs every one through
+three-class combination — and `tests/records/test_boundary.py` runs every one through
 `goldbox.dos_codec.write`, checks the record comes back whole, and checks the
 one array width the engine's own bytes corroborate (`tools/dos/dosarraywidth.py`'s
 `width()`) against the declared table. It checks that every writer *takes* a

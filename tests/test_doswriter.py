@@ -1110,7 +1110,7 @@ def test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures(
         if back[:18] == original[:18]:
             forced_matches += 1
     # At least the forced rows this party's figures hit come home exactly;
-    # `tests/test_iconreverse.py` is where every row's own forced-ness is
+    # `tests/icons/test_iconreverse.py` is where every row's own forced-ness is
     # pinned, this only has to see it is not zero of six.
     assert forced_matches >= 2, forced_matches
 
@@ -2704,7 +2704,7 @@ def test_which_write_dropped_lines_a_c64_or_amiga_source_reaches_today():
     -- the C64 byte is written once from a race table in the game's own
     character generator and DOS keeps nothing for it, so a converted
     character arrives in the state a DOS-rolled one of his race is in (#52,
-    `tests/test_infravision.py`).
+    `tests/records/test_infravision.py`).
     `spells_castable` -- named by #307 (The DOS writer's drop list has no way
     to silence a field the DOS engine puts back on load) as the second entry
     -- never reaches this report at all: the writer `use`s it on every path,

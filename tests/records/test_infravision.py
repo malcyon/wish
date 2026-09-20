@@ -24,7 +24,7 @@ import sys
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox import c64_codec, c64_port, dos_codec, dos_port, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402

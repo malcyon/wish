@@ -35,7 +35,7 @@ def _specimen_disk(name: str) -> pathlib.Path:
 
     `gamedata.specimen()` is for the directory-shaped kind; this family is
     one file plus one `.provenance.toml` beside it, the same shape
-    `tests/test_dualclass_c64.py` already reads.
+    `tests/records/test_dualclass_c64.py` already reads.
     """
     from tools.registry import specimens
 

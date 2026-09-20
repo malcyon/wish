@@ -320,7 +320,7 @@ def test_the_dos_thief_skill_tables_are_the_games_own():
     `goldbox/levels.py` by construction.
     """
     import sys as _sys
-    _sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+    _sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
     from tools.records import thiefskillcensus
     try:
         tables = thiefskillcensus.dos_tables("pool-of-radiance")

@@ -40,7 +40,7 @@ from goldbox.savegame import (
     SaveGame1,
 )
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+FIXTURES = pathlib.Path(__file__).parents[1] / "fixtures"
 
 CONFIDENCES = {"CONFIRMED", "PROBABLE", "GUESS", "UNKNOWN"}
 

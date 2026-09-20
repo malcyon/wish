@@ -4,7 +4,7 @@ from __future__ import annotations
 
 Most of what follows needs no disk at all: pure sector-geometry math, or a
 disk this file builds itself with `D64.blank()` and `write_file()` (#118,
-exercised directly in `tests/test_d64_blank.py`) around three saved-game
+exercised directly in `tests/saves/test_d64_blank.py`) around three saved-game
 fixtures already committed in `tests/fixtures/` -- `testing.md` names saved
 games as the one exception that stays in the repository, because they are the
 player's own data and "several of them capture states that no disk still
@@ -28,7 +28,7 @@ already committed, and runs on a bare checkout with no game files at all.
 
 That rebuild has a cost worth naming: it can only prove `write_file()` agrees
 with `directory()`/`to_bytes()`, not that either agrees with a real 1541 and
-KERNAL, since nothing here reads one any more. `tests/test_d64_blank.py`
+KERNAL, since nothing here reads one any more. `tests/saves/test_d64_blank.py`
 carries the checks that put that grounding back -- the lock bit, a name's
 leading control byte, and the directory's slot accounting -- each against
 whatever the player's disks actually hold today, stated so they stay true as
@@ -57,7 +57,7 @@ from goldbox.d64 import (
     split_load_address,
 )
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
 BRUTUS = b"\x01BRUTUS"
 

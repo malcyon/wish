@@ -177,4 +177,4 @@ shows it under the bottom strip with the breakdown as its tooltip. It belongs in
 need the two blocks, or a `PartyStrength` passed in beside the snapshot, and the
 call site is the last line of `poll_live`.
 
-Tested in `tests/test_strength.py`, including both save disks end to end.
+Tested in `tests/records/test_strength.py`, including both save disks end to end.

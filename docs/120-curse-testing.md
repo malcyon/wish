@@ -16,7 +16,7 @@ re-derive, the party position, which in Curse is not in the save image at all.
 `docs/116-second-game.md` already established the important half — Curse uses
 the same 580-byte character record, the same `GEO` format, the same roster
 block, and a save image that is Pool of Radiance's constants plus `$200` — and
-`tests/test_second_game.py` pins it. This document is about the gap between
+`tests/records/test_second_game.py` pins it. This document is about the gap between
 *the decoders read Curse's bytes* and *the program works on Curse* — a gap that
 was wide because everything above `goldbox/` named Pool of Radiance's files by
 hand, and that `goldbox/c64_port.py` closed.
@@ -34,7 +34,7 @@ passes, on `CURSESAVE2.D64` and `CURSE_C.D64`, with Pool of Radiance's
 
 | | Confidence | Where |
 |---|---|---|
-| 580-byte record, every named offset | CONFIRMED | `docs/116`, `tests/test_second_game.py` |
+| 580-byte record, every named offset | CONFIRMED | `docs/116`, `tests/records/test_second_game.py` |
 | `class_bits` one bit per level-array slot, paladin 6 / ranger 7 | CONFIRMED | same |
 | roster block equals record `0x100`–`0x11F` | CONFIRMED | same |
 | save geometry is Pool of Radiance plus `$200` | CONFIRMED | same |
@@ -435,7 +435,7 @@ that rip**. What is left:
 | the area byte across a boundary is unwatched | `$4DC2` stays PROBABLE | drive the party over an area edge and read it either side. One session |
 | the automapper's memory fallback has no per-title base | the live view works off the status line and has nothing to fall back to in camp or combat | thread a party base through `automap/target.py` the way `goldbox/c64_port.py` threads the save geometry. Curse's value is `$C04B`, and it is *not* a save-image offset |
 | ~~no Curse save from a *played* party with inventory~~ **cleared** | the item area is Pool of Radiance's, payload `$1000` -- resident `$5B00` -- and the 16-byte record decodes field for field: type at `+0`, name indices at `+3`/`+2`, readied bit `$80` at `+6`, weight in tenths at `+8`, quantity at `+10`, cost at `+11`. Ten items bought in a Tilverton shop, one readied, every weight and price matching what the shop printed | done (#32 (One Curse session, to get a party with items)). A save disk the game wrote carrying them is `WISH-SPEC-curse-party-with-items` in the specimen tree, added on 2026-09-08; it was made in `issue32/specimens/`, which is scratch and is gone. The measurements are in §3.1 below, and an edit made to that inventory in Wish has since been read off the game's own item screen -- `docs/139-per-title-validation.md` A13 |
-| ~~Curse's level caps are not measured~~ **cleared** | ceilings `GEN $15A1`, racial limits `$15A9` (rows for races 1-5; race 6 and above skip the check at `$155B`), experience `$136E`, hit dice `$161E` — all in `goldbox/levels.py` and asserted in `tests/test_titletables.py` | done. `tools/c64/coldread.py levels curse-of-the-azure-bonds` reads them off the disk again in one command |
+| ~~Curse's level caps are not measured~~ **cleared** | ceilings `GEN $15A1`, racial limits `$15A9` (rows for races 1-5; race 6 and above skip the check at `$155B`), experience `$136E`, hit dice `$161E` — all in `goldbox/levels.py` and asserted in `tests/records/test_titletables.py` | done. `tools/c64/coldread.py levels curse-of-the-azure-bonds` reads them off the disk again in one command |
 | ~~the spellbook's width in Curse~~ **cleared** | it is **13**, and no specimen was needed: `CAMP $2A25` walks spell ids from 1 with `INY / CPY #$65 / BCC`, so it stops after id 100, and reads the mask as `TYA / LSR x3 / TAX / LDA $7C78,X` — id 100 puts X at 12, so the game itself reads `0x078`-`0x084` | done (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)). Whether `0x085`-`0x087` are also mask stays UNKNOWN in Curse, whose `GEN` has no clear loop; thirteen is what the game reads and no more is claimed |
 | Curse's `$200` attribute plane — indoor bit and script id | GUESS and UNKNOWN, tier 2 | needs Curse's ECL decoded, which nothing else depends on |
 

@@ -99,7 +99,7 @@ that preserves cells 0, 1, 9 and 10 when the weapon changes.
 
 **All 896 combinations — 32 bodies x 14 heads x two sizes — compose a shape the
 menu can reach.** Checked against `IconParts.legal_screen_codes()`, which is every
-shape any sequence of menu choices produces, in `tests/test_dosicon.py`.
+shape any sequence of menu choices produces, in `tests/icons/test_dosicon.py`.
 
 ### A small character sometimes wears a large option
 

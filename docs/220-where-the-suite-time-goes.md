@@ -107,9 +107,9 @@ column is what stays after the freeze:
 | `tests/suite/test_toolshadowing.py` | 711 | 331.4 | 138.2 | 0.0 | 193.2 |
 | `tests/suite/test_staging_sweep.py` | 25 | 88.8 | 3.3 | 0.0 | 85.5 |
 | `tests/test_combatdrive.py` | 81 | 78.3 | 6.1 | 0.0 | 72.1 |
-| `tests/test_iconproposal.py` | 67 | 70.6 | 8.0 | 0.0 | 62.6 |
+| `tests/icons/test_iconproposal.py` | 67 | 70.6 | 8.0 | 0.0 | 62.6 |
 | `tests/test_editor.py` | 182 | 80.3 | 25.2 | 10.6 | 55.1 |
-| `tests/test_iconparts.py` | 39 | 57.5 | 5.0 | 46.4 | 52.5 |
+| `tests/icons/test_iconparts.py` | 39 | 57.5 | 5.0 | 46.4 | 52.5 |
 | `tests/test_amiga.py` | 173 | 75.4 | 32.8 | 0.0 | 42.5 |
 | `tests/test_mapscale.py` | 25 | 45.4 | 4.3 | 0.0 | 41.2 |
 | `tests/test_preferences.py` | 83 | 49.7 | 11.9 | 0.0 | 37.7 |
@@ -131,8 +131,8 @@ The suite has **one** session-scoped fixture — `_one_qapplication` in
 4.6% of the run, so fixtures are not where the time is, with one exception.
 
 `IconParts.legal_screen_codes()` takes about 14 s, and two files ask for it
-from a module-scoped fixture of their own: `tests/test_iconparts.py` and
-`tests/test_dosicon.py`. Under `--dist loadgroup` a file's tests scatter
+from a module-scoped fixture of their own: `tests/icons/test_iconparts.py` and
+`tests/icons/test_dosicon.py`. Under `--dist loadgroup` a file's tests scatter
 across workers like any others, so a module fixture is built once *per
 worker that gets any of that file's tests*. The durations show it: five
 setups of 13.29 s to 15.55 s, three in one file and two in the other, for
@@ -283,7 +283,7 @@ the two processes.
 ### 3. Compute the reachable icon set once
 
 **Do it, third.** Move the `parts` and `legal` fixtures out of
-`tests/test_iconparts.py` and `tests/test_dosicon.py` into `tests/conftest.py`
+`tests/icons/test_iconparts.py` and `tests/icons/test_dosicon.py` into `tests/conftest.py`
 at session scope, and mark both files
 `pytestmark = pytest.mark.xdist_group(name="icon-tables")` so their tests
 share a worker and the session fixture is built once rather than five times.

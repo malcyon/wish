@@ -173,7 +173,7 @@ def test_silver_blades_dos_thac0_is_the_games_own_table():
 
 def test_silver_blades_is_among_the_titles_a_race_with_no_bonus_covers():
     """`levels.TITLES` now has three entries; a test that loops it (in
-    `tests/test_curselevels.py` and `tests/test_levels.py`) covers Silver
+    `tests/test_curselevels.py` and `tests/records/test_levels.py`) covers Silver
     Blades for free. This is the version of that check that lives beside the
     new title's own tests."""
     assert SSB in levels.TITLES

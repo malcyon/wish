@@ -23,7 +23,7 @@ import pytest
 from tools.icons import iconproposal as ip  # noqa: E402
 from tools.icons import iconredrawn as ir  # noqa: E402
 
-#: What Silver Blades re-drew, the same set `tests/test_iconparts.py` pins:
+#: What Silver Blades re-drew, the same set `tests/icons/test_iconparts.py` pins:
 #: `(kind, option, size)`, both poses of each.
 REDREW = {("head", 10, "large"), ("weapon", 11, "small")}
 

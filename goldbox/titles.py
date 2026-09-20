@@ -107,7 +107,7 @@ RACES_POOLS_OF_DARKNESS = tuple(
 # bit 6 the paladin at 0x0CF, bit 7 the ranger at 0x0D0 -- so
 # `class_bits == sum(1 << i for every non-zero slot i)` holds uniformly, on all
 # 36 shipped characters in all six titles. It is a cross-title check, not a
-# Pool of Radiance quirk, and `tests/test_gametables.py` asserts it.
+# Pool of Radiance quirk, and `tests/records/test_gametables.py` asserts it.
 #
 # (An early report, since lost, said the rule fails for the
 # 0x10/0x40/0x80 classes. It read only the first four slots of an eight-slot

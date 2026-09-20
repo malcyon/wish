@@ -79,7 +79,7 @@ def corpora() -> list[pathlib.Path]:
 #: at a small character's own size.  Read off `SPELLE64` by
 #: `goldbox.iconparts.IconParts.count`; repeated here only so `--census` can
 #: run with no game disks attached, and checked against the file by
-#: `tests/test_iconpackaging.py`.
+#: `tests/icons/test_iconpackaging.py`.
 SMALL_WEAPONS = 28
 SMALL_HEADS = 14
 

@@ -602,7 +602,7 @@ def draws_sheet_portrait(game=None) -> bool:
 #:   Donald's play directory.
 #:
 #: The C64 and DOS agree byte for byte
-#: (`tests/test_portraits.py::test_the_menu_found_from_the_disks_is_the_one_dos_offers`),
+#: (`tests/icons/test_portraits.py::test_the_menu_found_from_the_disks_is_the_one_dos_offers`),
 #: and `test_the_stored_menu_is_what_the_disks_carry` pins this block to
 #: what the disks say wherever the disks are present, so the two cannot
 #: drift apart in silence.  **One release of each port has been read.**  A

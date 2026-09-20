@@ -149,7 +149,7 @@ with 20, then for each class subtracts, per column, the number of set bits in
 the low `level - 1` bits of *two* masks -- `$1FB6` and `$1FCA` -- from the
 level-1 row at `$1FA2`, keeping whichever class gives the lower number. The
 rows written out below are that encoding expanded, and
-`tests/test_levels.py` re-expands it off the player's own `GEN` rather than
+`tests/records/test_levels.py` re-expands it off the player's own `GEN` rather than
 trusting the transcription. It is what settles **the fighter's level-4 breath
 save at 15**: the fighter's fourth column carries mask `$0C` where the other
 four carry `$08`, so that column improves twice by level 4 where the rest
@@ -299,7 +299,7 @@ TABLES = {
 #: reproduce from these rows by best-of-classes, with no exceptions -- the nine
 #: `WISH-SPEC-por-party-ladder-rung*` specimens the trainer was watched writing,
 #: the play saves, and the archives. `tools/records/thac0census.py` is the sweep and
-#: `tests/test_levels.py` re-reads the rows out of the player's own `START.EXE`.
+#: `tests/records/test_levels.py` re-reads the rows out of the player's own `START.EXE`.
 #:
 #: **Curse and Silver Blades are filled in too, from the same read, in
 #: `_DOS_THAC0_CURSE` and `_DOS_THAC0_SSB` below.** Their DOS tables sit at

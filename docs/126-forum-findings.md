@@ -177,7 +177,7 @@ Bonds carry no trace of the DOS command-line cheat** — not the literals, not t
 message, not a dead comparison. It was compiled out for the port, as it was for
 Buck Rogers. Method, every hit and the limit of the claim were in
 `reports/sting-search.md`, which is lost; the finding is asserted in
-`tests/test_coabsource.py` so nobody looks again.
+`tests/records/test_coabsource.py` so nobody looks again.
 
 A second, unrelated original-game patch from the same corner of the board:
 [topic 2103](https://forums.goldbox.games/index.php?topic=2103.0) gives five

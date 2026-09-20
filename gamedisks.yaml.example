@@ -32,7 +32,7 @@ curse-of-the-azure-bonds:
     - "/data/agent-disks/curse-of-the-azure-bonds"
     # A second rip whose `CURSE4.D64` is 175531 bytes (174848 plus an error
     # table), listed after the clean one because `find()` takes the first path
-    # that matches; `tests/test_d64_variants.py` looks in every path for an
+    # that matches; `tests/saves/test_d64_variants.py` looks in every path for an
     # image of that size.
     - "/data/agent-disks/curse-of-the-azure-bonds-with-docs"
 
@@ -81,7 +81,7 @@ por-dos-play:
     - "/data/agent-disks/por-dos-play"
 
 champions-of-krynn:
-  # Champions of Krynn's disks, for `tests/test_titletables.py`, which
+  # Champions of Krynn's disks, for `tests/records/test_titletables.py`, which
   # recognises the side that carries `ITEMNAMES` by content -- so this names
   # folders of disks rather than one disk, and the caller scans what is in them.
   # Death Knights of Krynn ships the same Krynn race labels and is told apart
@@ -92,7 +92,7 @@ champions-of-krynn:
     - "/data/agent-disks/champions-of-krynn"
 
 death-knights-of-krynn:
-  # Death Knights of Krynn's disks, for `tests/test_titletables.py`, which tells
+  # Death Knights of Krynn's disks, for `tests/records/test_titletables.py`, which tells
   # it from Champions of Krynn by its coin names rather than by where it sits,
   # so a folder holding both titles is fine. The `[n0]` folder is a cartridge
   # image, not disks, and is left out.
@@ -123,7 +123,7 @@ codewheel:
     - "/data/agent-disks/codewheel"
 
 coab-source:
-  # The decompiled source of Curse of the Azure Bonds, which `tests/
+  # The decompiled source of Curse of the Azure Bonds, which `tests/records/
   # test_coabsource.py` reads. Derived from the game's own executable, so it is
   # game data and is never committed. A checkout of `simeonpilgrim/coab`,
   # laid out as `Classes/` and `engine/`.

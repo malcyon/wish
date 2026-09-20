@@ -177,11 +177,11 @@ _MACHINE_PATH = ("/mnt/", "~/downloads", "~/dos_por_play", "fr-archives")
 #: same file is still caught.
 _NOT_A_LOOKUP = {
     # Fake paths handed to a parser that only reads their names.
-    ("tests/test_carryceiling.py", "/mnt/roms/c64/PORSAVE.D64"):
+    ("tests/records/test_carryceiling.py", "/mnt/roms/c64/PORSAVE.D64"):
         "a fake save path the census parses",
-    ("tests/test_enccensus.py", "/home/x/Downloads/fr-archives"):
+    ("tests/records/test_enccensus.py", "/home/x/Downloads/fr-archives"):
         "a fake path the census classifies by its name",
-    ("tests/test_spellbookcensus.py", "/x/fr-archives"):
+    ("tests/records/test_spellbookcensus.py", "/x/fr-archives"):
         "a fake path the census classifies by its name",
     # A `[Version]` config file inside a string, which contains `/mnt/`.
     ("tests/registry/test_instance.py", "    [Version]"): "VICE config text",

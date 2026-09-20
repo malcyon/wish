@@ -230,7 +230,7 @@ own save of it.
 ## Two bytes the Curse decompilation named
 
 `simeonpilgrim/coab` is a re-implementation of the DOS Curse overlays that
-`docs/117-save-conversion.md` and `tests/test_coabsource.py` already read as
+`docs/117-save-conversion.md` and `tests/records/test_coabsource.py` already read as
 corroboration. Its `Classes/Player.cs` declares a player struct of
 `StructSize = 0x1A6` -- the 422 bytes of the Curse record -- so its offsets
 are file offsets, and against `goldbox/dos_port.py`'s Curse table it

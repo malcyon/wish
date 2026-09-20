@@ -13,7 +13,7 @@ import sys
 import pytest
 from gamedata import disk_dir
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.records import thiefskillcensus as census  # noqa: E402
 

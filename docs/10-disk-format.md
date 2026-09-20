@@ -197,7 +197,7 @@ outer half is full, and nothing about the interleave, which appears nowhere in t
 and write them onto a blank built here, in that order: the two images differ in **432 bytes and
 no others**, and those 432 are exactly the two files' final-sector slack — 236 after
 `SAVEDGAME1`'s last 18 payload bytes, 196 after `SAVEDGAME0`'s last 58. BAM, directory, both
-sector chains and every payload byte match. `tests/test_d64_blank.py` computes the slack from
+sector chains and every payload byte match. `tests/saves/test_d64_blank.py` computes the slack from
 the chain lengths rather than from the number 432, and skips where there are no disks.
 Interleave 3 for the directory likewise reproduces all thirteen directory sectors of
 `POOL1.D64.orig`'s 103-entry directory.

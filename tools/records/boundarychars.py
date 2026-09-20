@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deliberately extreme Pool of Radiance characters, for `tests/test_boundary.py`.
+"""Deliberately extreme Pool of Radiance characters, for `tests/records/test_boundary.py`.
 
 `#516 (Generate boundary characters and check every writer's field widths,
 since no real save reaches a limit and the corpus cannot find a wrong one)`:
@@ -120,7 +120,7 @@ def _base() -> NeutralCharacter:
 
     This is test B's whole point: a field added to `goldbox/neutral.py` and
     wired into the writer has no value here until somebody says what its
-    extreme is, and the coverage sweep in `tests/test_boundary.py` fails
+    extreme is, and the coverage sweep in `tests/records/test_boundary.py` fails
     until it does. The four cases below start from this and push their own
     fields to a ceiling; everything they do not mention keeps the value set
     here.
@@ -342,7 +342,7 @@ def triple() -> NeutralCharacter:
     return char
 
 
-#: Every case, by name -- what `tests/test_boundary.py` parametrises over and
+#: Every case, by name -- what `tests/records/test_boundary.py` parametrises over and
 #: what `__main__` below prints.
 CASES = {
     "caster": caster,

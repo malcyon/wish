@@ -67,7 +67,7 @@ Nothing else in the record moves.
 
 **Both `ITEMNAMES` bases are the literal operand of an instruction**, not a
 fit: `LIBRARY` reads the name table with `LDA $6F00,X / STA $07` in Pool of
-Radiance and `LDA $9E00,X / STA $07` in Curse. `tests/test_titletables.py`
+Radiance and `LDA $9E00,X / STA $07` in Curse. `tests/records/test_titletables.py`
 asserts both, and the same test re-fits `LIBRARY`'s own base — `$2C48` wins
 215 to 66 in Pool of Radiance and `$2DC8` wins 228 to 57 in Curse, scoring how
 many `JSR`/`JMP` targets land on the byte after an `RTS`, an `RTI` or a `JMP`.
@@ -278,7 +278,7 @@ the plain image is read-only. See [`10-disk-format.md`](10-disk-format.md).
 
 ## 8. The test that pins it
 
-`tests/test_second_game.py`. It runs the *same* invariant checks over Pool of
+`tests/records/test_second_game.py`. It runs the *same* invariant checks over Pool of
 Radiance's own saved games and over Curse's `SAVEAZURE`, through the same
 `goldbox.record`, `goldbox.geo`, `goldbox.items` and `goldbox.savegame` code paths:
 
@@ -384,7 +384,7 @@ Every value is the AD&D 1st edition number **plus one** — 2001 to reach fighte
 threshold is a bare 2250. Pool of Radiance's own table, at `$1DB5` and split
 into parallel low, mid and high arrays nine entries wide, holds the same
 numbers with the same +1, so `goldbox/levels.py` already agrees with Curse for
-every level the two share. `tests/test_titletables.py` asserts that agreement
+every level the two share. `tests/records/test_titletables.py` asserts that agreement
 row by row.
 
 The hit-dice tables sit beside it, three more eight-byte arrays in class-bit

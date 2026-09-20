@@ -34,7 +34,7 @@ import sys
 import gamedata
 import pytest
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_codec, c64_port, c64_save, dos_codec, neutral  # noqa: E402

@@ -15,7 +15,7 @@ from goldbox.savegame import SaveGame0
 # receives a test from either file.
 pytestmark = pytest.mark.xdist_group(name="icon-tables")
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+FIXTURES = pathlib.Path(__file__).parents[1] / "fixtures"
 
 
 @pytest.fixture(scope="module")
