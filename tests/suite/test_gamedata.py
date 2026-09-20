@@ -9,8 +9,10 @@ the tests that need disks must keep skipping.
 """
 
 import os
+import pathlib
 import subprocess
 import sys
+import uuid
 
 import pytest
 import yaml
@@ -25,6 +27,7 @@ from gamedata import (
     require_registered,
 )
 from support import titletables as test_titletables
+from support.guardprobe import PREFIX
 from support.silverblades import SSB_KEY, ssb_dir, ssb_disks
 
 from automap import gamedisks
@@ -32,6 +35,7 @@ from goldbox import c64_port
 
 TITLE_KEYS = [g.key for g in c64_port.GAMES] + ["npc-party-save"]
 ENTRY_KEYS = list(gamedisks._example())
+HERE = pathlib.Path(__file__).resolve().parent
 
 POOL_ONLY = """\
 pool-of-radiance:
@@ -147,6 +151,20 @@ def _run_pytest(tmp_path, registry_text, *args):
     return subprocess.run([sys.executable, "-c", driver, str(registry), *args],
                           cwd=gamedisks.REPO, env=env, capture_output=True,
                           text=True, timeout=240)
+
+
+def test_a_probe_file_left_in_the_tree_is_not_collected(tmp_path):
+    """`tests/conftest.py` keeps the conftest guard's probe files out of every
+    collection of this tree but its own child's named target, so a probe
+    another process is writing and deleting cannot break a collection here."""
+    probe = HERE / f"{PREFIX}{uuid.uuid4().hex}.py"
+    probe.write_text("def test_nothing():\n    pass\n", encoding="utf-8")
+    try:
+        done = _run_pytest(tmp_path, POOL_ONLY, "--collect-only", "tests")
+    finally:
+        probe.unlink(missing_ok=True)
+    assert done.returncode == 0, done.stdout[-1500:] + done.stderr[-1500:]
+    assert probe.name not in done.stdout, done.stdout[-1500:]
 
 
 def test_collecting_every_test_survives_a_registry_that_finds_nothing(tmp_path):

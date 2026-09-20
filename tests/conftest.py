@@ -153,6 +153,15 @@ def load_tools_module(name: str):
 # still one variable away.
 os.environ["QT_QPA_PLATFORM"] = os.environ.get("WISH_TEST_PLATFORM", "offscreen")
 
+from support.guardprobe import IGNORE_GLOB  # noqa: E402
+
+#: A probe file another process is writing and deleting, or one an interrupted
+#: run left behind, is skipped by every collection of this tree. The child that
+#: the guard test spawns names its own probe on the command line, and an
+#: initial path is exempt from this (`_pytest/main.py`, `pytest_ignore_collect`
+#: is not consulted for one), so that one still collects.
+collect_ignore_glob = [IGNORE_GLOB]
+
 # Captured here, at `conftest.py`'s own import -- which pytest always runs
 # before it imports a single test module in this directory, in every xdist
 # worker -- so this is the value from before any test file has had a chance

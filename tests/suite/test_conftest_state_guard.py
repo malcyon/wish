@@ -25,6 +25,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from support.guardprobe import PREFIX
 
 # Both tests here write a uniquely-named probe **into `tests/suite/`** and delete it
 # again, on the assumption that only one is doing so at a time. Under
@@ -69,7 +70,7 @@ def _run_throwaway_test(body: str) -> subprocess.CompletedProcess:
     Living under `tests/` is what makes the real `tests/conftest.py` govern the
     run, the same way it governs every other file here.
     """
-    name = f"test_zzz_conftest_guard_probe_{uuid.uuid4().hex}"
+    name = f"{PREFIX}{uuid.uuid4().hex}"
     probe = TESTS_DIR / f"{name}.py"
     runner = textwrap.dedent(f"""
         import sys
