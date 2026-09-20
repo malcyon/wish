@@ -2,27 +2,31 @@ from __future__ import annotations
 
 """Boundary characters through the C64 writer: `#516 (Generate boundary
 characters and check every writer's field widths, since no real save reaches a
-limit and the corpus cannot find a wrong one)`, step 4.
+limit and the corpus cannot find a wrong one)`, steps 4 and 5.
 
 `tests/records/test_boundary.py` runs four Pool of Radiance extremes through
 `goldbox.dos_codec.write`.  This module does the same into
 `goldbox.c64_codec.write`, where the widths are the C64 record's own, and adds
-the sweep the DOS side did not need: every scalar the writer copies, at its
-lowest, its highest and one past.  The rule for a value past a width is that
-the writer refuses it or writes exactly what fits -- never a neighbour's byte,
-never a wrapped number.  `tools/records/boundarywidths.py` builds the
-characters; nothing here reads a game file except the one disk-backed check of
-the memorised-spell width, which skips without the disks.
+two sweeps the DOS side did not need: every scalar the writer copies, at its
+lowest, its highest and one past (parts C to H), and every class combination
+Curse of the Azure Bonds' and Secret of the Silver Blades' own menus offer,
+including what their dual-class route leaves (parts I to K).  The rule for a
+value past a width is that the writer refuses it or writes exactly what fits
+-- never a neighbour's byte, never a wrapped number.
+`tools/records/boundarywidths.py` and `tools/records/laterchars.py` build the
+characters; nothing here reads a game file except the disk-backed checks of
+the memorised-spell width and the two later titles' own creation tables, which
+skip without the disks.
 """
 
 import logging
 
 import pytest
 
-from goldbox import c64_codec, dos_codec, dos_port, layout, spells, traits
+from goldbox import c64_codec, classcode, dos_codec, dos_port, layout, spells, traits
 from goldbox import items as items_mod
 from goldbox import levels as level_tables
-from tools.records import boundarychars, boundarywidths
+from tools.records import boundarychars, boundarywidths, laterchars, laterlegality
 
 GAMES = boundarywidths.GAMES
 POOL = "pool-of-radiance"
@@ -437,3 +441,143 @@ def test_h_the_harness_reports_a_memorised_list_narrower_than_the_engines(
     _, _, back = _write(char)
     assert len(back.get("spells_memorised")) == 69 < ceiling
     assert c64_codec.memorised_span(POOL)[1] != ceiling
+
+
+# --- I: every class Curse and Silver Blades can legally make -----------------
+
+#: Both titles' combinations, flattened, so one parametrisation covers them.
+_COMBINATIONS = [c for game in laterchars.GAMES
+                 for c in laterchars.combinations(game)]
+
+
+def _combination_holds(combo):
+    """Write `combo` and check the classes come back as the menus offered them.
+
+    The class bitmask and the level array have to agree, which is what ties
+    the creation menu's own legality table to `goldbox/levels.py`'s racial
+    limits: a race offered a class it may not advance in comes out with a bit
+    set and no level under it.  `char_class` is asserted only where the
+    title's table has a code -- eight of the fifteen pairs the dual-class
+    route can leave have none, and `#409 (A regained dual-classed paladin or
+    ranger has a class mask Curse's own table cannot name, so Wish shows him
+    a class he is not)` settled that Wish writes nothing for those.
+    """
+    char = laterchars.build(combo)
+    _, rep, back = _write(char)
+    assert rep.warnings == [] and _losses(rep) == [], (combo.name, rep.dropped)
+
+    held = {name: level for name, level in (back.get("levels") or {}).items()
+            if level}
+    assert held == combo.class_levels, (combo.name, held)
+    assert held, combo.name
+    for name in laterlegality.class_names(combo.bits):
+        assert combo.class_levels.get(name), (combo.name, name)
+    assert back.get("class_bits") == combo.bits, combo.name
+    assert (back.get("former_levels") or {}) == combo.former_levels, combo.name
+    code = classcode.code_for(combo.bits, combo.class_levels,
+                              combo.former_levels, combo.game)
+    if code is not None:
+        assert back.get("char_class") == code, (combo.name, code)
+
+
+@pytest.mark.parametrize("combo", _COMBINATIONS,
+                         ids=lambda c: f"{c.game}-{c.name}")
+def test_i_every_class_combination_the_later_menus_offer_round_trips(combo):
+    """The class-legality sweep: every race and class entry Curse's and Silver
+    Blades' own creation menus offer, and every pair their dual-class route can
+    leave, at each class's own ceiling (`tools/records/laterlegality.py`)."""
+    _combination_holds(combo)
+
+
+def test_i_the_sweep_catches_a_class_the_race_may_not_advance_in():
+    """The red proof for the class half: a legality row the game does not
+    carry -- Curse's dwarf offered cleric/magic-user, which no dwarf may
+    train -- builds a character whose mask names two classes his racial
+    limits give him no level in, and the sweep says so."""
+    game = "curse-of-the-azure-bonds"
+    dwarf = [code for code, name in laterlegality.races(game)
+             if name == "dwarf"][0]
+    bits = (classcode.CLASS_BIT_FOR_NAME["cleric"]
+            | classcode.CLASS_BIT_FOR_NAME["magic-user"])
+    wrong = laterchars.Combination(
+        game, dwarf, "dwarf", bits,
+        tuple(sorted(laterlegality.at_their_ceilings(game, dwarf,
+                                                     bits).items())),
+        (), "creation")
+    with pytest.raises(AssertionError):
+        _combination_holds(wrong)
+
+
+# --- J: the deepest caster either later title can reach ----------------------
+
+def _caster_holds(game, memorised):
+    """Write the deepest caster with `memorised` ids and hand back what
+    came off the record."""
+    char = laterchars.caster(game)
+    char.set("spells_memorised", list(range(1, memorised + 1)), "boundary")
+    _, rep, back = _write(char)
+    assert rep.warnings == [] and _losses(rep) == [], (game, rep.dropped)
+    return back
+
+
+@pytest.mark.parametrize("game", laterchars.GAMES)
+def test_j_the_deepest_later_caster_memorises_his_whole_capacity(game, caplog):
+    """A dual-classed human holds two spell lists at once, which is the most
+    either title can reach: Curse 40 of the 69 slots its own `CAMP` walks,
+    Silver Blades 64 of 74.  Neither reaches its record's list, so the DOS
+    record being wider than the C64's in both titles is unreachable rather
+    than a loss."""
+    wanted = laterchars.DEEPEST[game]["memorised"]
+    _, width = c64_codec.memorised_span(game)
+    assert wanted < width, (game, wanted, width)
+    with caplog.at_level(logging.WARNING, logger="wish.goldbox"):
+        back = _caster_holds(game, wanted)
+    assert _no_warnings(caplog) == [], game
+    assert back.get("spells_memorised") == list(range(1, wanted + 1))
+    top = spells.for_game(game).last_spellbook_spell
+    assert back.get("spells_known") == list(range(1, top + 1))
+
+
+@pytest.mark.parametrize("game", laterchars.GAMES)
+def test_j_the_sweep_catches_a_ceiling_row_above_the_games_own(game):
+    """The red proof for the ceiling half: a class ceiling above the title's
+    own gives the caster more spells than the record's list has room for, and
+    the round trip comes back short rather than quietly wrapping."""
+    _, width = c64_codec.memorised_span(game)
+    back = _caster_holds(game, width + 1)
+    assert back.get("spells_memorised") == list(range(1, width + 1))
+
+
+# --- K: the tables the last two tests rest on are the game's own -------------
+
+@pytest.mark.parametrize("game", laterchars.GAMES)
+def test_k_the_later_creation_tables_are_the_games_own(game):
+    """`laterlegality.READ_ON_DISK` against the title's own overlays, found by
+    the menu builder's own operands.  Skips without that title's disks."""
+    try:
+        read = laterlegality.read_tables(game)
+    except SystemExit as exc:
+        pytest.skip(f"needs the {game} C64 disks: {exc}")
+    kept = laterlegality.READ_ON_DISK[game]
+    for field in ("legality_at", "class_bits_at", "race_bits_at",
+                  "race_bits_in", "codes", "alignment_at", "legality",
+                  "class_bits", "race_bits"):
+        assert read[field] == kept[field], (game, field)
+    assert read["alignment"] == laterlegality.ALIGNMENT_MASKS, game
+
+
+@pytest.mark.parametrize("game", laterchars.GAMES)
+def test_k_the_deepest_caster_is_the_one_the_engine_allows(game):
+    """`laterchars.DEEPEST` re-derived from the game: every creation entry at
+    its ceilings and every dual-class route, measured by how many spells each
+    may hold.  Silver Blades' slot rows come out of its own `ECL65`, which is
+    the half `goldbox/spells.py` has never carried (`#572`)."""
+    try:
+        rows = (laterlegality.silver_slot_rows()
+                if game == "secret-of-the-silver-blades" else None)
+        total, held, former = laterlegality.deepest_caster(game, rows=rows)
+    except SystemExit as exc:
+        pytest.skip(f"needs the {game} C64 disks: {exc}")
+    kept = laterchars.DEEPEST[game]
+    assert (total, held, former) == (kept["memorised"], kept["levels"],
+                                     kept["former"]), game
