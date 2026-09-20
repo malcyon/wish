@@ -271,10 +271,13 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
     `0x0BF`-`0x0C4`, where a value past the end of `CHEAD.TLB` makes the
     loader refuse the file; the
     memorised list at `0x0CC`, whose fill direction nothing has watched this
-    port choose; and the bytes no neutral field names -- `paladin_cures` at
-    `0x080`, `icon_dimension` at `0x082`, `unnamed_1a4` at `0x0C5`-`0x0C6`,
-    the stale item count at `0x0C7`, `hands_used` at `0x0C8` and `gap_19a` at
-    `0x0C9`, which is 2 in 5 of the 19.
+    port choose; and the bytes no neutral field names -- `icon_dimension` at
+    `0x082`, `unnamed_1a4` at `0x0C5`-`0x0C6`, the stale item count at
+    `0x0C7`, `hands_used` at `0x0C8` and `gap_19a` at `0x0C9`, which is 2 in
+    5 of the 19.
+
+    **`paladin_cures` at `0x080` is inside the spans**: JORILD and TURBO K
+    hold 1 and come back holding 1, where the writer used to leave it 0.
     `Report.unaccounted` is the writer's own guarantee and is asserted empty
     here.
     """
@@ -312,6 +315,7 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         "active": (amiga_pod.ACTIVE, 1),
         "quickfight": (amiga_pod.QUICKFIGHT, 1),
         "thac0_base": (amiga_pod.THAC0_BASE, 1),
+        "paladin_cures": (amiga_pod.PALADIN_CURES, 1),
         "hp_rolled": (amiga_pod.HP_ROLLED, 1),
         "unnamed_0ab": (amiga_pod.UNNAMED_0AB, 1),
         "experience_award": (amiga_pod.EXPERIENCE_AWARD, 2),
@@ -388,6 +392,48 @@ def test_every_dos_record_converts_into_a_pc():
             out.get(a) for a in neutral.ABILITIES[:6]], path.name
         seen += 1
     assert seen >= 12
+
+
+def test_a_dos_paladins_cure_byte_lands_in_the_pc():
+    """DOS Pools of Darkness `paladin_cures` -> the `.pc`'s byte at 0x080.
+
+    Read off the shipped archive's records: **which of them read 1 is
+    whatever the archive holds, and the test asks that at least one does**, so
+    a converter that wrote 0 for all of them cannot pass."""
+    ones = seen = 0
+    for path in dos_records():
+        char = dos_codec.read_character(path)
+        pc, _report = amiga_pod.to_pc(dos_codec.to_neutral(char))
+        assert pc[amiga_pod.PALADIN_CURES] == char.get("paladin_cures"), path.name
+        ones += char.get("paladin_cures") == 1
+        seen += 1
+    assert seen >= 12
+    assert ones >= 1
+
+
+def test_a_paladins_cure_byte_survives_dos_to_amiga_and_back():
+    """A made-up DOS Pools of Darkness paladin holding 1 comes out of
+    DOS -> neutral -> `.pc` -> neutral -> DOS holding 1, at every step.
+
+    Built from `goldbox/dos_port.py`'s own table, so it runs with no disks
+    and carries no game bytes."""
+    f = dos_port.FIELDS_BY_NAME_FOR[POD.key]
+    for held in (1, 0):
+        raw = bytearray(POD.record_size)
+        raw[0] = 5
+        raw[1:6] = b"JORIL"
+        raw[f["race"].offset] = 5
+        raw[f["class_levels"].offset + 5] = 12
+        raw[f["class_bits"].offset] = 0x40
+        raw[f["paladin_cures"].offset] = held
+        neutral_char = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw)))
+        assert neutral_char.get("paladin_cures") == held
+        pc, _ = amiga_pod.to_pc(neutral_char)
+        assert pc[amiga_pod.PALADIN_CURES] == held
+        back = amiga_pod.pod_to_neutral(pc)
+        assert back.get("paladin_cures") == held
+        rec, _itm, _spc, _rep = dos_codec.write(back)
+        assert rec[f["paladin_cures"].offset] == held
 
 
 def test_a_dual_classed_character_arrives_as_the_class_he_is():
@@ -657,14 +703,14 @@ def test_the_reader_has_nothing_left_to_say_to_a_player():
         assert out.warnings == [], name
 
 
-def test_the_reader_fills_sixty_three_of_the_neutral_records_fields():
+def test_the_reader_fills_sixty_four_of_the_neutral_records_fields():
     """The count that says how far the Amiga decode has got, pinned so it
     moves when somebody decodes another region rather than drifting.
 
-    63 of the 75, and 64 for a character with an effect running on him, since
+    64 of the 77, and 65 for a character with an effect running on him, since
     `granted_effects` is set only when there is one -- the same way the Curse
-    and Silver Blades reader sets it. On this machine that is twelve
-    characters at 63 and seven at 64.
+    and Silver Blades reader sets it. On this machine that is ten
+    characters at 64 and nine at 65.
 
     The two it never fills: `npc_control_byte`, which is set only for a
     companion and so is absent from a player character rather than dropped,
@@ -675,14 +721,14 @@ def test_the_reader_fills_sixty_three_of_the_neutral_records_fields():
     for _name, raw in pc_records():
         out = amiga_pod.pod_to_neutral(raw)
         effects = amiga_pod.PodCharacter.from_bytes(raw).effects
-        assert len(out.fields) == 63 + bool(effects), sorted(out.fields)
+        assert len(out.fields) == 64 + bool(effects), sorted(out.fields)
         named = set(out.fields) | {n for n, _ in amiga_pod.pod_read_dropped()}
         assert set(neutral.FIELDS) - named == (
             {"npc_control_byte"} if effects
             else {"npc_control_byte", "granted_effects"})
         counts[len(out.fields)] = counts.get(len(out.fields), 0) + 1
     assert sum(counts.values()) >= 12, counts
-    assert counts.get(63), counts
+    assert counts.get(64), counts
 
 
 # --- the engine's own account of its record, read off the player's disk ------

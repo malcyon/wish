@@ -1495,6 +1495,18 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
 DROPPED: tuple[tuple[str, str], ...] = (
     ("infravision", "the C64 computes its own from race, so a source's value "
                     "is recomputed rather than copied"),
+    ("paladin_cures", "the paladin's cure-disease bookkeeping, which the C64 "
+                      "record has nowhere to keep: no byte of the C64 record "
+                      "is 1 for a paladin and 0 for everybody else across the "
+                      "78 C64 records this project holds, 12 of them "
+                      "paladins, and the only two that separate paladins at "
+                      "all are the class byte itself and one that tracks "
+                      "level. The DOS writer puts back the value every "
+                      "engine-written paladin record holds, derived from the "
+                      "class. **What a player gains by it is not "
+                      "established**: staged both ways in the running Silver "
+                      "Blades game the sheet offers CURE either way, so the "
+                      "byte does not gate the command there"),
 )
 
 #: Neutral fields the C64 **recomputes for itself**, so writing them would be

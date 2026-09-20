@@ -483,3 +483,24 @@ def test_the_engine_agrees_with_the_encumbrance_this_writer_computes():
     written, _ = amiga_later.write_later(amiga_later.to_neutral_later(stripped))
     assert written.get("encumbrance") == theirs["IILANDA"].get("encumbrance")
     assert written.get("encumbrance") == 282
+
+
+@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.dos.key)
+def test_a_paladins_cure_byte_survives_an_amiga_curse_or_silver_blades_round_trip(shape):
+    """The byte at DOS `paladin_cures`, mapped through the shape's shift map,
+    is read into the neutral record and written back to the same place -- a
+    made-up record, so it runs with no disks.
+
+    Both values are checked, because a writer that copied the class rule
+    instead would agree with the 1 and give the 0 away: a fighter holding 1
+    and a paladin holding 0 are what tell the copy from the derivation."""
+    at = shape.offset(shape.dos_field("paladin_cures").offset)
+    for held in (1, 0):
+        raw = bytearray(shape.record_size)
+        raw[:6] = b"TESTER"
+        raw[at] = held
+        char = amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
+        out = amiga_later.to_neutral_later(char)
+        assert out.get("paladin_cures") == held
+        built, _ = amiga_later.write_later(out)
+        assert built.raw[at] == held

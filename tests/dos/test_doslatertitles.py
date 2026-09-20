@@ -697,3 +697,40 @@ def test_a_silver_blades_party_carries_its_items_at_the_measured_stride():
     sizes = [len(dos_codec.write(c)[1]) for c in party]
     assert 804 in sizes, sizes
     assert all(n % 67 == 0 for n in sizes), sizes
+
+
+@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+def test_the_sources_own_cure_byte_is_written_and_the_class_rule_is_the_fallback(shape):
+    """A neutral record that carries `paladin_cures` gets that byte back, for
+    a paladin and for a fighter alike; one that carries none gets the class
+    rule, which the test above pins."""
+    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
+    spent, _, _, _ = dos_codec.write(_neutral(
+        shape.key, levels={"paladin": 5}, paladin_cures=0))
+    assert spent[f.offset] == 0
+    odd, _, _, _ = dos_codec.write(_neutral(
+        shape.key, levels={"fighter": 5}, paladin_cures=1))
+    assert odd[f.offset] == 1
+    none_held, _, _, _ = dos_codec.write(_neutral(
+        shape.key, levels={"paladin": 5}))
+    assert none_held[f.offset] == 1
+
+
+def test_pool_of_radiance_reports_a_cure_byte_it_cannot_keep():
+    _rec, _, _, rep = dos_codec.write(_neutral(
+        POOL.key, levels={"paladin": 5}, paladin_cures=1))
+    assert any("paladin_cures" in d and "no cure-disease byte" in d
+               for d in rep.dropped), rep.dropped
+
+
+@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+def test_a_dos_paladins_cure_byte_is_read_into_the_neutral_record(shape):
+    """The DOS reader names the byte in `DIRECT`, so a made-up record holding
+    1 arrives with `paladin_cures` 1 rather than without the field."""
+    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
+    raw = bytearray(shape.record_size)
+    raw[0] = 4
+    raw[1:5] = b"TEST"
+    raw[f.offset] = 1
+    out = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw), deltas=shape))
+    assert out.get("paladin_cures") == 1

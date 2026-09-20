@@ -158,6 +158,11 @@ FIELDS: dict[str, str] = {
                      "dice nor its abilities again, and a title that allows it "
                      "keeps the old level so the character can still be that "
                      "class in the parts of the rules that ask",
+    "paladin_cures": "the paladin's cure-disease bookkeeping, one byte: 1 "
+                     "for a paladin who may still cure and 0 otherwise. The "
+                     "engine clears it on a use rather than counting it "
+                     "down. Pool of Radiance keeps no such byte on either "
+                     "port",
     "levels_drained": "levels lost to undead and not yet restored",
     "hp_lost_to_drain": "hit points lost with those levels",
     "experience": "experience points",

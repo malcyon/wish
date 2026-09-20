@@ -551,10 +551,8 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
 
     `WISH-SPEC-ssb-234-party-pair` slot D through `editor.dosimport.rehearse`
     showed three lines before this pair of fixes -- two portrait, one
-    identity -- and shows neither kind now.  What it does show since
-    2026-09-06 is every line still on `goldbox.dos_codec.DROPPED` -- Donald:
-    *"Show others for now"* -- so this asserts the absence of the two
-    kinds rather than an empty list."""
+    identity -- and shows neither kind now.  The one line it does show is
+    the paladin's cure-disease count, which the C64 record has no byte for."""
     from editor.dosimport import GameFiles, rehearse
 
     folder = gamedata.specimen("ssb-234-party-pair")
@@ -563,7 +561,11 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
     for line in conversion.report.dropped:
         assert "portrait" not in line.lower(), line
         assert "identity" not in line.lower(), line
-    assert set(conversion.report.dropped) <= set(dos_codec.DROPPED_PLAYER_TEXT.values())
+    # The drop list is the developer's accounting, logged and never shown to
+    # a player, so one line is allowed: the paladin's cure-disease count,
+    # which the C64 record has no byte for.
+    paladin = "paladin_cures: " + dict(c64_codec.DROPPED)["paladin_cures"]
+    assert conversion.report.dropped == [paladin]
 
 
 # --- the engine's own rewrite, from this ticket's VICE session ---------------

@@ -1315,6 +1315,17 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("experience_per_hit_point", "experience_per_hit_point"),
 )
 
+#: The straight copies only the later titles have, split off :data:`DIRECT`
+#: the way :data:`LATER_TITLE_DROPPED` is split off :data:`DROPPED`: Pool of
+#: Radiance declares no such field, and `field_disposition` for it is built
+#: from the tables Pool of Radiance actually has.  The reader copies both
+#: tables; the writer's counterpart is :data:`WRITE_TRANSFORMED_LATER`.
+LATER_TITLE_DIRECT: tuple[tuple[str, str], ...] = (
+    # 1 for a paladin who may still cure, 0 otherwise; the engine clears it
+    # on a use rather than counting it down.
+    ("paladin_cures", "paladin_cures"),
+)
+
 #: DOS fields deliberately left behind, and why.  **Every one of these is
 #: reported, and every one reaches the player** through
 #: :data:`DROPPED_PLAYER_TEXT`.  Donald, 2026-09-06: *"do not show dropped
@@ -1487,17 +1498,6 @@ LATER_TITLE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 )
 
 LATER_TITLE_DROPPED: tuple[tuple[str, str], ...] = (
-    ("paladin_cures",
-     "the paladin's cure-disease bookkeeping, which the C64 record has "
-     "nowhere to keep: no byte of the C64 record is 1 for a paladin and 0 "
-     "for everybody else across the 78 C64 records this project holds, 12 "
-     "of them paladins, and the only two that separate paladins at all are "
-     "the class byte itself and one that tracks level. The DOS writer puts "
-     "back the value every engine-written paladin record holds, derived "
-     "from the class, so a converted paladin's record is the one the game "
-     "would have written. **What a player gains by it is not established**: "
-     "staged both ways in the running Silver Blades game the sheet offers "
-     "CURE either way, so the byte does not gate the command there"),
     ("highest_class_levels",
      "Pools of Darkness' third level array, the level to restore a drained "
      "character to. It has no neutral home, so a conversion out of this "
@@ -1620,7 +1620,7 @@ def field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     # is what keeps the row honest in the source, and is not part of what a
     # report says (#324).
     return neutral.disposition(
-        only(DIRECT),
+        only(DIRECT + LATER_TITLE_DIRECT),
         only(TRANSFORMED + LATER_TITLE_TRANSFORMED)
         + tuple((n, _PAIRED_ABILITY) for n in ABILITY_ORDER if n in paired),
         only(DROPPED + LATER_TITLE_DROPPED),
@@ -1834,7 +1834,7 @@ def to_neutral(dos: DosCharacter,
     # `dos.fields`, not the module-level table: the offset quoted in a
     # provenance line is this title's, and only Pool of Radiance's is the
     # module's.
-    for dos_name, _ in DIRECT:
+    for dos_name, _ in DIRECT + LATER_TITLE_DIRECT:
         if dos_name in ABILITY_ORDER:
             continue                      # a pair in three of the four titles
         if dos_name not in dos.fields:
@@ -2644,6 +2644,8 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("former_levels", "a Pool of Radiance record has no former-class "
                       "level array; that title does not let a character "
                       "change class."),
+    ("paladin_cures", "a Pool of Radiance record has no cure-disease byte "
+                      "on either port, so there is nowhere to put one."),
 )
 
 #: Why a neutral field is not written when the destination title's record has
@@ -3192,6 +3194,9 @@ WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
                       "the same way the current levels are, and the level "
                       "itself written again into the single byte after "
                       "`level` that the engine keeps it in (#234)"),
+    ("paladin_cures", "copied to the byte the title keeps it in, which the "
+                      "later titles declare and Pool of Radiance does not; a "
+                      "source with none gets the class rule instead"),
 )
 
 #: `field_83_87` is five bytes in Pool of Radiance and Curse of the Azure
@@ -3291,6 +3296,7 @@ WRITE_UNSOURCED_LATER: tuple[tuple[str, str], ...] = (
 #: and which `write` unpacks as a single row.
 WRITE_DERIVED_LATER: tuple[tuple[str, str], ...] = (
     ("paladin_cures",
+     "**only when the source holds no such byte**, which is a C64 source: "
      "1 for a character who is or was a paladin and 0 for everybody else, "
      "which is what every engine-written record holds: 8 paladins across "
      "four record shapes and six titles read 1 and 71 other characters read "
@@ -3407,6 +3413,7 @@ def write_targets(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     deltas = deltas_for(deltas)
     declared = set(FIELDS_BY_NAME_FOR[deltas.key])
     out = dict(WRITE_TARGETS)
+    out |= {name: f"derived: {why}" for name, why in WRITE_DERIVED_LATER}
     out |= {name: f"constant: {why}"
             for name, _, why in write_constants(deltas)}
     # The whole of `WRITE_DEFAULTS`, not the part Pool of Radiance declares:
@@ -3423,9 +3430,11 @@ def write_targets(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
             "ranger's level 8 and above for a source port whose own C64 "
             "engine never stores one -- Curse has no druid class, so this "
             "array is a ranger's druid spells (#548)",
+        "paladin_cures": "from neutral paladin_cures, the source's own byte "
+                         "-- and from the class rule when the source has "
+                         "none",
     }
     out |= {name: f"zero: {why}" for name, why in WRITE_UNSOURCED_LATER}
-    out |= {name: f"derived: {why}" for name, why in WRITE_DERIVED_LATER}
     return {n: w for n, w in out.items() if n in declared}
 
 
@@ -4482,19 +4491,27 @@ def write(char: NeutralCharacter,
         f = table[uname]
         rep.note(f.offset, f.size, f"{uname}: zero -- {why}")
 
-    # -- derived from the record ---------------------------------------------
-    # The paladin's cure-disease allowance, which the C64 has no byte for and
-    # the DOS engine's own character creation writes as 1.  Taken from the
-    # class the character holds *or* the class a dual-classed one left, the
-    # way the engine leaves it set for both.
+    # -- the paladin's cure-disease byte -------------------------------------
+    # Copied when the source holds one.  A C64 source has no such byte and a
+    # Pool of Radiance source never declared one, so those fall back to the
+    # class rule: 1 for a class the character holds *or* one a dual-classed
+    # character left, which is what the DOS engine's own character creation
+    # writes and how it leaves the byte after HUMAN CHANGE CLASSES.
     if "paladin_cures" in table:
         (_pal_name, _pal_why), = WRITE_DERIVED_LATER
         f = table[_pal_name]
-        was = dict(w.get("levels", {}) or {})
-        was.update(w.get("former_levels", {}) or {})
-        rec[f.offset] = 1 if was.get("paladin") else 0
-        rep.note(f.offset, f.size,
-                 f"{_pal_name}: {rec[f.offset]} -- {_pal_why}")
+        held = use(_pal_name)
+        if held is not None:
+            rec[f.offset] = min(int(held.value), 0xFF)
+            rep.note(f.offset, f.size,
+                     f"{_pal_name}: {rec[f.offset]} -- copied from the "
+                     f"source's own byte")
+        else:
+            was = dict(w.get("levels", {}) or {})
+            was.update(w.get("former_levels", {}) or {})
+            rec[f.offset] = 1 if was.get("paladin") else 0
+            rep.note(f.offset, f.size,
+                     f"{_pal_name}: {rec[f.offset]} -- {_pal_why}")
 
     # -- derived from the record, once everything else in it is written ------
     # Last, so the digest covers the finished record: a field written after

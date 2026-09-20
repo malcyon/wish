@@ -1764,7 +1764,7 @@ name `goldbox.dos_port.POOLS_OF_DARKNESS` gives the field.
 | `0x07C` | 2 | `exceptional_strength` pair; byte 0 in force, inferred from the later titles | importer |
 | `0x07E` | 1 | Silver Blades' `gap_069` | importer. UNKNOWN |
 | `0x07F` | 1 | `thac0_base` | importer; agrees with the DOS peer 12 of 12 |
-| `0x080` | 1 | `paladin_cures` | importer; 1 for both paladins, 0 for the other 17 |
+| `0x080` | 1 | `paladin_cures` | importer; 1 for both paladins, 0 for the other 17. Converted both ways since the neutral record gained the field: the reader takes it and the writer puts the source's own byte back, where it used to write 0 for both paladins |
 | `0x081` | 1 | `hp_max` | probe |
 | `0x082` | 1 | `icon_dimension` | importer; 1 in 19 of 19 |
 | `0x083` | 5 | the five saving throws | importer |
@@ -1968,7 +1968,7 @@ attack table by `0x130`.
 
 #### What it leaves
 
-`pod_to_neutral` fills **63 of the 75 neutral fields**, and 64 for a character
+`pod_to_neutral` fills **64 of the 77 neutral fields**, and 65 for a character
 with an effect running on him, since `granted_effects` is set only when there
 is one. The eleven it names on `pod_read_dropped()`: nine this title stores on
 neither port, `attack_level` above, and `innate_effects` — a label rather than
@@ -2036,7 +2036,7 @@ in the file would be where the loader expected it otherwise.
 | `encumbrance`, `thac0_current`, `armour_class`, `movement_current` | the game recomputes them on load, each demonstrated by a probe that wrote a wrong value and read the right one back off the sheet |
 | `armour_class_base`, `0x0B3` | written as the unarmoured `60 - 10`, which is what 19 of 19 `.pc` files — whose characters all carry items — and 12 of 12 DOS records hold |
 | `roster_tail`, `0x188` | three of its nine bytes are in the recomputed set; the rest has not been watched being rebuilt |
-| bytes no neutral field names, all left zero | `paladin_cures` `0x080` (1 for both paladins on the disks, 0 for the other 17: a converted paladin's count does not convert, and the vocabulary has no field for it), `icon_dimension` `0x082` (1 in 19 of 19), `unnamed_1a4` `0x0C5`-`0x0C6` (`02 02` in 19 of 19), the stale item count `0x0C7`, `hands_used` `0x0C8` (2 in 18 of 19) and `gap_19a` `0x0C9` (2 in 5 of 19, 0 in the other 14; its neighbour `0x0CA` is 0 in 19 of 19) |
+| bytes no neutral field names, all left zero | `icon_dimension` `0x082` (1 in 19 of 19), `unnamed_1a4` `0x0C5`-`0x0C6` (`02 02` in 19 of 19), the stale item count `0x0C7`, `hands_used` `0x0C8` (2 in 18 of 19) and `gap_19a` `0x0C9` (2 in 5 of 19, 0 in the other 14; its neighbour `0x0CA` is 0 in 19 of 19) |
 
 **`icon_dimension` and `0x0C5`-`0x0C6` are values every one of the 19 records holds, and `hands_used` is 2 in 18 of them; the writer leaves all three zero.** Now that readied items are written, `hands_used` 0 beside a readied weapon is a state no genuine record shows. What any of these zeros does to the game is **unmeasured**: nothing has loaded a record with them zero and looked at the sheet or fought with it, so the table does not call them harmless.
 

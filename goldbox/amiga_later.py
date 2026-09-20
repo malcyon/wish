@@ -611,9 +611,9 @@ def party_in_savegame(data: bytes, deltas: AmigaDeltas) -> list[AmigaCharacter]:
 #     `AMIGA_LATER_STATUS_FIELD` above for the two string tables.
 #
 #: Fields of the title's DOS table with a neutral home of the same name.
-#: Taken from `goldbox.dos_codec.DIRECT` at call time rather than copied, because a
-#: field that changes meaning there must not go on meaning the old thing here.
-#: Every one of the forty-seven is in both later titles' tables.
+#: Taken from `goldbox.dos_codec.DIRECT` and `LATER_TITLE_DIRECT` at call time
+#: rather than copied, because a field that changes meaning there must not go on
+#: meaning the old thing here. Every one of them is in both later titles' tables.
 #:
 #: **A field leaving `goldbox.dos_codec.DIRECT` leaves this reader too, in silence**,
 #: which is how `class_bits` came to be dropped (#292); the two tests that
@@ -743,12 +743,6 @@ LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
                    "caster: 0 for every player character, and the neutral "
                    "record has no field for it. The DOS reader drops it for "
                    "the same reason (#297, docs/178-turning-undead.md)"),
-    ("paladin_cures", "how many times the paladin may still CURE DISEASE, "
-                      "named in `goldbox/dos_port.py` from the Curse "
-                      "decompilation and measured 1 for every paladin and 0 "
-                      "for everybody else. The neutral record has no field "
-                      "for it, so nothing here can take it; the DOS writer "
-                      "derives it from the class instead (#299)"),
 )
 
 _LATER_ACCOUNT = dict(LATER_ACCOUNTED)
@@ -757,7 +751,7 @@ _LATER_ACCOUNT = dict(LATER_ACCOUNTED)
 LATER_DERIVED: tuple[tuple[str, str], ...] = tuple(
     (name, _LATER_ACCOUNT[name]) for name in (
         "item_chain", "item_count", "effect_chain", "heap_104",
-        "hands_used", "strength_bonus", "paladin_cures"))
+        "hands_used", "strength_bonus"))
 
 #: Values measured as fixed across every Amiga record of these two titles
 #: this project can read -- 15 Curse and 6 Silver Blades, plus the 70
@@ -844,7 +838,7 @@ def later_field_disposition(deltas: AmigaDeltas) -> dict[str, str]:
     from . import dos_codec as _dos
 
     declared = {f.name for f in dos_port.layout_for(deltas.dos)}
-    direct = [(n, n) for n, _ in _dos.DIRECT
+    direct = [(n, n) for n, _ in _dos.DIRECT + _dos.LATER_TITLE_DIRECT
               if n in declared and n not in _dos.ABILITY_ORDER]
     # `attack_level` is a copy for both titles this reader serves though it
     # is no longer on the DOS reader's own `DIRECT` (#527): see the block in
@@ -895,7 +889,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
             f"({identity.confidence})",
             identity.confidence)
 
-    for name, _ in _dos.DIRECT:
+    for name, _ in _dos.DIRECT + _dos.LATER_TITLE_DIRECT:
         if name in _dos.ABILITY_ORDER:
             continue                      # a (base, current) pair; see below
         f = table[name]

@@ -431,6 +431,7 @@ CONFIDENCE = {
     # keeps what a writer puts there is :data:`DERIVED`'s question and a
     # different one.
     "thac0_base": "CONFIRMED",
+    "paladin_cures": "CONFIRMED",
     "thac0_current": "CONFIRMED",
     "hp_rolled": "CONFIRMED",
     "movement_current": "CONFIRMED",
@@ -1015,6 +1016,8 @@ class PodWriter:
     quickfight: bool = False
     #: The scalars the record is decoded for, written when the caller has one.
     thac0_base: int | None = None
+    #: A paladin's cure-disease byte, written only when the source holds one.
+    paladin_cures: int | None = None
     hit_points_rolled: int | None = None
     identity: int | None = None
     experience_award: int | None = None
@@ -1137,6 +1140,7 @@ class PodWriter:
                      (ACTIVE, 1, "active"), (QUICKFIGHT, 1, "quickfight")])
         for value, at, width, what in (
                 (self.thac0_base, THAC0_BASE, 1, "thac0_base"),
+                (self.paladin_cures, PALADIN_CURES, 1, "paladin_cures"),
                 (self.hit_points_rolled, HP_ROLLED, 1, "hit_points_rolled"),
                 (self.identity, UNNAMED_0AB, 1, "identity"),
                 (self.experience_award, EXPERIENCE_AWARD, 2,
@@ -1254,6 +1258,7 @@ class PodWriter:
         out[ACTIVE] = int(bool(self.active))
         out[QUICKFIGHT] = int(bool(self.quickfight))
         for value, at in ((self.thac0_base, THAC0_BASE),
+                          (self.paladin_cures, PALADIN_CURES),
                           (self.hit_points_rolled, HP_ROLLED),
                           (self.identity, UNNAMED_0AB),
                           (self.size, SIZE),
@@ -1532,6 +1537,10 @@ POD_WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 #: copies of each score -- so a table asserting that every source supplies them
 #: would be asserting something no port does.
 POD_WRITE_WHEN_PRESENT: tuple[tuple[str, str], ...] = (
+    ("paladin_cures", "the byte at 0x080 unchanged: 1 for a paladin who may "
+                      "still cure, 0 otherwise. Only a source that keeps one "
+                      "has a value to give, so a Pool of Radiance record, "
+                      "which has none, leaves it 0"),
     ("former_levels", "the seven-slot array at 0x0A4, named the same way as "
                       "the current levels, and the level he left his old "
                       "class at into 0x08A -- which is what the engine's own "
@@ -1736,6 +1745,8 @@ POD_READ_DIRECT: tuple[tuple[str, str], ...] = (
      "armour_class_base, the .pc's byte at 0x0B3, which is the unarmoured "
      "60 - 10 = 50 in 19 of 19 records"),
     ("thac0_base", "thac0_base, the .pc's byte at 0x07F, stored 60 - value"),
+    ("paladin_cures", "paladin_cures, the .pc's byte at 0x080: 1 for both "
+                      "paladins on the disks and 0 for the other 17"),
     ("thac0_current", "thac0_current, the .pc's byte at 0x186"),
     ("hp_rolled", "hp_rolled, the .pc's byte at 0x0B8"),
     ("movement_current", "movement_current, the .pc's byte at 0x192"),
@@ -1891,7 +1902,7 @@ def pod_field_disposition() -> dict[str, str]:
     and the test that keeps this half honest: a field `goldbox/neutral.py` declares
     and this names nowhere would be one dropped in silence.
 
-    This reader fills 63 of the 75 neutral fields, and 64 for a character
+    This reader fills 64 of the 77 neutral fields, and 65 for a character
     with something running on him.  The eleven names it takes nothing from:
     **nine** are fields this *title* stores on neither port, **one** is
     `attack_level`, which its engine works out from the class level rather
@@ -1957,6 +1968,8 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
                                  "exceptional_strength"),
         # -- what #462 decoded, off the engine's own Silver Blades importer -
         "thac0_base": (char.thac0_base, THAC0_BASE, "thac0_base"),
+        "paladin_cures": (char.raw[PALADIN_CURES], PALADIN_CURES,
+                          "paladin_cures"),
         "thac0_current": (char.thac0_current, THAC0_CURRENT,
                           "thac0_current"),
         "hp_rolled": (char.hit_points_rolled, HP_ROLLED, "hp_rolled"),
@@ -2515,6 +2528,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         active=flag("active", True),
         quickfight=flag("quickfight"),
         thac0_base=opt("thac0_base"),
+        paladin_cures=opt("paladin_cures"),
         hit_points_rolled=opt("hp_rolled"),
         identity=opt("unnamed_0ab"),
         experience_award=opt("experience_award"),
@@ -2658,6 +2672,7 @@ _SOURCE_OF: dict[str, str] = {
     "active": "active",
     "quickfight": "quickfight",
     "thac0_base": "thac0_base",
+    "paladin_cures": "paladin_cures",
     "hit_points_rolled": "hp_rolled",
     "identity": "unnamed_0ab",
     "experience_award": "experience_award",
