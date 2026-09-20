@@ -7303,8 +7303,9 @@ def new_dos_save_from(state: "world_state.WorldState",
     # is only known at the end.  So the write goes to a staging directory on
     # the same filesystem and `out` is not touched at all unless the count is
     # zero.
-    # The title is looked up, and refused if the writer has no container for
-    # it, before any directory is made, so a refusal leaves no empty `out`.
+
+    # The lookup runs first: a title with no container is refused here, before
+    # `out` is made, so a refusal leaves no empty directory behind.
     c64 = _c64_game_of(state)
     out = pathlib.Path(out)
     out.mkdir(parents=True, exist_ok=True)

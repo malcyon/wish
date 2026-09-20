@@ -34,7 +34,8 @@ A run saves four screenshots under `--out` (`1-before.png`, `2-question.png`,
 `3-after-second-hop.png`, `4-after-walk.png`) and writes `result.json` with
 `second_hop_seconds` -- the seconds from `ft.run` returning to the area byte
 reading the destination, None when there was no second hop -- and
-`total_seconds`. After a PASS the party walks a few steps each way and opens
+`total_seconds`, which runs from before the slot is claimed to the landing and
+so includes staging and boot. After a PASS the party walks a few steps each way and opens
 and closes the first character's sheet before teardown; a walk that fails is
 its own FAIL and leaves the earlier verdict as it was.
 
@@ -78,7 +79,8 @@ SHOTS = {"before": "1-before.png", "question": "2-question.png",
 
 #: Two steps in each of four directions. Outdoors those are compass digits
 #: (north, east, south, west -- `tools.c64.session.COMPASS`); indoors a turn is
-#: a move of its own, so each leg turns right and then goes forward twice.
+#: a move of its own, so `IIKIIKIIKII` goes forward twice, then turns three
+#: times with two steps forward after each.
 WALK_OUTDOORS = "11335577"
 WALK_INDOORS = "IIKIIKIIKII"
 
@@ -405,7 +407,12 @@ def run(args) -> int:
               flush=True)
         return 0 if walk_ok else 1
     finally:
-        (out / "result.json").write_text(json.dumps(result, indent=1))
+        # A result that cannot be written must not stop the teardown below, or
+        # the emulator slot leaks.
+        try:
+            (out / "result.json").write_text(json.dumps(result, indent=1))
+        except Exception as e:                           # noqa: BLE001
+            print(f"  result.json failed: {e}", flush=True)
         if target is not None:
             try:
                 target.close()

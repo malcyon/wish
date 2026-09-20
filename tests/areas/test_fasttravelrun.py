@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import pathlib
 import sys
+import types
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
@@ -386,3 +387,60 @@ def test_answer_and_wait_calls_on_question_then_stamps_the_landing(monkeypatch):
     assert hop is None
     assert order == ["question"] and sess.chosen == ["YES"]
     assert marks["landed"] == 142.5
+
+
+class _RunSession:
+    def __init__(self, *a, **k):
+        self.terminated = False
+
+    def boot(self):
+        return True
+
+    load_save = boot
+
+    def wait_for_world(self, timeout):
+        return True
+
+    def select_row(self, label):
+        return True
+
+    def settle(self, n):
+        pass
+
+    def terminate(self):
+        self.terminated = True
+
+
+def test_a_result_that_cannot_be_written_still_tears_the_slot_down(
+        monkeypatch, tmp_path):
+    events = []
+    slot = types.SimpleNamespace(
+        n=1, display=":1", dir=str(tmp_path),
+        teardown=lambda: events.append("teardown"),
+        release=lambda: events.append("release"))
+    sess = _RunSession()
+    monkeypatch.setattr(FT.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(FT.S, "stage_disks", lambda *a, **k: "boot")
+    monkeypatch.setattr(FT.S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(FT.S, "Session", lambda *a, **k: sess)
+    monkeypatch.setattr(FT, "party", lambda s: [])
+    monkeypatch.setattr(FT, "area_of", lambda s: 13)
+    monkeypatch.setattr(FT, "shoot", lambda *a, **k: None)
+    monkeypatch.setattr(FT, "ViceTarget", lambda: types.SimpleNamespace(
+        close=lambda: None))
+
+    class Trip:
+        pending = None
+
+        def run(self, target, area):
+            # A message that is not JSON, so `result` cannot be serialised.
+            return types.SimpleNamespace(ok=False, message=object())
+
+    monkeypatch.setattr(FT, "A", types.SimpleNamespace(
+        FastTravel=Trip, area_by_id=lambda n: n))
+    args = types.SimpleNamespace(
+        out=str(tmp_path / "out"), slot=None, disks=str(tmp_path),
+        save=str(tmp_path / "save.d64"), from_area=13, to_area=27,
+        member="FATIMA", arrive=1.0, answer_timeout=1.0)
+    assert FT.run(args) == 1
+    assert sess.terminated and events == ["teardown", "release"]
