@@ -237,6 +237,70 @@
       loop_control:
         label: "{{ item.key }}"
 
+# Keep the welcome screen quiet without taking ownership of the rest of the
+# login-created Codex configuration.
+- name: Codex terminal settings
+  tags: codex
+  block:
+    # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor.
+    # Use Ubuntu's packaged Bubblewrap profile so Codex keeps that restriction
+    # globally while its Linux sandbox can create the namespace it needs.
+    - name: Install Codex sandbox AppArmor support
+      ansible.builtin.apt:
+        name:
+          - apparmor-profiles
+          - apparmor-utils
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      become: true
+
+    - name: Install Ubuntu's Bubblewrap user-namespace profile
+      ansible.builtin.copy:
+        src: /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+        dest: /etc/apparmor.d/bwrap-userns-restrict
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+      notify: Reload Bubblewrap AppArmor profile
+
+    - name: Apply the Bubblewrap profile before Codex starts
+      ansible.builtin.meta: flush_handlers
+
+    - name: Ensure the Codex configuration file exists
+      ansible.builtin.file:
+        path: "{{ ansible_user_dir }}/.codex/config.toml"
+        state: touch
+        mode: "0600"
+        access_time: preserve
+        modification_time: preserve
+
+    - name: Look for an existing Codex TUI section
+      ansible.builtin.command: >-
+        grep -q '^\[tui\]$' {{ ansible_user_dir }}/.codex/config.toml
+      register: agent_guest_codex_tui_section
+      changed_when: false
+      failed_when: agent_guest_codex_tui_section.rc not in [0, 1]
+
+    - name: Disable Codex welcome-screen tips in the existing TUI section
+      ansible.builtin.lineinfile:
+        path: "{{ ansible_user_dir }}/.codex/config.toml"
+        regexp: '^show_tooltips\s*='
+        insertafter: '^\[tui\]$'
+        line: 'show_tooltips = false'
+      when: agent_guest_codex_tui_section.rc == 0
+
+    - name: Add Codex terminal settings when no TUI section exists
+      ansible.builtin.blockinfile:
+        path: "{{ ansible_user_dir }}/.codex/config.toml"
+        marker: "# {mark} ANSIBLE MANAGED CODEX TUI"
+        block: |
+          [tui]
+          show_tooltips = false
+      when: agent_guest_codex_tui_section.rc == 1
+
 # --- VICE -------------------------------------------------------------------
 
 - name: VICE

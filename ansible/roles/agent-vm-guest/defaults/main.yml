@@ -68,6 +68,9 @@ agent_guest_apt_packages:
   - unzip
   - qemu-guest-agent
   - jq                     # read by the Claude Code status line script
+  # Codex's Bubblewrap sandbox needs Ubuntu's packaged user-namespace profile.
+  - apparmor-profiles
+  - apparmor-utils
   # Syntax-checking and linting wish's own sandbox playbooks under ansible/.
   - ansible
   - ansible-lint
@@ -139,11 +142,13 @@ agent_guest_release_tools:
     archive: false
   codex:
     repo: openai/codex
-    asset: codex-x86_64-unknown-linux-musl.tar.gz
-    binary: codex-x86_64-unknown-linux-musl
+    # The package includes the Code Mode host beside the CLI. Installing the
+    # CLI-only archive leaves Code Mode enabled but unable to start.
+    asset: codex-package-x86_64-unknown-linux-musl.tar.gz
+    binary: bin/codex
     archive: true
-# Versions kept on disk, each about 270 MB for Codex: the newest, and the one
-# before it.
+# Versions kept on disk, each a few hundred MB for Codex: the newest, and the
+# one before it.
 agent_guest_release_keep: 2
 agent_guest_release_schedule: weekly
 

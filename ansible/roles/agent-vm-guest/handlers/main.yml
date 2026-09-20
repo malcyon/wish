@@ -1,0 +1,6 @@
+---
+- name: Reload Bubblewrap AppArmor profile
+  ansible.builtin.command:
+    cmd: apparmor_parser --replace /etc/apparmor.d/bwrap-userns-restrict
+  become: true
+  changed_when: true
