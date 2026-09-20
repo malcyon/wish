@@ -7,6 +7,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_abilitypair.py` | Checks which of the later C64 titles' two ability arrays the engine treats as current, through the carrying-capacity index it writes back. |
 | `test_abilitypaircross.py` | Checks that a crossed DOS ability pair keeps its permanent and in-force halves apart converting to the neutral record, to the C64 and back. |
 | `test_boundary.py` | Checks that the boundary characters from `tools/records/boundarychars.py` write and read back whole in DOS and that every active field has a boundary value. |
+| `test_boundary_c64.py` | Checks that the boundary characters from `tools/records/boundarywidths.py` write and read back whole through the C64 writer in all three titles and that a value past a field's width is refused or stops at the ceiling. |
 | `test_carryceiling.py` | Checks that `tools/records/carryceiling.py` counts what a character carries against the C64's item and trait-slot ceilings. |
 | `test_coabsource.py` | Checks that the `STING` cheat string sits on the C64 disks only inside other words and that the `coab` decompilation's DOS record sizes and import behaviour match ours. |
 | `test_communityformats.py` | Checks that saving throws, castable spells, damage type and armour protection decode the way a community spreadsheet said. |
