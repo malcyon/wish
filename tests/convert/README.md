@@ -28,6 +28,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_neutral.py` | Checks the neutral character record and the codecs around it: what is written unchanged, what is reported and what is refused. |
 | `test_podconvert.py` | Checks converting a DOS Pools of Darkness character to the Amiga and back. |
 | `test_poolwisdombonus.py` | Checks that a converted DOS Pool of Radiance cleric with wisdom 12 or 13 gets the C64's own first-level spell count. |
+| `test_rewrite.py` | Checks that a DOS or Amiga character written back with nothing edited is byte-identical and that an edited field lands while the engine's own bytes survive everywhere else, on generated records and on every specimen. |
 | `test_runningeffects.py` | Checks that a spell with time left keeps its minutes going DOS to Amiga and back, in every Amiga title, on both byte orders. |
 | `test_ssbconvert.py` | Checks a DOS Secret of the Silver Blades save converting to a C64 one, the twin of the Curse file. |
 | `test_toamigapor.py` | Checks that `tools/amiga/toamigapor.py` writes a C64 or DOS party into an Amiga Pool of Radiance save slot. |

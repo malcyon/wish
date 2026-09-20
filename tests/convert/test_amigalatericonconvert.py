@@ -102,12 +102,12 @@ def test_icon_head_body_and_colours_are_named_transformed_not_dropped():
 
 
 # ---------------------------------------------------------------------------
-# Amiga -> DOS: editor.convert.amiga_combat_icon, verified for Curse and
+# Amiga -> DOS: goldbox.iconparts.amiga_combat_icon, verified for Curse and
 # Silver Blades rather than assumed from Pool of Radiance
 # ---------------------------------------------------------------------------
 
 def test_amiga_combat_icon_reads_curse_and_silver_blades_records_too():
-    """`editor.convert.amiga_combat_icon` was written for Amiga Pool of
+    """`goldbox.iconparts.amiga_combat_icon` was written for Amiga Pool of
     Radiance (#354) and this is the check that it needs no change to read a
     Curse or Silver Blades `AmigaCharacter` as well -- it does, once `.get()`
     replaces `.raw()` for the colours (`AmigaCharacter` has no `.raw(name)`
@@ -118,7 +118,7 @@ def test_amiga_combat_icon_reads_curse_and_silver_blades_records_too():
     nothing about a character who chose his own -- so this checks all 21,
     named individually where it matters below.
     """
-    from editor.convert import amiga_combat_icon
+    from goldbox.iconparts import amiga_combat_icon
 
     seen = 0
     for label, char in _all_characters():
@@ -142,7 +142,7 @@ def test_a_default_colours_character_and_a_customised_one_both_convert():
     exactly the bytes their own record holds, which a test that only ever
     saw the default could not tell apart from a bug that always writes it.
     """
-    from editor.convert import amiga_combat_icon
+    from goldbox.iconparts import amiga_combat_icon
 
     by_name = {c.name.strip().upper(): c for c in curse_characters()}
     default = bytes((0x91, 0xA2, 0xB3, 0xC4, 0xE6, 0xF7))
@@ -163,8 +163,8 @@ def test_amiga_combat_icon_written_through_dos_write_matches_the_source():
     already proves this for a synthetic record; this is the same claim on
     two real ones.
     """
-    from editor.convert import amiga_combat_icon
     from goldbox import dos_codec
+    from goldbox.iconparts import amiga_combat_icon
 
     for label, chars in (("Curse", curse_characters()),
                         ("Silver Blades", silver_blades_characters())):

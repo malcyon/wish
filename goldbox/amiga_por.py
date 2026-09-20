@@ -867,7 +867,7 @@ def write_por(char: NeutralCharacter,
     `goldbox.dos_codec.write`'s own `icon` argument, the same bypass
     `goldbox.amiga_later.write_later` takes for Curse and Silver Blades (#396,
     #319, docs/199-amiga-combat-icons.md).  Build one with
-    `editor.convert.amiga_combat_icon` for an Amiga or DOS source, or with
+    `goldbox.iconparts.amiga_combat_icon` for an Amiga or DOS source, or with
     `goldbox.iconparts.IconParts.dos_icon_from_c64` for a C64 source
     (#422).  With none given, `icon_head` and `icon_body` are written zero
     and `icon_colours` the game's own freshly-made default, exactly as

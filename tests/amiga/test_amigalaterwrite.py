@@ -314,7 +314,7 @@ def test_no_line_a_player_reads_carries_an_offset():
 # ---------------------------------------------------------------------------
 
 def _round_trip(label: str, char: amiga_later.AmigaCharacter) -> None:
-    from editor.convert import amiga_combat_icon
+    from goldbox.iconparts import amiga_combat_icon
 
     # `#396 (Whether an Amiga Curse or Silver Blades record's combat-icon
     # fields share DOS's own numbering is unmeasured)`: the source record's

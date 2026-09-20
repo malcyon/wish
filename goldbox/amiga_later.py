@@ -637,7 +637,7 @@ def party_in_savegame(data: bytes, deltas: AmigaDeltas) -> list[AmigaCharacter]:
 #: `dropped`). The neutral vocabulary has nowhere to put a combat figure --
 #: the C64 stores drawn cells, not an index -- so both readers leave these
 #: three silent and the actual conversion is a raw-record bypass:
-#: `editor.convert.amiga_combat_icon` reads them straight off this
+#: `goldbox.iconparts.amiga_combat_icon` reads them straight off this
 #: `AmigaCharacter` (or off a `DosCharacter`, for Pool of Radiance) and hands
 #: the result to `goldbox.dos_codec.write`'s own `icon` argument, which
 #: `write_later` below now takes too (#396, #319,
@@ -684,7 +684,7 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
                   "binaries carry (#396, docs/199-amiga-combat-icons.md). "
                   "Converted the way `goldbox.dos_codec`'s own icon_head is -- "
                   "the caller who has a raw record in hand builds a "
-                  "`goldbox.iconparts.DosIcon` from it (`editor.convert."
+                  "`goldbox.iconparts.DosIcon` from it (`goldbox.iconparts."
                   "amiga_combat_icon`) rather than through this reader's "
                   "own neutral vocabulary, which has nowhere to put a "
                   "combat figure (#379)"),
@@ -1588,7 +1588,7 @@ def write_later(char: NeutralCharacter,
     written: the neutral vocabulary has nowhere to put a combat figure, so
     `LATER_TRANSFORMED`'s entries for these three names describe this
     bypass rather than anything this function's own body does with `char`.
-    Build one with `editor.convert.amiga_combat_icon`, which reads the
+    Build one with `goldbox.iconparts.amiga_combat_icon`, which reads the
     numbers straight off a source record that already stores DOS's own
     ones -- an `AmigaCharacter` of either later title, or a `DosCharacter`
     for Pool of Radiance -- or with `goldbox.iconparts.IconParts.

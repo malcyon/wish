@@ -348,7 +348,7 @@ def test_the_party_arrives_with_its_own_combat_figures(shipped_adf, tmp_path):
     index -- so a party read into neutral records and written straight back
     out arrives with six identical default figures, which is
     `#130 (A converted DOS party arrives with six identical combat figures,
-    not its own)` in this direction. `editor.convert.amiga_combat_icon` is
+    not its own)` in this direction. `goldbox.iconparts.amiga_combat_icon` is
     what stops it.
 
     **This fails without that argument**: drop the `icons=` from

@@ -8,7 +8,7 @@ combat figure at all, because C64ToAmiga never recognises it)).
 share DOS's own numbering is unmeasured)` and `#319 (The Amiga export's drop
 line still says a conversion "does not carry" a combat icon)` already gave
 `goldbox.amiga_later.write_later` an `icon` argument and wired it through
-`editor.convert.amiga_combat_icon` for Curse and Silver Blades. This file is
+`goldbox.iconparts.amiga_combat_icon` for Curse and Silver Blades. This file is
 the same fix for Pool of Radiance's own writer, `goldbox.amiga_por.write_por`,
 which `#383 (The live Convert dialog never wires a C64 party's own combat
 icon into DOS, so region_220 stays on the drop list)` proves the shape of on

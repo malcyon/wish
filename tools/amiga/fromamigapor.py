@@ -130,7 +130,7 @@ def build_dos(disk, slot: str, game: pathlib.Path,
     `goldbox.dos_codec.new_dos_save_from`, which raises rather than write a save
     with a byte in it nobody sourced.
 
-    `editor.convert.amiga_combat_icon` is what keeps each character's own
+    `goldbox.iconparts.amiga_combat_icon` is what keeps each character's own
     combat figure: the neutral record has nowhere to put `icon_head`,
     `icon_body` and `icon_colours`, and an Amiga record holds all three at
     the DOS offsets already.
@@ -141,7 +141,7 @@ def build_dos(disk, slot: str, game: pathlib.Path,
     still runs in a scratch directory, so `--no-write --report` says what
     the save would account for.
     """
-    from editor.convert import amiga_combat_icon
+    from goldbox.iconparts import amiga_combat_icon
 
     party, state = read_slot(disk, slot)
     characters = [dos_codec.to_neutral(c) for c in party]

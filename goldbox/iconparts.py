@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import pathlib
 from dataclasses import dataclass
+from typing import Any
 
 import yaml
 
@@ -390,7 +391,7 @@ class IconChoice:
 class DosIcon:
     """A combat figure ready to write into a DOS record, and where it came
     from -- built by :meth:`IconParts.dos_icon_from_c64` for a C64 source
-    (#320) and by `editor.convert.amiga_combat_icon` for an Amiga one, whose
+    (#320) and by :func:`amiga_combat_icon` for an Amiga one, whose
     record already stores these bytes and has no C64 icon behind it (#379).
 
     `figure_source` and `colours_source` are what `goldbox.dos_codec.write`'s
@@ -416,6 +417,63 @@ class DosIcon:
     #: a weapon or head option `recognise` chose, so there is no real
     #: `IconChoice` to put here (#379).
     choice: "IconChoice | None" = None
+
+
+def amiga_combat_icon(char: Any) -> DosIcon:
+    """One Amiga character's own combat figure, in the DOS record's terms.
+
+    Any of the three Amiga Gold Box titles keeps `icon_head`, `icon_body`
+    and the six `icon_colours` bytes at the same DOS offsets its own
+    `.get()` reads through -- `goldbox.amiga_por.AmigaPorCharacter` re-cuts a
+    Pool of Radiance record into the DOS one (`goldbox.amiga_por.to_dos_record`,
+    #354) and `goldbox.amiga_later.AmigaCharacter` reads a Curse or Silver Blades
+    one through its own shift map (#396, docs/199-amiga-combat-icons.md) --
+    so the figure a player drew on the Amiga is already the number DOS
+    stores, in all three titles: nothing is recognised, composed or looked
+    up. `char` is duck-typed to either -- and to `goldbox.dos_codec.DosCharacter`,
+    which shares the same `.get()`.  What it is **not** is a neutral field:
+    `goldbox.dos_codec.to_neutral` and `goldbox.amiga_later.to_neutral_later` both have
+    nowhere to put it, since the C64 stores drawn cells rather than an
+    index, so a party read into neutral records and written back out would
+    arrive with six identical default figures.  That is `#130 (A converted
+    DOS party arrives with six identical combat figures, not its own)` in
+    this direction, and this is what stops it: `goldbox.dos_codec.write`'s own
+    `icon` argument, which bypasses the neutral vocabulary for exactly this
+    reason, and which `goldbox.amiga_later.write_later` now takes as well.
+
+    **`figure_source` and `colours_source` say so**, rather than the sentence
+    `goldbox.dos_codec.write` used to build unconditionally around any `DosIcon`,
+    which claimed every figure was recognised off eighteen C64 screen codes
+    -- true for `IconParts.dos_icon_from_c64`'s own `DosIcon` and false for
+    this one. `#379 (The DOS writer's byte accounting says an Amiga party's
+    combat figure was recognised off C64 screen codes)` moved that sentence
+    here, to the builder that knows which port it is describing.
+
+    **`choice` is left `None`.** It answers :meth:`IconParts.recognise`'s
+    question -- which C64 weapon and head option drew this icon -- and an
+    Amiga source has no C64 icon behind it to have recognised one from;
+    `body` and `head` are DOS numbers already, not menu positions in either
+    of the C64's two option lists, so there is no real `IconChoice` to
+    construct.
+    """
+    head, body = char.get("icon_head"), char.get("icon_body")
+    figure_source = (
+        "the Amiga source record's own combat icon, already stored as "
+        "these DOS icon_head/icon_body numbers and copied across unchanged "
+        "(#354, #396, the goldbox.amiga_* codecs)")
+    colours_source = (
+        "the Amiga source record's own combat icon colours, already "
+        "stored as these DOS icon_colours pairs and copied across "
+        "unchanged (#354, #396, the goldbox.amiga_* codecs)")
+    # `.get()`, not `.raw()`: a `DosCharacter`'s two methods return the same
+    # bytes for a RAW-kind field like `icon_colours`, but `AmigaCharacter`
+    # (Curse and Silver Blades, #396) has no `.raw(name)` method -- its own
+    # `raw` is the record's bytes, not a lookup -- so `.get()` is the one
+    # spelling that works on every port this function is handed.
+    return DosIcon(head=head, body=body,
+                   colours=bytes(char.get("icon_colours")),
+                   figure_source=figure_source,
+                   colours_source=colours_source)
 
 
 @dataclass(frozen=True)

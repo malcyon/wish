@@ -5,7 +5,7 @@ figure was recognised off C64 screen codes)`.
 was handed had been read back off eighteen C64 screen codes and looked up
 through `tools/icons/iconreverse.yaml`, whatever port actually built it. An Amiga
 Pool of Radiance record stores `icon_head`, `icon_body` and `icon_colours` at
-the same offsets DOS does, so `editor.convert.amiga_combat_icon` copies the
+the same offsets DOS does, so `goldbox.iconparts.amiga_combat_icon` copies the
 numbers across unchanged -- nothing is recognised, composed or looked up, and
 the sentence named a route the bytes did not take.
 
@@ -23,7 +23,7 @@ from goldbox.iconparts import IconParts, c64_icon_tables
 
 def _synthetic_dos_char(head: int, body: int, colours: bytes, size: int = 2):
     """A `goldbox.dos_codec.DosCharacter` carrying nothing but a combat figure --
-    enough for `editor.convert.amiga_combat_icon`, which reads only
+    enough for `goldbox.iconparts.amiga_combat_icon`, which reads only
     `icon_head`, `icon_body`, `icon_colours` and `size`.
 
     `amiga_combat_icon` takes the `DosCharacter` `goldbox.amiga_por.
@@ -46,7 +46,7 @@ def _synthetic_dos_char(head: int, body: int, colours: bytes, size: int = 2):
 def test_an_amiga_sourced_icon_report_names_no_c64_mechanism():
     """Watched failing before the fix: the line read exactly the C64
     sentence below, off an icon nothing had recognised."""
-    from editor.convert import amiga_combat_icon
+    from goldbox.iconparts import amiga_combat_icon
 
     icon = amiga_combat_icon(
         _synthetic_dos_char(head=5, body=9, colours=bytes.fromhex(
@@ -104,7 +104,7 @@ def test_a_c64_sourced_icon_report_is_unchanged():
 
 def test_written_bytes_are_the_icon_numbers_either_way():
     """The prose changed; the bytes did not, for either source."""
-    from editor.convert import amiga_combat_icon
+    from goldbox.iconparts import amiga_combat_icon
 
     f_head = dos_port.FIELDS_BY_NAME["icon_head"]
     f_body = dos_port.FIELDS_BY_NAME["icon_body"]

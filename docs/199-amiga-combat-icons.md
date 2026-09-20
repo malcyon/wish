@@ -173,7 +173,7 @@ same fields:
 | `icon_colours` | converted -- the same six pairs | `TRANSFORMED` |
 | `icon_dimension` | 1 for every player character, and the C64 has one size byte where DOS has two | `DROPPED`, with **no player text** -- Donald, 2026-09-06: *"All PCs are the same size, so it doesn't matter. Just leave that line out during conversions."* |
 
-`editor/convert.py`'s `amiga_combat_icon` is the shape of the first three, and
+`goldbox/iconparts.py`'s `amiga_combat_icon` is the shape of the first three, and
 was written for Amiga Pool of Radiance on exactly this reasoning
 (`#354 (Convert an Amiga Pool of Radiance save to DOS, so a party standing in
 the Slums on the Amiga arrives there under DOSBox)`); this page is what says
