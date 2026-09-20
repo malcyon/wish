@@ -2053,13 +2053,16 @@ class FastTravel(Action):
             route = fasttravel.EXIT_ROUTES.get((here, to))
             if route is not None:
                 return self._run_via_exit(target, addr, area, here, to, route)
-            # One door and it is not the destination's: walk out of it and
-            # finish from the poll. Where an area has several doors, which one
-            # a player leaves by is not a choice this makes, so those fall
-            # through to the tail jump as before.
+            # The destination is not one of this area's doors: walk out of the
+            # one `choose_door` names and finish from the poll.
             doors = fasttravel.exits_from(here) if two_hop_enabled() else ()
-            if len(doors) == 1:
-                through, door = doors[0]
+            if doors:
+                chosen = fasttravel.choose_door(doors)
+                if chosen is None:
+                    _log.debug("two-hop fast travel refused: every door out "
+                               "of area %d can start a fight", here)
+                    return Outcome(False, self.EVERY_DOOR_FIGHTS)
+                through, door = chosen
                 outcome = self._run_via_exit(target, addr, area, here,
                                              through, door, detour=True)
                 if outcome.ok:
@@ -2216,9 +2219,18 @@ class FastTravel(Action):
                                f"did not happen")
             return None
         if area_now != pending.through:
+            self.pending = None
+            if area_now in (to for to, _ in
+                            fasttravel.exits_from(pending.from_area)):
+                # A door of the starting area, but not the one this hop
+                # waits on: the party did leave, and no second hop is right
+                # for wherever it now is.
+                _log.debug("two-hop fast travel cancelled: the party left "
+                           "area %d for area %d, not %d", pending.from_area,
+                           area_now, pending.through)
+                return Outcome(False, self.LEFT_ANOTHER_WAY.format(name=name))
             _log.debug("two-hop fast travel dropped: the game went to area "
                        "%d, not %d", area_now, pending.through)
-            self.pending = None
             return None
         if not self._idle_verdict(target, addr):
             # An idle check that fails for one poll is normal, a fight on the
@@ -2328,6 +2340,16 @@ class FastTravel(Action):
         # `self.current_indoors` and `self.addresses.indoors` are still here
         # for whoever measures it.
         return tuple(out)
+
+    #: What `continue_pending` says when the party left through a door of the
+    #: starting area other than the one the hop waited on.
+    LEFT_ANOTHER_WAY = ("The party left by a different door, so the trip to "
+                        "{name} did not happen (NOT APPROVED)")
+
+    #: What `run` says when an area has several doors and every one of them
+    #: can start a fight, so no door is chosen and nothing is written.
+    EVERY_DOOR_FIGHTS = ("ERROR: Unable to Fast Travel. Every way out of "
+                         "here can start a fight. (NOT APPROVED)")
 
     #: What `run` and `continue_pending` say when the writes are made and the
     #: PC cannot be set: the reload flag they wrote is what finishes the trip.

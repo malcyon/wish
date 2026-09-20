@@ -45,7 +45,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Mapping
+from typing import Mapping, Sequence
 
 #: Where the engine keeps the party's square while the game runs: x, y, facing.
 #: **Unrelocated in all three titles read**, which is not an assumption --
@@ -343,6 +343,10 @@ class ExitRoute:
 
     entry: int
     square: tuple[int, int] | tuple[int, int, int]
+    #: Whether the script's route to this exit runs a `COMBAT` statement, so
+    #: that taking it can start a fight. Generated with the rest of the row;
+    #: it is what `choose_door` skips.
+    combat: bool = False
 
 
 #: `{(from_area, to_area): ExitRoute}`, Pool of Radiance only -- the only
@@ -365,9 +369,9 @@ EXIT_ROUTES: Mapping[tuple[int, int], ExitRoute] = MappingProxyType({
     (0, 21): ExitRoute(1, (15, 1)),
     (0, 26): ExitRoute(1, (15, 1)),
     (0, 27): ExitRoute(1, (15, 1)),
-    (1, 25): ExitRoute(1, (7, 11)),
+    (1, 25): ExitRoute(1, (7, 11), combat=True),
     (2, 18): ExitRoute(0, (4, 0, 0)),
-    (7, 0): ExitRoute(1, (3, 8)),
+    (7, 0): ExitRoute(1, (3, 8), combat=True),
     (7, 5): ExitRoute(0, (5, 7)),
     (9, 6): ExitRoute(1, (7, 7)),
     (13, 27): ExitRoute(1, (6, 15)),
@@ -398,7 +402,7 @@ EXIT_ROUTES: Mapping[tuple[int, int], ExitRoute] = MappingProxyType({
     (27, 16): ExitRoute(1, (0, 0)),
     (27, 26): ExitRoute(0, (5, 12)),
     (27, 27): ExitRoute(1, (0, 0)),
-    (28, 25): ExitRoute(1, (4, 0)),
+    (28, 25): ExitRoute(1, (4, 0), combat=True),
 })
 
 
@@ -414,3 +418,21 @@ def exits_from(area_id: int) -> tuple[tuple[int, ExitRoute], ...]:
     return tuple(sorted(((to, route) for (frm, to), route in
                          EXIT_ROUTES.items() if frm == area_id and to != frm),
                         key=lambda row: row[0]))
+
+
+def choose_door(doors: Sequence[tuple[int, ExitRoute]]
+                ) -> tuple[int, ExitRoute] | None:
+    """The door a two-hop fast travel walks the party out of, from
+    `exits_from`'s rows, or None when there is none it may take.
+
+    **One door is taken as it stands**, fight or not: Wish is not choosing
+    anything, and it is what the one-door areas did before there was a rule.
+    **Where there are several, every route that can start a fight is skipped
+    and the lowest destination id of the rest is taken**, so the answer does
+    not depend on how the rows arrive. None means every one of them can start
+    a fight, and the trip is refused rather than a fight route chosen.
+    """
+    if len(doors) == 1:
+        return doors[0]
+    safe = [row for row in doors if not row[1].combat]
+    return min(safe, key=lambda row: row[0]) if safe else None

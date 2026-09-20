@@ -7,6 +7,7 @@ Tests for areas, maps and travel: the area tables, the map geometry and world ma
 | `test_areas.py` | Checks the area table in `goldbox/areas.py` for its rows, maps, names and shared Curse maps. |
 | `test_areatable.py` | Checks the three shipped area tables against the player's disks by re-deriving them from the game's own `ECL` scripts. |
 | `test_eclexitkinds.py` | Checks the exit classifier of `tools/areas/eclexitkinds.py` on scripts built here, and its totals over the thirty area scripts. |
+| `test_exitcombat.py` | Checks that the exit table's `combat` flags match what `tools/generate/genexits.py` reads off the game's scripts. |
 | `test_exitreentry.py` | Checks the push order and address convention of the hand-built stack in `tools/areas/exitreentry.py`, against a fake monitor. |
 | `test_exitroute.py` | Checks the route printing of `tools/areas/exitroute.py` on statements built here and on two exits from the disks. |
 | `test_fasttravel.py` | Checks that the Fast Travel row waits out a momentarily unsafe machine instead of greying the button. |
