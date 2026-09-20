@@ -535,10 +535,23 @@ different port gets a new transport.
 
 ### What is not built
 
-**The window still cannot offer it.** `wish/backends.py` has no row for
-`wish.fsuae`. A backend row carries a name and a setup hint that a player reads,
-and those are wording Donald has not approved; the flag it would sit behind and
-the removal condition go with it.
+**The window offers it only behind `WISH_EXPERIMENTAL_AMIGA_FSUAE`.** With the
+variable set to `1`, `true`, `yes` or `on`, `wish/backends.py` lists a row named
+"Amiga (FS-UAE)" whose probe is `wish.fsuae.listening` and whose opener is the
+cached `wish.fsuae.connect`; anything else, including `0`, `off` and an empty
+string, leaves the list as it was, with no probe and no import of `wish.fsuae`.
+The row is not `disturbs` (a poll measured about 20 ms, served from the running
+machine's frame handler) and polls every 200 ms, like VICE. Its removal
+condition is written beside the flag's name in `wish/backends.py`.
+
+**What the fork needs.** The player runs the game in `grahambates/fs-uae`,
+branch `remote_debugger_barto`, and not in stock FS-UAE, which has no such
+server. The server is started by the fork's `remote_debugger=<seconds>` option, and it
+listens on 2345 unless `remote_debugger_port=<port>` says otherwise; 2345 is the
+port the row looks for, so a different port is not found. The fork closes its
+listening socket when a client disconnects, so restarting Wish means restarting
+the emulator. The setup hint says only "the fork, not stock FS-UAE"; the branch
+name and the options live here.
 
 **The maps come from the C64 disks a player already has, or not at all.**
 `automap/maps.py` does not know about `automap.amiga.load_maps_in`, so a folder

@@ -34,6 +34,11 @@ no delay and no error for somebody with no Ultimate on the network, and the
 application behaves as though the device is not there at all. This does not
 touch `tools/c64/c64u*.py`, which are how the hang itself gets investigated and
 stay unaffected by the flag.
+
+**The Amiga backend is behind `WISH_EXPERIMENTAL_AMIGA_FSUAE`**, and with it
+unset it is absent in the same way: no entry, no probe, no import of
+`wish.fsuae`. `docs/96-live-memory-automapper.md` says what it reads and what
+the fork needs.
 """
 
 from __future__ import annotations
@@ -55,6 +60,19 @@ ULTIMATE_ENV = "WISH_EXPERIMENTAL_C64_ULTIMATE"
 #: `wish/debugmode.py`. A variable somebody exported once and forgot must not
 #: put a backend that hangs the game in front of them.
 TRUE = ("1", "true", "yes", "on")
+
+
+#: `WISH_EXPERIMENTAL_AMIGA_FSUAE`: the Amiga row that reads a patched FS-UAE.
+#: Same truthiness rule as `TRUE` above.
+#:
+#: **Comes off when closing Wish no longer costs the player their game -- the
+#: fork shuts its listening socket when a client disconnects, so restarting Wish
+#: today means restarting the emulator and with it the title -- and when a party
+#: has been walked under the window on each title that has a row in
+#: `automap.amiga.MACHINES`, which is the check `#34 (Validate the live
+#: automapper tab per title)` asks for.** `#37 (Automap the Amiga version, not
+#: just the C64)` is where that gets settled.
+AMIGA_FSUAE_ENV = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
 
 
 def ultimate_enabled() -> bool:
@@ -118,9 +136,31 @@ def _ultimate() -> list[Backend]:
     return [ULTIMATE]
 
 
+def amiga_fsuae_enabled() -> bool:
+    """Is the Amiga backend offered in this run?"""
+    return os.environ.get(AMIGA_FSUAE_ENV, "").strip().lower() in TRUE
+
+
+def _amiga_fsuae() -> list[Backend]:
+    """The patched FS-UAE, if `WISH_EXPERIMENTAL_AMIGA_FSUAE` says so and its
+    module imports.
+
+    Kept behind a function for the same reason as `_ultimate()`: the flag being
+    off must cost nothing, and a broken module must not stop VICE being offered.
+    """
+    if not amiga_fsuae_enabled():
+        return []
+    try:
+        from .fsuae import AMIGA_FSUAE
+    except Exception as exc:                # pragma: no cover - defensive
+        debuglog.debug("the Amiga backend did not import: %s", exc)
+        return []
+    return [AMIGA_FSUAE]
+
+
 def backends() -> list[Backend]:
     """Every backend, in the order they are tried."""
-    return [VICE] + _ultimate()
+    return [VICE] + _ultimate() + _amiga_fsuae()
 
 
 def available() -> list[Backend]:

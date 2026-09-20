@@ -28,6 +28,8 @@ import time
 
 from automap import amiga
 
+from .backends import Backend
+
 #: `/proc/net` is where a Linux kernel lists its TCP sockets. Not a constant of
 #: the emulator, so a test can point `listening` at a directory it wrote.
 PROC_NET = "/proc/net"
@@ -162,3 +164,20 @@ def connect(port: int | None = None, opener=None,
                         if m.title == title)
         _base = bases[0]
     return amiga.AmigaTarget(_transport, _machine, data_base=_base)
+
+
+#: The row `wish.backends._amiga_fsuae()` offers behind its flag. The probe reads
+#: the kernel's socket table and the opener is the cached `connect`, so neither
+#: opens a second socket on the emulator's only debugging door. A poll of about
+#: 20 ms is served from the running machine's frame handler, hence `disturbs`
+#: False and the same 200 ms as VICE. The port is the fork's default and stays
+#: out of the hint.
+AMIGA_FSUAE = Backend(
+    name="Amiga (FS-UAE)",
+    probe=listening,
+    connect=connect,
+    setup_hint="Run the game in grahambates' fork of FS-UAE, not stock FS-UAE.",
+    default_interval_ms=200,
+    disturbs=False,
+    verified=True,
+)

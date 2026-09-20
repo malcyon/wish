@@ -21,6 +21,7 @@ from automap.state import Automapper
 from automap.target import MemoryTarget
 from goldbox import c64_port
 from goldbox.geo import BARRIERS, GRID, SOLID, WALLS_NORTH_EAST, WALLS_SOUTH_WEST, Geo
+from wish import backends as bk
 from wish import fsuae
 
 BLADES = amiga.MACHINES["secret-of-the-silver-blades"]
@@ -458,3 +459,49 @@ def test_an_amiga_is_never_read_for_a_fight(notes_elsewhere, monkeypatch):
     window = window_on(machine(NotAC64))
     assert window.poll_battle() is False
     assert window.battle is None
+
+
+# -- the row, behind WISH_EXPERIMENTAL_AMIGA_FSUAE ----------------------------
+
+def test_the_amiga_row_is_absent_by_default(monkeypatch):
+    """Unset is the shipped state: no entry in the list, not merely one that
+    cannot connect."""
+    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
+    assert bk.amiga_fsuae_enabled() is False
+    assert [b.name for b in bk.backends()] == ["VICE"]
+
+
+@pytest.mark.parametrize("value", ["0", "off", "false", "no", "", "junk"])
+def test_a_forgotten_setting_does_not_turn_the_amiga_row_on(monkeypatch, value):
+    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, value)
+    assert bk.amiga_fsuae_enabled() is False
+    assert [b.name for b in bk.backends()] == ["VICE"]
+
+
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
+def test_the_amiga_row_appears_when_the_flag_is_set(monkeypatch, value):
+    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, value)
+    assert bk.amiga_fsuae_enabled() is True
+    row, = [b for b in bk.backends() if b.name != "VICE"]
+    assert row.name == "Amiga (FS-UAE)"
+    assert row.setup_hint == ("Run the game in grahambates' fork of FS-UAE, "
+                              "not stock FS-UAE.")
+
+
+def test_the_amiga_row_probes_without_connecting_and_opens_the_cached_socket(
+        monkeypatch):
+    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+    row = bk.backends()[-1]
+    assert row.probe is fsuae.listening
+    assert row.connect is fsuae.connect
+    assert row.disturbs is False
+    assert row.verified is True
+
+
+def test_the_two_flags_are_independent(monkeypatch):
+    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+    monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
+    assert [b.name for b in bk.backends()] == ["VICE", "Amiga (FS-UAE)"]
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
+    assert [b.name for b in bk.backends()] == ["VICE", "Ultimate",
+                                               "Amiga (FS-UAE)"]
