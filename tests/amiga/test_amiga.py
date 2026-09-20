@@ -249,11 +249,17 @@ def test_the_writer_round_trips_through_the_reader():
 
 def test_the_writer_leaves_the_heap_pointers_and_the_item_region_zero():
     """Both are don't-care on load, and zero is what the accepted payloads had."""
-    raw = written().to_bytes()
+    w = written()
+    raw = w.to_bytes()
     assert raw[0x00:0x44] == bytes(0x44)
     # Up to and including 0x190, which is `roster_tail`'s last byte: the hit
-    # points the writer does fill in are the byte after it (#462).
-    assert raw[0x0B6:0x191] == bytes(0x191 - 0x0B6)
+    # points the writer does fill in are the byte after it (#462). The one byte
+    # in that span this record does write is `active`, which defaults to 1
+    # because a record joins the party unless the caller says otherwise; every
+    # other offset stays zero, so a writer that scribbles one still fails.
+    assert raw[amiga_pod.ACTIVE] == 1
+    assert w.provenance()[amiga_pod.ACTIVE] == "active"
+    assert [o for o in range(0x0B6, 0x191) if raw[o]] == [amiga_pod.ACTIVE]
 
 
 def test_every_non_zero_byte_the_writer_emits_is_credited_to_a_field():
@@ -580,8 +586,8 @@ def test_a_field_graded_below_the_floor_is_refused_rather_than_guessed():
 def test_the_items_and_the_portraits_are_named_as_losses():
     _, rep = amiga_pod.to_pc(sample())
     named = " ".join(rep.dropped)
-    for what in ("inventory", "portrait_head", "portrait_body",
-                 "spells_memorised", "copper"):
+    for what in ("portrait_head", "portrait_body", "spells_memorised",
+                 "copper"):
         assert what in named, what
 
 

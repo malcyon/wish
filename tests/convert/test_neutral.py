@@ -90,8 +90,11 @@ def test_the_two_ports_share_one_report_type():
     # title: these four are the Pools of Darkness writer's own tables and
     # were named as though they were the whole port's.
     assert amiga_pod.pod_write_field_disposition() == neutral.disposition(
-        amiga_pod.POD_WRITE_DIRECT, amiga_pod.POD_WRITE_TRANSFORMED,
-        amiga_pod.POD_WRITE_DROPPED, "the Amiga's")
+        amiga_pod.POD_WRITE_DIRECT,
+        amiga_pod.POD_WRITE_TRANSFORMED + amiga_pod.POD_WRITE_WHEN_PRESENT,
+        amiga_pod.POD_WRITE_DROPPED, "the Amiga's",
+        derived=amiga_pod.POD_WRITE_DERIVED,
+        constants=amiga_pod.POD_WRITE_CONSTANTS)
 
 
 def test_undeclared_finds_a_field_no_disposition_names():
