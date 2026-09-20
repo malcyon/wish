@@ -328,32 +328,48 @@ every racial trait code Pool of Radiance does, on the race each name demands
 Pool of Radiance ability)`), so one table serves both — and a title nobody has
 read gets the same one, which is what `traits.for_game` already does.
 
-**Secret of the Silver Blades draws no badges at all.** Sixteen of the
-seventeen ids in the table above are unnamed in
-`goldbox/traits.py:NAMES_SILVER_BLADES`; only 45 is established, and it is
-what `GEN $0FF0` writes for a paladin. Drawing a running ninja for effect 39
-on that title would be a picture asserting "hasted" over a tooltip reading
-`Trait 39` — an inferred meaning in front of a player, which is the fault
-`#196 (The automapper's condition badges name a Silver Blades trait with Pool
-of Radiance's meaning)` was filed for. Which codes earn a glyph is per title
-just as much as what the glyph is called, so `automap/live.py:BADGE_TABLES`
-gives Silver Blades an empty set rather than a guessed one.
+**Secret of the Silver Blades draws Pool of Radiance's seven groups with 35 and
+38 removed.** Sixteen of the seventeen ids in the table above are named in
+`goldbox/traits.py:NAMES_SILVER_BLADES`, read out of the title's own per-spell
+table (`COMBAT2 +2937`) with `tools/traitquery.py secret-of-the-silver-blades
+--spells`. Which codes earn a glyph is per title just as much as what the glyph
+is called, so `automap/live.py:BADGE_TABLES` carries its own row:
+
+| glyph | ids on Silver Blades | what agrees |
+|---|---|---|
+| running-ninja | 39 | HASTE |
+| healing-shield | 1, 49 | BLESS and PRAYER |
+| embrassed-energy | 8, 9, 17, 28, 41, 45, 46, 89 | 45 is what `GEN $0FF0` writes for a paladin; 89 agrees by list position only, so it is PROBABLE |
+| eyelashes | 25 | INVISIBILITY |
+| strong | 12 | ENLARGE |
+| mute | 21 | SILENCE 15' RADIUS |
+| snail | 42 | SLOW |
+
+**35 is left out because it is CONFUSION on this title**, where Pool of Radiance
+has it as Prayer; a healing shield on it would be a picture of the wrong spell.
+**38 is left out because it is unread**: nothing on the title writes it and no
+route reached it, so `traits.NAMES_SILVER_BLADES` has no entry for it and the
+strong group carries 12 alone.
 
 **What that does and does not record**, precisely, because the scope matters
 and the first version of this paragraph overstated it. `Snapshot.unbadged_party_effects`
 is every *whole-party* effect no glyph covers, and `automap/panel.py` puts
-each in the debug log once — which on Silver Blades is all of them.
+each in the debug log once -- on Silver Blades that is 35 and 38, and any id
+outside the seventeen.
 
 **A per-character effect gets no such record.** `Character.conditions` draws
 whatever `badges()` returns and `RosterCard` drops the rest silently: no log
 line, nothing anywhere. That predates the per-title split and is not caused by
-it, but it is the ordinary case — a Bless on one fighter, a Haste on one thief
-— so on Silver Blades, where no card badges anything, every per-character
-effect now vanishes without trace. Found in the code review of #197 (A Curse or Silver Blades paladin or ranger has no class and no experience bar on its roster card), filed as
-its own ticket, and named here because this paragraph used to say "nothing is
-hidden" and that was true only of the party strip.
+it, and it is the ordinary case -- a Bless on one fighter, a Haste on one thief.
+On Silver Blades a per-character 35 or 38 vanishes without trace. The
+code review of #197 (A Curse or Silver Blades paladin or ranger has no class and
+no experience bar on its roster card) found it and filed it as its own ticket.
 
-**What would fill the set in**: a Silver Blades save taken with spells
-running, read the way `P3-EFFECTS.D64` was for Pool of Radiance — 26 spells
-cast, each naming the code it had just written, seventeen ids promoted at once
-(`docs/90-specimens.md`).
+**Silver Blades has spells Pool of Radiance has not** -- FEAR, FIRE SHIELD,
+BARKSKIN and FUMBLE -- **and none has a glyph.** Whether any deserves one is
+open, and a new glyph is art.
+
+**Why it changed**: this section used to say Silver Blades drew no badges
+because sixteen of the seventeen ids were unnamed. The trait table grew to
+59 names from the title's own spell table, which named sixteen of them, so the
+refusal no longer had its reason.

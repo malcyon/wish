@@ -177,21 +177,24 @@ PROBABLE_BADGED = (21, 42, 45, 46, 49)
 #: (`goldbox/traits.py`, #186) -- and a title nobody has read gets them too,
 #: which is the behaviour it has always had and matches `traits.for_game`.
 #:
-#: **Secret of the Silver Blades draws none.** Sixteen of the seventeen badged
-#: ids are unnamed in `traits.NAMES_SILVER_BLADES`, so a running ninja on one
-#: of its cards would be a picture saying "hasted" over a tooltip saying
-#: "Trait 39" -- an inferred meaning in front of a player, which is what #186
-#: and #196 are both about. Naming the codes is not this file's to do and
-#: neither is guessing which of them earn a glyph.
-#:
-#: **What would fill this in**: a Silver Blades save taken with spells
-#: running, read the way `P3-EFFECTS.D64` was for Pool of Radiance -- 26
-#: spells cast, each naming the code it had just written, which promoted
-#: seventeen ids at once (`docs/90-specimens.md`). Until then
-#: `Snapshot.unbadged_party_effects` is what makes the ids visible, and
-#: `automap/panel.py` puts them in the debug log.
+#: **Secret of the Silver Blades draws Pool of Radiance's groups minus two
+#: ids.** Sixteen of its seventeen badged ids are named in
+#: `traits.NAMES_SILVER_BLADES`, read out of the title's own per-spell table,
+#: so the glyphs say what the tooltips say. **35 is left out because it is
+#: Confusion there** and Prayer only on Pool of Radiance, so a healing shield
+#: on it would be a wrong picture. **38 is left out because nothing on that
+#: title is known to write it**; `Snapshot.unbadged_party_effects` still
+#: reports it, and `automap/panel.py` puts it in the debug log.
 BADGE_TABLES: dict[str, tuple[tuple[str, tuple[int, ...]], ...]] = {
-    "secret-of-the-silver-blades": (),
+    "secret-of-the-silver-blades": (
+        ("running-ninja", (39,)),                            # hasted
+        ("healing-shield", (1, 49)),                         # blessed
+        ("embrassed-energy", (8, 9, 17, 28, 41, 45, 46, 89)),  # warded
+        ("eyelashes", (25,)),                                # invisible
+        ("strong", (12,)),                                   # strengthened
+        ("mute", (21,)),                                     # silenced
+        ("snail", (42,)),                                    # slowed
+    ),
 }
 
 
@@ -348,8 +351,8 @@ class Character:
         same reason `unbadged_party_effects` gives -- an id landing here means
         the badge set is short a glyph, not that nothing is running.
 
-        **On Silver Blades that is every id**, exactly as it is for the party
-        strip, because `BADGE_TABLES` gives that title no groups at all.
+        **On Silver Blades that is 35 and 38**, exactly as it is for the party
+        strip, because `BADGE_TABLES` leaves those two ids out of its groups.
         """
         covered = {i for _, ids in condition_badges(self.game) for i in ids}
         return tuple(e for e in self.effects if e.id not in covered)
@@ -509,10 +512,10 @@ class Snapshot:
         the set is short a glyph, and `BottomStrip` puts it in the debug log
         for exactly that reason.
 
-        **On Silver Blades that is every id**, because `BADGE_TABLES` gives it
-        no groups at all until somebody reads what its effect codes mean. The
-        log is then the whole of what the program says about them, which is
-        the honest amount.
+        **On Silver Blades that is 35 and 38**, because `BADGE_TABLES` leaves
+        those two ids out of its groups: 35 is Confusion on that title and 38
+        is unread. The log is then the whole of what the program says about
+        them.
         """
         covered = {i for _, ids in condition_badges(self.game) for i in ids}
         return tuple(e for e in self.whole_party_effects

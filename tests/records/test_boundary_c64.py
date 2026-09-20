@@ -1,0 +1,440 @@
+from __future__ import annotations
+
+"""Boundary characters through the C64 writer: `#516 (Generate boundary
+characters and check every writer's field widths, since no real save reaches a
+limit and the corpus cannot find a wrong one)`, step 4.
+
+`tests/records/test_boundary.py` runs four Pool of Radiance extremes through
+`goldbox.dos_codec.write`.  This module does the same into
+`goldbox.c64_codec.write`, where the widths are the C64 record's own, and adds
+the sweep the DOS side did not need: every scalar the writer copies, at its
+lowest, its highest and one past.  The rule for a value past a width is that
+the writer refuses it or writes exactly what fits -- never a neighbour's byte,
+never a wrapped number.  `tools/records/boundarywidths.py` builds the
+characters; nothing here reads a game file except the one disk-backed check of
+the memorised-spell width, which skips without the disks.
+"""
+
+import logging
+
+import pytest
+
+from goldbox import c64_codec, dos_codec, dos_port, layout, traits
+from goldbox import items as items_mod
+from goldbox import levels as level_tables
+from tools.records import boundarychars, boundarywidths
+
+GAMES = boundarywidths.GAMES
+POOL = "pool-of-radiance"
+
+#: The one drop line an ordinary DOS character produces: no combat art of its
+#: own converts to the C64's character-set icon.  Anything else is a loss.
+_ICON = "Combat icon:"
+
+
+def _write(char, caplog=None):
+    """`(record, report, back)`: the character written and read straight back."""
+    rec, rep = c64_codec.write(char)
+    return rec, rep, c64_codec.read(rec, game=char.game)
+
+
+def _losses(rep):
+    return [d for d in rep.dropped if not d.startswith(_ICON)]
+
+
+def _changed(a, b):
+    """Offsets where two records differ."""
+    ra, rb = a.to_bytes(), b.to_bytes()
+    return [i for i in range(len(ra)) if ra[i] != rb[i]]
+
+
+def _no_warnings(caplog):
+    return [r.getMessage() for r in caplog.records
+            if r.levelno >= logging.WARNING]
+
+
+# --- A: the four reachable extremes, as a DOS record hands them over --------
+
+#: Named because the writer works them out again for a title that has a table
+#: for them, so a round trip against the source's value is the wrong check.
+#: Saves and the two THAC0 bytes are `boundarywidths.recomputed_on_write`;
+#: `tests/convert/test_c64thac0.py` and `tests/convert/test_neutral.py` check
+#: what they are recomputed to.
+_THIEF_COLUMNS = tuple(n for n, _ in c64_codec._THIEF_SKILL_COLUMNS)
+
+#: A case field the reader has no neutral name for on the way back:
+#: `granted_effects` shares its trait slots with the racial ids, so `read`
+#: hands both back as `innate_effects` (`goldbox/c64_codec.py`, the trait-slot
+#: block of `write`).
+_NOT_READ_BACK = {"granted_effects"}
+
+
+@pytest.mark.parametrize("name", sorted(boundarychars.CASES))
+def test_a_reachable_character_writes_to_the_c64_and_reads_back_whole(
+        name, caplog):
+    char = boundarywidths.case(name)
+    with caplog.at_level(logging.WARNING, logger="wish.goldbox"):
+        _, rep, back = _write(char)
+
+    assert rep.warnings == [], (name, rep.warnings)
+    assert _losses(rep) == [], (name, _losses(rep))
+    assert _no_warnings(caplog) == [], name
+    assert set(char.keys()) - set(back.keys()) == _NOT_READ_BACK
+
+    recomputed = set(boundarywidths.recomputed_on_write(POOL))
+    thief = char.get("levels", {}).get("thief", 0)
+    if thief and level_tables.thief_skill_race_differs_by_port(POOL):
+        recomputed |= set(_THIEF_COLUMNS)
+        wanted = level_tables.thief_skills(
+            thief, char.get("race"), POOL, dexterity=char.get("dexterity"))
+        assert [back.get(n) for n in _THIEF_COLUMNS] == list(wanted), name
+        assert all(-128 <= v <= 127 for v in wanted), (name, wanted)
+
+    for field in char.keys():
+        if field in recomputed or field in _NOT_READ_BACK:
+            continue
+        want, got = char.get(field), back.get(field)
+        if field == "levels":
+            got = {k: v for k, v in got.items() if v}
+        elif field == "spells_castable":
+            want = {k: want.get(k, (0, 0, 0)) for k in ("cleric",
+                                                        "magic-user")}
+        elif field == "innate_effects":
+            granted = [n[0] for n in char.get("granted_effects", [])]
+            want, got = sorted(want + granted), sorted(got)
+        assert got == want, (name, field, want, got)
+
+
+# --- B: every field the writer takes has a boundary -------------------------
+
+def _copied_or_transformed():
+    d = c64_codec.field_disposition()
+    return {n for n, why in d.items()
+            if not why.startswith(("dropped:", "derived:", "constant:"))}
+
+
+def test_b_every_field_the_c64_writer_takes_has_a_boundary():
+    """The hook into `field_disposition()`: a field added to the writer with no
+    scalar range and no row in `boundarywidths.STRUCTURED` fails here."""
+    covered = {s.neutral for s in boundarywidths.scalars()} \
+        | set(boundarywidths.STRUCTURED)
+    assert _copied_or_transformed() - covered == set()
+
+
+def test_b_no_boundary_row_names_a_field_the_writer_has_lost():
+    every = set(c64_codec.field_disposition())
+    stale = set(boundarywidths.STRUCTURED) - every
+    assert stale == set()
+
+
+# --- C: every scalar at its lowest and highest, every title -----------------
+
+@pytest.mark.parametrize("high", [False, True], ids=["lowest", "highest"])
+@pytest.mark.parametrize("game", GAMES)
+def test_c_every_scalar_at_its_extreme_round_trips(game, high, caplog):
+    char = boundarywidths.at_extreme(game, high)
+    with caplog.at_level(logging.WARNING, logger="wish.goldbox"):
+        _, rep, back = _write(char)
+    assert rep.warnings == [] and _losses(rep) == [], (game, rep.dropped)
+    assert _no_warnings(caplog) == []
+
+    skipped = boundarywidths.recomputed_on_write(game, char.get("levels"))
+    checked = 0
+    for s in boundarywidths.scalars():
+        if s.neutral in skipped:
+            continue
+        want = s.high if high else s.low
+        assert back.get(s.neutral) == want, (game, s.neutral, want,
+                                             back.get(s.neutral))
+        checked += 1
+    top = 255 if high else 0
+    assert back.get("levels") == {n: top for n in c64_codec.LEVEL_FIELDS}
+    # A sweep that skipped most of the scalars would pass by not looking.
+    assert checked == len(boundarywidths.scalars()) - len(
+        skipped.keys() & {s.neutral for s in boundarywidths.scalars()})
+    assert checked > len(boundarywidths.scalars()) // 2
+
+
+# --- D: one past a scalar is refused ----------------------------------------
+
+@pytest.mark.parametrize("scalar", boundarywidths.scalars(),
+                         ids=lambda s: s.neutral)
+def test_d_one_past_a_scalar_is_refused_not_wrapped(scalar):
+    """A value one past the field's own width has to raise, naming the field,
+    in every title -- a `& 0xFF` here would write a different number."""
+    for game in GAMES:
+        if scalar.neutral in boundarywidths.recomputed_on_write(game):
+            continue
+        for past in (scalar.high + 1, scalar.low - 1):
+            char = boundarywidths.base(game)
+            char.set(scalar.neutral, past, "boundary: one past")
+            with pytest.raises(ValueError, match=scalar.c64):
+                c64_codec.write(char)
+
+
+def test_d_one_past_a_class_level_is_refused():
+    for game in GAMES:
+        char = boundarywidths.base(game)
+        char.set("levels", {"fighter": 256}, "boundary: one past")
+        with pytest.raises(ValueError, match="level_fighter"):
+            c64_codec.write(char)
+
+
+# --- E: the arrays, the name and the fixed-width blocks ---------------------
+
+@pytest.mark.parametrize("game", GAMES)
+def test_e_the_name_holds_its_width_and_refuses_one_more(game):
+    width = boundarywidths.NAME_WIDTH
+    for length in (0, 1, width):
+        char = boundarywidths.base(game)
+        char.set("name", "A" * length, "boundary")
+        _, _, back = _write(char)
+        assert back.get("name") == "A" * length, (game, length)
+    char = boundarywidths.base(game)
+    char.set("name", "A" * (width + 1), "boundary: one past")
+    with pytest.raises(ValueError, match="name"):
+        c64_codec.write(char)
+
+
+def _array_case(game, field, ids_or_items, span):
+    """`(record, back)` for `ids_or_items`, and every offset that differs from
+    the same character with the field empty -- which must stay inside `span`,
+    the field's own bytes."""
+    char = boundarywidths.base(game)
+    char.set(field, ids_or_items, "boundary")
+    rec, _, back = _write(char)
+    empty = boundarywidths.base(game)
+    empty.set(field, [], "boundary: empty")
+    rec_empty, _, _ = _write(empty)
+    lo, hi = span
+    strays = [i for i in _changed(rec, rec_empty) if not lo <= i < hi]
+    assert strays == [], (game, field, strays)
+    return rec, back
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_e_memorised_spells_fill_the_engines_width_and_stop(game):
+    ceiling = boundarywidths.ceilings(game).memorised
+    at, size = c64_codec.memorised_span(game)
+    assert size == ceiling, (game, "the writer's row is not the engine's")
+
+    ids = list(range(1, ceiling + 1))
+    rec_full, back = _array_case(game, "spells_memorised", ids, (at, at + size))
+    assert back.get("spells_memorised") == ids
+
+    # One past, and far past: the same record, nothing in the next field.
+    for count in (ceiling + 1, ceiling + 40):
+        rec_over, back = _array_case(
+            game, "spells_memorised", list(range(1, count + 1)),
+            (at, at + size))
+        assert rec_over == rec_full, (game, count)
+        assert back.get("spells_memorised") == ids
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_e_a_spell_id_past_a_byte_is_refused(game):
+    char = boundarywidths.base(game)
+    char.set("spells_memorised", [256], "boundary: one past")
+    with pytest.raises(ValueError):
+        c64_codec.write(char)
+    char.set("spells_memorised", [255], "boundary")
+    assert _write(char)[2].get("spells_memorised") == [255]
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_e_the_spellbook_holds_every_id_its_mask_has_a_bit_for(game):
+    top = boundarywidths.ceilings(game).spellbook
+    at, size = 0x078, None
+    from goldbox import spells
+    size = spells.for_game(game).spellbook_size
+    ids = list(range(1, top + 1))
+    rec_full, back = _array_case(game, "spells_known", ids, (at, at + size))
+    assert back.get("spells_known") == ids
+    rec_over, back = _array_case(game, "spells_known", ids + [top + 1, top + 9],
+                                 (at, at + size))
+    assert rec_over == rec_full
+    assert back.get("spells_known") == ids
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_e_sixteen_items_fit_and_a_seventeenth_changes_nothing(game):
+    slots = boundarywidths.ceilings(game).items
+    inv = layout.FIELDS_BY_NAME["inventory"]
+    assert inv.size == slots * items_mod.ITEM_SIZE
+
+    def items(n):
+        return [boundarychars._item(weight_tenths=10 + i) for i in range(n)]
+
+    rec_full, back = _array_case(game, "inventory", items(slots),
+                                 (inv.offset, inv.end))
+    assert back.get("inventory") == items(slots)
+    for n in (slots + 1, slots + 20):
+        rec_over, back = _array_case(game, "inventory", items(n),
+                                     (inv.offset, inv.end))
+        assert rec_over == rec_full, (game, n)
+        assert back.get("inventory") == items(slots)
+
+
+#: `(racial ids, item grants)` at, and one past, the ten trait slots.
+_TRAIT_MIXES = [(10, 0), (11, 0), (4, 6), (4, 7), (0, 10), (0, 11), (10, 1)]
+
+
+@pytest.mark.parametrize("game", GAMES)
+@pytest.mark.parametrize("racial,grants", _TRAIT_MIXES)
+def test_e_ten_trait_slots_are_shared_and_never_overrun(game, racial, grants):
+    slots = boundarywidths.ceilings(game).traits
+    first = traits.FIRST
+    innate = list(range(1, racial + 1))
+    granted = [boundarychars._effect(100 + i) for i in range(grants)]
+    char = boundarywidths.base(game)
+    char.set("innate_effects", innate, "boundary")
+    char.set("granted_effects", granted, "boundary")
+    rec, _, back = _write(char)
+
+    kept = innate[:slots]
+    room = slots - len(kept)
+    expected = sorted(kept + [g[0] for g in granted][:room])
+    assert sorted(back.get("innate_effects")) == expected, (game, racial,
+                                                            grants)
+
+    empty = boundarywidths.base(game)
+    empty.set("innate_effects", [], "boundary: empty")
+    empty.set("granted_effects", [], "boundary: empty")
+    rec_empty, _, _ = _write(empty)
+    strays = [i for i in _changed(rec, rec_empty)
+              if not first <= i < first + slots]
+    assert strays == [], (game, racial, grants, strays)
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_e_a_trait_id_past_a_byte_is_refused(game):
+    char = boundarywidths.base(game)
+    char.set("innate_effects", [256], "boundary: one past")
+    with pytest.raises(ValueError):
+        c64_codec.write(char)
+
+
+@pytest.mark.parametrize("field,width", [("attack_forms", 8),
+                                         ("roster_tail", 9)])
+def test_e_a_fixed_width_block_takes_exactly_its_width(field, width):
+    """Eight bytes and nine: one short or one long is refused rather than
+    written into the field beside it."""
+    for game in GAMES:
+        for n in (width, width - 1, width + 1):
+            char = boundarywidths.base(game)
+            char.set(field, bytes(range(1, n + 1)), "boundary")
+            if n == width:
+                assert _write(char)[2].get(field) == bytes(range(1, n + 1))
+            else:
+                with pytest.raises(ValueError, match=field):
+                    c64_codec.write(char)
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_e_a_treasure_share_is_kept_to_the_bits_the_c64_masks(game):
+    """0 to 3 cross; a value with bit 2 set is refused rather than masked
+    into a different share (`docs/195-three-dos-record-bytes-named-from-the-
+    overlays.md`)."""
+    for share in (0, 1, 2, 3):
+        char = boundarywidths.base(game)
+        char.set("treasure_share", share, "boundary")
+        assert _write(char)[2].get("treasure_share") == share
+    for share in (4, 7, 255):
+        char = boundarywidths.base(game)
+        char.set("treasure_share", share, "boundary: bit 2 set")
+        with pytest.raises(ValueError, match="bit 2"):
+            c64_codec.write(char)
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_e_a_portrait_byte_and_the_size_byte_hold_a_byte_and_no_more(game):
+    for field in ("portrait_head", "portrait_body", "size_small"):
+        for ok in (0 if field != "portrait_body" else 1, 255):
+            char = boundarywidths.base(game)
+            char.set(field, ok, "boundary")
+            assert _write(char)[2].get(field) == ok, (game, field, ok)
+        char = boundarywidths.base(game)
+        char.set(field, 256, "boundary: one past")
+        with pytest.raises(ValueError, match=field):
+            c64_codec.write(char)
+
+
+# --- F: the engine's own memorised width, off the player's disks ------------
+
+@pytest.mark.parametrize("game", GAMES)
+def test_f_the_engine_agrees_on_the_memorised_width(game):
+    """`tools/c64/memorisedwidth.py`'s reading of the title's own `CAMP` -- the
+    count-down immediate, plus one -- against `boundarywidths.ENGINE_MEMORISED`
+    and the writer's row.  Skips without that title's disks."""
+    from tools.c64 import coldread, memorisedwidth
+    title = memorisedwidth.by_key(game)
+    try:
+        camp = coldread.overlay(title, b"CAMP", None)
+    except SystemExit as exc:
+        pytest.skip(f"needs the {game} C64 disks: {exc}")
+    found = memorisedwidth.accesses(camp, coldread.staging(title) >> 8)
+    offset, sites = max(found.items(), key=lambda kv: len(kv[1]))
+    seeds = {s for *_, s in sites if s is not None}
+    assert len(seeds) == 1, (game, seeds)
+    at, size = c64_codec.memorised_span(game)
+    assert offset == at, (game, offset, at)
+    assert seeds.pop() + 1 == size == boundarywidths.ENGINE_MEMORISED[game]
+
+
+# --- G: no DOS field is wider than the C64 field it converts into -----------
+
+#: The DOS scalars wider than the C64 field they convert into, and nothing
+#: else: Curse of the Azure Bonds and Secret of the Silver Blades keep
+#: experience in four bytes where the C64 record has three, so a value from
+#: 16,777,216 up is refused by `c64_codec.write` (test D).  The largest
+#: experience either title's own training table asks for is 2,450,001 (Silver
+#: Blades), so reaching it takes unspent experience nobody has measured the
+#: DOS engine allowing (#597).
+_DOS_WIDER = {("curse-of-the-azure-bonds", "experience"),
+              ("secret-of-the-silver-blades", "experience")}
+
+
+def test_g_only_experience_is_wider_in_dos_than_in_the_c64():
+    """The refusals in test D are only reachable from a source that can hold a
+    value the C64 cannot.  Every neutral scalar both writers name has a DOS
+    range inside the C64's, bar the exceptions named above (the Amiga's record
+    is the DOS record re-cut, so it adds none) -- and this fails the day one
+    more appears or one goes."""
+    dos_names = dict(dos_codec.DIRECT)
+    compared = 0
+    wider = set()
+    for game in GAMES:
+        table = dos_port.FIELDS_BY_NAME_FOR[game]
+        for s in boundarywidths.scalars():
+            dos_field = table.get(dos_names.get(s.neutral))
+            if dos_field is None:
+                continue
+            span = boundarywidths.value_range(dos_field.kind, dos_field.size)
+            if span is None:
+                continue
+            if not (s.low <= span[0] and span[1] <= s.high):
+                wider.add((game, s.neutral))
+            compared += 1
+    assert compared > 100
+    assert wider == _DOS_WIDER
+
+
+# --- H: the harness can fail ------------------------------------------------
+
+def test_h_the_harness_reports_a_memorised_list_narrower_than_the_engines(
+        monkeypatch):
+    """Narrow Pool of Radiance's writer row to the 69 bytes the layout declares
+    for the field on its own, as it stood before `#268 (A character with more
+    than sixteen memorised spells loses the rest, because the layout gives the
+    list sixteen bytes and the game gives it eighty-one)`: the round trip
+    loses twelve ids and the width check names the mismatch."""
+    import dataclasses
+    narrow = dataclasses.replace(c64_codec.POOL_OF_RADIANCE_RECORD,
+                                 memorised=("spells_memorised",))
+    monkeypatch.setitem(c64_codec.DELTAS_BY_KEY, POOL, narrow)
+    ceiling = boundarywidths.ceilings(POOL).memorised
+    char = boundarywidths.base(POOL)
+    char.set("spells_memorised", list(range(1, ceiling + 1)), "boundary")
+    _, _, back = _write(char)
+    assert len(back.get("spells_memorised")) == 69 < ceiling
+    assert c64_codec.memorised_span(POOL)[1] != ceiling

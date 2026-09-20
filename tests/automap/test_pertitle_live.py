@@ -85,15 +85,38 @@ def _fighter(level=8):
 
 # --- #196: which codes earn a badge, and what the badge says -----------------
 
-def test_a_silver_blades_card_draws_no_badge_for_a_code_nobody_has_read():
-    """The fault a player sees: a running ninja on a Silver Blades card,
-    saying the character is hasted, when 39 is one of the codes this title
-    reassigned and nobody has read what it now means.
-
-    Before the fix this card carries `("running-ninja", "Hasted")`.
-    """
+def test_a_silver_blades_card_draws_the_badge_for_a_code_the_title_names():
+    """39 is HASTE in Silver Blades' own spell table, so the card draws the
+    running ninja and takes the word from that title's trait table."""
     snap = _snapshot(SSB, _fighter(), effect=HASTE)
-    assert snap.characters[0].conditions == ()
+    assert snap.characters[0].conditions == (
+        ("running-ninja", traits.describe(HASTE, SSB).capitalize()),)
+
+
+def test_a_silver_blades_card_draws_no_badge_for_confusion_or_the_unread_code():
+    """The fault a player sees: a healing shield on a character who is
+    confused, because 35 is Prayer on Pool of Radiance and CONFUSION on this
+    title, and a strong arm for 38, which nothing on this title is known to
+    write. Both must still reach `unbadged_effects`, which is what the debug
+    log reads."""
+    for eid in (35, 38):
+        card = _snapshot(SSB, _fighter(), effect=eid).characters[0]
+        assert card.conditions == ()
+        assert [e.id for e in card.unbadged_effects] == [eid]
+
+
+def test_silver_blades_groups_are_pool_of_radiances_without_35_and_38():
+    """Which ids each glyph covers is what a player sees drawn, so the table
+    is pinned as a whole: every group Pool of Radiance has, minus exactly the
+    two ids that mean something else or nothing on this title."""
+    ssb = live.condition_badges(SSB)
+    assert {i for _, ids in ssb for i in ids}.isdisjoint({35, 38})
+    assert ssb == tuple(
+        (glyph, tuple(i for i in ids if i not in (35, 38)))
+        for glyph, ids in live.CONDITION_BADGES)
+    # The strong group survives on 12 alone; nothing else lost a glyph.
+    assert dict(ssb)["strong"] == (12,)
+    assert len(ssb) == len(live.CONDITION_BADGES)
 
 
 def test_a_pool_of_radiance_card_badges_the_same_effect_exactly_as_before():
@@ -119,8 +142,12 @@ def test_the_party_strip_is_per_title_too_and_the_effect_is_not_lost():
     what `unbadged_party_effects` is for: `automap/panel.py` puts those in the
     debug log precisely so a title short of a glyph says so."""
     snap = _snapshot(SSB, _fighter(), effect=HASTE, owner=live.PARTY_WIDE)
-    assert snap.party_badges == ()
-    assert [e.id for e in snap.unbadged_party_effects] == [HASTE]
+    assert [i for i, _ in snap.party_badges] == ["running-ninja"]
+    assert snap.unbadged_party_effects == ()
+
+    unread = _snapshot(SSB, _fighter(), effect=38, owner=live.PARTY_WIDE)
+    assert unread.party_badges == ()
+    assert [e.id for e in unread.unbadged_party_effects] == [38]
 
     control = _snapshot(POOL, _fighter(), effect=HASTE, owner=live.PARTY_WIDE)
     assert control.party_badges == (
@@ -131,9 +158,9 @@ def test_the_party_strip_is_per_title_too_and_the_effect_is_not_lost():
 def test_a_badge_takes_its_name_from_the_running_titles_table(monkeypatch):
     """The naming half of #196, on its own.
 
-    Silver Blades draws no badges at all, so it cannot show that
-    `traits.describe` is now given the title -- a group that is empty names
-    nothing either way. This builds the case the fix is *for*: a title that
+    A Silver Blades card would read the same word from either table for most
+    ids, so it cannot show that `traits.describe` is given the title. This
+    builds the case the fix is *for*: a title that
     keeps Pool of Radiance's badge groups and gives one of their ids its own
     meaning. Before the fix the card reads "Hasted", Pool of Radiance's word,
     whatever is running.
@@ -157,14 +184,13 @@ def test_a_badge_name_comes_from_the_titles_own_trait_table():
     it is what `$0FF0` writes for a paladin -- so it is the one that can show
     the two tables agreeing on a string by way of the right number."""
     assert traits.describe(45, SSB) == traits.describe(45, POOL)
-    # #497 named 53 more Silver Blades codes, so only 38 "extra strength" is
-    # still unread of the seventeen badged ids -- it was 16 of 17 the other
-    # way round. `BADGE_TABLES` still gives that title no groups, which is
-    # `automap/live.py`'s decision and not this table's.
+    # Only 38 "extra strength" is unread of the seventeen badged ids, and it
+    # is the reason that id is in no Silver Blades group. 35 is named there
+    # too, as Confusion, and is left out for meaning something else.
     unread = [i for _, ids in live.CONDITION_BADGES for i in ids
               if i not in traits.for_game(SSB)]
     assert unread == [38]
-    assert live.condition_badges(SSB) == ()
+    assert 38 not in {i for _, ids in live.condition_badges(SSB) for i in ids}
 
 
 def test_a_title_nobody_has_read_keeps_pool_of_radiances_badges():
@@ -175,7 +201,7 @@ def test_a_title_nobody_has_read_keeps_pool_of_radiances_badges():
     assert c64.machine_for(KRYNN).live_position is None
     assert live.condition_badges(KRYNN) == live.CONDITION_BADGES
     assert live.condition_badges(None) == live.CONDITION_BADGES
-    assert live.condition_badges(SSB) == ()
+    assert live.condition_badges(SSB) != live.CONDITION_BADGES
 
 
 def test_the_one_argument_badges_call_still_means_pool_of_radiance():
