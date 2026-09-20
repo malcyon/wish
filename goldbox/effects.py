@@ -58,8 +58,24 @@ PARTY_WIDE = 0xFF
 
 # The duration byte: bits 0-5 a count, bits 6-7 the unit the count is in --
 # one minute, ten minutes, one hour, one day (`docs/133-active-effects.md`,
-# "The duration byte"). A whole byte of zero is skipped by all three ageing
-# routines, so it never counts down and never expires.
+# "The duration byte"). A count loses one every time the clock byte one place
+# coarser than its own unit ticks: unit 00 with each minute, 01 when the
+# minute digit `$49C7` wraps, 10 when the tens-of-minutes digit `$49C8` wraps,
+# 11 when the hour `$49C9` wraps.
+#
+# CONFIRMED for all four units in the running game, each falling by exactly
+# the boundaries crossed and by nothing else: a 30-minute rest from 21:16 took
+# 30 off unit 00 and 3 off unit 01 (the wraps at :20, :30 and :40) and left
+# units 10 and 11 alone; an eight-hour rest from 21:17 across midnight took 8
+# off unit 10 and 1 off unit 11 and expired the other two.
+#
+# **Two bits hold four units and a day is the coarsest**, so nothing is ever
+# aged by the clock's month byte `$49CB` and no duration can be expressed in
+# months.
+#
+# A whole byte of zero is skipped by all three ageing routines, so it never
+# counts down and never expires -- one such slot kept its id and its zero
+# through those same eight hours.
 DURATION_COUNT = 0x3F
 DURATION_UNIT = 6
 DURATION_UNIT_NAMES = ("minute", "ten minutes", "hour", "day")
@@ -102,7 +118,9 @@ class Duration:
 
         An upper bound, not an exact time: a count in unit 01-11 loses one when
         its clock digit wraps, so the effect lapses between (count - 1) units
-        plus the time to the next boundary and count units from now.
+        plus the time to the next boundary and count units from now. Measured:
+        a unit-01 count staged at 21:16 lost its first ten-minute unit four
+        minutes later, at 21:20.
         """
         return 0 if self.never_expires else self.count * self.minutes_per_unit
 
@@ -132,6 +150,11 @@ class Effect:
     **Expiry clears only the id**, so a slot with id 0 is free whatever the
     other three arrays still hold. `active_effects` filters on exactly that,
     and anything that skips it shows effects that ended hours ago.
+
+    The two slots an eight-hour rest ran out read id 0 with a duration byte of
+    0 as well, so an expired slot and a never-expiring one are told apart by
+    the id and never by the duration. Which routine wrote that zero -- the
+    sweep storing the run-out, or the expiry -- is not established.
     """
 
     slot: int

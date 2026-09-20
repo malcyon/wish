@@ -109,6 +109,63 @@ def test_duration_unit_splits_count_and_unit_and_minutes_is_at_most(
     assert not d.never_expires
 
 
+def test_the_four_units_are_minute_ten_minutes_hour_and_day():
+    """The mapping two driven rests measured, in order of bits 6-7."""
+    assert effects.DURATION_UNIT_NAMES == ("minute", "ten minutes", "hour", "day")
+    assert effects.DURATION_UNIT_MINUTES == (1, 10, 60, 1440)
+    assert len(effects.DURATION_UNIT_NAMES) == 4     # two bits, so no month
+
+
+# The duration bytes of the two driven rests, typed in rather than read off a
+# disk: four slots staged at count 32, one per unit, and the bytes they read
+# back as. Each count fell by the number of clock boundaries the rest crossed.
+THIRTY_MINUTE_REST = [
+    # before, after, unit, boundaries crossed between 21:16 and 21:46
+    (0x1F, 0x01, "minute", 30),          # 30 minutes
+    (0x60, 0x5D, "ten minutes", 3),      # the wraps at :20, :30 and :40
+    (0xA0, 0xA0, "hour", 0),
+    (0xE0, 0xE0, "day", 0),
+]
+EIGHT_HOUR_REST = [
+    # before, after, unit, boundaries crossed between 21:17 and 05:17
+    (0xA0, 0x98, "hour", 8),
+    (0xE0, 0xDF, "day", 1),
+]
+
+
+@pytest.mark.parametrize("before, after, unit, boundaries",
+                         THIRTY_MINUTE_REST + EIGHT_HOUR_REST)
+def test_a_rest_takes_one_count_per_boundary_crossed(before, after, unit,
+                                                     boundaries):
+    was, now = effects.duration_unit(before), effects.duration_unit(after)
+    assert (was.unit, now.unit) == (unit, unit)
+    assert was.count - now.count == boundaries
+
+
+def test_the_ten_minute_unit_loses_its_first_count_before_ten_minutes_pass():
+    """`minutes` is an upper bound rather than the time left: staged at 21:16,
+    the unit-01 count lost its first ten-minute unit at 21:20, four minutes in.
+    """
+    staged = effects.duration_unit(0x60)
+    assert (staged.count, staged.minutes) == (32, 320)
+    assert staged.count - effects.duration_unit(0x5D).count == 3
+
+
+def test_an_expired_slot_is_dropped_and_a_never_expiring_one_is_kept():
+    """What the eight-hour rest left behind: an expired slot reads id 0 with a
+    duration byte of 0, and a slot staged with a duration byte of 0 keeps its
+    id and is still running.
+    """
+    payload = _blank_payload()
+    effects.write_effect(payload, 3, id=0, owner=5, duration=0, magnitude=0xE2)
+    effects.write_effect(payload, 4, id=1, owner=5, duration=0, magnitude=0)
+
+    listed = effects.active_effects(bytes(payload))
+
+    assert [e.slot for e in listed] == [4]
+    assert effects.duration_unit(listed[0].duration).never_expires
+
+
 def test_only_a_duration_byte_of_exactly_zero_is_marked_never_expires():
     # Pins the flag only: what the ageing routines do to `$40` is not established.
     assert effects.duration_unit(0x00).never_expires

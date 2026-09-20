@@ -48,21 +48,53 @@ make that duration safe to show or edit.
 ## The duration byte
 
 **CONFIRMED:** Bits 0–5 are a count and bits 6–7 select the unit. The four
-units are one minute, ten minutes, one hour and one day.
+units are one minute, ten minutes, one hour and one day, and a count loses one
+each time the clock byte one place coarser than its own unit ticks.
 
 | bits 6–7 | unit | what advances it | grade |
 |---|---|---|---|
 | `00` | one minute — one dungeon step, one combat round | every minute of the clock | CONFIRMED, in the running game and from the bytecode |
 | `01` | ten minutes, an AD&D turn | the minute-units digit `$49C7` wrapping | CONFIRMED, in the running game and from the bytecode |
-| `10` | one hour | the tens-of-minutes digit `$49C8` wrapping | CONFIRMED from the bytecode; live only as a negative, that it does not move when no hour boundary is crossed |
-| `11` | one day | the hour digit `$49C9` wrapping | CONFIRMED from the bytecode; live only as the same negative |
+| `10` | one hour | the tens-of-minutes digit `$49C8` wrapping | CONFIRMED, in the running game and from the bytecode |
+| `11` | one day | the hour digit `$49C9` wrapping | CONFIRMED, in the running game and from the bytecode |
+
+Units `10` and `11` were graded from the bytecode alone, with nothing live but
+the negative that they did not move when no boundary was crossed, until a rest
+long enough to cross theirs was driven. Two rests measured all four, each
+count falling by exactly the boundaries crossed and by nothing else. Both
+staged four slots at count 32, one per unit, into a copy of a save disk and
+read the bytes back (`tools/c64/effectdrive.py`):
+
+| the rest | clock | unit `00` | unit `01` | unit `10` | unit `11` |
+|---|---|---|---|---|---|
+| 30 minutes | 21:16 → 21:46 | 31 → 1, the thirty minutes | 32 → 29, the wraps at :20, :30 and :40 | 32, no hour crossed | 32, no day crossed |
+| eight hours | 21:17 → 05:17 | expired | expired | 32 → **24**, the eight hour boundaries | 32 → **31**, the one midnight |
+
+**So the count is not a number of minutes and `Duration.minutes` is an upper
+bound.** A slot staged at 21:16 with 32 ten-minute units lost its first unit
+four minutes later, at 21:20, because what it counts is the wrap and not the
+elapsed time.
+
+**Nothing counts in months.** `$49CA` and `$49CB` are a day and a month
+(`docs/41-memory-regions.md`), and the day byte did tick at midnight in the
+eight-hour rest — but two bits hold four units, a day is the coarsest of them,
+and no unit is aged by the month byte.
+
+**CONFIRMED: an expired slot reads id 0 and duration 0.** The two slots the
+eight-hour rest ran out came back that way, so an expired slot is told from a
+never-expiring one by the id and never by the duration byte. Which routine
+wrote the zero — the camp sweep storing the run-out, or the expiry — is not
+established, and `docs/125-bug-notes.md` N7 is the note that the expiry itself
+clears the id alone.
 
 **CONFIRMED: a duration byte of zero is never decremented and never expires.**
 All three ageing routines read the byte and skip the slot when it is zero
 (`DUNGEON $0E1F`, `CAMP $12A3`, `COMBAT $2228`). The project used to read zero
 as permanent, then stopped when a save turned up carrying two running spells
 at duration zero; the reading was right and the refutation was aimed at the
-wrong claim, because nothing ages such a slot and nothing ever clears its id.
+wrong claim, because nothing ages such a slot and nothing ever clears its id. A
+slot staged that way kept both its id and its zero through the whole eight-hour
+rest.
 
 Three routines age the arrays, one per overlay, and they agree:
 
@@ -86,6 +118,24 @@ nowhere to send an expiry: it parks the effect for camp or the next fight to
 collect. `ENCAMP` always collects, because `CAMP $0803` passes one minute on
 entry. `DUNGEON $1241`, which passes twelve hours, parks run-out counts at one
 the same way, deliberately.
+
+### What the two rests did not settle
+
+None of these changes the unit mapping above; each is a count the driver
+recorded and did not interpret.
+
+* **A second dungeon step passed no minute.** In the eight-hour run the first
+  step moved the clock 21:16 → 21:17 and took one off unit `00`; the second
+  left every clock byte and every count where the first had put them. Whether
+  the party was refused that move or a step only sometimes ticks the clock is
+  UNMEASURED — walk ten steps of open floor and log the clock after each.
+* **The rest's expiry checkpoint fired three times for two expiring slots.**
+  Three hits on `CAMP $131F` against the two slots, units `00` and `01`, that
+  came back with their ids cleared. UNMEASURED which slot the third hit was:
+  stop on `$131F` and read `X`.
+* **No run has crossed a month boundary**, so the month byte `$49CB` has never
+  been seen to move. Nothing is aged by it, so this bounds nothing about a
+  duration.
 
 ## The magnitude byte, and what is restored
 
