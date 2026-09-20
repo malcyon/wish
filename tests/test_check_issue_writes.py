@@ -13,6 +13,7 @@ Both halves of the list matter. A hook that refused `gh issue list` or
 `gh label` would be switched off inside an hour, and then it would guard
 nothing.
 """
+import argparse
 import importlib.util
 import io
 import json
@@ -340,3 +341,25 @@ def test_the_hook_runs_under_the_system_interpreter():
         capture_output=True, text=True, timeout=30)
     assert done.returncode == 2
     assert "wishagent.py" in done.stderr
+
+
+#: Verbs of `tools/wishagent.py` that mint credentials rather than write to an issue.
+NOT_ISSUE_WRITES = {"whoami", "token", "push-token", "git-credential"}
+
+
+def test_the_refusal_names_every_verb_the_tool_has(monkeypatch, capsys):
+    """A verb added to the tool is unreachable from the refusal until it is named there."""
+    sys.path.insert(0, str(HOOK.parents[2]))
+    try:
+        import tools.wishagent as wishagent
+    finally:
+        sys.path.pop(0)
+    parser = wishagent.build_parser()
+    (subparsers,) = [a for a in parser._actions
+                     if isinstance(a, argparse._SubParsersAction)]
+    verbs = set(subparsers.choices) - NOT_ISSUE_WRITES
+    assert verbs, "the parser lost its subcommands"
+    assert run("gh issue comment 470 --body-file /tmp/b", monkeypatch) == 2
+    err = capsys.readouterr().err
+    missing = sorted(v for v in verbs if f"wishagent.py {v}" not in err)
+    assert not missing, f"the refusal does not name {missing}"
