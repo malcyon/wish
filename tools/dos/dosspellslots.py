@@ -152,12 +152,30 @@ def table_offset(ovr: bytes, site: int, window: int = 0x400) -> int | None:
 # are Curse's and are named so a reader can check one, not so the code can use
 # one.
 
-#: The class loop's terminator, `cmp byte ptr [bp-1], 7 / je +3 / jmp`.
-_CLASS_LOOP_END = rb"\x80\x7e\xff\x07\x74\x03\xe9"
+#: The class loop's terminator.  Curse walks slots 0..7; Silver Blades walks
+#: 0..6.  Both compile as `cmp byte ptr [bp-1], last / je +3 / jmp near`.
+_CLASS_LOOP_END = rb"\x80\x7e\xff[\x06\x07]\x74\x03\xe9"
 
 
 #: The names of the arrays the block holds, in record order.
 ARRAYS = ("cleric", "druid", "magic-user")
+
+
+def slot_arrays(size: int) -> tuple[str, ...]:
+    """The slot arrays in record order, including any named gap.
+
+    Silver Blades has an `unattributed` array between druid and magic-user;
+    reading the layout keeps the progression reader from silently treating
+    its fourth physical array as Curse's third one.
+    """
+    block, width = block_of(size)
+    found = {}
+    prefix = "spells_castable_"
+    for field in dos_port.layout_for(size):
+        if field.name.startswith(prefix) and field.size == width:
+            index = (field.offset - block) // width
+            found[index] = field.name.removeprefix(prefix).replace("_", "-")
+    return tuple(found[i] for i in range(max(found) + 1))
 
 
 class SlotRun:
@@ -218,6 +236,42 @@ def builder_site(ovr: bytes, block: int) -> int:
     return found[0]
 
 
+def _class_from_body(number: int, body: bytes) -> SlotClass | None:
+    """Read one class's row loops from its branch or a called helper."""
+    head = re.search(rb"\xb0(.)\x3a\x46.", body, re.S)
+    if head is None:
+        return None
+    inc = re.search(rb"\x26\xfe\x85(..)", body, re.S)
+    assigned = re.search(rb"\x26\xc6\x85(..)\x01", body, re.S)
+    base_match = inc or assigned
+    base = struct.unpack_from("<H", base_match.group(1))[0] if base_match else None
+
+    # The loop variable is [bp-5] in the main builders and [bp-2] in Silver
+    # Blades' cleric helper.  Pair each initializer with a closing compare of
+    # that same local, instead of baking either stack offset into the reader.
+    starts = [(m.start(), m.group(1), m.group(2)[0])
+              for m in re.finditer(rb"\xc6\x46(.)(.)", body, re.S)]
+    runs = []
+    for j, (opens, local, first) in enumerate(starts):
+        span = body[opens:starts[j + 1][0] if j + 1 < len(starts)
+                    else len(body)]
+        read = re.search(rb"\x8a\x95(..)", span, re.S)
+        add = re.search(rb"\x26\x00\x95(..)", span, re.S)
+        last = re.search(rb"\x80\x7e" + re.escape(local) + rb"(.)\x75",
+                         span, re.S)
+        if read is None or add is None or last is None:
+            continue
+        sub = re.search(rb"\x2d(.)\x00", span[:read.start()], re.S)
+        runs.append(SlotRun(
+            table=struct.unpack_from("<H", read.group(1))[0],
+            dest=struct.unpack_from("<H", add.group(1))[0],
+            first=first, last=last.group(1)[0],
+            shift=sub.group(1)[0] if sub else 0))
+    if not runs:
+        return None
+    return SlotClass(number, head.group(1)[0], base, runs)
+
+
 def builder_classes(ovr: bytes, site: int) -> list[SlotClass]:
     """Every class branch of the builder at `site`, in the order it tests them.
 
@@ -235,37 +289,27 @@ def builder_classes(ovr: bytes, site: int) -> list[SlotClass]:
     out = []
     for i, (at, number) in enumerate(marks):
         body = window[at:marks[i + 1][0] if i + 1 < len(marks) else len(window)]
-        head = re.search(rb"\xb0(.)\x3a\x46\xf1", body, re.S)
-        if head is None:
-            continue                       # a branch that adds no rows at all
-        inc = re.search(rb"\x26\xfe\x85(..)", body, re.S)
-        base = struct.unpack_from("<H", inc.group(1))[0] if inc else None
-        # One `mov byte ptr [bp-5], <s>` opens each inner loop, so the byte
-        # between two of them is one run and the shift cannot be picked up
-        # from the run beside it.
-        starts = [(m.start(), m.group(1)[0])
-                  for m in re.finditer(rb"\xc6\x46\xfb(.)", body, re.S)]
-        runs = []
-        for j, (opens, first) in enumerate(starts):
-            span = body[opens:starts[j + 1][0] if j + 1 < len(starts)
-                        else len(body)]
-            read = re.search(rb"\x8a\x95(..)", span, re.S)
-            add = re.search(rb"\x26\x00\x95(..)", span, re.S)
-            last = re.search(rb"\x80\x7e\xfb(.)\x75", span, re.S)
-            if read is None or add is None or last is None:
-                continue
-            sub = re.search(rb"\x2d(.)\x00", span[:read.start()], re.S)
-            runs.append(SlotRun(
-                table=struct.unpack_from("<H", read.group(1))[0],
-                dest=struct.unpack_from("<H", add.group(1))[0],
-                first=first, last=last.group(1)[0],
-                shift=sub.group(1)[0] if sub else 0))
-        out.append(SlotClass(number, head.group(1)[0], base, runs))
+        found = _class_from_body(number, body)
+        if found is None:
+            # Silver Blades' cleric branch calls a local helper whose own
+            # frame holds the row loops.  Resolve near calls from their signed
+            # displacement and accept one only when it has the same row shape.
+            branch = site + at
+            for call in re.finditer(rb"\xe8(..)", body, re.S):
+                rel = struct.unpack("<h", call.group(1))[0]
+                target = branch + call.end() + rel
+                helper = ovr[target:target + 0x300]
+                found = _class_from_body(number, helper)
+                if found is not None:
+                    break
+        if found is not None:
+            out.append(found)
     return out
 
 
 def class_rows(image: bytes, ds: int, cls: SlotClass, block: int, width: int,
-               ceiling: int) -> dict[str, list[tuple[int, ...]]]:
+               ceiling: int, arrays: tuple[str, ...] = ARRAYS
+               ) -> dict[str, list[tuple[int, ...]]]:
     """One class's **cumulative** rows, per record array, indexed by level - 1.
 
     The tables in the image are deltas -- one row a level, added on top of
@@ -274,12 +318,12 @@ def class_rows(image: bytes, ds: int, cls: SlotClass, block: int, width: int,
     the title's own maximum for the class, because that is the title's rule
     rather than the builder's; nothing above it is read.
     """
-    block_total = [0] * (width * len(ARRAYS))
+    block_total = [0] * (width * len(arrays))
     touched = {i // width for run in cls.runs
                for _, i in run.cells(block)}
     if cls.base is not None:
         touched.add((cls.base - block) // width)
-    out: dict[str, list[tuple[int, ...]]] = {ARRAYS[i]: [] for i in sorted(touched)}
+    out: dict[str, list[tuple[int, ...]]] = {arrays[i]: [] for i in sorted(touched)}
     for level in range(1, ceiling + 1):
         if cls.base is not None and level == 1:
             block_total[cls.base - block] += 1
@@ -289,12 +333,13 @@ def class_rows(image: bytes, ds: int, cls: SlotClass, block: int, width: int,
                 for s, index in run.cells(block):
                     block_total[index] += image[at + s]
         for i in sorted(touched):
-            out[ARRAYS[i]].append(tuple(block_total[i * width:(i + 1) * width]))
+            out[arrays[i]].append(tuple(block_total[i * width:(i + 1) * width]))
     return out
 
 
 def slot_tables(ovr: bytes, image: bytes, block: int, width: int,
-                ceilings: dict[int, int]) -> dict[int, dict[str, list]]:
+                ceilings: dict[int, int], arrays: tuple[str, ...] = ARRAYS
+                ) -> dict[int, dict[str, list]]:
     """Every class branch's cumulative rows, keyed by class-slot number.
 
     `ceilings` is `{class number: the title's own maximum level}`.
@@ -302,7 +347,7 @@ def slot_tables(ovr: bytes, image: bytes, block: int, width: int,
     ds = data_segment(image)
     site = builder_site(ovr, block)
     return {cls.number: class_rows(image, ds, cls, block, width,
-                                   ceilings.get(cls.number, 20))
+                                   ceilings.get(cls.number, 20), arrays)
             for cls in builder_classes(ovr, site)}
 
 
@@ -322,7 +367,7 @@ def cmd_tables(a, ovr, image, block, width):
             print(f"    DS:{run.table:04X} columns {run.first}-{run.last} "
                   f"-> record {run.dest + run.first - run.shift:#05x}-"
                   f"{run.dest + run.last - run.shift:#05x}")
-        rows = class_rows(image, ds, cls, block, width, a.ceiling)
+        rows = class_rows(image, ds, cls, block, width, a.ceiling, a.arrays)
         for which, table in rows.items():
             print(f"  {which}:")
             for level, row in enumerate(table, start=1):
@@ -402,6 +447,7 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     game = pathlib.Path(a.path) if a.path else dosbox.find_game(a.game)
     size = a.record or RECORD_SIZE[a.game]
+    a.arrays = slot_arrays(size)
     if a.spells is None:
         a.spells = dos_port.deltas_for(size).spellbook_spells
     ovr = (game / "GAME.OVR").read_bytes()

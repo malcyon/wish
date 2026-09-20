@@ -14,6 +14,7 @@ without the disks.  No game bytes are committed.
 import pytest
 
 from goldbox import amiga_later, dos_codec, neutral, spells
+from tools.dos import dosbox, dosspellslots
 from tools.records import laterlegality
 
 SSB = "secret-of-the-silver-blades"
@@ -113,3 +114,44 @@ def test_the_rows_are_the_games_own():
             "ranger druid", level)
         assert magic_user == padded(read[("ranger", 0)].get(level, ())), (
             "ranger magic-user", level)
+
+
+def test_the_dos_builder_has_the_same_rows_as_the_c64_builder():
+    """All 52 progression rows, from the player's own `GAME.OVR` and `ECL65`."""
+    try:
+        game = dosbox.find_game("SECRET")
+    except FileNotFoundError as exc:
+        pytest.skip(f"needs the Silver Blades DOS disks: {exc}")
+    try:
+        c64 = laterlegality.silver_slot_rows()
+    except SystemExit as exc:
+        pytest.skip(f"needs the Silver Blades C64 disks: {exc}")
+
+    ovr = (game / "GAME.OVR").read_bytes()
+    image = dosspellslots.image_of(game, None)
+    block, width = dosspellslots.block_of(439)
+    arrays = dosspellslots.slot_arrays(439)
+    assert (block, width, arrays) == (
+        0x132, 7, ("cleric", "druid", "unattributed", "magic-user"))
+    site = dosspellslots.builder_site(ovr, block)
+    classes = dosspellslots.builder_classes(ovr, site)
+    assert {(cls.number, cls.from_level) for cls in classes} == {
+        (0, 2), (3, 9), (4, 8), (5, 2)}
+    dos = dosspellslots.slot_tables(
+        ovr, image, block, width, {0: 15, 3: 15, 4: 15, 5: 15}, arrays)
+
+    passes = (
+        (5, "magic-user", ("magic-user", 0)),
+        (0, "cleric", ("cleric", 7)),
+        (3, "cleric", ("paladin", 7)),
+        (4, "magic-user", ("ranger", 0)),
+        (4, "druid", ("ranger", 14)),
+    )
+    compared = 0
+    for number, array, c64_key in passes:
+        for level, row in c64[c64_key].items():
+            expected = tuple(row) + (0,) * (width - len(row))
+            assert dos[number][array][level - 1] == expected, (
+                c64_key, level)
+            compared += 1
+    assert compared == 52

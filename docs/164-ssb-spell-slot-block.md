@@ -77,6 +77,35 @@ row for level 9 reads `1 1 0 0 1 0 0` and the magic-user's for level 5
 `1 0 1 0 0 0 0`, and the ranger's rows 8-13 are `coab`'s `unk_1A758` exactly
 (druid at 8, 10, 12; magic-user at 9, 11, 13).
 
+## The DOS and C64 progression rows agree
+
+**CONFIRMED -- all 52 rows that the C64 `ECL65` builder carries match the
+DOS builder's cumulative rows, with no exceptions.** The comparison pads the
+C64 class-specific widths with zeros to the DOS arrays' seven bytes. The count
+is 15 magic-user rows, 15 cleric rows, seven paladin rows for levels 9-15,
+eight ranger-to-druid rows for levels 8-15 and seven ranger-to-magic-user rows
+for levels 9-15. `tests/records/test_silverslots.py` reads both files from the
+player's disks and performs that comparison; no game bytes are fixtures.
+
+The DOS reader locates the builder among the three `add di, 0x132` fill sites
+by its class loop. Silver Blades closes that loop at `GAME.OVR:0x3C155` with
+`80 7E FF 06 74 03 E9` (`cmp [bp-1], 6 / je / jmp`), while Curse uses `07` as
+the bound. That one-byte difference was why the earlier Curse-only extractor
+reported zero candidates. The cleric branch is the other structural
+difference: `GAME.OVR:0x3BECF` calls the helper at `0x3C477`, whose row loop
+reads `DS:0x50A1` at `0x3C50F`, rather than holding the loop inline.
+
+| class | row reads in `GAME.OVR` | table in `START.img` | destination |
+|---|---|---|---|
+| cleric | `0x3C50F` | `DS:0x50A1` = `0x12EC1` | `0x132`-`0x138` |
+| paladin | `0x3BF67` | `DS:0x52D2` = `0x130F2` | `0x132`-`0x138` |
+| ranger | `0x3C01F`, `0x3C05D` | `DS:0x538D` = `0x131AD` | `0x139`-`0x13B`, `0x147`-`0x148` |
+| magic-user | `0x3C12B` | `DS:0x5448` = `0x13268` | `0x147`-`0x14D` |
+
+The table image offsets use the executable's `DS = 0x0DE2`. This is
+independent corroboration: the DOS `GAME.OVR` stores per-level deltas and the
+C64 `ECL65` stores cumulative rows behind a self-modifying parameter loop.
+
 **The one instruction in the binary with displacement `0x140` is not this
 record's.** It is at `0x25323` inside the Curse import (`0x24CB0`, unit
 `0xF8` entry `0x70`), reading **Curse's** `0x140` -- the portrait body --
