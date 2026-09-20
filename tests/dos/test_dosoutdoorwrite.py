@@ -142,8 +142,9 @@ def _write(save0: bytes, tmp_path, game_dir) -> tuple[bytes, "dos_codec.SaveRepo
 # --- the refusal that went ---------------------------------------------------
 
 def test_the_travel_grid_is_no_longer_a_refusal():
-    """It was refused because no outdoor DOS retarget had been driven; one
-    has been now, so the reason is gone.  The other two refusals stay."""
+    """It was refused because no move of a DOS saved game onto the travel grid
+    had been driven; one has been now, so the reason is gone.  The other two
+    refusals stay."""
     for window in (25, 26, 27):
         assert dos_codec.retarget_reason(window) is None, window
     assert "not supported" in dos_codec.retarget_reason(3)      # dynamic_geo
@@ -152,7 +153,7 @@ def test_the_travel_grid_is_no_longer_a_refusal():
 
 
 def test_a_retarget_onto_a_travel_window_names_no_geo():
-    """`$49C5` is the one of the nine retarget writes that changes outdoors.
+    """`$49C5` is the one of the nine writes `sg.retarget` makes that changes outdoors.
 
     Everything else is an area like any other: the DAX number in byte 0 and
     `$5012`, the id in `$49F2`, and the block in the script buffer.
@@ -169,7 +170,7 @@ def test_a_retarget_onto_a_travel_window_names_no_geo():
     assert sg.word(outdoor, sg.AREA) == 0
     assert sg.word(outdoor, sg.SCRIPT) == WINDOW
     assert sg.word(outdoor, sg.DISK) == 7 == outdoor[0]
-    # `$49E6` is the conversion's write, not the retarget's: a move between
+    # `$49E6` is the conversion's write, not `sg.retarget`'s: a move between
     # two areas of the same world must not change which world it is.
     assert sg.word(outdoor, sg.INDOORS) == 1
 

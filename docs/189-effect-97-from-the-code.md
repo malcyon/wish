@@ -15,7 +15,7 @@ Grades follow `docs/50-experiments.md`'s scale. "The build" is the 1.3
 **Four of the six links below are re-taken every time the suite runs, and two
 are not.** `tools/dos/dosracialseed.py` reads links 1, 4, 5 and 6 -- the creation
 switch, the start-up-filled dispatch table, the overlay stubs and the handlers
--- by shape rather than by address, and `tests/dos/test_dosracialseed.py` pins the
+-- by their structure rather than by address, and `tests/dos/test_dosracialseed.py` pins the
 project's tables to what it finds. **Links 2 and 3 were read once, by hand,
 with `tools/dos/dosovrmap.py dis`, and nothing re-checks them.** They are the two
 that join "a saving throw is rolled" to "the dispatch table is consulted at

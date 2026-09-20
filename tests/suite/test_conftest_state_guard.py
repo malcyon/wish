@@ -10,7 +10,7 @@ is meant to make that class of bug loud the first time it happens rather
 than three investigations later.
 
 This drives a real, separate `pytest` process against a throwaway file
-written *inside* `tests/` and removed again -- the fixture under test lives
+written *inside* `tests/suite/` and removed again -- the fixture under test lives
 in `tests/conftest.py` itself, and calling it as a plain function would only
 prove the function runs, not that the real collection-time mechanism (an
 import poisoning a worker before its first test) is caught.
@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-# Both tests here write a uniquely-named probe **into `tests/`** and delete it
+# Both tests here write a uniquely-named probe **into `tests/suite/`** and delete it
 # again, on the assumption that only one is doing so at a time. Under
 # `-n auto` that assumption is false: neither carried a group, so
 # `--dist loadgroup` scheduled them on separate workers and their probes
@@ -41,7 +41,7 @@ import pytest
 #
 # The same reasoning as `tests/registry/test_instance.py`'s `emulator-pool` group: a
 # test claiming a shared resource has to land in one worker. The resource
-# here is the `tests/` directory during a child's collection.
+# here is the `tests/suite/` directory during a child's collection.
 pytestmark = pytest.mark.xdist_group(name="conftest-guard-probe")
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -66,7 +66,7 @@ def _run_throwaway_test(body: str) -> subprocess.CompletedProcess:
     was ever in question, and putting the write inside the same process that
     collects removes that boundary rather than racing it.
 
-    Living in `tests/` is what makes the real `tests/conftest.py` govern the
+    Living under `tests/` is what makes the real `tests/conftest.py` govern the
     run, the same way it governs every other file here.
     """
     name = f"test_zzz_conftest_guard_probe_{uuid.uuid4().hex}"

@@ -248,7 +248,7 @@ def test_fasttravel_legality_refusals_carry_no_developer_detail():
     used to reach it.
 
     Every branch `legality` can take is driven here and swept in one pass,
-    the same shape as `tests/automap/test_commissions.py::
+    the same design as `tests/automap/test_commissions.py::
     test_no_quest_log_tooltip_shows_a_memory_address` -- so the next branch
     somebody adds is caught by the same assertion rather than needing its
     own. `NO_TRAVEL_GRID` is the one exception: only Pool of Radiance has a

@@ -529,7 +529,7 @@ The editor is a consumer of the library, not an extension of it.
 
 ## Verification
 
-* `pytest tests/test_editor_binding.py` — the binding and read-only rules, run
+* `pytest tests/editor/test_editor.py` — the binding and read-only rules, run
   headless. `QT_QPA_PLATFORM=offscreen` makes widget tests work in CI too; the
   automapper's window is already smoke-tested that way.
 * Open `wish/window.ui` in Qt Designer, move a field to a different group box,

@@ -226,7 +226,7 @@ def test_an_amiga_source_character_converted_to_the_amiga_names_no_platform():
     (`goldbox.amiga_later.to_neutral_later`), was told about a DOS engine on its
     way to another Amiga save.
 
-    `engine_written_parties` is `tests/amiga/test_amigalaterwrite.py`'s corpus of
+    `engine_written_parties` is `tests/amiga/test_amigalaterwrite.py`'s set of
     saved games the two later engines themselves wrote.
     """
     parties = engine_written_parties()

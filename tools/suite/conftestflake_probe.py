@@ -2,7 +2,7 @@
 on the Windows 3.13 job, so a red main no longer means the commit broke
 something)`.
 
-Watches `tests/` for the appearance and disappearance of the throwaway probe
+Watches `tests/suite/` for the appearance and disappearance of the throwaway probe
 files that `tests/suite/test_conftest_state_guard.py`'s `_run_throwaway_test`
 writes and removes, without changing that file at all. Loaded with
 `-p tools.suite.conftestflake_probe` on a command line that also runs

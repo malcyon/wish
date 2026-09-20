@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """The D64 sizes `goldbox.d64` accepts, and the ones it must still refuse.
 
-`tests/saves/test_d64.py` is the regression on the plain 174848-byte image and stays
+`tests/saves/test_d64.py` is the regression on the standard 174848-byte image and stays
 that way. This module covers what was added around it: the 40- and 42-track
-geometries, the appended error map, and the rule that only the plain image may
+geometries, the appended error map, and the rule that only the standard image may
 be written.
 
 The point that is easy to lose is the **refusal**. Widening the reader into

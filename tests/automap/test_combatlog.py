@@ -807,7 +807,7 @@ def test_the_dice_come_from_the_attacker_and_not_the_target():
 
 # --- Curse and Silver Blades' own addresses (#39) ---------------------------
 #
-# `later_arena` in `tests/automap/test_latercombat.py` lays out a Curse-shaped machine
+# `later_arena` in `tests/automap/test_latercombat.py` lays out a machine with Curse's addresses
 # for the combat *view*; this is the same idea for the log. Before the
 # per-title table was wired in, `poll` read `$6E11` and `$49FC` -- and
 # `rolls.D20`/`rolls.ATTACK`/`rolls.ROSTER` at their Pool of Radiance addresses

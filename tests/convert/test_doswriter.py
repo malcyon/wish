@@ -2313,9 +2313,10 @@ def test_the_areas_with_a_legal_answer_are_not_refused():
     """New Phlan among them: the C64 loads no WALLSET there, and a retarget
     carrying an empty triple draws it identically -- `p60/run3` (scratch, deleted) Z0.
 
-    The three travel windows joined the list in #190, once an outdoor DOS
-    retarget had been driven; `tests/dos/test_dosoutdoorwrite.py` is where the
-    outdoor write path is held to what an engine-written overland save holds.
+    The three travel windows joined the list in #190, once a move of a DOS
+    saved game onto an outdoor window had been driven;
+    `tests/dos/test_dosoutdoorwrite.py` is where the outdoor write path is held
+    to what an engine-written overland save holds.
     """
     for area in (0, 20, 21, 25, 26, 27):
         assert dos_codec.retarget_reason(area) is None
@@ -2698,7 +2699,7 @@ def test_which_write_dropped_lines_a_c64_or_amiga_source_reaches_today():
     change rather than a drift.
 
     Counted over the 24 DOS records on the player's own disks in
-    `tests/convert/test_dosconvert.py`'s corpus: no `WRITE_DROPPED` line reaches
+    `tests/convert/test_dosconvert.py`'s records: no `WRITE_DROPPED` line reaches
     them any more -- `turn_power` moved to `WRITE_NO_SUCH_FIELD` (#483). A
     **C64** source reaches `infravision` too, also on `WRITE_NO_SUCH_FIELD`
     -- the C64 byte is written once from a race table in the game's own

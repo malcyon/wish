@@ -18,8 +18,7 @@ shipped on the C64, so "the same title's other port" does not exist for it.
 what it was written for before there were real conversions to exercise it.
 `tools/amiga/toamigapor.py` is the honest same-title route for Pool of Radiance, and
 `goldbox.amiga_pod.export_party` -- the conversion this file only wraps -- is
-tested in `tests/amiga/test_amiga.py` and `tests/test_exports.py` and used by
-`editor/exports.py`. Nothing imports this wrapper.
+tested in `tests/amiga/test_amiga.py`. Nothing imports this wrapper.
 
 
     tools/amiga/toamiga.py PORSAVE.D64 -o OUTDIR/SAVE

@@ -11,7 +11,7 @@ is the write-up. `#319 (The Amiga export's drop line still says a conversion
 "does not carry" a combat icon)` is what asked for the fields to convert
 rather than for a better sentence about why they do not.
 
-Every test here reads the corpus `tests/amiga/test_amiga.py` already reads: the
+Every test here reads the saves `tests/amiga/test_amiga.py` already reads: the
 eleven Curse `.guy` pregens, the four played Curse characters and the six
 shipped Silver Blades ones, 21 specimens total. `tests/amiga/test_amigalaterwrite.py`
 already proves the round trip byte for byte; this file is about the two

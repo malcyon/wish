@@ -7,7 +7,7 @@ import pathlib
 def _ordinary_party(tmp_path) -> str:
     """Six characters at a size a player would actually see, not the widest
     the format allows -- `gamedata.synthetic_party`'s widest-of-everything
-    shape is for a different question (`tests/wish/test_mapscale.py`, `#71`) and
+    form is for a different question (`tests/wish/test_mapscale.py`, `#71`) and
     would make the Name and Class columns dwarf their own headings, which is
     not the case this bug is about.
     """

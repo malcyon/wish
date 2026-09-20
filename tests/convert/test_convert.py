@@ -1919,7 +1919,7 @@ def test_the_picker_offers_an_amiga_disk():
 
 
 # ---------------------------------------------------------------------------
-# The flag -- `tests/convert/test_dosimport.py:708-750`'s shape, ported: "the gate,
+# The flag -- `tests/convert/test_dosimport.py:708-750`'s design, ported: "the gate,
 # asserted from the outside" rather than a direct call to `enabled()`, so a
 # passing test also proves `wish/window.py`'s wiring and not only the
 # function. `_wish_window`/`_file_menu` are that file's private helpers,

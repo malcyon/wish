@@ -183,7 +183,8 @@ class FastTravelAddresses:
 #: Pool of Radiance. `DUNGEON $2011`, and the five addresses in it are the
 #: ones `docs/118-debug-mode.md` §3 has measured since P15 -- this row is a
 #: restatement of what `automap/actions.py` already shipped, not a new reading,
-#: and `tests/test_fasttravel_addresses.py` checks the two against each other.
+#: and `tests/areas/test_pertitlefasttravel.py` pins the constants
+#: `automap/actions.py` derives from this row to Pool of Radiance's numbers.
 #: `KEY_WAIT` and `KEY_FETCH` were measured from 400 program-counter samples
 #: of an idle party and then reproduced from the bytes.
 POOL_OF_RADIANCE = FastTravelAddresses(

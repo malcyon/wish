@@ -17,7 +17,7 @@ Four rounds of this were found by hand, one file at a time -- `#430`, `#455`,
 `#487`'s two more sites in one of those same six files.
 
 **This sweep is a destination test with a reviewed allowlist**, which is the
-shape `tests/suite/test_repository_contents.py` already uses for
+design `tests/suite/test_repository_contents.py` already uses for
 `tests/fixtures/`.  Three attempts at a predicate that separates the good
 copies from the bad ones automatically were abandoned on `#492`; a person
 reads each call site instead and writes down which it is.

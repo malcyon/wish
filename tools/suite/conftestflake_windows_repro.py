@@ -6,17 +6,17 @@ Forces the exact race the issue describes, deterministically, instead of
 waiting on `pytest -n auto`'s scheduler to happen to put two probes on disk
 at once. `tests/suite/test_conftest_state_guard.py::_run_throwaway_test` runs a
 child `pytest` against a single target file; that child, resolving one file
-argument, collects the *whole* `tests/` directory first and only afterwards
+argument, collects the *whole* `tests/suite/` directory first and only afterwards
 filters down to the target -- confirmed by instrumenting
 `pytest_make_collect_report` directly: a single-file argument against this
-tree produces a `Dir` collect report for `tests/` itself, holding all ~280
-sibling nodes, before the file the caller actually asked for is picked out
+tree produces a `Dir` collect report for `tests/suite/` itself, holding every
+sibling node, before the file the caller actually asked for is picked out
 of it. On `win32`, `_pytest/main.py` falls back to `samefile_nofollow()`
 for every sibling whose path does not string-equal the target's, and that
 function calls `.lstat()` on both arguments with no missing-file handling.
 
 This plugin hooks the same `pytest_make_collect_report` call, waits for the
-`tests/` directory's own report, and -- once it holds a node for the
+`tests/suite/` directory's own report, and -- once it holds a node for the
 sibling file named by `ISSUE522_SIBLING` -- deletes that file from disk
 before returning, in `ISSUE522_MODE=force`. The matching loop in
 `_pytest/main.py` then finds a `Node` whose `.path` no longer exists. In

@@ -30,7 +30,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 def _c64_specimen(name: str) -> pathlib.Path:
     """A C64 specimen disk, which is one file rather than a directory --
-    `tests/convert/test_toamigapor.py`'s own helper, in the shape a new file has to
+    `tests/convert/test_toamigapor.py`'s own helper, in the form a new file has to
     repeat since a fixture is not shared across test modules here."""
     root = gamedata.specimen_root()
     if root is None:

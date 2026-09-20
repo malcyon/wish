@@ -5,11 +5,11 @@ name: measure conftest guard flake
 # one candidate cause, not to fix anything.
 #
 # The candidate: `tests/suite/test_conftest_state_guard.py`'s two tests each spawn
-# a child `pytest` that collects a single target file under `tests/` by
+# a child `pytest` that collects a single target file under `tests/suite/` by
 # path. Resolving a one-file argument makes that child collect the *whole*
-# `tests/` directory first -- confirmed locally by instrumenting
+# `tests/suite/` directory first -- confirmed locally by instrumenting
 # `pytest_make_collect_report` directly, a single-file argument against this
-# tree produces one `Dir` collect report for `tests/` holding every sibling
+# tree produces one `Dir` collect report for `tests/suite/` holding every sibling
 # file, before the target is picked out of it. On `win32` only,
 # `_pytest/main.py`'s matching loop falls back to
 # `_pytest.pathlib.samefile_nofollow()` for every sibling whose path does
@@ -20,7 +20,7 @@ name: measure conftest guard flake
 #
 # `tools/suite/conftestflake_windows_repro.py` forces this deterministically instead of
 # waiting on `-n auto`'s scheduler: it deletes a disposable sibling file
-# right after `tests/`'s own collect report is produced (`ISSUE522_MODE=force`),
+# right after `tests/suite/`'s own collect report is produced (`ISSUE522_MODE=force`),
 # or leaves it alone (`ISSUE522_MODE=control`), and logs both arguments
 # `samefile_nofollow` is called with. The prediction: every `force` iteration
 # fails collection naming the *sibling*, no `control` iteration fails at all.
