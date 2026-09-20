@@ -883,6 +883,12 @@ class PreferencesDialog(QDialog):
         self.travel_warning.setStyleSheet(WARNING_BOX)
 
         self.travel_tabs = self.ui.travel_tabs
+        # With scroll arrows on, the tab widget's own size hint and minimum
+        # ignore how wide the bar wants to be, so the dialog can settle on a
+        # width a few pixels short of it and the last tab is clipped. With
+        # them off the bar's width is a minimum, and the dialog is at least
+        # that wide.
+        self.travel_tabs.tabBar().setUsesScrollButtons(False)
         #: Each title's own rows, table and note, by `Game.key`.
         self.travel_rows: dict[str, list[area_table.Area]] = {}
         self.travel_tables: dict[str, QTableWidget] = {}

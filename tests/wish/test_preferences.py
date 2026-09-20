@@ -1389,6 +1389,38 @@ def test_the_tab_bar_fits_and_the_table_keeps_its_rows_at_larger_fonts(
         app.setFont(base)
 
 
+def test_the_tab_bar_fits_at_a_wide_fixed_pitch_font(
+        app, tmp_path, monkeypatch):
+    """The three titles are wider in a fixed-pitch font than the widest thing
+    on General is, which is the case where the dialog used to settle on a
+    width short of the bar: the same failure Windows showed at +6, reproduced
+    with a font every machine has."""
+    from PyQt6.QtGui import QFont, QFontDatabase
+
+    nowhere(tmp_path, monkeypatch)
+    base = app.font()
+    try:
+        for extra in (6, 10):
+            wide = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+            wide.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(QFont(wide))
+            dialog = PreferencesDialog(window(app))
+            dialog.tabs.setCurrentIndex(2)
+            dialog.show()
+            try:
+                app.processEvents()
+                bar = dialog.travel_tabs.tabBar()
+                assert bar.sizeHint().width() <= dialog.travel_tabs.width(), (
+                    f"+{extra} in {wide.family()}: the bar wants "
+                    f"{bar.sizeHint().width()}, the tab widget is "
+                    f"{dialog.travel_tabs.width()}, the dialog is "
+                    f"{dialog.width()}, the style is {app.style().objectName()}")
+            finally:
+                dialog.close()
+    finally:
+        app.setFont(base)
+
+
 def test_one_warning_sits_above_the_tabs_and_not_inside_a_page(
         app, tmp_path, monkeypatch):
     """The sentence is true of every title, so it is said once. It is on the

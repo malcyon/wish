@@ -712,6 +712,17 @@ this dialog, one per title.
   title that gains a table gains a page in `preferences.ui`. A title with no
   table has no tab. The dialog opens on the open title's tab, or the first
   when the open title has none, and remembers nothing.
+* **The title tabs never scroll, and the dialog is at least as wide as the
+  bar.** A `QTabWidget` whose bar has scroll arrows reports a size hint and a
+  minimum that leave the bar's width out, so the dialog can settle a few
+  pixels narrower than the three titles and the last tab is clipped behind
+  an arrow. Which dialog width wins depends on how wide the font's title text
+  is against the widest thing on General, so it fails on some fonts and not
+  others: on Windows at the +6 pt step the bar wanted 1412 px and the tab widget was
+  1400. `_wire_travel` turns the arrows off, which makes the bar's width part
+  of the minimum; at the default font nothing moves.
+  `test_the_tab_bar_fits_at_a_wide_fixed_pitch_font` reproduces it off
+  Windows.
 * **Each tab is a `QTableWidget`, one checkable row per fast-travellable
   area**, sorted by name with the unnamed rows after them in area-number
   order, with its own count under it. A named row's tooltip is
