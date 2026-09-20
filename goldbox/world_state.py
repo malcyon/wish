@@ -35,11 +35,12 @@ save loses nothing.
 from __future__ import annotations
 
 import dataclasses
+import struct
 
 from . import areas, c64_save, dos_savegame
 
-__all__ = ["WorldState", "HEADER_ADDRESSES", "from_c64", "from_dos",
-           "from_amiga"]
+__all__ = ["WorldState", "PodWorldState", "HEADER_ADDRESSES", "from_c64",
+           "from_dos", "from_amiga", "pod_from_dos"]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -113,6 +114,63 @@ class WorldState:
     header: "dict[int, int]"
     #: Where this was read from, for the report.
     source: str = ""
+
+
+@dataclasses.dataclass(frozen=True)
+class PodWorldState:
+    """Where a Pools of Darkness party is standing, and when.
+
+    Beside :class:`WorldState` rather than inside it, because this title's
+    saved game is a different structure: a 1024-byte array of one-byte ECL
+    variables in place of the 5120-byte word array, a seven-digit clock, no
+    wallset, no quest-flag window and no per-script scratch.  Holds exactly
+    what the DOS and Amiga containers both write, and nothing derivable from
+    it -- see `clock`, `in_dungeon` and `wilderness_square`.
+
+    `facing` is 0-3, as on :class:`WorldState`; both ports store it doubled.
+    """
+
+    title: str
+    #: The whole variable array; variable *N* is `variables[N - 1]`.
+    variables: bytes
+    x: int
+    y: int
+    facing: int
+    #: The fourth and fifth bytes of the square block.
+    wall_ahead: int
+    square_property: int
+    #: The interface mode before the current one, and the current one
+    #: (`dos_savegame.POD_MODE_WILDERNESS`, `POD_MODE_DUNGEON`, 2 in camp).
+    previous_mode: int
+    mode: int
+    #: The two words the dungeon loader passes to `LoadMap`.
+    dungeon_map: int
+    map_block: int
+    #: The party size byte that ends the square block.
+    count: int
+    #: Where this was read from, for the report.
+    source: str = ""
+
+    @property
+    def clock(self) -> "tuple[int, ...]":
+        """The seven clock digits, in `dos_savegame.POD_CLOCK_RADIX` order."""
+        first = dos_savegame.POD_CLOCK - dos_savegame.POD_VAR_FIRST
+        return tuple(self.variables[first + i]
+                     for i in range(dos_savegame.POD_CLOCK_DIGITS))
+
+    @property
+    def in_dungeon(self) -> bool:
+        """Is the party in a dungeon rather than the wilderness?"""
+        return self.variables[
+            dos_savegame.POD_IN_DUNGEON - dos_savegame.POD_VAR_FIRST] != 0
+
+    @property
+    def wilderness_square(self) -> "tuple[int, int]":
+        """The overland square.  Stale while `in_dungeon` is true: the pair is
+        left at the last wilderness square rather than cleared."""
+        first = dos_savegame.POD_VAR_FIRST
+        return (self.variables[dos_savegame.POD_WILDERNESS_X - first],
+                self.variables[dos_savegame.POD_WILDERNESS_Y - first])
 
 
 #: The later titles' own copied header words, both runs
@@ -313,4 +371,36 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
                 _amiga.word(savgam, dos_savegame.TRAVEL_Y)),
         set_out=True,
         header={a: _amiga.word(savgam, a) for a in HEADER_ADDRESSES},
+        source=source)
+
+
+def pod_from_dos(savgam: bytes,
+                 shape: "dos_savegame.DosContainer | int | str | None" = None,
+                 source: str = "") -> PodWorldState:
+    """A Pools of Darkness `SAVGAM<slot>.PTY`, as a place and a clock.
+
+    Reads through `goldbox.dos_savegame`, so a buffer that is not the
+    container's size is refused there.  A container with no byte-wide variable
+    array, which is every title but this one, raises.  `WorldState.from_dos`
+    is the reader for those and still refuses this title's file.
+    """
+    shape = dos_savegame.container_for(
+        shape if shape is not None else len(savgam))
+    if not shape.var_bytes:
+        raise dos_savegame.DosSaveError(
+            f"a {shape.title} saved game holds no byte-wide variable array")
+    x, y, facing = dos_savegame.position(savgam, shape)
+    return PodWorldState(
+        title=shape.title,
+        variables=bytes(savgam[:shape.var_bytes]),
+        x=x, y=y, facing=facing,
+        wall_ahead=savgam[shape.tail_scratch],
+        square_property=savgam[shape.tail_scratch + 1],
+        previous_mode=savgam[shape.previous_mode],
+        mode=savgam[shape.mode],
+        dungeon_map=struct.unpack_from(
+            "<H", savgam, dos_savegame.POD_MAP)[0],
+        map_block=struct.unpack_from(
+            "<H", savgam, dos_savegame.POD_MAP_BLOCK)[0],
+        count=savgam[shape.party_size_byte],
         source=source)

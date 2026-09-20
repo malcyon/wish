@@ -11,6 +11,7 @@ against `PorSaveState`.
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 
 import gamedata
@@ -175,3 +176,77 @@ def test_amiga_savegame_por_state_is_world_state():
     from goldbox import amiga_savegame
 
     assert amiga_savegame.PorSaveState is world_state.WorldState
+
+
+# ---------------------------------------------------------------------------
+# Pools of Darkness has its own state: a byte-wide array, not WorldState's words
+# ---------------------------------------------------------------------------
+
+def _synthetic_pod_save() -> bytearray:
+    """A 1364-byte Pools of Darkness container built from the documented
+    layout, with a distinct value in every field under test."""
+    box = dos_savegame.SAVE_POOLS_OF_DARKNESS
+    save = bytearray(box.size)
+    for i in range(box.var_bytes):
+        save[i] = (i * 7 + 3) & 0x7F
+    for i, digit in enumerate((1, 2, 3, 4, 5, 6, 7)):
+        dos_savegame.put_pod_var(save, dos_savegame.POD_CLOCK + i, digit, box)
+    dos_savegame.put_pod_var(save, dos_savegame.POD_IN_DUNGEON, 1, box)
+    dos_savegame.put_pod_var(save, dos_savegame.POD_WILDERNESS_X, 21, box)
+    dos_savegame.put_pod_var(save, dos_savegame.POD_WILDERNESS_Y, 22, box)
+    save[box.pos_x], save[box.pos_y], save[box.pos_facing] = 11, 2, 4
+    save[box.tail_scratch], save[box.tail_scratch + 1] = 0x5A, 0x6B
+    save[dos_savegame.POD_PREVIOUS_MODE] = 2
+    save[dos_savegame.POD_MODE] = dos_savegame.POD_MODE_DUNGEON
+    save[dos_savegame.POD_MAP:dos_savegame.POD_MAP + 2] = (0x34, 0x12)
+    save[dos_savegame.POD_MAP_BLOCK:dos_savegame.POD_MAP_BLOCK + 2] = (0x78, 0x56)
+    save[box.party_size_byte] = 6
+    return save
+
+
+def test_a_pools_of_darkness_dos_save_reads_as_its_own_state():
+    save = _synthetic_pod_save()
+    state = world_state.pod_from_dos(bytes(save), source="synthetic")
+    assert isinstance(state, world_state.PodWorldState)
+    assert state.title == "Pools of Darkness"
+    assert state.variables == bytes(save[:1024])
+    assert (state.x, state.y, state.facing) == (11, 2, 2)
+    assert (state.wall_ahead, state.square_property) == (0x5A, 0x6B)
+    assert (state.previous_mode, state.mode) == (2, dos_savegame.POD_MODE_DUNGEON)
+    assert (state.dungeon_map, state.map_block) == (0x1234, 0x5678)
+    assert state.count == 6
+    assert state.source == "synthetic"
+    assert state.clock == (1, 2, 3, 4, 5, 6, 7)
+    assert state.in_dungeon is True
+    assert state.wilderness_square == (21, 22)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        state.x = 0
+
+
+def test_a_pools_of_darkness_state_takes_an_explicit_container():
+    save = bytes(_synthetic_pod_save())
+    box = dos_savegame.SAVE_POOLS_OF_DARKNESS
+    assert (world_state.pod_from_dos(save, box)
+            == world_state.pod_from_dos(save, box.key)
+            == world_state.pod_from_dos(save))
+
+
+def test_pod_from_dos_refuses_a_title_with_no_byte_array():
+    with pytest.raises(dos_savegame.DosSaveError, match="no byte-wide"):
+        world_state.pod_from_dos(bytes(dos_savegame.SAVGAM_SIZE),
+                                 dos_savegame.SAVE_POOL_OF_RADIANCE)
+
+
+def test_the_shared_world_state_still_refuses_a_pools_of_darkness_save():
+    """`WorldState` has no home for a byte-wide array, and the refusal is
+    correct: widening it to take this title is the wrong repair, and
+    `pod_from_dos` is the reader for these files."""
+    with pytest.raises(dos_savegame.DosSaveError,
+                       match="holds no ECL variable array"):
+        world_state.from_dos(bytes(_synthetic_pod_save()))
+
+
+def test_the_shared_world_state_keeps_its_six_digit_clock():
+    assert dos_savegame.CLOCK_DIGITS == 6
+    assert "variables" not in {f.name for f in
+                               dataclasses.fields(world_state.WorldState)}
