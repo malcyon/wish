@@ -150,33 +150,104 @@ def _has_main_block(name: str) -> bool:
 RUNNABLE = tuple(name for name in TOOLS if _has_main_block(name))
 
 
-@pytest.mark.parametrize("name", RUNNABLE)
-def test_help_cannot_reach_a_dangerous_call_unguarded(name):
-    tree = ast.parse((TOOLS_DIR / f"{name}.py").read_text(encoding="utf-8"),
-                     filename=f"{name}.py")
+def _entry_dangerous(source: str, filename: str = "<source>") -> list[str]:
+    """The dangerous calls in a script's `__main__` block or in a function that
+    block calls directly, or `[]` when it has no `__main__` block."""
+    tree = ast.parse(source, filename=filename)
     block = _main_block(tree)
-    assert block is not None, name
+    if block is None:
+        return []
+    return [d for c in _entry_candidates(tree, block)
+            for d in _dangerous_calls(c)]
+
+
+def _unguarded_reason(source: str, filename: str) -> str | None:
+    """Why `--help` could reach a dangerous call in this script unguarded, or
+    `None` when it cannot: the call is absent, or argparse's `parse_args`
+    stands in front of it."""
+    tree = ast.parse(source, filename=filename)
+    block = _main_block(tree)
+    assert block is not None, filename
 
     candidates = _entry_candidates(tree, block)
     dangerous = [d for c in candidates for d in _dangerous_calls(c)]
+    if not dangerous:
+        return None
+
     argv_aware = any(_references_argv(c) or _has_call_named(c, "ArgumentParser")
                      for c in candidates)
-
-    if not dangerous:
-        return  # nothing here that --help could reach unguarded
-
-    assert argv_aware, (
-        f"tools/{name}.py calls {dangerous} without ever looking at "
-        f"sys.argv or building an argparse parser, so --help runs it "
-        f"exactly like any other invocation")
+    if not argv_aware:
+        return (f"{filename} calls {dangerous} without ever looking at "
+                f"sys.argv or building an argparse parser, so --help runs it "
+                f"exactly like any other invocation")
 
     parses = any(_has_call_named(c, "parse_args") for c in candidates)
     parses_loosely = any(_has_call_named(c, "parse_known_args")
                          for c in candidates)
-    assert parses and not parses_loosely, (
-        f"tools/{name}.py calls {dangerous} but does not refuse an "
-        f"unrecognised argument with argparse's own parse_args -- --help or "
-        f"a typo would reach it")
+    if not (parses and not parses_loosely):
+        return (f"{filename} calls {dangerous} but does not refuse an "
+                f"unrecognised argument with argparse's own parse_args -- "
+                f"--help or a typo would reach it")
+    return None
+
+
+def _guarded(name: str) -> bool:
+    """Does the script have a dangerous call for `--help` to reach?
+
+    A file that cannot be read or parsed counts as having one, so it stays in
+    the sweep and fails its own case rather than every case at collection."""
+    try:
+        return bool(_entry_dangerous(
+            (TOOLS_DIR / f"{name}.py").read_text(encoding="utf-8"),
+            f"{name}.py"))
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return True
+
+
+#: The runnable scripts that have a dangerous call in their entry point --
+#: the only ones the sweep below has anything to say about. Computed from each
+#: tool's own source at collection, so a tool that gains a `claim` or a
+#: `QApplication` joins the sweep without anybody listing it.
+GUARDED = tuple(name for name in RUNNABLE if _guarded(name))
+
+
+@pytest.mark.parametrize("name", GUARDED)
+def test_help_cannot_reach_a_dangerous_call_unguarded(name):
+    reason = _unguarded_reason(
+        (TOOLS_DIR / f"{name}.py").read_text(encoding="utf-8"),
+        f"tools/{name}.py")
+    assert reason is None, reason
+
+
+_UNGUARDED_SOURCE = """
+from tools.c64.session import Session
+
+def run():
+    return Session()
+
+if __name__ == "__main__":
+    run()
+"""
+
+_NO_DANGEROUS_CALL_SOURCE = """
+def run():
+    return 1
+
+if __name__ == "__main__":
+    run()
+"""
+
+
+def test_the_filter_classifies_a_session_with_no_parser_as_dangerous():
+    assert _entry_dangerous(_UNGUARDED_SOURCE) == ["Session"]
+    reason = _unguarded_reason(_UNGUARDED_SOURCE, "tools/fake.py")
+    assert reason is not None
+    assert "sys.argv" in reason
+
+
+def test_the_filter_leaves_a_script_with_no_dangerous_call_out():
+    assert _entry_dangerous(_NO_DANGEROUS_CALL_SOURCE) == []
+    assert _unguarded_reason(_NO_DANGEROUS_CALL_SOURCE, "tools/fake.py") is None
 
 
 def test_the_family_named_in_403_is_covered():
@@ -188,6 +259,14 @@ def test_the_family_named_in_403_is_covered():
     for name in ("ssbrun", "curserun", "session", "genui", "genlicenses"):
         assert name in STEMS, name
         assert STEMS[name] in RUNNABLE, name
+    # The three the sweep exists for must be in it; genui and genlicenses are
+    # not, since neither has a dangerous call.
+    for name in ("ssbrun", "curserun", "session"):
+        assert STEMS[name] in GUARDED, name
+    # An empty `parametrize` list collects one skipped test and asserts
+    # nothing, so a filter that matches nothing has to fail here instead.
+    assert len(RUNNABLE) >= 300
+    assert len(GUARDED) >= 50
 
 
 # ---------------------------------------------------------------------------
