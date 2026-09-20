@@ -2162,13 +2162,11 @@ class FastTravel(Action):
                            f"Walking out of this area on foot -- answer "
                            f"whatever the game asks, and Wish will take the "
                            f"party on to {name} once they are through the "
-                           f"door "
-                           f"(NOT APPROVED)",
+                           f"door",
                            ())
         return Outcome(True,
                        f"Walking out towards {name}, the way the party "
-                       f"would on foot -- answer whatever the game asks "
-                       f"(NOT APPROVED)",
+                       f"would on foot -- answer whatever the game asks",
                        ())
 
     def cancel_pending(self) -> None:
@@ -2202,8 +2200,7 @@ class FastTravel(Action):
                 self.pending = None
                 return Outcome(False,
                                f"The party never left, so the trip to {name} "
-                               f"did not happen "
-                               f"(NOT APPROVED)")
+                               f"did not happen")
             return None
         if area_now != pending.through:
             _log.debug("two-hop fast travel dropped: the game went to area "

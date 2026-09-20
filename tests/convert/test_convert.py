@@ -1843,22 +1843,12 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # `goldbox.amiga_pod` 1 -> 0: the Amiga reader's marked warning was
     # deleted, because it stopped being true, rather than worded by Donald.
     #
-    # `automap.actions` 1 -> 3: the two strings of the two-hop Fast Travel
-    # (walking out through the area's one door first, and giving up when the
-    # party never leaves) wait on Donald's wording.
+    # `automap.actions` 1 -> 3 -> 0: Fast Travel's three strings (the
+    # two-hop's walking-out and giving-up lines, and the one-hop "Walking out
+    # towards" line) were approved by the owner as worded, so every swept
+    # module is 0.
     WAITING = {"goldbox.c64_codec": 0, "goldbox.amiga_pod": 0,
-               "goldbox.dos_codec": 0,
-               # 3 -> 2 on 2026-09-10: Donald approved the failure line for
-               # a Fast Travel that cannot walk the party through a door
-               # (`#493 (A Fast Travel that fails walking the party out
-               # leaves them at the doorway and says they have not moved)`),
-               # once its fix made "the party is back where it started" true.
-               #
-               # 2 -> 1: Donald approved the multi-class trainer message
-               # as worded (`#477 (Twenty interface strings still carry a
-               # (NOT APPROVED) marker)`); Fast Travel's "Walking out
-               # towards" line is the one left.
-               "automap.actions": 3}
+               "goldbox.dos_codec": 0, "automap.actions": 0}
 
     found: dict[str, list[str]] = {}
     for module in (c64_codec, amiga_pod, dos_codec, actions):

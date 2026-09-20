@@ -1253,7 +1253,10 @@ def test_the_two_hop_runs_the_one_door_the_area_has(monkeypatch):
     assert ft.pending is not None
     assert (ft.pending.from_area, ft.pending.through) == (13, 27)
     assert ft.pending.area is actions.area_by_id(0)
-    assert outcome.message.endswith("(NOT APPROVED)")
+    assert outcome.message == (
+        "Walking out of this area on foot -- answer whatever the game asks, "
+        f"and Wish will take the party on to {ft.pending.area.name} once "
+        "they are through the door")
 
 
 def test_the_two_hop_is_off_without_the_flag_and_a_forgotten_zero_is_off(
@@ -1413,7 +1416,9 @@ def test_a_declined_exit_gives_up_at_the_deadline_and_writes_nothing(
     ft.pending.deadline = time.monotonic() - 1
     outcome = ft.continue_pending(target)
     assert outcome is not None and not outcome.ok
-    assert outcome.message.endswith("(NOT APPROVED)")
+    assert outcome.message == (
+        f"The party never left, so the trip to {actions.area_by_id(0).name} did "
+        "not happen")
     assert ft.pending is None
     assert target.memory == before
     assert target.jumps == []
