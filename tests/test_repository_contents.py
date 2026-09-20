@@ -14,6 +14,7 @@ what is committed.
 
 import ast
 import ipaddress
+import json
 import pathlib
 import re
 import subprocess
@@ -1205,3 +1206,63 @@ def test_the_example_check_wants_both_templates_once_ansible_is_tracked():
 
 def test_the_example_check_passes_while_ansible_is_empty():
     assert ansible_examples_missing([pathlib.Path("README.md")]) == []
+
+
+def hook_commands(settings: dict) -> list[str]:
+    """Every hook `command` string under every event in a settings dict."""
+    return [hook["command"]
+            for groups in settings.get("hooks", {}).values()
+            for group in groups
+            for hook in group.get("hooks", [])
+            if "command" in hook]
+
+
+def hook_paths_not_executable_in_git(commands: list[str],
+                                     modes: dict[str, str]) -> list[str]:
+    """Repo paths named as a hook's first word that the index does not hold as 100755.
+
+    A path outside the repo (a system command) is skipped. `modes` maps a
+    repo-relative path to its git index mode; a missing path has none.
+    """
+    bad = []
+    for command in commands:
+        first = command.split()[0]
+        if not first.startswith("$CLAUDE_PROJECT_DIR/"):
+            continue
+        rel = first[len("$CLAUDE_PROJECT_DIR/"):]
+        if modes.get(rel) != "100755":
+            bad.append(rel)
+    return bad
+
+
+def _index_modes(rels: list[str]) -> dict[str, str]:
+    modes = {}
+    for rel in rels:
+        out = subprocess.run(["git", "ls-files", "-s", "--", rel], cwd=ROOT,
+                             capture_output=True, text=True, check=True)
+        if out.stdout.strip():
+            modes[rel] = out.stdout.split()[0]
+    return modes
+
+
+def test_every_hook_command_in_settings_is_executable_in_git(files):
+    """A hook committed as 100644 fails with permission denied on every call
+    and so never refuses anything. The index mode is checked rather than
+    `os.access`, which the Windows job cannot answer."""
+    commands = hook_commands(json.loads(
+        (ROOT / ".claude" / "settings.json").read_text(encoding="utf-8")))
+    rels = [c.split()[0][len("$CLAUDE_PROJECT_DIR/"):] for c in commands
+            if c.split()[0].startswith("$CLAUDE_PROJECT_DIR/")]
+    assert rels, "settings.json names no hook inside the repo"
+    bad = hook_paths_not_executable_in_git(commands, _index_modes(rels))
+    assert not bad, "".join(
+        f"\n{rel} is missing or not mode 100755 in git; run: "
+        f"git update-index --chmod=+x {rel}" for rel in bad)
+
+
+@pytest.mark.parametrize("modes", [{}, {"h.py": "100644"}, {"h.py": "100755"}],
+                         ids=["missing", "not-executable", "executable"])
+def test_the_hook_mode_check_flags_anything_but_100755(modes):
+    bad = hook_paths_not_executable_in_git(
+        ["$CLAUDE_PROJECT_DIR/h.py --flag", "/usr/bin/true"], modes)
+    assert bad == ([] if modes.get("h.py") == "100755" else ["h.py"])
