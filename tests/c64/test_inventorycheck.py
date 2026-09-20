@@ -30,6 +30,7 @@ The remaining three -- the lower-case glyph transform and the two item-list
 readers -- need neither and run everywhere.
 """
 
+import os
 import pathlib
 import shutil
 
@@ -47,6 +48,25 @@ CURSE = ("curse-party-with-items", "MALE ELF MAGE",
          "curse-of-the-azure-bonds")
 SSB = ("ssb-d-engine-resave", "Guy de Valois",
        "secret-of-the-silver-blades")
+
+
+#: What `inventorycheck.stage` writes to the environment for the emulator run
+#: a command-line caller wants. `EditorBinding` reads `$POR_GAME_DISK` ahead of
+#: the disks beside a save, so a value left behind here reaches every later
+#: test on the same worker.
+_STAGE_ENV = ("POR_GAME_DISK", "QT_QPA_PLATFORM", "WAYLAND_DISPLAY")
+
+
+@pytest.fixture(autouse=True)
+def _restore_stage_environment():
+    """Put every variable `stage` can touch back as it was, present or absent."""
+    saved = {name: os.environ.get(name) for name in _STAGE_ENV}
+    yield
+    for name, value in saved.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
 
 
 @pytest.fixture
