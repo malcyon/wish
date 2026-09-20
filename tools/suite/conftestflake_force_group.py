@@ -1,5 +1,5 @@
 """Diagnostic-only pytest plugin for `#522`: applies `xdist_group` to both
-tests in `tests/test_conftest_state_guard.py` at collection time, without
+tests in `tests/suite/test_conftest_state_guard.py` at collection time, without
 editing that file, so the marker claim in the issue can be checked by
 experiment rather than only by reading `pytest-xdist`'s source.
 

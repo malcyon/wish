@@ -5,7 +5,7 @@ ship, and must not carry the game's art, music, manuals, executable code,
 disassembly listings, or data files.
 
 **All findings below are fixed.** Kept as the record of what was wrong and
-how it was resolved; `tests/test_repository_contents.py` now enforces it.
+how it was resolved; `tests/suite/test_repository_contents.py` now enforces it.
 
 Audited the tracked tree on 2026-08-20. **Disk images are clean** — no `.d64`
 has ever been committed, in any commit, and the scratch directory for game-derived files (deleted 2026-09-18) was `.gitignore`d from
@@ -95,7 +95,7 @@ of not shipping them, and it is smaller than it looks: losslessness, the record
 and save decoding, the automapper geometry and the whole combat view keep
 running, because those use the player's own saves.
 
-`tests/test_repository_contents.py` now enforces the rule — an allowlist for
+`tests/suite/test_repository_contents.py` now enforces the rule — an allowlist for
 `tests/fixtures/`, and a rejection of disk images, executables, images and
 audio anywhere in the tree.
 

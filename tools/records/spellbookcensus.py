@@ -47,7 +47,7 @@ ROOT = TOOLS.parent
 # The repository root and nothing else.  Putting `tools/` on `sys.path` is
 # what `#262 (Thirty-three tools still leave tools/ on sys.path, so one run
 # directly can lose the wish package)` removed from every tool here, and
-# `tests/test_toolshadowing.py` parametrises over all of them; the siblings
+# `tests/suite/test_toolshadowing.py` parametrises over all of them; the siblings
 # below come through the package instead.
 sys.path.insert(0, str(ROOT))
 

@@ -60,7 +60,7 @@ the definition.
 
 **The exception is a change that touches no code.** Prose in `docs/`, a rule
 file, `AGENTS.md`, a README row: the only test that reads any of those is
-`tests/test_repository_contents.py`, which takes a second and a half. Run that
+`tests/suite/test_repository_contents.py`, which takes a second and a half. Run that
 and `ruff`, and push. The full suite takes minutes and proves nothing about a
 sentence.
 
@@ -115,7 +115,7 @@ and `git update-index --cacheinfo` it into the index. That lands your rows
 without ever rewriting the file somebody else is still editing.
 
 **`git add` a new file *before* the last local run.**
-`tests/test_repository_contents.py` walks the files **git knows about** -- the
+`tests/suite/test_repository_contents.py` walks the files **git knows about** -- the
 allowlist for `tests/fixtures/`, the ban on committed disk images and
 executables, and `test_no_hardcoded_user_paths`. An untracked file is in none
 of those lists, so every one of those checks passes by not looking. A new file

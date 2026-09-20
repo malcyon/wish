@@ -2,7 +2,7 @@
 
 Reads every worker's log under a run directory, merges the CREATE/DELETE
 events for the two probe files that
-`tests/test_conftest_state_guard.py::_run_throwaway_test` writes, and reports
+`tests/suite/test_conftest_state_guard.py::_run_throwaway_test` writes, and reports
 whether the two probes' lifetimes overlapped and for how long.
 
 Usage: `conftestflake_analyze.py RUN1 RUN2 ...`, each a directory `tools/suite/conftestflake_probe.py` wrote logs into

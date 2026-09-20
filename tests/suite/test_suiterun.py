@@ -27,7 +27,7 @@ from automap import gamedisks
 from tools.registry import scratch
 from tools.suite import datatouch, suiterun
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parents[2]
 EXAMPLE = REPO / "gamedisks.yaml.example"
 
 

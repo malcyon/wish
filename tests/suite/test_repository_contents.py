@@ -22,7 +22,7 @@ import types
 
 import pytest
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 #: Extensions the game's content would arrive in. `.bin` is deliberately not
 #: here -- see `ALLOWED_FIXTURES`, which is stricter.
@@ -212,7 +212,7 @@ def test_no_machine_path_is_looked_up_in_code(files):
     bad = []
     for path in (p for p in files if p.suffix == ".py"):
         name = path.as_posix()
-        if name in ("tests/test_repository_contents.py",
+        if name in ("tests/suite/test_repository_contents.py",
                     "tests/registry/test_gamedisks.py"):
             continue
         try:
@@ -567,7 +567,7 @@ def test_no_bare_issue_number_where_a_citation_belongs(files):
 WORK_PATH = re.compile(r"(?<![\w/.~-])work/[\w.<{$*-]")
 
 #: Not scanned: this file, whose fixtures below are violations on purpose.
-WORK_SCAN_SKIPS = {"tests/test_repository_contents.py"}
+WORK_SCAN_SKIPS = {"tests/suite/test_repository_contents.py"}
 
 #: A `Path(...)` or a `join` is how Python builds a path from a segment.
 _PATH_BUILDERS = {"Path", "PurePath", "PosixPath", "WindowsPath",
@@ -775,16 +775,17 @@ def test_the_source_check_reports_the_right_line():
 
 
 def test_a_scan_over_files_reports_path_and_line_and_skips_what_it_should(tmp_path):
-    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "suite").mkdir(parents=True)
     (tmp_path / "bad.md").write_text("fine\nrun work/x\n")
     (tmp_path / "bad.py").write_text('p = root / "work"\nq = "work/y"\n')
     (tmp_path / "ok.md").write_text("network/x and ~/.cache/work/y\n")
     (tmp_path / "blob.bin").write_bytes(b"\0work/x\0")
     # The guard's own fixtures are violations on purpose.
-    (tmp_path / "tests" / "test_repository_contents.py").write_text("work/x\n")
+    (tmp_path / "tests" / "suite" / "test_repository_contents.py").write_text(
+        "work/x\n")
     rels = [pathlib.Path(n) for n in (
         "bad.md", "bad.py", "ok.md", "blob.bin", "gone.md",
-        "tests/test_repository_contents.py")]
+        "tests/suite/test_repository_contents.py")]
 
     assert scan_for_work_paths(tmp_path, rels) == [
         "bad.md:2", "bad.py:2"]
@@ -871,7 +872,7 @@ def test_a_file_or_a_missing_directory_is_not_the_scratch_directory(tmp_path):
 ANSIBLE_DIR = "ansible"
 
 #: Not scanned: this file, whose fixtures below are violations on purpose.
-ANSIBLE_SCAN_SKIPS = {"tests/test_repository_contents.py"}
+ANSIBLE_SCAN_SKIPS = {"tests/suite/test_repository_contents.py"}
 
 #: The files that hold one machine's values, which must never be tracked, and
 #: the committed templates beside them.

@@ -17,7 +17,7 @@ Four rounds of this were found by hand, one file at a time -- `#430`, `#455`,
 `#487`'s two more sites in one of those same six files.
 
 **This sweep is a destination test with a reviewed allowlist**, which is the
-shape `tests/test_repository_contents.py` already uses for
+shape `tests/suite/test_repository_contents.py` already uses for
 `tests/fixtures/`.  Three attempts at a predicate that separates the good
 copies from the bad ones automatically were abandoned on `#492`; a person
 reads each call site instead and writes down which it is.
@@ -81,7 +81,7 @@ import subprocess
 
 import pytest
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "tools"
 
 #: The only file allowed to call `shutil.copy` on one of these destinations

@@ -76,7 +76,7 @@ worker holds:
 
 That is 0.139 s a test, and freezing costs the same as removing the call
 outright. The same file run with only its own
-module collected goes 7.32 s to 1.83 s, and `tests/test_toolhelp.py` goes
+module collected goes 7.32 s to 1.83 s, and `tests/suite/test_toolhelp.py` goes
 16.07 s to 6.62 s — smaller savings from the same change, because the cost
 is proportional to how much has been imported. A worker that has collected
 the whole suite is the expensive case, and that is the only case that
@@ -104,8 +104,8 @@ column is what stays after the freeze:
 
 | file | tests | total | teardown | setup | remainder |
 |---|---|---|---|---|---|
-| `tests/test_toolshadowing.py` | 711 | 331.4 | 138.2 | 0.0 | 193.2 |
-| `tests/test_staging_sweep.py` | 25 | 88.8 | 3.3 | 0.0 | 85.5 |
+| `tests/suite/test_toolshadowing.py` | 711 | 331.4 | 138.2 | 0.0 | 193.2 |
+| `tests/suite/test_staging_sweep.py` | 25 | 88.8 | 3.3 | 0.0 | 85.5 |
 | `tests/test_combatdrive.py` | 81 | 78.3 | 6.1 | 0.0 | 72.1 |
 | `tests/test_iconproposal.py` | 67 | 70.6 | 8.0 | 0.0 | 62.6 |
 | `tests/test_editor.py` | 182 | 80.3 | 25.2 | 10.6 | 55.1 |
@@ -115,7 +115,7 @@ column is what stays after the freeze:
 | `tests/test_preferences.py` | 83 | 49.7 | 11.9 | 0.0 | 37.7 |
 | `tests/test_amigalaterwrite.py` | 17 | 39.2 | 2.3 | 0.0 | 36.9 |
 
-`tests/test_toolshadowing.py` is the one item large enough to be attacked on
+`tests/suite/test_toolshadowing.py` is the one item large enough to be attacked on
 its own. Its 711 tests are two parametrised sweeps over every script in
 `tools/` plus a handful of one-offs, and **each test spawns a fresh
 interpreter** — 190.6 s of call time for 711 subprocesses, about 0.27 s
@@ -165,8 +165,8 @@ cannot be a tail. `livetests/`, which does drive real emulators, is in
 Three claims that look right and are not, each cheap to repeat:
 
 * **A large per-file teardown total is not an expensive fixture.** It is the
-  file's test count times 0.174 s. `tests/test_toolshadowing.py`'s 138.2 s
-  is 711 tests, and `tests/test_toolhelp.py`'s 57.5 s is 345 tests whose
+  file's test count times 0.174 s. `tests/suite/test_toolshadowing.py`'s 138.2 s
+  is 711 tests, and `tests/suite/test_toolhelp.py`'s 57.5 s is 345 tests whose
   calls together come to 0.1 s.
 * **`--durations` attributes per test, not per fixture.** Summing a file's
   teardowns and calling the total one fixture's cost inverts what the
@@ -175,9 +175,9 @@ Three claims that look right and are not, each cheap to repeat:
   The selection is 230 of 308 files. Blanking every comment and docstring
   before matching drops it to 223 files and 1,866.3 worker-seconds against
   1,886.9 — 20.6 seconds. Every heavy file it picks is picked on real code:
-  `tests/test_toolshadowing.py` on its `pytest.skip(` for a missing tool
+  `tests/suite/test_toolshadowing.py` on its `pytest.skip(` for a missing tool
   dependency, `tests/test_combatdrive.py` on importing `tests/gamedata.py`'s
-  synthetic arena, `tests/test_staging_sweep.py` on the word `specimen` in
+  synthetic arena, `tests/suite/test_staging_sweep.py` on the word `specimen` in
   code.
 
 ## What the pre-push run costs
@@ -188,7 +188,7 @@ mentions skipping or game data. That selection is **230 of 308 files, 6,843
 tests, 1,886.9 of the no-data run's 2,208.1 worker-seconds — 85% of it.**
 
 Of those 230 files, **79 skip nothing at all without data: 2,568 tests and
-948.9 worker-seconds, half the second pass.** `tests/test_toolshadowing.py`
+948.9 worker-seconds, half the second pass.** `tests/suite/test_toolshadowing.py`
 alone is 322.6 of them. The 151 files that do skip at least one test come to
 937.9 worker-seconds.
 
@@ -262,7 +262,7 @@ named.
 
 ### 2. One subprocess per tool instead of two
 
-**Do it, second.** `tests/test_toolshadowing.py`'s
+**Do it, second.** `tests/suite/test_toolshadowing.py`'s
 `test_importing_a_tool_leaves_the_wish_package_reachable` and
 `test_no_tool_leaves_tools_on_sys_path_after_import` are two parametrised
 sweeps that import the same module in two fresh interpreters and assert one
@@ -347,7 +347,7 @@ the plugin, so a developer's run is untouched.
 today, about 615 after item 1, **58 s of the pre-push run**. The recorder
 gives part of that back, because a file that starts a child process is
 selected whole: 26 test files use `subprocess`, and
-`tests/test_toolshadowing.py` is the largest of them.
+`tests/suite/test_toolshadowing.py` is the largest of them.
 
 *What it measured,* in two whole-suite runs of `tools/suite/suiterun.py` on
 the twelve-core machine, otherwise idle, both green with no crash:

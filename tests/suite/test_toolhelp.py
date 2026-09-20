@@ -26,7 +26,7 @@ handles `-h`/`--help` and refuses an unrecognised argument entirely on its
 own, before a single line of the tool's own code runs, so putting a
 dangerous call behind it is sufficient without having to run either path.
 
-`tests/test_toolshadowing.py` is the pattern this follows: walk every file in
+`tests/suite/test_toolshadowing.py` is the pattern this follows: walk every file in
 `tools/` rather than a typed list, so the next tool anybody adds is covered.
 """
 
@@ -37,12 +37,12 @@ import pathlib
 
 import pytest
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parents[2]
 TOOLS_DIR = REPO / "tools"
 
 #: Every script under `tools/`, by its path below `tools/` without the
 #: suffix (`dos/dosbox`) -- computed at collection, the same way
-#: `tests/test_toolshadowing.py`'s `TOOLS` is, so a script added tomorrow, in
+#: `tests/suite/test_toolshadowing.py`'s `TOOLS` is, so a script added tomorrow, in
 #: any subdirectory, is covered without anybody remembering to list it.
 TOOLS = tuple(sorted(
     p.relative_to(TOOLS_DIR).with_suffix("").as_posix()

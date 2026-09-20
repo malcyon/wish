@@ -19,7 +19,7 @@ run here.
 says `Exec=wish`, which is right for a packaged build and wrong for a
 virtualenv, where the launcher is `<venv>/bin/wish`.  The path is worked out
 from the interpreter running this script, so nobody's home directory ends up
-in a committed file -- `tests/test_repository_contents.py` forbids that.
+in a committed file -- `tests/suite/test_repository_contents.py` forbids that.
 
     .venv/bin/python -m wish.installdesktop            # install
     .venv/bin/python -m wish.installdesktop --check    # say what is there

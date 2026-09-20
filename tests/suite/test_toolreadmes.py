@@ -17,7 +17,7 @@ by a tool that was moved or deleted, fails here:
   sentence, and has a row for every file at the top of `tools/` -- there the
   `__init__.py` has a row too, because it does something.
 
-`tests/test_toolpaths.py` reads these pages as it reads every tracked text
+`tests/suite/test_toolpaths.py` reads these pages as it reads every tracked text
 file, so a path a row cites is checked there.
 """
 
@@ -30,7 +30,7 @@ import subprocess
 
 import pytest
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "tools"
 
 ROW = re.compile(r"^\| (?:`(?P<a>[^`]+)`|\[(?P<b>[^\]]+)\]\((?P<c>[^)]+)\)) \|")

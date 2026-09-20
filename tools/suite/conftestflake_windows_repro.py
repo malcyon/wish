@@ -4,7 +4,7 @@ something)`.
 
 Forces the exact race the issue describes, deterministically, instead of
 waiting on `pytest -n auto`'s scheduler to happen to put two probes on disk
-at once. `tests/test_conftest_state_guard.py::_run_throwaway_test` runs a
+at once. `tests/suite/test_conftest_state_guard.py::_run_throwaway_test` runs a
 child `pytest` against a single target file; that child, resolving one file
 argument, collects the *whole* `tests/` directory first and only afterwards
 filters down to the target -- confirmed by instrumenting
@@ -38,7 +38,7 @@ from pathlib import Path
 
 import pytest
 
-TESTS_DIR = Path(__file__).resolve().parent.parent.parent / "tests"
+TESTS_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "suite"
 
 _MODE = os.environ.get("ISSUE522_MODE", "control")
 _SIBLING = os.environ.get("ISSUE522_SIBLING", "")

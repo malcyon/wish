@@ -266,7 +266,7 @@ Three of those blockers are cheap to remove and one is not:
 ## 4. Where the artefact lives
 
 **Not in the repository.** A save disk is a `.d64`, which
-`tests/test_repository_contents.py` rejects outright; and a slice of one under
+`tests/suite/test_repository_contents.py` rejects outright; and a slice of one under
 `tests/fixtures/` is exactly the copy the allowlist exists to catch. Do not add
 to that allowlist.
 
@@ -409,7 +409,7 @@ the superseded text is how contradictions got in before.
 4. ~~`goldbox/testparty.py` — the six records, generated, no disk.~~ **Done**,
    as `tools/suite/testparty.py`.
 5. ~~The test-time disk builder~~ **Done**, as the same tool's `--disk`, and
-   `tests/test_testparty.py` drives it off `tests/gamedata.save_disk`,
+   `tests/suite/test_testparty.py` drives it off `tests/gamedata.save_disk`,
    skipping without disks.
 6. `debug-level-up` on the debug mode's action bar, `docs/118-debug-mode.md`.
 7. **The turning experiment.**

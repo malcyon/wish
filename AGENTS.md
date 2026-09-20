@@ -51,7 +51,7 @@ number in hand, slow for him. As the **subject** of a sentence it is worst of
 all.
 
 **It does not govern code.** A docstring is read by somebody already in that
-file, and `tests/test_repository_contents.py`'s guard scans Markdown for that
+file, and `tests/suite/test_repository_contents.py`'s guard scans Markdown for that
 reason. Do not sweep `.py` for bare numbers and do not file tickets about them.
 
 Nor a **commit message**, where the number goes bare in parentheses at the end

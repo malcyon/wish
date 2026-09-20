@@ -203,7 +203,7 @@ def test_the_guard_stays_quiet_where_there_is_no_registry_of_the_machines_own(
 
 def test_the_guard_test_fails_rather_than_aborting_the_run(tmp_path):
     done = _run_pytest(
-        tmp_path, POOL_ONLY, "tests/test_gamedata.py", "-k",
+        tmp_path, POOL_ONLY, "tests/suite/test_gamedata.py", "-k",
         "test_the_registry_says_where_each_entrys_disks_are")
     out = done.stdout
     assert done.returncode == 1 and "INTERNALERROR" not in out, (

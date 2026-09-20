@@ -4,7 +4,7 @@ name: measure conftest guard flake
 # red main no longer means the commit broke something): this exists to test
 # one candidate cause, not to fix anything.
 #
-# The candidate: `tests/test_conftest_state_guard.py`'s two tests each spawn
+# The candidate: `tests/suite/test_conftest_state_guard.py`'s two tests each spawn
 # a child `pytest` that collects a single target file under `tests/` by
 # path. Resolving a one-file argument makes that child collect the *whole*
 # `tests/` directory first -- confirmed locally by instrumenting
@@ -84,9 +84,9 @@ jobs:
             $failureLog = @()
 
             for ($i = 1; $i -le $iterations; $i++) {
-              $target = "tests/test_zzz_issue522_target_$([guid]::NewGuid().ToString('N')).py"
+              $target = "tests/suite/test_zzz_issue522_target_$([guid]::NewGuid().ToString('N')).py"
               $siblingName = "test_zzz_issue522_sibling_$([guid]::NewGuid().ToString('N')).py"
-              $sibling = "tests/$siblingName"
+              $sibling = "tests/suite/$siblingName"
               $log = "issue522-$mode-$i.log"
 
               "def test_ok():`n    pass`n" | Out-File -FilePath $target -Encoding utf8 -NoNewline

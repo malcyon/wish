@@ -358,7 +358,7 @@ notice.
 
 **The no-images rule is gone**, so none of this needed working around. Donald,
 2026-08: *"You need to remove that test that blocks all pngs. We don't need
-that."* `tests/test_repository_contents.py` still refuses disk images,
+that."* `tests/suite/test_repository_contents.py` still refuses disk images,
 executables, audio and PDFs, which is the part that was ever about the game.
 
 ### Still not done

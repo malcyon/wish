@@ -30,7 +30,7 @@ survives. **A tool that regenerates an artefact belongs in `tools/`.**
 
 If a working file would take more than a session to reproduce, write its
 findings into a `docs/` page **before** it is lost.
-`tests/test_repository_contents.py` fails the build on a scratch path cited
+`tests/suite/test_repository_contents.py` fails the build on a scratch path cited
 from `docs/` or a package.
 
 **A new file means a new row in that directory's `README.md`.** Every package

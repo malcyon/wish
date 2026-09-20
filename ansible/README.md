@@ -44,7 +44,7 @@ Every playbook is idempotent. The first `agent-vm.yml` run downloads Canonical's
 
 A section can be run alone by its tag: `boot`, `packages`, `gh`, `claude`, `vice`, `dosbox`, `wish`, `node`, `herdr`, `codex`, `herdr_integrations`, `environment`, `credential`, `disks`, `exporter`, `login`, `codewheel`, `emulator_tests`; or `agent_vm` for play 1, `agent_vm_guest` for play 2, `isolation` for the test, `agent_network` for the `sandbox-network` role in `sandbox-network.yml`, `winvm` for the `windows-vm` role.
 
-`inventory.yml` and `group_vars/all/vault.yml` hold one machine's own values and are gitignored; `tests/test_repository_contents.py` refuses a tracked file under `ansible/` that names a home directory, a LAN address or a credential.
+`inventory.yml` and `group_vars/all/vault.yml` hold one machine's own values and are gitignored; `tests/suite/test_repository_contents.py` refuses a tracked file under `ansible/` that names a home directory, a LAN address or a credential.
 
 ## What `ansible/inventory.yml` must name
 

@@ -69,7 +69,7 @@ cleanly with no disks, which is right -- but a suite that is green because
 forty tests skipped has told you nothing. Say how many skipped and why. On a
 machine with its own `gamedisks.yaml`, an entry the registry cannot lead to
 -- every entry of the example, the ones that are not titles included -- fails
-`tests/test_gamedata.py`'s per-entry guard, and the lookups that are not
+`tests/suite/test_gamedata.py`'s per-entry guard, and the lookups that are not
 reached at import raise `RegistryError` as well (`gamedata.curse_dir`,
 `test_gametables.disks_for`), so a missing entry is not a silent skip.
 
@@ -94,7 +94,7 @@ that is a slice of a game file is the same copy under a new name. So:
 * `synthetic_geo()` builds a well-formed map from the documented format, for
   the cases that need *a* file rather than a specific one.
 * `tests/fixtures/` holds the player's own saved games and nothing else. Its
-  contents are on an allowlist in `tests/test_repository_contents.py`. **Do not
+  contents are on an allowlist in `tests/suite/test_repository_contents.py`. **Do not
   add to that allowlist** -- read from the disks, or generate it.
 
 ## A specimen is only evidence if we know who wrote it

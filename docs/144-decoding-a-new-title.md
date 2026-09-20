@@ -394,7 +394,7 @@ a game file committed as a test fixture is the same copy the rule forbids,
 merely renamed** — and it does not feel like a copy while you are adding it.
 A new title gets a new finder function in `tests/gamedata.py`, never a new
 fixture, and nothing is added to the allowlist in
-`tests/test_repository_contents.py`.
+`tests/suite/test_repository_contents.py`.
 
 ## Feeding the method back
 

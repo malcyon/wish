@@ -38,7 +38,7 @@ shape as `COAB_DISKS` in `tests/gamedata.py` — but *in the test module*, not i
 If a fourth title needs the same lookup it should move into `gamedata.py`
 rather than be copied a second time.
 
-Nothing about the disks may be committed. `tests/test_repository_contents.py`
+Nothing about the disks may be committed. `tests/suite/test_repository_contents.py`
 enforces that and **its allowlist must not grow**.
 
 **What phases 3-5 needed and now have:** a save disk written by the game, and a

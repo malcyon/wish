@@ -60,7 +60,7 @@ Every level-1 constant below is what those six hold:
 | `hp_max` | `hp_rolled + constitution bonus` | `levels`, via the same rule |
 | `hp_rolled` | a plain roll of the class's die for a single-class character; **more than the trainer's rule allows** for a multi-class one | see `_seed_hit_points`, where the multi-class rule is a guess |
 
-`tests/test_testparty.py` re-derives each of those from the specimen rather
+`tests/suite/test_testparty.py` re-derives each of those from the specimen rather
 than trusting this table, and skips where the specimen tree is absent.
 
 **Every level above 1 is `goldbox.levelup`**, which is the training hall

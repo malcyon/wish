@@ -171,7 +171,7 @@ def main(out: pathlib.Path) -> int:
 
 
 if __name__ == "__main__":
-    # `argparse` before anything imports Qt: `tests/test_toolhelp.py` requires
+    # `argparse` before anything imports Qt: `tests/suite/test_toolhelp.py` requires
     # it of every tool that constructs a `QApplication`, because `--help` or a
     # mistyped argument reaching one would put a window on Donald's screen
     # while he is working. `main` does the Qt import itself, so nothing here

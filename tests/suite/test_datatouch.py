@@ -21,7 +21,7 @@ from tools.suite import datatouch, suiterun
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="the recorder is used only by the POSIX-only suiterun.py")
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parents[2]
 
 HEAD = "import glob, os, pathlib, subprocess, sys\nimport pytest\nDATA = os.environ['POR_DISKS']\n"
 

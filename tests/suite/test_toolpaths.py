@@ -41,11 +41,11 @@ import subprocess
 
 import pytest
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "tools"
 
 #: This file's own examples cite paths that do not exist, on purpose.
-SKIP_FILES = {"tests/test_toolpaths.py"}
+SKIP_FILES = {"tests/suite/test_toolpaths.py"}
 #: Game data and other bytes; nothing in them is prose.
 SKIP_PREFIXES = ("tests/fixtures/",)
 

@@ -11,3 +11,4 @@ The test suite, one directory per game or job the way `tools/` is, with the shar
 | [gui](gui/README.md) | Tests for the scripts under `tools/gui/`, which photograph, measure and validate the window. |
 | [hooks](hooks/README.md) | Tests for the scripts under `.claude/hooks/`: what each one refuses and what it lets through. |
 | [registry](registry/README.md) | Tests for the machine-local registries: the game-disk registry, the emulator instance pool, scratch directories and the specimen store. |
+| [suite](suite/README.md) | Tests for the suite's own tooling under `tools/suite/` and the guards that keep the repository itself in order. |

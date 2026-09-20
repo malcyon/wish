@@ -99,7 +99,7 @@ def main(root: pathlib.Path, save: pathlib.Path) -> int:
 
 
 if __name__ == "__main__":
-    # `argparse` before anything imports Qt, the way `tests/test_toolhelp.py`
+    # `argparse` before anything imports Qt, the way `tests/suite/test_toolhelp.py`
     # requires of every tool that constructs a `QApplication`.
     parser = argparse.ArgumentParser(
         description=__doc__,

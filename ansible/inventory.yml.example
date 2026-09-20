@@ -6,7 +6,7 @@
 # THIS IS THE EXAMPLE. Copy it to `inventory.yml` in this directory -- that file
 # is gitignored, is the only inventory the playbooks are run with, and is one
 # machine's own -- and replace every value that starts with CHANGE-ME or that
-# sits in angle brackets. `tests/test_repository_contents.py` refuses a tracked
+# sits in angle brackets. `tests/suite/test_repository_contents.py` refuses a tracked
 # file under `ansible/` that names a home directory or a LAN address, so keep
 # both out of anything you commit.
 #

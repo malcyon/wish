@@ -95,7 +95,7 @@ Cut provenance, lines 54-56 ("It does not govern code"):
 
 The passages below stood in code comments, a hook's docstring and an agent definition until the no-history rule removed them, verbatim.
 
-#### tests/test_repository_contents.py (comment above CITED_ISSUE_SCOPE)
+#### tests/suite/test_repository_contents.py (comment above CITED_ISSUE_SCOPE)
 
 ```
 #: Where this rule actually applies. Scoped to what
@@ -929,7 +929,7 @@ run is what covers the specimen-backed tests. Neither is the whole check alone.
 **`tools/pool_of_radiance/fightrun.py` shipped a hardcoded path, 2026-09-01.** It carried
 `DISKS = pathlib.Path("/home/donald/c64/...")` and went red on all four jobs
 against a suite that had passed twice locally. The cause is that
-`tests/test_repository_contents.py` walks the files *git knows about* -- the
+`tests/suite/test_repository_contents.py` walks the files *git knows about* -- the
 `tests/fixtures/` allowlist, the ban on committed disk images and executables,
 and `test_no_hardcoded_user_paths`. An untracked file is in none of those lists,
 so every one of those checks passed by not looking, and the file became visible
@@ -1788,7 +1788,7 @@ the knowledge base pointed into gitignored scratch)`. The scratch directory was 
 purpose, because the game's own bytes may not be committed -- but the
 *reasoning* about those bytes is not itself game data, so a write-up that argues
 from evidence to a conclusion belongs in `docs/`, cited by a path that survives.
-`tests/test_repository_contents.py` fails the build on any `work/` path in a
+`tests/suite/test_repository_contents.py` fails the build on any `work/` path in a
 tracked file, and the directory no longer exists (since 2026-09-18).
 
 **A README table that is only mostly true is worse than no table**, because the
@@ -2549,7 +2549,7 @@ It takes several hundred unhalved captures, turning the party between batches so
 
 ###### Test flake tooling (tools/suite conftestflake_*)
 
-The race in `tests/test_conftest_state_guard.py` overlapped in 20 of 20 runs under `-n auto --dist loadgroup`, about 300 ms of each probe's 330 to 390 ms life. Forcing an `xdist_group` on both tests serialised them: 0 of 20 overlapped, but it needed `@pytest.hookimpl(tryfirst=True)` to run before xdist's own `pytest_collection_modifyitems`, a hazard specific to adding the marker through a hook, where a real fix's `pytestmark` binds before any hook runs. Resolving a single-file argument under `tests/` collects the whole directory first, and on `win32` `_pytest.pathlib.samefile_nofollow()` does an unguarded `.lstat()` on every sibling whose path does not string-equal the target's. Faking `sys.platform` to `win32` for the collection phase only, on Linux, 10 of 10 `force` runs failed collection naming the sibling and 10 of 10 `control` runs passed.
+The race in `tests/suite/test_conftest_state_guard.py` overlapped in 20 of 20 runs under `-n auto --dist loadgroup`, about 300 ms of each probe's 330 to 390 ms life. Forcing an `xdist_group` on both tests serialised them: 0 of 20 overlapped, but it needed `@pytest.hookimpl(tryfirst=True)` to run before xdist's own `pytest_collection_modifyitems`, a hazard specific to adding the marker through a hook, where a real fix's `pytestmark` binds before any hook runs. Resolving a single-file argument under `tests/` collects the whole directory first, and on `win32` `_pytest.pathlib.samefile_nofollow()` does an unguarded `.lstat()` on every sibling whose path does not string-equal the target's. Faking `sys.platform` to `win32` for the collection phase only, on Linux, 10 of 10 `force` runs failed collection naming the sibling and 10 of 10 `control` runs passed.
 
 ###### Path leaks and rules check (pathleak.py, rulescheck.py)
 
@@ -2557,7 +2557,7 @@ The race in `tests/test_conftest_state_guard.py` overlapped in 20 of 20 runs und
 
 ###### Test party (testparty.py, testpartyrun.py)
 
-Each character is a level-1 record through `goldbox.c64_codec.write`, then `goldbox.levelup.plan` once per level with experience granted before each training, so every derived byte above level 1 comes from the training hall reproduced, not from a table the tool reads. `--rolls max` gives the trainer an rng that always rolls the top of the die, which reaches the documented ceilings (BULWARK at THAC0 13, 112 hit points, 3/2 attacks) and makes the party byte-identical every run. `--records DIR` writes one 582-byte `.CHR` export per character. The one thing it cannot make is the combat icon, and the test file fails if a second gap appears. `tests/test_testparty.py` rebuilds each of the six characters the engine rolled in `WISH-SPEC-por-party-l1-rolled` from its own inputs, which stops the generator validating its own tables. `testpartyrun.py` read six of six sheets in agreement, BULWARK included (LEVEL 8, EXP 130000, HITPOINTS 72, AC 8, THACO 11), which turned the fighter ceiling from our specification agreeing with itself into a measurement. The party panel is in marching order, so index 0 is the last save slot, and the sheet's portrait window reads back as a charset ramp through `Session.screen()` because the portrait is a bitmap over the text matrix.
+Each character is a level-1 record through `goldbox.c64_codec.write`, then `goldbox.levelup.plan` once per level with experience granted before each training, so every derived byte above level 1 comes from the training hall reproduced, not from a table the tool reads. `--rolls max` gives the trainer an rng that always rolls the top of the die, which reaches the documented ceilings (BULWARK at THAC0 13, 112 hit points, 3/2 attacks) and makes the party byte-identical every run. `--records DIR` writes one 582-byte `.CHR` export per character. The one thing it cannot make is the combat icon, and the test file fails if a second gap appears. `tests/suite/test_testparty.py` rebuilds each of the six characters the engine rolled in `WISH-SPEC-por-party-l1-rolled` from its own inputs, which stops the generator validating its own tables. `testpartyrun.py` read six of six sheets in agreement, BULWARK included (LEVEL 8, EXP 130000, HITPOINTS 72, AC 8, THACO 11), which turned the fighter ceiling from our specification agreeing with itself into a measurement. The party panel is in marching order, so index 0 is the last save slot, and the sheet's portrait window reads back as a charset ramp through `Session.screen()` because the portrait is a bitmap over the text matrix.
 
 ###### Class diagrams (classdiagram.py, classedges.py)
 

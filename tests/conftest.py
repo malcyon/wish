@@ -344,7 +344,7 @@ def own_registry(tmp_path_factory, monkeypatch):
 #
 # Donald decided on 2026-09-18 that the gitignored scratch directory at the
 # repository root is deleted for good and nothing may recreate it. The tracked
-# files are scanned for its name by `tests/test_repository_contents.py`; what
+# files are scanned for its name by `tests/suite/test_repository_contents.py`; what
 # nothing tracked can show is a *run* creating it, and that is what this end of
 # the session catches. A plain test in the same file fails as soon as it exists;
 # this hook covers the one it cannot -- a test that makes the directory after
