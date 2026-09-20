@@ -180,11 +180,11 @@ SIZE = {0: "small", 1: "large"}
 #:   third grant routine entered on record `0x0D0` that hands out ids 77-80 at
 #:   level 8 and the thirteen first-level magic-user spells at 9 -- AD&D 1st
 #:   edition verbatim -- and whose shipped PAINE holds exactly those four
-#:   (`tests/test_silverblades.py::test_the_ranger_grant_is_the_shipped_rangers_spellbook`).
+#:   (`tests/secret_of_the_silver_blades/test_silverblades.py::test_the_ranger_grant_is_the_shipped_rangers_spellbook`).
 #:   PROBABLE in Curse and the rest: Curse's `GEN` has a cleric grant
-#:   (`tests/test_curse.py::test_curses_cleric_grant_table_writes_as_far_as_0x081`)
+#:   (`tests/curse_of_the_azure_bonds/test_curse.py::test_curses_cleric_grant_table_writes_as_far_as_0x081`)
 #:   and a magic-user starting-book grant
-#:   (`tests/test_curse.py::test_curse_grant_loop_discovery_includes_the_starting_book`);
+#:   (`tests/curse_of_the_azure_bonds/test_curse.py::test_curse_grant_loop_discovery_includes_the_starting_book`);
 #:   its magic-user trainer is the `$2200` menu, so neither grant establishes
 #:   a ranger. Curse's own spell table carries the druid group 77-80 that
 #:   Silver Blades' ranger is granted.

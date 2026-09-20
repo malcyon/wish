@@ -48,7 +48,7 @@ The stride comes from `$0612 + 1`, not `$0607`. For combat both are 56 and
 nothing is broken; for the overland map `$0607` is 20 against a true stride of
 18, so `automap/combat.py`'s `geometry_from_params` would shear it. **Done**:
 `geometry_from_params` reads `block[P_MAX_X] + 1`, and `goldbox/world.py`'s own
-`STRIDE = 18` is asserted against the disks in `tests/test_world.py`.
+`STRIDE = 18` is asserted against the disks in `tests/areas/test_world.py`.
 
 ---
 
@@ -60,7 +60,7 @@ nothing is broken; for the overland map `$0607` is 20 against a true stride of
    site square the script paints over while its flag is clear
    (`reports/p3-saves.md` §4, lost; restated in
    `docs/137-wilderness-automap.md` §1's table and pinned on the disk side by
-   `tests/test_p3.py`, which this doc's own "unknown" list had fallen behind).
+   `tests/areas/test_p3.py`, which this doc's own "unknown" list had fallen behind).
    Kept numbered rather than removed: the saves table below still cross-refers
    to "unknown 1".
 2. ~~`$49FB`, which is 0 on the grid and 255 in the cave and gates a display
@@ -176,8 +176,8 @@ answers unknown 2 on its own.
    `Window.tile`), and stitch the three at world x 15 and 28 in the game's own
    coordinate, `x + 13k` (`World.locate`/`World.square`). Tested against the
    disks -- 3 windows, 1944 grid squares, the four known site squares from
-   `tests/test_p3.py`'s `PAINTED` table, and the 179/180 and 180/180 overlap
-   counts below, all in `tests/test_world.py`.
+   `tests/areas/test_p3.py`'s `PAINTED` table, and the 179/180 and 180/180 overlap
+   counts below, all in `tests/areas/test_world.py`.
 
    **The site tables and the two terrain tables are not read, and
    `passable()`/`site_at()` are not implemented.** Both live inside
@@ -193,7 +193,7 @@ answers unknown 2 on its own.
    naming this, rather than guessing at an address.
 3. **Tests from the disks**, no fixtures: the overlap counts (179/180,
    180/180) and the size identity 648 + 120 x 18 = 2808, both now in
-   `tests/test_world.py`. **Not yet done**: the site tables' lengths against
+   `tests/areas/test_world.py`. **Not yet done**: the site tables' lengths against
    the gaps between their addresses, and the kobold caves landing on (6,15)
    against `npc_party.d64` -- both need the site-table offsets step 2 above
    is blocked on.

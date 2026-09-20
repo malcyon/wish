@@ -1084,7 +1084,7 @@ def plan_all(record, game=None, *, rng=None, learn: int | None = None) \
     derives that is not a die roll (`thac0_base`, the five saves, `level`,
     `attack_level`, `attack_forms`, `turn_power`, the thief skills, the
     experience clamp, the spellbook) reproduces theirs.
-    `tests/test_cursetrainer.py::test_plan_all_raises_travis_and_ledera_in_the_engines_own_order`
+    `tests/curse_of_the_azure_bonds/test_cursetrainer.py::test_plan_all_raises_travis_and_ledera_in_the_engines_own_order`
     is the replay.
 
     **A title without `trains_all_ready_classes` gets exactly what `plan`

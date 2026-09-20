@@ -45,7 +45,7 @@ where Pool of Radiance's ninth character page would be, eight item pages,
 player's own disks for Curse, Silver Blades, Champions of Krynn, Death Knights
 of Krynn and Gateway to the Savage Frontier.  The write-up,
 `reports/goldbox-inventory.md`, is lost; the per-title base addresses are
-asserted in `tests/test_curse.py::test_the_addresses_are_the_ones_measured`.
+asserted in `tests/curse_of_the_azure_bonds/test_curse.py::test_the_addresses_are_the_ones_measured`.
 
 Confidence: Pool of Radiance's row and Curse of the Azure Bonds' are each
 measured on that title's own engine-written saves.  Secret of the Silver
@@ -666,7 +666,7 @@ _SILVER_ZERO = ("zero: what the one Secret of the Silver Blades save on this "
 #: byte for byte under a different file name** -- one 7424-byte `SAVEDBASH` at
 #: `$4B00`, header `$400`, eight character pages, a name table at `+$C00`,
 #: eight item pages at `+$1000`, the picture buffer at `+$1800` and the
-#: roster at `+$1C00` (`tests/test_silverblades.py`).  Three rows differ from
+#: roster at `+$1C00` (`tests/secret_of_the_silver_blades/test_silverblades.py`).  Three rows differ from
 #: Curse's, and each was read out of this title's own overlays rather than
 #: assumed:
 #:

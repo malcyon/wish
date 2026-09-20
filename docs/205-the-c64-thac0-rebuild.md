@@ -188,7 +188,7 @@ strength bonus for ever, and looks right on the sheet until it does.
 * `tools/curse_of_the_azure_bonds/cursethac0.py stage` and `run`, whose readings are in
   `cited/368/run5/thac0.jsonl` for the fight and
   `cited/368/hall1/thac0.jsonl` for the training;
-* `tests/test_cursethac0.py` re-derives the three instructions and the five
+* `tests/curse_of_the_azure_bonds/test_cursethac0.py` re-derives the three instructions and the five
   table rows off the player's own disks, so the citations above are checked
   rather than remembered.
 

@@ -540,7 +540,7 @@ def test_curse_has_its_own_trait_table():
     numbers Pool of Radiance was already using, so `#561 (A Curse of the
     Azure Bonds character's traits are named from Pool of Radiance's table,
     which disagrees with Curse's own data about eight codes)` gave it
-    `NAMES_CURSE`. `tests/test_curtraitnames.py` re-derives that table off
+    `NAMES_CURSE`. `tests/curse_of_the_azure_bonds/test_curtraitnames.py` re-derives that table off
     the disks; this pins that the editor uses it."""
     from goldbox import traits
     assert traits.for_game(CURSE) is not traits.for_game(POOL)

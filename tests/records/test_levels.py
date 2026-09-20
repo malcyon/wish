@@ -492,15 +492,15 @@ def test_pool_of_radiance_and_curses_trainers_are_measured():
     difference. Curse's level tables are in this module, and as of #18
     `goldbox/levelup.py` consumes every one of them -- `divide_between_classes`
     and `plan_all` are proven against real trainings
-    (`tests/test_cursetrainer.py`), and `automap/actions.py`'s `LevelUp`
+    (`tests/curse_of_the_azure_bonds/test_cursetrainer.py`), and `automap/actions.py`'s `LevelUp`
     action calls `plan_all` for it too
-    (`tests/test_cursetrainer.py::test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all`).
+    (`tests/curse_of_the_azure_bonds/test_cursetrainer.py::test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all`).
     `automap/window.py`'s own `_level_up` was the last file to ask the
     question the same wrong way, and closing that on `#415
     (automap/window.py picks the level-up spell dialog's class the same
     wrong way plan would have, blocking Curse's trainer)` is what let Curse
     join `TRAINER_MEASURED` --
-    `tests/test_cursetrainer.py::test_curse_is_now_in_trainer_measured` has
+    `tests/curse_of_the_azure_bonds/test_cursetrainer.py::test_curse_is_now_in_trainer_measured` has
     the history.
 
     `for_game` falls back to Pool of Radiance for a title it has no tables for,
@@ -514,7 +514,7 @@ def test_pool_of_radiance_and_curses_trainers_are_measured():
     assert levels.trainer_measured(levels.POOL_OF_RADIANCE)
     assert levels.trainer_measured(c64_port.CURSE_OF_THE_AZURE_BONDS)
     # Silver Blades joined on 2026-09-16, after fourteen driven trainings
-    # (`#89`); `tests/test_ssbtrainer.py` is the measurement.
+    # (`#89`); `tests/secret_of_the_silver_blades/test_ssbtrainer.py` is the measurement.
     assert levels.trainer_measured(c64_port.SECRET_OF_THE_SILVER_BLADES)
     measured = (c64_port.POOL_OF_RADIANCE,
                 c64_port.CURSE_OF_THE_AZURE_BONDS,

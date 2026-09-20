@@ -401,7 +401,7 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
     trainer)`; Silver Blades' on `#89 (Silver Blades' trainer grants spells
     from a table, and goldbox/levelup.py offers them from a menu)`, fourteen
     driven trainings on 2026-09-16 --
-    `tests/test_ssbtrainer.py::test_silver_blades_is_now_in_trainer_measured`.
+    `tests/secret_of_the_silver_blades/test_ssbtrainer.py::test_silver_blades_is_now_in_trainer_measured`.
     Both genuinely level now."""
     from goldbox import c64_port
 
@@ -436,7 +436,7 @@ def test_every_title_but_the_three_measured_ones_is_refused_by_name(game):
     on `#89 (Silver Blades' trainer grants spells from a table, and
     goldbox/levelup.py offers them from a menu)`, fourteen driven trainings on
     2026-09-16 --
-    `tests/test_ssbtrainer.py::test_silver_blades_is_now_in_trainer_measured`.
+    `tests/secret_of_the_silver_blades/test_ssbtrainer.py::test_silver_blades_is_now_in_trainer_measured`.
     The three below have no tables at all, so `levels.for_game` falls back to
     Pool of Radiance's and `trainer_measured` refuses every one of them, which
     is exactly the silent wrong answer the blocker is here to stop."""
@@ -996,7 +996,7 @@ from automap import fasttravel  # noqa: E402
 class ReenterTarget(MemoryTarget):
     """A `MemoryTarget` with the optional `reenter(pc, sp)` capability
     `actions.reenter` looks for -- the same shape `Machine.set_pc` gives
-    `jump` in `tests/test_fasttravel.py`, kept local so this file does not
+    `jump` in `tests/areas/test_fasttravel.py`, kept local so this file does not
     reach into a test module another change owns."""
 
     def __init__(self, memory=None):

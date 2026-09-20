@@ -73,7 +73,7 @@ title after this one: Curse's ids are sparse and chapter-grouped, and Silver
 Blades, Champions and Death Knights start at `$10` or `$20`
 (write-up lost, `reports/goldbox-inventory.md`; the per-title base
 addresses are asserted in
-`tests/test_curse.py::test_the_addresses_are_the_ones_measured`). Scan a
+`tests/curse_of_the_azure_bonds/test_curse.py::test_the_addresses_are_the_ones_measured`). Scan a
 directory; never a range.
 """
 
@@ -117,7 +117,7 @@ __all__ = [
 #: Game titles this module knows about. Plain strings on purpose, and the seam
 #: with `goldbox/c64_port.py`: these are `C64Container.title`, so a caller holding a descriptor
 #: writes `areas.area_name(geo, game.title)` and neither module imports the
-#: other. `tests/test_areas.py` pins the two spellings together.
+#: other. `tests/areas/test_areas.py` pins the two spellings together.
 POOL_OF_RADIANCE = "Pool of Radiance"
 CURSE_OF_THE_AZURE_BONDS = "Curse of the Azure Bonds"
 SECRET_OF_THE_SILVER_BLADES = "Secret of the Silver Blades"
@@ -646,7 +646,7 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: pasted in unchanged.  The calibration is Pool of Radiance's own table,
 #: the one table here with driven arrivals to check a derived square
 #: against: eleven rows carry both, and ten agree
-#: (`tests/test_areatable.py::test_a_derived_arrival_square_is_right_ten_
+#: (`tests/areas/test_areatable.py::test_a_derived_arrival_square_is_right_ten_
 #: times_in_eleven`).  The one miss there is understood rather than wrong --
 #: two `COMPARE [$49F2], n / IF= / EXIT` guards read the came-from area and
 #: place the party differently depending on it -- so a Curse square could
@@ -1051,7 +1051,7 @@ def landing_square(geo) -> tuple[int, int, int] | None:
     **What `FastTravel` uses**, in place of the old rule -- the first square with any
     passable edge at all, which therefore took `(0, 0)` on every one of the
     twenty-nine maps (write-up lost, `reports/p20-arrivals.md`; the pocket
-    sizes are asserted in `tests/test_p20.py`'s `POCKETS`). That was legal in the
+    sizes are asserted in `tests/areas/test_p20.py`'s `POCKETS`). That was legal in the
     narrow sense on most
     maps and wrong on four: `(0, 0)` is in a pocket of 32 squares in `GEO05`,
     30 in `GEO19`, 16 in `GEO1A` and 48 in `GEO1B`, cut off from the rest of

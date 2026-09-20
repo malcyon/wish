@@ -226,7 +226,7 @@ _NOT_A_SPELL_CURSE = (57, 59, 60, 61, 62, 63, 64, 65, 95, 96, 97, 98, 99)
 #:   the same way (#89).
 #:
 #: All three are read mechanically out of `GEN` by
-#: `tests/test_silverblades.py::_grant_table`, which is Curse's extraction with
+#: `tests/secret_of_the_silver_blades/test_silverblades.py::_grant_table`, which is Curse's extraction with
 #: the one difference that Silver Blades indexes `$7C78,X` by *byte number*
 #: where Curse indexes `$7C00,X` by record offset. **CONFIRMED**: the cleric
 #: and ranger rows are the game's own table, not a reading of the names.
@@ -254,7 +254,7 @@ _GROUPS_SILVER_BLADES = (
     # group, and the ranger grant table is why: its level-12 row hands out all
     # three together, where 77-80 arrive at 8 and 29-35 at 13. **That much is
     # CONFIRMED** and read out of `GEN` by
-    # `tests/test_silverblades.py::test_the_ranger_grant_reaches_druid_2`.
+    # `tests/secret_of_the_silver_blades/test_silverblades.py::test_the_ranger_grant_reaches_druid_2`.
     # That the level is *2* is PROBABLE and no better: it is AD&D 1st edition's
     # ranger, who gets first-level druid spells at 8 and second-level at 12,
     # read against the table rather than out of it. Curse's `ECL65` spell-slot
@@ -359,7 +359,7 @@ CURSE_OF_THE_AZURE_BONDS = SpellTable(
     not_a_spell=_NOT_A_SPELL_CURSE,
     spellbook_size=13,
     # 36 ANIMATE DEAD and 100 BESTOW CURSE. `GEN`'s own cleric grant table --
-    # the one `tests/test_curse.py::_cleric_grant_table` reads out of the bytes --
+    # the one `tests/curse_of_the_azure_bonds/test_curse.py::_cleric_grant_table` reads out of the bytes --
     # hands out 1-8, 22-28, 37-44, {58, 66-70} and 71-76 at levels 1, 3, 5, 7
     # and 9, and stops. Both ids are in a cleric group because both are cleric
     # spells; neither is ever granted at a temple, and a player meets them on a
@@ -371,7 +371,7 @@ CURSE_OF_THE_AZURE_BONDS = SpellTable(
     # spell-level table at `GEN $273F` gives every id's magic-user spell level,
     # 9 meaning never offer it, and marks id 90 with a 9 the same as the two
     # cleric ids above -- read mechanically by
-    # `tests/test_cursetrainer.py::test_the_trainers_own_spell_level_table_
+    # `tests/curse_of_the_azure_bonds/test_cursetrainer.py::test_the_trainers_own_spell_level_table_
     # agrees_with_goldbox_spells` (#18, #223).
     not_granted=(36, 90, 100),
     # `GEN $22F4` and `$2305`, the fourth and fifth steps of Curse's level-up
@@ -537,7 +537,7 @@ _CLERIC_CURSE = [(1, 0, 0, 0, 0), (2, 0, 0, 0, 0), (2, 1, 0, 0, 0),
 # each class slot whose level is above zero, adds that class's table rows
 # cumulatively, one row a level.  The tables are *deltas* there; these are the
 # running totals, so they read the way `_CLERIC_CURSE` does and the way a
-# character sheet does.  `tests/test_cursespellslots.py::
+# character sheet does.  `tests/curse_of_the_azure_bonds/test_cursespellslots.py::
 # test_the_four_delta_tables_are_the_games_own` reads all four back off the
 # player's own image and accumulates them, so a transcription slip here fails
 # rather than ships.

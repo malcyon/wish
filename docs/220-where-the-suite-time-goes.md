@@ -106,7 +106,7 @@ column is what stays after the freeze:
 |---|---|---|---|---|---|
 | `tests/suite/test_toolshadowing.py` | 711 | 331.4 | 138.2 | 0.0 | 193.2 |
 | `tests/suite/test_staging_sweep.py` | 25 | 88.8 | 3.3 | 0.0 | 85.5 |
-| `tests/test_combatdrive.py` | 81 | 78.3 | 6.1 | 0.0 | 72.1 |
+| `tests/pool_of_radiance/test_combatdrive.py` | 81 | 78.3 | 6.1 | 0.0 | 72.1 |
 | `tests/icons/test_iconproposal.py` | 67 | 70.6 | 8.0 | 0.0 | 62.6 |
 | `tests/test_editor.py` | 182 | 80.3 | 25.2 | 10.6 | 55.1 |
 | `tests/icons/test_iconparts.py` | 39 | 57.5 | 5.0 | 46.4 | 52.5 |
@@ -152,8 +152,8 @@ None of them starts one.
 | `tests/dos/test_dosbox.py` | 56 | 10.6 | a blank-window stub and captured output |
 | `tests/dos/test_dosboxx.py` | 35 | 5.3 | a fake debugger that wraps as the real one does |
 | `tests/c64/test_walkrun.py` | 9 | 1.5 | a `Session` replaced by a fake that never connects |
-| `tests/test_combatdrive.py` | 81 | 78.3 | captured screens; its own docstring says it needs no emulator |
-| `tests/test_fleedrive.py` | 11 | 32.3 | the same, over three fight outcomes |
+| `tests/pool_of_radiance/test_combatdrive.py` | 81 | 78.3 | captured screens; its own docstring says it needs no emulator |
+| `tests/pool_of_radiance/test_fleedrive.py` | 11 | 32.3 | the same, over three fight outcomes |
 
 The first four carry `xdist_group(name="emulator-pool")` and so share one
 worker: **172 tests and 34.0 worker-seconds, 1.2% of the run.** The group
@@ -176,7 +176,7 @@ Three claims that look right and are not, each cheap to repeat:
   before matching drops it to 223 files and 1,866.3 worker-seconds against
   1,886.9 — 20.6 seconds. Every heavy file it picks is picked on real code:
   `tests/suite/test_toolshadowing.py` on its `pytest.skip(` for a missing tool
-  dependency, `tests/test_combatdrive.py` on importing `tests/gamedata.py`'s
+  dependency, `tests/pool_of_radiance/test_combatdrive.py` on importing `tests/gamedata.py`'s
   synthetic arena, `tests/suite/test_staging_sweep.py` on the word `specimen` in
   code.
 

@@ -214,7 +214,7 @@ player's disks:
 
 Every one is `CMP #$81 / BNE <the losing arm> / LDX #$02 / LDA #$0A /
 JSR <print>`: the same string, the same index, the same row.
-`tests/test_fleedrive.py` re-derives it for each title that has disks.
+`tests/pool_of_radiance/test_fleedrive.py` re-derives it for each title that has disks.
 
 **The *encounter menu's* FLEE is a different message and does not come from
 here.** `COMBAT WAIT FLEE ADVANCE`/`PARLAY` is `DUNGEON`'s own menu at

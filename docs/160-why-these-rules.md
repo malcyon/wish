@@ -914,7 +914,7 @@ fixes it, and a run whose `conclusion` is empty has not finished however
 `completed` the list looks.
 
 **A scoped test run cleared a push that turned `main` red.**
-`pytest tests/test_combatdrive.py` was green and `main` went red on all four
+`pytest tests/pool_of_radiance/test_combatdrive.py` was green and `main` went red on all four
 jobs eight minutes later. A scoped run is for working; it is not the check.
 
 **A worktree run without the scratch-directory symlink lies by omission.** That directory was
@@ -960,7 +960,7 @@ Cut, lines 263-266 ("The whole suite runs once..." -- the reason stays as a fact
 
 The red-`main` incident under "Run the whole suite":
 
-> `pytest tests/test_combatdrive.py` was green and
+> `pytest tests/pool_of_radiance/test_combatdrive.py` was green and
 > `main` went red on all four jobs eight minutes later.
 
 The subagent-run incident:
@@ -2525,7 +2525,7 @@ A `CHRDAT` in the container directory is deliberately not copied, so a stale eff
 
 ###### Spell slots and expiry (dosslotwatch.py, dosspcexpiry.py, dosspellslots.py, dosvmwatch.py)
 
-`dosslotwatch.py` watched the engine zero Silver Blades' fourth spell-slot array. `dosspellslots.py` found that array is spell class 2's and no spell in the title has that class; `tables` shows Curse's paladin gets cleric slots from level 9 written into the cleric array, and its ranger gets druid slots from 8 and magic-user slots from 9 out of one table split across two arrays; the same read reproduces the cleric and magic-user rows known from the C64, which makes the other two safe to take from DOS. The builder is picked out of the three fill sites by its class loop and `DS` off the System unit's start-up; `tests/test_cursespellslots.py` reads all four tables back off the player's own image. In `dosspcexpiry.py`, a `BLESS` at two minutes vanishes and every zero-duration node survives; `ready` reads the `id 00 00 0C 00` record the engine appends and writes to a `.SPC`. `dosvmwatch.py` ran two experiments back to back: a step with `$507A` (VM `$6E7A`) armed, then ENCAMP with `$4FD2` and `$4FD3` (VM `$6DD2`, `$6DD3`) armed.
+`dosslotwatch.py` watched the engine zero Silver Blades' fourth spell-slot array. `dosspellslots.py` found that array is spell class 2's and no spell in the title has that class; `tables` shows Curse's paladin gets cleric slots from level 9 written into the cleric array, and its ranger gets druid slots from 8 and magic-user slots from 9 out of one table split across two arrays; the same read reproduces the cleric and magic-user rows known from the C64, which makes the other two safe to take from DOS. The builder is picked out of the three fill sites by its class loop and `DS` off the System unit's start-up; `tests/curse_of_the_azure_bonds/test_cursespellslots.py` reads all four tables back off the player's own image. In `dosspcexpiry.py`, a `BLESS` at two minutes vanishes and every zero-duration node survives; `ready` reads the `id 00 00 0C 00` record the engine appends and writes to a `.SPC`. `dosvmwatch.py` ran two experiments back to back: a step with `$507A` (VM `$6E7A`) armed, then ENCAMP with `$4FD2` and `$4FD3` (VM `$6DD2`, `$6DD3`) armed.
 
 ###### Tail-field census (dostailcensus.py)
 

@@ -267,7 +267,7 @@ was read and written into the matrix rows above during #31 (Cold-read Curse and 
 saving-throw rule reproduces all six shipped characters; what was missing was
 a `LevelTables` for the title in `goldbox/levels.py`, which #187 (Silver Blades characters are shown Pool of Radiance's level progression) built --
 `SECRET_OF_THE_SILVER_BLADES`, checked row by row against `GEN` in
-`tests/c64/test_coldread.py` and `tests/test_ssblevels.py`. Its trainer stays
+`tests/c64/test_coldread.py` and `tests/secret_of_the_silver_blades/test_ssblevels.py`. Its trainer stays
 unread (thief-skill racial adjustment, constitution hit-point bonus, wisdom
 bonus spells, turning table), so `levels.trainer_measured` and
 `goldbox/levelup.py:plan` still refuse it.
@@ -346,7 +346,7 @@ What was run, on that specimen:
 
 * **A17 and A18 with no emulator** — `EditorBinding.save` on an untouched save
   says `no changes` and moves no byte, and a YAML export re-imported comes back
-  a byte-identical disk. `tests/test_ssbeditorpath.py`.
+  a byte-identical disk. `tests/secret_of_the_silver_blades/test_ssbeditorpath.py`.
 * **A19 in both directions**, each refusal naming both titles.
 * **A20 in VICE, pool slot 3.** Three fields of different kinds edited through
   the editor — name `MORGAINE` → `BRIGHID`, gold 0 → 4321, strength 17 → 12 —

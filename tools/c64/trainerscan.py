@@ -22,7 +22,7 @@ sequence at `$2041` was assembled out of the eight routines it calls.
 
 **The record base is the lever and it is per-title.** Pool of Radiance keeps
 the working character at `$6B00` and Curse and Silver Blades at `$7C00`;
-`tests/test_curse.py` proves Curse's by round-tripping an exported `\\x02`
+`tests/curse_of_the_azure_bonds/test_curse.py` proves Curse's by round-tripping an exported `\\x02`
 character read at that address, and Pool of Radiance's falls out of its own
 thief-skill routine, `$1FEC LDX $6BCB / ... / STA $6BA5,Y` -- `level_thief` at
 `0x0CB` and the eight skills at `0x0A5`. Pass `--record` for a title nobody has

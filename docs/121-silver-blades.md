@@ -3,7 +3,7 @@
 **Status: phases 0 to 5 are done.** Phases 0-2 were a cold read of the disks
 with `goldbox/geo.py`, `goldbox/record.py` and `goldbox/savegame.py` **unmodified**;
 phases 3-5 were one driven session; the account of it, `reports/p9-ssb-live.md`,
-is lost. `tests/test_ssblive.py` carries what a machine with the disks
+is lost. `tests/secret_of_the_silver_blades/test_ssblive.py` carries what a machine with the disks
 can check again without an emulator.
 
 Three results from the run are worth reading first. **The Curse import changes
@@ -29,9 +29,9 @@ say.
 with no gap and no error-byte rip among them. `goldbox/d64.py` opens all six.
 The full inventory was in `reports/goldbox-inventory.md`, which is lost;
 the per-title base addresses it established are asserted in
-`tests/test_curse.py::test_the_addresses_are_the_ones_measured`.
+`tests/curse_of_the_azure_bonds/test_curse.py::test_the_addresses_are_the_ones_measured`.
 
-**How the tests find them.** `tests/test_silverblades.py` looks behind an
+**How the tests find them.** `tests/secret_of_the_silver_blades/test_silverblades.py` looks behind an
 `SSB_DISKS` environment variable and then at a candidate list, in the same
 shape as `COAB_DISKS` in `tests/gamedata.py` — but *in the test module*, not in
 `gamedata.py`, because that module was another agent's while this was written.
@@ -80,9 +80,9 @@ What remains, in order:
 Curse shares the 580-byte record with Pool of Radiance *at every offset*, and
 that is not a diff of two specimens — it is the game's own import arithmetic.
 The predictions below inherited their confidence from that. The outcome column
-is the cold read of the disks (`tests/test_silverblades.py`)
+is the cold read of the disks (`tests/secret_of_the_silver_blades/test_silverblades.py`)
 for the first fourteen rows and the driven
-session (`tests/test_ssblive.py`) for the last
+session (`tests/secret_of_the_silver_blades/test_ssblive.py`) for the last
 six.
 
 | | Prediction | Outcome |
@@ -119,7 +119,7 @@ constant that must be re-measured.
 ids are sparse — `$10` to `$62`, no `GEO00` — and **the high nibble is the disk
 side the file sits on**, without exception: `GEO2x` on side 2, `GEO3x` on side
 3. Champions and Death Knights do the same. That is a free area-to-side index,
-and it is asserted in `tests/test_silverblades.py`.
+and it is asserted in `tests/secret_of_the_silver_blades/test_silverblades.py`.
 
 ### What being a sequel changed
 
@@ -137,12 +137,12 @@ and it is asserted in `tests/test_silverblades.py`.
 | # | Phase | Emulator | State |
 |---|---|---|---|
 | 0 | **Obtain and place the disks** | no | **done** — six sides, all readable, found behind `SSB_DISKS` |
-| 1 | **Cold read** — stem inventory, every `GEO` decoded, `ITEMS` shape | no | **done** — `tests/test_silverblades.py` |
+| 1 | **Cold read** — stem inventory, every `GEO` decoded, `ITEMS` shape | no | **done** — `tests/secret_of_the_silver_blades/test_silverblades.py` |
 | 2 | **A character record** | no | **done** — the shipped `SAVEDBASH` party, six characters, decoded and byte-identical on round trip |
 | 3 | **Save geometry** | yes, for the header fields | **done.** Every header field at Pool of Radiance's payload offset: `0x0C0`-`0x0C2` x/y/facing, `0x0C5` the live area, `0x0C7`-`0x0C9` the clock, `0x0F0`/`0x0F1` the previous square, `0x2C2` the area in the save. Two saves one step apart differ in one byte, the clock |
 | 4 | **The import diff** | yes | **done.** `ADD FROM: SECRET CURSE EXIT` — Curse is the only foreign source, there is no `POOL`. §4.1 |
 | 5 | **Live addresses and the automapper run** | yes, exclusively | **done.** Live base `$4B00`, resident `GEO` at `$0400`, live party triple at `$C04B`. Nine steps and three refusals against `GEO10`, no contradictions. §5 |
-| 6 | **Tests** | no | **done** — `tests/test_silverblades.py` for the cold read and `tests/test_ssblive.py` for the run, with Pool of Radiance as the control where there is one and a clean skip when the disks are absent |
+| 6 | **Tests** | no | **done** — `tests/secret_of_the_silver_blades/test_silverblades.py` for the cold read and `tests/secret_of_the_silver_blades/test_ssblive.py` for the run, with Pool of Radiance as the control where there is one and a clean skip when the disks are absent |
 | 7 | **Constants become a table** | no | **done** — `goldbox/c64_port.py`, all six titles, threaded through `goldbox/savegame.py`, `goldbox/yaml_io.py` and `editor/` |
 
 Phase 7 was planned last on the argument that two games can share code by
@@ -158,7 +158,7 @@ the array at `0x0C9`". The report, `reports/goldbox-inventory.md` §3.3(a)
 **failing** on PAINE (`0x80`) and GUY DE VALOIS (`0x40`), and concluded the
 criterion covers only the low four bits. The correction below is repeated as
 an assertion in
-`tests/test_silverblades.py::test_class_bits_is_one_bit_per_slot_of_the_eight_wide_level_array`.
+`tests/secret_of_the_silver_blades/test_silverblades.py::test_class_bits_is_one_bit_per_slot_of_the_eight_wide_level_array`.
 
 **That is wrong, and the criterion holds unchanged.** The report read the array
 at `0x0C9` as four bytes. It is eight — `goldbox/layout.py` names them
@@ -168,8 +168,8 @@ slot 7 and GUY DE VALOIS's in slot 6, which is exactly what bits `0x80` and
 `0x40` claim. Checked over every shipped party this machine holds, the
 invariant `class_bits == sum(1 << i for non-zero slot i)` holds for **all six
 titles**, the Krynn knights included: Champions' STRONGSWORD and Death Knights'
-SIR DRYDEN carry `0x10` with slot 4 set. `tests/test_silverblades.py` asserts
-it for Silver Blades and `tests/test_curse.py` for Curse.
+SIR DRYDEN carry `0x10` with slot 4 set. `tests/secret_of_the_silver_blades/test_silverblades.py` asserts
+it for Silver Blades and `tests/curse_of_the_azure_bonds/test_curse.py` for Curse.
 
 ### 4.1 The import diff, byte by byte
 
@@ -473,7 +473,7 @@ after. A turn then moved the third byte and nothing else.
 **The corpus.** Nine completed steps and three refusals in `GEO10`, which
 decodes at 480/480 barrier reciprocity. Every completed step crosses an edge
 the decoded map calls passable; every refusal meets one it calls impassable; no
-contradictions. It is `WALK` in `tests/test_ssblive.py`. The three refusals are
+contradictions. It is `WALK` in `tests/secret_of_the_silver_blades/test_ssblive.py`. The three refusals are
 the valuable half — `GEO10` has 480 edges and few are shut, so one refusal
 identifies the map where a dozen successful steps would not.
 

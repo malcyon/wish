@@ -164,7 +164,7 @@ every row, and does not affect `$18E4`'s count of non-zero levels.
 | file | what |
 |---|---|
 | `goldbox/levelup.py` | `dual_class_old`; the four rules; the refusal gone; `divide_between_classes`' docstring corrected with what it still needs |
-| `tests/test_cursedualtrain.py` | 8 tests replaying the eight presses against the specimen pair |
+| `tests/curse_of_the_azure_bonds/test_cursedualtrain.py` | 8 tests replaying the eight presses against the specimen pair |
 | `tools/curse_of_the_azure_bonds/cursetrain.py` | `stage --repair` and eight more `--give` fields; the driven recipe, including the roster address |
 | `docs/192-curse-dual-class.md` | this page |
 

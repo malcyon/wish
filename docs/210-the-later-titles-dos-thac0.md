@@ -75,7 +75,7 @@ Cleric, druid and monk share a row; fighter, paladin and ranger share another.
 | thief | **20** | **20** | **20** | **20** | 19 | 19 | 19 | 19 | 16 | 16 | 16 | 16 | 14 | 14 | 14 | 14 | 12 | 12 |
 
 The bold entries are where the port disagrees with the C64, whose rows are
-cold-read off the player's own `GEN` by `tests/test_curselevels.py` and
+cold-read off the player's own `GEN` by `tests/curse_of_the_azure_bonds/test_curselevels.py` and
 `tests/c64/test_coldread.py`. There are three disagreements and they are the same
 two in both titles plus one that grows:
 

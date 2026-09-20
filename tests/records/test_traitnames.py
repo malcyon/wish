@@ -4,7 +4,7 @@ Azure Bonds' disks.
 `#561 (A Curse of the Azure Bonds character's traits are named from Pool of
 Radiance's table, which disagrees with Curse's own data about eight codes)`
 is the ticket the tool's commit answered, and nothing imported the tool
-before this file. Modeled on `tests/test_ssbtraitnames.py`'s pattern: re-run
+before this file. Modeled on `tests/secret_of_the_silver_blades/test_ssbtraitnames.py`'s pattern: re-run
 the tool's own grouping and counting logic against the player's real disks,
 so a base offset that slips or a grouped/ungrouped classification that breaks
 turns a test red rather than only a printed number nobody checks.

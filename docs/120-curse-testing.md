@@ -1,8 +1,8 @@
 # Testing Curse of the Azure Bonds against this tooling
 
 **Status: all five tiers are done.** Tiers 1, 2 and 5.1 are automated in
-`tests/test_curse.py`; tiers 3, 4 and 5.2 were done under VICE and what survives
-without an emulator is pinned in `tests/test_curselive.py`. The write-up for the
+`tests/curse_of_the_azure_bonds/test_curse.py`; tiers 3, 4 and 5.2 were done under VICE and what survives
+without an emulator is pinned in `tests/curse_of_the_azure_bonds/test_curselive.py`. The write-up for the
 live tiers, `reports/p8-curse-live.md`, is lost. The goal was a **base-level
 check**, not coverage: enough evidence to say "the tooling reads the second
 game" or "here is exactly where it stops", and to keep that answer from silently
@@ -50,7 +50,7 @@ Everything below is what that suite does **not** touch.
 
 | tier | what it proves | emulator | state |
 |---|---|---|---|
-| 1 static inventory and parse | the disks are what we think, and records come out sane | no | **done** — `tests/test_curse.py` |
+| 1 static inventory and parse | the disks are what we think, and records come out sane | no | **done** — `tests/curse_of_the_azure_bonds/test_curse.py` |
 | 2 map files | the `GEO` decoder is right about Curse, not merely quiet | no | **done** — same |
 | 3 live memory | whether any resident address transfers | **yes** | **done** — one does, `$0400`; the rest moved |
 | 4 automapper | position, facing, area id | **yes** | **done** — works, with one address to re-derive |
@@ -61,13 +61,13 @@ cheap, they are automatable, and they fail loudly. All three now run on every
 `pytest` and skip when the player has no Curse disk. What tiers 3, 4 and 5.2
 left behind that can run without an emulator — the constants, the code paths
 against a hand-built machine, and the route the party actually walked — is in
-`tests/test_curselive.py`.
+`tests/curse_of_the_azure_bonds/test_curselive.py`.
 
 ---
 
 ## Tier 1 — static: inventory and parse
 
-**Done, in `tests/test_curse.py`.** No emulator, no fixtures; every test skips
+**Done, in `tests/curse_of_the_azure_bonds/test_curse.py`.** No emulator, no fixtures; every test skips
 when the player has no Curse disk, and every assertion runs over Pool of
 Radiance too.
 
@@ -149,7 +149,7 @@ the other.
 
 ## Tier 2 — map files
 
-**Done, in `tests/test_curse.py`.** No emulator. The decoder already ran; what
+**Done, in `tests/curse_of_the_azure_bonds/test_curse.py`.** No emulator. The decoder already ran; what
 was untested was whether it is *right* rather than *not obviously wrong*.
 
 | check | outcome | Confidence |
@@ -195,7 +195,7 @@ and the renderer, and it is not a base-level question.
 ## Tier 3 — live memory under VICE
 
 **Done.** The write-up, `reports/p8-curse-live.md`, carried the evidence for every line
-below and is lost; `tests/test_curselive.py` pins the constants and the code paths.
+below and is lost; `tests/curse_of_the_azure_bonds/test_curselive.py` pins the constants and the code paths.
 
 **One resident address transfers between the two titles, and it is the one the
 automapper most needs: the loaded map block at `$0400`.** Everything else moved,
@@ -331,7 +331,7 @@ APPRAISE EXIT`, both of which highlight in colour 1 and drive normally.
 
 **Done.** Driven against a live Curse session with `automap/` **unmodified**;
 the run was recorded in `reports/p8-curse-live.md`, now lost, and
-`tests/test_curselive.py` pins what
+`tests/curse_of_the_azure_bonds/test_curselive.py` pins what
 can be checked without an emulator.
 
 | component | verdict | evidence |
@@ -378,7 +378,7 @@ named: `docs/116` is unambiguous that the offsets are identical, so a second
 
 ### 5.1 The byte-identical round trip — the strongest single check
 
-**Done. All three round trips pass**, in `tests/test_curse.py`, with Pool of
+**Done. All three round trips pass**, in `tests/curse_of_the_azure_bonds/test_curse.py`, with Pool of
 Radiance's two-file save as the control. Every byte of a Curse save survives
 read → decode → encode → write through the same code the editor uses, and none
 of it asserts what any byte *means* — which is why it passes while half of

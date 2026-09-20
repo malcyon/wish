@@ -20,7 +20,7 @@ that matter:
   title. `test_the_library_base_is_fitted_not_read` re-derives both here.
 
 Disk lookup is borrowed rather than duplicated: `tests/gamedata.py` for Pool of
-Radiance and Curse, `tests/test_silverblades.py` for Silver Blades. Champions
+Radiance and Curse, `tests/secret_of_the_silver_blades/test_silverblades.py` for Silver Blades. Champions
 of Krynn has no finder anywhere yet, so there is one below, and it identifies
 the disk by what its `ITEMNAMES` says rather than by a file name -- Death
 Knights of Krynn carries the same race labels and would otherwise match.
@@ -85,7 +85,7 @@ RACE_LABEL_POOL_INDEX = 140
 #: title, because the game reaches them by a different instruction. Silver
 #: Blades folds 7 and above to pool entry 219 (`LIBRARY $306A`, `LDX #$4F`),
 #: so its 7 is `MONSTER` while `140 + 7` is `MALE `. Pinned separately in
-#: `tests/test_silverblades.py`.
+#: `tests/secret_of_the_silver_blades/test_silverblades.py`.
 OUTSIDE_THE_RUN = {"secret-of-the-silver-blades": (7,)}
 
 

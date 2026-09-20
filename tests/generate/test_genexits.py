@@ -1,11 +1,11 @@
 """`tools/generate/genexits.py` re-derives `automap.fasttravel.EXIT_ROUTES` off the
 player's own disks; this checks the two agree, the same shape
-`tests/test_newecl.py` already holds `automap/fasttravel.py`'s address table
+`tests/areas/test_newecl.py` already holds `automap/fasttravel.py`'s address table
 to. A mismatch here means the table was pasted from an older run of the
 generator, not a bug in `FastTravel` itself.
 
 `pick_square` and `outward_facings` are pure logic and need no disk, so they
-are pinned separately against a small synthetic `Geo` -- `tests/test_geo.py`'s
+are pinned separately against a small synthetic `Geo` -- `tests/areas/test_geo.py`'s
 own precedent for exercising `goldbox.geo.Geo` without a real map.
 """
 from __future__ import annotations

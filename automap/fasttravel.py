@@ -8,7 +8,7 @@ Radiance's alone?)` read the other two titles' overlays.
 
 **Nothing here is Pool of Radiance's address with an offset applied.** Each
 field's comment says which instruction it was read out of, and
-`tests/test_newecl.py` re-derives the lot off the player's own disks by
+`tests/areas/test_newecl.py` re-derives the lot off the player's own disks by
 `tools/areas/newecl.py`'s procedure -- find the script VM by its self-modifying
 dispatch, take entry `$20` of the tables it builds, read the routine. A
 constant written down is a claim nothing checks.
@@ -341,7 +341,7 @@ class ExitRoute:
 #: there while passing every local run.
 #:
 #: `tests/generate/test_genexits.py` re-derives this off the player's own disks and
-#: compares, the same shape `tests/test_newecl.py` already holds the address
+#: compares, the same shape `tests/areas/test_newecl.py` already holds the address
 #: table to.
 EXIT_ROUTES: Mapping[tuple[int, int], ExitRoute] = MappingProxyType({
     (0, 8): ExitRoute(1, (4, 4)),

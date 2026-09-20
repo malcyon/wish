@@ -15,7 +15,7 @@ direction.
 
 The two engine-written specimens are #84's own DOS creation-screen rolls,
 reached through the specimen tree; everything else here is a synthetic
-`NeutralCharacter`, which is how `tests/test_cursespellslots.py` tests the
+`NeutralCharacter`, which is how `tests/curse_of_the_azure_bonds/test_cursespellslots.py` tests the
 mirror-image gate on `goldbox.dos_codec.write`.
 """
 

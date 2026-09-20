@@ -105,7 +105,7 @@ def no_data_env(example: pathlib.Path, absent: pathlib.Path) -> dict[str, str]:
 
     The path must not exist rather than merely be empty, because that is what
     CI's own lookups meet (`/data/agent-disks` is not there) and some tests ask
-    `.is_dir()` before the registry: `tests/test_cursespellslots.py` skips on
+    `.is_dir()` before the registry: `tests/curse_of_the_azure_bonds/test_cursespellslots.py` skips on
     "no DOS archives" only when the directory is missing, and an empty one made
     it run over the specimen tree alone and fail its measured counts.
     """

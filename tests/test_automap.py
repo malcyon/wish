@@ -3161,7 +3161,7 @@ def test_the_button_says_which_class_it_will_raise(app):
 def test_the_tooltip_names_every_class_a_curse_press_trains(app):
     """TRAVIS, thief 5 / fighter 4 with 20,001 experience -- both classes
     ready together (`thief`'s own next threshold is 20,001, `fighter`'s is
-    18,001, `tests/test_cursetrainer.py`'s `WISH-SPEC-curse-train-input`
+    18,001, `tests/curse_of_the_azure_bonds/test_cursetrainer.py`'s `WISH-SPEC-curse-train-input`
     specimen). `$14F8` walks class slots 7 down to 0 and raises fighter
     (slot 3) before thief (slot 2), so that is the order named here too.
 

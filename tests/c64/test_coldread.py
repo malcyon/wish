@@ -641,7 +641,7 @@ def test_a_silver_blades_party_has_level_tables_and_a_measured_trainer():
     reproduced 196 of 196 derived fields and 224 of 224 spellbook bytes
     (`#89 (Silver Blades' trainer grants spells from a table, and
     goldbox/levelup.py offers them from a menu)`,
-    `tests/test_ssbtrainer.py`), so `TRAINER_MEASURED` gained the key.
+    `tests/secret_of_the_silver_blades/test_ssbtrainer.py`), so `TRAINER_MEASURED` gained the key.
     """
     from goldbox import levels
 

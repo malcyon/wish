@@ -1,0 +1,304 @@
+from __future__ import annotations
+
+"""`goldbox/levels.py`'s Silver Blades tables, disk-free.
+
+`#187 (Silver Blades characters are shown Pool of Radiance's level
+progression)`: `goldbox/levels.py:for_game` used to fall back to Pool of
+Radiance for Silver Blades, so a level-9 Silver Blades magic-user was shown
+against Pool of Radiance's ceiling of 6. This file pins the built table
+without needing the player's own disks -- `tests/c64/test_coldread.py`'s A6/A7
+section is what checks the same numbers against `GEN`.
+"""
+
+import dataclasses
+
+import pytest
+
+from goldbox import c64_port, levels, levelup
+from goldbox.record import CharacterRecord
+from tools.c64 import laterthac0
+
+POOL = levels.POOL_OF_RADIANCE
+SSB = levels.SECRET_OF_THE_SILVER_BLADES
+
+
+def test_a_silver_blades_magic_user_is_shown_a_ceiling_of_15():
+    assert levels.ceiling("magic-user", SSB) == 15
+    assert levels.for_game(SSB) is SSB
+
+
+def test_a_level_nine_silver_blades_magic_user_is_not_at_maximum():
+    """The card the roster shows -- `automap/live.py:_classes` -- not just
+    the table lookup underneath it.
+
+    Through Pool of Radiance's tables (the fallback #187 removed) a level-9
+    magic-user is past the ceiling of 6 and reads "maximum"; through Silver
+    Blades' own tables it is partway to 15.
+    """
+    from automap import live
+
+    rec = CharacterRecord.blank()
+    rec.set("class_bits", 1)
+    rec.set("level_magic_user", 9)
+    rec.set("experience", 200000)
+
+    (ssb_progress,) = live._classes(rec, SSB)
+    assert ssb_progress.next_threshold == 250001
+    assert not ssb_progress.at_ceiling
+    assert ssb_progress.fraction == pytest.approx(
+        (200000 - 135001) / (250001 - 135001))
+
+    # The control: the same record, with no title (Pool of Radiance's
+    # default), reads as a fighter... no, a magic-user past Pool of
+    # Radiance's ceiling of 6, which is exactly the wrong answer #187 found.
+    (pool_progress,) = live._classes(rec, POOL)
+    assert pool_progress.at_ceiling
+
+
+@pytest.fixture
+def app():
+    from PyQt6.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
+def test_the_card_shows_a_silver_blades_experience_bar(app):
+    """The sibling of
+    `tests/test_automap.py::test_a_card_at_a_class_ceiling_says_maximum`,
+    for a title where the same record is not at its ceiling."""
+    from support.automapwindow import make_root
+
+    from automap import live
+    from automap.panel import CharacterCard
+
+    rec = CharacterRecord.blank()
+    rec.set("class_bits", 1)
+    rec.set("level_magic_user", 9)
+    rec.set("experience", 200000)
+    (progress,) = live._classes(rec, SSB)
+
+    card = CharacterCard(make_root(), 0)
+    card.show_character(live.Character(
+        slot=0, name="MORGAINE", classes=(progress,), level=9,
+        armour_class=2, thac0=13, hp=60, hp_max=60, experience=200000))
+    assert card.xp[0].text == "200000 / 250001 xp"
+
+
+def test_the_six_shipped_saves_reproduce_without_disks():
+    """The literals `tests/c64/test_coldread.py` reproduces off the player's own
+    `GEN` -- kept here too so this file's tests need no disks at all.
+
+    MALACHITE and GUY DE VALOIS are the two that discriminate: MALACHITE is
+    the dwarf, race 3, so three of his five columns carry the constitution
+    bonus; GUY DE VALOIS is the paladin, so his row is the fighter's less
+    two. Getting either rule wrong would still fit the other four.
+    """
+    cases = (
+        ("MORGAINE", {"magic-user": 9}, 6, 16, (13, 11, 9, 13, 10)),
+        ("MALACHITE", {"thief": 8, "fighter": 7}, 3, 17, (6, 11, 8, 12, 9)),
+        ("DOMINIC", {"cleric": 8}, 6, 17, (7, 10, 11, 13, 12)),
+        ("PAINE", {"ranger": 8}, 6, 16, (10, 11, 12, 12, 13)),
+        ("EPONA", {"fighter": 8}, 6, 17, (10, 11, 12, 12, 13)),
+        ("GUY DE VALOIS", {"paladin": 8}, 6, 18, (8, 9, 10, 10, 11)),
+    )
+    for name, class_levels, race, constitution, expect in cases:
+        got = levels.saving_throws(class_levels, race, constitution, game=SSB)
+        assert got == expect, name
+
+
+def test_levelling_refuses_an_unmeasured_title_however_full_its_tables_are():
+    """Proves the guard in `goldbox/levelup.py:_tables_for` asks
+    `levels.trainer_measured` and not `tables.thief_skills` -- an empty tuple
+    that would stop refusing the moment somebody attributes `$126D`.
+
+    **This used to be asked of Silver Blades itself**, whose `thief_skills`
+    was empty and which the old guard would have let through the moment
+    somebody filled it in. It is measured now (`#89 (Silver Blades' trainer
+    grants spells from a table, and goldbox/levelup.py offers them from a
+    menu)`, fourteen driven presses on 2026-09-16), so the question needs a
+    title that is not -- Silver Blades' own tables under a key
+    `TRAINER_MEASURED` has never heard of, which is exactly the state the
+    next title added to this module arrives in.
+    """
+    filled = dataclasses.replace(SSB, key="a-title-nobody-has-measured",
+                                 title="A Title Nobody Has Measured")
+    assert filled.thief_skills            # the old guard would say yes
+    assert not levels.trainer_measured(filled)   # the new guard still says no
+
+    rec = CharacterRecord.blank()
+    rec.set("class_bits", 8)
+    rec.set("level_fighter", 5)
+    rec.set("experience", 1_000_000)
+    rec.set("wisdom", 12)
+    rec.set("constitution", 12)
+    rec.set("thac0_base", 40)
+
+    with pytest.raises(levelup.CannotLevel) as exc:
+        levelup.plan(rec, "fighter", game=filled)
+    assert filled.title in str(exc.value)
+
+
+def test_a_few_more_rows_off_the_top_of_each_table():
+    assert levels.hit_die("paladin", SSB) == 10
+    assert levels.hit_die("ranger", SSB) == 8
+    assert levels.at_level("thief", 18, SSB).thac0 == 12
+    assert levels.at_level("fighter", 15, SSB).attacks == 2
+    assert levels.at_level("cleric", 15, SSB).spells == ()
+
+
+def test_silver_blades_dos_thac0_is_the_games_own_table():
+    """`goldbox.levels.SECRET_OF_THE_SILVER_BLADES.dos_thac0` against the
+    bytes at `DS:0x4C0C` in the DOS build's own `START.EXE` -- seven rows,
+    not eight, because this title drops the monk.
+
+    `#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64
+    gives 21, and our table holds only the C64's)`: as with Curse, the
+    magic-user's low levels **agree** with the C64 here; what disagrees is
+    the thief's low levels, a level-2 fighter/paladin/ranger, and the
+    magic-user's third band, which runs longer in this title (11-15).
+    """
+    try:
+        found = laterthac0.locate("secret-of-the-silver-blades")
+    except (FileNotFoundError, SystemExit) as why:
+        pytest.skip(f"no DOS Silver Blades on this machine: {why}")
+    disk = found.table()
+    rows = dict(SSB.dos_thac0)
+    assert set(rows) == {"cleric", "fighter", "paladin", "ranger",
+                         "magic-user", "thief"}
+    for name, row in rows.items():
+        assert list(row) == disk[name], name
+    assert rows["thief"][:4] == (20, 20, 20, 20)             # C64: 21
+    assert rows["fighter"][1] == 20                           # C64: 19
+    assert rows["magic-user"][10:15] == (17, 17, 17, 17, 17)  # C64: 16
+
+
+def test_silver_blades_is_among_the_titles_a_race_with_no_bonus_covers():
+    """`levels.TITLES` now has three entries; a test that loops it (in
+    `tests/curse_of_the_azure_bonds/test_curselevels.py` and `tests/records/test_levels.py`) covers Silver
+    Blades for free. This is the version of that check that lives beside the
+    new title's own tests."""
+    assert SSB in levels.TITLES
+    assert c64_port.SECRET_OF_THE_SILVER_BLADES.key == SSB.key
+
+
+#: What Silver Blades' own trainer wrote at `0x09A`-`0x09E` for MALACHITE --
+#: thief 8 / fighter 7, constitution 17 -- raised to thief 9 five times on
+#: one boot (VICE pool slot 0, 2026-09-06, `tools/secret_of_the_silver_blades/ssbtrain.py`,
+#: `issue344/m1..m6`, scratch, deleted), with only the race byte poked between presses and
+#: the five stored saves poked to 14 first so each row is a write and not a
+#: keep. The DOS values he arrived with were `10 7 5 9 6`.
+MALACHITE_PRESSES = (
+    (3, (6, 10, 6, 12, 7)),       # dwarf, from the DOS row
+    (4, (10, 10, 10, 12, 11)),    # gnome, from 14s
+    (5, (10, 10, 10, 12, 11)),    # halfling, from 14s
+    (6, (10, 10, 10, 12, 11)),    # human, from 14s
+    (3, (6, 10, 6, 12, 7)),       # dwarf again, from 14s
+)
+
+
+def test_the_trainer_gave_the_bonus_to_the_dwarf_and_to_nobody_else():
+    """`#344 (A converted Silver Blades dwarf, gnome or halfling keeps DOS's
+    saving throws, because that title's racial bonus has never been watched
+    in the game)`: `GEN $11D8` is `LDA $7C72 / CMP #$03 / BNE rts`, an
+    equality test on race 3, where Pool of Radiance and Curse give the bonus
+    to three races. This is the five rows the engine wrote against what
+    `saving_throws` computes, and it is what put the title into
+    `RACIAL_SAVE_BONUS_MEASURED`.
+
+    Give the gnome the bonus too -- `sturdy_races=(3, 4, 5)`, Pool of
+    Radiance's shape under this title's numbering -- and rows 2 and 3 fail.
+    """
+    for race, wrote in MALACHITE_PRESSES:
+        got = levels.saving_throws({"thief": 9, "fighter": 7}, race, 17,
+                                   game=SSB)
+        assert got == wrote, (race, got, wrote)
+    # The discriminating half: the dwarf's row is not the others', so a
+    # table that gave everybody the bonus, or nobody, cannot pass.
+    assert MALACHITE_PRESSES[0][1] != MALACHITE_PRESSES[1][1]
+    assert levels.racial_save_bonus_measured(SSB)
+    assert levels.racial_save_bonus_measured(c64_port.SECRET_OF_THE_SILVER_BLADES)
+
+
+# --- `#89`'s trainer inputs -------------------------------------------------
+# The five fields `tests/secret_of_the_silver_blades/test_silverblades.py` checks live against `GEN` and
+# `ECL65`; these check the shape of what landed here without needing a disk.
+
+CURSE = levels.CURSE_OF_THE_AZURE_BONDS
+
+
+def test_the_five_trainer_inputs_are_no_longer_empty():
+    """`goldbox/levelup.py:_tables_for` treats an empty tuple as "cannot
+    answer" (`goldbox/levels.py`'s own comment on `thief_skills`), so this is
+    the same gate `test_levelling_still_refuses_silver_blades_even_with_
+    thief_skills_filled` exercises the wrong side of -- these five now come
+    from `GEN` and `ECL65`, not from a stand-in.
+    """
+    assert SSB.hp_bonus_by_score
+    assert SSB.thief_skills and len(SSB.thief_skills) == 17
+    assert SSB.thief_skill_dexterity
+    assert SSB.thief_skill_race and len(SSB.thief_skill_race) == 6
+    assert SSB.thief_skill_race_index_from == 0
+    assert SSB.wisdom_bonus_level
+
+
+def test_the_thief_racial_row_is_read_with_no_decrement():
+    """`GEN $124D` has no `DEX`, so `thief_skill_row` reads `thief_skill_race`
+    at `race`, not `race - 1` -- `thief_skill_race_index_from=0` is what makes
+    that happen. A dwarf (race 3) gets the row labelled "gnome" on disk.
+    """
+    dwarf_gets = levels.thief_skills(1, 3, game=SSB, dexterity=9)
+    gnome_row = SSB.thief_skill_race[3]
+    dex9_row = SSB.thief_skill_dexterity[0]
+    level1_row = SSB.thief_skills[0]
+    want = tuple((a + b + c) & 0xFF
+                 for a, b, c in zip(level1_row, dex9_row, gnome_row))
+    assert tuple(v & 0xFF for v in dwarf_gets) == want
+
+    # And a human (race 6) gets nothing added, the way `$124D`'s
+    # `CMP #$06 / BCS` refuses to look one up at all.
+    human_gets = levels.thief_skills(1, 6, game=SSB, dexterity=9)
+    no_race_row = tuple((a + b) & 0xFF for a, b in zip(level1_row, dex9_row))
+    assert tuple(v & 0xFF for v in human_gets) == no_race_row
+
+
+def test_the_seven_trainer_deltas_fields_are_curses_own():
+    """`#89`'s 2026-09-05 comment on the issue reads all seven off Silver
+    Blades' own `GEN` as instruction-for-instruction or byte-for-byte the
+    same routine as Curse's -- the hit die (`$1808` = Curse's `$15E1`), its
+    divide (`$0D96` = Curse's `$11AB`), one press raising every ready class
+    (`$156F`, Curse's `$14F8` shape), `attack_forms` written outright
+    (`$13EB`, Curse's `$1909` shape) and `spells_castable` never stored
+    (same absrefsweep result as Curse's). So Silver Blades takes Curse's
+    values on all seven, not Pool of Radiance's silent defaults.
+    """
+    assert SSB.hit_die_rolls == CURSE.hit_die_rolls == 2
+    assert SSB.hit_die_fighter_floor == CURSE.hit_die_fighter_floor is None
+    assert SSB.hit_die_divide_floor == CURSE.hit_die_divide_floor == 0
+    assert (SSB.hit_die_divide_round_up_on_tie
+           == CURSE.hit_die_divide_round_up_on_tie is False)
+    assert SSB.trains_all_ready_classes == CURSE.trains_all_ready_classes is True
+    assert SSB.attack_forms_overwritten == CURSE.attack_forms_overwritten is True
+    assert SSB.stores_spell_capacity == CURSE.stores_spell_capacity is False
+
+
+def test_silver_blades_is_now_in_trainer_measured():
+    """This assertion used to say the opposite, and it was right to.
+
+    `#89`'s own 2026-09-08 comment named two blockers beyond the tables, and
+    this test pinned the exclusion so the next reader would see it as a
+    decision rather than an oversight. Both closed on 2026-09-16 and the
+    decision changed with them.
+
+    `automap/window.py`'s spell-dialog gate (`#415 (automap/window.py picks
+    the level-up spell dialog's class the same wrong way plan would have,
+    blocking Curse's trainer)`) needed no second fix: `LevelUp.offers`
+    branches on `trains_all_ready_classes`, which this title has set. And the
+    training was driven -- fourteen presses over two boots covering all four
+    of this trainer's spellcasting classes, 196 of 196 derived fields, 70 of
+    70 saving-throw columns and 224 of 224 spellbook bytes reproduced through
+    `goldbox.levelup.plan`, with the menu the engine built at `$7A00` matching
+    `levelup.learnable` id for id over six menus, 113 ids.
+    `WISH-SPEC-ssb-89-train-input` and `WISH-SPEC-ssb-89-trained-party` keep
+    four of those presses, and `tests/secret_of_the_silver_blades/test_ssbtrainer.py` replays them.
+    """
+    assert levels.trainer_measured(SSB)
+    assert SSB.key in levels.TRAINER_MEASURED

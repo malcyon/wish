@@ -40,7 +40,7 @@ def gen_for(title: str) -> bytes:
 
 def specimen_disk(name: str) -> pathlib.Path:
     """A single-file C64 specimen, or a skip.  The hash check is
-    `tests/test_ssbeditorpath.py`'s; this reads bytes the engine wrote and
+    `tests/secret_of_the_silver_blades/test_ssbeditorpath.py`'s; this reads bytes the engine wrote and
     an edited copy would still make the point it makes."""
     root = gamedata.specimen_root()
     if root is None:

@@ -49,7 +49,7 @@ _log = logging.getLogger("wish.automap.target")
 # them and because they are what the *save* holds. They are NOT what the memory
 # fallback reads: `$49C0` is refreshed only when `$1A3C` flushes `$C04B` into
 # it, so it lags a move -- and in a running Curse the same address is engine
-# code (`tests/test_curselive.py`).
+# code (`tests/curse_of_the_azure_bonds/test_curselive.py`).
 PARTY_BASE = 0x4900
 PARTY_X, PARTY_Y, PARTY_FACING = 0x49C0, 0x49C1, 0x49C2
 PARTY_CLOCK = 0x49C7

@@ -421,7 +421,7 @@ Four cases, in order:
    can walk without being able to leave. Staying off the rim matters for its own
    reason: the edge squares are where the game's own exits live, so a party that
    starts on one is a keypress from leaving the area it was just fasttraveled into.
-   The pocket sizes are asserted in `tests/test_p20.py`'s `POCKETS`.
+   The pocket sizes are asserted in `tests/areas/test_p20.py`'s `POCKETS`.
 4. **Two kinds of area get no `$C04B` square even though they have a `GEO`:**
 
    * the **three overland** areas (25-27). Outdoors the position is

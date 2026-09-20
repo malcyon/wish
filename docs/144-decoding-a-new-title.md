@@ -40,7 +40,7 @@ it — the opposite assumption cost this project a re-derivation it did not need
 **Add the new title to `tests/records/test_second_game.py` rather than forking a
 decoder.** It runs the same invariants over every title through the same code
 paths, so a change made for one game that moves a field or shifts a base fails
-on the other side. `tests/test_silverblades.py` is the third column and it
+on the other side. `tests/secret_of_the_silver_blades/test_silverblades.py` is the third column and it
 needed no new decoder.
 
 ## What transfers, and what does not

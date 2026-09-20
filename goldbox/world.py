@@ -15,7 +15,7 @@ each**: an 18 x 36 grid, one byte a square, indexed `y * 18 + x`, followed by
 of characters out of `SECSET0n`. `SQRDATA05` is 648 + 120 x 18 = 2808 bytes
 exactly; `SQRDATA04` and `SQRDATA06` carry eight spare bytes after that. All
 of this is CONFIRMED (`docs/113-world-map.md`, `docs/137-wilderness-automap.md`)
-and pinned against the player's own disks by `tests/test_p3.py`.
+and pinned against the player's own disks by `tests/areas/test_p3.py`.
 
 **The three files are overlapping windows on one world, thirteen columns
 apart, west to east**: `SQRDATA04` (west), `SQRDATA05` (middle), `SQRDATA06`
@@ -28,7 +28,7 @@ and x = 28, and the walkable part of the world is x 2-41, y 2-33: 40 x 32
 squares. CONFIRMED: the raw grid overlaps in a five-column band at each
 seam (18-13 = 5 columns, all 36 rows), and 179 of those 180 squares agree
 between the west and middle windows, 180 of 180 between the middle and east
-(`docs/113-world-map.md`); `tests/test_world.py` recomputes both counts
+(`docs/113-world-map.md`); `tests/areas/test_world.py` recomputes both counts
 against the disks.
 
 **A terrain code means only what its own window's tables say.** `2E` is
@@ -87,7 +87,7 @@ TILE_SIZE = 18
 TILE_TABLE_SIZE = TILE_COUNT * TILE_SIZE          # 2160
 
 #: `SQRDATA05` is exactly this size; `SQRDATA04` and `SQRDATA06` carry eight
-#: spare bytes after it (`tests/test_p3.py`).
+#: spare bytes after it (`tests/areas/test_p3.py`).
 MIN_FILE_SIZE = GRID_SIZE + TILE_TABLE_SIZE       # 2808
 
 #: The walkable part of a window, window-local -- the two-square border is

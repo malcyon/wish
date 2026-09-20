@@ -17,7 +17,7 @@ land on the byte `tools/records/thac0census.py` finds by the class-bit anchor.
 The rows themselves are not asserted here.  What is asserted is what the
 issue turns on: **where the two ports disagree**, per title, against
 `goldbox/levels.py`, whose C64 rows are cold-read off the player's own `GEN`
-by `tests/test_curselevels.py` and `tests/c64/test_coldread.py`.
+by `tests/curse_of_the_azure_bonds/test_curselevels.py` and `tests/c64/test_coldread.py`.
 """
 
 from __future__ import annotations

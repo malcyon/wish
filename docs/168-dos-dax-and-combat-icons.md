@@ -281,7 +281,7 @@ and Silver Blades in 114 -- weapon 13 against all 23 heads at each size (46)
 plus heads 8 and 13 against the other 34 weapons at the large size (68).
 
 The three differing glyphs were already known and pinned:
-`tests/test_silverblades.py::test_the_combat_icon_charset_is_pool_of_radiances_but_for_three_glyphs`
+`tests/secret_of_the_silver_blades/test_silverblades.py::test_the_combat_icon_charset_is_pool_of_radiances_but_for_three_glyphs`
 has asserted the set `{132, 133, 207}` all along. What was not known is that
 combat figures use them.
 

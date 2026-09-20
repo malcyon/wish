@@ -4053,7 +4053,7 @@ def write(char: NeutralCharacter,
     # `cleric` arrays and 29 of 31 `magic-user` arrays, from the class
     # levels and wisdom alone -- the four misses are this project's own
     # pre-fix output sitting in the specimen tree, not the game's
-    # (`tests/test_cursespellslots.py`'s `COUNTS`). Gated to
+    # (`tests/curse_of_the_azure_bonds/test_cursespellslots.py`'s `COUNTS`). Gated to
     # `_SPELL_SLOT_RECOMPUTE_FROM_PORTS`, the same shape as
     # `_THAC0_RECOMPUTE_FROM_PORTS` and `_THIEF_SKILL_RECOMPUTE_FROM_PORTS`:
     # an Amiga source's own array is real (fifteen of fifteen Amiga Curse

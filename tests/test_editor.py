@@ -2717,7 +2717,7 @@ def test_a_fighter_is_shown_no_spellbook_and_no_thief_skills(app, save):
 def _silver_blades_save(tmp_path):
     """A throwaway copy of the shipped Silver Blades party, or skip.
 
-    The disks are found the way `tests/test_silverblades.py` finds them -- that
+    The disks are found the way `tests/secret_of_the_silver_blades/test_silverblades.py` finds them -- that
     lookup lives there because `tests/gamedata.py` has no Silver Blades hook --
     and copied, because the player's own disks are never opened by a test.
     """

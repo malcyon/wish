@@ -28,7 +28,7 @@ map the existing renderer already draws. The open world is the `SQRDATA`.
 | size check | `SQRDATA05` is 648 + 120 × 18 = 2808 exactly; the other two carry eight spare bytes |
 | in memory | `$8C00`, matched against the disk in 647 of 648 bytes, every difference a site square the script paints over while its flag is clear |
 
-All CONFIRMED; `tests/test_p3.py` pins the arithmetic against the player's own
+All CONFIRMED; `tests/areas/test_p3.py` pins the arithmetic against the player's own
 disks.
 
 **The three have no `$C04B` arrival square and must not be given one.**

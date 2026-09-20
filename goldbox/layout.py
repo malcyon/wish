@@ -342,7 +342,7 @@ _DECLARED: Sequence[Field] = (
            "proof of a sixteen-byte mask. Pool of Radiance's GEN $216B copies "
            "the identical 32 out of $6B78, where the mask is seven. A copy "
            "wider than the field says nothing about the field. "
-           "tests/test_curse.py and tests/test_silverblades.py pin all three "
+           "tests/curse_of_the_azure_bonds/test_curse.py and tests/secret_of_the_silver_blades/test_silverblades.py pin all three "
            "readings."),
     _field(0x071, 1, _U8, "thac0_base", "THAC0 base (60 - value)", _OK,
            "base THAC0, stored as 60 - THAC0, the same encoding the SAVEDGAME1 "

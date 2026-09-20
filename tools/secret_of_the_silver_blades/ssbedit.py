@@ -4,7 +4,7 @@
 `#33 (One Silver Blades session, for the whole editor path)` step 5: *"Edit
 three fields of different kinds and read each off the game's own screens."*
 Steps 2, 3 and 4 of that ticket are file-path checks and live in
-`tests/test_ssbeditorpath.py`; this is the half that needs the running game.
+`tests/secret_of_the_silver_blades/test_ssbeditorpath.py`; this is the half that needs the running game.
 
 Three fields, chosen to be three different kinds of thing and to land in three
 different places in the save:

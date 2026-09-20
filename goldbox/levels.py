@@ -53,7 +53,7 @@ rows 42 bytes earlier at `$1004`. So selecting Curse's level tables is not
 selecting Curse's trainer.
 
 **Curse's column of that table is now filled in, and the four gaps it used to
-leave at `--` are what `tests/test_cursetrainer.py` reads off the disk**
+leave at `--` are what `tests/curse_of_the_azure_bonds/test_cursetrainer.py` reads off the disk**
 (`#18`). Finding them needed no emulator and no address from this file: Curse's
 working character sits at `$7C00`, so a census of every absolute instruction
 whose operand lands in the record puts each routine within two instructions of
@@ -106,7 +106,7 @@ always applying Pool of Radiance's `<=`, and the new `plan_all` raises every
 ready class in `$14F8`'s own slot order rather than one at a time -- both
 proven against `WISH-SPEC-curse-train-input` and
 `WISH-SPEC-curse-trained-party`, the same pair that measured them
-(`tests/test_cursetrainer.py`). **`plan_all` now has a caller**:
+(`tests/curse_of_the_azure_bonds/test_cursetrainer.py`). **`plan_all` now has a caller**:
 `automap/actions.py`'s `LevelUp.run` asks `trains_all_ready_classes` and calls
 `plan_all` instead of `plan` with no class named, whose `best_next_class`
 picked the *opposite* order from `$14F8`'s for both TRAVIS and LEDERA
@@ -385,7 +385,7 @@ def _progression(*, ceiling, experience, thac0, saves, die, roll_to, flat,
 # `GEN $0F49` holds the level-1 rows, four classes of five bytes, and `$0F5D`
 # holds 80 bytes more: a four-byte mask a column, two bits a level for sixteen
 # levels, which `$0E7E` subtracts a level at a time. Expanding it reproduces
-# all 45 rows here (`tests/test_cursetrainer.py`), and its rows past Curse's
+# all 45 rows here (`tests/curse_of_the_azure_bonds/test_cursetrainer.py`), and its rows past Curse's
 # ceilings are Silver Blades' measured extensions exactly.
 _SAVES_MAGIC_USER = ((5, (14, 13, 11, 15, 12)), (10, (13, 11, 9, 13, 10)),
                      (15, (11, 9, 7, 11, 8)))
@@ -438,7 +438,7 @@ _SLOTS_CLERIC = ((1,), (2,), (2, 1), (3, 2), (3, 3, 1), (3, 3, 2),
 #: (`ECL65 $884B`: `LDA $7CCF` for the paladin's class-level slot, then three
 #: compares against 9, 10 and 11), so both ports agree. `goldbox.spells.
 #: _PALADIN_CURSE` is the same progression written out to the record's full
-#: five columns, and `tests/test_cursespellslots.py` reads `DS:43E5` back off
+#: five columns, and `tests/curse_of_the_azure_bonds/test_cursespellslots.py` reads `DS:43E5` back off
 #: the player's own image (#548).
 _SLOTS_PALADIN = ((), (), (), (), (), (), (), (), (1,), (2,), (2, 1))
 
@@ -671,7 +671,7 @@ HP_BONUS_FROM = 15
 # --- what Curse's trainer rolls and looks up ---------------------------------
 # Read off `CURSE_A.D64`'s own `GEN` and `ECL65` (`#18`), by the instruction
 # that touches the character record at `$7C00` -- `tools/c64/trainerscan.py`.
-# `tests/test_cursetrainer.py` re-reads every one of these off the player's
+# `tests/curse_of_the_azure_bonds/test_cursetrainer.py` re-reads every one of these off the player's
 # disk, so a wrong number here fails rather than sits.
 
 #: `GEN $1004`, nine rows of eight, indexed by `thief level - 1`. **The same
@@ -1569,7 +1569,7 @@ DEFAULT = POOL_OF_RADIANCE
 #: was not enough to level a Curse character.
 #:
 #: **Curse's own copies were located, read and written into this module**
-#: (`tests/test_cursetrainer.py` and `tests/test_curselevels.py`), and
+#: (`tests/curse_of_the_azure_bonds/test_cursetrainer.py` and `tests/curse_of_the_azure_bonds/test_curselevels.py`), and
 #: `goldbox/levelup.py` was taught every rule of Curse's that is not Pool of
 #: Radiance's. **Five Curse trainings were driven and diffed on 2026-09-05**,
 #: and 75 derived fields plus 5 spellbooks came back out of this module and
@@ -1596,7 +1596,7 @@ DEFAULT = POOL_OF_RADIANCE
 #: `LevelUp.run` no longer asks it: `plan_all` walks `ready_classes` itself,
 #: in the engine's own order, proven against both specimens through the
 #: action rather than through `plan_all` directly
-#: (`tests/test_cursetrainer.py::test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all`).
+#: (`tests/curse_of_the_azure_bonds/test_cursetrainer.py::test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all`).
 #:
 #: **The remaining gap was one file further over, in `automap/window.py`.**
 #: `AutomapBinding._level_up` used to decide, *before* calling `run`, whether
@@ -1610,7 +1610,7 @@ DEFAULT = POOL_OF_RADIANCE
 #: 4,001 experience, where `best_class` names the fighter (its post-level
 #: threshold, 4,001, beats the magic-user's 2,501) while `$14F8` still trains
 #: both this visit
-#: (`tests/test_cursetrainer.py::test_the_level_up_button_asks_for_a_spell_through_the_window_when_class_for_would_have_named_the_fighter`).
+#: (`tests/curse_of_the_azure_bonds/test_cursetrainer.py::test_the_level_up_button_asks_for_a_spell_through_the_window_when_class_for_would_have_named_the_fighter`).
 #: **`_level_up` now gates on `LevelUp.offers`** -- which itself now asks
 #: `ready_classes` rather than `best_class` for a `trains_all_ready_classes`
 #: title, answering "is the magic-user one of the classes this visit trains"
@@ -1657,7 +1657,7 @@ DEFAULT = POOL_OF_RADIANCE
 #: trainer)` closed for Curse needed no second fix here: `LevelUp.offers`
 #: branches on `trains_all_ready_classes`, which this title has set, so it
 #: takes Curse's own branch by construction --
-#: `tests/test_ssbtrainer.py::test_the_level_up_button_asks_for_a_spell_through_the_window`
+#: `tests/secret_of_the_silver_blades/test_ssbtrainer.py::test_the_level_up_button_asks_for_a_spell_through_the_window`
 #: drives it through the window all the same. And the training was driven:
 #: **fourteen presses over two boots, 2026-09-16**, on SSI's shipped party off
 #: `SILVER-6.D64` with the hall opened by poking `$7EA8` to `$7F`, covering
@@ -1681,7 +1681,7 @@ DEFAULT = POOL_OF_RADIANCE
 #: offered the table's answer.
 #: `WISH-SPEC-ssb-89-train-input` and `WISH-SPEC-ssb-89-trained-party` are
 #: four of those presses saved by the game itself, and
-#: `tests/test_ssbtrainer.py` replays them.
+#: `tests/secret_of_the_silver_blades/test_ssbtrainer.py` replays them.
 #:
 #: `for_game` deliberately falls back to Pool of Radiance for a title it has no
 #: tables for, which is right for reading a spell name and wrong for writing a
@@ -1715,7 +1715,7 @@ TRAINER_MEASURED: frozenset[str] = frozenset(
 #: (twice) and `10 10 10 12 11` for the gnome, the halfling and the human --
 #: 25 of 25 columns what `saving_throws` computes. So the reading that
 #: **only the dwarf** takes the bonus in this title is measured, not read,
-#: and `tests/test_ssblevels.py` pins the five rows.
+#: and `tests/secret_of_the_silver_blades/test_ssblevels.py` pins the five rows.
 RACIAL_SAVE_BONUS_MEASURED: frozenset[str] = frozenset(
     {POOL_OF_RADIANCE.key, CURSE_OF_THE_AZURE_BONDS.key,
      SECRET_OF_THE_SILVER_BLADES.key})

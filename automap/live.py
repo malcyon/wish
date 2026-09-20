@@ -545,7 +545,7 @@ def _classes(record, game) -> tuple[ClassProgress, ...]:
     experience bar (#197).
 
     `getattr` rather than `c64_port.class_table` because this is also called with
-    a `levels.LevelTables` (`tests/test_ssblevels.py`), and because a title
+    a `levels.LevelTables` (`tests/secret_of_the_silver_blades/test_ssblevels.py`), and because a title
     whose class list nobody has is better read as the classic four -- which is
     what it has always been read as -- than as no classes at all.
     """
@@ -683,9 +683,10 @@ def roster_page_plausible(save0: SaveGame0, save1: SaveGame1) -> bool:
 
     * `RosterBlock.slot_index` is the game's own back-reference to the slot
       it lives in, and is always that slot's index on every save read so far
-      (`tests/saves/test_savegame.py`, `tests/test_silverblades.py`, `tests/
-      test_curse.py`) -- a picture's bytes have no reason to land on that
-      pattern.
+      (`tests/saves/test_savegame.py`,
+      `tests/secret_of_the_silver_blades/test_silverblades.py`,
+      `tests/curse_of_the_azure_bonds/test_curse.py`) -- a picture's bytes
+      have no reason to land on that pattern.
     * no living character's current hit points can exceed the maximum the
       record side of the same slot carries.
 

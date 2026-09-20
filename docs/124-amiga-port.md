@@ -1840,7 +1840,7 @@ which is the magic-user's whole level-1 group, and 77-80, which is the
 druid's. That is a fact about those three characters rather than about the
 encoding — no other class in the corpus shows anything like it — and it is
 UNKNOWN. **The experiment**: read Pools of Darkness' own cleric grant table
-the way `tests/test_silverblades.py::_grant_table` reads Silver Blades', and
+the way `tests/secret_of_the_silver_blades/test_silverblades.py::_grant_table` reads Silver Blades', and
 see whether a cleric is handed those two groups. If he is, the game gives its
 clerics magic-user and druid spells and the three records are right; if he is
 not, somebody edited a shipped pregen and every `.pc` on these disks is a

@@ -807,7 +807,7 @@ class LevelUp(Action):
     with two ready at once -- built for Pool of Radiance's one-a-press design
     -- which is why it is not asked here; see
     `test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class`
-    (`tests/test_cursetrainer.py`).
+    (`tests/curse_of_the_azure_bonds/test_cursetrainer.py`).
 
     **Which title, though, is a question, and it is asked.** `game` is the
     `goldbox.c64_port.Game` the session is, and every table and every derivation is
@@ -935,7 +935,7 @@ class LevelUp(Action):
                 # for one class a press and answering the *wrong* one first
                 # for a Curse character with two ready at once
                 # (`test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class`,
-                # `tests/test_cursetrainer.py`).
+                # `tests/curse_of_the_azure_bonds/test_cursetrainer.py`).
                 steps = levelup.plan_all(record, game=self.game, learn=spell)
             else:
                 steps = [levelup.plan(record, class_name, game=self.game,
@@ -1211,7 +1211,7 @@ def actions(store: SpellStore | None = None,
 # `automap/fasttravel.py` holds the row for each title whose overlays have been
 # read, and the constants here are that row's fields under the names the rest
 # of the program already used -- `tools/areas/wallpins.py`, `tools/areas/windowsquare.py`,
-# `tools/areas/exitreentry.py` and `tests/test_newecl.py` all import them, and every
+# `tools/areas/exitreentry.py` and `tests/areas/test_newecl.py` all import them, and every
 # one of those is Pool of Radiance's work. A `FastTravel` built for a title
 # reads its own row instead and never these (#15).
 
@@ -1379,7 +1379,7 @@ def landing_square(geo) -> tuple[int, int, int] | None:
     took the first square with any passable edge, which came to `(0, 0)` on all
     twenty-nine maps and left a party walled into a pocket on four of them --
     P20 (write-up lost, `reports/p20-arrivals.md`; the pocket sizes are
-    asserted in `tests/test_p20.py`'s `POCKETS`).
+    asserted in `tests/areas/test_p20.py`'s `POCKETS`).
 
     Carrying the party's *current* square over remains the one option to avoid:
     the maps do not line up, and (13,13) in the Slums is a wall in Sokol Keep.

@@ -145,7 +145,7 @@ Per title, each measured in that game's own code and not carried across from ano
 
 **Every address in the paragraph above was corrected on 2026-09-02 (#31 (Cold-read Curse and Silver Blades for the fields the editor shows))**, having been written at each overlay's PRG header base -- $1000, $1220, $3000, $4000 -- where GEN and CAMP both run at $0800 in all three titles. The instructions and the widths were right and the addresses named bytes in the middle of something else, so nobody checking one with tools/c64/overlay.py, whose --base is $0800, would have found it. The base is settled by the operands: Silver Blades' GEN $18C9 reads its own scratch at $1BFD and its ceiling table at $17D0, and Curse's CAMP $2A25 calls $1CE9 and stores to $2A1F -- every one of them inside the file at $0800 and outside it at the header's address.
 
-**The near-miss, written down so it is not walked into twice**: Curse's GEN $220F copies 32 bytes out of $7C78 and looks like proof of a sixteen-byte mask. Pool of Radiance's GEN $216B copies the identical 32 out of $6B78, where the mask is seven. A copy wider than the field says nothing about the field. tests/test_curse.py and tests/test_silverblades.py pin all three readings.
+**The near-miss, written down so it is not walked into twice**: Curse's GEN $220F copies 32 bytes out of $7C78 and looks like proof of a sixteen-byte mask. Pool of Radiance's GEN $216B copies the identical 32 out of $6B78, where the mask is seven. A copy wider than the field says nothing about the field. tests/curse_of_the_azure_bonds/test_curse.py and tests/secret_of_the_silver_blades/test_silverblades.py pin all three readings.
 
 ### `0x09A` `save_paralysis`
 

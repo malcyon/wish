@@ -364,7 +364,7 @@ def derive(game: c64_port.C64Container, root: str, base: int = LINKER_BASE) -> d
 
     The same chain the report prints, as data rather than as lines, so that
     `automap/fasttravel.py`'s shipped rows can be checked against the game's
-    bytes -- `tests/test_newecl.py` -- and a driver can re-derive rather than
+    bytes -- `tests/areas/test_newecl.py` -- and a driver can re-derive rather than
     write an address down (`tools/curse_of_the_azure_bonds/cursewarp.py`).
 
     Keys are `automap.fasttravel.FastTravelAddresses` field names where there

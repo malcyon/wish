@@ -320,7 +320,7 @@ entry and the refusal says which title it is refusing.
 ## Curse of the Azure Bonds, table by table
 
 **Every routine above has now been found in Curse's own overlays** (`#18 (Measure Curse's trainer so Level Up works there)`), and
-`tests/test_cursetrainer.py` reads each one off the player's disk rather than
+`tests/curse_of_the_azure_bonds/test_cursetrainer.py` reads each one off the player's disk rather than
 trusting this document. What follows is where they are and, where the rule is
 not Pool of Radiance's, what the rule is instead.
 

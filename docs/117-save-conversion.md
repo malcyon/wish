@@ -480,7 +480,7 @@ across the four titles, and every one of them:
 
 And the sharpest of them, because neither side knew about the other: DOS
 Silver Blades' three shipped rangers hold **exactly** the level-8 row of the
-ranger grant table `tests/test_silverblades.py` reads mechanically out of the
+ranger grant table `tests/secret_of_the_silver_blades/test_silverblades.py` reads mechanically out of the
 **C64** `GEN` file — 77, 78, 79, 80 and nothing else, 3 of 3, at a 117-byte
 spellbook `0x071` bytes into a 439-byte record. Its two clerics hold the
 cleric grant's levels 1–4 the same way.

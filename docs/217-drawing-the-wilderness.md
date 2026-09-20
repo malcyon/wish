@@ -22,7 +22,7 @@ work that was already finished, so §0 comes first.
 |---|---|---|
 | detect the travel grid live: the `OUTDOORS` status line and the `$49E6` = 0 / `$49C3`/`$49C4` fallback, gated on `Title.travel_grid` | `automap/target.py`, `automap/c64.py` | **done**, `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)` |
 | the mapper's third mode, `AutomapState.outdoors`; the strip's `Outdoors (x,y)`, the label `Wilderness`, the status `Outdoors, no map` | `automap/state.py`, `automap/panel.py`, `automap/window.py` | **done**, same issue; the three strings are Donald's |
-| read `SQRDATA04`/`05`/`06` off the disks, the 18 x 36 grid, the 120 tile entries, the stitch at world x 15 and 28 | `goldbox/world.py`, `tests/test_world.py` (19 tests) | **done**, commits `4836f23` and `806497c` |
+| read `SQRDATA04`/`05`/`06` off the disks, the 18 x 36 grid, the 120 tile entries, the stitch at world x 15 and 28 | `goldbox/world.py`, `tests/areas/test_world.py` (19 tests) | **done**, commits `4836f23` and `806497c` |
 | a party's outdoor state in a save, every port: `outdoors`, `travel`, and `geo` holding the `SQRDATA` number when outdoors | `goldbox/world_state.py` | **done**, `#352 (Handle world state for Amiga saves)` and `#376 (An Amiga party on the travel grid still cannot be converted to the C64 or DOS, because the reader refuses one)` |
 | engine-written outdoor C64 saves and the tool that makes more | `p190/C64OUT1.D64`, `C64OUT2.D64` (scratch, deleted); `tools/c64/c64outdoor.py` | the tool exists; both saves are **gone**, as are `p3/W1.D64`-`W7.D64` (`cited/p190` kept only a seed disk and the log) |
 | walking a party on the grid under VICE, one compass step at a time, with a screenshot per press | `tools/c64/session.py` (`savecheck --walk`), `tools/pool_of_radiance/outdoorstep.py`, `tools/areas/windowsquare.py` | **done**, `#189 (The emulator driver cannot move a party on the travel grid, and reads its facing out of the word OUTDOORS)` |
@@ -34,8 +34,8 @@ work that was already finished, so §0 comes first.
 
 | claim | grade | where it is held |
 |---|---|---|
-| The overland map is `SQRDATA0n`, not a `GEO`: 648 bytes of 18 x 36 grid indexed `y * 18 + x`, then 120 entries of 18 bytes; resident at `$8C00`, matched 647/648 and 645/648 against the disk with every difference a hidden site | CONFIRMED | `docs/113`, `docs/90-specimens.md` "The wilderness set", `tests/test_p3.py`, `goldbox/world.py` |
-| Three windows 13 columns apart, seams at world x 15 and 28, 179/180 and 180/180 seam squares agree; walkable x 2-15, y 2-33; the world is 40 x 32 | CONFIRMED | `goldbox/world.py`, `tests/test_world.py` recomputes the counts |
+| The overland map is `SQRDATA0n`, not a `GEO`: 648 bytes of 18 x 36 grid indexed `y * 18 + x`, then 120 entries of 18 bytes; resident at `$8C00`, matched 647/648 and 645/648 against the disk with every difference a hidden site | CONFIRMED | `docs/113`, `docs/90-specimens.md` "The wilderness set", `tests/areas/test_p3.py`, `goldbox/world.py` |
+| Three windows 13 columns apart, seams at world x 15 and 28, 179/180 and 180/180 seam squares agree; walkable x 2-15, y 2-33; the world is 40 x 32 | CONFIRMED | `goldbox/world.py`, `tests/areas/test_world.py` recomputes the counts |
 | The three grids differ from each other in **532, 558 and 595** of 648 bytes; a hidden site changes 1-3 | CONFIRMED, measured 2026-09-08 for this plan | recompute with piece 2's tool |
 | Of 121,200 648-byte blocks at 8-byte steps across every other file on the 34 disks, 5,749 have every byte below 120, and the closest of them to any window differs in **554** bytes | CONFIRMED, same measurement | ditto -- this is the margin the identification in piece 2 rests on |
 | The travel square is `$49C3`/`$49C4`, window-local; `$49C0`-`$49C2` freeze outdoors | CONFIRMED | `docs/113`, `docs/90`, `automap/target.py` |
@@ -50,7 +50,7 @@ work that was already finished, so §0 comes first.
 | Travel is eight-way, the compass 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW, 7 W, 8 NW; the heading is at `$033D`, outside the save image | CONFIRMED that it is eight-way and unsaved | `docs/113`, `docs/90` (W2 and W3), `tools/areas/windowsquare.py`, `tools/c64/c64outdoor.py` |
 | Which value of `$033D` is which direction | UNKNOWN | measurement B |
 | The game's travel view is a window of squares around the party whose top-left is `CAMERA` `$037E`; the combat view is 7 across | PROBABLE for combat, UNKNOWN for travel -- the screenshots look narrower than seven tiles | measurement B reads `$037E` and the screen |
-| A site is hidden by painting plain terrain over its square until its flag is set; four are known: `1A` (12,11) nomad camp, `1B` (11,8) lizardman keep, (6,15) kobold caves, (7,23) a site that was cut | CONFIRMED | `tests/test_p3.py` `PAINTED`, `docs/90` |
+| A site is hidden by painting plain terrain over its square until its flag is set; four are known: `1A` (12,11) nomad camp, `1B` (11,8) lizardman keep, (6,15) kobold caves, (7,23) a site that was cut | CONFIRMED | `tests/areas/test_p3.py` `PAINTED`, `docs/90` |
 | The full site list (46) and the impassable-terrain tables, including `ECL1A`'s swap when `$4AB3` reaches 254, are in the scripts' own bytecode; their offsets were lost (`#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)`) | UNKNOWN, and closed research | `docs/115-review-the-scripts.md`; `goldbox/world.py`'s docstring |
 | `$4A9E` is 0 on the grid and 255 in a random cave, which is `GEO19`/`1A`/`1B` and draws with the existing code | CONFIRMED | `docs/113` |
 | Only Pool of Radiance has a travel grid: Curse and Silver Blades ship no `SQRDATA` or `SQRPACI` | CONFIRMED | `goldbox/titles.py` `Title.travel_grid`, `docs/121-silver-blades.md` |
@@ -159,7 +159,7 @@ B's answers only where marked; 6 waits on Donald.
 sheets; `view WINDOW X Y` writes the game's own pane around a square; `sample
 X Y --cell 34` writes the two looks side by side once piece 5 exists. Reads
 the disks through `automap.paths.find_disks`, writes only under `--out`.
-*Test:* `tests/test_worldtiles.py` renders a synthetic tile (one glyph, one
+*Test:* `tests/pool_of_radiance/test_worldtiles.py` renders a synthetic tile (one glyph, one
 attribute) and asserts the pixel colours -- hi-res cell, multicolour cell,
 and that bit 3 selects between them. Fails if the nibble & 7 rule or the
 `$40` offset is dropped. The comparison with the screenshots is done by eye

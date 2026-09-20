@@ -7,7 +7,7 @@ with no registry the loader falls back to the example, found the data there,
 and 56 tests that CI skips ran and failed. So the pass sets every variable
 the example names to one path that does not exist, which is the only place a
 set variable lets the loader look. It must be missing rather than empty:
-`tests/test_cursespellslots.py` skips on a missing archives directory and, met
+`tests/curse_of_the_azure_bonds/test_cursespellslots.py` skips on a missing archives directory and, met
 with an empty one, ran over the specimen tree alone and failed its counts.
 """
 
@@ -122,7 +122,7 @@ def test_a_machine_with_no_registry_runs_once_and_with_the_empty_environment(
 @pytest.mark.parametrize("registry", [True, False])
 def test_the_path_is_beside_the_worktree_and_is_not_a_directory(
         tmp_path, monkeypatch, registry):
-    """`tests/test_cursespellslots.py` asks `.is_dir()` of the archives and
+    """`tests/curse_of_the_azure_bonds/test_cursespellslots.py` asks `.is_dir()` of the archives and
     skips only when it is false, so an empty directory here is not enough."""
     calls = _recording(monkeypatch)
     suiterun.run_checks(_fake_worktree(tmp_path, registry))

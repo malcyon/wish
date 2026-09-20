@@ -34,7 +34,7 @@ Used by `tests/icons/test_iconparts.py` and `tests/test_editor.py`.
 
 1024 bytes, one map verbatim.
 
-Used by `tests/test_geo.py`, `tests/test_automap.py`,
+Used by `tests/areas/test_geo.py`, `tests/test_automap.py`,
 `tests/saves/test_binary_roundtrip.py`.
 
 ### 4. [FIXED] `tests/fixtures/pool1_savedgame0.bin` — shipped game content

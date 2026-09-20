@@ -30,7 +30,7 @@ is, and what zeroes it are all in the code, and this reads them:
   on this machine can reach?)`: Curse's paladin gets cleric slots from level
   9 written into the **cleric** array, and its ranger gets druid slots from
   8 and magic-user slots from 9 out of one table split across two arrays.
-  `tests/test_cursespellslots.py` reads all four back through this and
+  `tests/curse_of_the_azure_bonds/test_cursespellslots.py` reads all four back through this and
   checks `goldbox.spells`' committed rows against them.
 * `refs` -- every `es:[reg + disp]` instruction over the block's range,
   through `tools/dos/dosfieldrefs.py`, with the same three caveats that tool

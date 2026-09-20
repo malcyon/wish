@@ -468,7 +468,7 @@ pool-of-radiance:
 def test_no_example_path_points_into_the_repository():
     """A default inside the checkout is scratch or a gitignored copy, and stops
     resolving the day somebody clears it -- which is how
-    `tests/test_silverblades.py`'s old in-tree entry went missing."""
+    `tests/secret_of_the_silver_blades/test_silverblades.py`'s old in-tree entry went missing."""
     offenders = [(name, raw)
                  for name, row in _example().items()
                  for raw in row.get(gamedisks.PATHS) or []
