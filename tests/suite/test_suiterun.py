@@ -332,6 +332,8 @@ def test_the_probe_finds_every_title_under_its_own_home_folder_guess(
         assert f"automap.paths {game.key}\t{home / 'Games' / game.title}" in found, game.key
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="a POSIX path name can hold a byte that is "
+                    "not UTF-8, and a Windows name is UTF-16, so the case cannot arise there")
 def test_a_probe_whose_output_is_not_utf8_is_a_failed_probe_with_that_reason(
         tmp_path, monkeypatch):
     """A home folder whose name ends in a byte that is not UTF-8 puts that byte
