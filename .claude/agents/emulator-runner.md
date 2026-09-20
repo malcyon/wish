@@ -74,6 +74,8 @@ success; the root decides what the next boot is for.
 If confidence is below a reasonable threshold, return a structured exception:
 what you received, what you attempted, and the specific evidence gap.
 
+Claude Code applies only the `## Claude Code` section below; Codex applies only the `## Codex` section.
+
 ## Claude Code
 
 Claude Code resends all prior material on each tool call. Keep the bounded work

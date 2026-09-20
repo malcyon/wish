@@ -118,6 +118,18 @@ def test_codex_body_of_rejects_malformed_runtime_headings(tmp_path):
         "reversed": "## Codex\n## Claude Code\n",
         "nonterminal Claude Code block": (
             "## Claude Code\n## Codex\n## Claude Code\n"),
+        "Claude Code trailing spaces": "## Claude Code  \n## Codex\n",
+        "Codex trailing spaces": "## Claude Code\n## Codex \n",
+        "both headings trailing spaces": "## Claude Code \n## Codex \n",
+        "Claude Code leading space": " ## Claude Code\n## Codex\n",
+        "Codex leading spaces": "## Claude Code\n   ## Codex\n",
+        "Claude Code tab separator": "##\tClaude Code\n## Codex\n",
+        "Codex wide separator": "## Claude Code\n##  Codex\n",
+        "both headings indented": " ## Claude Code\n   ## Codex\n",
+        "both headings alternate separators": "##\tClaude Code\n##  Codex\n",
+        "Claude Code closing markers": "## Claude Code ##\n## Codex\n",
+        "Codex closing markers": "## Claude Code\n## Codex ##\n",
+        "both headings closing markers": "## Claude Code ##\n## Codex ##\n",
     }
     for label, body in bodies.items():
         text = f"---\nname: test\n---\n\n{body}"
@@ -129,6 +141,16 @@ def test_codex_body_of_rejects_malformed_runtime_headings(tmp_path):
             raise AssertionError(f"{label} did not fail")
 
 
+def test_split_sources_name_which_runtime_applies_their_section():
+    """Claude reads sources directly, so each split profile selects its section."""
+    selector = ("Claude Code applies only the `## Claude Code` section below; "
+                "Codex applies only the `## Codex` section.")
+    for md in sorted(CLAUDE_AGENTS.glob("*.md")):
+        body = gencodex.body_of(md.read_text(encoding="utf-8"))
+        if "## Claude Code" in body or "## Codex" in body:
+            assert selector in body, md.name
+
+
 def test_generated_runtime_profiles_exclude_claude_only_execution_text():
     """Generated profiles name Codex tools and carry no Claude profile memory."""
     generated = {
@@ -136,7 +158,7 @@ def test_generated_runtime_profiles_exclude_claude_only_execution_text():
         for path in CODEX_AGENTS.glob("*.toml")
     }
     all_instructions = "\n".join(generated.values())
-    assert "## Claude Code" not in all_instructions
+    assert "\n## Claude Code\n" not in all_instructions
     assert "## Memory" not in all_instructions
     assert "tool call is a turn" not in all_instructions
     assert "`gh issue view N`" not in generated["changelog-writer"]

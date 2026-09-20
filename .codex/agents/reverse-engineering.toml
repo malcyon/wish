@@ -117,6 +117,8 @@ If your confidence in your output is below a reasonable threshold, do not guess 
 
 The orchestrator will then decide how to handle the exception.
 
+Claude Code applies only the `## Claude Code` section below; Codex applies only the `## Codex` section.
+
 ## Codex
 
 Keep the bounded work rules above; Codex tool calls do not make them less

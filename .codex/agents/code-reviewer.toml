@@ -145,6 +145,8 @@ If your confidence in your output is below a reasonable threshold, do not guess 
 
 The orchestrator will then decide how to handle the exception.
 
+Claude Code applies only the `## Claude Code` section below; Codex applies only the `## Codex` section.
+
 ## Codex
 
 `exec_command` can write through shell commands even though this profile is

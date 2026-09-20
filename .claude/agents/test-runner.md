@@ -145,6 +145,8 @@ stop and say exactly that, with the output. Do not retry a third time, and do
 not work around it. A run that passed on the second attempt is a run that will
 fail again on a slower machine and look identical.
 
+Claude Code applies only the `## Claude Code` section below; Codex applies only the `## Codex` section.
+
 ## Claude Code
 
 Run in the foreground with an explicit Bash timeout of 600000ms. A task

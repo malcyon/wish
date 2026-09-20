@@ -152,6 +152,22 @@ def codex_body_of(text: str, source: pathlib.Path) -> str:
     body = body_of(text)
     claude_marker = "## Claude Code"
     codex_marker = "## Codex"
+    # Runtime selectors must be byte-exact.  Markdown would also accept up to
+    # three leading spaces, tabs after ``##``, trailing space, or closing
+    # ``#`` markers. Silently treating those as ordinary shared prose would
+    # leak the Claude-only block into Codex.
+    runtime_heading = re.compile(
+        r"^ {0,3}##[ \t]+(?:Claude Code|Codex)"
+        r"(?:[ \t]+#+[ \t]*|[ \t]*)(?:\n|$)",
+        re.MULTILINE)
+    exact_headings = {claude_marker, codex_marker}
+    malformed = [match for match in runtime_heading.finditer(body)
+                 if match.group(0).removesuffix("\n") not in exact_headings]
+    if malformed:
+        raise ValueError(
+            f"{source.name} runtime headings must be exactly "
+            f"{claude_marker!r} or {codex_marker!r} with no indentation, "
+            "alternate spacing, trailing spaces, or closing markers")
     claude_headings = list(re.finditer(r"^## Claude Code(?:\n|$)", body,
                                        re.MULTILINE))
     codex_headings = list(re.finditer(r"^## Codex(?:\n|$)", body,

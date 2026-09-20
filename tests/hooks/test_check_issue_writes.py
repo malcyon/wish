@@ -331,20 +331,37 @@ def test_the_hook_is_registered_in_both_harnesses():
     assert any("check-issue-reads.py" in c for c in entries)
 
 
-def test_codex_hooks_run_below_the_repository_root():
-    """Codex executes its hooks from the session cwd, which may be a subdirectory."""
+@pytest.mark.skipif(WINDOWS, reason="/usr/bin/python3 does not exist on Windows")
+def test_codex_hooks_run_below_the_repository_root(tmp_path):
+    """Each configured guard blocks its own bad Bash payload below the root."""
     root = pathlib.Path(__file__).resolve().parents[2]
     codex = json.loads((root / ".codex" / "hooks.json").read_text())
     commands = [h["command"]
                 for group in codex["hooks"].get("PreToolUse", [])
                 for h in group["hooks"]]
-    payload = json.dumps({"tool_name": "Bash",
-                          "tool_input": {"command": "git status"}})
+    bad_commands = {
+        "check-issue-reads.py": "gh issue view 576 --comments",
+        "check-issue-writes.py": "gh issue comment 576 --body nope",
+        # A temporary HOME has no green marker.  The guard only inspects this
+        # command; it never executes the push it refuses.
+        "check-push-tested.py": "git push",
+    }
     for command in commands:
+        hook = next(name for name in bad_commands if name in command)
+        payload = json.dumps({"tool_name": "Bash",
+                              "tool_input": {"command": bad_commands[hook]}})
         done = subprocess.run(command, shell=True, cwd=root / "tests" / "hooks",
                               input=payload, capture_output=True, text=True,
-                              timeout=30)
-        assert done.returncode == 0, done.stderr
+                              timeout=30,
+                              env=os.environ | {"HOME": str(tmp_path)})
+        assert done.returncode == 2, done.stderr
+        safe = subprocess.run(
+            command, shell=True, cwd=root / "tests" / "hooks",
+            input=json.dumps({"tool_name": "Bash",
+                              "tool_input": {"command": "git status"}}),
+            capture_output=True, text=True, timeout=30,
+            env=os.environ | {"HOME": str(tmp_path)})
+        assert safe.returncode == 0, safe.stderr
 
 
 @pytest.mark.skipif(WINDOWS, reason="/usr/bin/python3 does not exist on Windows")

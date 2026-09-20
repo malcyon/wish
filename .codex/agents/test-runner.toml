@@ -140,6 +140,8 @@ stop and say exactly that, with the output. Do not retry a third time, and do
 not work around it. A run that passed on the second attempt is a run that will
 fail again on a slower machine and look identical.
 
+Claude Code applies only the `## Claude Code` section below; Codex applies only the `## Codex` section.
+
 ## Codex
 
 For a long command, `exec_command` may return a `session_id`. Poll it with an

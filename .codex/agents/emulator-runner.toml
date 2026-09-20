@@ -69,6 +69,8 @@ success; the root decides what the next boot is for.
 If confidence is below a reasonable threshold, return a structured exception:
 what you received, what you attempted, and the specific evidence gap.
 
+Claude Code applies only the `## Claude Code` section below; Codex applies only the `## Codex` section.
+
 ## Codex
 
 For a long command, `exec_command` may return a `session_id`. Poll it with an

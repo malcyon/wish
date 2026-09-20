@@ -149,6 +149,8 @@ If your confidence in your output is below a reasonable threshold, do not guess 
 
 The orchestrator will then decide how to handle the exception.
 
+Claude Code applies only the `## Claude Code` section below; Codex applies only the `## Codex` section.
+
 ## Claude Code
 
 **You have `Bash`, and `Bash` is write access.** Your tool list has no `Write`
