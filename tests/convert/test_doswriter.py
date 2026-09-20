@@ -2855,10 +2855,12 @@ def test_the_party_writer_refuses_a_title_it_has_no_container_for(tmp_path):
             _bare_state("Pools of Darkness"), [_filled()], None, out, "A")
     assert "Pools of Darkness" in str(caught.value)
     assert not out.exists()
+    fresh = tmp_path / "fresh"
     with pytest.raises(dos_codec.DosRecordError) as caught:
         dos_codec.new_dos_save_from(
-            _bare_state("Pools of Darkness"), [_filled()], out, "A", tmp_path)
+            _bare_state("Pools of Darkness"), [_filled()], fresh, "A", tmp_path)
     assert "Pools of Darkness" in str(caught.value)
+    assert not fresh.exists()
 
 
 @pytest.mark.parametrize("title", [

@@ -7303,6 +7303,9 @@ def new_dos_save_from(state: "world_state.WorldState",
     # is only known at the end.  So the write goes to a staging directory on
     # the same filesystem and `out` is not touched at all unless the count is
     # zero.
+    # The title is looked up, and refused if the writer has no container for
+    # it, before any directory is made, so a refusal leaves no empty `out`.
+    c64 = _c64_game_of(state)
     out = pathlib.Path(out)
     out.mkdir(parents=True, exist_ok=True)
     staging = pathlib.Path(tempfile.mkdtemp(prefix=f".wish-{slot}-", dir=out))
@@ -7320,7 +7323,6 @@ def new_dos_save_from(state: "world_state.WorldState",
         # to happen here rather than in `write_dos_save_from`, which only
         # ever saw the empty staging directory.  Same enumeration, same
         # reason (#68), in the title's own suffixes.
-        c64 = _c64_game_of(state)
         record_shape = deltas_for(c64.key)
         cleared = _clear_slot(
             out, slot, (".SAV", record_shape.item_suffix,
