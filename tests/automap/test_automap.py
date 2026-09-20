@@ -1199,7 +1199,7 @@ def test_an_effect_shows_its_number_because_nothing_names_it():
     effect = live.Effect(slot=0, id=27, owner=0, duration=0xC5, magnitude=3)
     assert effect.label == "effect 27"
     assert effect.remaining == 5 and effect.unit == 3
-    assert "not decoded" in effect.detail
+    assert "5 x day" in effect.detail
 
 
 # --- the cards --------------------------------------------------------------

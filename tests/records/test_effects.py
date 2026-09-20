@@ -92,6 +92,60 @@ def test_clear_effect_refuses_a_slot_out_of_range():
         effects.clear_effect(payload, -1)
 
 
+# --- the duration byte and the restore flag ---------------------------------
+
+
+@pytest.mark.parametrize("byte, count, unit, minutes", [
+    (0x05, 5, "minute", 5),
+    (0x45, 5, "ten minutes", 50),
+    (0x85, 5, "hour", 300),
+    (0xC5, 5, "day", 7200),
+    (0x3F, 63, "minute", 63),
+])
+def test_duration_unit_splits_count_and_unit(byte, count, unit, minutes):
+    d = effects.duration_unit(byte)
+    assert (d.count, d.unit, d.minutes) == (count, unit, minutes)
+    assert not d.never_expires
+
+
+def test_a_duration_byte_of_zero_never_expires_but_a_zero_count_in_a_unit_does():
+    assert effects.duration_unit(0x00).never_expires
+    assert effects.duration_unit(0x00).minutes == 0
+    assert not effects.duration_unit(0x40).never_expires
+
+
+def test_duration_unit_refuses_a_value_that_is_not_a_byte():
+    with pytest.raises(ValueError):
+        effects.duration_unit(256)
+
+
+def test_the_ids_that_read_their_magnitude_back():
+    assert effects.MAGNITUDE_VALUE_IDS == {12, 14, 38}
+    assert effects.MAGNITUDE_BRANCH_IDS == {131, 132}
+    assert effects.MAGNITUDE_READ_IDS == {12, 14, 38, 131, 132}
+
+
+@pytest.mark.parametrize("eid, magnitude, expected", [
+    (12, 0xE2, True),      # ENLARGE with a strength to put back
+    (38, 0x80, True),
+    (14, 0xF4, True),
+    (12, 0x62, False),     # bit 7 clear: nothing to restore
+    (131, 0xE2, False),    # reads bit 7 only as a branch, no statistic
+    (1, 0xFF, False),      # not in the handler list at all
+])
+def test_restores_a_statistic_needs_bit_7_and_a_value_reading_id(
+        eid, magnitude, expected):
+    e = effects.Effect(slot=0, id=eid, owner=0, duration=1, magnitude=magnitude)
+    assert e.restores_a_statistic is expected
+
+
+def test_the_detail_line_names_the_unit_and_the_never_expires_case():
+    timed = effects.Effect(slot=0, id=1, owner=0, duration=0x85, magnitude=0)
+    assert "5 x hour" in timed.detail
+    forever = effects.Effect(slot=0, id=1, owner=0, duration=0, magnitude=0)
+    assert "never expires" in forever.detail
+
+
 # --- S2: the ECL65 spell-effect table -----------------------------------------
 #
 # `docs/50-experiments.md` confirms record 1's duration byte live as BLESS's

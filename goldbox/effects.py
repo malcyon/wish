@@ -56,10 +56,59 @@ EFFECT_SLOTS = 0x40
 FIRST_MONSTER = 8
 PARTY_WIDE = 0xFF
 
-# Bits 6-7 of the duration byte select the time unit. Which unit each value
-# means is NOT decoded, so the count is shown and the unit is not invented.
+# The duration byte: bits 0-5 a count, bits 6-7 the unit the count is in --
+# one minute, ten minutes, one hour, one day (`docs/133-active-effects.md`,
+# "The duration byte"). A whole byte of zero is skipped by all three ageing
+# routines, so it never counts down and never expires.
 DURATION_COUNT = 0x3F
 DURATION_UNIT = 6
+DURATION_UNIT_NAMES = ("minute", "ten minutes", "hour", "day")
+DURATION_UNIT_MINUTES = (1, 10, 60, 1440)
+
+# Bit 7 of the magnitude says there is something to put back when the effect
+# expires; the restore reads the value out of the effect record, never from the
+# character's base value.
+MAGNITUDE_RESTORE_FLAG = 0x80
+
+# Which ids read the magnitude on expiry, from the `ECL65 $9AD5` list (the
+# other nineteen ids in that 24-entry list discard it, and an id outside the
+# list reaches no handler). Out of combat: 12 and 38 rebuild STR and STR %, 14
+# rebuilds CHA; 131 and 132 read only bit 7, as a branch.
+MAGNITUDE_VALUE_IDS = frozenset({12, 14, 38})
+MAGNITUDE_BRANCH_IDS = frozenset({131, 132})
+MAGNITUDE_READ_IDS = MAGNITUDE_VALUE_IDS | MAGNITUDE_BRANCH_IDS
+
+
+@dataclass(frozen=True)
+class Duration:
+    """A decoded duration byte."""
+
+    count: int
+    unit: str
+    minutes_per_unit: int
+    never_expires: bool
+
+    @property
+    def minutes(self) -> int:
+        """The count in minutes of game clock; 0 for a byte that never expires."""
+        return 0 if self.never_expires else self.count * self.minutes_per_unit
+
+
+def duration_unit(byte: int) -> Duration:
+    """Split a duration byte into its count and unit.
+
+    A byte of exactly zero is never aged, so `never_expires` is set and the
+    count is not a time. A non-zero byte whose count is zero (`$40`, say) is
+    aged and expires at its next tick.
+    """
+    _check_byte("duration", byte)
+    unit = byte >> DURATION_UNIT
+    return Duration(
+        count=byte & DURATION_COUNT,
+        unit=DURATION_UNIT_NAMES[unit],
+        minutes_per_unit=DURATION_UNIT_MINUTES[unit],
+        never_expires=byte == 0,
+    )
 
 
 @dataclass(frozen=True)
@@ -87,12 +136,23 @@ class Effect:
 
     @property
     def remaining(self) -> int:
-        """How much time is left, in whatever unit the top two bits select."""
+        """The count, in the unit `duration_unit` names for the top two bits."""
         return self.duration & DURATION_COUNT
 
     @property
     def unit(self) -> int:
         return self.duration >> DURATION_UNIT
+
+    @property
+    def restores_a_statistic(self) -> bool:
+        """Whether the game's expiry would put a statistic back from this slot.
+
+        Bit 7 of the magnitude is the flag, and ids 12 and 38 (STR, STR %) and
+        14 (CHA) are the ones that read the value. Clearing such a slot with
+        `clear_effect` skips that restore.
+        """
+        return bool(self.magnitude & MAGNITUDE_RESTORE_FLAG
+                    and self.id in MAGNITUDE_VALUE_IDS)
 
     @property
     def label(self) -> str:
@@ -113,9 +173,11 @@ class Effect:
         who = ("the party" if self.party_wide else
                f"monster {self.owner}" if self.monster else
                f"party slot {self.owner}")
+        d = duration_unit(self.duration)
+        when = ("never expires" if d.never_expires
+                else f"{d.count} x {d.unit}")
         return (f"id {self.id} on {who}; duration byte ${self.duration:02X} "
-                f"= {self.remaining} in unit {self.unit} (the unit's meaning "
-                f"is not decoded); magnitude {self.magnitude}")
+                f"= {when}; magnitude {self.magnitude}")
 
 
 def active_effects(save0_bytes: bytes) -> tuple[Effect, ...]:
@@ -150,14 +212,16 @@ def _check_byte(name: str, value: int) -> None:
 
 
 def clear_effect(payload: bytearray, slot: int) -> None:
-    """Zero one slot across all four arrays.
+    """Zero one slot across all four arrays, and restore nothing.
 
-    Tidier than the game's own clear: `CAMP $131F` expires an effect by
-    clearing `$4900,X` alone and leaving owner, duration and magnitude as
-    residue (`docs/125-bug-notes.md` N7 -- `PORSAVE13` carries six slots with
-    a leftover magnitude of 1 from effects that had already lapsed). A slot
-    this function clears is fully free, not merely free by the one field
-    `active_effects` happens to filter on.
+    **This is not the game's own clear.** `CAMP $131F` clears `$4900,X` alone,
+    leaving owner, duration and magnitude as residue (`docs/125-bug-notes.md`
+    N7), and then, when bit 7 of the magnitude is set, calls a handler that
+    puts a statistic back. This function skips the handler, so clearing a slot
+    whose id is 12, 14 or 38 with that bit set (`Effect.restores_a_statistic`)
+    leaves the character's strength or charisma altered for good. A caller
+    offering to remove an effect must apply the restore or refuse those slots
+    (`docs/133-active-effects.md`, "What this means for a write path").
     """
     _check_slot(slot)
     payload[EFFECT_ID_OFFSET + slot] = 0
@@ -170,13 +234,13 @@ def write_effect(payload: bytearray, slot: int, id: int, owner: int,
                  duration: int, magnitude: int) -> None:
     """Write one slot across all four arrays.
 
-    Each of the five arguments is a raw byte; nothing here validates that the
-    combination means anything the game would recognise -- `owner` is not
-    checked against `PARTY_WIDE`/`FIRST_MONSTER` and `magnitude` is not
-    checked against whichever ids in `docs/50-experiments.md` turn out to
-    carry restore data -- M2 of `#13 (Edit traits and active effects, in two
-    separate panels)`. Callers behind a write path decide what is safe to
-    offer; this only puts the bytes where the four arrays expect them.
+    Each of the four value arguments is a raw byte; nothing here validates
+    that the combination means anything the game would recognise -- `owner` is
+    not checked against `PARTY_WIDE`/`FIRST_MONSTER`. **A magnitude with bit 7
+    set on an id in `MAGNITUDE_VALUE_IDS` is a write to the character record,
+    deferred:** on expiry the game rebuilds STR or CHA from that byte. Callers
+    behind a write path decide what is safe to offer; this only puts the bytes
+    where the four arrays expect them.
     """
     _check_slot(slot)
     for name, value in (("id", id), ("owner", owner),
@@ -224,8 +288,9 @@ _REC_MESSAGE = 4
 class EffectTableEntry:
     """One record of ECL65's spell-effect table.
 
-    `duration` is bits 0-5 a count and bits 6-7 a time unit not decoded, the
-    same shape `Effect.duration` carries -- **and it is frequently 0**: a
+    `duration` is in the same count-and-unit form as `Effect.duration` --
+    **and it is frequently 0, which here means "scales with level" rather
+    than the never-expires of a slot's zero**: a
     spell whose whole duration scales with the caster sets only `per_level`.
     ENLARGE is exactly this: `duration` 0, `per_level` `$0A`, and a level-1
     cast measured live wrote effect duration `$0A` -- one level's worth,
