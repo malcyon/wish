@@ -40,6 +40,7 @@ a port fixed one, that is said.
 | 13 | Every thief gets another race's skill adjustments, and a halfling gets a penalty instead of a bonus | Secret of the Silver Blades | engine | CONFIRMED, in game |
 | 14 | A ranger who reaches level 11 can memorize only one first-level magic-user spell, where the DOS version of the same game offers two | Curse of the Azure Bonds | engine | CONFIRMED, in game |
 | 15 | A paladin who reaches level 11 carries a second-level cleric spell slot he can never fill | Curse of the Azure Bonds | engine | CONFIRMED, in game |
+| 16 | A DOS magic-user of level 1 to 5 hits one point more easily than the game's own table gives him | Curse of the Azure Bonds, Secret of the Silver Blades | engine | CONFIRMED, in game |
 
 ---
 
@@ -762,3 +763,50 @@ that will ever go in it.
 
 **Version.** Curse of the Azure Bonds, Commodore 64. DOS is unaffected.
 CONFIRMED, in game, on both builds.
+
+---
+
+## 16. A DOS magic-user of level 1 to 5 hits one point more easily than the game's own table gives him
+
+**Confirmed by reading the game's own code and by loading a party into the
+running DOS game and reading the saved characters before and after.**
+
+**How a player ends up there.** A magic-user of level 1 to 5 is in the party
+-- rolled fresh, or brought in from a save -- and the party is loaded in DOS
+Curse of the Azure Bonds or DOS Secret of the Silver Blades. The game rebuilds
+every character's to-hit number each time a party loads, so nothing more than
+loading is needed: no training, no change of class.
+
+**What the game does.** A magic-user's THAC0 is 21 for levels 1 to 5 in both
+games' own tables -- the same number the Commodore 64 builds give him. The DOS
+game stores 20. The rebuild takes the best number over all the character's
+classes, and it reads every class slot, including the ones the character has no
+levels in. For those it reads the first entry of that class's row, which is a
+real number where the Commodore 64's is a zero it skips, and that entry is 20 for
+every class but the fighter's and the magic-user's. Nobody can come out worse
+than 20 as a result, and a low-level magic-user is the only character in either
+game whose own row asks for worse.
+
+**What it should do.** Give him what the table gives him and the rulebook
+prescribes: 21 at levels 1 to 5, as the Commodore 64 does. Level 6 is
+unaffected, since his row reaches 19 there.
+
+**The evidence.** A party of two level 5 magic-users, a cleric, a fighter/thief, a
+ranger and a paladin was loaded into DOS Curse and saved again minutes later. The
+two magic-users' stored number went from 21 to 20; the other four were the same
+before and after, and the rule above predicts all six. Every low-level
+magic-user the DOS games themselves wrote, among 104 DOS Curse and 86 DOS Silver
+Blades characters on this project's machines, stores 20, and 187 of the 190
+characters agree with the rule; the other three are a regained dual-class
+character and two records this project's own converter wrote. Pool of Radiance is unaffected, because its own table already gives a
+low-level magic-user 20.
+
+**What the player sees.** The number is one point better than the game's own
+table and the Commodore 64 give the same magic-user, for his first five levels.
+The saved character was read for this, not the on-screen sheet, so how the sheet
+shows it is PROBABLE rather than CONFIRMED.
+
+**Version.** Curse of the Azure Bonds and Secret of the Silver Blades, DOS.
+The Commodore 64 builds are unaffected. Whether the Amiga builds do the same is
+not known, and Pools of Darkness has not been read.
+CONFIRMED, in game, for the stored number.

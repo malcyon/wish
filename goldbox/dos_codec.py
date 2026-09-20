@@ -2545,13 +2545,11 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                      "goes nowhere near the byte, because no engine of any "
                      "title or port stores a 0 there and a C64 caster's is 0 "
                      "(goldbox.dos_codec.attack_level_written, #527)"),
-    ("thac0_base", "recomputed from the class levels through this title's "
-                   "own DOS table where it is known -- Pool of Radiance "
-                   "only, since Curse of the Azure Bonds' and Secret of "
-                   "the Silver Blades' own records disagree with their "
-                   "read tables and no clamp or second table explains it. "
-                   "For those two the source's own byte is copied "
-                   "unchanged (#366, #348)"),
+    ("thac0_base", "from a C64 source, recomputed from the class levels "
+                   "through this title's own DOS table and held to THAC0 "
+                   "20 or better the way the DOS engine's own load-time loop is, since "
+                   "the two ports' rows and lowest values differ; every other "
+                   "port's own byte is copied unchanged"),
     ("name", "length-prefixed into one count byte and fifteen ASCII"),
     ("portrait_head", "the C64's HEADnn id becomes the DOS record's menu "
                       "position, through the creation tables in the game's "
@@ -3514,7 +3512,8 @@ def write(char: NeutralCharacter,
           deltas: "int | str | DosDeltas | None" = None,
           icon: "DosIcon | None" = None,
           recompute_thief_skills: bool = True,
-          into: str = "DOS"
+          into: str = "DOS",
+          thac0_floor: bool = True
           ) -> tuple[bytes, bytes, bytes, WriteReport]:
     """Build a DOS record and its item and effect payloads from a neutral
     character.
@@ -3528,6 +3527,12 @@ def write(char: NeutralCharacter,
     cannot place is never blamed on DOS when the player never chose DOS
     (#389, A conversion to the Amiga tells the player what DOS does with
     their character).
+
+    `thac0_floor` is whether `thac0_base` is held to THAC0 20 or better the way
+    the DOS engine's own loop holds it (:meth:`goldbox.levels.LevelTables.dos_engine_thac0`)
+    or the best of the classes the character has.  A caller that writes this
+    record on the way to another port turns it off: nobody has read what that
+    port's engine stores for a low-level magic-user.
 
     The reverse of :func:`to_neutral`, and the writer #26 asked for: with it,
     C64 to DOS is `c64_codec.read` plus this, and nothing else.  Returns
@@ -3860,27 +3865,35 @@ def write(char: NeutralCharacter,
     # `test_every_engine_written_record_of_a_later_title_round_trips` the
     # first time this was tried (#318).
     #
-    # `goldbox.levels.dos_base_thac0` carries all three titles' DOS tables
-    # (#318) and takes the best of the classes the character has, which is
-    # the **C64 engine's** rule. The DOS engine's own recompute runs on
-    # every load and reads entry 0 of each row for every class the
-    # character has no level in, which floors the byte it writes at 40, so
-    # a Curse or Silver Blades magic-user of level 1-5 written here holds
-    # 39 where the game holds 40 -- `#608` and
-    # `docs/224-the-dos-thac0-floor.md`, which has the counts: 101 of 104
-    # Curse records and 86 of 86 Silver Blades records reproduce from the
-    # engine's rule where 92 and 84 reproduce from the table alone.
-    # Recomputing for a source the table was never measured against would
-    # "correct" a byte nobody has shown is wrong, so every port but the one
-    # `#366` measured keeps its own byte.
+    # `goldbox.levels.dos_engine_thac0` carries all three titles' DOS tables
+    # and their entry-0 column, and applies the DOS engine's own rule: the
+    # recompute that runs on every load reads entry 0 of each row for every
+    # class the character has no level in, so the byte it writes never holds
+    # a THAC0 worse than 20.  A Curse or Silver Blades magic-user of level
+    # 1-5 is therefore 40 here, where best-of-classes over the table
+    # (`dos_base_thac0`, the C64 engine's rule) gives 39.
+    # `docs/224-the-dos-thac0-floor.md` has the counts.  Recomputing for a
+    # source the table was never measured against would "correct" a byte
+    # nobody has shown is wrong, so every port but C64 keeps its own byte --
+    # and an Amiga source is not known to be wrong: what the Amiga builds
+    # store for a low-level magic-user is UNKNOWN.
+    #
+    # `thac0_floor=False` writes the C64's rule instead, for a caller building
+    # an Amiga record out of this one.
     base = use("thac0_base")
     if base is not None:
-        derived = (level_tables.dos_base_thac0(w.get("levels"), deltas.key)
+        recompute = (level_tables.dos_engine_thac0 if thac0_floor
+                     else level_tables.dos_base_thac0)
+        derived = (recompute(w.get("levels"), deltas.key)
                    if port in _THAC0_RECOMPUTE_FROM_PORTS else None)
         if derived is None:
             put(base, "thac0_base")
         else:
             put(base, "thac0_base",
+                ", recomputed from the class levels through this title's "
+                "own DOS table, held to THAC0 20 or better the way the DOS "
+                "engine's own loop holds it: the two ports' magic-user and "
+                "thief rows disagree at low level (#366)" if thac0_floor else
                 ", recomputed from the class levels through this title's "
                 "own DOS table: the two ports' magic-user and thief rows "
                 "disagree at low level (#366)",

@@ -23,6 +23,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_dosconversionarea.py` | Checks that a conversion writes the area a C64 party stands in, including the areas whose script loads no map. |
 | `test_dosconvert.py` | Checks a DOS Pool of Radiance save converting to a C64 one field by field: no loss on the way in and every drop reported. |
 | `test_dosimport.py` | Checks the helpers `editor/dosimport.py` gives the convert dialog: `rehearse`, `pane_text`, `name_warnings` and `log_unshown_losses`. |
+| `test_dosthac0floor.py` | Checks that a C64 magic-user of level 1-5 arrives in DOS holding the engine's own THAC0 20, and that `dos_engine_thac0` matches the census rule over the player's own tables. |
 | `test_dosregainedclass.py` | Checks that a regained dual-classed C64 character crosses to DOS with its old class bit and level slot right. |
 | `test_doswriter.py` | Checks that the DOS writer is the reader's inverse: a neutral character becomes a 285-byte record and reads back. |
 | `test_droptext_platform_neutral.py` | Checks that a drop line written while reading the source names no destination it does not yet know. |

@@ -2954,6 +2954,23 @@ The three characters carrying no racial adjustment kept their five saves to
 the byte, so this is a recompute of what the race and class imply and not a
 blanket rewrite.
 
+**`thac0_base` is written by the DOS engine's own rule, not by best-of-classes
+over the table.** The loop the engine runs on every load reads entry 0 of each
+class row the character has no level in, so the byte it stores is never worse
+than THAC0 20 -- 40 stored -- and a Curse or Silver Blades magic-user of level
+1-5, whose row says 21, comes out 20. `goldbox.levels.dos_engine_thac0` is that
+rule and `goldbox.dos_codec.write` stores it for a C64 source, which is why a
+converted `WISH-SPEC-curse-551-party-as-converted` magic-user now arrives
+holding 40 where the specimen holds 39. The best-of-classes number
+(`dos_base_thac0`) is the C64 engine's rule, and DOS to C64 is unchanged: it
+goes through `base_thac0`, the C64's own table. An Amiga source
+keeps its own byte and a C64 party converted to the Amiga is written with the
+old rule, because what the Amiga builds store for such a magic-user is UNKNOWN:
+`docs/224-the-dos-thac0-floor.md`, which has the measurement, and
+`#608 (Curse's DOS engine writes THAC0 20 for a magic-user at levels 1-5 where our table holds 21, so a converted magic-user arrives one point worse to hit)`.
+Changing that byte moves the identity byte at `0x126` of those two records as
+well, because `identity_byte` digests the rest of the record.
+
 **One of those was a loss, and it is fixed.** The C64 stores a dwarf's
 constitution save bonus *inside* the five bytes and DOS keeps it in two `.SPC`
 records instead, so a conversion that copied the bytes and wrote no records

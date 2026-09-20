@@ -346,6 +346,28 @@ _DOS_THAC0_POOL = (
     ("fighter",    (20, 19, 18, 17, 16, 15, 14, 13, 12, 11)),
 )
 
+#: **Entry 0 of every DOS row, as THAC0, which the recompute that runs when a
+#: party loads reads for each class the character has no level in.** The loop
+#: at Pool of Radiance `GAME.OVR:0x02AA87`, Curse `0x03B026` and Silver Blades
+#: `0x03C1B1` walks every class slot without testing the level, so a slot
+#: holding zero indexes the row's entry 0, and `dos_engine_thac0` keeps the best
+#: of all of them. Class-number order, the classes each title's table has:
+#: `tools/records/thac0census.py`'s `dos_rows` reads the same column out of the
+#: player's own `START.EXE`, and `tests/convert/test_dosthac0floor.py` compares.
+#: Every entry is 20 but the fighter's and the magic-user's in the later two
+#: titles, which is 21 -- so no character is ever worse than THAC0 20, and only
+#: a magic-user of level 1-5 (row value 21) is lifted by it. `docs/224-the-dos-thac0-floor.md`.
+_DOS_THAC0_LEVEL0_POOL = (
+    ("cleric", 20), ("druid", 20), ("fighter", 20), ("paladin", 20),
+    ("ranger", 20), ("magic-user", 20), ("thief", 20), ("monk", 20),
+)
+_DOS_THAC0_LEVEL0_CURSE = (
+    ("cleric", 20), ("druid", 20), ("fighter", 21), ("paladin", 20),
+    ("ranger", 20), ("magic-user", 21), ("thief", 20), ("monk", 20),
+)
+#: Silver Blades' table has seven rows and no monk.
+_DOS_THAC0_LEVEL0_SSB = _DOS_THAC0_LEVEL0_CURSE[:-1]
+
 
 # --- Curse of the Azure Bonds ------------------------------------------------
 # Built from bands rather than written out row by row, because a band *is* the
@@ -1071,6 +1093,10 @@ class LevelTables:
     #: nobody has read this title's DOS copy, and every caller treats that as
     #: "cannot answer" rather than as agreement with the C64.
     dos_thac0: tuple[tuple[str, tuple[int, ...]], ...] = ()
+    #: Entry 0 of each of this title's DOS THAC0 rows, class to THAC0 -- the
+    #: value the engine reads for a class the character has no level in. See
+    #: `_DOS_THAC0_LEVEL0_POOL`. Empty where `dos_thac0` is.
+    dos_thac0_level0: tuple[tuple[str, int], ...] = ()
     #: The wisdom score at which the DOS build's first bonus first-level
     #: cleric spell arrives, where it differs from the C64 build's `$10AD`.
     #: 0 means nobody has read this title's DOS table. `13` on Pool of
@@ -1245,12 +1271,10 @@ class LevelTables:
         started from.
 
         **Not what the DOS engine leaves in the byte**, and the difference is
-        one point for a Curse or Silver Blades magic-user at levels 1-5: the
-        loop that runs when a party loads reads each row's entry 0 for every
-        class the character has no level in, which floors the stored byte at
-        40. `docs/224-the-dos-thac0-floor.md` has it, `#608` is the ticket,
-        and `tools/records/thac0census.py`'s `dos_engine_thac0` is the rule
-        written out.
+        one point for a Curse or Silver Blades magic-user at levels 1-5:
+        the engine's own loop holds him to THAC0 20 or better, and
+        :meth:`dos_engine_thac0`, which applies that, is what a writer into DOS
+        stores.
         """
         best = None
         for name, level in dict(class_levels or {}).items():
@@ -1259,6 +1283,33 @@ class LevelTables:
             got = self.dos_thac0_at(name, level)
             if got is not None:
                 best = got if best is None else min(best, got)
+        return best
+
+    def dos_engine_thac0(self, class_levels) -> int | None:
+        """What the **DOS engine's own recompute** leaves in `thac0_base`.
+
+        The record stores `60 - THAC0`; this returns the THAC0 itself. The loop
+        that runs when a party loads walks every class slot without testing
+        whether the level is zero, so a class the character has no level in
+        contributes its row's entry 0 (:attr:`dos_thac0_level0`). That holds
+        the result to THAC0 20 or better, which :meth:`dos_base_thac0` -- the best of the
+        classes the character has -- does not: a Curse or Silver Blades
+        magic-user of level 1-5 is 21 there and 20 here.
+
+        None where the title's DOS table is unread or the character has no
+        class with a level, so a caller can keep the source's own byte.
+        `docs/224-the-dos-thac0-floor.md` has the listing;
+        `tools/records/thac0census.py`'s `dos_engine_thac0` is the rule written
+        out over the player's own tables and `tests/convert/test_dosthac0floor.py`
+        compares the two.
+        """
+        best = self.dos_base_thac0(class_levels)
+        if best is None or not self.dos_thac0_level0:
+            return None
+        held = dict(class_levels or {})
+        for name, entry0 in self.dos_thac0_level0:
+            if not held.get(name):
+                best = min(best, entry0)
         return best
 
     def base_thac0(self, class_levels) -> int | None:
@@ -1422,6 +1473,7 @@ POOL_OF_RADIANCE = LevelTables(
     clamp_thresholds=(("magic-user", 60001), ("cleric", 55001),
                       ("thief", 160001), ("fighter", 250001)),
     dos_thac0=_DOS_THAC0_POOL,
+    dos_thac0_level0=_DOS_THAC0_LEVEL0_POOL,
     dos_wisdom_bonus_from=13,
 )
 
@@ -1488,6 +1540,7 @@ CURSE_OF_THE_AZURE_BONDS = LevelTables(
                       ("thief", 660001), ("fighter", 1250001),
                       ("paladin", 1400001), ("ranger", 975001)),
     dos_thac0=_DOS_THAC0_CURSE,
+    dos_thac0_level0=_DOS_THAC0_LEVEL0_CURSE,
 )
 
 #: `DS:0x4C0C`, 7 rows of 19 -- no monk -- transcribed from
@@ -1565,6 +1618,7 @@ SECRET_OF_THE_SILVER_BLADES = LevelTables(
     attack_forms_overwritten=True,
     stores_spell_capacity=False,
     dos_thac0=_DOS_THAC0_SSB,
+    dos_thac0_level0=_DOS_THAC0_LEVEL0_SSB,
 )
 
 TITLES: tuple[LevelTables, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
@@ -1891,6 +1945,10 @@ def dos_thac0_at(class_name: str, level: int, game=None) -> int | None:
 
 def dos_base_thac0(class_levels, game=None) -> int | None:
     return for_game(game).dos_base_thac0(class_levels)
+
+
+def dos_engine_thac0(class_levels, game=None) -> int | None:
+    return for_game(game).dos_engine_thac0(class_levels)
 
 
 def base_thac0(class_levels, game=None) -> int | None:
