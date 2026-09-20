@@ -154,12 +154,12 @@ def walk(session, steps: int, note, begin: str = "b",
         if key.strip():
             session.key(key.strip())
     screen = session.settle(quiet=0.8, timeout=60.0)
-    por.world_bar = screen.ink(dosbox.BAR)
-    por.world_glyphs = screen.glyphs(dosbox.BAR)
+    por.record_map(screen)
+    map_screen = screen
     session.shot("6-walk-00-arrived")
     out = {"asked": steps, "walked": 0, "turned": 0,
            "status_on_arrival": por.status()}
-    map_bar, map_glyphs = por.world_bar, por.world_glyphs
+    map_bar = por.world_bar
     if move_mode:
         # **Silver Blades does not walk on the arrow keys.**  Its map bar
         # reads `MOVE AREA CAST VIEW ENCAMP SEARCH LOOK` where Pool of
@@ -171,8 +171,7 @@ def walk(session, steps: int, note, begin: str = "b",
         # step waits for is that one, not the map's.
         session.key(move_mode)
         screen = session.settle(quiet=0.6, timeout=30.0)
-        por.world_bar = screen.ink(dosbox.BAR)
-        por.world_glyphs = screen.glyphs(dosbox.BAR)
+        por.record_map(screen)
         session.shot("6-walk-00-moving")
         out["move_mode"] = move_mode
     for i in range(steps):
@@ -194,7 +193,7 @@ def walk(session, steps: int, note, begin: str = "b",
     if move_mode:
         session.key(move_exit)
         session.settle(quiet=0.6, timeout=30.0)
-        por.world_bar, por.world_glyphs = map_bar, map_glyphs
+        por.record_map(map_screen)
         session.shot("6-walk-98-back-on-the-map", allow_blank=True)
         out["back_on_the_map"] = por.bar() == map_bar
     if engine_save:

@@ -1275,6 +1275,7 @@ def test_memorize_does_not_press_return_when_the_highlight_is_unreadable():
 _MAP_INK_A = "bcd768d8e2fb5743"
 _MAP_INK_B = "9ad0b8cf14a63ad9"
 _MAP_WORD = "dd3404b3a32c0e83"
+_BAR_GLYPHS = "bar-glyphs"
 _CAMP = ("23a03b6481be7abf", "c7750c0fbd268686")
 _MAP_A = (_MAP_INK_A, _MAP_WORD)
 _MAP_B = (_MAP_INK_B, _MAP_WORD)
@@ -1283,14 +1284,22 @@ _MAP_B = (_MAP_INK_B, _MAP_WORD)
 class _Frame:
     """One canned screen: its whole-bar `ink` and its `MAP_WORD` `glyphs`."""
 
-    def __init__(self, ink: str, word: str):
-        self._ink, self._word = ink, word
+    def __init__(self, ink: str, word: str, flat: bool = False):
+        self._ink, self._word, self._flat = ink, word, flat
 
     def ink(self, rect) -> str:
         return self._ink if rect == dosbox.BAR else "unexpected-ink-rect"
 
     def glyphs(self, rect) -> str:
+        if rect == dosbox.BAR:
+            return _BAR_GLYPHS
         return self._word if rect == dosbox.MAP_WORD else "unexpected-glyphs-rect"
+
+    def flat(self, rect) -> bool:
+        return self._flat and rect == dosbox.MAP_WORD
+
+    def digest(self) -> str:
+        return "whole-screen"
 
 
 class _CampSession:
@@ -1326,7 +1335,7 @@ def test_leave_camp_recognises_the_map_whose_bar_is_drawn_the_other_way():
     """The whole bar hashes differently with the cursor block elsewhere.
 
     Recorded before encamping as `_MAP_INK_A`; back on the same map it reads
-    `_MAP_INK_B`.  Before `on_map`, this pressed 24 keys and raised.
+    `_MAP_INK_B`.
     """
     sess = _CampSession([_CAMP, _MAP_B])
     por = dosbox.PoolOfRadiance(sess)
@@ -1386,3 +1395,60 @@ def test_save_game_still_returns_the_bytes_and_leaves_camp(tmp_path):
     por.world_bar, por.world_word = _MAP_INK_A, _MAP_WORD
     assert por.save_game("b", timeout=5) == b"saved"
     assert sess.pressed[:3] == ["e", "s", "b"]
+
+
+def test_leave_camp_returns_at_the_last_look_when_the_map_is_there_on_the_final_try():
+    """The one try's own check sees the camp menu; only the look after the
+    loop sees the map, so it is that look that returns."""
+    sess = _CampSession([_CAMP, _MAP_B])
+    por = dosbox.PoolOfRadiance(sess)
+    por.world_word = _MAP_WORD
+    por.leave_camp(_MAP_INK_A, tries=1)
+    assert sess.pressed == ["Escape"]
+    assert sess.shots == []
+
+
+def test_record_map_sets_the_bar_its_glyphs_and_the_word_together():
+    por = dosbox.PoolOfRadiance(_CampSession([_MAP_A]))
+    por.record_map(_Frame(*_MAP_A))
+    assert (por.world_bar, por.world_glyphs, por.world_word) == (
+        _MAP_INK_A, _BAR_GLYPHS, _MAP_WORD)
+
+
+def test_record_map_does_not_take_a_blank_word_for_the_map():
+    por = dosbox.PoolOfRadiance(_CampSession([_MAP_A]))
+    por.record_map(_Frame(_MAP_INK_A, "flat-word", flat=True))
+    assert por.world_bar == _MAP_INK_A
+    assert por.world_word is None
+
+
+def test_screen_flat_is_true_only_for_a_rectangle_of_one_colour():
+    px = bytearray(b"\x10\x20\x30" * (8 * 8))
+    screen = dosbox.Screen(8, 8, bytes(px))
+    assert screen.flat((0, 0, 8, 8))
+    px[0:3] = b"\xff\xff\xff"
+    assert not dosbox.Screen(8, 8, bytes(px)).flat((0, 0, 8, 8))
+    # The odd pixel is at (0, 0): a rectangle that leaves it out is flat.
+    assert dosbox.Screen(8, 8, bytes(px)).flat((1, 0, 7, 8))
+
+
+def test_load_game_records_the_map_word():
+    sess = _CampSession([_MAP_A])
+    por = dosbox.PoolOfRadiance(sess)
+    sess.wait_for = lambda fn, timeout=0: True
+    por.load_game("b")
+    assert por.world_word == _MAP_WORD
+
+
+def test_move_records_the_map_word_when_no_map_is_recorded_yet():
+    sess = _CampSession([_MAP_A])
+    por = dosbox.PoolOfRadiance(sess)
+    assert por.move("Up") is True
+    assert por.world_word == _MAP_WORD
+
+
+def test_save_game_records_the_map_word_when_nothing_did_before_it(tmp_path):
+    sess = _SaveSession(tmp_path, [_MAP_A, _CAMP, _CAMP, _MAP_B])
+    por = dosbox.PoolOfRadiance(sess)
+    assert por.save_game("b", timeout=5) == b"saved"
+    assert por.world_word == _MAP_WORD

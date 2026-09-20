@@ -565,8 +565,7 @@ def rung(party: pathlib.Path, out: pathlib.Path, letter: str, xp: int | None,
         screen = session.settle(quiet=0.5, timeout=30.0)
         session.shot("000-begin", allow_blank=True)
         if screen.ink(dosbox.BAR) != was:
-            game.world_bar = screen.ink(dosbox.BAR)
-            game.world_glyphs = screen.glyphs(dosbox.BAR)
+            game.record_map(screen)
         ladder = Ladder(session, game, geo, out, log, here, gap)
         ladder.log(event="rung-start", party=[line(c) for c in party_now],
                    plan={k: v for k, v in want.items()}, start=list(here),

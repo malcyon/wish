@@ -358,6 +358,11 @@ class Screen:
         )
         return hashlib.sha1(bits).hexdigest()[:16]
 
+    def flat(self, rect: tuple[int, int, int, int]) -> bool:
+        """Whether the whole rectangle is one colour, as a blanked bar is."""
+        px = self.rows(rect)
+        return len({px[i:i + 3] for i in range(0, len(px), 3)}) <= 1
+
     def highlight_row(self, rect: tuple[int, int, int, int],
                       row_height: int = 8, floor: int = 10) -> int | None:
         """Which 8px-high row of `rect` the game has drawn in reverse video.
@@ -1290,6 +1295,18 @@ class PoolOfRadiance:
             return False
         return (screen or self.s.capture()).glyphs(MAP_WORD) == self.world_word
 
+    def record_map(self, screen: Screen) -> None:
+        """Take `screen` as the world map: the three references `on_map` and
+        the bar waits compare against, set together.
+
+        `world_word` is left unset when its rectangle is one flat colour: the
+        game blanks the bar while the party moves, and a blank strip recorded
+        as the map would be what every later blank frame "is".
+        """
+        self.world_bar = screen.ink(BAR)
+        self.world_glyphs = screen.glyphs(BAR)
+        self.world_word = None if screen.flat(MAP_WORD) else screen.glyphs(MAP_WORD)
+
     def combat_bar(self) -> str:
         """The command bar by `Screen.glyphs`, which a fight needs.
 
@@ -1351,10 +1368,7 @@ class PoolOfRadiance:
         self.s.key(letter.lower())
         if not self.s.wait_for(lambda s: s.digest() != before, timeout=timeout):
             raise TimeoutError(f"slot {letter} never loaded")
-        screen = self.s.settle()
-        self.world_bar = screen.ink(BAR)
-        self.world_glyphs = screen.glyphs(BAR)
-        self.world_word = screen.glyphs(MAP_WORD)
+        self.record_map(self.s.settle())
 
     # -- the map ----------------------------------------------------------
 
@@ -1389,10 +1403,7 @@ class PoolOfRadiance:
         self.s.key(key)
         self.s.settle()
         if self.world_bar is None:
-            screen = self.s.capture()
-            self.world_bar = screen.ink(BAR)
-            self.world_glyphs = screen.glyphs(BAR)
-            self.world_word = screen.glyphs(MAP_WORD)
+            self.record_map(self.s.capture())
             return True
         return self.s.wait_until_ink(BAR, self.world_bar, timeout)
 
@@ -1417,7 +1428,9 @@ class PoolOfRadiance:
         path = self.s.save_file(letter)
         was = path.read_bytes() if path.is_file() else None
 
-        world = self.world_bar or self.bar()
+        if self.world_bar is None:
+            self.record_map(self.s.capture())
+        world = self.world_bar
         self.s.key("e")
         if not self.s.wait_while_ink(BAR, world, timeout):
             raise TimeoutError("ENCAMP did not open the camp menu")

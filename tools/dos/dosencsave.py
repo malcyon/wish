@@ -271,7 +271,7 @@ def drive(args: argparse.Namespace) -> int:
             print(f"BEGIN ADVENTURING: {'on the map' if bar else 'FAILED'}",
                   flush=True)
             if bar:
-                game.world_bar = bar
+                game.record_map(session.capture())
                 game.save_game(args.camp_save)
                 print(f"camp ENCAMP > SAVE to {args.camp_save}: written",
                       flush=True)
@@ -281,8 +281,9 @@ def drive(args: argparse.Namespace) -> int:
             # **The party has to be on the map first**, and after a camp save
             # it already is -- `BEGIN ADVENTURING` there changes no bar, and
             # waiting for one to change is what lost the first run's `VIEW`.
-            world = game.world_bar or to_map(session, game) or game.bar()
-            game.world_bar = world
+            if game.world_bar is None:
+                to_map(session, game)
+                game.record_map(session.capture())
             session.key("v")
             time.sleep(1.5)
             session.settle(quiet=0.5, timeout=20.0)
@@ -291,7 +292,7 @@ def drive(args: argparse.Namespace) -> int:
                 session.key("Escape")
                 time.sleep(1.0)
                 session.settle(quiet=0.5, timeout=20.0)
-                if game.bar() == world:
+                if game.bar() == game.world_bar:
                     break
             session.shot("view-left", allow_blank=True)
             game.save_game(args.view_save)
