@@ -10,7 +10,7 @@ Tests for the suite's own tooling under `tools/suite/` and the guards that keep 
 | `test_gc_freeze.py` | Checks that an imported test module is out of the per-test garbage collection while an object built during a test is still in it. |
 | `test_repository_contents.py` | Checks that the tracked files carry no game data, machine path, scratch-directory path, bare issue number or one machine's ansible values, and that the rule, agent and hook files agree with each other. |
 | `test_staging_sweep.py` | Checks that no script under `tools/` stages a copy of a read-only specimen where the game has to write, against a reviewed allowlist. |
-| `test_suiterun.py` | Checks that `tools/suite/suiterun.py` points the no-data pass at a path that does not exist, runs only the files that ask for data, cleans up its worktree and names a marker only for a green run. |
+| `test_suiterun.py` | Checks that `tools/suite/suiterun.py` runs the no-data pass with the example's variables and `WISH_SPECIMENS` removed (a child that needs the registry stops as on CI), falls back to a missing path where the machine still answers, runs only the files that ask for data, cleans up its worktree and names a marker only for a green run. |
 | `test_testparty.py` | Checks that `tools/suite/testparty.py` generates the same six-character party every time and that its level-one party matches the six the engine rolled. |
 | `test_toolhelp.py` | Checks by reading each script under `tools/` that no call which claims a slot, boots an emulator or opens a window runs before `argparse` has handled `--help`. |
 | `test_toolpaths.py` | Checks that every `tools/` path a tracked text file cites is a path that exists. |

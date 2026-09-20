@@ -28,13 +28,17 @@ What it does, in order, and all of it against the same checkout:
 4. `pytest -q` in the worktree, with the repository's own virtual
    environment. `-n auto --dist loadgroup` is in `pyproject.toml`.
 5. The no-data pass, which behaves as CI does: `gamedisks.yaml` unlinked and
-   every variable `gamedisks.yaml.example` names pointing at one path that
-   does not exist. Every `tools/` module is imported in a fresh interpreter,
-   then only the test files the first pass saw reach the game data are run
-   (`tools/suite/datatouch.py`, loaded into step 4), or, when it recorded
-   nothing, the files whose source asks for game data or decides to skip
-   without it, so the pass shows nothing depends on data being present
-   without repeating the whole suite.
+   every variable `gamedisks.yaml.example` names, and `WISH_SPECIMENS`,
+   removed from the environment. Every `tools/` module is imported in a fresh
+   interpreter in that environment. A probe then checks that nothing on this
+   machine answers for the example's entries once they are gone; if
+   something does (the example's paths hold data here), the pass falls back
+   to pointing every variable at one path that does not exist, says so, and
+   is not the condition CI runs under. Then only the test files the first
+   pass saw reach the game data are run (`tools/suite/datatouch.py`, loaded
+   into step 4), or, when it recorded nothing, the files whose source asks for
+   game data or decides to skip without it, so the pass shows nothing depends
+   on data being present without repeating the whole suite.
 6. `ruff check .` in the worktree.
 7. `tools/generate/genui.py --check` in the worktree.
 8. If all of it passed, write `~/.cache/wish/testrun/<tree>.green`,
@@ -84,24 +88,51 @@ def marker_dir() -> pathlib.Path:
 SUMMARY = re.compile(r"^(?:=+ )?(\d+ passed.*?)(?: =+)?$", re.MULTILINE)
 
 
+def _environment(extra_env: dict[str, str] | None = None,
+                 without: tuple[str, ...] = ()) -> dict[str, str]:
+    """This process's environment with `extra_env` added and every name in
+    `without` removed, which is the one way to express "not set"."""
+    env = {**os.environ, "QT_QPA_PLATFORM": "offscreen", **(extra_env or {})}
+    for name in without:
+        env.pop(name, None)
+    return env
+
+
 def _run(args: list[str], cwd: pathlib.Path, timeout: int,
-         extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+         extra_env: dict[str, str] | None = None,
+         without: tuple[str, ...] = ()) -> subprocess.CompletedProcess:
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True,
-                          timeout=timeout,
-                          env={**os.environ, "QT_QPA_PLATFORM": "offscreen",
-                               **(extra_env or {})})
+                          timeout=timeout, env=_environment(extra_env, without))
+
+
+def _example_variables(example: pathlib.Path) -> list[str]:
+    entries = yaml.safe_load(example.read_text(encoding="utf-8")) or {}
+    return [row["env"] for row in entries.values()
+            if isinstance(row, dict) and row.get("env")]
+
+
+def hidden_variables(example: pathlib.Path) -> tuple[str, ...]:
+    """Every variable name `example` names, and `WISH_SPECIMENS`: what CI does
+    not set, so what the no-data pass removes.
+
+    They are removed rather than pointed at a path that does not exist. A
+    variable that is set makes `automap/gamedisks.py` answer before it reads the
+    registry, so a child process that needs the registry passed here and stopped
+    on `gamedisks.yaml is missing` on CI."""
+    return tuple(sorted({*_example_variables(example), "WISH_SPECIMENS"}))
 
 
 def no_data_env(example: pathlib.Path, absent: pathlib.Path) -> dict[str, str]:
     """Every environment variable `example` names, each set to `absent`, a path
     that does not exist.
 
-    A variable that is set is the only place `automap/gamedisks.py`
-    looks, so with all of them pointing at nothing no lookup finds any game
-    data and every data-backed test skips, as it does on CI. Taking away
-    `gamedisks.yaml` alone stopped being enough once `/data/agent-disks`, where
-    the example's own paths point, was filled on this machine: with no registry
-    the run fell back to the example and found the data anyway.
+    The fallback for a machine where unsetting the variables is not enough:
+    the example's own paths hold data there, so with the variables unset and no
+    registry the loader finds it anyway. A variable that is set is the only
+    place `automap/gamedisks.py` looks, so with all of them pointing at nothing
+    no lookup finds any game data and every data-backed test skips. It is not
+    the condition CI runs under, because a set variable also stops the loader
+    before it reads the registry.
 
     The path must not exist rather than merely be empty, because that is what
     CI's own lookups meet (`/data/agent-disks` is not there) and some tests ask
@@ -109,9 +140,67 @@ def no_data_env(example: pathlib.Path, absent: pathlib.Path) -> dict[str, str]:
     "no DOS archives" only when the directory is missing, and an empty one made
     it run over the specimen tree alone and fail its measured counts.
     """
-    entries = yaml.safe_load(example.read_text(encoding="utf-8")) or {}
-    return {row["env"]: str(absent) for row in entries.values()
-            if isinstance(row, dict) and row.get("env")}
+    return {var: str(absent) for var in _example_variables(example)}
+
+
+#: Run in the worktree with the hiding variables removed and the example in
+#: place of the registry, as `tests/conftest.py` does on a machine with none.
+#: It prints a line for each entry `gamedisks.find` still answers, and for the
+#: specimen tree if it is a directory.
+PROBE = """\
+from automap import gamedisks
+gamedisks.REGISTRY = gamedisks.EXAMPLE
+for name in gamedisks.names():
+    found = gamedisks.find(name)
+    if found is not None:
+        print("reachable", name, found, sep="\\t")
+try:
+    from tools.registry import specimens
+except ImportError:
+    pass
+else:
+    if specimens.tree_root().is_dir():
+        print("reachable", "WISH_SPECIMENS", specimens.tree_root(), sep="\\t")
+"""
+
+
+def reachable_with_nothing_set(worktree: pathlib.Path, python: str,
+                               without: tuple[str, ...]) -> list[str] | None:
+    """`name<TAB>path` for each entry that still finds data on this machine when
+    the hiding variables are unset and the example stands in for the registry,
+    or None when the probe itself failed."""
+    done = _run([python, "-c", PROBE], worktree, 120, without=without)
+    if done.returncode != 0:
+        return None
+    return [line.split("\t", 1)[1] for line in done.stdout.splitlines()
+            if line.startswith("reachable\t")]
+
+
+def hiding_for_pass_two(worktree: pathlib.Path, python: str,
+                        without: tuple[str, ...]
+                        ) -> tuple[dict[str, str], tuple[str, ...]]:
+    """`(extra environment, names to remove)` for the no-data pass, and one line
+    saying which condition it is.
+
+    Removing the variables is the condition CI runs under. Where the example's
+    paths hold data on this machine that hiding leaves the data reachable, so
+    the pass falls back to pointing every variable at a path that does not
+    exist; a mount namespace that hid the paths themselves is refused on
+    machines that forbid unprivileged user namespaces.
+    """
+    found = reachable_with_nothing_set(worktree, python, without)
+    if found == []:
+        print("hiding check: nothing answers with the variables unset, so the "
+              "no-data pass runs without them, as CI does")
+        return {}, without
+    why = ("the probe failed" if found is None
+           else "still reachable with the variables unset: "
+           + "; ".join(line.replace("\t", " at ") for line in found))
+    print(f"hiding check: {why}. The no-data pass points every variable at a "
+          "path that does not exist instead, which is not the condition CI "
+          "runs under")
+    return no_data_env(worktree / "gamedisks.yaml.example",
+                       worktree.parent / "no-data"), ()
 
 
 def _git(repo: pathlib.Path, *args: str) -> subprocess.CompletedProcess:
@@ -179,11 +268,12 @@ def tool_modules(worktree: pathlib.Path) -> list[str]:
 
 
 def import_failures(worktree: pathlib.Path, python: str,
-                    env: dict[str, str]) -> list[str]:
+                    without: tuple[str, ...]) -> list[str]:
     """One line for each `tools/` module that does not import in a fresh
-    interpreter under `env`."""
+    interpreter with the variables named in `without` unset."""
     def one(module: str) -> str | None:
-        done = _run([python, "-c", f"import {module}"], worktree, 180, env)
+        done = _run([python, "-c", f"import {module}"], worktree, 180,
+                    without=without)
         if done.returncode == 0:
             return None
         tail = (done.stderr.strip().splitlines() or ["no output"])[-1]
@@ -216,8 +306,7 @@ def summary_of(pytest_output: str) -> str:
 def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
     """(all green, pytest summary line, decisive failure output)."""
     python = str(PYTHON)
-    no_data = no_data_env(worktree / "gamedisks.yaml.example",
-                          worktree.parent / "no-data")
+    hidden = hidden_variables(worktree / "gamedisks.yaml.example")
     link = worktree / "gamedisks.yaml"
     log_dir = worktree.parent / "datatouch"
     # The first pass records which test files reach the game data, when this
@@ -228,9 +317,11 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
     if link.is_symlink() and (worktree / "tools" / "suite" / "datatouch.py").is_file():
         first_args += ["-p", "tools.suite.datatouch"]
     # A machine with no registry has nothing to link, so its one run is already
-    # the CI-like one and gets the same empty environment.
-    pytest = _run(first_args, worktree, 1500,
-                  {datatouch.LOG_ENV: str(log_dir)} if link.is_symlink() else no_data)
+    # the CI-like one and has the same variables unset.
+    if link.is_symlink():
+        pytest = _run(first_args, worktree, 1500, {datatouch.LOG_ENV: str(log_dir)})
+    else:
+        pytest = _run(first_args, worktree, 1500, without=hidden)
     print(pytest.stdout[-4000:], end="")
     summary = summary_of(pytest.stdout + pytest.stderr)
     if pytest.returncode != 0:
@@ -239,7 +330,7 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
         return False, summary, "\n".join(failed) or pytest.stderr[-2000:]
     if link.is_symlink():
         link.unlink()
-        broken = import_failures(worktree, python, no_data)
+        broken = import_failures(worktree, python, hidden)
         print("tool imports without data:",
               f"{len(broken)} failed" if broken else "all import")
         if broken:
@@ -252,7 +343,9 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
             return False, summary, "no test file asks for game data: the selection is broken"
         how = (f"recorded; the source scan would have chosen {len(scanned)}"
                if touched else "source scan; nothing was recorded")
-        bare = _run([python, "-m", "pytest", "-q", *chosen], worktree, 1500, no_data)
+        extra, without = hiding_for_pass_two(worktree, python, hidden)
+        bare = _run([python, "-m", "pytest", "-q", *chosen], worktree, 1500,
+                    extra, without)
         print(f"without data, {len(chosen)} test files ({how}):",
               summary_of(bare.stdout + bare.stderr))
         if bare.returncode != 0:

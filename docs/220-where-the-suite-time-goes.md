@@ -13,8 +13,8 @@ Two whole-suite runs on this machine, each in its own detached worktree,
 twelve `-n auto` workers with `--dist loadgroup`, `pytest -q --durations=0`
 with a JUnit XML alongside: one with `gamedisks.yaml` symlinked in, one with
 it removed and every variable `gamedisks.yaml.example` names pointing at a
-path that does not exist, which is what `tools/suite/suiterun.py` does and
-what CI meets.
+path that does not exist, which is how `tools/suite/suiterun.py` hid the data
+when this was measured; item 4 says why it now removes the variables instead.
 
 Two other agents were running small `pytest` jobs throughout. The one-minute
 load average on this twelve-core machine went from 0.43 at the start of the
@@ -375,6 +375,14 @@ against about 448 s, before the roughly 17 s of imports, `ruff` and
 on one machine.** Items 1 to 3 landed as well, so the runs cannot say how much
 of the fall is the recorder alone, and the earlier figures were taken under a
 one-minute load average of up to 7 while these were not.
+
+*How the second pass hides the data.* It used to point every variable the
+example names at an absent path and was described as behaving as CI does, which
+was wrong: a set variable makes a lookup return before it reads the registry,
+so a child process that needed the registry passed in pass two and failed on
+CI. It now removes those variables and `WISH_SPECIMENS`, after a probe checks
+that nothing on the machine answers with them gone, and falls back to the
+absent path, saying so, where something does.
 
 *What it still misses,* each of them either over-inclusive or caught by CI,
 which runs the whole suite with no data on four jobs at every push. These are

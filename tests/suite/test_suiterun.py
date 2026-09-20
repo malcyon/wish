@@ -1,12 +1,18 @@
 """`tools/suite/suiterun.py`: the no-data pass finds no game data, and the marker names what gets pushed.
 
 The pass exists to behave as CI does, and CI has neither a `gamedisks.yaml`
-nor any disks. Unlinking the registry was enough until `/data/agent-disks`,
-where `gamedisks.yaml.example`'s own paths point, was filled on this machine:
-with no registry the loader falls back to the example, found the data there,
-and 56 tests that CI skips ran and failed. So the pass sets every variable
-the example names to one path that does not exist, which is the only place a
-set variable lets the loader look. It must be missing rather than empty:
+nor any of the variables `gamedisks.yaml.example` names. So the pass removes
+those variables and `WISH_SPECIMENS` from the environment. Pointing them at a
+path that does not exist hid the data from the process that ran pytest but
+not from a child process: a set variable makes the loader answer before it
+reads the registry, so a child that needed the registry passed here and
+stopped on `gamedisks.yaml is missing` on CI.
+
+A probe checks that nothing on the machine answers with the variables unset.
+Where the example's own paths hold data (`/data/agent-disks` was filled on
+the machine that first needed this) the pass falls back to setting every
+variable to one path that does not exist, and says it is not CI's condition.
+That path must be missing rather than empty:
 `tests/curse_of_the_azure_bonds/test_cursespellslots.py` skips on a missing archives directory and, met
 with an empty one, ran over the specimen tree alone and failed its counts.
 """
@@ -36,7 +42,10 @@ def _variables():
     return {name: row["env"] for name, row in entries.items() if row.get("env")}
 
 
-def test_every_variable_the_example_names_is_pointed_at_the_one_missing_path(tmp_path):
+def test_the_fallback_points_every_variable_the_example_names_at_the_one_missing_path(tmp_path):
+    """The degraded pass, for a machine where the example's paths hold data. It
+    is not what CI runs under: a set variable is what let a child process that
+    needed the registry pass here and fail there."""
     missing = tmp_path / "no-data"
     env = suiterun.no_data_env(EXAMPLE, missing)
     assert set(env) == set(_variables().values())
@@ -45,10 +54,12 @@ def test_every_variable_the_example_names_is_pointed_at_the_one_missing_path(tmp
     assert not missing.exists()
 
 
-def test_with_those_variables_set_no_entry_resolves_even_where_the_example_points(
+def test_with_the_fallbacks_variables_set_no_entry_resolves_even_where_the_example_points(
         tmp_path, monkeypatch):
-    """Both halves of the failure: the variables win over the paths, and a
-    missing directory holds nothing for any entry's globs to match."""
+    """The degraded pass hides the data from this process: the variables win
+    over the paths, and a missing directory holds nothing for any entry's globs
+    to match. It does not hide it from a child that needs the registry, which is
+    why it is only the fallback."""
     missing = tmp_path / "no-data"
     for var, value in suiterun.no_data_env(EXAMPLE, missing).items():
         monkeypatch.setenv(var, value)
@@ -75,60 +86,167 @@ def _fake_worktree(tmp_path, registry):
 
 
 class _Calls(list):
-    """Each pytest call's extra env, with its whole argument list in `args`."""
+    """Each pytest call's extra env, with its whole argument list in `args` and
+    the names it removed from the environment in `without`."""
 
     def __init__(self):
         super().__init__()
         self.args = []
+        self.without = []
 
 
-def _recording(monkeypatch, first_writes=None):
-    """Replace `_run` with one that records each pytest call's extra env, and
-    every full argument list in `.args`. `first_writes` is called with the first
-    pass's extra env, as the recorder would write its log during that pass."""
+def _recording(monkeypatch, first_writes=None, reachable=(), probe_code=0):
+    """Replace `_run` with one that records each pytest call's extra env, the
+    names it removes and every full argument list in `.args`. `first_writes` is
+    called with the first pass's extra env, as the recorder would write its log
+    during that pass. The hiding probe answers with a line for each of
+    `reachable` and exits `probe_code`; by default nothing is reachable."""
     calls = _Calls()
 
-    def fake(args, cwd, timeout, extra_env=None):
+    def fake(args, cwd, timeout, extra_env=None, without=()):
+        if args[1:2] == ["-c"] and args[2] == suiterun.PROBE:
+            out = "".join(f"reachable\t{line}\n" for line in reachable)
+            return subprocess.CompletedProcess(args, probe_code, out, "")
         if "pytest" in args:
             if first_writes and not calls:
                 first_writes(extra_env)
-            calls.append(extra_env)
+            calls.append(dict(extra_env or {}))
             calls.args.append(list(args))
+            calls.without.append(tuple(without))
         return subprocess.CompletedProcess(args, 0, "1 passed in 0.1s\n", "")
 
     monkeypatch.setattr(suiterun, "_run", fake)
     return calls
 
 
-def test_the_pass_without_the_registry_gets_the_empty_environment_and_the_first_does_not(
+def _hidden():
+    return set(_variables().values()) | {"WISH_SPECIMENS"}
+
+
+def test_the_pass_without_the_registry_has_the_variables_unset_and_the_first_does_not(
         tmp_path, monkeypatch):
     calls = _recording(monkeypatch)
     suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
     first, bare = calls
     assert set(first) == {datatouch.LOG_ENV}
-    assert set(first) & set(_variables().values()) == set()
-    assert set(bare) == set(_variables().values())
+    assert calls.without[0] == ()
+    assert bare == {}
+    assert set(calls.without[1]) == _hidden()
     assert not (tmp_path / "wt" / "gamedisks.yaml").exists()
 
 
-def test_a_machine_with_no_registry_runs_once_and_with_the_empty_environment(
+def test_a_machine_with_no_registry_runs_once_and_with_the_variables_unset(
         tmp_path, monkeypatch):
     calls = _recording(monkeypatch)
     suiterun.run_checks(_fake_worktree(tmp_path, registry=False))
     assert len(calls) == 1
-    assert set(calls[0]) == set(_variables().values())
+    assert calls[0] == {}
+    assert set(calls.without[0]) == _hidden()
 
 
-@pytest.mark.parametrize("registry", [True, False])
-def test_the_path_is_beside_the_worktree_and_is_not_a_directory(
-        tmp_path, monkeypatch, registry):
+def test_the_hidden_variables_are_the_examples_and_the_specimen_tree():
+    hidden = suiterun.hidden_variables(EXAMPLE)
+    assert set(hidden) == _hidden()
+    assert {"POR_DISKS", "FR_ARCHIVES", "POR_DOS_GAME", "WISH_SPECIMENS"} <= set(hidden)
+
+
+def test_the_variables_the_pass_removes_are_absent_from_its_environment(
+        tmp_path, monkeypatch):
+    """Every hiding variable is set here first, so an environment that merely
+    fails to add one would still contain it."""
+    for var in suiterun.hidden_variables(EXAMPLE):
+        monkeypatch.setenv(var, str(tmp_path / "somewhere"))
+    env = _pass_two_environment(tmp_path, monkeypatch)
+    assert not set(suiterun.hidden_variables(EXAMPLE)) & set(env)
+
+
+def test_the_pass_falls_back_to_the_missing_path_where_something_is_still_reachable(
+        tmp_path, monkeypatch, capsys):
+    calls = _recording(monkeypatch, reachable=["pool-of-radiance\t/somewhere/disks"])
+    suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
+    assert set(calls[1]) == set(_variables().values())
+    assert calls.without[1] == ()
+    out = capsys.readouterr().out
+    assert "/somewhere/disks" in out and "not the condition CI runs under" in out
+
+
+def test_the_pass_falls_back_when_the_probe_itself_fails(tmp_path, monkeypatch, capsys):
+    calls = _recording(monkeypatch, probe_code=1)
+    suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
+    assert set(calls[1]) == set(_variables().values())
+    assert "the probe failed" in capsys.readouterr().out
+
+
+def test_the_pass_without_a_fallback_says_it_is_the_condition_ci_runs_under(
+        tmp_path, monkeypatch, capsys):
+    _recording(monkeypatch)
+    suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
+    assert "as CI does" in capsys.readouterr().out
+
+
+def test_the_probe_names_what_it_finds_and_reads_nothing_from_a_failed_run(
+        tmp_path, monkeypatch):
+    def answer(stdout, code):
+        monkeypatch.setattr(suiterun, "_run", lambda *a, **k: subprocess.CompletedProcess(
+            a, code, stdout, ""))
+    answer("reachable\ta\t/x\nnoise\n", 0)
+    assert suiterun.reachable_with_nothing_set(tmp_path, "py", ()) == ["a\t/x"]
+    answer("reachable\ta\t/x\n", 1)
+    assert suiterun.reachable_with_nothing_set(tmp_path, "py", ()) is None
+
+
+def test_the_real_probe_runs_and_names_only_paths_that_exist():
+    """The probe in a child against this checkout's example. What it finds
+    depends on which of the example's paths hold data on the machine, so this
+    asserts that it runs and that each line it prints is a path that exists."""
+    found = suiterun.reachable_with_nothing_set(
+        REPO, sys.executable, suiterun.hidden_variables(EXAMPLE))
+    assert found is not None
+    for line in found:
+        assert pathlib.Path(line.split("\t", 1)[1]).exists()
+
+
+def test_the_fallback_path_is_beside_the_worktree_and_is_not_a_directory(
+        tmp_path, monkeypatch):
     """`tests/curse_of_the_azure_bonds/test_cursespellslots.py` asks `.is_dir()` of the archives and
     skips only when it is false, so an empty directory here is not enough."""
-    calls = _recording(monkeypatch)
-    suiterun.run_checks(_fake_worktree(tmp_path, registry))
+    calls = _recording(monkeypatch, reachable=["pool-of-radiance\t/somewhere"])
+    suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
     path = pathlib.Path(next(iter(calls[-1].values())))
     assert not path.is_dir() and not path.exists()
     assert path.parent == tmp_path
+
+
+def _pass_two_environment(tmp_path, monkeypatch):
+    """The environment a child of pass two's pytest starts with, composed the way
+    `_run` composes it from what `run_checks` asked for."""
+    calls = _recording(monkeypatch)
+    suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
+    return suiterun._environment(calls[-1], calls.without[-1])
+
+
+LOOKUP = textwrap.dedent("""
+    import pathlib, sys
+    from automap import gamedisks
+
+    gamedisks.REGISTRY = pathlib.Path(sys.argv[1])
+    gamedisks.find("pool-of-radiance")
+""")
+
+
+def test_a_child_that_needs_the_registry_stops_in_the_pass_as_it_does_on_ci(
+        tmp_path, monkeypatch):
+    """A set variable makes `find` answer before it reads the registry, so under
+    the old hiding this child exited 0 where CI, with nothing set, stops on the
+    missing registry."""
+    for var in suiterun.hidden_variables(EXAMPLE):
+        monkeypatch.setenv(var, str(tmp_path / "somewhere"))
+    env = _pass_two_environment(tmp_path, monkeypatch)
+    done = subprocess.run(
+        [sys.executable, "-c", LOOKUP, str(tmp_path / "gamedisks.yaml")],
+        cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+    assert done.returncode != 0, done.stdout
+    assert "gamedisks.yaml is missing" in done.stderr
 
 
 def test_the_no_data_pass_runs_only_the_files_that_ask_for_data(tmp_path, monkeypatch):
@@ -165,7 +283,7 @@ def test_the_first_pass_loads_the_recorder_and_names_where_it_writes(tmp_path, m
 def test_a_machine_with_no_registry_gets_no_plugin_even_where_the_recorder_exists(
         tmp_path, monkeypatch):
     """The plugin is for the first of two passes; with one pass there is nothing
-    to choose files for, and the run gets the empty environment."""
+    to choose files for, and the run has the variables unset."""
     calls = _recording(monkeypatch)
     worktree = _fake_worktree(tmp_path, registry=False)
     _with_the_recorder(worktree)
@@ -173,7 +291,8 @@ def test_a_machine_with_no_registry_gets_no_plugin_even_where_the_recorder_exist
     assert len(calls) == 1
     assert "-p" not in calls.args[0]
     assert datatouch.LOG_ENV not in calls[0]
-    assert set(calls[0]) == set(_variables().values())
+    assert calls[0] == {}
+    assert set(calls.without[0]) == _hidden()
 
 
 def test_a_worktree_with_no_recorder_gets_no_plugin_to_load(tmp_path, monkeypatch):
@@ -237,7 +356,7 @@ def test_the_selection_covers_the_files_that_failed_without_data_before():
 def test_a_tool_that_does_not_import_fails_the_pass(tmp_path):
     worktree = _fake_worktree(tmp_path, registry=True)
     (worktree / "tools" / "broken.py").write_text("import nothing_like_this_exists\n")
-    failed = suiterun.import_failures(worktree, sys.executable, {})
+    failed = suiterun.import_failures(worktree, sys.executable, ())
     assert len(failed) == 1
     assert any(line.startswith("tools.broken: ") and "nothing_like_this_exists" in line
                for line in failed)
@@ -566,10 +685,10 @@ def test_the_sweep_removes_nothing_when_git_cannot_list_the_worktrees(clones, tm
     monkeypatch.setattr(suiterun, "REPO", mine)
     real = suiterun._run
 
-    def failing(args, cwd, timeout, extra_env=None):
+    def failing(args, cwd, timeout, extra_env=None, without=()):
         if args[:3] == ["git", "worktree", "list"]:
             return subprocess.CompletedProcess(args, 128, "", "fatal: not a git repository")
-        return real(args, cwd, timeout, extra_env)
+        return real(args, cwd, timeout, extra_env, without)
 
     monkeypatch.setattr(suiterun, "_run", failing)
     root = tmp_path / "scratch-root"
