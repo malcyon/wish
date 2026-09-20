@@ -2,15 +2,12 @@ from __future__ import annotations
 
 """What `tools/secret_of_the_silver_blades/ssbtrain.py press` writes into the running game.
 
-`#605 (Four characters in WISH-SPEC-ssb-89-train-input hold more current hit
-points than their record's maximum)`. A record page has `hp_max` at `0x076`
-and no current hit points at all: the number the party list prints, and the
-number `SAVE CURRENT GAME` writes into the save's roster block at payload
-`+$1C00`, lives in a separate page at `$6700 + slot * $20 + $19`. A training
-press raises both, so poking a pre-press record page back over a character the
-engine has already trained leaves a save whose current hit points exceed its
-own maximum -- which is what that specimen holds, reproduced byte for byte on
-VICE on 2026-09-20.
+A record page has `hp_max` at `0x076` and no current hit points: the number
+the party list prints, and the one `SAVE CURRENT GAME` writes into the save's
+roster block, lives in a separate page at `$6700 + slot * $20 + $19`. A training
+press raises both, so `press` must poke the party list's copy to the record's
+own `hp_max`, or a save taken between presses holds more current hit points
+than the maximum.
 
 The command port is faked here: every `poke` lands in a dictionary and every
 `peek` reads back out of it, which is enough for `press`, since it only reads
@@ -19,6 +16,7 @@ what it wrote. No emulator, no game bytes; the record is built in the test.
 
 import pytest
 
+from goldbox.savegame import ROSTER_HP_CURRENT, ROSTER_STRIDE
 from tools.secret_of_the_silver_blades import ssbtrain
 
 
@@ -64,16 +62,10 @@ def _press(tmp_path, slot: int, hp_max: int) -> int:
 
 def test_press_writes_the_party_list_copy_of_the_current_hit_points(
         tmp_path, fake_port):
-    """Without this the party list keeps the last press's total (`#605`).
-
-    MORGAINE's byte read 35 before her press and 40 after, beside `hp_max`
-    35 -> 40 in the record; poking the pre-press page back moved the record and
-    not the byte, and the save written there is the specimen's slot 0 byte for
-    byte.
-    """
+    """Without this the party list keeps the last press's total."""
     mem, _ = fake_port
     assert _press(tmp_path, 0, 35) == 0
-    at = ssbtrain.PARTY_CACHE + ssbtrain.PARTY_CACHE_HP
+    at = ssbtrain.PARTY_CACHE + ROSTER_HP_CURRENT
     assert mem[at] == 35
     assert mem[ssbtrain.ROSTER + ssbtrain.HP_MAX] == 35
 
@@ -82,7 +74,31 @@ def test_the_party_list_copy_moves_by_the_slot_stride(tmp_path, fake_port):
     """Slot 5 is `$20` further on five times over, and slot 0 is untouched."""
     mem, _ = fake_port
     assert _press(tmp_path, 5, 102) == 0
-    at = (ssbtrain.PARTY_CACHE + 5 * ssbtrain.PARTY_CACHE_STRIDE
-          + ssbtrain.PARTY_CACHE_HP)
+    at = ssbtrain.PARTY_CACHE + 5 * ROSTER_STRIDE + ROSTER_HP_CURRENT
     assert mem[at] == 102
-    assert ssbtrain.PARTY_CACHE + ssbtrain.PARTY_CACHE_HP not in mem
+    assert ssbtrain.PARTY_CACHE + ROSTER_HP_CURRENT not in mem
+
+
+def test_press_fails_when_the_party_list_poke_does_not_land(
+        tmp_path, fake_port, monkeypatch):
+    """A dropped poke must stop the press rather than save a gap."""
+    real = ssbtrain.cmd
+    at = ssbtrain.PARTY_CACHE + ROSTER_HP_CURRENT
+
+    def dropping(port, *words):
+        if words[0] == "poke" and int(str(words[1]), 16) == at:
+            return ""
+        return real(port, *words)
+
+    monkeypatch.setattr(ssbtrain, "cmd", dropping)
+    with pytest.raises(SystemExit, match="party list did not take"):
+        _press(tmp_path, 0, 35)
+
+
+def test_press_refuses_an_hp_max_the_party_list_byte_cannot_hold(
+        tmp_path, fake_port):
+    """The party list's byte is one wide, so 300 is refused rather than clamped."""
+    mem, _ = fake_port
+    with pytest.raises(SystemExit, match="255"):
+        _press(tmp_path, 0, 300)
+    assert not mem

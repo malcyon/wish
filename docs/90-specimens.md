@@ -557,5 +557,5 @@ press followed by a poke of the pre-press page reproduces the specimen's slot 0
 
 So a `hit_points > hp_max` guard in `goldbox/c64_codec.py` would fire on no
 engine-written save here: both cases on this machine are states an agent's
-pokes made. `ssbtrain.py press` now writes the party list's copy alongside the
+pokes made. `ssbtrain.py press` writes the party list's copy alongside the
 record page.

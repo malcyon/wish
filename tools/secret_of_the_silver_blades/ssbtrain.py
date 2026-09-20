@@ -109,6 +109,7 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
+from goldbox.savegame import ROSTER_HP_CURRENT, ROSTER_STRIDE  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Where the working character record sits while `GEN` runs.  `$11D8` reads
@@ -131,19 +132,12 @@ HALL_OPEN = 0x7F
 ROSTER = 0x4F00
 
 #: **The party list's own current hit points, which the record page has not
-#: got.**  A record stores `hp_max` at `0x076` and no current total; the number
-#: the party list prints, and the number `SAVE CURRENT GAME` writes into the
-#: save's roster block at payload `+$1C00`, lives here at
-#: `roster_base + slot * $20 + $19` -- `$4B00 + $1C00` for this title,
-#: `goldbox/c64_save.py`.  A training press raises both together, so poking a
-#: pre-press record page back over a character the engine has already trained
-#: leaves a save whose current hit points exceed its own maximum, which is what
-#: `WISH-SPEC-ssb-89-train-input` holds (`#605`).  Measured live 2026-09-20:
-#: MORGAINE's byte read 35 before the press and 40 after, beside `hp_max`
-#: 35 -> 40 in the record.
+#: got.**  A record stores `hp_max` at `0x076` and no current total; the party
+#: list keeps its own at `PARTY_CACHE + slot * ROSTER_STRIDE +
+#: ROSTER_HP_CURRENT`, and `SAVE CURRENT GAME` writes that page into the save's
+#: roster block.  A training press raises both, so poking a pre-press record
+#: page back over a trained character moves one and not the other.
 PARTY_CACHE = 0x6700
-PARTY_CACHE_STRIDE = 0x20
-PARTY_CACHE_HP = 0x19
 HP_MAX = 0x076
 
 #: What the magic-user menu at `GEN $1896` leaves behind, and the whole
@@ -488,8 +482,9 @@ def press(args) -> int:
 
     **The party list's current hit points are written too**, at
     `PARTY_CACHE`, because they are not in the record page: without them a
-    save taken between two presses of the same character holds the earlier
-    press's total beside the composed record's lower maximum (`#605`).
+    save taken between two presses holds the earlier press's total beside the
+    composed record's lower maximum.  The byte is one wide, so an `hp_max`
+    above 255 is refused.
 
     The spell menu is driven only when one was built: `$1C10` is zeroed and
     `$7A00` filled with `$FF` first, so a count that comes back non-zero is
@@ -513,19 +508,21 @@ def press(args) -> int:
                 write_u(base, off, width, value)
             else:
                 raise SystemExit(f"unknown field {key!r}")
+    party_hp = read_u(base, HP_MAX, 2)
+    if party_hp > 0xFF:
+        raise SystemExit(f"hp_max {party_hp} does not fit the party list's "
+                         "one-byte current hit points (255 at most)")
     at = ROSTER + args.slot * SLOT_SIZE
     out = pathlib.Path(args.out)
     scratch.ensure(out.parent)
 
     cmd(port, "poke", f"{at:X}", base.hex())
-    # The record page carries no current hit points, so the party list's copy
-    # keeps whatever the last press left it at and a save taken here holds a
-    # character with more hit points than their own maximum (`#605`).  Written
-    # to the poked record's own `hp_max`, which is what a press sets it to.
-    hp = min(read_u(base, HP_MAX, 2), 0xFF)
-    cmd(port, "poke",
-        f"{PARTY_CACHE + args.slot * PARTY_CACHE_STRIDE + PARTY_CACHE_HP:X}",
-        f"{hp:02x}")
+    # A record page has no current hit points; the party list's copy is set to
+    # the poked record's own `hp_max`, which is what a press sets it to.
+    party_hp_at = PARTY_CACHE + args.slot * ROSTER_STRIDE + ROSTER_HP_CURRENT
+    cmd(port, "poke", f"{party_hp_at:X}", f"{party_hp:02x}")
+    if _peek(port, party_hp_at, 1)[0] != party_hp:
+        raise SystemExit("the party list did not take the current hit points poke")
     cmd(port, "poke", f"{MENU_COUNT:X}", "00")
     cmd(port, "poke", f"{MENU_IDS:X}", "ff" * 64)
     before = _peek(port, at, SLOT_SIZE)
