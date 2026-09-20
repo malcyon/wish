@@ -1212,3 +1212,55 @@ def test_the_hidden_name_mask_hides_the_words_the_c64_mask_hides():
         visible = [w for i, w in enumerate(words) if not mask & 1 << i]
         assert not set(visible) & grades, record[dosbox.ITEM_TEXT:]
     assert masked > 50
+
+
+class _GrimoireSession:
+    """A `Session` stand-in for `Camp.memorize`: records keys, answers the walk.
+
+    `walk_highlight` returns `lands_on` whatever row it is asked for, so a test
+    chooses whether the highlight reaches the row, misses it, or is unreadable.
+    """
+
+    def __init__(self, lands_on):
+        self.lands_on = lands_on
+        self.pressed: list[str] = []
+        self.walked: list[int] = []
+
+    def key(self, *keys: str, gap: float = 0.0) -> None:
+        self.pressed.extend(keys)
+
+    def settle(self, quiet: float = 0.6, timeout: float = 30.0) -> None:
+        return None
+
+    def walk_highlight(self, rect, row, timeout: float = 20.0):
+        self.walked.append(row)
+        return self.lands_on
+
+
+def test_memorize_page_zero_walks_to_the_row_then_presses_return():
+    sess = _GrimoireSession(lands_on=4)
+    assert dosbox.Camp(sess).memorize(row=4, page=0) == 4
+    assert sess.walked == [4]
+    assert sess.pressed == ["Return"]
+
+
+def test_memorize_refuses_a_later_page_before_any_key_goes_out():
+    sess = _GrimoireSession(lands_on=4)
+    with pytest.raises(NotImplementedError):
+        dosbox.Camp(sess).memorize(row=4, page=1)
+    assert sess.pressed == []
+    assert sess.walked == []
+
+
+def test_memorize_does_not_press_return_when_the_highlight_misses_the_row():
+    sess = _GrimoireSession(lands_on=7)
+    with pytest.raises(TimeoutError):
+        dosbox.Camp(sess).memorize(row=4)
+    assert sess.pressed == []
+
+
+def test_memorize_does_not_press_return_when_the_highlight_is_unreadable():
+    sess = _GrimoireSession(lands_on=None)
+    with pytest.raises(TimeoutError):
+        dosbox.Camp(sess).memorize(row=4)
+    assert sess.pressed == []

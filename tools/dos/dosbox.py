@@ -1669,41 +1669,41 @@ class Camp:
         self.s = session
 
     def memorize(self, row: int, page: int = 0, timeout: float = 20.0) -> int:
-        """From `ENCAMP > MAGIC > MEMORIZE`, memorize the grimoire's `row`th spell.
+        """From `ENCAMP > MAGIC > MEMORIZE`, put the grimoire's `row`th spell on `Return`.
 
-        Presses `LIST_PAGE_DOWN` `page` times to turn to the wanted page,
-        walks the highlight onto `row` (`Session.walk_highlight`, driven by
+        Walks the highlight onto `row` (`Session.walk_highlight`, driven by
         where the highlight actually is -- the grimoire can open with it
-        already on the page's last row rather than row 0, measured at
-        #551/#555), then confirms with `Return`, which is the key the issue
-        confirmed fires on whichever entry is highlighted. Returns the row
-        actually reached, so a caller can check it against `row` instead of
-        trusting the walk blindly.
+        already on the page's last row rather than row 0) and presses
+        `Return`, which fires on whichever entry is highlighted. Returns the
+        row actually reached, so a caller can check it against `row` instead
+        of trusting the walk blindly.
+
+        `Return` is not known to commit the memorisation. The #555 run
+        recorded the `CAN MEMORIZE` counters dropping on `Return` and then a
+        separate confirm screen, showing the staged spells with a `*` before
+        `YES`, that committed them. If that reading is right, the caller
+        leaves the list and answers that screen itself; this method does
+        neither. That reading rests on preserved notes, not on screenshots,
+        so it is unproven.
 
         Raises `TimeoutError` when the highlight never reaches `row` --
         this must never be swallowed into pressing `Return` on whatever was
-        already highlighted, which is the exact failure #555 exists to fix.
+        already highlighted.
 
-        **`page=0` (the default) is what #555's own driven proof exercised**
-        -- moving the highlight to a non-default row on the page the
-        grimoire opens on, memorizing it, and reading the id back out of a
-        saved record. **`page > 0` is not proven and measured flaky**: two
-        driven attempts at `page=1` both landed back on page 0 with nothing
-        memorized. `Session.walk_highlight` reads a *physical screen row*,
-        and whether pressing `LIST_PAGE_DOWN` keeps the highlight on the
-        same logical spell (now drawn at a different row) or resets it to
-        the new page's own last row turned out to depend on whether the
-        highlight had already been moved by an `End` press before the page
-        turn -- and in the reset case, `End` was seen to cross back over
-        the page boundary on its own, so `walk_highlight` can report
-        `reached == row` while `row` names a different spell than the one
-        asked for. Untangling that is `#574 (Camp.memorize's page-turn
-        landing is stateful and not proven for page > 0)`. Prefer `page=0`
-        until that closes.
+        Raises `NotImplementedError` for `page > 0`, before any key goes
+        out. `Session.walk_highlight` reads a physical screen row, and
+        whether `LIST_PAGE_DOWN` keeps the highlight on the same spell or
+        resets it to the new page's last row depends on whether an `End`
+        press moved it first, so `reached == row` cannot tell the spell
+        asked for from another page's row of the same number. Page turns
+        are unmeasured; see `#574 (Camp.memorize's page-turn landing is
+        stateful and not proven for page > 0)`.
         """
-        for _ in range(page):
-            self.s.key(LIST_PAGE_DOWN)
-            self.s.settle(quiet=0.5, timeout=timeout)
+        if page:
+            raise NotImplementedError(
+                f"Camp.memorize(page={page}): page turns are unmeasured, so a "
+                "landing on a page after the first cannot be trusted "
+                "(#574); only page=0 is supported")
         reached = self.s.walk_highlight(self.GRIMOIRE_LIST, row, timeout=timeout)
         if reached != row:
             raise TimeoutError(
