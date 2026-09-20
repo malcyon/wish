@@ -71,11 +71,66 @@ ES-relative operands between each predicate's prologue and the next routine;
 this is not a census of the three caller routines or of every use of
 `class_bits` in either overlay.
 
+## The C64 Curse and Silver Blades paths
+
+The two C64 engines also compute the multiplier rather than storing it. Both
+gate directly on `level_thief` at record `0x0CB`; `class_bits` at `0x0EB` is
+absent from each bounded predicate. A fighter/thief therefore uses the thief
+entry of the same eight-byte level array as a single-class thief. CONFIRMED
+from both titles' instruction bytes.
+
+The arithmetic differs in one place:
+
+```text
+Curse:         ((thief level - 1) div 4) + 2
+Silver Blades: ((min(thief level, 14) - 1) div 4) + 2
+```
+
+Both give ×2 at levels 1-4, ×3 at 5-8 and ×4 at 9-12. Silver Blades gives ×5
+from level 13 upward because it caps the input at 14 before subtracting and
+shifting. Curse has no cap instruction in this path. There is no multiplier
+table: the engine decrements the level, shifts it right twice and adds two.
+CONFIRMED from the complete arithmetic in each `COMBAT2`.
+
+| Title | Gate and formula (`COMBAT2`, base `$E000`) | Factor copied (`ECL64`, base `$8000`) | Damage multiply | To-hit adjustment | Byte multiply (`LIBRARY`, base `$2DC8`) |
+|---|---:|---:|---:|---:|---:|
+| Curse of the Azure Bonds | `$F832` | `$8164` → `$A981` | `$86B7` | `$83E1` | `$2FB9` |
+| Secret of the Silver Blades | `$F4B2` | `$8167` → `$A980` | `$86CC` | `$83F0` | `$2E6F` |
+
+`COMBAT2` first refuses a zero thief level, computes the factor into zero-page
+`$B0`, then checks the weapons. `ECL64` checks the attack direction and copies
+`$B0` only when both paths pass. The damage path loads that same byte and calls
+`LIBRARY`'s eight-bit multiply routine with the rolled damage; the attack path
+also uses its presence to subtract two from the number needed to hit. This is
+why the computed byte is a backstab multiplier rather than an unrelated thief
+level cache. CONFIRMED from both complete paths.
+
+The C64 does not keep a former-class level array. It keeps
+`dual_class_slot`/`dual_class_level` at record `0x0B9`/`0x0BA`. The generic
+regain path is `GEN $20A3` in Curse and `$154F` in Silver Blades:
+
+```text
+If dual_class_level != 0 and level > dual_class_level:
+    class_levels[dual_class_slot] = dual_class_level
+    class_bits |= 1 << dual_class_slot
+```
+
+Thus a former thief has no backstab while his thief slot is zero. Once the new
+class strictly passes the stored former level, `GEN` restores slot 2 at record
+`0x0CB`, and the ordinary backstab gate sees it. No separate former-thief
+branch exists in the attack path. CONFIRMED from both `GEN` routines and both
+backstab predicates. The C64 generic regain behavior was independently driven
+for former paladins in `docs/214-the-regained-dual-class-on-the-c64.md`; a
+former thief was not driven.
+
+`tools/c64/backstab.py` reproduces the instruction read from the player's
+`COMBAT2`, `ECL64`, `LIBRARY` and `GEN` files. No live C64 damage was measured.
+
 ## Scope and negative results
 
 Issue `#607 (Show a thief's backstab bonus in the Character Editor)` now has
-static proof for the DOS Curse and Silver Blades engines read here. No
-multiplier table exists in these two paths; the formula is inline. A live
-damage experiment is unnecessary to identify their record fields or
-arithmetic, but would independently corroborate the instruction read. This
-write-up makes no claim about another title or port.
+static proof for DOS and C64 Curse and Silver Blades. No multiplier table
+exists in any of these four paths; each formula is inline. A live damage
+experiment is unnecessary to identify their record fields or arithmetic, but
+would independently corroborate the instruction read. This write-up makes no
+claim about another title or port.

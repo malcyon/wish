@@ -7,6 +7,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_abilitypair.py` | Checks which of the later C64 titles' two ability arrays the engine treats as current, through the carrying-capacity index it writes back. |
 | `test_abilitypaircross.py` | Checks that a crossed DOS ability pair keeps its permanent and in-force halves apart converting to the neutral record, to the C64 and back. |
 | `test_backstab.py` | Checks the DOS Curse and Silver Blades backstab gates, multiplier arithmetic and dual-class regain helper against the player's own executables, skipping without them. |
+| `test_c64backstab.py` | Checks the C64 Curse and Silver Blades backstab gate, multiplier arithmetic, damage multiply and dual-class regain path against the player's own disks, skipping without them. |
 | `test_boundary.py` | Checks that the boundary characters from `tools/records/boundarychars.py` write and read back whole in DOS and that every active field has a boundary value. |
 | `test_boundary_c64.py` | Checks that the boundary characters from `tools/records/boundarywidths.py` and `tools/records/laterchars.py` write and read back whole through the C64 writer in all three titles, that a value past a field's width is refused or stops at the ceiling, and that every class combination Curse's and Silver Blades' own menus offer keeps its levels and its bitmask. |
 | `test_carryceiling.py` | Checks that `tools/records/carryceiling.py` counts what a character carries against the C64's item and trait-slot ceilings. |
