@@ -41,7 +41,7 @@ The definitions are .codex/agents/<name>.toml, generated from .claude/agents/<na
 
 ## On start
 
-1. Read ~/.cache/wish/orchestrator-queue.md. If it does not exist, create it with the header, the table and the two lists, from the open issues.
+1. Read ~/.cache/wish/orchestrator-queue.md. If it exists, preserve it and update it in place; never delete or replace it with a fresh queue from GitHub. It contains decisions, deferrals, experiment details and hand-off facts that the tracker may not hold. Preserve those facts when updating statuses, and move superseded facts into labelled history rather than discarding them. Before any substantial restructuring, save a dated copy beside it. Only if the file does not exist, create it with the header, the table and the two lists, from the open issues.
 2. For every row, check the issue's state with tools/github/issueread.py N --json. Drop rows whose issue is closed into the "Closed" list at the bottom of the file.
 3. List every open issue that is in neither the table nor the "Do not schedule" list, and place each by the ranking rule. If you cannot tell where one goes, send a senior-analyst to read it and say what it needs and which agent fits, then place it.
 4. Print the table as your first status. The file is not committed.
