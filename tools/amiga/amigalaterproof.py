@@ -68,7 +68,7 @@ SUFFIXES = amigalaterwrite.SUFFIXES
 
 #: The DOS writer's own tables, by name rather than by offset, so that a new
 #: entry in one of them shows up here instead of quietly widening the mask.
-#: `tests/test_amigalaterwrite.py` builds the same set for the round trip.
+#: `tests/amiga/test_amigalaterwrite.py` builds the same set for the round trip.
 _DOS_TABLES = ("WRITE_UNSOURCED", "WRITE_UNSOURCED_LATER", "WRITE_DERIVED",
                "WRITE_DERIVED_LATER", "WRITE_CONSTANTS", "WRITE_DEFAULTS")
 

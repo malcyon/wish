@@ -12,7 +12,7 @@ AmigaDOS disk images:
   Azure Bonds save disk**, which is where nobody was looking for them.
 
 They are not loose files on any machine, so this is the tool that produces
-them, and `tests/test_amiga.py` calls :func:`extract` itself.
+them, and `tests/amiga/test_amiga.py` calls :func:`extract` itself.
 
     tools/amiga/amigasaves.py -o DIR
 

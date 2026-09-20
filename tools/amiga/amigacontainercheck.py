@@ -24,7 +24,7 @@ at the ECL addresses the C64 engine uses -- offset = address minus
 numeric offsets, big-endian, rather than through `goldbox.amiga_savegame.por_word` or
 `goldbox.world_state`.  A later editor tidying either of them into a call to
 the library being checked would leave a tool that agrees with the writer by
-construction and cannot fail: `tests/test_amigacontainercheck.py` asserts the
+construction and cannot fail: `tests/amiga/test_amigacontainercheck.py` asserts the
 two readers name no library accessor, so that edit turns a test red instead of
 turning this into a transcript.
 

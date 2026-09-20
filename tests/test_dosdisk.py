@@ -1,6 +1,6 @@
 """The disk Wish builds from nothing, read back the way the game reads it.
 
-`tests/test_dosconvert.py` checks what `goldbox/dos_codec.py` writes into the two
+`tests/convert/test_dosconvert.py` checks what `goldbox/dos_codec.py` writes into the two
 payloads.  This module goes one step further out, to the thing a player is
 handed: a `.d64` image built by `goldbox.dos_codec.save_disk`, serialised, reopened
 from its bytes, and read back through `goldbox.savegame` and
@@ -63,7 +63,7 @@ SHEET_FIELDS = (
 #: gives 21, and our table holds only the C64's own)`) -- and a test demanding
 #: they match would be demanding the bug back.
 #:
-#: What replaces it is `tests/test_c64thac0.py`, which checks the number
+#: What replaces it is `tests/convert/test_c64thac0.py`, which checks the number
 #: against the engine's own to-hit table read off the player's `LIBRARY`
 #: rather than against the DOS source.
 THAC0_IS_COMPUTED_NOT_CARRIED = "#405"
@@ -301,7 +301,7 @@ def test_build_wires_the_creation_menu_into_the_disk_it_writes(tmp_path):
     arrives on the disk with the sheet portrait switched on rather than with
     every face silently dropped.
 
-    This is the wiring, not the conversion: `tests/test_dosconvert.py`
+    This is the wiring, not the conversion: `tests/convert/test_dosconvert.py`
     already proves `new_save(..., portraits=tables)` sets the switch. What
     was missing is `build()` ever calling `tables_from_disks` at all --
     before this it always passed `portraits=None`, so `$49FF` came out
@@ -341,7 +341,7 @@ def test_build_wires_the_creation_menu_into_the_disk_it_writes(tmp_path):
 def test_a_disk_built_from_nothing_leaves_no_byte_to_the_payload(tmp_path):
     """`Report.unwritten` empty, for every slot, all the way to the image.
 
-    `tests/test_dosconvert.py` asserts this of `new_save`'s payloads; this
+    `tests/convert/test_dosconvert.py` asserts this of `new_save`'s payloads; this
     asserts it of the disk, so a `save_disk` that ever grew a region of its
     own would have to account for it too.
     """

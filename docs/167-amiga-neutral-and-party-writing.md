@@ -50,7 +50,7 @@ offset `0x4F9B8` — `Okay`, `Animated`, `tempgone`, `Running`, `Unconscious`,
 order, with DOS's own `Stoned` where `/Secret` says `Petrified`, and block 53
 is `Battle Axe`, so the run ends where it should.
 
-`tools/amiga/amigaenum.py` reads both back; `tests/test_amiga.py` asserts both.
+`tools/amiga/amigaenum.py` reads both back; `tests/amiga/test_amiga.py` asserts both.
 
 ### 2. Every constant either binary stores in the byte is inside the nine
 
@@ -109,7 +109,7 @@ against each other (`#53 (Read and write DOS saves for Curse, Silver Blades and
 Pools of Darkness)`).
 
 `goldbox.amiga_later.later_field_disposition` states what becomes of **every** field
-of the title's DOS table, and `tests/test_amiga.py` fails if one is named
+of the title's DOS table, and `tests/amiga/test_amiga.py` fails if one is named
 nowhere. All 21 specimens on this machine read without an exception: the
 fifteen Curse records and the six Silver Blades ones.
 
@@ -232,7 +232,7 @@ the count move and no others: the party-size word `$503E`, kept truthful so the 
 clear that word and count the party themselves, so nothing reads it.
 
 `rebuild(parse(data)) == data` on both saved games and on the synthetic ones
-`tests/test_amigasavegame.py` builds from the map. A party one character
+`tests/amiga/test_amigasavegame.py` builds from the map. A party one character
 shorter shortens the file by exactly that character's block; stripping a
 character's items zeroes the head the loader tests.
 

@@ -20,7 +20,7 @@ def _six_icon_party() -> "tuple[bytes, bytes, object]":
     """BRUTUS's own committed fixture, cloned into all six slots with six
     different names and six different combat icons.
 
-    The same shape `tests/test_doswriter.py`'s own
+    The same shape `tests/convert/test_doswriter.py`'s own
     `test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures`
     builds at `goldbox.dos_codec`'s own layer -- nothing here is the game's own
     saved bytes, only its documented icon format applied six times to one

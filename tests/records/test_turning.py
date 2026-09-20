@@ -295,7 +295,7 @@ def _dos_record(shape, **values) -> bytes:
     """A `shape`'s own size of DOS record with the named fields set.
 
     Built from `goldbox/dos_port.py`'s table, so it is ours and needs no
-    disks. The same helper `tests/test_ssbconvert.py` uses, kept here rather
+    disks. The same helper `tests/convert/test_ssbconvert.py` uses, kept here rather
     than imported so this file stands on its own.
     """
     rec = bytearray(shape.record_size)

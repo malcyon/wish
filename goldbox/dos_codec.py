@@ -45,7 +45,7 @@ The three places the formats diverge in kind
 
 The write-ups, `reports/dos-saves.md` and `reports/dos-items.md`, are
 lost. The plan is `docs/117-save-conversion.md` and the assertions are
-`tests/test_dosconvert.py`.
+`tests/convert/test_dosconvert.py`.
 """
 
 from __future__ import annotations
@@ -858,7 +858,7 @@ CLASS_LEVEL_SLOTS: tuple[tuple[int, str, str | None], ...] = (
 #: slot; `fighter/mage/thief` fills three.  What makes this worth a table is
 #: that it is a **check**: a spellbook or a memorised region one byte out
 #: moves the array, and then the slots that are set stop matching the class
-#: byte -- which is `tests/test_dosconvert.py`'s test of every title's shape.
+#: byte -- which is `tests/convert/test_dosconvert.py`'s test of every title's shape.
 CLASS_SLOTS_FOR_CLASS: dict[int, tuple[int, ...]] = {
     number: tuple(
         slot for slot, name, _ in CLASS_LEVEL_SLOTS
@@ -2873,7 +2873,7 @@ WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
 #: Distinct from :data:`WRITE_CONSTANTS`, whose values are the same in every
 #: specimen we hold: a default is what a *newly made* character has, and a
 #: played character's own value differs -- so a round trip has to mask these,
-#: and `tests/test_doswriter.py` builds its mask from this table beside
+#: and `tests/convert/test_doswriter.py` builds its mask from this table beside
 #: `WRITE_UNSOURCED`.  Each entry is a reported drop as well as a write: the
 #: player's own value is being replaced, and that is said out loud.
 WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
@@ -2926,7 +2926,7 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
 #: change with the character -- and neither is a loss: DOS writes the byte,
 #: just not by copying it.
 #:
-#: `tests/test_doswriter.py` masks these in the round trip beside
+#: `tests/convert/test_doswriter.py` masks these in the round trip beside
 #: :data:`WRITE_UNSOURCED` and :data:`WRITE_DEFAULTS`: the value is ours and
 #: not the source's, so a written record differing from the original here is
 #: expected.
@@ -3313,7 +3313,7 @@ WRITE_DERIVED_LATER: tuple[tuple[str, str], ...] = (
 #: What :func:`write` does with every field `goldbox/dos_port.py` declares --
 #: the *output-side* account, over DOS field names, where
 #: :func:`write_field_disposition` accounts over the neutral vocabulary.
-#: `tests/test_doswriter.py` fails if a field is declared in the layout and
+#: `tests/convert/test_doswriter.py` fails if a field is declared in the layout and
 #: named nowhere here, so a new field cannot be skipped in silence.
 #:
 #: **Pool of Radiance's**, which is what it has always been; ask
@@ -3832,7 +3832,7 @@ def write(char: NeutralCharacter,
     # reuses this writer as its own stepping stone and repacks the
     # DOS-shaped bytes it gets back into an Amiga record, so a native Amiga
     # round trip hit this recompute and broke
-    # `tests/test_amigalaterwrite.py::test_every_record_on_the_disks_
+    # `tests/amiga/test_amigalaterwrite.py::test_every_record_on_the_disks_
     # round_trips` the same way a DOS round trip broke
     # `test_every_engine_written_record_of_a_later_title_round_trips` the
     # first time this was tried (#318).
@@ -3953,7 +3953,7 @@ def write(char: NeutralCharacter,
     # save on the strength of a DOS engine that record will never be read by.
     # Nobody has read Amiga Curse's own thief routine, so the honest thing
     # there is the source's own bytes (#440, and the proof in
-    # `tests/test_amigalaterproof.py` is what caught it).
+    # `tests/amiga/test_amigalaterproof.py` is what caught it).
     #
     # `w.get`, not `use`: the thief level, race and dexterity feeding this
     # were already taken by the `WRITE_DIRECT` copy loop above.
@@ -5881,7 +5881,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     does the writing; see that docstring for `icon`, `animate`, `portraits`
     and what the report covers.  Kept as the folder-based entry point
     because that is what every existing caller -- the import dialog,
-    `tools/`, the whole of `tests/test_dosconvert.py` -- already gives it.
+    `tools/`, the whole of `tests/convert/test_dosconvert.py` -- already gives it.
     """
     container = c64_save.container_for(game)
     shape = dos_savegame.container_for(container.game.key)
@@ -7226,7 +7226,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     Reads the party and the place off `save0`/`save1` and hands both to
     :func:`write_dos_save_from`, which does the writing.  Kept as the
     C64-payload entry point because that is what every existing caller --
-    the export dialog, `tools/`, the whole of `tests/test_doswriter.py` --
+    the export dialog, `tools/`, the whole of `tests/convert/test_doswriter.py` --
     already gives it.
 
     **`icon_parts` is what turns each character's own combat icon into a

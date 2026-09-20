@@ -588,7 +588,7 @@ OUT_OF_PLAY = 0x80
 #: **PROPOSED, not yet approved.** `.claude/rules/gui-text.md` makes every
 #: word a player reads Donald's; this is the working proposal, written so it
 #: can be seen running rather than only described.  No file offset and no
-#: issue number, which `tests/test_dosconvert.py`'s two guard tests enforce
+#: issue number, which `tests/convert/test_dosconvert.py`'s two guard tests enforce
 #: for the DOS table and this one follows.
 NO_C64_STATUS: dict[str, str] = {
     "animated": "Animated by a spell: the character arrives "
@@ -1668,7 +1668,7 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
 
 #: What :func:`read` does with every named field of the C64 layout -- the
 #: layout-wide account the DOS writer of #26 called for, so a C64 field
-#: nothing reads cannot be dropped in silence.  `tests/test_doswriter.py`
+#: nothing reads cannot be dropped in silence.  `tests/convert/test_doswriter.py`
 #: checks it against `goldbox/layout.py`'s named fields.
 READ_TARGETS: dict[str, str] = (
     {c64_name: f"read as neutral {n}" for n, c64_name in DIRECT}

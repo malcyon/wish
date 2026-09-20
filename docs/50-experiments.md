@@ -5904,7 +5904,7 @@ in the middle of `PICK A GENDER` — came out as `neg.w (a2)`, and 199 words of
 string data across the binary decoded as instructions that do not exist. That
 is precisely the failure the "never guess" rule exists to prevent, and reading
 the listing would never have caught it: `neg.w (a2)` is a perfectly ordinary
-line. `tests/test_m68dis.py::test_bit_eight_is_not_a_unary_operation` is the
+line. `tests/amiga/test_m68dis.py::test_bit_eight_is_not_a_unary_operation` is the
 regression, and it fails against the first draft.
 
 The committed tests build their encodings by hand from the Motorola manual, so
@@ -6693,7 +6693,7 @@ highlight within the page, `N`/`P` and `PgDn`/`PgUp` turn the page, `E` and
 `WRITE_DERIVED`, written by `goldbox.dos_codec.identity_byte` as a one-byte
 `blake2b` of the other 284 bytes of the finished record. Not `random`, because
 every acceptance run this project has — `tools/dos/dosnewsave.py`'s resave diff,
-the round trip in `tests/test_doswriter.py` — converts twice and compares, and
+the round trip in `tests/convert/test_doswriter.py` — converts twice and compares, and
 a converter that writes different bytes each run cannot be diffed against
 itself.
 

@@ -11,7 +11,7 @@ the DOS record wants.
 Every offset below is a file offset into `/Curse` on Curse of the Azure Bonds
 disk 1 or `/Secret` on Secret of the Silver Blades disk 1, read with
 `tools/amiga/amiga68k.py`. `tools/icons/amigaicons.py` re-takes all three measurements --
-`--tables`, `--art`, `--census` -- and `tests/test_amigaicons.py` pins them.
+`--tables`, `--art`, `--census` -- and `tests/amiga/test_amigaicons.py` pins them.
 Every site named below was found with `tools/amiga/amigarecordrefs.py`, which is
 what asks "who reads this record byte" on a port where a field is `d16(An)`
 off a pointer rather than a global `tools/amiga/amigaglobal.py` could find.
@@ -118,7 +118,7 @@ table, at `g0EE4` and `g2374` alike:
 
 The identity is not fitted to the art: swapping two entries of the table, or
 reading the planes interleaved by row instead of one after another, turns
-`tests/test_amigaicons.py`'s body test red, and both were watched failing.
+`tests/amiga/test_amigaicons.py`'s body test red, and both were watched failing.
 
 **Silver Blades redrew the same four blocks on the Amiga as on DOS** -- head
 10 at the large size and body 11 at the small, blocks 74, 202, 11 and 139, and

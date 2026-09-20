@@ -152,7 +152,7 @@ crossed)` carries it. For exceptional strength the existing code is right, so
 the fix is not a blanket swap.
 
 **The round trip cannot see it.** DOS to C64 and back crosses twice and comes
-home byte for byte, which is why `tests/test_doswriter.py` is green with both
+home byte for byte, which is why `tests/convert/test_doswriter.py` is green with both
 halves wrong. What a player would see is a character with a Girdle of Giant
 Strength, a running `Strength` spell or a shadow's drain: he arrives on the
 other port with the number he should not have kept, and the next thing that

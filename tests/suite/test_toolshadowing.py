@@ -256,7 +256,7 @@ def test_the_tool_that_was_caught_doing_it_no_longer_can():
     """`tools/dos/dosraces.py`, the proven culprit, no longer leaks at all.
 
     An audit hook on the reproducing batch caught
-    `tests/test_dosimport.py`'s own `from wish.ui_window import
+    `tests/convert/test_dosimport.py`'s own `from wish.ui_window import
     Ui_WishWindow` resolving with `tools/` at `sys.path[0]`, and
     `tools.dos.dosraces` was the only leaking tool loaded in that worker --
     `#259 (A cold test run intermittently loses the wish package to

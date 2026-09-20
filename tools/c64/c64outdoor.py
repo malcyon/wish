@@ -87,7 +87,7 @@ def outdoor_request(area: int, x: int, y: int) -> "world_state.WorldState":
 
     A buffer this short also reads as `dos.never_adventured`'s "never set
     out" signature (#301, #326) -- an all-zero script buffer -- so it is
-    staged the same way `tests/test_dosconvert.py`'s `_stage_a_script` does,
+    staged the same way `tests/convert/test_dosconvert.py`'s `_stage_a_script` does,
     one non-zero byte in the staged area script plus `LATER_BEGUN_WORD` at
     255, before the three words are set
     (`#369 (tools/c64/c64outdoor.py seeds New Phlan indoors instead of the

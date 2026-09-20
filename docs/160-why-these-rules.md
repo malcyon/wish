@@ -1394,7 +1394,7 @@ garbage weapon line -- passed every byte-level check that existed. A conversion
 is not proven until somebody loads it in the game, walks, and looks at the sheet.
 
 **Masking a round-trip by the diff makes the test agree with the code by
-construction**, which is why `tests/test_doswriter.py` masks by
+construction**, which is why `tests/convert/test_doswriter.py` masks by
 `WRITE_UNSOURCED` and `WRITE_DEFAULTS` -- the lists the writer declares -- so a
 new difference fails.
 
@@ -1493,7 +1493,7 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > neutral vocabulary, and every writer must account for all of those: each has a
 > `field_disposition()` naming every field as direct, transformed or dropped,
 > and a test goes red the day a field exists in `goldbox/neutral.py` and a
-> writer has never heard of it (`tests/test_amiga.py`, and
+> writer has never heard of it (`tests/amiga/test_amiga.py`, and
 > `goldbox/c64_codec.py`'s own docstring: *"this catches a name the writer has
 > never been taught, which is the failure that rots silently"*). That is what
 > proves a conversion perfect, and the pane never contributed to it.
@@ -1955,7 +1955,7 @@ The arithmetic behind both prompts is copy-protection research kept in a separat
 
 ###### amigacontainercheck.py
 
-The check is the independent evidence that `new_por_savegame` writes the source save's own square, facing, clock, area and resident map rather than the one SSI shipped. Its two ends share no reader: the C64 payload is read by hand at `address - $4900` and the built container at fixed offsets, big-endian, rather than through `goldbox.amiga_savegame.por_word` or `goldbox.world_state`, so a container that agreed with the writer and not with the save would show up; `tests/test_amigacontainercheck.py` asserts neither reader names a library accessor. Three fields the writer declines to write are reported as declared rather than mismatches; outdoors it writes `$49C5` = 0 because a travel window loads a `SQRDATA` rather than a `GEO`, and leaves the indoor square stale. Eight C64 specimens were checked, 8 of 8 matching. The container is 13,141 bytes.
+The check is the independent evidence that `new_por_savegame` writes the source save's own square, facing, clock, area and resident map rather than the one SSI shipped. Its two ends share no reader: the C64 payload is read by hand at `address - $4900` and the built container at fixed offsets, big-endian, rather than through `goldbox.amiga_savegame.por_word` or `goldbox.world_state`, so a container that agreed with the writer and not with the save would show up; `tests/amiga/test_amigacontainercheck.py` asserts neither reader names a library accessor. Three fields the writer declines to write are reported as declared rather than mismatches; outdoors it writes `$49C5` = 0 because a travel window loads a `SQRDATA` rather than a `GEO`, and leaves the indoor square stale. Eight C64 specimens were checked, 8 of 8 matching. The container is 13,141 bytes.
 
 ###### amigadrive.py
 

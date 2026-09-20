@@ -541,7 +541,7 @@ def to_neutral(char) -> NeutralCharacter:
              "those bytes were written zero rather than guessed")
     # No "DOS" (#389): this reader does not yet know which port the
     # character is going to -- an Amiga Pool of Radiance save converts to
-    # the C64 as well as to DOS (`tests/test_amigatoc64.py`), and naming DOS
+    # the C64 as well as to DOS (`tests/convert/test_amigatoc64.py`), and naming DOS
     # here named the wrong destination for that direction.
     # No marker: a drop line goes to `wish/debuglog.py` and to a `--report`
     # printout, never to a pane, since Donald's ruling of 2026-09-08
@@ -694,7 +694,7 @@ def _por_special(f) -> bool:
     """True for a DOS field `from_dos_record` writes by hand.
 
     A function rather than a bare `in` so the shift-map guard in
-    `tests/test_amiga.py` asks the writer what it special-cases instead of
+    `tests/amiga/test_amiga.py` asks the writer what it special-cases instead of
     keeping its own copy of the list and drifting from it.
     """
     return f.name in _POR_SPECIAL

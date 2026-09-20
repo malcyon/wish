@@ -29,13 +29,13 @@ CASES = boundarychars.CASES
 
 #: Fields the writer recomputes rather than copies for a C64 source, so a
 #: round trip against the *original* neutral value is not the right check --
-#: `tests/test_neutral.py::test_every_value_a_writer_takes_comes_back_out_of_
+#: `tests/convert/test_neutral.py::test_every_value_a_writer_takes_comes_back_out_of_
 #: the_record` keeps the same list for the C64 writer, and `#516`'s plan
 #: comment carries it over here for the DOS one.  `attack_level` is a fifth,
 #: found while building this: DOS Pool of Radiance never stores a real
 #: fighting level (`#527`), so both the write and the read recompute it from
 #: the class levels rather than round-tripping the byte, and
-#: `tests/test_doswriter.py`'s own full round trip checks it against the
+#: `tests/convert/test_doswriter.py`'s own full round trip checks it against the
 #: title's rule instead of against the original for the same reason
 #: (`_attack_level_allowance`).
 _RECOMPUTED_ON_A_C64_SOURCE = {

@@ -207,7 +207,7 @@ alignment pad.
   arithmetic and the item bonuses in a real round are untested on either title.
   The figure is dropped and reported anyway.
 * **A character carrying nothing, in the running game.** The empty case has a
-  test (`tests/test_amigalaterwrite.py`) and the party panel drew five of them,
+  test (`tests/amiga/test_amigalaterwrite.py`) and the party panel drew five of them,
   but no character with an empty inventory has had his own ITEMS screen opened
   — which is how `#62 (A converted character who owns nothing gets a corrupt
   sheet, and DOS then invents a garbage item)` was found on the DOS side.

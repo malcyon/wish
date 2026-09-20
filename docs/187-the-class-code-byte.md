@@ -222,8 +222,8 @@ looked like an edit and rewrote every trained character's `char_class` back
 on the disk. `editor/roster.py` draws the class from `class_bits` and was
 never affected either way.
 
-`tests/test_c64classcode.py` is the reader's regression test, the same shape
-as `tests/test_dosclasscode.py`: a trained record reads with the repaired
+`tests/convert/test_c64classcode.py` is the reader's regression test, the same shape
+as `tests/convert/test_dosclasscode.py`: a trained record reads with the repaired
 code and `Provenance.COMPUTED`; SILAS's shape reads unchanged and
 `Provenance.COPIED`; a dual-classed record takes the level array; the
 specimen tree's Pool of Radiance and Silver Blades C64 disks read through the

@@ -29,7 +29,7 @@ derived block alone.
 The offsets were also checked a second way: they decode the twelve genuine
 `.pc` files on disk 3 to sane values -- every ability 18, one class level
 each, armour class 10 and 1d2 damage unequipped, ages 28 to 46, and every
-alignment legal for its class. `tests/test_amiga.py` asserts both halves.
+alignment legal for its class. `tests/amiga/test_amiga.py` asserts both halves.
 
 **This title alone.** `#470 (Give the project a neutral title beside its
 neutral character record, with one port per platform a title shipped on)`'s

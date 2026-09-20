@@ -37,7 +37,7 @@ _TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 # it there. Whichever `import wish` came first in a worker owned the name for
 # the rest of that worker's life, and with `-n auto` which file a worker
 # collected first is timing -- so a cold `__pycache__` failed a *different*
-# test each run, always inside `tests/test_dosimport.py`, always
+# test each run, always inside `tests/convert/test_dosimport.py`, always
 # `No module named 'wish.ui_window'; 'wish' is not a package`. See
 # `#259 (A cold test run intermittently loses the wish package to
 # tools/wish.py, and a different test fails each time)`.
@@ -54,7 +54,7 @@ _TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 #
 # The assertion is the part that survives a future regression: whatever else
 # goes wrong, the run says which `wish` it got and stops, rather than failing
-# one arbitrary test in `tests/test_dosimport.py`.
+# one arbitrary test in `tests/convert/test_dosimport.py`.
 _saved_path = sys.path[:]
 sys.path.insert(0, str(_TOOLS.parent))
 try:

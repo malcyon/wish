@@ -15,7 +15,7 @@ window and the status line read `20,29 N 10:02`, which is window-local (7,29)
 plus window 26's offset of 13.
 
 The saves are Donald's, not the repository's, so these skip without them --
-the same gate `tests/test_dosconvert.py` uses.
+the same gate `tests/convert/test_dosconvert.py` uses.
 """
 from __future__ import annotations
 

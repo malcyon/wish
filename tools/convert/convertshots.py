@@ -11,7 +11,7 @@ canvas.
 
 Six states need nothing but synthetic inputs -- a fake `game_files` lookup
 and hand-built `SAVGAM?.*`/`CHRDAT?1.SAV` pairs, the same specimens
-`tests/test_convert.py` uses -- and are always produced, including
+`tests/convert/test_convert.py` uses -- and are always produced, including
 `05-only-from-filled` and `06-unreadable-source`, added for `#52`'s own bug
 report of 2026-09-10: a source chosen and nothing else used to pop a modal
 saying a field the player had not reached yet was empty, and only a source
@@ -52,7 +52,7 @@ from tools.registry import scratch  # noqa: E402
 def _dos_folder(root: pathlib.Path, shape, slot: str = "A",
                 suffix: str = "DAT") -> pathlib.Path:
     """A folder just real enough for `Source.detect` to name its shape --
-    the same synthetic specimen `tests/test_convert.py` builds, never a
+    the same synthetic specimen `tests/convert/test_convert.py` builds, never a
     slice of a real save (`.claude/rules/testing.md`)."""
     folder = root / shape.key
     folder.mkdir(parents=True, exist_ok=True)

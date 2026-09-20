@@ -68,7 +68,7 @@ C64_TITLES = (("Pool of Radiance C64", "pool-of-radiance", "POOL*.[dD]64"),
                "SILVER*.[dD]64"))
 
 #: Where each Amiga title keeps its map library. The disk is found by matching
-#: the first element against the image's filename, the way `tests/test_amiga.py`
+#: the first element against the image's filename, the way `tests/amiga/test_amiga.py`
 #: does it.
 AMIGA_TITLES = (("Curse Amiga", "curse", "/DISKB/GEO.GLB"),
                 ("Silver Blades Amiga", "silver", "/DISK2/GEO.GLB"))

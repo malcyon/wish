@@ -21,7 +21,7 @@ wrong offset or a wrong encoding, and that is a defect in our table rather
 than a fact about SSI's party.
 
 It reaches past `goldbox.dos_codec.CONVERTS` **in its own process only**, the same
-way `tests/test_curseconvert.py` did while `#192` was open, so that the
+way `tests/convert/test_curseconvert.py` did while `#192` was open, so that the
 refusal in `goldbox/dos_codec.py` can stay where it is until a run in the game has
 earned its removal.
 

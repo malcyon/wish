@@ -10,7 +10,7 @@ The bug: a buffer this short also matches `goldbox.dos_codec.never_adventured`'s
 `world_state.from_dos` substituted Pool of Radiance's own indoor start square
 (area 0, `15,1`, indoors) rather than reading the three words the buffer
 actually set. `outdoor_request` now stages the script buffer the way
-`tests/test_dosconvert.py`'s `_stage_a_script` does, before setting them.
+`tests/convert/test_dosconvert.py`'s `_stage_a_script` does, before setting them.
 """
 
 import os

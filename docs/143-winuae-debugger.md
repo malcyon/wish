@@ -924,7 +924,7 @@ neither.
 ## 10. Fitting it to `automap` — built, and measured
 
 `automap/amiga.py` is the backend, `tools/amiga/amigatarget.py` the command line, and
-`tests/test_amigatarget.py` the 35 tests. `automap/target.py` was **not**
+`tests/amiga/test_amigatarget.py` the 35 tests. `automap/target.py` was **not**
 touched: the contract is still two methods, and everything else `AmigaTarget`
 supplies is an optional method the protocol already looks for with `getattr`.
 

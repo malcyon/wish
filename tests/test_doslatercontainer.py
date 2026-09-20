@@ -189,7 +189,7 @@ def test_a_7424_byte_payload_is_refused_without_a_title():
 @pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
 def test_the_per_title_account_names_addresses_once_each(shape):
     """A table that names the same word twice, or one outside the array, is
-    a table whose count is wrong -- the same check `tests/test_doswriter.py`
+    a table whose count is wrong -- the same check `tests/convert/test_doswriter.py`
     makes of Pool of Radiance's."""
     seen = set()
     for address, words, why in dos_codec.savgam_unsourced(shape):
@@ -406,7 +406,7 @@ def test_every_nonzero_word_a_later_titles_container_holds_is_written_or_declare
         shape):
     """A field the engine writes that this conversion neither sources nor
     names would be written zero in silence -- the same gate
-    `tests/test_doswriter.py` keeps for Pool of Radiance, over every
+    `tests/convert/test_doswriter.py` keeps for Pool of Radiance, over every
     engine-written Curse or Silver Blades container in the specimen tree.
     """
     from goldbox import c64_save

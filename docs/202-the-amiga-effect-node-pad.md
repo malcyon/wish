@@ -245,7 +245,7 @@ tools/amiga/amiganodefields.py --adf <curse-1.adf> --exe /Curse \
     fields --chain f2 --size 10
 ```
 
-`tests/test_amiganodefields.py` runs all of it, plus the tool's own logic
+`tests/amiga/test_amiganodefields.py` runs all of it, plus the tool's own logic
 against a program built in the test so it can be shown to fail, plus the
 specimen shape in §5 and the control in §6. 14 tests, and they skip rather
 than fail on a machine with no Amiga disks.

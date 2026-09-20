@@ -73,7 +73,7 @@ is debugging."* **A drop line is therefore never a string Donald words.**
 must be accounted for by every writer: each has a `field_disposition()` naming
 every field as direct, transformed or dropped, and a test goes red the day a
 field exists in `goldbox/neutral.py` and a writer has never heard of it
-(`tests/test_amiga.py`, and `goldbox/c64_codec.py`'s own docstring: *"this
+(`tests/amiga/test_amiga.py`, and `goldbox/c64_codec.py`'s own docstring: *"this
 catches a name the writer has never been taught, which is the failure that rots
 silently"*). That is what proves a conversion perfect.
 
@@ -241,7 +241,7 @@ sheet.
 
 **Round-trip byte for byte, and mask by the declared list rather than by the
 diff.** Masking by whatever happened to differ makes the test agree with the
-code by construction. `tests/test_doswriter.py` masks by `WRITE_UNSOURCED` and
+code by construction. `tests/convert/test_doswriter.py` masks by `WRITE_UNSOURCED` and
 `WRITE_DEFAULTS`, which are the lists the writer declares, so a new difference
 fails.
 

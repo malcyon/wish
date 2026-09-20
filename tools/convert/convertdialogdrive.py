@@ -12,7 +12,7 @@ it, `ConvertDialog.exec` returns Accepted, and the post-write
 because it never patches EditorBinding.convert's post-write
 QMessageBox.information)`) record what they were asked to show instead of
 blocking on a real `exec()` loop under the offscreen platform, the way
-`tests/test_convert.py` does. Those three walks were three copies of this one
+`tests/convert/test_convert.py` does. Those three walks were three copies of this one
 script that differed only in the constants now passed as arguments.
 
 What it writes, under `--out-dir`: the converted files in a `wish-<date>/`

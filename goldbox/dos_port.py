@@ -14,7 +14,7 @@ Every entry below was measured against **24 real specimens** -- 18 characters
 in three played save slots and 6 exported `.CHA` files -- from Donald's Steam
 copy of *Forgotten Realms: The Archives*.  The write-up that was the working,
 `reports/dos-saves.md` (scratch, deleted), is lost; `tests/test_dossave.py` and
-`tests/test_dosconvert.py` are the assertions, and
+`tests/convert/test_dosconvert.py` are the assertions, and
 `docs/117-save-conversion.md` is the plan the table serves.
 Nothing here is transcribed from a hex-editing guide: the community notes in
 `coab-research/formats/` (scratch, deleted) predicted nine of these fields and were right
@@ -1387,7 +1387,7 @@ def layout_for(what: "int | str | DosDeltas") -> tuple[Field, ...]:
     compensating mistakes in one title's deltas -- a field short by *n* and a
     later one long by *n* -- add up correctly and pass, mis-placing every
     field between them.  What catches that is the per-specimen work in
-    `tests/test_dosconvert.py`: every record rebuilding byte for byte, the
+    `tests/convert/test_dosconvert.py`: every record rebuilding byte for byte, the
     encumbrance identity balancing, and the class bitmask agreeing with the
     level arrays, all 54 of 54 today.
 

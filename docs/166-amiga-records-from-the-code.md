@@ -9,7 +9,7 @@ was holding open for specimens nobody has.
 Every offset here is a file offset into `/Curse` on Curse of the Azure Bonds
 disk 1 or `/Secret` on Secret of the Silver Blades disk 1, read with
 `tools/amiga/amiga68k.py`. `tools/amiga/amigaunpack.py` prints each map, and
-`tests/test_amiga.py` runs it against `goldbox/amiga_later.py`'s shapes, so the two
+`tests/amiga/test_amiga.py` runs it against `goldbox/amiga_later.py`'s shapes, so the two
 cannot drift.
 
 ## What changed, and what it corrects
@@ -139,7 +139,7 @@ bytes in one run**. Into six-byte arrays. So a monster loaded from
 CONFIRMED from the two routines; what a player sees is UNKNOWN, and settling
 that means watching a spellcasting monster in Amiga Curse combat and counting
 what it casts. It is recorded here rather than in `goldbox-bugs.md` for that
-reason. `tests/test_amiga.py::test_the_curse_monster_loader_misplaces_two_of_the_slot_arrays`
+reason. `tests/amiga/test_amiga.py::test_the_curse_monster_loader_misplaces_two_of_the_slot_arrays`
 pins it so it is not smoothed back into the shift map.
 
 ## Silver Blades: the map, and the spellbook

@@ -58,7 +58,7 @@ RACE_HUMAN = 7
 
 #: The four races whose own racial ids the DOS writer adds to a converted
 #: character's `.SPC` file regardless of what `innate_effects` carries --
-#: `tests/test_doswriter.py`'s own measurements
+#: `tests/convert/test_doswriter.py`'s own measurements
 #: (`test_a_converted_dwarf_carries_his_constitution_bonus_to_saves`,
 #: `test_a_converted_halfling_carries_the_two_records_his_own_kind_has`,
 #: `test_a_converted_gnome_carries_his_four_innate_records`,
@@ -98,7 +98,7 @@ def _effect(effect_id: int, value: int = 0) -> bytes:
     """One nine-byte `.SPC` node for `granted_effects`: the id, a
     little-endian duration of zero (permanent -- `docs/162-spc-permanence.md`),
     the value the effect carries, the flag byte, and a NULL next pointer --
-    the shape `tests/test_doswriter.py`'s own `_effect` builds and
+    the shape `tests/convert/test_doswriter.py`'s own `_effect` builds and
     `goldbox.dos_codec.write` reads back unchanged."""
     return (bytes((effect_id,)) + (0).to_bytes(2, "little")
             + bytes((value, 0)) + dos_codec.EFFECT_NEXT_NULL)
@@ -109,7 +109,7 @@ def _item(weight_tenths: int = 50) -> bytes:
     a real weight, nothing readied or cursed -- `goldbox.items.build_item`
     leaves everything else zero, which is what keeps the round trip in test
     A exact rather than losing an unattributed byte the way `bytes(range(16))`
-    does in `tests/test_neutral.py::_filled`."""
+    does in `tests/convert/test_neutral.py::_filled`."""
     return items_mod.build_item(type_index=1, quantity=1,
                                 weight_tenths=weight_tenths)
 
@@ -129,7 +129,7 @@ def _base() -> NeutralCharacter:
     char.set("name", "BASE", "made up", Confidence.CONFIRMED,
              Provenance.RESHAPED)
     # Every scalar `c64_codec.DIRECT` names, at a small sequential value --
-    # proven by `tests/test_neutral.py::_filled` to reach `dos_codec.write`
+    # proven by `tests/convert/test_neutral.py::_filled` to reach `dos_codec.write`
     # with zero warnings, since none of these are near a `U8` field's own
     # ceiling of 255. `race`, `char_class`, `attack_level` and the eight
     # thief-skill columns are overridden below to values consistent with

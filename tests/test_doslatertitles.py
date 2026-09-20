@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Writing a DOS record for a title that is not Pool of Radiance (#299).
 
-`tests/test_doswriter.py` proves the writer against the 285-byte record.  This
+`tests/convert/test_doswriter.py` proves the writer against the 285-byte record.  This
 module proves the same writer against the **422-byte Curse of the Azure Bonds
 record and the 439-byte Secret of the Silver Blades one**, which is the whole
 of `#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing

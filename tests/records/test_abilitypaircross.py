@@ -11,7 +11,7 @@ is *in force*, and the exceptional-strength percentile runs the other way
 round.  `docs/204-the-dos-ability-pair.md` has the full account.
 
 **A round trip cannot see this bug**, because DOS to C64 and back crosses the
-pair twice and comes home byte for byte -- see `tests/test_doswriter.py`'s own
+pair twice and comes home byte for byte -- see `tests/convert/test_doswriter.py`'s own
 note.  What proves the fix is a specimen whose two halves *disagree*, read one
 way and then the other:
 

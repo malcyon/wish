@@ -25,7 +25,7 @@ from __future__ import annotations
 import pytest
 
 # `capstone` is not a declared dependency of this project -- the same reason
-# `tests/test_amiga68k.py` and its neighbours skip rather than fail. The tool
+# `tests/amiga/test_amiga68k.py` and its neighbours skip rather than fail. The tool
 # reaches it through `tools/dos/dosovrmap.py`, so the import below is what fails
 # on a machine without it, and CI is such a machine: this file was green here
 # and red on both Linux jobs, 2026-09-09.

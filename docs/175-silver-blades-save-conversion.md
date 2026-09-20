@@ -15,7 +15,7 @@ One 7424-byte `SAVEDBASH` at `$4B00`, and every page at the same offset as
 Curse of the Azure Bonds': header `+$000`-`+$3FF`, eight character pages from
 `+$400`, a table of the party's names at `+$C00`, eight item pages from
 `+$1000`, the walked map at `+$1800`, the roster at `+$1C00`. CONFIRMED,
-`tests/test_ssbconvert.py::test_the_container_is_curses_geometry_under_a_different_name`.
+`tests/convert/test_ssbconvert.py::test_the_container_is_curses_geometry_under_a_different_name`.
 The row is `goldbox/c64_save.py`'s `SECRET_OF_THE_SILVER_BLADES`.
 
 **Three header rows differ from Curse's and one is still PROBABLE.**
@@ -306,4 +306,4 @@ unconfirmed.
 | driving the game | `tools/secret_of_the_silver_blades/ssbrun.py`, on `tools/secret_of_the_silver_blades/ssbwarp.py`'s boot |
 | diffing a resave | `tools/secret_of_the_silver_blades/ssbsavediff.py` |
 | the shipped twins | `tools/secret_of_the_silver_blades/ssbtwins.py` |
-| the tests | `tests/test_ssbconvert.py` |
+| the tests | `tests/convert/test_ssbconvert.py` |

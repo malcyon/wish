@@ -12,7 +12,7 @@ They are not this: they call `goldbox.dos_codec.new_save` and
 `goldbox.dos_codec.new_dos_save` directly, where a player presses Convert and the
 bytes come out of `editor.window.EditorBinding.convert` ▸
 `editor.convert.ConvertDialog` ▸ `Direction.rehearse` ▸ `Direction.write`.
-`tests/test_convert.py`'s three transfer tests assert those two routes are
+`tests/convert/test_convert.py`'s three transfer tests assert those two routes are
 byte-identical, so this run is expected to pass -- and a byte-identity test
 is not a loaded game (`.claude/rules/conversions.md`: "A conversion is not
 proven until it runs").
@@ -28,8 +28,8 @@ What it does, in order:
    text a player would be reading before they press Convert;
 2. calls `EditorBinding.convert(source=…, destination=…, folder=…, game=…)`,
    which is the method `File ▸ Convert…` calls -- given every argument no
-   picker opens, the way `tests/test_convert.py` drives it. Four things are
-   replaced for the duration of that call, the way `tests/test_convert.py`'s
+   picker opens, the way `tests/convert/test_convert.py` drives it. Four things are
+   replaced for the duration of that call, the way `tests/convert/test_convert.py`'s
    own `_no_real_modals` fixture replaces them: `exec()`, the modal wait for
    a person to press Convert; the post-write success box
    (`QMessageBox.information`) and a stray warning (`QMessageBox.warning`),

@@ -2,7 +2,7 @@
 into one shape every port's saved-game reader fills
 (`#352 (Handle world state for Amiga saves)`).
 
-`tests/test_amigaporsavegame.py` and `tests/test_toamigapor.py` keep the
+`tests/amiga/test_amigaporsavegame.py` and `tests/convert/test_toamigapor.py` keep the
 Amiga-specific coverage of the three `goldbox.amiga_savegame.por_state_from_*`
 wrappers; what belongs here is the general reader itself -- that it agrees
 with a title's own C64 and DOS specimens, and the five fields it added
@@ -55,7 +55,7 @@ def test_from_c64_and_from_dos_agree_on_the_projects_one_twin_pair():
     """`WISH-SPEC-por-c64-hall-resave` is the C64 engine's own `ENCAMP >
     SAVE` of `WISH-SPEC-por-party-trained-c2` (DOS slot F), converted by
     this project's own `dos_codec.convert_save` and then loaded and resaved --
-    `tests/test_dosconversionarea.py` already cites the pair for `$49C5`
+    `tests/convert/test_dosconversionarea.py` already cites the pair for `$49C5`
     and `$49F2` alone. `from_c64` and `from_dos` read both files
     independently and agree exactly on area, resident map, square, facing
     and all 217 quest flags.
@@ -134,7 +134,7 @@ def test_the_later_titles_copied_header_words_are_read():
 
 def _fresh_savgam() -> bytes:
     """A party that has never pressed `BEGIN ADVENTURING`: the initialiser's
-    own signature (`tests/test_dosconvert.py`'s `_never_adventured_savgam`,
+    own signature (`tests/convert/test_dosconvert.py`'s `_never_adventured_savgam`,
     not imported -- a test module's private helpers are not another's to
     depend on) -- area 0, map 0, `$49E6` = 0, an all-zero staged script."""
     savgam = bytearray(dos_savegame.SAVGAM_SIZE)

@@ -1058,7 +1058,7 @@ address doubled — and `ovr021.cs` annotates the same array `// as WORD[]`.
 Read that way, three saves of two different parties agree line for line: the six Sokal Keep flags
 (`$4A21`, `$4A26`-`$4A29`, `$4AD7`) are 255 in the save whose party has taken
 the keep and 0 in the two that have not (asserted in
-`tests/test_dosconvert.py::test_the_sokal_keep_flags_are_set_together_or_not_at_all`);
+`tests/convert/test_dosconvert.py::test_the_sokal_keep_flags_are_set_together_or_not_at_all`);
 the seven consecutive slum flags
 `$4ACA`-`$4AD0` are set together or not at all
 (`tests/test_dossave.py::test_the_slums_flags_are_set_together`); `$4ABB` counts slum encounters
@@ -2494,7 +2494,7 @@ not have built it out of three records.** Both halves of the run are kept as
 
 ### The round trip, which is the bar
 
-`tests/test_doswriter.py`, on Donald's 24 DOS records:
+`tests/convert/test_doswriter.py`, on Donald's 24 DOS records:
 
 * **DOS → neutral → DOS is byte-for-byte the original outside the writer's
   own unsourced list, 24 of 24** — and the mask is `WRITE_UNSOURCED` plus
@@ -2721,8 +2721,8 @@ characters each way.
 
 ## Verification
 
-The DOS-to-C64 direction is `tests/test_dosconvert.py`, the reverse is
-`tests/test_doswriter.py`; both skip cleanly where there are no archives.
+The DOS-to-C64 direction is `tests/convert/test_dosconvert.py`, the reverse is
+`tests/convert/test_doswriter.py`; both skip cleanly where there are no archives.
 
 * **A DOS character read and written back unchanged, byte for byte** — 24 of
   24. The DOS side is read-only in practice, but the reader has to be able to
@@ -2738,7 +2738,7 @@ The DOS-to-C64 direction is `tests/test_dosconvert.py`, the reverse is
   obstacle 7 already showed with a throwaway converter and the real one
   repeats.
 
-And for the reverse direction, `tests/test_doswriter.py`:
+And for the reverse direction, `tests/convert/test_doswriter.py`:
 
 * **A DOS record round-trips through the neutral middle** — byte for byte
   outside `WRITE_UNSOURCED` and `WRITE_DEFAULTS`, 24 of 24 — and **through the
@@ -2766,7 +2766,7 @@ Everything above is `goldbox.dos_codec` proven through `tools/dos/dosdisk.py` an
 player does not: they press Convert, and the bytes come out of
 `editor.window.EditorBinding.convert` → `editor.convert.ConvertDialog` →
 `Direction.rehearse` → `Direction.write`.
-`tests/test_convert.py`'s three transfer tests assert those two routes are
+`tests/convert/test_convert.py`'s three transfer tests assert those two routes are
 byte-identical, and a byte-identity test is not a loaded game
 (`.claude/rules/conversions.md`). So both Pool of Radiance directions were
 driven through the dialog's own path and then booted, by

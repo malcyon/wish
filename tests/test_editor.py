@@ -1457,7 +1457,7 @@ def test_the_two_class_fields_are_allowed_to_disagree(editor, save):
 
 def _curse_trained_party_specimen():
     """`WISH-SPEC-curse-trained-party`, verified against its own provenance
-    -- the same rule `tests/test_c64classcode.py`'s `_named_specimen_disk`
+    -- the same rule `tests/convert/test_c64classcode.py`'s `_named_specimen_disk`
     applies. A party this project trained at Curse's own hall, so its stale
     `char_class` bytes are engine-written, not somebody's edit
     (`docs/187-the-class-code-byte.md`)."""
@@ -1496,7 +1496,7 @@ def test_the_class_combo_shows_the_class_the_roster_shows(app, tmp_path):
     Donald's ruling, 2026-09-07, is that the Class combo shows the class he
     actually is, so it must show FIGHTER/THIEF's code (14), the same one
     `goldbox.classcode.code_for(0x0C, game=CURSE)` and
-    `tests/test_c64classcode.py::test_a_trained_curse_records_zeroed_code_reads_repaired`
+    `tests/convert/test_c64classcode.py::test_a_trained_curse_records_zeroed_code_reads_repaired`
     derive, not the stale 0 on disk.
 
     MARK, on the same disk, is the control: a paladin whose `char_class` (3)

@@ -26,7 +26,7 @@ sys.path.insert(0, str(REPO))
 #: `tools/dos/dosracialseed.py` disassembles the overlay, so it imports capstone at
 #: module level -- and capstone is not installed on the CI runners, where this
 #: file failed on all four jobs with `ModuleNotFoundError: No module named
-#: 'capstone'` while passing here.  `tests/test_amiga68k.py` guards the same
+#: 'capstone'` while passing here.  `tests/amiga/test_amiga68k.py` guards the same
 #: dependency the same way.
 pytest.importorskip("capstone")
 

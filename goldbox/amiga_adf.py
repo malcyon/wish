@@ -583,7 +583,7 @@ class AmigaDisk:
         drawer of a copy of the player's own game disk, which is already
         there.  It exists so the writer above can be tested on a disk this
         module formatted, with no game data anywhere -- which is the property
-        `tests/test_amiga_adf.py` is built on.
+        `tests/amiga/test_amiga_adf.py` is built on.
         """
         parts = [p for p in path.replace("\\", "/").split("/") if p]
         if not parts:

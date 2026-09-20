@@ -23,7 +23,7 @@ Realms: The Archives*. Its `SAVE` folder was opened in Gold Box Companion's
 character editor on 2026-08-17 and its `Default files/Saves` is a download
 with no chain of custody, so **nothing here may take a measurement off it**.
 It stays as a *template* for the writer and converter round trips in
-`tests/test_doswriter.py` and the rest, where what goes in comes back out and
+`tests/convert/test_doswriter.py` and the rest, where what goes in comes back out and
 the input's provenance does not enter the claim.
 
 `#246 (Nothing tells an engine-written DOS record from one edited with Gold

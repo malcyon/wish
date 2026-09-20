@@ -15,7 +15,7 @@ the `Slot` combo and the DOS game folder show together.
         GDK_BACKEND=x11 .venv/bin/python tools/convert/convertdialogbuiltshot.py [--out DIR]
 
 The synthetic DOS and C64 sources are built from `tests/fixtures`; the Amiga
-disk comes from `tests/test_amigatoc64` and the three-slot one from the
+disk comes from `tests/convert/test_amigatoc64` and the three-slot one from the
 `por-amiga-outdoor` specimen (`$WISH_SPECIMENS`), so the last case needs that
 specimen. Needs Pillow and the DejaVu fonts. The paths drawn in the fields are
 made up.

@@ -112,7 +112,7 @@ def test_it_resolves_under_a_frozen_root(monkeypatch, tmp_path):
     IconParts` after even the "restoring" reload is a *third* class object,
     still not the one `goldbox.dos_codec` already holds a reference to from its own
     `from .iconparts import IconParts` at import time. Any `IconParts`
-    instance built after that -- `tests/test_ssbconvert.py`'s `ssb_parts`
+    instance built after that -- `tests/convert/test_ssbconvert.py`'s `ssb_parts`
     fixture makes one straight off a disk -- then fails every `isinstance`
     check `goldbox/dos_codec.py` runs against its own, older reference, and a
     combat icon comes back as the unconverted `IconParts` object instead of

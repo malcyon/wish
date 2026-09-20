@@ -5,7 +5,7 @@ code path, `editor.window.EditorBinding.convert`, and hash what it wrote.
 Written for `#52 (File ▸ Import and File ▸ Export for every direction the
 library supports)`. `ConvertDialog.exec` is patched to Accepted and the three
 `QMessageBox` calls are patched to do nothing, the way the Curse and Silver
-Blades walks and `tests/test_convert.py`'s `_no_real_modals` fixture do:
+Blades walks and `tests/convert/test_convert.py`'s `_no_real_modals` fixture do:
 `EditorBinding.convert`'s own success pop-up and `ConvertDialog._maybe_warn`'s
 `.critical`/`.warning` all block on a real `exec()` loop nobody can dismiss
 under the offscreen platform. `tools/convert/convertdialogdrive.py` is the same

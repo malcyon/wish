@@ -1334,7 +1334,7 @@ def later_unsourced_offsets(deltas: AmigaDeltas) -> tuple[int, ...]:
 
     Computed from the shift map rather than listed, so
     :data:`LATER_WRITE_UNSOURCED` cannot quietly disagree with the map it is
-    about -- `tests/test_amigalaterwrite.py` asserts the two are the same
+    about -- `tests/amiga/test_amigalaterwrite.py` asserts the two are the same
     offsets.
     """
     covered: set[int] = set()

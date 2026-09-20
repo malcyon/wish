@@ -224,4 +224,4 @@ were listed and left; and no drawer other than `Save` on disk 3 was tried.
   than by remembering where the window sat. Kickstart's insert-disk screen is
   the one that breaks a lazy version of that search: it is white to the client
   area's last row, so "walk up while the row is light" walks seven rows into
-  the picture. `tests/test_amigashots.py` holds that case.
+  the picture. `tests/amiga/test_amigashots.py` holds that case.

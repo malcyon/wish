@@ -445,7 +445,7 @@ def test_a_dos_source_supplies_npc_rather_than_dropping_it_in_silence():
 # --- what a player reads ------------------------------------------------------
 
 def test_no_c64_status_drop_line_carries_developer_detail():
-    """The same guard `tests/test_dosconvert.py` puts on the DOS table, for
+    """The same guard `tests/convert/test_dosconvert.py` puts on the DOS table, for
     the lines this conversion composes: no file offset and no bare issue
     number in front of a player (`.claude/rules/gui-text.md`).  #244 (Every
     DROPPED entry's composed line carries a raw hex file offset in front of

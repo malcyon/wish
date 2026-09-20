@@ -42,8 +42,8 @@ they never fix it... We need it to be correct."*
 unshortened, in `goldbox/dos_codec.py`.** Removing this dialog does not make
 either dead: `dos_codec.convert_save`'s own contract -- a never-set-out
 party is converted to the start of the story and `report.messages` says so --
-is pinned directly against real specimens in `tests/test_dosconvert.py` and
-`tests/test_curseconvert.py`, independent of any window, and `report.summary()`
+is pinned directly against real specimens in `tests/convert/test_dosconvert.py` and
+`tests/convert/test_curseconvert.py`, independent of any window, and `report.summary()`
 still puts the sentence in front of whoever runs a driven tool with
 `--report`. Only the display of it is gone, the way `editor/convert.py`'s
 pane stopped drawing it on 2026-09-10 while the constant and the field it
@@ -237,7 +237,7 @@ def pane_text(report: dos_codec.Report) -> str:
     without duplicating this function's own logic -- and discards the
     return value; `DosImportDialog` no longer calls it at all, since its own
     `_attempt` logs `report.dropped` itself. What is left reading the return
-    value is `tests/test_dosimport.py`, pinning the join-and-blank-line logic
+    value is `tests/convert/test_dosimport.py`, pinning the join-and-blank-line logic
     on its own.
     """
     if report.dropped:

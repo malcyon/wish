@@ -425,7 +425,7 @@ def test_dos_icon_tables_with_no_title_reads_the_base_table():
     `IconParts.dos_icon`, so a converted Silver Blades character now gets
     Donald's own head 9/2 split (`#335 (Two combat-figure rows describe Pool
     of Radiance's art, and Silver Blades draws those two options
-    differently)`, `tests/test_ssbconvert.py::
+    differently)`, `tests/convert/test_ssbconvert.py::
     test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion`).
     """
 
@@ -632,7 +632,7 @@ def test_the_body_eleven_row_reaches_a_converted_silver_blades_dwarf(parts):
     different reading of the same file and says nothing about what a
     converted character gets.
 
-    The twin of `tests/test_ssbconvert.py::
+    The twin of `tests/convert/test_ssbconvert.py::
     test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion`
     for the other half of the pair.  The expected shape is composed
     independently from the literal C64 option, so a pass means the figure

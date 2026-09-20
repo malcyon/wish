@@ -231,8 +231,8 @@ The mechanics, in `goldbox/dos_codec.py`:
 
 A party standing in New Phlan with the clock running is untouched: the
 staged script says it has set out, and its own square, clock and map are
-written as before. `tests/test_dosconvert.py`,
-`tests/test_curseconvert.py` and `tests/test_ssbconvert.py` hold a test per
+written as before. `tests/convert/test_dosconvert.py`,
+`tests/convert/test_curseconvert.py` and `tests/convert/test_ssbconvert.py` hold a test per
 title, and the one that matters most --
 `test_a_party_standing_in_new_phlan_is_left_exactly_where_it_is` -- pins the
 regression the naive fix would cause.

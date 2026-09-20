@@ -26,7 +26,7 @@ import pytest
 # `ModuleNotFoundError` on a machine without it -- and every CI runner is one.
 # A skip written after this line never runs: the module fails to import first
 # and pytest reports an error rather than a skip. That is the mistake that
-# turned `main` red on all four jobs this morning in `tests/test_amigaglobal.py`
+# turned `main` red on all four jobs this morning in `tests/amiga/test_amigaglobal.py`
 # and again here.
 pytest.importorskip("capstone")
 

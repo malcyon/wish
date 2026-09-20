@@ -16,7 +16,7 @@ built from named fields alone**, and PoD drew every one of them back —
 `WRITTEN`, `FEMALE 33 YEARS`, `CHAOTIC EVIL`, `HALF-ELF`, `THIEF`, `LEVEL 7`,
 `HIT POINTS 55/77`, `EXPERIENCE 10000`, `STR 18 INT 17 WIS 16 DEX 15 CON 14
 CHA 13`, `PLATINUM 200 GEMS 11 JEWELRY 22`, `MOVEMENT 12`, `STATUS: OKAY`.
-§2.3 and §2.4 have the probes; `goldbox/amiga_pod.py` and `tests/test_amiga.py` carry
+§2.3 and §2.4 have the probes; `goldbox/amiga_pod.py` and `tests/amiga/test_amiga.py` carry
 the result. The item region at `0x0B6` turned out **not** to be a wall: zero in
 it is accepted, and its error message belongs to the graphics library, not the
 inventory. Everything else below is still a costing. It exists because the
@@ -573,7 +573,7 @@ roster, and every field of the one sheet photographed:
 | | `PLATINUM 8  GOLD 1  SILVER 24` | the `u16be` money block |
 | | `THAC0 17` | **derived**: the record holds 60−40 = 20 and the game applies the +3 for 18/00 |
 
-`tests/test_amiga.py` pins those numbers, and reads its specimens from a
+`tests/amiga/test_amiga.py` pins those numbers, and reads its specimens from a
 directory named by `$AMIGA_POR_SAVES`, skipping without one.
 
 **A DOS-side consequence.** `movement_current` at DOS `0x11C` is PROBABLE in
@@ -1210,7 +1210,7 @@ Watched failing with the item shift map's second step moved by one.
 **The specimens come out of the disks now, not out of scratch.**
 `tools/amiga/amigasaves.py` reads the twenty records back out of the images they live
 in -- six on Pool of Radiance disk 1 and fourteen on the Curse save disk -- and
-`tests/test_amiga.py` calls it when `$AMIGA_POR_SAVES` names nothing. The
+`tests/amiga/test_amiga.py` calls it when `$AMIGA_POR_SAVES` names nothing. The
 earlier corpus was extracted into gitignored scratch and was lost,
 and every one of these tests was skipping until 2026-09-04.
 
@@ -1467,7 +1467,7 @@ the state this function exists to refuse, arrived at by a different route.
 `goldbox.amiga_adf.AmigaDisk.make_dir` was added for this, and only for the
 tests: production writes into the `save` drawer of a copy of the player's own
 game disk, which is already there, but a blank disk this module formats has no
-drawers at all and `tests/test_amiga_adf.py`'s no-game-data property is worth
+drawers at all and `tests/amiga/test_amiga_adf.py`'s no-game-data property is worth
 more than the twenty-five lines.
 
 ### 1.14 The Curse and Silver Blades square regions, lined up (#28 (Decode an Amiga saved game, not just a character file))
@@ -1717,7 +1717,7 @@ of Darkness' `0x0B8`"*.
 
 `tools/amiga/podimportmap.py` re-derives the whole map from the player's own disk
 and `--check` compares it with `goldbox/amiga_pod.py`'s constants;
-`tests/test_podamiga.py::test_every_offset_matches_the_engines_own_silver_
+`tests/amiga/test_podamiga.py::test_every_offset_matches_the_engines_own_silver_
 blades_importer` runs it. **51 of 51 constants match.** This is proof from the
 shipped code rather than from a probe, so it cannot be spoiled by an edited
 specimen — which matters here, because seven of the nineteen `.pc` files on
@@ -1982,7 +1982,7 @@ one non-zero class level each — three for `TRIPEL TURBO`, who is triple-classe
 — armour class `10` and damage `1d2` for all twelve, which is what unequipped
 means, experience `1500001` for eleven and `500000` for one, and ages 28 to 46.
 **`TROND.pc` reads 138 hit points, and `HP 138` is what the roster drew when
-TROND was added to the party** in the earlier session. `tests/test_amiga.py`
+TROND was added to the party** in the earlier session. `tests/amiga/test_amiga.py`
 asserts both halves — the ramp offsets, and the real files.
 
 `Save/T.pc` is the odd one: a name the picker draws as `?T`, and its only class
@@ -2260,9 +2260,9 @@ Ordered so the cheapest thing that could kill the approach runs first.
 | 1 | ~~**Read the `.pc` loader.**~~ **DONE** (#148 (The Amiga port's tools are gone, and phase 1 still needs the disassembler)). `tools/amiga/m68dis.py` was rebuilt for it. 404 bytes, then 20 per item and 10 per effect; AmigaDOS `Open`/`Read`; the only checks are the read lengths and an `'I'` on each item. | §1.16 | no | done | run — see §1.16 |
 | 2 | ~~**The assumption test (§2.2), cases A–D.**~~ **DONE.** | A loads; **B loads too** | yes | one session | run — see §2.2 |
 | 3 | **An OFS ADF writer.** Round-trip: read every file off disk 3, rebuild an image, compare file contents byte for byte; then boot it in FS-UAE and let PoD list the twelve characters. | `goldbox/adf.py` (writer) with tests that read the player's own disks, never a committed image | yes, once | a week | PoD's `Add Character → Pools` shows all twelve names off our image |
-| 4 | ~~**Decode the `.pc` record.**~~ **Done for everything the sheet shows.** The ramp of §2.3 found the numbers; the plausible-value probe of §2.4 found the four enums, current hit points and the seventh level slot. What is left is undecoded rather than blocking: saving throws, thief skills, the class bitmask, the portrait indices and the appended item data. | `goldbox/amiga_pod.py`, plus `tests/test_amiga.py` asserting the ramp offsets, the written record and the twelve real files | yes, repeatedly | done | every named field decodes to a legal AD&D value across all twelve |
+| 4 | ~~**Decode the `.pc` record.**~~ **Done for everything the sheet shows.** The ramp of §2.3 found the numbers; the plausible-value probe of §2.4 found the four enums, current hit points and the seventh level slot. What is left is undecoded rather than blocking: saving throws, thief skills, the class bitmask, the portrait indices and the appended item data. | `goldbox/amiga_pod.py`, plus `tests/amiga/test_amiga.py` asserting the ramp offsets, the written record and the twelve real files | yes, repeatedly | done | every named field decodes to a legal AD&D value across all twelve |
 | 5 | **Resolve the pointers.** Determine whether the `0x00`–`0x5F` addresses are re-linked on load. Two ways: read the loader (phase 1 may already answer it), or write a `.pc` with those longwords zeroed and see if PoD still loads it. | a ruling: don't-care, or must-be-plausible | yes | a session | a zeroed-pointer `.pc` loads and its sheet is unchanged |
-| 6 | ~~**The map and the writer.**~~ **DONE.** `goldbox.amiga_pod.write_pod` takes a `NeutralCharacter` — the one record every codec now shares, since #25 (One neutral character record, with a codec per format) — and `to_pc` emits the 484 bytes. `Report.unaccounted` is empty on every character of the player's own party, so there is no "template" category. `pod_write_field_disposition()` names what becomes of every neutral field, and `tests/test_amiga.py` fails if a field appears in one and not the other. | `goldbox/amiga_pod.py`, `tools/amiga/toamiga.py` | no | done | run |
+| 6 | ~~**The map and the writer.**~~ **DONE.** `goldbox.amiga_pod.write_pod` takes a `NeutralCharacter` — the one record every codec now shares, since #25 (One neutral character record, with a codec per format) — and `to_pc` emits the 484 bytes. `Report.unaccounted` is empty on every character of the player's own party, so there is no "template" category. `pod_write_field_disposition()` names what becomes of every neutral field, and `tests/amiga/test_amiga.py` fails if a field appears in one and not the other. | `goldbox/amiga_pod.py`, `tools/amiga/toamiga.py` | no | done | run |
 | 7 | ~~**End to end.**~~ **DONE**, on Pool of Radiance rather than Silver Blades, for blocker 2's reason. `LADY KATHERINE` off the player's own C64 save loaded into PoD and her sheet matches field for field — §2.5. | the thing Donald asked for | yes | done | run |
 
 Two side experiments worth naming, both cheap and neither on the critical path:

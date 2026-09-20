@@ -110,10 +110,10 @@ column is what stays after the freeze:
 | `tests/icons/test_iconproposal.py` | 67 | 70.6 | 8.0 | 0.0 | 62.6 |
 | `tests/test_editor.py` | 182 | 80.3 | 25.2 | 10.6 | 55.1 |
 | `tests/icons/test_iconparts.py` | 39 | 57.5 | 5.0 | 46.4 | 52.5 |
-| `tests/test_amiga.py` | 173 | 75.4 | 32.8 | 0.0 | 42.5 |
+| `tests/amiga/test_amiga.py` | 173 | 75.4 | 32.8 | 0.0 | 42.5 |
 | `tests/test_mapscale.py` | 25 | 45.4 | 4.3 | 0.0 | 41.2 |
 | `tests/test_preferences.py` | 83 | 49.7 | 11.9 | 0.0 | 37.7 |
-| `tests/test_amigalaterwrite.py` | 17 | 39.2 | 2.3 | 0.0 | 36.9 |
+| `tests/amiga/test_amigalaterwrite.py` | 17 | 39.2 | 2.3 | 0.0 | 36.9 |
 
 `tests/suite/test_toolshadowing.py` is the one item large enough to be attacked on
 its own. Its 711 tests are two parametrised sweeps over every script in

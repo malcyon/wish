@@ -144,7 +144,7 @@ def _dos_specimen(name: str):
     *title*, so a Curse of the Azure Bonds one is `coab-dos/` and only Pool of
     Radiance's are under `por-dos/`; `tests.gamedata.have_specimen` assumes
     the latter and cannot see this one.  Globbing is what
-    `tests/test_convertmatrix.py` does for the same reason.
+    `tests/convert/test_convertmatrix.py` does for the same reason.
     """
     root = gamedata.specimen_root()
     if root is None:

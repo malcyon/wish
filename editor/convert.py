@@ -1556,7 +1556,7 @@ class ConvertDialog(QDialog):
         self._last_name_warning_shown: str | None = None
         #: `False` through the constructor's own first `replan()` below, so
         #: building a `ConvertDialog` with a state already prefilled --
-        #: every test in `tests/test_convert.py` that does that -- never
+        #: every test in `tests/convert/test_convert.py` that does that -- never
         #: has to expect a modal of its own. `True` from here on: a real
         #: player only reaches this dialog after construction has already
         #: run once.
@@ -1772,7 +1772,7 @@ class ConvertDialog(QDialog):
         actually did.
 
         Gated on `self._interactive`, so a `ConvertDialog` built with a
-        state already prefilled -- every test in `tests/test_convert.py`
+        state already prefilled -- every test in `tests/convert/test_convert.py`
         that does that -- never has to expect a modal of its own; a real
         player only reaches this after `__init__` has already run once.
         Deduplicated against what was last actually shown, so replanning
