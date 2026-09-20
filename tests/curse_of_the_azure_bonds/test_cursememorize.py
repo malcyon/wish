@@ -315,3 +315,139 @@ def test_a_missing_specimen_or_game_fails_before_a_slot_is_claimed(
     assert cm.run(_run_args(tmp_path, specimen)) == 2
     assert not (tmp_path / "out").exists()
     assert what in capsys.readouterr().err
+
+
+def _stub_run(monkeypatch, tmp_path, session_factory):
+    monkeypatch.setattr(cm, "describe", lambda path: {"file": path.name})
+    monkeypatch.setattr(cm.dosbox, "find_game", lambda stem: tmp_path)
+    monkeypatch.setattr(cm.dosbox, "claim", lambda note="": FakeSlot())
+    monkeypatch.setattr(cm.dosbox, "Session", session_factory)
+
+
+def _specimen(tmp_path):
+    specimen = tmp_path / "specimen"
+    specimen.mkdir()
+    (specimen / "CHRDATA1.SAV").write_bytes(b"rec")
+    return specimen
+
+
+def test_a_shot_an_earlier_tenant_of_the_slot_left_is_not_kept(
+        tmp_path, monkeypatch, capsys):
+    """`stage(fresh=True)` empties `game/` and not `shots/`, so the slot may
+    still hold the last tenant's PNGs when this run starts."""
+    def factory(slot, game):
+        session = RunSession(tmp_path / "slot")
+        (session.dir / "shots" / "t0-19-End.png").write_bytes(b"stale")
+        return session
+
+    _stub_run(monkeypatch, tmp_path, factory)
+    out = tmp_path / "out"
+    (out / "shots").mkdir(parents=True)
+    (out / "shots" / "t0-19-End.png").write_bytes(b"previous run")
+
+    assert cm.run(_run_args(tmp_path, _specimen(tmp_path))) == 0
+    capsys.readouterr()
+
+    kept = sorted(p.name for p in (out / "shots").iterdir())
+    assert "t0-19-End.png" not in kept and kept
+    assert all(p.read_bytes() == b"png" for p in (out / "shots").iterdir())
+
+
+def test_a_run_that_dies_before_staging_keeps_evidence_despite_a_stale_shot(
+        tmp_path, monkeypatch, capsys):
+    class NoStage(RunSession):
+        def stage(self, fresh=False):
+            raise RuntimeError("no game tree")
+
+    def factory(slot, game):
+        session = NoStage(tmp_path / "slot")
+        (session.dir / "shots" / "t0-19-End.png").write_bytes(b"stale")
+        return session
+
+    _stub_run(monkeypatch, tmp_path, factory)
+    out = tmp_path / "out"
+    (out / "shots").mkdir(parents=True)
+    (out / "shots" / "t0-00-n.png").write_bytes(b"previous run")
+
+    with pytest.raises(RuntimeError, match="no game tree"):
+        cm.run(_run_args(tmp_path, _specimen(tmp_path)))
+    capsys.readouterr()
+
+    assert [p.name for p in (out / "shots").iterdir()] == ["t0-00-n.png"]
+    assert (out / "shots" / "t0-00-n.png").read_bytes() == b"previous run"
+
+
+def test_a_full_pool_leaves_the_earlier_runs_log_and_table(
+        tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "run.jsonl").write_text("earlier log\n")
+    (out / "keys.tsv").write_text("earlier table\n")
+
+    def claim(note=""):
+        raise RuntimeError("pool full")
+
+    monkeypatch.setattr(cm.dosbox, "find_game", lambda stem: tmp_path)
+    monkeypatch.setattr(cm.dosbox, "claim", claim)
+    with pytest.raises(RuntimeError, match="pool full"):
+        cm.run(_run_args(tmp_path, _specimen(tmp_path)))
+
+    assert (out / "run.jsonl").read_text() == "earlier log\n"
+    assert (out / "keys.tsv").read_text() == "earlier table\n"
+
+
+def test_a_session_that_will_not_build_leaves_the_log_and_releases_the_slot(
+        tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "run.jsonl").write_text("earlier log\n")
+    released: list[bool] = []
+
+    class Slot:
+        def release(self):
+            released.append(True)
+
+    def factory(slot, game):
+        raise RuntimeError("xdotool is missing")
+
+    monkeypatch.setattr(cm.dosbox, "find_game", lambda stem: tmp_path)
+    monkeypatch.setattr(cm.dosbox, "claim", lambda note="": Slot())
+    monkeypatch.setattr(cm.dosbox, "Session", factory)
+    with pytest.raises(RuntimeError, match="xdotool"):
+        cm.run(_run_args(tmp_path, _specimen(tmp_path)))
+
+    assert (out / "run.jsonl").read_text() == "earlier log\n"
+    assert released == [True]
+
+
+def test_a_directory_named_like_a_shot_or_a_record_does_not_stop_the_copy(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(cm, "describe", lambda path: {"file": path.name})
+    out = tmp_path / "out"
+    (out / "shots" / "x.png").mkdir(parents=True)
+    (out / "saves" / "CHRDATDIR").mkdir(parents=True)
+    slot = FakeSlotSession(tmp_path / "a", ["t0-00-n.png"], ["CHRDATA1.SAV"])
+    (slot.dir / "shots" / "y.png").mkdir()
+    (slot.save_dir / "SAVGAMDIR").mkdir()
+
+    cm.keep_run_files(slot, out, lambda **kw: None)
+
+    assert (out / "shots" / "t0-00-n.png").is_file()
+    assert (out / "saves" / "CHRDATA1.SAV").is_file()
+    assert not (out / "shots" / "y.png").exists()
+    assert (out / "shots" / "x.png").is_dir()
+    assert (out / "saves" / "CHRDATDIR").is_dir()
+
+
+def test_a_run_whose_files_could_not_be_kept_exits_nonzero(
+        tmp_path, monkeypatch, capsys):
+    _stub_run(monkeypatch, tmp_path, lambda slot, game: RunSession(
+        tmp_path / "slot"))
+
+    def keep(session, out, note):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(cm, "keep_run_files", keep)
+
+    assert cm.run(_run_args(tmp_path, _specimen(tmp_path))) == 1
+    assert "keeping-failed" in capsys.readouterr().out

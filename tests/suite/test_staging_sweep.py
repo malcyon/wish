@@ -125,8 +125,8 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     ("convertrun.py", 'out / "stuck.png"'): "the screen this run was stuck on",
     ("convertrun.py", 'out / "walked.png"'): "the world after this run walked",
     ("cursememorize.py", "shots / png.name"):
-        "this run's own shots directory; the *.png files already in it are "
-        "removed first",
+        "this run's own shots directory, emptied of *.png files once the slot "
+        "was claimed; the *.png files already in `out/shots` are removed first",
     ("curseregain.py", "shots / png.name"): "this run's own shots directory",
     ("dosencsave.py", "shots / png.name"): "this run's own shots directory",
     ("dosfightrun.py", 'out / f"{name}.png"'): "this run's own shots directory",
@@ -178,7 +178,7 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
         "tree Session.stage(fresh=True) has just rebuilt",
     ("cursememorize.py", "saves / f.name"):
         "the save files the game wrote in this run's staged tree; the CHRDAT* "
-        "and SAVGAM* files already in `saves` are removed first, so no "
+        "and SAVGAM* files already in `out/saves` are removed first, so no "
         "leftover of an earlier run survives",
     ("curseregain.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
