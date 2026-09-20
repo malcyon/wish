@@ -56,7 +56,7 @@ needs_ssb_disks = pytest.mark.skipif(_ssb_disks_dir() is None,
 
 def _dos_game():
     """The DOS game directory -- the one with `START.EXE` in it -- or skip."""
-    from test_dossave import _save_dir
+    from support.dossave import _save_dir
 
     where = _save_dir()
     if where is None:
@@ -860,7 +860,7 @@ def test_the_eighth_body_reaches_an_amiga_record_and_comes_back_unchanged():
 
     Fails without the fix, on the first assertion.
     """
-    from test_amiga import sample
+    from support.amigarecords import sample
 
     from goldbox import amiga_por, dos_codec
 

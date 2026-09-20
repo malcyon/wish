@@ -314,7 +314,7 @@ def test_a_target_over_the_pipe_never_sends_a_resume():
 def test_a_target_over_the_console_still_resumes():
     """The older route halts the machine at its `>` prompt, so a batch that
     did not resume would leave the emulator stopped -- `#95`."""
-    from tests.test_amigatarget import Guest, target
+    from support.amigatarget import Guest, target
     t, guest = target({0xC00000: b"\x01\x02\x03\x04"})
     assert t.halts_on_read is True
     t.read(0xC00000, 4)

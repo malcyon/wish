@@ -25,7 +25,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from test_amigatoc64 import _pool_of_radiance_disk_1  # noqa: E402
+from support.amigatoc64 import _pool_of_radiance_disk_1  # noqa: E402
 
 from goldbox import amiga_port, amiga_savegame, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402

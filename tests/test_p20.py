@@ -167,7 +167,7 @@ def test_only_area_30_is_closed_to_a_fasttravel():
 def test_the_fasttravel_action_refuses_the_attract_mode_demo():
     """Refused in the engine as well as absent from the dropdown, because the
     refusal is what protects a caller that did not come through the row."""
-    from test_debugmode import IN_THE_LOOP, machine
+    from support.debugmachine import IN_THE_LOOP, machine
 
     from automap.actions import FastTravel
 

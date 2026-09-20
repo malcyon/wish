@@ -19,7 +19,7 @@ things that are new -- the drop lines and the two composition directions.
 """
 
 import pytest
-from test_amiga import curse_characters, silver_blades_characters
+from support.amigarecords import curse_characters, silver_blades_characters
 
 from goldbox import amiga_later, amiga_port
 from goldbox.iconparts import IconParts, dos_icon_tables, dos_size

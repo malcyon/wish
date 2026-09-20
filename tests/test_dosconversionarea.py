@@ -24,7 +24,7 @@ from __future__ import annotations
 import pathlib
 
 import pytest
-from test_dossave import _save_dir
+from support.dossave import _save_dir
 
 from goldbox import dos_codec
 from goldbox import dos_savegame as sg

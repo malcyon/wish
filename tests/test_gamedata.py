@@ -24,11 +24,11 @@ from gamedata import (
     npc_party_disk,
     require_registered,
 )
+from support import titletables as test_titletables
+from support.silverblades import SSB_KEY, ssb_dir, ssb_disks
 
 from automap import gamedisks
 from goldbox import c64_port
-from tests import test_titletables
-from tests.test_silverblades import SSB_KEY, ssb_dir, ssb_disks
 
 TITLE_KEYS = [g.key for g in c64_port.GAMES] + ["npc-party-save"]
 ENTRY_KEYS = list(gamedisks._example())

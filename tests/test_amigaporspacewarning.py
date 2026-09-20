@@ -24,7 +24,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from test_amiga import sample  # noqa: E402
+from support.amigarecords import sample  # noqa: E402
 
 from goldbox import amiga_por  # noqa: E402
 

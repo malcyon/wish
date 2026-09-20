@@ -1,12 +1,3 @@
-
-def make_root():
-    from PyQt6.QtWidgets import QMainWindow
-
-    from wish.ui_window import Ui_WishWindow
-    root = QMainWindow()
-    Ui_WishWindow().setupUi(root)
-    return root
-
 """Tests for the character editor.
 
 The binding and file handling are pure Python. The window needs Qt but not a
@@ -19,6 +10,7 @@ import pathlib
 
 import pytest
 from gamedata import disk_dir, disk_path, synthetic_save
+from support.editorwindow import make_root
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -2729,8 +2721,9 @@ def _silver_blades_save(tmp_path):
     lookup lives there because `tests/gamedata.py` has no Silver Blades hook --
     and copied, because the player's own disks are never opened by a test.
     """
+    from support.silverblades import SSB, ssb_dir
+
     from goldbox.d64 import D64
-    from tests.test_silverblades import SSB, ssb_dir
 
     where = ssb_dir()
     if where is None:
@@ -3645,7 +3638,7 @@ def _curse_window(app, tmp_path):
 def _silver_blades_window(app, tmp_path):
     from editor.window import EditorBinding
     from goldbox import c64_port
-    ssb_dir = pytest.importorskip("tests.test_silverblades").ssb_dir
+    ssb_dir = pytest.importorskip("support.silverblades").ssb_dir
     save = _title_save(ssb_dir(), "SILVER*.[dD]64",
                        c64_port.SECRET_OF_THE_SILVER_BLADES, tmp_path)
     return EditorBinding(make_root(), str(save))

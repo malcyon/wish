@@ -20,7 +20,7 @@ import dataclasses
 import logging
 
 import pytest
-from test_doswriter import _portrait_tables
+from support.doswriter import _portrait_tables
 
 from goldbox import dos_codec, dos_port
 from tools.records import boundarychars

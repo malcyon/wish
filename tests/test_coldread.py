@@ -34,36 +34,14 @@ from conftest import load_tools_module
 
 coldread = load_tools_module("coldread")
 
+from support.coldread import CURSE, POOL, _root
+
 from goldbox import c64_port, items, traits  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tests import gamedata  # noqa: E402
-from tests.test_silverblades import ssb_dir  # noqa: E402
 
-POOL = c64_port.POOL_OF_RADIANCE
-CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 
 BASE = coldread.GEN_BASE
-
-
-def _root(game):
-    """The directory holding a title's disks, or skip.
-
-    Each title is found the way the rest of the suite finds it, so a machine
-    with one game and not another runs exactly the tests it can.
-    """
-    if game is POOL:
-        where = gamedata.disk_dir()
-        env = "POR_DISKS"
-    elif game is CURSE:
-        where = gamedata.curse_dir()
-        env = gamedata.CURSE_ENV
-    else:
-        where = ssb_dir()
-        env = "SSB_DISKS"
-    if where is None:
-        pytest.skip(f"needs the {game.title} disks; set {env}")
-    return str(where)
 
 
 def _gen(game) -> bytes:
@@ -210,7 +188,7 @@ def test_the_shipped_silver_blades_party_carries_what_the_seed_tables_write():
     the corroboration the tables need -- a table read out of code and never
     seen on a character is a reading, not a measurement.
     """
-    from tests.test_silverblades import _party
+    from support.silverblades import _party
 
     gen = _gen(SSB)
     _, tables = coldread.trait_seeds(gen, SSB, BASE)
@@ -605,7 +583,7 @@ def test_silver_blades_saving_throws_reproduce_ssis_own_party():
     MALACHITE is the dwarf, so three of his five carry the constitution bonus.
     A rule that got either wrong would still fit the other four.
     """
-    from tests.test_silverblades import _party
+    from support.silverblades import _party
 
     gen = _gen(SSB)
     sg0, _sg1 = _party()
@@ -821,8 +799,9 @@ def test_the_shipped_partys_saves_reproduce_through_the_module():
     through `goldbox/levels.py:saving_throws` -- what the character sheet and
     `goldbox/levelup.py` actually call -- rather than a hand-rolled
     reproduction of the GEN masks."""
+    from support.silverblades import _party
+
     from goldbox import levels
-    from tests.test_silverblades import _party
 
     sg0, _sg1 = _party()
     checked = 0
@@ -852,8 +831,9 @@ def test_the_shipped_partys_cards_read_silver_blades_thresholds():
     """MORGAINE, DOMINIC and EPONA each hold a level Pool of Radiance's tables
     have no room for -- this is the test that fails if `automap/live.py`
     passes `game` to `_classes` but `characters` forgets to pass it on."""
+    from support.silverblades import _party
+
     from automap import live
-    from tests.test_silverblades import _party
 
     sg0, sg1 = _party()
     characters = {c.name: c for c in live.characters(sg0, sg1)}

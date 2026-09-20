@@ -219,7 +219,7 @@ def test_a_c64_party_converted_to_dos_is_not_told_about_infravision():
     measurement), so a real conversion never puts a line about it in front of
     anybody -- achieved since #483 by `write` consuming the field with `use`
     rather than by a separate list built to keep it off the count."""
-    from test_neutral import _filled
+    from support.neutralrecords import _filled
 
     char = _filled()
     char.set("infravision", 6, "made up: a C64 source's own byte")

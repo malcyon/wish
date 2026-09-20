@@ -476,7 +476,7 @@ def curse_arena_with_screen(rows, delay: int = 2) -> MemoryTarget:
     mode, delay and screen bytes are added here, the same way `arena_with_
     screen` adds `machine()`'s to `synthetic_arena`'s.
     """
-    from test_latercombat import later_arena
+    from support.latercombat import later_arena
     where = combat.BY_KEY[CURSE.key]
     memory = dict(later_arena())
     memory[where.delay] = bytes([delay])

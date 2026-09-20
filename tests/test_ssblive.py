@@ -27,11 +27,11 @@ Everything skips when the disks are absent. Nothing reads a committed fixture.
 
 
 import pytest
+from support.silverblades import _party, ssb_dir, ssb_disks
 
 from goldbox import c64_port
 from goldbox.d64 import D64, split_load_address
 from goldbox.geo import EAST, GEO_SIZE, NORTH, SOUTH, WEST, Geo
-from tests.test_silverblades import _party, ssb_dir, ssb_disks
 
 SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS

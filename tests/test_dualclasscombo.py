@@ -172,7 +172,7 @@ def test_the_combo_and_a_conversion_agree_one_action_after_the_change():
 def test_the_window_draws_the_class_the_conversion_would_write():
     """The same reading through the window the player actually opens, rather
     than through the function behind it -- the combo's own current item."""
-    from test_editor import make_root
+    from support.editorwindow import make_root
 
     from editor.window import EditorBinding
 

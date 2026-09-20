@@ -281,7 +281,7 @@ def _other_type_tables():
     except Exception:
         pass
     try:
-        from test_silverblades import ssb_dir
+        from support.silverblades import ssb_dir
         where = ssb_dir()
         if where is not None:
             for side in sorted(where.glob("SILVER*.[dD]64")):

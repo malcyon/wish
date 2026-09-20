@@ -22,9 +22,9 @@ import shutil
 import sys
 
 import pytest
+from support.packagingspec import _run_spec
 
 from goldbox import assets
-from tests.test_packaging import _run_spec
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 

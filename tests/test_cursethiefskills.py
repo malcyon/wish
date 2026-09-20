@@ -30,7 +30,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from test_neutral import _filled  # noqa: E402
+from support.neutralrecords import _filled  # noqa: E402
 
 from goldbox import c64_codec, dos_codec, dos_port  # noqa: E402
 from goldbox import levels as level_tables  # noqa: E402

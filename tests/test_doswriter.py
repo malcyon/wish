@@ -20,7 +20,7 @@ The other half of `tests/test_dosconvert.py`.  That module proves the DOS
 
 import pytest
 from gamedata import game_file, have_specimen, needs_specimens, specimen
-from test_dossave import (
+from support.dossave import (
     CLEAN_PARTY,
     CLEAN_ROLLS,
     CLEAN_TRAINED,
@@ -28,8 +28,9 @@ from test_dossave import (
     _save_dir,
     needs_dos_saves,
 )
-from test_dossave import _records as _archive_records
-from test_neutral import _filled
+from support.dossave import _records as _archive_records
+from support.doswriter import _item_granted_specimen, _portrait_tables
+from support.neutralrecords import _filled
 
 from goldbox import (
     c64_codec,
@@ -570,34 +571,6 @@ def test_a_race_with_no_innate_effects_gets_no_spc_file():
         assert spc == b"", race
 
 
-def _item_granted_specimen():
-    """The engine-written DOS record of a readied magical item, or None.
-
-    `$WISH_SPECIMENS`' `por-item-granted`: THRENDER GRONE's flail was given
-    effect byte 61 and power byte `0x80` in a staged copy of the shipped
-    party, readied through the game's own `VIEW > ITEMS > READY`, and the
-    party saved to slot D **by the game**, which is what wrote the `.SPC`.
-    `tools/dos/dosspcexpiry.py ready` regenerates it in about five minutes.
-
-    Staging the item's two bytes and then reading what the engine computed
-    from them is the experiment `.claude/rules/testing.md` calls valid: the
-    engine does not care how a byte got into its input.  What is being read
-    back is the engine's own output.
-    """
-    import pathlib
-    import sys
-
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-    from tools.registry import specimens
-
-    for entry in specimens.list_specimens():
-        if entry.get("name") == "por-item-granted":
-            for path in entry["_files"]:
-                if path.name.endswith(".SAV"):
-                    return path
-    return None
-
-
 def test_the_engines_own_item_granted_record_survives_the_round_trip():
     """The one DOS record anybody has that a ring's effect was written into
     by the game itself.
@@ -766,28 +739,6 @@ def _portrait_offsets() -> set[int]:
         f = dos_port.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))
     return out
-
-
-def _portrait_tables():
-    """The creation menu out of the game directory the DOS saves sit in.
-
-    `None` when the saves are somewhere else -- Steam redirects them out of
-    the game folder -- in which case the portrait pair stays masked and the
-    round trip says nothing about it, which is the honest outcome rather than
-    a skip of the whole test.
-    """
-    from goldbox import portraits
-
-    where = _save_dir()
-    if where is None:
-        return None
-    for root in (where, *where.parents):
-        if (root / "START.EXE").exists() and list(root.glob("HEAD[0-9].DAX")):
-            try:
-                return portraits.tables_from_dos(root)
-            except portraits.PortraitError:
-                return None
-    return None
 
 
 @needs_dos_saves
@@ -1575,7 +1526,7 @@ def test_an_amiga_source_writes_its_own_identity_byte_not_a_digest():
     (`tests/test_amiga.py`), which is the party with a `.itm` file beside
     it.
     """
-    from test_amiga import amiga_por_with_items
+    from support.amigarecords import amiga_por_with_items
 
     from goldbox import amiga_por
 

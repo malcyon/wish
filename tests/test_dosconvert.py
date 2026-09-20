@@ -24,7 +24,7 @@ import gamedata
 import pytest
 import yaml
 from gamedata import needs_disks
-from test_dossave import _game_dirs, _save_dir, needs_dos_saves
+from support.dossave import _game_dirs, _save_dir, needs_dos_saves
 
 from goldbox import (
     areas,
@@ -730,7 +730,7 @@ def test_an_item_granted_effect_reaches_a_c64_trait_slot():
     `BLESS`, which is a running spell and needs no report either
     (Donald, 2026-08-27).
     """
-    from test_doswriter import _item_granted_specimen
+    from support.doswriter import _item_granted_specimen
 
     from goldbox import traits
 

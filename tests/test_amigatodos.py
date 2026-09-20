@@ -32,7 +32,7 @@ from __future__ import annotations
 import pathlib
 
 import pytest
-from test_dossave import _save_dir, needs_dos_saves
+from support.dossave import _save_dir, needs_dos_saves
 
 from editor import convert
 from goldbox import (
@@ -63,7 +63,7 @@ def shipped_adf(tmp_path) -> pathlib.Path:
     reason it matches on the record's own 288 bytes rather than on the file
     names, so the two files cannot pick different disks.
     """
-    from test_amigatoc64 import _pool_of_radiance_disk_1
+    from support.amigatoc64 import _pool_of_radiance_disk_1
 
     path = tmp_path / "por1.adf"
     path.write_bytes(_pool_of_radiance_disk_1().to_bytes())

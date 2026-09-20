@@ -25,9 +25,9 @@ import pathlib
 
 import gamedata
 import pytest
-from test_amiga import sample
-from test_convert import _six_icon_party
-from test_toamigapor import _por_disk_2
+from support.amigarecords import sample
+from support.convertparty import _six_icon_party
+from support.toamigapor import _por_disk_2
 
 from editor import convert, dosimport
 from goldbox import c64_port, dos_codec, dos_port

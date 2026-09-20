@@ -34,7 +34,7 @@ racial and innate tables, and their tests say what they rest on.
 import pathlib
 
 import pytest
-from test_dossave import _game_dirs
+from support.dossave import _game_dirs
 
 from goldbox import dos_codec, dos_port, neutral
 

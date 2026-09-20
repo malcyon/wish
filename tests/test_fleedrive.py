@@ -16,7 +16,7 @@ from the documented format and the player's own saved characters.
 import pytest
 from conftest import load_tools_module
 from gamedata import synthetic_arena
-from test_combatdrive import (
+from support.combatdrive import (
     COMBAT,
     DUNGEON,
     STATUS,

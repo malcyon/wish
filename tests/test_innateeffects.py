@@ -46,7 +46,7 @@ import pathlib
 
 import pytest
 from gamedata import specimen, specimen_root
-from test_doslatertitles import _mask
+from support.doslatertitles import _mask
 
 from automap import gamedisks
 from goldbox import c64_codec, c64_port, dos_codec, dos_port, neutral

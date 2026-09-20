@@ -28,11 +28,10 @@ saved games that run produced are in the corpus below.
 
 from __future__ import annotations
 
-import pathlib
-
 import pytest
 from gamedata import specimen_root
-from test_amiga import curse_characters, silver_blades_characters
+from support.amigalaterwrite import _verified, engine_written_parties
+from support.amigarecords import curse_characters, silver_blades_characters
 
 from goldbox import amiga_later, amiga_port, c64_port, dos_codec, dos_port, neutral
 from goldbox.layout import Confidence
@@ -49,68 +48,6 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 # `ssb-amiga`.  So the walk is local, and it verifies each specimen against
 # its own manifest exactly as that helper does -- a changed specimen is not
 # evidence and must fail rather than skip.
-
-#: Saved games in the specimen tree **this project wrote**, not the engine.
-#: Each is named in its own `provenance.toml`, and each is excluded from any
-#: claim about what the game holds -- the same exclusion
-#: `tools/dos/dostailcensus.py` makes by name, for the same reason: our bytes read
-#: back as the engine's is how a measurement quietly becomes circular.
-OURS = {
-    # `--strip-items 2`: IILANDA's item chain emptied, and her stored
-    # encumbrance left at what it was with three items in it.
-    "WISH-SPEC-coab-amiga-resave/savgamD.dat",
-    # `--keep 4 --rename 0=TALWYN`
-    "WISH-SPEC-ssb-amiga-resave/savgamB.sav",
-    # `--square 5,9,6`
-    "WISH-SPEC-ssb-amiga-moved/savgamC.sav",
-}
-
-#: Which shape each specimen drawer's saved games are.
-_DRAWERS = (("coab-amiga", amiga_port.CURSE_DELTAS, ".dat"),
-            ("ssb-amiga", amiga_port.SILVER_BLADES_DELTAS, ".sav"))
-
-
-def _verified(where: pathlib.Path) -> None:
-    """Fail if a specimen no longer hashes to what its manifest recorded."""
-    from tools.registry import specimens
-
-    prov = where / "provenance.toml"
-    if not prov.is_file():
-        pytest.fail(f"{where}: no provenance.toml -- not a specimen")
-    for filename, expected in specimens.read_provenance(prov).get(
-            "sha256", {}).items():
-        path = where / filename
-        if not path.is_file():
-            pytest.fail(f"{where.name}: {filename} is missing; "
-                        f"run tools/registry/specimens.py check")
-        actual = specimens.sha256_file(path)
-        if actual != expected:
-            pytest.fail(f"{where.name}: {filename} has changed -- recorded "
-                        f"{expected[:12]}, now {actual[:12]}; it is no longer "
-                        f"evidence. Run tools/registry/specimens.py check")
-
-
-def engine_written_parties():
-    """`(label, character)` for every Amiga later character the engine wrote.
-
-    Empty rather than skipping, so a caller can add it to the disk corpus on
-    a machine that has one and not the other.
-    """
-    root = specimen_root()
-    if root is None:
-        return []
-    out = []
-    for drawer, shape, suffix in _DRAWERS:
-        for where in sorted((root / drawer).glob("WISH-SPEC-*")):
-            if not where.is_dir():
-                continue
-            _verified(where)
-            for path in sorted(where.glob(f"savgam*{suffix}")):
-                if f"{where.name}/{path.name}" in OURS:
-                    continue
-                for char in amiga_later.party_in_savegame(path.read_bytes(), shape):
-                    out.append((f"{where.name}/{path.name}", char))
-    return out
 
 
 def disk_characters():
@@ -452,7 +389,7 @@ def test_a_c64_party_becomes_amiga_records_of_its_own_title(
     `item_count` nodes plus the effect chain -- or the character after it in
     the party reads rubbish.
     """
-    from test_doslatertitles import _c64_disk, _c64_party
+    from support.doslatertitles import _c64_disk, _c64_party
 
     _game, party = _c64_party(_c64_disk(name))
     assert len(party) == 6
@@ -494,7 +431,7 @@ def test_a_converted_silver_blades_party_agrees_with_its_own_amiga_twins():
     What this is **not** is proof the game will load it: no converted Silver
     Blades block has been in front of Amiga Silver Blades, and `#384` says so.
     """
-    from test_doslatertitles import _c64_disk, _c64_party
+    from support.doslatertitles import _c64_disk, _c64_party
 
     twins = {c.name.strip().upper(): c for c in silver_blades_characters()}
     _game, party = _c64_party(_c64_disk("ssb-d-engine-resave"))

@@ -525,7 +525,7 @@ def test_the_window_still_fits_the_laptop_with_an_ordinary_party_open(
     that grows a little with the font is a smaller defect than either rejected
     fix, and the picture matters more than the arithmetic.
     """
-    from test_windowslayout import _ordinary_party
+    from support.windowsparty import _ordinary_party
 
     save = _ordinary_party(tmp_path)
     fonts = (0, 3, 6, 10)

@@ -19,7 +19,7 @@ import datetime
 import pytest
 from conftest import load_tools_module
 from gamedata import disk_dir
-from test_dossave import _save_dir, needs_dos_saves
+from support.dossave import _save_dir, needs_dos_saves
 
 from editor import convert
 

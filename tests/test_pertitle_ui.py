@@ -396,7 +396,7 @@ def test_a_curse_save_gets_curse_item_names(app, tmp_path):
 def test_a_silver_blades_save_shows_its_own_races(app, tmp_path):
     """Human is 6 here and half-orc does not exist, so the same byte that
     reads HALF-ORC in Pool of Radiance must read HUMAN."""
-    ssb_dir = pytest.importorskip("tests.test_silverblades").ssb_dir
+    ssb_dir = pytest.importorskip("support.silverblades").ssb_dir
     where = ssb_dir()
     if where is None:
         pytest.skip("needs the Silver Blades disks; set SSB_DISKS")

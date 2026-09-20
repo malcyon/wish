@@ -39,7 +39,7 @@ import pathlib
 
 import gamedata
 import pytest
-from test_neutral import _filled
+from support.neutralrecords import _filled
 
 from goldbox import (
     c64_codec,
@@ -815,7 +815,7 @@ def test_a_silver_blades_party_that_has_not_set_out_converts_to_the_start_of_are
 
 
 def _shipped_silver_blades_save():
-    from test_dossave import _game_dirs
+    from support.dossave import _game_dirs
     folder = _game_dirs().get("SECRET")
     return None if folder is None else folder / "SAVGAMA.DAT"
 

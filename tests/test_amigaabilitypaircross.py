@@ -33,7 +33,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from test_amiga import (  # noqa: E402
+from support.amigarecords import (  # noqa: E402
     _ability_record,
     curse_characters,
     silver_blades_characters,

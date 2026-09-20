@@ -30,7 +30,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 # That is exactly what happened on 2026-09-07.
 pytest.importorskip("capstone")
 
-from tests.test_amiga68k import hunk_file, pad4, u32  # noqa: E402
+from support.hunks import hunk_file, pad4, u32  # noqa: E402
+
 from tools.amiga import amiga68k, amigaglobal  # noqa: E402
 from tools.amiga.amiga68k import Executable  # noqa: E402
 

@@ -26,7 +26,7 @@ import struct
 import sys
 
 import pytest
-from test_dossave import _save_dir, needs_dos_saves
+from support.dossave import _save_dir, needs_dos_saves
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 

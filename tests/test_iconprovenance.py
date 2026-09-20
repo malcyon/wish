@@ -15,7 +15,7 @@ whoever made the icon -- `IconParts.dos_icon_from_c64` for a C64 source and
 """
 
 from gamedata import game_file
-from test_neutral import _filled
+from support.neutralrecords import _filled
 
 from goldbox import dos_codec, dos_port
 from goldbox.iconparts import IconParts, c64_icon_tables

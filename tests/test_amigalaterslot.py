@@ -18,13 +18,14 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga_later, amiga_port, amiga_savegame  # noqa: E402
-from goldbox.amiga_adf import AmigaDisk  # noqa: E402
-from tests.test_amigasavegame import (  # noqa: E402
+from support.amigasavegame import (  # noqa: E402
     fake_record,
     synthetic_curse,
     synthetic_silver_blades,
 )
+
+from goldbox import amiga_later, amiga_port, amiga_savegame  # noqa: E402
+from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools.amiga import amigalaterslot, amigasavecheck  # noqa: E402
 
 

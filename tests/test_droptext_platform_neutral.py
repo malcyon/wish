@@ -52,9 +52,9 @@ import re
 
 import pytest
 from gamedata import specimen_root
-from test_amiga import amiga_por_records
-from test_amigalaterwrite import engine_written_parties
-from test_doslatertitles import _c64_disk, _c64_party
+from support.amigalaterwrite import engine_written_parties
+from support.amigarecords import amiga_por_records
+from support.doslatertitles import _c64_disk, _c64_party
 
 from goldbox import amiga_later, amiga_por, c64_codec, dos_codec, dos_port
 
@@ -132,7 +132,7 @@ def test_an_amiga_pool_of_radiance_source_names_no_platform():
     `tests/test_amigatoc64.py` is the proof that the C64 is a real
     destination for this same source.
     """
-    from test_amiga import amiga_por_records
+    from support.amigarecords import amiga_por_records
 
     paths = amiga_por_records()
     if not paths:

@@ -14,7 +14,7 @@ disk.md` has the run that proved it and the screens it drew.
 from __future__ import annotations
 
 import pytest
-from test_amiga import sample, synthetic_savegame
+from support.amigarecords import sample, synthetic_savegame
 
 from goldbox import amiga_port, amiga_savegame
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError

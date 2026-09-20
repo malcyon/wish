@@ -34,7 +34,7 @@ platform before Qt is imported.
 import gamedata
 import pytest
 from gamedata import disk_dir
-from test_dossave import _save_dir, needs_dos_saves
+from support.dossave import _save_dir, needs_dos_saves
 
 from goldbox import dos_codec
 

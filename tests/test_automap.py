@@ -1,12 +1,3 @@
-
-def make_root():
-    from PyQt6.QtWidgets import QMainWindow
-
-    from wish.ui_window import Ui_WishWindow
-    root = QMainWindow()
-    Ui_WishWindow().setupUi(root)
-    return root
-
 """Tests for the live automapper's model, geometry and party panel.
 
 Nothing here needs an emulator or a display: `ReplayTarget` and `MemoryTarget`
@@ -23,6 +14,7 @@ import pathlib
 
 import pytest
 from gamedata import disk_dir, game_file, synthetic_geo
+from support.automapwindow import FIXTURES, captured, make_root, make_window
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -69,7 +61,6 @@ from goldbox.geo import (
 
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
-FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/POOL3.D64").exists(),
                                 reason="needs the game disks")
 
@@ -978,18 +969,6 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-def captured() -> tuple[bytes, bytes]:
-    """One real machine, recorded: BRUTUS alone in New Phlan.
-
-    `SAVEDGAME0` is a verbatim image of $4900-$64FF and the roster is the first
-    page of `SAVEDGAME1`, so these two fixtures are exactly the two reads the
-    live view makes -- with the PRG load address stripped off each.
-    """
-    save0 = (FIXTURES / "savedgame0.bin").read_bytes()[2:]
-    save1 = (FIXTURES / "savedgame1.bin").read_bytes()[2:]
-    return save0, save1[:live.ROSTER_PAGE]
-
-
 def live_machine(save0=None, save1=None) -> MemoryTarget:
     if save0 is None or save1 is None:
         save0, save1 = captured()
@@ -1698,18 +1677,6 @@ def test_the_busy_message_names_a_command_this_platform_has(monkeypatch):
 
 
 # --- the tab ----------------------------------------------------------------
-
-def make_window(app, tmp_path, monkeypatch, target, maps=None, area=None):
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    from PyQt6.QtWidgets import QMainWindow
-
-    from automap.window import AutomapBinding
-    from wish.ui_window import Ui_WishWindow
-    root = QMainWindow()
-    Ui_WishWindow().setupUi(root)
-    mapper = Automapper(target, maps or {}, area=area)
-    return AutomapBinding(root, mapper)
 
 
 def test_the_binding_no_longer_takes_a_drive_flag(app, tmp_path, monkeypatch):

@@ -12,7 +12,8 @@ rather than guessed at.
 
 
 import pytest
-from test_dossave import _save_dir, needs_dos_saves
+from support.dossave import _save_dir, needs_dos_saves
+from support.neutralrecords import _filled
 
 from goldbox import amiga_pod, c64_codec, c64_port, derive, dos_codec, dos_port, neutral
 from goldbox import levels as level_tables
@@ -166,37 +167,6 @@ def test_a_lowercase_name_from_a_non_dos_source_is_folded_to_capitals():
 
 
 # --- losslessness through the middle -----------------------------------------
-
-def _filled(game=None) -> NeutralCharacter:
-    """A neutral character with a different value in every field, so a value
-    landing in the wrong place cannot pass."""
-    char = NeutralCharacter("test", source="a made-up character", game=game)
-    char.set("name", "ROUNDTRIP", "made up", Confidence.CONFIRMED,
-             Provenance.RESHAPED)
-    for n, (field, _) in enumerate(c64_codec.DIRECT):
-        char.set(field, n + 1, f"made up, value {n + 1}")
-    # `race` chooses the infravision the writer computes; keep it in range.
-    char.set("race", 1, "made up: elf")
-    char.set("spells_known", [1, 5, 55], "made up")
-    char.set("spells_memorised", [44, 21, 3], "made up")
-    char.set("levels", {"fighter": 7, "thief": 3}, "made up")
-    char.set("spells_castable", {"cleric": (3, 2, 1),
-                                 "magic-user": (4, 3, 2)}, "made up")
-    char.set("size_small", 1, "made up")
-    char.set("turn_power", 6, "made up")
-    char.set("attack_forms", bytes(range(1, 9)), "made up")
-    char.set("innate_effects", [18, 47], "made up")
-    char.set("inventory", [bytes(range(16))], "made up")
-    char.set("roster_tail", bytes(range(9)), "made up")
-    # A real choice, not zero: `0x00` is `HEAD00`, the menu's own first
-    # entry, and a source that never set the field at all is a different
-    # fact from a source that chose it (#503, A C64 character with no sheet
-    # portrait arrives in DOS or on the Amiga wearing the menu's first
-    # head) -- so a fixture meant to catch a value landing in the wrong
-    # place has to give the writer one to place.
-    char.set("portrait_head", 0x08, "made up")
-    char.set("portrait_body", 0x04, "made up")
-    return char
 
 
 def test_every_value_a_writer_takes_comes_back_out_of_the_record():

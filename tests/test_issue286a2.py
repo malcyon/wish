@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QApplication
+from support.automapwindow import captured, make_window
 
 from automap.target import MemoryTarget
-from tests.test_automap import captured, make_window
 
 
 def string_to_screen_codes(text):

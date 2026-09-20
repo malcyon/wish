@@ -24,7 +24,7 @@ from __future__ import annotations
 import gamedata
 import pytest
 from conftest import load_tools_module
-from test_dossave import _save_dir, needs_dos_saves
+from support.dossave import _save_dir, needs_dos_saves
 
 from goldbox import c64_codec, dos_codec, items, savegame
 from goldbox import dos_savegame as sg

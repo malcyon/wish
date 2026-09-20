@@ -13,11 +13,11 @@ every address below is `payload[address - 0x0800]`.
 
 
 import pytest
+from support.cursetables import _cleric_grant_table
 
 from goldbox import levels, levelup, spells
 from goldbox.record import CharacterRecord
 from tests import gamedata
-from tests.test_curse import _cleric_grant_table
 from tools.c64 import laterthac0
 
 GEN_BASE = 0x0800

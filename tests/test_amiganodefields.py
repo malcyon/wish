@@ -38,7 +38,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 # the module import never runs and every CI job goes red.
 pytest.importorskip("capstone")
 
-from tests.test_amiga68k import hunk_file, pad4, u32  # noqa: E402
+from support.hunks import hunk_file, pad4, u32  # noqa: E402
+
 from tools.amiga import amiga68k, amiganodefields  # noqa: E402
 from tools.amiga.amiga68k import Executable  # noqa: E402
 
@@ -283,9 +284,10 @@ def _later_savegames(converted: bool = False) -> list[tuple[str, bytes]]:
     `converted` selects the other side of that line: the saved games the
     engine wrote of a party we converted, and nothing else.
     """
+    from support.amigalaterwrite import _DRAWERS, OURS, _verified
+
     from automap import gamedisks
     from tests.gamedata import specimen_root
-    from tests.test_amigalaterwrite import _DRAWERS, OURS, _verified
     from tools.amiga import amigarecords
     out: list[tuple[str, bytes]] = []
     if not converted:

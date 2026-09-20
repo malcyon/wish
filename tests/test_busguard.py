@@ -20,13 +20,13 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from gamedata import synthetic_arena  # noqa: E402
+from support.automapwindow import captured, make_window  # noqa: E402
 
 from automap import busguard  # noqa: E402
 from automap.busguard import BusGuard, bus_released  # noqa: E402
 from automap.live import memory_blocks  # noqa: E402
 from automap.target import MemoryTarget, NotConnected  # noqa: E402
 from goldbox import c64_port  # noqa: E402
-from tests.test_automap import captured, make_window  # noqa: E402
 
 
 @pytest.fixture

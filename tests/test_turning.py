@@ -46,7 +46,8 @@ TURN_MASK = 0xDF
 
 def _overlay(game, name: bytes) -> bytes:
     """One title's overlay payload at the address it runs at, or skip."""
-    from tests.test_coldread import _root
+    from support.coldread import _root
+
     from tools.c64 import coldread
     return coldread.overlay(game, name, _root(game))
 
@@ -188,7 +189,7 @@ def test_the_shipped_silver_blades_cleric_and_paladin_store_that_level():
     """`SAVEDBASH`, the party SSI ships: DOMINIC a cleric 8 and GUY DE VALOIS
     a paladin 8. Two records, and they are what makes the reading above a
     measurement rather than an expansion of code nobody has checked."""
-    from tests.test_silverblades import _party
+    from support.silverblades import _party
 
     sg0, _sg1 = _party()
     seen = {}

@@ -23,11 +23,12 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from support.worldwindow import synthetic_window  # noqa: E402
+
 from goldbox.world import (
     Tile,  # noqa: E402
     Window,  # noqa: E402
 )
-from tests.test_world import synthetic_window  # noqa: E402
 from tools.pool_of_radiance.worldtiles import (  # noqa: E402
     GLYPH_BASE,
     GLYPH_BYTES,

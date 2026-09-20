@@ -29,7 +29,7 @@ import os
 import pathlib
 
 import pytest
-from test_automapbanks import (  # noqa: E402
+from support.automapbanks import (  # noqa: E402
     CHIPS_OUT,
     JUNK_SCREEN,
     TRUE_SCREEN,

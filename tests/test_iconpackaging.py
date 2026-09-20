@@ -88,8 +88,9 @@ def test_the_frozen_build_carries_the_table():
     `wish.spec`'s `DATAS` actually carries, not merely one that exists in
     this checkout.
     """
+    from support.packagingspec import _run_spec
+
     from goldbox import assets
-    from tests.test_packaging import _run_spec
 
     relative = pathlib.Path(iconparts.PROPOSAL_PATH).resolve().relative_to(
         assets.CHECKOUT)

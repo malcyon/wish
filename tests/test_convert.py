@@ -37,16 +37,14 @@ from types import SimpleNamespace
 
 import gamedata
 import pytest
-from gamedata import disk_dir, game_file
+from gamedata import disk_dir
 from PyQt6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QFileDialog
-from test_dossave import _save_dir, needs_dos_saves
+from support.convertparty import _fixture_payloads, _six_icon_party
+from support.dossave import _save_dir, needs_dos_saves
 
 from editor import convert, dosimport
 from editor.window import EditorBinding
 from goldbox import c64_port, dos_codec, dos_port, dos_savegame, titles
-from goldbox.savegame import SaveGame0, SaveGame1
-
-FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
 
 #: The played DOS Curse session this reads, and the slot in it.  It was
 #: `curse/H-square-5-13` (scratch, deleted), which is gone from this machine --
@@ -77,12 +75,6 @@ def _game_dir() -> pathlib.Path:
     helper, repeated here because a subagent's files may not import another
     test module's private helpers across `#52`'s lane."""
     return _save_dir().parent
-
-
-def _fixture_payloads() -> tuple[bytes, bytes]:
-    sg = SaveGame0.from_prg((FIXTURES / "savedgame0.bin").read_bytes())
-    sg1 = SaveGame1.from_prg((FIXTURES / "savedgame1.bin").read_bytes())
-    return sg.to_bytes(), sg1.to_bytes()
 
 
 class _Bytes:
@@ -642,47 +634,6 @@ def test_c64_to_dos_direction_is_the_transfer_test(tmp_path):
 # converted to DOS arrives with no combat figure at all, because the table
 # only runs one way)` into the live registry and dialog).
 # ---------------------------------------------------------------------------
-
-def _six_icon_party() -> "tuple[bytes, bytes, object]":
-    """BRUTUS's own committed fixture, cloned into all six slots with six
-    different names and six different combat icons.
-
-    The same shape `tests/test_doswriter.py`'s own
-    `test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures`
-    builds at `goldbox.dos_codec`'s own layer -- nothing here is the game's own
-    saved bytes, only its documented icon format applied six times to one
-    committed fixture. Returns `(save0, save1, IconParts)` so a caller needs
-    to read `SPELLE64`/`SPELLN64` only once.
-    """
-    from goldbox import c64_save
-    from goldbox.iconparts import (
-        DEFAULT_BACKGROUND,
-        DEFAULT_PART_COLOURS,
-        MULTICOLOUR,
-        IconParts,
-    )
-    from goldbox.savegame import HEADER_SIZE, SLOT_STRIDE
-
-    parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
-    save0, save1 = _fixture_payloads()
-    container = c64_save.container_for(None)
-
-    figures = [("large", 0, 0), ("large", 7, 4), ("large", 11, 9),
-              ("small", 3, 2), ("small", 16, 7), ("large", 21, 12)]
-    names = (b"ONE", b"TWO", b"THREE", b"FOUR", b"FIVE", b"SIX")
-    base = bytearray(save0)
-    slot0 = bytes(base[HEADER_SIZE:HEADER_SIZE + SLOT_STRIDE])
-    for i, (size, weapon, head) in enumerate(figures):
-        off = HEADER_SIZE + i * SLOT_STRIDE
-        base[off:off + SLOT_STRIDE] = slot0
-        base[off:off + len(names[i])] = names[i]
-        base[off + len(names[i]):off + 20] = bytes(20 - len(names[i]))
-        shape = parts.compose(size, weapon, head)
-        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
-        icon = shape + parts.colours_for(shape, DEFAULT_PART_COLOURS, seed)
-        at = container.icon(i)
-        base[at:at + container.icon_size] = icon
-    return bytes(base), save1, parts
 
 
 @needs_dos_saves
@@ -1475,7 +1426,7 @@ def test_an_edit_typed_on_the_sheet_and_never_saved_still_converts(
 
     `disks=` is passed now, for the same reason the sibling above needs it:
     a C64 -> DOS conversion with no source disks refuses (`#482`)."""
-    from test_editor import make_root
+    from support.editorwindow import make_root
 
     from editor.window import EditorBinding
 
@@ -2601,7 +2552,7 @@ def _amiga_por_disk():
     the record's own size rather than on the file names; this is the same
     disk, reached the same way, so the two cannot pick different ones.
     """
-    from test_amigatoc64 import _pool_of_radiance_disk_1
+    from support.amigatoc64 import _pool_of_radiance_disk_1
 
     return _pool_of_radiance_disk_1()
 
@@ -2952,7 +2903,7 @@ def test_the_dialog_writes_an_adf_when_a_disk_and_folder_are_given(tmp_path):
     refuses with no source disks (`#482`), and this test is about the write
     path rather than the combat icon.
     """
-    from test_toamigapor import _c64_specimen
+    from support.toamigapor import _c64_specimen
 
     from goldbox.amiga_adf import AmigaDisk
 
@@ -2999,7 +2950,7 @@ def test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter(
     return `None` for the specimen's own title and the conversion would now
     refuse (`#482`) -- this test is about `EditorBinding.convert`'s own
     wiring, not about the combat icon."""
-    from test_toamigapor import _c64_specimen
+    from support.toamigapor import _c64_specimen
 
     from goldbox.amiga_adf import AmigaDisk
 
@@ -3231,7 +3182,7 @@ def _synthetic_amiga_rehearsal():
     `C64ToAmiga.write`/`DosToAmiga.write`'s own file-placement shape can be
     proven on CI -- `write` reads only `rehearsal.files`, never the disk
     that built it, so nothing here needs an Amiga disk or a specimen."""
-    from test_amiga import synthetic_savegame
+    from support.amigarecords import synthetic_savegame
 
     return convert.AmigaWriteRehearsal(
         convert.neutral.Report(),
@@ -3273,7 +3224,7 @@ def test_write_puts_one_adf_in_its_own_folder(tmp_path):
 def _por_amiga_disk_2(tmp_path):
     """Amiga Pool of Radiance disk 2, or a skip -- `test_toamigapor.py`'s
     own finder, shared here so the two suites cannot pick different disks."""
-    from test_toamigapor import _por_disk_2
+    from support.toamigapor import _por_disk_2
 
     return _por_disk_2(tmp_path)
 
@@ -3299,7 +3250,7 @@ def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     direction calls `dos_codec.c64_party` exactly as `tools/amiga/toamigapor.py` does
     since that fix, so the two cannot disagree.
     """
-    from test_toamigapor import _c64_specimen
+    from support.toamigapor import _c64_specimen
 
     from goldbox import amiga_savegame
     from goldbox.amiga_adf import AmigaDisk
