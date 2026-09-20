@@ -1797,8 +1797,9 @@ def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
 
 
 #: **`WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL`**: a fast travel out of an area
-#: whose one door does not lead to the destination walks the party through
-#: that door first and finishes the trip from the poll afterwards. It is
+#: whose door does not lead to the destination walks the party out of a door
+#: that cannot start a fight first and finishes the trip from the poll
+#: afterwards, and refuses when every door can start a fight. It is
 #: behind a flag because it writes to a running machine minutes after the
 #: click, and one of its writes is the one `FastTravel.OUTDOORS_TRAP` exists
 #: to refuse everywhere else.

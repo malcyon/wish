@@ -1216,8 +1216,8 @@ def test_fasttravel_falls_back_to_the_tail_jump_when_the_backend_cannot_reenter(
 
 def test_a_one_door_area_is_the_only_kind_that_is_walked_out_of(monkeypatch):
     """Ten areas have exactly one exit once the ones that come back into the
-    same area are dropped: where there is one door Wish is not choosing
-    anything, and the door-choice rule is not applied to it."""
+    same area are dropped; whether the party is walked out of it depends on
+    whether that door can start a fight."""
     one = {a for a in range(31) if len(fasttravel.exits_from(a)) == 1}
     assert one == {1, 2, 9, 13, 14, 16, 17, 21, 23, 28}
     assert fasttravel.exits_from(13) == (
@@ -1286,6 +1286,9 @@ def test_the_two_hop_is_off_without_the_flag_and_a_forgotten_zero_is_off(
 #: through: no route that can start a fight, then the lowest id.
 MULTI_DOOR_CHOICE = {0: 8, 7: 5, 22: 23, 25: 19, 26: 0, 27: 0}
 ONE_DOOR_AREAS = (1, 2, 9, 13, 14, 16, 17, 21, 23, 28)
+#: One-door areas whose only door can start a fight: Fast Travel refuses them.
+ONE_DOOR_FIGHTS = (1, 28)
+ONE_DOOR_WALKS = tuple(a for a in ONE_DOOR_AREAS if a not in ONE_DOOR_FIGHTS)
 
 
 def _a_destination_off_every_door(here: int):
@@ -1315,12 +1318,14 @@ def test_choose_door_refuses_when_every_route_can_start_a_fight():
     assert fasttravel.choose_door([(1, fight), (2, fight)]) is None
 
 
-def test_choose_door_takes_a_single_door_whether_or_not_it_can_fight():
-    """A single door is taken as it stands, fight or not: Buccaneer Base's and
-    the Zhentil Keep Outpost's only door can start a fight and is still
-    chosen."""
+def test_choose_door_takes_a_single_door_only_when_it_cannot_fight():
+    """A single door is chosen or refused by the same rule as several: the
+    Buccaneer Base's and the Zhentil Keep Outpost's only door can start a
+    fight, so there is no door to take."""
     fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
-    assert fasttravel.choose_door([(25, fight)]) == (25, fight)
+    calm = fasttravel.ExitRoute(1, (1, 1))
+    assert fasttravel.choose_door([(25, fight)]) is None
+    assert fasttravel.choose_door([(25, calm)]) == (25, calm)
     assert fasttravel.choose_door([]) is None
 
 
@@ -1337,9 +1342,20 @@ def test_the_six_areas_with_several_doors_each_choose_the_expected_door():
 
 
 def test_no_area_with_several_doors_has_every_door_fighting():
-    """So the refusal in `run` cannot be reached from the data as it is."""
+    """So the refusal in `run` is reached from the data only by the one-door
+    areas in `ONE_DOOR_FIGHTS`."""
     for area_id in MULTI_DOOR_CHOICE:
         assert any(not r.combat for _, r in fasttravel.exits_from(area_id))
+
+
+def test_the_areas_whose_every_door_can_fight_are_1_and_28():
+    """Read off the generated table: of every area with a door, these are
+    the ones with no door that cannot start a fight."""
+    refuse = {a for a in range(31)
+              if fasttravel.exits_from(a)
+              and all(r.combat for _, r in fasttravel.exits_from(a))}
+    assert refuse == set(ONE_DOOR_FIGHTS)
+    assert refuse <= set(ONE_DOOR_AREAS)
 
 
 @pytest.mark.parametrize("here", sorted(MULTI_DOOR_CHOICE))
@@ -1362,19 +1378,62 @@ def test_the_two_hop_walks_out_of_the_door_the_rule_chooses(monkeypatch, here):
     assert target.read(addr.slot, 1) == bytes([here])
 
 
-@pytest.mark.parametrize("here", ONE_DOOR_AREAS)
-def test_the_ten_one_door_areas_walk_out_of_their_only_door(monkeypatch, here):
-    """A one-door area walks out of its only door, including the two whose
-    only door can start a fight."""
+@pytest.mark.parametrize("here", ONE_DOOR_WALKS)
+def test_the_eight_one_door_areas_whose_door_cannot_fight_walk_out(
+        monkeypatch, here):
+    """A one-door area walks out of its only door when that door cannot start
+    a fight."""
     monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(here)
     ft = actions.FastTravel()
-    (through, _), = fasttravel.exits_from(here)
+    (through, route), = fasttravel.exits_from(here)
+    assert not route.combat
     dest = _a_destination_off_every_door(here)
     outcome = ft.run(target, area=dest)
     assert outcome.ok, outcome.message
     assert (ft.pending.from_area, ft.pending.through) == (here, through)
     assert target.jumps == []
+
+
+@pytest.mark.parametrize("here", ONE_DOOR_FIGHTS)
+def test_the_two_one_door_areas_whose_door_can_fight_refuse_and_write_nothing(
+        monkeypatch, here):
+    """Buccaneer Base (1) and the Zhentil Keep Outpost (28): the only door
+    can start a fight, so the trip is refused with the every-door-fights
+    outcome and the machine is left exactly as it was."""
+    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
+    (_, route), = fasttravel.exits_from(here)
+    assert route.combat
+    target = two_hop_machine(here)
+    before = dict(target.memory)
+    ft = actions.FastTravel()
+    outcome = ft.run(target, area=_a_destination_off_every_door(here))
+    assert not outcome.ok
+    assert outcome.message == actions.FastTravel.EVERY_DOOR_FIGHTS
+    assert target.memory == before
+    assert target.reenters == [] and target.jumps == []
+    assert ft.pending is None
+
+
+@pytest.mark.parametrize("here", ONE_DOOR_FIGHTS)
+def test_the_flag_gates_the_refusal_in_a_one_door_area_that_can_fight(
+        monkeypatch, here):
+    """Off, a forgotten `0` and `off` included, the trip tail-jumps as it
+    always did: the refusal belongs to the flagged feature."""
+    addr = fasttravel.POOL_OF_RADIANCE
+    dest = _a_destination_off_every_door(here)
+    for value in (None, "", "0", "off"):
+        if value is None:
+            monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
+        else:
+            monkeypatch.setenv(actions.TWO_HOP_ENV, value)
+        target = two_hop_machine(here)
+        ft = actions.FastTravel()
+        outcome = ft.run(target, area=dest)
+        assert outcome.ok, outcome.message
+        assert target.jumps == [addr.tail], value
+        assert target.reenters == [], value
+        assert ft.pending is None, value
 
 
 @pytest.mark.parametrize("here", sorted(MULTI_DOOR_CHOICE))

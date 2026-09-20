@@ -425,14 +425,11 @@ def choose_door(doors: Sequence[tuple[int, ExitRoute]]
     """The door a two-hop fast travel walks the party out of, from
     `exits_from`'s rows, or None when there is none it may take.
 
-    **One door is taken as it stands**, fight or not: Wish is not choosing
-    anything, so the door is not checked for a fight.
-    **Where there are several, every route that can start a fight is skipped
-    and the lowest destination id of the rest is taken**, so the answer does
-    not depend on how the rows arrive. None means every one of them can start
-    a fight, and the trip is refused rather than a fight route chosen.
+    **Every route that can start a fight is skipped and the lowest
+    destination id of the rest is taken**, so the answer does not depend on
+    how the rows arrive; an area with one door takes it when it cannot fight.
+    None means there is no door, or every one of them can start a fight, and
+    the trip is refused rather than a fight route chosen.
     """
-    if len(doors) == 1:
-        return doors[0]
     safe = [row for row in doors if not row[1].combat]
     return min(safe, key=lambda row: row[0]) if safe else None
