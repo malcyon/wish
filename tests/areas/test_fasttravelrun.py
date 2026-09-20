@@ -390,6 +390,8 @@ def test_answer_and_wait_calls_on_question_then_stamps_the_landing(monkeypatch):
 
 
 class _RunSession:
+    mon_port = 6521
+
     def __init__(self, *a, **k):
         self.terminated = False
 
@@ -426,7 +428,7 @@ def test_a_result_that_cannot_be_written_still_tears_the_slot_down(
     monkeypatch.setattr(FT, "party", lambda s: [])
     monkeypatch.setattr(FT, "area_of", lambda s: 13)
     monkeypatch.setattr(FT, "shoot", lambda *a, **k: None)
-    monkeypatch.setattr(FT, "ViceTarget", lambda: types.SimpleNamespace(
+    monkeypatch.setattr(FT, "ViceTarget", lambda **k: types.SimpleNamespace(
         close=lambda: None))
 
     class Trip:
@@ -444,3 +446,52 @@ def test_a_result_that_cannot_be_written_still_tears_the_slot_down(
         member="FATIMA", arrive=1.0, answer_timeout=1.0)
     assert FT.run(args) == 1
     assert sess.terminated and events == ["teardown", "release"]
+
+
+def test_run_attaches_the_target_to_the_slots_monitor_port(monkeypatch, tmp_path):
+    ports = []
+
+    class Target:
+        def __init__(self, host=None, port=None):
+            ports.append(port)
+
+        def close(self):
+            pass
+
+    slot = types.SimpleNamespace(
+        n=1, display=":1", dir=str(tmp_path),
+        teardown=lambda: None, release=lambda: None)
+    sess = _RunSession()
+    sess.mon_port = 6531
+    monkeypatch.setattr(FT.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(FT.S, "stage_disks", lambda *a, **k: "boot")
+    monkeypatch.setattr(FT.S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(FT.S, "Session", lambda *a, **k: sess)
+    monkeypatch.setattr(FT, "party", lambda s: [])
+    monkeypatch.setattr(FT, "area_of", lambda s: 13)
+    monkeypatch.setattr(FT, "shoot", lambda *a, **k: None)
+    monkeypatch.setattr(FT, "ViceTarget", Target)
+
+    class Trip:
+        pending = object()
+
+        def run(self, target, area):
+            return types.SimpleNamespace(ok=True, message="")
+
+        def continue_pending(self, target):
+            return None
+
+    monkeypatch.setattr(FT, "A", types.SimpleNamespace(
+        FastTravel=Trip, area_by_id=lambda n: n))
+
+    def answer(sess, to_area, deadline_s, between, on_question, marks):
+        between()
+        return None
+
+    monkeypatch.setattr(FT, "answer_and_wait", answer)
+    args = types.SimpleNamespace(
+        out=str(tmp_path / "out"), slot=None, disks=str(tmp_path),
+        save=str(tmp_path / "save.d64"), from_area=13, to_area=27,
+        member="FATIMA", arrive=1.0, answer_timeout=1.0)
+    FT.run(args)
+    assert ports == [6531, 6531]

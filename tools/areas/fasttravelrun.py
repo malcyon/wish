@@ -184,13 +184,15 @@ def walk_verdict(steps: list[dict], sheet_opened: bool) -> tuple[bool, str]:
                   "character sheet opened and closed")
 
 
-def second_hop(ft, open_target=ViceTarget):
+def second_hop(ft, open_target):
     """One poll of a two-hop trip's second hop, the way the automapper's own
     poll makes it: `ft.continue_pending` through the real target.
 
     The target is opened for this one call and closed straight after, for the
     same reason `run` does it around `FastTravel.run`: VICE serves one monitor
-    connection, and every `sess.mon()` call opens its own.
+    connection, and every `sess.mon()` call opens its own. `open_target` is
+    required so that no caller falls back on the default monitor port, which
+    is not where a pool slot's emulator listens.
     """
     target = open_target()
     try:
@@ -326,7 +328,7 @@ def run(args) -> int:
               [r for r in before if r["name"] != "<empty>"], flush=True)
 
         shoot(sess, out, "before", shots)
-        target = ViceTarget()
+        target = ViceTarget(port=sess.mon_port)
         ft = A.FastTravel()
         marks["run_start"] = time.monotonic()
         try:
@@ -354,7 +356,8 @@ def run(args) -> int:
         # poll to make its second hop, so this loop is that poll.
         hop = answer_and_wait(
             sess, args.to_area, deadline_s=args.answer_timeout,
-            between=(lambda: second_hop(ft)) if two_hop else None,
+            between=(lambda: second_hop(
+                ft, lambda: ViceTarget(port=sess.mon_port))) if two_hop else None,
             on_question=lambda: shoot(sess, out, "question", shots),
             marks=marks)
         second_hop_seconds = (elapsed(marks.get("run_returned"),
