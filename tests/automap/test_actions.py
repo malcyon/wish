@@ -1425,16 +1425,42 @@ def test_a_declined_exit_gives_up_at_the_deadline_and_writes_nothing(
 
 
 def test_a_fight_does_not_eat_the_wait(monkeypatch):
+    """Five exits start a fight on the way out. If it starts while `$6E1B`
+    still reads the first area, the deadline must not run out under the
+    fight: the trip is still there when combat ends and the party is through
+    the door."""
     target, ft = _first_hop(monkeypatch)
     addr = fasttravel.POOL_OF_RADIANCE
-    target.memory[addr.slot] = bytes([27])
     target.memory[c64.MODE_FLAG_POOL] = bytes([COMBAT])
-    ft.pending.deadline = time.monotonic() + 1
+    ft.pending.deadline = time.monotonic() - 1
     before = dict(target.memory)
     assert ft.continue_pending(target) is None
+    assert ft.pending is not None
     assert target.memory == before
     assert target.jumps == []
     assert ft.pending.deadline > time.monotonic() + actions.SECOND_HOP_SECONDS - 5
+    # The fight ends, the party reaches the East Window, and the hop is made.
+    target.memory[c64.MODE_FLAG_POOL] = bytes([WORLD])
+    target.memory[addr.slot] = bytes([27])
+    outcome = ft.continue_pending(target)
+    assert outcome is not None and outcome.ok, outcome
+    assert target.jumps == [addr.tail]
+    assert ft.pending is None
+
+
+def test_a_later_direct_click_supersedes_a_pending_hop(monkeypatch):
+    """Kobold Caves: Fast Travel to New Phlan, answer no, then pick a
+    destination whose route is the door itself. The old hop must not warp the
+    party to New Phlan when they walk out."""
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    assert ft.pending is not None
+    assert ft.run(target, area=actions.area_by_id(27)).ok
+    assert ft.pending is None
+    target.memory[addr.slot] = bytes([27])
+    jumps = list(target.jumps)
+    assert ft.continue_pending(target) is None
+    assert target.jumps == jumps
 
 
 def test_an_unexpected_area_drops_the_hop(monkeypatch):

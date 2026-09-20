@@ -2037,6 +2037,10 @@ class FastTravel(Action):
     # -- doing it ---------------------------------------------------------
 
     def run(self, target, area=None, arrival=None, **kwargs) -> Outcome:
+        # A new click supersedes an old trip, whichever branch it takes below:
+        # a hop left pending by a declined exit would otherwise warp the party
+        # to the old destination on top of this one.
+        self.pending = None
         addr = self.addresses
         if addr is None:
             # `legality` refuses first for anything that came through `apply`.
@@ -2059,6 +2063,8 @@ class FastTravel(Action):
                 outcome = self._run_via_exit(target, addr, area, here,
                                              through, door, detour=True)
                 if outcome.ok:
+                    _log.debug("two-hop fast travel started: area %d through "
+                               "area %d to area %s", here, through, to)
                     self.pending = PendingHop(
                         here, through, area, arrival,
                         time.monotonic() + SECOND_HOP_SECONDS)
@@ -2156,7 +2162,7 @@ class FastTravel(Action):
         self.back = was
         name = getattr(area, "name", None) or "this area"
         if detour:
-            # The door does not lead to `name`, so the line above would be
+            # The door does not lead to `name`, so the line below would be
             # untrue: the party is walking out towards somewhere else first.
             return Outcome(True,
                            f"Walking out of this area on foot -- answer "
@@ -2195,8 +2201,15 @@ class FastTravel(Action):
         name = getattr(pending.area, "name", None) or "this area"
         if area_now == pending.from_area:
             # Still where it started: the handler is asking its question, or
-            # was answered no.
+            # was answered no. Five of the exits start a fight on the way out,
+            # possibly before the area byte changes, and a fight must not use
+            # up the wait.
+            if in_combat(target, self.game):
+                pending.deadline = time.monotonic() + SECOND_HOP_SECONDS
+                return None
             if time.monotonic() > pending.deadline:
+                _log.debug("two-hop fast travel given up: the party is still "
+                           "in area %d", pending.from_area)
                 self.pending = None
                 return Outcome(False,
                                f"The party never left, so the trip to {name} "
@@ -2208,11 +2221,9 @@ class FastTravel(Action):
             self.pending = None
             return None
         if not self._idle_verdict(target, addr):
-            # Five of the exits can start a fight on the way out, and a fight
-            # must not use up the wait. An idle check that fails for one poll
-            # is otherwise normal: the next tick looks again.
-            if in_combat(target, self.game):
-                pending.deadline = time.monotonic() + SECOND_HOP_SECONDS
+            # An idle check that fails for one poll is normal, a fight on the
+            # way out included: the next tick looks again, and the deadline is
+            # only read while the party is still in `from_area`.
             return None
         arrival, overland = self._square_writes(pending.area,
                                                 arrival=pending.arrival)

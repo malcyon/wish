@@ -613,8 +613,8 @@ class FastTravelBar(QObject):
         through the door.
 
         Given the **real** target and never `_NotAskingThePC`: this one
-        writes, and it needs the true program counter -- the rule `apply`
-        follows.
+        writes, and it needs the true program counter, so `apply` is handed
+        the real target as well.
         """
         pending = self.fasttravel.pending
         outcome = self.fasttravel.continue_pending(self.target)
