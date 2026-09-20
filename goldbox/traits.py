@@ -762,22 +762,23 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 #: there at all). 60 is CONFIRMED wrong by its own handler, read the same way
 #: `NAMES_SILVER_BLADES` reads 60, though the exact rule is PROBABLE.
 #:
-#: **Eighteen codes are omitted rather than mis-named.** Twelve of them are
-#: Pool of Radiance names landing on a Curse creature that cannot have them
-#: -- 57, 60's Pool of Radiance wording, 63's, 81, 82, 84, 85, 86, 87, 90, 96,
-#: 103 -- of which 60 and 63 are replaced above and the other ten
-#: (57, 81, 82, 84, 85, 86, 87, 90, 96, 103) are simply refuted, with no
-#: right answer read yet. And eight of Curse's own codes above `NAMES`'s
-#: reach are carried by a Curse creature `NAMES` never named at all -- 128,
-#: 129, 130, 131, 132, 133, 135, 138. Every one of the eighteen is left out
-#: of this table so `describe()` falls back to "trait {code}" (unnamed)
-#: rather than a name the game's own data contradicts.
+#: **Nineteen more are named from the routine each one dispatches**, read one
+#: at a time out of Curse's own `COMBAT` through the handler tables at
+#: `$EE2A`/`$EEBC` -- the ten the monster census could only refuse (57, 81,
+#: 82, 84, 85, 86, 87, 90, 96, 103), the eight above `NAMES`'s reach that a
+#: Curse creature carries (128, 129, 130, 131, 132, 133, 135, 138), and 73.
+#: `docs/222-naming-curses-effect-codes-from-their-handlers.md` has every
+#: reading and the anchors it rests on.
 #:
-#: **71, 73 and 109 keep Pool of Radiance's wording on purpose.** Their only
+#: **73 no longer keeps Pool of Radiance's wording**: its Curse handler
+#: zeroes the damage when the damage type carries the breath-weapon bit,
+#: which is what Silver Blades' 73 does and is not a rear claw rake.
+#:
+#: **71 and 109 keep Pool of Radiance's wording on purpose.** Their only
 #: Curse evidence is a spell row whose name pointer was never set (it reads
-#: as the table's first string, BLESS) and no Curse creature carries them,
-#: so nothing here contradicts Pool of Radiance for these three -- unlike
-#: Silver Blades' 71, which Curse's own FAERIE FIRE at 7 does contradict.
+#: as the table's first string, BLESS), no Curse creature carries them, and
+#: each shares a handler with another id -- unlike Silver Blades' 71, which
+#: Curse's own FAERIE FIRE at 7 does contradict.
 #:
 #: **Everything else transfers unchanged from `NAMES`.** Most of the shared
 #: namespace agrees between the two titles (54 of the first 56 spell codes,
@@ -785,10 +786,36 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 #: is written as a full table rather than a sparse one of overrides only --
 #: a sparse table would leave hundreds of correctly-named codes unnamed for
 #: Curse.
-_CURSE_UNNAMED = (
-    57, 81, 82, 84, 85, 86, 87, 90, 96, 103,           # refuted, not replaced
-    128, 129, 130, 131, 132, 133, 135, 138,            # Curse-only, unnamed
-)
+
+#: Read one handler at a time, every one CONFIRMED from the code and
+#: corroborated by the creature that carries it and by the check list the id
+#: sits on. The anchors -- `$945F` the damage, `$A904` the damage type,
+#: `$A93B` the save byte, `$1530` the zero-the-damage tail, `$138F` the
+#: combat message -- are derived from Curse's own CONFIRMED codes in
+#: `docs/222-naming-curses-effect-codes-from-their-handlers.md`.
+_CURSE_FROM_HANDLERS = {
+    57: ("engulfs its foe, which is held fast", "CONFIRMED"),
+    73: ("no damage from a breath weapon", "CONFIRMED"),
+    81: ("half damage from weapons", "CONFIRMED"),
+    82: ("half damage from cold, and a made save takes the rest",
+         "CONFIRMED"),
+    84: ("electricity heals it instead of hurting it", "CONFIRMED"),
+    85: ("an edged weapon does one point of damage", "CONFIRMED"),
+    86: ("spits acid, its own hit points in damage", "CONFIRMED"),
+    87: ("eye rays, three a round", "CONFIRMED"),
+    90: ("acid breath weapon, its own hit points in damage", "CONFIRMED"),
+    96: ("hugs its foe on an attack roll of 18 or better", "CONFIRMED"),
+    103: ("melee heat, 1d6 unless the target resists fire", "CONFIRMED"),
+    128: ("fire breath weapon, its own hit points in damage", "CONFIRMED"),
+    129: ("100% magic resistance", "CONFIRMED"),
+    130: ("killed outright by a blessed quarrel", "CONFIRMED"),
+    131: ("fire breath weapon, seven points", "CONFIRMED"),
+    132: ("throws a lightning bolt", "CONFIRMED"),
+    133: ("immune to fear, enfeeblement, feeblemind, paralysis, poison and "
+          "death magic", "CONFIRMED"),
+    135: ("immune to electricity", "CONFIRMED"),
+    138: ("invisible from the start of combat", "CONFIRMED"),
+}
 _CURSE_REPLACED = {
     3: ("Sticks to Snakes", "CONFIRMED"),
     4: ("Dispel Evil", "CONFIRMED"),
@@ -806,12 +833,12 @@ _CURSE_REPLACED = {
 }
 NAMES_CURSE: dict[int, tuple[str, str]] = {
     **{code: value for code, value in NAMES.items()
-       if code not in _CURSE_UNNAMED and code not in _CURSE_REPLACED},
+       if code not in _CURSE_REPLACED and code not in _CURSE_FROM_HANDLERS},
     **_CURSE_REPLACED,
-    # 71, 73, 109: refuted for nothing else, so Pool of Radiance's wording
+    **_CURSE_FROM_HANDLERS,
+    # 71 and 109: refuted for nothing else, so Pool of Radiance's wording
     # stands until Curse's own data says otherwise.
     71: (NAMES[71][0], "PROBABLE"),
-    73: (NAMES[73][0], "CONFIRMED"),
     109: (NAMES[109][0], "PROBABLE"),
 }
 
