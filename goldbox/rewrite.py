@@ -26,16 +26,16 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple, Sequence
 
-from . import amiga_later, amiga_por, c64_codec, dos_codec, dos_port
+from . import amiga_later, amiga_por, c64_codec, c64_port, dos_codec, dos_port
 from .amiga_port import AmigaRecordError
 from .iconparts import DosIcon, amiga_combat_icon
 from .record import CharacterRecord
 
 
 class RewriteError(ValueError):
-    """A rewrite whose spans or items cannot be put back where they came
-    from -- never a value a player typed, always a mismatch between the
-    record handed in and the character it is supposed to belong to."""
+    """A rewrite that cannot put an edit where it came from -- a record that
+    does not belong to the character handed in, or an edit that reaches no
+    byte of the port's own save.  Never a value a player typed."""
 
 
 class Span(NamedTuple):
@@ -47,11 +47,31 @@ class Span(NamedTuple):
 
 
 class RewrittenDos(NamedTuple):
-    """What a DOS or Amiga Pool of Radiance character is written back as."""
+    """What a DOS or Amiga Pool of Radiance character is written back as.
+
+    `moved` names every field and item this rewrite changed, and `unplaced`
+    every field of the port's record the span map has no offset for, which is
+    a field no edit can ever reach.  A caller that means to tell the player
+    what landed has to read them: the bytes alone do not say.
+    """
 
     record: bytes
     items: bytes
     effects: bytes
+    moved: tuple[str, ...] = ()
+    unplaced: tuple[str, ...] = ()
+
+
+class RewrittenAmigaLater(NamedTuple):
+    """What an Amiga Curse or Silver Blades character is written back as.
+
+    `character` is the `AmigaCharacter` :func:`goldbox.amiga_savegame.rebuild`
+    takes; `moved` and `unplaced` carry what :class:`RewrittenDos` carries.
+    """
+
+    character: "amiga_later.AmigaCharacter"
+    moved: tuple[str, ...] = ()
+    unplaced: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -162,13 +182,20 @@ def changed_spans(before: bytes, after: bytes,
 
 
 def patch(original: bytes, before: bytes, after: bytes,
-          spans: Sequence[Span]) -> tuple[bytes, list[str]]:
+          spans: Sequence[Span], *,
+          edited: bool = False) -> tuple[bytes, list[str]]:
     """`original` with the edited rendering's differing spans copied onto it.
 
     Returns the bytes and the names of the fields that moved.  `original` is
     what the engine wrote; `before` and `after` are the two renderings of the
     same character, so a span they agree about is a field nobody edited and
     the engine's bytes are kept.
+
+    `edited` says the caller knows the two records differ and that this record
+    is where the difference has to land.  Then a rewrite that moves no span at
+    all is refused rather than returned: the two renderings either agree --
+    the port has no such field -- or disagree somewhere the span map does not
+    cover, and both mean the player's edit would vanish on the next read.
     """
     if not len(before) == len(after) == len(original):
         raise RewriteError(
@@ -178,12 +205,49 @@ def patch(original: bytes, before: bytes, after: bytes,
     moved = changed_spans(before, after, spans)
     for s in moved:
         out[s.at:s.at + s.size] = after[s.at:s.at + s.size]
+    if edited and not moved:
+        differing = sum(1 for n in range(len(before)) if before[n] != after[n])
+        raise RewriteError(
+            f"the edit reaches no field of this port's record: the two "
+            f"renderings differ in {differing} bytes, none of them inside "
+            f"any of the {len(spans)} spans, so nothing would be written "
+            f"and the next read would return the unedited character")
     return bytes(out), [s.name for s in moved]
+
+
+def _span_named(spans: Sequence[Span], name: str) -> Span:
+    for s in spans:
+        if s.name == name:
+            return s
+    raise RewriteError(
+        f"this port's record has no {name} span, so a rewrite cannot say "
+        f"what the character carries")
+
+
+def _put(record: bytes, span: Span, value: int, byteorder: str) -> bytes:
+    """`record` with `value` encoded into `span`, capped at what it holds."""
+    out = bytearray(record)
+    top = (1 << (8 * span.size)) - 1
+    out[span.at:span.at + span.size] = min(value, top).to_bytes(span.size,
+                                                                byteorder)
+    return bytes(out)
 
 
 # ---------------------------------------------------------------------------
 # The items: sixteen C64 slots onto a port's own packed item list
 # ---------------------------------------------------------------------------
+#: The first four bytes of a C64 item block -- `type_index` and the three
+#: name words -- which are what say *which item this is* rather than what has
+#: happened to it.  A slot whose four change is a different item in the same
+#: place, so the node is rendered fresh rather than patched: patching would
+#: leave the deleted item's engine-only bytes, its cached display line and its
+#: chain pointer, under the new item's name.  **Whether the engine repaints
+#: that cached line when it loads the save is unconfirmed** -- the line is
+#: known to go stale in a save the engine itself wrote, which is why no reader
+#: here trusts it, but nobody has watched a running game redraw one.
+_C64_ITEM_IDENTITY = 4
+
+
 class _ItemEdit(NamedTuple):
     index: int | None      # which of the original's items, or None when new
     before: bytes          # the C64 sixteen-byte block as it was read
@@ -224,7 +288,10 @@ def _item_edits(before: CharacterRecord, after: CharacterRecord,
     **A character carrying more than sixteen items keeps the rest.** The C64
     record has sixteen slots and the DOS and Amiga files have no such limit,
     so the sheet shows the first sixteen and the ones past them are written
-    back exactly as they were read rather than dropped.
+    back exactly as they were read rather than dropped.  Neither rendering
+    can see them, so `item_count` and `encumbrance` are settled afterwards
+    against the whole list rather than taken from the writer
+    (:func:`_settle_pack`).
     """
     if not (before.is_stored("inventory") and after.is_stored("inventory")):
         return None
@@ -268,6 +335,10 @@ def _rewrite_items(edits: "list[_ItemEdit] | None",
         if edit.before == edit.after:
             out.append(original)
             continue
+        if edit.before[:_C64_ITEM_IDENTITY] != edit.after[:_C64_ITEM_IDENTITY]:
+            out.append(render(edit.after))
+            moved.append(f"item {n}: replaced")
+            continue
         node, names = patch(original, render(edit.before),
                             render(edit.after), spans)
         out.append(node)
@@ -279,6 +350,46 @@ def _rewrite_items(edits: "list[_ItemEdit] | None",
     # exactly as it was read.
     out.extend(originals[c64_codec.ITEM_SLOTS:])
     return out, moved
+
+
+def hidden_weight(items: Sequence[Any]) -> int:
+    """The weight of the items past the sixteenth, which the sheet never saw.
+
+    Each port's item object reads its own `weight` and `quantity` in its own
+    byte order, and a quantity of zero means one, exactly as
+    :meth:`goldbox.dos_codec.DosCharacter.expected_encumbrance` has it.
+    """
+    return sum(it.get("weight") * (it.get("quantity") or 1)
+               for it in items[c64_codec.ITEM_SLOTS:])
+
+
+def _settle_pack(record: bytes, spans: Sequence[Span], moved: list[str],
+                 nodes: Sequence[bytes], items: Sequence[Any],
+                 byteorder: str) -> tuple[bytes, list[str]]:
+    """`item_count` and `encumbrance` made true of the whole item list.
+
+    Both are counts of what the character carries, and both are rendered from
+    the sixteen C64 slots alone -- so on a character carrying more than
+    sixteen items the writer's answer is short by whatever is past the
+    sixteenth.  The count is written from the nodes actually going to the
+    file, and the weight the sheet never saw is added back to the
+    encumbrance the writer computed.
+
+    The count is written only when the number of nodes changed, so a record
+    whose stored count already disagrees with its own item file keeps the
+    engine's byte through a save with no edit in it.
+    """
+    if len(nodes) != len(items):
+        span = _span_named(spans, "item_count")
+        record = _put(record, span, len(nodes), byteorder)
+        if "item_count" not in moved:
+            moved = moved + ["item_count"]
+    extra = hidden_weight(items)
+    if extra and "encumbrance" in moved:
+        span = _span_named(spans, "encumbrance")
+        was = int.from_bytes(record[span.at:span.at + span.size], byteorder)
+        record = _put(record, span, was + extra, byteorder)
+    return record, moved
 
 
 # ---------------------------------------------------------------------------
@@ -303,11 +414,15 @@ def rewrite_dos(original: "dos_codec.DosCharacter",
     slots are not wired to the DOS effect nodes yet.
 
     `icon` is this character's own combat figure and defaults to the one the
-    original record already holds, so a rewrite never disturbs it.
+    original record already holds, so a rewrite never disturbs it.  `game`
+    defaults to the title's own C64 container, since rendering Curse or
+    Silver Blades through Pool of Radiance's tables would put a class or a
+    spell in the wrong place.
     """
     icon = amiga_combat_icon(original) if icon is None else icon
     deltas = original.deltas
     stride = deltas.item_size
+    game = c64_port.by_key(deltas.key) if game is None else game
 
     def render(rec: CharacterRecord) -> tuple[bytes, bytes]:
         neutral = c64_codec.read(rec, game=game)
@@ -317,17 +432,22 @@ def rewrite_dos(original: "dos_codec.DosCharacter",
 
     rendered_before, _ = render(before)
     rendered_after, _ = render(after)
-    spans, _unplaced = dos_spans(deltas)
-    record, _moved = patch(original.to_bytes(), rendered_before,
-                           rendered_after, spans)
+    spans, unplaced = dos_spans(deltas)
 
     edits = _item_edits(before, after, len(original.items))
-    nodes, _item_moved = _rewrite_items(
+    nodes, item_moved = _rewrite_items(
         edits, [node_bytes(i) for i in original.items],
         lambda block: dos_codec.item_from_c64(block, stride),
         dos_item_spans())
+
+    record, moved = patch(
+        original.to_bytes(), rendered_before, rendered_after, spans,
+        edited=before.to_bytes() != after.to_bytes() and not item_moved)
+    record, moved = _settle_pack(record, spans, moved, nodes, original.items,
+                                 "little")
     effects = b"".join(bytes(e) for e in original.effects)
-    return RewrittenDos(record, b"".join(nodes), effects)
+    return RewrittenDos(record, b"".join(nodes), effects,
+                        tuple(moved + item_moved), tuple(unplaced))
 
 
 # ---------------------------------------------------------------------------
@@ -347,27 +467,37 @@ def rewrite_amiga_por(original: "amiga_por.AmigaPorCharacter",
     has not been located inside the run it straddles and there is no offset
     to copy it to; the engine's own bytes stay there.  Nothing the sheet can
     edit reaches that field.
+
+    `game` defaults to the C64 Pool of Radiance container, which is the only
+    title this port's record can be.
     """
     icon = amiga_combat_icon(original) if icon is None else icon
+    game = (c64_port.by_key(dos_port.POOL_OF_RADIANCE.key) if game is None
+            else game)
 
     def render(rec: CharacterRecord) -> bytes:
         neutral = c64_codec.read(rec, game=game)
         record, _itm, _spc, _rep = amiga_por.write_por(neutral, icon=icon)
         return record
 
-    spans, _unplaced = amiga_por_spans()
-    record, _moved = patch(original.raw, render(before), render(after), spans)
-
+    spans, unplaced = amiga_por_spans()
     item_spans, _item_unplaced = amiga_item_spans(
         amiga_por.amiga_por_item_offset)
     edits = _item_edits(before, after, len(original.items))
-    nodes, _item_moved = _rewrite_items(
+    nodes, item_moved = _rewrite_items(
         edits, [node_bytes(i) for i in original.items],
         lambda block: amiga_por.amiga_por_item_from_dos(
             dos_codec.item_from_c64(block, dos_port.ITEM_SIZE)),
         item_spans)
+
+    record, moved = patch(
+        original.raw, render(before), render(after), spans,
+        edited=before.to_bytes() != after.to_bytes() and not item_moved)
+    record, moved = _settle_pack(record, spans, moved, nodes, original.items,
+                                 "big")
     effects = b"".join(bytes(e) for e in original.effects)
-    return RewrittenDos(record, b"".join(nodes), effects)
+    return RewrittenDos(record, b"".join(nodes), effects,
+                        tuple(moved + item_moved), tuple(unplaced))
 
 
 # ---------------------------------------------------------------------------
@@ -377,20 +507,25 @@ def rewrite_amiga_later(original: "amiga_later.AmigaCharacter",
                         before: CharacterRecord, after: CharacterRecord,
                         game: Any = None,
                         icon: "DosIcon | None" = None
-                        ) -> "amiga_later.AmigaCharacter":
+                        ) -> RewrittenAmigaLater:
     """One Amiga Curse or Silver Blades character written back.
 
-    Returns an `AmigaCharacter`, which is what
+    The character in the result is an `AmigaCharacter`, which is what
     :func:`goldbox.amiga_savegame.rebuild` takes: neither title keeps its
     items and effects in sibling files, so the block is the unit.
     :meth:`goldbox.amiga_later.AmigaCharacter.block_bytes` sets `item_count`
     and the two chain heads to match what actually follows, and this sets
-    `item_count` in the record it hands back as well so the two agree.
+    `item_count` in the record it hands back as well whenever the item list
+    changed length, so a caller reading the record rather than the block gets
+    the same answer.  A record whose stored count already disagreed with its
+    own item list keeps the engine's byte through a save with no edit in it.
 
     **The effects are the ones that were read**, as for the other two ports.
+    `game` defaults to the title's own C64 container.
     """
     icon = amiga_combat_icon(original) if icon is None else icon
     deltas = original.deltas
+    game = c64_port.by_key(deltas.key) if game is None else game
 
     def render(rec: CharacterRecord) -> bytes:
         neutral = c64_codec.read(rec, game=game)
@@ -398,19 +533,25 @@ def rewrite_amiga_later(original: "amiga_later.AmigaCharacter",
                                                 icon=icon)
         return written.raw
 
-    spans, _unplaced = amiga_later_spans(deltas)
-    record, _moved = patch(original.raw, render(before), render(after), spans)
-
+    spans, unplaced = amiga_later_spans(deltas)
     if deltas.item_size is None:
         item_spans: list[Span] = []
     else:
         item_spans, _item_unplaced = amiga_item_spans(deltas.item_offset)
     edits = _item_edits(before, after, len(original.items))
-    nodes, _item_moved = _rewrite_items(
+    nodes, item_moved = _rewrite_items(
         edits, [node_bytes(i) for i in original.items],
         lambda block: amiga_later.amiga_later_item_from_dos(
             dos_codec.item_from_c64(block, deltas.dos.item_size), deltas),
         item_spans)
+
+    record, moved = patch(
+        original.raw, render(before), render(after), spans,
+        edited=before.to_bytes() != after.to_bytes() and not item_moved)
+    record, moved = _settle_pack(record, spans, moved, nodes, original.items,
+                                 "big")
     items = [amiga_later.AmigaItem.from_bytes(node, deltas) for node in nodes]
-    return amiga_later.AmigaCharacter.from_bytes(
-        record, deltas, original.source, items, original.effects)
+    return RewrittenAmigaLater(
+        amiga_later.AmigaCharacter.from_bytes(
+            record, deltas, original.source, items, original.effects),
+        tuple(moved + item_moved), tuple(unplaced))

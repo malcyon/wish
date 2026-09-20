@@ -45,8 +45,11 @@ open one.
 Two measurements were taken of each character.
 
 **The no-op rewrite.** Rewrite it with nothing edited and compare with the
-bytes it came from. **664 of 664 came back byte for byte**, record and item
-file both -- `tools/convert/rewritecensus.py --no-op`. CONFIRMED.
+bytes it came from. **664 of 664 came back byte for byte** -- record, item
+file and effect file, all three, `tools/convert/rewritecensus.py --no-op`.
+CONFIRMED. The effect file is compared because it was not before: the sweep
+returned it unread, so "byte for byte" covered two of the three things a save
+is made of.
 
 **The round trip of the unedited character.** Convert it to the C64 record the
 sheet edits, render it straight back through the port's own writer, and
@@ -204,9 +207,34 @@ differential keeps the engine's byte until the player edits something the
 recompute depends on, and then the writer's answer lands.
 
 **`encumbrance`, and `item_count`.** Both are computed rather than copied, and
-both follow an item or money edit by design. `item_count` differs from the
-engine's byte on exactly 1 of 216 DOS Pool of Radiance characters, which is a
-record whose stored count and item file disagree -- ours is the file's.
+both are meant to be recomputed after an item or money edit. `item_count`
+differs from the engine's byte on exactly 1 of 216 DOS Pool of Radiance
+characters, which is a record whose stored count and item file disagree --
+ours is the file's.
+
+**Neither may be taken from the writer, and that is the one place the
+differential is not enough.** Both count what the character carries, and both
+renderings see only the sixteen items the C64 record has slots for. On a
+character carrying twenty, a player who deletes one item makes the two
+renderings say sixteen and fifteen, the differing span is copied, and the
+record then says fifteen over an item file of nineteen nodes -- and every
+reader trusts the count (`dos_codec.read_character`, `amiga_por.por_character`),
+so the next read returns fifteen items and the other four are gone. So
+`goldbox.rewrite` writes the count from the nodes it actually wrote, and only
+when that number changed, which leaves the stale-count record above untouched
+by a save with no edit in it.
+
+Encumbrance is the same arithmetic and the fix is measured rather than
+chosen. The one character on this machine carrying more than sixteen items is
+`WISH-SPEC-por-item-twenty/G` WISHFTR, 20 items: its stored encumbrance is
+**180**, its money is 140, and the weight of all twenty items is 40 -- so the
+engine's own total counts the four the sheet cannot see, where the sixteen
+visible ones sum to 172. The rewrite therefore adds the hidden items' weight
+back to the encumbrance the writer computed, whenever it copies that span at
+all. Sample size one, because there is one such character; the direction is
+corroborated by the engine's own routine, which walks the item chain and not
+the first sixteen of it (`.claude/rules/testing.md`, the encumbrance
+identity).
 
 **`unnamed_0ab`, the identity byte, and it is the one to argue about.**
 `goldbox.dos_codec.identity_byte` digests every *other* byte of the record, so
@@ -258,6 +286,53 @@ nobody types into it. What has to be decided is whether an edit to a class
 level on a DOS party is allowed to rewrite five saving throws the engine has
 been happy with.
 
+## The fields an edit cannot reach at all, measured
+
+The table above is about fields whose *engine* bytes a rewrite would replace.
+This one is the other question, and it is the one the editor needs: **which
+fields of the C64 record can a player type into and lose?** It is measured
+rather than inferred -- `tools/convert/rewritecensus.py --read-only` adds one
+to each field of the record in turn, at its first byte and at its last,
+rewrites, and reports whether a byte of the save moved. 12 characters of each
+port and title, 72 in all.
+
+DOS Pool of Radiance is the baseline row and the other five are written
+against it, which is shorter than six lists and says the same thing.
+
+| port and title | read-only on all 12 | writable on some characters and not others |
+|---|---|---|
+| DOS Pool of Radiance | 29: `attack_level`, `char_class`, `dual_class_level`, `dual_class_slot`, `flags_0b8`, `infravision`, `item_effects`, `level_knight`, `missile_attack_adjustment`, `portrait_body`, `portrait_head`, `spells_known_high`, `strength_bonus_flag`, `strength_index`, `thac0_base`, `turn_class`, `turn_power`, and the twelve `gap_*` and `region_*` runs | 9: `thac0`, the eight `thief_*` |
+| DOS Curse of the Azure Bonds | 28: that list without `dual_class_level`, `dual_class_slot` and `spells_known_high`, and with `gap_06c` and `identity_pair` | 11: `dual_class_slot`, `level_paladin`, `spells_castable`, the eight `thief_*` |
+| DOS Secret of the Silver Blades | 27: DOS Curse's without `gap_01b` | 3: `dual_class_slot`, `level_ranger`, `spells_castable` |
+| Amiga Pool of Radiance | 28: DOS Pool of Radiance's without `portrait_head` and `portrait_body`, and with `treasure_share` | 9: `thac0`, the eight `thief_*` |
+| Amiga Curse of the Azure Bonds | 29: DOS Curse's with `dual_class_slot` | 1: `spells_castable` |
+| Amiga Secret of the Silver Blades | 28: DOS Silver Blades' with `dual_class_slot` | 1: `spells_castable` |
+
+**The sheet portrait is read-only on five of the six**, and writable only on
+Amiga Pool of Radiance. That is the same fact as the census's `portrait_head`
+and `portrait_body` rows read from the other end: the rewrite passes no
+portrait tables, so the writer renders zero for both whatever the sheet says.
+
+**A field writable for one character and not another is the class showing
+through**, not an inconsistency: `level_paladin` moves on a DOS Curse paladin
+and nothing else, the eight `thief_*` fields move on a thief, and
+`spells_castable` moves on a caster.
+
+**Nothing in this measurement was refused for an illegal value**: 0 of 72
+characters had a field where every fuzz raised something other than the
+rewrite's own refusal. The fuzz is +1 on one byte, so it is a lower bound on
+what a player can reach -- a field it could not move is read-only for that
+value, and a field it moved is writable for certain.
+
+**An edit that reaches nothing is refused rather than written.**
+`goldbox.rewrite.patch` raises `RewriteError` when the two records differ, the
+item file did not change, and no span of the port's record moved. Before that,
+such an edit was written as a save that changed nothing and reported no
+trouble, so the player's value came back unedited on the next read with
+nothing anywhere saying why. `RewrittenDos.moved` and `.unplaced` are the
+other half of it: what landed, and what this port's span map has no offset for
+at all.
+
 ## What was not established
 
 * **Nothing here was loaded in a running game.** Bytes matching is necessary
@@ -273,7 +348,18 @@ been happy with.
   that, so it is untested rather than broken.
 * **A character carrying more than sixteen items** keeps the ones past the
   sixteenth exactly as read, because the C64 record has sixteen slots and the
-  sheet shows no more. One DOS specimen carries 20, and it drove that rule.
-  What the player sees is that the extra items are neither shown nor lost.
+  sheet shows no more. One DOS specimen carries 20, and it drove that rule and
+  the count and encumbrance arithmetic above. What the player sees is that the
+  extra items are neither shown nor lost. **No Amiga character on this machine
+  carries more than sixteen**, so the Amiga half of that rule is held up by
+  generated records rather than by any save an engine wrote.
+* **A slot whose item is replaced gets a freshly rendered node**, because
+  patching the old node would leave the deleted item's engine-only bytes --
+  its cached display line and its chain pointer -- under the new item's name.
+  The test is the first four bytes of the C64 block, `type_index` and the
+  three name words. **Whether the engine repaints that cached line when it
+  loads a save is unconfirmed**: the line is known to go stale in saves the
+  engine itself wrote, which is why no reader here trusts it, but nobody has
+  watched a running game redraw one.
 * **`.CHA` exports were not swept.** The census reads save slots, which is what
   the editor will open.
