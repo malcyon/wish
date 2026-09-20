@@ -385,6 +385,25 @@ def test_a_boot_with_no_xdotool_fails_and_says_so_instead_of_raising(tmp_path,
     assert not _watchers()
 
 
+def test_a_fastloader_prompt_answered_with_no_xdotool_fails_and_says_so(
+        tmp_path, monkeypatch):
+    """The prompt appears, so the boot goes to close VICE's dialog and cannot."""
+    display = FakeDisplay(["VICE (C64SC)"])
+    sess = _session(tmp_path, monkeypatch, display)
+
+    def no_xdotool(display, *args):
+        raise FileNotFoundError("xdotool")
+
+    monkeypatch.setattr(session, "_xdo", no_xdotool)
+
+    assert sess.boot() is False
+
+    assert "xdotool" in sess.boot_failure
+    assert "fastloader" in sess.boot_failure
+    assert sess.kbd.pressed == [], "no answer was sent into a game with no way to look"
+    assert not _watchers()
+
+
 def test_the_dialog_watcher_says_once_and_ends_when_xdotool_is_missing(monkeypatch):
     def no_xdotool(display, *args):
         raise FileNotFoundError("xdotool")

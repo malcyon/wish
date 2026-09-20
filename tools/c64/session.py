@@ -1526,6 +1526,8 @@ class Session:
         if self.wait_text("DISABLE FASTLOADER", FASTLOADER_WAIT)[0] is None:
             return self._boot_failed("no fastloader prompt", FASTLOADER_WAIT)
         if not self._answer_fastloader():
+            if self.boot_failure:
+                return False
             return self._boot_failed("the fastloader prompt took no answer",
                                      ANSWER_TRIES * ANSWER_RESEND)
         if self.wait_text("PLAY GAME", PLAY_GAME_WAIT)[0] is None:
@@ -1562,7 +1564,16 @@ class Session:
         was = self.screen_text()
         for attempt in range(1, ANSWER_TRIES + 1):
             if attempt < ANSWER_TRIES:
-                dismiss_error_dialog(str(self.display), self.DIALOG_SETTLE)
+                try:
+                    dismiss_error_dialog(str(self.display), self.DIALOG_SETTLE)
+                except (OSError, subprocess.SubprocessError) as e:
+                    # No `xdotool` means no dialog can be closed, and the
+                    # caller turns this False into a boot failure.
+                    self.boot_failure = (
+                        f"could not look for VICE's error dialog before "
+                        f"answering the fastloader prompt: {e}")
+                    self.log(self.boot_failure)
+                    return False
                 self.kbd.key(self.fastloader, 0.15, 0.28)
             else:
                 self.press_kernal(FASTLOADER_PETSCII[self.fastloader])

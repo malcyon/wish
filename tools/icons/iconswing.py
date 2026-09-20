@@ -220,7 +220,7 @@ def camp(sess, log, args, slots: list[dict], charset: bytes) -> int:
     # picture that was already there, which is what the first run of this
     # returned.  `PARTS` is the editor's own menu -- `ICON: PARTS COLOR SIZE
     # EXIT` -- so waiting for that word waits for the thing being measured.
-    if not sess.wait_text("PARTS", timeout=args.editor):
+    if sess.wait_text("PARTS", timeout=args.editor)[0] is None:
         s = sess.screen()
         log.say("** the editor's PARTS menu never appeared; row 24 is "
                 f"|{'' if s is None else s.row(24)}|")

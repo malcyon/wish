@@ -10,8 +10,11 @@ poses into, which is where the second nine end up.
 No emulator: the monitor is a fake and the charset is built here.
 """
 
+import argparse
+import pathlib
 import struct
 
+import pytest
 from conftest import load_tools_module
 
 iconswing = load_tools_module("iconswing")
@@ -152,3 +155,57 @@ def test_a_renumbered_icon_is_found_by_its_run_of_nine():
             rows[10 + dr][4 + dc] = 0x60
     found = iconswing.blocks_on([bytes(r) for r in rows])
     assert [(r, c) for r, c, _ in found] == [(3, 4)]
+
+
+class TimeoutSession:
+    """A session on which every wait times out, as `Session.wait_text` does."""
+
+    class kbd:
+        @staticmethod
+        def screenshot(path):
+            return True
+
+    class _Stop(Exception):
+        pass
+
+    def select_party(self, who):
+        return True
+
+    def screen(self):
+        return None
+
+    def select_bar(self, label):
+        return True
+
+    def settle(self, seconds):
+        pass
+
+    def wait_text(self, needle, timeout=180.0, interval=0.35):
+        return None, None
+
+    def mon(self, timeout=5):
+        raise self._Stop("the screen read after the wait")
+
+
+class RecordingLog:
+    dir = pathlib.Path(".")
+
+    def __init__(self):
+        self.lines = []
+
+    def say(self, text):
+        self.lines.append(text)
+
+    def emit(self, *a, **kw):
+        pass
+
+
+def test_an_editor_menu_that_never_appears_is_logged():
+    """The tool goes on to read the screen, and says the menu did not come."""
+    log = RecordingLog()
+    args = argparse.Namespace(who=0, editor=0.01, tag="t")
+
+    with pytest.raises(TimeoutSession._Stop):
+        iconswing.camp(TimeoutSession(), log, args, [], b"")
+
+    assert any("PARTS menu never appeared" in line for line in log.lines)

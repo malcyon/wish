@@ -89,7 +89,7 @@ def run(args) -> int:
         # work-around `tools/c64/savecheck.py` uses.
         if not sess.select_row("BEGIN ADVENTURING"):
             raise RuntimeError("BEGIN ADVENTURING could not be selected")
-        if not sess.wait_text("MOVE", timeout=args.arrive):
+        if sess.wait_text("MOVE", timeout=args.arrive)[0] is None:
             raise RuntimeError("No world bar after BEGIN ADVENTURING")
         sess.settle(3)
 
