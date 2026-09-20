@@ -23,10 +23,10 @@ game's own creation screens, and skips where there is none.
 
 from __future__ import annotations
 
+import gamedata
 import pytest
 
 from goldbox import c64_codec, dos_codec, dos_port
-from tests import gamedata
 
 STR_BONUS = dos_port.FIELDS_BY_NAME["strength_bonus"]
 STRENGTH = dos_port.FIELDS_BY_NAME["strength"]

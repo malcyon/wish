@@ -68,7 +68,7 @@ Three probes settle it. Each runs one file's tests with the whole of
 `tests/` collected first, so the interpreter holds the object graph a real
 worker holds:
 
-| probe, 168 tests of `tests/test_conditionbadges.py` | wall |
+| probe, 168 tests of `tests/automap/test_conditionbadges.py` | wall |
 |---|---|
 | as it stands | 32.82 s |
 | `gc.collect` stubbed to a no-op | 9.45 s |
@@ -90,7 +90,7 @@ garbage anyway. Every widget a test builds is created afterwards and is
 still collected at the `yield`, so the deterministic collection point
 `docs/112-test-harness.md` describes keeps doing its job at a fraction of
 the price. A Qt-heavy file confirms it: 87 tests of
-`tests/test_preferences.py` go 57.15 s to 49.97 s, all passing.
+`tests/wish/test_preferences.py` go 57.15 s to 49.97 s, all passing.
 
 `_collect_between_tests`' own docstring says the collection point "costs
 nothing measurable". It costs about half the suite, and the reason the claim
@@ -108,11 +108,11 @@ column is what stays after the freeze:
 | `tests/suite/test_staging_sweep.py` | 25 | 88.8 | 3.3 | 0.0 | 85.5 |
 | `tests/pool_of_radiance/test_combatdrive.py` | 81 | 78.3 | 6.1 | 0.0 | 72.1 |
 | `tests/icons/test_iconproposal.py` | 67 | 70.6 | 8.0 | 0.0 | 62.6 |
-| `tests/test_editor.py` | 182 | 80.3 | 25.2 | 10.6 | 55.1 |
+| `tests/editor/test_editor.py` | 182 | 80.3 | 25.2 | 10.6 | 55.1 |
 | `tests/icons/test_iconparts.py` | 39 | 57.5 | 5.0 | 46.4 | 52.5 |
 | `tests/amiga/test_amiga.py` | 173 | 75.4 | 32.8 | 0.0 | 42.5 |
-| `tests/test_mapscale.py` | 25 | 45.4 | 4.3 | 0.0 | 41.2 |
-| `tests/test_preferences.py` | 83 | 49.7 | 11.9 | 0.0 | 37.7 |
+| `tests/wish/test_mapscale.py` | 25 | 45.4 | 4.3 | 0.0 | 41.2 |
+| `tests/wish/test_preferences.py` | 83 | 49.7 | 11.9 | 0.0 | 37.7 |
 | `tests/amiga/test_amigalaterwrite.py` | 17 | 39.2 | 2.3 | 0.0 | 36.9 |
 
 `tests/suite/test_toolshadowing.py` is the one item large enough to be attacked on

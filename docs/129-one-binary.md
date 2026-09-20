@@ -62,7 +62,7 @@ is a subcommand if it exactly matches one of the subcommand names, and a save
 disk otherwise. That is five lines in `wish/__main__.py`, ahead of the parser,
 and it is the same shape as the `--debug` strip that already lives there. A
 file genuinely named `export` is reachable as `./export`, and
-`tests/test_packaging.py` opens one to prove it.
+`tests/wish/test_packaging.py` opens one to prove it.
 
 ## What changes
 
@@ -77,7 +77,7 @@ file genuinely named `export` is reachable as `./export`, and
 | `docs/95-wish-cli.md` | every example respelled; the file is about a command that no longer exists under that name |
 | `docs/97-editor.md`, `docs/106-releases.md`, `docs/122-release-testing.md` | artefact contents and command examples |
 | `README.md` | **Donald's. Not edited** — and as it turned out it needed nothing; see the end of this file. |
-| `tests/test_packaging.py` | the platform-split assertions become single-binary assertions |
+| `tests/wish/test_packaging.py` | the platform-split assertions become single-binary assertions |
 
 ## What it buys
 
@@ -104,7 +104,7 @@ Done on 2026-08-22, on Linux, against `wish_goldbox-0.0.1.dev188+…`.
    what they were before the CLI was added.
 3. **The resolution rule.** A file called `export` copied into a directory
    exports through `wish export ./export`, and `wish export` with no argument is
-   still the subcommand. Both are asserted in `tests/test_packaging.py`.
+   still the subcommand. Both are asserted in `tests/wish/test_packaging.py`.
 4. **CI** asserts, on Linux *and* Windows, that `dist/wish/` holds exactly one
    file beside `_internal/` and that `wish export --help` prints its usage. The
    second is the only check that reaches `tools.wish`, which is a hidden import

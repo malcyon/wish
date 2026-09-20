@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import pathlib
 
+import gamedata
 import pytest
 
 from goldbox import amiga_dax, amiga_por, amiga_savegame
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.amiga_port import AmigaRecordError
-from tests import gamedata
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 

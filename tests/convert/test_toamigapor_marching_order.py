@@ -22,9 +22,8 @@ from __future__ import annotations
 
 import pathlib
 
+import gamedata
 import pytest
-
-from tests import gamedata
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 

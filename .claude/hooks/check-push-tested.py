@@ -5,7 +5,7 @@
 worktree, before every push that carries code. **The rule did not hold**: on
 2026-09-16 the orchestrator pushed eighteen times and launched `test-runner`
 once, and the batch that closed `#89` turned `main` red on a test in
-`tests/test_debugmode.py` that neither the builder nor the reviewer had run,
+`tests/wish/test_debugmode.py` that neither the builder nor the reviewer had run,
 because both were scoped to the builder's files by design. Only the full
 suite covers a test elsewhere in the tree that asserts the old behaviour,
 and the full suite was the step that was skipped.

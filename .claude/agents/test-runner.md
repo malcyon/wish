@@ -85,7 +85,7 @@ assertion line, and the actual values. Not the whole traceback, not the
 passing tests, not a summary of what you did.
 
 ```
-FAILED tests/test_windowslayout.py::test_the_empty_roster_is_...
+FAILED tests/wish/test_windowslayout.py::test_the_empty_roster_is_...
   assert abs(empty_width - loaded_width) <= 15
   assert 20 <= 15
 ```

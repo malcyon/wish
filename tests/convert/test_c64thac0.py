@@ -20,11 +20,12 @@ engine's own is checked rather than assumed.
 
 from __future__ import annotations
 
+import gamedata
+
 from goldbox import c64_codec
 from goldbox import levels as level_tables
 from goldbox.encoding import COMBAT_BIAS, combat_value
 from goldbox.neutral import NeutralCharacter
-from tests import gamedata
 
 
 def _char(levels: dict[str, int], strength: int = 10, percentile: int = 0,

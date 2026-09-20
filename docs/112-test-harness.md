@@ -85,7 +85,7 @@ Two negative results worth keeping:
 
 | probe | result |
 |---|---|
-| `pytest tests/test_editor.py` alone | 8 runs, 0 crashes -- the fault needs the modules that run before it |
+| `pytest tests/editor/test_editor.py` alone | 8 runs, 0 crashes -- the fault needs the modules that run before it |
 | the whole suite under `gdb` | 6 runs, 0 crashes -- a debugger hides it, so no C-level trace was ever obtained, and none is needed now |
 
 ### Not done, and why

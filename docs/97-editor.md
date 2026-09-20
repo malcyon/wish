@@ -88,7 +88,7 @@ Consequences worth stating, because they are what make this work:
   (`subControlRect(CC_SpinBox, SC_SpinBoxEditField, …)`) how much of a box is
   not the value, the old constants are floors under the answer, and the width
   is set as `setMinimumWidth` too so the layout cannot squeeze the value back
-  out. `tests/test_windowslayout.py` proves it against a proxy style whose
+  out. `tests/wish/test_windowslayout.py` proves it against a proxy style whose
   arrows eat 60 px.
 * **A selected row is styled, not left to the platform.** The Windows style
   highlights the *text* of each cell rather than the cell and draws a focus
@@ -141,7 +141,7 @@ does not. Thief skills are the thief's in every title.
 
 **Greying is a display decision only** -- the bytes behind a greyed box are
 written back untouched, which
-`tests/test_editor.py::test_a_disabled_box_is_still_written_back_untouched`
+`tests/editor/test_editor.py::test_a_disabled_box_is_still_written_back_untouched`
 pins, and the invariant itself is
 `test_the_sheet_keeps_its_shape_across_the_roster`: same set of visible boxes,
 same sheet size hint, for every character on the disk.
@@ -178,7 +178,7 @@ drop-down through `CT_ComboBox`. The memorised list is measured against every
 name the drop-down offers rather than the two in it now, and the cap on
 `box_spells` is gone -- the box is sized by what is in it. Curse's longer names
 therefore widen it by themselves when a Curse save is opened.
-`tests/test_editor.py::test_a_spell_list_is_wide_enough_for_the_longest_name`.
+`tests/editor/test_editor.py::test_a_spell_list_is_wide_enough_for_the_longest_name`.
 
 **The drop-down has a row to its own.** Sharing one with Add and Remove left it
 132 px of edit field for a 303 px name, and two buttons that will not shrink.
@@ -224,7 +224,7 @@ that floor, and not the sum of everything on the page: it was 378, 471, 570,
 630 and 705 at +0, +6, +12, +16 and +20 points of extra UI font, putting the
 whole window at 460, 585, 717, **796** and **897** against a 768-high laptop;
 it is 210, 251, 295, 322 and 355, and the window 449, 511, 577, 617 and 667.
-`tests/test_mapscale.py` asserts the screen and the shape rather than any of
+`tests/wish/test_mapscale.py` asserts the screen and the shape rather than any of
 those numbers.
 
 ## Opening and saving
@@ -536,7 +536,7 @@ The editor is a consumer of the library, not an extension of it.
   save, restart: the field must still bind and still be editable or read-only
   as before, with no code edited and no command run in between. That is the
   requirement this design exists to meet.
-  `tests/test_editor.py::test_moving_a_box_in_designer_needs_no_code_change`
+  `tests/editor/test_editor.py::test_moving_a_box_in_designer_needs_no_code_change`
   does the same thing to a whole box, in a copy of the form.
 * `git status` must be clean after a rebuild — if `ui_window.py` differs, the
   committed copy was stale.

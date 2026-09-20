@@ -117,7 +117,7 @@ class _NoClassCode(int):
     entry and show it as though it were the character's class, which it is
     not. Subclassing `int` rather than returning something else keeps
     `_char_class_shown` comparing equal to a simple `int` of the same value
-    for every caller that only asks what the code is (`tests/test_dualclasscombo.py`,
+    for every caller that only asks what the code is (`tests/editor/test_dualclasscombo.py`,
     `tools/records/classcombocheck.py`); only `_populate`, which decides *how* to
     show it, tells the two apart.
 
@@ -489,7 +489,7 @@ class RowSplitter(QObject):
     the height is shared. It is the answer `#162` gave for the map page's
     three columns, and `ColumnSplitter` there is its twin -- named rather than
     imported, because this package reads nothing from the live-reading side
-    and `tests/test_wish.py` greps for it. The same two rulings settle both:
+    and `tests/wish/test_wish.py` greps for it. The same two rulings settle both:
 
     * *"a dragged width on a column should be remembered when Wish opens
       again"* -- `Settings.editor_rows`, two numbers in the JSON;

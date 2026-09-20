@@ -52,7 +52,7 @@ from . import __version__
 #: falls short of it.
 #:
 #: The vector stays committed. It is the source, it is what a future Qt or a
-#: different renderer would draw correctly, and `tests/test_appicon.py`
+#: different renderer would draw correctly, and `tests/wish/test_appicon.py`
 #: pins both files' hashes.
 PICTURE_ASSET = asset_path("assets", "logo", "combo-mark-color-500.png")
 

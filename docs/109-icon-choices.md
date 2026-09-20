@@ -321,7 +321,7 @@ eye's concentric rings hold at 13 and "preview" is a view, not a search.
 
 ## The toolbar wiring is done
 
-It was blocked: `tests/test_wish.py::test_editor_imports_nothing_live` fails if
+It was blocked: `tests/wish/test_wish.py::test_editor_imports_nothing_live` fails if
 the word `automap` appears anywhere under `editor/`, and `icon_pixmap` lived in
 `automap/`. Moving the drawing to a package neither side owns — `ui/icons.py`
 and `ui/iconpaint.py` — settled it. `editor/window.py::_toolbar_icons` paints
@@ -366,13 +366,13 @@ moved to the game-icons.net glyph. So the Font Awesome entries are deleted
 from `FONT_AWESOME` outright rather than kept under another key: there is
 nothing left to shadow, and a name that shipped under two sets with no caller
 for one of them would be a dead entry waiting to be picked up by accident.
-`tests/test_conditionbadges.py::test_the_two_sets_are_drawn_in_their_own_boxes`
+`tests/automap/test_conditionbadges.py::test_the_two_sets_are_drawn_in_their_own_boxes`
 and the `ARTISTS` test both assert `GAME_ICONS` and `FONT_AWESOME` share no
 name, so a collision left in place would fail the build rather than ship
 silently.
 
 Every one of the ten went through
-`tests/test_conditionbadges.py::test_our_parser_draws_what_an_svg_renderer_draws`,
+`tests/automap/test_conditionbadges.py::test_our_parser_draws_what_an_svg_renderer_draws`,
 which is parametrised over every name in `GAME_ICONS` and renders each at 13,
 26, 128 and 512 px against Qt's own SVG renderer, pixel for pixel. All ten
 pass at every size — the parser reads the artist's `d` correctly, which is
@@ -388,7 +388,7 @@ Donald, *"I am paying an artist to create an app logo and icon. In the
 meantime, please use pointy-hat."* Both went through the same pixel-for-pixel
 check as the ten. `crossed-sabres`' control points overshoot its 512 box by
 `extent()`'s conservative bound the same way `brass-eye`'s do; its rendered
-ink does not, and `tests/test_automap.py`/`tests/test_conditionbadges.py`
+ink does not, and `tests/automap/test_automap.py`/`tests/automap/test_conditionbadges.py`
 carry the same measured exclusion.
 
 **The Person note's `user` is the last one, and it finishes `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)`
@@ -452,7 +452,7 @@ and had been repictured on `#167 (Replace the remaining Font Awesome icons with 
 had already taken Encounter; `power-ring` and `cut-diamond` both say *a magic
 item* and `cut-diamond` took Jeweler; `disintegrate` had nothing to attach it
 to. A credit in `THIRD_PARTY_LICENSES.md` for a glyph nothing draws fails
-`tests/test_licenses.py` the same way an uncredited glyph does, so an unused
+`tests/wish/test_licenses.py` the same way an uncredited glyph does, so an unused
 icon is not a harmless spare.
 
 **None of the sixteen needed an exclusion from the box test.**

@@ -284,7 +284,7 @@ neither is wrong — settled for
 which could not write a clock address until somebody said which. **The second
 constant was called `CLOCK_OFFSET` until that ticket's stage 6 renamed it**, so
 that the name says which of the two facts it holds; `automap.c64.C64Machine`
-exposes it as `shown_clock_base`, and `tests/test_c64machine.py` pins that it is
+exposes it as `shown_clock_base`, and `tests/automap/test_c64machine.py` pins that it is
 one past `C64Container.clock` rather than a number of its own.
 
 | digit | offset | limit | what it is |

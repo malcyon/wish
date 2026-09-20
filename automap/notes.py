@@ -14,7 +14,7 @@ Three deliberate choices in the storage:
   renamed or removed type degrades to an unknown icon rather than silently
   becoming a different one. `type_for` is where that happens.
 * **The old format keeps loading.** `"6,2": "some text"` becomes one note of
-  type `note`; `tests/test_automap.py` pins it. Nobody's notes get eaten by an
+  type `note`; `tests/automap/test_automap.py` pins it. Nobody's notes get eaten by an
   upgrade.
 
 The type table is data, so adding a type is a line here and nothing else --

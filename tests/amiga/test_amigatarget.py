@@ -329,7 +329,7 @@ GEO_AT = 0xC30000
 
 def _map_block():
     """A well-formed map built from the format, never a copy of one."""
-    from tests.gamedata import synthetic_geo
+    from gamedata import synthetic_geo
     return synthetic_geo()
 
 

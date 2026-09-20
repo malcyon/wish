@@ -26,7 +26,7 @@ reads; the installed metadata, asked for by the **distribution** name
 That metadata lookup has been stale twice — a leftover `por-tools` after the
 first rename put `wish unknown` at the top of every debug log. `wish/debuglog.py`
 now takes `wish.__version__` rather than asking metadata itself, and
-`tests/test_packaging.py` checks the one remaining lookup against
+`tests/wish/test_packaging.py` checks the one remaining lookup against
 `pyproject.toml`.
 
 The window says the same number under **Help > About Wish** — `wish/about.py`,
@@ -156,7 +156,7 @@ inside argparse that used to be a traceback box. The order matters: borrowing
 the console first would send a redirected run to the terminal and leave the
 file empty. A double-click from Explorer still gets devnull — there is no
 console to borrow and nothing inherited.
-`tests/test_packaging.py` covers the choice; the Windows half of it is
+`tests/wish/test_packaging.py` covers the choice; the Windows half of it is
 **unverified**, because nothing here runs Windows.
 
 **No data files.** `wish/window.ui` is compiled ahead of time into
@@ -204,7 +204,7 @@ leave a half-made release page behind it.
 | the Linux frozen build runs | verified — `wish --version` and the window both start from `dist/wish/wish` |
 | the Linux tarball carries exactly one executable | verified — `wish`, 2.29 MB, beside one `_internal/`. The folder is 163.1 MB and the `.tar.gz` 61.3 MB, back to what they were before `wish-cli` was added |
 | the frozen `wish export` round-trips a save disk | verified — export and re-import of a `PORSAVE*.D64` came back byte-identical, `dist/wish/wish` on 2026-08-22 |
-| the Windows zip carries the same one executable | **unverified as a build**; asserted in CI on both platforms and unit-tested in `tests/test_packaging.py` |
+| the Windows zip carries the same one executable | **unverified as a build**; asserted in CI on both platforms and unit-tested in `tests/wish/test_packaging.py` |
 | `wish export` prints on Windows | **unverified, and nothing depends on it.** The build is windowed, so the subcommands' output goes through the console-borrowing path below — see [129-one-binary.md](129-one-binary.md) |
 | `wish.exe --version` reaches a Windows terminal | **unverified.** `AttachConsole`/`CONOUT$` is standard practice and the fallbacks are tested on Linux, but nothing here runs Windows. A GUI-subsystem process returns the prompt before it prints, so the version may land under it |
 | the Windows zip runs with no Python | **unverified.** There is no Windows machine here |
@@ -220,6 +220,6 @@ Two known failures waiting for CI, neither of them the packaging's:
   generate, so the `generated` job fails until those regions are added to
   `goldbox/memory.py` — which is exactly what that check is for.
 * the suite segfaults about one run in three, in `findChild` inside
-  `EditorWindow.__init__`. It bisects to `tests/test_debuglog.py`: with that file
+  `EditorWindow.__init__`. It bisects to `tests/wish/test_debuglog.py`: with that file
   ignored, six consecutive runs are clean; with it, three runs in nine crashed.
   A red `test.yml` on a rerun-clean commit is that, not flaky infrastructure.

@@ -2307,7 +2307,7 @@ def test_dragging_the_name_divider_narrower_leaves_it_where_the_user_put_it(
         "the window's floor moved because of a section drag")
 
 
-#: The screen `tests/test_mapscale.py` holds the whole window to, and the one
+#: The screen `tests/wish/test_mapscale.py` holds the whole window to, and the one
 #: Donald asked for in round five: a 1366x768 laptop. It used to be
 #: 1280x720 in earlier rounds before the UI redesign. The editor has to fit
 #: inside it with room to spare, or it becomes the floor instead of the map.
@@ -2501,7 +2501,7 @@ def _test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
 #: Derived from a real party's roster, which is why it is a budget and not the
 #: guarantee: against the *widest* party a save can hold the roster is 764 at
 #: that font, and what settles whether the window fits 1366 is
-#: `tests/test_mapscale.py::test_the_window_still_fits_the_laptop_with_a_save_open`,
+#: `tests/wish/test_mapscale.py::test_the_window_still_fits_the_laptop_with_a_save_open`,
 #: which measures the whole window against the whole screen.
 #:
 #: Round four derived the same budget from the automapper's 836 and got 422.
@@ -2580,7 +2580,7 @@ def test_the_header_fits_its_width_budget(app, party):
     166px went unbudgeted through round five.
 
     The party is synthetic and the test no longer skips: this and
-    `tests/test_mapscale.py::test_the_window_still_fits_the_laptop_with_a_save_open`
+    `tests/wish/test_mapscale.py::test_the_window_still_fits_the_laptop_with_a_save_open`
     are the two that hold the 1366x768 line, and both used to skip on every CI
     job there is (#70). What is measured here is a pair of explicit minimums,
     so the answer does not depend on which party is open -- which is exactly
@@ -2647,7 +2647,7 @@ def test_the_header_boxes_do_not_widen_with_the_ui_font(app, save):
 
 
 def _test_the_editors_own_floor_does_not_follow_the_ui_font(app):
-    """The Linux-runnable half of `tests/test_mapscale.py`'s #41 guarantee,
+    """The Linux-runnable half of `tests/wish/test_mapscale.py`'s #41 guarantee,
     and the test that would have caught round five.
 
     That one measures the whole window, where the automapper's own floor is
@@ -4022,7 +4022,7 @@ def assert_title_fits_and_is_not_silently_cut(box, full_title: str) -> None:
 def _effects_floor(app, party, extra: int):
     """`w.root.minimumSizeHint()` and the box's own width, with the header
     built at `extra` extra points of UI font -- the same recipe
-    `tests/test_mapscale.py`'s `_floors` uses, local here because this test
+    `tests/wish/test_mapscale.py`'s `_floors` uses, local here because this test
     also wants the box beneath the panel, which that module never opens."""
     from PyQt6.QtGui import QFont
 

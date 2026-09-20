@@ -2,7 +2,7 @@
 
 **Status: built.** `automap/notes.py` is the model, `ui/icons.py` the
 icons, `automap/noteeditor.py` the popover, `NotesPanel` in `automap/panel.py`
-the list, and `tests/test_automap.py` holds the verification below.
+the list, and `tests/automap/test_automap.py` holds the verification below.
 
 A note is a **kind plus a few words** — "there is a fight here", "locked, come
 back", "exit to Kuto's Well". Half of them are things you want to see from
@@ -59,7 +59,7 @@ Orcs, Goblins, Dragon, Undead, Cleric, Thief and Wizard. Donald picked
 twenty-three glyphs and three went unused -- `swords-emblem`,
 `power-ring` and `disintegrate` -- so they are not in `ui/icons.py`
 either: a credit that outlives its icon fails
-`tests/test_licenses.py` exactly as an uncredited icon does.
+`tests/wish/test_licenses.py` exactly as an uncredited icon does.
 **Every note now draws a game-icons.net path.** `Person` was the last one
 still drawing from Font Awesome (`user`); `person` (Delapouite) replaced it,
 which is what let Font Awesome's licence and credit come out of the program
@@ -225,7 +225,7 @@ was the command before the standalone entry point was dropped in commit
 * **No export yet.** `to_svg(geo, notes=...)` already draws them, so the export
   is a caller away.
 
-## Verification — in `tests/test_automap.py`
+## Verification — in `tests/automap/test_automap.py`
 
 * Old-format notes load and are rewritten in the new shape without loss.
 * A square with three notes draws one icon and a count, and its tooltip lists

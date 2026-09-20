@@ -25,7 +25,7 @@ import sys
 # that entry rather than searching `sys.path` again.  Importing the real
 # package here, first, is what makes the rest of this file's `tools/` access
 # safe regardless of what any other test file does with `sys.path` --
-# `tests/test_debuglog.py`'s `from wish import backends`, collected long
+# `tests/wish/test_debuglog.py`'s `from wish import backends`, collected long
 # after this file, failed with `cannot import name 'backends' from 'wish'`
 # until this line was added (#182).
 import wish  # noqa: F401,E402

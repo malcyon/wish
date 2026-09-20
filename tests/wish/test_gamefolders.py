@@ -190,7 +190,7 @@ def window(app, save=None, maps={}, **kw):
 
     `maps=None` means "load them from disk", the way the real window does --
     the step 4 tests below want that; every other caller here wants the
-    ordinary empty default, matching `tests/test_preferences.py`'s helper of
+    ordinary empty default, matching `tests/wish/test_preferences.py`'s helper of
     the same name.
     """
     from wish.session import Session
@@ -221,7 +221,7 @@ def test_the_game_disks_tab_has_one_row_per_supported_title_and_no_shared_row(
 
 def walled_geo(art: int = 1, rooms: int = 4) -> Geo:
     """A generated map whose walls are drawn from both sides, as real ones
-    are. Copied from `tests/test_wronggame.py`, which explains why: a map
+    are. Copied from `tests/wish/test_wronggame.py`, which explains why: a map
     that reads like the ones the game ships, rather than
     `gamedata.synthetic_geo`'s deliberately one-sided art."""
     planes = bytearray(synthetic_geo())
@@ -239,7 +239,7 @@ def walled_geo(art: int = 1, rooms: int = 4) -> Geo:
 
 
 def a_few_bytes_different(geo: Geo, how_many: int) -> Geo:
-    """The same map, drifted -- see `tests/test_wronggame.py`."""
+    """The same map, drifted -- see `tests/wish/test_wronggame.py`."""
     raw = bytearray(geo.to_bytes())
     for i in range(how_many):
         raw[ATTRIBUTES + i] ^= 0x1F
@@ -248,7 +248,7 @@ def a_few_bytes_different(geo: Geo, how_many: int) -> Geo:
 
 def machine(resident: Geo, position=(4, 5, 0)) -> MemoryTarget:
     """A C64 with a block at `$0400` and no status line -- see
-    `tests/test_wronggame.py`."""
+    `tests/wish/test_wronggame.py`."""
     blocks = {0xD011: bytes([0x1B]), 0xD018: bytes([0x15]), 0xDD00: bytes([0x17]),
               c64.DEFAULT.live_position: bytes(position),
               RESIDENT_GEO: resident.to_bytes()}

@@ -25,13 +25,13 @@ this machine, 187 of them agreeing with the derivation and every one of the 23
 that do not being a save this converter itself wrote.
 """
 
+import gamedata
 import pytest
 
 from goldbox import c64_codec, c64_port, derive, dos_codec, dos_port, levels, neutral
 from goldbox.d64 import D64
 from goldbox.layout import Confidence
 from goldbox.savegame import load_save
-from tests import gamedata
 
 POOL = c64_port.POOL_OF_RADIANCE
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS

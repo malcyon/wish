@@ -77,7 +77,7 @@ def test_one_routine_prints_a_melee_attack_for_either_side(disks):
 
 
 def codes(text: str) -> bytes:
-    """ASCII to screen codes, as `tests/test_combatlog.py` does it."""
+    """ASCII to screen codes, as `tests/automap/test_combatlog.py` does it."""
     return bytes(ord(c) - 64 if "A" <= c <= "Z" else ord(c)
                  for c in text.upper())
 

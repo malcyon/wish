@@ -84,7 +84,7 @@ cycling states no better a chance of reading the same value twice running.
 If anything it is the other way: any relationship a half-second gap still
 showed between one reading and the next is weaker at four seconds than at
 one, so the settle test is at least as good at telling a transfer from a
-rest as it was, and plausibly a little better. `tests/test_busguard.py`
+rest as it was, and plausibly a little better. `tests/automap/test_busguard.py`
 measures both ends of it: settling cold, with no load beforehand, takes
 about three seconds now against one and a half before; settling straight out
 of a forty-second load, with the back-off already capped at the moment the

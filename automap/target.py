@@ -74,7 +74,7 @@ CLOCK_BYTES = 3
 # `#205 (A party that walks out onto the travel grid leaves the automapper's
 # marker behind)`). `tools/c64/session.py`'s `RE_STATUS` already carries them;
 # `test_neither_status_reader_takes_a_word_ending_in_a_facing_letter`
-# (`tests/test_wish.py`) pins that the two cannot drift apart again.
+# (`tests/wish/test_wish.py`) pins that the two cannot drift apart again.
 STATUS_ROW = 14
 RE_STATUS = re.compile(r"(?<![A-Z])([NESW])(?![A-Z]) +(\d+):(\d+) +(\d+),(\d+)")
 FACING_LETTERS = {"N": 0, "E": 1, "S": 2, "W": 3}

@@ -26,7 +26,7 @@ def _find_version() -> str:
     try:
         # The distribution, not the command: `wish` was taken on PyPI, so the
         # name here is `wish-goldbox` and must track `pyproject.toml`. It has
-        # been wrong twice; `tests/test_packaging.py` now checks it.
+        # been wrong twice; `tests/wish/test_packaging.py` now checks it.
         return version("wish-goldbox")
     except PackageNotFoundError:
         return "0.0.0+unknown"

@@ -19,7 +19,7 @@ each of them cost something real:
   against the same save read cold off the disk is what makes a matching name
   evidence rather than the reader agreeing with itself.
 
-`FakeMonitor` is `tests/test_automapbanks.py`'s: a C64's banking over two
+`FakeMonitor` is `tests/automap/test_automapbanks.py`'s: a C64's banking over two
 dictionaries of bytes, not a mock of the reader.
 """
 
@@ -92,7 +92,7 @@ def test_a_runs_explored_squares_do_not_land_in_the_players_notes(monkeypatch):
     this file imports that module at *its* module level -- so under
     `pytest -n auto`, where every worker collects every file, every worker got
     the redirection before any test ran, and eight note tests in
-    `tests/test_automap.py` then shared one directory and read each other's
+    `tests/automap/test_automap.py` then shared one directory and read each other's
     notes. `#428 (Ten automapper note tests fail under parallel load but pass
     alone, so a green suite depends on how busy the machine is)`.
     """

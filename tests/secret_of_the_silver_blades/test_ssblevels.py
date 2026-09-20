@@ -63,7 +63,7 @@ def app():
 
 def test_the_card_shows_a_silver_blades_experience_bar(app):
     """The sibling of
-    `tests/test_automap.py::test_a_card_at_a_class_ceiling_says_maximum`,
+    `tests/automap/test_automap.py::test_a_card_at_a_class_ceiling_says_maximum`,
     for a title where the same record is not at its ceiling."""
     from support.automapwindow import make_root
 

@@ -219,7 +219,7 @@ def test_the_two_sets_are_drawn_in_their_own_boxes():
     about the picture would say why.
 
     `brass-eye` and `crossed-sabres` are excluded here for the same measured
-    reason as `tests/test_automap.py::test_no_icon_leaves_its_own_box`: their
+    reason as `tests/automap/test_automap.py::test_no_icon_leaves_its_own_box`: their
     control points overshoot the box by `extent()`'s conservative bound and
     their actual rendered ink does not."""
     assert icons.box("death-skull") == icons.GAME_ICONS_BOX == 512

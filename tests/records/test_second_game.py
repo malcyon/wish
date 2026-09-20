@@ -15,12 +15,7 @@ needs game data.
 
 
 import pytest
-
-from goldbox import geo, items, savegame
-from goldbox.d64 import split_load_address
-from goldbox.layout import RECORD_SIZE
-from goldbox.record import CharacterRecord
-from tests.gamedata import (
+from gamedata import (
     FIXTURES,
     curse_disks,
     curse_file,
@@ -28,6 +23,11 @@ from tests.gamedata import (
     game_file,
     needs_curse_disks,
 )
+
+from goldbox import geo, items, savegame
+from goldbox.d64 import split_load_address
+from goldbox.layout import RECORD_SIZE
+from goldbox.record import CharacterRecord
 
 # Curse's save image sits exactly one 512-byte page pair above Pool of
 # Radiance's. Every header address follows from this one number.

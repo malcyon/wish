@@ -713,7 +713,7 @@ class ColumnSplitter(QObject):
     divider, and if that went with the column the panel would be gone for
     good and the only way back would be editing the settings file by hand.
     Two things keep it reachable, and both are tested in
-    `tests/test_columns.py` against a window built from a settings file that
+    `tests/automap/test_columns.py` against a window built from a settings file that
     already holds a zero:
 
     * the handle is `HANDLE` wide rather than the style's, and Qt keeps

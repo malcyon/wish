@@ -10,7 +10,7 @@ what the program draws. Re-run after adding an icon:
     python3 tools/generate/genlicenses.py
 
 `--check` regenerates into memory and fails if the committed file differs,
-which is what `tests/test_licenses.py` runs.
+which is what `tests/wish/test_licenses.py` runs.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--check", action="store_true",
                     help="fail if the committed file is out of date instead "
                          "of regenerating it, which is what "
-                         "tests/test_licenses.py runs (#403: an unrecognised "
+                         "tests/wish/test_licenses.py runs (#403: an unrecognised "
                          "argument used to fall through to the write "
                          "branch)")
     args = ap.parse_args(argv)

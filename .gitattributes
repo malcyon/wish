@@ -1,4 +1,4 @@
-# The artist's own files are hashed by `tests/test_appicon.py`, which is how we
+# The artist's own files are hashed by `tests/wish/test_appicon.py`, which is how we
 # know nobody has quietly edited a delivery.  Git for Windows checks out with
 # `core.autocrlf=true`, so without this line it rewrites every LF in an `.svg`
 # to CRLF on the way out of the object store, the file on disk is no longer the

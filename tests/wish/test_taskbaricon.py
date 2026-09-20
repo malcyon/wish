@@ -12,7 +12,7 @@ from PyQt6.QtCore import Qt  # noqa: E402
 from PyQt6.QtGui import QImage  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-LOGO = pathlib.Path(__file__).resolve().parent.parent / "assets" / "logo"
+LOGO = pathlib.Path(__file__).resolve().parents[2] / "assets" / "logo"
 ARGB = QImage.Format.Format_ARGB32_Premultiplied
 
 

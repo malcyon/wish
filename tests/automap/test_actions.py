@@ -7,7 +7,7 @@ writes through one is exercised exactly as it would be against VICE or a
 Commodore 64 Ultimate -- and the assertions are on the addresses written, which
 is the part that has to be right.
 
-The party is the same captured machine `tests/test_automap.py` uses: BRUTUS
+The party is the same captured machine `tests/automap/test_automap.py` uses: BRUTUS
 alone in New Phlan, `SAVEDGAME0` and the roster page as the live view reads
 them.
 """
@@ -24,7 +24,7 @@ from goldbox import items as por_items
 from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import ROSTER_HP_CURRENT
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+FIXTURES = pathlib.Path(__file__).parents[1] / "fixtures"
 
 WORLD, COMBAT = 1, 2          # $6E11: DUNGEON, COMBAT
 
@@ -804,7 +804,7 @@ def test_nothing_writes_a_disk():
 
 # --- per title (#29) ---------------------------------------------------------
 #
-# The write side of the same fix `tests/test_automap.py` pins for the read side.
+# The write side of the same fix `tests/automap/test_automap.py` pins for the read side.
 # `automap/live.py` and `automap/target.py` were threaded through the `Game`
 # descriptor first; these five buttons were not, so they carried Pool of
 # Radiance's `$4D00`, `$5900` and `$8300` into every title -- and they *write*,
@@ -936,7 +936,7 @@ def test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances():
 #
 # Qt widgets, offscreen -- `tests/conftest.py` builds the one `QApplication`
 # the whole session shares. `make_root` is the same small helper
-# `tests/test_automap.py` and `tests/test_debugmode.py` each carry their own
+# `tests/automap/test_automap.py` and `tests/wish/test_debugmode.py` each carry their own
 # copy of, kept local here rather than imported so this file does not reach
 # into a test module owned by another change.
 

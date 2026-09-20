@@ -19,10 +19,9 @@ from __future__ import annotations
 import hashlib
 import pathlib
 
+import gamedata
 import pytest
 from support.toamigapor import _c64_specimen, _por_disk_2
-
-from tests import gamedata
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 

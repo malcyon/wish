@@ -28,13 +28,13 @@ Used by `tests/icons/test_iconparts.py`.
 1882 bytes, verbatim from disk 3. Tables, not code, but a data file copied
 whole.
 
-Used by `tests/icons/test_iconparts.py` and `tests/test_editor.py`.
+Used by `tests/icons/test_iconparts.py` and `tests/editor/test_editor.py`.
 
 ### 3. [FIXED] `tests/fixtures/GEO04.bin` — a game map file
 
 1024 bytes, one map verbatim.
 
-Used by `tests/areas/test_geo.py`, `tests/test_automap.py`,
+Used by `tests/areas/test_geo.py`, `tests/automap/test_automap.py`,
 `tests/saves/test_binary_roundtrip.py`.
 
 ### 4. [FIXED] `tests/fixtures/pool1_savedgame0.bin` — shipped game content

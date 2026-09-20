@@ -1,6 +1,6 @@
 # editor
 
-The character editor's logic and dialogs, opened from `wish/window.py`; it imports nothing from `automap/`, so it works with no emulator installed, and `tests/test_wish.py::test_editor_imports_nothing_live` greps every file here to keep that true.
+The character editor's logic and dialogs, opened from `wish/window.py`; it imports nothing from `automap/`, so it works with no emulator installed, and `tests/wish/test_wish.py::test_editor_imports_nothing_live` greps every file here to keep that true.
 
 | file | purpose |
 |---|---|

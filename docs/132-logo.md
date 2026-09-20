@@ -307,7 +307,7 @@ library buys nothing over reading the spec.
 
 **The output is committed.** PyInstaller wants the `.ico` to exist when it reads
 `wish.spec`, so generating it in CI would mean a build step before every build;
-committing it keeps the release a single command. `tests/test_appicon.py`
+committing it keeps the release a single command. `tests/wish/test_appicon.py`
 re-renders every artefact and compares, so a change to the asset that nobody
 regenerated fails the build instead of shipping the old drawing;
 `tests/generate/test_geniconset.py` does the same for the `.icns`.
@@ -408,7 +408,7 @@ the whole of it — and a now-removed test held it there: one piece at 16, 20,
 22 and 24, three from 32 to 256. `ui/appicon.py` renders the delivered mark
 from its own SVG now and there is no path data left in this program to hold
 that guard over; `test_the_asset_is_the_artists_own_file_unmodified` in
-`tests/test_appicon.py` is its replacement, over the artist's file instead.
+`tests/wish/test_appicon.py` is its replacement, over the artist's file instead.
 
 ### As it was: `hat-wizard`'s brim
 
@@ -459,7 +459,7 @@ What fixed it, in three parts, none sufficient alone:
   the checkout otherwise -- and both readers go through it.
   `#315 (A frozen Wish cannot convert a combat figure, because the table it
   needs lives outside the package)` is the next caller.
-* `tests/test_assets.py` reads every `asset_path(...)` call out of the
+* `tests/wish/test_assets.py` reads every `asset_path(...)` call out of the
   shipping packages and fails when one names a file `DATAS` does not carry,
   and fails again when any module builds its own path to the checkout root.
   Nothing caught it before, which is how it shipped.
@@ -567,19 +567,19 @@ Donald, 2026-09-06: *"Go with row B, please."* What that is in the code:
   hairline bitmaps in the SVG and Qt's renderer drops most of each below
   48. Sampled at 72 points around the outer ring, the scaled 80 lights 72
   of 72 at both 24 and 32; the SVG render lights 20 at 24 and 34 at 32.
-  `tests/test_appicon.py::test_the_ring_is_a_circle_at_the_taskbar_sizes`
+  `tests/wish/test_appicon.py::test_the_ring_is_a_circle_at_the_taskbar_sizes`
   asserts the shipped icon lights at least 60 and the SVG render fewer than
   48, so the test fails if somebody simplifies the rule away, and fails the
   other way if a later Qt learns to keep the rings and the rule stops being
   needed.
 * **The package carries them**: four more `DATAS` rows in `wish.spec`, and
-  `tests/test_assets.py` fails for each PNG missing from that list, as it
+  `tests/wish/test_assets.py` fails for each PNG missing from that list, as it
   did for the SVGs.
 
 `cited/351/taskbar-shipped.png` showed the result -- the icon at 16, 20, 24,
 32, 48 and 256 through `ui.appicon.image`, on a light taskbar and a dark
 one. The taskbar icon sheet tool, which drew it and the sheet above, was
-deleted once the choice was made; `tests/test_taskbaricon.py` now holds one
+deleted once the choice was made; `tests/wish/test_taskbaricon.py` now holds one
 test, that the window's icon is the committed `assets/logo/mark-*.png`
 scaled down. Not yet seen on a Windows taskbar itself; that is Donald's to
 photograph.

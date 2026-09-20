@@ -48,7 +48,7 @@ paper.
   line it is drawn on and a later fill would paint over half of it. Combatants
   come after both.
 
-Tested in `tests/test_shading.py`, including the crowded fight: thirteen
+Tested in `tests/automap/test_shading.py`, including the crowded fight: thirteen
 combatants over cross-hatching, every one of them emitted after the last rock
 primitive and each holding a whole square.
 
@@ -70,7 +70,7 @@ and the fill moved:
 The area map's `_draw` is untouched: `map_primitives` yields no `Hatch`, and a
 branch for a primitive that cannot arrive is a lie about what the code does.
 
-Painted offscreen and counted in `tests/test_shading.py`: strokes darker than
+Painted offscreen and counted in `tests/automap/test_shading.py`: strokes darker than
 the fill inside the rock at a full cell, none at `CELL_MIN`, and the boundary
 inked at both.
 

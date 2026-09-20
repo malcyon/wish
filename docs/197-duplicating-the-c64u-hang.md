@@ -312,7 +312,7 @@ showed size does not order the hazard, and built 2026-09-07:
    moved.
 4. **A size ceiling** — hygiene only. `READ_CEILING` in `automap/busguard.py`
    is the 7424-byte save payload, the largest read a tick makes on any
-   title, and `tests/test_busguard.py` holds every read of a walking,
+   title, and `tests/automap/test_busguard.py` holds every read of a walking,
    roster and combat tick under it. No code splits a bigger read, because
    the hazard looks per request and splitting would mean more of them.
 

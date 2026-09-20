@@ -79,7 +79,7 @@ def one_character_adf(tmp_path) -> pathlib.Path:
     project has for a one-character party -- the case where
     `CHRDAT<slot>2`-`6` must not be written at all.
     """
-    from tests import gamedata
+    import gamedata
 
     where = gamedata.specimen("por-amiga-dos-slums-resave", "amiga")
     path = tmp_path / "poolsave.adf"

@@ -139,7 +139,7 @@ of you; its routing table points at `commits.md`, `testing.md` and
 `gui-text.md` for anything it does not cover itself. `INDEX.md` already says
 `goldbox/` stays transport-free and `editor/` stays emulator-free, with
 everything that talks to VICE in `automap/` — an import that crosses those
-lines is a Critical finding, and `tests/test_wish.py` greps for it.
+lines is a Critical finding, and `tests/wish/test_wish.py` greps for it.
 
 One fact neither carries, because reviewing a diff does not itself touch
 `docs/**` or a `README.md`:

@@ -1,7 +1,7 @@
 # Acting on the running game
 
 **Status: built and wired.** `automap/actions.py` is the engine, driven by
-`tests/test_actions.py` against `MemoryTarget`; `automap/actionbar.py` is the
+`tests/automap/test_actions.py` against `MemoryTarget`; `automap/actionbar.py` is the
 row of buttons under the map on the automapper tab.
 
 Everything here writes to a running machine. Reading is safe and reversible;

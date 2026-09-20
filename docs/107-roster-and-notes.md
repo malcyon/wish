@@ -351,7 +351,7 @@ licence.
 * **Subsetting the font would make an OFL "Modified Version"** which may not
   keep the reserved name "Font Awesome". Moot: no font ships.
 
-## Verification — in `tests/test_panel.py`
+## Verification — in `tests/automap/test_panel.py`
 
 What the card can hold in the width it is given, all of it against a real
 window laid out at the column's own default width, and none of it against a
@@ -376,7 +376,7 @@ pixel count measured on one machine:
   with nothing running)` coming back: a test party in which nobody can train
   cannot catch a fault in the control that trains them.
 
-## Verification — in `tests/test_columns.py`
+## Verification — in `tests/automap/test_columns.py`
 
 The three columns, and every assertion a bound rather than a pixel count:
 
@@ -398,11 +398,11 @@ The three columns, and every assertion a bound rather than a pixel count:
   ceiling matters: `QSplitter.setSizes` raises on a number too large for a C++
   int, so an unchecked hand-edit stops the window opening.
 
-`tests/test_mapscale.py` adds the screen: the window's floor stays inside a
+`tests/wish/test_mapscale.py` adds the screen: the window's floor stays inside a
 1366x768 laptop at +0, +3, +6 and +10 point of UI font with both columns shut
 and with both dragged as wide as they go.
 
-## Verification — in `tests/test_automap.py`
+## Verification — in `tests/automap/test_automap.py`
 
 * A character with nothing readied shows a blank line, not a placeholder, and
   the card does not change height.

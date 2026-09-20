@@ -543,7 +543,7 @@ fasttravel(area) -> poll ResidentGeo.identify() every 200 ms for 30 s
 Unit tests need no emulator: `FastTravel.apply` returns the same `Outcome` the actions
 return, with `writes` as `(address, bytes)` pairs, so the sequence above is
 asserted against `MemoryTarget` and a recording stub for the PC. That is how
-`tests/test_actions.py` already works.
+`tests/automap/test_actions.py` already works.
 
 ---
 

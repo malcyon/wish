@@ -63,7 +63,7 @@ def app():
 def _specimen_disk(name: str) -> pathlib.Path:
     """A single-file C64 specimen, checked against its own recorded hash.
 
-    `tests.gamedata.specimen` takes a specimen that is a *directory*; the C64
+    `gamedata.specimen` takes a specimen that is a *directory*; the C64
     ones are a `.D64` beside a `.provenance.toml`, so the hash check is done
     here -- a specimen somebody has edited is no longer evidence.
     """

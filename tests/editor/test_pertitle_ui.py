@@ -373,8 +373,9 @@ def _copy_disks(source: pathlib.Path, pattern: str, into: pathlib.Path) -> None:
 def test_a_curse_save_gets_curse_item_names(app, tmp_path):
     """The `$9E00` table, not the `$6F00` one: without the title in hand the
     lookup lands on nothing and every item shows as its word index."""
+    from gamedata import curse_dir
+
     from goldbox.items import load_item_names
-    from tests.gamedata import curse_dir
     where = curse_dir()
     if where is None:
         pytest.skip("needs the Curse disks; set COAB_DISKS to where they are")
@@ -447,9 +448,10 @@ def _is_save(path: pathlib.Path, game: c64_port.Game) -> bool:
 # exercised somewhere.
 
 def test_synthetic_party_builds_a_save_for_every_title():
+    from gamedata import synthetic_party
+
     from goldbox.d64 import D64
     from goldbox.savegame import load_save
-    from tests.gamedata import synthetic_party
 
     for game in c64_port.GAMES:
         disk = D64.from_bytes(synthetic_party(game))
@@ -488,8 +490,9 @@ ELF_RESISTANCE = "elf: 90% resistance to sleep and charm"
 
 def _sheet_traits(window, tmp_path, game, race, codes):
     """The Trait column of the panel, for one built save's first character."""
+    from gamedata import synthetic_party
+
     from goldbox.traits import SLOTS
-    from tests.gamedata import synthetic_party
 
     path = tmp_path / f"{game.key}.d64"
     path.write_bytes(synthetic_party(game, race=race, trait_codes=codes))

@@ -157,7 +157,7 @@ def field_name(widget_name: str) -> str | None:
 #: Most of the second group were named from Curse, the Krynn titles and the
 #: monster records, and read zero in every Pool of Radiance character -- there
 #: is nothing for a player to edit. Keeping them listed rather than dropping
-#: the count check in `tests/test_editor.py` keeps that check's point: a field
+#: the count check in `tests/editor/test_editor.py` keeps that check's point: a field
 #: added tomorrow still has to get a widget or say here why not.
 NOT_ON_THE_SHEET = (
     "portrait_head", "portrait_body",

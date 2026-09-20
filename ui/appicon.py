@@ -55,7 +55,7 @@ ASSET = asset_path("assets", "logo", "mark.svg")
 
 #: The artist's own PNG exports of the same mark, by side, byte for byte as
 #: he delivered them (`Marks/Color/Color Mark NxN.png`, 2026-08-31). Four
-#: separate literal calls rather than a loop, because `tests/test_assets.py`
+#: separate literal calls rather than a loop, because `tests/wish/test_assets.py`
 #: reads `asset_path(...)` calls out of the source to check each file is in
 #: `wish.spec`'s `datas`, and a path assembled from a variable is one it
 #: cannot see.
@@ -126,7 +126,7 @@ def image(size: int) -> QImage:
     dots where a circle should be. His own PNG export kept them as a faint
     circle. Measured on 2026-09-06 around the outer ring at 24 pixels, the
     scaled 80 lights 72 of 72 sample points and the SVG render lights 20;
-    `tests/test_appicon.py::test_the_ring_is_a_circle_at_the_taskbar_sizes`
+    `tests/wish/test_appicon.py::test_the_ring_is_a_circle_at_the_taskbar_sizes`
     keeps both figures. A taskbar button is 24 logical pixels, 32 at 150 %
     scaling, so those two sizes are the whole reason for the rule, and the
     rule is applied at every size so no size is a downscale of a render
@@ -137,7 +137,7 @@ def image(size: int) -> QImage:
     gives an empty square -- the black-square failure `#351 (The Windows
     build shows no logo in About and a black square on the taskbar, because
     the artist's SVGs are not in the package)` was about. The SVG stands in
-    for it here so a player still gets a mark; `tests/test_assets.py` is
+    for it here so a player still gets a mark; `tests/wish/test_assets.py` is
     what keeps the PNGs in the package, so the stand-in should never run.
     """
     side = raster_side(size)

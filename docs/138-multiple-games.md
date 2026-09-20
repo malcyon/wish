@@ -313,7 +313,7 @@ blocks at 64-byte steps — every 1024-byte window of every non-`GEO` file on th
 Pool of Radiance, Curse and Silver Blades C64 disks and the Curse and Silver
 Blades Amiga disks — it admits **none**, and it admits **95 of the 95 real
 maps**. `tools/records/geoplausible.py` re-takes both corpora and
-`tests/test_wronggame.py` pins both directions off the player's own disks.
+`tests/wish/test_wronggame.py` pins both directions off the player's own disks.
 
 It used to be three clauses, the third asking that half the walled edges agree
 about **which** wall-art number they are, and that is not something the format

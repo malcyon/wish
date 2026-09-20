@@ -16,7 +16,7 @@ _ATTACH_PARENT_PROCESS = -1
 _ERROR_ACCESS_DENIED = 5
 
 # Windows' console, once attached. A name rather than a literal because no test
-# here can open one: tests/test_packaging.py points it at a temporary file.
+# here can open one: tests/wish/test_packaging.py points it at a temporary file.
 _CONSOLE_DEVICE = "CONOUT$"
 
 

@@ -201,7 +201,7 @@ number is only interesting while editing, it belongs on the editor tab.
    `Character`, `Effect`, `ClassProgress`) are there, with no Qt. Tested
    headless against captured bytes and against `PORSAVE11.D64` read straight
    off a disk (`test_the_party_reads_the_same_live_as_it_does_off_the_disk`,
-   `tests/test_automap.py`).
+   `tests/automap/test_automap.py`).
 2. ~~The experience table~~ **Done, a different way.** `goldbox-research/por_xp_tables.txt`
    is gone; the table came instead from `goldbox/levels.py`, generated into
    [`89-level-tables.md`](89-level-tables.md) and verified against the game
@@ -247,7 +247,7 @@ number is only interesting while editing, it belongs on the editor tab.
 * `automap/live.py` against `PORSAVE11.D64`'s bytes gives six characters with
   ROLAND at 5 of 7 and wounded —
   `test_the_party_reads_the_same_live_as_it_does_off_the_disk`
-  (`tests/test_automap.py`).
+  (`tests/automap/test_automap.py`).
 * Against `PORSAVE13.D64`, the area reads `GEO14`, the Slums — proven on the
   decode path `live.py` reuses unchanged rather than through the live reader
   itself: `test_the_boundary_pair_settles_the_area_byte`
@@ -256,7 +256,7 @@ number is only interesting while editing, it belongs on the editor tab.
 * A snapshot of all zeros is rejected — `test_a_machine_full_of_zeros_is_not_a_party`.
 * Switching away from the tab stops the polling —
   `test_only_the_visible_tab_is_read` and `test_a_hidden_map_tab_reads_nothing`
-  (`tests/test_wish.py`).
+  (`tests/wish/test_wish.py`).
 * **The row was watched lighting in the running game**, on pool slot 2,
   `NEWSAVE6.D64`, 2026-09-02. Cast Bless with the party's cleric and
   `tools/gui/livestrip.py` reads six per-character rows off the machine and draws

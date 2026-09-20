@@ -324,7 +324,7 @@ has over searching beside the open save in `paths.resolve_disks`. Left empty,
   that out. This box has no such gap: what is typed is what is used, or
   nothing is and the automatic folder applies. Donald had "Set by" out of the
   disks report in 2026-08 for the same reason a report here would repeat —
-  "a GUI is not the place for documentation" (`tests/test_preferences.py`'s
+  "a GUI is not the place for documentation" (`tests/wish/test_preferences.py`'s
   `test_the_report_prints_two_lines_and_not_six`).
 * **Existence is checked, like the remembered folder.** A chosen folder can be
   renamed or deleted like any other, and `open_start_dir` refuses a preference
@@ -426,7 +426,7 @@ Three facts constrain this, and the third is the sharp one:
    `config_dir()`.
 2. Donald has that file on this machine already, and it holds a window size he
    would notice losing.
-3. **`editor/` may not import `automap/`.** `tests/test_wish.py::test_editor_imports_nothing_live`
+3. **`editor/` may not import `automap/`.** `tests/wish/test_wish.py::test_editor_imports_nothing_live`
    greps every `editor/*.py` for the string `automap` and fails the build. That
    is the project's first architectural decision made mechanical, and this work
    does not get to weaken it.
@@ -504,7 +504,7 @@ PyQt6 in `.venv`.
 
 ### Tests
 
-`tests/test_preferences.py`, 54 of them, and two rules it obeys: **no modal
+`tests/wish/test_preferences.py`, 54 of them, and two rules it obeys: **no modal
 dialog** (`WishWindow.show_dialog` is the seam; `exec()` is never called) and
 **no game data in the repository** (empty files of the right *name*, which is
 all a glob can see; the two tests that need real maps and real item names
@@ -620,7 +620,7 @@ Two implementation notes:
   goes to the title, and `announce` survives for the one thing worth
   interrupting for: a log file that would not open. `_debug_log(on,
   announce=False)` is still the startup path, where even that is wrong.
-* **The field is `diagnostics`, not `debug_log`.** `tests/test_debuglog.py`
+* **The field is `diagnostics`, not `debug_log`.** `tests/wish/test_debuglog.py`
   asserts `not [f for f in fields(settings) if "log" in f.name]` — it still
   encodes the superseded decision, and it was outside this task's scope to
   edit. **That test is Donald's to retire**, and when it goes the field should
@@ -660,7 +660,7 @@ What it does now:
   `run()` clamps a second time once the window is up, when the numbers are
   real and the answer can only get smaller. It also leaves a **maximised**
   window alone — resizing one un-maximises it, and maximising was Donald's own
-  workaround. `tests/test_windowslayout.py` fakes a 1920 × 1032 screen and a
+  workaround. `tests/wish/test_windowslayout.py` fakes a 1920 × 1032 screen and a
   frame, because the offscreen platform draws neither.
 * **`window_width` and `window_height` are still written**, kept current, for an
   older build reading the same file — and they are the fallback on the first

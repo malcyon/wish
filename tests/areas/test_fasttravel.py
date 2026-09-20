@@ -14,7 +14,7 @@ click is waiting on it.
 
 Qt widgets, offscreen: `tests/conftest.py` builds the one `QApplication` the
 session shares. `make_root` and `machine` are the small helpers
-`tests/test_debugmode.py` carries too, kept local so this file does not reach
+`tests/wish/test_debugmode.py` carries too, kept local so this file does not reach
 into a test module another change owns.
 """
 

@@ -290,7 +290,7 @@ read, not a write — and its handler in the clerk's speech table at
 
 **The evidence.** Two independent ones. The three-byte operand a script spends
 naming `$4ABC` occurs zero times across all 46 `ECL*` files on the eight disks
-(`tests/test_commissions_data.py` asserts it). And the entry is not merely a
+(`tests/automap/test_commissions_data.py` asserts it). And the entry is not merely a
 spare slot: the clerk's four payout tables run 0-22, and index 22's row is not
 empty, so the byte was a commission that paid something before it was cut.
 

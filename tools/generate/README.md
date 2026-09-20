@@ -13,7 +13,7 @@ Scripts that generate files from the code and the game's data: the compiled Qt f
 | `genimports.py` | Reads the module-level import edges inside one package from the AST and **generates** the dependency graph `docs/117-save-conversion.md` carries. |
 | `genitems.py` | **Generates** `docs/85-item-tables.md` by reading `ITEMNAMES` and `ITEMS` straight off a game disk, so none of the data enters the repository. |
 | `genlevels.py` | **Generates** `docs/89-level-tables.md` from `goldbox/levels.py`. |
-| `genlicenses.py` | **Generates** `THIRD_PARTY_LICENSES.md` from `ui/icons.py`, so the CC BY 3.0 attribution names exactly the game-icons.net glyphs that ship. `--check` fails if the committed file is out of date, which `tests/test_licenses.py` runs. |
+| `genlicenses.py` | **Generates** `THIRD_PARTY_LICENSES.md` from `ui/icons.py`, so the CC BY 3.0 attribution names exactly the game-icons.net glyphs that ship. `--check` fails if the committed file is out of date, which `tests/wish/test_licenses.py` runs. |
 | `genmaps.py` | **Generates** `docs/88-map-files.md` from the GEO files on the game disks. Needs a set of disks: `POR_DISKS`, or a directory argument. |
 | `genmemory.py` | **Generates** `docs/41-memory-regions.md` from `goldbox/memory.py`. |
 | `genspells.py` | **Generates** `docs/86-spell-table.md` from `SPELLN00` on a game disk. |

@@ -27,7 +27,7 @@ already provide.
 **The output is committed**, under `assets/`. The alternative is a build step
 before `pyinstaller`, and PyInstaller wants the `.ico` to exist when it reads
 `wish.spec`; committing it keeps the release a single command.
-`tests/test_appicon.py` re-renders and compares, so a committed file that no
+`tests/wish/test_appicon.py` re-renders and compares, so a committed file that no
 longer matches the drawing fails the build rather than shipping.
 
 **The comparison is pixels within a tolerance** -- `differences`, and the note

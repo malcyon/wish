@@ -14,11 +14,11 @@ are none, the same as every other test that needs game data.
 
 
 import pytest
+from gamedata import FIXTURES, game_disk, game_file
 
 from goldbox import items, levels, spells
 from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0
-from tests.gamedata import FIXTURES, game_disk, game_file
 
 # --- offsets under test, all from goldbox.layout ---------------------------------
 CASTABLE = 0x0EE          # three used bytes, three spare

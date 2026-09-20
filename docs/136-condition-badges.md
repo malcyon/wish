@@ -68,7 +68,7 @@ here than either count — see it before choosing another glyph.
 **The measurement is the same rig the rest of this file uses** — ink is a pixel
 at least half covered, pieces are 8-connected blobs — and it agrees pixel for
 pixel with Qt's own SVG renderer reading the same `d`, at 13, 26, 128 and
-512 px, for all ten. `tests/test_conditionbadges.py` keeps it that way, and
+512 px, for all ten. `tests/automap/test_conditionbadges.py` keeps it that way, and
 the rig is `tools/icons/inkcount.py`, which reproduces every number in the table
 above.
 

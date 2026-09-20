@@ -55,7 +55,7 @@ Donald chose every one by name; nothing here was picked by an assistant.
 `raise-zombie`, `flanged-mace`, `ninja-heroic-stance` and `wizard-face`. He
 picked twenty-three and three of them went unused -- `swords-emblem`,
 `power-ring` and `disintegrate` -- so they are not here: an icon in this table
-that nothing draws is a credit `tests/test_licenses.py` fails the build over.
+that nothing draws is a credit `tests/wish/test_licenses.py` fails the build over.
 
 **`mute` (Delapouite) and `snail` (Lorc) arrived on `#142`**, the two
 condition badges the party effects row needed and the roster card did not have

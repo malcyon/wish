@@ -1,7 +1,7 @@
 # An opt-in debug log
 
 **Status: built.** `wish/debuglog.py`, the switch in `wish/preferences.py`, the
-hooks in `wish/session.py`, and `tests/test_debuglog.py`, which tests the
+hooks in `wish/session.py`, and `tests/wish/test_debuglog.py`, which tests the
 privacy claims and not only the plumbing.
 
 So a bug report can carry evidence, without the program collecting anything a
@@ -63,7 +63,7 @@ read**, so the one report that mattered was the one nobody could have sent.
 
 With the hook in place Qt calls it instead of aborting, which buys two things:
 the traceback reaches the log, scrubbed like every other line, and **the window
-survives**. CONFIRMED both ways — `tests/test_debugmode.py`.
+survives**. CONFIRMED both ways — `tests/wish/test_debugmode.py`.
 
 **And it is kept whether or not the log is on.** The hook used to write to the
 log only when there was one, and to `sys.stderr` otherwise — which on a
@@ -130,7 +130,7 @@ The pruner globs `wish-*.log*`, not `wish-*.log`: a rotated part is
 
 ## Verification
 
-`tests/test_debuglog.py`:
+`tests/wish/test_debuglog.py`:
 
 * with logging off, no directory and no file are created, and `note`, `warn`,
   `exception` and `timed` all write nothing;

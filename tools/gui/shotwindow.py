@@ -119,7 +119,7 @@ from wish.window import EDITOR_TAB, MAP_TAB, WishWindow  # noqa: E402
 TABS = {"editor": EDITOR_TAB, "map": MAP_TAB}
 
 #: The screen the window has to fit, and what the marked line defaults to: the
-#: 1280x720 laptop `tests/test_mapscale.py` calls SMALL.
+#: 1280x720 laptop `tests/wish/test_mapscale.py` calls SMALL.
 TARGET = 1280
 
 CAPTION_H = 34
@@ -135,7 +135,7 @@ def floor_of(win) -> "QSize":  # noqa: F821
     layout and does not un-pin it, so after anything that shrinks a child's
     minimum the hint keeps answering the old, larger number. Un-pin, invalidate
     and re-activate, and it answers the layout in front of it. This trap cost a
-    prototype run during #71 and is written up in `tests/test_mapscale.py`'s
+    prototype run during #71 and is written up in `tests/wish/test_mapscale.py`'s
     `_floor`.
     """
     win.setMinimumSize(0, 0)

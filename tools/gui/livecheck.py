@@ -96,7 +96,7 @@ def redirect_notes(root=RUN_DATA) -> None:
     and `tests/gui/test_livecheck.py` imports this module at *its* module level --
     so under `pytest -n auto`, where every worker collects every file, the
     rebinding landed in every worker before a single test ran. From then on
-    every note test in `tests/test_automap.py` read and wrote one shared
+    every note test in `tests/automap/test_automap.py` read and wrote one shared
     directory rather than its own `tmp_path`, and eight of them failed by
     seeing each other's notes. `automap.paths.data_dir()` was never called,
     which is why instrumenting it found nothing: the redirection is one layer

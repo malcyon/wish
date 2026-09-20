@@ -385,7 +385,7 @@ second.
 | `automap/combatlog.py` | the region, the diff, the dedup, the parse. No Qt |
 | `automap/screen.py` | `band`, which slices a window out of whole rows |
 | `automap/window.py` | `poll_combat_log`, `log_combat`, and the flush |
-| `tests/test_combatlog.py` | every rule, against constructed screens and two frames from the captured fight |
+| `tests/automap/test_combatlog.py` | every rule, against constructed screens and two frames from the captured fight |
 | `combatlog/fight.py` (scratch, deleted) | drives a fight and records every poll (scratch, not shipped) |
 | `combatlog/replay.py` | re-runs a recording through the reader (scratch) |
 

@@ -105,7 +105,7 @@ def outdoor_disk() -> AmigaDisk:
     refuses a party standing on the travel grid, because no outdoor Amiga
     saved game has ever been read)`'s run.
     """
-    from tests import gamedata
+    import gamedata
 
     where = gamedata.specimen("por-amiga-outdoor", "amiga")
     return AmigaDisk.open(str(where / "por1-outdoor.adf"))

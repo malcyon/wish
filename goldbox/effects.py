@@ -3,7 +3,7 @@ gives a new one its duration.
 
 Ported out of `automap/live.py` on `#13 (Edit traits and active effects, in
 two separate panels)`, because the panels that read and write this belong to
-`editor/`, and `editor/` may not import `automap` -- `tests/test_wish.py::
+`editor/`, and `editor/` may not import `automap` -- `tests/wish/test_wish.py::
 test_editor_imports_nothing_live` is what enforces it. `automap/live.py`
 imports these same names back, so `automap/combat.py`, `tools/gui/combatshot.py`,
 `tools/gui/livestrip.py` and `tests/c64/test_coldread.py` still resolve them as

@@ -11,7 +11,7 @@ works".
 
 **Test what would actually break.** A test that restates the implementation
 passes forever and catches nothing. Ask what a user would see go wrong, and
-assert that. `tests/test_mapscale.py` pins a window minimum because a window
+assert that. `tests/wish/test_mapscale.py` pins a window minimum because a window
 that does not fit the screen is what the user hits.
 
 **Prove a regression test fails without the fix.** Revert the fix, watch the

@@ -585,7 +585,7 @@ def _full_party_window(app, tmp_path, monkeypatch, extra, *, showing=8):
     measured without for as long as it existed. A `next_threshold` under the
     character's experience is what puts it there (#168).
 
-    **The Qt trap `tests/test_automap.py::_eight_card_floor` documents.** A
+    **The Qt trap `tests/automap/test_automap.py::_eight_card_floor` documents.** A
     card is `visible=false` in `wish/window.ui`; on `QWidget.show()` the
     layouts above it go on answering the eight-hidden-cards number until every
     ancestor is told its cached item sizes are stale, and `updateGeometry()`

@@ -248,7 +248,7 @@ def test_fasttravel_legality_refusals_carry_no_developer_detail():
     used to reach it.
 
     Every branch `legality` can take is driven here and swept in one pass,
-    the same shape as `tests/test_commissions.py::
+    the same shape as `tests/automap/test_commissions.py::
     test_no_quest_log_tooltip_shows_a_memory_address` -- so the next branch
     somebody adds is caught by the same assertion rather than needing its
     own. `NO_TRAVEL_GRID` is the one exception: only Pool of Radiance has a
@@ -504,8 +504,9 @@ def test_a_square_is_chosen_off_the_map_when_the_table_has_none():
 
     `goldbox.areas.landing_square` picks it -- P20 measured what the old rule came
     to and it was `(0, 0)` on every map (`reports/p20-arrivals.md`, scratch, deleted)."""
+    from gamedata import synthetic_geo
+
     from goldbox.geo import Geo
-    from tests.gamedata import synthetic_geo
     geo = Geo(synthetic_geo())
     square = actions.landing_square(geo)
     assert square is not None
@@ -750,8 +751,9 @@ def test_a_square_is_chosen_off_the_map_only_where_that_means_something(app):
     `geos` does not name -- area 3 loaded `GEO05` and area 5 `GEO04`
     (`reports/p20-arrivals.md`, scratch, deleted).
     """
+    from gamedata import synthetic_geo
+
     from goldbox.geo import Geo
-    from tests.gamedata import synthetic_geo
     g = Geo(synthetic_geo())
     row = bar(app, maps={"GEO14": g, "GEO19": g, "GEO03": g})
 
@@ -947,8 +949,9 @@ def loaded(geo_bytes: bytes, **kw) -> Machine:
 def test_a_fasttravel_is_verified_by_the_map_at_0400(app):
     """An exact 1024-byte match against the disk copy: a hit is certain and
     needs no fingerprinting."""
+    from gamedata import synthetic_geo
+
     from goldbox.geo import Geo
-    from tests.gamedata import synthetic_geo
     raw = synthetic_geo()
     row = area(13)                                  # GEO0D, the kobold caves
     target = loaded(raw, area=0)
@@ -971,9 +974,10 @@ def test_check_arrival_names_the_place_in_the_running_title_not_pools(app):
     always answered from Pool of Radiance's table -- so a Curse party
     fasttravelling to its own area `$15` would have been told "Arrived: Sokol
     Keep" (measured directly against `goldbox.areas.geo_name`, posted on #564)."""
+    from gamedata import synthetic_geo
+
     from goldbox import areas
     from goldbox.geo import Geo
-    from tests.gamedata import synthetic_geo
     row = actions.area_by_id(0x15, areas.CURSE_OF_THE_AZURE_BONDS)
     assert row is not None                          # the row this test rests on
     raw = synthetic_geo()
@@ -991,9 +995,10 @@ def test_check_arrival_names_the_place_in_the_running_title_not_pools(app):
 def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
     """Not five. Stepping into an encounter in New Phlan takes about 25 to
     load, and four runs "died" on a timeout that was too short."""
+    from gamedata import synthetic_geo
+
     import automap.actionbar as ab
     from goldbox.geo import Geo
-    from tests.gamedata import synthetic_geo
     row = area(13)
     target = loaded(bytes(1024), area=0)            # some other map
     row_bar = bar(app, target, maps={row.geos[0]: Geo(synthetic_geo())})

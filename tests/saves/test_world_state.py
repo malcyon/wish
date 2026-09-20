@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import pathlib
 
+import gamedata
 import pytest
 
 from goldbox import c64_port, c64_save, dos_codec, dos_savegame, world_state
-from tests import gamedata
 
 
 def _c64_specimen(name: str) -> pathlib.Path:

@@ -17,7 +17,7 @@ import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from gamedata import synthetic_arena  # noqa: E402
 from support.automapwindow import captured, make_window  # noqa: E402
@@ -43,7 +43,7 @@ PROMPT = 0x97        # BASIC `READY.`, disk mounted, no traffic yet
 
 
 def guarded_machine(dd00: int, **more) -> MemoryTarget:
-    """One tick of memory, as `tests/test_issue286a2.py` lays it out, on a
+    """One tick of memory, as `tests/automap/test_issue286a2.py` lays it out, on a
     target that says its reads stop the processor."""
     save0, save1 = captured()
     screen = bytearray(b" " * 1024)
@@ -314,7 +314,7 @@ def test_a_released_bus_lets_the_whole_tick_through_after_the_byte(
         window.tick()
         assert machine.reads[0] == (busguard.CIA2_PORT_A, 1)
         counts.append(len(machine.reads))
-    # `tests/test_issue286a2.py`'s four and twelve, plus the guard byte.
+    # `tests/automap/test_issue286a2.py`'s four and twelve, plus the guard byte.
     assert counts == [5, 5, 5, 5, 13] * 2
 
 

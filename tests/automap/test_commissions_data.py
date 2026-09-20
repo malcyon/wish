@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """What the ledger's own bytes mean, checked against the shipped scripts.
 
-`tests/test_commissions.py` covers the module's shape. This file covers the
+`tests/automap/test_commissions.py` covers the module's shape. This file covers the
 *findings*: the four entries that keep a progress marker, the one that is dead,
 and the one address two scripts fight over. Where the evidence is in the
 bytecode, the test reads the bytecode off the player's disks rather than
@@ -208,7 +208,7 @@ def test_read_carries_the_party_strength_through():
 # --- the fixture the repository does hold ------------------------------------
 
 def test_the_shipped_save_has_an_empty_ledger():
-    path = pathlib.Path(__file__).parent / "fixtures" / "savedgame0.bin"
+    path = pathlib.Path(__file__).parents[1] / "fixtures" / "savedgame0.bin"
     state = C.read(path.read_bytes())
     assert state.completed == 0
     assert state.in_progress == ()

@@ -110,7 +110,7 @@ class PartsPicker(QDialog):
 
         Clamped to the screen with `QGuiApplication` rather than the
         project's own `clamp_to_screen`: that helper lives in the live-map
-        package, and `tests/test_wish.py` greps this one for its name to keep
+        package, and `tests/wish/test_wish.py` greps this one for its name to keep
         the editor free of anything that could reach an emulator.
         """
         rows = self.weapons.sizeHintForRow(0) if self.weapons.count() else 104

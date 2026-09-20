@@ -14,7 +14,7 @@ taskbar drew the icon painter's dark ground with nothing on it:
 taskbar, because the artist's SVGs are not in the package)`.
 
 So every reader asks here, and nowhere else builds a path to the checkout
-root: `tests/test_assets.py` fails the build if one does. The other half of
+root: `tests/wish/test_assets.py` fails the build if one does. The other half of
 the guarantee is in the same file -- every path a reader asks for is checked
 against `wish.spec`'s `datas`, so a file this module can find in a checkout
 and not in the package is a failing test rather than a black square.
@@ -59,7 +59,7 @@ def asset_path(*parts: str) -> pathlib.Path:
     """The path of a file the program reads at run time, by its place under
     the checkout root: `asset_path("assets", "logo", "mark.svg")`.
 
-    Call it with string literals, one per path segment. `tests/test_assets.py`
+    Call it with string literals, one per path segment. `tests/wish/test_assets.py`
     reads the calls out of the source to check each file is in `wish.spec`'s
     `datas`, and a path assembled from a variable is one it cannot see.
     """

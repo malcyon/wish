@@ -9,6 +9,7 @@ see the numbered list at the end of `docs/110-combat-log.md`.
 
 
 import pytest
+from support.combatlog import BOTTOM, LEFT, RIGHT, SCREEN, codes, machine, painted
 
 from automap import combat, combatlog, rolls
 from automap import window as window_module
@@ -16,44 +17,6 @@ from automap.combatlog import CombatLog, message, parse
 from automap.screen import SCREEN_COLS, band
 from automap.target import MemoryTarget
 from goldbox import c64_port
-
-SCREEN = 0xCC00
-LEFT, RIGHT, TOP, BOTTOM = combatlog.COMBAT_WINDOW
-
-
-def codes(text: str) -> bytes:
-    """ASCII to screen codes: the inverse of `screen._SCREEN_TO_ASCII`."""
-    out = bytearray()
-    for ch in text.upper():
-        out.append(ord(ch) - 64 if "A" <= ch <= "Z" else ord(ch))
-    return bytes(out)
-
-
-def painted(rows, top: int = combatlog.MESSAGE_TOP) -> bytes:
-    """Rows 10-22 of a screen, with `rows` in the message window's columns."""
-    height = BOTTOM - combatlog.MESSAGE_TOP
-    grid = [bytearray(b" " * SCREEN_COLS) for _ in range(height)]
-    for i, line in enumerate(rows):
-        at = top - combatlog.MESSAGE_TOP + i
-        if 0 <= at < height:
-            grid[at][LEFT:LEFT + len(line)] = codes(line)
-    return b"".join(bytes(r) for r in grid)
-
-
-def machine(rows=(), top: int = combatlog.MESSAGE_TOP, mode: int = 2,
-            d011: int = 0x1B, delay: int = 2) -> MemoryTarget:
-    return MemoryTarget({
-        0xD011: bytes([d011]),
-        0xD018: b"\x34",                       # screen page 3 of the bank...
-        0xDD00: b"\x00",                       # ...and bank 3, so $CC00
-        combatlog.MODE: bytes([mode]),
-        # `INIT $09AC`'s own starting value, so a synthetic machine is a
-        # machine nobody has touched the SPEED command on.
-        combatlog.DELAY: bytes([delay]),
-        combatlog.WINDOW: bytes([LEFT, RIGHT, top, BOTTOM]),
-        combatlog.CURSOR: bytes([LEFT, top]),
-        SCREEN + combatlog.MESSAGE_TOP * SCREEN_COLS: painted(rows, top),
-    })
 
 
 def show(target: MemoryTarget, rows, top: int = combatlog.MESSAGE_TOP) -> None:
@@ -470,7 +433,7 @@ def warnings_in(window) -> list[str]:
 def curse_arena_with_screen(rows, delay: int = 2) -> MemoryTarget:
     """`arena_with_screen`, laid out the way a running Curse holds a fight.
 
-    `later_arena` (`tests/test_latercombat.py`) supplies the combat view's
+    `later_arena` (`tests/automap/test_latercombat.py`) supplies the combat view's
     half -- the mode byte, the map, the roster, the positions, the initiative
     table and the save head, all at Curse's addresses. The message panel's
     mode, delay and screen bytes are added here, the same way `arena_with_
@@ -844,7 +807,7 @@ def test_the_dice_come_from_the_attacker_and_not_the_target():
 
 # --- Curse and Silver Blades' own addresses (#39) ---------------------------
 #
-# `later_arena` in `tests/test_latercombat.py` lays out a Curse-shaped machine
+# `later_arena` in `tests/automap/test_latercombat.py` lays out a Curse-shaped machine
 # for the combat *view*; this is the same idea for the log. Before the
 # per-title table was wired in, `poll` read `$6E11` and `$49FC` -- and
 # `rolls.D20`/`rolls.ATTACK`/`rolls.ROSTER` at their Pool of Radiance addresses

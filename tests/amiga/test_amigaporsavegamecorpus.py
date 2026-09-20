@@ -23,11 +23,11 @@ from __future__ import annotations
 
 import hashlib
 
+import gamedata
 import pytest
 
 from goldbox import amiga_dax, amiga_savegame
 from goldbox.amiga_adf import AmigaDisk
-from tests import gamedata
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 

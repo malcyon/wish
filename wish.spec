@@ -23,7 +23,7 @@
 # empty and the header said so -- "there are no data files to carry" --
 # which stopped being true when the artist delivered and nothing noticed:
 # the Windows build shipped with no picture in Help > About and a black
-# square on the taskbar (#351). `tests/test_assets.py` now reads every
+# square on the taskbar (#351). `tests/wish/test_assets.py` now reads every
 # `asset_path(...)` call out of the source and fails when one names a file
 # that is not here.
 #
@@ -95,7 +95,7 @@ window = Analysis(
 # from the same drawing; both are needed and neither substitutes for the other.
 # PyInstaller ignores this on Linux. `tools/generate/genicons.py` writes the file from
 # the same PNGs, so a pinned shortcut matches the running window's button, and
-# `tests/test_appicon.py` fails the build if it has drifted from the drawing.
+# `tests/wish/test_appicon.py` fails the build if it has drifted from the drawing.
 ICON = "assets/wish.ico"
 
 exe = EXE(

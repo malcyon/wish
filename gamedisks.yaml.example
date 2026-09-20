@@ -147,7 +147,7 @@ kickstarts:
     - "/data/agent-disks/kickstarts"
 
 game-icons:
-  # The game-icons.net archive `tests/test_licenses.py` reads: a directory
+  # The game-icons.net archive `tests/wish/test_licenses.py` reads: a directory
   # holding `icons/`, which has one folder per artist.
   env: WISH_GAME_ICONS
   paths:

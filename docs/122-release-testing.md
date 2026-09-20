@@ -52,7 +52,7 @@ Started by double-click there is still no console to borrow, so messages
 written before the window is up — the "no game disks … so the map tab will be
 empty" line included — go to `os.devnull` and are lost. The window's
 **Help > About wish** is the version either way. The fallback chain is also
-unit-tested on Linux (`tests/test_packaging.py`) and `release.yml` asserts on
+unit-tested on Linux (`tests/wish/test_packaging.py`) and `release.yml` asserts on
 the output of `wish.exe --version`, so a regression fails the tag rather than
 shipping.
 
@@ -378,7 +378,7 @@ ls
 *Expect:* two entries and no more — `wish` and `_internal/`. 157 MB unpacked,
 155 MB of it `_internal/`, three quarters of that Qt; the tarball itself is
 59 MB. *If there is a second executable:* `wish.spec` grew one back, and
-`tests/test_packaging.py` and CI's "there is exactly one executable" step should
+`tests/wish/test_packaging.py` and CI's "there is exactly one executable" step should
 both have caught it first.
 
 **L3.** Version.
@@ -1019,7 +1019,7 @@ Fixed: `wish/debuglog.py` now takes `wish.__version__`, which is the same string
 `wish --version` prints and works in a frozen build where there is no metadata
 at all. The metadata lookup that remains, in `wish/__init__.py`, names
 `wish-goldbox` and is checked against `pyproject.toml` by
-`tests/test_packaging.py`. **Unverified since the fix** — no build has been
+`tests/wish/test_packaging.py`. **Unverified since the fix** — no build has been
 re-run against it.
 
 ⁵ **Watched by Donald on 2026-08-22**, on Windows, on the first run of this

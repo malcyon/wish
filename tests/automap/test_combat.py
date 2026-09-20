@@ -21,7 +21,7 @@ from automap.render import Bar
 from automap.state import Automapper
 from automap.target import MemoryTarget
 
-FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+FIXTURES = pathlib.Path(__file__).parents[1] / "fixtures"
 
 
 @pytest.fixture

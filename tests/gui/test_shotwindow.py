@@ -72,7 +72,7 @@ def test_the_floor_it_reports_does_not_follow_the_ui_font(app, save):
     """#71's guarantee, measured through the tool.
 
     948 at every font this machine can be made to draw is what
-    `tests/test_mapscale.py` records; the assertion is that the two agree with
+    `tests/wish/test_mapscale.py` records; the assertion is that the two agree with
     each other, not that either is 948, because the number is a Linux number
     and the equality is the finding.
     """

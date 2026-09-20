@@ -31,7 +31,7 @@ answers.
 
 And one thing worth saying before any of it: **if "tests" meant `pytest`, none
 of this applies.** `python3 -m pytest tests/ -q` is 1178 passing and 1 skipped in
-about 65 s and touches no emulator at all — `tests/test_automap.py` is the only file that even
+about 65 s and touches no emulator at all — `tests/automap/test_automap.py` is the only file that even
 imports `ViceTarget`, and it stubs it. Making that faster is
 `pip install pytest-xdist && pytest -n 12`, worth perhaps 40 seconds, and it is
 not what the rest of this document is about. What is serialised here is the

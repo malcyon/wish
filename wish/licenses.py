@@ -5,7 +5,7 @@ CC BY 3.0, and attribution is the whole of what that licence asks for. An
 attribution list that is wrong looks discharged and is not, so nothing here is
 retyped: the list is built from `ui.icons.ARTISTS`, the table the program
 actually draws from. Add a glyph without naming its artist there and
-`tests/test_licenses.py` goes red.
+`tests/wish/test_licenses.py` goes red.
 
 `markdown()` writes `THIRD_PARTY_LICENSES.md` through `tools/generate/genlicenses.py`;
 `html()` fills the dialog. One source, two renderings, so the file on disk and

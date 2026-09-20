@@ -15,11 +15,11 @@ the three sites in the player's own `GEN` that decide it.
 
 from __future__ import annotations
 
+import gamedata
 import pytest
 
 from goldbox import dos_port as dl
 from goldbox import spells
-from tests import gamedata
 from tools.records import spellbookcensus as census
 
 

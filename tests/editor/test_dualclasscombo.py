@@ -57,7 +57,7 @@ def _c64_specimen(name: str) -> pathlib.Path:
 
     The C64 half of the tree is flat files rather than directories, so
     `gamedata.specimen` does not reach it; this is the same rule
-    `tests/test_editor.py`'s `_curse_trained_party_specimen` applies, which
+    `tests/editor/test_editor.py`'s `_curse_trained_party_specimen` applies, which
     is that a specimen whose bytes have moved is no longer evidence and the
     test says so rather than skipping.
     """

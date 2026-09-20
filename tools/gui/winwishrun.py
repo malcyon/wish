@@ -7,7 +7,7 @@ shell lands in session 0 and is on a window station nobody can see.
 `tools/gui/winwish.py` copies it there and drives the rest; it is run in the guest
 as `pythonw.exe winwishrun.py`, with no arguments.
 
-The party it opens is `_ordinary_party` from `tests/test_windowslayout.py`,
+The party it opens is `_ordinary_party` from `tests/wish/test_windowslayout.py`,
 written to a disk by `winwishmeasure.py`: six characters at a size a player
 would actually see, which is the kind of window
 `#474 (Raising the UI font grows the window's minimum width with an ordinary

@@ -10,7 +10,7 @@ anything about what a player meets.
 Two parties, because `#474 (Raising the UI font grows the window's minimum
 width with an ordinary party open, which is the defect #41 removed for the
 widest one)` is exactly the gap between them: `_ordinary_party` from
-`tests/test_windowslayout.py`, and `gamedata.synthetic_party`, the widest the
+`tests/wish/test_windowslayout.py`, and `gamedata.synthetic_party`, the widest the
 record and the title's tables allow.
 
 It also writes the ordinary party's disk to `--save`, so `winwish.py start` has
@@ -32,7 +32,7 @@ import tempfile
 
 
 def main(root: pathlib.Path, save: pathlib.Path) -> int:
-    # `tests/test_windowslayout.py` does `setdefault("QT_QPA_PLATFORM",
+    # `tests/wish/test_windowslayout.py` does `setdefault("QT_QPA_PLATFORM",
     # "offscreen")`, and offscreen on Windows draws Fusion with a fallback font
     # -- a number about neither platform. Claim the variable before importing
     # it, so the real Windows plugin and the real Windows style are measured.

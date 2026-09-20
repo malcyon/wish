@@ -25,8 +25,9 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+import gamedata  # noqa: E402
+
 from goldbox import dos_codec  # noqa: E402
-from tests import gamedata  # noqa: E402
 from tools.dos import dosbox, dualclassdos, dualclassregain  # noqa: E402
 
 
@@ -142,7 +143,7 @@ def _dos_specimen(name: str):
 
     `tools/registry/specimens.py` files a specimen under a directory named for its
     *title*, so a Curse of the Azure Bonds one is `coab-dos/` and only Pool of
-    Radiance's are under `por-dos/`; `tests.gamedata.have_specimen` assumes
+    Radiance's are under `por-dos/`; `gamedata.have_specimen` assumes
     the latter and cannot see this one.  Globbing is what
     `tests/convert/test_convertmatrix.py` does for the same reason.
     """

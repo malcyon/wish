@@ -29,7 +29,7 @@ POOL = c64_port.POOL_OF_RADIANCE
 
 
 class Machine(MemoryTarget):
-    """`MemoryTarget` with a program counter, the way `tests/test_debugmode.py`
+    """`MemoryTarget` with a program counter, the way `tests/wish/test_debugmode.py`
     does it: `Target` is `read` and `write` and nothing else, so the CPU is
     reached through the optional hook a real backend offers."""
 

@@ -284,10 +284,10 @@ def _later_savegames(converted: bool = False) -> list[tuple[str, bytes]]:
     `converted` selects the other side of that line: the saved games the
     engine wrote of a party we converted, and nothing else.
     """
+    from gamedata import specimen_root
     from support.amigalaterwrite import _DRAWERS, OURS, _verified
 
     from automap import gamedisks
-    from tests.gamedata import specimen_root
     from tools.amiga import amigarecords
     out: list[tuple[str, bytes]] = []
     if not converted:

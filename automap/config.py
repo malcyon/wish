@@ -199,7 +199,7 @@ class Settings:
     # decision has not gone away -- a log you forget is on grows for months --
     # so while it is on the window says so in its title and in the status bar.
     # Named `diagnostics` rather than `debug_log` because
-    # `tests/test_debuglog.py` still asserts no settings field carries "log";
+    # `tests/wish/test_debuglog.py` still asserts no settings field carries "log";
     # that test encodes the superseded decision and is Donald's to retire.
     diagnostics: bool = False
     # Whether to clear quickfight after a fight ends.

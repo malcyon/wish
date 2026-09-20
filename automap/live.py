@@ -75,7 +75,7 @@ ROSTER_PAGE = ROSTER_COUNT * ROSTER_STRIDE            # $100
 # `goldbox/effects.py` on `#13 (Edit traits and active effects, in two
 # separate panels)`, because the editor's traits and active-effects panels
 # need them and `editor/` may not import `automap`
-# (`tests/test_wish.py::test_editor_imports_nothing_live`). Imported above
+# (`tests/wish/test_wish.py::test_editor_imports_nothing_live`). Imported above
 # under the same names, so `automap/combat.py`, `tools/gui/combatshot.py`,
 # `tools/gui/livestrip.py` and `tests/c64/test_coldread.py` still resolve
 # `live.EFFECT_ID_OFFSET` and the rest unchanged.

@@ -60,7 +60,7 @@ if (Test-Path $Archive) {
 $vpy = 'C:\Wish\venv\Scripts\python.exe'
 if (-not (Test-Path $vpy)) { & $py -m venv C:\Wish\venv }
 & $vpy -m pip install --disable-pip-version-check --quiet --upgrade pip
-# pytest is not for running the suite here: `tests/test_windowslayout.py`
+# pytest is not for running the suite here: `tests/wish/test_windowslayout.py`
 # imports it at module scope, and `_ordinary_party` lives in that module.
 & $vpy -m pip install --disable-pip-version-check --quiet `
     "PyQt6>=6.6" "pyyaml>=6.0" "pytest>=8.0"

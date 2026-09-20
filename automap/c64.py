@@ -30,12 +30,12 @@ record, with one port per platform a title shipped on)`, stage 6.
 forced rather than chosen.** Every other rename in that ticket leaves the old
 name working; a read-through for `live_position` or `mode_flag` would import
 `automap` from inside `goldbox`, and
-`tests/test_wish.py::test_goldbox_imports_no_transport` forbids that -- it is
+`tests/wish/test_wish.py::test_goldbox_imports_no_transport` forbids that -- it is
 what keeps `editor/`'s promise that it never talks to an emulator. So the
 callers moved in the same commit instead. What `Game` does keep is
 `travel_grid`, which reads through to `Title`, and the save-image `_base`
 properties, which `goldbox/savegame.py` needs and stage 7 folds into
-`C64Container`; `tests/test_c64machine.py` pins that those agree with this
+`C64Container`; `tests/automap/test_c64machine.py` pins that those agree with this
 module's for all six titles.
 """
 
@@ -252,7 +252,7 @@ def _machine(game: c64_port.Game, *, live_position: int | None = None,
 #:
 #: The last three carry neither live address: nobody has run those titles under
 #: the monitor, and `$C04B` and `$6E11` are measurements of other games rather
-#: than family constants. `tests/test_pertitle_live.py` pins that they answer
+#: than family constants. `tests/automap/test_pertitle_live.py` pins that they answer
 #: None, because a title quietly acquiring somebody else's address is the
 #: defect this whole table exists to prevent (`#29`).
 MACHINES: dict[str, C64Machine] = {

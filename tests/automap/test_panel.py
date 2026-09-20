@@ -80,7 +80,7 @@ def _window(app, tmp_path, monkeypatch, party, extra=0.0):
     The roster is fed from the emulator, so a window opened on a save leaves
     every card hidden -- `show_snapshot` is the call the poll makes and the
     one that tells the column how much width to ask for. The walk up the
-    parents afterwards is the Qt trap `tests/test_mapscale.py` documents: a
+    parents afterwards is the Qt trap `tests/wish/test_mapscale.py` documents: a
     card is `visible=false` in the form, and showing it does not tell the
     layouts above that their cached sizes are stale.
     """

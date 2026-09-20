@@ -35,7 +35,7 @@ from PyQt6.QtGui import QGuiApplication, QImage  # noqa: E402
 from tools.generate import genicons  # noqa: E402
 from ui import appicon  # noqa: E402
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 ASSETS = ROOT / "assets"
 ICO = ASSETS / "wish.ico"
 
@@ -82,7 +82,7 @@ def test_the_asset_is_a_valid_svg(app):
 
 #: `Marks/Color/Color Mark NxN.png` as delivered on 2026-08-31 and committed
 #: on 2026-09-06 as `assets/logo/mark-N.png`, byte for byte. Pinned for the
-#: reason `MARK_SHA256` is; `tests/test_taskbaricon.py` checks the window's
+#: reason `MARK_SHA256` is; `tests/wish/test_taskbaricon.py` checks the window's
 #: icon against these files.
 RASTER_SHA256 = {
     80: "f07337ae041ff3c25dffe0c9a76ec93951ec6808b9267f4f21f7d2ccb4dca872",
@@ -193,7 +193,7 @@ def test_the_ring_is_a_circle_at_the_taskbar_sizes(app, size):
 @pytest.mark.parametrize("size", (24, 32))
 def test_the_taskbar_sizes_are_the_80_scaled_and_nothing_else(app, size):
     """Row B on the sheet, exactly: the delivered 80 scaled to the size,
-    whole, area-averaged. `tests/test_taskbaricon.py` makes the same
+    whole, area-averaged. `tests/wish/test_taskbaricon.py` makes the same
     comparison of the icon the window gets."""
     from PyQt6.QtCore import Qt
 

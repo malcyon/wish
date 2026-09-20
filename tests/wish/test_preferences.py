@@ -240,7 +240,7 @@ def test_a_file_already_using_game_folders_is_not_migrated_again(tmp_path,
     longer special, and a title `disks` actually holds still gets a row,
     without disturbing any row the player had already set (see
     `test_a_row_the_player_set_is_not_overwritten_by_the_shared_folder` in
-    `tests/test_gamefolders.py`, which is the case that matters)."""
+    `tests/wish/test_gamefolders.py`, which is the case that matters)."""
     nowhere(tmp_path, monkeypatch)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     shelf = disks(tmp_path / "shelf", "CURSE1.D64")
@@ -877,7 +877,7 @@ def test_the_backend_radios_are_the_menu_s_actions_and_still_act(
 
     Needs `WISH_EXPERIMENTAL_C64_ULTIMATE` (#375): with the flag unset the
     Ultimate is not one of `win.backend_actions` at all, which is the gate's
-    own point and is covered on its own in `tests/test_wish.py`."""
+    own point and is covered on its own in `tests/wish/test_wish.py`."""
     monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     nowhere(tmp_path, monkeypatch)
     win = window(app)
@@ -1577,7 +1577,7 @@ def test_one_folder_gets_item_names_and_a_map_without_a_restart(
 @needs_disks
 def test_the_editor_takes_the_folder_as_a_parameter_and_imports_nothing(
         app, tmp_path, monkeypatch):
-    """`tests/test_wish.py::test_editor_imports_nothing_live` is the rule; this
+    """`tests/wish/test_wish.py::test_editor_imports_nothing_live` is the rule; this
     is the mechanism that keeps it true -- the folder arrives as an argument."""
     from editor.window import EditorBinding
     nowhere(tmp_path, monkeypatch)

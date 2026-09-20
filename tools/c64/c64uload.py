@@ -24,7 +24,7 @@ The treatments (`trial --treatment`):
   after it.  That is the correlation experiment E needs on this game, whose
   own clock stops during a load, so a fit of jiffy against wall time dates
   the load and not the hang.
-* `wish` -- Wish's own tick, as `tests/test_issue286a2.py` measured it: four
+* `wish` -- Wish's own tick, as `tests/automap/test_issue286a2.py` measured it: four
   one-byte-to-forty-byte reads every tick and the two save-image blocks every
   fifth, at `--interval`.  Experiment F6.
 * `info`, `version`, `drives` -- the same cadence with no DMA at all.
@@ -103,7 +103,7 @@ from tools.c64.c64urest import find_host, first_prg, screen_text  # noqa: E402
 DEFAULT_PORT = 80
 
 #: Wish's tick against Pool of Radiance with the party in the 3D view, as
-#: `tests/test_issue286a2.py` measures it: `(address, length)` per request.
+#: `tests/automap/test_issue286a2.py` measures it: `(address, length)` per request.
 WISH_EVERY_TICK = [(0xD011, 1), (0xD018, 1), (0xDD00, 1), (0x0630, 40)]
 WISH_FIFTH_TICK = [(0x6E11, 1), (0x0600, 20), (0x037E, 2), (0x6E11, 1),
                    (0x6E11, 1), (0x6E11, 1), (0x4900, 7168), (0x8300, 256)]

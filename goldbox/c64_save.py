@@ -159,7 +159,7 @@ TRAVEL_POSITION_OFFSET = 0x0C3  # C64Container.travel_position
 # are addresses in a *running* game rather than offsets into a save file and a
 # running machine is `automap/`'s.  No alias is left for them anywhere under
 # `goldbox/`, and that is forced rather than chosen: the alias would have to
-# import `automap`, and `tests/test_wish.py::test_goldbox_imports_no_transport`
+# import `automap`, and `tests/wish/test_wish.py::test_goldbox_imports_no_transport`
 # forbids that -- it is what keeps `editor/`'s promise that it never talks to
 # an emulator.
 
@@ -430,7 +430,7 @@ class C64Container:
     # module constant, so the file and the running machine cannot come to
     # disagree about where a region sits.  `automap.c64.C64Machine` computes
     # the same addresses from the same fields, and
-    # `tests/test_c64machine.py::test_the_machine_answers_what_game_answers`
+    # `tests/automap/test_c64machine.py::test_the_machine_answers_what_game_answers`
     # pins that the two agree for all six titles.  `goldbox/savegame.py` reads
     # `slot_area_base` and `roster_base` and cannot reach the machine, which is
     # why they are here as well as there.

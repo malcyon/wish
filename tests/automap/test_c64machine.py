@@ -15,7 +15,7 @@ Two things here are the point and the rest is arithmetic:
   Pool of Radiance's addresses on every title)` is what that cost.
 * **The machine and `Game` agree about every save-image address**, for all
   six titles. They compute them separately for one stage -- `goldbox/` may not
-  import `automap` (`tests/test_wish.py::test_goldbox_imports_no_transport`)
+  import `automap` (`tests/wish/test_wish.py::test_goldbox_imports_no_transport`)
   and `goldbox/savegame.py` reads them -- so this is what keeps the two from
   drifting until stage 7 merges them into `C64Container`.
 """
@@ -28,7 +28,7 @@ import sys
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from automap import actions, c64, combat  # noqa: E402
 from automap.target import MemoryTarget  # noqa: E402
@@ -210,7 +210,7 @@ def test_the_machine_agrees_with_combatmemory_on_the_four_fields_both_know(key):
 def test_a_game_outside_the_registry_keeps_its_own_geometry():
     """A row nobody registered answers its addresses and no live one.
 
-    `tests/test_pertitle_ui.py` builds one, and `Game`'s own `_base`
+    `tests/editor/test_pertitle_ui.py` builds one, and `Game`'s own `_base`
     properties have always answered for it. The machine does the same rather
     than refusing, so the two stay equal for every `Game` there is.
     """

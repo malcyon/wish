@@ -398,7 +398,7 @@ def test_the_blocks_census_reports_every_library_and_filters_none_of_it():
 
 def test_describe_names_the_square_the_plane_and_what_changed():
     """No disks needed: two blocks this test builds, one byte apart."""
-    from tests.gamedata import synthetic_geo
+    from gamedata import synthetic_geo
     left = bytearray(synthetic_geo())
     right = bytearray(left)
     right[ATTRIBUTES + 9 * 16 + 9] = 0x9D
@@ -411,7 +411,7 @@ def test_describe_names_the_square_the_plane_and_what_changed():
 
 
 def test_describe_names_both_sides_of_a_barrier_byte():
-    from tests.gamedata import synthetic_geo
+    from gamedata import synthetic_geo
     left = bytearray(synthetic_geo())
     right = bytearray(left)
     at = BARRIERS + 5 * 16 + 1
@@ -421,7 +421,7 @@ def test_describe_names_both_sides_of_a_barrier_byte():
 
 
 def test_the_planes_a_pair_differs_in_are_counted_separately():
-    from tests.gamedata import synthetic_geo
+    from gamedata import synthetic_geo
     left = bytearray(synthetic_geo())
     right = bytearray(left)
     right[ATTRIBUTES] ^= 0x01

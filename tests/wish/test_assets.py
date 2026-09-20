@@ -26,7 +26,7 @@ from support.packagingspec import _run_spec
 
 from goldbox import assets
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 #: The packages a frozen build carries -- `pyproject.toml`'s wheel list.
 PACKAGES = ("goldbox", "editor", "automap", "wish", "tools", "ui")

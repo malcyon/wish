@@ -24,7 +24,7 @@ from automap import gamedisks
 from ui import icons
 from wish import licenses
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 FILE = ROOT / "THIRD_PARTY_LICENSES.md"
 
 #: The archive the `game-icons` registry entry names: an `icons/` directory

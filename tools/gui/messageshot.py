@@ -94,7 +94,7 @@ FIGHT = (["ORC", "ATTACKS", "BRUTUS AND", "MISSES..."],
 
 def _paint(target, rows) -> None:
     """Repaint the message window, as the game would between two polls."""
-    from test_combatlog import painted  # the tests' own painter
+    from support.combatlog import painted  # the tests' own painter
     target.memory[combatlog.WINDOW] = bytes(
         [LEFT, RIGHT, combatlog.MESSAGE_TOP, BOTTOM])
     target.memory[0xCC00 + combatlog.MESSAGE_TOP * SCREEN_COLS] = painted(rows)
@@ -111,7 +111,7 @@ def main() -> int:
     args = parser.parse_args()
 
     from gamedata import synthetic_arena
-    from test_combatlog import MemoryTarget, machine
+    from support.combatlog import MemoryTarget, machine
 
     memory = dict(synthetic_arena())
     memory.update(machine([]).memory)

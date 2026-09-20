@@ -2064,7 +2064,7 @@ def test_every_note_kind_draws_its_own_picture_and_nobody_elses():
 def test_every_note_kind_is_credited_to_the_artist_who_drew_it():
     """CC BY 3.0 asks for attribution and nothing else, so a kind drawing a
     glyph `ARTISTS` does not name is the whole of a licence breach.
-    `tests/test_licenses.py` checks the generated file against `ARTISTS`; this
+    `tests/wish/test_licenses.py` checks the generated file against `ARTISTS`; this
     checks `ARTISTS` against what the notes actually draw."""
     for kind in notemod.TYPES:
         assert icons.ARTISTS.get(kind.icon), kind.icon
@@ -2214,7 +2214,7 @@ def test_the_sheet_only_names_icons_that_exist():
     break the build rather than the sheet."""
     import importlib.util
 
-    path = pathlib.Path(__file__).resolve().parent.parent / "tools" \
+    path = pathlib.Path(__file__).resolve().parents[2] / "tools" \
         / "icons" / "iconsheet.py"
     spec = importlib.util.spec_from_file_location("iconsheet", path)
     module = importlib.util.module_from_spec(spec)
@@ -2930,9 +2930,9 @@ def test_the_font_awesome_attribution_is_gone_with_the_icons():
     material it covers. `person` replacing `user` on `#167` was the last
     Font Awesome glyph anything in the program drew, so the credit and its
     licence file came out in the same change -- see
-    `tests/test_licenses.py` for the fuller version of this check."""
+    `tests/wish/test_licenses.py` for the fuller version of this check."""
     from wish.about import TEXT
-    root = pathlib.Path(__file__).resolve().parent.parent
+    root = pathlib.Path(__file__).resolve().parents[2]
     assert "Font Awesome" not in TEXT
     # `encoding=` is not optional: the default is the locale codec, which is
     # cp1252 on the Windows runners, and the README has an em dash in it.
@@ -3103,7 +3103,7 @@ def test_the_messages_panel_drops_repeats_and_keeps_the_alarm(app, tmp_path,
 
 def test_a_character_at_zero_and_a_drained_one_are_marked(app):
     """The two conditions the *record* tells us, as opposed to the five the
-    save's effect arrays do -- those are `tests/test_conditionbadges.py`."""
+    save's effect arrays do -- those are `tests/automap/test_conditionbadges.py`."""
     from automap.panel import CharacterCard
     card = CharacterCard(make_root(), 0)
     card.show_character(_character(hp=0))

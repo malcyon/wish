@@ -24,6 +24,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))          # `gamedata.synthetic_save`
 
 
 def main(argv=None) -> int:
@@ -43,10 +44,10 @@ def main(argv=None) -> int:
     for n in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"):
         os.environ[n] = cfg.name
 
+    from gamedata import synthetic_save
     from PyQt6.QtGui import QFont
     from PyQt6.QtWidgets import QApplication, QSplitter
 
-    from tests.gamedata import synthetic_save
     from tools.gui.shotwindow import caption, floor_of
     from wish.session import Session
     from wish.window import EDITOR_TAB, WishWindow

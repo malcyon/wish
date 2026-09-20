@@ -6,7 +6,7 @@ Council has asked the party to do, and what it has already paid for.
 the right-hand column of the map tab under the notes — a column the user drags
 to whatever width suits, and may drag shut
 ([107-roster-and-notes.md](107-roster-and-notes.md) §10) — and
-`tests/test_commissions.py` holds the verification below.
+`tests/automap/test_commissions.py` holds the verification below.
 
 The research is done. Four lines are
 CONFIRMED and buildable from 224 bytes that are already inside `SAVEDGAME0`, so
@@ -248,7 +248,7 @@ the snapshot has decoded. On a poll that yields nothing the panel is left
 alone, because plot flags do not change while the game is in a menu and a quest
 log that blanked every time somebody opened one would be a flicker.
 
-## Verification — done, in `tests/test_commissions.py`
+## Verification — done, in `tests/automap/test_commissions.py`
 
 * **The slums is one row whatever its byte reads** — 0, a marker, 254, 255 —
   which is the regression this shape exists to prevent.
