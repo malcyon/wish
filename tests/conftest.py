@@ -27,6 +27,7 @@ import pathlib
 import sys
 
 import pytest
+import yaml
 
 _TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 
@@ -321,23 +322,36 @@ def _clear_disk_variables(monkeypatch) -> None:
 
 
 @pytest.fixture
-def example_registry(monkeypatch):
-    """The loader reads the committed example, as it does on CI, where its paths
-    are not on the machine and no `$..._DISKS` variable is set."""
-    monkeypatch.setattr(_gamedisks, "REGISTRY", _gamedisks.EXAMPLE)
+def isolated_example(tmp_path_factory):
+    """The example's entries and metadata, with paths that cannot find host data."""
+    root = tmp_path_factory.mktemp("isolated_example")
+    entries = _gamedisks._example()
+    for name, row in entries.items():
+        row[_gamedisks.PATHS] = [str(root / "no-data" / name)]
+    example = root / "gamedisks.yaml.example"
+    example.write_text(yaml.safe_dump(entries, sort_keys=False), encoding="utf-8")
+    return example
+
+
+@pytest.fixture
+def example_registry(monkeypatch, isolated_example):
+    """The loader reads an example with missing paths, as on CI, and no disk variables."""
+    monkeypatch.setattr(_gamedisks, "EXAMPLE", isolated_example)
+    monkeypatch.setattr(_gamedisks, "REGISTRY", isolated_example)
     _clear_disk_variables(monkeypatch)
 
 
 @pytest.fixture
-def own_registry(tmp_path_factory, monkeypatch):
+def own_registry(tmp_path_factory, monkeypatch, isolated_example):
     """Call it with the text of a `gamedisks.yaml` and the loader reads that.
 
     The file is a real one, so a test using it is on the same side of the line
     as a machine that keeps its own registry -- not the example that replaces it
-    on CI. The variables the example names are cleared, so `$COAB_DISKS` set in
-    the shell cannot answer for an entry the test left out.
+    on CI. The example's paths are isolated and its variables cleared, so
+    neither the host's data nor its environment answers for an omitted entry.
     """
     home = tmp_path_factory.mktemp("own_registry")
+    monkeypatch.setattr(_gamedisks, "EXAMPLE", isolated_example)
 
     def install(text: str) -> pathlib.Path:
         path = home / "gamedisks.yaml"

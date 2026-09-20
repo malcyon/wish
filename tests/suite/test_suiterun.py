@@ -85,6 +85,22 @@ def _fake_worktree(tmp_path, registry):
     return worktree
 
 
+@pytest.fixture
+def probe_worktree(tmp_path, isolated_example):
+    """Real probe modules beside an example whose paths cannot preempt the test's home."""
+    worktree = _fake_worktree(tmp_path, registry=False)
+    shutil.copyfile(isolated_example, worktree / "gamedisks.yaml.example")
+    for package in ("automap", "goldbox"):
+        shutil.copytree(REPO / package, worktree / package,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+    registry = worktree / "tools" / "registry"
+    registry.mkdir()
+    (registry / "__init__.py").write_text("", encoding="utf-8")
+    shutil.copyfile(REPO / "tools" / "registry" / "specimens.py",
+                    registry / "specimens.py")
+    return worktree
+
+
 class _Calls(list):
     """Each pytest call's extra env, with its whole argument list in `args`, the
     names it removed from the environment in `without` and each hiding probe
@@ -262,7 +278,7 @@ def test_a_probe_that_times_out_or_cannot_start_is_a_failed_probe(
 
 
 def test_the_probe_finds_disks_in_a_home_folder_guess_with_the_variables_unset(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, probe_worktree):
     """With `POR_DISKS` unset `automap.paths` falls through to folders under the
     home directory, which the example's paths do not cover."""
     disks = tmp_path / "home" / "Games" / "Pool of Radiance Disks"
@@ -271,7 +287,7 @@ def test_the_probe_finds_disks_in_a_home_folder_guess_with_the_variables_unset(
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
     found = suiterun.reachable_with_nothing_set(
-        REPO, sys.executable, suiterun.hidden_variables(EXAMPLE))
+        probe_worktree, sys.executable, suiterun.hidden_variables(EXAMPLE))
     assert found is not None
     assert any(line.startswith("automap.paths ") and line.endswith(str(disks))
                for line in found), found
@@ -287,11 +303,11 @@ def _home_with(tmp_path, monkeypatch, *folders):
 
 
 def test_the_probe_finds_the_specimen_tree_with_the_variable_unset(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, probe_worktree):
     """`WISH_SPECIMENS` is unset, so the tree is `~/wish-specimens`."""
     home = _home_with(tmp_path, monkeypatch, "wish-specimens")
     found = suiterun.reachable_with_nothing_set(
-        REPO, sys.executable, suiterun.hidden_variables(EXAMPLE))
+        probe_worktree, sys.executable, suiterun.hidden_variables(EXAMPLE))
     assert found is not None
     assert f"WISH_SPECIMENS\t{home / 'wish-specimens'}" in found, found
 
@@ -309,7 +325,7 @@ DISK_FILES = {
 
 
 def test_the_probe_finds_every_title_under_its_own_home_folder_guess(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, probe_worktree):
     """Each title is asked for by itself, so the probe must loop over all of
     them and not only the first few."""
     from goldbox import c64_port
@@ -320,7 +336,7 @@ def test_the_probe_finds_every_title_under_its_own_home_folder_guess(
         folder.mkdir(parents=True)
         (folder / DISK_FILES[game.key]).write_bytes(b"")
     found = suiterun.reachable_with_nothing_set(
-        REPO, sys.executable, suiterun.hidden_variables(EXAMPLE))
+        probe_worktree, sys.executable, suiterun.hidden_variables(EXAMPLE))
     assert found is not None
     for game in c64_port.GAMES:
         assert f"automap.paths {game.key}\t{home / 'Games' / game.title}" in found, game.key
@@ -329,7 +345,7 @@ def test_the_probe_finds_every_title_under_its_own_home_folder_guess(
 @pytest.mark.skipif(sys.platform == "win32", reason="a POSIX path name can hold a byte that is "
                     "not UTF-8, and a Windows name is UTF-16, so the case cannot arise there")
 def test_a_probe_whose_output_is_not_utf8_is_a_failed_probe_with_that_reason(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, probe_worktree):
     """A home folder whose name ends in a byte that is not UTF-8 puts that byte
     in the probe's output, and decoding it must not crash the run."""
     home = os.fsencode(tmp_path) + b"/h\xff"
@@ -339,11 +355,11 @@ def test_a_probe_whose_output_is_not_utf8_is_a_failed_probe_with_that_reason(
     monkeypatch.setenv("HOME", os.fsdecode(home))
     monkeypatch.setenv("USERPROFILE", os.fsdecode(home))
     found, reason = suiterun.probe_machine(
-        REPO, sys.executable, suiterun.hidden_variables(EXAMPLE))
+        probe_worktree, sys.executable, suiterun.hidden_variables(EXAMPLE))
     assert found is None
     assert "not valid UTF-8" in reason
     assert suiterun.reachable_with_nothing_set(
-        REPO, sys.executable, suiterun.hidden_variables(EXAMPLE)) is None
+        probe_worktree, sys.executable, suiterun.hidden_variables(EXAMPLE)) is None
 
 
 @pytest.mark.parametrize("failure, reason", [

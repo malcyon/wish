@@ -59,6 +59,35 @@ def _clear_caches():
     test_titletables._death_knights_side.cache_clear()
 
 
+@pytest.mark.parametrize("registry_fixture", ["own_registry", "example_registry"])
+def test_isolated_registries_ignore_disks_at_the_examples_paths(
+        tmp_path, monkeypatch, request, registry_fixture):
+    """An example that finds real disks must not leak into an isolated lookup."""
+    entries = gamedisks._example()
+    disks = tmp_path / "host-disks"
+    disks.mkdir()
+    (disks / "CURSE1.D64").write_bytes(b"")
+    entries[CURSE_KEY][gamedisks.PATHS] = [str(disks)]
+    example = tmp_path / "host.example"
+    example.write_text(yaml.safe_dump(entries), encoding="utf-8")
+    monkeypatch.setattr(gamedisks, "EXAMPLE", example)
+    monkeypatch.setattr(gamedisks, "REGISTRY", example)
+    monkeypatch.delenv("COAB_DISKS", raising=False)
+    assert gamedisks.find(CURSE_KEY) == disks
+
+    install = request.getfixturevalue(registry_fixture)
+    if install is not None:
+        install(POOL_ONLY)
+
+    assert gamedisks.find(CURSE_KEY) is None
+    isolated = gamedisks._example()
+    assert set(isolated) == set(entries)
+    for key, row in entries.items():
+        assert {k: v for k, v in isolated[key].items() if k != gamedisks.PATHS} == {
+            k: v for k, v in row.items() if k != gamedisks.PATHS}
+    assert (disks / "CURSE1.D64").is_file()
+
+
 def test_a_registry_with_no_curse_entry_fails_the_lookup(own_registry):
     own_registry(POOL_ONLY)
     with pytest.raises(gamedisks.RegistryError) as stopped:
@@ -132,47 +161,49 @@ def test_the_marker_skips_only_where_there_is_no_registry_to_blame(
     assert curse_absent() is False
 
 
-def _run_pytest(tmp_path, registry_text, *args):
-    """Run pytest in a child whose registry is `registry_text` and whose
-    `$..._DISKS` variables are unset, so nothing on this machine answers for an
-    entry the text leaves out."""
+def _run_pytest(tmp_path, isolated_example, registry_text, *args):
+    """Run pytest with a synthetic registry and example, and no disk variables."""
     registry = tmp_path / "gamedisks.yaml"
     registry.write_text(registry_text, encoding="utf-8")
     driver = (
         "import pathlib, sys\n"
         "from automap import gamedisks\n"
         "gamedisks.REGISTRY = pathlib.Path(sys.argv[1])\n"
+        "gamedisks.EXAMPLE = pathlib.Path(sys.argv[2])\n"
         "import pytest\n"
         "sys.exit(pytest.main(['-q', '-n0', '-p', 'no:cacheprovider']\n"
-        "                     + sys.argv[2:]))\n")
+        "                     + sys.argv[3:]))\n")
     variables = {row.get(gamedisks.ENV)
                  for row in gamedisks._example().values()}
     env = {k: v for k, v in os.environ.items() if k not in variables}
-    return subprocess.run([sys.executable, "-c", driver, str(registry), *args],
+    return subprocess.run([sys.executable, "-c", driver, str(registry),
+                           str(isolated_example), *args],
                           cwd=gamedisks.REPO, env=env, capture_output=True,
                           text=True, timeout=240)
 
 
-def test_a_probe_file_left_in_the_tree_is_not_collected(tmp_path):
+def test_a_probe_file_left_in_the_tree_is_not_collected(tmp_path, isolated_example):
     """`tests/conftest.py` keeps the conftest guard's probe files out of every
     collection of this tree but its own child's named target, so a probe
     another process is writing and deleting cannot break a collection here."""
     probe = HERE / f"{PREFIX}{uuid.uuid4().hex}.py"
     probe.write_text("def test_nothing():\n    pass\n", encoding="utf-8")
     try:
-        done = _run_pytest(tmp_path, POOL_ONLY, "--collect-only", "tests")
+        done = _run_pytest(tmp_path, isolated_example, POOL_ONLY,
+                           "--collect-only", "tests")
     finally:
         probe.unlink(missing_ok=True)
     assert done.returncode == 0, done.stdout[-1500:] + done.stderr[-1500:]
     assert probe.name not in done.stdout, done.stdout[-1500:]
 
 
-def test_collecting_every_test_survives_a_registry_that_finds_nothing(tmp_path):
+def test_collecting_every_test_survives_a_registry_that_finds_nothing(
+        tmp_path, isolated_example):
     """`RegistryError` is a `SystemExit`, so one raised while a test module is
     imported aborts collection for the whole run with `INTERNALERROR` and no test
     executes. The lookup has to happen when a test runs, where the error fails
     that test alone -- for every title, so the whole tree is collected."""
-    done = _run_pytest(tmp_path, POOL_ONLY, "--collect-only", "tests")
+    done = _run_pytest(tmp_path, isolated_example, POOL_ONLY, "--collect-only", "tests")
     assert done.returncode == 0 and "INTERNALERROR" not in done.stdout, (
         done.stdout[-1500:] + done.stderr[-1500:])
 
@@ -219,9 +250,9 @@ def test_the_guard_stays_quiet_where_there_is_no_registry_of_the_machines_own(
     require_registered(key)
 
 
-def test_the_guard_test_fails_rather_than_aborting_the_run(tmp_path):
+def test_the_guard_test_fails_rather_than_aborting_the_run(tmp_path, isolated_example):
     done = _run_pytest(
-        tmp_path, POOL_ONLY, "tests/suite/test_gamedata.py", "-k",
+        tmp_path, isolated_example, POOL_ONLY, "tests/suite/test_gamedata.py", "-k",
         "test_the_registry_says_where_each_entrys_disks_are")
     out = done.stdout
     assert done.returncode == 1 and "INTERNALERROR" not in out, (
