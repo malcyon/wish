@@ -2837,3 +2837,43 @@ def test_every_id_a_dos_book_can_hold_survives_the_dos_writer():
 
         assert dos_codec.DosCharacter(record, deltas=deltas).spells_known == ids, key
         assert rep.warnings == [], key
+
+
+def _bare_state(title):
+    return world_state.WorldState(
+        title=title, area=0, geo=0, x=0, y=0, facing=0,
+        clock=(0,) * 6, wallset=(0, 0, 0), flags=(), scratch={},
+        outdoors=False, travel=(0, 0), set_out=True, header={})
+
+
+def test_the_party_writer_refuses_a_title_it_has_no_container_for(tmp_path):
+    """Pools of Darkness has no descriptor in `c64_port`, and the writer used
+    to answer that with the Pool of Radiance container."""
+    out = tmp_path / "out"
+    with pytest.raises(dos_codec.DosRecordError) as caught:
+        dos_codec.write_dos_save_from(
+            _bare_state("Pools of Darkness"), [_filled()], None, out, "A")
+    assert "Pools of Darkness" in str(caught.value)
+    assert not out.exists()
+    with pytest.raises(dos_codec.DosRecordError) as caught:
+        dos_codec.new_dos_save_from(
+            _bare_state("Pools of Darkness"), [_filled()], out, "A", tmp_path)
+    assert "Pools of Darkness" in str(caught.value)
+
+
+@pytest.mark.parametrize("title", [
+    "Pool of Radiance", "Curse of the Azure Bonds",
+    "Secret of the Silver Blades"])
+def test_the_party_writer_still_writes_each_supported_title(
+        tmp_path, monkeypatch, title):
+    from goldbox import areas
+
+    where = areas.areas_for(title)[0]
+    monkeypatch.setattr(dos_codec, "_area_dax", lambda *args: (where, 1))
+    monkeypatch.setattr(dos_codec, "_area_script", lambda *args: b"")
+    monkeypatch.setattr(dos_codec, "portrait_tables", lambda *args: (None, ""))
+    monkeypatch.setattr(dos_codec, "savgam_writes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *args: None)
+    dos_codec.write_dos_save_from(
+        _bare_state(title), [_filled()], None, tmp_path, "A")
+    assert list(tmp_path.glob("CHRDATA1*"))

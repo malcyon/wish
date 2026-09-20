@@ -6961,6 +6961,20 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     return out, icons
 
 
+def _c64_game_of(state: "world_state.WorldState") -> "c64_port.Game":
+    """The title `state` belongs to, or a refusal.
+
+    A title with no descriptor is not defaulted to Pool of Radiance: the
+    container written would be that game's, with its layout, and nothing in
+    the file would say so.
+    """
+    game = c64_port.by_title(state.title)
+    if game is None:
+        raise DosRecordError(
+            f"The DOS writer has no container for {state.title!r}.")
+    return game
+
+
 def write_dos_save_from(state: "world_state.WorldState",
                         characters: "Sequence[NeutralCharacter]",
                         template: str | pathlib.Path | None,
@@ -6997,6 +7011,8 @@ def write_dos_save_from(state: "world_state.WorldState",
     if template is not None and out.resolve() == template.resolve():
         raise DosRecordError(
             "the output directory is the template; the template is read-only")
+    # Before `mkdir`, so a refused title leaves nothing behind.
+    c64 = _c64_game_of(state)
     out.mkdir(parents=True, exist_ok=True)
 
     # `slot` is interpolated straight into filenames and into the paths this
@@ -7010,7 +7026,6 @@ def write_dos_save_from(state: "world_state.WorldState",
         raise DosRecordError(
             f"a save slot is a single letter, not {slot!r}")
 
-    c64 = c64_port.by_title(state.title) or c64_port.POOL_OF_RADIANCE
     shape = dos_savegame.container_for(c64.key)
     characters = list(characters)
     if len(characters) > 6:
@@ -7305,7 +7320,7 @@ def new_dos_save_from(state: "world_state.WorldState",
         # to happen here rather than in `write_dos_save_from`, which only
         # ever saw the empty staging directory.  Same enumeration, same
         # reason (#68), in the title's own suffixes.
-        c64 = c64_port.by_title(state.title) or c64_port.POOL_OF_RADIANCE
+        c64 = _c64_game_of(state)
         record_shape = deltas_for(c64.key)
         cleared = _clear_slot(
             out, slot, (".SAV", record_shape.item_suffix,
