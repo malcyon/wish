@@ -704,6 +704,85 @@ difference."*
 * **Encumbrance and per-item weight**, which DOS keeps and the C64 does not.
   Both are derived; drop them.
 
+## Experience is the one field DOS keeps wider, and no engine caps it
+
+Every C64 record keeps experience in three bytes (`goldbox/layout.py`,
+`0x0E8`); DOS Curse keeps four at `0x127`, Silver Blades four at `0x12C` and
+Pools of Darkness four at `0x172`. It is the only scalar wider on the DOS
+side than on the C64 one, so it is the only one where a legal source value
+can have nowhere to go. `goldbox.c64_codec.write` refuses it —
+`experience: 16777216 does not fit in 3 bytes` — and writes nothing;
+`editor/convert.py` catches that with every other conversion failure, so a
+player converting such a character sees the generic refusal rather than a
+character who has silently lost experience. **CONFIRMED**: the boundary is
+exact, `0xFFFFFF` converting and `0x1000000` and `0x7FFFFFFF` refused, on an
+engine-written Curse record and an engine-written Silver Blades one
+(`tests/records/test_xpceiling.py`).
+
+**The engines accumulate experience 32 bits wide. CONFIRMED** from each
+title's own `GAME.OVR`, read with `tools/records/xpceiling.py`: the
+end-of-combat award is `add <seg>:[di+exp], ax` immediately followed by
+`adc <seg>:[di+exp+2], dx`, the pair a 16-bit compiler emits for `+=` on a
+`long`, and every other site that touches the field touches both words.
+
+| title | experience | `add`/`adc` at | high word compared against |
+|---|---|---|---|
+| Pool of Radiance | `0x0AC` | `0x05A21` | 0 |
+| Curse of the Azure Bonds | `0x127` | `0x061AD` | 0 |
+| Secret of the Silver Blades | `0x12C` | `0x044C4`, `0x0457D`, `0x06F6D` | 1, 3 |
+| Pools of Darkness | `0x172` | `0x04BFB` | 7, 11, 22 |
+
+**Nothing bounds the running total below the C64's ceiling.**
+`experience >= 0x1000000` is exactly `high word >= 0x0100`, so a cap there
+would have to be a compare against `0x0100` or more; the largest constant any
+instruction compares the high word against is 22, and those constants are the
+high halves of each title's character-creation starting totals — Curse's
+8,333/12,500/25,000, Silver Blades' 66,667/100,000/200,000. Every write to
+the field in Curse and Silver Blades was disassembled and named:
+
+| what | Curse | Silver Blades |
+|---|---|---|
+| the combat award, `add`/`adc` | `0x061AD` | `0x06F6D` and two more |
+| character creation, a constant | `0x20D65`-`0x20FCC` | `0x1E30A`-`0x1E56B` |
+| the import from the previous title | `0x1D396` | `0x25216` |
+| the Hillsfar import, a raise | `0x1D79C`, `0x1E450` | — |
+| the trainer, lowering it | `0x25237` | `0x22555` |
+| the trainer under the cheat flag, a raise | `0x2505C` | `0x2238A` |
+| reset to zero | `0x3BD16` | `0x3CFA5` |
+
+**The trainer's is the only write that lowers the value, and it lowers it to
+one less than the next threshold. PROBABLE**: the overlay computes
+`ax:dx - 1` from a word pair the loop above it fills from the level table at
+`[di+0x4293]` (Curse) and `[di+0x5064]` (Silver Blades) and stores it into
+the record behind a flag test, which is the rule
+`docs/135-levelling.md` measured on the C64 across twenty-nine trainings.
+`simeonpilgrim/coab` has the same routine with that one store commented out,
+so the decompilation and the shipped overlay disagree here and the overlay is
+the evidence. A `BPM` on the record's `0x127` through one DOS training would
+settle it.
+
+So the reachable maximum is not a number the engine chooses: a character at
+his class ceiling can no longer train, nothing else lowers the field, and the
+award keeps adding into a signed 32-bit long. **Reaching `0x1000000` is a
+question of grinding rather than of what the engine allows.** Silver Blades'
+largest single award is the IRON GOLEM's 14,550 for the whole party and
+Curse's is BIT O' MOANDER's 15,700 (`tools/dos/dosxpaward.py monsters`), and
+the award is divided by the party, so carrying one Silver Blades character
+from the top of its level table — the paladin's 2,450,001 — to `0x1000000`
+is on the order of six thousand maximum-value kills.
+
+**No real record comes close.** The largest experience in the 317 distinct
+DOS records on this machine is 1,500,001 (Pools of Darkness), then 300,000,
+202,750 and 50,000 for the other three titles — an order of magnitude under
+the C64's ceiling (`tools/dos/dostailcensus.py --field experience`).
+
+**Pool of Radiance's `gap_0af` is the top byte of the same long.** Its
+engine's accumulate writes `0x0AE` and `0x0AF` together, and Curse's Pool of
+Radiance import reads `0x0AC` and `0x0AE` as one 32-bit value before storing
+it, so the three-byte reading in `goldbox/dos_port.py` holds only while no
+character passes `0xFFFFFF` — which no Pool of Radiance character does, the
+byte being zero in every specimen.
+
 ## Where a dual-classed human's old class lives
 
 **It was never on the list above.** `goldbox/c64_codec.py` drops the C64's

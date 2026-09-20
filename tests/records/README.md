@@ -41,3 +41,4 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_traitnames.py` | Checks that `tools/records/traitnames.py`'s headline numbers are what its own counting produces off Curse of the Azure Bonds' disks. |
 | `test_turning.py` | Checks the C64's turning-undead byte and what a conversion writes for a DOS cleric or paladin that has none. |
 | `test_uascript.py` | Checks community decodes of monster and item fields against the C64 `MON*`, `ITEMS` and `SPELLN00` files. |
+| `test_xpceiling.py` | Checks, from each DOS engine's own `GAME.OVR`, that experience is a 32-bit running total nothing caps below the C64 record's three bytes, and that a record past that width is refused by the conversion rather than wrapped. |
