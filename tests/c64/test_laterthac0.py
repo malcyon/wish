@@ -54,10 +54,12 @@ DISAGREE = {
 #: `C64ToDos` Curse resave (PHILIPPE, magic-user 5, written 39 from our own
 #: table) against the same record read back after `LOAD SAVED GAME` in the
 #: engine (40) -- `#318`'s own finding for Pool of Radiance, still open for
-#: Curse and Silver Blades because it holds here too.  The one exception is
+#: Curse and Silver Blades because it holds here too.  The engine-written
+#: `WISH-SPEC-curse-574-area2-spiritual-hammer-rest/CHRDATB2.SAV` and
+#: `CHRDATB6.SAV` add the same level-5 magic-user mismatch.  The one exception is
 #: a record the rebuild loop has not run over since it was dual-classed --
 #: see `docs/135-levelling.md`.
-RECORDS = {POOL: (202, 0), CURSE: (77, 12), SSB: (72, 2)}
+RECORDS = {POOL: (202, 0), CURSE: (77, 14), SSB: (72, 2)}
 
 
 def _located(title: str):
