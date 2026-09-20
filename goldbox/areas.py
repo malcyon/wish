@@ -57,9 +57,8 @@ digits, rather than to a confident wrong answer.
 six sides by `tools/areas/areatable.py`. It shares the `Area` shape and nothing else:
 sparse ids, disk sides 1-6, and five areas whose map is not their own id. Its
 own comment carries what does not carry over. Twenty of its twenty-two rows
-carry a name read out of the title's own scripts and approved by Donald, on
-`#15 (Fast Travel for more than one Gold Box title)`; `$04` and `$11` are the
-opening scene and the opening vision, name no place, and stay unnamed.
+carry a name read out of the title's own scripts; `$04` and `$11` are the
+opening scene and the opening vision, name no place, and are unnamed.
 
 `AREAS_CURSE` is the third, measured for `#192 (Convert a Curse of the Azure
 Bonds DOS save into a C64 one, which the importer refuses today)` step 0b by
@@ -388,14 +387,13 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
        name: str | None = None, **kw) -> Area:
     """One Silver Blades row.
 
-    `name` is `None` for `$04` and `$11`, which name no place. For a named row
-    `confidence` grades the **name and only the name**, the convention
-    `AREAS` and `AREAS_CURSE` use; the two unnamed rows keep the grade they
-    had before any row was named, which graded the id, the side and the map
-    -- the three columns a driven arrival measures. Neither grade covers
-    `arrival`; see the table's own comment, where five of ten measured
-    squares differ from the static reading because the arriving script
-    computes them.
+    `name` is `None` for `$04` and `$11`, which name no place. For the twenty
+    named rows `confidence` grades the **name and only the name**, as in
+    `AREAS` and `AREAS_CURSE`; for the two unnamed rows it grades the id, the
+    side and the map -- the three columns a driven arrival measures. Neither
+    grade covers `arrival`; see the table's own comment, where five of ten
+    measured squares differ from the static reading because the arriving
+    script computes them.
     """
     return Area(id=id, name=name, disk=disk, geos=geos, arrival=arrival,
                 confidence=confidence, side_name="SILVER-{}", **kw)
@@ -407,17 +405,19 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
 #: their first four bytes do not decode as the `GOTO` an area script opens
 #: with -- they are on every side and are the machine, not a place.
 #:
+#: **`confidence` grades the name for the twenty named rows, and the id, the
+#: side and the map for the unnamed `$04` and `$11`.** It never grades
+#: `arrival`.
+#:
 #: **Every row's id, side and map are CONFIRMED**, and each one the same way: a
 #: party has been put in that area on a running machine and the landing
-#: measured. Twenty-one were
-#: entered by a trip through `automap.actions.FastTravel` -- 22 hops across
-#: nine driven sessions -- and `$11` is where a loaded party starts, so it was
-#: read where it stood. `#20 (Build an area table for Silver Blades)`,
+#: measured. Twenty-one were entered by a trip through
+#: `automap.actions.FastTravel` -- 22 hops across nine driven sessions -- and
+#: `$11` is where a loaded party starts, so it was read where it stood. `#20 (Build an area table for Silver Blades)`,
 #: `cited/20/land1`-`land9`.
 #:
-#: **`confidence` grades the name, as it does in the other two tables**, and
-#: that is not the paragraph above: none of the twenty names was seen on a
-#: driven screen, all twenty are a static read of the `ECL` text and bytecode
+#: **A name's grade is not the paragraph above's evidence**: none of the
+#: twenty names was seen on a driven screen, all twenty are a static read of the `ECL` text and bytecode
 #: by `tools/areas/ecltext.py` and `tools/areas/areatable.py`
 #: (`#15 (Fast Travel for more than one Gold Box title)`). Sixteen are
 #: CONFIRMED, where a script or a sibling script names the place outright.
@@ -426,7 +426,7 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
 #: three names come from siblings naming the place around it, no script names
 #: the dungeon or the compound beyond "the dungeon" and "the compound", and
 #: the two sphinx hints that order `$40`, `$41` and `$42` do not add up to a
-#: three-level dungeon. `$04` and `$11` keep the CONFIRMED they carried for
+#: three-level dungeon. `$04` and `$11` are CONFIRMED for
 #: their id, side and map, with no name to grade.
 #:
 #: **The map column is 21 of 21 exact**, an unmasked 1024-byte compare of
@@ -441,7 +441,7 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
 #: 6. Six letters, six sides, each drawn when a party was sent to an area
 #: this table puts on that side, each answered by attaching it.
 #:
-#: **`confidence` grades the id, the side and the map, and not `arrival`.**
+#: **`confidence` does not grade `arrival`.**
 #: Twelve arrivals into a row that carries a square have been measured, with
 #: `(1, 1, 2)` -- a square no row carries -- written into `$C04B` first, so
 #: that a table square read back afterwards could only be the arriving
@@ -1011,13 +1011,14 @@ def _names_for_silver_blades() -> Mapping[str, str]:
     them: their own `name` is keyed by area id, which is the only key that can
     hold them.
 
-    `GEO30` is `$30`'s second map and is loaded by no other row, so it takes
-    `$30`'s name even though `$31` and `$32` walk on it.
+    `GEO30` is left out too, because `$31` and `$32` walk on it and a name
+    for the file would be `$30`'s alone.
     """
-    return _names_unless_shared(AREAS_SILVER_BLADES)
+    return _names_unless_shared(AREAS_SILVER_BLADES, leave_out=("GEO30",))
 
 
-def _names_unless_shared(table: tuple[Area, ...]) -> Mapping[str, str]:
+def _names_unless_shared(table: tuple[Area, ...],
+                         leave_out: tuple[str, ...] = ()) -> Mapping[str, str]:
     out: dict[str, str] = {}
     ambiguous: set[str] = set()
     for a in table:
@@ -1029,7 +1030,7 @@ def _names_unless_shared(table: tuple[Area, ...]) -> Mapping[str, str]:
                 ambiguous.add(name)
                 continue
             out[name] = label
-    for name in ambiguous:
+    for name in (*ambiguous, *leave_out):
         out.pop(name, None)
     return MappingProxyType(out)
 

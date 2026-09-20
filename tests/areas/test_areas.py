@@ -562,14 +562,16 @@ SILVER_BLADES_WARPED_INTO = {
     0x41, 0x42, 0x44, 0x50, 0x51, 0x52, 0x60, 0x61, 0x62, 0x63}
 
 
-def test_every_silver_blades_row_has_had_a_party_put_in_it():
-    """A row is CONFIRMED when a party has been put in that area on a running
-    machine and the map at `$0400` matched this table's, byte for byte. All
-    twenty-two have: twenty-one by a trip through `automap.actions.FastTravel`
-    and `$11`, the prologue, by starting there."""
+def test_four_silver_blades_names_are_probable_and_every_row_has_had_a_party_in_it():
+    """Exactly `$20`, `$40`, `$41` and `$44` are PROBABLE and every other row
+    CONFIRMED, and a party has been in all twenty-two areas on a running
+    machine with the map at `$0400` matching this table's byte for byte:
+    twenty-one by a trip through `automap.actions.FastTravel` and `$11`, the
+    prologue, by starting there."""
     table = areas.AREAS_SILVER_BLADES
-    # `confidence` grades the name now, so the four names no script gives
-    # outright read PROBABLE; the party-in-the-area evidence is the set below.
+    # `confidence` grades the name of a named row, so the four names no script
+    # gives outright are PROBABLE; the party-in-the-area evidence is the set
+    # below.
     assert {a.id for a in table if a.confidence is Confidence.PROBABLE} \
         == {0x20, 0x40, 0x41, 0x44}
     assert {a.confidence for a in table if a.id not in (0x20, 0x40, 0x41, 0x44)} \
@@ -578,9 +580,8 @@ def test_every_silver_blades_row_has_had_a_party_put_in_it():
     assert 0x11 not in SILVER_BLADES_WARPED_INTO
 
 
-#: Silver Blades' twenty approved names and their grades, read out of the
-#: title's own scripts and approved by Donald on `#15 (Fast Travel for more
-#: than one Gold Box title)`. `$04` and `$11` name no place and stay unnamed.
+#: Silver Blades' twenty names and their grades, read out of the title's own
+#: scripts. `$04` and `$11` name no place and are unnamed.
 #: `$20`, `$40`, `$41` and `$44` are PROBABLE because no script names the place
 #: itself; the other sixteen are CONFIRMED.
 _SILVER_BLADES_NAMES = {
@@ -640,6 +641,17 @@ def test_geo_names_shared_by_two_silver_blades_areas_are_left_out_of_both():
         == "Castle of the Twins, Sanctum of the Dreadlord"
     assert areas.area_in(0x63, SECRET_OF_THE_SILVER_BLADES).name \
         == "Castle of the Twins, throne room"
+
+
+def test_the_second_map_of_the_wheel_lift_area_is_not_named_for_the_file():
+    """`GEO30` is `$30`'s second map, but `$31` and `$32` walk on it too, so
+    it shows its file name as `GEO31` and `GEO62` do. `$30`'s own row keeps
+    its name."""
+    assert "GEO30" not in areas.GEO_NAMES[SECRET_OF_THE_SILVER_BLADES]
+    assert areas.geo_name("GEO30", SECRET_OF_THE_SILVER_BLADES) is None
+    assert areas.area_name("GEO30", SECRET_OF_THE_SILVER_BLADES) == "area 48"
+    assert areas.area_in(0x30, SECRET_OF_THE_SILVER_BLADES).name \
+        == "The mines, wheel lift"
 
 
 def test_the_silver_blades_arrival_column_is_not_what_confidence_grades():
