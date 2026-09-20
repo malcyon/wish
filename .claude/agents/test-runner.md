@@ -116,22 +116,14 @@ timestamp in it). Say so if you see one rather than diagnosing it.
   revert silently discards whatever anybody else has uncommitted. `git
   worktree add` and `git worktree remove` are yours and are not that.
 
-## The machine
+## Running Qt
 
-Donald works at this desktop while you run. **Nothing you run may put a window
-on his screen.** `tests/conftest.py` forces `QT_QPA_PLATFORM=offscreen`, so
-`pytest` is safe; anything else is not:
+`tests/conftest.py` forces `QT_QPA_PLATFORM=offscreen`, so `pytest` needs no
+display. Anything else that builds a `QApplication` sets it itself:
 
 ```sh
-env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \
-    GDK_BACKEND=x11 .venv/bin/python your_script.py
+QT_QPA_PLATFORM=offscreen .venv/bin/python your_script.py
 ```
-
-Unsetting `WAYLAND_DISPLAY` is easy to miss: his desktop is Wayland and a Qt
-child prefers it over whatever you set for X.
-
-**Ports 6502, 6510 and 6600 are Donald's** — anything there is a game a human
-started. Do not attach, probe or kill it. **Never kill a process by name.**
 
 ## Checking CI
 

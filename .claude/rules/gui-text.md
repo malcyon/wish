@@ -98,12 +98,12 @@ screenshot. `QWidget.grab()` works under `offscreen`, so a screenshot never
 needs a visible window:
 
 ```sh
-env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \
-    GDK_BACKEND=x11 .venv/bin/python your_script.py
+QT_QPA_PLATFORM=offscreen .venv/bin/python your_script.py
 ```
 
-`tests/conftest.py` forces `QT_QPA_PLATFORM=offscreen`, so `pytest` is safe;
-anything that builds a `QApplication` outside the suite is not.
+`tests/conftest.py` forces `QT_QPA_PLATFORM=offscreen`, so `pytest` needs no
+display; anything that builds a `QApplication` outside the suite sets it
+itself.
 `tools/icons/iconsheet.py` is the pattern.
 
 Why these rules exist, and the incidents behind them:

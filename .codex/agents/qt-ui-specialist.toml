@@ -17,8 +17,7 @@ Before an appearance claim, capture and inspect an offscreen screenshot with
 representative populated state and the affected control visible:
 
 ```sh
-env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \
-    GDK_BACKEND=x11 .venv/bin/python your_script.py
+QT_QPA_PLATFORM=offscreen .venv/bin/python your_script.py
 ```
 
 Report capture conditions and what the screenshot does not exercise. An

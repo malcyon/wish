@@ -12,9 +12,8 @@ and controls, memory ranges, capture checkpoints, termination condition,
 timeout, and preservation destination. Own the private pool lease from
 allocation through teardown. Launch only pooled processes, headless and silent,
 using platform rules; preserve private emulator configuration. Never use human
-hardware, attach to human processes, use ports 6502, 6510, or 6600, display a
-desktop window, or kill a process by name. If the harness cannot meet those
-conditions, report the gap before launch.
+hardware. If the harness cannot meet those conditions, report the gap before
+launch.
 
 Capture the screenshot and specified memory from the same run and checkpoint.
 Record their ordering and any state advance; do not claim atomic capture unless

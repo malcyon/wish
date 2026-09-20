@@ -463,6 +463,23 @@ pooled instance gets its own `vicerc` seeded from his with
 `SaveResourcesOnExit=0`, so nothing an agent runs can write settings back into
 his.
 
+### Why four of these rules came off
+
+Every rule above except the pool's own was there because an agent and Donald
+shared one desktop: a window drawn on his screen, an ssh prompt on his KDE
+session, a kill landing on the game he had started, the ports his own games
+listened on. Agents now run in the sandbox VM, so none of it is on the machine
+they run on and the four came out of `AGENTS.md`, the `test-runner`,
+`emulator-runner` and `qt-ui-specialist` definitions and `gui-text.md`: the
+`WAYLAND_DISPLAY` and `GDK_BACKEND` invocation, `SSH_ASKPASS_REQUIRE=never`,
+the reservation of ports 6502, 6510 and 6600, and never killing a process by
+name.
+
+**The pool's display allocation stayed.** Two emulators started at once race
+for one X display and one set of ports wherever they run, so
+`.claude/rules/emulator.md` still has every agent claim a slot. The pool
+still allocates from 6520 up.
+
 ### What the rule files said before they dropped their history
 
 The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.

@@ -179,34 +179,18 @@ putting half-finished work on `main`. **Do not edit a file you have assigned to
 an agent** -- if you must, say so in a message to that agent, and prefer putting
 back the one hunk you changed to restoring the whole file you remember.
 
-## The machine
+## Running Qt and emulators
 
-Donald works at this desktop while agents run. **Nothing an agent runs may put a
-window on his screen.** `tests/conftest.py` forces `QT_QPA_PLATFORM=offscreen`,
-so `pytest` is safe; everything else is not. `QWidget.grab()` works offscreen.
-
-```sh
-env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \
-    GDK_BACKEND=x11 .venv/bin/python your_script.py
-```
-
-**Unsetting `WAYLAND_DISPLAY` is easy to miss**: his desktop is Wayland and a
-GTK or Qt child prefers it over whatever you set for X, so a private `Xvfb` is
-not a sandbox.
-
-**An agent's `ssh` must never be able to ask a human anything.** With no tty and
-`DISPLAY` set, OpenSSH runs `SSH_ASKPASS`, which here draws a KDE credential
-dialog on his screen. Set both, in anything shelling out to `ssh`:
+`tests/conftest.py` forces `QT_QPA_PLATFORM=offscreen`, so `pytest` needs no
+display. A script that builds a `QApplication` outside the suite sets it
+itself, and `QWidget.grab()` works offscreen:
 
 ```sh
-SSH_ASKPASS_REQUIRE=never ssh -o BatchMode=yes ...
+QT_QPA_PLATFORM=offscreen .venv/bin/python your_script.py
 ```
 
-**Ports 6502, 6510 and 6600 are Donald's** -- anything there is a game a human
-started, so do not attach, probe or kill it. The pool allocates from 6520 up.
-
-**Never kill a process by name** -- not `pkill -x x64sc`, not `pkill -x Xephyr`.
-Kill only the process group your own slot launched.
+An emulator takes a slot from the instance pool, which gives each one its own
+ports, from 6520 up, and its own X display: `.claude/rules/emulator.md`.
 
 ## Delegating
 
