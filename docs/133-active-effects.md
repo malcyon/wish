@@ -45,21 +45,113 @@ writer or clearer.
 one-based record position. It provides the duration data for an id; it does not
 make that duration safe to show or edit.
 
-## Open measurements
+## The duration byte
 
-**PROBABLE:** The duration byte uses bits 0–5 as a count and bits 6–7 to select
-a unit. **UNKNOWN:** What the four units mean, and whether zero means
-permanent. Until this is measured, the panel deliberately shows no remaining
-duration. [#500 (What unit is an active effect's duration in, and what do bits
-6-7 of the duration byte select?)](https://github.com/malcyon/wish/issues/500)
-tracks it.
+**CONFIRMED:** Bits 0–5 are a count and bits 6–7 select the unit. The four
+units are one minute, ten minutes, one hour and one day.
 
-**CONFIRMED:** The magnitude byte is decoded for each id-table record.
-**UNKNOWN:** Which ids read it on expiry and which discard it. Writing or
-clearing an effect before that is known can leave a changed statistic behind,
-so the panel remains read-only. [#501 (Which active effect ids read their
-magnitude back when the effect expires, and which discard it?)](https://github.com/malcyon/wish/issues/501)
-tracks it.
+| bits 6–7 | unit | what advances it | grade |
+|---|---|---|---|
+| `00` | one minute — one dungeon step, one combat round | every minute of the clock | CONFIRMED, in the running game and from the bytecode |
+| `01` | ten minutes, an AD&D turn | the minute-units digit `+$C7` wrapping | CONFIRMED, in the running game and from the bytecode |
+| `10` | one hour | the tens-of-minutes digit `+$C8` wrapping | CONFIRMED from the bytecode; live only as a negative, that it does not move when no hour boundary is crossed |
+| `11` | one day | the hour digit `+$C9` wrapping | CONFIRMED from the bytecode; live only as the same negative |
+
+**CONFIRMED: a duration byte of zero is never decremented and never expires.**
+All three ageing routines read the byte and skip the slot when it is zero
+(`DUNGEON $0E1F`, `CAMP $12A3`, `COMBAT $2228`). The project used to read zero
+as permanent, then stopped when a save turned up carrying two running spells
+at duration zero; the reading was right and the refutation was aimed at the
+wrong claim, because nothing ages such a slot and nothing ever clears its id.
+
+Three routines age the arrays, one per overlay, and they agree:
+
+* **`DUNGEON $0E0D`**, from the clock tick at `$0DEC`, which hands it the
+  coarsest digit that advanced. It ages exactly one unit per minute of
+  walking, the one matching that digit less one.
+* **`CAMP $1283`**, entered with the minutes to pass, which accumulates a
+  wrapped-digit mask in `$28E6` from the bit table at `$165A` and then sweeps
+  all 64 slots at `$1299`. Unit `00` loses the whole elapsed minutes; the
+  other three lose one if their digit wrapped at all. Rest passes five minutes
+  at a time (`CAMP $1D7A`), so no boundary is crossed twice in one pass.
+* **`COMBAT $221E`**, once per round, which tests `CMP #$40 / BCS` and so
+  decrements unit `00` and nothing else, then advances the clock a minute at
+  `$224B`. A combat round is a minute.
+
+**CONFIRMED: walking never expires anything.** When a unit-`00` count runs out
+while the party walks, `DUNGEON $0E39` writes `$01` back — one minute left —
+and leaves the id set, for as long as the party keeps walking. The expiry
+handlers live in `SPELLE04`, which only `CAMP $133F` loads, so `DUNGEON` has
+nowhere to send an expiry: it parks the effect for camp or the next fight to
+collect. `ENCAMP` always collects, because `CAMP $0803` passes one minute on
+entry. `DUNGEON $1241`, which passes twelve hours, uses the same floor
+deliberately.
+
+## The magnitude byte, and what is restored
+
+**CONFIRMED: bit 7 of the magnitude is the flag that says there is a value to
+put back**, and the restore reads that value out of the effect record rather
+than recomputing anything from the character. Both expiry routines — `CAMP
+$131F` out of combat and `SQRPACI01 $07E4` in it — clear the id, read
+`$4B80,X`, and give up on a `BPL`.
+
+With bit 7 set, the byte goes to a dispatch that picks a handler by effect id:
+out of combat a zero-terminated id list at `ECL65 $9AD5` with its address
+halves at `$9AEE` and `$9B06`, searched; in combat a 139-entry table at
+`$DA63`/`$DAEE` indexed by the id itself. `CAMP $133F` loads `SPELLE04`,
+`ECL65` and `SPELLN00` before it dispatches, which is what puts the handlers
+in memory.
+
+**CONFIRMED: out of combat, three ids read the magnitude's value** — 12 and 38
+rebuild strength, 14 rebuilds charisma. Two more read only its sign. The rest
+of the list discards it, and every id **not** in the list reaches no handler
+at all, so nothing of its magnitude is ever read.
+
+| effect id | handler in `SPELLE04` | the magnitude |
+|---|---|---|
+| **12**, **38** | `$AD0B` | **read**: `AND #$7F`, then record `0x014` STR and `0x01A` STR % |
+| **14** | `$AD27` | **read**: `AND #$7F` into record `0x019` CHA |
+| 4 | `$ACCE` | discarded |
+| 7 | `$ACD7` | discarded; constitution goes back up by one instead |
+| 15 | `$AD71` | discarded |
+| 22 | `$AD2F` | discarded; adds effect 15 and expires this slot |
+| 34, 43 | `$AD49`, `$AD4F` | discarded; strength comes down by one instead, floored at 4 |
+| 44 | `$AD6B` | discarded |
+| 50 | `$AD97` | discarded |
+| 57 | `$AD9F` | discarded; a message only |
+| 62 | `$ADC2` | discarded |
+| 128, 129, 130, 133, 134, 136, 138, 139 | `$ADD4` | discarded; clears the code from the ten trait slots at `0x0AD` |
+| 131 | `$AE2D` | bit 7 only, as a branch; chain-expires effect 38 |
+| 132 | `$AE5F` | bit 7 only, as a branch |
+| 135 | `$AECD` | discarded |
+| anything else | — | never dispatched |
+
+**CONFIRMED:** the strength magnitude is `18/v` for a low 7 bits `v` under
+101 and an ordinary score of `v - 100` at 101 and above — `SPELLE04 $AD0B`
+and its combat twin `SPELLE01 $A81D`, instruction for instruction. A
+character at strength 15 whose effect carried magnitude `$F4` came out of camp
+at 16.
+
+**CONFIRMED in combat, for four ids:** 12 and 38 at `SPELLE01 $A81D` and 13
+and 14 at `$A83F`, the same two statistics. **UNKNOWN:** the other 135 entries
+of the combat table. Reading them is static work — disassemble `SPELLE01` at
+each distinct handler address and record which touch `$4B80,X`.
+
+**A finding that is not about restoring:** `SPELLE01 $A84D`, shared by ids 4,
+7, 15, 34, 43, 44, 50, 57 and 62, writes the id back into `$4900,X` with a
+duration of `$41`, so those nine re-arm themselves for one ten-minute turn
+when their round count runs out in a fight. CONFIRMED from the bytecode,
+unmeasured live.
+
+## What this means for a write path
+
+**Clearing a slot is not the same as expiring it.** The game's own clear
+restores a statistic on the way through; `goldbox.effects.clear_effect()`
+zeroes the four bytes and does not. A slot whose magnitude has bit 7 set and
+whose id is 12, 14 or 38 leaves the character permanently altered if it is
+cleared that way, so anything that offers Remove has to apply the restore
+itself or refuse. **A magnitude written with bit 7 set on one of those ids is
+a deferred write to the character record**, not an opaque byte.
 
 The earlier plan's `P3-EFFECTS.D64` claims are removed: that disk image is not
 available, so it cannot support a duration or active-effect claim.
