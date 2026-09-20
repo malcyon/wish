@@ -31,7 +31,7 @@ says only while the overlay that owns it is resident.
 | `$40EA`–`$4149` | **data-file name stems** | — | CONFIRMED | GDRIVE00, SQRPACI00, GEO00 at $40FC... templates copied elsewhere to build a filename, never patched in place |
 | `$4900`–`$493F` | **effect ids** | SAVEDGAME0 | PROBABLE | 64 timed effects; 0 means the slot is free. Expiry clears only the id, so filter on it or you will show effects that have already ended |
 | `$4940`–`$497F` | **effect owner** | SAVEDGAME0 | PROBABLE | 0-7 a party member by slot, 8+ a monster, $FF the whole party. This encoding is what led to the combatant table |
-| `$4980`–`$49BF` | **effect duration** | SAVEDGAME0 | PROBABLE | bits 6-7 select the time unit |
+| `$4980`–`$49BF` | **effect duration** | SAVEDGAME0 | CONFIRMED | bits 6-7 select the unit the low six bits count in: 00 one minute, 01 ten minutes, 10 one hour, 11 one day (docs/133-active-effects.md) |
 | `$49C0` | **party x** | SAVEDGAME0 | CONFIRMED | lags a move on Pool of Radiance, where the status line is the live copy; Silver Blades is the other way round, so find which copy is live on a given title by moving and watching rather than assuming (docs/144-decoding-a-new-title.md) |
 | `$49C1` | **party y** | SAVEDGAME0 | CONFIRMED |  |
 | `$49C2` | **party facing** | SAVEDGAME0 | CONFIRMED | 0 north, 1 east, 2 south, 3 west |

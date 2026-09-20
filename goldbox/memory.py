@@ -63,8 +63,10 @@ MAP: tuple[Region, ...] = (
     Region(0x4940, 0x40, "effect owner", MAYBE, saved_in="SAVEDGAME0",
            note="0-7 a party member by slot, 8+ a monster, $FF the whole "
                 "party. This encoding is what led to the combatant table"),
-    Region(0x4980, 0x40, "effect duration", MAYBE, saved_in="SAVEDGAME0",
-           note="bits 6-7 select the time unit"),
+    Region(0x4980, 0x40, "effect duration", OK, saved_in="SAVEDGAME0",
+           note="bits 6-7 select the unit the low six bits count in: 00 one "
+                "minute, 01 ten minutes, 10 one hour, 11 one day "
+                "(docs/133-active-effects.md)"),
     Region(0x49C0, 1, "party x", OK, saved_in="SAVEDGAME0",
            note="lags a move on Pool of Radiance, where the status line is "
                 "the live copy; Silver Blades is the other way round, so "
