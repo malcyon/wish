@@ -1846,10 +1846,10 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # `automap.actions` 1 -> 3 -> 0: Fast Travel's three strings (the
     # two-hop's walking-out and giving-up lines, and the one-hop "Walking out
     # towards" line) were approved by the owner as worded, so every swept
-    # module was 0. `automap.actions` is 2 again: the two-hop's wrong-door
-    # cancel and its every-door-fights refusal are new wording, waiting on him.
+    # module was 0. `automap.actions` went 0 -> 2 -> 0: the two-hop's
+    # wrong-door cancel and every-door-fights refusal were approved as worded.
     WAITING = {"goldbox.c64_codec": 0, "goldbox.amiga_pod": 0,
-               "goldbox.dos_codec": 0, "automap.actions": 2}
+               "goldbox.dos_codec": 0, "automap.actions": 0}
 
     found: dict[str, list[str]] = {}
     for module in (c64_codec, amiga_pod, dos_codec, actions):

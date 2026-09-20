@@ -2344,12 +2344,12 @@ class FastTravel(Action):
     #: What `continue_pending` says when the party left through a door of the
     #: starting area other than the one the hop waited on.
     LEFT_ANOTHER_WAY = ("The party left by a different door, so the trip to "
-                        "{name} did not happen (NOT APPROVED)")
+                        "{name} did not happen")
 
     #: What `run` says when an area has several doors and every one of them
     #: can start a fight, so no door is chosen and nothing is written.
     EVERY_DOOR_FIGHTS = ("ERROR: Unable to Fast Travel. Every way out of "
-                         "here can start a fight. (NOT APPROVED)")
+                         "here can start a fight.")
 
     #: What `run` and `continue_pending` say when the writes are made and the
     #: PC cannot be set: the reload flag they wrote is what finishes the trip.
