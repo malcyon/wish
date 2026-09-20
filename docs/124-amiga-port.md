@@ -651,8 +651,8 @@ already reads, and `goldbox.dos_codec.to_neutral` does the rest — so every gra
 and provenance line the DOS side earned on 24 specimens carries over, and
 there is no second bridge to drift. Four rules and nothing else: the name is
 re-cut from 16 NUL-padded bytes to a count and fifteen; `u16` and `u32` fields
-are byte-swapped; experience is one Amiga `u32` spanning DOS's 24-bit field
-*and* `gap_0af`; and the two live heap pointers — the effect chain and each
+are byte-swapped; experience is one Amiga `u32` where DOS keeps a four-byte
+`u32le`; and the two live heap pointers — the effect chain and each
 item's `next` — are written NULL rather than converted.
 
 **Two regions are reported rather than guessed.** DOS `0x083`-`0x087`, where

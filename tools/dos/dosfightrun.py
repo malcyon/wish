@@ -77,7 +77,7 @@ QUICKFIGHT_BYTE = 0x10F
 #: `CHRDAT` offsets read directly, so a state snapshot needs no field table.
 #: Both are `goldbox/dos_port.py`'s and are asserted against it in
 #: `tests/dos/test_dosfight.py`.
-XP = 0x0AC          # three bytes, little-endian
+XP = 0x0AC          # four bytes, little-endian
 HP_CURRENT = 0x11B
 
 
@@ -102,7 +102,7 @@ def party_state(save_dir: Path, letter: str) -> dict:
         out["chars"].append(
             {
                 "file": path.name,
-                "experience": int.from_bytes(d[XP:XP + 3], "little"),
+                "experience": int.from_bytes(d[XP:XP + 4], "little"),
                 "hp_current": d[HP_CURRENT],
                 "quickfight_candidate": d[QUICKFIGHT_BYTE],
                 "mtime": path.stat().st_mtime,

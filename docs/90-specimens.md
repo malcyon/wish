@@ -354,7 +354,7 @@ the sum.
 ### Experience, gold and levels
 
 **Experience and gold are written into the record before the run**, at
-`goldbox.dos_port`'s own offsets — `experience` `0x0AC`, three bytes little
+`goldbox.dos_port`'s own offsets — `experience` `0x0AC`, four bytes little
 endian; `gold` `0x08E`, a word; and `encumbrance` `0x102` moved with the gold,
 since the identity above would otherwise fail. `tools/dos/dostrainprobe.py`'s
 `install()` does it and `tools/dos/dostrain.py`'s `--xp` and `--gold` are the door.

@@ -47,7 +47,7 @@ title. Nothing is a constant in the writer any more:
 | class levels | 8 slots | 8 | **7**, no monk |
 | spell-slot levels | 3 | 5 | 7 |
 | slot arrays | cleric, magic-user | + druid | + druid + one unattributed |
-| experience | 3 bytes | 4 | 4 |
+| experience | 4 bytes | 4 | 4 |
 | items | 63 bytes in `.ITM` | 63 in `.SWG` | **67 in `.STF`** |
 | effects | `.SPC` | `.FX` | `.SFX` |
 | `field_83_87` | 5 bytes | 5 | 4 |

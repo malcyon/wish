@@ -133,11 +133,9 @@ def test_the_cap_detector_fires_on_a_high_word_compare_that_would_bound_it():
 def test_every_dos_engine_adds_into_experience_thirty_two_bits_wide(key):
     """The running total is a longword in all four engines.
 
-    Pool of Radiance is in this list deliberately.  `goldbox/dos_port.py`
-    calls its experience three bytes at `0x0AC` with an unattributed
-    `gap_0af` beside it, and the engine's own accumulate writes `0x0AE` and
-    `0x0AF` together -- so the gap is the top byte of the same long, and the
-    three-byte reading holds only while no character passes `0xFFFFFF`.
+    Pool of Radiance is in this list deliberately: its accumulate writes
+    `0x0AE` and `0x0AF` together, which is why `goldbox/dos_port.py` declares
+    its experience as four bytes at `0x0AC`.
     """
     image = _overlay(key)
     at = xpceiling.experience_offset(key)

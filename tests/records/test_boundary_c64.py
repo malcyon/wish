@@ -413,12 +413,13 @@ def test_f_the_engine_agrees_on_the_memorised_width(game):
 # --- G: no DOS field is wider than the C64 field it converts into -----------
 
 #: The DOS scalars wider than the C64 field they convert into, and nothing
-#: else: Curse of the Azure Bonds and Secret of the Silver Blades keep
-#: experience in four bytes where the C64 record has three, so a value from
-#: 16,777,216 up is clamped to 16,777,215 by `c64_codec.write`
+#: else: Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver
+#: Blades keep experience in four bytes where the C64 record has three, so a
+#: value from 16,777,216 up is clamped to 16,777,215 by `c64_codec.write`
 #: (`test_xpceiling.py`).  No DOS engine caps the running total, so the
 #: value is reachable by play alone (#597).
-_DOS_WIDER = {("curse-of-the-azure-bonds", "experience"),
+_DOS_WIDER = {("pool-of-radiance", "experience"),
+              ("curse-of-the-azure-bonds", "experience"),
               ("secret-of-the-silver-blades", "experience")}
 
 

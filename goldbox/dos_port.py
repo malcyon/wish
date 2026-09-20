@@ -555,9 +555,11 @@ _DECLARED: Sequence[Field] = (
        "unnamed, and the read site is the only one in a memory image dumped "
        "at an encounter and after a fight -- an overlay not resident then "
        "could hold another"),
-    _f(0x0AC, 3, _UINT, "experience", "Experience", _OK,
-       "u24le. 5333 -> 7670 for a fighter whose level byte says 3 and 7349 "
-       "-> 9686 for one whose says 4, and all six party members gained the "
+    _f(0x0AC, 4, _UINT, "experience", "Experience", _OK,
+       "u32le, a signed 32-bit long in the engine (the award routine writes "
+       "0x0AE and 0x0AF together). 5333 -> 7670 for a fighter whose level "
+       "byte says 3 and 7349 -> 9686 for one whose says 4, and all six party "
+       "members gained the "
        "identical 2337 between saves B and A -- the even experience split. "
        "Read big-endian the same bytes put a level-3 fighter past fourteen "
        "million, which no Pool of Radiance character can reach"),
@@ -1197,7 +1199,6 @@ CURSE_OF_THE_AZURE_BONDS = DosDeltas(
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "spells_memorised": 84, "spellbook": 100,
-           "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 5, "spells_castable_magic_user": 5},
     inserts={"level": (_x(1, "former_level", "Level left the old class at",
                           _OK, _FORMER_LEVEL_NOTE, kind=Kind.U8),),
@@ -1243,7 +1244,6 @@ SECRET_OF_THE_SILVER_BLADES = DosDeltas(
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "spells_memorised": 75, "spellbook": 117,
            "field_83_87": 4, "class_levels": 7, "gap_09f": 0,
-           "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 7, "spells_castable_magic_user": 7},
     inserts={"char_class": (_paladin_cures(),),
              "level": (_x(1, "former_level", "Level left the old class at",
@@ -1302,7 +1302,7 @@ POOLS_OF_DARKNESS = DosDeltas(
            "levels_drained": 0, "hp_lost_to_drain": 0, "field_83_87": 4,
            "copper": 0, "silver": 0, "electrum": 0, "gold": 0,
            "class_levels": 7, "gap_09f": 0, "strength_bonus": 0,
-           "experience": 4, "gap_0af": 0, "gap_101": 0,
+           "gap_101": 0,
            "spells_castable_cleric": 9, "spells_castable_magic_user": 9,
            "experience_per_hit_point": 0, "portrait_head": 0,
            "portrait_body": 0},

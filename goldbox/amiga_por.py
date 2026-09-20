@@ -162,12 +162,11 @@ class AmigaPorCharacter:
 
     @property
     def experience(self) -> int:
-        """Four bytes big-endian, spanning DOS's 24-bit field and `gap_0af`.
+        """Four bytes big-endian, the Amiga's `u32` where DOS keeps a `u32le`.
 
-        The Amiga's field is `u32`, and the shift stays at +2 across it -- so
-        DOS's unexplained `gap_0af` is experience's fourth byte and the DOS
-        field is a `u32le`.  PROBABLE: 14 of 14 Amiga specimens decode to
-        experience totals in their class's band or just past a level cap.
+        The shift stays at +2 across all four bytes.  PROBABLE: 14 of 14
+        Amiga specimens decode to experience totals in their class's band or
+        just past a level cap.
         """
         at = amiga_por_offset(dos_experience_offset())
         return int.from_bytes(self.raw[at:at + 4], "big")
@@ -401,11 +400,8 @@ def amiga_por_effect_to_dos(node: bytes) -> bytes:
 #
 #   * the name -- 16 NUL-padded bytes become DOS's count byte and fifteen;
 #   * the `u16` and `u32` fields -- big-endian becomes little-endian;
-#   * experience -- one `u32` on the Amiga, spanning DOS's 24-bit field *and*
-#     the byte `goldbox/dos_port.py` calls `gap_0af`.  PROBABLE: the DOS field
-#     is a `u32le` and the gap is its fourth byte.  Written that way, which
-#     is lossless either way round because the fourth byte is zero below
-#     16 777 216 experience and no Gold Box character reaches it;
+#   * experience -- one `u32` on the Amiga, DOS's four-byte `u32le`, so a
+#     total above 16 777 215 is written in full;
 #   * the two live pointers -- the effect chain and each item's `next` -- are
 #     written NULL rather than converted.  They are Amiga heap addresses.
 #
@@ -447,7 +443,7 @@ def to_dos_record(char: AmigaPorCharacter) -> bytes:
     out[exp.offset:exp.offset + 4] = int.from_bytes(
         char.raw[at:at + 4], "big").to_bytes(4, "little")
 
-    skip = {"name_length", "name_text", "experience", "gap_0af",
+    skip = {"name_length", "name_text", "experience",
             "field_83_87", "effect_chain"}
     for f in dos_port.LAYOUT:
         if f.name in skip:
@@ -618,8 +614,7 @@ def describe_unconverted_effect(node: bytes) -> str:
 #     the name, and the rest is NUL.  Measured: all twenty genuine specimens
 #     are NUL to the end of the sixteen, with nothing past the terminator;
 #   * `u16` and `u32` fields -- little-endian becomes big-endian;
-#   * experience -- DOS's 24-bit field and `gap_0af` become one Amiga `u32be`
-#     at `0x0AE`;
+#   * experience -- DOS's `u32le` becomes one Amiga `u32be` at `0x0AE`;
 #   * the two live pointers -- the effect chain at `0x080` and each item's
 #     `next` at `0x02A` -- are written NULL.  The receiving engine allocates a
 #     node per `.spc` record and per `.itm` record on load and relinks them
@@ -687,7 +682,7 @@ POR_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
 #: map: the name is re-cut, experience spans two DOS fields, and the unplaced
 #: window has no per-byte map to shift through.
 _POR_SPECIAL = frozenset(
-    {"name_length", "name_text", "experience", "gap_0af", "field_83_87"})
+    {"name_length", "name_text", "experience", "field_83_87"})
 
 
 def _por_special(f) -> bool:
@@ -940,8 +935,8 @@ def write_por(char: NeutralCharacter,
              f"name: {AMIGA_POR_NAME_SIZE} NUL-padded bytes composed from "
              f"DOS's count byte and fifteen -- {converted('name_length')}")
     rep.note(AMIGA_POR_EXPERIENCE, 4,
-             f"experience: one u32 big-endian spanning DOS's 24-bit field and "
-             f"gap_0af -- {converted('experience')}")
+             f"experience: one u32 big-endian from DOS's four-byte field -- "
+             f"{converted('experience')}")
     rep.note(AMIGA_POR_PAD, 1,
              "0x07F: the first insertion, a pad ahead of the effect pointer. "
              "Zero in 20 of 20 Amiga specimens")

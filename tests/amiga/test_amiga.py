@@ -993,8 +993,7 @@ NOT_TRANSPOSED = {
     "name_text": "re-cut from 16 NUL-padded bytes to a count and fifteen",
     "effect_chain": "a live Amiga heap address; written NULL",
     "field_83_87": "the unplaced window; written zero rather than guessed",
-    "experience": "one u32 on the Amiga, spanning this field and gap_0af",
-    "gap_0af": "experience's fourth byte on the Amiga",
+    "experience": "one u32 on the Amiga, DOS's four-byte field",
 }
 
 
@@ -1015,7 +1014,7 @@ def test_the_dos_recut_carries_every_field_it_does_not_declare_dropped():
                 continue
             assert d.get(f.name) == a.get(f.name), (path, f.name)
         assert d.name == a.name, path
-        assert d.get("experience") + (d.raw("gap_0af")[0] << 24) == a.experience
+        assert d.get("experience") == a.experience
 
 
 def test_the_recut_refuses_to_invent_the_unplaced_window():
@@ -1388,13 +1387,12 @@ def test_multi_byte_fields_are_written_big_endian():
     assert c.get("age") == 33
 
 
-def test_experience_is_one_big_endian_longword_across_dos_gap_0af():
-    """DOS spends three bytes plus `gap_0af`; the Amiga spends one `u32be`.
+def test_experience_is_one_big_endian_longword_from_the_dos_u32le():
+    """DOS spends four bytes little-endian; the Amiga spends one `u32be`.
 
-    Tested on the transposition rather than through `write_por`, because
-    `goldbox.dos_codec.write`'s own field is three bytes wide and nothing that goes
-    through it can put anything in the fourth -- #111.  A writer that
-    swapped only three would put a large total's bytes in the wrong order.
+    Tested on the transposition with a value that uses all four bytes, so a
+    writer that swapped only three would put a large total's bytes in the
+    wrong order.
     """
     record = bytearray(dos_port.RECORD_SIZE)
     at = dos_port.FIELDS_BY_NAME["experience"].offset

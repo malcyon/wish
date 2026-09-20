@@ -16,7 +16,7 @@ the engine's.
 
 | written before the boot, by us | computed by the engine, in front of us |
 |---|---|
-| `experience` (`0x0AC`, three bytes little-endian) | `level`, and the per-class array behind `class_levels` |
+| `experience` (`0x0AC`, four bytes little-endian) | `level`, and the per-class array behind `class_levels` |
 | `gold` (`0x08E`, a word) and `encumbrance` (`0x102`) moved with it | `hp_max`, `hp_rolled`, THAC0, saving throws, spell slots, thief skills |
 | — | the experience the trainer **leaves behind** |
 | — | which spell a magic-user is offered, and gets |

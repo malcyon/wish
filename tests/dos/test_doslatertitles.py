@@ -307,16 +307,19 @@ def test_silver_blades_items_are_sixty_seven_bytes_with_a_measured_zero_tail():
     assert itm[:63] == short
 
 
-def test_experience_is_four_bytes_in_the_later_titles():
-    """Three in Pool of Radiance and four after, so a total Pool of Radiance
-    cannot hold survives in the titles that can."""
-    big = 0x00FF_FFFF + 1
-    rec, _, _, _ = dos_codec.write(_neutral(CURSE.key, experience=big))
-    f = dos_port.FIELDS_BY_NAME_FOR[CURSE.key]["experience"]
+@pytest.mark.parametrize("key", [POOL.key, CURSE.key])
+def test_experience_is_four_bytes_in_every_title(key):
+    """A total above `0xFFFFFF` survives the write in all four bytes, in Pool
+    of Radiance as in the later titles: the engine keeps a 32-bit long."""
+    f = dos_port.FIELDS_BY_NAME_FOR[key]["experience"]
     assert f.size == 4
-    assert int.from_bytes(rec[f.offset:f.end], "little") == big
-    with pytest.raises(ValueError):
-        dos_codec.write(_neutral(POOL.key, experience=big))
+    assert key != POOL.key or f.offset == 0x0AC
+    for value in (0, 0xFFFFFF, 0x1000000, 0x7FFFFFFF):
+        rec, _, _, _ = dos_codec.write(_neutral(key, experience=value))
+        assert int.from_bytes(rec[f.offset:f.offset + 4], "little") == value
+        read = dos_codec.to_neutral(
+            dos_codec.DosCharacter(bytes(rec), deltas=key))
+        assert read.get("experience") == value
 
 
 # --- the fields only the later titles have ------------------------------------

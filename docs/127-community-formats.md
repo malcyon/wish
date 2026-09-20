@@ -306,7 +306,7 @@ the same offset. Nothing contradicts.**
 | — | — | `MON_Type` at `0x09F`, `Alignment` at `0x0A0` | add |
 | `0x0A1` | attacks per round, halves | `ATK_1_Count_Base`, first of eight | theirs — see §3 |
 | — | — | `AC_Base` at `0x0A9` | add |
-| `0x0AC` | experience, `u24` | `XP_Current`, `u32` | theirs; no conflict, our fourth byte was unclaimed |
+| `0x0AC` | experience, `u32` | `XP_Current`, `u32` | theirs; the same field |
 | `0x0B0` | class bitmask | `ITM_Allowed`, `ClassRestrictionArray` | same bits, better name — it is what the item table checks |
 | `0x0B1` | hit points rolled | `HP_Base` | confirm |
 | — | — | `SPL_Count_*` `0x0B2`–`0x0B7`, `XP_Award_*` `0x0B8`–`0x0BA`, portraits, icon colours | add |

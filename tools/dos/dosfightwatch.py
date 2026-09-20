@@ -571,13 +571,13 @@ def run(*, c64: pathlib.Path | None, slot: str, steps: int, out: pathlib.Path,
             # experience points for all six.
             after = records(s.save_dir, resave)
             report["after_records"] = {
-                n: {"experience": int.from_bytes(d[XP:XP + 3], "little"),
+                n: {"experience": int.from_bytes(d[XP:XP + 4], "little"),
                     "hp_current": d[HP_CURRENT],
                     "unsourced": field_values(d, 0)}
                 for n, d in after.items()}
             report["experience_rose"] = {
-                n: int.from_bytes(after[n][XP:XP + 3], "little")
-                - int.from_bytes(built[n][XP:XP + 3], "little")
+                n: int.from_bytes(after[n][XP:XP + 4], "little")
+                - int.from_bytes(built[n][XP:XP + 4], "little")
                 for n in after if n in built}
             report["fought"] = any(v > 0 for v in
                                    report["experience_rose"].values())

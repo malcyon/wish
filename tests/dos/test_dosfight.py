@@ -42,7 +42,7 @@ def test_the_record_offsets_are_the_layouts_and_not_a_second_copy():
     from goldbox.dos_port import FIELDS_BY_NAME
 
     assert FIELDS_BY_NAME["experience"].offset == dosfightrun.XP
-    assert FIELDS_BY_NAME["experience"].size == 3
+    assert FIELDS_BY_NAME["experience"].size == 4
     assert FIELDS_BY_NAME["hp_current"].offset == dosfightrun.HP_CURRENT
 
 
@@ -72,7 +72,7 @@ def _snapshot(pairs, slums=0):
     chars = []
     for n, (xp, hp) in enumerate(pairs, start=1):
         rec = bytearray(285)
-        rec[dosfightrun.XP:dosfightrun.XP + 3] = xp.to_bytes(3, "little")
+        rec[dosfightrun.XP:dosfightrun.XP + 4] = xp.to_bytes(4, "little")
         rec[dosfightrun.HP_CURRENT] = hp
         chars.append(
             {

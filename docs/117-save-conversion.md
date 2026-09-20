@@ -108,7 +108,7 @@ predicted table had to be corrected.
 | money — cp sp ep gp pp gems jewelry | `0x088`, 7 × `u16le` | `0x0BB`, 7 × `u16le` | CONFIRMED |
 | per-class levels, 8 wide | `0x096` | `0x0C9` | CONFIRMED, **but differently ordered** — see below |
 | sex | `0x09E` | `0x0D6` | PROBABLE |
-| experience | `0x0AC`, `u24le` | `0x0E8`, `u24le` | CONFIRMED |
+| experience | `0x0AC`, `u32le` | `0x0E8`, `u24le` | CONFIRMED |
 | class bitmask — 1 mage, 2 cleric, 4 thief, 8 fighter | `0x0B0` | `0x0EB` | CONFIRMED, same bit order |
 | party order | `0x0BF` | `0x10D` | CONFIRMED |
 | item count | `0x0C7` | — | CONFIRMED; the C64 carries the items in the record instead |
@@ -707,8 +707,8 @@ difference."*
 ## Experience is the one field DOS keeps wider, and no engine caps it
 
 Every C64 record keeps experience in three bytes (`goldbox/layout.py`,
-`0x0E8`); DOS Curse keeps four at `0x127`, Silver Blades four at `0x12C` and
-Pools of Darkness four at `0x172`. It is the only scalar wider on the DOS
+`0x0E8`); DOS Pool of Radiance keeps four at `0x0AC`, Curse four at `0x127`,
+Silver Blades four at `0x12C` and Pools of Darkness four at `0x172`. It is the only scalar wider on the DOS
 side than on the C64 one, so it is the only one where a legal source value
 can have nowhere to go. **`goldbox.c64_codec.write` clamps it**: a total above
 16,777,215 is written as 16,777,215, the largest value three bytes hold, and
@@ -785,12 +785,14 @@ DOS records on this machine is 1,500,001 (Pools of Darkness), then 300,000,
 202,750 and 50,000 for the other three titles — an order of magnitude under
 the C64's ceiling (`tools/dos/dostailcensus.py --field experience`).
 
-**Pool of Radiance's `gap_0af` is the top byte of the same long.** Its
-engine's accumulate writes `0x0AE` and `0x0AF` together, and Curse's Pool of
-Radiance import reads `0x0AC` and `0x0AE` as one 32-bit value before storing
-it, so the three-byte reading in `goldbox/dos_port.py` holds only while no
-character passes `0xFFFFFF` — which no Pool of Radiance character does, the
-byte being zero in every specimen.
+**Pool of Radiance's experience is four bytes, the same long as the later
+titles'.** Its engine's accumulate writes `0x0AE` and `0x0AF`
+together, and Curse's Pool of Radiance import reads `0x0AC` and `0x0AE` as one 32-bit value before storing
+it. `goldbox/dos_port.py` therefore declares Pool of Radiance's experience as
+four bytes at `0x0AC`, and the byte at `0x0AF` is zero in every specimen. An
+Amiga Pool of Radiance character above `0xFFFFFF` converts to DOS with all
+four bytes written; it is CONFIRMED from the two routines above and not yet
+by loading such a character in the running DOS game.
 
 ## Where a dual-classed human's old class lives
 
