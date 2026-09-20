@@ -102,13 +102,15 @@ def test_clear_effect_refuses_a_slot_out_of_range():
     (0xC5, 5, "day", 7200),
     (0x3F, 63, "minute", 63),
 ])
-def test_duration_unit_splits_count_and_unit(byte, count, unit, minutes):
+def test_duration_unit_splits_count_and_unit_and_minutes_is_at_most(
+        byte, count, unit, minutes):
     d = effects.duration_unit(byte)
     assert (d.count, d.unit, d.minutes) == (count, unit, minutes)
     assert not d.never_expires
 
 
-def test_a_duration_byte_of_zero_never_expires_but_a_zero_count_in_a_unit_does():
+def test_only_a_duration_byte_of_exactly_zero_is_marked_never_expires():
+    # Pins the flag only: what the ageing routines do to `$40` is not established.
     assert effects.duration_unit(0x00).never_expires
     assert effects.duration_unit(0x00).minutes == 0
     assert not effects.duration_unit(0x40).never_expires
@@ -131,6 +133,28 @@ def test_id_13_restores_a_statistic_in_combat_only():
     assert 13 not in effects.MAGNITUDE_VALUE_IDS
     e = effects.Effect(slot=0, id=13, owner=0, duration=1, magnitude=0xE2)
     assert e.restores_a_statistic is False
+
+
+@pytest.mark.parametrize("eid, in_combat, expected", [
+    (13, False, False),
+    (13, True, True),
+    (12, False, True),
+    (12, True, True),
+    (14, False, True),
+    (14, True, True),
+    (38, False, True),
+    (38, True, True),
+    (1, True, False),      # outside the combat lower bound as well
+])
+def test_restores_a_statistic_in_asks_out_of_combat_and_in_it(
+        eid, in_combat, expected):
+    e = effects.Effect(slot=0, id=eid, owner=0, duration=1, magnitude=0xE2)
+    assert e.restores_a_statistic_in(in_combat=in_combat) is expected
+
+
+def test_restores_a_statistic_in_still_needs_bit_7_in_combat():
+    e = effects.Effect(slot=0, id=13, owner=0, duration=1, magnitude=0x62)
+    assert e.restores_a_statistic_in(in_combat=True) is False
 
 
 @pytest.mark.parametrize("eid, magnitude, expected", [

@@ -98,16 +98,22 @@ class Duration:
 
     @property
     def minutes(self) -> int:
-        """The count in minutes of game clock; 0 for a byte that never expires."""
+        """The most game-clock minutes the count can last; 0 for a byte that never expires.
+
+        An upper bound, not an exact time: a count in unit 01-11 loses one when
+        its clock digit wraps, so the effect lapses between (count - 1) units
+        plus the time to the next boundary and count units from now.
+        """
         return 0 if self.never_expires else self.count * self.minutes_per_unit
 
 
 def duration_unit(byte: int) -> Duration:
     """Split a duration byte into its count and unit.
 
-    A byte of exactly zero is never aged, so `never_expires` is set and the
-    count is not a time. A non-zero byte whose count is zero (`$40`, say) is
-    aged and expires at its next tick.
+    A byte of exactly zero is skipped by the ageing routines, so
+    `never_expires` is set and the count is not a time. What the routines do
+    to a non-zero byte whose count bits are zero (`$40`, say) is not
+    established, so `never_expires` is False for it and nothing more is claimed.
     """
     _check_byte("duration", byte)
     unit = byte >> DURATION_UNIT
@@ -153,16 +159,28 @@ class Effect:
 
     @property
     def restores_a_statistic(self) -> bool:
-        """Whether the game's expiry would put a statistic back from this slot.
+        """Whether the game's expiry would put a statistic back from this slot
+        out of combat.
 
         Bit 7 of the magnitude is the flag, and ids 12 and 38 (STR, STR %) and
         14 (CHA) are the ones that read the value out of combat. **Id 13 also
         restores a statistic in combat** (`COMBAT_MAGNITUDE_VALUE_IDS`), which
-        this out-of-combat answer does not include. Clearing such a slot with
-        `clear_effect` skips that restore.
+        this answer does not include; `restores_a_statistic_in` asks the
+        combat question. Clearing such a slot with `clear_effect` skips that
+        restore.
         """
+        return self.restores_a_statistic_in()
+
+    def restores_a_statistic_in(self, *, in_combat: bool = False) -> bool:
+        """Whether expiry would put a statistic back, out of combat or in it.
+
+        In combat the answer is true for `COMBAT_MAGNITUDE_VALUE_IDS`, which is
+        a lower bound: an id outside it may still restore a statistic in a
+        fight.
+        """
+        ids = COMBAT_MAGNITUDE_VALUE_IDS if in_combat else MAGNITUDE_VALUE_IDS
         return bool(self.magnitude & MAGNITUDE_RESTORE_FLAG
-                    and self.id in MAGNITUDE_VALUE_IDS)
+                    and self.id in ids)
 
     @property
     def label(self) -> str:
