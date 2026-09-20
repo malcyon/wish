@@ -2065,6 +2065,7 @@ graph LR
   amiga_later --> layout
   amiga_later --> neutral
   amiga_later --> portraits
+  amiga_pod --> amiga_port
   amiga_pod --> amiga_shared
   amiga_pod -.->|deferred| c64_codec
   amiga_pod -.->|deferred| d64
