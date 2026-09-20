@@ -1116,6 +1116,37 @@ def test_area_30_is_not_in_the_table_at_all(app, tmp_path, monkeypatch):
         [a for a in areas.AREAS if a.fasttravelable])
 
 
+def test_a_row_with_no_approved_name_reads_area_and_its_number(
+        app, tmp_path, monkeypatch):
+    """Curse's area 30 has no approved name, and its script name (`ECL1E`) is
+    developer text: the row reads `Area 30` instead, and stays tickable."""
+    import re
+
+    from PyQt6.QtCore import Qt
+
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+    unnamed = 0
+    for game in (POOL, CURSE, SILVER_BLADES):
+        table = dialog.travel_tables[game.key]
+        for i, area in enumerate(dialog.travel_rows[game.key]):
+            item = table.item(i, 0)
+            assert not re.search(r"ECL[0-9A-F]", item.text()), item.text()
+            if area.name:
+                assert item.text() == area.name
+            else:
+                unnamed += 1
+                assert item.text() == f"Area {area.id}"
+                assert item.flags() & Qt.ItemFlag.ItemIsUserCheckable
+            # The tooltip is the area's own label and is not this row's text.
+            assert item.toolTip() == area.label
+    assert unnamed  # Curse's area 30 and Silver Blades' two, at least
+
+    curse = dialog.travel_tables[CURSE.key]
+    labels = [curse.item(i, 0).text() for i in range(curse.rowCount())]
+    assert "Area 30" in labels
+
+
 def test_ticking_an_area_reaches_the_dropdown_and_the_settings_file(
         app, tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)

@@ -897,9 +897,10 @@ class PreferencesDialog(QDialog):
     def _wire_travel_page(self, game: c64_port.C64Container) -> None:
         """One title's table: its rows, its ticks and its count."""
         suffix = _row_suffix(game)
-        #: The table's rows, in the dropdown's own order: by name. Every
-        #: fasttravelable area has one, and area 30 -- the only nameless one -- is
-        #: also the only unfasttravelable one, so excluding it needs no second rule.
+        #: The table's rows, in the dropdown's own order: by name, unnamed
+        #: rows first. A row with no approved name reads `Area N` rather than
+        #: its script name. Only Pool of Radiance's unnamed area is also its
+        #: one unfasttravelable one, so `fasttravelable` alone excludes it there.
         rows = sorted(
             (a for a in area_table.areas_for_title(game.title)
              if a.fasttravelable),
@@ -924,7 +925,7 @@ class PreferencesDialog(QDialog):
             + 2 * table.frameWidth())
         table.blockSignals(True)
         for i, row in enumerate(rows):
-            item = QTableWidgetItem(row.name or row.ecl)
+            item = QTableWidgetItem(row.name or f"Area {row.id}")
             item.setFlags(Qt.ItemFlag.ItemIsUserCheckable
                           | Qt.ItemFlag.ItemIsEnabled)
             item.setCheckState(Qt.CheckState.Checked if row.id in chosen

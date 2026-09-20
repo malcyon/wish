@@ -701,20 +701,40 @@ automapper had watched the party walk in. Donald threw that out:
 He is right, and the evidence agrees: the save keeps no visited list at all —
 exactly one arrival flag exists, `$4AC5`, and every game starts there
 ([`118-debug-mode.md`](118-debug-mode.md) §2.1) — so the record was only ever
-what wish happened to see. What replaced it is a table of ticks in this dialog.
+what wish happened to see. What replaced it is a set of tables of ticks in
+this dialog, one per title.
 
-* **A `QTableWidget`, one checkable row per area**, sorted by name, on its own
-  tab and stretching to fill it (§14). Each row's tooltip is the area's `label`
-  — `New Phlan - GEO00, POOL3` — the same string the dropdown's own items
-  carry.
-* **New Phlan, The Slums and Sokol Keep are ticked on a fresh config**, ids 0,
-  20 and 21 in `goldbox/areas.py`.
-* **`Settings.fast_travel_targets` is `null` until somebody ticks something.**
-  That is what distinguishes a fresh config from a player who unticked
-  everything, and it is why an empty selection comes back empty instead of
-  quietly reverting to the three. `Settings.chosen_areas()` is the reader;
-  anything in the file that is not a list of numbers reads as "never chosen",
-  because the file is documented as one you can hand-edit.
+* **One tab per title that has an area table, nested inside the Fast travel
+  tab** (§14): Pool of Radiance, Curse of the Azure Bonds and Secret of the
+  Silver Blades, each labelled with the title's own name from the Game disks
+  tab. `TRAVEL_TITLES` lists them, in `c64_port.GAMES` order, and
+  `test_there_is_a_tab_for_every_title_with_an_area_table` fails until a
+  title that gains a table gains a page in `preferences.ui`. A title with no
+  table has no tab. The dialog opens on the open title's tab, or the first
+  when the open title has none, and remembers nothing.
+* **Each tab is a `QTableWidget`, one checkable row per fast-travellable
+  area**, sorted by name, with its own count under it. Each row's tooltip is
+  the area's `label` — `New Phlan - GEO00, POOL3` — the same string the
+  dropdown's own items carry, disk included, because an area id means nothing
+  without the title.
+* **A row with no approved name reads `Area N`**, the area's number in
+  decimal — Curse's area 30 is `Area 30` — and not its script name (`ECL1E`),
+  which is developer text. The row is ticked and unticked like any other.
+  Unnamed rows sort first.
+* **New Phlan, The Slums and Sokol Keep are ticked on a fresh Pool of Radiance
+  tab**, ids 0, 20 and 21 in `goldbox/areas.py`. Curse and Silver Blades open
+  with nothing ticked: a default tick says a party has almost certainly
+  walked there, and only Pool of Radiance's three carry that.
+* **`Settings.fast_travel_targets` is `null` until somebody ticks something,
+  and then holds one list per title, keyed by `Game.key`.** `null` is what
+  distinguishes a fresh config from a player who unticked everything, and it
+  is why an empty selection comes back empty instead of quietly reverting to
+  the default. Ticking on any tab files under that tab's title whatever
+  session is open, and touches no other title's list.
+  `Settings.chosen_areas(game)` is the reader; anything in the file that is
+  not a list of numbers reads as "never chosen", because the file is
+  documented as one you can hand-edit. A file holding a bare list, from
+  before the setting was keyed, reads as Pool of Radiance's.
 * **It was `fasttravel_areas` until 2026-08.** Donald: *"since we aren't calling it
   fasttravel_to anymore. We need consistency in our naming."* `config.RENAMED` reads
   the old key when the new one is absent, so a file written before the rename
@@ -722,24 +742,27 @@ what wish happened to see. What replaced it is a table of ticks in this dialog.
   one save rather than living in the file forever. The accessors are still
   `chosen_areas()` / `set_chosen_areas()`, which is what the Fast Travel row
   calls.
-* **Nothing ticked says so once, not three times.** The note under the table is
+* **Nothing ticked says so once, not three times.** The note under each table is
   a count — *0 areas in the Fast Travel list.* — and the dropdown itself shows
   `No areas ticked — Preferences ▸ Fast travel` with the button disabled and
-  the same reason in its tooltip. The note used to explain that an empty list
+  the same reason in its tooltip. The dropdown offers only the open title's
+  ticks, so another title's tab changes its own list and leaves the dropdown
+  with the same rows. The note used to explain that an empty list
   was the setting doing what was asked; Donald had that out: *"The user will
   figure it out. No explanation is necessary."*
-* **Area 30 is not in the table**, ticked or not: `ECL1E` is the attract-mode
-  demo and entering it ends the session. `Area.fasttravelable` is asked; the id is
-  not written down here.
+* **Pool of Radiance's area 30 is not in its table**, ticked or not: `ECL1E`
+  is the attract-mode demo and entering it ends the session.
+  `Area.fasttravelable` is asked; the id is not written down here. Curse's
+  area 30 is a different area and is offered.
 * **The warning is a framed box, not a tooltip** — *"Fast travel to areas you
   haven't been to is dangerous and can break the game."*, Donald's wording, at
-  the top of the section in the `UNVERIFIED` amber the backend badges use, with
-  room for a sentence in it. One visual language for "know this before you
+  the top of the section, above the tabs and not inside a page, in the
+  `UNVERIFIED` amber the backend badges use, with room for a sentence in it. One visual language for "know this before you
   press it", and the same sentence is the Fast Travel button's own tooltip.
 
-The path is the one every other control here takes: the table writes through
-`WishWindow.set_fast_travel_targets`, which saves the settings and tells the
-row to repopulate. No second storage, no second precedence rule.
+The path is the one every other control here takes: a table writes through
+`WishWindow.set_fast_travel_targets(ids, game)`, which saves the settings under
+that title and tells the row to repopulate. No second storage, no second precedence rule.
 
 ---
 
@@ -764,14 +787,17 @@ squeezed, which is exactly the line edits, the spin box and the table.
   -- the shared folder that used to sit above the per-title rows was removed
   by `#357 (The automapper reads the shared Game disks folder, so setting a
   title's own folder does not make it map that title)`, so the tab is one
-  row shorter than the measurements below describe); Fast travel holds the area table and the amber
-  warning, which belongs beside the thing it warns about. Split, none of the
+  row shorter than the measurements below describe); Fast travel holds the amber
+  warning, which belongs beside the thing it warns about, and under it the
+  per-title tabs of §13, the only tab bar nested inside a tab. Split, none of the
   three has to fight the others for height: General needs 458 lines and gets
   them now that Game disks is its own tab (578 with the disks group still in
-  it), and the table has a whole tab to stretch into — **15 of the 29 areas
-  visible instead of 5**, with no cap on it at all (`TABLE_MIN_ROWS` is a
-  floor, not a ceiling). The table still scrolls internally; 29 rows is 900 px
-  and no 662-line screen will ever show them all. **Game disks moved out of
+  it), and the tables have a whole tab to stretch into — **15 of Pool of
+  Radiance's 29 areas visible instead of 5**, measured before the title tabs
+  put a bar above the table and a count below it, with no cap on it at all
+  (`TABLE_MIN_ROWS` is a floor, not a ceiling). A table still scrolls
+  internally; 29 rows is 900 px and no 662-line screen will ever show them
+  all. **Game disks moved out of
   General** when `#22 (A disk folder setting per game, not one shared by all six)` gave the one shared folder three more rows, one per
   title: stacked on General they pushed its natural height 77 px past what
   `fit` can give it on Donald's own 1280x675 desktop, the same squeeze that put
@@ -796,7 +822,7 @@ squeezed, which is exactly the line edits, the spin box and the table.
 * **Horizontally, nothing is written down.** `room_for` asks the style what a
   line edit needs for its own placeholder — 209 px for the folder box, 169 for
   the Ultimate host; `QSpinBox` sizes itself from its special-value text, *the
-  backend's own (VICE 200, Ultimate 500)*, at 267; and the area table is asked
+  backend's own (VICE 200, Ultimate 500)*, at 267; and each area table is asked
   for `sizeHintForColumn(0)`, 200 with the tick box and the scrollbar. The
   widest was always the folder row, so the *measured* answer is that the width
   was already right — it is now measured on four controls rather than one.

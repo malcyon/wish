@@ -27,9 +27,10 @@ _log = logging.getLogger("wish.automap.config")
 #: **A Pool of Radiance fact**, which is why it is keyed like one below.
 DEFAULT_FAST_TRAVEL_TARGETS: tuple[int, ...] = (0, 20, 21)
 
-#: `goldbox.c64_port.Game.key` for the one title with an area table. Spelled out
-#: rather than imported: this module is the settings file and has no other
-#: business with the game descriptors.
+#: `goldbox.c64_port.Game.key` for Pool of Radiance, the title an unkeyed choice
+#: belongs to and the only one with a default tick. Curse and Silver Blades have
+#: area tables too. Spelled out rather than imported: this module is the
+#: settings file and has no other business with the game descriptors.
 POOL_OF_RADIANCE = "pool-of-radiance"
 
 #: What a title gets before anybody has ticked anything. Every title but Pool
