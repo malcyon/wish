@@ -203,3 +203,186 @@ def test_verdict_fails_a_two_hop_that_stopped_at_the_area_its_door_leads_to():
                              13, 27, 13, 0, "FATIMA")
     assert not ok
     assert "did not land in area 0" in message
+
+
+# ---------------------------------------------------------------------------
+# timing, screenshots and the walk afterwards -- all against fakes
+
+def test_verdict_fails_a_two_hop_that_was_never_timed():
+    """`second_hop_seconds` is the number #207's removal condition asks for; a
+    two-hop that reads the destination without one has measured nothing."""
+    args = (WITH_FATIMA, WITHOUT_FATIMA, 13, 0, 13, 0, "FATIMA")
+    ok, message = FT.verdict(*args, two_hop=True, second_hop_seconds=None)
+    assert not ok
+    assert "never timed" in message
+    ok, _ = FT.verdict(*args, two_hop=True, second_hop_seconds=41.3)
+    assert ok
+    ok, _ = FT.verdict(*args)                      # a one-hop needs no timing
+    assert ok
+
+
+def test_elapsed_is_none_unless_both_moments_happened():
+    assert FT.elapsed(10.0, 52.34) == 42.3
+    assert FT.elapsed(10.0, None) is None
+    assert FT.elapsed(None, 52.0) is None
+
+
+def step(ok=True, refused=None):
+    return {"move": "1", "ok": ok, "before": (1, 1), "after": (1, 0),
+            "refused": refused}
+
+
+def test_walk_verdict_passes_a_party_that_moved_and_opened_the_sheet():
+    ok, message = FT.walk_verdict([step(), step(ok=False)], True)
+    assert ok
+    assert "1 of 2" in message
+
+
+def test_walk_verdict_fails_a_wedged_party():
+    ok, message = FT.walk_verdict([step(ok=False)] * 4, True)
+    assert not ok and "did not move" in message
+
+
+def test_walk_verdict_fails_when_the_sheet_never_opens():
+    ok, message = FT.walk_verdict([step()], False)
+    assert not ok and "character sheet" in message
+
+
+def test_walk_verdict_fails_a_step_the_driver_refused_to_press():
+    ok, message = FT.walk_verdict([step(refused="not a compass digit")], True)
+    assert not ok and "refused" in message
+
+
+def test_walk_verdict_fails_with_no_steps():
+    ok, message = FT.walk_verdict([], True)
+    assert not ok and "no step" in message
+
+
+class FakeKbd:
+    def __init__(self, works=True):
+        self.works = works
+        self.paths = []
+
+    def screenshot(self, path):
+        self.paths.append(path)
+        return self.works
+
+
+class FakeScreen:
+    def __init__(self, row24):
+        self._row = row24
+
+    def row(self, n):
+        return self._row
+
+
+class WalkSession(FakeSession):
+    """A session whose party moves on every step but the ones in `blocked`."""
+
+    def __init__(self, monitor, indoors=False, blocked=(), sheet=True):
+        super().__init__(monitor)
+        self._indoors, self._blocked, self._sheet = indoors, blocked, sheet
+        self.x = 5
+        self.pressed = []
+        self.walk_refused = None
+        self.kbd = FakeKbd()
+        self.sheets = []
+
+    def indoors(self):
+        return self._indoors
+
+    def square(self):
+        return (self.x, 5)
+
+    def walk_one(self, move):
+        self.pressed.append(move)
+        if move in self._blocked:
+            return False
+        self.x += 1
+        return True
+
+    def character_sheet(self, index=None):
+        self.sheets.append(index)
+        return ["NAME"] if self._sheet else None
+
+
+def test_the_walk_goes_each_way_then_opens_the_sheet_and_records_each_step():
+    sess, m = make()
+    sess = WalkSession(m, indoors=False)
+    steps, sheet = FT.walk_afterwards(sess)
+    assert "".join(sess.pressed) == FT.WALK_OUTDOORS
+    assert set(FT.WALK_OUTDOORS) == {"1", "3", "5", "7"}   # N, E, S, W
+    assert sheet and sess.sheets == [0]
+    assert steps[0] == {"move": "1", "ok": True, "before": (5, 5),
+                        "after": (6, 5), "refused": None}
+    assert len(steps) == len(FT.WALK_OUTDOORS)
+
+
+def test_the_walk_indoors_uses_the_dungeons_own_keys():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    FT.walk_afterwards(sess)
+    assert "".join(sess.pressed) == FT.WALK_INDOORS
+    assert set(FT.WALK_INDOORS) <= set("IJKM")
+
+
+def test_the_walk_refuses_to_guess_a_world_it_could_not_read():
+    sess, m = make()
+    sess = WalkSession(m, indoors=None)
+    assert FT.walk_afterwards(sess) == ([], False)
+    assert sess.pressed == []
+
+
+def test_a_walked_party_that_never_moves_is_a_failed_walk():
+    sess, m = make()
+    sess = WalkSession(m, blocked=set(FT.WALK_OUTDOORS))
+    steps, sheet = FT.walk_afterwards(sess)
+    ok, _ = FT.walk_verdict(steps, sheet)
+    assert not ok
+
+
+def test_shoot_saves_under_the_fixed_name_and_survives_a_failed_capture(tmp_path):
+    sess, m = make()
+    sess = WalkSession(m)
+    shots = {}
+    FT.shoot(sess, tmp_path, "before", shots)
+    assert shots["before"] == str(tmp_path / "1-before.png")
+    assert sess.kbd.paths == [str(tmp_path / "1-before.png")]
+    sess.kbd.works = False
+    FT.shoot(sess, tmp_path, "question", shots)
+    assert shots["question"] is None
+    assert sorted(FT.SHOTS.values()) == [
+        "1-before.png", "2-question.png", "3-after-second-hop.png",
+        "4-after-walk.png"]
+
+
+class AskingSession(FakeSession):
+    """Shows `YES NO` once, then lets the area byte move to the destination."""
+
+    def __init__(self, monitor, to_area):
+        super().__init__(monitor)
+        self.to_area, self.bar = to_area, "YES NO"
+        self.chosen = []
+
+    def screen(self):
+        return FakeScreen(self.bar)
+
+    def select_bar(self, label, timeout=0):
+        self.chosen.append(label)
+        self.bar = ""
+        self._m.write(FT.AREA_BYTE, bytes([self.to_area]))
+        return True
+
+
+def test_answer_and_wait_calls_on_question_then_stamps_the_landing(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = AskingSession(m, 0)
+    ticks = iter([142.5])
+    marks, order = {}, []
+    hop = FT.answer_and_wait(sess, 0, deadline_s=30.0,
+                             on_question=lambda: order.append("question"),
+                             marks=marks, clock=lambda: next(ticks))
+    assert hop is None
+    assert order == ["question"] and sess.chosen == ["YES"]
+    assert marks["landed"] == 142.5

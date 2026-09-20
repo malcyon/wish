@@ -21,6 +21,23 @@ the NPC -- `npc_party.d64` -- and has actually been driven this way.
 
     tools/areas/fasttravelrun.py --disks $POR_DISKS --out DIR
 
+The two-hop case (`WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL`) is the Kobold Caves
+to New Phlan (area 0) and is driven with the flag exported and a wait long
+enough to show the 120 s deadline. `--to-area 27` is a one-exit route and never
+reaches the two-hop branch:
+
+    WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL=1 .venv/bin/python \\
+        tools/areas/fasttravelrun.py --from-area 13 --to-area 0 \\
+        --answer-timeout 150 --out DIR
+
+A run saves four screenshots under `--out` (`1-before.png`, `2-question.png`,
+`3-after-second-hop.png`, `4-after-walk.png`) and writes `result.json` with
+`second_hop_seconds` -- the seconds from `ft.run` returning to the area byte
+reading the destination, None when there was no second hop -- and
+`total_seconds`. After a PASS the party walks a few steps each way and opens
+and closes the first character's sheet before teardown; a walk that fails is
+its own FAIL and leaves the earlier verdict as it was.
+
 Nothing is written to the player's disks: `tools.c64.session.stage_disks` copies
 the sides into the slot, and `--save` is copied in as `SIDE0.D64`. The pool
 owns the emulator lifecycle throughout -- `tools.c64.session.claim_slot` leases
@@ -54,6 +71,16 @@ SLOT_RECORD, SLOT_ROSTER, SLOTS = 0x4D00, 0x8300, 8
 #: `$6E1B`, masked to seven bits: `docs/163-dos-vm-address-map.md`'s area
 #: byte, the same one `automap.actions.FastTravel.current_area` reads.
 AREA_BYTE = 0x6E1B
+
+#: The fixed screenshot names, one per checkpoint, saved under `--out`.
+SHOTS = {"before": "1-before.png", "question": "2-question.png",
+         "after_hop": "3-after-second-hop.png", "after_walk": "4-after-walk.png"}
+
+#: Two steps in each of four directions. Outdoors those are compass digits
+#: (north, east, south, west -- `tools.c64.session.COMPASS`); indoors a turn is
+#: a move of its own, so each leg turns right and then goes forward twice.
+WALK_OUTDOORS = "11335577"
+WALK_INDOORS = "IIKIIKIIKII"
 
 
 def name(raw: bytes) -> str:
@@ -89,13 +116,18 @@ def has_member(rows: list[dict], substring: str) -> bool:
 
 def verdict(before: list[dict], after: list[dict], area_before: int,
             area_after: int, from_area: int, to_area: int,
-            member: str) -> tuple[bool, str]:
+            member: str, two_hop: bool = False,
+            second_hop_seconds: float | None = None) -> tuple[bool, str]:
     """The pass/fail judgement over four readings, with no monitor in it at
     all -- the part of this tool that can be proven right without a slot.
 
     `to_area` is the destination that was asked for, so a two-hop trip that
     stopped in the area its door leads to fails the second check rather than
     passing on the way through.
+
+    `two_hop` says the trip had a pending second hop; it must then have been
+    timed, so a run that reads the destination with no `second_hop_seconds`
+    measured the wrong thing and fails rather than passing without a number.
 
     Four ways to fail, checked in the order a run would actually discover
     them: the save was not staged where the check assumes, the warp did not
@@ -107,6 +139,9 @@ def verdict(before: list[dict], after: list[dict], area_before: int,
         return False, f"the save is not in area {from_area}: read {area_before}"
     if area_after != to_area:
         return False, f"did not land in area {to_area}: read {area_after}"
+    if two_hop and second_hop_seconds is None:
+        return False, (f"area {to_area} was read but the second hop was never "
+                        "timed, so this run measured nothing about it")
     if not has_member(before, member):
         return False, f"{member!r} was not in the party to begin with"
     if has_member(after, member):
@@ -114,6 +149,37 @@ def verdict(before: list[dict], after: list[dict], area_before: int,
                         "the whole point of #207")
     return True, (f"the production FastTravel.run() ran the exit's own "
                   f"handler and dropped {member!r}")
+
+
+def elapsed(start: float | None, end: float | None) -> float | None:
+    """Seconds from *start* to *end*, rounded to a tenth; None when either
+    moment never happened, so a missing measurement cannot read as zero."""
+    if start is None or end is None:
+        return None
+    return round(end - start, 1)
+
+
+def walk_verdict(steps: list[dict], sheet_opened: bool) -> tuple[bool, str]:
+    """Whether the party is walkable after the trip, judged from the steps
+    `walk_afterwards` recorded and with no monitor in it.
+
+    A step that a wall stops is a fact about the map and is not a failure;
+    what fails is a party that moved on none of its steps, a driver that
+    pressed nothing, or a roster sheet that never came up -- each of which is
+    what a wedged party looks like.
+    """
+    if not steps:
+        return False, "no step was tried"
+    refused = [s for s in steps if s.get("refused")]
+    if refused:
+        return False, f"the driver refused a step: {refused[0]['refused']}"
+    moved = sum(1 for s in steps if s.get("ok"))
+    if not moved:
+        return False, f"the party did not move on any of {len(steps)} steps"
+    if not sheet_opened:
+        return False, "the character sheet did not open after the walk"
+    return True, (f"the party moved on {moved} of {len(steps)} steps and the "
+                  "character sheet opened and closed")
 
 
 def second_hop(ft, open_target=ViceTarget):
@@ -132,7 +198,8 @@ def second_hop(ft, open_target=ViceTarget):
 
 
 def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
-                    between=None):
+                    between=None, on_question=None, marks: dict | None = None,
+                    clock=time.monotonic):
     """Answer whatever the exit's handler puts on row 24, the way a player
     would, until the area byte says the warp landed.
 
@@ -143,6 +210,10 @@ def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
     `between`, when given, is called once a lap until it answers an `Outcome`
     -- a two-hop trip's `second_hop`. That outcome is returned at once when it
     is a failure (the trip gave up) and otherwise once the area byte lands.
+
+    `on_question` is called once, when the game's `YES`/`NO` is up and before it
+    is answered. `marks["landed"]` is set to `clock()` at the moment the area
+    byte reads `to_area`, which is the end of the second-hop timing.
     """
     deadline = time.time() + deadline_s
     answered = False
@@ -160,14 +231,52 @@ def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
         if row:
             print(f"  row 24: {row!r}", flush=True)
         if not answered and "YES" in row.split() and "NO" in row.split():
+            if on_question is not None:
+                on_question()
             sess.select_bar("YES", timeout=15)
             answered = True
             time.sleep(1.0)
             continue
         if area_of(sess) == to_area:
+            if marks is not None:
+                marks["landed"] = clock()
             return hop
         time.sleep(0.6)
     return hop
+
+
+def shoot(sess, out: pathlib.Path, key: str, shots: dict) -> None:
+    """One checkpoint screenshot under *out*; `shots[key]` is the path, or
+    None when the screenshot failed -- which never stops the run."""
+    path = out / SHOTS[key]
+    try:
+        shots[key] = str(path) if sess.kbd.screenshot(str(path)) else None
+    except Exception as e:                                # noqa: BLE001
+        print(f"  screenshot {key} failed: {e}", flush=True)
+        shots[key] = None
+
+
+def walk_afterwards(sess) -> tuple[list[dict], bool]:
+    """A few steps in each direction, then the first character's sheet opened
+    and closed -- the one action that is not a move. Returns every step's
+    result and whether the sheet came up.
+
+    Called before teardown, because the session is gone once `run` returns.
+    """
+    indoors = sess.indoors()
+    if indoors is None:
+        return [], False
+    steps = []
+    for move in (WALK_INDOORS if indoors else WALK_OUTDOORS):
+        before = sess.square()
+        ok = sess.walk_one(move)
+        steps.append({"move": move, "ok": bool(ok), "before": before,
+                      "after": sess.square(),
+                      "refused": getattr(sess, "walk_refused", None)})
+        print(f"  walk {move}: ok={ok} {before} -> {steps[-1]['after']}",
+              flush=True)
+    sheet = sess.character_sheet(0)
+    return steps, bool(sheet)
 
 
 def disks_of(args) -> pathlib.Path | None:
@@ -184,6 +293,9 @@ def run(args) -> int:
     sess = None
     target = None
     result = {"ok": False, "message": "did not reach a verdict"}
+    shots: dict = {}
+    marks: dict = {}
+    started = time.monotonic()
     try:
         boot = S.stage_disks(slot, disks)
         # The save usually lives outside the disk directory -- the default
@@ -211,8 +323,10 @@ def run(args) -> int:
         print("party before:",
               [r for r in before if r["name"] != "<empty>"], flush=True)
 
+        shoot(sess, out, "before", shots)
         target = ViceTarget()
         ft = A.FastTravel()
+        marks["run_start"] = time.monotonic()
         try:
             # `ViceTarget` holds one persistent monitor connection and VICE
             # serves exactly one, so it is opened only for the one call
@@ -222,12 +336,15 @@ def run(args) -> int:
         finally:
             target.close()
             target = None
+        marks["run_returned"] = time.monotonic()
         print(f"run(): ok={outcome.ok} message={outcome.message}", flush=True)
+        two_hop = ft.pending is not None
         if not outcome.ok:
             # The console has already printed both of these, so the file a
             # reader parses afterwards should carry them too.
             result = {"ok": False, "message": outcome.message,
-                      "before": before, "area_before": area_before}
+                      "before": before, "area_before": area_before,
+                      "screenshots": shots}
             return 1
 
         # A two-hop trip (`WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL`) has walked
@@ -235,13 +352,25 @@ def run(args) -> int:
         # poll to make its second hop, so this loop is that poll.
         hop = answer_and_wait(
             sess, args.to_area, deadline_s=args.answer_timeout,
-            between=(lambda: second_hop(ft)) if ft.pending is not None
-            else None)
+            between=(lambda: second_hop(ft)) if two_hop else None,
+            on_question=lambda: shoot(sess, out, "question", shots),
+            marks=marks)
+        second_hop_seconds = (elapsed(marks.get("run_returned"),
+                                      marks.get("landed")) if two_hop else None)
+        total_seconds = elapsed(started, marks.get("landed"))
+        timing = {"second_hop_seconds": second_hop_seconds,
+                  "total_seconds": total_seconds,
+                  "first_hop_seconds": elapsed(marks["run_start"],
+                                               marks["run_returned"])}
+        print(f"second_hop_seconds={second_hop_seconds} "
+              f"total_seconds={total_seconds}", flush=True)
         if hop is not None and not hop.ok:
             result = {"ok": False, "message": hop.message,
-                      "before": before, "area_before": area_before}
+                      "before": before, "area_before": area_before,
+                      "screenshots": shots, **timing}
             return 1
         sess.settle(6)
+        shoot(sess, out, "after_hop", shots)
 
         after = party(sess)
         area_after = area_of(sess)
@@ -250,12 +379,31 @@ def run(args) -> int:
               [r for r in after if r["name"] != "<empty>"], flush=True)
 
         ok, message = verdict(before, after, area_before, area_after,
-                               args.from_area, args.to_area, args.member)
+                               args.from_area, args.to_area, args.member,
+                               two_hop=two_hop,
+                               second_hop_seconds=second_hop_seconds)
         result = {"ok": ok, "message": message, "before": before,
                   "after": after, "area_before": area_before,
-                  "area_after": area_after}
+                  "area_after": area_after, "screenshots": shots, **timing}
         print(("PASS: " if ok else "FAIL: ") + message, flush=True)
-        return 0 if ok else 1
+        if not ok:
+            return 1
+
+        # The walk is judged on its own: the trip's verdict above is already
+        # final, and a party that cannot walk afterwards is a second finding.
+        try:
+            steps, sheet = walk_afterwards(sess)
+            walk_ok, walk_message = walk_verdict(steps, sheet)
+        except Exception as e:                             # noqa: BLE001
+            steps, sheet = [], False
+            walk_ok, walk_message = False, f"the walk raised {e!r}"
+        shoot(sess, out, "after_walk", shots)
+        result.update({"walk_ok": walk_ok, "walk_message": walk_message,
+                       "walk": steps, "sheet_opened": sheet,
+                       "screenshots": shots})
+        print(("PASS: walk: " if walk_ok else "FAIL: walk: ") + walk_message,
+              flush=True)
+        return 0 if walk_ok else 1
     finally:
         (out / "result.json").write_text(json.dumps(result, indent=1))
         if target is not None:
