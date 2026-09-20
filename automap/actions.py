@@ -1001,14 +1001,9 @@ class LevelUp(Action):
         summary = bits[0] if len(bits) == 1 else (
             ", ".join(bits[:-1]) + " and " + bits[-1])
         message = f"{member.name} is now {summary}!"
-        if len(bits) > 1:
-            # UNAPPROVED WORDING: naming more than one class in one sentence
-            # is new. Pool of Radiance's trainer never raises two classes in
-            # a press, so nobody has seen this shape of the message; Curse's
-            # own trainer does (`GEN $14F8`), and a message naming only the
-            # last class raised would under-report what changed on the
-            # character's own sheet.
-            message += " (NOT APPROVED)"
+        # Every class raised is named, not only the last: Curse's own trainer
+        # can raise two in one press (`GEN $14F8`), and naming one would
+        # under-report what changed on the character's sheet.
         return Outcome(True, message, tuple(writes), tuple(notes))
 
 

@@ -850,9 +850,9 @@ def test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all(
     assert outcome.ok, outcome.message
     for bit in expected_bits:
         assert bit in outcome.message
-    # Both these presses raise two classes, which is new wording -- see the
-    # marker's own comment in `automap/actions.py`.
-    assert outcome.message.endswith("(NOT APPROVED)")
+    # Both these presses raise two classes, so the sentence names both.
+    assert outcome.message.endswith("!")
+    assert "NOT APPROVED" not in outcome.message
 
     trained = actions.read_party(target, game).by_slot(slot_index).record
     real_after = _c64_slot("curse-trained-party", character)

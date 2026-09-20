@@ -1847,7 +1847,12 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
                # (`#493 (A Fast Travel that fails walking the party out
                # leaves them at the doorway and says they have not moved)`),
                # once its fix made "the party is back where it started" true.
-               "automap.actions": 2}
+               #
+               # 2 -> 1: Donald approved the multi-class trainer message
+               # as worded (`#477 (Twenty interface strings still carry a
+               # (NOT APPROVED) marker)`); Fast Travel's "Walking out
+               # towards" line is the one left.
+               "automap.actions": 1}
 
     found: dict[str, list[str]] = {}
     for module in (c64_codec, amiga_pod, dos_codec, actions):
