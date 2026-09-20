@@ -22,6 +22,7 @@ from conftest import load_tools_module
 
 from automap.screen import Screen
 
+POR = load_tools_module("session")
 SSB = load_tools_module("ssbwarp")
 CURSE = load_tools_module("curserun")
 
@@ -87,6 +88,10 @@ class _FakeDriverMixin:
 
     def log(self, *a) -> None:
         self.said.append(" ".join(str(x) for x in a))
+
+
+class FakePorSession(_FakeDriverMixin, POR.Session):
+    pass
 
 
 class FakeSSBSession(_FakeDriverMixin, SSB.SSBSession):
@@ -213,3 +218,55 @@ def test_curse_handle_prompt_answers_nothing_at_the_world_bar(tmp_path):
     assert sess.attaches == []
     assert sess.kernal == []
 
+
+
+# -- select_bar at a disk prompt -------------------------------------------
+#
+# `Session.combat_state` reads row 24 only, so each of these prompts is
+# classified as a one-option acknowledgement.  `select_bar` used to press
+# Return at it -- to the drive holding the wrong disk -- and answer `True`
+# about a `SAVE GAME` bar it had never touched.
+
+
+def _assert_disk_goes_in_and_nothing_is_pressed(sess, save_disk):
+    assert sess.select_bar("SAVE GAME", timeout=1.0) is False
+    assert 0x0D not in sess.kernal
+    assert sess.attaches == [str(save_disk)]
+
+
+def test_select_bar_answers_the_camp_save_prompt_with_the_disk_not_a_return(
+        tmp_path):
+    """Red before the fix: it pressed Return with no disk attached and
+    answered `True`."""
+    save_disk = tmp_path / "SIDE0.D64"
+    save_disk.touch()
+    sess = FakePorSession(str(save_disk), str(tmp_path),
+                          screen_of({18: CAMP_PROMPT_TOP,
+                                     24: CAMP_PROMPT_BOTTOM}))
+    _assert_disk_goes_in_and_nothing_is_pressed(sess, save_disk)
+    assert sess.kernal == []
+    assert sess.kbd.sent == ["space"]
+
+
+def test_curse_select_bar_answers_its_loader_save_prompt_with_the_disk(
+        tmp_path):
+    """Stays red if only the base `wanted_disk` changes: Curse's own
+    `INSERT CURSE SAVE DISK` is not a wording the base class knows."""
+    save_disk = tmp_path / "SIDE0.D64"
+    save_disk.touch()
+    sess = FakeCurseSession(str(save_disk), str(tmp_path),
+                            screen_of({24: CURSE_LOADER_PROMPT}))
+    _assert_disk_goes_in_and_nothing_is_pressed(sess, save_disk)
+    assert sess.kernal == [0x20]    # the space that answers the prompt
+
+
+def test_ssb_select_bar_answers_its_loader_save_prompt_with_the_disk(
+        tmp_path):
+    """Stays red if only the base `wanted_disk` changes."""
+    save_disk = tmp_path / "SIDE0.D64"
+    save_disk.touch()
+    sess = FakeSSBSession(str(save_disk), str(tmp_path),
+                          screen_of({24: SSB_LOADER_PROMPT}))
+    _assert_disk_goes_in_and_nothing_is_pressed(sess, save_disk)
+    assert sess.kbd.sent == ["space"]
+    assert sess.kernal == []

@@ -303,6 +303,18 @@ class SSBSession(por.Session):
         row = s.row(24)
         return "EXIT" in row and "ENCAMP" not in row
 
+    def wanted_disk(self, s) -> str | None:
+        """The image Silver Blades' `insert a disk` prompt asks for, or None."""
+        text = s.text()
+        if save_disk_wanted(text):
+            return self.save_disk
+        side, line = side_wanted(text)
+        if line:
+            self.log(f"  prompt text: {line!r} -> side {side}")
+        if side is not None:
+            return os.path.join(self.here, f"SIDE{side}.D64")
+        return None
+
     def handle_prompt(self, s=None) -> bool:
         if time.time() - self._last_prompt < 2.0:
             return False
@@ -310,16 +322,7 @@ class SSBSession(por.Session):
             s = self.screen()
         if s is None:
             return False
-        text = s.text()
-        want = None
-        if save_disk_wanted(text):
-            want = self.save_disk
-        else:
-            side, line = side_wanted(text)
-            if line:
-                self.log(f"  prompt text: {line!r} -> side {side}")
-            if side is not None:
-                want = os.path.join(self.here, f"SIDE{side}.D64")
+        want = self.wanted_disk(s)
         if want is None:
             return False
         if not os.path.exists(want):

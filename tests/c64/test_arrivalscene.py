@@ -87,17 +87,21 @@ WORLD_BAR = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
 class FakeScreen:
     """One row-24 bar, on an otherwise blank screen.
 
-    **No cell is ever coloured 1** -- an acknowledgement bar carries no
+    **No cell is coloured 1 unless `highlight` names a word** -- an acknowledgement bar carries no
     highlighted word at all, the way the real `PRESS BUTTON OR RETURN TO
     CONTINUE.` does not, so `span_in` (`#565`) reads it as no highlight
     rather than as one this project has not modelled.
     """
 
-    def __init__(self, bar: str):
+    def __init__(self, bar: str, highlight: str | None = None):
         self.codes = bytearray(0x20 for _ in range(ROWS * COLS))
         self.colours = bytearray(5 for _ in range(ROWS * COLS))
         for i, ch in enumerate(bar[:COLS]):
             self.codes[24 * COLS + i] = ord(ch)
+        if highlight is not None:
+            col = bar.upper().find(highlight.upper())
+            for i in range(col, col + len(highlight)):
+                self.colours[24 * COLS + i] = 1
 
     def row(self, r: int) -> str:
         return "".join(chr(c) for c in self.codes[r * COLS:(r + 1) * COLS])
@@ -144,19 +148,20 @@ class FakeSession(Session):
     and `begin_adventuring` are the real code.
     """
 
-    def __init__(self, bars: list[str]):
+    def __init__(self, bars: list[str], highlight: str | None = None):
         # No `Session.__init__`: it reads the environment and opens a real
         # keyboard on a real X display.
         self.bars = list(bars)
         self.kbd = FakeKeyboard()
         self.injected: list[int] = []
         self.at = 0
+        self.highlight = highlight
 
     def step(self) -> None:
         self.at = min(self.at + 1, len(self.bars) - 1)
 
     def screen(self):
-        return FakeScreen(self.bars[self.at])
+        return FakeScreen(self.bars[self.at], self.highlight)
 
     def press_kernal(self, code: int) -> None:
         self.injected.append(code)
@@ -219,9 +224,13 @@ def test_select_bar_presses_a_scripts_own_one_option_acknowledgement():
     acknowledgement is not a menu -- so a fixed `select_bar` presses it
     through `press_kernal`, the same way `wait_for_world`'s own `BAR_PRESS`
     branch above already does, whatever word it was asked for.
+
+    The answer is `False`: `CONTINUE.` is on no bar the game showed after
+    the acknowledgement, so nothing carrying it was ever selected.  The
+    press is what this proves.
     """
     sess = FakeSession([PRESS_BAR, WORLD_BAR])
-    assert sess.select_bar("CONTINUE.", timeout=1.0) is True
+    assert sess.select_bar("CONTINUE.", timeout=1.0) is False
     assert 0x0D in sess.injected
     assert sess.kbd.sent == []
 
@@ -234,12 +243,14 @@ def test_select_bar_retries_a_press_that_did_not_take_effect():
     The fixture's `PRESS_BAR` repeats once before the world bar, and
     `press_kernal` only steps the script one bar per call, so the first
     press lands on the repeat rather than clearing it.  `select_bar` must
-    press a second time and only then return `True`; reverting the fix (a
-    bare `return True` right after the first `press_kernal`) makes this
-    answer after one press, with the bar still unmoved.
+    press a second time, because it has not yet seen a bar it can walk.
+
+    The answer is `False`: `CONTINUE.` is on no bar the game showed after
+    the acknowledgement, so nothing carrying it was ever selected.  The two
+    presses are what this proves.
     """
     sess = FakeSession([PRESS_BAR, PRESS_BAR, WORLD_BAR])
-    assert sess.select_bar("CONTINUE.", timeout=1.0) is True
+    assert sess.select_bar("CONTINUE.", timeout=1.0) is False
     assert sess.injected.count(0x0D) == 2
     assert sess.kbd.sent == []
 
@@ -261,3 +272,17 @@ def test_select_bar_still_walks_an_ordinary_multi_option_bar():
     assert sess.select_bar("CAST", timeout=1.0) is True
     assert sess.kbd.sent == ["Return"]     # already there: no Left or Right
 
+
+
+def test_select_bar_clears_an_acknowledgement_and_then_selects_what_it_was_asked_for():
+    """A caller wants a command and an acknowledgement is in the way: the
+    acknowledgement is cleared, and only then is the command taken.
+
+    `ENCAMP` is already highlighted on the world bar, so the walk sends one
+    Return and no arrow.  Returning `True` straight after clearing the
+    acknowledgement never sends that Return, which leaves `kbd.sent` empty.
+    """
+    sess = FakeSession([PRESS_BAR, WORLD_BAR], highlight="ENCAMP")
+    assert sess.select_bar("ENCAMP", timeout=1.0) is True
+    assert 0x0D in sess.injected
+    assert sess.kbd.sent == ["Return"]

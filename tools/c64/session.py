@@ -1036,6 +1036,20 @@ class Session:
 
     # -- prompts ----------------------------------------------------------
 
+    def wanted_disk(self, s) -> str | None:
+        """The image the screen's `insert a disk` prompt asks for, or None.
+
+        Answers only the question, so it can be asked without spending
+        `handle_prompt`'s cooldown or sending a key.
+        """
+        text = s.text()
+        if SAVE_PROMPT in text:
+            return self.save_disk
+        m = RE_GAME_SIDE.search(text)
+        if m:
+            return os.path.join(self.here, f"SIDE{m.group(1)}.D64")
+        return None
+
     def handle_prompt(self, s=None) -> bool:
         """Answer whichever `insert a disk` prompt is on screen.
 
@@ -1049,14 +1063,7 @@ class Session:
             s = self.screen()
         if s is None:
             return False
-        text = s.text()
-        want = None
-        if SAVE_PROMPT in text:
-            want = self.save_disk
-        else:
-            m = RE_GAME_SIDE.search(text)
-            if m:
-                want = os.path.join(self.here, f"SIDE{m.group(1)}.D64")
+        want = self.wanted_disk(s)
         if want is None:
             return False
         self._last_prompt = time.time()
@@ -1192,6 +1199,11 @@ class Session:
         `wait_for_world` already answers it with `press_kernal` rather than
         a highlight walk -- reused here rather than a second copy of the
         same classification.
+
+        **Clearing an acknowledgement is not selecting *label*.**  The loop
+        goes round after it and answers `True` only from the highlight walk,
+        so a caller asking for a bar that never appears gets `False`.  A
+        disk prompt is answered with `handle_prompt` rather than a Return.
         """
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -1201,18 +1213,23 @@ class Session:
                 continue
             state = self.combat_state(s)
             if state.kind == BAR_PRESS:
-                self.press_kernal(0x0D)
-                after = self.await_change(state.text,
-                                   timeout=max(1.0, min(6.0, deadline - time.time())))
-                if after.kind == BAR_PRESS:
-                    # Unmoved: the same retry `await_change`'s own docstring
-                    # asks for, and the one `wait_for_world` and `fight`
-                    # already take.  Returning `True` here would tell the
-                    # caller the acknowledgement was dismissed while the
-                    # game is still sitting on it -- the ticket's own bug in
-                    # a form that no longer even times out visibly (#565).
+                if self.wanted_disk(s) is not None:
+                    # `combat_state` reads row 24 only, so a two-row disk
+                    # prompt (`INSERT YOUR SAVE GAME DISK` above `PRESS ANY
+                    # KEY TO CONTINUE`) classifies as an acknowledgement.
+                    # A key pressed at it goes to the drive holding the wrong
+                    # disk, so the disk goes in and nothing is pressed.
+                    self.handle_prompt(s)
+                    time.sleep(0.3)
                     continue
-                return True
+                self.press_kernal(0x0D)
+                # Kept so a prompt still fading is not pressed twice.  Either
+                # way the loop goes round and looks for *label*: this bar was
+                # in the way, and clearing it says nothing about the one asked
+                # for, so `True` comes only from the walk below.
+                self.await_change(state.text,
+                                  timeout=max(1.0, min(6.0, deadline - time.time())))
+                continue
             col = s.row(row).find(label.upper())
             span = span_in(s, row)
             if col < 0 or span is None:
@@ -2146,7 +2163,8 @@ class Session:
         if not self.select_bar("SAVE GAME"):  # `SAVE GAME  EXIT`
             return False
         self.settle(14)  # the write, then `INSERT YOUR GAME DISK #3`
-        self.select_bar("EXIT")
+        if not self.select_bar("EXIT"):
+            self.log("  save_game: camp was not left (EXIT never selected)")
         return True
 
     # -- combat -----------------------------------------------------------

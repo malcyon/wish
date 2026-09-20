@@ -497,6 +497,16 @@ class CurseSession(por.Session):
                     self.attach(want)
         return super().begin_adventuring()
 
+    def wanted_disk(self, s) -> str | None:
+        """The image Curse's `insert a disk` prompt asks for, or None."""
+        text = s.text()
+        if save_disk_wanted(text):
+            return self.save_disk
+        m = RE_CURSE_SIDE.search(text)
+        if m:
+            return os.path.join(self.here, f"SIDE{int(m.group(1), 16)}.D64")
+        return None
+
     def handle_prompt(self, s=None) -> bool:
         if time.time() - self._last_prompt < 2.0:
             return False
@@ -504,15 +514,7 @@ class CurseSession(por.Session):
             s = self.screen()
         if s is None:
             return False
-        text = s.text()
-        want = None
-        if save_disk_wanted(text):
-            want = self.save_disk
-        else:
-            m = RE_CURSE_SIDE.search(text)
-            if m:
-                digit = m.group(1)
-                want = os.path.join(self.here, f"SIDE{int(digit, 16)}.D64")
+        want = self.wanted_disk(s)
         if want is None:
             return False
         self._last_prompt = time.time()
