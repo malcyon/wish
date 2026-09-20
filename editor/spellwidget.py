@@ -508,7 +508,13 @@ class MemorisedEditor(SpellEditor):
             counts = [sum(1 for s in ids if self._level(s) == lv)
                       for lv in range(1, width + 1)]
             parts = []
+            held = any(any(a) for a in cap.values())
             for cls, allowed in cap.items():
+                # A class with no slot yet is left off while another class has
+                # some: a ranger's magic-user array stays empty until his row
+                # starts. A character whose only lines are all zero shows them.
+                if held and not any(allowed):
+                    continue
                 shown = ", ".join(f"L{lv} {counts[lv - 1]}/{allowed[lv - 1]}"
                                   for lv in range(1, len(allowed) + 1))
                 parts.append(f"{cls}: {shown}")

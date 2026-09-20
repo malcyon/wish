@@ -2771,6 +2771,7 @@ def test_a_silver_blades_ranger_is_shown_his_spellbook(app, tmp_path):
     # is memorised yet: Silver Blades' own rows are read (`goldbox.spells`),
     # so the line compares against a capacity rather than only counting.
     assert memorised.capacity.text().startswith("druid: L1 0/1, L2 0/0")
+    assert "magic-user" not in memorised.capacity.text()
 
     w.roster.selectRow(by_name["GUY DE VALOIS"])
     assert not box.isEnabled(), "the paladin is granted nothing and stays grey"
@@ -4361,3 +4362,37 @@ def test_a_failed_save_reports_it_and_keeps_the_window_open(app, save,
     assert save.read_bytes() == before
     assert said == [("Cannot save", "boom")]
     assert w.dirty
+
+
+def _capacity_line(cap):
+    """What the memorised-spells pane prints for a given capacity, no disks."""
+    from editor.spellwidget import MemorisedEditor
+
+    widget = MemorisedEditor(make_root())
+    widget.set_capacity(cap, casts=True)
+    return widget.capacity.text()
+
+
+@pytest.mark.parametrize("game", ["curse-of-the-azure-bonds",
+                                  "secret-of-the-silver-blades"])
+def test_a_ranger_is_shown_no_magic_user_line_until_he_has_a_slot(app, game):
+    """A level-8 ranger has a druid slot and an all-zero magic-user array, and
+    that array's line is left off until one of its slots is above zero, which
+    is level 9 in both titles."""
+    from goldbox.spells import capacity_by_class
+
+    cap = capacity_by_class({"ranger": 8}, 12, game)
+    assert any(cap["druid"]) and not any(cap["magic-user"])
+    line = _capacity_line(cap)
+    assert line.startswith("druid: L1 0/1, L2 0/0")
+    assert "magic-user" not in line
+
+    cap = capacity_by_class({"ranger": 9}, 12, game)
+    assert any(cap["magic-user"])
+    line = _capacity_line(cap)
+    assert "druid: " in line and "magic-user: " in line
+
+
+def test_a_caster_whose_only_lines_are_zero_still_shows_them(app):
+    line = _capacity_line({"cleric": (0, 0), "magic-user": (0, 0)})
+    assert "cleric: L1 0/0" in line and "magic-user: L1 0/0" in line
