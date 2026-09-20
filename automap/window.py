@@ -902,6 +902,11 @@ class AutomapBinding(QObject):
         all during a fight: the party is not moving through the world, and its
         explored squares sit untouched until the fight ends.
         """
+        if not getattr(self.mapper.target, "c64_memory", True):
+            # `$6E11` and the text screen are C64 addresses; on another
+            # machine they are somebody else's bytes and a fight would be
+            # drawn from coincidence.
+            return False
         if self.battle is None and self._live_ticks % self.LIVE_EVERY:
             return False
         was, self.battle = self.battle, combat.read_battle(
@@ -1021,9 +1026,11 @@ class AutomapBinding(QObject):
         """Re-read the party and redraw the cards. Called by the poll, and
         straight after a write that changes what a card shows."""
         target = self.mapper.target
-        if self.mapper.title_check is NOT_OURS:
-            # The machine is running a different game, so every address below
-            # and in every button underneath it is the wrong one (#21).
+        if (self.mapper.title_check is NOT_OURS
+                or not getattr(target, "c64_memory", True)):
+            # The machine is running a different game, or is not a C64 at
+            # all, so every address below and in every button underneath it is
+            # the wrong one (#21).
             # Withholding the target is the whole disable: each control already
             # refuses, with the reason in its tooltip, when it has nothing to
             # act on, so nothing here has to invent a sentence. Nor is the

@@ -75,8 +75,8 @@ Deliberately not supporting other emulators or bare hardware. Most emulators
 have no usable interface, and a real C64 would need a resident stub or a DMA
 cartridge — a lot of fragility for very few users.
 
-**There is a third now, for a different machine**: an Amiga under WinUAE, in
-`automap/amiga.py`. It is not offered by the window — see
+**There is a third now, for a different machine**: an Amiga under WinUAE or a
+patched FS-UAE, in `automap/amiga.py`. It is not offered by the window — see
 "[A third machine: the Amiga](#a-third-machine-the-amiga)" below for what it
 does, what it cost to make the shared code take it, and what is left.
 
@@ -398,10 +398,23 @@ stays `#11 (Draw the wilderness on the automapper)`'s.
 ## A third machine: the Amiga
 
 The same six Gold Box titles shipped on the Amiga, and the automapper draws
-one of them now: `automap/amiga.py` is a `Target` over WinUAE's own debugger,
-driven from Linux through the Windows VM. `docs/143-winuae-debugger.md` is the
-transport and `#37 (Automap the Amiga version, not just the C64)` is the
-ticket.
+one of them now: `automap/amiga.py` is a `Target` over an Amiga emulator's own
+debugger. `docs/143-winuae-debugger.md` is the WinUAE transport, and the ticket is
+`#37 (Automap the Amiga version, not just the C64)`.
+
+**Three transports, one `AmigaTarget`.** The target owns the Amiga's memory map
+and the transport decides how a read reaches it:
+
+| transport | reaches | how a read goes | halts the machine |
+|---|---|---|---|
+| `WinuaeDebugger` | WinUAE, from Linux through the Windows VM | F11, then `S <file> <addr> <n>` and `g` typed into the console, dump read back as base64, one `ssh` a batch | yes |
+| `WinuaePipe` | WinUAE, through its own named pipe | `DBG m ...` down the pipe between two emulated instructions | no |
+| `FsuaeGdb` | a patched FS-UAE on the same machine | a GDB-remote `m` packet over a loopback socket, answered from the emulator's frame handler | no |
+
+`FsuaeGdb` is the one a player on Linux can use: no console, no keypress, no
+`ssh`. The fork's server has **no memory-write packet**, so `AmigaTarget.write`
+refuses over it, and it closes its *listening* socket when a client goes, so
+one connection is all a run of the emulator ever gets.
 
 **What was measured on a running machine**, Amiga Silver Blades, 2026-09-08:
 the shipped `Automapper.poll()` named the area from the block the game itself
@@ -451,30 +464,77 @@ same area, so an Amiga party's map is drawn on the same sheet and reads the
 same notes: 17 maps for Silver Blades and 16 for Curse, all 33 plausible by
 `automap.area.looks_like_a_map`.
 
-### A poll costs seconds, not milliseconds
+### What a poll costs depends on the transport
 
-There is no socket. A read is: press F11 through a scheduled task in the
-guest's session 1, type `S <file> <addr> <n>` and `g` into the emulator's
-console, and read the dump back as base64 — all of it inside one `ssh` round
-trip, which is the design `automap/amiga.py` is built around.
+Over WinUAE's console route a read is an `ssh` round trip plus a typed batch,
+and a poll costs seconds. Over the FS-UAE socket it costs one frame's wait.
 
-| what | measured |
-|---|---|
-| one poll, position only | 10-22 s |
-| a poll that also re-reads the resident map | 31-50 s |
-| 512K of memory, searched on this side | 13-22 s |
+| what | WinUAE console | FsuaeGdb |
+|---|---|---|
+| one poll, position only | 10-22 s | about 10-20 ms |
+| a poll that also re-reads the resident map | 31-50 s | one more packet |
+| 512K of memory, searched on this side | 13-22 s | one packet, but the emulated machine misses a frame |
 
-So `read_blocks` matters here for a reason that has nothing to do with VICE's:
-several ranges in one round trip is one `ssh` rather than several, not a few
-percent of a resume.
+So `read_blocks` matters over the console for a reason that has nothing to do
+with VICE's -- several ranges in one round trip is one `ssh` rather than
+several -- and does not matter over the socket, where a transport with a
+`read_memory` is asked for each block directly.
+
+### Which title is running, and a target that is not a C64
+
+`automap.amiga.locate_machines(read, machines)` reads each region of the
+Amiga's memory once and searches it for every title's anchor string, so asking
+after two titles costs one sweep. It returns `{title: [bases]}` -- a title with
+more than one base, or two titles at once, is reported for the caller to
+refuse and never resolved by taking the first. `AmigaTarget.locate()` is the
+same search for one title.
+
+**`AmigaTarget.c64_memory` is `False`**, an optional capability the window reads
+with `getattr(target, "c64_memory", True)` the way it reads `halts_on_read`.
+The roster, the five live actions, Fast Travel and the combat reader all read
+C64 addresses, which on a 68000 are ordinary chip RAM: the reads succeed and
+decode the game's own unrelated bytes. `AutomapBinding._refresh_roster` treats
+such a target like a wrong game and withholds it from the buttons, and
+`poll_battle` reads no fight from it.
+
+### The FS-UAE backend's two pieces
+
+`wish/fsuae.py` holds what a window backend needs and nothing that a player
+reads.
+
+* **`listening(port)` never connects.** It reads `/proc/net/tcp` and
+  `/proc/net/tcp6` and says yes for a row in state `0A` on `0100007F:<port>`
+  (loopback) or `00000000:<port>` (every address). VICE's probe is a connect
+  that is dropped at once, and the window probes every backend each time File >
+  Preferences opens. The fork closes its listening socket when a client that
+  had connected goes; whether a bare connect-and-close does the same has not
+  been tried, and the probe does not depend on the answer. Where there is no
+  `/proc` the answer is no.
+* **`connect()` opens the socket once per emulator run** and caches the
+  transport, the title found on it and the data hunk's base together. The window
+  detaches on any `NotConnected` and attaches again on its next tick, and
+  closing an `AmigaTarget` leaves the transport open on purpose, so a
+  `connect()` that built a new `FsuaeGdb` each time would find nothing
+  listening and the player would have to restart the game. A title that has not
+  loaded yet raises `FsuaeError` (a `NotConnected`) with the transport still
+  cached, and the memory sweep is not repeated more often than `SWEEP_EVERY`,
+  because each 512K read makes the emulated machine miss a frame. A transport
+  whose connection has failed (`FsuaeGdb.lost`) is dropped and replaced; a read
+  timeout is not that, and keeps it.
 
 ### What is not built
 
-**The window cannot attach to it.** `wish/backends.py` declares a backend as a
-`probe`, a `connect` and a poll interval, so an Amiga row is the shape of the
-work — but three things in it are decisions rather than measurements: how a
-user says which WinUAE lane and which title, whether a probe costing an `ssh`
-round trip may sit on the window's retry timer, and the flag and the wording.
+**The window still cannot offer it.** `wish/backends.py` has no row for
+`wish.fsuae`. A backend row carries a name and a setup hint that a player reads,
+and those are wording Donald has not approved; the flag it would sit behind and
+the removal condition go with it.
+
+**The maps come from the C64 disks a player already has, or not at all.**
+`automap/maps.py` does not know about `automap.amiga.load_maps_in`, so a folder
+holding only Amiga disk images gives no maps. The area is named all the same
+where the C64 disks are configured: every Silver Blades map is byte-identical
+across the two ports, and the three Curse maps that differ do so in two bytes,
+inside the 32 that `ResidentGeo` tolerates.
 
 **Pool of Radiance's Amiga build has no row in `MACHINES`.** It is not a
 small-data binary, so the anchor search finds the wrong hunk; what it needs is

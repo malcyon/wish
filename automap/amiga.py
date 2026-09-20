@@ -904,6 +904,12 @@ class FsuaeGdb:
         self._opener = opener or self._socket
         self.sock = None
         self._buf = b""
+        #: True once the connection itself has failed -- the peer closed it, or
+        #: a send or receive raised. **A timeout does not set it**: the socket
+        #: is still the emulator's only debugging door and dropping it for a
+        #: slow frame would end the run's debugging for good. `wish.fsuae`
+        #: reads this to decide whether a cached transport can be reused.
+        self.lost = False
         #: What the server advertised, kept for a run log: this build answers
         #: `PacketSize=512;...;QStartNoAckMode+;vContSupported+;`.
         self.greeting = ""
@@ -970,6 +976,7 @@ class FsuaeGdb:
         try:
             self.sock.sendall(self._frame(body))
         except OSError as exc:
+            self.lost = True
             raise FsuaeError(f"the emulator would not take `{body}`: "
                              f"{exc}") from exc
 
@@ -1015,8 +1022,10 @@ class FsuaeGdb:
                 raise FsuaeError(f"the emulator sent no reply in "
                                  f"{limit:.0f}s") from exc
             except OSError as exc:
+                self.lost = True
                 raise FsuaeError(f"the connection failed: {exc}") from exc
             if not chunk:
+                self.lost = True
                 raise FsuaeError(
                     "the emulator closed the connection; it will not listen "
                     "again until it is restarted")
@@ -1094,6 +1103,36 @@ def find_anchor(memory: bytes, base: int, anchor: bytes,
         out.append(base + at - offset)
         at = memory.find(anchor, at + 1)
     return out
+
+
+def locate_machines(read, machines, memory=MEMORY) -> dict[str, list[int]]:
+    """Which of these titles is in memory, and at which base: `{title: bases}`.
+
+    **One sweep for any number of titles.** Each region of `memory` is read
+    once through `read(addr, length)` and searched for every machine's anchor,
+    so asking after two titles costs what asking after one does -- half a
+    megabyte a region is not something to fetch twice. The sweep stops at the
+    first region where any anchor is found, because a game is in one region
+    and not two.
+
+    A title with no hit is absent from the result, and an empty result means
+    none of them is loaded (or the one that is has not finished loading). A
+    title with more than one base is returned with all of them, for the caller
+    to refuse: see `find_anchor` on why a second copy is reported rather than
+    resolved here.
+    """
+    machines = list(machines)
+    found: dict[str, list[int]] = {}
+    for base, length in memory:
+        blob = read(base, length)
+        for machine in machines:
+            hits = find_anchor(blob, base, machine.anchor,
+                               machine.anchor_offset)
+            if hits:
+                found[machine.title] = sorted(set(hits))
+        if found:
+            break
+    return found
 
 
 # -- the maps, off the player's own disk --------------------------------------
@@ -1254,6 +1293,13 @@ class AmigaTarget:
     #: answer, and `__init__` replaces it with the transport's own.
     halts_on_read = True
 
+    #: An optional capability, read with `getattr(target, "c64_memory", True)`
+    #: the way `halts_on_read` is. The window's roster, action bar, Fast Travel
+    #: row and combat reader all read Commodore 64 addresses, which on a 68000
+    #: are ordinary chip RAM: the reads succeed and decode the game's own
+    #: unrelated bytes. A target that says False is never handed to them.
+    c64_memory = False
+
     def __init__(self, debugger, layout: AmigaMachine,
                  data_base: int | None = None):
         self.debugger = debugger
@@ -1406,25 +1452,20 @@ class AmigaTarget:
         Raises rather than guessing when the anchor is missing or ambiguous.
         """
         self._require_open()
-        found: list[int] = []
-        for base, length in memory:
-            blob = self.read(base, length)
-            found += find_anchor(blob, base, self.layout.anchor,
-                                 self.layout.anchor_offset)
-            if found:
-                break                   # the game is in one region, not two
-        if not found:
+        bases = locate_machines(self.read, [self.layout], memory).get(
+            self.layout.title, [])
+        if not bases:
             raise GuestError(
                 f"{self.layout.anchor!r} is nowhere in the Amiga's memory, so "
                 f"{self.layout.title} is not the title that is running (or it "
                 "has not finished loading)")
-        if len(set(found)) > 1:
+        if len(bases) > 1:
             raise GuestError(
                 f"{self.layout.anchor!r} appears at more than one place: "
-                + ", ".join(f"{b:#x}" for b in sorted(set(found)))
+                + ", ".join(f"{b:#x}" for b in bases)
                 + " -- pick the base with a second known constant rather than "
                   "taking the first")
-        self.data_base = found[0]
+        self.data_base = bases[0]
         _log.info("%s: data hunk at %#x, a4 = %#x", self.layout.title,
                   self.data_base, self.data_base + 0x7FFE)
         return self.data_base
