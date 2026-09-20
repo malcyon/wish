@@ -2114,10 +2114,11 @@ def to_neutral(dos: DosCharacter,
     # `docs/162-spc-permanence.md` has the routine, every one of the 38
     # places that add a record, and the runs.
     #
-    # So a **nonzero** duration is a spell counting down, and Donald's
-    # 2026-08-27 ruling says it needs no report: it was going to expire
-    # anyway and the player will not go looking for it.  It is the one thing
-    # here that is neither converted nor reported.
+    # A **nonzero** duration is a spell counting down.  Donald's 2026-08-27
+    # ruling says such a spell needs no *report*, and nothing here reports
+    # one; his ruling on the conversion itself is that the time left is kept
+    # where the destination can hold it, so the record goes into
+    # `running_effects` whole, the exact complement of `granted_effects`.
     #
     # The next pointer is dropped rather than converted: it is a live heap
     # address the engine rebuilds on load (`EFFECT_NEXT_NULL`).
@@ -2129,6 +2130,15 @@ def to_neutral(dos: DosCharacter,
                 "the .SPC records that are not innate and never expire -- an "
                 "item's grant, whole, since what it is worth is in the "
                 "record rather than in the id",
+                Confidence.CONFIRMED)
+    running = [bytes(e[:5]) + EFFECT_NEXT_NULL for e in dos.effects
+               if e[0] not in innate_ids
+               and int.from_bytes(e[1:3], "little") != 0]
+    if running:
+        out.set("running_effects", running,
+                "the .SPC records that are not innate and still have time "
+                "left, whole: the duration at bytes 1-2 is game-clock "
+                "minutes (docs/162-spc-permanence.md)",
                 Confidence.CONFIRMED)
 
     # -- the .ITM file, projected -------------------------------------------
@@ -2591,6 +2601,10 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "records, each one's own five bytes with the next "
                         "pointer NULLed -- the value byte and the removal "
                         "flag are the record's, not INNATE_PAYLOAD's"),
+    ("running_effects", "written into the same .SPC file after the "
+                        "granted records, each one's own five bytes with the "
+                        "next pointer NULLed -- the duration in game-clock "
+                        "minutes is kept as read"),
     ("unnamed_0ab", "taken and written to 0x0AB when the source's own "
                     "record holds a genuine identity draw -- a C64 Pool of "
                     "Radiance record's GEN pair at 0x0E6, or an Amiga Pool "
@@ -4299,9 +4313,16 @@ def write(char: NeutralCharacter,
     given = use("granted_effects")
     grants = [bytes(g)[:5] + EFFECT_NEXT_NULL
               for g in (given.value if given is not None else ())]
+    # A spell still counting down keeps its time left: the duration at bytes
+    # 1-2 is the engine's own game-clock minutes on this port and the Amiga,
+    # so it is written as read.  It follows the grants; the order in the file
+    # is not something the engine reads meaning from.
+    counting = use("running_effects")
+    running = [bytes(g)[:5] + EFFECT_NEXT_NULL
+               for g in (counting.value if counting is not None else ())]
 
     spc = b"".join([bytes((e,)) + INNATE_PAYLOAD + EFFECT_NEXT_NULL
-                    for e in keep] + grants)
+                    for e in keep] + grants + running)
     base = size + len(itm)
     for n, e in enumerate(keep):
         at = base + n * EFFECT_SIZE
@@ -4334,6 +4355,23 @@ def write(char: NeutralCharacter,
                  f"{deltas.effect_suffix} record {n}: the value the effect "
                  f"carries and the flag the engine reads when the item comes "
                  f"off, the source record's own two bytes")
+        rep.note(at + 5, 4,
+                 f"{deltas.effect_suffix} record {n}: next pointer NULL -- the "
+                 f"loader allocates a node per record and relinks them, and "
+                 f"the count comes from the file's length")
+    for i, g in enumerate(running):
+        n = len(keep) + len(grants) + i
+        at = base + n * EFFECT_SIZE
+        minutes = int.from_bytes(g[1:3], "little")
+        rep.note(at, 1, f"{deltas.effect_suffix} record {n}: effect {g[0]} "
+                        f"({traits.describe(g[0])}), {port} running_effects")
+        rep.note(at + 1, 2,
+                 f"{deltas.effect_suffix} record {n}: {minutes} minutes left "
+                 f"in game-clock minutes, the source record's own duration")
+        rep.note(at + 3, 2,
+                 f"{deltas.effect_suffix} record {n}: the value the effect "
+                 f"carries and the flag the engine reads when it ends, the "
+                 f"source record's own two bytes")
         rep.note(at + 5, 4,
                  f"{deltas.effect_suffix} record {n}: next pointer NULL -- the "
                  f"loader allocates a node per record and relinks them, and "

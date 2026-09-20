@@ -324,19 +324,30 @@ def test_a_record_with_only_innate_ids_sets_no_granted_field():
     assert out.dropped == dos_codec.to_neutral(_dos_record([])).dropped
 
 
-def test_a_running_spell_is_neither_converted_nor_reported():
-    """Donald's 2026-08-27 ruling: a spell with rounds left was going to
-    expire anyway, so it is not converted across and not put in front of the
-    player either.  The engine counts a nonzero duration down and removes the
-    node on the step that reaches it, so this one was on its way out.
+def test_a_running_spell_is_converted_with_its_time_and_not_reported():
+    """Donald's 2026-08-27 ruling is that a spell with time left needs no
+    report; the ruling on #600 is that it is converted rather than left to
+    end.  So it lands in `running_effects` whole, comes back out of the
+    writer with its minutes, and puts no line in front of the player.
     """
     char = _dos_record([_effect(61, duration=2, value=1)])   # BLESS's shape
     out = dos_codec.to_neutral(char)
     assert "granted_effects" not in out
+    assert [bytes(r) for r in out.get("running_effects")] == \
+        [_effect(61, duration=2, value=1)]
     bare = dos_codec.to_neutral(_dos_record([]))
     assert out.dropped == bare.dropped
-    _rec, rep = c64_codec.write(out)
-    assert rep.dropped == c64_codec.write(bare)[1].dropped
+    _rec, _itm, spc, rep = dos_codec.write(out)
+    assert spc == _effect(61, duration=2, value=1)
+    assert rep.dropped == dos_codec.write(bare)[3].dropped
+    # The C64 keeps a running spell in the save's own arrays, which this
+    # writer does not build: it says so on the drop list, which only the
+    # debug log reads, and puts no id in a trait slot.
+    c64_rec, c64_rep = c64_codec.write(out)
+    assert 61 not in c64_rec.get_raw("item_effects")
+    extra = [d for d in c64_rep.dropped
+             if d not in c64_codec.write(bare)[1].dropped]
+    assert [d.split(":")[0] for d in extra] == ["running_effects"]
 
 
 def test_the_c64_writes_the_granted_effect_into_a_trait_slot():
@@ -578,8 +589,8 @@ def test_the_engines_own_item_granted_record_survives_the_round_trip():
     Its `.SPC` is six nodes: four racial, a `BLESS` at two minutes, and
     `3D 00 00 0C 00 00 00 00 00` -- effect 61 at duration zero, the value
     `0x0C` and the removal flag clear.  The writer must hand back the four
-    racial records and the ring, drop the `BLESS`, and put `0x0C` rather than
-    `INNATE_PAYLOAD`'s `0xFF` in the ring's value byte.
+    racial records and the ring, then the `BLESS` with its two minutes, and
+    put `0x0C` rather than `INNATE_PAYLOAD`'s `0xFF` in the ring's value byte.
     """
     path = _item_granted_specimen()
     if path is None:
@@ -595,10 +606,10 @@ def test_the_engines_own_item_granted_record_survives_the_round_trip():
         [ring[0][:5] + dos_codec.EFFECT_NEXT_NULL]
     _rec, _itm, spc, _rep = dos_codec.write(out)
     written = [spc[i:i + 9] for i in range(0, len(spc), 9)]
-    assert [w[0] for w in written] == [90, 97, 26, 47, 61], written
-    assert written[-1] == ring[0][:5] + dos_codec.EFFECT_NEXT_NULL
-    # The BLESS had two minutes left and is neither written nor reported.
-    assert 1 not in [w[0] for w in written]
+    assert [w[0] for w in written] == [90, 97, 26, 47, 61, 1], written
+    assert written[-2] == ring[0][:5] + dos_codec.EFFECT_NEXT_NULL
+    # The BLESS had two minutes left and is written with them, not reported.
+    assert written[-1] == bytes((1, 2, 0, 1, 0)) + dos_codec.EFFECT_NEXT_NULL
     # Compared against the same record with the running node taken out, so
     # the claim is "the BLESS adds nothing a player reads" rather than "no
     # line anywhere uses a fixed phrase", which other fields do.
@@ -1710,9 +1721,9 @@ def test_a_record_round_trips_through_the_neutral_middle():
     step and lets only the drawn line go stale, so a miss here is a claim
     about the record rather than about our arithmetic).
 
-    **The `.SPC` file is now every node the engine would not expire**, innate
-    and granted alike, and only a node with rounds left is left behind: 2 of
-    the 24 records carry a granted node and both come back byte for byte.
+    **The `.SPC` file is every node the record held**: innate, then granted,
+    then any with time left, with the time kept.  2 of the 24 records carry a
+    granted node and both come back byte for byte.
     Before #232 (An item-granted effect is dropped on the way through the
     neutral record, with no report) the assertion here was the innate records
     alone.
@@ -1742,9 +1753,12 @@ def test_a_record_round_trips_through_the_neutral_middle():
         kept = [e for e in char.effects
                 if e[0] not in dos_codec.INNATE_EFFECTS
                 and int.from_bytes(e[1:3], "little") == 0]
+        counting = [e for e in char.effects
+                    if e[0] not in dos_codec.INNATE_EFFECTS
+                    and int.from_bytes(e[1:3], "little") != 0]
         granted += bool(kept)
-        assert spc == b"".join(e[:5] + bytes(4) for e in innate + kept), \
-            char.name
+        assert spc == b"".join(
+            e[:5] + bytes(4) for e in innate + kept + counting), char.name
         for e in innate:
             assert e[1:5] == dos_codec.INNATE_PAYLOAD, (char.name, e.hex())
     assert total >= 24

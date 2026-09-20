@@ -94,13 +94,14 @@ def _class_fields(levels: dict[str, int]) -> tuple[int, int]:
     return bits, code
 
 
-def _effect(effect_id: int, value: int = 0) -> bytes:
-    """One nine-byte `.SPC` node for `granted_effects`: the id, a
-    little-endian duration of zero (permanent -- `docs/162-spc-permanence.md`),
-    the value the effect carries, the flag byte, and a NULL next pointer --
-    the shape `tests/convert/test_doswriter.py`'s own `_effect` builds and
+def _effect(effect_id: int, value: int = 0, minutes: int = 0) -> bytes:
+    """One nine-byte `.SPC` node: the id, a little-endian duration in
+    game-clock minutes (zero is permanent -- `docs/162-spc-permanence.md`, the
+    `granted_effects` case; a running spell gives it a count), the value the
+    effect carries, the flag byte, and a NULL next pointer -- the structure
+    `tests/convert/test_doswriter.py`'s own `_effect` builds and
     `goldbox.dos_codec.write` reads back unchanged."""
-    return (bytes((effect_id,)) + (0).to_bytes(2, "little")
+    return (bytes((effect_id,)) + minutes.to_bytes(2, "little")
             + bytes((value, 0)) + dos_codec.EFFECT_NEXT_NULL)
 
 
@@ -176,6 +177,10 @@ def _base() -> NeutralCharacter:
     char.set("treasure_share", 0, "base")
     char.set("granted_effects", [_effect(61, value=12)], "base: a Ring of "
              "Fire Resistance, the shape #232 measured the engine writing")
+    char.set("running_effects", [_effect(1, value=1, minutes=0xFFFF),
+                                 _effect(1, value=1, minutes=1)],
+             "base: a running Bless at the largest duration the two-byte "
+             "field holds, and one at its smallest (zero is never running)")
     char.set("unnamed_0ab", 77, "base: an arbitrary identity draw")
     return char
 

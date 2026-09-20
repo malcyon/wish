@@ -1893,11 +1893,18 @@ nodes on this machine.
   that walked twenty bytes an item regardless would have read the first
   chained node as the next item. The reader follows the chain and counts the
   nodes onto the drop list rather than converting them.
-* **An effect still counting down has no neutral field at all.** The
-  vocabulary keeps `innate_effects` and `granted_effects`, both of which are
-  what never expires. The duration word is zero in 11 of 11 nodes here, so
-  no record on any disk has one; the nodes at duration zero are converted and
-  a count of any others goes to the drop list.
+* **An effect still counting down is `running_effects`.** The vocabulary
+  keeps `innate_effects` and `granted_effects`, both of which are what never
+  expires, and now a third, `running_effects`, holds the nodes with time
+  left as whole nine-byte records whose duration is game-clock minutes
+  (`docs/162-spc-permanence.md`). Before that the reader counted them onto the
+  drop list and the two later titles' reader dropped them with no line. The
+  duration word is zero in 11 of 11 nodes here, so no record on any disk has
+  one, and **the big-endian byte order of the word at `0x002` has never been
+  read against a value**: it stays PROBABLE, and `tests/convert/
+  test_runningeffects.py` pins both orders with a synthetic 0x0102 so a wrong
+  swap fails. One `.pc` written with a known duration and loaded in the
+  running game settles it.
 
 #### `attack_level`: the engine works it out and stores nothing
 
@@ -1968,9 +1975,10 @@ attack table by `0x130`.
 
 #### What it leaves
 
-`pod_to_neutral` fills **64 of the 77 neutral fields**, and 65 for a character
-with an effect running on him, since `granted_effects` is set only when there
-is one. The eleven it names on `pod_read_dropped()`: nine this title stores on
+`pod_to_neutral` fills **64 of the 78 neutral fields**, and 65 for a character
+with an effect that never expires, since `granted_effects` is set only when
+there is one; `running_effects` is set only for a node with time left, which
+no disk has. The eleven it names on `pod_read_dropped()`: nine this title stores on
 neither port, `attack_level` above, and `innate_effects` — a label rather than
 a byte, because which node is an innate property of the race or the class and
 which a readied item granted cannot be told apart for this title, the same

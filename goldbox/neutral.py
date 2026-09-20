@@ -230,6 +230,16 @@ FIELDS: dict[str, str] = {
                        "carries, the flag the engine reads when the item "
                        "comes off, and a next pointer left NULL because the "
                        "engine rebuilds the chain on load",
+    "running_effects": "whole effect records still counting down -- a spell "
+                       "the character has running, such as a Bless with two "
+                       "minutes left. Nine bytes each, in the shape "
+                       "`granted_effects` states, except that the two bytes "
+                       "after the effect id are the time left as a "
+                       "little-endian count of game-clock minutes and are "
+                       "never zero: a record at zero never expires and "
+                       "belongs in `granted_effects`. A destination that "
+                       "keeps its running effects somewhere other than the "
+                       "character's own record reports it as dropped",
     "roster_tail": "the derived combat block the roster keeps beside the "
                    "record",
     # -- how the character is, and whether the game is still playing them ---

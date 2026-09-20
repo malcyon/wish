@@ -707,15 +707,17 @@ def test_the_reader_fills_sixty_four_of_the_neutral_records_fields():
     """The count that says how far the Amiga decode has got, pinned so it
     moves when somebody decodes another region rather than drifting.
 
-    64 of the 77, and 65 for a character with an effect running on him, since
-    `granted_effects` is set only when there is one -- the same way the Curse
-    and Silver Blades reader sets it. On this machine that is ten
+    64 of the 78, and 65 for a character with an effect that never expires,
+    since `granted_effects` is set only when there is one -- the same way the
+    Curse and Silver Blades reader sets it. On this machine that is ten
     characters at 64 and nine at 65.
 
-    The two it never fills: `npc_control_byte`, which is set only for a
-    companion and so is absent from a player character rather than dropped,
-    exactly as it is absent from a DOS one, and `granted_effects` for a
-    character with nothing running on him.
+    The names it does not fill for a character on these disks:
+    `npc_control_byte`, which is set only for a companion and so is absent
+    from a player character rather than dropped, exactly as it is absent from
+    a DOS one; `granted_effects` for a character with nothing at duration
+    zero; and `running_effects`, which no disk's node can fill because every
+    duration word is zero.
     """
     counts: dict[int, int] = {}
     for _name, raw in pc_records():
@@ -724,8 +726,8 @@ def test_the_reader_fills_sixty_four_of_the_neutral_records_fields():
         assert len(out.fields) == 64 + bool(effects), sorted(out.fields)
         named = set(out.fields) | {n for n, _ in amiga_pod.pod_read_dropped()}
         assert set(neutral.FIELDS) - named == (
-            {"npc_control_byte"} if effects
-            else {"npc_control_byte", "granted_effects"})
+            {"npc_control_byte", "running_effects"} if effects
+            else {"npc_control_byte", "running_effects", "granted_effects"})
         counts[len(out.fields)] = counts.get(len(out.fields), 0) + 1
     assert sum(counts.values()) >= 12, counts
     assert counts.get(64), counts

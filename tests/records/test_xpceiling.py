@@ -11,8 +11,10 @@ anybody happens to own:
   has room for?  A `add`/`adc` pair into the longword says it is;
 * does anything cap it?  A cap at the C64's ceiling has to compare the *high*
   word against `0x0100` or more, and no title does;
-* what does our conversion do with a value that does not fit?  It refuses,
-  naming the field, and writes nothing.
+* what does our conversion do with a value that does not fit?  It writes the
+  C64's largest experience, `0xFFFFFF`, and records a drop line saying what
+  the character held.  A refusal would leave the player no converted
+  character at all, which is what the ruling on the issue chose against.
 
 The synthetic half runs anywhere.  The overlay scan skips without the
 player's DOS archives and the conversion skips without the specimen tree, so
@@ -175,18 +177,76 @@ def test_the_c64_width_is_the_last_value_that_converts(key):
 
 
 @pytest.mark.parametrize("key", sorted(RECORDS))
-def test_one_past_the_c64_width_is_refused_and_never_wrapped(key):
-    """The bug this issue was opened against would be a silent wrap.
+def test_one_past_the_c64_width_is_clamped_and_never_wrapped(key):
+    """A wrap would quietly convert a rich character into a poor one.
 
-    `goldbox.c64_codec.write` raises instead, naming the field and the width,
-    so a high-experience character cannot be quietly converted into a poorer
-    one.  `editor/convert.py` catches it with every other conversion failure,
-    so what a player sees today is the generic refusal.
+    `goldbox.c64_codec.write` writes the field's largest value instead and
+    puts a line on `report.dropped`, which reaches the debug log and no
+    player-facing text.  It used to raise here; the experience is now
+    clamped so the character converts at all.
     """
     record = _record(key)
     for value in (xpceiling.C64_CEILING + 1, 0x7FFFFFFF):
         read_back, did = xpceiling.convert(record, value)
         assert read_back == str(value), (
             f"{key}: the DOS record lost {value}, reading back {read_back}")
-        assert did.startswith("refused: "), f"{key}: {did}"
-        assert "experience" in did and "3 bytes" in did
+        assert did.startswith(f"wrote {xpceiling.C64_CEILING} "), f"{key}: {did}"
+        assert f"clamped from {value}" in did
+        assert f"experience: DOS holds {value}" in did
+
+
+# --------------------------------------------------------------------------
+# The clamp, on records this file builds (runs without the specimen tree)
+# --------------------------------------------------------------------------
+
+#: A zeroed record of each DOS title whose experience is four bytes, at its
+#: own record size.  Every field is zero, so the only number in play is the
+#: experience the test writes.
+_BLANK_SIZES = {"curse-of-the-azure-bonds": 422,
+                "secret-of-the-silver-blades": 439}
+
+
+def _clamped(key: str, value: int):
+    """`(record, report)` from a blank DOS record at `value` experience."""
+    import struct
+
+    from goldbox import c64_codec, dos_codec
+    shape = dl.deltas_for(_BLANK_SIZES[key])
+    assert shape.key == key
+    buf = bytearray(_BLANK_SIZES[key])
+    struct.pack_into("<I", buf, xpceiling.experience_offset(key), value)
+    dos = dos_codec.DosCharacter(bytes(buf), deltas=shape)
+    assert dos.get("experience") == value
+    return c64_codec.write(dos_codec.to_neutral(dos))
+
+
+@pytest.mark.parametrize("key", sorted(_BLANK_SIZES))
+@pytest.mark.parametrize("value", [0x1000000, 0x7FFFFFFF])
+def test_experience_past_three_bytes_converts_as_the_c64_maximum(key, value):
+    """Refused before: `ValueError: experience: 16777216 does not fit in 3
+    bytes`.  A character with that much converts at `0xFFFFFF` now, and the
+    drop line names the value that was held so the debug log can say why the
+    number changed."""
+    rec, rep = _clamped(key, value)
+    assert rec.get("experience") == xpceiling.C64_CEILING
+    lines = [d for d in rep.dropped if d.startswith("experience:")]
+    assert len(lines) == 1, rep.dropped
+    assert str(value) in lines[0] and str(xpceiling.C64_CEILING) in lines[0]
+
+
+@pytest.mark.parametrize("key", sorted(_BLANK_SIZES))
+def test_the_c64_maximum_is_kept_exactly_and_drops_nothing(key):
+    rec, rep = _clamped(key, xpceiling.C64_CEILING)
+    assert rec.get("experience") == xpceiling.C64_CEILING
+    assert not [d for d in rep.dropped if d.startswith("experience:")]
+
+
+@pytest.mark.parametrize("key", sorted(_BLANK_SIZES))
+def test_a_negative_experience_is_still_refused(key):
+    """The clamp is for a value too big; one no field can hold still raises."""
+    from goldbox import c64_codec
+    from tools.records import boundarywidths
+    char = boundarywidths.base(key)
+    char.set("experience", -1, "test: below zero")
+    with pytest.raises(ValueError, match="experience"):
+        c64_codec.write(char)

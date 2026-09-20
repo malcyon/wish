@@ -4,10 +4,10 @@
 `#597 (Can a DOS Curse or Silver Blades character hold more experience than
 the C64's three bytes?)`: the DOS Curse and Silver Blades records keep
 experience in four bytes where every C64 record keeps three, and
-`goldbox.c64_codec.write` refuses a value that does not fit rather than
-wrapping it.  Whether anything can reach that value is a question about the
-engine, not about the records anybody happens to have, so this reads it out
-of each title's own `GAME.OVR`.
+`goldbox.c64_codec.write` clamps a value that does not fit to the field's
+largest one and records a drop line.  Whether anything can reach that value
+is a question about the engine, not about the records anybody happens to
+have, so this reads it out of each title's own `GAME.OVR`.
 
 Three things, one per command:
 
@@ -158,11 +158,15 @@ def convert(record: bytes, value: int) -> tuple[str, str]:
     read_back = dos.get("experience")
     neutral = dos_codec.to_neutral(dos)
     try:
-        rec, _ = c64_codec.write(neutral)
+        rec, rep = c64_codec.write(neutral)
     except ValueError as exc:
         return f"{read_back}", f"refused: {exc}"
     wrote = rec.get("experience")
-    verdict = "kept" if wrote == value else f"CHANGED from {value}"
+    if wrote == value:
+        verdict = "kept"
+    else:
+        lines = [d for d in rep.dropped if d.startswith("experience:")]
+        verdict = f"clamped from {value}; dropped: {' / '.join(lines)}"
     return f"{read_back}", f"wrote {wrote} ({wrote:#x}) -- {verdict}"
 
 

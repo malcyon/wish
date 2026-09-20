@@ -1555,6 +1555,13 @@ POD_WRITE_WHEN_PRESENT: tuple[tuple[str, str], ...] = (
                         "the item region, the duration byte-swapped, with a "
                         "chain head and a `next` that are non-zero exactly "
                         "when another node follows"),
+    ("running_effects", "each whole nine-byte record -> a ten-byte node "
+                        "after the granted ones, the time left byte-swapped "
+                        "into the big-endian word at 0x002 like a grant's "
+                        "duration. That word's byte order is PROBABLE rather "
+                        "than CONFIRMED: no node on any Amiga disk holds a "
+                        "value there, so the swap has never been read back "
+                        "by the game"),
 )
 
 #: Neutral fields this writer takes nothing from, and why. Reported, never
@@ -1806,6 +1813,11 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "duration zero goes here whole -- which node is an "
                         "innate property and which a readied item's grant "
                         "cannot be told apart for this title"),
+    ("running_effects", "the same nodes when the big-endian duration word at "
+                        "0x002 is not zero, re-cut the same way with the "
+                        "duration little-endian in game-clock minutes. Its "
+                        "byte order is PROBABLE and no node on any disk holds "
+                        "a value there"),
 )
 
 
@@ -1902,8 +1914,8 @@ def pod_field_disposition() -> dict[str, str]:
     and the test that keeps this half honest: a field `goldbox/neutral.py` declares
     and this names nowhere would be one dropped in silence.
 
-    This reader fills 64 of the 77 neutral fields, and 65 for a character
-    with something running on him.  The eleven names it takes nothing from:
+    This reader fills 64 of the 78 neutral fields, and 65 for a character
+    with something at duration zero in his chain.  The eleven names it takes nothing from:
     **nine** are fields this *title* stores on neither port, **one** is
     `attack_level`, which its engine works out from the class level rather
     than keeping anywhere, and **one** is `innate_effects`, a label rather
@@ -2143,16 +2155,21 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     # read. The same standing unknown the two later Amiga titles have.
     recut = [pod_effect_to_dos(node) for node in effects]
     granted = [e for e in recut if int.from_bytes(e[1:3], "little") == 0]
-    running = len(recut) - len(granted)
+    running = [e for e in recut if int.from_bytes(e[1:3], "little") != 0]
     if running:
-        # The neutral vocabulary has `innate_effects` and `granted_effects`
-        # and nothing for a spell still ticking, so a node with a duration has
-        # no home on any port's reader -- the two later Amiga titles' reader
-        # filters the same way. **No node in the nineteen genuine files has
-        # one**: the duration word is zero in 11 of 11.
-        out.drop(f"{running} running effects with a duration left: the "
-                 f"neutral record holds the ones that never expire and has no "
-                 f"field for a spell still counting down")
+        # A node with a duration left is a spell still counting down, kept
+        # whole with its time. **No node in the nineteen genuine files has
+        # one**: the duration word is zero in 11 of 11, so the byte order of
+        # the word at 0x002 has never been read against a value here. It is
+        # PROBABLE, from four values elsewhere on the Amiga disks that read
+        # as durations big-endian and as 2560 and 1536 little-endian
+        # (`docs/124-amiga-port.md`), and unproven.
+        out.set("running_effects", running,
+                f"the Amiga .pc effect nodes with a duration left, "
+                f"{EFFECT_FILE_SIZE} bytes each from the end of the item "
+                f"region, re-cut to the nine a DOS .EFX record holds with "
+                f"the big-endian word at 0x002 read as game-clock minutes",
+                Confidence.PROBABLE, neutral.Provenance.RESHAPED)
     if granted:
         out.set("granted_effects", granted,
                 f"the Amiga .pc effect nodes at duration zero, "
@@ -2571,6 +2588,12 @@ def _pod_effect_nodes(char: NeutralCharacter, w: neutral.Writer,
     seen: set[int] = set()
     granted = w.use("granted_effects")
     for record in (granted.value if granted else None) or ():
+        payload = bytes(record)[:dos_port.EFFECT_SIZE].ljust(
+            dos_port.EFFECT_SIZE, b"\0")
+        seen.add(payload[0])
+        nodes.append(pod_effect_from_dos(payload))
+    counting = w.use("running_effects")
+    for record in (counting.value if counting else None) or ():
         payload = bytes(record)[:dos_port.EFFECT_SIZE].ljust(
             dos_port.EFFECT_SIZE, b"\0")
         seen.add(payload[0])

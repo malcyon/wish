@@ -35,6 +35,13 @@ POOL = "pool-of-radiance"
 #: own converts to the C64's character-set icon.  Anything else is a loss.
 _ICON = "Combat icon:"
 
+#: The drop line for a running effect (`_base()` in `boundarychars` carries
+#: two): a reported, accounted drop, because the C64's active-effect arrays are
+#: not written to yet.  It is exempt here so the sweeps still see any other
+#: loss, and `test_a_running_effect_is_reported_as_dropped_not_converted`
+#: fails when the writer stops reporting it, so the exemption gets removed.
+_RUNNING = "running_effects:"
+
 
 def _write(char):
     """`(record, report, back)`: the character written and read straight back."""
@@ -43,7 +50,7 @@ def _write(char):
 
 
 def _losses(rep):
-    return [d for d in rep.dropped if not d.startswith(_ICON)]
+    return [d for d in rep.dropped if not d.startswith((_ICON, _RUNNING))]
 
 
 def _changed(a, b):
@@ -69,8 +76,9 @@ _THIEF_COLUMNS = tuple(n for n, _ in c64_codec._THIEF_SKILL_COLUMNS)
 #: A case field the reader has no neutral name for on the way back:
 #: `granted_effects` shares its trait slots with the racial ids, so `read`
 #: hands both back as `innate_effects` (`goldbox/c64_codec.py`, the trait-slot
-#: block of `write`).
-_NOT_READ_BACK = {"granted_effects"}
+#: block of `write`).  `running_effects` is the accounted drop `_RUNNING`
+#: names, so it is not in the record to read back.
+_NOT_READ_BACK = {"granted_effects", "running_effects"}
 
 
 @pytest.mark.parametrize("name", sorted(boundarychars.CASES))
@@ -107,6 +115,19 @@ def test_a_reachable_character_writes_to_the_c64_and_reads_back_whole(
             granted = [n[0] for n in char.get("granted_effects", [])]
             want, got = sorted(want + granted), sorted(got)
         assert got == want, (name, field, want, got)
+
+
+def test_a_running_effect_is_reported_as_dropped_not_converted():
+    """The exemption in `_losses` is exactly this one line: it goes when the
+    C64 writer converts a running effect or stops reporting the drop."""
+    char = boundarywidths.case("caster")
+    assert char.get("running_effects"), "the boundary caster carries none"
+    _, rep, _ = _write(char)
+    lines = [d for d in rep.dropped if d.startswith(_RUNNING)]
+    assert len(lines) == 1, rep.dropped
+    assert rep.warnings == []
+    assert {d.split(":")[0] for d in rep.dropped} - {"Combat icon"} \
+        == {"running_effects"}, rep.dropped
 
 
 # --- B: every field the writer takes has a boundary -------------------------
@@ -165,11 +186,16 @@ def test_c_every_scalar_at_its_extreme_round_trips(game, high, caplog):
                          ids=lambda s: s.neutral)
 def test_d_one_past_a_scalar_is_refused_not_wrapped(scalar):
     """A value one past the field's own width has to raise, naming the field,
-    in every title -- a `& 0xFF` here would write a different number."""
+    in every title -- a `& 0xFF` here would write a different number.  Bar
+    experience above its width, which is clamped instead."""
     for game in GAMES:
         if scalar.neutral in boundarywidths.recomputed_on_write(game):
             continue
         for past in (scalar.high + 1, scalar.low - 1):
+            if scalar.neutral == "experience" and past > scalar.high:
+                # Clamped, not refused: `test_xpceiling.py` has the clamp.
+                # Below zero is still refused, and stays in this loop.
+                continue
             char = boundarywidths.base(game)
             char.set(scalar.neutral, past, "boundary: one past")
             with pytest.raises(ValueError, match=scalar.c64):
@@ -389,10 +415,9 @@ def test_f_the_engine_agrees_on_the_memorised_width(game):
 #: The DOS scalars wider than the C64 field they convert into, and nothing
 #: else: Curse of the Azure Bonds and Secret of the Silver Blades keep
 #: experience in four bytes where the C64 record has three, so a value from
-#: 16,777,216 up is refused by `c64_codec.write` (test D).  The largest
-#: experience either title's own training table asks for is 2,450,001 (Silver
-#: Blades), so reaching it takes unspent experience nobody has measured the
-#: DOS engine allowing (#597).
+#: 16,777,216 up is clamped to 16,777,215 by `c64_codec.write`
+#: (`test_xpceiling.py`).  No DOS engine caps the running total, so the
+#: value is reachable by play alone (#597).
 _DOS_WIDER = {("curse-of-the-azure-bonds", "experience"),
               ("secret-of-the-silver-blades", "experience")}
 

@@ -1082,8 +1082,18 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
             f"clears whenever the status leaves okay or animated",
             Confidence.PROBABLE)
 
-    granted = [amiga_por_effect_to_dos(e) for e in char.effects]
-    granted = [e for e in granted if int.from_bytes(e[1:3], "little") == 0]
+    recut = [amiga_por_effect_to_dos(e) for e in char.effects]
+    granted = [e for e in recut if int.from_bytes(e[1:3], "little") == 0]
+    running = [e for e in recut if int.from_bytes(e[1:3], "little") != 0]
+    if running:
+        # Every node on the Amiga Curse and Silver Blades disks is at
+        # duration zero (29 of 29), so the byte order of the big-endian word
+        # is PROBABLE and has never been read against a value here.
+        out.set("running_effects", running,
+                "the Amiga effect nodes with a duration left, each re-cut to "
+                "the nine bytes the DOS .SPC record holds, the big-endian "
+                "word read as game-clock minutes",
+                Confidence.PROBABLE)
     if granted:
         out.set("granted_effects", granted,
                 "the Amiga effect nodes that never expire, each re-cut to "
@@ -1500,7 +1510,8 @@ def amiga_later_item_from_dos(item: bytes, deltas: AmigaDeltas) -> bytes:
 #: infravision in the chain twice.
 #:
 #: So the chain here is the neutral record's own effect records and nothing
-#: else: `granted_effects` whole, then `innate_effects` as DOS's own
+#: else: `granted_effects` whole, then `running_effects` whole with their time
+#: left, then `innate_effects` as DOS's own
 #: `id + INNATE_PAYLOAD` for any id the grants do not already carry.  An
 #: Amiga source reproduces exactly, a C64 source brings the ten trait slots
 #: `goldbox.c64_codec` reads into `innate_effects`, and a DOS source brings
@@ -1540,6 +1551,10 @@ def _later_effect_nodes(char: NeutralCharacter) -> list[bytes]:
     seen: set[int] = set()
     for g in char.get("granted_effects", ()) or ():
         record = bytes(g)[:5].ljust(5, b"\0") + bytes(4)
+        seen.add(record[0])
+        nodes.append(amiga_por_effect_from_dos(record))
+    for r in char.get("running_effects", ()) or ():
+        record = bytes(r)[:5].ljust(5, b"\0") + bytes(4)
         seen.add(record[0])
         nodes.append(amiga_por_effect_from_dos(record))
     for e in char.get("innate_effects", ()) or ():

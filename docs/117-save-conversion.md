@@ -710,14 +710,23 @@ Every C64 record keeps experience in three bytes (`goldbox/layout.py`,
 `0x0E8`); DOS Curse keeps four at `0x127`, Silver Blades four at `0x12C` and
 Pools of Darkness four at `0x172`. It is the only scalar wider on the DOS
 side than on the C64 one, so it is the only one where a legal source value
-can have nowhere to go. `goldbox.c64_codec.write` refuses it —
-`experience: 16777216 does not fit in 3 bytes` — and writes nothing;
-`editor/convert.py` catches that with every other conversion failure, so a
-player converting such a character sees the generic refusal rather than a
-character who has silently lost experience. **CONFIRMED**: the boundary is
-exact, `0xFFFFFF` converting and `0x1000000` and `0x7FFFFFFF` refused, on an
-engine-written Curse record and an engine-written Silver Blades one
-(`tests/records/test_xpceiling.py`).
+can have nowhere to go. **`goldbox.c64_codec.write` clamps it**: a total above
+16,777,215 is written as 16,777,215, the largest value three bytes hold, and
+`report.dropped` gets one line saying the experience was clamped and from
+what (`experience: DOS holds 16777216, which does not fit the C64's 3 bytes;
+written as 16777215, the most they hold`). The character converts rather than
+being refused, which is Donald's decision: a refusal leaves the player with no
+converted character at all, and a clamped one is the most the C64 can hold. A
+negative value is still refused, since no field holds it. **CONFIRMED**: the
+boundary is exact, `0xFFFFFF` kept and `0x1000000` and `0x7FFFFFFF` clamped to
+it, on an engine-written Curse record and an engine-written Silver Blades one
+and on blank records of both titles (`tests/records/test_xpceiling.py`).
+
+The line goes to the debug log and nowhere a player reads: `editor/convert.py`
+merges each character's `dropped` list and `editor/dosimport.pane_text` logs
+it and discards it. Whether the player is told anything is not settled here.
+The clamp lives in the one shared writer, so an Amiga source reaches it the
+same way; the Amiga destinations keep experience in four bytes and need none.
 
 **The engines accumulate experience 32 bits wide. CONFIRMED** from each
 title's own `GAME.OVR`, read with `tools/records/xpceiling.py`: the

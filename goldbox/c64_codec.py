@@ -685,6 +685,17 @@ _DUAL_CLASS_SLOT_NAMES: dict[int, str] = {
 _SPELL_SLOT_RECOMPUTE_FROM_PORTS = ("DOS",)
 
 
+#: The drop line for an experience total the C64's three bytes cannot hold.
+EXPERIENCE_CLAMPED = (
+    "experience: {port} holds {value}, which does not fit the C64's {size} "
+    "bytes; written as {top}, the most they hold")
+
+
+def _max_stored(size: int) -> int:
+    """The largest unsigned value `size` bytes hold."""
+    return (1 << (8 * size)) - 1
+
+
 def write(char: NeutralCharacter, icon: bytes | None = None,
           ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a neutral one.
@@ -717,8 +728,20 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         if v is None:
             continue
         dst = _field(c64_name)
-        rec.set(c64_name, v.value)
-        emit(v, c64_name, dst.offset, dst.size)
+        value, extra = v.value, ""
+        top = _max_stored(dst.size)
+        if field == "experience" and int(value) > top:
+            # The one scalar the DOS titles with a four-byte experience keep
+            # wider than the C64's three.  It is clamped to the field's
+            # largest value rather than refused, so the character converts;
+            # a negative value still reaches `rec.set` and is refused there.
+            # The line goes to the debug log only: nothing reads
+            # `report.dropped` on the way to a player.
+            rep.dropped.append(EXPERIENCE_CLAMPED.format(
+                port=port, value=int(value), size=dst.size, top=top))
+            value, extra = top, f", clamped from {int(value)}"
+        rec.set(c64_name, value)
+        emit(v, c64_name, dst.offset, dst.size, extra)
 
     # The C64 record has no encumbrance field and the engine works the total
     # out again whenever it draws a sheet, so taking the value here and
@@ -1495,6 +1518,14 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
 DROPPED: tuple[tuple[str, str], ...] = (
     ("infravision", "the C64 computes its own from race, so a source's value "
                     "is recomputed rather than copied"),
+    ("running_effects", "the C64 keeps a running effect in the save's own "
+                        "64-slot active-effect arrays (`goldbox/effects.py`) "
+                        "and not in the character record, and `write_c64_save` "
+                        "zeroes those arrays. Converting into them is not "
+                        "built: it needs the minutes-to-count-and-unit rule "
+                        "checked in the running game and a cross-walk between "
+                        "DOS's `.SPC` data byte and the C64's magnitude byte, "
+                        "and only the first of those is settled"),
     ("paladin_cures", "the paladin's cure-disease bookkeeping, which the C64 "
                       "record has nowhere to keep: no byte of the C64 record "
                       "is 1 for a paladin and 0 for everybody else across the "
