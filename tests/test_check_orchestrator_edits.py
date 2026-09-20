@@ -3,8 +3,9 @@
 `.claude/skills/orchestrate/SKILL.md` says the orchestrator never edits a
 file itself -- every change goes to a subagent. This hook makes that
 mechanical: a `PreToolUse` hook on `Edit`, `Write`, `MultiEdit` and
-`NotebookEdit` that refuses when the session is the main window (not a
-subagent, told by `transcript_path`), the transcript has shown the
+`NotebookEdit` that refuses when the call is the main window's (not a
+subagent's, which carries an `agent_id` and is handed the main session's
+`transcript_path`), the transcript has shown the
 orchestrate skill's opening sentence, and the file being written is inside
 the repository.
 """
@@ -84,6 +85,19 @@ def test_a_subagent_transcript_is_let_through(isolated_tmp, monkeypatch):
     path = transcript(isolated_tmp, marker=True, subdir="proj/session/subagents")
     inside = str(isolated_tmp / "repo" / "wish" / "foo.py")
     assert run(monkeypatch, call(path, inside)) == 0
+
+
+def test_a_subagent_call_with_the_main_transcript_is_let_through(isolated_tmp, monkeypatch):
+    """A subagent's call carries the main session's transcript path, so the
+    `agent_id` field is what tells it apart."""
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(isolated_tmp / "repo"))
+    path = transcript(isolated_tmp, marker=True)
+    inside = str(isolated_tmp / "repo" / "wish" / "foo.py")
+    payload = call(path, inside)
+    assert run(monkeypatch, payload) == 2
+    payload["agent_id"] = "agent-a6f81c9ca893490ad"
+    payload["agent_type"] = "junior-dev"
+    assert run(monkeypatch, payload) == 0
 
 
 def test_a_main_window_transcript_without_the_marker_is_let_through(isolated_tmp, monkeypatch):

@@ -12,8 +12,11 @@ This is a `PreToolUse` hook on `Edit`, `Write`, `MultiEdit` and
 the assistant as the tool's result -- says to send the change out instead,
 when all three hold:
 
-  * the session is the main window, not a subagent, told by `transcript_path`
-    having no `subagents` path component;
+  * the call is the main window's, not a subagent's: a subagent's call
+    carries an `agent_id` in the payload, and Claude Code hands it the main
+    session's `transcript_path`, so that path alone cannot tell the two
+    apart; a `transcript_path` with a `subagents` component is a subagent's
+    too;
   * the transcript has, at some point, shown the orchestrate skill's opening
     sentence, "You are the orchestrator for this session" -- which enters it
     when the skill is invoked or its file is read;
@@ -67,8 +70,17 @@ def edited_path(payload: dict) -> str | None:
     return path or None
 
 
-def is_subagent(transcript_path: str) -> bool:
-    """Whether the transcript belongs to a subagent rather than the main window."""
+def is_subagent(payload: dict) -> bool:
+    """Whether the call is a subagent's rather than the main window's.
+
+    Claude Code adds `agent_id` to a hook payload only inside a subagent
+    call, and gives that call the main session's `transcript_path`, so the
+    path is checked second and only catches a transcript that lives under a
+    `subagents` directory.
+    """
+    if payload.get("agent_id"):
+        return True
+    transcript_path = payload.get("transcript_path") or ""
     return "subagents" in pathlib.PurePath(transcript_path).parts
 
 
@@ -152,7 +164,7 @@ def main() -> int:
     transcript_path = payload.get("transcript_path")
     if not transcript_path:
         return 0
-    if is_subagent(transcript_path):
+    if is_subagent(payload):
         return 0
     file_path = edited_path(payload)
     if not file_path:
