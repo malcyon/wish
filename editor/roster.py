@@ -1,4 +1,4 @@
-"""The party list, and the three kinds of file it can come from.
+"""The party list, and the kinds of file it can come from.
 
 The roster mirrors what the game itself prints: **name, armour class, current
 hit points**, and nothing else. That is not a design preference -- disassembling
@@ -23,16 +23,28 @@ title rather than only the party's, for a disk that mixes two (#553).
 from __future__ import annotations
 
 import logging
+import pathlib
 from dataclasses import dataclass
+from typing import Any
 
-from goldbox import c64_port
+from goldbox import (
+    amiga_later,
+    amiga_por,
+    amiga_savegame,
+    c64_port,
+    dos_codec,
+    dos_port,
+)
 from goldbox.c64_port import C64Container
 from goldbox.c64_save import ICON_TABLE_OFFSET
 from goldbox.d64 import D64
+from goldbox.encoding import combat_value
 from goldbox.icons import ICON_SIZE, Icon, icon_for_slot
+from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER
 from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0, SaveGame1, load_save, looks_occupied
 
+from .convert import _SAVGAM_FILE_RE, AMIGA_SUFFIX, Source
 from .inventory import Inventory
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
@@ -40,12 +52,21 @@ from .inventory import Inventory
 #: `editor` still imports nothing from `wish`.
 _log = logging.getLogger("wish.editor.roster")
 
+#: Where the sixteen item blocks sit in the 580-byte record a conversion
+#: builds -- the span `dos_codec.write_c64_save` copies into a slot's item
+#: page. A save slot stores 256 bytes and none of it.
+_ITEMS_AT = 0x120
+
 
 @dataclass
 class Member:
     """One row of the roster."""
 
-    index: int                       # slot number, or position on a roster disk
+    #: The port's own storage key: the C64 slot (or position on a roster
+    #: disk), the DOS file number 1-6 in `CHRDAT<slot><n>.SAV`, or the Amiga
+    #: file number, or for Curse and Silver Blades the 1-based position of the
+    #: record inside the saved game. Not the marching position.
+    index: int
     record: CharacterRecord
     name: str
     armour_class: int | None = None
@@ -70,6 +91,11 @@ class Member:
     #: means Pool of Radiance**, which is what a `Member` built without one
     #: meant before there was a second title (#78).
     game: C64Container | None = None
+    #: The character as the port itself holds it -- a `DosCharacter`, an
+    #: `AmigaPorCharacter` or an `AmigaCharacter` -- for the write-back to
+    #: patch. None on the C64, whose `record` is the record. `record` and
+    #: `record_original` stay the C64 record the sheet edits on every port.
+    native: Any = None
 
     @property
     def is_npc(self) -> bool:
@@ -191,7 +217,7 @@ class Member:
 class Party:
     """Everything editable in one opened file.
 
-    Three shapes of file all arrive here and produce the same roster:
+    Three shapes of C64 file arrive here and produce the same roster:
 
     * a **save disk** -- one title's save files, up to eight slots;
     * a **roster disk** -- no save games at all, just standalone character
@@ -201,30 +227,93 @@ class Party:
 
     Detection is by what the directory holds, never by the filename of the disk
     -- and that now identifies the *title* as well as the kind of disk.
+
+    A **DOS save** (`SAVGAM<slot>.DAT` and its `CHRDAT<slot><n>.SAV` files) and
+    an **Amiga save disk** open too, from a `Source`. Each character is
+    converted in memory to the C64 record the sheet edits, with no game disk
+    needed, and the port's own record is kept as `Member.native`.
+    `Party.game` is the title's C64 container either way, so every per-title
+    table the sheet reads is the same one.
     """
 
-    def __init__(self, path: str, game: C64Container | None = None, disk=None):
-        """`disk` is an image already in memory, standing in for reading one.
+    def __init__(self, source: "Source | str", game: C64Container | None = None,
+                 disk=None):
+        """`source` is a `Source`, or a path that becomes one.
 
+        A path to a DOS save folder, a `SAVGAM<slot>.DAT` file or an Amiga
+        `.adf` goes through `Source.detect`; any other path is a C64 disk
+        image, opened as it always was -- including a roster disk, which
+        `Source.detect` would refuse for holding no save.
+
+        `disk` is an image already in memory, standing in for reading one.
         The one caller is the DOS import, which builds a converted disk that
         has never been written anywhere and needs the roster read off *it*
         rather than off the template still on disk under `path`. Everything
         else leaves it None and the file is opened as always.
+
+        Raises `dos_codec.WrongTitleError` for a title with no C64 port
+        (Pools of Darkness), which the editor cannot hold.
         """
+        path = str(source.path) if isinstance(source, Source) else str(source)
+        if not isinstance(source, Source):
+            source = self._source_of(path, disk)
+        self.source: Source | None = source
+        self.port = "c64" if source is None else source.port
         self.path = path
-        self.disk = D64.open(path) if disk is None else disk
+        self.disk = None
+        self.save0: SaveGame0 | None = None
+        self.save1: SaveGame1 | None = None
+        self.members: list[Member] = []
+        if self.port == "c64":
+            self._open_c64(source, game, disk)
+        else:
+            self.is_save = True
+            self.game = self._c64_game(source)
+            if self.port == "dos":
+                self._load_dos()
+            else:
+                self._load_amiga()
+
+    @staticmethod
+    def _source_of(path: str, disk) -> "Source | None":
+        """The `Source` a path names, or None for a plain C64 image."""
+        if disk is not None:
+            return None
+        where = pathlib.Path(path)
+        if (where.is_dir() or where.suffix.lower() == AMIGA_SUFFIX
+                or _SAVGAM_FILE_RE.match(where.name)):
+            return Source.detect(where)
+        return None
+
+    def _open_c64(self, source: "Source | None", game, disk) -> None:
+        self.disk = D64.open(self.path) if disk is None else disk
         detected = c64_port.detect(self.disk)
         self.is_save = detected is not None
         self.game = (game or detected
                      or c64_port.detect_from_roster(self.disk)
                      or c64_port.DEFAULT)
-        self.save0: SaveGame0 | None = None
-        self.save1: SaveGame1 | None = None
-        self.members: list[Member] = []
         if self.is_save:
             self._load_save()
         else:
             self._load_standalone()
+
+    @staticmethod
+    def _c64_game(source: "Source") -> C64Container:
+        """The C64 container of a DOS or Amiga save's title.
+
+        Pools of Darkness has none: it never shipped on the C64, so there is
+        no sheet layout, race list or spell table to edit its characters
+        with. The refusal is `WrongTitleError`, which `editor/dosimport.py`
+        raises for the same title and which carries the wording the dialog
+        already shows.
+        """
+        try:
+            return c64_port.by_key(source.title.key)
+        except c64_port.UnknownGameError:
+            raise dos_codec.WrongTitleError(
+                f"{source.title.title} has no C64 port, so goldbox/c64_port.py "
+                f"has no container to edit its characters through",
+                source.title.title) from None
 
     # -- kinds of file ----------------------------------------------------
 
@@ -250,6 +339,91 @@ class Party:
                     member.hp_current = block.hit_points
                     member.hp_max = record.hp_max
             self.members.append(member)
+
+    def _load_dos(self) -> None:
+        """A DOS save's characters, in file order, which is the marching order
+        (`dos_codec.marching_slot`). `Member.index` is the file number, so a
+        gap in `CHRDAT<slot>1`-`6` leaves the others where they are."""
+        folder = pathlib.Path(self.source.path)
+        for number in range(1, 7):
+            path = folder / f"CHRDAT{self.source.slot}{number}.SAV"
+            if not path.exists():
+                continue
+            char = dos_codec.read_character(path)
+            record, _report = dos_codec.to_c64_record(char, icon=None)
+            self._append_converted(number, record, char)
+        if not self.members:
+            raise dos_codec.DosRecordError(
+                f"no CHRDAT{self.source.slot}?.SAV in {folder}")
+
+    def _load_amiga(self) -> None:
+        """An Amiga save's characters, read out of the `.adf` and converted
+        exactly as `editor.convert.AmigaToC64` converts them, minus the game
+        disk it needs for the combat icon."""
+        from goldbox.amiga_adf import AmigaDisk
+
+        disk = AmigaDisk.open(str(self.source.path))
+        slot = self.source.slot
+        if self.source.title.key == dos_port.POOL_OF_RADIANCE.key:
+            for number, char in self._por_characters(disk, slot):
+                record, _report = dos_codec.to_c64_record(
+                    amiga_por.to_dos_character(char), icon=None)
+                self._append_converted(number, record, char)
+        else:
+            save = amiga_savegame.read_slot(disk, slot, self.source.title.key)
+            for number, char in enumerate(save.characters, start=1):
+                record, _report = dos_codec.neutral_to_c64_record(
+                    amiga_later.to_neutral_later(char), icon=None)
+                self._append_converted(number, record, char)
+        if not self.members:
+            raise amiga_savegame.AmigaRecordError(
+                f"slot {slot} holds no characters")
+
+    @staticmethod
+    def _por_characters(disk, slot: str):
+        """`(file number, AmigaPorCharacter)` for each of an Amiga Pool of
+        Radiance slot's character files -- what `amiga_savegame.read_por_slot`
+        reads, before it converts them to DOS records, so the write-back has
+        the Amiga record to patch."""
+        from goldbox.amiga_adf import AmigaDiskError
+
+        drawer = amiga_savegame.por_save_drawer(disk)
+        for number in range(1, amiga_savegame.PARTY_MAX + 1):
+            files = []
+            for suffix in (".sav", ".itm", ".spc"):
+                name = amiga_por.por_filename(slot, number, suffix)
+                try:
+                    files.append(disk.read_file(
+                        amiga_savegame.por_save_path(name, drawer)))
+                except AmigaDiskError:
+                    files.append(None)
+            raw, items, effects = files
+            if raw is None:
+                break
+            yield number, amiga_por.por_character(
+                raw, items or b"", effects or b"",
+                source=f"{disk.volume_name}:{slot}{number}")
+
+    def _append_converted(self, number: int, record: CharacterRecord,
+                          native: Any) -> None:
+        """One roster row for a character converted into `record`.
+
+        The roster columns come off the converted record's own copies of the
+        two derived combat numbers, which is where the C64 conversion puts
+        them into its roster block -- so this row reads what the converted
+        disk's row would.
+        """
+        raw = record.to_bytes()
+        member = Member(
+            number, record, record.name,
+            armour_class=combat_value(record.get("armour_class")),
+            hp_current=record.get("hp_current"),
+            hp_max=record.hp_max,
+            inventory=Inventory.from_blocks(
+                [raw[_ITEMS_AT + n * ITEM_SIZE:_ITEMS_AT + (n + 1) * ITEM_SIZE]
+                 for n in range(ITEMS_PER_CHARACTER)]),
+            record_original=raw, game=self.game, native=native)
+        self.members.append(member)
 
     def _load_standalone(self) -> None:
         """A roster disk: one character per PRG file, no save games.
@@ -302,8 +476,12 @@ class Party:
 
     @property
     def in_save(self) -> bool:
-        """True when edits go into a 256-byte slot rather than a whole record."""
-        return self.is_save
+        """True when edits go into a 256-byte slot rather than a whole record.
+
+        Only a C64 save has that window; a DOS or an Amiga character is held
+        whole, converted in memory.
+        """
+        return self.is_save and self.port == "c64"
 
     def write_items(self) -> None:
         """Push edited item blocks back into the save payload.

@@ -72,12 +72,24 @@ def editable_fields() -> list[Field]:
     return [f for f in LAYOUT if not _is_placeholder(f)]
 
 
-def binding_for(field: Field, *, in_save: bool) -> Binding:
+#: The tooltip a field gets when its port's writer cannot take it. Empty until
+#: Donald words it -- an empty reason greys the box and says nothing.
+UNWRITABLE_REASON = ""
+
+
+def binding_for(field: Field, *, in_save: bool,
+                unwritable: frozenset[str] = frozenset()) -> Binding:
     """Decide whether `field` may be edited in this kind of file.
 
-    `in_save` is True for a slot inside a save disk and False for a standalone
-    `.chr` export, which is the whole 580 bytes.
+    `in_save` is True for a slot inside a C64 save disk and False for anything
+    holding the whole 580 bytes: a standalone `.chr` export, or a party opened
+    from a DOS or an Amiga save, whose record is converted in memory.
+
+    `unwritable` names the fields the open file's own writer cannot take back;
+    they are read-only whatever the record layout allows.
     """
+    if field.name in unwritable:
+        return Binding(field, True, UNWRITABLE_REASON)
     if field.confidence is Confidence.UNKNOWN:
         return Binding(field, True, "not understood; preserved verbatim")
     if in_save and field.offset >= SLOT_BYTES:
@@ -92,8 +104,10 @@ def binding_for(field: Field, *, in_save: bool) -> Binding:
     return Binding(field, False, "")
 
 
-def bindings(*, in_save: bool) -> dict[str, Binding]:
-    return {f.name: binding_for(f, in_save=in_save) for f in editable_fields()}
+def bindings(*, in_save: bool,
+             unwritable: frozenset[str] = frozenset()) -> dict[str, Binding]:
+    return {f.name: binding_for(f, in_save=in_save, unwritable=unwritable)
+            for f in editable_fields()}
 
 
 # -- how wide a box has to be ------------------------------------------------

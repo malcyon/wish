@@ -4396,3 +4396,246 @@ def test_a_ranger_is_shown_no_magic_user_line_until_he_has_a_slot(app, game):
 def test_a_caster_whose_only_lines_are_zero_still_shows_them(app):
     line = _capacity_line({"cleric": (0, 0), "magic-user": (0, 0)})
     assert "cleric: L1 0/0" in line and "magic-user: L1 0/0" in line
+
+
+# --- a party opened from a DOS save or an Amiga save disk --------------------
+#
+# The roster of a DOS or Amiga save is what the same save converted to a C64
+# disk would list, without the conversion: every test that has a converted disk
+# to compare with compares against it, and the ones with no game data build
+# their saves from the writers.
+
+def _roster_rows(party):
+    """What the roster shows for each member, in the order it shows them."""
+    return [(m.name, m.race_name, m.class_name, m.armour_class, m.hp_current,
+             m.hp_max, m.inventory.used) for m in party.members]
+
+
+def _blank_files():
+    """The combat icon and `ANIMATE00` a conversion refuses to run without.
+    Zeros stand in: what is compared is the roster, not the figure."""
+    from editor.dosimport import GameFiles
+    return GameFiles(icon=bytes(36), animate=bytes(852))
+
+
+def _converted_dos_disk(folder, slot, key):
+    from goldbox import c64_port, dos_codec
+    game = c64_port.by_key(key)
+    save0, save1, _report = dos_codec.new_save(
+        folder, slot, bytes(36), bytes(852), game=game)
+    return game, dos_codec.save_disk(bytes(save0), bytes(save1), game)
+
+
+def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3)):
+    """A DOS save folder written from filled neutral characters, no game data.
+    `numbers` are the `CHRDAT<slot><n>` file numbers that exist."""
+    from support.neutralrecords import _filled
+
+    from goldbox import c64_port, dos_codec
+    game = c64_port.by_key(deltas.key)
+    for n in numbers:
+        char = _filled(game)
+        char.set("name", f"HERO{n}", "made up", Confidence.CONFIRMED,
+                 c64_codec.Provenance.RESHAPED)
+        record, itm, spc, _rep = dos_codec.write(char, deltas=deltas)
+        (tmp_path / f"CHRDATA{n}.SAV").write_bytes(record)
+        (tmp_path / f"CHRDATA{n}.ITM").write_bytes(itm)
+        (tmp_path / f"CHRDATA{n}.SPC").write_bytes(spc)
+    (tmp_path / "SAVGAMA.DAT").write_bytes(b"")
+    return tmp_path
+
+
+def test_a_dos_party_opens_with_no_disk_and_no_slot_window(tmp_path):
+    from goldbox import dos_codec, dos_port
+    for deltas in (dos_port.POOL_OF_RADIANCE, dos_port.CURSE_OF_THE_AZURE_BONDS,
+                   dos_port.SECRET_OF_THE_SILVER_BLADES):
+        folder = tmp_path / deltas.key
+        folder.mkdir()
+        _synthetic_dos_folder(folder, deltas)
+        party = Party(str(folder))
+        assert party.port == "dos"
+        assert party.source.slot == "A"
+        assert party.game.key == deltas.key
+        assert party.disk is None and party.save0 is None
+        assert not party.in_save          # a whole record, not a 256-byte slot
+        assert [m.name for m in party.members] == ["HERO1", "HERO2", "HERO3"]
+        assert all(isinstance(m.native, dos_codec.DosCharacter)
+                   for m in party.members)
+        assert all(m.icon is None for m in party.members)
+        assert all(m.inventory is not None and len(m.inventory) == 16
+                   for m in party.members)
+
+
+def test_a_dos_member_is_keyed_by_its_file_number_not_its_position(tmp_path):
+    """A gap in `CHRDATA1`-`6` leaves the others' numbers where they are, since
+    the number is what a write-back has to name."""
+    from goldbox import dos_port
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE, numbers=(1, 3, 6))
+    party = Party(str(tmp_path / "SAVGAMA.DAT"))
+    assert [m.index for m in party.members] == [1, 3, 6]
+    assert [m.name for m in party.members] == ["HERO1", "HERO3", "HERO6"]
+
+
+def test_a_dos_party_can_be_opened_from_a_source(tmp_path):
+    from editor.convert import Source
+    from goldbox import dos_port
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    party = Party(Source.detect(tmp_path))
+    assert len(party) == 3 and party.path == str(tmp_path)
+
+
+def test_pools_of_darkness_cannot_be_opened_and_the_refusal_is_catchable(tmp_path):
+    """No C64 port, so no sheet layout to edit its characters through."""
+    from goldbox import dos_codec, dos_port
+    (tmp_path / "CHRDATA1.SAV").write_bytes(
+        bytes(dos_port.POOLS_OF_DARKNESS.record_size))
+    (tmp_path / "SAVGAMA.PTY").write_bytes(b"")
+    with pytest.raises(dos_codec.WrongTitleError) as refused:
+        Party(str(tmp_path))
+    assert refused.value.title == dos_port.POOLS_OF_DARKNESS.title
+
+
+def test_an_amiga_curse_party_opens_from_its_adf(tmp_path):
+    from support.amigasavegame import synthetic_curse
+
+    from goldbox import amiga_later, amiga_savegame
+    disk = amiga_savegame.make_save_disk(
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA", "BETA")))
+    path = tmp_path / "curse.adf"
+    disk.save(str(path))
+    party = Party(str(path))
+    assert party.port == "amiga" and not party.in_save
+    assert party.game.key == "curse-of-the-azure-bonds"
+    assert [(m.index, m.name) for m in party.members] == [(1, "ALPHA"),
+                                                          (2, "BETA")]
+    assert all(isinstance(m.native, amiga_later.AmigaCharacter)
+               for m in party.members)
+
+
+def test_an_amiga_pool_party_opens_from_its_adf(tmp_path):
+    from support.neutralrecords import _filled
+
+    from goldbox import amiga_por, amiga_savegame, c64_port
+    pool = c64_port.by_key("pool-of-radiance")
+    savgam = bytearray(amiga_savegame.POR_SAVEGAME_SIZE)
+    at = amiga_savegame.POOL_OF_RADIANCE.party_at
+    savgam[at:at + 8] = b"CHRDATA1"       # the table `retarget_savegame` needs
+    disk = amiga_savegame.make_por_save_disk("A", [_filled(pool)],
+                                             bytes(savgam))
+    path = tmp_path / "pool.adf"
+    disk.save(str(path))
+    party = Party(str(path))
+    assert party.port == "amiga" and party.game.key == "pool-of-radiance"
+    assert [m.index for m in party.members] == [1]
+    assert isinstance(party.members[0].native, amiga_por.AmigaPorCharacter)
+
+
+def test_an_amiga_disk_that_holds_no_save_is_refused_by_the_source_it_needs(tmp_path):
+    from editor.convert import ConvertError
+    from goldbox.amiga_adf import AmigaDisk
+    path = tmp_path / "blank.adf"
+    AmigaDisk.blank("EMPTY").save(str(path))
+    with pytest.raises(ConvertError):
+        Party(str(path))
+
+
+def test_a_c64_path_still_opens_as_a_c64_party(party):
+    """`party` is the synthetic save disk from the fixture above."""
+    opened = Party(str(party))
+    assert opened.port == "c64" and opened.in_save
+    assert opened.source is None and opened.disk is not None
+    assert all(m.native is None for m in opened.members)
+
+
+def test_an_inventory_built_from_blocks_holds_sixteen_slots_and_writes_nowhere():
+    from editor.inventory import Inventory
+    blocks = [bytes(16)] * 16
+    inventory = Inventory.from_blocks(blocks)
+    assert len(inventory) == 16 and inventory.used == 0 and not inventory.changed
+    assert inventory.base is None
+    with pytest.raises(ValueError):
+        inventory.write_into(bytearray(0x8000))
+    with pytest.raises(ValueError):
+        Inventory.from_blocks(blocks[:15])
+    with pytest.raises(ValueError):
+        Inventory.from_blocks([bytes(15)] * 16)
+
+
+def test_an_unwritable_field_is_read_only_whatever_the_layout_allows():
+    gold = next(f for f in editable_fields() if f.name == "gold")
+    assert not binding_for(gold, in_save=False).read_only
+    assert binding_for(gold, in_save=False,
+                       unwritable=frozenset({"gold"})).read_only
+    assert not binding_for(gold, in_save=False,
+                           unwritable=frozenset({"silver"})).read_only
+    assert bindings(in_save=False,
+                    unwritable=frozenset({"gold"}))["gold"].read_only
+
+
+def _dos_save_dir():
+    from support.dossave import _save_dir
+    where = _save_dir()
+    if where is None:
+        pytest.skip("needs a DOS save; set FR_ARCHIVES")
+    return where
+
+
+def test_a_dos_save_lists_the_roster_its_converted_disk_lists():
+    """The comparison the issue names: the same party, once opened straight and
+    once through the conversion to a C64 disk."""
+    folder = _dos_save_dir()
+    straight = Party(str(folder / "SAVGAMA.DAT"))
+    game, disk = _converted_dos_disk(folder, "A", "pool-of-radiance")
+    converted = Party("", game=game, disk=disk)
+    assert len(straight) == len(converted) == 6
+    assert _roster_rows(straight) == _roster_rows(converted)
+
+
+def _dos_specimen_folders():
+    from gamedata import specimen_root
+    root = specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree")
+    found = {}
+    for key, pattern in (("curse-of-the-azure-bonds",
+                          "por-dos/WISH-SPEC-curse-234-engine-resave"),
+                         ("secret-of-the-silver-blades",
+                          "ssb-dos/WISH-SPEC-ssb-52-dialog-converted-resave")):
+        folder = root / pattern
+        if folder.is_dir():
+            found[key] = folder
+    if not found:
+        pytest.skip("needs a Curse or a Silver Blades DOS specimen")
+    return found
+
+
+def test_a_later_title_dos_save_lists_the_roster_its_converted_disk_lists():
+    for key, folder in _dos_specimen_folders().items():
+        straight = Party(str(folder))
+        game, disk = _converted_dos_disk(folder, straight.source.slot, key)
+        converted = Party("", game=game, disk=disk)
+        assert len(straight) == len(converted) > 0, key
+        assert _roster_rows(straight) == _roster_rows(converted), key
+
+
+def test_an_amiga_pool_save_lists_the_roster_its_converted_disk_lists():
+    from gamedata import specimen_root
+
+    from editor import convert
+    from editor.convert import Source
+    root = specimen_root()
+    image = (None if root is None else root / "por-amiga"
+             / "WISH-SPEC-por-amiga-slums-resave" / "poolsave-c64-after-C.adf")
+    if image is None or not image.is_file():
+        pytest.skip("needs the Amiga Pool of Radiance specimen")
+    source = Source.detect(image, slot="C")
+    straight = Party(source)
+    direction = next(d for d in convert.DIRECTIONS
+                     if type(d) is convert.AmigaToC64
+                     and d.source_key == "pool-of-radiance")
+    rehearsal = direction.rehearse(source, "C", _blank_files())
+    from goldbox.d64 import D64
+    disk = D64.from_bytes(next(iter(rehearsal.files.values())))
+    converted = Party("", game=direction.destination_game, disk=disk)
+    assert len(straight) == len(converted) > 0
+    assert _roster_rows(straight) == _roster_rows(converted)

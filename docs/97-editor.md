@@ -344,18 +344,28 @@ Note the AC and HP columns come from **`SAVEDGAME1`, not the character record**
 files open at once, which `goldbox/savegame.py` already models with `SaveGame0` and
 `SaveGame1`.
 
-### Three kinds of file open into the same roster
+### Five kinds of file open into the same roster
 
 | file | roster shows |
 |---|---|
 | a save disk | up to 8 slots; occupied ones only, in slot order |
 | a `.chr` export | one row, and the list is inert |
 | a **roster disk** | one row per standalone character file on the disk |
+| a **DOS save** (`SAVGAM<slot>.DAT` and its `CHRDAT<slot><n>.SAV` files) | one row per character file, in file order, which is the marching order; a member's number is its file number `<n>` |
+| an **Amiga save disk** (`.adf`) | one row per character of the chosen slot, in the game's own order; a member's number is its file number (Pool of Radiance) or its 1-based position in the saved game (Curse, Silver Blades) |
 
 The third is real and easy to miss: `PORSAVE10.D64` has **no `SAVEDGAME0` and no
 `SAVEDGAME1`** -- it is eight `\x01NAME` files and nothing else. An editor that
 assumes a save disk always has `SAVEDGAME0` will fail on it. Detect by what the
 directory holds, not by the filename.
+
+A DOS or an Amiga party is converted in memory to the same C64 record the
+sheet already edits, through the conversion's own codecs and with no game disk
+(the combat figure is left blank), and the port's own record rides along as
+`Member.native` for the write-back. Armour class and hit points come off that
+converted record, so the roster reads what the converted `.d64` would.
+`Party.game` is still the title's `C64Container`, so no per-title table
+changes. Pools of Darkness has no C64 port and is refused.
 
 For a roster disk and a `.chr` there are no `SAVEDGAME1` blocks, so AC and HP
 have nowhere to come from. Show them blank rather than inventing them, and grey

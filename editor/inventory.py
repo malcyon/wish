@@ -18,6 +18,8 @@ picking a template, never filling in fields.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
@@ -65,9 +67,36 @@ class Inventory:
         self.names = names
         self.base = (ITEM_AREA_BASE - SAVE0_LOAD_ADDRESS
                      + slot * ITEM_BLOCK_STRIDE)
-        self.raws = [bytes(payload[self.base + n * ITEM_SIZE:
-                                   self.base + (n + 1) * ITEM_SIZE])
-                     for n in range(ITEMS_PER_CHARACTER)]
+        self._hold([bytes(payload[self.base + n * ITEM_SIZE:
+                                  self.base + (n + 1) * ITEM_SIZE])
+                    for n in range(ITEMS_PER_CHARACTER)])
+
+    @classmethod
+    def from_blocks(cls, raws: Sequence[bytes],
+                    names: dict[int, str] | None = None) -> "Inventory":
+        """The sixteen slots from item blocks already in hand, for a party
+        opened from a DOS or an Amiga save.
+
+        Those saves keep no `SAVEDGAME0` payload for `__init__` to slice, so
+        the blocks come from the converted character instead. `slot` and
+        `base` stay None: there is no payload to write back into, and
+        `write_into` says so rather than patching offset zero of something
+        else.
+        """
+        if len(raws) != ITEMS_PER_CHARACTER:
+            raise ValueError(f"a character carries {ITEMS_PER_CHARACTER} item "
+                             f"slots, got {len(raws)}")
+        if any(len(r) != ITEM_SIZE for r in raws):
+            raise ValueError(f"an item block is {ITEM_SIZE} bytes")
+        self = cls.__new__(cls)
+        self.slot = None
+        self.names = names
+        self.base = None
+        self._hold([bytes(r) for r in raws])
+        return self
+
+    def _hold(self, raws: list[bytes]) -> None:
+        self.raws = raws
         self.original = list(self.raws)
         # #285 (The C64's Ring of Fire Resistance grants nothing, and Wish
         # should repair it on conversion and on an editor save): repair a
@@ -160,6 +189,9 @@ class Inventory:
 
     def write_into(self, payload: bytearray) -> None:
         """Patch this character's block into a SAVEDGAME0 payload."""
+        if self.base is None:
+            raise ValueError("this inventory was built from item blocks and "
+                             "has no SAVEDGAME0 slot to write into")
         payload[self.base:self.base + ITEM_BLOCK_STRIDE] = b"".join(self.raws)
 
 
