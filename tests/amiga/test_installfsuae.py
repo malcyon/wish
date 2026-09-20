@@ -30,6 +30,12 @@ from tools.amiga import installfsuae  # noqa: E402
 
 ROOT = installfsuae.MEMBER_ROOT
 
+#: The installer only runs on Linux.  Windows has no 0o755 directory mode, no
+#: exec bit, refuses to rename a directory onto another, and needs a privilege
+#: to make a symlink.
+posix_only = pytest.mark.skipif(sys.platform == "win32",
+                                reason="POSIX modes, directory renames and symlinks")
+
 
 def build(path: pathlib.Path, members: dict[str, bytes | tarfile.TarInfo]) -> str:
     """Write a gzipped tar of name -> content and return its SHA-256."""
@@ -152,6 +158,7 @@ def test_a_link_or_a_device_under_the_root_is_refused(tmp_path, kind):
     assert not (tmp_path / "into").exists()
 
 
+@posix_only
 def test_only_the_emulator_directory_is_unpacked(tmp_path):
     tarball = tmp_path / "good.tgz"
     build(tarball, good_members())
@@ -206,6 +213,7 @@ def test_a_name_clash_mid_extraction_leaves_no_staging_directory(tmp_path):
     assert list(parent.iterdir()) == []
 
 
+@posix_only
 def test_the_install_is_readable_by_everyone(tmp_path):
     """`mkdtemp` makes 0700, and the staging directory becomes the install."""
     tarball = tmp_path / "good.tgz"
@@ -267,6 +275,7 @@ def test_extract_also_refuses_a_directory_without_the_binary(tmp_path):
     assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".")] == []
 
 
+@posix_only
 def test_an_earlier_install_is_replaced_whole(tmp_path):
     tarball = tmp_path / "good.tgz"
     build(tarball, good_members())
@@ -282,28 +291,99 @@ def test_an_earlier_install_is_replaced_whole(tmp_path):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["good.tgz", "into"]
 
 
-def test_a_failed_replacement_puts_the_earlier_install_back(tmp_path, monkeypatch):
+def an_earlier_install(tmp_path):
     tarball = tmp_path / "good.tgz"
     build(tarball, good_members())
     into = tmp_path / "into"
     into.mkdir()
     (into / installfsuae.BINARY).write_bytes(b"old")
     (into / "kept").write_bytes(b"still here")
+    return tarball, into
+
+
+def assert_earlier_install_untouched(tmp_path, into):
+    assert (into / installfsuae.BINARY).read_bytes() == b"old"
+    assert (into / "kept").read_bytes() == b"still here"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["good.tgz", "into"]
+
+
+# A Ctrl-C is a KeyboardInterrupt, which is not an Exception: the handlers must
+# put the earlier install back for it as much as for a failed disk.
+@posix_only
+@pytest.mark.parametrize("error", [OSError("disk went away"), KeyboardInterrupt()])
+def test_a_failed_replacement_puts_the_earlier_install_back(tmp_path, monkeypatch, error):
+    tarball, into = an_earlier_install(tmp_path)
     real_rename = pathlib.Path.rename
 
     def rename(self, target):
         if self.name.startswith(".unpack-"):
-            raise OSError("disk went away")
+            raise error
         return real_rename(self, target)
 
     monkeypatch.setattr(pathlib.Path, "rename", rename)
 
-    with pytest.raises(OSError, match="disk went away"):
+    with pytest.raises(type(error)):
         installfsuae.extract(tarball, into)
 
-    assert (into / installfsuae.BINARY).read_bytes() == b"old"
-    assert (into / "kept").read_bytes() == b"still here"
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["good.tgz", "into"]
+    assert_earlier_install_untouched(tmp_path, into)
+
+
+@posix_only
+@pytest.mark.parametrize("error", [OSError("disk went away"), KeyboardInterrupt()])
+def test_a_failure_moving_the_earlier_install_aside_leaves_nothing_behind(
+        tmp_path, monkeypatch, error):
+    tarball, into = an_earlier_install(tmp_path)
+    real_rename = pathlib.Path.rename
+
+    def rename(self, target):
+        if self == into:
+            raise error
+        return real_rename(self, target)
+
+    monkeypatch.setattr(pathlib.Path, "rename", rename)
+
+    with pytest.raises(type(error)):
+        installfsuae.extract(tarball, into)
+
+    assert_earlier_install_untouched(tmp_path, into)
+
+
+@posix_only
+def test_an_interrupt_just_after_the_earlier_install_moved_aside_puts_it_back(
+        tmp_path, monkeypatch):
+    """The move has happened when the Ctrl-C lands, so the aside directory is not empty."""
+    tarball, into = an_earlier_install(tmp_path)
+    real_rename = pathlib.Path.rename
+
+    def rename(self, target):
+        result = real_rename(self, target)
+        if self == into:
+            raise KeyboardInterrupt
+        return result
+
+    monkeypatch.setattr(pathlib.Path, "rename", rename)
+
+    with pytest.raises(KeyboardInterrupt):
+        installfsuae.extract(tarball, into)
+
+    assert_earlier_install_untouched(tmp_path, into)
+
+
+@posix_only
+def test_a_broken_link_at_the_versioned_path_is_refused_and_named(tmp_path):
+    parent = tmp_path / "share"
+    parent.mkdir()
+    link = installfsuae.install_dir(parent)
+    link.symlink_to(tmp_path / "nowhere")
+    fetch, digest = fetcher(tmp_path, good_members())
+
+    with pytest.raises(ValueError, match="broken link") as raised:
+        installfsuae.install(parent, fetch=fetch, expected=digest)
+
+    assert str(link) in str(raised.value)
+    assert fetch.calls == []
+    assert link.is_symlink()
+    assert [p.name for p in parent.iterdir()] == [link.name]
 
 
 # --- what a download may be
@@ -346,6 +426,62 @@ def test_a_download_larger_than_the_cap_is_refused_and_deleted(tmp_path):
         installfsuae.download("https://example.org/a.tgz", to, opener=opener, limit=10)
 
     assert not to.exists()
+
+
+class CountingReply:
+    """A reply that hands out `supply` bytes and counts how many it has."""
+
+    def __init__(self, supply: int):
+        self.left = supply
+        self.handed_out = 0
+
+    def read(self, size=-1):
+        size = self.left if size is None or size < 0 else min(size, self.left)
+        self.left -= size
+        self.handed_out += size
+        return b"x" * size
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_a_download_over_the_cap_is_refused_before_the_whole_body_is_read(tmp_path):
+    """A hostile mirror serving gigabytes must be cut off, not buffered and then judged."""
+    block = 1 << 20  # `download` reads this much at a time
+    limit = block - 1
+    reply = CountingReply(4 * block)
+
+    class Opener:
+        def open(self, url, timeout=None):
+            return reply
+
+    to = tmp_path / "out.tgz"
+
+    with pytest.raises(ValueError, match="larger than"):
+        installfsuae.download("https://example.org/a.tgz", to, opener=Opener(), limit=limit)
+
+    assert reply.handed_out <= block + limit
+    assert not to.exists()
+
+
+def test_a_download_with_no_opener_given_refuses_a_redirect_away_from_https(
+        tmp_path, monkeypatch):
+    real = urllib.request.build_opener
+    built = []
+
+    def spy(*handlers):
+        built.append(real(*handlers))
+        return FakeOpener(b"data")
+
+    monkeypatch.setattr(urllib.request, "build_opener", spy)
+
+    installfsuae.download("https://example.org/a.tgz", tmp_path / "out.tgz")
+
+    assert any(isinstance(handler, installfsuae.HttpsOnlyRedirect)
+               for handler in built[0].handlers)
 
 
 def test_a_download_exactly_at_the_cap_is_kept(tmp_path):

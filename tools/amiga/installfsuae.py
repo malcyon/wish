@@ -114,6 +114,8 @@ def check_replaceable(into: pathlib.Path) -> None:
     Whatever else is there was not put there by this script, and `--into`
     can name any directory a person has.
     """
+    if into.is_symlink() and not into.exists():
+        raise ValueError(f"Refusing to replace {into}: it is a broken link")
     if into.exists() and not (into / BINARY).exists():
         raise ValueError(f"Refusing to replace {into}: it does not contain "
                          f"{BINARY}, so this script did not create it")
@@ -128,7 +130,12 @@ def replace_dir(staging: pathlib.Path, into: pathlib.Path) -> None:
     try:
         into.rename(aside)
     except BaseException:
-        aside.rmdir()
+        # An interrupt can land after the move has happened, so `aside` may
+        # hold the install rather than nothing.
+        if into.exists():
+            aside.rmdir()
+        else:
+            aside.rename(into)
         raise
     try:
         staging.rename(into)
