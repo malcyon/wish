@@ -8,6 +8,12 @@ node keeps `type_index` -- so the hypothesis this tool tests is that the
 twenty bytes are the same seventeen DOS item fields, in the same order,
 through :data:`goldbox.amiga_port.AMIGA_LATER_ITEM_SHIFTS`.
 
+**The hypothesis held and `goldbox.amiga_pod` implements it** (#462):
+`PodCharacter.items` walks the same region through the same map, and
+`pod_to_neutral` converts it.  This stays as the second reading -- it reaches
+the shift map through `goldbox.amiga_port` directly, where the codec keeps its
+own table -- and as the printout a person reads when a record looks wrong.
+
 It reads the `.pc` files out of the disk images `tools/amiga/amigasaves.py` finds,
 read-only, and prints every item's fields beside the sanity each one has to
 pass.  Nothing of the game's is written anywhere.

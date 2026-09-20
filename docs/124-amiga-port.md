@@ -1802,12 +1802,13 @@ name `goldbox.dos_port.POOLS_OF_DARKNESS` gives the field.
 | `0x191` | **1** | `hp_current` | importer |
 | `0x192` | 1 | `movement_current` | importer |
 
-**`attack_level` is the one field of the record still unlocated.** Silver
-Blades keeps it at Amiga `0x080` and the importer does not copy it; Pools of
-Darkness' `0x080` is `paladin_cures` and its `0x082` is `icon_dimension`, with
-`hp_max` between them, so the field is not merely displaced. DOS Pools of
-Darkness holds 0 in 12 of 12 of its own, so nothing observable is lost. The
-bytes nothing claims are `0x07E`, `0x0CB` and `0x193`.
+**`attack_level` was the one field of the record still unlocated, and §1.18
+settles it: this title has none.** Silver Blades keeps it at Amiga `0x080` and
+the importer does not copy it; Pools of Darkness' `0x080` is `paladin_cures`
+and its `0x082` is `icon_dimension`, with `hp_max` between them, so the field
+is not merely displaced — the engine indexes its attack table with the class
+level and keeps no fighting level anywhere. The bytes nothing claims are
+`0x07E`, `0x0CB` and `0x193`.
 
 #### Three things the map corrected
 
@@ -1848,18 +1849,106 @@ weaker specimen than it looks.
 
 #### What it leaves
 
-`goldbox.amiga_pod.pod_to_neutral` fills **61 of the 75 neutral fields** where it
-filled 38. Of the fourteen it does not: nine are fields *this title* has on
-neither port (four coins, `levels_drained`, `hp_lost_to_drain`,
-`experience_per_hit_point`, `infravision`, `turn_power`), three are the item
-and effect regions the reader does not walk yet, one is `attack_level`, and
-one is `npc_control_byte`, which a player character does not have.
+`goldbox.amiga_pod.pod_to_neutral` filled **61 of the 75 neutral fields** after
+this run, where it filled 38, and §1.18 takes it to 63. Of the fourteen it did
+not fill then: nine are fields *this title* has on neither port (four coins,
+`levels_drained`, `hp_lost_to_drain`, `experience_per_hit_point`,
+`infravision`, `turn_power`), three were the item and effect regions the
+reader had not been taught to walk, one was `attack_level`, and one is
+`npc_control_byte`, which a player character does not have.
 
 **The writer is untouched and still emits zero for all 27**, which is
 `#475 (The Amiga Pools of Darkness writer leaves 27 decoded fields zero, and
 one of them may mark a converted character as out of the party)` — including
 `active`, where 19 of 19 records the game wrote hold 1 and this writer leaves
 the other two ports' out-of-the-party value.
+
+### 1.18 The tail, walked, and the attack table that has no field (#462 (Decode the rest of the Amiga Pools of Darkness .pc: 37 of 75 neutral fields have no home in it, so a converted character loses his spells and possessions))
+
+§1.16 read the loader and §1.17 the record; this is the reader catching up
+with both. `goldbox.amiga_pod.pod_to_neutral` walks the item region and the
+effect chain, so a character read off an Amiga disk arrives in DOS with his
+own possessions and his running magic instead of nothing:
+`goldbox.dos_codec.write` builds him a `.THG` of four, five or six items and
+an `.EFX` where the file had one.
+
+#### What the reader is checked against
+
+Every row is a test in `tests/amiga/test_podamiga_regions.py`, over every
+`Save/*.pc` on the player's own disks — 19 files, 93 items and 11 effect
+nodes on this machine.
+
+| claim | sample |
+|---|---|
+| `money + Σ(weight × max(quantity, 1))` is the stored encumbrance word at `0x056` | **19 of 19**, at three distinct totals: 601, 960, 371 |
+| every item decodes in range — `readied` a flag, `hidden` and `cursed` 0, `plus` 1-6, the three insertion pads zero | **93 of 93** |
+| `404 + 20 × items + 20 × scroll nodes + 10 × effects` is the file's own length, walking the effect chain rather than dividing the remainder | **19 of 19** |
+| an effect node re-cuts to DOS's `<id> 00 00 FF 00` and a NULL next | **11 of 11** |
+
+#### Two things in the region nothing had noted
+
+* **A scroll's chained nodes have nowhere to go.** §1.16 row 3: an item whose
+  `type_index` is `0x49` is followed by its own `quantity` further twenty-byte
+  nodes, each carrying three more spell ids. No item in the nineteen files is
+  a scroll — `type_index` reads 5, 8, 15, 18, 22, 28, 29, 30, 36, 37, 40, 50
+  and 59 across the 93 — so nothing has ever been lost here, and a reader
+  that walked twenty bytes an item regardless would have read the first
+  chained node as the next item. The reader follows the chain and counts the
+  nodes onto the drop list rather than converting them.
+* **An effect still counting down has no neutral field at all.** The
+  vocabulary keeps `innate_effects` and `granted_effects`, both of which are
+  what never expires. The duration word is zero in 11 of 11 nodes here, so
+  no record on any disk has one; the nodes at duration zero are converted and
+  a count of any others goes to the drop list.
+
+#### `attack_level`: the engine works it out and stores nothing
+
+**Two routines fill `thac0_base` at `0x07F` and both index one attack table
+with the class level.** The derived-fields rebuild at `0x03C238` walks the
+seven class slots, asks `0x03D046` for each one's level — which returns
+`max(class_levels[i], former_class_levels[i])`, so a dual-classed character
+keeps the fighting level he earned — caps it at 21 and keeps the best entry
+of `data + 0x1DE0`, a table of seven rows of 22 bytes in the family's stored
+`60 - THAC0` form. Character creation does the same at `0x00EF82`, on its own
+global, with no cap. **Neither reads any other byte of the record.**
+
+```
+03c26a: muls.w #$16, d0           ; 22 bytes a class row
+03c274: lea.l  -$621e(a4), a0     ; the attack table, data+0x1DE0
+03c278: move.b (a0, d0.l), d0     ; row[level]
+03c27c: cmp.b  $7f(a2), d0        ; keep the best
+03c294: move.b (a0, d0.l), $7f(a2)
+```
+
+The arithmetic reproduces the stored `thac0_base` byte of **19 of 19** `.pc`
+files — single-classed, dual-classed and the two multi-classed ones — so the
+reading is corroborated by every record on the disks and not by the listing
+alone. `tools/amiga/podimportmap.py --thac0` prints the table off the
+player's own executable and runs the check.
+
+So the record's last UNKNOWN is not a field nobody has found: **Pools of
+Darkness keeps no `attack_level`**, and the reader names it as a field the
+title has on neither port rather than as one still unlocated. It bears on
+`#527 (Every Gold Box engine keeps a fighting level in attack_level and our
+Pools of Darkness conversion writes 0)` from the other side: DOS Pools of
+Darkness holds 0 at `0x130` in 52 of 52 records, which is this same engine
+keeping no fighting level.
+
+#### What it leaves
+
+`pod_to_neutral` fills **63 of the 75 neutral fields**, and 64 for a character
+with an effect running on him, since `granted_effects` is set only when there
+is one. The eleven it names on `pod_read_dropped()`: nine this title stores on
+neither port, `attack_level` above, and `innate_effects` — a label rather than
+a byte, because which node is an innate property of the race or the class and
+which a readied item granted cannot be told apart for this title, the same
+unknown that binds Curse and Silver Blades. The twelfth name absent from a
+converted character is `npc_control_byte`, which a player character has not
+got.
+
+**The single unapproved warning is gone rather than reworded.** It said the
+part of the file holding possessions and running magic had not been read, and
+that stopped being true.
 
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 

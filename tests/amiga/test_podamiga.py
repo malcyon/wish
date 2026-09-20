@@ -18,11 +18,13 @@ What is tested, hardest evidence first.
   ports' own files.
 * **The round trips**, each with its own count: a `.pc` read and written back,
   and a DOS record converted into a `.pc`.
-* **The negative result**, stated as a number rather than a shrug: 37 of the
-  75 neutral fields have no located home in the `.pc`, so a character
-  converted *out* of the Amiga arrives in DOS with no spellbook and no
-  possessions. It is a test because a later reader must not mistake the route
-  existing for the route being finished.
+* **The count of what the reader fills**, stated as a number rather than a
+  shrug. It was 38 of the 75 neutral fields when this file was written and 37
+  had no located home in the `.pc`, so a character converted *out* of the
+  Amiga arrived in DOS with no spellbook and no possessions; `#462` decoded
+  the record off the engine's own Silver Blades importer and then taught the
+  reader the item region and the effect chain, and the count is pinned here so
+  that it moves when somebody decodes another region rather than drifting.
 
 **The specimens are the twelve genuine `.pc` files in the `Save` drawer of
 Amiga Pools of Darkness disk 3**, read out of the player's own `.adf` at run
@@ -408,13 +410,14 @@ def test_a_caster_read_out_of_a_pc_reaches_dos_with_his_spellbook():
         out = amiga_pod.pod_to_neutral(raw)
         rec, itm, spc, _report = dos_codec.write(out)
         assert len(rec) == POD.record_size, name
-        assert itm == b"" and spc == b"", name
+        # **`itm` and `spc` were both empty until the second half of `#462`**,
+        # when this reader learned to walk the item region and the effect
+        # chain; `tests/amiga/test_podamiga_regions.py` is where the two are
+        # checked field by field.
+        assert itm != b"", name
         back = dos_codec.DosCharacter(rec)
         assert back.spells_known == out.get("spells_known"), name
         assert back.get("thac0_base") == out.get("thac0_base"), name
-        # Still true, and still the reason nothing offers this direction:
-        # the item region is decoded and this reader does not walk it.
-        assert back.get("item_count") == 0, name
         if back.spells_known:
             casters += 1
         seen += 1
@@ -460,40 +463,59 @@ def test_the_amiga_spellbook_is_the_dos_spellbook_for_the_same_character():
     assert extra == 3, extra
 
 
-def test_the_reader_says_out_loud_what_it_could_not_read():
-    """One sentence, not thirty-seven, and it is marked as awaiting Donald's
-    wording. A conversion that says nothing about a character arriving
-    without his spells is the silence `.claude/rules/conversions.md`
-    forbids.
+def test_the_reader_has_nothing_left_to_say_to_a_player():
+    """**The one unapproved warning is gone, and nothing replaced it.**
+
+    It said the part of the file holding possessions and running magic had
+    not been read. The reader walks the item region and the effect chain
+    now, so the sentence had stopped being true -- and a sentence to a player
+    in place of the thing it describes is what
+    `.claude/rules/conversions.md` forbids in the first place.
+
+    What is left is eleven names on `pod_read_dropped()`, which goes to
+    `wish/debuglog.py`: nine fields this title has on neither port,
+    `innate_effects` -- a label rather than a byte, since everything that
+    never expires is converted as a grant -- and `attack_level`, the one
+    field of the record still unlocated.
     """
-    dropped = amiga_pod.pod_read_dropped()
-    assert len(dropped) == 13, len(dropped)
+    dropped = dict(amiga_pod.pod_read_dropped())
+    assert len(dropped) == 11, sorted(dropped)
+    assert "inventory" not in dropped
+    assert "granted_effects" not in dropped
+    assert {"innate_effects", "attack_level"} <= set(dropped)
     for name, raw in pc_records():
         out = amiga_pod.pod_to_neutral(raw)
-        said = [w for w in out.warnings if "(NOT APPROVED)" in w]
-        assert len(said) == 1, name
-        assert "possessions" in said[0], name
-        break
+        assert [w for w in out.warnings if "(NOT APPROVED)" in w] == [], name
+        assert out.warnings == [], name
 
 
-def test_the_reader_fills_sixty_two_of_the_neutral_records_fields():
+def test_the_reader_fills_sixty_three_of_the_neutral_records_fields():
     """The count that says how far the Amiga decode has got, pinned so it
     moves when somebody decodes another region rather than drifting.
 
-    **38 until `#462` and 62 now**, of 75. Twelve of the thirteen it does
-    not fill are named in `POD_READ_DROPPED` -- nine of them fields this
-    *title* has on neither port, three the item and effect regions this
-    reader does not walk yet, and one, `attack_level`, the only field in the
-    record still unlocated. The thirteenth is `npc_control_byte`, which is
-    set only for a companion and so is absent from a player character rather
-    than dropped, exactly as it is absent from a DOS one.
+    **38 when this reader was written, 62 when `#462` decoded the record and
+    63 now the tail is walked**, of 75 -- 64 for a character with an effect
+    running on him, since `granted_effects` is set only when there is one,
+    the same way the Curse and Silver Blades reader sets it. On this machine
+    that is twelve characters at 63 and seven at 64.
+
+    The two it never fills: `npc_control_byte`, which is set only for a
+    companion and so is absent from a player character rather than dropped,
+    exactly as it is absent from a DOS one, and `granted_effects` for a
+    character with nothing running on him.
     """
+    counts: dict[int, int] = {}
     for _name, raw in pc_records():
         out = amiga_pod.pod_to_neutral(raw)
-        assert len(out.fields) == 62, sorted(out.fields)
+        effects = amiga_pod.PodCharacter.from_bytes(raw).effects
+        assert len(out.fields) == 63 + bool(effects), sorted(out.fields)
         named = set(out.fields) | {n for n, _ in amiga_pod.pod_read_dropped()}
-        assert set(neutral.FIELDS) - named == {"npc_control_byte"}
-        break
+        assert set(neutral.FIELDS) - named == (
+            {"npc_control_byte"} if effects
+            else {"npc_control_byte", "granted_effects"})
+        counts[len(out.fields)] = counts.get(len(out.fields), 0) + 1
+    assert sum(counts.values()) >= 12, counts
+    assert counts.get(63), counts
 
 
 # --- the engine's own account of its record, read off the player's disk ------
@@ -529,3 +551,57 @@ def test_every_offset_matches_the_engines_own_silver_blades_importer():
         pytest.skip(str(why))
     assert len(found) == 77, len(found)
     assert podimportmap.check(found) == 0
+
+
+def test_this_title_reads_its_attack_table_at_the_class_level():
+    """**The last unlocated field of the record is not in the record.**
+
+    `attack_level` was the one field `#462` could not place: Silver Blades
+    keeps it at Amiga `0x080` and this title's importer does not copy it. The
+    reason is that Pools of Darkness has no such field. Two routines fill
+    `thac0_base` at `0x07F` -- the derived-fields rebuild at `0x03C238` and
+    character creation at `0x00EF82` -- and both index one table with
+    `22 * class + level`, where `level` is `max(class_levels[i],
+    former_class_levels[i])` capped at 21 (`0x03D046`), and neither reads any
+    other byte of the record.
+
+    The arithmetic reproduces the stored `thac0_base` of **19 of 19** `.pc`
+    files on this machine, single-classed, dual-classed and multi-classed
+    alike, which is the corroboration the two listings on their own would
+    not be.
+
+    Needs `capstone` and the player's own Amiga disk images; skips without
+    either, which is what CI does.
+    """
+    capstone = pytest.importorskip("capstone")
+    assert capstone
+    from automap import gamedisks
+    from tools.amiga import podimportmap
+
+    if not gamedisks.candidates("amiga"):
+        pytest.skip("no Amiga disk images; set $AMIGA_DISKS")
+    try:
+        table = podimportmap.thac0_table(podimportmap.executable(quiet=True))
+    except SystemExit as why:
+        pytest.skip(str(why))
+
+    assert len(table) == len(amiga_pod.CLASS_LEVEL_SLOTS)
+    for name, row in zip(amiga_pod.CLASS_LEVEL_SLOTS, table):
+        assert len(row) == podimportmap.THAC0_TABLE_STRIDE, name
+        # Stored `60 - THAC0`, so a row climbs with the level and never
+        # passes the bias: a table read at the wrong address would not.
+        assert row == sorted(row), name
+        assert all(30 < b <= amiga_pod.COMBAT_BIAS for b in row), name
+    fighter = table[amiga_pod.CLASS_LEVEL_SLOTS.index("FIGHTER")]
+    wizard = table[amiga_pod.CLASS_LEVEL_SLOTS.index("MAGIC-USER")]
+    assert fighter[14] > wizard[14]
+
+    seen = 0
+    for name, raw in pc_records():
+        char = amiga_pod.PodCharacter.from_bytes(raw)
+        assert podimportmap.thac0_base(
+            table, char.class_levels, char.former_class_levels) == \
+            char.thac0_base, name
+        seen += 1
+    assert seen >= 12, seen
+    assert "attack_level" in dict(amiga_pod.pod_read_dropped())

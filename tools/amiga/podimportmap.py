@@ -18,7 +18,14 @@ which Pools of Darkness splits between `0x5E`-`0x5F` and `0x184`-`0x185`.
 
     tools/amiga/podimportmap.py                 # the map, as the engine writes it
     tools/amiga/podimportmap.py --check         # against goldbox.amiga_pod's constants
+    tools/amiga/podimportmap.py --thac0         # the attack table, and who indexes it
     tools/amiga/podimportmap.py --json out.json
+
+`--thac0` answers the one field the importer could not: **this title keeps no
+`attack_level`**.  Its attack table is indexed by the class level, in two
+routines that share one table, and the arithmetic reproduces the stored
+`thac0_base` byte of every `.pc` on the player's disks -- see
+:func:`thac0_table` and :func:`check_thac0`.
 
 The executable is read out of the player's own disk images, read-only, and
 nothing is written anywhere but `--json`.  Needs `capstone`.
@@ -246,12 +253,85 @@ def check(found: list[dict]) -> int:
     return 1 if bad else 0
 
 
+#: The attack table, as a displacement off the small-data register: the two
+#: routines that fill `thac0_base` both reach it with `lea.l -$621e(a4), a0`,
+#: which is `data + 0x1DE0`.  Seven rows, one a class slot, twenty-two bytes
+#: each -- one a level, indexed from 1, with the engine's own cap of 21 --
+#: and every entry is the family's stored `60 - THAC0`.
+THAC0_TABLE = 0x1DE0
+THAC0_TABLE_STRIDE = 0x16
+THAC0_TABLE_CAP = 0x15
+#: The two sites, for anybody re-deriving this: `0x03C294` in the routine
+#: that rebuilds a character's derived fields, and `0x00EFDC` in character
+#: creation.  Both index the same table with the class level and nothing
+#: else, which is what says this title has no `attack_level` byte.
+THAC0_SITES = (0x03C294, 0x00EFDC)
+
+
+def thac0_table(data: bytes) -> list[list[int]]:
+    """The attack table off the player's own executable, a row a class slot.
+
+    Read at run time rather than committed: it is the game's own data table.
+    """
+    exe = amiga68k.Executable.parse(data)
+    hunk = exe.small_data
+    if hunk is None:
+        raise SystemExit("this build is not a small-data program")
+    at = hunk.file_offset + THAC0_TABLE
+    rows = len(amiga_pod.CLASS_LEVEL_SLOTS)
+    return [list(data[at + n * THAC0_TABLE_STRIDE:
+                      at + (n + 1) * THAC0_TABLE_STRIDE])
+            for n in range(rows)]
+
+
+def thac0_base(table: list[list[int]], class_levels, former_levels) -> int:
+    """What the engine computes into `thac0_base`, from the class levels.
+
+    `0x03C238` walks the seven class slots, asks `0x03D046` for each one's
+    level -- `max(class_levels[i], former_class_levels[i])`, since a
+    dual-classed character keeps the fighting level he earned -- caps it at
+    21 and keeps the best row entry.  No byte of the record takes part but
+    the two level arrays, which is the whole finding.
+    """
+    best = 0
+    for n, row in enumerate(table):
+        level = max(class_levels[n], former_levels[n])
+        if level:
+            best = max(best, row[min(level, THAC0_TABLE_CAP)])
+    return best
+
+
+def check_thac0(table: list[list[int]], records: dict[str, bytes]) -> int:
+    """The arithmetic against the `thac0_base` byte of every `.pc` given."""
+    bad = 0
+    for name, raw in sorted(records.items()):
+        char = amiga_pod.PodCharacter.from_bytes(raw)
+        want = thac0_base(table, char.class_levels, char.former_class_levels)
+        if want != char.thac0_base:
+            print(f"  {name}: the class levels give {want}, the record holds "
+                  f"{char.thac0_base}")
+            bad += 1
+    print(f"{len(records) - bad} of {len(records)} records' thac0_base is "
+          f"what the class levels alone give")
+    return 1 if bad else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true",
                     help="compare goldbox.amiga_pod's constants with the engine")
+    ap.add_argument("--thac0", action="store_true",
+                    help="the attack table, against every .pc on the disks")
     ap.add_argument("--json", type=pathlib.Path, help="write the map here")
     args = ap.parse_args()
+
+    if args.thac0:
+        table = thac0_table(executable())
+        for name, row in zip(amiga_pod.CLASS_LEVEL_SLOTS, table):
+            print(f"{name:<11} " + " ".join(f"{b:3d}" for b in row))
+        from tools.amiga.podpcregions import pc_files
+
+        return check_thac0(table, pc_files())
 
     found = read()
     if args.json:

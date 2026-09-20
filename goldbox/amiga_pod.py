@@ -44,9 +44,9 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 
-from . import dos_port, neutral, titles
+from . import amiga_port, dos_port, neutral, titles
 from .amiga_shared import ABILITY_KEYS, SAVE_KEYS, THIEF_KEYS, _name, u16, u32
-from .layout import Confidence
+from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
 
 #: The C64 record's `60 - value` bias turns up here too, on armour class.
@@ -62,6 +62,39 @@ COMBAT_BIAS = 60
 #: look like, so it is what the writer emits, with 80 bytes of item/effect
 #: region that PoD never reads because both counts are zero.
 RECORD_LENGTH = 484
+
+#: What the loader reads into the character record itself, and so where the
+#: item region begins in a file: `404 + 20 * item_count + 10 * effects`
+#: accounts for every byte of all nineteen `.pc` files on the Amiga disks,
+#: with no remainder (#462).
+RECORD_BYTES = 404
+#: One item, as a file holds it: the twenty bytes the loader reads into the
+#: heap node at :data:`ITEM_NODE_BASE`.
+ITEM_FILE_SIZE = 20
+#: Where those twenty bytes land in the node, which is what identifies them:
+#: node `0x2E` is `type_index` in the later Amiga titles' own item map, and
+#: the loader's scroll test is `cmpi.b #$49, $2e(a2)`.
+ITEM_NODE_BASE = 0x02E
+#: A scroll's `type_index`, and the one item the file does not hold in a
+#: single node: the loader reads the item's own `quantity` further twenty-byte
+#: nodes after it, each carrying three more spell ids (§1.16, row 3). No item
+#: in the nineteen `.pc` files on the Amiga disks is one -- `type_index` reads
+#: 5, 8, 15, 18, 22, 28, 29, 30, 36, 37, 40, 50 and 59 across the 93 -- so the
+#: chain is walked to keep the item boundaries right and its spell ids are
+#: not converted: the neutral record has nowhere to put them.
+SCROLL_TYPE_INDEX = 0x49
+#: One effect node, the same ten bytes all three Amiga titles keep: the id at
+#: 0, one byte nobody has named at 1, the duration as a big-endian word at 2,
+#: DOS's two remaining payload bytes at 4 and 5, and the four-byte `next` at
+#: 6. All eleven nodes in the corpus read `<id> ?? 00 00 FF 00`, and
+#: `<id> 00 00 FF 00` is `goldbox.dos_codec.INNATE_PAYLOAD` exactly.
+EFFECT_FILE_SIZE = 10
+EFFECT_DURATION = 2
+EFFECT_NEXT = 0x006
+#: Non-zero in 7 of the 11 nodes -- 0x2C, 0x5E, 0x80, 0x9A, 0xEC, 0xF8 and
+#: 0xFF, one each -- which is the same behaviour the two later Amiga titles'
+#: own nodes show, 3 of 5 there. UNKNOWN, and nothing reads it.
+EFFECT_UNNAMED = 1
 
 #: The head of the running-effect chain, a longword. In memory it is a heap
 #: pointer -- BOHLO BART AB's file holds `0x24B946` here and its three ten-byte
@@ -403,6 +436,144 @@ CONFIDENCE = {
 }
 
 
+def _item_offset(dos_offset: int) -> int:
+    """Where a DOS item field lands in the twenty bytes a `.pc` holds.
+
+    The same three insertions Curse of the Azure Bonds and Secret of the
+    Silver Blades have, `goldbox.amiga_port.AMIGA_LATER_ITEM_SHIFTS`, read out
+    of those two titles' own item constructors for `#55`; this title's file
+    bytes start at :data:`ITEM_NODE_BASE` rather than at the node's top,
+    because the loader reads twenty bytes to `+0x2E` and the display text and
+    the `next` pointer in front of them are built in memory.
+    """
+    shift = 0
+    for first, amount in amiga_port.AMIGA_LATER_ITEM_SHIFTS:
+        if dos_offset >= first:
+            shift = amount
+    return dos_offset + shift - ITEM_NODE_BASE
+
+
+#: DOS item field -> where it is in the twenty bytes. Every field of
+#: `goldbox.dos_port.ITEM_LAYOUT` from `type_index` on: the three in front of
+#: it are the cached display line and the `next` pointer, which no file holds.
+ITEM_FIELDS: dict[str, dos_port.Field] = {
+    f.name: f for f in dos_port.ITEM_LAYOUT if f.offset >= ITEM_NODE_BASE}
+ITEM_FIELD_AT: dict[str, int] = {
+    name: _item_offset(f.offset) for name, f in ITEM_FIELDS.items()}
+#: The three bytes of the twenty no DOS item field maps onto -- the
+#: insertions -- derived rather than restated. **Zero in 93 of 93 items**,
+#: which is the constructor's own `setmem(node, size, 0)` and what an item the
+#: game built itself looks like.
+ITEM_PADS: tuple[int, ...] = tuple(
+    sorted(set(range(ITEM_FILE_SIZE)) - {
+        at + i for name, at in ITEM_FIELD_AT.items()
+        for i in range(ITEM_FIELDS[name].size)}))
+
+
+@dataclass(frozen=True)
+class PodItem:
+    """One item, as the twenty bytes after the 404-byte record hold it.
+
+    **The later Amiga titles' own item node, CONFIRMED** (#462). Four things
+    say so and the last is decisive: the loader reads the twenty bytes to node
+    `+0x2E`, which is `type_index` in that map, and tests `+0x0C` --
+    `quantity` -- for a scroll's chained nodes; 93 of 93 items decode in range,
+    with `readied` 0 or 1, `hidden` and `cursed` 0 and the three insertion
+    pads zero; `money + sum(weight * max(quantity, 1))` balances the stored
+    encumbrance word at record `0x056` in 19 of 19 files at three distinct
+    totals; and `404 + 20 * item_count + 10 * effects` consumes every byte of
+    every file with no remainder.
+    """
+
+    raw: bytes
+
+    @classmethod
+    def from_bytes(cls, data: bytes | bytearray) -> "PodItem":
+        if len(data) != ITEM_FILE_SIZE:
+            raise ValueError(
+                f"a Pools of Darkness .pc item is {ITEM_FILE_SIZE} bytes, "
+                f"got {len(data)}")
+        return cls(bytes(data))
+
+    def get(self, field_name: str):
+        """One field, by its `goldbox/dos_port.py` item-table name."""
+        f = ITEM_FIELDS[field_name]
+        at = ITEM_FIELD_AT[field_name]
+        chunk = self.raw[at:at + f.size]
+        if f.kind in (Kind.U16LE, Kind.UINT_LE):
+            return int.from_bytes(chunk, "big")
+        if f.kind is Kind.I8:
+            return int.from_bytes(chunk, "big", signed=True)
+        if f.kind is Kind.U8:
+            return chunk[0]
+        return chunk
+
+    @property
+    def type_index(self) -> int:
+        return self.get("type_index")
+
+    @property
+    def quantity(self) -> int:
+        return self.get("quantity")
+
+    @property
+    def weight(self) -> int:
+        return self.get("weight")
+
+    @property
+    def value(self) -> int:
+        return self.get("value")
+
+    @property
+    def readied(self) -> bool:
+        return bool(self.get("readied"))
+
+    @property
+    def pads(self) -> tuple[int, ...]:
+        """The three insertion bytes, which an item the game built is zero in."""
+        return tuple(self.raw[at] for at in ITEM_PADS)
+
+    @property
+    def is_scroll(self) -> bool:
+        """Whether the loader reads `quantity` further nodes after this one."""
+        return self.type_index == SCROLL_TYPE_INDEX
+
+    def to_dos_bytes(self) -> bytes:
+        """This item as the 63 bytes `goldbox/dos_port.py` describes.
+
+        The display text becomes DOS's count byte and its 41, empty: what a
+        `.pc` holds begins past it, and the buffer is the ITEMS screen's own
+        cache on both ports rather than a source. Every `u16` is byte-swapped
+        -- it is a 68000 -- and `next` is NULL, because on the Amiga it is a
+        live heap address and the DOS engine rebuilds the chain on load.
+        """
+        out = bytearray(dos_port.ITEM_SIZE)
+        for name, f in ITEM_FIELDS.items():
+            at = ITEM_FIELD_AT[name]
+            chunk = self.raw[at:at + f.size]
+            if f.kind in (Kind.U16LE, Kind.UINT_LE):
+                chunk = chunk[::-1]
+            out[f.offset:f.offset + f.size] = chunk
+        return bytes(out)
+
+
+def pod_effect_to_dos(node: bytes) -> bytes:
+    """One ten-byte effect node as the nine bytes a DOS `.EFX` record holds.
+
+    The duration is a `u16` big-endian at 2 where DOS keeps it little-endian
+    at 1, the byte at 1 is the one nothing has named, and the four-byte `next`
+    is written NULL: it is a live Amiga heap address, and the DOS engine
+    rebuilds the chain from the file's length. The same re-cut the Amiga Pool
+    of Radiance and the two later titles' readers make, written here rather
+    than imported because this module reads no other title's.
+    """
+    if len(node) != EFFECT_FILE_SIZE:
+        raise ValueError(
+            f"a Pools of Darkness .pc effect node is {EFFECT_FILE_SIZE} "
+            f"bytes, got {len(node)}")
+    return bytes((node[0], node[3], node[2], node[4], node[5])) + bytes(4)
+
+
 @dataclass(frozen=True)
 class PodCharacter:
     """One `Save/NAME.pc`, as far as the character sheet has been read.
@@ -664,6 +835,76 @@ class PodCharacter:
             name: tuple(self.raw[SPELLS_CASTABLE + SPELL_SLOT_LEVELS * i:
                                  SPELLS_CASTABLE + SPELL_SLOT_LEVELS * (i + 1)])
             for i, name in enumerate(SPELL_SLOT_CLASSES)}
+
+    # -- the tail: the item region and the effect chain (#462) --------------
+
+    @property
+    def item_count(self) -> int:
+        """How many items follow the record -- the longword at 0x008.
+
+        **Not the byte at** :data:`ITEM_COUNT_CACHE`, which the save leaves
+        stale: it reads 3 in 17 of 19 files whose item region holds four,
+        five or six.
+        """
+        return u32(self.raw, ITEM_CHAIN)
+
+    def _tail(self) -> tuple[tuple["PodItem", ...], tuple[bytes, ...],
+                             tuple[bytes, ...]]:
+        """The item nodes, any chained scroll nodes, and the effect nodes.
+
+        Walked exactly as the loader walks it (`docs/124-amiga-port.md`
+        §1.16): `item_count` items of twenty bytes from
+        :data:`RECORD_BYTES`, each scroll followed by its own `quantity`
+        further twenty-byte nodes, and then effect nodes of ten bytes while
+        the previous one's `next` is non-zero, starting from the chain head at
+        0x004. A short buffer stops the walk rather than raising -- this title
+        checks no length and a `.pc` with no items and no effects is 404
+        bytes, where `PodWriter` emits 484.
+        """
+        items: list[PodItem] = []
+        scrolls: list[bytes] = []
+        effects: list[bytes] = []
+        at = RECORD_BYTES
+        while len(items) < self.item_count and at + ITEM_FILE_SIZE <= len(
+                self.raw):
+            item = PodItem.from_bytes(self.raw[at:at + ITEM_FILE_SIZE])
+            at += ITEM_FILE_SIZE
+            items.append(item)
+            if item.is_scroll:
+                for _ in range(item.quantity):
+                    if at + ITEM_FILE_SIZE > len(self.raw):
+                        break
+                    scrolls.append(self.raw[at:at + ITEM_FILE_SIZE])
+                    at += ITEM_FILE_SIZE
+        following = u32(self.raw, EFFECT_CHAIN)
+        while following and at + EFFECT_FILE_SIZE <= len(self.raw):
+            node = self.raw[at:at + EFFECT_FILE_SIZE]
+            at += EFFECT_FILE_SIZE
+            effects.append(node)
+            following = int.from_bytes(
+                node[EFFECT_NEXT:EFFECT_NEXT + 4], "big")
+        return tuple(items), tuple(scrolls), tuple(effects)
+
+    @property
+    def items(self) -> tuple["PodItem", ...]:
+        """Everything the character is carrying, in the file's own order."""
+        return self._tail()[0]
+
+    @property
+    def scroll_nodes(self) -> tuple[bytes, ...]:
+        """The twenty-byte nodes chained off a scroll, unconverted.
+
+        Each holds three more spell ids in the bytes the item constructor
+        calls `charges`, `effect` and `power`, and the neutral record has
+        nowhere to put them. **Empty in 19 of 19 files on the Amiga disks**:
+        no item in the corpus is a scroll.
+        """
+        return self._tail()[1]
+
+    @property
+    def effects(self) -> tuple[bytes, ...]:
+        """The running-effect chain, ten bytes a node, in chain order."""
+        return self._tail()[2]
 
 
 @dataclass
@@ -1260,6 +1501,17 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("size_small", "the byte at 0x0BE less one: this port stores DOS's 1 "
                    "small / 2 medium and the neutral record keeps 0 small / "
                    "1 large"),
+    ("inventory", "the twenty-byte item records from 404, read as the later "
+                  "Amiga titles' own item node and re-cut to the 63 bytes DOS "
+                  "holds, then projected onto the shared sixteen. The count "
+                  "is the longword at 0x008, not the stale byte at 0x0C7"),
+    ("granted_effects", "the ten-byte effect nodes after the item region, "
+                        "chain order, re-cut to the nine a DOS .EFX record "
+                        "holds: the id, the duration little-endian, the two "
+                        "payload bytes and a NULL next. Everything at "
+                        "duration zero goes here whole -- which node is an "
+                        "innate property and which a readied item's grant "
+                        "cannot be told apart for this title"),
 )
 
 
@@ -1272,7 +1524,7 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
 #: watched in the running game first, so the two lists now say different
 #: things and each says its own.
 #:
-#: What is left is three kinds of row, and none of them is a decode that has
+#: What is left is four kinds of row, and none of them is a decode that has
 #: not happened:
 #:
 #: * **this title has no such field, on either port.**  Pools of Darkness
@@ -1288,7 +1540,14 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
 #:   command is pressed; `goldbox.dos_codec.to_neutral` deliberately reads nothing
 #:   from DOS's `turn_class` for the same reason (#297), and this record's own
 #:   copy is at 0x05A;
-#: * **one field is genuinely still unlocated**, and it is `attack_level`.
+#: * **one field the engine keeps nowhere at all**, and it is `attack_level`:
+#:   this title indexes its attack table with the class level and no record
+#:   byte takes part, read out of the two routines that fill `thac0_base`
+#:   and checked against 19 of 19 records;
+#: * **one is a classification rather than a byte.**  `innate_effects` and
+#:   `granted_effects` are the same ten-byte nodes, and this title's own list
+#:   of built-in effect ids has never been read, so everything that never
+#:   expires is converted as a grant and nothing is lost but the label.
 POD_READ_DROPPED: tuple[tuple[str, str], ...] = (
     ("copper", "Pools of Darkness keeps platinum, gems and jewelry and no "
                "other coin, on both of its ports, so no character of this "
@@ -1313,21 +1572,30 @@ POD_READ_DROPPED: tuple[tuple[str, str], ...] = (
                    "0x05A is DOS's `turn_class`, which is a property of what "
                    "is being turned, and DOS's own reader takes nothing from "
                    "it either (#297)"),
-    ("attack_level", "**the one field still unlocated** (#462). Silver "
-                     "Blades keeps it at Amiga 0x080 and this title's "
-                     "importer does not copy it; 0x080 is `paladin_cures` "
-                     "here and 0x082 is `icon_dimension`, so it is not "
-                     "merely displaced. DOS Pools of Darkness holds 0 in 12 "
-                     "of 12, so nothing observable is lost"),
-    ("inventory", "the item region past 404 bytes is decoded and this reader "
-                  "does not read it yet -- `tools/amiga/podpcregions.py` does. A "
-                  "converted character still arrives carrying nothing"),
-    ("innate_effects", "the effect chain past the item region is decoded and "
-                       "this reader does not read it yet -- see `inventory`"),
-    ("granted_effects", "see `innate_effects`. Which node is innate and which "
-                        "was granted by a readied item cannot be told apart "
-                        "for this title, the same `LATER_EFFECT_SPLIT_UNKNOWN` "
-                        "that binds Curse and Silver Blades"),
+    ("attack_level", "**this title keeps no such field, and that is read out "
+                     "of its own engine** (#462): the two routines that fill "
+                     "`thac0_base` -- the derived-fields rebuild at 0x03C238 "
+                     "and character creation at 0x00EF82 -- index one attack "
+                     "table with `22 * class + level`, where the level is "
+                     "`max(class_levels[i], former_class_levels[i])` capped "
+                     "at 21, and neither reads any other byte of the record. "
+                     "The arithmetic reproduces the stored `thac0_base` of "
+                     "19 of 19 `.pc` files. So there is nothing at Amiga "
+                     "0x080, where Silver Blades keeps one and this title's "
+                     "importer copies nothing: 0x080 is `paladin_cures` here "
+                     "and 0x082 is `icon_dimension`. DOS Pools of Darkness "
+                     "holds 0 in 52 of 52 of its own, which is the same "
+                     "engine keeping no fighting level rather than a field "
+                     "nobody has found (#527)"),
+    ("innate_effects", "the effect chain is read (#462) and every node that "
+                       "never expires goes into `granted_effects` whole, "
+                       "because which node is an innate property of the race "
+                       "or the class and which a readied item granted cannot "
+                       "be told apart for this title: "
+                       "`goldbox.dos_codec.INNATE_EFFECTS` is Pool of "
+                       "Radiance's id space, and this title's own has never "
+                       "been read. The same unknown binds the Curse and "
+                       "Silver Blades reader"),
 )
 
 
@@ -1346,11 +1614,13 @@ def pod_field_disposition() -> dict[str, str]:
     **It was a short account of a long record and is not any more.** 38 of
     the 75 neutral fields were filled when this reader was written and 37
     were not; `#462` decoded the rest of the record off the engine's own
-    Silver Blades importer, and what is left is thirteen names of which nine
-    are fields this *title* has on neither port, three are the item and
-    effect regions this reader has not been taught to walk yet, and one --
-    `attack_level` -- is the only field in the record still unlocated.
-    `docs/124-amiga-port.md` §1 is the map.
+    Silver Blades importer and then taught this reader the tail past it, and
+    what is left is eleven names: **nine** are fields this *title* stores on
+    neither port, **one** is `attack_level`, which its engine works out from
+    the class level rather than keeping anywhere, and **one** is
+    `innate_effects`, a label rather than a byte, since every effect that
+    never expires is converted as a grant.  `docs/124-amiga-port.md` §1 is
+    the map.
     """
     return neutral.disposition(POD_READ_DIRECT, POD_READ_TRANSFORMED,
                                pod_read_dropped(), "the neutral")
@@ -1559,29 +1829,70 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
             f"dwarf and 2 for the eighteen humans, elves and half-elves",
             Confidence.PROBABLE, neutral.Provenance.RESHAPED)
 
-    # One sentence rather than a dozen, because a character read out of a
-    # `.pc` today still arrives carrying nothing and with no running magic:
-    # `#462` decoded the item and effect regions and this reader has not been
-    # taught to walk them.  **The wording is not approved**: every sentence a
-    # player reads is Donald's (`.claude/rules/gui-text.md`), and this is a
-    # placeholder that names the loss rather than a line anybody has signed
-    # off.
-    out.warnings.append(
-        "This character was read from an Amiga Pools of Darkness file. The "
-        "part of that file holding possessions and running magic has not "
-        "been read yet, so the character arrives without them. "
-        "(NOT APPROVED)")
+    # -- what the character is carrying, and what is running on him ---------
+    # The tail past the 404-byte record, which this reader walked past until
+    # #462's second run: twenty bytes an item and ten an effect.
+    items, scrolls, effects = char._tail()
+    out.set("inventory", [_dos.item_to_c64(it.to_dos_bytes()) for it in items],
+            f"the {ITEM_FILE_SIZE}-byte item records from {RECORD_BYTES}, "
+            f"read as the later Amiga titles' own item node and re-cut to the "
+            f"{dos_port.ITEM_SIZE} DOS holds, projected onto sixteen",
+            Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
+    if scrolls:
+        # A scroll's chained nodes carry three more spell ids each and the
+        # neutral record has no field for them. No item in the nineteen
+        # genuine files is a scroll, so nothing has ever been dropped here;
+        # the line is the accounting rather than a sentence for a player.
+        out.drop(f"{len(scrolls)} twenty-byte nodes chained off a scroll: "
+                 f"each holds three more spell ids and the neutral record has "
+                 f"nowhere to put them")
 
-    # **No `out.drop` line here, and that is deliberate rather than an
-    # omission.**  `goldbox.dos_codec.to_neutral` and `goldbox.c64_codec.read` each
-    # keep a second table -- `DROPPED_PLAYER_TEXT`, `READ_DROPPED_PLAYER_TEXT`
-    # -- of the sentences a *person* reads, and a name with no sentence in it
-    # is shown nothing.  This reader has 37 names and no such table: every
-    # sentence a player reads is Donald's to approve
-    # (`.claude/rules/gui-text.md`), and thirty-seven at once written by an
-    # agent is the opposite of that.  The whole contract is stated by
-    # :func:`pod_field_disposition` and tested there, so nothing is lost in
-    # silence; what is missing is the pane, and #194 says so.
+    # Everything that never expires goes into `granted_effects` whole, and
+    # which node is an innate property and which a readied item's grant
+    # cannot be told apart for this title: `goldbox.dos_codec.INNATE_EFFECTS`
+    # is Pool of Radiance's id space, and this title's own has never been
+    # read. The same standing unknown the two later Amiga titles have.
+    recut = [pod_effect_to_dos(node) for node in effects]
+    granted = [e for e in recut if int.from_bytes(e[1:3], "little") == 0]
+    running = len(recut) - len(granted)
+    if running:
+        # The neutral vocabulary has `innate_effects` and `granted_effects`
+        # and nothing for a spell still ticking, so a node with a duration has
+        # no home on any port's reader -- the two later Amiga titles' reader
+        # filters the same way. **No node in the nineteen genuine files has
+        # one**: the duration word is zero in 11 of 11.
+        out.drop(f"{running} running effects with a duration left: the "
+                 f"neutral record holds the ones that never expire and has no "
+                 f"field for a spell still counting down")
+    if granted:
+        out.set("granted_effects", granted,
+                f"the Amiga .pc effect nodes at duration zero, "
+                f"{EFFECT_FILE_SIZE} bytes each from the end of the item "
+                f"region, re-cut to the nine a DOS .EFX record holds",
+                Confidence.PROBABLE, neutral.Provenance.RESHAPED)
+
+    # **The one unapproved warning this reader carried is gone, and nothing
+    # replaced it.**  It said the part of the file holding possessions and
+    # running magic had not been read; the reader walks the item region and
+    # the effect chain above, so the sentence had stopped being true.  What is
+    # left unread is `attack_level`, which no byte of this record has been
+    # located for and which DOS Pools of Darkness holds 0 in for 12 of 12 --
+    # nothing a player can see -- and the innate/granted split, which is a
+    # classification rather than a byte.  Both are named by
+    # :func:`pod_read_dropped`, which goes to `wish/debuglog.py`.
+    #
+    # **No `out.drop` line for a *field*, and that is deliberate rather than
+    # an omission.**  `goldbox.dos_codec.to_neutral` and
+    # `goldbox.c64_codec.read` each keep a second table --
+    # `DROPPED_PLAYER_TEXT`, `READ_DROPPED_PLAYER_TEXT` -- of the sentences a
+    # *person* reads, and a name with no sentence in it is shown nothing.
+    # This reader has no such table: every sentence a player reads is Donald's
+    # to approve (`.claude/rules/gui-text.md`).  The two `out.drop` lines
+    # above are the other kind -- a count of records this file holds and the
+    # neutral vocabulary has no field for, neither of which any genuine file
+    # has ever carried -- and they are accounting for the debug log.  The
+    # whole contract is stated by :func:`pod_field_disposition` and tested
+    # there, so nothing is lost in silence.
     return out
 
 
