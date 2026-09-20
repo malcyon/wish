@@ -30,6 +30,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigatarget.py` | Checks `automap/amiga.py`'s WinUAE-backed `Target`, driven through a fake guest. |
 | `test_amigazerowords.py` | Checks that `tools/amiga/amigazerowords.py` runs without crashing against the player's specimens. |
 | `test_fsuaegdb.py` | Checks `automap.amiga.FsuaeGdb` against a fake socket that answers the way the patched FS-UAE's GDB server does. |
+| `test_installfsuae.py` | Checks that `tools/amiga/installfsuae.py` refuses a tarball with the wrong digest or a member that escapes, unpacks only `package/bin/fs-uae/`, and does nothing on a second run, on tarballs built here with no network. |
 | `test_m68dis.py` | Checks the 68000 disassembler on hand-assembled encodings, including a word that is not an instruction. |
 | `test_podamiga.py` | Checks reading an Amiga Pools of Darkness `.pc` back to a neutral record and the DOS route around it. |
 | `test_porslot.py` | Checks that `tools/amiga/porslot.py` reads an Amiga save slot straight off the disk, from the player's own image. |
