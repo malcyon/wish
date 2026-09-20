@@ -116,12 +116,20 @@ class FakeSocket:
         self.memory = dict(memory or {})
         self.received: list[str] = []
         self.gone = False
+        #: Replies are held back while this is True, and `release()` delivers
+        #: them, late, the way an emulator paused behind its menu does.
         self.mute = False
+        self.closed = False
+        self._late = bytearray()
         self._out = bytearray()
 
     def settimeout(self, _seconds): pass
 
-    def close(self): pass
+    def close(self): self.closed = True
+
+    def release(self) -> None:
+        self._out += self._late
+        self._late = bytearray()
 
     @staticmethod
     def _frame(body: str) -> bytes:
@@ -131,19 +139,21 @@ class FakeSocket:
         body = data[1:-3].decode("latin-1")
         self.received.append(body)
         self._out += b"+"
-        if self.mute or body.startswith("vCont"):
+        if body.startswith("vCont"):
             return
+        out = self._late if self.mute else self._out
         if body.startswith("qSupported"):
-            self._out += self._frame("PacketSize=512;")
+            out += self._frame("PacketSize=512;")
         elif body.startswith("m"):
             addr, _, length = body[1:].partition(",")
             at, size = int(addr, 16), int(length, 16)
-            out = bytearray(size)
+            reply = bytearray(size)
             for base, blob in self.memory.items():
                 lo, hi = max(at, base), min(at + size, base + len(blob))
                 if lo < hi:
-                    out[lo - at:hi - at] = blob[lo - base:hi - base]
-            self._out += self._frame(bytes(out).hex())
+                    reply[lo - at:hi - at] = blob[lo - base:hi - base]
+            (self._late if self.mute else self._out).extend(
+                self._frame(bytes(reply).hex()))
 
     def recv(self, length: int) -> bytes:
         if self.gone:
@@ -242,7 +252,7 @@ def test_two_titles_in_memory_are_refused_and_both_are_named():
 
 def test_a_read_timeout_does_not_cost_the_socket():
     """One slow frame must not become a second connection, which the fork will
-    not accept."""
+    not accept, and the late reply must not become the next read's answer."""
     sock, clock = FakeSocket(loaded(BLADES)), Clock()
     opener = Opener(sock)
     fsuae.connect(opener=opener, clock=clock)
@@ -250,9 +260,88 @@ def test_a_read_timeout_does_not_cost_the_socket():
     with pytest.raises(amiga.FsuaeError):
         fsuae._transport.read_memory(0xC00000, 16)
     sock.mute = False
+    sock.release()                  # the emulator was only paused
     clock.later()
-    fsuae.connect(opener=opener, clock=clock)
+    target = fsuae.connect(opener=opener, clock=clock)
     assert opener.calls == 1
+    assert fsuae._transport.lost is False and sock.closed is False
+    assert target.read(BASE, 32) == sock.memory[BASE][:32]
+
+
+def test_a_second_port_gets_its_own_socket():
+    first, second = FakeSocket(loaded(BLADES)), FakeSocket(loaded(BLADES))
+    clock = Clock()
+    fsuae.connect(port=2345, opener=Opener(first), clock=clock)
+    other = Opener(second)
+    fsuae.connect(port=6525, opener=other, clock=clock)
+    assert other.calls == 1
+    assert first.closed is True
+    assert fsuae._port == 6525
+
+
+def test_the_default_port_and_its_own_number_are_one_connection():
+    sock, clock = FakeSocket(loaded(BLADES)), Clock()
+    opener = Opener(sock)
+    fsuae.connect(opener=opener, clock=clock)
+    fsuae.connect(port=amiga.FSUAE_PORT, opener=opener, clock=clock)
+    assert opener.calls == 1
+
+
+def test_a_reset_that_loads_another_title_is_noticed():
+    """The same socket, a different game in memory."""
+    sock, clock = FakeSocket(loaded(BLADES)), Clock()
+    opener = Opener(sock)
+    assert fsuae.connect(opener=opener, clock=clock).layout is BLADES
+    sock.memory = loaded(CURSE, at=0xC30000)
+    clock.later()
+    target = fsuae.connect(opener=opener, clock=clock)
+    assert (target.layout, target.data_base) == (CURSE, 0xC30000)
+    assert opener.calls == 1 and sock.closed is False
+
+
+def test_the_same_title_at_another_base_is_noticed():
+    sock, clock = FakeSocket(loaded(BLADES)), Clock()
+    opener = Opener(sock)
+    fsuae.connect(opener=opener, clock=clock)
+    sock.memory = loaded(BLADES, at=0xC30000)
+    clock.later()
+    assert fsuae.connect(opener=opener, clock=clock).data_base == 0xC30000
+
+
+def test_a_title_that_has_gone_from_memory_keeps_the_transport():
+    """The player quit to the shell: wait for the next game, on this socket."""
+    sock, clock = FakeSocket(loaded(BLADES)), Clock()
+    opener = Opener(sock)
+    fsuae.connect(opener=opener, clock=clock)
+    sock.memory = {}
+    clock.later()
+    with pytest.raises(amiga.FsuaeError, match="none of the titles"):
+        fsuae.connect(opener=opener, clock=clock)
+    assert sock.closed is False
+    sock.memory = loaded(CURSE)
+    clock.later()
+    assert fsuae.connect(opener=opener, clock=clock).layout is CURSE
+    assert opener.calls == 1
+
+
+def test_a_title_that_is_still_there_costs_one_small_read_and_no_sweep():
+    sock, clock = FakeSocket(loaded(BLADES)), Clock()
+    opener = Opener(sock)
+    fsuae.connect(opener=opener, clock=clock)
+    before = len(sock.received)
+    fsuae.connect(opener=opener, clock=clock)
+    assert len(sock.received) == before + 1
+    assert sock.sweeps() == 1
+
+
+def test_one_title_at_two_bases_is_refused_and_both_are_named():
+    memory = loaded(BLADES)
+    memory.update(loaded(BLADES, at=0xC30000))
+    with pytest.raises(amiga.FsuaeError,
+                       match="more than one place") as raised:
+        fsuae.connect(opener=Opener(FakeSocket(memory)), clock=Clock())
+    assert "0xc10000" in str(raised.value)
+    assert "0xc30000" in str(raised.value)
 
 
 def test_a_connection_the_emulator_dropped_is_replaced():

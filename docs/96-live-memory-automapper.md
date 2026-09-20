@@ -495,7 +495,9 @@ The roster, the five live actions, Fast Travel and the combat reader all read
 C64 addresses, which on a 68000 are ordinary chip RAM: the reads succeed and
 decode the game's own unrelated bytes. `AutomapBinding._refresh_roster` treats
 such a target like a wrong game and withholds it from the buttons, and
-`poll_battle` reads no fight from it.
+`poll_battle` reads no fight from it. `automap.busguard`'s `BusGuard.clear` reads
+the attribute too: it returns True before any read for such a target, so a
+halting Amiga transport is not asked for a byte of `$DD00` on every tick.
 
 ### The FS-UAE backend's two pieces
 
@@ -520,7 +522,16 @@ reads.
   cached, and the memory sweep is not repeated more often than `SWEEP_EVERY`,
   because each 512K read makes the emulated machine miss a frame. A transport
   whose connection has failed (`FsuaeGdb.lost`) is dropped and replaced; a read
-  timeout is not that, and keeps it.
+  timeout is not that, and keeps it. Because GDB-remote has no request ids, a
+transport that timed out drops whatever its socket holds before the next request,
+so a reply that was only late is not read as that request's answer. Whether the
+fork drops or answers a request that reaches it while the emulator is paused
+behind its menu has not been measured. A read of at most 4 KB waits one second
+(`FsuaeGdb.POLL_TIMEOUT`, a choice and not a measurement) and the handshake and a
+half-megabyte sweep read wait twenty, because a poll runs on the window's own
+thread. Each `connect()` re-reads the cached title's anchor at its base and, when
+it is gone, forgets the title and sweeps again without closing the socket; a
+different port gets a new transport.
 
 ### What is not built
 

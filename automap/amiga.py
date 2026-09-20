@@ -887,9 +887,23 @@ class FsuaeGdb:
     #: frame handler looks like and is not what a halted debugger looks like.
     halts_machine = False
 
-    #: One packet's round trip. Generous: a read is milliseconds, and this is
-    #: only here so a dead emulator is reported rather than waited on.
+    #: One packet's round trip, for the handshake and for a read big enough to
+    #: be a sweep. Generous: this is only here so a dead emulator is reported
+    #: rather than waited on.
     TIMEOUT = 20.0
+
+    #: A read a poll makes -- the party's few bytes, a pointer, the 1 KB map --
+    #: is milliseconds (the median measured through `tools/amiga/fsuaegdb.py
+    #: automap` is 20 ms), and the caller is a timer slot on the window's own
+    #: thread, so a paused emulator must cost a poll about a second and not
+    #: twenty. The value is a choice, not a measurement of the slowest frame.
+    POLL_TIMEOUT = 1.0
+
+    #: Reads up to this many bytes get `POLL_TIMEOUT`; longer ones, which are
+    #: `locate_machines`' half-megabyte regions, get the full `TIMEOUT`,
+    #: because the server copies the range a byte at a time and how long that
+    #: takes has not been measured.
+    POLL_READ_LIMIT = 0x1000
 
     #: Opening the socket. Short, because the emulator either has the door open
     #: or has already given it away to somebody else.
@@ -910,6 +924,14 @@ class FsuaeGdb:
         #: slow frame would end the run's debugging for good. `wish.fsuae`
         #: reads this to decide whether a cached transport can be reused.
         self.lost = False
+        #: True after a request timed out and before the next reply is read.
+        #: GDB-remote has no request ids, so the reply that was merely late
+        #: would otherwise be read as the answer to the *next* request, and
+        #: every read after it would lag one behind (or fail its length check)
+        #: until the transport was dropped. `_write` clears the socket first.
+        #: Whether the fork drops or answers a request that arrives while it is
+        #: paused has not been measured; this handles both.
+        self._unresolved = False
         #: What the server advertised, kept for a run log: this build answers
         #: `PacketSize=512;...;QStartNoAckMode+;vContSupported+;`.
         self.greeting = ""
@@ -941,9 +963,14 @@ class FsuaeGdb:
                 "it for good when a client disconnects, so a second "
                 "connection needs the emulator started again") from exc
         self.sock.settimeout(self.timeout)
-        self.greeting = self.ask("qSupported")
-        if resume:
-            self.resume()
+        try:
+            self.greeting = self.ask("qSupported")
+            if resume:
+                self.resume()
+        except FsuaeError:
+            # The caller never gets the transport, so nothing else can close it.
+            self.close()
+            raise
 
     def close(self) -> None:
         """Drop the connection, which **ends the debugging for this run.**
@@ -973,12 +1000,43 @@ class FsuaeGdb:
                 f"`{body}` stops the machine or ends the run; this transport "
                 "reads a game somebody is playing")
         self.sent.append(body)
+        self._discard_late_reply()
         try:
             self.sock.sendall(self._frame(body))
         except OSError as exc:
             self.lost = True
             raise FsuaeError(f"the emulator would not take `{body}`: "
                              f"{exc}") from exc
+
+    def _discard_late_reply(self) -> None:
+        """After a timeout, throw away whatever the socket holds.
+
+        The reply to the request that timed out may have arrived since, and
+        nothing in a packet says which request it answers, so it is dropped
+        rather than read as the next answer. The socket is read without
+        waiting; a reply that arrives after this drain is not caught.
+        """
+        if not self._unresolved:
+            return
+        self._unresolved = False
+        self._buf = b""
+        try:
+            self.sock.settimeout(0.0)
+            while True:
+                chunk = self.sock.recv(1 << 16)
+                if not chunk:
+                    self.lost = True
+                    raise FsuaeError(
+                        "the emulator closed the connection; it will not "
+                        "listen again until it is restarted")
+        except (BlockingIOError, socket.timeout):
+            return                          # nothing more is waiting
+        except OSError as exc:
+            self.lost = True
+            raise FsuaeError(f"the connection failed: {exc}") from exc
+        finally:
+            if self.sock is not None:
+                self.sock.settimeout(self.timeout)
 
     def _packet(self, timeout: float | None = None) -> str:
         """The next `$...#xx` the emulator sends, without its framing.
@@ -1013,12 +1071,14 @@ class FsuaeGdb:
                         continue            # the guest printing, not our reply
                     return body
             if time.monotonic() > deadline:
+                self._unresolved = True
                 raise FsuaeError(
                     f"the emulator sent no reply in {limit:.0f}s; what did "
                     f"arrive was {self._buf[:80]!r}")
             try:
                 chunk = self.sock.recv(1 << 16)
             except socket.timeout as exc:
+                self._unresolved = True
                 raise FsuaeError(f"the emulator sent no reply in "
                                  f"{limit:.0f}s") from exc
             except OSError as exc:
@@ -1047,7 +1107,8 @@ class FsuaeGdb:
 
     # -- reading memory --------------------------------------------------
 
-    def read_memory(self, addr: int, length: int) -> bytes:
+    def read_memory(self, addr: int, length: int,
+                    timeout: float | None = None) -> bytes:
         """Bytes, out of a running machine, in one packet.
 
         The optional capability `AmigaTarget.read_blocks` looks for: a
@@ -1065,10 +1126,17 @@ class FsuaeGdb:
         time inside the frame handler, so a 512 KB read makes the emulated
         machine miss a frame. Once per boot, for `locate()`, that is invisible;
         it is not a thing to poll with.
+
+        `timeout` is how long to wait for the reply. Left out, a read of at
+        most `POLL_READ_LIMIT` bytes waits `POLL_TIMEOUT` and a longer one
+        waits `TIMEOUT`, never more than the transport's own `timeout`.
         """
         if length <= 0:
             raise ValueError(f"a read of {length} bytes is not a read")
-        reply = self.ask(f"m{addr:x},{length:x}")
+        if timeout is None:
+            timeout = (min(self.POLL_TIMEOUT, self.timeout)
+                       if length <= self.POLL_READ_LIMIT else self.timeout)
+        reply = self.ask(f"m{addr:x},{length:x}", timeout)
         if reply.startswith("E") and len(reply) <= 3:
             # `E01` is every failure this server has: one unreadable byte
             # anywhere in the range clears the whole reply.
@@ -1120,6 +1188,17 @@ def locate_machines(read, machines, memory=MEMORY) -> dict[str, list[int]]:
     title with more than one base is returned with all of them, for the caller
     to refuse: see `find_anchor` on why a second copy is reported rather than
     resolved here.
+
+    **A read that raises ends the whole sweep, and `MEMORY` puts SLOW first.**
+    `FsuaeGdb.read_memory` raises on the server's `E01`, so on a machine with
+    no slow memory the first read may abort before CHIP is tried, and a game
+    running from chip-only would be reported as not loaded. **Unknown, and not
+    changed here:** whether `barto_gdbserver.cpp`'s `m` handler answers `E01`
+    for a range the machine has not mapped, or returns zeros or garbage for it.
+    Reading the fork's `m` branch settles it; so does one `m c00000,10` sent to
+    an FS-UAE started with no `bogomem_size` (or `slow_memory`) line in its
+    configuration. If it is `E01`, the sweep has to try each region on its own
+    and treat a refusal as "nothing here"; if it is not, this is not a defect.
     """
     machines = list(machines)
     found: dict[str, list[int]] = {}

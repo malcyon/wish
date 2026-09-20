@@ -329,6 +329,32 @@ def test_a_target_that_does_not_stop_the_processor_is_never_guarded(
     assert machine.reads[0] != (busguard.CIA2_PORT_A, 1)
 
 
+def test_an_amiga_target_is_asked_for_no_read_at_all():
+    """A halting transport still has no `$DD00`: the guard's byte would be the
+    game's own unrelated one, read every tick before the two gates."""
+    from automap import amiga
+
+    class HaltingDebugger:
+        halts_machine = True
+
+        def __init__(self):
+            self.calls = []
+
+        def batch(self, lines, fetch=()):
+            self.calls.append(lines)
+            return "", {}
+
+    debugger = HaltingDebugger()
+    target = amiga.AmigaTarget(
+        debugger, amiga.MACHINES["secret-of-the-silver-blades"],
+        data_base=0xC10000)
+    assert target.halts_on_read is True
+    guard = BusGuard()
+    assert guard.clear(target) is True
+    assert debugger.calls == []
+    assert (guard.passed, guard.skipped, guard.held_off) == (0, 0, 0)
+
+
 def test_ticks_are_held_off_for_as_long_as_a_load_runs(
         app, tmp_path, monkeypatch):
     """Superseded by the back-off: thirty ticks at the ordinary 500 ms

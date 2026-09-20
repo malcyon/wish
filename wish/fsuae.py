@@ -15,7 +15,10 @@ that built a fresh `FsuaeGdb` every time would find nothing listening the moment
 the first one had been dropped -- and the player would have to restart the
 emulator, and with it the game. The transport, the machine found on it and the
 data hunk's base are cached together, so a retry after a failed or unfinished
-locate costs one packet and not a second socket.
+locate costs one packet and not a second socket. The machine and the base are
+checked against memory on every `connect()`, because a reset inside the same
+emulator run can load another title, or the same one somewhere else, on the same
+socket.
 """
 
 from __future__ import annotations
@@ -85,6 +88,7 @@ def listening(port: int | None = None, proc: str = PROC_NET) -> bool:
 
 #: What `connect()` keeps, together, for the life of one emulator run.
 _transport: amiga.FsuaeGdb | None = None
+_port: int | None = None
 _machine: amiga.AmigaMachine | None = None
 _base: int | None = None
 _swept_at: float | None = None
@@ -96,10 +100,10 @@ def reset() -> None:
     The emulator side of that is only useful when the emulator has been
     restarted: the fork does not listen again after a client leaves.
     """
-    global _transport, _machine, _base, _swept_at
+    global _transport, _port, _machine, _base, _swept_at
     if _transport is not None:
         _transport.close()
-    _transport = _machine = _base = _swept_at = None
+    _transport = _port = _machine = _base = _swept_at = None
 
 
 def connect(port: int | None = None, opener=None,
@@ -111,13 +115,28 @@ def connect(port: int | None = None, opener=None,
     back to waiting -- when nothing is listening, when no title with a row in
     `amiga.MACHINES` is in memory yet, and when the sweep is being rate-limited.
     A raise after the socket has opened leaves the transport cached.
+
+    The cached transport belongs to one `port`; another port replaces it. A
+    cached title is confirmed by reading its anchor at the cached base -- a few
+    bytes, one packet -- and when the anchor is not there the title and base are
+    forgotten and the sweep runs again. The **transport is kept**: closing it
+    would end the run's debugging, so an unloaded game is waited out and not
+    reconnected to.
     """
-    global _transport, _machine, _base, _swept_at
-    if _transport is not None and (_transport.lost or _transport.sock is None):
+    global _transport, _port, _machine, _base, _swept_at
+    wanted = amiga.FSUAE_PORT if port is None else port
+    if _transport is not None and (_transport.lost or _transport.sock is None
+                                   or _port != wanted):
         reset()
     if _transport is None:
         # Sends `vCont;c`: the fork sits halted in warp until a client does.
         _transport = amiga.FsuaeGdb(port=port, opener=opener)
+        _port = wanted
+    if _machine is not None:
+        held = _transport.read_memory(_base + _machine.anchor_offset,
+                                      len(_machine.anchor))
+        if held != _machine.anchor:
+            _machine = _base = None
     if _machine is None:
         now = clock()
         if _swept_at is not None and now - _swept_at < SWEEP_EVERY:

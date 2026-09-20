@@ -55,12 +55,23 @@ class FakeAmiga:
         self.closed = False
         #: Made True to answer as a server that has dropped the connection.
         self.gone = False
+        #: Made True to hold every reply back, as an emulator paused behind its
+        #: own menu does. `arrive()` then delivers them all at once, late.
+        self.mute = False
+        self._late = bytearray()
+        #: Every value the transport gave `settimeout`, in order.
+        self.timeouts: list[float] = []
         self._out = bytearray()
 
     # -- the socket surface ---------------------------------------------
 
-    def settimeout(self, _seconds) -> None:
-        pass
+    def settimeout(self, seconds) -> None:
+        self.timeouts.append(seconds)
+
+    def arrive(self) -> None:
+        """The replies that were held back reach the socket."""
+        self._out += self._late
+        self._late = bytearray()
 
     def close(self) -> None:
         self.closed = True
@@ -78,7 +89,7 @@ class FakeAmiga:
         self.chatter = []
         reply = self.reply(body)
         if reply is not None:
-            self._out += self._frame(reply)
+            (self._late if self.mute else self._out).extend(self._frame(reply))
 
     def recv(self, length: int) -> bytes:
         if self.gone:
@@ -202,6 +213,112 @@ def test_no_reply_at_all_names_the_wait():
     guest.reply = lambda body: None         # a server that answers nothing
     with pytest.raises(amiga.FsuaeError, match="no reply in"):
         gdb.read_memory(0xC00000, 4)
+
+
+def test_a_reply_that_arrives_after_its_timeout_is_not_the_next_answer():
+    """The player opens the emulator's menu, a poll times out, and on resume
+    the late reply is sitting in the socket. GDB-remote has no request ids, so
+    without a drain the 0x300-byte read below would be given 0x200's bytes.
+    """
+    guest = FakeAmiga({0xC00000: bytes(range(256)) * 4})
+    gdb = transport(guest)
+    guest.mute = True
+    with pytest.raises(amiga.FsuaeError, match="no reply in"):
+        gdb.read_memory(0xC00000, 0x200)
+    guest.mute = False
+    guest.arrive()                          # the emulator was only paused
+    assert gdb.read_memory(0xC00000, 0x300) == guest.peek(0xC00000, 0x300)
+
+
+def test_a_late_reply_of_the_same_length_is_not_taken_for_the_next_one():
+    """The worse case: the length check cannot catch it, so the stale bytes
+    would be returned as if they were the address asked for."""
+    guest = FakeAmiga({0xC00000: bytes([1]) * 8, 0xC00100: bytes([2]) * 8})
+    gdb = transport(guest)
+    guest.mute = True
+    with pytest.raises(amiga.FsuaeError):
+        gdb.read_memory(0xC00000, 8)
+    guest.mute = False
+    guest.arrive()
+    assert gdb.read_memory(0xC00100, 8) == bytes([2]) * 8
+
+
+def test_a_timeout_does_not_end_the_connection():
+    """`lost` is for a connection that failed; a slow frame is not that."""
+    guest = FakeAmiga()
+    gdb = transport(guest)
+    guest.mute = True
+    with pytest.raises(amiga.FsuaeError):
+        gdb.read_memory(0xC00000, 4)
+    with pytest.raises(amiga.FsuaeError):
+        gdb.read_memory(0xC00000, 4)
+    assert gdb.lost is False and guest.closed is False
+
+
+def test_a_late_reply_and_then_a_closed_connection_is_reported_as_lost():
+    guest = FakeAmiga()
+    gdb = transport(guest)
+    guest.mute = True
+    with pytest.raises(amiga.FsuaeError):
+        gdb.read_memory(0xC00000, 4)
+    guest.gone = True
+    with pytest.raises(amiga.FsuaeError, match="closed the connection"):
+        gdb.read_memory(0xC00000, 4)
+    assert gdb.lost is True
+
+
+def test_a_failing_socket_marks_the_connection_lost():
+    guest = FakeAmiga()
+    gdb = transport(guest)
+
+    def broken(_length):
+        raise ConnectionResetError(104, "Connection reset by peer")
+
+    guest.recv = broken
+    with pytest.raises(amiga.FsuaeError, match="connection failed"):
+        gdb.read_memory(0xC00000, 4)
+    assert gdb.lost is True
+
+
+def test_a_handshake_that_times_out_closes_the_socket_it_opened():
+    """Nobody else holds it: the constructor raised, so no caller can close it."""
+    guest = FakeAmiga()
+    guest.mute = True
+    with pytest.raises(amiga.FsuaeError, match="no reply in"):
+        transport(guest)
+    assert guest.closed is True
+
+
+def test_a_poll_sized_read_waits_a_short_time_and_a_sweep_waits_the_long_one():
+    """A poll runs on the window's own thread; a paused emulator must not cost
+    it twenty seconds."""
+    guest = FakeAmiga()
+    gdb = transport(guest)
+    assert guest.timeouts[0] == amiga.FsuaeGdb.TIMEOUT   # the handshake
+    guest.timeouts.clear()
+    gdb.read_memory(0xC00000, 0x400)
+    assert guest.timeouts == [amiga.FsuaeGdb.POLL_TIMEOUT]
+    guest.timeouts.clear()
+    gdb.read_memory(0xC00000, 0x80000)
+    assert guest.timeouts == [amiga.FsuaeGdb.TIMEOUT]
+    assert amiga.FsuaeGdb.POLL_TIMEOUT < amiga.FsuaeGdb.TIMEOUT
+
+
+def test_the_targets_reads_use_the_poll_timeout():
+    guest = FakeAmiga(party_memory())
+    tgt = amiga.AmigaTarget(transport(guest), BLADES, data_base=BASE)
+    guest.timeouts.clear()
+    tgt.fix()
+    assert guest.timeouts
+    assert set(guest.timeouts) == {amiga.FsuaeGdb.POLL_TIMEOUT}
+
+
+def test_a_short_transport_timeout_is_never_lengthened_by_the_poll_one():
+    guest = FakeAmiga()
+    gdb = transport(guest, timeout=0.25)
+    guest.timeouts.clear()
+    gdb.read_memory(0xC00000, 4)
+    assert guest.timeouts == [0.25]
 
 
 @pytest.mark.parametrize("body", ["k", "D", "s", "S05", "\x03", "vCont;s",

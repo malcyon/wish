@@ -118,6 +118,10 @@ BUS_RELEASED = 0xC0
 #: The attribute a target sets when each of its reads stops the processor.
 HALTS_ON_READ = "halts_on_read"
 
+#: The attribute a target sets to False when it is not a C64 at all -- an Amiga's
+#: memory has no `$DD00`, and a read there is the game's own unrelated byte.
+C64_MEMORY = "c64_memory"
+
 #: How many consecutive identical busy-looking readings count as a resting
 #: state rather than a transfer. Three at the Ultimate's 500 ms tick is a
 #: second and a half; a load cycles its states far faster than that. Two would
@@ -234,8 +238,10 @@ class BusGuard:
     def clear(self, target) -> bool:
         """Read the bus and say whether this tick may go ahead.
 
-        True at once, with no read at all, for a target that does not stop the
-        processor to answer -- `halts_on_read` unset or False. Anything the
+        True at once, with no read at all, for a target whose `c64_memory` is
+        False (an Amiga has no `$DD00`, and the guard would spend a read on the
+        game's own unrelated byte every tick), and for one that does not stop
+        the processor to answer -- `halts_on_read` unset or False. Anything the
         read raises (`NotConnected` when the device has gone) is the caller's,
         exactly as a read inside the tick would be.
 
@@ -244,6 +250,8 @@ class BusGuard:
         guard's own read rate along with everything behind it, rather than
         only cutting what a busy verdict skips.
         """
+        if not getattr(target, C64_MEMORY, True):
+            return True
         if not getattr(target, HALTS_ON_READ, False):
             return True
         now = self._clock()
