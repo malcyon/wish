@@ -105,10 +105,13 @@ def describe(path: pathlib.Path) -> dict:
 
 
 def chr_records(directory: pathlib.Path) -> list[pathlib.Path]:
-    """The `CHRDAT*.SAV` files in `directory`, whatever case the game wrote."""
-    return sorted(f for f in directory.iterdir()
-                  if f.name.upper().startswith("CHRDAT")
-                  and f.name.upper().endswith(".SAV"))
+    """The `CHRDAT*.SAV` files in `directory`, whatever case the game wrote,
+    in name order ignoring case -- a `Path` sorts case-sensitively on Linux and
+    case-insensitively on Windows, so the default order differs by platform."""
+    return sorted((f for f in directory.iterdir()
+                   if f.name.upper().startswith("CHRDAT")
+                   and f.name.upper().endswith(".SAV")),
+                  key=lambda f: f.name.upper())
 
 
 def report_records(directory: pathlib.Path, note, event: str) -> None:
@@ -213,8 +216,9 @@ def run_shots(directory: pathlib.Path) -> list[pathlib.Path]:
     to one that carries the name is not a shot and is left alone."""
     if not directory.is_dir():
         return []
-    return sorted(f for f in directory.iterdir()
-                  if f.suffix.lower() == ".png" and f.is_file())
+    return sorted((f for f in directory.iterdir()
+                   if f.suffix.lower() == ".png" and f.is_file()),
+                  key=lambda f: f.name.upper())
 
 
 def run_saves(directory: pathlib.Path) -> list[pathlib.Path]:
@@ -222,9 +226,10 @@ def run_saves(directory: pathlib.Path) -> list[pathlib.Path]:
     are files."""
     if not directory.is_dir():
         return []
-    return sorted(f for f in directory.iterdir()
-                  if f.name.upper().startswith(("CHRDAT", "SAVGAM"))
-                  and f.is_file())
+    return sorted((f for f in directory.iterdir()
+                   if f.name.upper().startswith(("CHRDAT", "SAVGAM"))
+                   and f.is_file()),
+                  key=lambda f: f.name.upper())
 
 
 def keep_run_files(session, out: pathlib.Path, note) -> None:

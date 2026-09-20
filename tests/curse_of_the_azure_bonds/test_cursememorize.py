@@ -208,10 +208,11 @@ def test_a_record_that_will_not_read_does_not_hide_the_others(
     events: list[dict] = []
     cm.keep_run_files(slot, tmp_path / "out", lambda **kw: events.append(kw))
 
-    after = sorted((e for e in events if e["event"] == "after"),
-                   key=lambda e: e["file"])
-    assert [e["file"] for e in after] == [
-        "CHRDATA1.SAV", "CHRDATA3.SAV", "chrdata2.sav"]
+    after = [e for e in events if e["event"] == "after"]
+    # Records come back in name order ignoring case, and compare ignoring
+    # case: a case-insensitive filesystem may report either spelling.
+    assert [e["file"].upper() for e in after] == [
+        "CHRDATA1.SAV", "CHRDATA2.SAV", "CHRDATA3.SAV"]
     assert "short record" in after[0]["error"]
     assert "error" not in after[1] and "error" not in after[2]
 
