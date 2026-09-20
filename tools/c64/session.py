@@ -61,8 +61,9 @@ from tools.c64.drive import (  # noqa: E402
 )
 from tools.registry import instance, scratch  # noqa: E402
 
-# Disk images and logs live in scratch; the code does not.
-HERE = str(scratch.scratch_dir("session", "drive"))
+# Disk images and logs live under the cache, not the temp directory: the flatpak
+# VICE has a private `/tmp` and cannot open a disk staged there.
+HERE = str(scratch.cache_dir("session", "drive"))
 # The human's numbers, and the defaults when no slot is passed.  The pool never
 # allocates these: `tools/registry/instance.py` starts at 6520, so anything still on 6502
 # is a game a human started from the desktop menu.

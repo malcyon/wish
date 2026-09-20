@@ -323,8 +323,9 @@ class Character:
         into the five badges Donald chose: `CONDITION_BADGES`.
 
         **A running spell is named, never counted.** The duration byte's unit
-        is in bits 6-7 and is not decoded, so "8" could be rounds, turns or
-        hours; the badge says the spell is up and says no more than that.
+        is in bits 6-7 (minute, ten minutes, hour or day, `duration_unit`),
+        and whether a badge shows a duration is a design decision left open;
+        the badge says the spell is up and says no more than that.
 
         The order is the table's, not the effect table's, so a card's badges
         do not shuffle between one poll and the next.

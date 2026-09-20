@@ -67,7 +67,7 @@ One row per write-up, saying what it establishes; a path beginning `cited/<name>
 | [130-preferences.md](130-preferences.md) | `File > Preferences…` (`Ctrl+,`): where the game disks are, which live backend, the debug log |
 | [131-fastloader.md](131-fastloader.md) | Whether answering the fastloader prompt Y or N changes anything: it does not |
 | [132-logo.md](132-logo.md) | The app icon: the artist's colour mark `assets/logo/mark.svg`, rendered at every size by `ui/appicon.py`, and the brief for it |
-| [133-active-effects.md](133-active-effects.md) | The Character Traits editor and the read-only save-wide active-effects panel: the distinct record and `SAVEDGAME0` arrays, their shared id table, and the remaining duration and magnitude measurements |
+| [133-active-effects.md](133-active-effects.md) | The Character Traits editor and the read-only save-wide active-effects panel: the distinct record and `SAVEDGAME0` arrays, their shared id table, the duration byte's four units and how each is aged, and which ids restore a statistic from their magnitude when they expire |
 | [134-commissions.md](134-commissions.md) | The council's ledger, its progress markers, the offer board and the byte two scripts share |
 | [135-levelling.md](135-levelling.md) | What the training hall writes, routine by routine, and the button that does it without walking there |
 | [136-condition-badges.md](136-condition-badges.md) | The nine condition badges (per character on a roster card, party-wide on the automapper's bottom strip), which effect ids each covers, and how the ten game-icons.net glyphs measure at 13 px |

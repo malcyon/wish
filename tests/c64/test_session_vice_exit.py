@@ -85,3 +85,37 @@ def test_a_running_vice_is_left_alone(tmp_path, monkeypatch):
 
     sess._proc = Running()
     sess._require_alive()          # must not raise
+
+
+def test_a_session_that_never_launched_is_not_treated_as_dead(monkeypatch):
+    """`_proc` is None before `launch()`: a wait on such a session must time out
+    rather than raise, because there is no process to have exited."""
+    sess = session.Session()
+    assert sess._proc is None
+    sess._require_alive()          # must not raise
+    monkeypatch.setattr(sess, "screen", lambda: None)
+    monkeypatch.setattr(session.time, "sleep", lambda s: None)
+    assert sess.wait_text("ANYTHING", timeout=0.05) == (None, None)
+
+
+def test_a_missing_vice_log_is_named_in_the_error(tmp_path):
+    sess = session.Session()
+    sess.here = str(tmp_path)      # no vice.log in it
+    sess._proc = ExitedProc()
+
+    with pytest.raises(RuntimeError, match=r"\(vice\.log unreadable\)"):
+        sess._require_alive()
+
+
+def test_the_default_session_directory_is_not_under_the_temp_directory():
+    """The flatpak VICE has a private `/tmp`, so a disk staged under the temp
+    directory is one it cannot open."""
+    import tempfile
+    from pathlib import Path
+    tmp = Path(tempfile.gettempdir()).resolve()
+    home = Path.home().resolve()
+    if tmp == home or tmp in home.parents:
+        pytest.skip("$HOME is inside the temp directory")
+    here = Path(session.HERE).resolve()
+    assert tmp not in here.parents
+    assert home in here.parents

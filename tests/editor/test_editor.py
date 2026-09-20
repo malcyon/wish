@@ -3915,13 +3915,11 @@ def test_an_effect_nobody_has_named_reads_unknown():
 
 def test_the_panel_shows_no_duration_anywhere():
     """**D2**, and it is a decision rather than an omission. The duration byte
-    holds a count in bits 0-5 and a *unit* in bits 6-7, and which unit each
-    value selects has never been decoded, so a number over an unnamed unit
-    would tell a player something nobody can stand behind.
-    `docs/136-condition-badges.md` refused exactly this on the condition
-    badge.
+    holds a count in bits 0-5 and a *unit* in bits 6-7 (minute, ten minutes,
+    hour or day), and whether to show a duration is Donald's to decide.
+    `docs/136-condition-badges.md` leaves the condition badge without one too.
 
-    `$8B` is 11 in a unit nobody can name. Neither number reaches the panel,
+    `$8B` is 11 in the hour unit. Neither number reaches the panel,
     and there is no third column for one to reach.
     """
     from editor import activeeffects

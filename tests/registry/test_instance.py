@@ -99,11 +99,16 @@ def test_module_imports_without_fcntl(monkeypatch):
 def test_the_default_pool_is_not_under_the_temp_directory(monkeypatch):
     """The VICE flatpak sees `$HOME` and has a private `/tmp`, so a slot under
     the temp directory holds a disk it cannot open."""
-    import tempfile
+    from tools.registry import scratch
     monkeypatch.delenv("POR_INST", raising=False)
-    tmp = Path(tempfile.gettempdir()).resolve()
-    assert tmp not in Path(instance.pool_root()).resolve().parents
-    assert Path.home().resolve() in Path(instance.pool_root()).resolve().parents
+    tmp = scratch.scratch_dir("x").parents[1].resolve()
+    home = Path.home().resolve()
+    if tmp == home or tmp in home.parents:
+        pytest.skip("$HOME is inside the temp directory, so no pool under it "
+                    "can be told from one outside it")
+    pool = Path(instance.pool_root()).resolve()
+    assert tmp not in pool.parents
+    assert home in pool.parents
 
 
 def test_por_inst_still_wins_over_the_default(monkeypatch, tmp_path):

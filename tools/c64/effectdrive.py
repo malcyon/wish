@@ -17,7 +17,7 @@ overlays were read to use, counted rather than stopped at, so the game keeps
 running while the counts build:
 
 * `DUNGEON $0E0D` the per-minute ageing sweep, `$0E46` its store and `$0E39`
-  the branch that floors a run-out count at 1 instead of expiring it;
+  the branch that writes a run-out count back as 1 instead of expiring it;
 * `CAMP $131F` the expiry that clears the id, and `$12F8` the dispatch that
   looks the id up in `ECL65 $9AD5`;
 * `SPELLE04 $AD0B`, the handler that rebuilds strength from the magnitude.

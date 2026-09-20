@@ -11,19 +11,20 @@ per-character tab where it would read as the selected character's
 
 **Read-only, and nothing here reaches `store_save`.** `goldbox/effects.py`
 has `write_effect` and `clear_effect`; this module calls neither, and Add and
-Remove are a separate issue waiting on a measurement. The reason is not
+Remove are a separate piece of work that has to apply the game's restore
+(`docs/133-active-effects.md`). The reason is not
 caution in general: an effect's magnitude is per-id *restore* data -- ENLARGE
 on BRUTUS stored his own 18/98 to put back when it lapsed -- so clearing an
 id here skips the game's expiry handler and leaves a character at 18/00
 strength for ever, and nothing about that is visible until much later.
 
 **No duration is shown.** The duration byte holds a count in its low six bits
-and a *unit* in its top two, and which unit each value selects has never been
-decoded. A number over a unit nobody can name tells a player something we
-cannot stand behind, so `Effect.remaining` and `Effect.unit` are not rendered
-here and the raw bits do not go in a tooltip either
-(`.claude/rules/gui-text.md`). `docs/136-condition-badges.md` refused the same
-number on the condition badge for the same reason.
+and a *unit* in its top two (minute, ten minutes, hour or day, decoded by
+`goldbox.effects.duration_unit`). Whether the panel shows a duration is a
+design decision that is Donald's, so `Effect.remaining` and `Effect.unit` are
+not rendered here and the raw bits do not go in a tooltip either
+(`.claude/rules/gui-text.md`). `docs/136-condition-badges.md` leaves the
+condition badge without a number for the same reason.
 
 **The codes are one namespace with the traits at record `0x0AD`**, which is
 why the names come from `goldbox/traits.py` here as well -- `LIBRARY $4028`

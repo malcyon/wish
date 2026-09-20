@@ -78,6 +78,14 @@ MAGNITUDE_VALUE_IDS = frozenset({12, 14, 38})
 MAGNITUDE_BRANCH_IDS = frozenset({131, 132})
 MAGNITUDE_READ_IDS = MAGNITUDE_VALUE_IDS | MAGNITUDE_BRANCH_IDS
 
+# In combat the expiry indexes a 139-entry table (`SQRPACI01 $0791`, handlers
+# in `SPELLE01`) and only four entries have been read: 12 and 38 at `$A81D`
+# (STR, STR %), 13 and 14 at `$A83F` (CHA). The other 135 are UNKNOWN, so this
+# is a lower bound: an id missing from it may still restore a statistic in a
+# fight. It is not folded into `MAGNITUDE_VALUE_IDS`, which is the out-of-combat
+# list and is exact.
+COMBAT_MAGNITUDE_VALUE_IDS = frozenset({12, 13, 14, 38})
+
 
 @dataclass(frozen=True)
 class Duration:
@@ -148,7 +156,9 @@ class Effect:
         """Whether the game's expiry would put a statistic back from this slot.
 
         Bit 7 of the magnitude is the flag, and ids 12 and 38 (STR, STR %) and
-        14 (CHA) are the ones that read the value. Clearing such a slot with
+        14 (CHA) are the ones that read the value out of combat. **Id 13 also
+        restores a statistic in combat** (`COMBAT_MAGNITUDE_VALUE_IDS`), which
+        this out-of-combat answer does not include. Clearing such a slot with
         `clear_effect` skips that restore.
         """
         return bool(self.magnitude & MAGNITUDE_RESTORE_FLAG
@@ -218,8 +228,9 @@ def clear_effect(payload: bytearray, slot: int) -> None:
     leaving owner, duration and magnitude as residue (`docs/125-bug-notes.md`
     N7), and then, when bit 7 of the magnitude is set, calls a handler that
     puts a statistic back. This function skips the handler, so clearing a slot
-    whose id is 12, 14 or 38 with that bit set (`Effect.restores_a_statistic`)
-    leaves the character's strength or charisma altered for good. A caller
+    whose id is 12, 14 or 38 with that bit set (`Effect.restores_a_statistic`),
+    or 13 in combat (`COMBAT_MAGNITUDE_VALUE_IDS`), leaves the character's
+    strength or charisma altered for good. A caller
     offering to remove an effect must apply the restore or refuse those slots
     (`docs/133-active-effects.md`, "What this means for a write path").
     """

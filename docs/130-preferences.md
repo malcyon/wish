@@ -636,7 +636,7 @@ at that same size?"*
 Before this it half-worked, and the main window ignored it: `AutomapWindow`
 saved `window_width`/`window_height` and restored them, but `wish/window.py`
 did `win.resize(max(settings.window_width, 1875), max(settings.window_height,
-1030))` — a floor regardless of what was saved — and nothing wrote the size
+1030))` — a minimum applied whatever was saved — and nothing wrote the size
 back when the merged window was resized. Worse, the hosted map window's
 `shutdown()` wrote *its own* size — the size of a page inside a tab — over the
 remembered one, so what was in the file was not a window size at all.
@@ -665,7 +665,7 @@ What it does now:
 * **`window_width` and `window_height` are still written**, kept current, for an
   older build reading the same file — and they are the fallback on the first
   run after this change, so **nobody loses their window**. Donald's saved 940 ×
-  820 raised by the `FIRST_RUN` floor of 1875 × 1030 is exactly what the old
+  820 raised to the `FIRST_RUN` minimum of 1875 × 1030 is exactly what the old
   code did, so the first run after the upgrade looks identical; the second run
   onwards uses whatever he resized to.
 * **Only the window that *is* a window remembers.** `AutomapWindow.shutdown()`
@@ -796,7 +796,7 @@ squeezed, which is exactly the line edits, the spin box and the table.
   it), and the tables have a whole tab to stretch into — **15 of Pool of
   Radiance's 29 areas visible instead of 5**, measured before the title tabs
   put a bar above the table and a count below it, with no cap on it at all
-  (`TABLE_MIN_ROWS` is a floor, not a ceiling). A table still scrolls
+  (`TABLE_MIN_ROWS` is the minimum, not the maximum). A table still scrolls
   internally; 29 rows is 900 px and no 662-line screen will ever show them
   all. **Game disks moved out of
   General** when `#22 (A disk folder setting per game, not one shared by all six)` gave the one shared folder three more rows, one per
@@ -827,8 +827,8 @@ squeezed, which is exactly the line edits, the spin box and the table.
   for `sizeHintForColumn(0)`, 200 with the tick box and the scrollbar. The
   widest was always the folder row, so the *measured* answer is that the width
   was already right — it is now measured on four controls rather than one.
-* **General sits in a `QScrollArea`, which never draws its bar.** It is the
-  floor under the whole section: on a display that cannot give the tab its 578
+* **General sits in a `QScrollArea`, which never draws its bar.** It is what
+  keeps the whole section usable: on a display that cannot give the tab its 578
   lines the choice is a scrollbar or the crushed line edits this was rebuilt to
   stop. At the size `fit` opens there is nothing to scroll, and the test
   asserts the scrollbar's maximum is 0.

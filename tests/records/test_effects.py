@@ -125,6 +125,14 @@ def test_the_ids_that_read_their_magnitude_back():
     assert effects.MAGNITUDE_READ_IDS == {12, 14, 38, 131, 132}
 
 
+def test_id_13_restores_a_statistic_in_combat_only():
+    assert effects.COMBAT_MAGNITUDE_VALUE_IDS == {12, 13, 14, 38}
+    assert effects.MAGNITUDE_VALUE_IDS < effects.COMBAT_MAGNITUDE_VALUE_IDS
+    assert 13 not in effects.MAGNITUDE_VALUE_IDS
+    e = effects.Effect(slot=0, id=13, owner=0, duration=1, magnitude=0xE2)
+    assert e.restores_a_statistic is False
+
+
 @pytest.mark.parametrize("eid, magnitude, expected", [
     (12, 0xE2, True),      # ENLARGE with a strength to put back
     (38, 0x80, True),

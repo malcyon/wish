@@ -167,11 +167,11 @@ the owner byte matching this character's slot, and name the id through
 character's own slots, so one code table serves both and nothing new is needed
 to name them.
 
-**The honest limit: the badge can say *running*, not *how
-long*.** The duration byte is a count in bits 0–5 and a **unit in bits 6–7 that
-is not decoded**, so "8" on a badge could be 8 rounds, turns or hours. Show the
-name and no number until `docs/133-active-effects.md`'s one experiment — cast,
-save, camp a known interval, save, difference the arrays — has been run. A
+**The badge says *running*, not *how long*.** The duration byte is a count in
+bits 0–5 and a **unit in bits 6–7**, and the unit is decoded: minute, ten
+minutes, hour or day (`goldbox/effects.py` `duration_unit`,
+`docs/133-active-effects.md`). So a duration could be shown; whether a badge
+does is Donald's to decide, and for now it shows the name and no number. A
 trait-sourced badge, if one is ever wanted for a passive item power, cannot say
 even that much: a trait slot has no duration field and never expires.
 
@@ -305,8 +305,9 @@ displaced collision without choosing between them.
 
 ## What this does not do
 
-* **No duration on the badge.** Not until bits 6–7 of the duration byte are
-  decoded. A number over an unnamed unit is worse than no number.
+* **No duration on the badge.** Bits 6–7 of the duration byte are decoded now
+  (minute, ten minutes, hour, day), so what is left is a design decision that
+  is Donald's: whether a badge shows a duration at all.
 * **No badge for a trait-slot effect.** Nothing a player character carries at
   `0x0AD` in any save we hold is worth a badge: the seeds are racial (107, 124)
   and the passive item powers are already visible on the item.

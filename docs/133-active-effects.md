@@ -53,9 +53,9 @@ units are one minute, ten minutes, one hour and one day.
 | bits 6–7 | unit | what advances it | grade |
 |---|---|---|---|
 | `00` | one minute — one dungeon step, one combat round | every minute of the clock | CONFIRMED, in the running game and from the bytecode |
-| `01` | ten minutes, an AD&D turn | the minute-units digit `+$C7` wrapping | CONFIRMED, in the running game and from the bytecode |
-| `10` | one hour | the tens-of-minutes digit `+$C8` wrapping | CONFIRMED from the bytecode; live only as a negative, that it does not move when no hour boundary is crossed |
-| `11` | one day | the hour digit `+$C9` wrapping | CONFIRMED from the bytecode; live only as the same negative |
+| `01` | ten minutes, an AD&D turn | the minute-units digit `$49C7` wrapping | CONFIRMED, in the running game and from the bytecode |
+| `10` | one hour | the tens-of-minutes digit `$49C8` wrapping | CONFIRMED from the bytecode; live only as a negative, that it does not move when no hour boundary is crossed |
+| `11` | one day | the hour digit `$49C9` wrapping | CONFIRMED from the bytecode; live only as the same negative |
 
 **CONFIRMED: a duration byte of zero is never decremented and never expires.**
 All three ageing routines read the byte and skip the slot when it is zero
@@ -84,8 +84,8 @@ and leaves the id set, for as long as the party keeps walking. The expiry
 handlers live in `SPELLE04`, which only `CAMP $133F` loads, so `DUNGEON` has
 nowhere to send an expiry: it parks the effect for camp or the next fight to
 collect. `ENCAMP` always collects, because `CAMP $0803` passes one minute on
-entry. `DUNGEON $1241`, which passes twelve hours, uses the same floor
-deliberately.
+entry. `DUNGEON $1241`, which passes twelve hours, parks run-out counts at one
+the same way, deliberately.
 
 ## The magnitude byte, and what is restored
 
@@ -102,10 +102,24 @@ halves at `$9AEE` and `$9B06`, searched; in combat a 139-entry table at
 `ECL65` and `SPELLN00` before it dispatches, which is what puts the handlers
 in memory.
 
-**CONFIRMED: out of combat, three ids read the magnitude's value** — 12 and 38
-rebuild strength, 14 rebuilds charisma. Two more read only its sign. The rest
-of the list discards it, and every id **not** in the list reaches no handler
-at all, so nothing of its magnitude is ever read.
+**CONFIRMED from the bytecode: out of combat, three ids read the magnitude's
+value** — 12 and 38 rebuild strength, 14 rebuilds charisma. Two more read only
+its sign. The rest of the list discards it, and out of combat every id **not**
+in the list reaches no handler at all, so nothing of its magnitude is ever
+read. That is true out of combat only: the combat table is indexed by the id
+itself, and 135 of its 139 entries are unread (below).
+
+**The grades differ by id.** Live, in the running game: id 12 only. A run wrote
+id 12 with magnitude `$F4` into a copy of a save, let `ENCAMP` pass the
+minute, and watched the sweep, the expiry, the dispatch and `SPELLE04 $AD0B`
+each hit once while the owner's strength went from 15 to 16, with no other
+character touched. Ids 14 and 38 are read from the bytecode: 38 shares handler
+`$AD0B` with 12, and 14's handler `$AD27` was read and not run. The id list
+itself was read identically off the disk and out of the running machine. Each
+discard verdict below is read from the bytecode; the ones with an instruction
+in the table (4, 7, 22, 34, 43, 57 and the trait-clearing group) name what
+overwrites the value, and for 15, 44, 50 and 62 the measurement records the
+verdict and not the instruction, so the reason is not recorded.
 
 | effect id | handler in `SPELLE04` | the magnitude |
 |---|---|---|
@@ -115,7 +129,7 @@ at all, so nothing of its magnitude is ever read.
 | 7 | `$ACD7` | discarded; constitution goes back up by one instead |
 | 15 | `$AD71` | discarded |
 | 22 | `$AD2F` | discarded; adds effect 15 and expires this slot |
-| 34, 43 | `$AD49`, `$AD4F` | discarded; strength comes down by one instead, floored at 4 |
+| 34, 43 | `$AD49`, `$AD4F` | discarded; strength comes down by one instead, and never goes below 4 |
 | 44 | `$AD6B` | discarded |
 | 50 | `$AD97` | discarded |
 | 57 | `$AD9F` | discarded; a message only |
@@ -134,8 +148,11 @@ at 16.
 
 **CONFIRMED in combat, for four ids:** 12 and 38 at `SPELLE01 $A81D` and 13
 and 14 at `$A83F`, the same two statistics. **UNKNOWN:** the other 135 entries
-of the combat table. Reading them is static work — disassemble `SPELLE01` at
-each distinct handler address and record which touch `$4B80,X`.
+of the combat table, so the four ids are a lower bound in combat: another id
+may restore a statistic in a fight. Reading them is static work — disassemble
+`SPELLE01` at each distinct handler address and record which touch `$4B80,X`.
+`goldbox.effects.COMBAT_MAGNITUDE_VALUE_IDS` holds the four and
+`MAGNITUDE_VALUE_IDS` stays the exact out-of-combat set of three.
 
 **A finding that is not about restoring:** `SPELLE01 $A84D`, shared by ids 4,
 7, 15, 34, 43, 44, 50, 57 and 62, writes the id back into `$4900,X` with a
@@ -148,8 +165,8 @@ unmeasured live.
 **Clearing a slot is not the same as expiring it.** The game's own clear
 restores a statistic on the way through; `goldbox.effects.clear_effect()`
 zeroes the four bytes and does not. A slot whose magnitude has bit 7 set and
-whose id is 12, 14 or 38 leaves the character permanently altered if it is
-cleared that way, so anything that offers Remove has to apply the restore
+whose id is 12, 14 or 38 — or 13, in combat — leaves the character
+permanently altered if it is cleared that way, so anything that offers Remove has to apply the restore
 itself or refuse. **A magnitude written with bit 7 set on one of those ids is
 a deferred write to the character record**, not an opaque byte.
 
