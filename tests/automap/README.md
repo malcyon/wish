@@ -6,6 +6,7 @@ Tests for the live automapper in `automap/`: its map model and geometry, the par
 |---|---|
 | `test_actions.py` | Checks the live actions (healing, identifying, levelling, the trainer flags and re-entry) through the addresses they write to a `MemoryTarget`. |
 | `test_amigalocate.py` | Checks that one sweep of an Amiga's memory names which title is loaded and where, and that `AmigaTarget.locate` is that same search. |
+| `test_amigamaps.py` | Checks that the map loader reads an Amiga title's own maps out of a folder of disk images, names the title from the disk, leaves `disk_globs` alone and skips Pools of Darkness. |
 | `test_automap.py` | Checks the automapper's map model, sight and wall geometry, party panel and notes against recorded machines built from the saved-game fixtures. |
 | `test_automapbanks.py` | Checks that the screen address, the bitmap test and the status line are read from the memory the processor sees during a load, and that a poll still costs one resume. |
 | `test_busguard.py` | Checks that `automap/busguard.py` reads `$DD00` before a tick, holds the tick off while the bus is busy and cannot hold it off for ever. |
