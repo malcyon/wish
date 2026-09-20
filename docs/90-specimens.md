@@ -535,3 +535,27 @@ already on the disks — and the discriminator between an item's `+14` as an eff
 id and as a spell id is `+15` bit 7. CLOAK OF DISPLACEMENT reads `+14` 89 (displaced)
 and TWO-HANDED SWORD +1 +3 VS UNDEAD reads 3 (undead-slaying), both off the player's
 own saves. See `goldbox/traits.py` and [128-guide-and-scripting.md](128-guide-and-scripting.md).
+
+## `WISH-SPEC-ssb-89-train-input` — four characters above their own maximum
+
+MORGAINE, DOMINIC, PAINE and GUY DE VALOIS hold roster current hit points of
+40, 82, 80 and 102 beside record `hp_max` of 35, 78, 74 and 95. **The four
+numbers are ours, not the engine's**, and the specimen is sound for everything
+else: its records are the shipped party's with a level, a class level and an
+experience total written into each, byte for byte what
+`tools/secret_of_the_silver_blades/ssbtrain.py stage` writes for those fields.
+
+The record page has no current hit points in it. The party list's own copy
+lives at `$6700 + slot * $20 + $19` and is what `SAVE CURRENT GAME` writes into
+the save's roster block at `+$1C00`; a training press raises it and `hp_max`
+together, and poking a pre-press record page back over a character already
+trained in that session moves one and not the other. The four totals are each
+that character's `hp_max` after one more press. CONFIRMED on VICE: a staged
+disk loaded and saved with no press reproduces the disk byte for byte, and a
+press followed by a poke of the pre-press page reproduces the specimen's slot 0
+— record and roster block both — exactly.
+
+So a `hit_points > hp_max` guard in `goldbox/c64_codec.py` would fire on no
+engine-written save here: both cases on this machine are states an agent's
+pokes made. `ssbtrain.py press` now writes the party list's copy alongside the
+record page.

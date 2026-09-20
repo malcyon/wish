@@ -9,6 +9,7 @@ Tests for Secret of the Silver Blades: its C64 disks, saves, tables and level-up
 | `test_ssblevels.py` | Checks Silver Blades' ceilings, experience bar, THAC0 and racial rows, and that the six shipped saves reproduce without disks. |
 | `test_ssblive.py` | Checks the maps and walked route a live Silver Blades session recorded, and how an import rewrites the race byte and where the shipped casters' spellbooks end. |
 | `test_ssbtrainer.py` | Checks that one press of Silver Blades' trainer reproduces through the level-up plan, including its spell menu and wisdom gate. |
+| `test_ssbtrainpress.py` | Checks that a staged training press writes the party list's own current hit points beside the record page, so a save taken between presses cannot hold more hit points than the record's maximum. |
 | `test_ssbtrainerinputs.py` | Checks the three trainer inputs `tools/secret_of_the_silver_blades/ssbtrainerinputs.py` reads off the disks against Curse's copies and the game's own records. |
 | `test_ssbtraitnames.py` | Checks the Silver Blades effect-code table and the trait names the picker offers for it. |
 | `test_ssbwarp.py` | Checks that `tools/secret_of_the_silver_blades/ssbwarp.py` does not send Escape while a load is still running. |

@@ -130,6 +130,22 @@ HALL_OPEN = 0x7F
 #: slots of `SAVEDBASH` on the disk.
 ROSTER = 0x4F00
 
+#: **The party list's own current hit points, which the record page has not
+#: got.**  A record stores `hp_max` at `0x076` and no current total; the number
+#: the party list prints, and the number `SAVE CURRENT GAME` writes into the
+#: save's roster block at payload `+$1C00`, lives here at
+#: `roster_base + slot * $20 + $19` -- `$4B00 + $1C00` for this title,
+#: `goldbox/c64_save.py`.  A training press raises both together, so poking a
+#: pre-press record page back over a character the engine has already trained
+#: leaves a save whose current hit points exceed its own maximum, which is what
+#: `WISH-SPEC-ssb-89-train-input` holds (`#605`).  Measured live 2026-09-20:
+#: MORGAINE's byte read 35 before the press and 40 after, beside `hp_max`
+#: 35 -> 40 in the record.
+PARTY_CACHE = 0x6700
+PARTY_CACHE_STRIDE = 0x20
+PARTY_CACHE_HP = 0x19
+HP_MAX = 0x076
+
 #: What the magic-user menu at `GEN $1896` leaves behind, and the whole
 #: reason a menu can be measured without reading the screen.
 #: `$18DA STY $1C10` is how many ids it offered, `$18EB STA $7A00,X` is the
@@ -470,6 +486,11 @@ def press(args) -> int:
     the press before it to go stale.  `--set` takes the same field names
     `stage --give` does.
 
+    **The party list's current hit points are written too**, at
+    `PARTY_CACHE`, because they are not in the record page: without them a
+    save taken between two presses of the same character holds the earlier
+    press's total beside the composed record's lower maximum (`#605`).
+
     The spell menu is driven only when one was built: `$1C10` is zeroed and
     `$7A00` filled with `$FF` first, so a count that comes back non-zero is
     this press's menu and the ids beside it are its own.
@@ -497,6 +518,14 @@ def press(args) -> int:
     scratch.ensure(out.parent)
 
     cmd(port, "poke", f"{at:X}", base.hex())
+    # The record page carries no current hit points, so the party list's copy
+    # keeps whatever the last press left it at and a save taken here holds a
+    # character with more hit points than their own maximum (`#605`).  Written
+    # to the poked record's own `hp_max`, which is what a press sets it to.
+    hp = min(read_u(base, HP_MAX, 2), 0xFF)
+    cmd(port, "poke",
+        f"{PARTY_CACHE + args.slot * PARTY_CACHE_STRIDE + PARTY_CACHE_HP:X}",
+        f"{hp:02x}")
     cmd(port, "poke", f"{MENU_COUNT:X}", "00")
     cmd(port, "poke", f"{MENU_IDS:X}", "ff" * 64)
     before = _peek(port, at, SLOT_SIZE)
