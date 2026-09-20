@@ -1583,3 +1583,228 @@ def new_por_savegame(state: PorSaveState, slot: str, count: int,
     report.unwritten = [i for i in range(POR_SAVEGAME_SIZE)
                         if i not in report.sources]
     return bytes(save), report
+
+
+# ---------------------------------------------------------------------------
+# Pools of Darkness.  Its saved game is not an `AmigaContainer`: the variable
+# array is 1024 one-byte variables where the later titles' is a 5120-byte word
+# array, there is no wallset table, the party is capped at eight, and each
+# character is a `.pc` record followed by its own item and effect chains.
+# `/Pools of Darkness` writes `Save/SavGam<L>.pty` as one run of `write` calls
+# and its loader reads the same run back (`docs/124-amiga-port.md` 1.17-1.20):
+#
+#     1024  the byte-wide ECL variable array; variable N is at offset N - 1
+#        6  the square struct: x, y, facing, wall ahead, property, pad
+#        1  the mode the party was in before this one
+#        1  the game mode -- 2 in every save, because a save is camped
+#        2  the dungeon map the loader passes to `LoadMap`, `u16be`
+#        2  that loader's second argument, `u16be`
+#        2  the party count, `u16be`
+#      ...  that many characters: a 404-byte record, its item nodes of twenty
+#           bytes each, then its effect nodes of ten bytes each
+#      ...  padding to a fixed length, copied from the item template table
+# ---------------------------------------------------------------------------
+
+#: Every slot is padded to this length whatever the party costs.
+POD_SAVEGAME_SIZE = 0x2A4C
+
+#: One byte per ECL variable, variable *N* at file offset *N* - 1: the same
+#: numbering `dos_savegame.pod_var` reads on DOS.
+POD_VAR_BYTES = dos_savegame.POD_VAR_COUNT
+
+#: The square struct's six bytes, in write order.  DOS writes the first five;
+#: every name and its order is the same.
+POD_SQUARE = ("x", "y", "facing", "wall_ahead", "square_property", "pad")
+POD_SQUARE_AT = POD_VAR_BYTES
+POD_PREVIOUS_MODE_AT = POD_SQUARE_AT + len(POD_SQUARE)
+POD_MODE_AT = POD_PREVIOUS_MODE_AT + 1
+POD_MAP_AT = POD_MODE_AT + 1
+POD_MAP_BLOCK_AT = POD_MAP_AT + 2
+POD_COUNT_AT = POD_MAP_BLOCK_AT + 2
+POD_PARTY_AT = POD_COUNT_AT + 2
+
+#: The engine's own cap on the party: the save's write loop and the loader's
+#: read loop both stop at eight.
+POD_PARTY_MAX = 8
+
+POD_RECORD_BYTES = 0x194
+POD_ITEM_BYTES = 0x14
+POD_EFFECT_BYTES = 0x0A
+#: An item whose first byte is this carries sub-items of its own -- the scroll
+#: bundle -- and `node[POD_BUNDLE_COUNT]` more twenty-byte nodes follow it.
+POD_BUNDLE_ID = 0x49
+POD_BUNDLE_COUNT = 0x0C
+
+#: Where the record keeps the item count while it is in a file.  In memory the
+#: long at `0x08` is the item chain head; the writer overwrites it with the
+#: count before the record goes out and the loader takes the count from it.
+POD_ITEM_COUNT_AT = 0x08
+#: The record's effect-chain head, a flag in a file rather than a count:
+#: non-zero means one node follows, and each node's own long at `0x06` says
+#: whether another does.
+POD_EFFECT_HEAD_AT = 0x04
+POD_EFFECT_NEXT_AT = 0x06
+POD_NAME_AT, POD_NAME_BYTES = 0x60, 16
+
+
+class PodSaveError(ValueError):
+    """A buffer that is not an Amiga Pools of Darkness saved game."""
+
+
+@dataclass(frozen=True)
+class PodCharacterBlock:
+    """One character's block: the record, then its items, then its effects.
+
+    Not `amiga_pod.PodCharacter`, which is the record itself.
+    """
+
+    name: str
+    at: int
+    items: int
+    bundled: int
+    effects: int
+
+    @property
+    def size(self) -> int:
+        return (POD_RECORD_BYTES + POD_ITEM_BYTES * (self.items + self.bundled)
+                + POD_EFFECT_BYTES * self.effects)
+
+
+@dataclass(frozen=True)
+class PodSavegame:
+    data: bytes
+    square: dict[str, int]
+    previous_mode: int
+    mode: int
+    dungeon_map: int
+    map_block: int
+    count: int
+    characters: tuple[PodCharacterBlock, ...]
+    #: Where the party region ends, which is where the padding begins.
+    end: int
+
+    def var(self, index: int) -> int:
+        """Variable *index*, one-based, the way `pod_var` reads it on DOS."""
+        if not 1 <= index <= POD_VAR_BYTES:
+            raise PodSaveError(f"variable {index} is outside the array")
+        return self.data[index - 1]
+
+    @property
+    def clock(self) -> tuple[int, ...]:
+        first = dos_savegame.POD_CLOCK
+        return tuple(self.var(first + i)
+                     for i in range(dos_savegame.POD_CLOCK_DIGITS))
+
+    @property
+    def clock_legal(self) -> bool:
+        return all(digit < radix for digit, radix
+                   in zip(self.clock, dos_savegame.POD_CLOCK_RADIX))
+
+    @property
+    def pad(self) -> bytes:
+        return self.data[self.end:]
+
+
+def _pod_u16(data: bytes, at: int) -> int:
+    return struct.unpack_from(">H", data, at)[0]
+
+
+def _pod_u32(data: bytes, at: int) -> int:
+    return struct.unpack_from(">I", data, at)[0]
+
+
+def pod_parse(data: bytes) -> PodSavegame:
+    """One saved game, walked the way the loader walks it.
+
+    Every boundary comes from the file rather than from a table of widths:
+    the party count says how many records follow, each record's own item
+    count says how many twenty-byte nodes come after it, and the effect
+    chain ends at the first node whose `next` is zero.  So a parse that
+    lands every name in printable ASCII is evidence the walk is right.
+    """
+    if len(data) < POD_PARTY_AT:
+        raise PodSaveError(f"{len(data)} bytes is shorter than the header")
+    count = _pod_u16(data, POD_COUNT_AT)
+    if not 1 <= count <= POD_PARTY_MAX:
+        raise PodSaveError(
+            f"a party count of {count} is not 1 to {POD_PARTY_MAX}")
+    at = POD_PARTY_AT
+    characters = []
+    for _ in range(count):
+        start = at
+        record = data[at:at + POD_RECORD_BYTES]
+        if len(record) < POD_RECORD_BYTES:
+            raise PodSaveError(f"the record at {start} runs off the end")
+        at += POD_RECORD_BYTES
+        items = _pod_u32(record, POD_ITEM_COUNT_AT)
+        if items > 0xFF:
+            raise PodSaveError(f"an item count of {items} at {start}")
+        bundled = 0
+        for _item in range(items):
+            node = data[at:at + POD_ITEM_BYTES]
+            if len(node) < POD_ITEM_BYTES:
+                raise PodSaveError(f"an item node at {at} runs off the end")
+            at += POD_ITEM_BYTES
+            if node[0] == POD_BUNDLE_ID:
+                extra = node[POD_BUNDLE_COUNT]
+                bundled += extra
+                at += POD_ITEM_BYTES * extra
+        effects = 0
+        more = _pod_u32(record, POD_EFFECT_HEAD_AT)
+        while more:
+            node = data[at:at + POD_EFFECT_BYTES]
+            if len(node) < POD_EFFECT_BYTES:
+                raise PodSaveError(f"an effect node at {at} runs off the end")
+            at += POD_EFFECT_BYTES
+            more = _pod_u32(node, POD_EFFECT_NEXT_AT)
+            effects += 1
+        name = record[POD_NAME_AT:POD_NAME_AT + POD_NAME_BYTES].split(b"\x00")[0]
+        characters.append(PodCharacterBlock(
+            name.decode("latin1"), start, items, bundled, effects))
+    if at > len(data):
+        raise PodSaveError(f"the party ends at {at}, past {len(data)}")
+    square = {name: data[POD_SQUARE_AT + i]
+              for i, name in enumerate(POD_SQUARE)}
+    return PodSavegame(
+        data=data, square=square, previous_mode=data[POD_PREVIOUS_MODE_AT],
+        mode=data[POD_MODE_AT], dungeon_map=_pod_u16(data, POD_MAP_AT),
+        map_block=_pod_u16(data, POD_MAP_BLOCK_AT), count=count,
+        characters=tuple(characters), end=at)
+
+
+def pod_rebuild(save: PodSavegame) -> bytes:
+    """The file again, region by region, from what :func:`pod_parse` named.
+
+    The padding is kept as it was read: nothing in the engine reads it, so
+    there is nothing to derive it from, and a round trip that regenerated it
+    would be proving its own arithmetic instead of the map.
+    """
+    out = bytearray(save.data[:POD_VAR_BYTES])
+    out += bytes(save.square[name] for name in POD_SQUARE)
+    out += bytes((save.previous_mode, save.mode))
+    out += struct.pack(">HHH", save.dungeon_map, save.map_block, save.count)
+    for character in save.characters:
+        out += save.data[character.at:character.at + character.size]
+    out += save.pad
+    return bytes(out)
+
+
+def pod_from_amiga(data: bytes,
+                   source: str = "") -> world_state.PodWorldState:
+    """An Amiga Pools of Darkness `SavGam<L>.pty`, as a place and a clock.
+
+    Fills the same fields `world_state.pod_from_dos` does from the DOS
+    container, so the two are equal for the same saved party.  The facing is
+    halved to 0-3 as on DOS; the characters after the count are not read here.
+    """
+    save = pod_parse(data)
+    return world_state.PodWorldState(
+        title=dos_savegame.SAVE_POOLS_OF_DARKNESS.title,
+        variables=bytes(data[:POD_VAR_BYTES]),
+        x=save.square["x"], y=save.square["y"],
+        facing=save.square["facing"] // dos_savegame.FACING_SCALE,
+        wall_ahead=save.square["wall_ahead"],
+        square_property=save.square["square_property"],
+        previous_mode=save.previous_mode, mode=save.mode,
+        dungeon_map=save.dungeon_map, map_block=save.map_block,
+        count=save.count, source=source)

@@ -321,3 +321,20 @@ def test_the_engine_names_the_same_variable_range_as_the_dos_build():
     assert sites[dos_savegame.POD_IN_DUNGEON]
     assert sites[dos_savegame.POD_DUNGEON_MAP]
     assert sites[dos_savegame.POD_WILDERNESS_REGION]
+
+
+# ---------------------------------------------------------------------------
+# The container map lives in the library; this tool re-exports it
+# ---------------------------------------------------------------------------
+def test_the_tool_reads_through_the_librarys_container_map():
+    from goldbox import amiga_savegame
+
+    assert podsavegame.parse is amiga_savegame.pod_parse
+    assert podsavegame.rebuild is amiga_savegame.pod_rebuild
+    assert podsavegame.PodSaveError is amiga_savegame.PodSaveError
+    assert podsavegame.SAVEGAME_SIZE == amiga_savegame.POD_SAVEGAME_SIZE == 0x2A4C
+    assert (podsavegame.SQUARE_AT, podsavegame.PREVIOUS_MODE_AT,
+            podsavegame.MODE_AT, podsavegame.MAP_AT,
+            podsavegame.MAP_BLOCK_AT, podsavegame.COUNT_AT) == (
+        1024, 1030, 1031, 1032, 1034, 1036)
+    assert podsavegame.PARTY_AT == 1038

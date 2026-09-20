@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+import struct
 
 import gamedata
 import pytest
@@ -250,3 +251,102 @@ def test_the_shared_world_state_keeps_its_six_digit_clock():
     assert dos_savegame.CLOCK_DIGITS == 6
     assert "variables" not in {f.name for f in
                                dataclasses.fields(world_state.WorldState)}
+
+
+# ---------------------------------------------------------------------------
+# The Amiga container reads as the same state
+# ---------------------------------------------------------------------------
+
+def _amiga_pod_from_dos(dos: bytes) -> bytes:
+    """The Amiga container holding the party a DOS `SAVGAM` holds.
+
+    The regions are the same and in the same order.  The differences are the
+    pad byte after the square struct, the two map words big-endian instead of
+    little-endian, and a `u16be` count where DOS keeps a byte.  The party
+    records are filler with no items and no effects, since the state reads
+    none of them.
+    """
+    from goldbox import amiga_savegame as amiga
+
+    box = dos_savegame.SAVE_POOLS_OF_DARKNESS
+    count = dos[box.party_size_byte]
+    out = bytearray(dos[:dos_savegame.POD_MAP])
+    out.insert(dos_savegame.POD_PREVIOUS_MODE, 0)
+    map_word = struct.unpack_from("<H", dos, dos_savegame.POD_MAP)[0]
+    block_word = struct.unpack_from("<H", dos, dos_savegame.POD_MAP_BLOCK)[0]
+    out += struct.pack(">HHH", map_word, block_word, count)
+    out += bytes(amiga.POD_RECORD_BYTES) * count
+    return bytes(out) + bytes(amiga.POD_SAVEGAME_SIZE - len(out))
+
+
+def test_the_two_ports_read_a_synthetic_pools_of_darkness_party_the_same_way():
+    from goldbox import amiga_savegame as amiga
+
+    dos = bytes(_synthetic_pod_save())
+    amiga_save = _amiga_pod_from_dos(dos)
+    assert len(amiga_save) == amiga.POD_SAVEGAME_SIZE
+    assert (amiga.pod_from_amiga(amiga_save)
+            == world_state.pod_from_dos(dos))
+
+
+def test_an_amiga_pools_of_darkness_state_halves_the_facing_and_reads_words_big_endian():
+    from goldbox import amiga_savegame as amiga
+
+    dos = bytes(_synthetic_pod_save())
+    state = amiga.pod_from_amiga(_amiga_pod_from_dos(dos), "slot A")
+    assert (state.x, state.y, state.facing) == (11, 2, 2)
+    assert (state.dungeon_map, state.map_block) == (0x1234, 0x5678)
+    assert state.count == 6
+    assert state.source == "slot A"
+    assert state.clock == (1, 2, 3, 4, 5, 6, 7)
+
+
+def test_an_amiga_buffer_that_is_not_a_pools_of_darkness_save_is_refused():
+    from goldbox import amiga_savegame as amiga
+
+    with pytest.raises(amiga.PodSaveError):
+        amiga.pod_from_amiga(bytes(amiga.POD_SAVEGAME_SIZE))
+
+
+def test_every_played_amiga_pools_of_darkness_slot_agrees_with_the_tool_and_with_dos():
+    """Each slot on the player's disks, read by the library and by
+    `tools/amiga/podsavegame.py`, and rewritten as the DOS container the
+    same party would make."""
+    from goldbox import amiga_savegame as amiga
+    from tools.amiga import podsavegame
+
+    found = podsavegame.slots()
+    if not found:
+        pytest.skip("no Amiga Pools of Darkness saved game; set $AMIGA_DISKS")
+    seen = 0
+    for name, copies in found.items():
+        for _label, blob in copies:
+            seen += 1
+            tool = podsavegame.parse(blob)
+            state = amiga.pod_from_amiga(blob, name)
+            assert state.variables == blob[:1024], name
+            assert state.count == tool.count, name
+            assert (state.x, state.y) == (tool.square["x"],
+                                          tool.square["y"]), name
+            assert state.facing * 2 == tool.square["facing"], name
+            assert state.clock == tool.clock, name
+            dos = _dos_pod_from_amiga(blob)
+            assert (dataclasses.replace(world_state.pod_from_dos(dos), source=name)
+                    == state), name
+            assert len(blob) == amiga.POD_SAVEGAME_SIZE, name
+    assert seen >= 8
+
+
+def _dos_pod_from_amiga(blob: bytes) -> bytes:
+    """The 1364-byte DOS container holding the same regions as an Amiga slot."""
+    box = dos_savegame.SAVE_POOLS_OF_DARKNESS
+    save = bytearray(box.size)
+    save[:dos_savegame.POD_PREVIOUS_MODE] = blob[:dos_savegame.POD_PREVIOUS_MODE]
+    at = dos_savegame.POD_PREVIOUS_MODE + 1      # after the pad byte
+    save[dos_savegame.POD_PREVIOUS_MODE] = blob[at]
+    save[dos_savegame.POD_MODE] = blob[at + 1]
+    dungeon_map, block, count = struct.unpack_from(">HHH", blob, at + 2)
+    struct.pack_into("<H", save, dos_savegame.POD_MAP, dungeon_map)
+    struct.pack_into("<H", save, dos_savegame.POD_MAP_BLOCK, block)
+    save[box.party_size_byte] = count
+    return bytes(save)

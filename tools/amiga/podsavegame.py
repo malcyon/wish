@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import dataclasses
 import pathlib
 import re
 import struct
@@ -39,56 +38,42 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from goldbox import dos_savegame  # noqa: E402
+from goldbox import amiga_savegame, dos_savegame  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from tools.amiga import amiga68k, amigasaves  # noqa: E402
 
-#: Every slot is padded to this length, whatever the party costs.  The save
-#: callback ends `lseek(fd, 0, 1)` and, when the position is short of it,
-#: writes the difference from the item template table (`0x27234`-`0x2726E`).
-SAVEGAME_SIZE = 0x2A4C
+# The container map is `goldbox.amiga_savegame`'s; these are its names as this
+# tool and its tests have always spelled them.
+SAVEGAME_SIZE = amiga_savegame.POD_SAVEGAME_SIZE
+VAR_BYTES = amiga_savegame.POD_VAR_BYTES
+SQUARE = amiga_savegame.POD_SQUARE
+SQUARE_AT = amiga_savegame.POD_SQUARE_AT
+PREVIOUS_MODE_AT = amiga_savegame.POD_PREVIOUS_MODE_AT
+MODE_AT = amiga_savegame.POD_MODE_AT
+MAP_AT = amiga_savegame.POD_MAP_AT
+MAP_BLOCK_AT = amiga_savegame.POD_MAP_BLOCK_AT
+COUNT_AT = amiga_savegame.POD_COUNT_AT
+PARTY_AT = amiga_savegame.POD_PARTY_AT
+PARTY_MAX = amiga_savegame.POD_PARTY_MAX
+RECORD_BYTES = amiga_savegame.POD_RECORD_BYTES
+ITEM_BYTES = amiga_savegame.POD_ITEM_BYTES
+EFFECT_BYTES = amiga_savegame.POD_EFFECT_BYTES
+BUNDLE_ID = amiga_savegame.POD_BUNDLE_ID
+BUNDLE_COUNT = amiga_savegame.POD_BUNDLE_COUNT
+ITEM_COUNT_AT = amiga_savegame.POD_ITEM_COUNT_AT
+EFFECT_HEAD_AT = amiga_savegame.POD_EFFECT_HEAD_AT
+EFFECT_NEXT_AT = amiga_savegame.POD_EFFECT_NEXT_AT
+NAME_AT, NAME_BYTES = amiga_savegame.POD_NAME_AT, amiga_savegame.POD_NAME_BYTES
+PodSaveError = amiga_savegame.PodSaveError
+PodCharacter = amiga_savegame.PodCharacterBlock
+PodSavegame = amiga_savegame.PodSavegame
+parse = amiga_savegame.pod_parse
+rebuild = amiga_savegame.pod_rebuild
 
-#: One byte per ECL variable, variable *N* at file offset *N* - 1 -- the same
-#: numbering `goldbox.dos_savegame.pod_var` reads on DOS.  The save writes the
-#: region from `[g57ac] + 1`, so an Amiga block displacement *d* is variable
-#: *d* and file offset *d* - 1.
-VAR_BYTES = dos_savegame.POD_VAR_COUNT
 
-#: The square struct's six bytes, in write order.  DOS writes five of them --
-#: it has no pad -- and every other name and its order is the same.
-SQUARE = ("x", "y", "facing", "wall_ahead", "square_property", "pad")
-SQUARE_AT = VAR_BYTES
-PREVIOUS_MODE_AT = SQUARE_AT + len(SQUARE)
-MODE_AT = PREVIOUS_MODE_AT + 1
-MAP_AT = MODE_AT + 1
-MAP_BLOCK_AT = MAP_AT + 2
-COUNT_AT = MAP_BLOCK_AT + 2
-PARTY_AT = COUNT_AT + 2
+def _u16(data: bytes, at: int) -> int:
+    return struct.unpack_from(">H", data, at)[0]
 
-#: The engine's own cap on the party: the save's write loop and the loader's
-#: read loop both stop at eight (`0x271CE`, `0x2720A`).
-PARTY_MAX = 8
-
-RECORD_BYTES = 0x194
-ITEM_BYTES = 0x14
-EFFECT_BYTES = 0x0A
-#: An item whose first byte is this carries sub-items of its own -- the scroll
-#: bundle.  Both the writer (`0x263C6`) and the reader (`0x258EA`) branch on
-#: it and then walk `node[0x0C]` more twenty-byte nodes.
-BUNDLE_ID = 0x49
-BUNDLE_COUNT = 0x0C
-
-#: Where the record keeps the item count while it is in a file.  In memory the
-#: long at `0x08` is the item chain head; the writer overwrites it with the
-#: count before the record goes out (`0x2635E`) and the loader takes the count
-#: from it and zeroes it again (`0x25842`).
-ITEM_COUNT_AT = 0x08
-#: The record's effect-chain head, which is a flag in a file rather than a
-#: count: non-zero means one node follows, and each node's own long at `0x06`
-#: says whether another does (`0x25AB2`-`0x25B2A`).
-EFFECT_HEAD_AT = 0x04
-EFFECT_NEXT_AT = 0x06
-NAME_AT, NAME_BYTES = 0x60, 16
 
 #: `Vault<L>.DAT`: twelve bytes of header, the marker `$FFFF`, a `u16be` item
 #: count, then a fixed two hundred twenty-byte item nodes, the unused ones
@@ -105,143 +90,6 @@ EXECUTABLE = "Pools of Darkness"
 #: displacement off `a4`.  `movea.l -$2852(a4), aN` is how every access to a
 #: variable opens.
 VAR_POINTER = 0x57AC
-
-
-class PodSaveError(ValueError):
-    """A buffer that is not an Amiga Pools of Darkness saved game."""
-
-
-@dataclasses.dataclass(frozen=True)
-class PodCharacter:
-    """One character's block: the record, then its items, then its effects."""
-
-    name: str
-    at: int
-    items: int
-    bundled: int
-    effects: int
-
-    @property
-    def size(self) -> int:
-        return (RECORD_BYTES + ITEM_BYTES * (self.items + self.bundled)
-                + EFFECT_BYTES * self.effects)
-
-
-@dataclasses.dataclass(frozen=True)
-class PodSavegame:
-    data: bytes
-    square: dict[str, int]
-    previous_mode: int
-    mode: int
-    dungeon_map: int
-    map_block: int
-    count: int
-    characters: tuple[PodCharacter, ...]
-    #: Where the party region ends, which is where the padding begins.
-    end: int
-
-    def var(self, index: int) -> int:
-        """Variable *index*, one-based, the way `pod_var` reads it on DOS."""
-        if not 1 <= index <= VAR_BYTES:
-            raise PodSaveError(f"variable {index} is outside the array")
-        return self.data[index - 1]
-
-    @property
-    def clock(self) -> tuple[int, ...]:
-        first = dos_savegame.POD_CLOCK
-        return tuple(self.var(first + i)
-                     for i in range(dos_savegame.POD_CLOCK_DIGITS))
-
-    @property
-    def clock_legal(self) -> bool:
-        return all(digit < radix for digit, radix
-                   in zip(self.clock, dos_savegame.POD_CLOCK_RADIX))
-
-    @property
-    def pad(self) -> bytes:
-        return self.data[self.end:]
-
-
-def _u16(data: bytes, at: int) -> int:
-    return struct.unpack_from(">H", data, at)[0]
-
-
-def _u32(data: bytes, at: int) -> int:
-    return struct.unpack_from(">I", data, at)[0]
-
-
-def parse(data: bytes) -> PodSavegame:
-    """One saved game, walked the way the loader walks it.
-
-    Every boundary comes from the file rather than from a table of widths:
-    the party count says how many records follow, each record's own item
-    count says how many twenty-byte nodes come after it, and the effect
-    chain ends at the first node whose `next` is zero.  So a parse that
-    lands every name in printable ASCII is evidence the walk is right.
-    """
-    if len(data) < PARTY_AT:
-        raise PodSaveError(f"{len(data)} bytes is shorter than the header")
-    count = _u16(data, COUNT_AT)
-    if not 1 <= count <= PARTY_MAX:
-        raise PodSaveError(f"a party count of {count} is not 1 to {PARTY_MAX}")
-    at = PARTY_AT
-    characters = []
-    for _ in range(count):
-        start = at
-        record = data[at:at + RECORD_BYTES]
-        if len(record) < RECORD_BYTES:
-            raise PodSaveError(f"the record at {start} runs off the end")
-        at += RECORD_BYTES
-        items = _u32(record, ITEM_COUNT_AT)
-        if items > 0xFF:
-            raise PodSaveError(f"an item count of {items} at {start}")
-        bundled = 0
-        for _item in range(items):
-            node = data[at:at + ITEM_BYTES]
-            if len(node) < ITEM_BYTES:
-                raise PodSaveError(f"an item node at {at} runs off the end")
-            at += ITEM_BYTES
-            if node[0] == BUNDLE_ID:
-                extra = node[BUNDLE_COUNT]
-                bundled += extra
-                at += ITEM_BYTES * extra
-        effects = 0
-        more = _u32(record, EFFECT_HEAD_AT)
-        while more:
-            node = data[at:at + EFFECT_BYTES]
-            if len(node) < EFFECT_BYTES:
-                raise PodSaveError(f"an effect node at {at} runs off the end")
-            at += EFFECT_BYTES
-            more = _u32(node, EFFECT_NEXT_AT)
-            effects += 1
-        name = record[NAME_AT:NAME_AT + NAME_BYTES].split(b"\x00")[0]
-        characters.append(PodCharacter(
-            name.decode("latin1"), start, items, bundled, effects))
-    if at > len(data):
-        raise PodSaveError(f"the party ends at {at}, past {len(data)}")
-    square = {name: data[SQUARE_AT + i] for i, name in enumerate(SQUARE)}
-    return PodSavegame(
-        data=data, square=square, previous_mode=data[PREVIOUS_MODE_AT],
-        mode=data[MODE_AT], dungeon_map=_u16(data, MAP_AT),
-        map_block=_u16(data, MAP_BLOCK_AT), count=count,
-        characters=tuple(characters), end=at)
-
-
-def rebuild(save: PodSavegame) -> bytes:
-    """The file again, region by region, from what :func:`parse` named.
-
-    The padding is kept as it was read: nothing in the engine reads it, so
-    there is nothing to derive it from, and a round trip that regenerated it
-    would be proving its own arithmetic instead of the map.
-    """
-    out = bytearray(save.data[:VAR_BYTES])
-    out += bytes(save.square[name] for name in SQUARE)
-    out += bytes((save.previous_mode, save.mode))
-    out += struct.pack(">HHH", save.dungeon_map, save.map_block, save.count)
-    for character in save.characters:
-        out += save.data[character.at:character.at + character.size]
-    out += save.pad
-    return bytes(out)
 
 
 def files(pattern: str) -> dict[str, list[tuple[str, bytes]]]:
