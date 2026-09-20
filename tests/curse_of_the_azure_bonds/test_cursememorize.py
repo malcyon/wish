@@ -21,6 +21,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 pytest.importorskip("tools.curse_of_the_azure_bonds.cursememorize")
+from goldbox import dos_savegame as sg  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursememorize as cm  # noqa: E402
 
 
@@ -349,6 +350,9 @@ class RunSession:
     def stage(self, fresh=False):
         pass
 
+    def save_file(self, letter):
+        return self.save_dir / f"SAVGAM{letter.upper()}.DAT"
+
     def boot(self, fresh=False):
         pass
 
@@ -383,7 +387,115 @@ def _run_args(tmp_path, specimen):
         specimen=str(specimen), game="CURSE", slot="A", who=5, begin="",
         path="", reenter="", trial=["n"], after=None, save_to=None,
         follow=None, follow_minutes=1.0, minutes=1.0,
-        out=str(tmp_path / "out"))
+        out=str(tmp_path / "out"), relocate=None)
+
+
+def _curse_save(*, area=1, geo=1, x=4, y=4, facing=0):
+    save = bytearray(sg.SAVE_CURSE_OF_THE_AZURE_BONDS.size)
+    save[0] = 2
+    sg.put_word(save, sg.AREA, geo)
+    sg.put_word(save, sg.SCRIPT, area)
+    sg.put_word(save, sg.DISK, 2)
+    sg.put_word(save, sg.INDOORS, 1)
+    sg.put_position(save, x, y, facing)
+    sg.put_wall_block(save, (1, 2, 3))
+    return save
+
+
+def test_relocation_changes_only_the_copied_slot_a_save(
+        tmp_path, monkeypatch):
+    source = tmp_path / "specimen" / "SAVGAMA.DAT"
+    source.parent.mkdir()
+    seed = _curse_save()
+    script_start, script_end = sg.SAVE_CURSE_OF_THE_AZURE_BONDS.script_buffer
+    seed[script_start:script_end] = bytes([0xA5]) * (script_end - script_start)
+    original = bytes(seed)
+    source.write_bytes(original)
+    staged = tmp_path / "slot" / "SAVE" / source.name
+    staged.parent.mkdir(parents=True)
+    shutil.copyfile(source, staged)
+    game = tmp_path / "game"
+    game.mkdir()
+    (game / "ECL2.DAX").write_bytes(b"synthetic index")
+    block = b"\x88\x13target area script"
+    monkeypatch.setattr(cm.dos_savegame, "dax_block",
+                        lambda data, area, name: block)
+
+    moved = cm.relocate_staged_save(
+        staged, game, area=2, x=8, y=0, facing=1)
+
+    result = staged.read_bytes()
+    shape = sg.SAVE_CURSE_OF_THE_AZURE_BONDS
+    start, end = shape.script_buffer
+    assert source.read_bytes() == original
+    assert sg.current_area(result) == moved["area"] == 2
+    assert sg.geo_block(result) == moved["geo"] == 1
+    assert sg.position(result) == tuple(moved["position"]) == (8, 0, 1)
+    assert result[0] == sg.word(result, sg.DISK) == moved["dax"] == 2
+    assert result[start:start + len(block) - sg.ECL_HEADER] == \
+        block[sg.ECL_HEADER:]
+    assert not any(result[start + len(block) - sg.ECL_HEADER:end])
+    assert sg.wall_block(result)[0] == (1, 2, 3)
+
+
+def test_relocation_refuses_an_unregistered_or_different_map_before_writing(
+        tmp_path):
+    staged = tmp_path / "SAVGAMA.DAT"
+    original = bytes(_curse_save())
+    staged.write_bytes(original)
+
+    with pytest.raises(ValueError, match="not a registered Curse area"):
+        cm.relocate_staged_save(staged, tmp_path, area=0x7F,
+                                x=8, y=0, facing=1)
+    with pytest.raises(ValueError, match="resident GEO01"):
+        cm.relocate_staged_save(staged, tmp_path, area=3,
+                                x=8, y=0, facing=1)
+
+    assert staged.read_bytes() == original
+
+
+def test_the_existing_path_stages_the_original_location(
+        tmp_path, monkeypatch, capsys):
+    specimen = _specimen(tmp_path)
+    original = bytes(_curse_save(area=1, geo=1, x=4, y=4, facing=0))
+    (specimen / "SAVGAMA.DAT").write_bytes(original)
+    _stub_run(monkeypatch, tmp_path,
+              lambda slot, game: RunSession(tmp_path / "slot"))
+    args = _run_args(tmp_path, specimen)
+
+    assert cm.run(args) == 0
+    capsys.readouterr()
+
+    assert (tmp_path / "out" / "saves" / "SAVGAMA.DAT").read_bytes() == \
+        original
+
+
+def test_the_driver_relocates_the_copy_before_boot(
+        tmp_path, monkeypatch, capsys):
+    specimen = _specimen(tmp_path)
+    original = bytes(_curse_save())
+    (specimen / "SAVGAMA.DAT").write_bytes(original)
+    (tmp_path / "ECL2.DAX").write_bytes(b"synthetic index")
+    block = b"\x88\x13target area script"
+    monkeypatch.setattr(cm.dos_savegame, "dax_block",
+                        lambda data, area, name: block)
+
+    class RelocatedSession(RunSession):
+        def boot(self, fresh=False):
+            assert sg.current_area(self.save_file("A").read_bytes()) == 2
+
+    _stub_run(monkeypatch, tmp_path,
+              lambda slot, game: RelocatedSession(tmp_path / "slot"))
+    args = _run_args(tmp_path, specimen)
+    args.relocate = (2, 8, 0, 1)
+
+    assert cm.run(args) == 0
+    capsys.readouterr()
+
+    staged = (tmp_path / "out" / "saves" / "SAVGAMA.DAT").read_bytes()
+    assert specimen.joinpath("SAVGAMA.DAT").read_bytes() == original
+    assert sg.current_area(staged) == 2
+    assert sg.position(staged) == (8, 0, 1)
 
 
 def test_a_rerun_into_the_same_out_replaces_the_log_and_the_table(

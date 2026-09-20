@@ -28,6 +28,12 @@ there is no key that changes which character a camp screen acts on:
         --specimen $WISH_SPECIMENS/coab-dos/WISH-SPEC-curse-551-party-as-converted \
         --who 5                       # the PALADIN; 4 is the RANGER
 
+`--relocate AREA X Y FACING` retargets only the copied `SAVGAM<slot>.DAT`
+before boot.  It accepts a registered indoor Curse area that uses the save's
+resident `GEO`, preserves that map's wallset, stages the target area's own ECL
+block from the game directory, and writes the square with facing 0=N, 1=E,
+2=S, 3=W.  Omitting it leaves the specimen's location byte for byte unchanged.
+
 Each `--trial` is one key list, pressed from a freshly entered `MEMORIZE`
 screen; the default three are the lists `#574`'s plan names.  `--path` is the
 keystroke route from the map to the grimoire, a flag because it is a reading of
@@ -78,7 +84,7 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos_codec  # noqa: E402
+from goldbox import areas, dos_codec, dos_savegame  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -112,6 +118,64 @@ PAGE_WORD = (188, 192, 24, 7)
 #: measured on this paladin, at x 186-190 of rows 160-166.  `2  1` glyphs
 #: `c40279283cc3c375` and `2  0` glyphs `ac2df608edc9d3c6` on that grimoire.
 COUNTER = (160, 160, 48, 8)
+
+
+def relocate_staged_save(path: pathlib.Path, game: pathlib.Path, *, area: int,
+                         x: int, y: int, facing: int) -> dict:
+    """Move one copied Curse slot save to a registered area before boot.
+
+    This is deliberately a same-map relocation.  The registered target must
+    load the resident `GEO` already named by the save, so its wallset can stay
+    the engine-written one.  The target area's own staged script still has to
+    replace the old one: the DOS loader executes that buffer on load, and
+    `dos_savegame.retarget` documents the wrong-script load failure.
+
+    `path` is the copy under the claimed DOSBox slot.  The specimen is never
+    opened for writing.
+    """
+    path = pathlib.Path(path)
+    game = pathlib.Path(game)
+    original = path.read_bytes()
+    shape = dos_savegame.container_for(len(original))
+    if shape is not dos_savegame.SAVE_CURSE_OF_THE_AZURE_BONDS:
+        raise ValueError(
+            f"Slot save is {shape.title}, not Curse of the Azure Bonds")
+    where = areas.area_in(area, areas.CURSE_OF_THE_AZURE_BONDS)
+    if where is None:
+        raise ValueError(f"Area {area} is not a registered Curse area")
+    if where.outdoors:
+        raise ValueError(f"Area {area} is outdoors; this control moves only "
+                         "between indoor areas")
+    if not all(0 <= value <= 15 for value in (x, y)):
+        raise ValueError(f"Coordinates must be in 0..15, not ({x}, {y})")
+    if facing not in range(4):
+        raise ValueError(f"Facing must be 0..3, not {facing}")
+
+    source_geo = dos_savegame.geo_block(original)
+    target_geos = {areas.geo_number(name) for name in where.geos}
+    if source_geo not in target_geos:
+        label = f"GEO{source_geo:02X}"
+        named = ", ".join(where.geos) or "no registered GEO"
+        raise ValueError(
+            f"The staged save has resident {label}; area {area} loads {named}. "
+            "This control cannot supply another map's wallset")
+
+    dax = where.disk
+    dax_name = f"ECL{dax}.DAX"
+    data = (game / dax_name).read_bytes()
+    script = dos_savegame.dax_block(data, area, name=dax_name)
+    wallset, _wallmap = dos_savegame.wall_block(original, shape)
+    moved = bytearray(original)
+    script_start, script_end = shape.script_buffer
+    moved[script_start:script_end] = bytes(script_end - script_start)
+    dos_savegame.retarget(moved, area=area, dax=dax, geo=source_geo,
+                          wallset=wallset, script=script, container=shape)
+    dos_savegame.put_word(moved, dos_savegame.INDOORS, 1, shape)
+    dos_savegame.put_position(moved, x, y, facing, shape)
+    dos_savegame.put_tail_state(moved, indoors=True, container=shape)
+    path.write_bytes(moved)
+    return {"file": path.name, "area": area, "geo": source_geo, "dax": dax,
+            "position": [x, y, facing]}
 
 
 def describe(path: pathlib.Path) -> dict:
@@ -379,12 +443,12 @@ def run(args: argparse.Namespace) -> int:
         log = stack.enter_context((out / "run.jsonl").open("w"))
         tsv = stack.enter_context((out / "keys.tsv").open("w"))
         tsv.write("tag\tn\tkey\trow\tbar\tdigest\tpage\tcounter\ttitle\tshot\n")
-        kept_ok = _drive(args, specimen, session, out, log, tsv, path_keys,
-                         trials, deadline)
+        kept_ok = _drive(args, specimen, session, game_dir, out, log, tsv,
+                         path_keys, trials, deadline)
     return 0 if kept_ok else 1
 
 
-def _drive(args, specimen, session, out, log, tsv, path_keys, trials,
+def _drive(args, specimen, session, game_dir, out, log, tsv, path_keys, trials,
            deadline) -> bool:
     """Everything `run` does once it holds a slot, a session and open logs;
     False when the run's files could not be kept."""
@@ -421,6 +485,12 @@ def _drive(args, specimen, session, out, log, tsv, path_keys, trials,
             shutil.copyfile(src, session.save_dir / src.name)
             staged.append(src.name)
         note(event="staged", files=staged, save_dir=str(session.save_dir))
+        if args.relocate:
+            area, x, y, facing = args.relocate
+            moved = relocate_staged_save(
+                session.save_file(args.slot), game_dir,
+                area=area, x=x, y=y, facing=facing)
+            note(event="relocated", **moved)
         report_records(session.save_dir, note, "before")
 
         session.boot(fresh=False)
@@ -498,6 +568,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--who", type=int, default=5,
                     help="party index to bring to marching position 0; "
                          "5 is the PALADIN of the #551 party, 4 the RANGER")
+    ap.add_argument("--relocate", nargs=4, type=lambda value: int(value, 0),
+                    metavar=("AREA", "X", "Y", "FACING"),
+                    help="retarget only the copied slot save before boot; "
+                         "the registered indoor area must use its resident GEO")
     ap.add_argument("--begin", default="b",
                     help="keys from the loaded party menu to the map")
     ap.add_argument("--path", default="e m m",
