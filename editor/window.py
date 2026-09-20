@@ -1742,7 +1742,7 @@ class EditorBinding(QObject):
 
         def after(member):
             raw = bytearray(member.record.to_bytes())
-            if member.inventory is not None and member.inventory.changed:
+            if member.inventory is not None:
                 blocks = member.inventory.raws
                 at = 0x120
                 raw[at:at + sum(len(block) for block in blocks)] = b"".join(blocks)

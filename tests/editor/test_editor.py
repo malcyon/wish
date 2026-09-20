@@ -4600,6 +4600,46 @@ def test_an_amiga_item_save_does_not_write_again_after_it_succeeds(
     assert len(list((tmp_path / "backups").glob("curse.adf.*"))) == 1
 
 
+def test_a_dos_field_edit_after_an_item_save_keeps_the_item(app, tmp_path):
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    path = tmp_path / "SAVGAMA.DAT"
+    w = EditorBinding(make_root(), str(path))
+    w.roster.selectRow(0)
+    quantity = w.party.members[0].inventory.raws[0][10] + 1
+    w.party.members[0].inventory.set_quantity(0, quantity)
+    w._edited()
+    w.save(interactive=False)
+    w._widgets["gold"].setValue(1234)
+    w._edited()
+    w.save(interactive=False)
+    assert Party(str(path)).members[0].inventory.raws[0][10] == quantity
+
+
+def test_an_amiga_field_edit_after_an_item_save_keeps_the_item(app, tmp_path):
+    from support.amigasavegame import synthetic_curse
+
+    from editor.window import EditorBinding
+    from goldbox import amiga_savegame
+    disk = amiga_savegame.make_save_disk(
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA",)))
+    path = tmp_path / "curse.adf"
+    disk.save(path)
+    item = bytes(range(16))
+    w = EditorBinding(make_root(), str(path))
+    w.roster.selectRow(0)
+    w.party.members[0].inventory.set_raw(0, item)
+    w._edited()
+    w.save(interactive=False)
+    first_saved_item = Party(str(path)).members[0].inventory.raws[0]
+    w._widgets["gold"].setValue(1234)
+    w._edited()
+    w.save(interactive=False)
+    assert Party(str(path)).members[0].inventory.raws[0] == first_saved_item
+
+
 def test_a_c64_source_opens_the_disk_at_its_own_path(party):
     """`party` is the synthetic save disk from the fixture above."""
     from editor.convert import Source
