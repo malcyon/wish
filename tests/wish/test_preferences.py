@@ -1119,7 +1119,8 @@ def test_area_30_is_not_in_the_table_at_all(app, tmp_path, monkeypatch):
 def test_a_row_with_no_approved_name_reads_area_and_its_number(
         app, tmp_path, monkeypatch):
     """Curse's area 30 has no approved name, and its script name (`ECL1E`) is
-    developer text: the row reads `Area 30` instead, and stays tickable."""
+    developer text: the row reads `Area 30` instead, stays tickable and has no
+    tooltip, since its label opens with that script name."""
     import re
 
     from PyQt6.QtCore import Qt
@@ -1134,12 +1135,13 @@ def test_a_row_with_no_approved_name_reads_area_and_its_number(
             assert not re.search(r"ECL[0-9A-F]", item.text()), item.text()
             if area.name:
                 assert item.text() == area.name
+                # The tooltip is the area's own label, not this row's text.
+                assert item.toolTip() == area.label
             else:
                 unnamed += 1
                 assert item.text() == f"Area {area.id}"
                 assert item.flags() & Qt.ItemFlag.ItemIsUserCheckable
-            # The tooltip is the area's own label and is not this row's text.
-            assert item.toolTip() == area.label
+                assert item.toolTip() == ""
     assert unnamed  # Curse's area 30 and Silver Blades' two, at least
 
     curse = dialog.travel_tables[CURSE.key]
@@ -1309,9 +1311,10 @@ def test_ticking_in_another_titles_tab_files_the_tick_under_that_title(
 
 def test_each_tab_lists_its_own_titles_areas(app, tmp_path, monkeypatch):
     """Each table holds every fast-travellable row of its own title and nothing
-    of another's. The tooltip is the row's label, which names its disk
+    of another's. A named row's tooltip is its label, which names its disk
     (`POOL`, `CURSE`, `SILVER`), so it tells the titles apart where the names
-    cannot: "Temple of Bane" is a Pool of Radiance area and a Curse one."""
+    cannot: "Temple of Bane" is a Pool of Radiance area and a Curse one. An
+    unnamed row has no tooltip and is left out of the comparison."""
     from goldbox import areas
 
     nowhere(tmp_path, monkeypatch)
@@ -1319,11 +1322,12 @@ def test_each_tab_lists_its_own_titles_areas(app, tmp_path, monkeypatch):
 
     def labels(game):
         table = dialog.travel_tables[game.key]
-        return [table.item(i, 0).toolTip() for i in range(table.rowCount())]
+        return [table.item(i, 0).toolTip() for i in range(table.rowCount())
+                if table.item(i, 0).toolTip()]
 
     for game in preferences.TRAVEL_TITLES:
         expected = [a.label for a in areas.areas_for_title(game.title)
-                    if a.fasttravelable]
+                    if a.fasttravelable and a.name]
         assert len(expected) > 0
         assert sorted(labels(game)) == sorted(expected)
     for one, other in ((POOL, CURSE), (POOL, SILVER_BLADES),

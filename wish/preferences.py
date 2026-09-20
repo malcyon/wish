@@ -937,8 +937,11 @@ class PreferencesDialog(QDialog):
             item.setCheckState(Qt.CheckState.Checked if row.id in chosen
                                else Qt.CheckState.Unchecked)
             # The maps and the disk, exactly as the dropdown's items carry
-            # them: interesting to whoever wants them, in nobody's way.
-            item.setToolTip(row.label)
+            # them: interesting to whoever wants them, in nobody's way. An
+            # unnamed row gets none, because its label opens with the
+            # developer script name.
+            if row.name:
+                item.setToolTip(row.label)
             table.setItem(i, 0, item)
         table.blockSignals(False)
         # Wide enough for the longest area name with its tick box, asked of the

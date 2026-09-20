@@ -714,10 +714,11 @@ this dialog, one per title.
   when the open title has none, and remembers nothing.
 * **Each tab is a `QTableWidget`, one checkable row per fast-travellable
   area**, sorted by name with the unnamed rows after them in area-number
-  order, with its own count under it. Each row's tooltip is
+  order, with its own count under it. A named row's tooltip is
   the area's `label` — `New Phlan - GEO00, POOL3` — the same string the
   dropdown's own items carry, disk included, because an area id means nothing
-  without the title.
+  without the title. A row with no approved name has no tooltip, because its
+  label opens with the developer script name.
 * **A row with no approved name reads `Area N`**, the area's number in
   decimal — Curse's area 30 is `Area 30` — and not its script name (`ECL1E`),
   which is developer text. The row is ticked and unticked like any other.
