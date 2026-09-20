@@ -283,9 +283,111 @@ def test_the_probe_finds_disks_in_a_home_folder_guess_with_the_variables_unset(
                for line in found), found
 
 
+def _home_with(tmp_path, monkeypatch, *folders):
+    home = tmp_path / "home"
+    for folder in folders:
+        (home / folder).mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    return home
+
+
+def test_the_probe_finds_the_specimen_tree_with_the_variable_unset(
+        tmp_path, monkeypatch):
+    """`WISH_SPECIMENS` is unset, so the tree is `~/wish-specimens`."""
+    home = _home_with(tmp_path, monkeypatch, "wish-specimens")
+    found = suiterun.reachable_with_nothing_set(
+        REPO, sys.executable, suiterun.hidden_variables(EXAMPLE))
+    assert found is not None
+    assert f"WISH_SPECIMENS\t{home / 'wish-specimens'}" in found, found
+
+
+#: A file name each title's `disk_glob` matches, for a folder the probe's home
+#: guesses would look in.
+DISK_FILES = {
+    "pool-of-radiance": "POOL1.D64",
+    "curse-of-the-azure-bonds": "CURSE1.D64",
+    "secret-of-the-silver-blades": "SILVER1.D64",
+    "champions-of-krynn": "Champions of Krynn.d64",
+    "death-knights-of-krynn": "Death Knights of Krynn.d64",
+    "gateway-to-the-savage-frontier": "GATE1.D64",
+}
+
+
+def test_the_probe_finds_every_title_under_its_own_home_folder_guess(
+        tmp_path, monkeypatch):
+    """Each title is asked for by itself, so the probe must loop over all of
+    them and not only the first few."""
+    from goldbox import c64_port
+    assert set(DISK_FILES) == {game.key for game in c64_port.GAMES}
+    home = _home_with(tmp_path, monkeypatch)
+    for game in c64_port.GAMES:
+        folder = home / "Games" / game.title
+        folder.mkdir(parents=True)
+        (folder / DISK_FILES[game.key]).write_bytes(b"")
+    found = suiterun.reachable_with_nothing_set(
+        REPO, sys.executable, suiterun.hidden_variables(EXAMPLE))
+    assert found is not None
+    for game in c64_port.GAMES:
+        assert f"automap.paths {game.key}\t{home / 'Games' / game.title}" in found, game.key
+
+
+def test_a_probe_whose_output_is_not_utf8_is_a_failed_probe_with_that_reason(
+        tmp_path, monkeypatch):
+    """A home folder whose name ends in a byte that is not UTF-8 puts that byte
+    in the probe's output, and decoding it must not crash the run."""
+    home = os.fsencode(tmp_path) + b"/h\xff"
+    disks = os.path.join(home, b"Games", b"Pool of Radiance Disks")
+    os.makedirs(disks)
+    open(os.path.join(disks, b"POOL1.D64"), "wb").close()
+    monkeypatch.setenv("HOME", os.fsdecode(home))
+    monkeypatch.setenv("USERPROFILE", os.fsdecode(home))
+    found, reason = suiterun.probe_machine(
+        REPO, sys.executable, suiterun.hidden_variables(EXAMPLE))
+    assert found is None
+    assert "not valid UTF-8" in reason
+    assert suiterun.reachable_with_nothing_set(
+        REPO, sys.executable, suiterun.hidden_variables(EXAMPLE)) is None
+
+
+@pytest.mark.parametrize("failure, reason", [
+    (subprocess.TimeoutExpired("py", 120), "timed out after 120 s"),
+    (FileNotFoundError("no such interpreter"), "could not start: no such interpreter"),
+    (UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"), "not valid UTF-8"),
+    (subprocess.CompletedProcess("py", 3, "", "Traceback\nImportError: boom\n"),
+     "exited 3: ImportError: boom"),
+    (subprocess.CompletedProcess("py", 0, "reachable\ta\t/x\n", ""),
+     "did not print its last line"),
+])
+def test_the_fallback_line_says_why_the_probe_failed(
+        tmp_path, monkeypatch, capsys, failure, reason):
+    def fake(*args, **kwargs):
+        if isinstance(failure, BaseException):
+            raise failure
+        return failure
+
+    monkeypatch.setattr(suiterun, "_run", fake)
+    extra, without = suiterun.hiding_for_pass_two(
+        _fake_worktree(tmp_path, registry=False), "py", ("A",))
+    out = capsys.readouterr().out
+    assert "the probe failed" in out and reason in out, out
+    assert "not the condition CI runs under" in out
+    assert without == () and set(extra) == set(_variables().values())
+
+
+def test_the_fallback_line_names_the_variables_it_sets_and_leaves_the_specimen_tree(
+        tmp_path, monkeypatch, capsys):
+    _recording(monkeypatch, reachable=["WISH_SPECIMENS\t/home/x/wish-specimens"])
+    suiterun.run_checks(_fake_worktree(tmp_path, registry=True))
+    out = capsys.readouterr().out
+    assert "the example's variables" in out
+    assert "specimen tree stays reachable" in out
+    assert "every variable" not in out
+
+
 def test_a_broken_specimen_module_stops_the_probe_and_an_absent_one_does_not(
         tmp_path):
-    """A tree from before the specimen module has nothing to report; a module
+    """A tree without the specimen module has nothing to report; a module
     that fails to import on a current tree is not "no specimens"."""
     def probe_in(tree):
         return subprocess.run([sys.executable, "-c", suiterun.PROBE], cwd=tree,

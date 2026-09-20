@@ -387,7 +387,8 @@ the example's entries to `automap.paths.locate_disks` for each title, whose
 home-folder guesses were consulted only while `POR_DISKS` was unset, and to the
 specimen tree, and gave a machine with no `gamedisks.yaml` the same probe for
 its one run. A probe that times out, cannot start, exits non-zero or does not
-print its last line counts as failed and takes the fallback. The fallback sets
+print its last line counts as failed and takes the fallback, printing
+which of those it was; so does output that is not valid UTF-8. The fallback sets
 only the example's variables, so the specimen tree under `~/wish-specimens`
 stays reachable in it, as it was before.
 

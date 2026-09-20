@@ -33,8 +33,10 @@ What it does, in order, and all of it against the same checkout:
    interpreter in that environment. A probe then checks that nothing on this
    machine answers once the variables are gone: not the example's paths, not
    the home-folder guesses of `automap.paths`, not the specimen tree. If
-   something does, the pass falls back to pointing every variable at one path
-   that does not exist, says so, and is not the condition CI runs under. Then
+   something does, the pass falls back to pointing the example's variables at
+   one path that does not exist, says so, and is not the condition CI runs
+   under: `WISH_SPECIMENS` is left as it is, so a specimen tree that was found
+   stays reachable in it. A probe that fails says why. Then
    only the test files the first pass saw reach the game data are run
    (`tools/suite/datatouch.py`, loaded into step 4), or, when it recorded
    nothing, the files whose source asks for game data or decides to skip
@@ -154,9 +156,8 @@ PROBE_END = "probe complete"
 #: It prints a line for each entry `gamedisks.find` still answers, for each
 #: title whose disks `automap.paths.locate_disks` still finds (the home-folder
 #: guesses that the variable `POR_DISKS` normally pre-empts), and for the
-#: specimen tree if it is a directory. A tree from before the specimen module
-#: has no such module and nothing to report; any other import failure stops the
-#: probe.
+#: specimen tree if it is a directory. A tree without the specimen module has
+#: nothing to report; any other import failure stops the probe.
 PROBE = f"""\
 from automap import gamedisks, paths
 from goldbox import c64_port
@@ -181,20 +182,38 @@ print({PROBE_END!r})
 """
 
 
+def probe_machine(worktree: pathlib.Path, python: str, without: tuple[str, ...]
+                  ) -> tuple[list[str] | None, str]:
+    """`(found, reason)`: `found` is what `reachable_with_nothing_set` returns,
+    and `reason` says why the probe failed when `found` is None, and is empty
+    otherwise."""
+    try:
+        done = _run([python, "-c", PROBE], worktree, 120, without=without)
+    except subprocess.TimeoutExpired:
+        return None, "it timed out after 120 s"
+    except UnicodeDecodeError:
+        return None, "its output was not valid UTF-8"
+    except OSError as err:
+        return None, f"it could not start: {err}"
+    if done.returncode != 0:
+        tail = (done.stderr or "").strip().splitlines()[-1:]
+        return None, (f"it exited {done.returncode}"
+                      + (f": {tail[0]}" if tail else ""))
+    lines = done.stdout.splitlines()
+    if not lines or lines[-1] != PROBE_END:
+        return None, "it did not print its last line"
+    return [line.split("\t", 1)[1] for line in lines
+            if line.startswith("reachable\t")], ""
+
+
 def reachable_with_nothing_set(worktree: pathlib.Path, python: str,
                                without: tuple[str, ...]) -> list[str] | None:
     """`name<TAB>path` for each lookup that still finds data on this machine when
     the hiding variables are unset and the example stands in for the registry,
     or None when the probe itself failed: it did not run, timed out, exited
-    non-zero or did not print its last line."""
-    try:
-        done = _run([python, "-c", PROBE], worktree, 120, without=without)
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-    lines = done.stdout.splitlines()
-    if done.returncode != 0 or not lines or lines[-1] != PROBE_END:
-        return None
-    return [line.split("\t", 1)[1] for line in lines if line.startswith("reachable\t")]
+    non-zero, printed output that is not UTF-8 or did not print its last line.
+    `probe_machine` says which."""
+    return probe_machine(worktree, python, without)[0]
 
 
 def hiding_for_pass_two(worktree: pathlib.Path, python: str,
@@ -207,20 +226,22 @@ def hiding_for_pass_two(worktree: pathlib.Path, python: str,
     Removing the variables is the condition CI runs under. Where the example's
     paths, a home-folder guess or the specimen tree hold data on this machine,
     that hiding leaves the data reachable, so the run falls back to pointing
-    every variable at a path that does not exist; a mount namespace that hid
-    the paths themselves is refused on machines that forbid unprivileged user
-    namespaces.
+    the example's variables at a path that does not exist; a mount namespace
+    that hid the paths themselves is refused on machines that forbid
+    unprivileged user namespaces. The fallback does not touch `WISH_SPECIMENS`,
+    so a specimen tree stays reachable in it.
     """
-    found = reachable_with_nothing_set(worktree, python, without)
+    found, reason = probe_machine(worktree, python, without)
     if found == []:
         print("hiding check: nothing answers with the variables unset, so the "
               "no-data run has them removed, as CI does")
         return {}, without
-    why = ("the probe failed" if found is None
+    why = (f"the probe failed: {reason}" if found is None
            else "still reachable with the variables unset: "
            + "; ".join(line.replace("\t", " at ") for line in found))
-    print(f"hiding check: {why}. The no-data run points every variable at a "
-          "path that does not exist instead, which is not the condition CI "
+    print(f"hiding check: {why}. The no-data run points the example's "
+          "variables at a path that does not exist instead, and a reachable "
+          "specimen tree stays reachable in it, which is not the condition CI "
           "runs under")
     return no_data_env(worktree / "gamedisks.yaml.example",
                        worktree.parent / "no-data"), ()
