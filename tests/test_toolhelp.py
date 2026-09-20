@@ -240,14 +240,14 @@ if __name__ == "__main__":
 
 def test_the_filter_classifies_a_session_with_no_parser_as_dangerous():
     assert _entry_dangerous(_UNGUARDED_SOURCE) == ["Session"]
-    reason = _unguarded_reason(_UNGUARDED_SOURCE, "tools/fake.py")
+    reason = _unguarded_reason(_UNGUARDED_SOURCE, "synthetic_script.py")
     assert reason is not None
     assert "sys.argv" in reason
 
 
 def test_the_filter_leaves_a_script_with_no_dangerous_call_out():
     assert _entry_dangerous(_NO_DANGEROUS_CALL_SOURCE) == []
-    assert _unguarded_reason(_NO_DANGEROUS_CALL_SOURCE, "tools/fake.py") is None
+    assert _unguarded_reason(_NO_DANGEROUS_CALL_SOURCE, "synthetic_script.py") is None
 
 
 def test_the_family_named_in_403_is_covered():
