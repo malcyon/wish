@@ -1316,8 +1316,9 @@ def test_choose_door_refuses_when_every_route_can_start_a_fight():
 
 
 def test_choose_door_takes_a_single_door_whether_or_not_it_can_fight():
-    """The ten one-door areas did this before there was a rule, and Buccaneer
-    Base's and the Zhentil Keep Outpost's only door can start a fight."""
+    """A single door is taken as it stands, fight or not: Buccaneer Base's and
+    the Zhentil Keep Outpost's only door can start a fight and is still
+    chosen."""
     fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
     assert fasttravel.choose_door([(25, fight)]) == (25, fight)
     assert fasttravel.choose_door([]) is None
@@ -1363,8 +1364,8 @@ def test_the_two_hop_walks_out_of_the_door_the_rule_chooses(monkeypatch, here):
 
 @pytest.mark.parametrize("here", ONE_DOOR_AREAS)
 def test_the_ten_one_door_areas_walk_out_of_their_only_door(monkeypatch, here):
-    """Unchanged by the rule -- including the two whose only door can start a
-    fight."""
+    """A one-door area walks out of its only door, including the two whose
+    only door can start a fight."""
     monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(here)
     ft = actions.FastTravel()
@@ -1380,7 +1381,7 @@ def test_the_ten_one_door_areas_walk_out_of_their_only_door(monkeypatch, here):
 def test_the_flag_gates_the_door_choice_in_every_multi_door_area(
         monkeypatch, here):
     """Off, a forgotten `0` and `off` included, an area with several doors
-    tail-jumps as it always did."""
+    tail-jumps rather than choosing a door."""
     addr = fasttravel.POOL_OF_RADIANCE
     dest = _a_destination_off_every_door(here)
     for value in (None, "", "0", "off"):

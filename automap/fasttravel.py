@@ -426,7 +426,7 @@ def choose_door(doors: Sequence[tuple[int, ExitRoute]]
     `exits_from`'s rows, or None when there is none it may take.
 
     **One door is taken as it stands**, fight or not: Wish is not choosing
-    anything, and it is what the one-door areas did before there was a rule.
+    anything, so the door is not checked for a fight.
     **Where there are several, every route that can start a fight is skipped
     and the lowest destination id of the rest is taken**, so the answer does
     not depend on how the rows arrive. None means every one of them can start
