@@ -21,8 +21,10 @@ save that would have gone through without it.
 from __future__ import annotations
 
 import datetime as _dt
+import os
 import pathlib
 import shutil
+import tempfile
 
 BACKUP_DIR = "backups"
 KEEP_BACKUPS = 20
@@ -127,3 +129,68 @@ def save_disk(disk, target: str | pathlib.Path,
     if copy.parent == automatic_dir(target):
         return f"wrote {target.name}, backup {copy.parent.name}/{copy.name}"
     return f"wrote {target.name}, backup {copy}"
+
+
+def save_folder(written: dict[pathlib.Path, bytes | None],
+                into: str | pathlib.Path | None) -> str:
+    """Replace the changed files in one save folder, with backups.
+
+    Each replacement is prepared and synced before any original moves.  If a
+    later replacement fails, every earlier one is put back from its bytes, so
+    a character's record, item and effect files do not land half-written.
+    """
+    changed = {pathlib.Path(path): (None if data is None else bytes(data))
+               for path, data in written.items()
+               if ((data is None and pathlib.Path(path).exists())
+                   or (data is not None and (not pathlib.Path(path).exists()
+                                            or pathlib.Path(path).read_bytes()
+                                            != bytes(data))))}
+    if not changed:
+        return "no changes"
+    first = next(iter(changed))
+    if not into:
+        raise NoBackupFolder(
+            f"No backup folder is set, so {first.name} was not written. "
+            "File > Preferences… to say where backups go.")
+
+    originals = {path: path.read_bytes() if path.exists() else None
+                 for path in changed}
+    temporary: dict[pathlib.Path, pathlib.Path] = {}
+    try:
+        for path, data in changed.items():
+            if data is None:
+                continue
+            fd, name = tempfile.mkstemp(prefix=f".{path.name}.",
+                                        dir=path.parent)
+            temporary[path] = pathlib.Path(name)
+            with os.fdopen(fd, "wb") as out:
+                out.write(data)
+                out.flush()
+                os.fsync(out.fileno())
+        copies = {path: back_up(path, into) for path in changed}
+        replaced: list[pathlib.Path] = []
+        try:
+            for path in changed:
+                replacement = temporary.pop(path, None)
+                if replacement is None:
+                    path.unlink()
+                else:
+                    os.replace(replacement, path)
+                replaced.append(path)
+        except BaseException:
+            for path in reversed(replaced):
+                was = originals[path]
+                if was is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_bytes(was)
+            raise
+    finally:
+        for path in temporary.values():
+            path.unlink(missing_ok=True)
+    copy = copies[first]
+    if copy is None:
+        return f"wrote {first.name}"
+    if copy.parent == automatic_dir(first):
+        return f"wrote {first.name}, backup {copy.parent.name}/{copy.name}"
+    return f"wrote {first.name}, backup {copy}"

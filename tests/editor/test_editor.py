@@ -4498,6 +4498,66 @@ def test_a_dos_party_has_one_path_whether_opened_from_its_file_or_its_folder(
     assert by_file.path == by_folder.path == by_source.path == str(tmp_path)
 
 
+def test_a_dos_gold_edit_writes_only_its_record_bytes_and_keeps_a_backup(
+        app, tmp_path):
+    """Editing gold reaches the native record once, not a converted save."""
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    save = tmp_path / "CHRDATA1.SAV"
+    before = {path: path.read_bytes() for path in tmp_path.iterdir()
+              if path.is_file()}
+    w = EditorBinding(make_root(), str(tmp_path / "SAVGAMA.DAT"))
+    w.roster.selectRow(0)
+    w._widgets["gold"].setValue(1234)
+    w._edited()
+    w.save(interactive=False)
+
+    fields = (dos_port.FIELDS_BY_NAME["gold"],
+              dos_port.FIELDS_BY_NAME["encumbrance"])
+    changed = save.read_bytes()
+    assert [at for at, (was, now) in enumerate(zip(before[save], changed))
+            if was != now] == [at for field in fields
+                                for at in range(field.offset, field.end)]
+    gold = fields[0]
+    assert int.from_bytes(changed[gold.offset:gold.end], "little") == 1234
+    assert {path: path.read_bytes() for path in before if path != save} == {
+        path: before[path] for path in before if path != save}
+    backups = list((tmp_path / "backups").glob("CHRDATA1.SAV.*"))
+    assert len(backups) == 1 and backups[0].read_bytes() == before[save]
+    from editor.convert import Source
+    assert Source.detect(tmp_path, w.party).port == "dos"
+    no_op = {path: path.read_bytes() for path in tmp_path.iterdir()
+             if path.is_file()}
+    w.save(interactive=False)
+    assert {path: path.read_bytes() for path in tmp_path.iterdir()
+            if path.is_file()} == no_op
+
+
+def test_an_amiga_gold_edit_reaches_its_save_disk(app, tmp_path):
+    from support.amigasavegame import synthetic_curse
+
+    from editor.window import EditorBinding
+    from goldbox import amiga_savegame
+    disk = amiga_savegame.make_save_disk(
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA",)))
+    path = tmp_path / "curse.adf"
+    disk.save(path)
+    before = path.read_bytes()
+    w = EditorBinding(make_root(), str(path))
+    w.roster.selectRow(0)
+    w._widgets["gold"].setValue(1234)
+    w._edited()
+    w.save(interactive=False)
+    assert path.read_bytes() != before
+    backups = list((tmp_path / "backups").glob("curse.adf.*"))
+    assert len(backups) == 1 and backups[0].read_bytes() == before
+    no_op = path.read_bytes()
+    w.save(interactive=False)
+    assert path.read_bytes() == no_op
+
+
 def test_a_c64_source_opens_the_disk_at_its_own_path(party):
     """`party` is the synthetic save disk from the fixture above."""
     from editor.convert import Source

@@ -1638,12 +1638,21 @@ class EditorBinding(QObject):
         if self.path is None:
             if not interactive or not self._choose_save_path():
                 return "no destination"
+        if (self.party.port != "c64" and not self.dirty
+                and not any(member.inventory is not None
+                            and member.inventory.changed
+                            for member in self.party.members)):
+            return "no changes"
         failures = self._flush()
         if failures and interactive:
             self._report_flush_failures(failures)
         try:
-            self._write_back()
-            note = files.save_disk(self.party.disk, self.path, self.backup_dir())
+            written = self._write_back()
+            if self.party.port == "dos":
+                note = files.save_folder(written, self.backup_dir())
+            else:
+                note = files.save_disk(self.party.disk, self.path,
+                                       self.backup_dir())
         except Exception as exc:
             _log.exception("could not save %s", self.path)
             if interactive:
@@ -1705,22 +1714,92 @@ class EditorBinding(QObject):
         self.opened.emit(str(self.path))
         return True
 
-    def _write_back(self) -> None:
+    def _write_back(self) -> dict[pathlib.Path, bytes | None]:
         """Push edited records into the disk image."""
         party = self.party
-        if party.save0 is not None:
+        if party.port == "c64" and party.save0 is not None:
             for m in party.members:
                 party.save0.write_record(m.index, m.record)
             party.write_items()
             party.write_icons()
             store_save(party.disk, party.save0, party.save1, party.game)
-        else:
+            return {}
+        if party.port == "c64":
             for m in party.members:
                 if m.source:
                     address = (m.load_address if m.load_address is not None
                                else LOAD_ADDRESS)
                     party.disk.write_file_inplace(
                         m.source, m.record.to_prg(address))
+            return {}
+
+        from goldbox import amiga_por, amiga_savegame, rewrite
+        from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
+
+        def after(member):
+            raw = bytearray(member.record.to_bytes())
+            if member.inventory is not None and member.inventory.changed:
+                blocks = member.inventory.raws
+                at = 0x120
+                raw[at:at + sum(len(block) for block in blocks)] = b"".join(blocks)
+            return type(member.record).from_bytes(bytes(raw))
+
+        if party.port == "dos":
+            written = {}
+            for member in party.members:
+                result = rewrite.rewrite_dos(
+                    member.native, type(member.record).from_bytes(
+                        member.record_original), after(member))
+                stem = pathlib.Path(party.source.path) / (
+                    f"CHRDAT{party.source.slot}{member.index}")
+                for suffix, data in ((".SAV", result.record),
+                                     (member.native.deltas.item_suffix,
+                                      result.items),
+                                     (member.native.deltas.effect_suffix,
+                                      result.effects)):
+                    path = stem.with_suffix(suffix)
+                    written[path] = data or None
+            return written
+
+        disk = AmigaDisk.open(str(party.source.path))
+        snapshot = disk.to_bytes()
+        try:
+            if party.source.title.key == "pool-of-radiance":
+                drawer = amiga_savegame.por_save_drawer(disk)
+                for member in party.members:
+                    result = rewrite.rewrite_amiga_por(
+                        member.native, type(member.record).from_bytes(
+                            member.record_original), after(member))
+                    stem = amiga_savegame.por_save_path(
+                        amiga_por.por_filename(party.source.slot, member.index, ""),
+                        drawer)
+                    for suffix, data in ((".sav", result.record),
+                                         (".itm", result.items),
+                                         (".spc", result.effects)):
+                        path = stem + suffix
+                        if data:
+                            disk.write_file(path, data)
+                        else:
+                            try:
+                                disk.remove_file(path)
+                            except AmigaDiskError:
+                                pass
+            else:
+                save = amiga_savegame.read_slot(
+                    disk, party.source.slot, party.source.title.key)
+                characters = list(save.characters)
+                for member in party.members:
+                    characters[member.index - 1] = rewrite.rewrite_amiga_later(
+                        member.native, type(member.record).from_bytes(
+                            member.record_original), after(member)).character
+                disk.write_file(amiga_savegame.slot_path(
+                    party.source.title, party.source.slot),
+                    amiga_savegame.rebuild(save, characters))
+        except BaseException:
+            disk.restore(snapshot)
+            raise
+        party.disk = disk
+        return {}
 
     # -- the sheet --------------------------------------------------------
 

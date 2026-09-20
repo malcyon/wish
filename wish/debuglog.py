@@ -372,12 +372,14 @@ def save_summary(party, file: str | os.PathLike | None = None) -> str:
     the characters are.
     """
     bits = [pathlib.Path(file).name] if file else []
-    try:
-        bits.append(f"{len(party.disk.to_bytes())} bytes")
-        bits.append(f"{sum(e.block_count for e in party.disk.directory())} blocks")
-    except Exception as exc:
-        # A shape that cannot be read is a shorter line, never a failed log.
-        debug("save shape: no size or block count (%s)", exc)
+    disk = getattr(party, "disk", None)
+    if disk is not None:
+        try:
+            bits.append(f"{len(disk.to_bytes())} bytes")
+            bits.append(f"{sum(e.block_count for e in disk.directory())} blocks")
+        except Exception as exc:
+            # A shape that cannot be read is a shorter line, never a failed log.
+            debug("save shape: no size or block count (%s)", exc)
     try:
         bits.append("save disk" if party.is_save else "roster disk")
         bits.append(f"{len(party)} characters")
