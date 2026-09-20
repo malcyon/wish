@@ -2203,7 +2203,7 @@ gap was the shape of the thing it guards: `tools/generate/genimports.py` matched
 import …`, an absolute import of a sibling. `goldbox/areas.py` writes exactly
 that, so `areas --> layout` was missing — and a codec written the same way
 would have reached into another format's layout without appearing here at all.
-The `level == 0` case is now handled, and `tests/test_genimports.py` fails if
+The `level == 0` case is now handled, and `tests/generate/test_genimports.py` fails if
 the block above ever drifts from what the tool prints.
 
 ### What the drawings settle

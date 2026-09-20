@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import re
 
+import gamedata
 import pytest
 
 from goldbox import geo
 from goldbox.d64 import D64, split_load_address
-from tests import gamedata
 
 
 def _stem(name: bytes) -> str:

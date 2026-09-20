@@ -1,11 +1,11 @@
 """Helpers `test_coldread` shares with the test files that reuse them."""
 from __future__ import annotations
 
+import gamedata
 import pytest
 
-from goldbox import c64_port  # noqa: E402
-from support.silverblades import ssb_dir  # noqa: E402
-from tests import gamedata  # noqa: E402
+from goldbox import c64_port
+from support.silverblades import ssb_dir
 
 POOL = c64_port.POOL_OF_RADIANCE
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS

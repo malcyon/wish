@@ -139,7 +139,7 @@ def _build(save: str, shape: str):
 def main(out: pathlib.Path) -> int:
     from PyQt6.QtGui import QFont
     from PyQt6.QtWidgets import QApplication
-    from test_windowslayout import _ordinary_party
+    from support.windowsparty import _ordinary_party
 
     out.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication([])

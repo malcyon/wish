@@ -23,7 +23,7 @@ import automap
 from automap import gamedisks, paths
 from goldbox import c64_port
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parents[2]
 
 
 def _write(path: pathlib.Path, text: str) -> pathlib.Path:

@@ -1,8 +1,8 @@
 """Helpers `test_amigasavegame` shares with the test files that reuse them."""
 from __future__ import annotations
 
-from goldbox import amiga_port, amiga_savegame  # noqa: E402
-from goldbox.amiga_savegame import (  # noqa: E402
+from goldbox import amiga_port, amiga_savegame
+from goldbox.amiga_savegame import (
     CURSE,
     SILVER_BLADES,
 )

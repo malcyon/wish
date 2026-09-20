@@ -182,7 +182,7 @@ defaulted to the `master` branch and wrote `app/net.sf.VICE/x86_64/master not
 installed` into the slot's `vice.log`. Three boots died three seconds in, and
 all the Python saw was `RuntimeError: VICE never came up`. The tool rebinds
 `automap.state._data_dir` instead, and
-`tests/test_livecheck.py::test_importing_the_tool_leaves_xdg_data_home_alone`
+`tests/gui/test_livecheck.py::test_importing_the_tool_leaves_xdg_data_home_alone`
 fails without that. **Read the slot's `vice.log` when a boot never comes up**:
 it had the answer within three seconds and nothing else did.
 

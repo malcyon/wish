@@ -5,7 +5,7 @@ from needs import fail_if_missing_tools, fail_if_save_missing, find_game_or_fail
 
 from tools.dos import dosbox
 
-# Shares a group with tests/test_instance.py, which claims emulator-pool slots
+# Shares a group with tests/registry/test_instance.py, which claims emulator-pool slots
 # by a fixed display number, so a parallel run keeps these in one worker.
 pytestmark = pytest.mark.xdist_group(name="emulator-pool")
 

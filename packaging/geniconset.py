@@ -23,7 +23,7 @@ library buys over forty lines of `struct` -- see Apple's Icon Services header,
 which this follows.
 
 **No Mac has run this.** `docs/132-logo.md` says so; the container's byte
-layout is documented and checkable without one, and `tests/test_geniconset.py`
+layout is documented and checkable without one, and `tests/generate/test_geniconset.py`
 parses back what this writes and checks each chunk decodes to the size its tag
 promises, but nobody has yet dropped the file on a real Dock.
 """

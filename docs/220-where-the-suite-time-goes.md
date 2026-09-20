@@ -148,7 +148,7 @@ None of them starts one.
 
 | file | tests | seconds | what it actually runs |
 |---|---|---|---|
-| `tests/test_instance.py` | 72 | 16.7 | the pool, with `python -c "import time; time.sleep(120)"` standing in for a VICE run |
+| `tests/registry/test_instance.py` | 72 | 16.7 | the pool, with `python -c "import time; time.sleep(120)"` standing in for a VICE run |
 | `tests/test_dosbox.py` | 56 | 10.6 | a blank-window stub and captured output |
 | `tests/test_dosboxx.py` | 35 | 5.3 | a fake debugger that wraps as the real one does |
 | `tests/test_walkrun.py` | 9 | 1.5 | a `Session` replaced by a fake that never connects |

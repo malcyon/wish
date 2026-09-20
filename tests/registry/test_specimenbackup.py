@@ -2,7 +2,7 @@
 makes one more (#249 step 5, "somewhere durable to keep it").
 
 Every test builds its own tree in `tmp_path` through `tools.registry.specimens.add`, the
-way `tests/test_specimens.py` does, and never reads the real `$WISH_SPECIMENS`
+way `tests/registry/test_specimens.py` does, and never reads the real `$WISH_SPECIMENS`
 -- the tree lives on Donald's machine, outside the repository, and nothing here
 should depend on it existing.  The bytes standing in for game records are
 invented here; a slice of a real save would be the game's data under a new

@@ -180,7 +180,7 @@ def test_fasttravelrun_stops_with_no_disks(fresh, monkeypatch):
 
 # -- no tool builds a disk folder that can be the current directory ------------
 
-TOOLS_DIR = pathlib.Path(__file__).resolve().parent.parent / "tools"
+TOOLS_DIR = pathlib.Path(__file__).resolve().parents[2] / "tools"
 
 #: The lookups that answer `None` when there are no disks.
 _LOOKUPS = frozenset({"find_disks", "tool_disks"})

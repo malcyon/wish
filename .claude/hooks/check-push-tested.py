@@ -69,7 +69,7 @@ def marker_dir() -> str:
     Computed here rather than imported because the harness runs this hook under
     the system interpreter from whatever directory the command was in, with the
     repository on no path, and a marker directory that lived in the repository
-    is what this replaced. `tests/test_check_push_tested.py` fails if the two
+    is what this replaced. `tests/hooks/test_check_push_tested.py` fails if the two
     stop agreeing. Looked up at call time so a changed `$HOME` is honoured.
     """
     return os.path.join(os.path.expanduser("~"), ".cache", "wish", "testrun")
@@ -170,10 +170,11 @@ def is_code(path: str) -> bool:
     """A path whose change needs the suite.
 
     commits.md's exception is for prose: a `.md` that no test reads as data.
-    Everything else counts -- `.py`, `.ui`, anything under `tests/`, and
-    also `pyproject.toml`, the hook wiring, and the agent TOML files, which
-    tests read. `.claude/agents/*.md` is the source the TOML is generated
-    from and `tests/test_gencodex.py` checks the two agree, so it counts too.
+    Everything else counts -- `.py`, `.ui`, every file under `tests/` except
+    its READMEs, and also `pyproject.toml`, the hook wiring, and the agent TOML
+    files, which tests read. `.claude/agents/*.md` is the source the TOML is
+    generated from and `tests/generate/test_gencodex.py` checks the two agree,
+    so it counts too.
     """
     if not path.endswith(".md"):
         return True

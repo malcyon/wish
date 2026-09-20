@@ -45,7 +45,7 @@ def main(root: pathlib.Path, save: pathlib.Path) -> int:
     from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QFont
     from PyQt6.QtWidgets import QApplication
-    from test_windowslayout import _ordinary_party
+    from support.windowsparty import _ordinary_party
 
     app = QApplication.instance() or QApplication([])
     base = app.font()

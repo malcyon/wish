@@ -20,7 +20,7 @@ from conftest import load_tools_module
 
 classedges = load_tools_module("classedges")
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 def _package(root, files):

@@ -69,7 +69,7 @@ def _por_c64_disk(tmp_path):
 
 
 def _amiga_disk(tmp_path):
-    from test_amigatoc64 import _pool_of_radiance_disk_1
+    from support.amigatoc64 import _pool_of_radiance_disk_1
 
     disk = _pool_of_radiance_disk_1()
     path = tmp_path / "por1.adf"

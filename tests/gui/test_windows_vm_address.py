@@ -11,7 +11,7 @@ import subprocess
 
 from tools.gui import winwish
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 #: Built from parts so this file does not contain the address it forbids.
 OLD = ".".join(["192", "168", "123", "50"])

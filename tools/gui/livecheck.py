@@ -93,7 +93,7 @@ def redirect_notes(root=RUN_DATA) -> None:
     """Point the notes at `root` instead of the player's own data directory.
 
     **Called from `main`, never at import.** It used to run at module level,
-    and `tests/test_livecheck.py` imports this module at *its* module level --
+    and `tests/gui/test_livecheck.py` imports this module at *its* module level --
     so under `pytest -n auto`, where every worker collects every file, the
     rebinding landed in every worker before a single test ran. From then on
     every note test in `tests/test_automap.py` read and wrote one shared

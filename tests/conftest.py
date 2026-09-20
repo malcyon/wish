@@ -159,7 +159,7 @@ os.environ["QT_QPA_PLATFORM"] = os.environ.get("WISH_TEST_PLATFORM", "offscreen"
 # to import a tool that pokes it. `#428 (Ten automapper note tests fail under
 # parallel load but pass alone, so a green suite depends on how busy the
 # machine is)`: `tools/gui/livecheck.py` used to rebind `automap.state._data_dir`
-# at *its own* import time, so `tests/test_livecheck.py` importing it at
+# at *its own* import time, so `tests/gui/test_livecheck.py` importing it at
 # module level poisoned the value before the first test in that worker had
 # even started -- a per-test "was it changed during this test" snapshot would
 # never have seen that, since the corruption was already there when the first
@@ -178,7 +178,7 @@ def _guard_automap_state_data_dir():
 
     `tools/gui/livecheck.py` used to rebind it at import time --
     `mapstate._data_dir = lambda: RUN_DATA`, module level -- so
-    `tests/test_livecheck.py` importing that module at *its* module level
+    `tests/gui/test_livecheck.py` importing that module at *its* module level
     carried the rebinding into every `pytest -n auto` worker before a single
     test ran. From then on every note test in that worker read and wrote one
     shared directory instead of its own `tmp_path`, and several failed by
@@ -199,7 +199,7 @@ def _guard_automap_state_data_dir():
     contamination reaches every one of them, not just the first.
 
     `monkeypatch.setattr` is not what this catches -- it restores itself, and
-    the one legitimate use (`tests/test_livecheck.py`) is written that way.
+    the one legitimate use (`tests/gui/test_livecheck.py`) is written that way.
     What this catches is a raw assignment or an import-time rebind that
     outlives the test that (knowingly or not) caused it.
 

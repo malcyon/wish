@@ -17,7 +17,7 @@ import tempfile
 import pytest
 
 WINDOWS = os.name == "nt"
-HOOK = (pathlib.Path(__file__).resolve().parents[1]
+HOOK = (pathlib.Path(__file__).resolve().parents[2]
         / ".claude" / "hooks" / "notify-context-size.py")
 
 
@@ -194,7 +194,7 @@ def test_the_sticky_directory_is_the_one_scratch_names(tmp_path, monkeypatch):
 
 def test_the_hook_is_registered_on_the_agent_tool():
     """An unregistered hook watches nothing."""
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = pathlib.Path(__file__).resolve().parents[2]
     claude = json.loads((root / ".claude" / "settings.json").read_text())
     groups = [g for g in claude["hooks"].get("PreToolUse", [])
               if any("notify-context-size.py" in h["command"] for h in g["hooks"])]

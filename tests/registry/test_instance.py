@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 from conftest import load_tools_module
 
-TOOLS = Path(__file__).resolve().parent.parent / "tools"
+TOOLS = Path(__file__).resolve().parents[2] / "tools"
 
 instance = load_tools_module("instance")
 session = load_tools_module("session")

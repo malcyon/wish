@@ -4,13 +4,13 @@ from __future__ import annotations
 import functools
 import pathlib
 
+import gamedata
 import pytest
 
 from automap import gamedisks
 from goldbox import c64_port, items
 from goldbox.d64 import D64
 from support.silverblades import ssb_dir
-from tests import gamedata
 
 COK = c64_port.CHAMPIONS_OF_KRYNN
 DKK = c64_port.DEATH_KNIGHTS_OF_KRYNN

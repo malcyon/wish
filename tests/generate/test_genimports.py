@@ -13,7 +13,7 @@ from conftest import load_tools_module
 
 genimports = load_tools_module("genimports")
 
-DOC = pathlib.Path(__file__).resolve().parent.parent / "docs/117-save-conversion.md"
+DOC = pathlib.Path(__file__).resolve().parents[2] / "docs/117-save-conversion.md"
 
 
 def _package(root, files):
@@ -47,7 +47,7 @@ def test_an_import_outside_the_module_body_binds_more_weakly(tmp_path):
 
 def test_the_documented_graph_is_the_one_the_tool_prints():
     """docs/117 marks the block generated; this is what makes that true."""
-    package = pathlib.Path(__file__).resolve().parent.parent / "goldbox"
+    package = pathlib.Path(__file__).resolve().parents[2] / "goldbox"
     printed = genimports.mermaid(genimports.edges(package))
     assert printed in DOC.read_text(), (
         "docs/117-save-conversion.md is out of step with tools/generate/genimports.py --"

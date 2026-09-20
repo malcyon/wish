@@ -19,7 +19,7 @@ import sys
 import pytest
 
 WINDOWS = os.name == "nt"
-HOOK = (pathlib.Path(__file__).resolve().parents[1]
+HOOK = (pathlib.Path(__file__).resolve().parents[2]
         / ".claude" / "hooks" / "check-push-tested.py")
 
 
@@ -419,7 +419,7 @@ def test_outside_a_repository_it_lets_the_push_through(tmp_path, monkeypatch):
 
 def test_the_hook_is_registered_on_bash_in_both_harnesses():
     """Claude Code reads `.claude/settings.json`; Codex reads `.codex/hooks.json`."""
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = pathlib.Path(__file__).resolve().parents[2]
     for path in (root / ".claude" / "settings.json", root / ".codex" / "hooks.json"):
         wiring = json.loads(path.read_text())
         commands = [h["command"]
@@ -430,7 +430,7 @@ def test_the_hook_is_registered_on_bash_in_both_harnesses():
 
 
 def test_the_test_runner_is_told_to_write_the_marker():
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = pathlib.Path(__file__).resolve().parents[2]
     text = (root / ".claude" / "agents" / "test-runner.md").read_text()
     assert "testrun/" in text
     assert ".green" in text

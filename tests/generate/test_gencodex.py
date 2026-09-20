@@ -3,7 +3,7 @@
 `#506 (Set Codex up as a second orchestrator with its own subagents, without a
 second copy of the rules)`, step 4: `.codex/agents/<name>.toml` is generated
 from `.claude/agents/<name>.md`, the way `ui_*.py` is generated from a `.ui`
-file. These tests are the `tests/test_generated.py` shape applied to the new
+file. These tests are the `tests/generate/test_generated.py` shape applied to the new
 pair.
 """
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from tools.generate import gencodex
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 CLAUDE_AGENTS = ROOT / ".claude" / "agents"
 CODEX_AGENTS = ROOT / ".codex" / "agents"
 

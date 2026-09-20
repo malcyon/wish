@@ -125,7 +125,7 @@ def _ready_states(root: pathlib.Path):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent
                            / "tests"))
     from gamedata import disk_dir  # noqa: E402
-    from test_dossave import _save_dir  # noqa: E402
+    from support.dossave import _save_dir  # noqa: E402
 
     save_dir = _save_dir()
     disks = disk_dir()

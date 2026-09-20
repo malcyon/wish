@@ -310,7 +310,7 @@ library buys nothing over reading the spec.
 committing it keeps the release a single command. `tests/test_appicon.py`
 re-renders every artefact and compares, so a change to the asset that nobody
 regenerated fails the build instead of shipping the old drawing;
-`tests/test_geniconset.py` does the same for the `.icns`.
+`tests/generate/test_geniconset.py` does the same for the `.icns`.
 
 **The comparison is pixels within a tolerance**, and it took two goes to get
 there. It was **bytes**, and CI went red on every runner: a PNG's bytes are

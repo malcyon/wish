@@ -86,7 +86,7 @@ extra flag.** `-n auto --dist loadgroup` lives in `pyproject.toml`'s
 `addopts`, so the command above already runs on every core the machine has --
 about 2:15 on twelve cores for the pass with data and about 1:20 for the pass
 without it, measured on 7,975 tests with the machine otherwise idle. `--dist loadgroup`
-keeps `tests/test_instance.py`, `tests/test_dosbox.py`, `tests/test_dosboxx.py`
+keeps `tests/registry/test_instance.py`, `tests/test_dosbox.py`, `tests/test_dosboxx.py`
 and `tests/test_walkrun.py` -- which claim a synthetic emulator-pool slot by a
 fixed, shared display number -- in one worker together, because two workers
 racing each other for the same number is exactly the failure the pool itself

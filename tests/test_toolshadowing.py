@@ -49,11 +49,22 @@ SIX = (
 )
 
 
+def _directory_of(name: str) -> pathlib.Path:
+    """The directory under `tests/` holding `<name>.py`, wherever it now lives.
+
+    A test module is imported here by its bare name, which needs its own
+    directory on `sys.path` the way pytest's prepend import mode puts it there.
+    """
+    (found,) = (REPO / "tests").rglob(f"{name}.py")
+    return found.parent
+
+
 @pytest.mark.parametrize("name", SIX)
 def test_importing_one_of_the_six_leaves_wish_importable_afterwards(name):
     """`import <name>` then `import wish` in one fresh process, no pytest."""
     code = (
         "import sys\n"
+        f"sys.path.insert(0, {str(_directory_of(name))!r})\n"
         f"sys.path.insert(0, {str(REPO / 'tests')!r})\n"
         f"sys.path.insert(0, {str(REPO)!r})\n"
         f"import {name}\n"
@@ -87,6 +98,7 @@ def test_importing_one_of_the_six_leaves_tools_off_sys_path(name):
     """
     code = (
         "import sys\n"
+        f"sys.path.insert(0, {str(_directory_of(name))!r})\n"
         f"sys.path.insert(0, {str(REPO / 'tests')!r})\n"
         f"sys.path.insert(0, {str(REPO)!r})\n"
         f"import {name}\n"

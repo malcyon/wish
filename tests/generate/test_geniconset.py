@@ -17,7 +17,7 @@ pytest.importorskip("PyQt6.QtGui")
 
 from PyQt6.QtGui import QGuiApplication, QImage  # noqa: E402
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 ICNS = ROOT / "assets" / "wish.icns"
 
 

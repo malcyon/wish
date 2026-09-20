@@ -21,7 +21,7 @@ import tempfile
 import pytest
 
 WINDOWS = os.name == "nt"
-HOOK = (pathlib.Path(__file__).resolve().parents[1]
+HOOK = (pathlib.Path(__file__).resolve().parents[2]
         / ".claude" / "hooks" / "check-orchestrator-edits.py")
 
 MARKER_LINE = json.dumps({
@@ -187,7 +187,7 @@ def test_the_git_root_is_used_when_claude_project_dir_is_unset(isolated_tmp, mon
 
 
 def test_the_hook_is_registered_on_the_edit_tools():
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = pathlib.Path(__file__).resolve().parents[2]
     claude = json.loads((root / ".claude" / "settings.json").read_text())
     groups = [g for g in claude["hooks"].get("PreToolUse", [])
               if any("check-orchestrator-edits.py" in h["command"] for h in g["hooks"])]

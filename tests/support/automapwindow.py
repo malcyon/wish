@@ -2,7 +2,7 @@
 
 import pathlib
 
-from automap import live  # noqa: E402
+from automap import live
 from automap.state import Automapper
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import struct
 
-from tools.amiga import amiga68k  # noqa: E402
+from tools.amiga import amiga68k
 
 
 def u32(n: int) -> bytes:

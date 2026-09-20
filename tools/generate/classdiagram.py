@@ -49,7 +49,7 @@ needs it -- it does not fail.
 ## What the tests do not cover
 
 No test here runs `pyreverse` itself -- there is none on this machine, and
-the suite must not install one. `tests/test_classdiagram.py` pins the
+the suite must not install one. `tests/generate/test_classdiagram.py` pins the
 command line `run_pyreverse` hands to it (`-o mmd`, the target, the output
 directory) and the `.mmd` files it is expected to leave behind, so a wrong
 flag in this file goes red. **A change in what `pyreverse` itself does with

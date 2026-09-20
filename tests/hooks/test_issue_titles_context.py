@@ -20,7 +20,7 @@ import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOOK_PATH = os.path.join(
-    HERE, "..", ".claude", "hooks", "issue-titles-context.py")
+    HERE, "..", "..", ".claude", "hooks", "issue-titles-context.py")
 
 _spec = importlib.util.spec_from_file_location("_issue_titles_context", HOOK_PATH)
 hook = importlib.util.module_from_spec(_spec)

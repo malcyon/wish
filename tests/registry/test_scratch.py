@@ -49,5 +49,5 @@ def test_a_name_that_could_leave_its_own_directory_is_refused(bad):
 
 
 def test_the_scratch_root_is_not_the_checkout():
-    repo = pathlib.Path(__file__).resolve().parent.parent
+    repo = pathlib.Path(__file__).resolve().parents[2]
     assert repo not in scratch.scratch_dir("x").parents

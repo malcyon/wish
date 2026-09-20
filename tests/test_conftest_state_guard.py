@@ -2,7 +2,7 @@
 
 `#428 (Ten automapper note tests fail under parallel load but pass alone, so
 a green suite depends on how busy the machine is)`: `tools/gui/livecheck.py`
-rebound `automap.state._data_dir` at import time, so `tests/test_livecheck.py`
+rebound `automap.state._data_dir` at import time, so `tests/gui/test_livecheck.py`
 importing it at *its* module level carried the rebinding into every
 `pytest -n auto` worker before a single test ran, and every note test
 collected afterwards shared one directory. The guard in `tests/conftest.py`
@@ -39,7 +39,7 @@ import pytest
 # deleted and raises `WinError 2`. Linux never reaches that branch, which is
 # why it only ever failed on the Windows job. One group, 0 of 20 overlaps.
 #
-# The same reasoning as `tests/test_instance.py`'s `emulator-pool` group: a
+# The same reasoning as `tests/registry/test_instance.py`'s `emulator-pool` group: a
 # test claiming a shared resource has to land in one worker. The resource
 # here is the `tests/` directory during a child's collection.
 pytestmark = pytest.mark.xdist_group(name="conftest-guard-probe")
@@ -117,7 +117,7 @@ def test_an_import_time_rebind_fails_the_suite_instead_of_poisoning_it():
 def test_a_monkeypatched_rebind_is_not_flagged():
     """The one legitimate use restores itself and must not be caught.
 
-    Mirrors how `tests/test_livecheck.py` exercises `redirect_notes()`:
+    Mirrors how `tests/gui/test_livecheck.py` exercises `redirect_notes()`:
     `monkeypatch.setattr` inside the test body, undone at that fixture's own
     teardown before the guard checks. This is the negative control -- without
     it, a guard that flags every rebind regardless of cleanup would also

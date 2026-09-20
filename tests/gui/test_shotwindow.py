@@ -32,7 +32,7 @@ import sys
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication

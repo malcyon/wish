@@ -4,12 +4,12 @@ from __future__ import annotations
 import functools
 import pathlib
 
+import gamedata
 import pytest
 
 from goldbox import c64_port
 from goldbox.d64 import D64
 from goldbox.savegame import load_save
-from tests import gamedata
 
 SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 

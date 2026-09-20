@@ -13,10 +13,11 @@ from __future__ import annotations
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+
+from gamedata import needs_disks  # noqa: E402
 
 from goldbox.geo import GEO_SIZE, Geo  # noqa: E402
-from tests.gamedata import needs_disks  # noqa: E402
 from tools.generate import genexits as G  # noqa: E402
 
 

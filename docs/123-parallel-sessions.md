@@ -42,7 +42,7 @@ automapper against a running game.
 
 ## 0. What was built, and what the building corrected
 
-`tools/registry/instance.py` is the pool; `tests/test_instance.py` is 26 tests of it and
+`tools/registry/instance.py` is the pool; `tests/registry/test_instance.py` is 26 tests of it and
 none of them needs an emulator.  `tools/c64/session.py` takes a `Slot` and is
 otherwise unchanged, so `tools/c64/walkrun.py` and `tools/c64/porcmd` still work on the
 human's numbers.  `pytest tests/ -q` is green.
@@ -412,7 +412,7 @@ Small, as the premise claimed. Six existing files, one new one.
 | `tools/c64/session.py` | `HERE`, `TEXT_PORT`, `CMD_PORT`, `display`, `MONFLAGS` become instance attributes taken from a slot; the four `pkill` calls become a process-group kill | ~35 lines changed |
 | `tools/c64/porlaunch.sh` | drop the two `pkill` lines; take `POR_SLOT`; pass `-config` and `--die-with-parent` | ~8 lines |
 | `tools/registry/instance.py` | **new** — claim, release, reap, seed a `vicerc`, and a `main()` so a shell script can claim a slot too | ~150 lines |
-| `tests/test_instance.py` | **new** — allocation, contention, reap's table, `vicerc` seeding. All of it is files and flocks, so none of it needs VICE | 26 tests |
+| `tests/registry/test_instance.py` | **new** — allocation, contention, reap's table, `vicerc` seeding. All of it is files and flocks, so none of it needs VICE | 26 tests |
 
 Roughly **270 new lines and 50 changed**, and nothing in `goldbox/`, `editor/`,
 `ui/` or `designer/` is touched. `wish/backends.py` needs no structural change
@@ -709,7 +709,7 @@ All eight passed on 2026-08-22.
 | # | check | result |
 |---|---|---|
 | 1 | `pytest tests/ -q` still passes | green; 2 skipped |
-| 2 | `tests/test_instance.py` passes with no emulator | 26 tests, ~5 s |
+| 2 | `tests/registry/test_instance.py` passes with no emulator | 26 tests, ~5 s |
 | 3 | `POR_MONITOR=127.0.0.1:6523` makes `monitor_listening()` probe 6523 | yes — and it is resolved *per call*, not at import, so a running window can be repointed |
 | 4 | A seeded `vicerc` still carries the JiffyDOS kernal paths | yes; the diff against the template is exactly six lines |
 | 5 | Donald's `vicerc` is byte-identical after a pooled run | yes, md5 unchanged across every run here. **The most important single check in the list** |

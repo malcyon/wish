@@ -20,7 +20,7 @@ import pytest
 
 WINDOWS = os.name == "nt"
 
-HOOK = pathlib.Path(__file__).resolve().parents[1] / ".claude" / "hooks" / "check-issue-reads.py"
+HOOK = pathlib.Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "check-issue-reads.py"
 
 
 def _module():
@@ -353,7 +353,7 @@ def test_the_hook_is_registered(monkeypatch):
     its being registered is part of the behaviour rather than a setting.
     """
     settings = json.loads(
-        (pathlib.Path(__file__).resolve().parents[1]
+        (pathlib.Path(__file__).resolve().parents[2]
          / ".claude" / "settings.json").read_text())
     commands = [h["command"]
                 for group in settings["hooks"].get("PreToolUse", [])

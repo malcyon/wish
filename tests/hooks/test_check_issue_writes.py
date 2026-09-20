@@ -25,7 +25,7 @@ import sys
 import pytest
 
 WINDOWS = os.name == "nt"
-HOOK = (pathlib.Path(__file__).resolve().parents[1]
+HOOK = (pathlib.Path(__file__).resolve().parents[2]
         / ".claude" / "hooks" / "check-issue-writes.py")
 
 
@@ -311,7 +311,7 @@ def test_the_hook_is_registered_in_both_harnesses():
     One script, two wirings, and the second is the only thing standing between
     a Codex session and the loophole this hook closes.
     """
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = pathlib.Path(__file__).resolve().parents[2]
 
     claude = json.loads((root / ".claude" / "settings.json").read_text())
     commands = [h["command"]

@@ -6,7 +6,7 @@ so it opens a window on Donald's desktop`).
 
 None of this drives VICE. `Session` is replaced with a fake that never
 launches anything, and the pool itself is the same isolated, socket-free
-fixture `tests/test_instance.py` uses -- a lease is a file and a flock, and a
+fixture `tests/registry/test_instance.py` uses -- a lease is a file and a flock, and a
 slot's ports are arithmetic.
 """
 
@@ -23,13 +23,13 @@ from tools.registry import instance
 
 posix = pytest.mark.skipif(instance.fcntl is None, reason="flock is POSIX only")
 
-# Shares a group with tests/test_instance.py -- see that file's own note.
+# Shares a group with tests/registry/test_instance.py -- see that file's own note.
 pytestmark = pytest.mark.xdist_group(name="emulator-pool")
 
 
 @pytest.fixture
 def ports(monkeypatch):
-    """No port ever answers -- see `tests/test_instance.py`'s fixture of the
+    """No port ever answers -- see `tests/registry/test_instance.py`'s fixture of the
     same name for why a temporary pool cannot ask the real machine."""
     busy: set[int] = set()
     monkeypatch.setattr(instance, "_listening", lambda port, *a, **kw: port in busy)
@@ -46,7 +46,7 @@ def pool(tmp_path, monkeypatch, ports):
     exhausted -- and every agent runs this suite before reporting
     (`#233 (The test suite takes the emulator displays agents need, and
     eight slots is no longer enough)`). 1030 is this file's own band,
-    past `tests/test_instance.py`'s 900-945 and the other two harnesses'
+    past `tests/registry/test_instance.py`'s 900-945 and the other two harnesses'
     950-1011.
     """
     monkeypatch.setenv("POR_INST", str(tmp_path / "inst"))
@@ -195,7 +195,7 @@ def test_a_claimed_slot_reaches_session(
     `POR_HEADLESS` is no longer walkrun's own responsibility (#147): `Slot.env()`
     defaults it, and walkrun always claims a slot before building a `Session`,
     so `os.environ` is not touched here at all -- see
-    `tests/test_instance.py`'s `test_a_claimed_slot_is_headless_by_default` for
+    `tests/registry/test_instance.py`'s `test_a_claimed_slot_is_headless_by_default` for
     that guarantee.
     """
     monkeypatch.delenv("POR_HEADLESS", raising=False)

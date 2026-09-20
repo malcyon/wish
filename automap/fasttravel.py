@@ -340,7 +340,7 @@ class ExitRoute:
 #: gone, so CI has none, and a citation of a file only this machine has fails
 #: there while passing every local run.
 #:
-#: `tests/test_genexits.py` re-derives this off the player's own disks and
+#: `tests/generate/test_genexits.py` re-derives this off the player's own disks and
 #: compares, the same shape `tests/test_newecl.py` already holds the address
 #: table to.
 EXIT_ROUTES: Mapping[tuple[int, int], ExitRoute] = MappingProxyType({

@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import pathlib
 
+import gamedata
 import pytest
-
-from tests import gamedata
 
 
 def _por_disk_2(tmp_path: pathlib.Path) -> pathlib.Path:

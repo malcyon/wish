@@ -32,7 +32,7 @@ from gamedata import needs_specimens  # noqa: E402
 
 from tools.dos import dosbox  # noqa: E402
 
-# Shares a group with tests/test_instance.py -- see that file's own note.
+# Shares a group with tests/registry/test_instance.py -- see that file's own note.
 # Only three tests here claim a pool slot, each at its own fixed display
 # base (950, 955, 960), but the whole module travels together so a future
 # test claiming one does not have to discover this on its own.
