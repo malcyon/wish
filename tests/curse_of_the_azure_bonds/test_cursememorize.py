@@ -11,6 +11,7 @@ emulator.
 from __future__ import annotations
 
 import pathlib
+import shutil
 import sys
 
 import pytest
@@ -150,3 +151,166 @@ def test_keeping_a_run_leaves_nothing_a_longer_earlier_run_wrote(
     assert [e["file"] for e in events if e["event"] == "after"] == [
         "CHRDATA1.SAV"]
     assert events[-1]["event"] == "kept"
+
+
+def test_keeping_a_run_leaves_a_file_this_tool_does_not_write(
+        tmp_path, monkeypatch):
+    """`--out` is a directory somebody may keep notes in.  Only the shots and
+    the records this tool copies are replaced; a lower-case record from an
+    earlier run goes too, because the copy filter matches by upper case."""
+    monkeypatch.setattr(cm, "describe", lambda path: {"file": path.name})
+    out = tmp_path / "out"
+    (out / "shots").mkdir(parents=True)
+    (out / "saves").mkdir()
+    (out / "shots" / "old.PNG").write_bytes(b"x")
+    (out / "shots" / "notes.txt").write_bytes(b"mine")
+    (out / "saves" / "chrdata9.sav").write_bytes(b"x")
+    (out / "saves" / "savgamb.dat").write_bytes(b"x")
+    (out / "saves" / "notes.txt").write_bytes(b"mine")
+    (out / "run.jsonl").write_bytes(b"kept")
+
+    slot = FakeSlotSession(tmp_path / "a", ["t0-00-n.png"], ["CHRDATA1.SAV"])
+    cm.keep_run_files(slot, out, lambda **kw: None)
+
+    assert sorted(p.name for p in (out / "shots").iterdir()) == [
+        "notes.txt", "t0-00-n.png"]
+    assert sorted(p.name for p in (out / "saves").iterdir()) == [
+        "CHRDATA1.SAV", "notes.txt"]
+    assert (out / "run.jsonl").read_bytes() == b"kept"
+
+
+def test_a_run_that_died_before_staging_keeps_the_last_runs_evidence(tmp_path):
+    out = tmp_path / "out"
+    (out / "shots").mkdir(parents=True)
+    (out / "saves").mkdir()
+    (out / "shots" / "t0-00-n.png").write_bytes(b"png")
+    (out / "saves" / "CHRDATA1.SAV").write_bytes(b"rec")
+
+    empty = FakeSlotSession(tmp_path / "a", [], [])
+    events: list[dict] = []
+    cm.keep_run_files(empty, out, lambda **kw: events.append(kw))
+
+    assert events == []
+    assert (out / "shots" / "t0-00-n.png").read_bytes() == b"png"
+    assert (out / "saves" / "CHRDATA1.SAV").read_bytes() == b"rec"
+
+
+def test_a_record_that_will_not_read_does_not_hide_the_others(
+        tmp_path, monkeypatch):
+    def describe(path):
+        if path.name.upper() == "CHRDATA1.SAV":
+            raise ValueError("short record")
+        return {"file": path.name}
+
+    monkeypatch.setattr(cm, "describe", describe)
+    slot = FakeSlotSession(tmp_path / "a", ["t0-00-n.png"],
+                           ["CHRDATA1.SAV", "chrdata2.sav", "CHRDATA3.SAV"])
+    events: list[dict] = []
+    cm.keep_run_files(slot, tmp_path / "out", lambda **kw: events.append(kw))
+
+    after = [e for e in events if e["event"] == "after"]
+    assert [e["file"] for e in after] == [
+        "CHRDATA1.SAV", "CHRDATA3.SAV", "chrdata2.sav"]
+    assert "short record" in after[0]["error"]
+    assert "error" not in after[1] and "error" not in after[2]
+
+
+class RunScreen(FakeScreen):
+    def ink(self, rect=None):
+        return "ink"
+
+
+class RunSession:
+    """Just enough of `dosbox.Session` for `run` to go from stage to close."""
+
+    def __init__(self, root):
+        self.dir = root / "slot"
+        self.save_dir = self.dir / "SAVE"
+        (self.dir / "shots").mkdir(parents=True)
+        self.save_dir.mkdir()
+
+    def stage(self, fresh=False):
+        pass
+
+    def boot(self, fresh=False):
+        pass
+
+    def marching_first(self, slot, who):
+        return type("Game", (), {"world_bar": "bar"})()
+
+    def capture(self):
+        return FakeScreen(1)
+
+    def settle(self, **kw):
+        return RunScreen(1)
+
+    def key(self, *keys, **kw):
+        pass
+
+    def shot(self, name, allow_blank=False):
+        path = self.dir / "shots" / f"{name}.png"
+        path.write_bytes(b"png")
+        return path
+
+    def close(self):
+        pass
+
+
+class FakeSlot:
+    def release(self):
+        pass
+
+
+def _run_args(tmp_path, specimen):
+    return cm.argparse.Namespace(
+        specimen=str(specimen), game="CURSE", slot="A", who=5, begin="",
+        path="", reenter="", trial=["n"], after=None, save_to=None,
+        minutes=1.0, out=str(tmp_path / "out"))
+
+
+def test_a_rerun_into_the_same_out_replaces_the_log_and_the_table(
+        tmp_path, monkeypatch, capsys):
+    specimen = tmp_path / "specimen"
+    specimen.mkdir()
+    (specimen / "CHRDATA1.SAV").write_bytes(b"rec")
+    monkeypatch.setattr(cm, "describe", lambda path: {"file": path.name})
+    monkeypatch.setattr(cm.dosbox, "find_game", lambda stem: tmp_path)
+    monkeypatch.setattr(cm.dosbox, "claim", lambda note="": FakeSlot())
+    monkeypatch.setattr(cm.dosbox, "Session",
+                        lambda slot, game: RunSession(tmp_path / "slot"))
+    args = _run_args(tmp_path, specimen)
+
+    assert cm.run(args) == 0
+    first_log = (tmp_path / "out" / "run.jsonl").read_text().splitlines()
+    first_tsv = (tmp_path / "out" / "keys.tsv").read_text().splitlines()
+    shutil.rmtree(tmp_path / "slot")
+    assert cm.run(args) == 0
+    capsys.readouterr()
+
+    log = (tmp_path / "out" / "run.jsonl").read_text().splitlines()
+    tsv = (tmp_path / "out" / "keys.tsv").read_text().splitlines()
+    assert len(log) == len(first_log) and len(tsv) == len(first_tsv)
+    assert sum(line.startswith("tag\t") for line in tsv) == 1
+
+
+@pytest.mark.parametrize("what", ["specimen", "game"])
+def test_a_missing_specimen_or_game_fails_before_a_slot_is_claimed(
+        tmp_path, monkeypatch, capsys, what):
+    specimen = tmp_path / "specimen"
+    if what == "game":
+        specimen.mkdir()
+
+        def no_game(stem):
+            raise FileNotFoundError("no archives at nowhere")
+
+        monkeypatch.setattr(cm.dosbox, "find_game", no_game)
+    else:
+        monkeypatch.setattr(cm.dosbox, "find_game", lambda stem: tmp_path)
+
+    def claim(note=""):
+        raise AssertionError("a slot was claimed")
+
+    monkeypatch.setattr(cm.dosbox, "claim", claim)
+    assert cm.run(_run_args(tmp_path, specimen)) == 2
+    assert not (tmp_path / "out").exists()
+    assert what in capsys.readouterr().err

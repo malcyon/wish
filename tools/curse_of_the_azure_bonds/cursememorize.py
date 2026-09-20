@@ -12,7 +12,7 @@ screenshot and four values after **every** press:
 | column | what it is |
 |---|---|
 | `row` | `Screen.highlight_row(Camp.GRIMOIRE_LIST)`, the physical band the highlight is on, or empty when no band is highlighted |
-| `bar` | `Screen.glyphs(dosbox.BAR)`, the command bar by shape against its own paper |
+| `bar` | `Screen.glyphs(dosbox.BAR)`, the command bar read as glyphs against its own paper |
 | `digest` | `Screen.digest()`, the whole frame |
 | `shot` | the PNG written for that press |
 
@@ -35,10 +35,18 @@ list once the trials are done and `--save-to` waits for that slot's
 `SAVGAM<letter>.DAT` to change and prints each record's memorised spells, which
 is how "did `Return` commit anything" is answered from the game's own writing.
 
+`--after` needs a stage to leave first, and none is assumed.  Observed on one
+paladin in two boots: after `--trial "n m"` the `m` key stages a memorisation,
+and leaving the grimoire with `Escape` then opens `MEMORIZE THESE SPELLS? YES
+NO` with the cursor on `YES`, after a first `Escape` screen whose bar holds only
+`EXIT`.  The save keys `e s b` are blocked until that question is answered.
+
 A key list token is an X keysym (`End`, `Return`, `n`), `~N` to sleep N
 seconds, or `KEY*N` for N presses of KEY.  Output goes to `--out`, by default a
 scratch directory outside the repository; nothing here writes to the archives
-or to the specimen.
+or to the specimen.  A run replaces `run.jsonl`, `keys.tsv`, the `*.png` files in
+`shots/` and the `CHRDAT*` and `SAVGAM*` files in `saves/`, and nothing else in
+`--out`.
 """
 
 from __future__ import annotations
@@ -65,10 +73,10 @@ DEFAULT_TRIALS = (
     "End n End*20",         # the preserved case, the one Camp.memorize assumes
 )
 
-#: `PALADIN'S SPELLS IN GRIMOIRE`, the list screen's own title row.  Measured
-#: off this run's own shots: its `glyphs` digest is the same on the grimoire's
-#: first page, its second, and its first reached again by `p` -- where the
-#: whole-frame digest and the command bar are not, since the bar carries a
+#: `PALADIN'S SPELLS IN GRIMOIRE`, the list screen's own title row.  Its
+#: `glyphs` digest was the same on the grimoire's first page, its second, and
+#: its first reached again by `p` in the shots of the first measured run --
+#: where the whole-frame digest and the command bar are not, since the bar carries a
 #: reverse-video cursor that the page keys move.  The map, the camp menu and
 #: the magic menu all hash differently here, so it answers "is the list
 #: showing" without reading a word.
@@ -92,6 +100,23 @@ def describe(path: pathlib.Path) -> dict:
         if field in c.fields:
             out[field] = [v for v in c.raw(field) if v]
     return out
+
+
+def chr_records(directory: pathlib.Path) -> list[pathlib.Path]:
+    """The `CHRDAT*.SAV` files in `directory`, whatever case the game wrote."""
+    return sorted(f for f in directory.iterdir()
+                  if f.name.upper().startswith("CHRDAT")
+                  and f.name.upper().endswith(".SAV"))
+
+
+def report_records(directory: pathlib.Path, note, event: str) -> None:
+    """One `event` per character record; a record that will not read is
+    reported with an `error` field and the others are still reported."""
+    for rec in chr_records(directory):
+        try:
+            note(event=event, **describe(rec))
+        except Exception as exc:                            # noqa: BLE001
+            note(event=event, file=rec.name, error=repr(exc))
 
 
 def expand_keys(tokens) -> list[str]:
@@ -184,33 +209,59 @@ def sample(session, record, *, tag: str,
 def keep_run_files(session, out: pathlib.Path, note) -> None:
     """Copy this run's shots and save records into `out/shots` and `out/saves`.
 
-    `--out` defaults to one fixed path, so both directories are emptied first:
-    a record a longer earlier run left in `saves/` would otherwise be reported
-    as this run's `after` state, and a shot would sit beside this run's under
-    a name that only looks like it belongs.  The sources are this run's own
-    slot files, written by `import` and by the game into a tree `stage` made
-    writable, so the copy cannot carry a read-only mode.
+    `--out` defaults to one fixed path, so what a run writes there is removed
+    first -- the `*.png` files in `shots/` and the `CHRDAT*` and `SAVGAM*`
+    files in `saves/`, whatever case -- and nothing else: a record a longer
+    earlier run left in `saves/` would otherwise be reported as this run's
+    `after` state, and a shot would sit beside this run's under a name that
+    only looks like it belongs.  A slot holding neither shots nor saves means
+    the run died before staging, and the previous run's evidence stays.  The
+    sources are this run's own slot files, written by `import` and by the game
+    into a tree `stage` made writable, so the copy cannot carry a read-only
+    mode.
     """
     shots = out / "shots"
     saves = out / "saves"
+    new_shots = sorted((session.dir / "shots").glob("*.png"))
+    new_saves = sorted(f for f in session.save_dir.glob("*")
+                       if f.name.upper().startswith(("CHRDAT", "SAVGAM")))
+    if not new_shots and not new_saves:
+        return
     for kept in (shots, saves):
-        shutil.rmtree(kept, ignore_errors=True)
-        kept.mkdir(parents=True)
-    for png in sorted((session.dir / "shots").glob("*.png")):
+        kept.mkdir(parents=True, exist_ok=True)
+    for old in shots.iterdir():
+        if old.suffix.lower() == ".png":
+            old.unlink()
+    for old in saves.iterdir():
+        if old.name.upper().startswith(("CHRDAT", "SAVGAM")):
+            old.unlink()
+    for png in new_shots:
         shutil.copy(png, shots / png.name)
-    for f in sorted(session.save_dir.glob("*")):
-        if f.name.upper().startswith(("CHRDAT", "SAVGAM")):
-            shutil.copy(f, saves / f.name)
-    for rec in sorted(saves.glob("CHRDAT*.SAV")):
-        note(event="after", **describe(rec))
+    for f in new_saves:
+        shutil.copy(f, saves / f.name)
+    report_records(saves, note, "after")
     note(event="kept", shots=str(shots), saves=str(saves))
 
 
 def run(args: argparse.Namespace) -> int:
+    specimen = pathlib.Path(args.specimen).expanduser()
+    if not specimen.is_dir():
+        print(f"--specimen {specimen} is not a directory", file=sys.stderr)
+        return 2
+    try:
+        game_dir = dosbox.find_game(args.game)
+    except FileNotFoundError as exc:
+        print(f"game {args.game}: {exc}", file=sys.stderr)
+        return 2
+    if not game_dir.is_dir():
+        print(f"game {args.game}: {game_dir} is not a directory",
+              file=sys.stderr)
+        return 2
+
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    log = (out / "run.jsonl").open("a")
-    tsv = (out / "keys.tsv").open("a")
+    log = (out / "run.jsonl").open("w")
+    tsv = (out / "keys.tsv").open("w")
     tsv.write("tag\tn\tkey\trow\tbar\tdigest\tpage\ttitle\tshot\n")
 
     def note(**kw) -> None:
@@ -226,13 +277,12 @@ def run(args: argparse.Namespace) -> int:
                              "page", "title", "shot")) + "\n")
         tsv.flush()
 
-    specimen = pathlib.Path(args.specimen).expanduser()
     path_keys = expand_keys([args.path])
     trials = [expand_keys([t]) for t in (args.trial or DEFAULT_TRIALS)]
     deadline = time.time() + args.minutes * 60
 
     slot = dosbox.claim("issue574 curse memorize")
-    session = dosbox.Session(slot, dosbox.find_game(args.game))
+    session = dosbox.Session(slot, game_dir)
     try:
         session.stage(fresh=True)
         # The shipped tree carries its own slot A; the specimen is the party.
@@ -248,8 +298,7 @@ def run(args: argparse.Namespace) -> int:
             shutil.copyfile(src, session.save_dir / src.name)
             staged.append(src.name)
         note(event="staged", files=staged, save_dir=str(session.save_dir))
-        for rec in sorted(session.save_dir.glob("CHRDAT*.SAV")):
-            note(event="before", **describe(rec))
+        report_records(session.save_dir, note, "before")
 
         session.boot(fresh=False)
         game = session.marching_first(args.slot, args.who)
@@ -264,14 +313,14 @@ def run(args: argparse.Namespace) -> int:
         title = None
         for i, keys in enumerate(trials):
             if i:
-                # **Not `PoolOfRadiance.leave_camp`**: it compares a whole-bar
-                # `ink` digest against the one recorded on the map, and Curse's
-                # map bar carries a cursor that its own alternation of `Escape`
-                # and `n` moves -- so it walked the party back to the map,
-                # failed to recognise it with the cursor on `CAST` rather than
-                # `AREA`, and raised after twelve tries.  `--reenter` leaves the
-                # list the short way instead, and the walk from the map is the
-                # fallback when the title row says the list is not showing.
+                # `PoolOfRadiance.leave_camp` cannot be used: it recognises the
+                # map by a whole-bar `ink` digest, which the reverse-video
+                # cursor Curse draws on the map bar defeats (#606,
+                # PoolOfRadiance.leave_camp does not recognise the Curse world
+                # map it is standing on, because the map bar carries a cursor
+                # its own keypresses move).  `--reenter` leaves the list
+                # instead, and the walk from the map is the fallback when the
+                # title row says the list is not showing.
                 back = press_sequence(session, expand_keys([args.reenter]),
                                       record, tag=f"t{i}-back", blank_stop=0)
                 if title and (not back or back[-1].get("title") != title):
@@ -347,7 +396,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--check", action="store_true",
                     help="print the tools and the game directory, and stop")
     ap.add_argument("--out",
-                    default=str(scratch.scratch_dir("cursememorize", "run")))
+                    default=str(scratch.scratch_dir("cursememorize", "run")),
+                    help="where a run writes; it replaces run.jsonl, keys.tsv, "
+                         "the *.png files in shots/ and the CHRDAT* and "
+                         "SAVGAM* files in saves/, and leaves the rest")
     args = ap.parse_args(argv)
     if args.check:
         absent = dosbox.missing_tools()
