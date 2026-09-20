@@ -111,7 +111,9 @@ def main() -> int:
     args = parser.parse_args()
 
     from gamedata import synthetic_arena
-    from support.combatlog import MemoryTarget, machine
+    from support.combatlog import machine
+
+    from automap.target import MemoryTarget
 
     memory = dict(synthetic_arena())
     memory.update(machine([]).memory)
