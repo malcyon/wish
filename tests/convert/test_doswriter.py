@@ -1127,7 +1127,7 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
     Unconscious, not active, on the enemy's side and quick-fought (`0x10C` =
     4, `0x10D` = 0, `0x10E` = 1, `0x10F` = 1) comes back exactly as staged,
     because `to_neutral` reads all four and the writer puts them all back --
-    `tests/test_c64status.py` is where the C64 half of the conversion is
+    `tests/c64/test_c64status.py` is where the C64 half of the conversion is
     tested.  `WRITE_DEFAULTS`' entry is only what a source supplying none of
     the four gets instead.
 
@@ -1639,7 +1639,7 @@ def test_a_dual_classed_character_keeps_the_level_he_fought_at():
 
     So the writer takes the best of the current array and the former one.
     Without the former term PAINE would go out holding 1 and
-    `tests/test_doslatertitles.py::test_every_engine_written_record_of_a_
+    `tests/dos/test_doslatertitles.py::test_every_engine_written_record_of_a_
     later_title_round_trips` would fail on him.
     """
     key = "secret-of-the-silver-blades"
@@ -2314,7 +2314,7 @@ def test_the_areas_with_a_legal_answer_are_not_refused():
     carrying an empty triple draws it identically -- `p60/run3` (scratch, deleted) Z0.
 
     The three travel windows joined the list in #190, once an outdoor DOS
-    retarget had been driven; `tests/test_dosoutdoorwrite.py` is where the
+    retarget had been driven; `tests/dos/test_dosoutdoorwrite.py` is where the
     outdoor write path is held to what an engine-written overland save holds.
     """
     for area in (0, 20, 21, 25, 26, 27):

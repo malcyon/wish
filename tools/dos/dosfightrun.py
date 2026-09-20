@@ -76,7 +76,7 @@ QUICKFIGHT_BYTE = 0x10F
 
 #: `CHRDAT` offsets read directly, so a state snapshot needs no field table.
 #: Both are `goldbox/dos_port.py`'s and are asserted against it in
-#: `tests/test_dosfight.py`.
+#: `tests/dos/test_dosfight.py`.
 XP = 0x0AC          # three bytes, little-endian
 HP_CURRENT = 0x11B
 

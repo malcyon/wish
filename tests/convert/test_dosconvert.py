@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Turning a DOS Pool of Radiance save into a C64 one, checked field by field.
 
-`tests/test_dossave.py` measures the DOS file; this module checks what
+`tests/dos/test_dossave.py` measures the DOS file; this module checks what
 `goldbox/dos_codec.py` does with it.  The two halves of the promise in
 `docs/117-save-conversion.md` are what most of these tests are:
 

@@ -399,7 +399,7 @@ a whole Wish-built Curse save with her magic-user 6 on the sheet.
 
 ## Where the tests are
 
-`tests/test_doslatertitles.py`, 42 of them, none skipped on this machine. They
+`tests/dos/test_doslatertitles.py`, 42 of them, none skipped on this machine. They
 divide into the tables (every field of every title has a target and a
 disposition), the shapes (each width comes off the title's table, tested
 without any save), and the round trips above. With the one line that picks the

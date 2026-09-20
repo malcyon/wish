@@ -36,7 +36,7 @@ The decode: `goldbox/dos_port.py` is the character-record field table with
 confidence per field. The write-ups behind it — `reports/dos-saves.md` (scratch, deleted)
 for the character record and the saved game, `reports/dos-items.md` for
 the items — are lost. The
-measurements are asserted in `tests/test_dossave.py` and `tests/test_dosbox.py`,
+measurements are asserted in `tests/dos/test_dossave.py` and `tests/dos/test_dosbox.py`,
 which read the archives from Donald's machine and skip where there are none.
 `tools/dos/dosbox.py` is the harness that drives the game: an isolated DOSBox on
 its own X display, keystrokes through `xdotool`, and the save file as ground
@@ -1061,12 +1061,12 @@ the keep and 0 in the two that have not (asserted in
 `tests/convert/test_dosconvert.py::test_the_sokal_keep_flags_are_set_together_or_not_at_all`);
 the seven consecutive slum flags
 `$4ACA`-`$4AD0` are set together or not at all
-(`tests/test_dossave.py::test_the_slums_flags_are_set_together`); `$4ABB` counts slum encounters
+(`tests/dos/test_dossave.py::test_the_slums_flags_are_set_together`); `$4ABB` counts slum encounters
 cleared; and `$4AC1`, the commissions counter with ten `ADD 1` sites, reads
 0, 1 and 2 across the three saves in the order the parties progressed. Every
 nonzero word in the 217-entry window is 1, 2, 3 or 255 and none exceeds 255 —
 the C64's bytes, widened. A base off by one would straddle the runs.
-**CONFIRMED**, and asserted in `tests/test_dossave.py`.
+**CONFIRMED**, and asserted in `tests/dos/test_dossave.py`.
 
 So the flag transfer is now a copy with a stride change: read the DOS word,
 write the C64 byte.
@@ -1176,12 +1176,12 @@ needed the DOS container: a `u16le` index size, `size / 9` entries of
 run-length-coded blocks — all 46 blocks of the eight `ITEM*.DAX` decode to
 exactly their stated size and every size is a whole number of 63-byte records.
 
-Full working was in `reports/dos-items.md`, which is lost. Asserted in `tests/test_dosbox.py`.
+Full working was in `reports/dos-items.md`, which is lost. Asserted in `tests/dos/test_dosbox.py`.
 
 **4. We have no DOS save. — CLOSED.** Donald's Steam copy of *Forgotten
 Realms: The Archives* carries three played slots, 18 saved characters and 6
 exports. Everything above was checked against them; the write-up,
-`reports/dos-saves.md`, is lost, and `tests/test_dossave.py` carries the
+`reports/dos-saves.md`, is lost, and `tests/dos/test_dossave.py` carries the
 assertions.
 
 **5. The DOS layout we have is community documentation, not our own decode.**

@@ -368,7 +368,7 @@ ITEM_TAIL = (0x3F, 4)
 #: items and loses that many real ones off the end of the pack, so
 #: `read_character` refuses a file holding one by name instead.  Confirmed the
 #: only title that ever writes it: zero stores of `0x49` into an item in the
-#: other five titles' overlays (`tests/test_dosscrollbundle.py`).
+#: other five titles' overlays (`tests/dos/test_dosscrollbundle.py`).
 SCROLL_BUNDLE_TYPE = 0x49
 
 
@@ -387,7 +387,7 @@ def item_to_c64(record: bytes) -> bytes:
     C64's byte +6 where DOS spends a byte on each, and that cursed is bit 7 of
     +7.  The six that do not match are items the two ports hand out in
     different places, not near misses.  The write-up,
-    `reports/dos-items.md`, is lost; asserted in `tests/test_dosbox.py`.
+    `reports/dos-items.md`, is lost; asserted in `tests/dos/test_dosbox.py`.
     """
     sizes = sorted({s.item_size for s in DELTAS})
     if len(record) not in sizes:
@@ -1681,7 +1681,7 @@ def portrait_tables(game: str | pathlib.Path | None
 #:   * **the round trip is measured** -- 12 of 12 shipped records read into
 #:     the neutral record and written back byte for byte outside the writer's
 #:     own declared mask, with one exception named in
-#:     `tests/test_dospod.py`: PAINE's spellbook byte for spell 118 holds 8
+#:     `tests/dos/test_dospod.py`: PAINE's spellbook byte for spell 118 holds 8
 #:     where every other set byte in 476 records holds 1, and the neutral
 #:     `spells_known` is a list of ids with nowhere to keep an 8;
 #:   * **nothing has been loaded in DOS Pools of Darkness itself.** Step 3 of

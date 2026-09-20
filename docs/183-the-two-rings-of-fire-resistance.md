@@ -100,7 +100,7 @@ in the Forgotten Realms archives) have byte-identical `ITEM4.DAX`.
 Stronger still: `tools.dos.dosbox.item_to_c64` applied to the DOS ring produces
 `ITEMFILE1D`'s sixteen bytes exactly, and the count of C64 records the DOS
 projection reproduces byte for byte rose from 157 to 159 when the reader started
-preferring the working copy (`tests/test_dosbox.py`). **CONFIRMED.**
+preferring the working copy (`tests/dos/test_dosbox.py`). **CONFIRMED.**
 
 ## The port comparison, in full
 

@@ -21,7 +21,7 @@ import pytest
 
 # `tools/icons/amigaicons.py` reaches `capstone` through `tools/amiga/amigarecordrefs.py`,
 # which imports it at module level -- so this skip must precede the import.
-# See the note in `tests/test_innateids.py`.
+# See the note in `tests/dos/test_innateids.py`.
 pytest.importorskip("capstone")
 
 from automap import gamedisks  # noqa: E402

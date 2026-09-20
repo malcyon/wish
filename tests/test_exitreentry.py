@@ -7,7 +7,7 @@ is that nothing an agent runs may put a window on the maintainer's screen.
 What can be tested is the one thing that would silently rebuild the wrong
 stack if it were wrong: `reenter()`'s push order and its "address minus
 one" convention, and `stack()`'s reading of the page back. The precedent is
-`tests/test_dosoutdoorprobe.py`, whose docstring says it exactly -- "what can
+`tests/dos/test_dosoutdoorprobe.py`, whose docstring says it exactly -- "what can
 be tested is everything that decides whether the run will mean anything."
 
 Everything else in the module -- `party()`, `capture()`, the `phase_*`

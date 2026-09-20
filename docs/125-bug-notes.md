@@ -833,7 +833,7 @@ the 69 distinct name words in use. What would settle it: a sweep of Curse's
 **Version.** Pool of Radiance live, Curse of the Azure Bonds dead, Silver
 Blades and Pools of Darkness absent; DOS. CONFIRMED from the code in all four
 -- `tools/dos/dosencrecompute.py routine` re-derives the three states, and
-`tests/test_dosencrecompute.py` pins each. `#323 (The encumbrance identity does
+`tests/dos/test_dosencrecompute.py` pins each. `#323 (The encumbrance identity does
 not survive the training fee, so failing it is not evidence of an edited
 record)`.
 

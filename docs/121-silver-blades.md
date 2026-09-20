@@ -227,7 +227,7 @@ the marker is an identifier out of some list rather than a count of sequels.
 
 Done for `#31 (Cold-read Curse and Silver Blades for the fields the editor
 shows)`, with no emulator. `tools/c64/coldread.py` reads all of it again in three
-commands and `tests/test_coldread.py` keeps it true.
+commands and `tests/c64/test_coldread.py` keeps it true.
 
 **`GEN` and `CAMP` run at `$0800`, not at the `$4000` their PRG headers claim.**
 Every Silver Blades `GEN` address this project had written down was `$3800` too

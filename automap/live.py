@@ -77,7 +77,7 @@ ROSTER_PAGE = ROSTER_COUNT * ROSTER_STRIDE            # $100
 # need them and `editor/` may not import `automap`
 # (`tests/test_wish.py::test_editor_imports_nothing_live`). Imported above
 # under the same names, so `automap/combat.py`, `tools/gui/combatshot.py`,
-# `tools/gui/livestrip.py` and `tests/test_coldread.py` still resolve
+# `tools/gui/livestrip.py` and `tests/c64/test_coldread.py` still resolve
 # `live.EFFECT_ID_OFFSET` and the rest unchanged.
 
 

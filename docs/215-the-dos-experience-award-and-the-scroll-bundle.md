@@ -6,7 +6,7 @@ shipped DOS engines rather than from a saved game.
 gap_13c, and a pointer at the end of the Silver Blades item)` asked for both;
 the Amiga port gave each a shape and the DOS code settles them.
 `tools/dos/dosxpaward.py` and `tools/dos/dosscrollbundle.py` are the instruments, and
-`tests/test_dosxpaward.py` and `tests/test_dosscrollbundle.py` pin what they
+`tests/dos/test_dosxpaward.py` and `tests/dos/test_dosscrollbundle.py` pin what they
 found.
 
 Neither needed the Curse shopping trip the issue named as its dependency:
@@ -173,7 +173,7 @@ defect is reachable in the game and unexercised by the corpus, which is why
   and `experience_per_hit_point` (`u8`) in the four earlier shapes,
   `experience_award` alone in the two later ones. `tools/dos/dosxpaward.py` looks
   those names up first and falls back to the gap, so it moves with the rename;
-  `tests/test_dosxpaward.py` asserts the offsets either way. The C64 side is
+  `tests/dos/test_dosxpaward.py` asserts the offsets either way. The C64 side is
   `0x0F7`-`0x0F8` and `0x0F9`, inside `gap_0f4` in `goldbox/layout.py`, and
   naming it there closes the pair.
 * **They convert as themselves, not as a drop.** Both ports hold both fields,

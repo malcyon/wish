@@ -16,7 +16,7 @@ from tools.c64 import coldread
 
 def test_the_four_offsets_match_the_cold_read_evidence():
     """Ported, not re-derived: the same offsets
-    `tests/test_coldread.py::test_the_effect_arrays_sit_where_the_save_image_puts_them`
+    `tests/c64/test_coldread.py::test_the_effect_arrays_sit_where_the_save_image_puts_them`
     measures against the running overlays.
     """
     assert (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
@@ -28,7 +28,7 @@ def test_the_four_offsets_match_the_cold_read_evidence():
 def test_automap_live_reexports_the_same_names():
     """`automap/live.py` imports these back under the same names, so
     `automap/combat.py`, `tools/gui/combatshot.py`, `tools/gui/livestrip.py` and
-    `tests/test_coldread.py` still resolve `live.EFFECT_ID_OFFSET` and the
+    `tests/c64/test_coldread.py` still resolve `live.EFFECT_ID_OFFSET` and the
     rest unchanged.
     """
     from automap import live

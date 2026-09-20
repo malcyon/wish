@@ -73,7 +73,7 @@ Corroborating the direction from the other end: no engine of the five ever
 stores a *computed* value -- one held in a local and put into the record -- into
 a pair's lower byte. The shape `mov al,[bp+var] / les di,[bp+player] /
 mov es:[di+0x11],al` appears once or twice in each; the same shape into `0x10`
-appears nought times in all five. `tests/test_dosabilitypair.py` asserts it.
+appears nought times in all five. `tests/dos/test_dosabilitypair.py` asserts it.
 
 ### The three routines that name the permanent byte
 

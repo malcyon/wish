@@ -13,7 +13,7 @@ Where the offsets come from
 Every entry below was measured against **24 real specimens** -- 18 characters
 in three played save slots and 6 exported `.CHA` files -- from Donald's Steam
 copy of *Forgotten Realms: The Archives*.  The write-up that was the working,
-`reports/dos-saves.md` (scratch, deleted), is lost; `tests/test_dossave.py` and
+`reports/dos-saves.md` (scratch, deleted), is lost; `tests/dos/test_dossave.py` and
 `tests/convert/test_dosconvert.py` are the assertions, and
 `docs/117-save-conversion.md` is the plan the table serves.
 Nothing here is transcribed from a hex-editing guide: the community notes in

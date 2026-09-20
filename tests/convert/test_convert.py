@@ -13,7 +13,7 @@ so the input's provenance does not matter to the assertion
 (`.claude/rules/testing.md`, "A specimen is only evidence if we know who
 wrote it"). `tests/fixtures/savedgame0.bin` / `savedgame1.bin` are Donald's
 own played saves, on the repository's allowlist; the DOS side reads
-`tests/test_dossave.py`'s `_save_dir()`, which needs `$FR_ARCHIVES` and skips
+`tests/dos/test_dossave.py`'s `_save_dir()`, which needs `$FR_ARCHIVES` and skips
 without it -- the DOS → C64 direction also needs the player's own
 `POOL*.D64` game disks and skips without those too.
 
@@ -814,7 +814,7 @@ def _dual_classed_curse_disk() -> pathlib.Path | None:
 
 def _curse_game_dir() -> pathlib.Path | None:
     """The DOS Curse game directory, for the area script `new_dos_save`
-    stages -- `tests/test_doslatercontainer.py`'s own helper, repeated here
+    stages -- `tests/dos/test_doslatercontainer.py`'s own helper, repeated here
     rather than imported across `#52`'s lane."""
     from tools.dos import dosbox
     try:

@@ -15,7 +15,7 @@ asserted over all sixteen containers rather than on one.
 
 **The disks and the DOS archives are Donald's**, so every test here skips
 cleanly without them -- `tests/gamedata.py` for the C64 side and
-`tests/test_dossave.py`'s `_save_dir` for the DOS side.
+`tests/dos/test_dossave.py`'s `_save_dir` for the DOS side.
 """
 
 from __future__ import annotations

@@ -304,7 +304,7 @@ def test_the_paladin_and_ranger_specimens_round_trip_masked_by_the_declared_list
 
     MALACHITE is the one already-declared exception, and only in that field:
     `test_every_engine_written_record_of_a_later_title_round_trips` in
-    `tests/test_doslatertitles.py` has it too, `field_83_87`'s treasure-share
+    `tests/dos/test_doslatertitles.py` has it too, `field_83_87`'s treasure-share
     bit (#304), unrelated to an innate effect.
     """
     seen = 0

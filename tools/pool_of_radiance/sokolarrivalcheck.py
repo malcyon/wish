@@ -4,7 +4,7 @@
 Kept from `#182 (A driven save that arrives on a picture is reported as a failed
 load)`. A Sokol Keep arrival plays the boat scene, and `Session.begin_adventuring`
 used to call that a failed load; the offline half is exercised by
-`tests/test_arrivalscene.py`, and this is the live half. It claims a pool slot,
+`tests/c64/test_arrivalscene.py`, and this is the live half. It claims a pool slot,
 stages the player's Pool of Radiance disks into it (`tools.c64.session.stage_disks`),
 copies the save you name over the slot's own save disk (`SIDE0.D64`), boots, loads
 the save, begins adventuring, prints each step's result and the status, and

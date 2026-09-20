@@ -7,7 +7,9 @@ The test suite, one directory per game or job the way `tools/` is, with the shar
 | directory | what is in it |
 |---|---|
 | [amiga](amiga/README.md) | Tests for the Amiga port: its filesystem, saved-game and character-record readers and writers, the tools under `tools/amiga/`, and the emulator routes in `automap/amiga.py`. |
+| [c64](c64/README.md) | Tests for the C64 side: the driven-session code under `tools/c64/`, the memory map and screen readers, and the checks that read a C64 save. |
 | [convert](convert/README.md) | Tests for converting a character or a save between ports and titles: the neutral record, each port's codec, and the conversion tools and window code. |
+| [dos](dos/README.md) | Tests for the DOS port: the DOS saved game and character record, the DOS record writers, and the tools under `tools/dos/` that drive and read DOSBox. |
 | [generate](generate/README.md) | Tests for the generators under `tools/generate/`, chiefly that each generated file is still what its generator writes today. |
 | [github](github/README.md) | Tests for the scripts that read and write the public issue tracker without letting a stranger's text into an agent's context. |
 | [gui](gui/README.md) | Tests for the scripts under `tools/gui/`, which photograph, measure and validate the window. |

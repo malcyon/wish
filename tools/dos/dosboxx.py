@@ -136,7 +136,7 @@ class NotHalted(RuntimeError):
 
 #: The window trap and its refusal live in `tools/dos/dosbox.py` now: that harness
 #: has the same three faults (#88) and two copies of one fix would be #76's
-#: defect in a new place.  Re-exported, because `tests/test_dosboxx.py` is
+#: defect in a new place.  Re-exported, because `tests/dos/test_dosboxx.py` is
 #: where they were measured and `docs/142` "The window trap" names them here.
 BlankCapture = dosbox.BlankCapture
 uniform_colour = dosbox.uniform_colour

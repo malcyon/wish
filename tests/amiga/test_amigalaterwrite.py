@@ -383,7 +383,7 @@ def test_a_c64_party_becomes_amiga_records_of_its_own_title(
         name, shape, expect_items):
     """Both C64 saves the **C64 engine itself** wrote, converted.
 
-    The same two specimens `tests/test_doslatertitles.py` uses for C64 to
+    The same two specimens `tests/dos/test_doslatertitles.py` uses for C64 to
     DOS, which is what makes this the same measurement one port further on.
     Every block has to be the length the loader will compute -- record plus
     `item_count` nodes plus the effect chain -- or the character after it in

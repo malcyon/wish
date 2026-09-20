@@ -239,7 +239,7 @@ Grouped by what they share, so each group is one sitting.
 ### G1 — a cold read of the Curse and Silver Blades disks · no emulator
 
 **Done (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)), six cells of the eight.** `tools/c64/coldread.py` is what it produced
-and `tests/test_coldread.py` is what keeps it true; the six answers are below,
+and `tests/c64/test_coldread.py` is what keeps it true; the six answers are below,
 with the two that did not close.
 
 * `CHARPIC00` — **on all twenty sides of the three titles**, 2030 bytes every
@@ -267,7 +267,7 @@ was read and written into the matrix rows above during #31 (Cold-read Curse and 
 saving-throw rule reproduces all six shipped characters; what was missing was
 a `LevelTables` for the title in `goldbox/levels.py`, which #187 (Silver Blades characters are shown Pool of Radiance's level progression) built --
 `SECRET_OF_THE_SILVER_BLADES`, checked row by row against `GEN` in
-`tests/test_coldread.py` and `tests/test_ssblevels.py`. Its trainer stays
+`tests/c64/test_coldread.py` and `tests/test_ssblevels.py`. Its trainer stays
 unread (thief-skill racial adjustment, constitution hit-point bonus, wisdom
 bonus spells, turning table), so `levels.trainer_measured` and
 `goldbox/levelup.py:plan` still refuse it.

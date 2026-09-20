@@ -21,7 +21,7 @@ routine, and a title whose chain does not add up prints nothing rather than
 a plausible map.
 
 `--check` compares the map against `DosContainer` and exits non-zero on a
-disagreement, which is what `tests/test_dossavewritemap.py` runs.
+disagreement, which is what `tests/dos/test_dossavewritemap.py` runs.
 
 Prints file offsets, widths and the data-segment address each region is
 copied from.  No game bytes are written anywhere and none are printed.

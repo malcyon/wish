@@ -53,7 +53,7 @@ recorded the east side as unmapped. They are off the other corridor:
 `(6,0) (6,1) (7,1) (8,1) (8,0)` for fighters, and `(8,1) (9,1) (9,0)` for
 thieves. The tool computes both with a breadth-first search over the thirteen
 squares, so the route is arithmetic rather than a remembered key list, and
-`tests/test_dosladder.py` checks every route against `goldbox.geo`'s own
+`tests/dos/test_dosladder.py` checks every route against `goldbox.geo`'s own
 `walkable_route` with no emulator in sight.
 
 **Stepping through (7,1) or any arena square fires an offer** that holds the
@@ -232,7 +232,7 @@ Every rung is its own specimen, each holding the whole slot --
 `run.jsonl`, so the climb can be re-derived rung by rung with no emulator.
 In the order they were made: `WISH-SPEC-por-party-ladder-rung0` through
 `rung7`, then `WISH-SPEC-por-party-ladder`, which is the last rung of the
-flat-staged climb and the name `tests/test_dosladder.py` points at, and then
+flat-staged climb and the name `tests/dos/test_dosladder.py` points at, and then
 `rung8`, the threshold-staged rung and the newest state -- the one the table
 above describes.
 

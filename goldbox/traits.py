@@ -314,7 +314,7 @@ EMPTY = "—"
 # `$250D`, and every code it writes lands on the race this table's name is
 # about: dwarf 26, 47, 97; gnome 18, 48, 97; elf 107; half-elf 124; paladin 45;
 # ranger 134. Read off the player's own disks by `tools/c64/coldread.py traits
-# curse-of-the-azure-bonds`, and asserted in `tests/test_coldread.py`.
+# curse-of-the-azure-bonds`, and asserted in `tests/c64/test_coldread.py`.
 #
 # **That argument covers the nine codes `GEN` seeds and not the other 137, and
 # eight of those are wrong.** Curse's own per-spell table, `COMBAT2 +2732`,

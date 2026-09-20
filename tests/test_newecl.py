@@ -32,7 +32,7 @@ import sys
 import pytest
 
 # The real `wish` package first, before anything reaches into `tools/`, for
-# the reason `tests/test_arrivalscene.py` spells out: `tools/wish.py` shares
+# the reason `tests/c64/test_arrivalscene.py` spells out: `tools/wish.py` shares
 # the package's name and a bare `import wish` that resolves to it stays
 # resolved for the whole process.
 import wish  # noqa: F401

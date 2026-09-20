@@ -448,7 +448,7 @@ _SLOTS_PALADIN = ((), (), (), (), (), (), (), (), (1,), (2,), (2, 1))
 #: eleventh reads 749937 where 750001 is expected. That is one bit (`$40`) in
 #: the middle byte of `0B 71 B1`. Settled 2026-09-02: Silver Blades' `GEN
 #: $162D`, a different file from a different release, carries the same
-#: 749937 (`tests/test_coldread.py::
+#: 749937 (`tests/c64/test_coldread.py::
 #: test_the_fighters_eleventh_threshold_is_the_same_on_a_second_rip`). It is
 #: SSI's own number, not bit rot in one Curse rip.
 _XP_MAGIC_USER = (0, 2501, 5001, 10001, 22501, 40001, 60001, 90001, 135001,
@@ -502,7 +502,7 @@ CURSE_RANGER = _progression(
 
 # --- Secret of the Silver Blades ----------------------------------------------
 # GEN $162D / $17D0 / $17E0 / $106F-$108F / $1045 / $13EF-$13F7 / $1845-$1855 /
-# $1148-$115C / $11C0 / $11D8, all at base $0800, read by tests/test_coldread.py.
+# $1148-$115C / $11C0 / $11D8, all at base $0800, read by tests/c64/test_coldread.py.
 #
 # The experience rows are Curse's, carried on: all 61 thresholds the two
 # titles share are identical, including the fighter's anomalous 749937 at

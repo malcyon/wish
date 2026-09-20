@@ -37,9 +37,9 @@ posix = pytest.mark.skipif(instance.fcntl is None, reason="flock is POSIX only")
 # 900-915) rather than one unique to the test, on the assumption that only
 # one test runs at a time. Under `-n auto` that assumption is false unless
 # every test in this file lands in the same worker -- so this whole module
-# is one `xdist_group`, shared with `tests/test_dosbox.py`,
-# `tests/test_dosboxx.py` and `tests/test_walkrun.py`, which claim from the
-# same real `/tmp/.wish-x11-<n>.lock` files under their own fixed bands.
+# is one `xdist_group`, shared with `tests/dos/test_dosbox.py`,
+# `tests/dos/test_dosboxx.py` and `tests/c64/test_walkrun.py`, which claim from
+# the same real `/tmp/.wish-x11-<n>.lock` files under their own fixed bands.
 pytestmark = pytest.mark.xdist_group(name="emulator-pool")
 
 

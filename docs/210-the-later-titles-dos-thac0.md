@@ -48,7 +48,7 @@ three checks have to agree:
 
 Pool of Radiance is the control: the locator lands on `0x1043C`, the byte the
 class-bit anchor finds by a completely different route.
-`tests/test_laterthac0.py` holds all of it.
+`tests/c64/test_laterthac0.py` holds all of it.
 
 ## The rows
 
@@ -76,7 +76,7 @@ Cleric, druid and monk share a row; fighter, paladin and ranger share another.
 
 The bold entries are where the port disagrees with the C64, whose rows are
 cold-read off the player's own `GEN` by `tests/test_curselevels.py` and
-`tests/test_coldread.py`. There are three disagreements and they are the same
+`tests/c64/test_coldread.py`. There are three disagreements and they are the same
 two in both titles plus one that grows:
 
 | | levels | DOS | C64 |

@@ -532,7 +532,7 @@ def test_a_silver_blades_code_nobody_has_read_keeps_its_number(
 def test_curse_has_its_own_trait_table():
     """`GEN $24EA` seeds dwarf 26, 47, 97, gnome 18, 48, 97, elf 107 and
     half-elf 124, every one landing on the race its Pool of Radiance name is
-    about -- `tests/test_coldread.py` reads that off the disks, and the
+    about -- `tests/c64/test_coldread.py` reads that off the disks, and the
     racial half of the argument still holds.
 
     What does not hold is sharing the *whole* table: Curse spent free code

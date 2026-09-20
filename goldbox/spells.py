@@ -295,7 +295,7 @@ _NOT_GRANTED_SILVER_BLADES = (109,)
 #: `GEN` and `CAMP` run at `$0800` in all three titles. The findings were
 #: right and only the addresses were unusable; `#31 (Cold-read Curse and
 #: Silver Blades for the fields the editor shows)` corrected them, and
-#: `tests/test_coldread.py` now reads the opcodes off the disks so it cannot
+#: `tests/c64/test_coldread.py` now reads the opcodes off the disks so it cannot
 #: happen again.
 #:
 #: The one thing that looks like proof and is not: Curse's `GEN $220F` copies 32 bytes

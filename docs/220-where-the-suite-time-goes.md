@@ -149,9 +149,9 @@ None of them starts one.
 | file | tests | seconds | what it actually runs |
 |---|---|---|---|
 | `tests/registry/test_instance.py` | 72 | 16.7 | the pool, with `python -c "import time; time.sleep(120)"` standing in for a VICE run |
-| `tests/test_dosbox.py` | 56 | 10.6 | a blank-window stub and captured output |
-| `tests/test_dosboxx.py` | 35 | 5.3 | a fake debugger that wraps as the real one does |
-| `tests/test_walkrun.py` | 9 | 1.5 | a `Session` replaced by a fake that never connects |
+| `tests/dos/test_dosbox.py` | 56 | 10.6 | a blank-window stub and captured output |
+| `tests/dos/test_dosboxx.py` | 35 | 5.3 | a fake debugger that wraps as the real one does |
+| `tests/c64/test_walkrun.py` | 9 | 1.5 | a `Session` replaced by a fake that never connects |
 | `tests/test_combatdrive.py` | 81 | 78.3 | captured screens; its own docstring says it needs no emulator |
 | `tests/test_fleedrive.py` | 11 | 32.3 | the same, over three fight outcomes |
 

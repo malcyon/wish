@@ -52,8 +52,8 @@ def _records() -> list[pathlib.Path]:
 
     **By directory and not by size alone**: Treasures of the Savage Frontier's
     records are 510 bytes too, so a sweep of the whole archive reads a game
-    this project does not convert -- the same trap `tests/test_doslatertitles.
-    py` names for Gateway's 422-byte exports.
+    this project does not convert -- the same trap
+    `tests/dos/test_doslatertitles.py` names for Gateway's 422-byte exports.
     """
     where = _game_dirs().get("Pools of Darkness")
     if where is None:

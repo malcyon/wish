@@ -289,7 +289,7 @@ Worth recording so nobody looks twice.
 * **The 63-byte DOS item record**, which they reach from the treasure files and
   we from the character files. They read `ITEM1`–`ITEM4` and count 110 items;
   ours reads `ITEM1`–`ITEM8` and reproduces 157 of
-  163 C64 records, asserted in `tests/test_dosbox.py`. Ours is the wider sample.
+  163 C64 records, asserted in `tests/dos/test_dosbox.py`. Ours is the wider sample.
 * **The ECL text codec is 6-bit**, four characters per three bytes. Ours has been
   decoded since the first ECL pass; theirs is the DOS closed form. Given §1 —
   the blocks are the same bytes — the two codecs must be the same codec, which

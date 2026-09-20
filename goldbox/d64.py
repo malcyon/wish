@@ -589,7 +589,7 @@ class D64:
 
         **Windows does not allow it.** There `chmod(0o444)` sets the read-only
         attribute and the rename fails on the destination, so the same save
-        raises instead. `tests/test_traitsave.py` marks the test of this
+        raises instead. `tests/c64/test_traitsave.py` marks the test of this
         `posix_only` for that reason -- and the failure surfaces as a modal
         box, which in a headless run is a hang rather than a red test.
 

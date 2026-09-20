@@ -524,7 +524,7 @@ def test_the_c64_ranger_stops_one_short_of_the_dos_table_at_eleven():
 
 
 # --- the corpus sweep -------------------------------------------------------
-# Modelled on `tests/test_laterthac0.py`: locate the field, compare against
+# Modelled on `tests/c64/test_laterthac0.py`: locate the field, compare against
 # what `goldbox.spells.capacity_by_class` claims for that record's own class
 # levels and wisdom, and count.  This reads DOS records already on disk --
 # specimens this project's own writer produced before this fix, and records

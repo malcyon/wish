@@ -60,7 +60,7 @@ try:
     import fcntl  # POSIX only
 except ImportError:                 # pragma: no cover - Windows
     # The harness drives DOSBox on Linux and nothing else needs it, but the
-    # module still has to *import* everywhere: `tests/test_dosbox.py` asserts
+    # module still has to *import* everywhere: `tests/dos/test_dosbox.py` asserts
     # findings about a DOS save that hold on any platform, and CI runs the
     # suite on Windows.
     fcntl = None
@@ -1032,7 +1032,7 @@ STATUS = (128, 120, 128, 8)
 #: map's units: it is the *word index* 395, which is `word_offset($49C5)`, so a
 #: reader who fixed `$49C5` on one side would never have found 395 on the
 #: other.  Re-exported, the way `item_to_c64` is, so the measurements in
-#: `tests/test_dosbox.py` keep reading them from where they were written.
+#: `tests/dos/test_dosbox.py` keep reading them from where they were written.
 POS_X = _sav.POS_X
 POS_Y = _sav.POS_Y
 POS_FACING = _sav.POS_FACING
@@ -1204,7 +1204,7 @@ C64_ITEM_SIZE = 16
 
 #: The projection itself now lives in `goldbox/dos_codec.py`, because it is part of the
 #: converter rather than part of the harness that drives DOSBox.  Re-exported
-#: here so the measurements in `tests/test_dosbox.py` keep reading it from the
+#: here so the measurements in `tests/dos/test_dosbox.py` keep reading it from the
 #: place they were written against, and so there is one copy of it.
 item_to_c64 = _por_dos.item_to_c64
 

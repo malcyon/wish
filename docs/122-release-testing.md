@@ -837,7 +837,7 @@ rather than once per package.
 
 It is here because it is the part of `#119 (Play a converted DOS save in VICE,
 off a disk Wish built from nothing)` that **no test can hold**.
-`tests/test_dosdisk.py` pins everything a file can say -- that the built `.d64`
+`tests/dos/test_dosdisk.py` pins everything a file can say -- that the built `.d64`
 carries the two files a save disk needs, that every number on the sheet is the
 DOS party's own, that the panel would list six and not seven, that the clock
 and the square are the DOS save's, and that no character's combat icon is a

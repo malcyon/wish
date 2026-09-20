@@ -88,7 +88,7 @@ class claim_free:
 def boot_retry(s: dosboxx.XSession, fresh: bool = True, tries: int = 6, gap: float = 20.0) -> None:
     """Boot, waiting out a display that something else is holding for a moment.
 
-    `tests/test_dosboxx.py` claims a synthetic slot on a fixed display, so a
+    `tests/dos/test_dosboxx.py` claims a synthetic slot on a fixed display, so a
     suite run elsewhere on the machine can put an Xvfb on this pool's first
     display for a couple of minutes.  `XSession.boot` refuses to share it,
     rightly; this waits and asks again rather than failing the whole run.

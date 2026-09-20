@@ -110,10 +110,11 @@ norecursedirs = [
 # depends on that being cheap. `--dist loadgroup` keeps every test
 # carrying `@pytest.mark.xdist_group` in its own worker instead of scattering
 # it, which is how the emulator-pool tests (`tests/registry/test_instance.py`,
-# `tests/test_dosbox.py`, `tests/test_dosboxx.py`, `tests/test_walkrun.py`)
-# stay safe: several of them claim a synthetic display band by a fixed
-# number, and two workers claiming the same band race each other. `-n 0`
-# on the command line disables this for a single debugging run.
+# `tests/dos/test_dosbox.py`, `tests/dos/test_dosboxx.py`,
+# `tests/c64/test_walkrun.py`) stay safe: several of them claim a synthetic
+# display band by a fixed number, and two workers claiming the same band race
+# each other. `-n 0` on the command line disables this for a single debugging
+# run.
 addopts = "-n auto --dist loadgroup"
 
 [tool.ruff]

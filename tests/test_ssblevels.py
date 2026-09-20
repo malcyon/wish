@@ -6,7 +6,7 @@ from __future__ import annotations
 progression)`: `goldbox/levels.py:for_game` used to fall back to Pool of
 Radiance for Silver Blades, so a level-9 Silver Blades magic-user was shown
 against Pool of Radiance's ceiling of 6. This file pins the built table
-without needing the player's own disks -- `tests/test_coldread.py`'s A6/A7
+without needing the player's own disks -- `tests/c64/test_coldread.py`'s A6/A7
 section is what checks the same numbers against `GEN`.
 """
 
@@ -84,7 +84,7 @@ def test_the_card_shows_a_silver_blades_experience_bar(app):
 
 
 def test_the_six_shipped_saves_reproduce_without_disks():
-    """The literals `tests/test_coldread.py` reproduces off the player's own
+    """The literals `tests/c64/test_coldread.py` reproduces off the player's own
     `GEN` -- kept here too so this file's tests need no disks at all.
 
     MALACHITE and GUY DE VALOIS are the two that discriminate: MALACHITE is

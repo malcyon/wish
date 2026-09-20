@@ -3,7 +3,7 @@
 `#395 (A Curse cleric carries the ranger's innate effect and a human carries
 the elf's, in the specimen both ids were graded from)` asked two questions
 about Curse of the Azure Bonds' effect ids 134 and 107, and both are answered
-here. `tools/dos/innateids.py` is the reader; `tests/test_innateids.py` pins it.
+here. `tools/dos/innateids.py` is the reader; `tests/dos/test_innateids.py` pins it.
 
 **The short answer.** 134 is Curse's ranger id and 107 is its elf id, and this
 is now read out of the engine's own character creation rather than out of a

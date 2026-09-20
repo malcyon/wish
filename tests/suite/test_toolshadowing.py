@@ -226,7 +226,7 @@ def test_importing_a_tool_keeps_wish_a_package_and_tools_off_sys_path(name):
 def test_conftest_binds_the_package_even_with_tools_already_in_front():
     """The pytest half: a worker whose `sys.path` was poisoned before it ran.
 
-    `tests/test_walkrun.py` and half a dozen others put `tools/` on
+    `tests/c64/test_walkrun.py` and half a dozen others put `tools/` on
     `sys.path` by hand and import a script by its bare name, so
     `tools/__init__.py` never runs for them. `tests/conftest.py` is imported
     before any test module in the worker, and this is the property that makes
