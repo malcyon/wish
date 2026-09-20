@@ -17,7 +17,14 @@ import pytest
 from gamedata import game_file
 
 from goldbox import areas
-from goldbox.geo import GRID, Geo
+from goldbox.geo import (
+    BARRIERS,
+    GRID,
+    PASSABLE,
+    WALLS_NORTH_EAST,
+    WALLS_SOUTH_WEST,
+    Geo,
+)
 
 #: Every map on the disks, once, with the area that loads it.
 MAPS = sorted({g for a in areas.AREAS for g in a.geos})
@@ -73,17 +80,20 @@ def test_three_of_them_have_no_map_either():
         [8, 11, 19]
 
 
-@pytest.mark.parametrize("name", MAPS)
-def test_the_retired_fallback_always_picked_the_corner(name):
+def test_the_retired_fallback_always_picked_the_corner():
     """It scanned from (0,0), and (0,0) is never fully walled in.
 
     So the rule was not "a walkable square" in any useful sense: it was
     "(0,0)", on all twenty-nine maps. Pinned because it is the thing P20
-    measured and the reason the rule was replaced.
+    measured and the reason the rule was replaced. Every map is read in one
+    pass and the ones that disagree are named together.
     """
-    picked = first_passable(geo(name))
-    assert picked is not None
-    assert picked[:2] == (0, 0)
+    disagree = {}
+    for name in MAPS:
+        picked = first_passable(geo(name))
+        if picked is None or picked[:2] != (0, 0):
+            disagree[name] = picked
+    assert not disagree
 
 
 @pytest.mark.parametrize("name", sorted(POCKETS))
@@ -95,22 +105,49 @@ def test_the_corner_is_a_pocket_on_six_maps(name):
     assert len(corner) < len(largest(g))
 
 
-@pytest.mark.parametrize("name", MAPS)
-def test_landing_square_is_in_the_largest_component(name):
+#: The six maps where the retired rule's corner is walled off, plus the first
+#: two others in `MAPS` order. Computed from `POCKETS` and `MAPS`, so it stays
+#: right when either changes. On every other map `landing_square` takes the same
+#: branch and covers the same lines, so these are the ones that differ in
+#: structure.
+LANDING_MAPS = sorted(POCKETS) + [m for m in MAPS if m not in POCKETS][:2]
+
+
+@pytest.mark.parametrize(
+    "name", [pytest.param(m, id=m) for m in LANDING_MAPS])
+def test_landing_square_is_in_the_largest_component_off_the_outer_ring(name):
+    """The edge squares are where the game's own exits live; do not start on one."""
     g = geo(name)
     square = areas.landing_square(g)
     assert square is not None
     x, y, facing = square
+    assert (x, y) in largest(g), "the square is not in the largest component"
+    assert g.is_passable(x, y, facing), "the facing is not a passable edge"
+    assert 0 < x < GRID - 1 and 0 < y < GRID - 1, \
+        "the square is on the outer ring"
+
+
+def test_landing_square_falls_back_to_the_ring_when_the_component_has_no_inner_square():
+    """The largest component is the top row, so every square in it is on the
+    outer ring, and the rule has to take one of those rather than nothing.
+    No map on the disks is like this, so this is the only test that runs the
+    fallback."""
+    planes = bytearray(4 * 0x100)
+    for i in range(GRID * GRID):
+        planes[WALLS_NORTH_EAST + i] = 0x11         # art on north and east
+        planes[WALLS_SOUTH_WEST + i] = 0x11         # art on south and west
+    # Every barrier is SOLID except the top row's east and west edges, which
+    # join it into one corridor of sixteen squares.
+    for x in range(GRID):
+        planes[BARRIERS + x] = (
+            (PASSABLE << 2 if x < GRID - 1 else 0)
+            | (PASSABLE << 6 if x > 0 else 0))
+    g = Geo(bytes(planes))
+    assert areas.landing_square(g) is not None
+    x, y, facing = areas.landing_square(g)
     assert (x, y) in largest(g)
-    assert 0 <= x < GRID and 0 <= y < GRID
+    assert len(largest(g)) == GRID
     assert g.is_passable(x, y, facing)
-
-
-@pytest.mark.parametrize("name", MAPS)
-def test_landing_square_stays_off_the_outer_ring(name):
-    """The edge squares are where the game's own exits live; do not start on one."""
-    x, y, _ = areas.landing_square(geo(name))
-    assert 0 < x < GRID - 1 and 0 < y < GRID - 1
 
 
 def test_components_partition_the_grid():
