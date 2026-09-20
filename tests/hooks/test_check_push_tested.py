@@ -275,6 +275,25 @@ def test_a_ui_file_and_a_test_fixture_both_count_as_code(clone, monkeypatch):
     assert run(monkeypatch, "git push", clone) == 2
 
 
+@pytest.mark.parametrize("path, code", [
+    ("tests/hooks/test_x.py", True),
+    ("tests/support/a.py", True),
+    ("tests/fixtures/a.bin", True),
+    (".claude/agents/x.md", True),
+    ("tests/README.md", False),
+    ("tests/hooks/README.md", False),
+    ("tests/hooks/notes.md", False),
+], ids=["nested-test-file", "nested-support-module", "nested-fixture",
+        "agent-definition", "top-level-readme", "nested-readme", "nested-notes"])
+def test_a_file_under_tests_counts_the_same_at_any_depth(path, code):
+    """Every non-`.md` file under `tests/` is code however deep, and a `.md` is prose.
+
+    A nested `.md` that is not a README (`tests/hooks/notes.md`) is prose, as
+    `commits.md` says: prose is a `.md` outside `.claude/agents/`.
+    """
+    assert _module().is_code(path) is code
+
+
 def test_the_push_is_seen_however_it_is_reached(clone, monkeypatch):
     commit(clone, "mod.py")
     for command in [
