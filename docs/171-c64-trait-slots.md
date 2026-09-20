@@ -510,17 +510,17 @@ The 2026-09-10 comment left this unread. Each numbered list is walked by one
   record's `$1B` list. An hour went on it.
 
 **Curse of the Azure Bonds does not fully share Pool of Radiance's table
-either, and `goldbox/traits.py` still says it does.** Its own spell-effect
-table gives 3 to STICKS TO SNAKES, 4 to DISPEL EVIL, 7 to FAERIE FIRE, 27 to
-FUMBLE, 35 to CONFUSION, 63 to MINOR GLOBE OF INVULNERABILITY, 68 to
-FEEBLEMIND and 69 to INVISIBILITY TO ANIMALS, where the shared table reads
-those eight as a Manual of Bodily Health, feather falling, an allied Prayer,
-an unimplemented handler and two melee paralysis grades. So a Curse character
-carrying one of the eight is named wrongly today. `tools/c64/traitquery.py
-curse-of-the-azure-bonds --spells` is the run; nothing has been changed for
-that title here, because `#497 (The trait picker offers a Secret of the Silver
-Blades character six names, and nobody has ruled on whether it should offer
-Pool of Radiance's 129)` is about Silver Blades.
+either.** Its own spell-effect table gives 3 to STICKS TO SNAKES, 4 to DISPEL
+EVIL, 7 to FAERIE FIRE, 27 to FUMBLE, 35 to CONFUSION, 63 to MINOR GLOBE OF
+INVULNERABILITY, 68 to FEEBLEMIND and 69 to INVISIBILITY TO ANIMALS, where
+the shared table reads those eight as a Manual of Bodily Health, feather
+falling, an allied Prayer, an unimplemented handler and two melee paralysis
+grades. `tools/c64/traitquery.py curse-of-the-azure-bonds --spells` is the
+run. This page said a Curse character carrying one of the eight was named
+wrongly and that nothing had been changed for that title; both stopped being
+true when `goldbox/traits.py` gained `NAMES_CURSE`, Curse's own table, which
+now names 27 further codes from the routine each one dispatches --
+`docs/222-naming-curses-effect-codes-from-their-handlers.md`.
 
 ## Watching the asks
 

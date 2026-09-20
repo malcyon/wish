@@ -10,6 +10,9 @@ Bonds' own effect codes have no name at all, only a refusal of Pool of
 Radiance's wrong one)` named all eighteen, and corrected a nineteenth, by
 reading the routine each id dispatches -- the fifth route in
 `docs/171-c64-trait-slots.md`'s table, run against Curse's own addresses.
+`#609 (Six of Curse of the Azure Bonds' inherited effect names disagree with
+its own combat handlers)` then read the eight inherited names that first pass
+had found doubtful and left alone.
 
 Nothing here needs an emulator or a save. Every line is
 `tools/c64/traitquery.py curse-of-the-azure-bonds --handlers <id>` and the
@@ -47,11 +50,17 @@ why it is not a lookup.
 | `$A940` | the round, counted up in `COMBAT2` | 90 and 128 refuse above 4, 132 above 3 |
 | `$9462` | hits landed this round | `ECL64` zeroes it before an attack sequence and increments it on a hit; 104 missile evasion decrements it when it takes a missile away |
 | `$25A6` | **the attack d20**, patched into 96's own first instruction | `ECL64 +0x04e5` is `LDY #$14 / JSR $2F6A / STA $25A6`, the same d20 roller `$0FD3` uses for a save |
+| `$4B00`, `$4B40`, `$4B80`, `$4D80` | the 64-entry effect array: id, owner, duration, magnitude | `$11BB` writes all four in order from `$A902`, `$945D`, `$A900` and `$A90E`, and `LIBRARY $409F` -- the predicate every check list asks through -- searches the first two |
+| `$A938` -> `$A900` | the duration a handler asks for, and the byte written | `$1175` is `LDA $A938 / AND #$3F / ADC $A90D`, where `$A90D` is `LIBRARY $2FB9`'s 8x8 product of `$A939` and the level; every handler here leaves `$A939` zero, so the byte written is the one asked for |
+| `$26DB` | roll d100 under A and negate the effect when it comes in under | 105 enters it with `LDA #$32` and the table already CONFIRMED that as 50%; `$F185` is the eleven-entry ladder that adds 5% a caster level below 11 |
+| `$2F46` | a random number 0 to Y | `$1539` is `STA $1542 / LDY #$63 / JSR $2F46 / CMP #imm`, the `#imm` patched with A |
 
 ## The nineteen
 
 Every reading is CONFIRMED from the code. The creature column is the 70
-`MON*` templates `#561` censused, and in each case it is what the *Monster
+`MON*` templates the census of `#561 (A Curse of the Azure Bonds character's
+traits are named from Pool of Radiance's table, which disagrees with Curse's
+own data about eight codes)` read, and in each case it is what the *Monster
 Manual* would have predicted; the list column is Curse's own check lists,
 which say what question the engine is asking when it reaches the id.
 
@@ -99,7 +108,9 @@ Four of them are corroborated a second and third way beyond the carrier.
   patched with the attack d20 and the constant is 18, which is when an owl
   bear hugs.
 
-**73 is the correction.** `#561` kept Pool of Radiance's wording for 71, 73
+**73 is the correction.** `#561 (A Curse of the Azure Bonds character's traits
+are named from Pool of Radiance's table, which disagrees with Curse's own data
+about eight codes)` kept Pool of Radiance's wording for 71, 73
 and 109 on the grounds that nothing in Curse contradicted them. Curse's own
 handler for 73 does: it is the fourth member of the immunity family, where
 112 tests bit 0, 110 bit 1, 135 bit 2 and 73 bit 5, all four ending in
@@ -107,6 +118,80 @@ handler for 73 does: it is the fourth member of the immunity family, where
 is not. 71 and 109 keep Pool of Radiance's wording, and the reason is
 unchanged: no Curse creature carries either, the only spell row writing them
 has an unset name pointer, and each shares its handler with another id.
+
+## The eight inherited names the handlers contradict
+
+Not codes with no name: codes carrying Pool of Radiance's name, which Curse's
+own routine says is somebody else's. No creature carries 50, 54, 88, 94 or
+120; the dracolich carries 122 and 123 and Tyranthraxus carries 106
+(`tools/records/traitnames.py curse-of-the-azure-bonds --monsters`).
+
+| id | handler | what it does | was called | list |
+|---|---|---|---|---|
+| 50 | `$2283` | fire doubles the damage; cold halves it and adds 2 to the saving throw | mummy rot, blocking healing | 12 and 20 |
+| 54 | `$2289` | the same routine entered two bytes in, with the elements the other way round | repulsed (bronze dragon; the handler is unimplemented) | 12 and 20 |
+| 88 | `$2556` | `RTS` | electrical breath weapon | 14 |
+| 94 | `$25A4` | `RTS` | half damage from blunt or piercing weapons | 5 |
+| 106 | `$26FC` | `LDA #$0F` into 105's percentile routine: 15, not 85 | 85% magic resistance | 6 and 9 |
+| 120 | `$276A` | `RTS` | boulder evasion, 50% | 5 |
+| 122 | `$236A` | enters 67's paralysis four bytes in, past its 2d8, so the duration written is zero | mummy: vulnerable to fire | 2 |
+| 123 | `$27D0` | 2d10 of cold at the one it hits, unless that one holds 50 or 10 | hit only by magical weapons; silver does half | 2 |
+
+**50 and 54 are one routine with two entry points, and Silver Blades already
+names it.** `$2283` loads the fire bit and keeps the cold bit in X; `$2289` is
+the same two instructions the other way round; from `$228D` they share
+everything. The element in A doubles the damage (`ASL $945F`); the element in
+X reaches `$22A2`, which halves it and rewrites the save byte's bottom two
+bits to 1, and then `$1EC4`, which is `INC $A903` twice. Secret of the Silver
+Blades builds the identical routine at `$27DC`/`$27E2` and `#497 (The trait
+picker offers a Secret of the Silver Blades character six names, and nobody
+has ruled on whether it should offer Pool of Radiance's 129)` CONFIRMED it
+there as "vulnerable to fire, resistant to cold" and its partner.
+
+Which way round each one goes is corroborated twice from elsewhere in Curse's
+own `COMBAT`, and neither reading depends on the other title: the salamander's
+103 skips its heat when the other combatant holds one of the three ids at
+`$F182` -- **54**, 61 and 20, where 61 is the Ring of Fire Resistance and 20 is
+Resist Fire -- and 123 skips its cold when the other combatant holds one of
+the two at `$27F3` -- **50** and 10, where 10 is Resist Cold. So 54 is the
+fire resistance and 50 the cold, which is the direction the handler bits give.
+
+**106 is 15%, not 85%.** `$26FC` is `LDA #$0F / BNE $26DB`, and `$26DB` is
+105's own routine two bytes past its `LDA #$32`. The four percentiles the
+table already CONFIRMED -- 50 for the drow, 90 for the elf, 30 for the
+half-elf, 100 for 129 -- all reach the same instruction, and each is the
+chance the effect is negated, since `$26F3`'s `BCS` skips `$1530` when the
+d100 comes in at or above A.
+
+**122 is 67's paralysis with the duration taken out.** `$236A` is `LDX #$00 /
+BEQ $2354`, and `$2354` is four bytes into 67's handler, past the `JSR $13FD /
+TAX` that rolls 2d8 into X. Everything after that is shared: save byte 1
+(column 0, `save_paralysis`), effect id 52 -- Curse's own `held or paralysed`
+-- and X as the duration. So the byte written to `$4B80` is zero, and a zero
+duration never runs out. Curse's own per-round sweep at `COMBAT2 $FA77` reads
+the id, reads the duration and branches away on either being zero before it
+reaches `DEC $4B80,X`; `$118E` goes further and refuses to overwrite a slot
+whose duration is already zero with any other value, which is the engine
+treating zero as longer than anything else. `docs/133-active-effects.md` has
+the same finding from Pool of Radiance's three ageing routines.
+
+**123 is 79's melee touch in cold.** `$27D0` stages the target (`ECL64
+$89FD`), walks the two ids at `$27F3` through the trait-slot predicate, and
+returns if either is there. Otherwise it is `LDA #$02 / JSR $13F5` -- 2d10,
+the Nd10 entry beside the `$1407` and `$140B` the anchors table already pins
+-- and then `LDA #$0A / JSR $23F7`, where `$23F7` is the instruction 79 falls
+into after its own `LDA #$09`. The two damage-type bytes differ in bit 0
+against bit 1, fire against cold, and share bit 3, magic. Both ids sit on
+check list 2, the attacker's melee specials, beside 57's engulf, 79's fire
+touch, 80's acid and 96's hug.
+
+**88, 94 and 120 do nothing, and that is the name.** Each dispatches to a
+single `RTS` at an address of its own, rather than to the fourteen-id filler
+at `$1E48` that the unimplemented ids share, and each is on a check list --
+88 on 14, the monster's ranged form; 94 and 120 on 5, the target's weapon
+damage. So the engine does reach them and they return at once. A name
+describing a breath weapon or a dodged boulder tells a player the game does
+something it does not.
 
 ## Negative results, and readings not acted on
 
@@ -117,28 +202,34 @@ has an unset name pointer, and each shares its handler with another id.
   halves a different variable, and 138 matches Silver Blades' 108, which is
   right but only because the routine is the same code. A two-instruction
   routine collides with anything. Each id was read on its own after that.
-* **Six more of Curse's inherited names are wrong or doubtful**, found while
-  reading around the nineteen and **not changed**, because `#567` names the
-  eighteen and a name deserves the same evidence each. Each needs one more
-  read before it goes in the table:
-
-  | id | what `NAMES_CURSE` says today | what Curse's handler does |
-  |---|---|---|
-  | 50, 54 | mummy rot, blocking healing; repulsed (bronze dragon) | one element doubles the damage and the other halves it and adds 2 on the save -- Silver Blades' 50 and 54 exactly, on the same two lists |
-  | 94 | half damage from blunt or piercing weapons | `RTS`. 88 and 120 are bare `RTS` handlers too |
-  | 106 | 85% magic resistance | 105's percentile routine with **15**, not 85 |
-  | 122 | mummy: vulnerable to fire | enters 67's melee paralysis with a zero duration |
-  | 123 | hit only by magical weapons; silver does half | 2d10 of cold at the other combatant unless it has 50 or 10 |
-
-* **`editor/effects.py` warns about Curse's 54 as having no handler.**
-  `NO_HANDLER_BY_GAME["curse-of-the-azure-bonds"]` is `{54}`, and 54's Curse
-  handler is the elemental pair above. Not ours to change here; it is a
-  second file.
+* **The structural match against Silver Blades is still not a route, and 50
+  and 54 are not a counter-example.** They are named here from Curse's own
+  bits and from the two id tables Curse's own handlers index, and the Silver
+  Blades wording is the third line rather than the first. A routine that
+  matches is evidence only when it is long enough to be one routine.
+* **`ECL64 $89FD` was read only as far as 123 needs.** It stages the combatant
+  in `$945D`, which is what makes the two-id walk read the *target's* trait
+  slots, and `$8F43` puts the attacker's staging back. Its second half at
+  `$8A08` picks a combatant by direction out of a table and was not read.
+* **Whether a zero-duration effect survives the end of a fight was not
+  traced.** Nothing ages it, nothing clears its id, and `$118E` will not
+  overwrite it -- that is enough for "never wears off" inside the fight. A
+  sweep somewhere outside `COMBAT` that empties the array between battles
+  would narrow it to the fight, and the experiment is
+  `tools/c64/effectdrive.py`'s: write 52 with a zero duration into a copy of a
+  save, fight, and read the array afterwards.
+* **`editor/effects.py` no longer warns about Curse's 54.**
+  `NO_HANDLER_BY_GAME["curse-of-the-azure-bonds"]` was `NO_HANDLER - {63}`,
+  which left `{54}`, so the picker told a Curse player "The game has no answer
+  for this one" about a code the game answers at `$2289`. It is
+  `frozenset()` now.
 * **Three ids Curse honours are still unnamed and no creature carries them**:
   134, 137 and 145, along with 144, which is 96's partner and does the
   hugging. 144 is readable from the same pass -- it is the crush each round,
   and its message index is 68, `HUGS` -- and it is left out because nothing
-  in `#567`'s list asked for it.
+  in the list of `#567 (Twelve of Curse of the Azure Bonds' own effect codes
+  have no name at all, only a refusal of Pool of Radiance's wrong one)` asked
+  for it.
 * **The `IS SMOTHERED TO DEATH` message (index 57) was not traced to a
   handler.** 57's engulf prints `ENGULFS ITS FOE` and applies the pair, and
   139, the partner it parks on the engulfer, is a long routine that was not
@@ -151,6 +242,7 @@ has an unset name pointer, and each shares its handler with another id.
 above off the player's own disks: the damage-type bit each immunity tests,
 the percentile each resistance rolls, the message each ranged form prints and
 the entry that message resolves to, the ray table, the `ITEMS` bit that
-separates edged from blunt, the one template named `BLESSED`, and the three
-fire-resistance ids the salamander asks about. Thirty tests, all skipping
-with no disks.
+separates edged from blunt, the one template named `BLESSED`, the three
+fire-resistance ids the salamander asks about, the two cold ones 123 asks
+about, the four bytes 122 skips over and the sweep that will not age a zero.
+Thirty-nine tests, all skipping with no disks.

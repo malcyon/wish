@@ -27,6 +27,8 @@ readings and the anchors they rest on.
 
 from __future__ import annotations
 
+import collections
+
 import pytest
 
 from automap import gamedisks
@@ -61,6 +63,16 @@ CURSE_ONLY = (128, 129, 130, 131, 132, 133, 135, 138)
 #: Every code `NAMES_CURSE` names from its handler rather than from the
 #: spell table or the census.
 FROM_HANDLERS = REFUSED + CURSE_ONLY + (73,)
+
+#: The eight codes that carried a Pool of Radiance name Curse's own handler
+#: contradicts. Named from their handlers on `#609 (Six of Curse of the Azure
+#: Bonds' inherited effect names disagree with its own combat handlers)`.
+INHERITED_WRONG = (50, 54, 88, 94, 106, 120, 122, 123)
+
+#: The three of those whose Curse handler is a bare `RTS`: the engine reaches
+#: each one -- 88 on check list 14, 94 and 120 on list 5 -- and it returns at
+#: once.
+BARE_RTS = (88, 94, 120)
 
 
 def _disks():
@@ -152,10 +164,23 @@ def test_71_and_109_keep_pool_of_radiances_wording_on_purpose():
         assert traits.NAMES_CURSE[code][0] == traits.NAMES[code][0]
 
 
+def test_the_eight_inherited_names_the_handlers_contradict_are_gone():
+    """`#609`: each of these was Pool of Radiance's wording on a code whose
+    Curse handler does something else -- a mummy's fire vulnerability on a
+    paralysis, 85% where the percentile is 15, a monster attack form on a
+    bare `RTS`."""
+    for code in INHERITED_WRONG:
+        name, grade = traits.NAMES_CURSE[code]
+        assert grade == "CONFIRMED", code
+        assert name != traits.NAMES[code][0], code
+        assert traits.describe(code, CURSE) != f"trait {code}"
+
+
 def test_most_of_the_shared_namespace_transfers_unchanged():
-    touched = set(BY_SPELL) | set(FROM_HANDLERS) | {60, 71, 105, 109}
+    touched = (set(BY_SPELL) | set(FROM_HANDLERS) | set(INHERITED_WRONG)
+               | {60, 71, 105, 109})
     unchanged = [code for code in traits.NAMES if code not in touched]
-    assert len(unchanged) > 100
+    assert len(unchanged) > 90
     for code in unchanged:
         assert traits.NAMES_CURSE.get(code) == traits.NAMES[code]
 
@@ -349,14 +374,29 @@ def test_the_breath_weapons_say_breathes(dispatch, messages):
     assert bytes.fromhex("a9 07 8d 05 a9") in _handler(dispatch, 131, 20)
 
 
-def test_the_magic_resistances_are_one_routine_and_four_percentiles(
+def test_the_magic_resistances_are_one_routine_and_five_percentiles(
         dispatch):
     """105, 106, 107, 124 and 129 all reach `$26DB`, which rolls d100 under
     A. 50 for the drow, 90 for the elf and 30 for the half-elf are names the
-    table already had; 129's A is 100, which is what makes it total."""
-    for code, percent in ((105, 50), (107, 90), (124, 30), (129, 100)):
+    table already had; 129's A is 100, which is what makes it total; and
+    106's is 15, not the 85 Pool of Radiance's table calls it."""
+    for code, percent in ((105, 50), (106, 15), (107, 90), (124, 30),
+                          (129, 100)):
         assert _handler(dispatch, code, 2) == bytes((0xA9, percent)), code
     assert traits.NAMES_CURSE[129][0] == "100% magic resistance"
+    assert traits.NAMES_CURSE[106][0] == "15% magic resistance"
+
+
+def test_106_enters_105s_own_percentile_routine(dispatch):
+    """What makes 15 a percentage rather than any other number: 106's
+    `BNE` lands two bytes into 105's handler, past the `LDA #$32` that makes
+    the drow's 50%, on the routine the test above pins."""
+    table = traitquery.handler_addresses(_disks(), CURSE, dispatch=dispatch)
+    raw = _handler(dispatch, 106, 4)
+    assert raw[:3] == bytes.fromhex("a9 0f d0")
+    step = raw[3] - 256 if raw[3] > 127 else raw[3]
+    assert table[106] + 4 + step == table[105] + 2
+    assert traits.NAMES_CURSE[106][0].startswith("15%")
 
 
 def test_the_beholders_seven_rays(dispatch, messages):
@@ -471,3 +511,132 @@ def test_132_throws_a_lightning_bolt(dispatch, messages):
     directly rather than at `101 + n`."""
     assert bytes.fromhex("a2 3e 20 83 13") in _handler(dispatch, 132, 15)
     assert messages[0x3E] == "THROWS A LIGHTNING BOLT"
+
+
+# --- the eight inherited names Curse's own handlers contradict --------------
+
+def test_50_and_54_are_one_elemental_pair_and_not_mummy_rot(dispatch):
+    """Two entry points into one routine: the element in A doubles the
+    damage, the element in X halves it and adds 2 to the saving throw. The
+    two immediates are re-derived from Resist Fire and Resist Cold rather
+    than transcribed -- 20 tests bit 0 and 10 tests bit 1."""
+    fire = _handler(dispatch, 20, 2)[1]
+    cold = _handler(dispatch, 10, 2)[1]
+    assert (fire, cold) == (0x01, 0x02)
+    assert _handler(dispatch, 50, 4) == bytes((0xA9, fire, 0xA2, cold))
+    assert _handler(dispatch, 54, 4) == bytes((0xA9, cold, 0xA2, fire))
+    # One shared tail: double the damage, or halve it and take the save.
+    tail = _handler(dispatch, 54, 25)[4:]
+    assert tail == bytes.fromhex(
+        "2d 04 a9 d0 0c 8a 2d 04 a9 f0 09 20 a2 22 4c c4 1e 0e 5f 94 60")
+    body = dispatch.body_map["COMBAT"]
+    at = 0x22A2 - dispatch.ask_base
+    assert body[at:at + 3] == bytes.fromhex("4e 5f 94")          # LSR $945F
+    at = 0x1EC4 - dispatch.ask_base
+    assert body[at:at + 7] == bytes.fromhex("ee 03 a9 ee 03 a9 60")
+    # Silver Blades builds the same routine and our table already names it.
+    assert traits.NAMES_CURSE[50][0] == traits.NAMES_SILVER_BLADES[50][0]
+    assert traits.NAMES_CURSE[54][0] == traits.NAMES_SILVER_BLADES[54][0]
+
+
+def test_the_two_elements_are_the_ones_the_other_handlers_ask_about(
+        dispatch):
+    """The direction of the pair, corroborated twice from elsewhere in
+    `COMBAT`: the salamander's heat skips a target holding 54, and 123's cold
+    skips one holding 50, so 54 is the fire resistance and 50 the cold."""
+    combat2 = dispatch.body_map["COMBAT2"]
+    assert list(combat2[0xF182 - 0xE000:0xF185 - 0xE000]) == [54, 61, 20]
+    body = dispatch.body_map["COMBAT"]
+    at = 0x27F3 - dispatch.ask_base
+    assert list(body[at:at + 2]) == [50, 10]
+    assert traits.NAMES_CURSE[10][0] == "Resist Cold"
+    assert traits.NAMES_CURSE[20][0] == "Resist Fire"
+    assert "cold" in traits.NAMES_CURSE[50][0]
+    assert "fire" in traits.NAMES_CURSE[54][0]
+
+
+def test_122_is_67s_paralysis_entered_with_a_zero_duration(dispatch):
+    """It jumps four bytes into 67's handler with `LDX #$00`, past the `JSR
+    $13FD / TAX` that rolls 67's 2d8, so the duration byte written is zero.
+    The effect applied is 52, Curse's own `held or paralysed`."""
+    table = traitquery.handler_addresses(_disks(), CURSE, dispatch=dispatch)
+    raw = _handler(dispatch, 122, 4)
+    assert raw[:3] == bytes.fromhex("a2 00 f0")
+    step = raw[3] - 256 if raw[3] > 127 else raw[3]
+    shared = table[122] + 4 + step
+    assert shared == table[67] + 4
+    assert _handler(dispatch, 67, 4) == bytes.fromhex("20 fd 13 aa")
+    body = dispatch.body_map["COMBAT"]
+    at = shared - dispatch.ask_base
+    assert body[at:at + 4] == bytes.fromhex("a9 01 a0 34")       # Y = 52
+    assert traits.NAMES_CURSE[0x34][0] == "held or paralysed"
+    assert traits.NAMES_CURSE[122][0].startswith("melee paralysis")
+
+
+def test_a_duration_of_zero_is_never_aged(dispatch):
+    """Why 122's paralysis never wears off: Curse's own per-round sweep of
+    the 64 effect slots skips a slot whose duration byte is zero, and only
+    ages the unit the byte's top two bits call a minute."""
+    combat2 = dispatch.body_map["COMBAT2"]
+    at = 0xFA77 - 0xE000
+    assert combat2[at:at + 17] == bytes.fromhex(
+        "bd 00 4b f0 29 bd 80 4b f0 24 c9 40 b0 20 de 80 4b")
+    assert traits.NAMES_CURSE[122][0] == "melee paralysis that never wears off"
+
+
+def test_123_is_79s_melee_touch_with_cold_instead_of_fire(dispatch):
+    """The same 2d10 and the same tail at `$23F7`, which 79 falls into; the
+    damage-type byte is the whole of the difference, and 123 asks first
+    whether the other combatant resists cold."""
+    table = traitquery.handler_addresses(_disks(), CURSE, dispatch=dispatch)
+    assert _handler(dispatch, 79, 7) == bytes.fromhex("a9 02 20 f5 13 a9 09")
+    assert table[79] + 7 == 0x23F7
+    handler = _handler(dispatch, 123, 35)
+    assert handler[22:] == bytes.fromhex(
+        "a9 02 20 f5 13 a9 0a 20 f7 23 4c 43 8f")
+    # The two type bytes differ in bit 0 against bit 1 -- fire against cold,
+    # the bits Resist Fire and Resist Cold test -- and share the magic bit.
+    assert 0x09 ^ 0x0A == (_handler(dispatch, 20, 2)[1]
+                           | _handler(dispatch, 10, 2)[1])
+    # And the two ids it walks before doing anything are the cold pair.
+    assert bytes.fromhex("bd f3 27") in handler
+    body = dispatch.body_map["COMBAT"]
+    at = 0x27F3 - dispatch.ask_base
+    assert list(body[at:at + 2]) == [50, 10]
+    assert traits.NAMES_CURSE[123][0] == (
+        "melee cold touch, 2d10 unless the target resists cold")
+
+
+def test_the_three_codes_whose_curse_handler_is_a_bare_rts(dispatch):
+    """88, 94 and 120 each dispatch to a single `RTS`, at three addresses of
+    their own rather than the fourteen-id filler at `$1E48`. Each is on a
+    check list, so the engine does reach it and it does nothing."""
+    table = traitquery.handler_addresses(_disks(), CURSE, dispatch=dispatch)
+    filler = collections.Counter(a for c, a in table.items() if c)
+    assert filler[0x1E48] == 14
+    seen = set()
+    for code in BARE_RTS:
+        assert _handler(dispatch, code, 1) == b"\x60", code
+        assert table[code] != 0x1E48, code
+        seen.add(table[code])
+    assert len(seen) == 3
+    got = traitquery.read_lists(dispatch.body_map["COMBAT2"],
+                                0xEF4F - 0xE000, 146)
+    assert got is not None
+    lists, _end = got
+    on = {code: {n for n, one in enumerate(lists) if code in one}
+          for code in BARE_RTS}
+    assert on == {88: {14}, 94: {5}, 120: {5}}
+    for code in BARE_RTS:
+        assert traits.NAMES_CURSE[code][0] == (
+            "unimplemented -- the handler does nothing")
+
+
+def test_the_picker_no_longer_says_curse_has_no_answer_for_54():
+    """`editor/effects.py`'s `NO_HANDLER` is Pool of Radiance's `{54, 63}`,
+    and a Curse player opening the picker read "The game has no answer for
+    this one" about a code whose handler is the elemental pair above."""
+    assert effects.warning(54, game=CURSE) == ""
+    assert effects.warning(63, game=CURSE) == ""
+    assert effects.warning(54, game=POOL) == effects.REASON_NO_HANDLER
+    assert effects.warning(63, game=POOL) == effects.REASON_NO_HANDLER

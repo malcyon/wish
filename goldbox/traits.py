@@ -762,11 +762,13 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 #: there at all). 60 is CONFIRMED wrong by its own handler, read the same way
 #: `NAMES_SILVER_BLADES` reads 60, though the exact rule is PROBABLE.
 #:
-#: **Nineteen more are named from the routine each one dispatches**, read one
-#: at a time out of Curse's own `COMBAT` through the handler tables at
+#: **Twenty-seven more are named from the routine each one dispatches**, read
+#: one at a time out of Curse's own `COMBAT` through the handler tables at
 #: `$EE2A`/`$EEBC` -- the ten the monster census could only refuse (57, 81,
 #: 82, 84, 85, 86, 87, 90, 96, 103), the eight above `NAMES`'s reach that a
-#: Curse creature carries (128, 129, 130, 131, 132, 133, 135, 138), and 73.
+#: Curse creature carries (128, 129, 130, 131, 132, 133, 135, 138), 73, and
+#: the eight whose inherited name Curse's own handler contradicts (50, 54,
+#: 88, 94, 106, 120, 122, 123).
 #: `docs/222-naming-curses-effect-codes-from-their-handlers.md` has every
 #: reading and the anchors it rests on.
 #:
@@ -793,7 +795,14 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 #: `$A93B` the save byte, `$1530` the zero-the-damage tail, `$138F` the
 #: combat message -- are derived from Curse's own CONFIRMED codes in
 #: `docs/222-naming-curses-effect-codes-from-their-handlers.md`.
+#:
+#: Eight of them replace a name inherited from `NAMES` that Curse's handler
+#: contradicts. 88, 94 and 120 are the three whose handler is a bare `RTS`:
+#: each is on a check list, so the engine reaches it and it does nothing,
+#: which is what the name has to say rather than a monster's attack form.
 _CURSE_FROM_HANDLERS = {
+    50: ("vulnerable to fire, resistant to cold", "CONFIRMED"),
+    54: ("vulnerable to cold, resistant to fire", "CONFIRMED"),
     57: ("engulfs its foe, which is held fast", "CONFIRMED"),
     73: ("no damage from a breath weapon", "CONFIRMED"),
     81: ("half damage from weapons", "CONFIRMED"),
@@ -803,9 +812,16 @@ _CURSE_FROM_HANDLERS = {
     85: ("an edged weapon does one point of damage", "CONFIRMED"),
     86: ("spits acid, its own hit points in damage", "CONFIRMED"),
     87: ("eye rays, three a round", "CONFIRMED"),
+    88: ("unimplemented -- the handler does nothing", "CONFIRMED"),
     90: ("acid breath weapon, its own hit points in damage", "CONFIRMED"),
+    94: ("unimplemented -- the handler does nothing", "CONFIRMED"),
     96: ("hugs its foe on an attack roll of 18 or better", "CONFIRMED"),
     103: ("melee heat, 1d6 unless the target resists fire", "CONFIRMED"),
+    106: ("15% magic resistance", "CONFIRMED"),
+    120: ("unimplemented -- the handler does nothing", "CONFIRMED"),
+    122: ("melee paralysis that never wears off", "CONFIRMED"),
+    123: ("melee cold touch, 2d10 unless the target resists cold",
+          "CONFIRMED"),
     128: ("fire breath weapon, its own hit points in damage", "CONFIRMED"),
     129: ("100% magic resistance", "CONFIRMED"),
     130: ("killed outright by a blessed quarrel", "CONFIRMED"),

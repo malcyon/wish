@@ -146,17 +146,16 @@ NO_HANDLER = frozenset({54, 63})
 #: blades --spells`, `#497`), so they join its `BORN_WITH`. 63 has a handler
 #: in both Secret of the Silver Blades and Curse of the Azure Bonds -- each
 #: title's own Minor Globe of Invulnerability writes it -- so both drop it
-#: from `NO_HANDLER`. `goldbox/traits.py`'s own `NAMES[63]` still calls it
-#: "unimplemented -- no handler exists" on Curse until `#561 (A Curse of the
-#: Azure Bonds character's traits are named from Pool of Radiance's table,
-#: which disagrees with Curse's own data about eight codes)` lands that
-#: title's own table -- the warning is fixed here; the tooltip name is not.
+#: from `NO_HANDLER`. Curse's set is empty rather than `NO_HANDLER - {63}`
+#: because 54 has a handler there too -- the elemental pair at `COMBAT
+#: $2289`, read in
+#: `docs/222-naming-curses-effect-codes-from-their-handlers.md`.
 BORN_WITH_BY_GAME: dict[str, frozenset[int]] = {
     "secret-of-the-silver-blades": BORN_WITH | frozenset({68, 69, 71, 106, 111, 112}),
 }
 NO_HANDLER_BY_GAME: dict[str, frozenset[int]] = {
     "secret-of-the-silver-blades": NO_HANDLER - {63},
-    "curse-of-the-azure-bonds": NO_HANDLER - {63},
+    "curse-of-the-azure-bonds": frozenset(),
 }
 
 
