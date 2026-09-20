@@ -445,7 +445,6 @@ class PreferencesDialog(QDialog):
         # "squished and unusable" by another route.
         _invalidate_layout(self._general.layout())
         _invalidate_layout(self.ui.disks_layout)
-        _invalidate_layout(self.ui.travel_layout)
         self.fit()
 
     def sizeHint(self) -> QSize:
@@ -856,9 +855,12 @@ class PreferencesDialog(QDialog):
         walks wherever it likes while the map window is shut -- so this is an
         explicit list of ticks and there is no second, cleverer rule behind it.
 
-        **Area 30 is not in the table**, ticked or unticked: `ECL1E` is the
-        attract-mode demo and entering it ends the session. `Area.fasttravelable`
-        says so, and it is asked rather than the id being written down here.
+        **In Pool of Radiance, area 30 is not in the table**, ticked or
+        unticked: `ECL1E` is the attract-mode demo and entering it ends the
+        session. `Area.fasttravelable` says so, and it is asked rather than the
+        id being written down here. Curse of the Azure Bonds' area 30 is
+        fast-travellable and has no name, so it is in that table as `Area 30`,
+        as are Silver Blades' unnamed ids 4 and 17 in its own.
 
         **One tab per title that has an area table** (`TRAVEL_TITLES`), each
         with its own table, so any title's areas can be ticked from any
@@ -897,14 +899,18 @@ class PreferencesDialog(QDialog):
     def _wire_travel_page(self, game: c64_port.C64Container) -> None:
         """One title's table: its rows, its ticks and its count."""
         suffix = _row_suffix(game)
-        #: The table's rows, in the dropdown's own order: by name, unnamed
-        #: rows first. A row with no approved name reads `Area N` rather than
-        #: its script name. Only Pool of Radiance's unnamed area is also its
-        #: one unfasttravelable one, so `fasttravelable` alone excludes it there.
+        #: The table's rows: by name, then the unnamed ones by area number.
+        #: The sort is stable and named rows compare on name alone, so a name
+        #: two areas share keeps the table's own order. A row with no approved
+        #: name reads `Area N` rather than its script name. Only in Pool of
+        #: Radiance is the one unnamed area also unfasttravelable, so
+        #: `fasttravelable` alone excludes it there; Curse's and Silver Blades'
+        #: unnamed areas are in their tables.
         rows = sorted(
             (a for a in area_table.areas_for_title(game.title)
              if a.fasttravelable),
-            key=lambda a: a.name or "")
+            key=lambda a: ((True, "", a.id) if not a.name
+                           else (False, a.name, 0)))
         chosen = set(self.win.settings.chosen_areas(game))
         table = getattr(self.ui, f"travel_table_{suffix}")
         table.setColumnCount(1)

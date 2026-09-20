@@ -1147,6 +1147,26 @@ def test_a_row_with_no_approved_name_reads_area_and_its_number(
     assert "Area 30" in labels
 
 
+def test_unnamed_rows_sort_after_the_named_ones_in_id_order(
+        app, tmp_path, monkeypatch):
+    """In every title's table the rows with no name (`Area N`) come last, in
+    area-number order, and the named rows before them keep name order."""
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+    for game in (POOL, CURSE, SILVER_BLADES):
+        rows = dialog.travel_rows[game.key]
+        table = dialog.travel_tables[game.key]
+        named = [a for a in rows if a.name]
+        unnamed = [a for a in rows if not a.name]
+        if game is not POOL:
+            assert unnamed, game.title
+        assert rows == named + unnamed, game.title
+        assert [a.name for a in named] == sorted(a.name for a in named)
+        assert [a.id for a in unnamed] == sorted(a.id for a in unnamed)
+        shown = [table.item(i, 0).text() for i in range(table.rowCount())]
+        assert shown[len(named):] == [f"Area {a.id}" for a in unnamed]
+
+
 def test_ticking_an_area_reaches_the_dropdown_and_the_settings_file(
         app, tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
@@ -1333,9 +1353,9 @@ def test_the_dialog_opens_on_the_open_titles_tab_and_forgets_the_rest(
 def test_the_tab_bar_fits_and_the_table_keeps_its_rows_at_larger_fonts(
         app, tmp_path, monkeypatch):
     """The tab bar inside Fast travel takes a row of height the table used to
-    have. Width is asserted at +0 only, from what the bar asks for; height
-    across +0, +6 (about Windows' base font) and +10, from what the table asks
-    for: it keeps the minimum height it was given, so it is never squeezed
+    have. Both are asserted across +0, +6 (about Windows' base font) and +10:
+    width from what the bar asks for, height from what the table asks for:
+    the table keeps the minimum height it was given, so it is never squeezed
     below a recognisable list."""
     from PyQt6.QtGui import QFont
 
@@ -1357,9 +1377,8 @@ def test_the_tab_bar_fits_and_the_table_keeps_its_rows_at_larger_fonts(
                     app.processEvents()
                     table = dialog.travel_tables[game.key]
                     assert table.height() >= table.minimumHeight(), extra
-                if extra == 0:
-                    bar = dialog.travel_tabs.tabBar()
-                    assert bar.sizeHint().width() <= dialog.travel_tabs.width()
+                bar = dialog.travel_tabs.tabBar()
+                assert bar.sizeHint().width() <= dialog.travel_tabs.width(), extra
             finally:
                 dialog.close()
     finally:

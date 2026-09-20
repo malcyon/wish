@@ -713,14 +713,15 @@ this dialog, one per title.
   table has no tab. The dialog opens on the open title's tab, or the first
   when the open title has none, and remembers nothing.
 * **Each tab is a `QTableWidget`, one checkable row per fast-travellable
-  area**, sorted by name, with its own count under it. Each row's tooltip is
+  area**, sorted by name with the unnamed rows after them in area-number
+  order, with its own count under it. Each row's tooltip is
   the area's `label` — `New Phlan - GEO00, POOL3` — the same string the
   dropdown's own items carry, disk included, because an area id means nothing
   without the title.
 * **A row with no approved name reads `Area N`**, the area's number in
   decimal — Curse's area 30 is `Area 30` — and not its script name (`ECL1E`),
   which is developer text. The row is ticked and unticked like any other.
-  Unnamed rows sort first.
+  Unnamed rows sort after the named ones, in area-number order.
 * **New Phlan, The Slums and Sokol Keep are ticked on a fresh Pool of Radiance
   tab**, ids 0, 20 and 21 in `goldbox/areas.py`. Curse and Silver Blades open
   with nothing ticked: a default tick says a party has almost certainly
