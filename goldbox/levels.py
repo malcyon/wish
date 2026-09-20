@@ -310,11 +310,15 @@ TABLES = {
 #: cannot find either. `docs/210-the-later-titles-dos-thac0.md` has the whole
 #: of it.
 #:
-#: **A low-level magic-user is not where the later titles disagree with the
-#: C64.** Both DOS mage rows read 21 at levels 1-5, agreeing with their own
-#: C64 side -- Pool of Radiance is the odd title here, not the rule. What
-#: disagrees, in both later titles, CONFIRMED from the shipped bytes and the
-#: corpus below:
+#: **A low-level magic-user is not where the later titles' shipped rows
+#: disagree with the C64.** Both DOS mage rows read 21 at levels 1-5, agreeing
+#: with their own C64 side -- Pool of Radiance is the odd title in its rows.
+#: What the later DOS engines *store* for such a magic-user is 20 all the
+#: same, because every row's entry 0 holds a THAC0 rather than the C64's `$00`
+#: sentinel and the recompute that runs on load reads it for every class the
+#: character has no level in: `docs/224-the-dos-thac0-floor.md`, and `#608`.
+#: What disagrees in the rows themselves, in both later titles, CONFIRMED from
+#: the shipped bytes and the records below:
 #:
 #: * thief 1-4: DOS 20, C64 21;
 #: * the magic-user's third band: DOS 17, C64 16 (Curse 11-12, Silver Blades
@@ -324,17 +328,17 @@ TABLES = {
 #:   the *consequence* is PROBABLE, because no record here holds a level-2
 #:   fighter, paladin or ranger in either title.
 #:
-#: **No clamp exists anywhere.** Every one of the three engines stores a flat
-#: 40 from a block of new-character defaults and none of them compares the
-#: field against a constant, so a record holding 40 where a table gives 39 is
-#: a creation, class-change or import value no rebuild has run over yet --
-#: `tools/c64/laterthac0.py writers` has the four kinds of site that touch the
-#: byte.
+#: **No clamp exists anywhere.** None of the three engines compares the field
+#: against a constant; the floor a DOS record never goes below is the level-0
+#: column of these same rows, read by a loop that does not test the level --
+#: `tools/c64/laterthac0.py writers` has every site that touches the byte.
 #:
-#: CONFIRMED: 77 of 86 Curse records and 72 of 74 Silver Blades records
-#: reproduce from these rows by best-of-classes; every miss is a magic-user no
-#: rebuild has run over (`docs/210-the-later-titles-dos-thac0.md`).
-#: `tools/c64/laterthac0.py records` is the sweep.
+#: CONFIRMED: 250 of 250 Pool of Radiance, 101 of 104 Curse and 86 of 86
+#: Silver Blades records reproduce from these rows by the engine's own rule,
+#: against 250, 92 and 84 by best-of-classes; the three Curse records left
+#: over are one regained dual-class record and the two magic-users our own
+#: writer produced. `tools/records/thac0census.py dos --title <key>` is the
+#: sweep and `docs/224-the-dos-thac0-floor.md` the reasoning.
 _DOS_THAC0_POOL = (
     ("magic-user", (20, 20, 20, 20, 20, 19, 19, 19, 19, 19)),
     ("cleric",     (20, 20, 20, 18, 18, 18, 16, 16, 16, 14)),
@@ -1233,12 +1237,20 @@ class LevelTables:
         return row[max(0, min(int(level or 1), len(row)) - 1)]
 
     def dos_base_thac0(self, class_levels) -> int | None:
-        """`thac0_base` as the DOS engine computes it, best of the classes.
+        """The DOS table's best row among the classes the character has.
 
         The record stores `60 - THAC0`; this returns the THAC0 itself. None
         where the title's DOS table is unread or the character has no class
         with a level, which is what `GAME.OVR:0x1A659` leaves as the zero it
         started from.
+
+        **Not what the DOS engine leaves in the byte**, and the difference is
+        one point for a Curse or Silver Blades magic-user at levels 1-5: the
+        loop that runs when a party loads reads each row's entry 0 for every
+        class the character has no level in, which floors the stored byte at
+        40. `docs/224-the-dos-thac0-floor.md` has it, `#608` is the ticket,
+        and `tools/records/thac0census.py`'s `dos_engine_thac0` is the rule
+        written out.
         """
         best = None
         for name, level in dict(class_levels or {}).items():

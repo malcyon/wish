@@ -10,10 +10,16 @@ titles; `docs/50-experiments.md`, "Two ports, two THAC0 tables", has Pool of
 Radiance's.
 
 **The short of it.** The tables are real and they are not the C64's. Nothing
-clamps anything. A stored 40 that the table does not account for is a
-**character-creation constant, or a value imported from the previous title,
-that no rebuild has run over yet** -- and the engine's own import routine
-copies the byte across from the previous game exactly as our conversion does.
+clamps anything.
+
+**The reading that a stored 40 is a creation or import value no rebuild has run
+over is wrong, and `docs/224-the-dos-thac0-floor.md` replaces it.** A rebuild
+does run, on every load, and it writes the 40 itself: entry 0 of each row below
+is a real THAC0 rather than the `$00` the C64's rows start with, and the loop
+that runs on load reads it for every class the character has no level in. That
+puts a floor of THAC0 20 under every DOS record, which is where a magic-user's
+40 comes from at levels 1-5. The rows below are unaffected -- they were read
+correctly; what was wrong was applying the C64's rule to them.
 
 ## Where the tables are
 
@@ -85,11 +91,13 @@ two in both titles plus one that grows:
 | fighter, paladin, ranger | 2 | 20 | 19 |
 | magic-user | Curse 11-12, Silver Blades 11-15 | 17 | 16 |
 
-**A low-level magic-user is not one of them, and that is the surprise.** Pool
-of Radiance is the odd title: its DOS build gives a magic-user 1-5 THAC0 20
-where its C64 gives 21, and both later DOS builds give 21, agreeing with their
-own C64 side. So the answer to this issue's Curse row is not the answer its
-Pool of Radiance row had.
+**A low-level magic-user is not one of them in the table, and that is the
+surprise.** Pool of Radiance is the odd title in its shipped rows: its DOS
+build's magic-user row reads 20 at levels 1-5 where its C64 gives 21, and both
+later DOS builds' rows read 21, agreeing with their own C64 side. What the
+later DOS engines **store** for such a magic-user is 20 all the same, because
+of the floor -- `docs/224-the-dos-thac0-floor.md`. So the three rows below are
+where the tables disagree, and the stored byte disagrees in one place more.
 
 **The level-2 fighter is one byte.** The whole row is `39 + level` -- which is
 exactly the rule the C64 computes, `LDA $7C98 / CLC / ADC #$27 / STA $7C71`,
@@ -111,11 +119,15 @@ in Silver Blades, which is what `goldbox/dos_port.py` says for each and is
 the first corroboration that our layouts are right. Five kinds of site, and
 no sixth:
 
-* **The rebuild.** Clear the byte, walk the class slots, and store the row
-  when it beats what is there -- `mov es:[di+off], 0`, then per class
-  `cmp al, es:[di+off] / jbe / mov es:[di+off], al`. Curse has it at
-  `GAME.OVR:0x020FF5` and again at `0x03B026`; Silver Blades at `0x01E59B`
-  and `0x03C1BA`.
+* **The rebuild, of which there are two and they do not agree.** Both clear
+  the byte, walk the class slots and store the row when it beats what is there
+  -- `mov es:[di+off], 0`, then per class `cmp al, es:[di+off] / jbe / mov
+  es:[di+off], al` -- but only one of them tests the class level before the
+  lookup. Curse's guarded one is at `GAME.OVR:0x020FF5` and its unguarded one
+  at `0x03B026`; Silver Blades' are `0x01E59B` and `0x03C1B1`; Pool of
+  Radiance's are `0x01A659` and `0x02AA87`. The unguarded one is what runs
+  when a party loads, and reading entry 0 for every empty slot is what floors
+  the byte at 40 -- `docs/224-the-dos-thac0-floor.md`.
 * **The regained class's row**, folded in without clearing -- Curse
   `0x03B274`, Silver Blades `0x03C444`. That loop walks
   `former_class_levels` (`0x111` in Curse, `0x118` in Silver Blades) rather
@@ -136,37 +148,34 @@ three engines. There is no clamp, and the reading that "something clamps a
 magic-user to 40" is refuted.
 
 So a record's stored byte is the last of these that ran, and for a character
-who has never trained that is the creation constant or the import.
+the party has loaded since, that is the unguarded rebuild.
 
 ## What the corpus says
 
-`tools/c64/laterthac0.py records` sweeps every DOS record in the specimen tree and
-the player's archives against the title's own table, by the engine's own rule
--- best of the classes, nothing else.
+`tools/records/thac0census.py dos --title <key>` sweeps every DOS record in the
+specimen tree and the player's archives against the title's own table, by each
+of the two rules: the engine's own, entry 0 and all, and the best of the
+classes the character has.
 
-| title | reproduce | do not |
-|---|---|---|
-| Pool of Radiance | 202 | 0 |
-| Curse of the Azure Bonds | 77 | 9 |
-| Secret of the Silver Blades | 72 | 2 |
+| title | records | engine's rule | table alone |
+|---|---|---|---|
+| Pool of Radiance | 250 | 250 | 250 |
+| Curse of the Azure Bonds | 104 | 101 | 92 |
+| Secret of the Silver Blades | 86 | 86 | 84 |
 
-**All eleven misses are magic-users, and every one is a record no rebuild has
-run over.** Curse: PHILIPPE and BRYTWYN at magic-user 5 holding 40 where the
-table says 39, in the shipped pregenerated parties and in five specimens built
-from them; MATHEW at magic-user 1 holding 40, the moment after HUMAN CHANGE
-CLASSES; MATHEW at magic-user 6 holding 44, which is his regained paladin 5's
-row, out of `former_class_levels` and not a miss at all once
-`docs/209-the-regained-dual-class-on-dos.md` is read. Silver Blades: PAINE at
-magic-user 1 holding 40, freshly dual-classed. Nothing else of any class or
-level misses.
+**Every record the table alone misses is a low-level magic-user, and the
+engine's own rule accounts for all of them.** The three Curse records left
+over are MATHEW at magic-user 6 holding 44, which is his regained paladin 5's
+row out of `former_class_levels` and not a miss at all once
+`docs/209-the-regained-dual-class-on-dos.md` is read, and the two magic-users
+of `WISH-SPEC-curse-551-party-as-converted`, whose 39 our own writer put there.
 
-**The proof that the rebuild writes the table's own number is PHILIPPE**, and
-it is engine-written: `WISH-SPEC-curse-408-regained-paladin` staged him at
-magic-user 5 and trained him once in DOS Curse's own party menu, and he came
-out magic-user 6 holding **41** -- the table's magic-user row at index 6.
-CONFIRMED, and it settles two things at once. The rebuild runs on a training
-and writes what the table says; and the row is indexed by the level itself
-rather than by `level - 1`, because index 5 holds 39 and he does not hold 39.
+**PHILIPPE is the proof that the rebuild runs on a training**, and it is
+engine-written: `WISH-SPEC-curse-408-regained-paladin` staged him at magic-user
+5 and trained him once in DOS Curse's own party menu, and he came out
+magic-user 6 holding **41** -- the table's magic-user row at index 6, which
+beats the floor. CONFIRMED, and it settles that the row is indexed by the level
+itself rather than by `level - 1`.
 
 **MATHEW is the proof that a constant overwrites a good value**, and it is
 engine-written too: he went into `HUMAN CHANGE CLASSES` a paladin 5 holding
@@ -176,33 +185,16 @@ row cannot turn 44 into 40, so a constant store did. CONFIRMED.
 What is not directly witnessed is character *creation* in Curse or Silver
 Blades: no specimen here was rolled in either game's own creation screens.
 The constant-40 store sits in a run of new-character defaults and is
-**PROBABLE** for creation on that reading. Rolling a magic-user in DOS Curse
-and reading `0x073` before any training would settle it: 40 confirms it, 39
-would mean creation calls the rebuild the way the C64's `GEN $0DD0` does.
-
-## The experiment the issue asked for, and its answer
-
-> Train a Curse magic-user from level 1 to 2 in the game and read
-> `thac0_base` at `0x073`. 39 means the loop ran and the 40 those records
-> carry is a creation-time value nothing had refreshed; 40 means something
-> clamps and the clamp is what to go and find.
-
-**It is 39, and no emulator was needed to say so.** The rebuild writes the
-table's own row (CONFIRMED, PHILIPPE), the table's magic-user row reads 39 at
-levels 1-5 (CONFIRMED, the bytes), and no clamp exists in any of the three
-engines (CONFIRMED, the compare census). Driving the training would corroborate
-it and settle nothing further.
+**PROBABLE** for creation on that reading. It no longer matters much which of
+the two wrote a given 40, because the next load writes 40 anyway.
 
 ## What a player sees
 
-A Curse or Silver Blades magic-user rolled in the DOS game and never trained
-hits at THAC0 20 (PROBABLE -- the creation constant is read out of the code
-rather than watched); the same character rolled on the C64 hits at 21, because
-that port's creation calls the same recompute the trainer does (`GEN $0DD0`,
-`docs/135-levelling.md`). His **first training makes him worse**, 20 to 21,
-which is the shape `#366 (A converted magic-user or thief arrives with the
-other port's THAC0, because the two ports ship different tables and the
-conversion copies the byte)` found in Pool of Radiance.
+A Curse or Silver Blades magic-user hits at THAC0 20 from level 1 to 5, where
+the same character on the C64 hits at 21: the DOS floor is 40 and the C64's is
+39. CONFIRMED for DOS from the running game --
+`docs/224-the-dos-thac0-floor.md`'s differential -- and from ten C64 records
+holding 39 on the other side.
 
 And the three table disagreements above are real for a converted character: a
 C64 Curse thief 1-4 arriving in DOS holds 21 among natively-trained thieves

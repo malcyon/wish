@@ -3860,17 +3860,19 @@ def write(char: NeutralCharacter,
     # `test_every_engine_written_record_of_a_later_title_round_trips` the
     # first time this was tried (#318).
     #
-    # `goldbox.levels.dos_base_thac0` now carries all three titles' DOS
-    # tables (#318), and the DOS engine's own recompute only runs on a
-    # training visit or a class change, not on every load: 9 of 86 Curse
-    # and 2 of 74 Silver Blades records this project has measured store a
-    # value the table would not give their character's current level, and
-    # every one is a magic-user no rebuild has run over since (Pool of
-    # Radiance's own corpus has no such miss, 202 of 202). Recomputing for
-    # a source the table was never measured against would "correct" a byte
-    # nobody has shown is wrong, so every port but the one `#366` measured
-    # keeps its own byte, stale or not, the way the game itself leaves it
-    # until the character is next trained.
+    # `goldbox.levels.dos_base_thac0` carries all three titles' DOS tables
+    # (#318) and takes the best of the classes the character has, which is
+    # the **C64 engine's** rule. The DOS engine's own recompute runs on
+    # every load and reads entry 0 of each row for every class the
+    # character has no level in, which floors the byte it writes at 40, so
+    # a Curse or Silver Blades magic-user of level 1-5 written here holds
+    # 39 where the game holds 40 -- `#608` and
+    # `docs/224-the-dos-thac0-floor.md`, which has the counts: 101 of 104
+    # Curse records and 86 of 86 Silver Blades records reproduce from the
+    # engine's rule where 92 and 84 reproduce from the table alone.
+    # Recomputing for a source the table was never measured against would
+    # "correct" a byte nobody has shown is wrong, so every port but the one
+    # `#366` measured keeps its own byte.
     base = use("thac0_base")
     if base is not None:
         derived = (level_tables.dos_base_thac0(w.get("levels"), deltas.key)
