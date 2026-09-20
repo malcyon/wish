@@ -1596,7 +1596,8 @@ def new_por_savegame(state: PorSaveState, slot: str, count: int,
 #     1024  the byte-wide ECL variable array; variable N is at offset N - 1
 #        6  the square struct: x, y, facing, wall ahead, property, pad
 #        1  the mode the party was in before this one
-#        1  the game mode -- 2 in every save, because a save is camped
+#        1  the game mode -- 2 in every save the game wrote, because a save
+#           is camped; a party never taken into the world leaves 0
 #        2  the dungeon map the loader passes to `LoadMap`, `u16be`
 #        2  that loader's second argument, `u16be`
 #        2  the party count, `u16be`
@@ -1605,7 +1606,9 @@ def new_por_savegame(state: PorSaveState, slot: str, count: int,
 #      ...  padding to a fixed length, copied from the item template table
 # ---------------------------------------------------------------------------
 
-#: Every slot is padded to this length whatever the party costs.
+#: Every slot is padded to this length whatever the party costs.  The save
+#: callback ends `lseek(fd, 0, 1)` and, when the position is short of it,
+#: writes the difference from the item template table (`0x27234`-`0x2726E`).
 POD_SAVEGAME_SIZE = 0x2A4C
 
 #: One byte per ECL variable, variable *N* at file offset *N* - 1: the same
@@ -1624,7 +1627,7 @@ POD_COUNT_AT = POD_MAP_BLOCK_AT + 2
 POD_PARTY_AT = POD_COUNT_AT + 2
 
 #: The engine's own cap on the party: the save's write loop and the loader's
-#: read loop both stop at eight.
+#: read loop both stop at eight (`0x271CE`, `0x2720A`).
 POD_PARTY_MAX = 8
 
 POD_RECORD_BYTES = 0x194
@@ -1632,16 +1635,18 @@ POD_ITEM_BYTES = 0x14
 POD_EFFECT_BYTES = 0x0A
 #: An item whose first byte is this carries sub-items of its own -- the scroll
 #: bundle -- and `node[POD_BUNDLE_COUNT]` more twenty-byte nodes follow it.
+#: Both the writer (`0x263C6`) and the reader (`0x258EA`) branch on it.
 POD_BUNDLE_ID = 0x49
 POD_BUNDLE_COUNT = 0x0C
 
 #: Where the record keeps the item count while it is in a file.  In memory the
 #: long at `0x08` is the item chain head; the writer overwrites it with the
-#: count before the record goes out and the loader takes the count from it.
+#: count before the record goes out (`0x2635E`) and the loader takes the count
+#: from it and zeroes it again (`0x25842`).
 POD_ITEM_COUNT_AT = 0x08
 #: The record's effect-chain head, a flag in a file rather than a count:
 #: non-zero means one node follows, and each node's own long at `0x06` says
-#: whether another does.
+#: whether another does (`0x25AB2`-`0x25B2A`).
 POD_EFFECT_HEAD_AT = 0x04
 POD_EFFECT_NEXT_AT = 0x06
 POD_NAME_AT, POD_NAME_BYTES = 0x60, 16
@@ -1796,7 +1801,13 @@ def pod_from_amiga(data: bytes,
     Fills the same fields `world_state.pod_from_dos` does from the DOS
     container, so the two are equal for the same saved party.  The facing is
     halved to 0-3 as on DOS; the characters after the count are not read here.
+    A buffer that is not `POD_SAVEGAME_SIZE` long is refused, as
+    `pod_from_dos` refuses one that is not the container's size; `pod_parse`
+    itself takes any length so a truncated file can still be reported on.
     """
+    if len(data) != POD_SAVEGAME_SIZE:
+        raise PodSaveError(
+            f"{len(data)} bytes is not the {POD_SAVEGAME_SIZE} of a saved game")
     save = pod_parse(data)
     return world_state.PodWorldState(
         title=dos_savegame.SAVE_POOLS_OF_DARKNESS.title,

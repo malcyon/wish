@@ -138,6 +138,33 @@ def test_a_party_count_the_engine_would_not_write_is_refused():
         podsavegame.parse(bytes(data))
 
 
+@pytest.mark.parametrize("count", [0, podsavegame.PARTY_MAX + 1])
+def test_a_party_count_outside_one_to_eight_is_refused_even_when_the_records_are_there(count):
+    """Nine well-formed records must be refused for their count and not for
+    the filler a one-character buffer would leave where they should be."""
+    data = bytearray(build(characters=((0, 0, 0),) * 9))
+    struct.pack_into(">H", data, podsavegame.COUNT_AT, count)
+    with pytest.raises(podsavegame.PodSaveError, match="party count"):
+        podsavegame.parse(bytes(data))
+
+
+def test_a_buffer_shorter_than_the_header_is_refused_for_its_length():
+    with pytest.raises(podsavegame.PodSaveError, match="shorter than the header"):
+        podsavegame.parse(bytes(podsavegame.PARTY_AT - 1))
+
+
+def test_a_bundle_whose_count_overshoots_the_buffer_is_refused():
+    """The bundle's sub-items are skipped by count, not read, so nothing
+    slices past the end: only the final position check sees the overshoot."""
+    data = build(characters=((1, 1, 0),))
+    node = podsavegame.PARTY_AT + podsavegame.RECORD_BYTES
+    cut = bytearray(data[:node + podsavegame.ITEM_BYTES])
+    cut[node] = podsavegame.BUNDLE_ID
+    cut[node + podsavegame.BUNDLE_COUNT] = 0xFF
+    with pytest.raises(podsavegame.PodSaveError, match="the party ends at"):
+        podsavegame.parse(bytes(cut))
+
+
 def test_an_effect_chain_that_never_ends_runs_off_the_file():
     """The chain is the file's own `next` longs, so a broken one is caught."""
     data = bytearray(build(characters=((0, 0, 1),)))

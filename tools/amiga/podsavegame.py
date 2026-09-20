@@ -9,7 +9,8 @@ region below is one of their calls:
     1024  the byte-wide ECL variable array, from `[g57ac] + 1`
        6  the square struct `g5f20`: x, y, facing, wall type, attribute, pad
        1  `g743c`, the mode the party was in before this one
-       1  `g5b12`, the game mode -- 2 in every save, because a save is camped
+       1  `g5b12`, the game mode -- 2 in every save the game wrote, because a
+          save is camped; a party never taken into the world leaves 0
        2  `g5f2c`, the dungeon map the loader passes to `LoadMap`
        2  `g5f2e`, that loader's second argument
        2  the party count, `u16be`
@@ -42,8 +43,9 @@ from goldbox import amiga_savegame, dos_savegame  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from tools.amiga import amiga68k, amigasaves  # noqa: E402
 
-# The container map is `goldbox.amiga_savegame`'s; these are its names as this
-# tool and its tests have always spelled them.
+# The container map lives in `goldbox.amiga_savegame` under `POD_*` names; these
+# aliases drop the prefix, which is the spelling the tool's functions and its
+# tests use, so the tests can also reach the map through this module.
 SAVEGAME_SIZE = amiga_savegame.POD_SAVEGAME_SIZE
 VAR_BYTES = amiga_savegame.POD_VAR_BYTES
 SQUARE = amiga_savegame.POD_SQUARE

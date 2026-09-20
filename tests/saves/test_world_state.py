@@ -317,6 +317,22 @@ def test_an_amiga_buffer_that_is_not_a_pools_of_darkness_save_is_refused():
         amiga.pod_from_amiga(bytes(amiga.POD_SAVEGAME_SIZE))
 
 
+@pytest.mark.parametrize("size", [1442, 32484, 0x2A4C - 1, 0x2A4C + 1])
+def test_an_amiga_saved_game_of_the_wrong_size_is_refused(size):
+    """A count-1 party still parses at any of these lengths, so only the size
+    check refuses them."""
+    from goldbox import amiga_savegame as amiga
+
+    good = _amiga_pod_from_dos(bytes(_synthetic_pod_save()))
+    party = bytearray(good[:amiga.POD_PARTY_AT + amiga.POD_RECORD_BYTES])
+    struct.pack_into(">H", party, amiga.POD_COUNT_AT, 1)
+    blob = bytes(party).ljust(size, b"\0")[:size]
+    if size >= len(party):
+        amiga.pod_parse(blob)           # the walk alone accepts it
+    with pytest.raises(amiga.PodSaveError, match="bytes is not the"):
+        amiga.pod_from_amiga(blob)
+
+
 def test_every_played_amiga_pools_of_darkness_slot_agrees_with_the_tool_and_with_dos():
     """Each slot on the player's disks, read by the library and by
     `tools/amiga/podsavegame.py`, and rewritten as the DOS container the
@@ -338,6 +354,14 @@ def test_every_played_amiga_pools_of_darkness_slot_agrees_with_the_tool_and_with
             assert (state.x, state.y) == (tool.square["x"],
                                           tool.square["y"]), name
             assert state.facing * 2 == tool.square["facing"], name
+            # Read at literal file offsets, not through the map under test:
+            # 1024 variables, then x, y, facing, wall, property, pad,
+            # previous mode, mode, then the map words.
+            assert blob[1024:1026] == bytes((state.x, state.y)), name
+            assert blob[1026] % 2 == 0 and state.facing == blob[1026] // 2, name
+            assert state.mode == blob[1031], name
+            assert state.mode in (0, 2), name
+            assert state.dungeon_map == int.from_bytes(blob[1032:1034], "big"), name
             assert state.clock == tool.clock, name
             dos = _dos_pod_from_amiga(blob)
             assert (dataclasses.replace(world_state.pod_from_dos(dos), source=name)
