@@ -2254,6 +2254,15 @@ graph LR
   record --> encoding
   record --> layout
   record --> petscii
+  rewrite --> amiga_later
+  rewrite --> amiga_por
+  rewrite --> amiga_port
+  rewrite --> c64_codec
+  rewrite --> c64_port
+  rewrite --> dos_codec
+  rewrite --> dos_port
+  rewrite --> iconparts
+  rewrite --> record
   savegame --> c64_port
   savegame --> d64
   savegame --> encoding
