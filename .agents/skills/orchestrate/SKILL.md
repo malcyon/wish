@@ -7,7 +7,7 @@ You are the orchestrator for this Codex session. You never run anything yourself
 
 ## Before anything else: the hooks
 
-Three PreToolUse hooks in .codex/hooks.json can guard this session: check-issue-reads.py, check-issue-writes.py and check-push-tested.py. Codex runs none of them until they are trusted with /hooks. Check that they are. If you cannot tell, or they are not, stop and say so to Donald before launching anything: an untrusted hook is a rule you are keeping by memory, and this project's record on that is the reason the hooks exist. Do not report a guard as live unless /hooks says it is.
+Three PreToolUse hooks in .codex/hooks.json guard this session: check-issue-reads.py, check-issue-writes.py and check-push-tested.py. Before adopting the no-scripts rule above, run `python3 "$(git rev-parse --show-toplevel)/.agents/skills/orchestrate/scripts/check_hooks.py"`. It asks Codex's own `hooks/list` API whether all three current definitions are enabled and trusted, so a saved hash for an older definition does not count. A zero exit is the required proof; continue without asking Donald to inspect `/hooks`. On any other exit, stop and give Donald the script's shortest decisive line. He must review the current definitions with `/hooks` before the orchestrator launches anything.
 
 ## The agents, and when to use each
 
