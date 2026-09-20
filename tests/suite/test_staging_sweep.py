@@ -124,6 +124,7 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     ("convertrun.py", 'out / "sheet.png"'): "the character sheet this run shot",
     ("convertrun.py", 'out / "stuck.png"'): "the screen this run was stuck on",
     ("convertrun.py", 'out / "walked.png"'): "the world after this run walked",
+    ("cursememorize.py", "shots / png.name"): "this run's own shots directory",
     ("curseregain.py", "shots / png.name"): "this run's own shots directory",
     ("dosencsave.py", "shots / png.name"): "this run's own shots directory",
     ("dosfightrun.py", 'out / f"{name}.png"'): "this run's own shots directory",
@@ -173,6 +174,9 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     ("convertrun.py", "s.save_dir / p.name"):
         "the .d64 and .SAV files Wish's own writer built for this run, into a "
         "tree Session.stage(fresh=True) has just rebuilt",
+    ("cursememorize.py", "saves / f.name"):
+        "the save files the game wrote in this run's staged tree; `saves` is "
+        "rmtree'd first, so no leftover survives",
     ("curseregain.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
     ("dosencsave.py", "d / p.name"):

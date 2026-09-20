@@ -110,3 +110,43 @@ def test_sample_reads_the_entry_state_without_a_keypress():
     assert s.keys == [] and row["n"] == -1 and row["key"] == ""
     assert (row["row"], row["bar"], row["digest"]) == (10, "barA", "d0")
     assert rows == [row]
+
+
+class FakeSlotSession:
+    """A slot directory with the files a run leaves in it."""
+
+    def __init__(self, root, shots, saves):
+        self.dir = root / "slot"
+        self.save_dir = self.dir / "SAVE"
+        (self.dir / "shots").mkdir(parents=True)
+        self.save_dir.mkdir()
+        for name in shots:
+            (self.dir / "shots" / name).write_bytes(b"png")
+        for name in saves:
+            (self.save_dir / name).write_bytes(b"rec")
+
+
+def test_keeping_a_run_leaves_nothing_a_longer_earlier_run_wrote(
+        tmp_path, monkeypatch):
+    """`--out` defaults to one fixed path.  A first run that pressed many keys
+    and saved two characters, then a second that pressed one and saved one,
+    must leave `out` holding the second's files only -- otherwise the
+    `after` events describe a character the second run never touched."""
+    monkeypatch.setattr(cm, "describe", lambda path: {"file": path.name})
+    out = tmp_path / "out"
+
+    first = FakeSlotSession(tmp_path / "a", ["t0-00-n.png", "t0-01-End.png"],
+                            ["CHRDATA1.SAV", "CHRDATA2.SAV", "SAVGAMA.DAT"])
+    cm.keep_run_files(first, out, lambda **kw: None)
+
+    events: list[dict] = []
+    second = FakeSlotSession(tmp_path / "b", ["t0-00-n.png"],
+                             ["CHRDATA1.SAV", "SAVGAMA.DAT", "OTHER.TXT"])
+    cm.keep_run_files(second, out, lambda **kw: events.append(kw))
+
+    assert sorted(p.name for p in (out / "shots").iterdir()) == ["t0-00-n.png"]
+    assert sorted(p.name for p in (out / "saves").iterdir()) == [
+        "CHRDATA1.SAV", "SAVGAMA.DAT"]
+    assert [e["file"] for e in events if e["event"] == "after"] == [
+        "CHRDATA1.SAV"]
+    assert events[-1]["event"] == "kept"

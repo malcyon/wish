@@ -181,6 +181,31 @@ def sample(session, record, *, tag: str,
     return row
 
 
+def keep_run_files(session, out: pathlib.Path, note) -> None:
+    """Copy this run's shots and save records into `out/shots` and `out/saves`.
+
+    `--out` defaults to one fixed path, so both directories are emptied first:
+    a record a longer earlier run left in `saves/` would otherwise be reported
+    as this run's `after` state, and a shot would sit beside this run's under
+    a name that only looks like it belongs.  The sources are this run's own
+    slot files, written by `import` and by the game into a tree `stage` made
+    writable, so the copy cannot carry a read-only mode.
+    """
+    shots = out / "shots"
+    saves = out / "saves"
+    for kept in (shots, saves):
+        shutil.rmtree(kept, ignore_errors=True)
+        kept.mkdir(parents=True)
+    for png in sorted((session.dir / "shots").glob("*.png")):
+        shutil.copy(png, shots / png.name)
+    for f in sorted(session.save_dir.glob("*")):
+        if f.name.upper().startswith(("CHRDAT", "SAVGAM")):
+            shutil.copy(f, saves / f.name)
+    for rec in sorted(saves.glob("CHRDAT*.SAV")):
+        note(event="after", **describe(rec))
+    note(event="kept", shots=str(shots), saves=str(saves))
+
+
 def run(args: argparse.Namespace) -> int:
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -284,18 +309,7 @@ def run(args: argparse.Namespace) -> int:
         # mid-trial still wrote shots and records, and the slot's directory
         # goes with the next run's `stage(fresh=True)`.
         try:
-            shots = out / "shots"
-            shots.mkdir(parents=True, exist_ok=True)
-            for png in sorted((session.dir / "shots").glob("*.png")):
-                shutil.copy(png, shots / png.name)
-            saves = out / "saves"
-            saves.mkdir(parents=True, exist_ok=True)
-            for f in sorted(session.save_dir.glob("*")):
-                if f.name.upper().startswith(("CHRDAT", "SAVGAM")):
-                    shutil.copy(f, saves / f.name)
-            for rec in sorted(saves.glob("CHRDAT*.SAV")):
-                note(event="after", **describe(rec))
-            note(event="kept", shots=str(shots), saves=str(saves))
+            keep_run_files(session, out, note)
         except Exception as exc:                            # noqa: BLE001
             note(event="keeping-failed", error=repr(exc))
         session.close()
