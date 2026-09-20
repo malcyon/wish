@@ -107,9 +107,8 @@ def test_the_corner_is_a_pocket_on_six_maps(name):
 
 #: The six maps where the retired rule's corner is walled off, plus the first
 #: two others in `MAPS` order. Computed from `POCKETS` and `MAPS`, so it stays
-#: right when either changes. On every other map `landing_square` takes the same
-#: branch and covers the same lines, so these are the ones that differ in
-#: structure.
+#: right when either changes. The six `POCKETS` maps are the ones that differ in
+#: structure; the other two are simply the first two others in `MAPS` order.
 LANDING_MAPS = sorted(POCKETS) + [m for m in MAPS if m not in POCKETS][:2]
 
 

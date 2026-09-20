@@ -128,9 +128,9 @@ def test_a_grade_a_writer_will_take_is_written():
     assert not any("wisdom" in d for d in rep.dropped)
 
 
-def test_a_value_graded_exactly_at_the_floor_asked_for_is_taken():
-    """The floor is the lowest grade a writer will stand behind, so a value
-    graded at it is written; only a lower grade is refused."""
+def test_a_value_graded_exactly_at_the_minimum_grade_asked_for_is_taken():
+    """The minimum grade is the lowest one a writer accepts, so a value graded
+    at it is written; only a lower grade is refused."""
     char = NeutralCharacter("test")
     char.set("wisdom", 9, "somewhere", Confidence.PROBABLE)
     taken = char.take("wisdom", Confidence.PROBABLE)
@@ -491,8 +491,8 @@ def _writer(char, floor=Confidence.GUESS, dropped=()):
                           dropped=dropped), rep
 
 
-def test_the_floor_applies_to_a_derivation_as_much_as_to_a_copy():
-    """`NeutralCharacter.get` applies no floor, which is why `Writer.get`
+def test_the_minimum_grade_applies_to_a_derivation_as_much_as_to_a_copy():
+    """`NeutralCharacter.get` applies no minimum grade, which is why `Writer.get`
     exists: a byte computed from a field the writer would have refused to copy
     would be a guess wearing a rule's clothes."""
     char = NeutralCharacter("test")

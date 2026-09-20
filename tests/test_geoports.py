@@ -25,6 +25,7 @@ import re
 
 import pytest
 
+from automap import gamedisks
 from automap.area import NEAR_ENOUGH, OURS, ResidentGeo, looks_like_a_map
 from goldbox.geo import (
     ATTRIBUTES,
@@ -35,7 +36,7 @@ from goldbox.geo import (
     WALLS_SOUTH_WEST,
     Geo,
 )
-from tools.records import geoports
+from tools.records import geoplausible, geoports
 
 #: The three Curse areas the C64 disks disagree with the other two ports about,
 #: and the offsets of the two bytes in each.
@@ -465,27 +466,38 @@ def test_the_watch_line_names_a_value_that_would_actually_pass_the_check(
     assert 2 * (named + 1) >= gap, watch[0]
 
 
+def _dos_titles_on_disk() -> list[str]:
+    """The DOS titles whose folder holds a `GEO*.DAX`, found the way
+    `geoports.dos_geo_blocks` finds them."""
+    root = gamedisks.find("dos-archives")
+    if root is None:
+        return []
+    folders = {path.parent.name.upper() for path in root.rglob("GEO*.DAX")}
+    return [title for title, folder in geoports.TITLES if folder in folders]
+
+
 def test_a_machine_with_disks_has_every_port_map_set_it_should():
-    """An empty map set on a machine that has the disks is a failure, not a skip.
+    """A title whose files are on this machine and whose maps did not load is a
+    failure, not a skip.
 
     `ports_for` skips when a port has no maps, which is right for a machine
-    without the disks and wrong for one where the loader lost them: a change
-    that emptied `every_port` used to turn the dependent tests into skips and
-    the run stayed green. This asks the registry what the machine holds and
-    fails when the loader disagrees. It skips only where the machine holds no
-    Gold Box map disks at all.
+    without the disks and wrong for one where the loader lost them. This asks
+    what the machine holds, title by title -- a C64 disk matching the title's
+    glob, a `GEO*.DAX` in the title's DOS folder, an Amiga image matching the
+    title's name -- and fails when the loader returns no maps for one of them.
+    A machine holding only some titles is checked for those only, and it skips
+    where it holds none.
     """
-    from automap import gamedisks
-    from tools.records import geoplausible
     expected: list[tuple[str, str]] = []
     for label, key, _pattern in geoplausible.C64_TITLES:
         if gamedisks.find(key) is not None:
             expected.append((label.removesuffix(" C64"), "C64"))
-    if gamedisks.find("dos-archives") is not None:
-        expected += [(title, "DOS") for title, _folder in geoports.TITLES]
-    if gamedisks.find("amiga") is not None:
-        expected += [(label.removesuffix(" Amiga"), "Amiga")
-                     for label, _want, _where in geoplausible.AMIGA_TITLES]
+    expected += [(title, "DOS") for title in _dos_titles_on_disk()]
+    images = [image.name.lower().replace("_", "")
+              for image in geoplausible.amiga_images()]
+    expected += [(label.removesuffix(" Amiga"), "Amiga")
+                 for label, want, _where in geoplausible.AMIGA_TITLES
+                 if any(want in name for name in images)]
     if not expected:
         pytest.skip("no Gold Box map disks on this machine; set $POR_DISKS, "
                     "$COAB_DISKS, $SSB_DISKS, $AMIGA_DISKS or $FR_ARCHIVES")

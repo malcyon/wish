@@ -152,8 +152,8 @@ def registers(d018: int, dd00: int, d011: int = 0x1B) -> dict[int, int]:
 #: both ends of the offset range are in.  The address is one expression with
 #: no branch, so these pairs decide it: each mis-decoding of the two registers
 #: (`$DD00` not inverted, the offset from `$D018`'s low nibble, either field
-#: scaled or masked wrongly, a wrong shift, the fields swapped) gives a wrong
-#: address for at least three of them.
+#: scaled or masked wrongly, a wrong shift, the fields swapped) was checked to
+#: give a wrong address for at least three of them, each of those seven.
 BANK_OFFSET_PAIRS = [
     pytest.param(bank, offset, id=f"bank{bank}-offset{offset}")
     for bank, offset in [(0, 0), (0, 1), (1, 2), (2, 1), (3, 4), (3, 15)]

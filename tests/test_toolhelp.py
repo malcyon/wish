@@ -164,7 +164,7 @@ def _entry_dangerous(source: str, filename: str = "<source>") -> list[str]:
 def _unguarded_reason(source: str, filename: str) -> str | None:
     """Why `--help` could reach a dangerous call in this script unguarded, or
     `None` when it cannot: the call is absent, or argparse's `parse_args`
-    stands in front of it."""
+    is called before it."""
     tree = ast.parse(source, filename=filename)
     block = _main_block(tree)
     assert block is not None, filename
