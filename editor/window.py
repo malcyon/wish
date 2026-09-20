@@ -1659,6 +1659,10 @@ class EditorBinding(QObject):
                 QMessageBox.critical(self.root, "Cannot save", str(exc))
                 return "failed"
             raise
+        if self.party.port != "c64" and note != "no changes":
+            for member in self.party.members:
+                if member.inventory is not None:
+                    member.inventory.original = list(member.inventory.raws)
         self.dirty.clear()
         self.status(note)
         self._retitle()

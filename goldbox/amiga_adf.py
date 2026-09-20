@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import os
 import pathlib
 import struct
 from typing import Iterator
@@ -247,7 +248,18 @@ class AmigaDisk:
         return bytes(self._data)
 
     def save(self, path: str | pathlib.Path) -> None:
-        pathlib.Path(path).write_bytes(self.to_bytes())
+        """Write the image atomically, like a C64 disk image."""
+        target = pathlib.Path(path)
+        tmp = target.with_name(f".{target.name}.tmp{os.getpid()}")
+        try:
+            with open(tmp, "wb") as out:
+                out.write(self._data)
+                out.flush()
+                os.fsync(out.fileno())
+            os.replace(tmp, target)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
 
     def restore(self, data: bytes | bytearray) -> None:
         """Put the whole image back to a snapshot taken with :meth:`to_bytes`.

@@ -4558,6 +4558,48 @@ def test_an_amiga_gold_edit_reaches_its_save_disk(app, tmp_path):
     assert path.read_bytes() == no_op
 
 
+def test_an_amiga_save_keeps_the_old_image_when_replacement_fails(
+        tmp_path, monkeypatch):
+    """A failed final rename leaves the complete old image in place."""
+    import os
+
+    from goldbox.amiga_adf import AmigaDisk
+
+    path = tmp_path / "save.adf"
+    disk = AmigaDisk.blank()
+    disk.save(path)
+    before = path.read_bytes()
+    disk.write_file("changed", b"changed")
+    monkeypatch.setattr(os, "replace",
+                        lambda _old, _new: (_ for _ in ()).throw(OSError()))
+    with pytest.raises(OSError):
+        disk.save(path)
+    assert path.read_bytes() == before
+    assert not list(tmp_path.glob(".save.adf.tmp*"))
+
+
+def test_an_amiga_item_save_does_not_write_again_after_it_succeeds(
+        app, tmp_path):
+    from support.amigasavegame import synthetic_curse
+
+    from editor.window import EditorBinding
+    from goldbox import amiga_savegame
+    disk = amiga_savegame.make_save_disk(
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA",)))
+    path = tmp_path / "curse.adf"
+    disk.save(path)
+    w = EditorBinding(make_root(), str(path))
+    w.roster.selectRow(0)
+    w.party.members[0].inventory.set_raw(0, bytes(range(16)))
+    w._edited()
+    w.save(interactive=False)
+    assert len(list((tmp_path / "backups").glob("curse.adf.*"))) == 1
+    before_second_save = path.read_bytes()
+    assert w.save(interactive=False) == "no changes"
+    assert path.read_bytes() == before_second_save
+    assert len(list((tmp_path / "backups").glob("curse.adf.*"))) == 1
+
+
 def test_a_c64_source_opens_the_disk_at_its_own_path(party):
     """`party` is the synthetic save disk from the fixture above."""
     from editor.convert import Source
