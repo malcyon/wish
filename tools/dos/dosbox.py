@@ -1713,52 +1713,36 @@ class Camp:
     #: walk in `cited/555/highlight-findings.md` (#555).
     GRIMOIRE_LIST = (16, 40, 288, 88)
 
+    #: The page command word is clear of the cursor and character title.
+    PAGE_WORD = (188, 192, 24, 7)
+    PAGE_ONE_GLYPHS = "ce4e63f773cefed8"
+    MEMORIZE = "m"
+
     def __init__(self, session: Session):
         self.s = session
 
     def memorize(self, row: int, page: int = 0, timeout: float = 20.0) -> int:
-        """From `ENCAMP > MAGIC > MEMORIZE`, put the grimoire's `row`th spell on `Return`.
+        """Stage one highlighted spell from the fresh grimoire's first or second page.
 
-        Walks the highlight onto `row` (`Session.walk_highlight`, driven by
-        where the highlight actually is -- the grimoire can open with it
-        already on the page's last row rather than row 0) and presses
-        `Return`, which fires on whichever entry is highlighted. Returns the
-        row actually reached, so a caller can check it against `row` instead
-        of trusting the walk blindly.
-
-        `Return` is not known to commit the memorisation. The #555 run
-        recorded the `CAN MEMORIZE` counters dropping on `Return` and then a
-        separate confirm screen, showing the staged spells with a `*` before
-        `YES`, that committed them. If that reading is right, the caller
-        leaves the list and answers that screen itself; this method does
-        neither. That reading rests on preserved notes, not on screenshots,
-        so it is unproven.
-
-        Raises `TimeoutError` when the highlight never reaches `row` --
-        this must never be swallowed into pressing `Return` on whatever was
-        already highlighted.
-
-        Raises `NotImplementedError` for `page > 0`, before any key goes
-        out. `Session.walk_highlight` reads a physical screen row, and
-        whether `LIST_PAGE_DOWN` keeps the highlight on the same spell or
-        resets it to the new page's last row depends on whether an `End`
-        press moved it first, so `reached == row` cannot tell the spell
-        asked for from another page's row of the same number. Page turns
-        are unmeasured; see `#574 (Camp.memorize's page-turn landing is
-        stateful and not proven for page > 0)`.
+        The second page is accepted only when its cursor-invariant page word
+        matches the measured final-window glyphs. Confirmation and rest stay
+        with the caller. Returns the physical row reached.
         """
-        if page:
+        if page not in (0, 1):
             raise NotImplementedError(
-                f"Camp.memorize(page={page}): page turns are unmeasured, so a "
-                "landing on a page after the first cannot be trusted "
-                "(#574); only page=0 is supported")
+                f"Camp.memorize(page={page}): only pages 0 and 1 are supported")
+        if page == 1:
+            if not self.s.press_until_change(LIST_PAGE_DOWN):
+                raise TimeoutError("the grimoire page did not change")
+            if self.s.capture().glyphs(self.PAGE_WORD) != self.PAGE_ONE_GLYPHS:
+                raise TimeoutError("the grimoire did not reach the measured second page")
         reached = self.s.walk_highlight(self.GRIMOIRE_LIST, row, timeout=timeout)
         if reached != row:
             raise TimeoutError(
                 f"the grimoire highlight never reached row {row} "
                 f"(reached {reached!r})")
-        self.s.key("Return")
-        self.s.settle(quiet=0.6, timeout=timeout)
+        if not self.s.press_until_change(self.MEMORIZE):
+            raise TimeoutError("the grimoire did not stage the highlighted spell")
         return reached
 
 

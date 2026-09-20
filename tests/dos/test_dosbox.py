@@ -1221,45 +1221,92 @@ class _GrimoireSession:
     chooses whether the highlight reaches the row, misses it, or is unreadable.
     """
 
-    def __init__(self, lands_on):
+    def __init__(self, lands_on, *, turn_changes=True,
+                 page_glyphs="ce4e63f773cefed8", stage_changes=True):
         self.lands_on = lands_on
+        self.turn_changes = turn_changes
+        self.page_glyphs = page_glyphs
+        self.stage_changes = stage_changes
         self.pressed: list[str] = []
         self.walked: list[int] = []
 
-    def key(self, *keys: str, gap: float = 0.0) -> None:
-        self.pressed.extend(keys)
+    def press_until_change(self, key: str) -> bool:
+        self.pressed.append(key)
+        if key == "n":
+            return self.turn_changes
+        assert key == "m"
+        return self.stage_changes
 
-    def settle(self, quiet: float = 0.6, timeout: float = 30.0) -> None:
-        return None
+    def capture(self):
+        return _GrimoireFrame(self.page_glyphs)
 
     def walk_highlight(self, rect, row, timeout: float = 20.0):
         self.walked.append(row)
         return self.lands_on
 
 
-def test_memorize_page_zero_walks_to_the_row_then_presses_return():
+class _GrimoireFrame:
+    def __init__(self, page_glyphs):
+        self.page_glyphs = page_glyphs
+
+    def glyphs(self, rect):
+        assert rect == dosbox.Camp.PAGE_WORD
+        return self.page_glyphs
+
+
+def test_memorize_page_zero_walks_to_the_row_then_stages_with_memorize_command():
     sess = _GrimoireSession(lands_on=4)
     assert dosbox.Camp(sess).memorize(row=4, page=0) == 4
     assert sess.walked == [4]
-    assert sess.pressed == ["Return"]
+    assert sess.pressed == ["m"]
 
 
-def test_memorize_refuses_a_later_page_before_any_key_goes_out():
+def test_memorize_page_one_verifies_the_turn_and_stages_with_memorize_command():
+    sess = _GrimoireSession(lands_on=4)
+    assert dosbox.Camp(sess).memorize(row=4, page=1) == 4
+    assert sess.walked == [4]
+    assert sess.pressed == ["n", "m"]
+
+
+def test_memorize_refuses_an_unmeasured_third_page_before_any_key_goes_out():
     sess = _GrimoireSession(lands_on=4)
     with pytest.raises(NotImplementedError):
-        dosbox.Camp(sess).memorize(row=4, page=1)
+        dosbox.Camp(sess).memorize(row=4, page=2)
     assert sess.pressed == []
     assert sess.walked == []
 
 
-def test_memorize_does_not_press_return_when_the_highlight_misses_the_row():
+def test_memorize_does_not_walk_when_the_page_turn_does_not_change_the_screen():
+    sess = _GrimoireSession(lands_on=4, turn_changes=False)
+    with pytest.raises(TimeoutError):
+        dosbox.Camp(sess).memorize(row=4, page=1)
+    assert sess.pressed == ["n"]
+    assert sess.walked == []
+
+
+def test_memorize_does_not_walk_when_the_page_word_is_not_the_second_page():
+    sess = _GrimoireSession(lands_on=4, page_glyphs="wrong-page")
+    with pytest.raises(TimeoutError):
+        dosbox.Camp(sess).memorize(row=4, page=1)
+    assert sess.pressed == ["n"]
+    assert sess.walked == []
+
+
+def test_memorize_does_not_return_when_staging_does_not_change_the_screen():
+    sess = _GrimoireSession(lands_on=4, stage_changes=False)
+    with pytest.raises(TimeoutError):
+        dosbox.Camp(sess).memorize(row=4)
+    assert sess.pressed == ["m"]
+
+
+def test_memorize_does_not_stage_when_the_highlight_misses_the_row():
     sess = _GrimoireSession(lands_on=7)
     with pytest.raises(TimeoutError):
         dosbox.Camp(sess).memorize(row=4)
     assert sess.pressed == []
 
 
-def test_memorize_does_not_press_return_when_the_highlight_is_unreadable():
+def test_memorize_does_not_stage_when_the_highlight_is_unreadable():
     sess = _GrimoireSession(lands_on=None)
     with pytest.raises(TimeoutError):
         dosbox.Camp(sess).memorize(row=4)
