@@ -229,12 +229,13 @@ class Source:
         # this branch exists to avoid -- and it would do it silently.
         if (party is not None and party.path
                 and _same_file(pathlib.Path(party.path), path)):
-            if party.port != "c64":
+            if getattr(party, "port", "c64") != "c64":
                 party = None
             elif party.save0 is None:
                 raise ConvertError(f"{path} has no saved game open")
-        if party is not None and party.path and party.port == "c64" and (
-                _same_file(pathlib.Path(party.path), path)):
+        if (party is not None and party.path
+                and getattr(party, "port", "c64") == "c64"
+                and _same_file(pathlib.Path(party.path), path)):
             return cls(port="c64", title=party.game, path=path,
                       save0=party.save0.to_bytes(),
                       save1=(party.save1.to_bytes()
