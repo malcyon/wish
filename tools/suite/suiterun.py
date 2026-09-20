@@ -31,14 +31,16 @@ What it does, in order, and all of it against the same checkout:
    every variable `gamedisks.yaml.example` names, and `WISH_SPECIMENS`,
    removed from the environment. Every `tools/` module is imported in a fresh
    interpreter in that environment. A probe then checks that nothing on this
-   machine answers for the example's entries once they are gone; if
-   something does (the example's paths hold data here), the pass falls back
-   to pointing every variable at one path that does not exist, says so, and
-   is not the condition CI runs under. Then only the test files the first
-   pass saw reach the game data are run (`tools/suite/datatouch.py`, loaded
-   into step 4), or, when it recorded nothing, the files whose source asks for
-   game data or decides to skip without it, so the pass shows nothing depends
-   on data being present without repeating the whole suite.
+   machine answers once the variables are gone: not the example's paths, not
+   the home-folder guesses of `automap.paths`, not the specimen tree. If
+   something does, the pass falls back to pointing every variable at one path
+   that does not exist, says so, and is not the condition CI runs under. Then
+   only the test files the first pass saw reach the game data are run
+   (`tools/suite/datatouch.py`, loaded into step 4), or, when it recorded
+   nothing, the files whose source asks for game data or decides to skip
+   without it, so the pass shows nothing depends on data being present without
+   repeating the whole suite. A machine with no `gamedisks.yaml` has no second
+   pass: its one pytest run is the no-data run and gets the same probe.
 6. `ruff check .` in the worktree.
 7. `tools/generate/genui.py --check` in the worktree.
 8. If all of it passed, write `~/.cache/wish/testrun/<tree>.green`,
@@ -115,10 +117,10 @@ def hidden_variables(example: pathlib.Path) -> tuple[str, ...]:
     """Every variable name `example` names, and `WISH_SPECIMENS`: what CI does
     not set, so what the no-data pass removes.
 
-    They are removed rather than pointed at a path that does not exist. A
-    variable that is set makes `automap/gamedisks.py` answer before it reads the
-    registry, so a child process that needs the registry passed here and stopped
-    on `gamedisks.yaml is missing` on CI."""
+    They are removed rather than pointed at a path that does not exist, because
+    a variable that is set makes `automap/gamedisks.py` answer before it reads
+    the registry, so a child process that needs the registry would not stop on
+    `gamedisks.yaml is missing` as it does on CI."""
     return tuple(sorted({*_example_variables(example), "WISH_SPECIMENS"}))
 
 
@@ -143,60 +145,81 @@ def no_data_env(example: pathlib.Path, absent: pathlib.Path) -> dict[str, str]:
     return {var: str(absent) for var in _example_variables(example)}
 
 
+#: The last line the probe prints. Output without it means the probe stopped
+#: part-way, whatever its exit status was.
+PROBE_END = "probe complete"
+
 #: Run in the worktree with the hiding variables removed and the example in
 #: place of the registry, as `tests/conftest.py` does on a machine with none.
-#: It prints a line for each entry `gamedisks.find` still answers, and for the
-#: specimen tree if it is a directory.
-PROBE = """\
-from automap import gamedisks
+#: It prints a line for each entry `gamedisks.find` still answers, for each
+#: title whose disks `automap.paths.locate_disks` still finds (the home-folder
+#: guesses that the variable `POR_DISKS` normally pre-empts), and for the
+#: specimen tree if it is a directory. A tree from before the specimen module
+#: has no such module and nothing to report; any other import failure stops the
+#: probe.
+PROBE = f"""\
+from automap import gamedisks, paths
+from goldbox import c64_port
 gamedisks.REGISTRY = gamedisks.EXAMPLE
 for name in gamedisks.names():
     found = gamedisks.find(name)
     if found is not None:
         print("reachable", name, found, sep="\\t")
+for game in c64_port.GAMES:
+    hit = paths.locate_disks(game)
+    if hit is not None:
+        print("reachable", "automap.paths " + game.key, hit[0], sep="\\t")
 try:
-    from tools.registry import specimens
-except ImportError:
-    pass
-else:
-    if specimens.tree_root().is_dir():
-        print("reachable", "WISH_SPECIMENS", specimens.tree_root(), sep="\\t")
+    import tools.registry.specimens as specimens
+except ModuleNotFoundError as err:
+    if err.name != "tools.registry.specimens":
+        raise
+    specimens = None
+if specimens is not None and specimens.tree_root().is_dir():
+    print("reachable", "WISH_SPECIMENS", specimens.tree_root(), sep="\\t")
+print({PROBE_END!r})
 """
 
 
 def reachable_with_nothing_set(worktree: pathlib.Path, python: str,
                                without: tuple[str, ...]) -> list[str] | None:
-    """`name<TAB>path` for each entry that still finds data on this machine when
+    """`name<TAB>path` for each lookup that still finds data on this machine when
     the hiding variables are unset and the example stands in for the registry,
-    or None when the probe itself failed."""
-    done = _run([python, "-c", PROBE], worktree, 120, without=without)
-    if done.returncode != 0:
+    or None when the probe itself failed: it did not run, timed out, exited
+    non-zero or did not print its last line."""
+    try:
+        done = _run([python, "-c", PROBE], worktree, 120, without=without)
+    except (subprocess.TimeoutExpired, OSError):
         return None
-    return [line.split("\t", 1)[1] for line in done.stdout.splitlines()
-            if line.startswith("reachable\t")]
+    lines = done.stdout.splitlines()
+    if done.returncode != 0 or not lines or lines[-1] != PROBE_END:
+        return None
+    return [line.split("\t", 1)[1] for line in lines if line.startswith("reachable\t")]
 
 
 def hiding_for_pass_two(worktree: pathlib.Path, python: str,
                         without: tuple[str, ...]
                         ) -> tuple[dict[str, str], tuple[str, ...]]:
-    """`(extra environment, names to remove)` for the no-data pass, and one line
-    saying which condition it is.
+    """`(extra environment, names to remove)` for the no-data run, whether it is
+    the second pass or a machine's only one, and a line saying which condition
+    it is.
 
     Removing the variables is the condition CI runs under. Where the example's
-    paths hold data on this machine that hiding leaves the data reachable, so
-    the pass falls back to pointing every variable at a path that does not
-    exist; a mount namespace that hid the paths themselves is refused on
-    machines that forbid unprivileged user namespaces.
+    paths, a home-folder guess or the specimen tree hold data on this machine,
+    that hiding leaves the data reachable, so the run falls back to pointing
+    every variable at a path that does not exist; a mount namespace that hid
+    the paths themselves is refused on machines that forbid unprivileged user
+    namespaces.
     """
     found = reachable_with_nothing_set(worktree, python, without)
     if found == []:
         print("hiding check: nothing answers with the variables unset, so the "
-              "no-data pass runs without them, as CI does")
+              "no-data run has them removed, as CI does")
         return {}, without
     why = ("the probe failed" if found is None
            else "still reachable with the variables unset: "
            + "; ".join(line.replace("\t", " at ") for line in found))
-    print(f"hiding check: {why}. The no-data pass points every variable at a "
+    print(f"hiding check: {why}. The no-data run points every variable at a "
           "path that does not exist instead, which is not the condition CI "
           "runs under")
     return no_data_env(worktree / "gamedisks.yaml.example",
@@ -316,12 +339,13 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
     first_args = [python, "-m", "pytest", "-q"]
     if link.is_symlink() and (worktree / "tools" / "suite" / "datatouch.py").is_file():
         first_args += ["-p", "tools.suite.datatouch"]
-    # A machine with no registry has nothing to link, so its one run is already
-    # the CI-like one and has the same variables unset.
+    # A machine with no registry has nothing to link, so its one run is the
+    # no-data run and gets the same probe as pass two.
     if link.is_symlink():
         pytest = _run(first_args, worktree, 1500, {datatouch.LOG_ENV: str(log_dir)})
     else:
-        pytest = _run(first_args, worktree, 1500, without=hidden)
+        extra, without = hiding_for_pass_two(worktree, python, hidden)
+        pytest = _run(first_args, worktree, 1500, extra, without)
     print(pytest.stdout[-4000:], end="")
     summary = summary_of(pytest.stdout + pytest.stderr)
     if pytest.returncode != 0:

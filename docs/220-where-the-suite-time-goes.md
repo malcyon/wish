@@ -382,7 +382,14 @@ was wrong: a set variable makes a lookup return before it reads the registry,
 so a child process that needed the registry passed in pass two and failed on
 CI. It now removes those variables and `WISH_SPECIMENS`, after a probe checks
 that nothing on the machine answers with them gone, and falls back to the
-absent path, saying so, where something does.
+absent path, saying so, where something does. Review widened the probe from
+the example's entries to `automap.paths.locate_disks` for each title, whose
+home-folder guesses were consulted only while `POR_DISKS` was unset, and to the
+specimen tree, and gave a machine with no `gamedisks.yaml` the same probe for
+its one run. A probe that times out, cannot start, exits non-zero or does not
+print its last line counts as failed and takes the fallback. The fallback sets
+only the example's variables, so the specimen tree under `~/wish-specimens`
+stays reachable in it, as it was before.
 
 *What it still misses,* each of them either over-inclusive or caught by CI,
 which runs the whole suite with no data on four jobs at every push. These are
