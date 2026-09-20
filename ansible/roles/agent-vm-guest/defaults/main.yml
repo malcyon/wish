@@ -121,36 +121,29 @@ agent_guest_mcp_vice_commit: 5706ee9e5bbffb0e0498ba0b64691b35094ba2d9
 # duplicated between the tasks that write it and the one that checks for it.
 agent_guest_mcp_vice_patch_subject: "Attach to a running VICE instead of spawning one, and drop the .exe suffix outside Windows"
 
-# --- Agent tools taken from their releases ---------------------------------
-# herdr, the agent multiplexer, and Codex, OpenAI's CLI, both single binaries
-# from GitHub releases rather than a package manager, so the guest needs no
-# node. Neither is pinned. For each, /usr/local/bin/<name>-update asks GitHub
-# for the newest release, installs it under ~/.local/share/<name>/<tag> only if
-# that tag is not already there, and moves the ~/.local/bin/<name> symlink. The
-# playbook runs it, so a fresh deployment gets the latest, and a systemd user
-# timer runs it weekly, so the guest stays current between playbook runs. The
-# download is checked against the SHA-256 GitHub publishes for the asset, and
-# nothing is installed without one.
+# --- Agent tools ------------------------------------------------------------
+# herdr, the agent multiplexer, is a single binary from GitHub Releases rather
+# than a package manager, so the guest needs no node. It is not pinned.
+# /usr/local/bin/herdr-update asks GitHub for the newest release, installs it
+# under ~/.local/share/herdr/<tag> only if that tag is not already there, and
+# moves the ~/.local/bin/herdr symlink. The download is checked against the
+# SHA-256 GitHub publishes for the asset, and nothing is installed without one.
 #
-# `archive` says whether the asset is a tarball holding `binary`, or the binary
-# itself. Claude Code is not here: its native installer updates itself.
+# Codex uses OpenAI's standalone installer instead. Features such as /agents
+# start app-server from the installer-managed package tree under
+# ~/.codex/packages/standalone, which a bare GitHub release does not create.
+# The installer verifies the package archive it downloads. Both update paths
+# run during the play and from weekly systemd user timers.
 agent_guest_release_tools:
   herdr:
     repo: herdrdev/herdr
     asset: herdr-linux-x86_64
     binary: herdr-linux-x86_64
     archive: false
-  codex:
-    repo: openai/codex
-    # The package includes the Code Mode host beside the CLI. Installing the
-    # CLI-only archive leaves Code Mode enabled but unable to start.
-    asset: codex-package-x86_64-unknown-linux-musl.tar.gz
-    binary: bin/codex
-    archive: true
-# Versions kept on disk, each a few hundred MB for Codex: the newest, and the
-# one before it.
+# Herdr versions kept on disk: the newest, and the one before it.
 agent_guest_release_keep: 2
 agent_guest_release_schedule: weekly
+agent_guest_codex_install_url: https://chatgpt.com/codex/install.sh
 
 # The hooks that tell herdr what each agent is doing, one per agent CLI, each
 # with the file `herdr integration status` looks for, relative to the home

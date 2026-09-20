@@ -216,11 +216,9 @@
 
 - name: Codex
   ansible.builtin.include_tasks:
-    file: release-tool.yml
+    file: codex.yml
     apply:
       tags: codex
-  vars:
-    agent_guest_tool_name: codex
   tags: codex
 
 # --- herdr's hooks ----------------------------------------------------------

@@ -1,0 +1,51 @@
+---
+# Install Codex through OpenAI's standalone installer and keep it current.
+
+- name: Install the Codex standalone updater
+  ansible.builtin.template:
+    src: codex-update.sh.j2
+    dest: /usr/local/bin/codex-update
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Bring Codex up to date through the standalone installer
+  ansible.builtin.command: /usr/local/bin/codex-update
+  register: agent_guest_codex_update
+  changed_when: "'codex standalone: changed' in agent_guest_codex_update.stdout_lines"
+
+- name: Remove the standalone installer's redundant PATH stanza
+  ansible.builtin.replace:
+    path: "{{ ansible_user_dir }}/.bashrc"
+    regexp: '(?ms)^# >>> Codex installer >>>\n.*?^# <<< Codex installer <<<\n?'
+    replace: ''
+
+- name: Report the Codex release now installed
+  ansible.builtin.debug:
+    msg: "{{ agent_guest_codex_update.stdout_lines }}"
+
+- name: Ask for the Codex version
+  ansible.builtin.command: "{{ ansible_user_dir }}/.local/bin/codex --version"
+  changed_when: false
+
+- name: Install the Codex update units
+  ansible.builtin.template:
+    src: "release-update.{{ item }}.j2"
+    dest: "{{ ansible_user_dir }}/.config/systemd/user/codex-update.{{ item }}"
+    mode: "0644"
+  vars:
+    agent_guest_tool_name: codex
+  loop:
+    - service
+    - timer
+
+- name: Enable the weekly Codex update
+  ansible.builtin.systemd:
+    name: codex-update.timer
+    scope: user
+    daemon_reload: true
+    enabled: true
+    state: started
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"

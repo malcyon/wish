@@ -1,0 +1,40 @@
+#!/bin/sh
+# Managed by Ansible -- roles/agent-vm-guest.
+set -eu
+
+codex_home="${CODEX_HOME:-$HOME/.codex}"
+managed_root="$codex_home/packages/standalone/current"
+visible_codex="$HOME/.local/bin/codex"
+had_managed_codex=false
+if [ -x "$managed_root/bin/codex" ] || [ -x "$managed_root/codex" ]; then
+  had_managed_codex=true
+fi
+before_version="$("$visible_codex" --version 2>/dev/null || true)"
+
+installer="$(mktemp)"
+cleanup() {
+  rm -f "$installer"
+}
+trap cleanup 0
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+curl -fsSL {{ agent_guest_codex_install_url | quote }} -o "$installer"
+PATH="$HOME/.local/bin:$PATH" CODEX_NON_INTERACTIVE=1 sh "$installer"
+
+if [ ! -x "$managed_root/bin/codex" ] && [ ! -x "$managed_root/codex" ]; then
+  echo "The Codex installer did not create a managed command under $managed_root" >&2
+  exit 1
+fi
+if [ ! -x "$visible_codex" ]; then
+  echo "The Codex installer did not create $visible_codex" >&2
+  exit 1
+fi
+
+after_version="$("$visible_codex" --version)"
+if [ "$had_managed_codex" = false ] || [ "$before_version" != "$after_version" ]; then
+  echo "codex standalone: changed"
+else
+  echo "codex standalone: current"
+fi
