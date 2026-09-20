@@ -102,13 +102,14 @@ agent_guest_wish_repo: https://github.com/malcyon/wish.git
 agent_guest_wish_dir: "{{ ansible_user_dir }}/src/wish"
 agent_guest_python: python3.12
 
-# --- Node and the VICE MCP server -------------------------------------------
-# nvm, not NodeSource or a package: no apt repository, no root. Node's only
-# job in this guest is running the VICE MCP server wish's .mcp.json names,
-# ~/src/mcp-vice-emu/dist/index.js. The version pins and the repository are
-# the usual ones for this tool.
+# --- Node, Agent HUD and the VICE MCP server ---------------------------------
+# nvm, not NodeSource or a package: no apt repository, no root. Node runs
+# Agent HUD and the VICE MCP server wish's .mcp.json names. The Node version
+# and MCP repository are pinned; Agent HUD follows npm's current release on a
+# fresh build.
 agent_guest_nvm_version: v0.40.3
 agent_guest_node_version: "20"
+agent_guest_agenthud_package: agenthud
 agent_guest_mcp_vice_repo: https://github.com/axewater/mcp-vice-emu.git
 agent_guest_mcp_vice_dir: "{{ ansible_user_dir }}/src/mcp-vice-emu"
 # Pinned, not pulled: the guest applies one patch on top of upstream

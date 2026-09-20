@@ -495,10 +495,9 @@
         chdir: "{{ agent_guest_wish_dir }}"
         creates: "{{ agent_guest_wish_dir }}/.venv/bin/ruff"
 
-# --- Node and the VICE MCP server -------------------------------------------
-# nvm, not NodeSource or a package: no apt repository, no root. Node's only
-# job in this guest is running the VICE MCP server, wish's .mcp.json names.
-- name: Node and the VICE MCP server
+# --- Node, Agent HUD and the VICE MCP server ---------------------------------
+# nvm, not NodeSource or a package: no apt repository and no root install.
+- name: Node, Agent HUD and the VICE MCP server
   tags: node
   block:
     - name: Install nvm
@@ -506,6 +505,7 @@
         curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/{{ agent_guest_nvm_version }}/install.sh | bash
       args:
         creates: "{{ ansible_user_dir }}/.nvm/nvm.sh"
+      tags: agenthud
 
     - name: Install node and make it the default, at version {{ agent_guest_node_version }}
       ansible.builtin.shell: >-
@@ -515,6 +515,25 @@
       args:
         executable: /bin/bash
         creates: "{{ ansible_user_dir }}/.nvm/versions/node/v{{ agent_guest_node_version }}.*"
+      tags: agenthud
+
+    - name: Install Agent HUD
+      ansible.builtin.shell: >-
+        . "{{ ansible_user_dir }}/.nvm/nvm.sh"
+        && npm install --global {{ agent_guest_agenthud_package | quote }}
+      args:
+        executable: /bin/bash
+        creates: "{{ ansible_user_dir }}/.nvm/versions/node/v{{ agent_guest_node_version }}.*/bin/agenthud"
+      tags: agenthud
+
+    - name: Ask for the Agent HUD version
+      ansible.builtin.shell: >-
+        . "{{ ansible_user_dir }}/.nvm/nvm.sh"
+        && agenthud --version
+      args:
+        executable: /bin/bash
+      changed_when: false
+      tags: agenthud
 
     # Its own copy, not a dependency on the wish tag: -t node has to work
     # alone.
