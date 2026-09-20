@@ -169,7 +169,11 @@ def test_the_square_block_is_dos_field_order_with_one_more_byte():
     """
     assert (POD.pos_x, POD.pos_y, POD.pos_facing) == (1024, 1025, 1026)
     assert podsavegame.SQUARE[:3] == ("x", "y", "facing")
-    assert len(podsavegame.SQUARE) == POD.square_bytes - 6
+    # DOS's struct runs from the square to the previous-mode byte: five
+    # bytes. The Amiga's is those five and one pad.
+    assert dos_savegame.POD_PREVIOUS_MODE - POD.square == 5
+    assert len(podsavegame.SQUARE) == 5 + 1
+    assert podsavegame.SQUARE[-1] == "pad"
     assert podsavegame.PREVIOUS_MODE_AT == dos_savegame.POD_PREVIOUS_MODE + 1
     assert podsavegame.MODE_AT == dos_savegame.POD_MODE + 1
     assert podsavegame.MAP_AT == dos_savegame.POD_MAP + 1
@@ -247,20 +251,39 @@ def test_the_unreferenced_square_byte_is_zero_in_every_one():
         assert podsavegame.parse(blob).square["pad"] == 0, name
 
 
-def test_dos_strides_do_not_read_these_files():
-    """The discriminator: DOS's own widths against the same bytes.
+def dos_reads_a_party(blob: bytes) -> bool:
+    """Whether DOS's own reading of the party finds one in `blob`.
 
-    A five-byte square struct and a one-byte party count put the count two
-    bytes early, so the party region starts in the wrong place. If this ever
-    passes, the checks above are true of any reading and prove nothing.
+    DOS keeps the party size in one byte at `party_size_byte` and its first
+    party entry, a length byte then a `CHRDAT` name, at `party_table`. The
+    Amiga's count is the word that starts at `party_table`, so DOS's length
+    byte is that word's high half and DOS's count byte is the low half of the
+    map-block word before it.
     """
-    wrong = 0
-    for _name, blob in slots():
-        dos_count_at = podsavegame.COUNT_AT - 2
-        count = struct.unpack_from(">H", blob, dos_count_at)[0]
-        if not 1 <= count <= podsavegame.PARTY_MAX:
-            wrong += 1
-    assert wrong == len(slots()), "DOS's offsets must not read a legal count"
+    size = blob[POD.party_size_byte]
+    length = blob[POD.party_table]
+    return (1 <= size <= podsavegame.PARTY_MAX
+            and 0 < length < dos_savegame.PARTY_NAME_LEN)
+
+
+def test_dos_strides_do_not_read_these_files():
+    """The discriminator: DOS's own offsets against the same bytes.
+
+    The count byte and the first entry's length byte are read where DOS reads
+    them, and the entry's is always 0 here because the Amiga's count is a word
+    of at most 8. If a slot ever reads as a party under DOS's offsets, the
+    checks above are true of any reading and prove nothing.
+    """
+    found = slots()
+    assert not [name for name, blob in found if dos_reads_a_party(blob)]
+
+
+def test_dos_offsets_do_not_read_a_synthetic_party_either():
+    """Not only because the map-block word is 0: a map block of 3 puts a legal
+    count in DOS's count byte, and the entry length still refuses it."""
+    blob = build(map_block=3, characters=((0, 0, 0),) * 3)
+    assert 1 <= blob[POD.party_size_byte] <= podsavegame.PARTY_MAX
+    assert not dos_reads_a_party(blob)
 
 
 def test_every_vault_is_the_size_its_own_writer_makes_it():

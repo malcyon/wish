@@ -516,6 +516,8 @@ def test_the_experience_award_is_written_as_a_big_endian_word():
 def test_exceptional_strength_keeps_its_two_halves_in_their_own_bytes():
     """The in-force percentile is byte 0 of the pair at `0x07C` and the
     permanent one is byte 1, the other way round from the six ability pairs.
+    That assignment is inferred from the later titles, not read off an Amiga
+    specimen.
 
     Written and read with the two values different, because they are equal
     in all 19 genuine records: a reader and a writer that disagreed about

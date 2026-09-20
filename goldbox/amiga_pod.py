@@ -161,7 +161,7 @@ NAME = 0x060
 NAME_LENGTH = 15             # 15 characters, NUL terminator at 0x06F
 ABILITIES = 0x070            # six base/current pairs; the sheet draws the 2nd
 ABILITY_COUNT = 6
-EXCEPTIONAL_STRENGTH = 0x07C  # one more pair, in force first
+EXCEPTIONAL_STRENGTH = 0x07C  # one more pair; byte 0 in force, inferred from the later titles
 #: Silver Blades' `gap_069`, the byte before `thac0_base` in DOS's own order.
 #: The importer copies it and nothing else names it. UNKNOWN.
 UNNAMED_07E = 0x07E
@@ -653,8 +653,14 @@ class PodCharacter:
 
     @property
     def exceptional_strength(self) -> int:
-        """The percentile in force: byte 0 of its pair, where the six ability
-        pairs keep it in byte 1."""
+        """The percentile in force, inferred from the later titles: byte 0 of
+        its pair, where the six ability pairs keep it in byte 1.
+
+        `CONFIDENCE` grades it PROBABLE. All 19 specimens hold equal halves,
+        so nothing on the Amiga's own disks says which byte is which; the
+        rule is the one `goldbox.dos_codec._ability_pair` read out of the
+        later titles' overlay.
+        """
         return self.raw[EXCEPTIONAL_STRENGTH]
 
     @property
@@ -1404,7 +1410,7 @@ ALIGNMENT_NAMES: tuple[str, ...] = ALIGNMENTS
 #: Gold Box armour class is a cache that already includes worn armour and a
 #: dexterity bonus, so copying it would count the armour twice. The stored
 #: base is a constant of the format, and the bonus a worn item gives is
-#: recomputed by the game from the item nodes the writer now emits. **That last
+#: recomputed by the game from the item nodes the writer emits. **That last
 #: half is argued, not run**: probe P3 built its record with no items, so
 #: nothing has shown the sheet's armour class moving for a readied piece of
 #: armour.

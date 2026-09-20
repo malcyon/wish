@@ -291,8 +291,13 @@ def executable(quiet: bool = False) -> bytes:
         except (AmigaDiskError, ValueError):
             continue
         for path, _entry in entries:
-            if path.rsplit("/", 1)[-1] == EXECUTABLE:
-                seen.setdefault(disk.read_file(path), []).append(label)
+            if path.rsplit("/", 1)[-1] != EXECUTABLE:
+                continue
+            try:
+                blob = disk.read_file(path)
+            except AmigaDiskError:
+                continue
+            seen.setdefault(blob, []).append(label)
     if not seen:
         raise SystemExit(f"no Amiga {EXECUTABLE!r} on any disk image here")
     blob = max(seen, key=lambda b: (len(seen[b]), len(b)))
@@ -408,11 +413,17 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         for name, copies in found.items():
             for index, (_label, blob) in enumerate(copies):
+                label = f"{name}{'' if not index else f'#{index}'}"
+                if len(blob) < VAULT_HEADER + 4:
+                    print(f"{label}  {len(blob)}  <- too short to hold a "
+                          "vault header")
+                    clean = False
+                    continue
                 marker = _u16(blob, VAULT_HEADER)
                 count = _u16(blob, VAULT_HEADER + 2)
                 ok = (len(blob) == VAULT_SIZE and marker == VAULT_MARKER
                       and count <= VAULT_ITEMS)
-                print(f"{name}{'' if not index else f'#{index}'}  {len(blob)}"
+                print(f"{label}  {len(blob)}"
                       f"  marker=${marker:04X}  items={count}"
                       f"{'' if ok else '  <- not the measured vault'}")
                 clean &= ok

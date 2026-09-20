@@ -190,7 +190,7 @@ zero.** Only ~158 bytes of the prefix vary at all. That is the search surface.
 | `0x54` | 371, 601 or 960 | hit points | GUESS |
 | `0x60` | 16 bytes, NUL-padded, `"BJORK\0…"` | **name**, same encoding as Amiga PoR at `0x00` | CONFIRMED |
 | `0x70`–`0x7B` | twelve bytes, `18` in every specimen | **six abilities as base/current pairs** — matches DOS PoD `CHRDATA1.SAV` `0x10`–`0x1B` `12 12 0F 0F 0F 0F 12 12 12 12 0F 0F` | CONFIRMED |
-| `0x7C`–`0x7D` | `00 00`, `32 32`, `00 00` | **exceptional strength**, base/current pair — matches DOS PoD `0x1C`–`0x1D` `43 43` | CONFIRMED |
+| `0x7C`–`0x7D` | `00 00`, `32 32`, `00 00` | **exceptional strength**, a pair of equal halves in all 19 specimens — matches DOS PoD `0x1C`–`0x1D` `43 43`. Byte 0 is the percentile in force and byte 1 the permanent one, **inferred from the later titles** (`goldbox.dos_codec._ability_pair`); no Amiga specimen tells the halves apart | PROBABLE (the pair itself CONFIRMED) |
 
 Two things fall straight out:
 
@@ -1761,7 +1761,7 @@ name `goldbox.dos_port.POOLS_OF_DARKNESS` gives the field.
 | `0x05F` | 1 | **`hostile`**, the combat side | importer; compared between two records |
 | `0x060` | 16 | `name` | probe |
 | `0x070` | 12 | the six ability pairs | probe |
-| `0x07C` | 2 | `exceptional_strength` pair | importer |
+| `0x07C` | 2 | `exceptional_strength` pair; byte 0 in force, inferred from the later titles | importer |
 | `0x07E` | 1 | Silver Blades' `gap_069` | importer. UNKNOWN |
 | `0x07F` | 1 | `thac0_base` | importer; agrees with the DOS peer 12 of 12 |
 | `0x080` | 1 | `paladin_cures` | importer; 1 for both paladins, 0 for the other 17 |
@@ -2611,7 +2611,7 @@ So nobody is surprised, and nobody tries.
 | **Experience** | The C64 field is **3 bytes** — 16 777 215 maximum. Pools of Darkness characters exceed that. | the target field is wider; carry the value up, and expect a C64-sourced total to look low rather than wrong |
 | **Race and class codes** | `goldbox/c64_port.py` already documents that the race table changes per title on the C64 alone (human is 7 in Pool of Radiance, 6 in Silver Blades). PoD's Amiga table has not been read. | read PoD's own table before writing a race byte |
 | **Copper, silver, electrum and gold** | only platinum (`0x04C`), gems and jewelry have been located in the `.pc`. R7 was the probe for the lighter coins and did not finish; `0x048` and `0x04A` are zero in all twelve and are the obvious candidates. | reported, with the total, so the player knows what was left on the counter |
-| **Armour class and unarmed damage** | not a loss so much as a category error. The C64's numbers already include worn armour and a strength bonus, PoD re-applies dexterity and strength itself. The stored base is a constant of the format and the bonus a worn item gives is recomputed by the game from the item nodes, which the writer now emits. | write the unarmoured `10` and `1d2`, which is what all twelve genuine records hold, and let PoD derive the rest. §2.5 shows it coming out at `AC 8` and `1D2+1` with no items; that the game applies a worn item's bonus is argued from the recompute, not run, because probe P3 carried none |
+| **Armour class and unarmed damage** | not a loss so much as a category error. The C64's numbers already include worn armour and a strength bonus, PoD re-applies dexterity and strength itself. The stored base is a constant of the format and the bonus a worn item gives is recomputed by the game from the item nodes, which the writer emits. | write the unarmoured `10` and `1d2`, which is what all twelve genuine records hold, and let PoD derive the rest. §2.5 shows it coming out at `AC 8` and `1D2+1` with no items; that the game applies a worn item's bonus is argued from the recompute, not run, because probe P3 carried none |
 | **Everything Silver Blades knew and Pools of Darkness does not** | quest flags, position, journal entries | not converted, and not wanted — see §3 |
 
 ---
