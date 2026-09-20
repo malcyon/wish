@@ -473,7 +473,7 @@ def test_run_attaches_the_target_to_the_slots_monitor_port(monkeypatch, tmp_path
     monkeypatch.setattr(FT, "ViceTarget", Target)
 
     class Trip:
-        pending = object()
+        pending = types.SimpleNamespace(through=27)
 
         def run(self, target, area):
             return types.SimpleNamespace(ok=True, message="")
@@ -495,3 +495,162 @@ def test_run_attaches_the_target_to_the_slots_monitor_port(monkeypatch, tmp_path
         member="FATIMA", arrive=1.0, answer_timeout=1.0)
     FT.run(args)
     assert ports == [6531, 6531]
+
+
+# ---------------------------------------------------------------------------
+# The arrival menu, the per-poll diagnostics and the second hop's own timing
+
+class MenuSession(FakeSession):
+    """Shows `YES NO`, then the arrival menu, then lets the area byte move once
+    the arrival menu has been answered."""
+
+    def __init__(self, monitor, to_area, rows=("YES NO", "LARGE SMALL LEAVE")):
+        super().__init__(monitor)
+        self.to_area, self.rows = to_area, list(rows)
+        self.chosen = []
+
+    def screen(self):
+        return FakeScreen(self.rows[0] if self.rows else "")
+
+    def select_bar(self, label, timeout=0):
+        self.chosen.append(label)
+        self.rows.pop(0)
+        if not self.rows:
+            self._m.write(FT.AREA_BYTE, bytes([self.to_area]))
+        return True
+
+
+def test_choice_for_answers_only_the_menus_it_knows():
+    assert FT.choice_for("YES NO") == "YES"
+    assert FT.choice_for("LARGE SMALL LEAVE") == "LEAVE"
+    assert FT.choice_for("MOVE VIEW CAST AREA") is None
+    assert FT.choice_for("LARGE SMALL") is None
+    assert FT.choice_for("") is None
+
+
+def test_answer_and_wait_selects_leave_on_the_arrival_menu(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = MenuSession(m, 0)
+    questions = []
+    FT.answer_and_wait(sess, 0, deadline_s=30.0,
+                       on_question=lambda: questions.append(1),
+                       clock=lambda: 1.0)
+    assert sess.chosen == ["YES", "LEAVE"]
+    assert questions == [1]
+
+
+def test_answer_and_wait_never_picks_large_or_small(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = MenuSession(m, 0, rows=("LARGE SMALL LEAVE",))
+    FT.answer_and_wait(sess, 0, deadline_s=30.0, clock=lambda: 1.0)
+    assert sess.chosen == ["LEAVE"]
+
+
+class _PollTarget:
+    def __init__(self, area_byte, pc=0x10C2):
+        self.area_byte, self._pc = area_byte, pc
+
+    def read(self, addr, length):
+        return bytes([self.area_byte]) * length
+
+    def pc(self):
+        return self._pc
+
+    def close(self):
+        pass
+
+
+def _pending_ft(through=27, from_area=13):
+    class Ft:
+        pending = types.SimpleNamespace(through=through, from_area=from_area)
+
+        def continue_pending(self, target):
+            return None
+
+    return Ft()
+
+
+def test_second_hop_prints_the_raw_area_byte_mode_and_pc_each_poll(capsys):
+    FT.second_hop(_pending_ft(), lambda: _PollTarget(0x9B, pc=0x1919))
+    out = capsys.readouterr().out
+    assert "$6E1B=9b" in out and "pc=6425" in out and "mode=" in out
+
+
+def test_second_hop_prints_nothing_when_no_hop_is_pending(capsys):
+    from automap import actions
+
+    FT.second_hop(actions.FastTravel(), lambda: _PollTarget(13))
+    assert capsys.readouterr().out == ""
+
+
+def test_second_hop_marks_the_first_poll_that_reads_the_through_area():
+    marks, ticks = {}, iter([10.0, 20.0, 30.0])
+    ft = _pending_ft()
+    FT.second_hop(ft, lambda: _PollTarget(13), marks, clock=lambda: next(ticks))
+    assert marks == {}
+    # Bit 7 set: the loader is mid-change, so the party has not arrived yet.
+    FT.second_hop(ft, lambda: _PollTarget(27 | 0x80), marks,
+                  clock=lambda: next(ticks))
+    assert marks == {}
+    FT.second_hop(ft, lambda: _PollTarget(27), marks, clock=lambda: next(ticks))
+    FT.second_hop(ft, lambda: _PollTarget(27), marks, clock=lambda: next(ticks))
+    assert marks == {"through": 10.0}
+
+
+def test_enable_debug_logging_routes_automap_debug_lines_to_stdout(capsys):
+    import logging
+
+    logger = logging.getLogger("wish.automap")
+    old_level, old_handlers = logger.level, list(logger.handlers)
+    try:
+        FT.enable_debug_logging()
+        FT.enable_debug_logging()
+        logging.getLogger("wish.automap.actions").debug("refused: pc $1234")
+        out = capsys.readouterr().out
+        assert out.count("refused: pc $1234") == 1
+    finally:
+        logger.setLevel(old_level)
+        logger.handlers[:] = old_handlers
+
+
+def test_run_reports_second_hop_seconds_from_the_through_mark(monkeypatch,
+                                                              tmp_path):
+    import json
+
+    slot = types.SimpleNamespace(
+        n=1, display=":1", dir=str(tmp_path),
+        teardown=lambda: None, release=lambda: None)
+    sess = _RunSession()
+    monkeypatch.setattr(FT.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(FT.S, "stage_disks", lambda *a, **k: "boot")
+    monkeypatch.setattr(FT.S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(FT.S, "Session", lambda *a, **k: sess)
+    monkeypatch.setattr(FT, "party", lambda s: [])
+    monkeypatch.setattr(FT, "area_of", lambda s: 13)
+    monkeypatch.setattr(FT, "shoot", lambda *a, **k: None)
+    monkeypatch.setattr(FT, "ViceTarget", lambda **k: types.SimpleNamespace(
+        close=lambda: None))
+
+    class Trip:
+        pending = object()
+
+        def run(self, target, area):
+            return types.SimpleNamespace(ok=True, message="")
+
+    monkeypatch.setattr(FT, "A", types.SimpleNamespace(
+        FastTravel=Trip, area_by_id=lambda n: n))
+
+    def answer(sess, to_area, deadline_s, between, on_question, marks):
+        marks["through"], marks["landed"] = 1000.0, 1007.5
+        return None
+
+    monkeypatch.setattr(FT, "answer_and_wait", answer)
+    args = types.SimpleNamespace(
+        out=str(tmp_path / "out"), slot=None, disks=str(tmp_path),
+        save=str(tmp_path / "save.d64"), from_area=13, to_area=27,
+        member="FATIMA", arrive=1.0, answer_timeout=1.0)
+    FT.run(args)
+    result = json.loads((tmp_path / "out" / "result.json").read_text())
+    assert result["second_hop_seconds"] == 7.5

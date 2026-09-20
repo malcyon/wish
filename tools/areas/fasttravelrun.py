@@ -32,8 +32,9 @@ reaches the two-hop branch:
 
 A run saves four screenshots under `--out` (`1-before.png`, `2-question.png`,
 `3-after-second-hop.png`, `4-after-walk.png`) and writes `result.json` with
-`second_hop_seconds` -- the seconds from `ft.run` returning to the area byte
-reading the destination, None when there was no second hop -- and
+`second_hop_seconds` -- the seconds from the area byte first reading the area
+the exit leads to, to reading the destination; None when there was no second
+hop -- and
 `total_seconds`, which runs from before the slot is claimed to the landing and
 so includes staging and boot. After a PASS the party walks a few steps each way and opens
 and closes the first character's sheet before teardown; a walk that fails is
@@ -50,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import pathlib
 import sys
@@ -60,6 +62,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
+from automap.actions import _read, mode, program_counter  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from automap.target import ViceTarget  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
@@ -184,7 +187,21 @@ def walk_verdict(steps: list[dict], sheet_opened: bool) -> tuple[bool, str]:
                   "character sheet opened and closed")
 
 
-def second_hop(ft, open_target):
+def enable_debug_logging() -> None:
+    """Send the automapper's own debug lines -- `FastTravel._idle_verdict`'s and
+    `continue_pending`'s explanations of why they did nothing -- to stdout, the
+    driver's log. Idempotent: a second call adds no second handler."""
+    logger = logging.getLogger("wish.automap")
+    logger.setLevel(logging.DEBUG)
+    if not any(getattr(h, "_fasttravelrun", False) for h in logger.handlers):
+        handler = logging.StreamHandler(sys.stdout)
+        handler._fasttravelrun = True
+        handler.setFormatter(logging.Formatter("  %(name)s: %(message)s"))
+        logger.addHandler(handler)
+
+
+def second_hop(ft, open_target, marks: dict | None = None,
+               clock=time.monotonic):
     """One poll of a two-hop trip's second hop, the way the automapper's own
     poll makes it: `ft.continue_pending` through the real target.
 
@@ -193,12 +210,48 @@ def second_hop(ft, open_target):
     connection, and every `sess.mon()` call opens its own. `open_target` is
     required so that no caller falls back on the default monitor port, which
     is not where a pool slot's emulator listens.
+
+    While a hop is pending, each poll prints what `continue_pending` decides
+    on -- the raw area byte, the overlay mode and the program counter -- so a
+    hop that never fires says which check refused. `marks["through"]` is set
+    to `clock()` on the first poll that reads the area the door leads to with the loader idle
+    (bit 7 clear), before
+    `continue_pending` can make the hop: the start of the second hop's own
+    timing.
     """
     target = open_target()
     try:
+        pending = ft.pending
+        if pending is not None:
+            raw = _read(target, AREA_BYTE, 1)
+            print(f"  poll: $6E1B={raw.hex() if raw else None} "
+                  f"mode={mode(target)} pc={program_counter(target)}",
+                  flush=True)
+            if (marks is not None and raw and "through" not in marks
+                    and raw[0] == pending.through):
+                marks["through"] = clock()
         return ft.continue_pending(target)
     finally:
         target.close()
+
+
+#: The menus the driver knows how to answer: the words that must all be on row
+#: 24, and the word to select. `YES`/`NO` is the exit handler's own question.
+#: `LARGE SMALL LEAVE` is the wilderness square's arrival menu after a walk out
+#: of the Kobold Caves; `LARGE` and `SMALL` walk the party back into the caves,
+#: so only `LEAVE` keeps the trip going. A row matching no entry is not
+#: answered.
+MENUS = ((("YES", "NO"), "YES"), (("LARGE", "SMALL", "LEAVE"), "LEAVE"))
+
+
+def choice_for(row: str) -> str | None:
+    """The word to select on the command bar *row*, or None when it is not a
+    menu in `MENUS`."""
+    words = row.split()
+    for needed, pick in MENUS:
+        if all(w in words for w in needed):
+            return pick
+    return None
 
 
 def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
@@ -207,8 +260,7 @@ def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
     """Answer whatever the exit's handler puts on row 24, the way a player
     would, until the area byte says the warp landed.
 
-    Only the shape the Kobold Caves' own handler is known to show --
-    `YES`/`NO` in the command bar -- is handled; anything else times out
+    Only the menus in `MENUS` are answered, each once; anything else times out
     rather than guessing at a menu this tool has never seen.
 
     `between`, when given, is called once a lap until it answers an `Outcome`
@@ -216,11 +268,11 @@ def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
     is a failure (the trip gave up) and otherwise once the area byte lands.
 
     `on_question` is called once, when the game's `YES`/`NO` is up and before it
-    is answered. `marks["landed"]` is set to `clock()` at the moment the area
+    is answered; the arrival menu does not call it. `marks["landed"]` is set to `clock()` at the moment the area
     byte reads `to_area`, which is the end of the second-hop timing.
     """
     deadline = time.time() + deadline_s
-    answered = False
+    answered: set[str] = set()
     hop = None
     while time.time() < deadline:
         if between is not None and hop is None:
@@ -234,11 +286,12 @@ def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
         row = s.row(24).strip() if s is not None else ""
         if row:
             print(f"  row 24: {row!r}", flush=True)
-        if not answered and "YES" in row.split() and "NO" in row.split():
-            if on_question is not None:
+        pick = choice_for(row)
+        if pick is not None and pick not in answered:
+            if pick == "YES" and on_question is not None:
                 on_question()
-            sess.select_bar("YES", timeout=15)
-            answered = True
+            sess.select_bar(pick, timeout=15)
+            answered.add(pick)
             time.sleep(1.0)
             continue
         if area_of(sess) == to_area:
@@ -357,10 +410,11 @@ def run(args) -> int:
         hop = answer_and_wait(
             sess, args.to_area, deadline_s=args.answer_timeout,
             between=(lambda: second_hop(
-                ft, lambda: ViceTarget(port=sess.mon_port))) if two_hop else None,
+                ft, lambda: ViceTarget(port=sess.mon_port),
+                marks)) if two_hop else None,
             on_question=lambda: shoot(sess, out, "question", shots),
             marks=marks)
-        second_hop_seconds = (elapsed(marks.get("run_returned"),
+        second_hop_seconds = (elapsed(marks.get("through"),
                                       marks.get("landed")) if two_hop else None)
         total_seconds = elapsed(started, marks.get("landed"))
         timing = {"second_hop_seconds": second_hop_seconds,
@@ -450,6 +504,7 @@ def main(argv=None) -> int:
                     help="seconds to wait for the handler's own prompt "
                          "and the warp to land")
     args = p.parse_args(argv)
+    enable_debug_logging()
     if disks_of(args) is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
     return run(args)
