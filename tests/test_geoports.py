@@ -21,6 +21,7 @@ from __future__ import annotations
 import collections
 import functools
 import io
+import re
 
 import pytest
 
@@ -429,9 +430,10 @@ def test_the_planes_a_pair_differs_in_are_counted_separately():
         "walls N/E": 0, "walls S/W": 0, "attributes": 1, "barriers": 2}
 
 
-def test_the_watch_line_names_a_value_that_would_actually_pass_the_check():
-    """#466: `WATCH` prints what `NEAR_ENOUGH` would have to become, and it
-    has to be a value the tool's own gate accepts.
+def test_the_watch_line_names_a_value_that_would_actually_pass_the_check(
+        monkeypatch):
+    """`WATCH` prints what `NEAR_ENOUGH` would have to become, and it has to be
+    a value the tool's own gate accepts.
 
     That gate is `2 * NEAR_ENOUGH >= gap`, which refuses equality, so the
     largest legal value for a gap of 18 is 8 and not 9.  `gap // 2` gave 9 --
@@ -439,9 +441,60 @@ def test_the_watch_line_names_a_value_that_would_actually_pass_the_check():
     of Darkness' `GEO21`/`GEO31` at 18 is the pair that shows it and
     Treasures' 99 never did.  `automap.area.NEAR_ENOUGH`'s own note and
     `report_closest`'s docstring both say 8; the line disagreed with both.
+
+    Runs `report_closest` itself over two synthetic maps, 18 bytes apart, in
+    one title the automapper does not hold -- the only kind of set that gets a
+    `WATCH` line.
     """
-    for gap in (18, 80, 99, 100):
-        named = (gap - 1) // 2
-        assert 2 * named < gap, (gap, named)
-        assert 2 * (named + 1) >= gap, (gap, named)
-    assert (18 - 1) // 2 == 8
+    gap = 18
+    left = bytearray(GEO_SIZE)
+    right = bytearray(GEO_SIZE)
+    right[:gap] = b"\x01" * gap
+    monkeypatch.setattr(geoports, "every_port", lambda all_titles=False: {
+        "Pools of Darkness": {"DOS": {"GEO21": bytes(left),
+                                      "GEO31": bytes(right)}}})
+    out = io.StringIO()
+    geoports.report_closest(out)
+    watch = [line for line in out.getvalue().splitlines() if "WATCH" in line]
+    assert len(watch) == 1, out.getvalue()
+    match = re.search(r"WATCH\s+(\d+).* at (\d+),", watch[0])
+    assert match, watch[0]
+    named, named_gap = int(match[1]), int(match[2])
+    assert named_gap == gap
+    assert 2 * named < gap, watch[0]
+    assert 2 * (named + 1) >= gap, watch[0]
+
+
+def test_a_machine_with_disks_has_every_port_map_set_it_should():
+    """An empty map set on a machine that has the disks is a failure, not a skip.
+
+    `ports_for` skips when a port has no maps, which is right for a machine
+    without the disks and wrong for one where the loader lost them: a change
+    that emptied `every_port` used to turn the dependent tests into skips and
+    the run stayed green. This asks the registry what the machine holds and
+    fails when the loader disagrees. It skips only where the machine holds no
+    Gold Box map disks at all.
+    """
+    from automap import gamedisks
+    from tools.records import geoplausible
+    expected: list[tuple[str, str]] = []
+    for label, key, _pattern in geoplausible.C64_TITLES:
+        if gamedisks.find(key) is not None:
+            expected.append((label.removesuffix(" C64"), "C64"))
+    if gamedisks.find("dos-archives") is not None:
+        expected += [(title, "DOS") for title, _folder in geoports.TITLES]
+    if gamedisks.find("amiga") is not None:
+        expected += [(label.removesuffix(" Amiga"), "Amiga")
+                     for label, _want, _where in geoplausible.AMIGA_TITLES]
+    if not expected:
+        pytest.skip("no Gold Box map disks on this machine; set $POR_DISKS, "
+                    "$COAB_DISKS, $SSB_DISKS, $AMIGA_DISKS or $FR_ARCHIVES")
+    ports = _ports()
+    empty = [(title, port) for title, port in expected
+             if not ports.get(title, {}).get(port)]
+    assert not empty, f"the registry has the disks but no maps came back: {empty}"
+    candidate_sets = sorted(
+        f"{title} {port}" for title, by_port in ports.items()
+        for port, maps in by_port.items() if len(maps) >= 2)
+    within = geoports.closest_within_sets(ports)
+    assert sorted(label for _d, label, _a, _b in within) == candidate_sets
