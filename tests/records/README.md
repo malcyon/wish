@@ -32,6 +32,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_record.py` | Checks `goldbox/record.py` against the committed `brutus.chr`: field decoding, byte-exact round trips, and that setting a field changes only its bytes. |
 | `test_ringoffire.py` | Checks the two Ring of Fire Resistance records the C64 ships and which one Wish hands out. |
 | `test_second_game.py` | Checks that Curse of the Azure Bonds reads through Pool of Radiance's decoders, over both games' records, roster block, maps and item tables. |
+| `test_silverslots.py` | Checks that Secret of the Silver Blades' spell-slot rows in `goldbox/spells.py` match the game's own `ECL65` and reach a converted caster's DOS and Amiga records. |
 | `test_spellbookcensus.py` | Checks the geometry and the three engine sites behind `tools/records/spellbookcensus.py`'s answer on whether a character can hold Pool of Radiance's spell id 56. |
 | `test_strength.py` | Checks that `goldbox/strength.py` sums party strength term by term the way `DUNGEON $1BE8` does. |
 | `test_thiefskillcensus.py` | Checks the relationship between the C64's and DOS's thief-skill tables, read off the player's own files. |

@@ -635,13 +635,16 @@ def test_a_silver_blades_party_survives_a_yaml_round_trip_with_its_spellbook(
     assert len(morgaine["spells_known"]) == 28
 
 
-def test_castable_per_level_is_blank_rather_than_pool_of_radiances_numbers():
-    """Silver Blades' progression tables have not been read, so nothing is
-    claimed about them -- the same rule an unknown race table follows."""
+def test_castable_per_level_is_silver_blades_own_rows_not_pool_of_radiances():
+    """Silver Blades' slot rows are its own: seven spell levels deep, with a
+    fourth-level slot at cleric 9 that Pool of Radiance's three-level table
+    has no room for."""
     from goldbox.spells import capacity
 
-    assert capacity(0x02, 9, 18, SSB) == {}
-    assert capacity(0x02, 9, 18, c64_port.POOL_OF_RADIANCE)["cleric"]
+    own = capacity(0x02, 9, 18, SSB)["cleric"]
+    pool = capacity(0x02, 9, 18, c64_port.POOL_OF_RADIANCE)["cleric"]
+    assert len(own) == 7 and own[3] > 0
+    assert len(pool) == 3 and own != pool
 
 
 # --- the spellbook, and how wide it is --------------------------------------

@@ -604,6 +604,91 @@ _RANGER_CURSE = [
     ((2, 0, 0, 0, 0), (1, 0, 0, 0, 0)),          # 10
     ((2, 0, 0, 0, 0), (2, 0, 0, 0, 0)),          # 11
 ]
+
+# --- Secret of the Silver Blades ---------------------------------------
+# Running totals per class level, one row per level 1-15, padded to the
+# record's seven spell levels.  The C64's `ECL65 $886C` builds them: one shared
+# row table at `$88F1` and four parameter tables (`$88CD`, `$88D6`, `$88DF`,
+# `$88E8`) that a self-modifying loop at `$888B` copies into its own operands,
+# one pass per class slot, **adding** each pass's row into its array.  The
+# magic-user's rows are seven wide from level 1, the cleric's six wide from
+# level 1, the paladin's four wide from level 9 and the ranger's two wide from
+# level 9 (magic-user array) and again from level 8 (druid array).
+# `tests/records/test_silverslots.py` reads them back off the player's own disk
+# and compares, so a transcription slip here fails rather than ships.
+#
+# The magic-user and cleric rows are AD&D 1st edition's published tables for
+# all fifteen levels.  As in Curse the paladin's rows land in the cleric array
+# and take no wisdom bonus, and the ranger's one class level fills two arrays,
+# so each of his entries is `(druid run, magic-user run)`.
+_MAGIC_USER_SSB = [
+    (1, 0, 0, 0, 0, 0, 0),  # 1
+    (2, 0, 0, 0, 0, 0, 0),  # 2
+    (2, 1, 0, 0, 0, 0, 0),  # 3
+    (3, 2, 0, 0, 0, 0, 0),  # 4
+    (4, 2, 1, 0, 0, 0, 0),  # 5
+    (4, 2, 2, 0, 0, 0, 0),  # 6
+    (4, 3, 2, 1, 0, 0, 0),  # 7
+    (4, 3, 3, 2, 0, 0, 0),  # 8
+    (4, 3, 3, 2, 1, 0, 0),  # 9
+    (4, 4, 3, 2, 2, 0, 0),  # 10
+    (4, 4, 4, 3, 3, 0, 0),  # 11
+    (4, 4, 4, 4, 4, 1, 0),  # 12
+    (5, 5, 5, 4, 4, 2, 0),  # 13
+    (5, 5, 5, 4, 4, 2, 1),  # 14
+    (5, 5, 5, 5, 5, 2, 1),  # 15
+]
+_CLERIC_SSB = [
+    (1, 0, 0, 0, 0, 0, 0),  # 1
+    (2, 0, 0, 0, 0, 0, 0),  # 2
+    (2, 1, 0, 0, 0, 0, 0),  # 3
+    (3, 2, 0, 0, 0, 0, 0),  # 4
+    (3, 3, 1, 0, 0, 0, 0),  # 5
+    (3, 3, 2, 0, 0, 0, 0),  # 6
+    (3, 3, 2, 1, 0, 0, 0),  # 7
+    (3, 3, 3, 2, 0, 0, 0),  # 8
+    (4, 4, 3, 2, 1, 0, 0),  # 9
+    (4, 4, 3, 3, 2, 0, 0),  # 10
+    (5, 4, 4, 3, 2, 1, 0),  # 11
+    (6, 5, 5, 3, 2, 2, 0),  # 12
+    (6, 6, 6, 4, 2, 2, 0),  # 13
+    (6, 6, 6, 5, 3, 2, 0),  # 14
+    (7, 7, 7, 5, 4, 2, 0),  # 15
+]
+_PALADIN_SSB = [
+    (0, 0, 0, 0, 0, 0, 0),  # 1
+    (0, 0, 0, 0, 0, 0, 0),  # 2
+    (0, 0, 0, 0, 0, 0, 0),  # 3
+    (0, 0, 0, 0, 0, 0, 0),  # 4
+    (0, 0, 0, 0, 0, 0, 0),  # 5
+    (0, 0, 0, 0, 0, 0, 0),  # 6
+    (0, 0, 0, 0, 0, 0, 0),  # 7
+    (0, 0, 0, 0, 0, 0, 0),  # 8
+    (1, 0, 0, 0, 0, 0, 0),  # 9
+    (2, 0, 0, 0, 0, 0, 0),  # 10
+    (2, 1, 0, 0, 0, 0, 0),  # 11
+    (2, 2, 0, 0, 0, 0, 0),  # 12
+    (2, 2, 1, 0, 0, 0, 0),  # 13
+    (3, 2, 1, 0, 0, 0, 0),  # 14
+    (3, 2, 1, 1, 0, 0, 0),  # 15
+]
+_RANGER_SSB = [
+    ((0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0)),  # 1
+    ((0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0)),  # 2
+    ((0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0)),  # 3
+    ((0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0)),  # 4
+    ((0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0)),  # 5
+    ((0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0)),  # 6
+    ((0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0)),  # 7
+    ((1, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0)),  # 8
+    ((1, 0, 0, 0, 0, 0, 0), (1, 0, 0, 0, 0, 0, 0)),  # 9
+    ((2, 0, 0, 0, 0, 0, 0), (1, 0, 0, 0, 0, 0, 0)),  # 10
+    ((2, 0, 0, 0, 0, 0, 0), (2, 0, 0, 0, 0, 0, 0)),  # 11
+    ((2, 1, 0, 0, 0, 0, 0), (2, 0, 0, 0, 0, 0, 0)),  # 12
+    ((2, 1, 0, 0, 0, 0, 0), (2, 1, 0, 0, 0, 0, 0)),  # 13
+    ((2, 2, 0, 0, 0, 0, 0), (2, 1, 0, 0, 0, 0, 0)),  # 14
+    ((2, 2, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0)),  # 15
+]
 # Bonus first-, second- and third-level cleric spells for high Wisdom. **The
 # game's, not AD&D's**: `goldbox.levels.wisdom_bonus_spells` implements `GEN
 # $10AD` and the shifts `$2108` puts it through, and the game's first-level
@@ -626,6 +711,10 @@ _SLOTS: dict[str, dict[str, list]] = {
                                    "cleric": _CLERIC_CURSE,
                                    "paladin": _PALADIN_CURSE,
                                    "ranger": _RANGER_CURSE},
+    SECRET_OF_THE_SILVER_BLADES.key: {"magic-user": _MAGIC_USER_SSB,
+                                      "cleric": _CLERIC_SSB,
+                                      "paladin": _PALADIN_SSB,
+                                      "ranger": _RANGER_SSB},
 }
 
 
@@ -763,10 +852,10 @@ def capacity_by_class(class_levels: dict[str, int], wisdom: int,
     """
     rows = _SLOTS.get(for_game(game).key)
     if rows is None:
-        # Silver Blades' progression tables have not been read off its disks,
-        # and neither have the Krynn titles' or Gateway's. Nothing here, so a
-        # caller shows no number rather than another game's -- the same rule
-        # `goldbox/c64_port.py` applies to a race table it does not have. Issue #31.
+        # The Krynn titles' and Gateway's progression tables have not been
+        # read off their disks. Nothing here, so a caller shows no number
+        # rather than another game's -- the same rule `goldbox/c64_port.py`
+        # applies to a race table it does not have.
         return {}
     out: dict[str, tuple[int, ...]] = {}
     mu_level = int(class_levels.get("magic-user") or 0)

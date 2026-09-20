@@ -104,14 +104,14 @@ def test_an_amiga_curse_source_keeps_its_own_array():
     assert tuple(dos.raw("spells_castable_magic_user")) == (7, 6, 5, 0, 0)
 
 
-def test_a_silver_blades_c64_source_still_writes_zeros():
+def test_a_silver_blades_c64_source_gets_its_own_table_row():
     """Silver Blades' own C64 engine never stores this either
-    (`stores_spell_capacity=False`), but `goldbox.spells._SLOTS` has no rows
-    for it -- #31, #81 -- so the writer invents nothing and the zeros pass
-    through unchanged, the same as before this fix."""
+    (`stores_spell_capacity=False`), so the writer recomputes it from
+    `goldbox.spells._SLOTS`' Silver Blades rows -- seven levels deep, the
+    title's own width -- and the cleric array is left as the source had it."""
     dos = _written(_c64_curse({"magic-user": 5}, 14, game=SSB), game=SSB)
     assert tuple(dos.raw("spells_castable_cleric")) == (0,) * 7
-    assert tuple(dos.raw("spells_castable_magic_user")) == (0,) * 7
+    assert tuple(dos.raw("spells_castable_magic_user")) == (4, 2, 1, 0, 0, 0, 0)
 
 
 def test_pool_of_radiance_is_untouched():
@@ -216,11 +216,13 @@ def test_a_curse_character_never_holds_a_druid_level():
     assert spells.capacity_by_class({"druid": 9}, 18, CURSE) == {}
 
 
-def test_silver_blades_gets_no_paladin_or_ranger_row_either():
-    """`_SLOTS` still has no Silver Blades entry at all (#31, #81), and a
-    title with no rows must invent none for these two classes any more than
-    for the other two."""
-    assert spells.capacity_by_class({"paladin": 11, "ranger": 11}, 18, SSB) == {}
+def test_silver_blades_gets_a_paladin_and_ranger_row_from_its_own_table():
+    """Silver Blades' ranger and paladin reach level 15, and their rows are
+    its own rather than Curse's eleven-level ones."""
+    assert spells.capacity_by_class({"paladin": 11, "ranger": 11}, 18, SSB) == {
+        "cleric": (2, 1, 0, 0, 0, 0, 0),
+        "druid": (2, 0, 0, 0, 0, 0, 0),
+        "magic-user": (2, 0, 0, 0, 0, 0, 0)}
 
 
 def test_pool_of_radiance_has_no_paladin_or_ranger_rows():

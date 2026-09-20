@@ -2767,7 +2767,10 @@ def test_a_silver_blades_ranger_is_shown_his_spellbook(app, tmp_path):
     assert box.isEnabled(), "a ranger has a spellbook"
     assert box.toolTip() == ""
     assert book.known() == [77, 78, 79, 80]
-    assert memorised.capacity.text() == "0 memorized."
+    # A level-8 ranger's druid array holds one first-level slot, and nothing
+    # is memorised yet: Silver Blades' own rows are read (`goldbox.spells`),
+    # so the line compares against a capacity rather than only counting.
+    assert memorised.capacity.text().startswith("druid: L1 0/1, L2 0/0")
 
     w.roster.selectRow(by_name["GUY DE VALOIS"])
     assert not box.isEnabled(), "the paladin is granted nothing and stays grey"
