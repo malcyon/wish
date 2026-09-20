@@ -44,7 +44,7 @@ from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER
 from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0, SaveGame1, load_save, looks_occupied
 
-from .convert import _SAVGAM_FILE_RE, AMIGA_SUFFIX, Source
+from .convert import Source
 from .inventory import Inventory
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
@@ -217,7 +217,7 @@ class Member:
 class Party:
     """Everything editable in one opened file.
 
-    Three shapes of C64 file arrive here and produce the same roster:
+    Three kinds of C64 file open here and produce the same roster:
 
     * a **save disk** -- one title's save files, up to eight slots;
     * a **roster disk** -- no save games at all, just standalone character
@@ -254,18 +254,21 @@ class Party:
         Raises `dos_codec.WrongTitleError` for a title with no C64 port
         (Pools of Darkness), which the editor cannot hold.
         """
-        path = str(source.path) if isinstance(source, Source) else str(source)
+        given = source
         if not isinstance(source, Source):
-            source = self._source_of(path, disk)
+            source = self._source_of(str(given), disk)
         self.source: Source | None = source
         self.port = "c64" if source is None else source.port
-        self.path = path
+        # One value for one save: a `SAVGAMA.DAT` path and its folder's own
+        # `Source` are the same save, and `Source.detect(path, party)` compares
+        # this against the path it is given.
+        self.path = str(given) if source is None else str(source.path)
         self.disk = None
         self.save0: SaveGame0 | None = None
         self.save1: SaveGame1 | None = None
         self.members: list[Member] = []
         if self.port == "c64":
-            self._open_c64(source, game, disk)
+            self._open_c64(game, disk)
         else:
             self.is_save = True
             self.game = self._c64_game(source)
@@ -276,16 +279,14 @@ class Party:
 
     @staticmethod
     def _source_of(path: str, disk) -> "Source | None":
-        """The `Source` a path names, or None for a plain C64 image."""
+        """The `Source` a path names, or None for a simple C64 image."""
         if disk is not None:
             return None
-        where = pathlib.Path(path)
-        if (where.is_dir() or where.suffix.lower() == AMIGA_SUFFIX
-                or _SAVGAM_FILE_RE.match(where.name)):
-            return Source.detect(where)
+        if Source.looks_like_a_save(path):
+            return Source.detect(path)
         return None
 
-    def _open_c64(self, source: "Source | None", game, disk) -> None:
+    def _open_c64(self, game, disk) -> None:
         self.disk = D64.open(self.path) if disk is None else disk
         detected = c64_port.detect(self.disk)
         self.is_save = detected is not None
@@ -365,7 +366,8 @@ class Party:
         disk = AmigaDisk.open(str(self.source.path))
         slot = self.source.slot
         if self.source.title.key == dos_port.POOL_OF_RADIANCE.key:
-            for number, char in self._por_characters(disk, slot):
+            characters = amiga_savegame.read_por_characters(disk, slot)
+            for number, char in enumerate(characters, start=1):
                 record, _report = dos_codec.to_c64_record(
                     amiga_por.to_dos_character(char), icon=None)
                 self._append_converted(number, record, char)
@@ -378,31 +380,6 @@ class Party:
         if not self.members:
             raise amiga_savegame.AmigaRecordError(
                 f"slot {slot} holds no characters")
-
-    @staticmethod
-    def _por_characters(disk, slot: str):
-        """`(file number, AmigaPorCharacter)` for each of an Amiga Pool of
-        Radiance slot's character files -- what `amiga_savegame.read_por_slot`
-        reads, before it converts them to DOS records, so the write-back has
-        the Amiga record to patch."""
-        from goldbox.amiga_adf import AmigaDiskError
-
-        drawer = amiga_savegame.por_save_drawer(disk)
-        for number in range(1, amiga_savegame.PARTY_MAX + 1):
-            files = []
-            for suffix in (".sav", ".itm", ".spc"):
-                name = amiga_por.por_filename(slot, number, suffix)
-                try:
-                    files.append(disk.read_file(
-                        amiga_savegame.por_save_path(name, drawer)))
-                except AmigaDiskError:
-                    files.append(None)
-            raw, items, effects = files
-            if raw is None:
-                break
-            yield number, amiga_por.por_character(
-                raw, items or b"", effects or b"",
-                source=f"{disk.volume_name}:{slot}{number}")
 
     def _append_converted(self, number: int, record: CharacterRecord,
                           native: Any) -> None:

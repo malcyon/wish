@@ -191,6 +191,20 @@ class Source:
     def key(self) -> str:
         return self.title.key
 
+    @staticmethod
+    def looks_like_a_save(path: str | pathlib.Path) -> bool:
+        """Whether `path` is named like a DOS save folder, a
+        `SAVGAM<slot>.DAT`/`.PTY` file or an Amiga `.adf`.
+
+        Reads the name and whether it is a folder, never the contents, so a
+        path that does not exist and is called `x.adf` still answers True and
+        `detect` is what refuses it. Anything else is taken for a C64 disk
+        image.
+        """
+        path = pathlib.Path(path)
+        return (path.is_dir() or path.suffix.lower() == AMIGA_SUFFIX
+                or bool(_SAVGAM_FILE_RE.match(path.name)))
+
     @classmethod
     def detect(cls, path: str | pathlib.Path, party: Any = None,
               slot: str | None = None) -> "Source":
@@ -225,12 +239,12 @@ class Source:
         if path.is_dir():
             return cls._detect_dos_folder(path)
         if path.is_file():
+            if not cls.looks_like_a_save(path):
+                return cls._detect_c64_disk(path)
             match = _SAVGAM_FILE_RE.match(path.name)
             if match:
                 return cls._detect_dos_file(path.parent, match.group(1).upper())
-            if path.suffix.lower() == AMIGA_SUFFIX:
-                return cls._detect_amiga_disk(path, slot)
-            return cls._detect_c64_disk(path)
+            return cls._detect_amiga_disk(path, slot)
         raise ConvertError(
             f"{path} is neither a save disk nor a DOS save folder")
 

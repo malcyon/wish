@@ -6,6 +6,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 |---|---|
 | `test_amigalatericonconvert.py` | Checks that an Amiga Curse or Silver Blades combat figure is reported as converted and composes a legal C64 figure, on the player's specimens. |
 | `test_amigaporiconconvert.py` | Checks that `write_por` writes a given combat figure and that a C64 or DOS party converted to Amiga Pool of Radiance arrives with its own. |
+| `test_amigaporcharacters.py` | Checks that `read_por_characters` reads an Amiga Pool of Radiance slot's character files in order, stops at the first missing one and refuses a bad slot letter. |
 | `test_amigatoc64.py` | Checks an Amiga Pool of Radiance save slot becoming a C64 one: the party's square, area, clock and quest flags. |
 | `test_amigatodos.py` | Checks the writing half of an Amiga Pool of Radiance save becoming a DOS save folder. |
 | `test_c64classcode.py` | Checks that `goldbox.c64_codec.read` repairs a class code the C64 engine stopped maintaining after training. |

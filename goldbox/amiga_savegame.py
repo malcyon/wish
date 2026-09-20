@@ -733,19 +733,36 @@ def _por_file(disk: AmigaDisk, letter: str, index: int, suffix: str,
         return None
 
 
-def read_por_slot(disk: AmigaDisk, slot: str, drawer: str | None = None):
-    """Pool party records and its parsed saved-game bytes from one disk slot."""
+def read_por_characters(disk: AmigaDisk, slot: str,
+                        drawer: str | None = None) -> list:
+    """The `AmigaPorCharacter` of each Pool character file in one disk slot, in
+    file order, stopping at the first missing `.sav`.
+
+    Returned as a list rather than yielded, so a bad slot letter or a disk
+    with no save drawer is refused here and not at the first step of a loop.
+    """
     from . import amiga_por
     letter = _por_slot(slot)
     drawer = por_save_drawer(disk) if drawer is None else drawer
-    party = []
+    characters = []
     for index in range(1, PARTY_MAX + 1):
         raw, items, effects = (_por_file(disk, letter, index, suffix, drawer)
                                for suffix in (".sav", ".itm", ".spc"))
         if raw is None:
             break
-        party.append(amiga_por.to_dos_character(amiga_por.por_character(
-            raw, items or b"", effects or b"", source=f"{disk.volume_name}:{letter}{index}")))
+        characters.append(amiga_por.por_character(
+            raw, items or b"", effects or b"",
+            source=f"{disk.volume_name}:{letter}{index}"))
+    return characters
+
+
+def read_por_slot(disk: AmigaDisk, slot: str, drawer: str | None = None):
+    """Pool party records and its parsed saved-game bytes from one disk slot."""
+    from . import amiga_por
+    letter = _por_slot(slot)
+    drawer = por_save_drawer(disk) if drawer is None else drawer
+    party = [amiga_por.to_dos_character(char)
+             for char in read_por_characters(disk, letter, drawer)]
     if not party:
         raise AmigaRecordError(
             f"slot {letter} has no character files at "

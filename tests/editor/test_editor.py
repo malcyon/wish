@@ -4484,6 +4484,40 @@ def test_a_dos_party_can_be_opened_from_a_source(tmp_path):
     assert len(party) == 3 and party.path == str(tmp_path)
 
 
+def test_a_dos_party_has_one_path_whether_opened_from_its_file_or_its_folder(
+        tmp_path):
+    """`Source.detect(path, party)` compares `party.path` with the path it is
+    handed, so a save reached by its `SAVGAMA.DAT` and by its folder has to
+    read as one value."""
+    from editor.convert import Source
+    from goldbox import dos_port
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    by_file = Party(str(tmp_path / "SAVGAMA.DAT"))
+    by_folder = Party(str(tmp_path))
+    by_source = Party(Source.detect(tmp_path))
+    assert by_file.path == by_folder.path == by_source.path == str(tmp_path)
+
+
+def test_a_c64_source_opens_the_disk_at_its_own_path(party):
+    """`party` is the synthetic save disk from the fixture above."""
+    from editor.convert import Source
+    source = Source(port="c64", title=Party(str(party)).game,
+                    path=pathlib.Path(party))
+    opened = Party(source)
+    assert opened.port == "c64" and opened.in_save
+    assert opened.path == str(party)
+
+
+def test_a_path_is_taken_for_a_save_by_its_name_or_for_being_a_folder(tmp_path):
+    from editor.convert import Source
+    (tmp_path / "folder").mkdir()
+    for named in ("folder", "SAVGAMA.DAT", "savgamb.pty", "disk.ADF",
+                  "never_made.adf"):
+        assert Source.looks_like_a_save(tmp_path / named), named
+    for named in ("PORSAVE10.D64", "SAVGAMAB.DAT", "never_made.d64"):
+        assert not Source.looks_like_a_save(tmp_path / named), named
+
+
 def test_pools_of_darkness_cannot_be_opened_and_the_refusal_is_catchable(tmp_path):
     """No C64 port, so no sheet layout to edit its characters through."""
     from goldbox import dos_codec, dos_port
