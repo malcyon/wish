@@ -31,6 +31,15 @@ CLASS_ORDER = ("cleric", "druid", "fighter", "paladin", "ranger",
 
 
 @dataclasses.dataclass(frozen=True)
+class Instruction:
+    """One exact instruction required by a measured recompute loop."""
+
+    at: int
+    mnemonic: str
+    operands: str
+
+
+@dataclasses.dataclass(frozen=True)
 class Loop:
     """File offsets of the instructions that establish one recompute loop."""
 
@@ -43,6 +52,7 @@ class Loop:
     store: int
     limit: int
     limit_size: str = "b"
+    proof: tuple[Instruction, ...] = ()
 
     @property
     def guarded(self) -> bool:
@@ -78,11 +88,46 @@ TITLES = {
         table_offset=0x1B30,
         row_bytes=13,
         entry_bytes=1,
-        guarded=Loop(0x189FA, 0x18A46, 0x18A54, 0x18A58, 0x18A58,
-                     0x18A7A, 0x18AA8, 0x18AC2),
-        unguarded=Loop(0x38A52, 0x38A5A, 0x38A6A, 0x38A6E, None,
-                       0x38A82, 0x38AA4, 0x38AF4),
-        unguarded_callers=(0x1700C, 0x260B8, 0x26EEA, 0x328F2),
+        guarded=Loop(
+            0x189FA, 0x18A46, 0x18A54, 0x18A58, 0x18A58,
+            0x18A7A, 0x18AA8, 0x18AC2,
+            proof=(
+                Instruction(0x18A46, "clr.b", "$73(a2)"),
+                Instruction(0x18A54, "adda.w", "#$10a, a0"),
+                Instruction(0x18A58, "tst.b", "(a0, d0.w)"),
+                Instruction(0x18A5C, "ble.b", "$18ac0"),
+                Instruction(0x18A62, "muls.w", "#$d, d0"),
+                Instruction(0x18A7A, "lea.l", "-$64ce(a4), a0"),
+                Instruction(0x18A7E, "move.b", "(a0, d0.l), d0"),
+                Instruction(0x18A82, "cmp.b", "$73(a2), d0"),
+                Instruction(0x18A8C, "muls.w", "#$d, d0"),
+                Instruction(0x18AA4, "lea.l", "-$64ce(a4), a0"),
+                Instruction(0x18AA8, "move.b", "(a0, d0.l), $73(a2)"),
+                Instruction(0x18AC0, "addq.b", "#$1, (a3)"),
+                Instruction(0x18AC2, "cmpi.b", "#$7, (a3)"),
+                Instruction(0x18AC6, "ble.b", "$18a4e"),
+            ),
+        ),
+        unguarded=Loop(
+            0x38A52, 0x38A5A, 0x38A6A, 0x38A6E, None,
+            0x38A82, 0x38AA4, 0x38AF4,
+            proof=(
+                Instruction(0x38A5A, "clr.b", "$73(a2)"),
+                Instruction(0x38A6A, "adda.w", "#$10a, a0"),
+                Instruction(0x38A6E, "move.b", "(a0, d0.w), d3"),
+                Instruction(0x38A76, "muls.w", "#$d, d0"),
+                Instruction(0x38A82, "lea.l", "-$64ce(a4), a0"),
+                Instruction(0x38A86, "move.b", "(a0, d0.l), d0"),
+                Instruction(0x38A8A, "cmp.b", "$73(a2), d0"),
+                Instruction(0x38A94, "muls.w", "#$d, d0"),
+                Instruction(0x38AA0, "lea.l", "-$64ce(a4), a0"),
+                Instruction(0x38AA4, "move.b", "(a0, d0.l), $73(a2)"),
+                Instruction(0x38AF2, "addq.b", "#$1, d2"),
+                Instruction(0x38AF4, "cmpi.b", "#$7, d2"),
+                Instruction(0x38AF8, "ble.w", "$38a64"),
+            ),
+        ),
+        unguarded_callers=(0x1700C, 0x260B8, 0x26EEA, 0x328F2, 0x396F4),
     ),
     "secret-of-the-silver-blades": Title(
         key="secret-of-the-silver-blades",
@@ -95,11 +140,50 @@ TITLES = {
         table_offset=0x1E30,
         row_bytes=38,
         entry_bytes=2,
-        guarded=Loop(0xEAAC, 0xEAF8, 0xEB02, 0xEB06, 0xEB06,
-                     0xEB26, 0xEB5E, 0xEB84, "w"),
-        unguarded=Loop(0x3C802, 0x3C80A, 0x3C81A, 0x3C81E, None,
-                       0x3C834, 0x3C85C, 0x3C8B6),
-        unguarded_callers=(0xE694, 0x27130, 0x27FD8),
+        guarded=Loop(
+            0xEAAC, 0xEAF8, 0xEB02, 0xEB06, 0xEB06,
+            0xEB26, 0xEB5E, 0xEB84, "w",
+            proof=(
+                Instruction(0xEAF8, "clr.b", "$6a(a0)"),
+                Instruction(0xEB02, "adda.w", "#$ac, a0"),
+                Instruction(0xEB06, "tst.b", "(a0, d2.w)"),
+                Instruction(0xEB0A, "ble.b", "$eb82"),
+                Instruction(0xEB0E, "muls.w", "#$26, d0"),
+                Instruction(0xEB22, "add.l", "d1, d1"),
+                Instruction(0xEB26, "lea.l", "-$61ce(a4), a0"),
+                Instruction(0xEB34, "move.w", "(a0, d0.l), d0"),
+                Instruction(0xEB38, "cmp.w", "d1, d0"),
+                Instruction(0xEB3E, "muls.w", "#$26, d0"),
+                Instruction(0xEB52, "add.l", "d1, d1"),
+                Instruction(0xEB56, "lea.l", "-$61ce(a4), a0"),
+                Instruction(0xEB5E, "move.b", "$1(a0, d0.l), $6a(a1)"),
+                Instruction(0xEB82, "addq.w", "#$1, d2"),
+                Instruction(0xEB84, "cmpi.w", "#$6, d2"),
+                Instruction(0xEB88, "ble.w", "$eafe"),
+            ),
+        ),
+        unguarded=Loop(
+            0x3C802, 0x3C80A, 0x3C81A, 0x3C81E, None,
+            0x3C834, 0x3C85C, 0x3C8B6,
+            proof=(
+                Instruction(0x3C80A, "clr.b", "$6a(a2)"),
+                Instruction(0x3C81A, "adda.w", "#$ac, a0"),
+                Instruction(0x3C81E, "move.b", "(a0, d0.w), d3"),
+                Instruction(0x3C826, "muls.w", "#$26, d0"),
+                Instruction(0x3C830, "add.l", "d1, d1"),
+                Instruction(0x3C834, "lea.l", "-$61ce(a4), a0"),
+                Instruction(0x3C83E, "move.w", "(a0, d0.l), d0"),
+                Instruction(0x3C842, "cmp.w", "d1, d0"),
+                Instruction(0x3C84A, "muls.w", "#$26, d0"),
+                Instruction(0x3C854, "add.l", "d1, d1"),
+                Instruction(0x3C858, "lea.l", "-$61ce(a4), a0"),
+                Instruction(0x3C85C, "move.b", "$1(a0, d0.l), $6a(a2)"),
+                Instruction(0x3C8B4, "addq.b", "#$1, d2"),
+                Instruction(0x3C8B6, "cmpi.b", "#$6, d2"),
+                Instruction(0x3C8BA, "ble.w", "$3c814"),
+            ),
+        ),
+        unguarded_callers=(0xE694, 0x27130, 0x27FD8, 0x3D45A),
     ),
 }
 
@@ -167,22 +251,14 @@ def _instruction(raw: bytes, at: int) -> tuple[str, str]:
 
 
 def _loop_errors(raw: bytes, title: Title, loop: Loop) -> list[str]:
-    expected = {
-        loop.clear: ("clr.b", f"${title.thac0_field:x}"),
-        loop.level_base: ("adda.w", f"#${title.levels_field:x}"),
-        loop.level_read: (("tst.b" if loop.guarded else "move.b"),
-                          "(a0,"),
-        loop.table: ("lea.l", "(a4)"),
-        loop.store: ("move.b", f"${title.thac0_field:x}"),
-        loop.limit: (f"cmpi.{loop.limit_size}",
-                     f"#${len(title.classes) - 1:x}"),
-    }
     errors = []
-    for at, (mnemonic, operand) in expected.items():
-        got_mnemonic, got_operands = _instruction(raw, at)
-        if got_mnemonic != mnemonic or operand not in got_operands:
+    for expected in loop.proof:
+        got_mnemonic, got_operands = _instruction(raw, expected.at)
+        if ((got_mnemonic, got_operands)
+                != (expected.mnemonic, expected.operands)):
             errors.append(
-                f"{at:#x}: expected {mnemonic} containing {operand}, got "
+                f"{expected.at:#x}: expected {expected.mnemonic} "
+                f"{expected.operands}, got "
                 f"{got_mnemonic} {got_operands}")
     displacement = int.from_bytes(raw[loop.table + 2:loop.table + 4],
                                   "big", signed=True)
@@ -194,13 +270,33 @@ def _loop_errors(raw: bytes, title: Title, loop: Loop) -> list[str]:
     return errors
 
 
+def direct_callers(raw: bytes, routine: int, start: int, end: int) -> list[int]:
+    """Direct PC-relative ``jsr`` and ``bsr`` calls to one routine."""
+    hits = []
+    for at in amiga68k.pc_references(raw, routine, start, end):
+        mnemonic, _operands = _instruction(raw, at)
+        if mnemonic == "jsr" or mnemonic.startswith("bsr"):
+            hits.append(at)
+    return hits
+
+
+def _callers(raw: bytes, exe: amiga68k.Executable, routine: int) -> tuple[int, ...]:
+    """Jump-table and direct PC-relative callers found by static scans."""
+    jump_table = (at for at, _mnemonic, _ops in
+                  amigaglobal.callers(exe, routine))
+    code = next(h for h in exe.hunks if h.kind == "CODE")
+    assert code.file_offset is not None
+    direct = direct_callers(
+        raw, routine, code.file_offset, code.file_offset + code.size)
+    return tuple(sorted(set(jump_table) | set(direct)))
+
+
 def check(raw: bytes, title: Title) -> list[str]:
     """Return every disagreement between this build and the measured loops."""
     errors = _loop_errors(raw, title, title.guarded)
     errors += _loop_errors(raw, title, title.unguarded)
     exe = amiga68k.Executable.parse(raw)
-    callers = tuple(at for at, _mnemonic, _ops in
-                    amigaglobal.callers(exe, title.unguarded.routine))
+    callers = _callers(raw, exe, title.unguarded.routine)
     if callers != title.unguarded_callers:
         errors.append(
             f"{title.unguarded.routine:#x}: callers are "

@@ -167,14 +167,17 @@ the row without a test: Curse `0x038A6E` and Silver Blades `0x03C81E`. They
 therefore read the zero entry of every absent class and store **40**. Both
 results are **CONFIRMED from the executable instructions and tables**.
 
-This is the target-side import/training rule rather than dead arithmetic. The
-unguarded Curse routine has four callers at file offsets `0x01700C`,
-`0x0260B8`, `0x026EEA` and `0x0328F2`; the Silver Blades routine has three at
-`0x00E694`, `0x027130` and `0x027FD8`. The last Silver Blades call is inside
-its Curse-import routine, which starts at `0x026F64`, and the adjacent Curse
-call is in the same record import/load pipeline. The training and
-class-restoration paths call the same unguarded routine. **CONFIRMED** that an
-Amiga import/rebuild stores 40 for the low-level magic-user.
+This is the target-side import/training rule rather than dead arithmetic. A
+static scan of jump-table `jsr` calls and direct PC-relative `jsr`/`bsr` calls
+finds five callers of the unguarded Curse routine at file offsets `0x01700C`,
+`0x0260B8`, `0x026EEA`, `0x0328F2` and `0x0396F4`; the same scan finds four
+Silver Blades callers at `0x00E694`, `0x027130`, `0x027FD8` and `0x03D45A`.
+The Silver Blades call at `0x027FD8` is inside its Curse-import routine, which
+starts at `0x026F64`, and the adjacent Curse call is in the same record
+import/load pipeline. The training and class-restoration paths call the same
+unguarded routine. **CONFIRMED** that an Amiga import/rebuild stores 40 for the
+low-level magic-user. The caller counts cover these two statically identifiable
+call forms; they do not rule out a computed call through a register.
 
 The records delimit that claim. In the watched
 `WISH-SPEC-coab-amiga-converted-resave`, MATHEW at magic-user 1 and PHILIPPE

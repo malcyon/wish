@@ -10,6 +10,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+import capstone  # noqa: E402
 import gamedata  # noqa: E402
 
 from goldbox.amiga_later import party_in_savegame  # noqa: E402
@@ -30,6 +31,28 @@ def _executable(key: str) -> tuple[amigathac0.Title, bytes]:
 def test_both_recompute_loops_are_still_the_measured_code(key):
     title, raw = _executable(key)
     assert amigathac0.check(raw, title) == []
+
+
+@pytest.mark.parametrize("key", amigathac0.TITLES)
+def test_every_pinned_loop_instruction_is_checked_in_the_executable(key):
+    """Changing any behavior-bearing instruction must invalidate the proof."""
+    title, raw = _executable(key)
+    md = capstone.Cs(capstone.CS_ARCH_M68K, capstone.CS_MODE_M68K_000)
+    for loop in (title.guarded, title.unguarded):
+        for expected in loop.proof:
+            instruction = next(md.disasm(raw[expected.at:], expected.at,
+                                         count=1))
+            changed = bytearray(raw)
+            changed[expected.at + instruction.size - 1] ^= 1
+            errors = amigathac0.check(bytes(changed), title)
+            assert any(error.startswith(f"{expected.at:#x}:")
+                       for error in errors), expected
+
+
+def test_direct_pc_relative_callers_are_included():
+    """The caller scan accepts both PC-relative jsr and bsr encodings."""
+    raw = bytes.fromhex("4eba000e 6100000a 4e71 4e71 4e71 4e71 4e75")
+    assert amigathac0.direct_callers(raw, 0x10, 0, len(raw)) == [0, 4]
 
 
 @pytest.mark.parametrize("key", amigathac0.TITLES)
