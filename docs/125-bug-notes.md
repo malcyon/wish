@@ -478,6 +478,26 @@ Pool of Radiance, `0x02D87F`/`0x02DB0F` in Curse, `0x035671`/`0x03591A` in
 Silver Blades) and rebuilds the total on its way out.
 `tools/dos/dosencrecompute.py callers` re-takes all of it.
 
+**The screens that move coins without charging for them do keep the total
+right, by a third mechanism that is neither the recompute nor nothing.** Each
+title carries two leaf routines, `encumbrance -= arg` and `encumbrance += arg`
+(`0x024CA9`/`0x024CC3` in Pool of Radiance, `0x02BCD2`/`0x02BCEC` in Curse,
+`0x0339E1`/`0x033A02` in Silver Blades, `0x0285EF`/`0x02860E` in Pools of
+Darkness), and their callers are the pool, share and give screens: **nine call
+sites in four routines add, three in three take away, identically in all four
+titles, and every one of the four that add also writes a coin purse.** Pool of
+Radiance's coin transfer between two characters, at `0x0250D3`, is the whole
+pattern in one routine -- it checks the receiver's encumbrance plus the amount
+against his carrying capacity, then `source.purse -= n`, `source.encumbrance
+-= n`, `destination.purse += n`, `destination.encumbrance += n`. **No caller of
+either leaf also calls the recompute**, so the two mechanisms belong to
+different screens. The table above is the corroboration from the running game:
+pooling 288 away and taking 1000 back changed the stored total by exactly the
+coins that moved, leaving the `+3` it already carried, and pooling *every* coin
+away took the money term to zero and the stored total down with it, to the
+weight of the items alone.
+`tools/dos/dosencrecompute.py helpers` re-takes it.
+
 **The evidence.** Four measurements in a driven DOS session, on MATHEW of the
 Curse party from `#113 (Play DOS Curse far enough to save a party with
 items)`, plus two an earlier session took:
@@ -808,9 +828,9 @@ hand one out. Until somebody does, this is a bug in the sense that the code
 cannot do what it was written to do, not in the sense that a player has met
 it.
 
-**Curse ships the words, so a player can reach it; Silver Blades does not,
-which is why its routine has no block.** Each title's own `ITEMNAMES`, read
-through `goldbox.items.load_item_names`:
+**Curse ships the words and Silver Blades does not, which is why its routine
+has no block.** Each title's own `ITEMNAMES`, read through
+`goldbox.items.load_item_names`:
 
 | title | disk | names | `BAG` | `HOLDING` |
 |---|---|---|---|---|
@@ -820,15 +840,41 @@ through `goldbox.items.load_item_names`:
 
 The same two indices in Curse as in Pool of Radiance, and neither word anywhere
 in Silver Blades' table. **So Silver Blades having no discount block is not a
-third defect -- it has no bag of holding to discount** -- and Curse having one
-it can never take is a defect a player can hit.
+third defect -- it has no bag of holding to discount.**
 
-**What is not established.** Whether Curse's treasure and shop tables actually
-hand one out, which the name table's entry allows but does not prove. **No DOS
-record on this machine carries one**: `tools/dos/dosencrecompute.py bags` walked
-2965 record files and 6497 items, 3494 of them readied, and 186 is not among
-the 69 distinct name words in use. What would settle it: a sweep of Curse's
-`ITEM1`-`ITEM8` treasure files for a record whose name words include 186.
+**But no title hands one out, so nobody meets any of this.** The word is
+printable in three titles and is used by no item in any of them.
+`tools/dos/dosencrecompute.py stock` sweeps both ports' own tables -- the C64
+`ITEMFILE*`/`ITEM<hh>` lists on every disk and the DOS `ITEM*.DAX` blocks --
+and **186 appears in no item's name words in 1,883 C64 records or 1,171 DOS
+ones**:
+
+| title | C64 lists | C64 records | DOS tables | DOS records | own index for `HOLDING` |
+|---|---|---|---|---|---|
+| Pool of Radiance | 47 | 354 | 8 | 352 | 186 |
+| Curse of the Azure Bonds | 20 | 256 | 6 | 253 | 186 |
+| Gateway to the Savage Frontier | 38 | 413 | 5 | 356 | 186 |
+| Secret of the Silver Blades | 38 | 171 | 3 | 210 | absent |
+| Champions of Krynn | 32 | 113 | -- | -- | absent |
+| Death Knights of Krynn | 6 | 576 | -- | -- | absent |
+
+Pools of Darkness's one `ITEM0.DAX` block is 4,318 bytes and divides by neither
+item stride, so it is reported undecoded rather than as a zero. The control on
+the nil answer is the last column -- the same index the engine compares
+against, in three titles' own tables -- and the scan is shown finding a
+fabricated record that carries the word
+(`tests/dos/test_dosencrecompute.py`). A second, independent nil: no record on
+this machine carries one either, `bags` walking 2965 record files and 6497
+items, 3494 of them readied.
+
+**So the player-facing half is refuted rather than unestablished.** A `$27
+TREASURE` statement hands out either a treasure list or a count of random magic
+items, and both draw on the lists swept above, so no encounter and no shop in
+these titles can give a character an item the discount would fire on.
+**PROBABLE** rather than confirmed, because the random-magic-item path has been
+read from `docs/128-guide-and-scripting.md`'s opcode table rather than from the
+code that picks the item. What would settle it: read that picker in
+`GAME.OVR` and name the list it draws from.
 
 **Version.** Pool of Radiance live, Curse of the Azure Bonds dead, Silver
 Blades and Pools of Darkness absent; DOS. CONFIRMED from the code in all four
@@ -838,11 +884,15 @@ not survive the training fee, so failing it is not evidence of an edited
 record)`.
 
 **And it matters to this project beyond the game.** A Pool of Radiance
-character with a readied bag of holding stores encumbrance **5000 below**
-`money + Σ(weight × quantity)`, so the identity `goldbox.dos_codec.expected_
-encumbrance` checks fails on a record nobody edited. That is the engine's own
-counterexample to reading a "below" miss as evidence of an edit;
-`.claude/rules/testing.md` says how to read a miss now.
+character with a readied bag of holding would store encumbrance **5000 below**
+`money + Σ(weight × quantity)`, so the identity
+`goldbox.dos_codec.expected_encumbrance` checks would fail on a record nobody
+edited. It was the engine's own counterexample to reading a "below" miss as
+evidence of an edit -- and the table sweep above takes it back, because no item
+in either port's tables can set the flag. So the counterexample is one an
+editor could build and the game cannot, which is the opposite of what a
+counterexample to "below means edited" has to be.
+`.claude/rules/testing.md` says how to read a miss.
 
 ## Not yet confirmed
 

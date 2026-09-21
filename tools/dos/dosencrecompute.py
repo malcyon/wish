@@ -8,11 +8,13 @@ makes that true.  `tools/records/enccensus.py` answers it from records and
 `tools/dos/dosencsave.py` from a driven boot; this answers it from the shipped
 binaries, which no edited save can poison.
 
-Three questions, three modes.
+Five questions, five modes.
 
     tools/dos/dosencrecompute.py routine     the recompute routine, per title
     tools/dos/dosencrecompute.py callers     who calls it, and who writes money
+    tools/dos/dosencrecompute.py helpers     who adjusts the total coin for coin
     tools/dos/dosencrecompute.py bags        every record carrying a bag of holding
+    tools/dos/dosencrecompute.py stock       every item the game itself hands out
 
 **`routine`** finds the one function that rebuilds the field.  It is found by
 signature rather than by a remembered address: the routine is the one
@@ -31,12 +33,27 @@ titles: 0 of 11, 0 of 12 and 0 of 10.  Exactly one routine per title writes
 decrements the count and rebuilds the total on its way out.  So a trainer's fee
 and a shop's change are never repaired and appraising a gem always is.
 
+**`helpers`** is the other half of that answer, and it is why no coin movement
+has ever been seen to leave a record *below* the sum.  Beside the recompute
+each title carries two leaf routines that move the stored total by an argument,
+`encumbrance -= arg` and `encumbrance += arg`, and their callers are the screens
+that move coins between a character's purse, another character's and the party
+pool.  Those screens mirror every coin they move into the total, so the identity
+survives them exactly; the screens that *charge* for something -- the trainer,
+the shop, the temple -- call neither routine, and that is the drift.
+
 **`bags`** is the term the identity has never had.  Pool of Radiance's tail
 takes 5000 tenths of a pound off the total when a **readied** item's first name
-word is `HOLDING`, so a character carrying a bag of holding stores 5000 *below*
-`money + sum(weight x quantity)` and is not an edited record.  This walks every
-DOS record on the machine looking for one, so the claim can be checked against
-the corpus instead of resting on the code alone.
+word is `HOLDING`, so a character carrying a bag of holding would store 5000
+*below* `money + sum(weight x quantity)` with nobody having edited anything.
+This walks every DOS record on the machine looking for one; none has one, and
+`stock` says why.
+
+**`stock`** asks the same question of the game rather than of the saves: does
+any item in a title's own shop and encounter tables carry that name word at
+all?  It reads the C64 `ITEMFILE*` lists and the DOS `ITEM*.DAX` blocks, with
+each title's own `ITEMNAMES` index for the word as the control -- a nil answer
+means nothing unless the word it looked for is one the title can print.
 
 `tools/dos/dosovrmap.py callers` cannot do Pool of Radiance's routine: it resolves
 only targets that live inside `GAME.OVR`, and this one is resident.  That is
@@ -342,6 +359,71 @@ def money_writers(found: dict, which: str = "coins") -> dict[int, list[int]]:
 
 
 # ---------------------------------------------------------------------------
+# The two leaves that adjust the total instead of rebuilding it
+# ---------------------------------------------------------------------------
+#: The arithmetic that tells the two leaves apart: `sub ax, [bp+6]` and
+#: `add ax, [bp+6]`, the argument each was called with.  Both titles' later
+#: forms carry an `sbb`/`adc` of `[bp+8]` after it and are unaffected.
+HELPER_ARITH = {"minus": b"\x2b\x46\x06", "plus": b"\x03\x46\x06"}
+
+#: How far a leaf's store may be from its own prologue.  The three titles'
+#: are 0x11, 0x11 and 0x16 bytes in; the recompute's first write is 0x5C into
+#: its routine, so this separates them without naming an address.
+HELPER_SPAN = 0x20
+
+
+def adjust_helpers(found: dict) -> dict[str, int]:
+    """The two leaf routines that move stored encumbrance by an argument.
+
+    Found the way the recompute is: a write to the field whose prologue is
+    within :data:`HELPER_SPAN` bytes, with `sub ax, [bp+6]` or `add ax, [bp+6]`
+    between the two.  They are not the recompute and must not be read as one --
+    a caller of these adjusts the total by what it just moved and leaves every
+    other derived field alone.
+    """
+    ovr = found["files"]["GAME.OVR"]
+    enc = found["encumbrance"]
+    out: dict[str, int] = {}
+    for ref in dosfieldrefs.references(ovr, enc):
+        if "W" not in ref["kind"]:
+            continue
+        start = routine_start(ovr, ref["linear"])
+        if start < 0 or ref["linear"] - start > HELPER_SPAN:
+            continue
+        body = ovr[start:ref["linear"]]
+        for which, pattern in HELPER_ARITH.items():
+            if pattern in body:
+                out.setdefault(which, start)
+    return out
+
+
+def helper_callers(found: dict, helper: int) -> dict[int, dict]:
+    """Every routine that calls one leaf, and what else that routine does.
+
+    `calls` is how many times it calls it, `coins` the coin-purse writes in it
+    and `recompute` whether it also rebuilds the whole record -- which no
+    caller of either leaf does in any of the three titles, so the two
+    mechanisms belong to different screens rather than to one that hedges.
+    """
+    ovr = found["files"]["GAME.OVR"]
+    coins = money_writers(found, "coins")
+    rebuilt = {routine_start(ovr, site)
+               for name, site in call_sites(found) if name == "GAME.OVR"}
+    out: dict[int, dict] = {}
+    for p in range(len(ovr) - 3):
+        if ovr[p] != 0xE8:
+            continue
+        target = p + 3 + int.from_bytes(ovr[p + 1:p + 3], "little", signed=True)
+        if target != helper:
+            continue
+        start = routine_start(ovr, p)
+        row = out.setdefault(start, {"calls": 0, "coins": coins.get(start, []),
+                                     "recompute": start in rebuilt})
+        row["calls"] += 1
+    return out
+
+
+# ---------------------------------------------------------------------------
 # The corpus half: who carries a bag of holding
 # ---------------------------------------------------------------------------
 def bag_rows() -> tuple[list[dict], dict[str, int]]:
@@ -373,6 +455,157 @@ def bag_rows() -> tuple[list[dict], dict[str, int]]:
                         "stored": char.get("encumbrance"),
                         "expected": char.expected_encumbrance()})
     return out, sample
+
+
+# ---------------------------------------------------------------------------
+# The game's half: what the shop and encounter tables can hand out
+# ---------------------------------------------------------------------------
+#: The registry entry holding each title's C64 disks, where it has a C64 port.
+#: Gateway is swept as well as the four the other modes use, because its name
+#: table carries `HOLDING` at the same index and a title that ships the word
+#: is a title where a nil answer says something.
+C64_ENTRY = {"POOLRAD": "pool-of-radiance",
+             "CURSE": "curse-of-the-azure-bonds",
+             "SECRET": "secret-of-the-silver-blades",
+             "GATEWAY": "gateway-to-the-savage-frontier"}
+
+#: The C64 item record's three name words, and the DOS one's, which
+#: `goldbox.dos_codec.item_to_c64` maps onto each other.
+C64_NAME_BYTES = (1, 2, 3)
+
+
+def records_with_word(block: bytes, stride: int, word: int) -> list[int]:
+    """Indices of the DOS item records in `block` whose name words include
+    `word`.  A record of all zeroes is a hole rather than an item."""
+    at = [dl.ITEM_FIELDS_BY_NAME[n].offset for n in ("name1", "name2", "name3")]
+    return [i for i in range(len(block) // stride)
+            if any(block[i * stride:(i + 1) * stride])
+            and word in {block[i * stride + a] for a in at}]
+
+
+def c64_records_with_word(payload: bytes, word: int) -> list[int]:
+    """The same for a C64 `ITEMFILE*` list, whose records are sixteen bytes."""
+    from goldbox import items as gitems  # noqa: PLC0415
+    size = gitems.ITEM_SIZE
+    return [i for i in range(len(payload) // size)
+            if any(payload[i * size:(i + 1) * size])
+            and word in {payload[i * size + b] for b in C64_NAME_BYTES}]
+
+
+def word_index(stem: str, word: str = "HOLDING") -> tuple[int | None, int]:
+    """`(index, names)` for a word in this title's own `ITEMNAMES` table.
+
+    The index is the control on a nil sweep: a title whose table has no such
+    word cannot hand the item out whatever its tables hold, and one whose table
+    has it at 186 is a title where the engine's own compare would fire.
+    """
+    from automap import gamedisks  # noqa: PLC0415
+    from goldbox import c64_port  # noqa: PLC0415
+    from goldbox import items as gitems  # noqa: PLC0415
+    entry = C64_ENTRY.get(stem)
+    root = gamedisks.find(entry) if entry else None
+    if root is None:
+        return None, 0
+    game = c64_port.BY_KEY.get(entry)
+    for disk in sorted(p for p in root.rglob("*") if p.suffix.lower() == ".d64"):
+        try:
+            names = gitems.load_item_names(str(disk), game)
+        except Exception:                        # noqa: BLE001 -- a bad rip
+            continue
+        if not names:
+            continue
+        for index, text in names.items():
+            if text.upper() == word:
+                return index, len(names)
+        return None, len(names)
+    return None, 0
+
+
+def stock_rows(word: str = "HOLDING") -> tuple[list[dict], list[dict]]:
+    """Every item in the games' own tables carrying `word`, and the sample.
+
+    Two ports read apart: the C64 `ITEMFILE*`/`ITEM<hh>` lists off the player's
+    disks, and the DOS `ITEM*.DAX` blocks out of the archives.  A `.DAX` whose
+    blocks are divisible by neither item stride is **counted as undecoded**
+    rather than as zero hits, because a table this cannot read is not a table
+    that holds nothing.
+
+    What is searched for is :data:`HOLDING`, the constant Pool of Radiance's
+    engine compares against.  The `word` a sample row reports is that title's
+    *own* index for the word, which is the control: `186` means the title can
+    print it, `None` means it has no such word to print.
+    """
+    from automap import gamedisks  # noqa: PLC0415
+    from goldbox import items as gitems  # noqa: PLC0415
+    from goldbox.d64 import D64, split_load_address  # noqa: PLC0415
+    from goldbox.dos_savegame import dax_blocks  # noqa: PLC0415
+    hits: list[dict] = []
+    sample: list[dict] = []
+    strides = sorted({d.item_size for d in dl.DELTAS})
+    for stem in sorted(set(TITLES) | set(C64_ENTRY)):
+        index, names = word_index(stem, word)
+        entry = C64_ENTRY.get(stem)
+        root = gamedisks.find(entry) if entry else None
+        row = {"title": stem, "port": "c64", "word": index, "names": names,
+               "tables": 0, "records": 0, "undecoded": 0}
+        for disk in (sorted(p for p in root.rglob("*")
+                            if p.suffix.lower() == ".d64") if root else []):
+            try:
+                img = D64.open(str(disk))
+            except Exception:                    # noqa: BLE001 -- a bad rip
+                continue
+            for name in img.directory():
+                if not gitems.is_item_list(name.name):
+                    continue
+                try:
+                    _, payload = split_load_address(img.read_file(name))
+                except Exception:                # noqa: BLE001
+                    row["undecoded"] += 1
+                    continue
+                row["tables"] += 1
+                row["records"] += sum(
+                    1 for i in range(len(payload) // gitems.ITEM_SIZE)
+                    if any(payload[i * gitems.ITEM_SIZE:
+                                   (i + 1) * gitems.ITEM_SIZE]))
+                for i in c64_records_with_word(payload, HOLDING):
+                    raw = payload[i * gitems.ITEM_SIZE:
+                                  (i + 1) * gitems.ITEM_SIZE]
+                    hits.append({"title": stem, "port": "c64",
+                                 "where": f"{disk.name}:"
+                                          f"{bytes(name.name).decode('latin-1')}",
+                                 "slot": i, "raw": bytes(raw).hex(" ")})
+        if root is not None:
+            sample.append(row)
+
+        row = {"title": stem, "port": "dos", "word": index, "names": names,
+               "tables": 0, "records": 0, "undecoded": 0}
+        try:
+            game = game_dir(stem)
+        except FileNotFoundError:
+            continue
+        for path in sorted(game.glob("ITEM*.DAX")):
+            try:
+                blocks = list(dax_blocks(path.read_bytes(), path.name))
+            except Exception:                    # noqa: BLE001
+                row["undecoded"] += 1
+                continue
+            stride = next((s for s in strides
+                           if all(len(b) % s == 0 for _, b in blocks if b)), 0)
+            if not stride:
+                row["undecoded"] += 1
+                continue
+            row["tables"] += 1
+            for bid, block in blocks:
+                row["records"] += sum(1 for i in range(len(block) // stride)
+                                      if any(block[i * stride:(i + 1) * stride]))
+                for i in records_with_word(block, stride, HOLDING):
+                    hits.append({"title": stem, "port": "dos",
+                                 "where": f"{path.name}:block {bid}",
+                                 "slot": i,
+                                 "raw": block[i * stride:
+                                              (i + 1) * stride].hex(" ")})
+        sample.append(row)
+    return hits, sample
 
 
 def _dos_characters():
@@ -464,6 +697,55 @@ def cmd_callers(args) -> int:
     return 0
 
 
+def cmd_helpers(args) -> int:
+    for stem in args.titles:
+        try:
+            found = find_recompute(stem)
+        except (FileNotFoundError, NotFound) as exc:
+            print(f"{stem}: {exc}")
+            continue
+        leaves = adjust_helpers(found)
+        if not leaves:
+            print(f"{stem}: no leaf adjusts the field in GAME.OVR")
+            continue
+        print(f"{stem}: " + ", ".join(
+            f"encumbrance {'-' if which == 'minus' else '+'}= arg at "
+            f"{addr:#08x}" for which, addr in sorted(leaves.items())))
+        for which, addr in sorted(leaves.items()):
+            rows = helper_callers(found, addr)
+            paying = sum(1 for r in rows.values() if not r["coins"])
+            print(f"    {'-' if which == 'minus' else '+'}= "
+                  f"{sum(r['calls'] for r in rows.values())} call sites in "
+                  f"{len(rows)} routines, "
+                  f"{len(rows) - paying} of them write a coin purse, "
+                  f"{sum(1 for r in rows.values() if r['recompute'])} "
+                  f"also recompute")
+            for start, row in sorted(rows.items()):
+                where = ", ".join(f"{s:#x}" for s in row["coins"]) \
+                    if row["coins"] else "no coin write"
+                print(f"        {start:#08x} x{row['calls']}  {where}")
+    return 0
+
+
+def cmd_stock(args) -> int:
+    hits, sample = stock_rows()
+    print(f"{'title':10s} {'port':5s} {'word':>5s} {'names':>6s} "
+          f"{'tables':>7s} {'records':>8s} {'undecoded':>10s}")
+    for row in sample:
+        print(f"{row['title']:10s} {row['port']:5s} "
+              f"{str(row['word']):>5s} {row['names']:>6d} "
+              f"{row['tables']:>7d} {row['records']:>8d} "
+              f"{row['undecoded']:>10d}")
+    if not hits:
+        print(f"\nNo item in any table carries the word {HOLDING} (HOLDING), "
+              "so nothing the engine hands out reaches the 5000 discount.")
+        return 0
+    for h in hits:
+        print(f"{h['title']:10s} {h['port']:5s} {h['where']:28s} "
+              f"slot {h['slot']:3d}  {h['raw']}")
+    return 0
+
+
 def cmd_bags(args) -> int:
     rows, sample = bag_rows()
     print(f"{sample['records']} record files, {sample['items']} items, "
@@ -484,14 +766,16 @@ def cmd_bags(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    ap.add_argument("cmd", choices=("routine", "callers", "bags"))
+    ap.add_argument("cmd", choices=("routine", "callers", "helpers",
+                                    "bags", "stock"))
     ap.add_argument("--titles", nargs="+", default=list(TITLES),
                     help="archive directory stems, default all four")
     ap.add_argument("-v", "--verbose", action="store_true",
                     help="callers: print every call site")
     args = ap.parse_args(argv)
     return {"routine": cmd_routine, "callers": cmd_callers,
-            "bags": cmd_bags}[args.cmd](args)
+            "helpers": cmd_helpers, "bags": cmd_bags,
+            "stock": cmd_stock}[args.cmd](args)
 
 
 if __name__ == "__main__":

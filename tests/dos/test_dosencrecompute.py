@@ -3,10 +3,12 @@
 `#323 (The encumbrance identity does not survive the training fee, so failing
 it is not evidence of an edited record)`.  The finding the tool carries is that
 **the engine has no path on which a coin purse changes and the total is
-rebuilt in the same routine**, which is why a training fee survives a save,
-and that Pool of Radiance takes 5000 tenths of a pound off for a readied bag
-of holding, which is a way a record fails the identity *below* the sum without
-anybody having edited it.
+rebuilt in the same routine**, which is why a training fee survives a save --
+and that the screens which move coins without charging for them adjust the
+total coin for coin through two leaf routines instead, which is why no coin
+movement leaves a record *below* the sum.  Pool of Radiance's 5000-tenths
+discount for a readied bag of holding would, and no item in any title's own
+tables can set it off.
 
 Everything here needs the player's copy of *Forgotten Realms: The Archives*
 and skips without it, the way `tests/gamedata.py` skips without the C64 disks.
@@ -129,9 +131,10 @@ def test_exactly_one_routine_writes_gems_or_jewelry_and_recomputes(stem):
 def test_pool_of_radiance_discounts_a_readied_bag_of_holding():
     """5000 tenths of a pound, gated on a local the item walk sets.
 
-    This is the term `goldbox.dos_codec.expected_encumbrance` does not have, so a
-    character carrying one stores *below* the sum with nobody having edited
-    anything.
+    This is the term `goldbox.dos_codec.expected_encumbrance` does not have, so
+    a character carrying one would store *below* the sum with nobody having
+    edited anything -- and no item in any title's tables carries the name word,
+    which is the test below.
     """
     found = _found("POOLRAD")
     bag = der.bag_block(found)
@@ -157,3 +160,89 @@ def test_curse_ships_the_same_block_with_nothing_to_switch_it_on():
 def test_silver_blades_has_no_such_block_at_all():
     """Not a dead branch -- an absent one, which is a different claim."""
     assert der.bag_block(_found("SECRET"))["state"] == "absent"
+
+
+@pytest.mark.parametrize("stem", TITLES)
+def test_each_title_carries_two_leaves_that_adjust_the_total(stem):
+    """The third mechanism, beside the recompute and doing nothing.
+
+    A leaf that moves the field by its argument is how a screen keeps the
+    total in step without rebuilding the record, and reading only the
+    recompute makes every one of those screens look like a screen that leaves
+    the total stale.
+    """
+    leaves = der.adjust_helpers(_found(stem))
+    assert set(leaves) == {"minus", "plus"}, leaves
+    assert 0 < leaves["plus"] - leaves["minus"] < 0x40, leaves
+
+
+@pytest.mark.parametrize("stem", TITLES)
+def test_the_screens_that_move_coins_mirror_them_into_the_total(stem):
+    """Why no coin movement has ever left a record *below* the sum.
+
+    Nine call sites in four routines add to the total and three in three take
+    from it, identically in all three titles, and every routine that adds also
+    writes a coin purse -- so coins arriving in a purse arrive in the stored
+    total in the same breath.  If one of those four ever stopped writing a
+    purse, this reading would be of something else entirely.
+    """
+    found = _found(stem)
+    leaves = der.adjust_helpers(found)
+    plus = der.helper_callers(found, leaves["plus"])
+    minus = der.helper_callers(found, leaves["minus"])
+    assert sum(r["calls"] for r in plus.values()) == 9, plus
+    assert len(plus) == 4 and all(r["coins"] for r in plus.values()), plus
+    assert sum(r["calls"] for r in minus.values()) == 3, minus
+    assert len(minus) == 3, minus
+    assert sum(1 for r in minus.values() if r["coins"]) == 2, minus
+
+
+@pytest.mark.parametrize("stem", TITLES)
+def test_no_caller_of_a_leaf_also_rebuilds_the_whole_record(stem):
+    """The two mechanisms belong to different screens.
+
+    A screen that did both would make the leaf's arithmetic invisible from
+    outside, because the rebuild would overwrite it.
+    """
+    found = _found(stem)
+    for addr in der.adjust_helpers(found).values():
+        rows = der.helper_callers(found, addr)
+        assert not [r for r in rows.values() if r["recompute"]], rows
+
+
+def test_the_item_scan_finds_a_record_that_carries_the_word():
+    """The control on the nil sweep below, and it needs no game data.
+
+    A loop that never matches anything reports the same zero as a game that
+    hands the item out nowhere.  Two fabricated records -- one DOS, one C64 --
+    with the word in a different name slot each.
+    """
+    stride = 63
+    dos = bytearray(stride * 3)
+    dos[stride + der.dl.ITEM_FIELDS_BY_NAME["name2"].offset] = der.HOLDING
+    assert der.records_with_word(bytes(dos), stride, der.HOLDING) == [1]
+    c64 = bytearray(16 * 2)
+    c64[16 + 1] = der.HOLDING
+    assert der.c64_records_with_word(bytes(c64), der.HOLDING) == [1]
+    assert der.records_with_word(bytes(stride * 3), stride, der.HOLDING) == []
+
+
+def test_no_item_any_title_hands_out_carries_the_bag_of_holding_word():
+    """The 5000 discount is code nothing reaches -- from the tables this time.
+
+    `bags` says no record on this machine carries one.  This is the other
+    universe: the games' own shop and encounter lists, which is where an item
+    a player can be given comes from.  The control is the `word` column --
+    three titles' own name tables print `HOLDING` at exactly the index the
+    engine compares against, so a nil answer here is a measurement rather than
+    a word nobody could have found.
+    """
+    hits, sample = der.stock_rows()
+    if not sample:
+        pytest.skip("no game disks and no DOS archives on this machine")
+    if not any(row["names"] for row in sample):
+        pytest.skip("no C64 disks here, so no name table to read the word from")
+    read = sum(row["records"] for row in sample)
+    assert read > 500, sample
+    assert sum(1 for row in sample if row["word"] == der.HOLDING) >= 3, sample
+    assert hits == []

@@ -93,8 +93,10 @@ Three things about it:
 
   **One term of it differs between titles**: Pool of Radiance takes 5000 off
   the total for a readied bag of holding and Curse ships the same block
-  unreachable, so the same character is closer to `Overloaded` in Curse.
-  `docs/125-bug-notes.md` N24.
+  unreachable. No character is closer to `Overloaded` in Curse for it, because
+  no item in either title's own tables carries the name word that fires it --
+  the sweep is in `docs/125-bug-notes.md` N24, which said the opposite until
+  the tables were read.
 * **The compare displacement is `item_count`'s offset for that title**:
   `0x0C7`, `0x14C`, `0x160`, `0x1A6` on DOS, exactly
   `goldbox/dos_port.py`'s; `0x0C9`, `0x150`, `0x0FC`, `0x0C7` on the Amiga,
