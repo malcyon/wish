@@ -137,7 +137,7 @@ def case(name: str) -> NeutralCharacter:
 
 def base(game: str) -> NeutralCharacter:
     """An unremarkable character in `game`, every copied scalar set."""
-    return dos_sourced(boundarychars._base(), game)
+    return dos_sourced(boundarychars._base(game), game)
 
 
 def at_extreme(game: str, high: bool) -> NeutralCharacter:

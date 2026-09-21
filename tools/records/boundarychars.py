@@ -35,7 +35,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from goldbox import c64_codec, classcode, dos_codec
+from goldbox import c64_codec, classcode, dos_codec, titles
 from goldbox import items as items_mod
 from goldbox import levels as level_tables
 from goldbox import spells as spells_mod
@@ -115,7 +115,20 @@ def _item(weight_tenths: int = 50) -> bytes:
                                 weight_tenths=weight_tenths)
 
 
-def _base() -> NeutralCharacter:
+def human_code(game: str) -> int:
+    """The race number `game`'s own race table gives a human.
+
+    It is 7 in Pool of Radiance and Curse of the Azure Bonds, 6 in Secret of
+    the Silver Blades, where 7 is `monster`, and 5 in Pools of Darkness, so a
+    base character in any title but the first cannot share Pool of Radiance's.
+    """
+    for code, name in titles.race_table(game).items():
+        if name == "human":
+            return code
+    raise ValueError(f"{game!r} has no human in its race table")
+
+
+def _base(game: str = GAME) -> NeutralCharacter:
     """Every field `dos_codec.write_field_disposition("pool-of-radiance")`
     calls `copied to` or transformed, set to an unremarkable legal value.
 
@@ -126,7 +139,8 @@ def _base() -> NeutralCharacter:
     fields to a ceiling; everything they do not mention keeps the value set
     here.
     """
-    char = NeutralCharacter("C64", source="tools/records/boundarychars.py", game=GAME)
+    char = NeutralCharacter("C64", source="tools/records/boundarychars.py",
+                            game=game)
     char.set("name", "BASE", "made up", Confidence.CONFIRMED,
              Provenance.RESHAPED)
     # Every scalar `c64_codec.DIRECT` names, at a small sequential value --
@@ -137,10 +151,10 @@ def _base() -> NeutralCharacter:
     # each other and with what the DOS engine actually stores.
     for n, (field, _) in enumerate(c64_codec.DIRECT):
         char.set(field, n + 1, f"base: value {n + 1}")
-    char.set("race", RACE_HUMAN, "base: human, so no racial ceiling narrows "
-             "a case that has not overridden it")
+    char.set("race", human_code(game), "base: human, so no racial ceiling "
+             "narrows a case that has not overridden it")
     char.set("levels", {"fighter": 1}, "base")
-    char.set("char_class", classcode.code_for(8, {"fighter": 1}, {}, GAME),
+    char.set("char_class", classcode.code_for(8, {"fighter": 1}, {}, game),
              "base: fighter, agrees with levels and class_bits")
     char.set("class_bits", 8, "base: fighter")
     # Pool of Radiance's engine writes the constant 1 here for every
