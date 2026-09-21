@@ -34,6 +34,22 @@ class NoBackupFolder(RuntimeError):
     """Nowhere to put the copy, so the save does not happen."""
 
 
+class TargetNotEmpty(RuntimeError):
+    """A save folder that already holds files, which a new save will not join.
+
+    One folder holding two parties' files is neither of them, so a
+    destination that is not empty is refused rather than mixed into.
+    """
+
+
+def _no_backup_folder(name: str) -> NoBackupFolder:
+    """The one refusal for a write that would overwrite with nowhere to put
+    the copy."""
+    return NoBackupFolder(
+        f"No backup folder is set, so {name} was not written. "
+        "File > Preferences… to say where backups go.")
+
+
 def source_folder(target: str | pathlib.Path) -> pathlib.Path:
     """The folder holding a save file, or a save folder itself.
 
@@ -127,9 +143,7 @@ def save_disk(disk, target: str | pathlib.Path,
     if target.exists() and target.read_bytes() == new:
         return "no changes"
     if not into:
-        raise NoBackupFolder(
-            f"No backup folder is set, so {target.name} was not written. "
-            "File > Preferences… to say where backups go.")
+        raise _no_backup_folder(target.name)
     copy = back_up(target, into)
     disk.save(target)
     if copy is None:
@@ -160,9 +174,7 @@ def save_folder(written: dict[pathlib.Path, bytes | None],
         return "no changes"
     first = next(iter(changed))
     if not into:
-        raise NoBackupFolder(
-            f"No backup folder is set, so {first.name} was not written. "
-            "File > Preferences… to say where backups go.")
+        raise _no_backup_folder(first.name)
 
     originals = {path: path.read_bytes() if path.exists() else None
                  for path in changed}
@@ -205,3 +217,99 @@ def save_folder(written: dict[pathlib.Path, bytes | None],
     if copy.parent == automatic_dir(first):
         return f"wrote {first.name}, backup {copy.parent.name}/{copy.name}"
     return f"wrote {first.name}, backup {copy}"
+
+
+# ---------------------------------------------------------------------------
+# Publishing a save somewhere else: a whole image, or a whole save folder
+# ---------------------------------------------------------------------------
+
+def replace_file(target: str | pathlib.Path, data: bytes,
+                 into: str | pathlib.Path | None) -> pathlib.Path | None:
+    """Put `data` at `target` through a temporary sibling, backing up first.
+
+    The same two guarantees `save_disk` gives the file the editor opened, for
+    a file it is writing for the first time: the replacement is written and
+    fsynced beside the target and renamed over it, so an interrupted write
+    leaves the original whole, and an existing target is copied into `into`
+    before anything moves.
+
+    Returns that copy, or `None` for a target that did not exist -- a new
+    output has nothing to lose, so it needs no backup and an unset `into` is
+    not an error for it. Overwriting with nowhere to put the copy raises
+    `NoBackupFolder`, exactly as `save_disk` does.
+    """
+    target = pathlib.Path(target)
+    data = bytes(data)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    copy = None
+    if target.exists():
+        if not into:
+            raise _no_backup_folder(target.name)
+        copy = back_up(target, into)
+    fd, name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+    temporary = pathlib.Path(name)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return copy
+
+
+def publish_folder(target: str | pathlib.Path,
+                   contents: dict[str, bytes]) -> list[pathlib.Path]:
+    """Write a complete set of files into a new or empty folder.
+
+    Every file is written and fsynced into a temporary sibling first, so a
+    conversion that fails partway through producing them never reaches the
+    target at all. A target that does not exist is then one rename; an empty
+    one that does takes the files one at a time, which is a sequence of
+    replacements rather than a transaction -- a failure part way through it
+    removes the files already moved in.
+
+    Raises `TargetNotEmpty` for a folder that already holds anything, and
+    `ValueError` for a name that is not a simple file name.
+    """
+    target = pathlib.Path(target)
+    for name in contents:
+        if pathlib.Path(name).name != name:
+            raise ValueError(f"{name} is not a file name")
+    if target.exists():
+        if not target.is_dir():
+            raise TargetNotEmpty(f"{target} is not a folder")
+        if any(target.iterdir()):
+            raise TargetNotEmpty(f"{target} already holds files")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = pathlib.Path(tempfile.mkdtemp(prefix=f".{target.name}.",
+                                            dir=target.parent))
+    try:
+        for name, data in contents.items():
+            with open(staging / name, "wb") as out:
+                out.write(bytes(data))
+                out.flush()
+                os.fsync(out.fileno())
+        if not target.exists():
+            os.replace(staging, target)
+            return sorted(target / name for name in contents)
+        moved: list[pathlib.Path] = []
+        try:
+            for name in contents:
+                os.replace(staging / name, target / name)
+                moved.append(target / name)
+        except BaseException:
+            for path in moved:
+                path.unlink(missing_ok=True)
+            raise
+        return sorted(moved)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def restore_file(target: str | pathlib.Path,
+                 backup: str | pathlib.Path) -> None:
+    """Put a backed-up file back where it came from."""
+    shutil.copy2(pathlib.Path(backup), pathlib.Path(target))

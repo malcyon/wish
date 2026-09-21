@@ -968,10 +968,22 @@ def _rehearse_later_savegame(state: Any, shape: dos_port.DosDeltas,
         savegame)
 
 
+def amiga_needs_game_disk(shape: dos_port.DosDeltas) -> bool:
+    """Whether an Amiga destination of this title reads anything off the
+    player's own disk 2.
+
+    Pool of Radiance stages the area's own `ecl.dax` and Curse of the Azure
+    Bonds its `ECL.GLB`; Secret of the Silver Blades stages neither and needs
+    no disk at all. `editor.saveplan.requirements` asks this rather than
+    demanding a disk for every Amiga destination alike.
+    """
+    return shape is not dos_port.SECRET_OF_THE_SILVER_BLADES
+
+
 def _amiga_destination_data(shape: dos_port.DosDeltas,
                             options: "str | pathlib.Path") -> bytes | None:
     """The one game-data file a fresh save needs, when it needs one."""
-    if shape is dos_port.SECRET_OF_THE_SILVER_BLADES:
+    if not amiga_needs_game_disk(shape):
         return None
     from goldbox.amiga_adf import AmigaDisk
 
@@ -1398,6 +1410,17 @@ POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
 #: library supports)`, 2026-09-14.
 NO_DISKS = dosimport.NO_DISKS
 NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
+
+#: Which of the refusals above each requirement of
+#: `editor.saveplan.requirements` is, so the service names what is missing
+#: and this module keeps the wording. Every line here is approved and
+#: unchanged; only the lookup is new.
+MISSING_ASSET_BLOCKS: dict[str, tuple[str, str]] = {
+    saveplan.DESTINATION_DISKS: (NO_DISKS_TITLE, NO_DISKS),
+    saveplan.SOURCE_DISKS: (NO_DISKS_TITLE, NO_DISKS),
+    saveplan.DOS_GAME_FOLDER: (DIALOG_TITLE, NO_GAME_FOLDER),
+    saveplan.AMIGA_GAME_DISK: (DIALOG_TITLE, NO_DISK),
+}
 #: Donald's own wording, `09027bb` (2026-09-05) -- shared with
 #: `editor/dosimport.py`'s and `editor/exports.py`'s `DROPPED_HEADING`, one
 #: conversion vocabulary whichever way it is going. **Not drawn by this
@@ -1888,73 +1911,33 @@ class ConvertDialog(QDialog):
         return` instead.
         """
         direction = self.direction
-        if direction.destination_port == "c64":
-            if not self.source.slot:
-                # Unreachable through the dialog's own save picker, which
-                # always names a slot (`Source.detect`'s `SAVGAM<slot>.*`
-                # branch); only a caller handing `Source.detect` a bare
-                # folder directly -- a test or `tools/` script -- can reach
-                # this, and there is no slot to guess at for it.
-                self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
-                return
-            slot = self.source.slot
-            # A folder the player picked or edited by hand off this row
-            # names exactly that folder (2026-09-09's ruling: "just this
-            # conversion"); anything else still goes through the injected
-            # `game_files` lookup, unchanged, which is Preferences' full
-            # precedence in the running program.
-            if self._c64_folder_edited and self._c64_folder_path:
-                options: Any = _game_files_from_folder(
-                    pathlib.Path(self._c64_folder_path),
-                    direction.destination_game)
-            else:
-                options = self._game_files(direction.destination_game)
-            if options is None:
-                self._blocked = (NO_DISKS_TITLE, NO_DISKS)
-                return
-        elif direction.destination_port == "amiga":
-            # A C64 source has no slot of its own (`C64ToAmiga` always
-            # writes `A`); a DOS source keeps its own letter
-            # (`DosToAmiga.rehearse` reads `source.slot` directly and
-            # ignores what is passed here) -- `self.slot` below is what a
-            # status line reports, so it has to agree with whichever one
-            # the direction actually wrote.
-            slot = self.source.slot or "A"
-            if not self._disk_path:
-                self._blocked = (DIALOG_TITLE, NO_DISK)
-                return
-            options = pathlib.Path(self._disk_path)
-        else:
-            slot = "A"
-            if not self._game_path:
-                self._blocked = (DIALOG_TITLE, NO_GAME_FOLDER)
-                return
-            options = pathlib.Path(self._game_path)
+        if direction.destination_port == "c64" and not self.source.slot:
+            # Unreachable through the dialog's own save picker, which
+            # always names a slot (`Source.detect`'s `SAVGAM<slot>.*`
+            # branch); only a caller handing `Source.detect` a bare
+            # folder directly -- a test or `tools/` script -- can reach
+            # this, and there is no slot to guess at for it.
+            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
+            return
+        try:
+            # A folder the player picked or edited by hand off the game-files
+            # row names exactly that folder (2026-09-09's ruling: "just this
+            # conversion"); anything else goes through the injected
+            # `game_files` lookup, which is Preferences' full precedence in
+            # the running program.
+            assets = saveplan.resolve_assets(
+                self.source, direction.destination_port,
+                game_files=self._game_files,
+                c64_folder=(self._c64_folder_path
+                            if self._c64_folder_edited else None),
+                dos_folder=self._game_path, amiga_disk=self._disk_path)
+        except saveplan.MissingAssets as exc:
+            self._blocked = MISSING_ASSET_BLOCKS[exc.missing[0]]
+            return
 
         try:
-            if (direction.source_port == "c64"
-                    and direction.destination_port in ("dos", "amiga")):
-                # The source title's own `SPELLE64`/`SPELLN64` -- the same
-                # lookup `game_files_for` already does for a C64
-                # *destination*'s icon table, keyed here by the *source*'s
-                # title instead (`direction.title`, `C64ToDos.__init__` and
-                # `C64ToAmiga.__init__` alike). `None` when the player's
-                # disks do not carry it: refused the same way a missing C64
-                # destination disk already is above, rather than converting
-                # with every figure silently the game's own default
-                # (`#482 (With no game disks for the source title, a C64
-                # party converted to DOS or the Amiga silently arrives with
-                # no combat figures, though a C64 destination refuses)`).
-                source_files: Any = self._game_files(direction.title)
-                if source_files is None:
-                    self._blocked = (NO_DISKS_TITLE, NO_DISKS)
-                    return
-                icon_parts = source_files.icon
-                self.rehearsal = direction.rehearse(
-                    self.source, slot, options, icon_parts=icon_parts)
-            else:
-                self.rehearsal = direction.rehearse(self.source, slot, options)
-            self.slot = slot
+            self.rehearsal, self.slot = saveplan.rehearse(
+                direction, self.source, assets)
         except dos_codec.DosRecordError as exc:
             _log.exception("could not rehearse %s", self._source_path)
             self._blocked = (DIALOG_TITLE, exc.player_message)
