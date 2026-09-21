@@ -1,8 +1,8 @@
-"""The backstab gate and multiplier in the two later DOS engines.
+"""The backstab gate and multiplier in the three later DOS engines.
 
-The proof reads ``GAME.OVR`` and ``START.EXE`` from the player's Forgotten
-Realms Archives installation. It skips cleanly without those files. No game
-bytes are fixtures in this repository.
+The proof reads ``GAME.OVR`` and each title's loader from the player's
+Forgotten Realms Archives installation. It skips cleanly without those files.
+No game bytes are fixtures in this repository.
 """
 
 from __future__ import annotations
@@ -15,18 +15,20 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from tools.dos import backstab, dosbox  # noqa: E402
+from tools.dos import backstab  # noqa: E402
 
 
 def _finding(stem: str) -> dict:
+    title = backstab.TITLES[stem]
     try:
-        game = dosbox.find_game(stem)
+        game = backstab.find_game(title)
     except FileNotFoundError as exc:
         pytest.skip(str(exc))
-    needed = [game / "GAME.OVR", game / "START.EXE"]
+    needed = [game / "GAME.OVR", game / title.loader]
     if not all(path.is_file() for path in needed):
-        pytest.skip(f"{stem} needs GAME.OVR and START.EXE in the DOS archives")
-    return backstab.inspect_dir(game, backstab.TITLES[stem])
+        pytest.skip(f"{stem} needs GAME.OVR and {title.loader} in the "
+                    f"DOS archives")
+    return backstab.inspect_dir(game, title)
 
 
 @pytest.mark.parametrize(
@@ -34,7 +36,8 @@ def _finding(stem: str) -> dict:
     [
         ("CURSE", {
             "fields": {"race": 0x074, "human_race": 7,
-                       "class_levels": 0x109, "current_thief": 0x10F,
+                       "class_levels": 0x109, "former_class_levels": 0x111,
+                       "current_thief": 0x10F,
                        "former_thief": 0x117, "former_level": 0x0E6,
                        "class_bits": 0x12B},
             "formula": 0x1356C,
@@ -52,7 +55,8 @@ def _finding(stem: str) -> dict:
         }),
         ("SECRET", {
             "fields": {"race": 0x06B, "human_race": 6,
-                       "class_levels": 0x111, "current_thief": 0x117,
+                       "class_levels": 0x111, "former_class_levels": 0x118,
+                       "current_thief": 0x117,
                        "former_thief": 0x11E, "former_level": 0x0EF,
                        "class_bits": 0x130},
             "formula": 0x150C2,
@@ -91,3 +95,41 @@ def test_the_attack_path_reads_the_level_arrays_and_computes_the_multiplier(
         "class_levels[thief] + former_class_levels[thief] * regained")
     assert finding["regained"] == "human and active class level > former_level"
     assert finding["multiplier"] == "((effective thief level - 1) // 4) + 2"
+
+
+def test_pools_of_darkness_takes_its_thief_level_from_a_shared_helper():
+    """The last DOS title computes the same multiplier by a different route.
+
+    One class-level routine answers `max(current, regained former)` for any
+    class, and the caller clamps the multiplier itself at 5 rather than
+    clamping the level. The same predicate still serves damage, the to-hit
+    adjustment and the backstab message, and does not read ``class_bits``.
+    """
+    finding = _finding("DARKNESS")
+    assert finding["fields"] == {
+        "race": 0x0AD, "human_race": 5,
+        "class_levels": 0x151, "former_class_levels": 0x158,
+        "current_thief": 0x157, "former_thief": 0x15E,
+        "former_level": 0x139, "class_bits": 0x17B,
+    }
+    assert finding["formula"] == 0x1E86F
+    assert finding["thief_level_call"] == 0x1E867
+    assert finding["multiplier_clamp"] == 0x1E87B
+    assert finding["clamp"] == 5
+    assert finding["damage_mul"] == 0x1E88A
+    assert finding["damage_word"] == 0xA7D8
+    assert finding["predicate"] == 0x20D62
+    assert finding["predicate_gate"] == 0x20DAA
+    assert finding["predicate_callers"] == [0x1E85A, 0x1FBE1, 0x1FC86]
+    assert finding["level_helper_far"] == (0x0102, 0x0048)
+    assert finding["level_helper"] == 0x392EE
+    assert finding["regain_helper"] == 0x38C8A
+    assert finding["current_level_routine"] == 0x38C19
+    assert finding["former_level_cmp"] == 0x38C9D
+    assert finding["fields"]["class_bits"] not in finding["predicate_fields"]
+    assert finding["gate"] == "effective thief level > 0"
+    assert finding["effective_level"] == (
+        "max(class_levels[thief], former_class_levels[thief] * regained)")
+    assert finding["regained"] == "human and active class level > former_level"
+    assert finding["multiplier"] == (
+        "min(((effective thief level - 1) // 4) + 2, 5)")

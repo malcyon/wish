@@ -1,9 +1,10 @@
-# The backstab multiplier in DOS Curse and Silver Blades
+# The backstab multiplier, per title and port
 
 Issue `#607 (Show a thief's backstab bonus in the Character Editor)` needs the value
-the two later DOS engines use, including a character who has more than one
-class. Neither title stores a backstab bonus. Both compute the same multiplier
-from the thief slots in the level arrays:
+each engine uses, including for a character who has more than one class. No
+title on any port read here stores a backstab bonus. DOS Curse of the Azure
+Bonds and Secret of the Silver Blades compute the same multiplier from the
+thief slots in the level arrays:
 
 ```text
 Regained = race is human and active class level > former_level
@@ -28,7 +29,7 @@ level array and skill bytes?)` found no subtraction and steps at levels 4, 8
 and 12; that reading is in
 `docs/221-thief-abilities-in-dos-pool-of-radiance.md`.
 
-## The two attack paths
+## The two inline attack paths
 
 `tools/dos/backstab.py` finds the following sites by their instruction
 structure, then expands each title's `START.EXE` in memory to resolve the far
@@ -71,44 +72,150 @@ ES-relative operands between each predicate's prologue and the next routine;
 this is not a census of the three caller routines or of every use of
 `class_bits` in either overlay.
 
-## The C64 Curse and Silver Blades paths
+## DOS Pools of Darkness reaches the same answer another way
 
-The two C64 engines also compute the multiplier rather than storing it. Both
-thief-level gates read `level_thief` at record `0x0CB`; `class_bits` at
-`0x0EB` is absent from each bounded predicate. The complete eligibility path
-then checks the weapons and attack direction. A fighter/thief therefore uses
-the thief entry of the same eight-byte level array as a single-class thief.
-CONFIRMED from both titles' instruction bytes.
-
-The arithmetic differs in one place:
+The last DOS title computes no effective level inline. It calls one shared
+class-level routine, `GAME.OVR:0x392EE`, with the class index in `al` -- 6 for
+the thief -- and that routine answers
 
 ```text
-Curse:         ((thief level - 1) div 4) + 2
-Silver Blades: ((min(thief level, 14) - 1) div 4) + 2
+max(class_levels[c], former_class_levels[c] * Regained)
 ```
 
-Both give ×2 at levels 1-4, ×3 at 5-8 and ×4 at 9-12. Silver Blades gives ×5
-from level 13 upward because it caps the input at 14 before subtracting and
-shifting. Curse has no cap instruction in this path. There is no multiplier
-table: the engine decrements the level, shifts it right twice and adds two.
-CONFIRMED from the complete arithmetic in each `COMBAT2`.
+taking the larger rather than the sum. `Regained` is the same rule as in the
+two earlier titles: `GAME.OVR:0x38C8A` calls the active-class-level routine at
+`0x38C19`, which requires race 5 (human at record `0x0AD`) and returns the
+first positive entry in `class_levels` at record `0x151`, and accepts only an
+active level strictly greater than `former_level` at record `0x139`.
+CONFIRMED from the helper's instructions.
 
-| Title | Thief-level gate and formula (`COMBAT2`, base `$E000`) | Factor copied (`ECL64`, base `$8000`) | Damage multiply | To-hit adjustment | Byte multiply (`LIBRARY`, base `$2DC8`) |
+**Taking the larger and taking the sum agree on every record the engines can
+make,** because a character cannot hold a current and a former level in the
+same class at once: dual-classing zeroes the old class's slot, and no DOS
+engine writes it back -- the regain is computed at each use.
+`docs/209-the-regained-dual-class-on-dos.md` is the separate reading of that.
+PROBABLE rather than CONFIRMED: it rests on no DOS routine restoring the slot,
+which was read for the class-mask rebuild and not re-proven here. A record
+edited to carry both would multiply damage by more in Curse and Silver Blades
+than in Pools of Darkness, which is the experiment that would settle it.
+
+The multiplier itself is `((effective thief level - 1) div 4) + 2` again, but
+**clamped after the arithmetic rather than before it**: `cmp al, 5 / jbe /
+mov al, 5` at `0x1E87B` holds it at ×5 however high the thief level goes. The
+C64 Silver Blades and Death Knights clamp the *level* at 14 instead, which
+gives the same ceiling by a different route, and DOS Curse and Silver Blades
+clamp neither.
+
+| Site | Offset in `GAME.OVR` |
+|---|---:|
+| Thief-level call (`mov al,6 / lcall 0102:0048`) | `0x1E867` |
+| Multiplier arithmetic | `0x1E86F` |
+| Multiplier clamp at 5 | `0x1E87B` |
+| Applied multiply, damage word `0xA7D8` | `0x1E88A` |
+| Predicate | `0x20D62` |
+| Thief-level gate inside the predicate | `0x20DAA` |
+| Predicate callers: damage, to-hit, message | `0x1E85A`, `0x1FBE1`, `0x1FC86` |
+| Class-level helper | `0x392EE` |
+| Regain helper | `0x38C8A` |
+| Active-class-level routine | `0x38C19` |
+
+The three callers are the same three as in Curse and Silver Blades, and the
+to-hit caller subtracts 4 from record `roster_tail` at `0x1F3` exactly as
+Curse's does from its own `0x19B`. `class_bits` at `0x17B` does not occur in
+the bounded predicate, whose only record displacements are `0x2E`, `0x131`,
+`0x1AB`, `0x1AD`, `0x1B3`, `0x1B5` and `0x1E7`. CONFIRMED from the direct
+ES-relative operands between the predicate's prologue and the next routine.
+
+`tools/dos/backstab.py --game DARKNESS` reproduces all of it, resolving the
+far calls through `GAME.EXE` because this title ships no `START.EXE`.
+
+## The six C64 titles
+
+Every C64 engine computes the multiplier rather than storing it, and all six
+gates read `level_thief` at record `0x0CB`; `class_bits` at `0x0EB` is absent
+from each bounded predicate. The complete eligibility path then checks the
+weapons and attack direction. A fighter/thief therefore uses the thief entry
+of the same eight-byte level array as a single-class thief. CONFIRMED from all
+six titles' instruction bytes.
+
+The arithmetic is inline in every one of them, with no multiplier table: the
+engine decrements the thief level, shifts it right twice and adds two. Three
+titles cap the input at 14 first.
+
+```text
+Pool of Radiance, Curse, Gateway, Champions:  ((thief level - 1) div 4) + 2
+Silver Blades, Death Knights:                 ((min(thief level, 14) - 1) div 4) + 2
+```
+
+All six give ×2 at levels 1-4, ×3 at 5-8 and ×4 at 9-12. The two capped titles
+give ×5 from level 13 upward, and the four uncapped ones would keep climbing
+past that. CONFIRMED from the complete arithmetic in each engine.
+
+**The cap only ever matters in the two titles that have it.** `GEN`'s training
+ceiling for the thief slot, which `tools/c64/coldread.py levels` reads, is 12
+in Curse, 8 in Gateway and 9 in Champions -- none of them within reach of a
+13th thief level -- against 18 in Silver Blades and Death Knights, which is
+why those two are the ones that clamp the input. Pool of Radiance does not use
+the ceiling table the other five share, so its thief ceiling is not read here.
+The multiplier a player can therefore see is ×4 in Curse and Champions, ×3 in
+Gateway and ×5 in Silver Blades and Death Knights. PROBABLE: a character
+imported from an earlier title arrives with whatever level that title allowed,
+and the ceiling is what `GEN` refuses to train past rather than a bound on the
+record.
+
+| Title | Thief-level gate and formula | Factor copied to | Damage multiply | To-hit adjustment | Byte multiply |
 |---|---:|---:|---:|---:|---:|
-| Curse of the Azure Bonds | `$F832` | `$8164` → `$A981` | `$86B7` | `$83E1` | `$2FB9` |
-| Secret of the Silver Blades | `$F4B2` | `$8167` → `$A980` | `$86CC` | `$83F0` | `$2E6F` |
+| Pool of Radiance | `SQRPACI01 $06A8` | `$068B` → `$2B7C` | `SQRPACI01 $06E1` | `COMBAT $11F9` | `$2E30` |
+| Curse of the Azure Bonds | `COMBAT2 $F832` | `$8164` → `$A981` | `ECL64 $86B7` | `ECL64 $83E1` | `$2FB9` |
+| Secret of the Silver Blades | `COMBAT2 $F4B2` | `$8167` → `$A980` | `ECL64 $86CC` | `ECL64 $83F0` | `$2E6F` |
+| Gateway to the Savage Frontier | `COMBAT2 $F81B` | `$8164` → `$A981` | `ECL64 $86BB` | `ECL64 $83E5` | `$2FB9` |
+| Champions of Krynn | `COMBAT2 $F41B` | `$8167` → `$A980` | `ECL64 $86DB` | `ECL64 $83E8` | `$3007` |
+| Death Knights of Krynn | `COMBAT2 $F47C` | `$8167` → `$A840` | `CODE03 $86D9` | `CODE03 $83E8` | `$2FB0` |
 
-`COMBAT2` first refuses a zero thief level, computes the factor into zero-page
-`$B0`, then checks the weapons. `ECL64` checks the attack direction and copies
-`$B0` only when both paths pass. The damage path loads that same byte and calls
-`LIBRARY`'s eight-bit multiply routine with the rolled damage; the attack path
-also uses its presence to subtract two from the number needed to hit. This is
-why the computed byte is a backstab multiplier rather than an unrelated thief
-level cache. CONFIRMED from both complete paths.
+The overlay bases are `COMBAT2 $E000`, `ECL64` and Death Knights' `CODE03`
+`$8000`, `GEN $0800`, and `LIBRARY $2C48` in Pool of Radiance and `$2DC8` in
+the five later titles. Death Knights renamed its overlays and its library's
+directory entry is not ASCII, so `tools/c64/backstab.py` finds that one by the
+multiply routine's own bytes instead of by name. Each library base is
+**derived** rather than assumed: the extractor locates the multiply routine
+inside the file and subtracts its offset from the address the damage path
+calls, and the answer agrees with what `tools/c64/coldread.py` established by
+an unrelated route.
+
+**Pool of Radiance keeps the whole predicate in a 1024-byte overlay at
+`$0400`,** which is the one place its memory map differs. Two calls from
+`COMBAT`, which runs at `$0800`, land exactly on routine entries at that base
+-- `$1A23` calls the eligibility wrapper at `$0680` and `$0CCF` calls the
+damage multiply at `$06E1`, immediately after `COMBAT $0CAD` rolls the damage
+(`docs/147-combat-rolls.md`). The file is exactly `$0400`-`$07FF` long.
+CONFIRMED: no other base makes both calls land on an instruction.
+
+The predicate first refuses a zero thief level, computes the factor into
+zero-page `$B0`, then checks the weapons. The attack overlay checks the attack
+direction and copies `$B0` only when both paths pass. The damage path loads
+that same byte and calls the library's eight-bit multiply routine with the
+rolled damage; the attack path also uses its presence to subtract two from the
+number needed to hit. This is why the computed byte is a backstab multiplier
+rather than an unrelated thief level cache. CONFIRMED from all six complete
+paths.
+
+**Silver Blades and Death Knights clamp the multiplied damage and the other
+four do not.** Their damage sites follow the multiply with `CPX #$00 / BEQ +2 /
+LDA #$F0`, storing 240 when the 16-bit product does not fit a byte; Pool of
+Radiance, Curse, Gateway and Champions store the low byte alone, so a product
+of 256 or more would wrap. No player reaches it: the byte multiplied is one
+attack's rolled damage plus its bonuses, and ×4 of that stays far below 256 for
+any weapon a character can wield, so this is a difference in the code with
+nothing behind it on screen. CONFIRMED from the instructions; the
+unreachability is PROBABLE, and what would refute it is a single melee damage
+roll of 128 or more in Curse, Gateway, Champions or Pool of Radiance.
+
+### The dual-class regain path exists in only three of them
 
 The C64 does not keep a former-class level array. It keeps
 `dual_class_slot`/`dual_class_level` at record `0x0B9`/`0x0BA`. The generic
-regain path is `GEN $20A3` in Curse and `$154F` in Silver Blades:
+regain path is `GEN $20A3` in Curse, `$154F` in Silver Blades and `$20A4` in
+Gateway:
 
 ```text
 If dual_class_level != 0 and level > dual_class_level:
@@ -119,22 +226,95 @@ If dual_class_level != 0 and level > dual_class_level:
 Thus a former thief has no backstab while his thief slot is zero. Once the new
 class strictly passes the stored former level, `GEN` restores slot 2 at record
 `0x0CB`, and the ordinary thief-level gate sees it. No separate former-thief
-branch exists in the attack path. CONFIRMED from both `GEN` routines and both
-backstab predicates. The class-bit tables those routines index are
-`01 02 04 08 10 20 40 80` at Curse `GEN $0B82` and Silver Blades
-`LIBRARY $46E5`, so slot 2 restores bit `$04`; both tables are read and checked
-by the extractor. The C64 generic regain behavior was independently driven
-for former paladins in `docs/214-the-regained-dual-class-on-the-c64.md`; a
-former thief was not driven.
+branch exists in any of the six attack paths. CONFIRMED from the three `GEN`
+routines and all six backstab predicates. The class-bit tables those routines
+index are `01 02 04 08 10 20 40 80` at Curse and Gateway `GEN $0B82` and
+Silver Blades `LIBRARY $46E5`, so slot 2 restores bit `$04`; all three tables
+are read and checked by the extractor. The C64 generic regain behavior was
+independently driven for former paladins in
+`docs/214-the-regained-dual-class-on-the-c64.md`; a former thief was not
+driven.
 
-`tools/c64/backstab.py` reproduces the instruction read from the player's
-`COMBAT2`, `ECL64`, `LIBRARY` and `GEN` files. No live C64 damage was measured.
+**Pool of Radiance, Champions of Krynn and Death Knights of Krynn have no such
+path at all.** No two bytes anywhere on their disks are the little-endian
+address of `dual_class_level` -- 0 hits across 564, 338 and 277 distinct files
+-- so no absolute instruction can read or write it, and the question of a
+former thief's backstab does not arise in those three. That reproduces what
+`goldbox/layout.py` records for the same two record bytes from a separate
+sweep. CONFIRMED for the absence of an absolute reference; that no dual-class
+regain exists by some indexed or indirect route is PROBABLE, and what would
+settle it is a driven dual-class attempt in Pool of Radiance's own training
+hall, which should not offer the choice.
+
+`tools/c64/backstab.py` reproduces the instruction read from the player's own
+disks for all six titles. No live C64 damage was measured.
+
+## The four Amiga ports
+
+Each Amiga executable carries **exactly one** run of the multiplier
+arithmetic, which is what `tools/amiga/amigabackstab.py` finds it by; the
+predicate, the record bytes and the damage byte are then read out from there.
+The offsets below are file offsets in the build the most of the player's disk
+images agree on.
+
+| Title | Executable | Arithmetic | Predicate | Callers | Damage |
+|---|---|---:|---:|---|---|
+| Pool of Radiance | `/program` | `0xB8DE` | `0xD704` | `0xB8CC`, `0xC906`, `0xC992` | `$14DA.l` |
+| Curse of the Azure Bonds | `/Curse` | `0x6FA4` | `0x8DE2` | `0x6F82`, `0x7F0C`, `0x7F8C` | `-$32C0(a4)` |
+| Secret of the Silver Blades | `/Secret` | `0x7FD0` | `0x9E26` | `0x7FA2`, `0x8DAC`, `0x8E4A` | `-$1A39(a4)` |
+| Pools of Darkness | `/Pools of Darkness` | `0x7FD8` | `0x9F4C` | `0x7FBC`, `0x905E`, `0x90FC` | `-$152E(a4)` |
+
+**Each Amiga port computes what its DOS counterpart computes.** CONFIRMED from
+the instructions in all four:
+
+```text
+Pool of Radiance:  (class_levels[thief] div 4) + 2
+Curse, Silver Blades:
+                   ((class_levels[thief]
+                     + former_class_levels[thief] * Regained - 1) div 4) + 2
+Pools of Darkness: min(((effective thief level - 1) div 4) + 2, 5)
+```
+
+Pool of Radiance alone does not subtract a level first, so its steps fall at 4,
+8 and 12 where the later titles' fall at 5, 9 and 13 -- the same difference
+`docs/221-thief-abilities-in-dos-pool-of-radiance.md` reads out of the DOS
+build of that title, now corroborated on a second port. It also has no former
+level to add: `class_levels[thief]` at record `0x09E` is the whole sum. Curse
+reads record `0x110` and `0x118`, Silver Blades `0x0B2` and `0x0B9`, and each
+multiplies the former slot by the small-data regain predicate's result exactly
+as the DOS build does. Pools of Darkness pushes class index 6 to its shared
+class-level routine and clamps the multiplier at 5, again as DOS does.
+
+Pool of Radiance has no `muls` here: it loads the damage into a second
+register and calls a multiply routine, the way its C64 port calls `LIBRARY`'s.
+The other three multiply in place, Pools of Darkness on a word where the
+earlier two use a byte.
+
+**Every Amiga predicate has exactly three callers**, as on DOS: damage, the
+to-hit adjustment and the message. Amiga Pool of Radiance's to-hit caller at
+`0xC906` subtracts 2 from record `0x114`, where DOS Curse's subtracts 4 from
+its `roster_tail`. Whether that is a real difference in the bonus or two
+different quantities is **UNKNOWN** and was not chased: the two ports do not
+hold the to-hit number in the same place, and
+`#607 (Show a thief's backstab bonus in the Character Editor)` needs the
+damage multiplier. Reading Amiga Curse's own to-hit caller at `0x7F0C` and DOS Pool
+of Radiance's beside it would settle it.
+
+Nothing on the Amiga was driven; these are instruction reads.
 
 ## Scope and negative results
 
 Issue `#607 (Show a thief's backstab bonus in the Character Editor)` now has
-static proof for DOS and C64 Curse and Silver Blades. No multiplier table
-exists in any of these four paths; each formula is inline. A live damage
-experiment is unnecessary to identify their record fields or arithmetic, but
-would independently corroborate the instruction read. This write-up makes no
-claim about another title or port.
+static proof for DOS Curse, Silver Blades and Pools of Darkness, for all six
+C64 titles, and for all four Amiga ports. No multiplier table exists in any of
+these thirteen paths; every formula is inline arithmetic on the thief level.
+No port stores the bonus, so the editor can derive it from the record it
+already reads. A live damage experiment is unnecessary to identify any of
+their record fields or arithmetic, but would independently corroborate the
+instruction reads, and none was made on any port. DOS Pool of Radiance is in
+`docs/221-thief-abilities-in-dos-pool-of-radiance.md` rather than here.
+
+Two things are read and not settled. The to-hit adjustment differs between
+ports in a way this page does not resolve, above. And the C64 titles' thief
+ceilings come from `GEN`'s training table, which bounds what a player can
+train to rather than what a record can hold.
