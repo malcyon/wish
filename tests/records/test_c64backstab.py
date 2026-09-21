@@ -35,6 +35,7 @@ def _finding(key: str) -> dict:
             "multiply_routine": 0x2FB9,
             "regain": 0x20A3,
             "class_mask_table": 0x0B82,
+            "class_masks": (1, 2, 4, 8, 16, 32, 64, 128),
         }),
         ("secret-of-the-silver-blades", {
             "multiplier": "((min(thief level, 14) - 1) // 4) + 2",
@@ -50,6 +51,7 @@ def _finding(key: str) -> dict:
             "multiply_routine": 0x2E6F,
             "regain": 0x154F,
             "class_mask_table": 0x46E5,
+            "class_masks": (1, 2, 4, 8, 16, 32, 64, 128),
         }),
     ],
 )
@@ -69,8 +71,12 @@ def test_the_attack_path_computes_backstab_from_the_current_thief_slot(
         "level_thief": 0x0CB,
         "class_bits": 0x0EB,
     }
-    assert finding["gate"] == "level_thief > 0"
+    assert finding["thief_level_gate"] == "level_thief > 0"
     assert finding["class_bits_in_predicate"] is False
+    assert finding["files"]["class_mask"] == {
+        "curse-of-the-azure-bonds": "GEN",
+        "secret-of-the-silver-blades": "LIBRARY",
+    }[key]
     for name, value in expected.items():
         assert finding[name] == value
 
@@ -80,7 +86,7 @@ def test_a_regained_former_thief_reenters_the_same_level_array(key):
     """The generic regain path restores the old level into its class slot.
 
     A former thief's slot is zero until the new class strictly passes the
-    stored old level. Once restored, the ordinary backstab gate sees it.
+    stored old level. Once restored, the ordinary thief-level gate sees it.
     """
     finding = _finding(key)
     assert finding["regained"] == (
@@ -91,3 +97,35 @@ def test_a_regained_former_thief_reenters_the_same_level_array(key):
     assert finding["fields"]["dual_class_level"] == 0x0BA
     assert finding["fields"]["class_levels"] + 2 \
         == finding["fields"]["level_thief"]
+
+
+@pytest.mark.parametrize("check, expected", [(False, 0), (True, 1)])
+def test_missing_disks_are_reported_and_check_controls_the_exit_status(
+        tmp_path, capsys, check, expected):
+    """A missing title is a report unless ``--check`` asks for a failure."""
+    args = ["--title", "curse-of-the-azure-bonds", "--disks", str(tmp_path)]
+    if check:
+        args.append("--check")
+    assert backstab.main(args) == expected
+    assert "No readable Curse of the Azure Bonds side" in capsys.readouterr().out
+
+
+def test_a_missing_title_does_not_stop_the_other_title(monkeypatch, capsys):
+    """``--check`` reports one failure after inspecting every requested title."""
+    inspected = []
+    printed = []
+
+    def inspect(title, _root):
+        inspected.append(title.game.key)
+        if title.game.key == "curse-of-the-azure-bonds":
+            raise SystemExit("no Curse disks")
+        return {"title": title.game.key}
+
+    monkeypatch.setattr(backstab, "inspect_title", inspect)
+    monkeypatch.setattr(backstab, "_print", lambda finding: printed.append(
+        finding["title"]))
+    assert backstab.main(["--check"]) == 1
+    assert inspected == list(backstab.TITLES)
+    assert printed == ["secret-of-the-silver-blades"]
+    assert "curse-of-the-azure-bonds: no Curse disks" \
+        in capsys.readouterr().out

@@ -37,6 +37,7 @@ CLASS_LEVELS = 0x0C9
 THIEF_SLOT = 2
 LEVEL_THIEF = CLASS_LEVELS + THIEF_SLOT
 CLASS_BITS = 0x0EB
+CLASS_MASKS = bytes((0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -182,6 +183,27 @@ def inspect(combat2: bytes, ecl64: bytes, gen: bytes, library: bytes,
         raise ValueError(
             f"{title.game.title}: dual-class gates do not share the failure exit")
     class_mask_table = struct.unpack_from("<H", gen, regain + 17)[0]
+    owners = [
+        (name, body, base)
+        for name, body, base in (
+            ("GEN", gen, GEN_BASE),
+            ("LIBRARY", library, LIBRARY_BASE),
+        )
+        if base <= class_mask_table <= base + len(body) - len(CLASS_MASKS)
+    ]
+    if len(owners) != 1:
+        raise ValueError(
+            f"{title.game.title}: class-mask table ${class_mask_table:04X} "
+            f"belongs to {len(owners)} loaded overlays")
+    class_mask_file, class_mask_body, class_mask_base = owners[0]
+    class_masks = class_mask_body[
+        class_mask_table - class_mask_base:
+        class_mask_table - class_mask_base + len(CLASS_MASKS)
+    ]
+    if class_masks != CLASS_MASKS:
+        raise ValueError(
+            f"{title.game.title}: class-mask table is {class_masks.hex(' ')}, "
+            f"not {CLASS_MASKS.hex(' ')}")
 
     capped = ("thief level" if title.cap is None
               else f"min(thief level, {title.cap})")
@@ -193,6 +215,7 @@ def inspect(combat2: bytes, ecl64: bytes, gen: bytes, library: bytes,
             "attack": "ECL64",
             "multiply": "LIBRARY",
             "regain": "GEN",
+            "class_mask": class_mask_file,
         },
         "bases": {
             "COMBAT2": COMBAT2_BASE,
@@ -208,7 +231,7 @@ def inspect(combat2: bytes, ecl64: bytes, gen: bytes, library: bytes,
             "level_thief": LEVEL_THIEF,
             "class_bits": CLASS_BITS,
         },
-        "gate": "level_thief > 0",
+        "thief_level_gate": "level_thief > 0",
         "multiplier": formula_text,
         "cap": title.cap,
         "formula": formula_address,
@@ -222,6 +245,7 @@ def inspect(combat2: bytes, ecl64: bytes, gen: bytes, library: bytes,
         "multiply_routine": multiply_address,
         "regain": GEN_BASE + regain,
         "class_mask_table": class_mask_table,
+        "class_masks": tuple(class_masks),
         "regained": (
             "dual_class_level > 0 and level > dual_class_level restores "
             "class_levels[dual_class_slot]"
@@ -244,8 +268,8 @@ def inspect_title(title: Title, root: str | None = None) -> dict:
 
 def _print(finding: dict) -> None:
     print(finding["title"])
-    print(f"  Gate          COMBAT2 ${finding['formula']:04X}: "
-          f"{finding['gate']}")
+    print(f"  Thief gate    COMBAT2 ${finding['formula']:04X}: "
+          f"{finding['thief_level_gate']}")
     print(f"  Multiplier    {finding['multiplier']}")
     print(f"  Applied       ECL64 ${finding['damage_application']:04X} through "
           f"LIBRARY ${finding['multiply_routine']:04X}")
@@ -265,9 +289,16 @@ def main(argv: list[str] | None = None) -> int:
     keys = args.title or list(TITLES)
     if args.disks and len(keys) != 1:
         parser.error("--disks requires exactly one --title")
+    failed = False
     for key in keys:
-        _print(inspect_title(TITLES[key], args.disks))
-    return 0
+        try:
+            finding = inspect_title(TITLES[key], args.disks)
+        except (OSError, SystemExit, ValueError) as exc:
+            print(f"{key}: {exc}")
+            failed = True
+            continue
+        _print(finding)
+    return 1 if args.check and failed else 0
 
 
 if __name__ == "__main__":

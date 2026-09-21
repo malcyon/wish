@@ -143,7 +143,59 @@ and is not contradicted: PHILIPPE, staged at magic-user 5 and trained once in
 DOS Curse's own party menu, came out magic-user 6 holding 41 -- the row's own
 value at level 6, which beats the floor.
 
-## So the two ports really do disagree
+## The Amiga builds have the same two loops
+
+`tools/amiga/amigathac0.py` reads both later Amiga executables and checks the
+instructions at every site below. AmigaDOS relocates whole hunks, so the
+`CODE+` and `DATA+` values are the load-relative addresses; there is no fixed
+absolute address before the loader chooses one.
+
+| title | table | guarded loop's clear | unguarded routine and clear |
+|---|---|---|---|
+| Curse of the Azure Bonds | file `0x0464D0`, `DATA+0x1B30` | file `0x018A46`, `CODE+0x018A1E` | routine file `0x038A52`, `CODE+0x038A2A`; clear file `0x038A5A`, `CODE+0x038A32` |
+| Secret of the Silver Blades | file `0x04E6EC`, `DATA+0x1E30` | file `0x00EAF8`, `CODE+0x00EAD0` | routine file `0x03C802`, `CODE+0x03C7DA`; clear file `0x03C80A`, `CODE+0x03C7E2` |
+
+The Amiga tables hold the same stored bytes that matter here. Curse uses eight
+13-byte rows; Silver Blades uses seven 19-word rows, taking the low byte of
+each big-endian word. In both, the magic-user row is 39 at entries 0 through
+5, while another absent class contributes entry 0 = 40.
+
+The guarded loops test the level before indexing the table: Curse
+`0x018A58` and Silver Blades `0x00EB06`. They therefore store **39** for a
+pure magic-user at levels 1--5. The unguarded loops read the level and index
+the row without a test: Curse `0x038A6E` and Silver Blades `0x03C81E`. They
+therefore read the zero entry of every absent class and store **40**. Both
+results are **CONFIRMED from the executable instructions and tables**.
+
+This is the target-side import/training rule rather than dead arithmetic. The
+unguarded Curse routine has four callers at file offsets `0x01700C`,
+`0x0260B8`, `0x026EEA` and `0x0328F2`; the Silver Blades routine has three at
+`0x00E694`, `0x027130` and `0x027FD8`. The last Silver Blades call is inside
+its Curse-import routine, which starts at `0x026F64`, and the adjacent Curse
+call is in the same record import/load pipeline. The training and
+class-restoration paths call the same unguarded routine. **CONFIRMED** that an
+Amiga import/rebuild stores 40 for the low-level magic-user.
+
+The records delimit that claim. In the watched
+`WISH-SPEC-coab-amiga-converted-resave`, MATHEW at magic-user 1 and PHILIPPE
+at magic-user 5 both still hold 39 after the Amiga engine loaded and resaved
+them. **CONFIRMED:** an ordinary native load/save does not run the
+`thac0_base` recompute, so an input byte can survive without being the value
+the rebuild would choose. ARIEL, the pure level-5 magic-user in Curse disk
+1's `SAVE/ARIEL.guy`, holds 40; this is **PROBABLE corroboration** because a
+record found on a distributed disk has no watched chain of custody. Silver
+Blades' watched engine-written MORGAINE is level 9 and holds her row's 41;
+there is no watched low-level Silver Blades magic-user, so the 40 at levels
+1--5 rests on the executable proof.
+
+`goldbox/amiga_later.py` currently passes `thac0_floor=False`, making a C64
+magic-user at levels 1--5 arrive on the Amiga with 39. That choice is
+**incorrect** for the Amiga import/rebuild rule: it must use the same
+level-zero floor and write 40. The current byte can survive a load and save,
+as the watched Curse specimen shows, so the engine does not repair it on the
+player's behalf. No writer changed as part of this measurement.
+
+## DOS and C64 really do disagree
 
 For a magic-user at levels 1-5 in Curse or Silver Blades:
 
@@ -160,14 +212,12 @@ the DOS rows: `goldbox.levels.dos_base_thac0` takes the best of the classes the
 character has, which is the C64's rule, and the DOS engine's own rule reads the
 level-0 column as well.
 
-**So a conversion must convert the byte rather than copy it, in one direction
-only.** A C64 or Amiga Curse or Silver Blades magic-user of level 1-5
-converted into DOS should arrive holding 40, where `goldbox/dos_codec.py`
-writes 39 today; the same character converted the other way should hold 39,
-which is what `goldbox/levels.py`'s `base_thac0` already gives. Pool of
-Radiance is unaffected in both directions. Nothing else in any of the three
-tables ever asks for worse than 20, so the magic-user at 1-5 is the whole of
-the change.
+**So a conversion must convert the byte rather than copy it.** A C64 Curse or
+Silver Blades magic-user of level 1-5 converted into DOS or Amiga should
+arrive holding 40; converted into the C64, the same character should hold 39,
+which is what `goldbox/levels.py`'s `base_thac0` gives. Pool of Radiance is
+unaffected in every direction. Nothing else in any of the three tables asks
+for worse than 20, so the magic-user at 1-5 is the whole change.
 
 ## What a player sees, and what has not been measured
 
@@ -185,11 +235,6 @@ Not established, and each with the experiment that would settle it:
   CLASSES` into magic-user, followed by reading `0x073` before any load,
   separates them: 39 means the guarded loop wrote it and the next load will
   raise it to 40, 40 means the constant store at `0x0207BA` got there first.
-* **The Amiga builds.** Neither Amiga port's recompute has been read, so
-  whether an Amiga Curse magic-user 1-5 holds 39 or 40 is UNKNOWN. Reading
-  `thac0_base` out of the Amiga Curse specimens' magic-user records would say
-  what that port stores, and the conversion into Amiga needs the answer before
-  it can claim to be converting rather than copying.
 * **Pools of Darkness.** Its root is in `GAME.EXE` rather than `START.EXE`, so
   neither census tool reaches its data segment and its table has never been
   read.

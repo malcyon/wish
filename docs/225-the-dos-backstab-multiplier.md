@@ -74,10 +74,11 @@ this is not a census of the three caller routines or of every use of
 ## The C64 Curse and Silver Blades paths
 
 The two C64 engines also compute the multiplier rather than storing it. Both
-gate directly on `level_thief` at record `0x0CB`; `class_bits` at `0x0EB` is
-absent from each bounded predicate. A fighter/thief therefore uses the thief
-entry of the same eight-byte level array as a single-class thief. CONFIRMED
-from both titles' instruction bytes.
+thief-level gates read `level_thief` at record `0x0CB`; `class_bits` at
+`0x0EB` is absent from each bounded predicate. The complete eligibility path
+then checks the weapons and attack direction. A fighter/thief therefore uses
+the thief entry of the same eight-byte level array as a single-class thief.
+CONFIRMED from both titles' instruction bytes.
 
 The arithmetic differs in one place:
 
@@ -92,7 +93,7 @@ shifting. Curse has no cap instruction in this path. There is no multiplier
 table: the engine decrements the level, shifts it right twice and adds two.
 CONFIRMED from the complete arithmetic in each `COMBAT2`.
 
-| Title | Gate and formula (`COMBAT2`, base `$E000`) | Factor copied (`ECL64`, base `$8000`) | Damage multiply | To-hit adjustment | Byte multiply (`LIBRARY`, base `$2DC8`) |
+| Title | Thief-level gate and formula (`COMBAT2`, base `$E000`) | Factor copied (`ECL64`, base `$8000`) | Damage multiply | To-hit adjustment | Byte multiply (`LIBRARY`, base `$2DC8`) |
 |---|---:|---:|---:|---:|---:|
 | Curse of the Azure Bonds | `$F832` | `$8164` → `$A981` | `$86B7` | `$83E1` | `$2FB9` |
 | Secret of the Silver Blades | `$F4B2` | `$8167` → `$A980` | `$86CC` | `$83F0` | `$2E6F` |
@@ -117,9 +118,12 @@ If dual_class_level != 0 and level > dual_class_level:
 
 Thus a former thief has no backstab while his thief slot is zero. Once the new
 class strictly passes the stored former level, `GEN` restores slot 2 at record
-`0x0CB`, and the ordinary backstab gate sees it. No separate former-thief
+`0x0CB`, and the ordinary thief-level gate sees it. No separate former-thief
 branch exists in the attack path. CONFIRMED from both `GEN` routines and both
-backstab predicates. The C64 generic regain behavior was independently driven
+backstab predicates. The class-bit tables those routines index are
+`01 02 04 08 10 20 40 80` at Curse `GEN $0B82` and Silver Blades
+`LIBRARY $46E5`, so slot 2 restores bit `$04`; both tables are read and checked
+by the extractor. The C64 generic regain behavior was independently driven
 for former paladins in `docs/214-the-regained-dual-class-on-the-c64.md`; a
 former thief was not driven.
 

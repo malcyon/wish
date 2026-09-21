@@ -6,8 +6,9 @@ Tests for the character record and the tables and rules around it: field layouts
 |---|---|
 | `test_abilitypair.py` | Checks which of the later C64 titles' two ability arrays the engine treats as current, through the carrying-capacity index it writes back. |
 | `test_abilitypaircross.py` | Checks that a crossed DOS ability pair keeps its permanent and in-force halves apart converting to the neutral record, to the C64 and back. |
+| `test_amigathac0.py` | Checks Curse's and Silver Blades' guarded and unguarded THAC0 recompute loops against the player's own Amiga executables and representative engine-written records, skipping without them. |
 | `test_backstab.py` | Checks the DOS Curse and Silver Blades backstab gates, multiplier arithmetic and dual-class regain helper against the player's own executables, skipping without them. |
-| `test_c64backstab.py` | Checks the C64 Curse and Silver Blades backstab gate, multiplier arithmetic, damage multiply and dual-class regain path against the player's own disks, skipping without them. |
+| `test_c64backstab.py` | Checks the C64 Curse and Silver Blades thief-level gate, multiplier arithmetic, damage multiply, class-mask table and dual-class regain path against the player's own disks, including the missing-disk result. |
 | `test_boundary.py` | Checks that the boundary characters from `tools/records/boundarychars.py` write and read back whole in DOS and that every active field has a boundary value. |
 | `test_boundary_c64.py` | Checks that the boundary characters from `tools/records/boundarywidths.py` and `tools/records/laterchars.py` write and read back whole through the C64 writer in all three titles, that a value past a field's width is refused or stops at the ceiling, and that every class combination Curse's and Silver Blades' own menus offer keeps its levels and its bitmask. |
 | `test_carryceiling.py` | Checks that `tools/records/carryceiling.py` counts what a character carries against the C64's item and trait-slot ceilings. |
@@ -20,6 +21,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_dualclass_dos.py` | Checks that the later DOS titles' former-class level array reads as a named former class, and that the Amiga reader agrees. |
 | `test_dualclassregain.py` | Checks the rule a DOS engine uses to decide a dual-classed human has got his old class back, and what the record holds when he has. |
 | `test_effects.py` | Checks `goldbox/effects.py`: the effect-array offsets, writing and clearing an effect, and the ECL65 spell-effect table. |
+| `test_effectcrosswalk.py` | Re-reads C64 duration packing and Pool's DOS/C64 effect-value rules from the player's engine files, checks clock-dependent representability, and rejects unproven strength encodings. |
 | `test_enccensus.py` | Checks that `tools/records/enccensus.py` counts an encumbrance failure only where a record's items are known, and that the C64 record has no encumbrance field. |
 | `test_fieldcensus.py` | Checks that `tools/records/fieldcensus.py` picks a title's specimen disks by title rather than by directory and tallies every value it reads. |
 | `test_fieldnames.py` | Checks corrections to field names against the player's disks: the effect-id table, the roster block's readied-weapon die and the armour-protection encoding. |
