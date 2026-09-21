@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Convert now supports Curse of the Azure Bonds and Secret of the Silver Blades saves on the Amiga, in both directions; it previously refused both titles on that platform. ([#512](https://github.com/malcyon/wish/issues/512))
+- Character Editor can now open and save DOS saves and Amiga save disks directly, without first converting them to a Commodore 64 disk. ([#511](https://github.com/malcyon/wish/issues/511))
+- Fast Travel now supports Curse of the Azure Bonds and Secret of the Silver Blades, with a Preferences tab and destination choices for each game. ([#15](https://github.com/malcyon/wish/issues/15))
 
 ### Changed
 
@@ -19,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A Secret of the Silver Blades save made before the party has set out now converts to the start of the story, instead of being refused. ([#535](https://github.com/malcyon/wish/issues/535))
 - A Curse of the Azure Bonds magic-user or cleric converted from Commodore 64 to DOS or Amiga now arrives able to memorise the right number of spells for its level, instead of none. ([#547](https://github.com/malcyon/wish/issues/547))
+- Secret of the Silver Blades casters now show their correct spell capacity when their DOS save is open in Character Editor. ([#572](https://github.com/malcyon/wish/issues/572))
+- A Curse of the Azure Bonds or Secret of the Silver Blades magic-user converted from Commodore 64 to DOS or Amiga now arrives with the engine's correct THAC0. ([#608](https://github.com/malcyon/wish/issues/608))
+- DOS and Amiga conversions now retain a paladin's remaining Cure Disease uses and a running spell's remaining duration. ([#600](https://github.com/malcyon/wish/issues/600))
 
 ## [0.1.4] - 2026-09-13
 
