@@ -143,13 +143,13 @@ def test_silver_blades_has_no_derived_bytes_declared():
     assert amiga_later.LATER_WRITE_DERIVED[amiga_port.SILVER_BLADES_DELTAS.key] == ()
 
 
-def test_the_curse_engine_resave_leaves_only_combat_figure_outside_the_lists():
+def test_the_curse_resave_diff_is_the_known_gap_and_old_thac0_base():
     """The live-game evidence `#402` rests on: Amiga Curse loaded a party
     `write_later` converted and wrote it back through `ENCAMP > SAVE`, and
-    before this fix `thac0_current`, one `roster_tail` byte and
+    before the derived-field fix `thac0_current`, one `roster_tail` byte and
     `combat_figure` were the only bytes outside the declared lists.
     `combat_figure` is the writer's own known gap; the other two are now on
-    `LATER_WRITE_DERIVED`, so nothing but `combat_figure` should be left.
+    `LATER_WRITE_DERIVED`.
 
     The reference specimen is `WISH-SPEC-coab-amiga-converted-resave-
     postspellfix`, captured 2026-09-14 at commit `64eb99a` -- after `#547
@@ -169,6 +169,15 @@ def test_the_curse_engine_resave_leaves_only_combat_figure_outside_the_lists():
     engine's own load-camp-save cycle unchanged -- the engine does not
     recompute this field on load, which is why the pre-fix zeros were
     permanent and why the fix matters more for Amiga than for DOS.
+
+    That 2026-09-14 conversion also predates the Amiga THAC0 floor proof.
+    `write_later` then supplied 39 for the pure low-level mages MATHEW and
+    PHILIPPE, and the ordinary engine resave preserved 39 without running a
+    base-THAC0 rebuild.  Current conversion intentionally supplies 40, matching
+    the target engine's unguarded import/training rebuild.  Their one-byte
+    `thac0_base` differences therefore belong in this exact diff; masking them
+    would hide the evidence that ordinary resave and import use different
+    paths.
 
     `docs/203-a-converted-later-amiga-party-in-the-running-game.md`.
     """
@@ -192,6 +201,17 @@ def test_the_curse_engine_resave_leaves_only_combat_figure_outside_the_lists():
                       for c in proof.party_of(theirs_data, str(theirs_path))}
 
     assert {"MATHEW", "PHILIPPE"} <= ours_by_name.keys()
+    thac0_differences = {
+        name: (mine.get("thac0_base"), theirs_by_name[name].get("thac0_base"))
+        for name, mine in ours_by_name.items()
+        if (name in theirs_by_name
+            and mine.get("thac0_base")
+            != theirs_by_name[name].get("thac0_base"))
+    }
+    assert thac0_differences == {
+        "MATHEW": (40, 39),
+        "PHILIPPE": (40, 39),
+    }
     loose: set[str] = set()
     for name, mine in ours_by_name.items():
         twin = theirs_by_name.get(name)
@@ -202,7 +222,7 @@ def test_the_curse_engine_resave_leaves_only_combat_figure_outside_the_lists():
         for at in range(min(len(a), len(b))):
             if a[at] != b[at] and at not in mask:
                 loose.add(proof.field_at(mine.deltas, at))
-    assert loose == {"combat_figure+0"}
+    assert loose == {"combat_figure+0", "thac0_base+0"}
 
 
 # ---------------------------------------------------------------------------

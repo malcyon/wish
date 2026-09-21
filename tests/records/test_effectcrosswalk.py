@@ -156,7 +156,40 @@ def test_an_unrecognised_engine_cannot_confirm_the_strength_rule(pool):
                                   files["CAMP"], files["SPELLE65"], bytes(changed), image)
 
 
-def test_the_cli_reports_absent_disks_without_writing(monkeypatch, capsys):
+def test_the_cli_reuses_the_resolved_registry_root(monkeypatch, tmp_path):
+    from tools.dos import unexepack
+
+    disk_root = tmp_path / "c64"
+    lookups = []
+    reads = []
+
+    def find(game):
+        lookups.append(game)
+        return disk_root if len(lookups) == 1 else None
+
+    def overlay(_game, name, root):
+        assert root == str(disk_root)
+        reads.append(name)
+        return b""
+
+    monkeypatch.setattr(cross, "tool_disks", find)
+    monkeypatch.setattr(cross.coldread, "overlay", overlay)
+    monkeypatch.setattr(cross, "read_packing", lambda title, *_:
+                        cross.Packing(title, 0, (), (), (), 0))
+    monkeypatch.setattr(cross, "spell_pairs", lambda *_: ())
+    monkeypatch.setattr(cross, "confirm_pool_values", lambda *_: ())
+    monkeypatch.setattr(unexepack, "unpack", lambda _: (b"", {}))
+    (tmp_path / "GAME.OVR").write_bytes(b"")
+    (tmp_path / "START.EXE").write_bytes(b"")
+
+    assert cross.main(["--dos-dir", str(tmp_path)]) == 0
+    assert lookups == [c64_port.POOL_OF_RADIANCE]
+    assert reads == [b"SPELLE04", b"LIBRARY", b"ECL65", b"SPELLE01",
+                     b"CAMP", b"SPELLE65"]
+
+
+@pytest.mark.parametrize("argv", [[], ["--disks", ""]])
+def test_the_cli_reports_absent_disks_without_writing(monkeypatch, capsys, argv):
     monkeypatch.setattr(cross, "tool_disks", lambda _game: None)
-    assert cross.main([]) == 2
+    assert cross.main(argv) == 2
     assert "No C64 disks found" in capsys.readouterr().out

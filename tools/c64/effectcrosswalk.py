@@ -301,7 +301,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="Pool directory containing START.EXE and GAME.OVR")
     args = parser.parse_args(argv)
     try:
-        code, library = load_c64(args.title, args.disks)
+        game = c64_port.by_key(args.title)
+        root = args.disks or tool_disks(game)
+        if root is None:
+            raise FileNotFoundError(f"No C64 disks found for {args.title}")
+        root = str(root)
+        code, library = load_c64(args.title, root)
         packing = read_packing(args.title, code, library)
     except FileNotFoundError as exc:
         print(exc)
@@ -325,8 +330,6 @@ def main(argv: list[str] | None = None) -> int:
     except FileNotFoundError as exc:
         print(f"No DOS engine: {exc}")
         return 2
-    game = c64_port.POOL_OF_RADIANCE
-    root = args.disks or str(tool_disks(game))
     def read(name: str) -> bytes:
         return coldread.overlay(game, name.encode(), root)
     pairs = spell_pairs(read("ECL65"), dos_image)
