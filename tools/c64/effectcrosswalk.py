@@ -17,6 +17,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import c64_port  # noqa: E402
+from goldbox.effects import EFFECT_SLOTS, PARTY_WIDE  # noqa: E402
 from tools.c64 import coldread, d6502  # noqa: E402
 
 
@@ -399,15 +400,177 @@ def confirm_later_values(title: str, combat: bytes, table: bytes,
     return ("Haste age marker", "Prayer allegiance", mirror)
 
 
+@dataclasses.dataclass(frozen=True)
+class SlotSite:
+    """Where one title keeps the allocator every cast goes through."""
+
+    search: int
+    ids: int
+    owners: int
+    cast_file: str
+    cast_base: int
+    cast_match: int
+    cast_free: int
+
+
+SLOTS = {
+    "pool-of-radiance": SlotSite(
+        0x3FE4, 0x4900, 0x4940, "SPELLE04", 0xA700, 0xA7F1, 0xA80A),
+    "curse-of-the-azure-bonds": SlotSite(
+        0x409F, 0x4B00, 0x4B40, "ECL65", 0x8000, 0x813E, 0x8156),
+    "secret-of-the-silver-blades": SlotSite(
+        0x3854, 0x4B00, 0x4B40, "ECL65", 0x8000, 0x813E, 0x8156),
+}
+
+
+def confirm_slot_rule(title: str, library: bytes, cast: bytes) -> tuple[str, ...]:
+    """Check the allocator's own scan direction, owner test and free-slot call.
+
+    One routine in all three engines: it walks slot 63 down to 0 for an id and
+    an owner, taking a negative owner as a match for any query, and the cast
+    calls it twice -- once for the pair it is about to write and once with id 0
+    and owner `$FF` for a free slot.
+    """
+    site, base = SLOTS[title], SITES[title].library_base
+    for step, opcode, value in (
+            (0, 0x8D, 0), (3, 0x8E, 0), (6, 0xA2, EFFECT_SLOTS - 1),
+            (11, 0xDD, site.ids), (14, 0xD0, 0x0E), (16, 0xC9, 0),
+            (18, 0xF0, 0x0F), (20, 0xBD, site.owners), (23, 0x30, 0x0A),
+            (25, 0xCD, 0), (28, 0xF0, 5), (30, 0xCA, 0), (31, 0x10, 0xE7),
+            (33, 0x18, 0), (34, 0x60, 0)):
+        at = site.search + step
+        got = operand(library, base, at, opcode)
+        if value and got != value:
+            raise ValueError(f"Different allocator operand at ${at:04X}")
+    _c64(cast, site.cast_match, 0x20, site.search, site.cast_base)
+    _c64(cast, site.cast_free, 0xA9, 0, site.cast_base)
+    _c64(cast, site.cast_free + 2, 0xA2, PARTY_WIDE, site.cast_base)
+    _c64(cast, site.cast_free + 4, 0x20, site.search, site.cast_base)
+    return ("Highest free slot", "One slot per id and owner",
+            "A negative owner matches any query")
+
+
+@dataclasses.dataclass(frozen=True)
+class AbilitySite:
+    """One later title's ability-effect packing, recompute and DOS twin."""
+
+    packer: int
+    enlarge: int
+    friends: int
+    strength: int
+    mirror: int
+    roll: int
+    level: int
+    magnitude: int
+    value_helper: int
+    strength_recompute: int
+    charisma_recompute: int
+    enlarge_read: int
+    strengths: int
+    percentiles: int
+    dice: tuple[int, int]
+    dos_mirror_shift: int
+    dos_friends: int
+    dos_strength_add: int
+    dos_strength_id: int
+    dos_enlarge_ladder: int
+    dos_enlarge_field: str
+
+
+ABILITIES = {
+    "curse-of-the-azure-bonds": AbilitySite(
+        0x8241, 0x8214, 0x8231, 0x828D, 0x8282, 0x8068, 0x2BFB, 0x2BFC,
+        0x9797, 0x9175, 0x9733, 0x91D1, 0x9223, 0x922F, (0xE3, 0x4D),
+        0x30710, 0x30199, 0x30D8C, 0x30D98, 0x2FFCD, "0x4ccd"),
+    "secret-of-the-silver-blades": AbilitySite(
+        0x828A, 0x825D, 0x827A, 0x82D6, 0x82CB, 0x8068, 0x2A6E, 0x2A6F,
+        0x99EA, 0x9647, 0x9990, 0x969D, 0x96E9, 0x96F5, (0x145, 0x43),
+        0x2EF75, 0x2E9DF, 0x2F5D2, 0x2F5DE, 0x2E80D, "0x64d8"),
+}
+
+#: What Enlarge sets strength to by caster level, read off both ports.
+ENLARGE_TABLE = bytes.fromhex("12 12 12 12 12 12 13 14 15 16 17 18")
+ENLARGE_PERCENTILES = bytes.fromhex("00 01 33 4c 5b 64 00 00 00 00 00 00")
+
+
+def confirm_later_ability_values(title: str, ecl65: bytes,
+                                 dos_ovr: bytes) -> tuple[str, ...]:
+    """Check each later title's ability packing against its DOS twin.
+
+    The later titles derive the score in force from the permanent one, so a
+    magnitude holds a modifier: the bonus one less than itself in the upper
+    nibble, the caster's level in the low one and bit 7 set. Mirror Image is
+    the one id that packs no level on the C64 and does on DOS.
+    """
+    site = ABILITIES[title]
+    for step in range(4):                       # the bonus into the top nibble
+        _c64(ecl65, site.packer + step, 0x0A, 0, 0x8000)
+    _c64(ecl65, site.packer + 4, 0x0D, site.level, 0x8000)
+    _c64(ecl65, site.packer + 7, 0x09, 0x80, 0x8000)
+    _c64(ecl65, site.packer + 9, 0x8D, site.magnitude, 0x8000)
+
+    _c64(ecl65, site.enlarge, 0xAD, site.level, 0x8000)
+    _c64(ecl65, site.enlarge + 3, 0x09, 0x80, 0x8000)
+    _c64(ecl65, site.enlarge + 5, 0x8D, site.magnitude, 0x8000)
+
+    _c64(ecl65, site.roll, 0xA2, 4, 0x8000)     # the d4 both casts roll
+    for at, count in ((site.friends, 2), (site.mirror, 1)):
+        _c64(ecl65, at, 0xA9, count, 0x8000)
+        _c64(ecl65, at + 2, 0x20, site.roll, 0x8000)
+    _c64(ecl65, site.friends + 6, 0xE9, 1, 0x8000)
+    _c64(ecl65, site.friends + 8, 0x20, site.packer, 0x8000)
+    _c64(ecl65, site.mirror + 5, 0x8D, site.magnitude, 0x8000)
+
+    _c64(ecl65, site.value_helper + 5, 0xBD, 0x4D80, 0x8000)
+    _c64(ecl65, site.value_helper + 8, 0x29, 0x7F, 0x8000)
+    for step in range(10, 14):                  # four shifts: the top nibble
+        _c64(ecl65, site.value_helper + step, 0x4A, 0, 0x8000)
+    _c64(ecl65, site.strength_recompute, 0xA9, 38, 0x8000)
+    _c64(ecl65, site.strength_recompute + 2, 0x20, site.value_helper, 0x8000)
+    _c64(ecl65, site.charisma_recompute, 0xA9, 14, 0x8000)
+    _c64(ecl65, site.charisma_recompute + 2, 0x20, site.value_helper, 0x8000)
+    _c64(ecl65, site.charisma_recompute + 7, 0xEE, 0x7C19, 0x8000)
+    _c64(ecl65, site.charisma_recompute + 11, 0x6D, 0x7C19, 0x8000)
+
+    _c64(ecl65, site.enlarge_read, 0xBD, 0x4D80, 0x8000)
+    _c64(ecl65, site.enlarge_read + 3, 0x29, 0x0F, 0x8000)
+    _c64(ecl65, site.enlarge_read + 5, 0xC9, 10, 0x8000)
+    _c64(ecl65, site.enlarge_read + 12, 0xE9, 1, 0x8000)
+    for at, expected in ((site.strengths, ENLARGE_TABLE),
+                         (site.percentiles, ENLARGE_PERCENTILES)):
+        if ecl65[at - 0x8000:at - 0x8000 + len(expected)] != expected:
+            raise ValueError(f"Different Enlarge table at ${at:04X}")
+
+    unit, entry = site.dice
+    _x86(dos_ovr, site.dos_mirror_shift, "mov", "cx, 4")
+    _x86(dos_ovr, site.dos_mirror_shift + 3, "shl", "ax, cl")
+    _x86(dos_ovr, site.dos_friends, "mov", "al, 2")
+    _x86(dos_ovr, site.dos_friends + 3, "mov", "al, 4")
+    _x86(dos_ovr, site.dos_friends + 6, "lcall", f"{hex(unit)}, {hex(entry)}")
+    _x86(dos_ovr, site.dos_strength_add, "add", "ax, 0x64")
+    _x86(dos_ovr, site.dos_strength_id, "mov", "al, 0x26")
+    _x86(dos_ovr, site.dos_enlarge_ladder, "mov",
+         f"byte ptr [{site.dos_enlarge_field}], 0x12")
+    return ("Strength bonus in the top nibble", "Friends bonus in the top nibble",
+            "Enlarge level in the low nibble", "Mirror Image count alone",
+            "The two ports' Enlarge tables agree")
+
+
 def mirror_image_value(title: str, dos_data: int) -> int:
-    """The confirmed remaining-image count, rejecting the unresolved Curse case."""
+    """The remaining image count a DOS node holds, for either port's reading.
+
+    Pool of Radiance keeps it in the whole data byte; Curse of the Azure Bonds
+    and Secret of the Silver Blades keep it in the upper nibble, which is what
+    both casts write and both selection rolls read. Curse's own handler then
+    decrements the whole byte instead of the nibble, so its count falls by one
+    on the first absorbed hit and then only every sixteenth -- a defect in that
+    engine, not a second meaning for the byte.
+    """
     if not 0 <= dos_data <= 0xFF:
         raise ValueError("DOS data must be a byte")
-    if title == "pool-of-radiance":
-        return dos_data
-    if title == "secret-of-the-silver-blades":
-        return dos_data >> 4
-    raise ValueError(f"Mirror Image is not mapped for {title}")
+    if title not in SITES:
+        raise ValueError(f"Mirror Image is not mapped for {title}")
+    return dos_data if title == "pool-of-radiance" else dos_data >> 4
 
 
 def strength_value(dos_data: int) -> int:
@@ -489,12 +652,17 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     def read(name: str) -> bytes:
         return coldread.overlay(game, name.encode(), root)
+    slots = confirm_slot_rule(args.title, library,
+                              code if args.title == "pool-of-radiance"
+                              else read("ECL65"))
+    print("CONFIRMED Slot rule: " + ", ".join(slots))
     if args.title != "pool-of-radiance":
         checks = confirm_later_values(args.title, read("COMBAT"), read("COMBAT2"),
                                       dos_ovr, dos_image)
         print("CONFIRMED Value checks: " + ", ".join(checks))
-        print("UNKNOWN Strength/Enlarge, Prayer global merging and all unlisted ids; "
-              "Curse Mirror Image remains unmapped")
+        abilities = confirm_later_ability_values(args.title, read("ECL65"), dos_ovr)
+        print("CONFIRMED Ability checks: " + ", ".join(abilities))
+        print("UNKNOWN Prayer global merging and all unlisted ids")
         return 0
     files = {"SPELLE04": code, "LIBRARY": library}
     files.update({name: read(name) for name in (

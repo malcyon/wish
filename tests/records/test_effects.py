@@ -658,3 +658,148 @@ def test_a_combat_round_ages_the_minute_unit_and_nothing_coarser(title):
     assert _operand(body, base, test, 0xC9) == 0x40
     assert body[test - base + 2] == 0xB0              # BCS past the slot
     assert _operand(body, base, dec, 0xDE) == durations
+
+
+# --- S6: which slot and owner a converted effect takes -----------------------
+
+
+def _filled(taken: dict[int, tuple[int, int]]) -> bytes:
+    payload = _blank_payload()
+    for slot, (eid, owner) in taken.items():
+        effects.write_effect(payload, slot, id=eid, owner=owner,
+                             duration=0x0A, magnitude=0)
+    return bytes(payload)
+
+
+def test_a_new_effect_takes_the_highest_free_slot():
+    """The cast asks the allocator for id 0 and owner `$FF`, and the walk runs
+    from slot 63 down, so slot 63 is the one a cast fills first.
+    """
+    assert effects.free_slot(_filled({})) == effects.EFFECT_SLOTS - 1
+    assert effects.free_slot(_filled({63: (1, 0), 62: (1, 1)})) == 61
+    every = {slot: (1, slot & 7) for slot in range(effects.EFFECT_SLOTS)}
+    assert effects.free_slot(_filled(every)) is None
+
+
+def test_the_allocator_holds_one_slot_per_id_and_owner():
+    payload = _filled({10: (38, 2), 40: (38, 5), 50: (38, effects.PARTY_WIDE)})
+    # A negative owner matches every query, and the walk meets slot 50 first.
+    assert effects.slot_for(payload, 38, 2) == 50
+    assert effects.slot_for(payload, 38, 7) == 50
+    payload = _filled({10: (38, 2), 40: (38, 5)})
+    assert effects.slot_for(payload, 38, 2) == 10
+    assert effects.slot_for(payload, 38, 5) == 40
+    assert effects.slot_for(payload, 38, 7) is None
+    assert effects.slot_for(payload, 12, 2) is None
+
+
+@pytest.mark.parametrize("title", sorted(effectcrosswalk.SLOTS))
+def test_all_three_engines_allocate_from_the_top_and_match_on_id_and_owner(title):
+    """The rule above, read off the player's own disks: one allocator in three
+    engines, called twice per cast.
+    """
+    site = effectcrosswalk.SLOTS[title]
+    library = _overlay(title, "LIBRARY")
+    cast = _overlay(title, site.cast_file)
+    assert effectcrosswalk.confirm_slot_rule(title, library, cast) == (
+        "Highest free slot", "One slot per id and owner",
+        "A negative owner matches any query")
+    assert _operand(library, effectcrosswalk.SITES[title].library_base,
+                    site.search + 6, 0xA2) == effects.EFFECT_SLOTS - 1
+
+
+# --- S7: the value a converted effect carries --------------------------------
+
+
+def _dos_engine(title):
+    pytest.importorskip("capstone")
+    from tools.dos import dosbox
+
+    try:
+        folder = dosbox.find_game(effectcrosswalk.DOS_TITLES[title])
+    except FileNotFoundError:
+        pytest.skip(f"Needs the player's DOS {title} engine")
+    return (folder / "GAME.OVR").read_bytes()
+
+
+@pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
+def test_the_later_titles_keep_the_image_count_in_the_upper_nibble(title):
+    """Both later casts roll `1d4` and shift it up four, so the count is the
+    top nibble on both ports even though the C64 magnitude is only the count.
+    """
+    assert effects.mirror_image_count(0x43, later=True) == 4
+    assert effects.mirror_image_count(0x43, later=False) == 0x43
+    assert effectcrosswalk.mirror_image_value(title, 0x43) == 4
+    site = effectcrosswalk.ABILITIES[title]
+    ovr = _dos_engine(title)
+    assert ovr[site.dos_mirror_shift:site.dos_mirror_shift + 5] == \
+        bytes.fromhex("b90400d3e0")                   # mov cx, 4 / shl ax, cl
+    ecl = _overlay(title, "ECL65")
+    assert _operand(ecl, 0x8000, site.mirror, 0xA9) == 1      # one d4
+    assert _operand(ecl, 0x8000, site.mirror + 5, 0x8D) == site.magnitude
+
+
+@pytest.mark.parametrize("bonus", range(1, 9))
+@pytest.mark.parametrize("level", (0, 1, 10, 15))
+def test_a_later_ability_magnitude_is_the_bonus_less_one_and_the_level(bonus, level):
+    """What the cast packs and what the recompute reads back, as one round
+    trip: the bonus one less than itself in the top nibble, the caster's level
+    in the low one and bit 7 set.
+    """
+    magnitude = effects.later_ability_magnitude(bonus, level)
+    assert magnitude & effects.MAGNITUDE_RESTORE_FLAG
+    assert magnitude & 0x0F == level
+    assert effects.later_ability_bonus(magnitude) == bonus
+
+
+def test_the_strength_ladder_is_the_recomputes_and_lowering_inverts_it():
+    """One step is `+1` below 18 and `+10` percentile at it, stopping at
+    18/100 -- and the DOS cast's own `(new - 18) * 10 + old` arrives at the
+    same score, which is why a converted base can be walked back down.
+    """
+    assert effects.raise_strength(15, 0, 3) == (18, 0)
+    assert effects.raise_strength(18, 0, 1) == (18, 10)
+    assert effects.raise_strength(18, 90, 1) == (18, 100)
+    assert effects.raise_strength(18, 100, 4) == (18, 100)
+    for strength in range(3, 19):
+        for steps in range(1, 9):
+            up = effects.raise_strength(strength, 0, steps)
+            if up != effects.STRENGTH_CAP:
+                assert effects.lower_strength(*up, steps) == (strength, 0)
+    # The DOS cast's arithmetic for an arrival past 18, from one at 18/00.
+    for steps in range(1, 9):
+        assert effects.raise_strength(18, 0, steps) == (18, min(steps * 10, 100))
+
+
+@pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
+def test_both_ports_enlarge_to_the_same_score_by_caster_level(title):
+    """The C64 table and the DOS ladder hold the same ten entries, so the
+    level a converted node needs reads straight off the record's own strength.
+    """
+    site = effectcrosswalk.ABILITIES[title]
+    ecl = _overlay(title, "ECL65")
+    strengths = ecl[site.strengths - 0x8000:site.strengths - 0x8000 + 12]
+    percentiles = ecl[site.percentiles - 0x8000:site.percentiles - 0x8000 + 12]
+    assert tuple(zip(strengths, percentiles))[:len(effects.ENLARGE_STRENGTHS)] == \
+        effects.ENLARGE_STRENGTHS
+    assert effects.enlarge_level(18, 51) == 3
+    assert effects.enlarge_level(22, 0) == 10
+    assert effects.enlarge_level(18, 2) is None
+
+
+@pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
+def test_the_later_engines_pack_a_bonus_and_a_level_where_dos_packs_neither(title):
+    """Every operand behind the three mappings, off the player's own disks."""
+    ovr = _dos_engine(title)
+    assert effectcrosswalk.confirm_later_ability_values(
+        title, _overlay(title, "ECL65"), ovr) == (
+        "Strength bonus in the top nibble", "Friends bonus in the top nibble",
+        "Enlarge level in the low nibble", "Mirror Image count alone",
+        "The two ports' Enlarge tables agree")
+    site = effectcrosswalk.ABILITIES[title]
+    # DOS's Strength node carries 100 plus the steps, so the bonus comes back
+    # as `data - 100` and the C64 magnitude one less than that in the nibble.
+    assert ovr[site.dos_strength_add:site.dos_strength_add + 3] == \
+        bytes.fromhex("056400")                       # add ax, 0x64
+    assert effects.later_ability_bonus(
+        effects.later_ability_magnitude(104 - 100, 6)) == 4

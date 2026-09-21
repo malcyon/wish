@@ -403,6 +403,179 @@ def write_effect(payload: bytearray, slot: int, id: int, owner: int,
     payload[EFFECT_MAGNITUDE_OFFSET + slot] = magnitude
 
 
+# --- which slot a new effect takes, and who owns it --------------------------
+#
+# All three engines allocate through one routine, the same code at three
+# addresses: Pool of Radiance `LIBRARY $3FE4`, Curse of the Azure Bonds
+# `LIBRARY $409F` and Secret of the Silver Blades `LIBRARY $3854`. It takes an
+# id in A and an owner in X and walks the slots **from 63 down to 0**, matching
+# the first slot whose id is the one asked for and whose owner is either the
+# one asked for or negative. `$4005`/`$40C0`/`$3875` return carry clear for no
+# match.
+#
+# The cast calls it twice (`SPELLE04 $A7F1` and `$A80E`, `ECL65 $8138` and
+# `$815A`): once for the id and owner it is about to write, and then with id 0
+# and owner `$FF` for a free slot. So:
+#
+# * a new effect lands in the **highest-numbered slot whose id is zero**;
+# * there is at most **one slot per (id, owner) pair** -- a second cast of the
+#   same spell on the same character replaces the first rather than adding a
+#   row (Pool expires the old slot through `CAMP $131F` first, Curse and Silver
+#   Blades overwrite it in place);
+# * the replacement keeps whichever **duration byte** is numerically larger,
+#   which is not the same as the longer time left: `$41` beats `$3F` and lasts
+#   a tenth as long;
+# * with no free slot the cast silently does nothing (`$A811`, `$815D`).
+#
+# The owner is the party slot for a per-character effect and `PARTY_WIDE` for
+# one the whole party carries, and a negative owner matches every query.
+
+
+def slot_for(payload: bytes, id: int, owner: int) -> int | None:
+    """The slot the engine's own search returns for this id and owner.
+
+    `None` when it would return carry clear. An id of 0 asks for a free slot,
+    which is what the cast does with `PARTY_WIDE` as the owner.
+    """
+    _check_byte("id", id)
+    _check_byte("owner", owner)
+    for slot in range(EFFECT_SLOTS - 1, -1, -1):
+        if payload[EFFECT_ID_OFFSET + slot] != id:
+            continue
+        if id == 0:
+            return slot
+        held = payload[EFFECT_OWNER_OFFSET + slot]
+        if held >= 0x80 or held == owner:
+            return slot
+    return None
+
+
+def free_slot(payload: bytes) -> int | None:
+    """The slot a cast would put a new effect in, or `None` when all 64 are taken."""
+    return slot_for(payload, 0, PARTY_WIDE)
+
+
+# --- the later titles' ability effects, which are modifiers and not old values
+#
+# Curse of the Azure Bonds and Secret of the Silver Blades keep the permanent
+# score at record `0x065` and the score in force at `0x014`, and rebuild the
+# second from the first plus the running effects
+# (`docs/201-the-two-ability-arrays.md`, the recompute at Curse `ECL65 $9160`
+# and Silver Blades `$9637`). So a slot's magnitude holds **how much the
+# effect adds**, never the score it replaced, and the two DOS-side encodings
+# differ per id. Every constant below is read out of the engines in
+# `tools/c64/effectcrosswalk.py`.
+
+#: The later titles cast an ability spell with the bonus in the magnitude's
+#: **upper nibble, one less than the bonus**, the caster's level in the low
+#: nibble and bit 7 set (Curse `ECL65 $8241`, Silver Blades `$828A`). The
+#: recompute reads `(magnitude & 0x7F) >> 4` (Curse `$9797`, Silver Blades
+#: `$99EA`) and applies one more step than that.
+LATER_ABILITY_BONUS_SHIFT = 4
+
+#: What Enlarge sets strength to, by caster level, capped at level 10. The C64
+#: table is Curse `ECL65 $9223`/`$922F` and Silver Blades `$96E9`/`$96F5`; DOS
+#: writes the same ten values from its own ladder of `cmp al, <level>` tests at
+#: Curse `GAME.OVR:0x2FFCD`-`0x3004B`. Both ports hold two more entries, 23 and
+#: 24, that a cast cannot reach.
+ENLARGE_STRENGTHS: tuple[tuple[int, int], ...] = (
+    (18, 0), (18, 1), (18, 51), (18, 76), (18, 91), (18, 100),
+    (19, 0), (20, 0), (21, 0), (22, 0),
+)
+
+#: The strength ladder one step of a later title's Strength effect climbs:
+#: below 18 the score itself, at 18 the percentile in tens, stopping at 18/100.
+#: Curse `ECL65 $9191`-`$91B0`, Silver Blades `$9663`-`$9682`, and the DOS cast
+#: computes the same arrival from `(new - 18) * 10 + old percentile` capped at
+#: 100 (Curse `GAME.OVR:0x30D3A`).
+STRENGTH_CAP = (18, 100)
+
+
+def raise_strength(strength: int, percentile: int, steps: int) -> tuple[int, int]:
+    """Climb the later titles' strength ladder, the way the recompute does."""
+    if steps < 0:
+        raise ValueError(f"steps must not be negative: {steps}")
+    for _ in range(steps):
+        if (strength, percentile) == STRENGTH_CAP or strength > 18:
+            break
+        if strength != 18:
+            strength, percentile = strength + 1, 0
+        elif percentile >= 90:
+            percentile = 100
+        else:
+            percentile += 10
+    return strength, percentile
+
+
+def lower_strength(strength: int, percentile: int, steps: int) -> tuple[int, int]:
+    """The score a later title's base array must hold under `steps` of boost.
+
+    The inverse of `raise_strength`, which is what a conversion needs: the DOS
+    record holds only the boosted score, and the C64 rebuilds the boosted one
+    from the base. A score above 18 is left alone, because the ladder does not
+    reach one: the DOS cast turns any arrival past 18 into a percentile
+    (`GAME.OVR:0x30D3A`), so only Enlarge and the girdle ids put a 19 there.
+    """
+    if steps < 0:
+        raise ValueError(f"steps must not be negative: {steps}")
+    for _ in range(steps):
+        if strength > 18:
+            break
+        if strength == 18 and percentile:
+            percentile = 90 if percentile == 100 else percentile - 10
+        elif strength == 18:
+            strength, percentile = 17, 0
+        else:
+            strength -= 1
+    return strength, percentile
+
+
+def mirror_image_count(dos_data: int, *, later: bool) -> int:
+    """The images a DOS Mirror Image node has left.
+
+    Pool of Radiance keeps the count in the whole byte; Curse and Silver Blades
+    keep it in the **upper nibble** and the caster's level in the low one, which
+    is what both engines' casts write (Curse `GAME.OVR:0x30700`, Silver Blades
+    `0x2EF6E`) and what both selection rolls read back.
+    """
+    _check_byte("data", dos_data)
+    return dos_data >> 4 if later else dos_data
+
+
+def later_ability_magnitude(bonus: int, caster_level: int) -> int:
+    """The C64 magnitude for a later title's Strength or Friends slot.
+
+    `bonus` is the number of steps the effect adds -- a DOS Strength node's
+    `data - 100` or a DOS Friends node's `data`. The low nibble is read only
+    for Enlarge, so a source with no level to give can pass 0.
+    """
+    if not 1 <= bonus <= 8:
+        raise ValueError(f"a later ability bonus is 1 to 8, got {bonus}")
+    if not 0 <= caster_level <= 0x0F:
+        raise ValueError(f"caster level must fit the low nibble: {caster_level}")
+    return MAGNITUDE_RESTORE_FLAG | (bonus - 1) << LATER_ABILITY_BONUS_SHIFT \
+        | caster_level
+
+
+def later_ability_bonus(magnitude: int) -> int:
+    """How many steps a later title's magnitude adds, the recompute's own read."""
+    _check_byte("magnitude", magnitude)
+    return ((magnitude & 0x7F) >> LATER_ABILITY_BONUS_SHIFT) + 1
+
+
+def enlarge_level(strength: int, percentile: int) -> int | None:
+    """The caster level whose Enlarge produces this strength, or `None`.
+
+    A DOS Enlarge node exists only where the spell actually raised the score
+    (`GAME.OVR:0x30068` skips `add_affect` when it did not), so the record's
+    own strength is the table entry and the level reads straight back off it.
+    """
+    for index, entry in enumerate(ENLARGE_STRENGTHS):
+        if entry == (strength, percentile):
+            return index + 1
+    return None
+
+
 # --- the spell-effect table, ECL65 relocated to $9900 -----------------------
 #
 # `docs/50-experiments.md`, "The effect and status system at $4900":

@@ -193,6 +193,75 @@ Enlarge measurement. The boundary matters: DOS data 101 means 18/100,
 while C64 low bits 101 mean ordinary strength 1. Ordinary strength 15 uses
 115 on both ports, then `$F3` with the restore flag.
 
+## The later titles' ability effects hold a modifier, not the score replaced
+
+**CONFIRMED, and it replaces this page's "the complete modifier crosswalk is
+UNKNOWN":** Curse and Silver Blades keep the permanent score at record `0x065`
+and the score in force at `0x014`, and rebuild the second from the first plus
+the running effects ([201-the-two-ability-arrays.md](201-the-two-ability-arrays.md),
+the recompute at Curse `ECL65 $9160` and Silver Blades `$9637`). So the
+magnitude says **how much the effect adds**, where Pool's says what score to
+put back. Every cast packs it the same way -- the bonus **one less than
+itself** in the upper nibble, the caster's level in the low one, bit 7 set
+(Curse `ECL65 $8241`, Silver Blades `$828A`) -- and the recompute reads
+`(magnitude & $7F) >> 4` (Curse `$9797`, Silver Blades `$99EA`) and applies one
+more step than it finds.
+
+| Effect | DOS data | C64 magnitude | Code evidence |
+|---|---|---|---|
+| Strength 38 | `100 + steps`, the class die's roll | `$80 \| (steps - 1) << 4 \| level` | DOS cast Curse `0x30C8A`-`0x30DAB`, Silver Blades `0x2F5D2`-`0x2F5F1`, both `add ax, 0x64` before `add_affect(38, …, flag 1)`; C64 Curse `ECL65 $828D`, Silver Blades `$82D6`; the recompute's step loop Curse `$9175`-`$91B8`, Silver Blades `$9647`-`$968A` |
+| Friends 14 | `2d4`, the bonus itself | `$80 \| (bonus - 1) << 4 \| level` | DOS cast Curse `0x30199`, Silver Blades `0x2E9DF`; C64 Curse `$8231`, Silver Blades `$827A`; the charisma recompute adds `nibble + 1` at Curse `$9733`-`$9741`, Silver Blades `$9990`-`$999E` |
+| Enlarge 12 | the **old strength**, in the same encoding a strength item uses | `$80 \| level`, level capped at 10 | DOS cast Curse `0x2FFBB`-`0x300A5` sets the score through `0xE3:0x75` and passes back what it replaced; C64 Curse `$8214`, read at `$91D1` as `magnitude & $0F` capped at 10 |
+
+**CONFIRMED: both ports enlarge to the same ten scores.** The C64 table at
+Curse `ECL65 $9223`/`$922F` and Silver Blades `$96E9`/`$96F5` reads `18/00,
+18/01, 18/51, 18/76, 18/91, 18/100, 19, 20, 21, 22` (and two more, 23 and 24, a
+cast cannot reach), and the DOS ladder of `cmp al, <level>` tests at Curse
+`0x2FFCD`-`0x3004B` writes the same ten. So the level a converted Enlarge needs
+reads straight off the record's own strength: a DOS node exists only where the
+spell actually raised the score (`0x30068` skips `add_affect` when it did not).
+
+**What this means for a writer, and it is not a byte mapping.** A DOS record
+holds one set of abilities -- the boosted one -- and the node holds what the
+spell replaced or how much it added. A C64 record holds both. So converting a
+running Strength or Friends sets the C64's `0x014` from the DOS score, walks
+`0x065` back down by the bonus, and writes the magnitude above; converting a
+running Enlarge sets `0x065` from the node's own old strength. Leaving `0x065`
+at the boosted score is what a writer would do by accident, and the character
+then keeps the boost for good when the effect ends.
+`goldbox/effects.py` holds the arithmetic -- `later_ability_magnitude`,
+`later_ability_bonus`, `raise_strength`, `lower_strength`, `enlarge_level`,
+`mirror_image_count` -- and `tests/records/test_effects.py` checks each against
+the operands read off the disks.
+
+## Which slot a converted effect takes, and who owns it
+
+**CONFIRMED from all three engines, which share one allocator:** Pool of
+Radiance `LIBRARY $3FE4`, Curse `$409F` and Silver Blades `$3854` are the same
+code. It takes an id in A and an owner in X, walks **slot 63 down to 0**, and
+matches the first slot whose id is the one asked for and whose owner is either
+the one asked for or negative; `$4005`/`$40C0`/`$3875` return carry clear for
+no match. Each cast calls it twice (Pool `SPELLE04 $A7F1` and `$A80E`, the
+later titles `ECL65 $813E` and `$815A`): once for the pair it is about to
+write, then with id 0 and owner `$FF` for a free slot.
+
+| | what the engine does |
+|---|---|
+| slot | the **highest-numbered** slot whose id is zero; with none free the cast silently does nothing (`$A811`, `$815D`) |
+| owner | the party slot for a per-character effect, `$FF` for one the party carries; a negative owner answers every query (`$3FFB`, `$40B6`, `$386B`) |
+| duplicates | at most **one slot per (id, owner) pair** -- Pool expires the old slot through `CAMP $131F` and takes a fresh one, the later titles overwrite it in place |
+| which of two | the numerically larger **duration byte** wins, which is not the longer time left: `$41` beats `$3F` and lasts a tenth as long |
+
+`goldbox.effects.free_slot` and `slot_for` are that walk, and
+`tools/c64/effectcrosswalk.py`'s `confirm_slot_rule` reads the operands back
+off the player's disks for all three titles.
+
+**Negative result, CONFIRMED:** no saved specimen corroborates the allocation
+order. All 32 `SAVEDGAME0` images on this machine's registered C64 disks carry
+a zero id in all 64 slots, so the rule rests on the code alone. Casting one
+spell in a driven session and reading which slot it lands in would corroborate
+it; the existing `tools/c64/effectdrive.py` stages slots rather than casting.
+
 ## Negative results and remaining work
 
 | Finding or gap | Grade and next bounded check |
@@ -200,10 +269,11 @@ while C64 low bits 101 mean ordinary strength 1. Ordinary strength 15 uses
 | A raw DOS data byte is not a C64 magnitude | **CONFIRMED:** exceptional strength differs by one, and Prayer uses a different allegiance bit and polarity. |
 | One minutes-only value does not encode every C64 duration | **CONFIRMED:** it omits clock phase, and 64 minutes at phase 0 has no exact candidate among all 252 nonzero-count bytes. A conversion policy is still required. |
 | Pool overlapping Enlarge/Strength nodes do not have independent equivalent magnitudes | **CONFIRMED:** DOS `0x2C0D3` finds the active low-bit node, `0x2C129/0x2C12F` parks the displaced boost with bit 7, and expiry `0xF173–0xF227` selects the strongest remaining boost and moves the baseline into it. C64 `SPELLE04 $A8F4/$A8FA` updates current strength, then `$A8FD/$A904` searches ids 38/12 and `$A902/$A909` returns at `$A911` if either exists, retaining its earlier timer. A future writer needs the entire DOS chain, including permanent item nodes, and a timeline policy; translating the bytes independently is insufficient. |
+| Pool overlapping nodes are a **platform limit** rather than an undecoded field | **CONFIRMED from the allocator and the cast:** the C64 keeps one slot per (id, owner) pair and its own cast refuses to add a second strength node while one runs, so two overlapping boosts with two different expiry times are a thing that C64 Pool cannot hold, however the bytes are written. `.claude/rules/conversions.md` sends that case to the player -- say what will not fit and let them choose -- which is Donald's wording and his decision, not a measurement. What a single converted node can still preserve exactly: the strength in force now, and the score the last expiry puts back. What it cannot: the intermediate step, where DOS drops to the middle value when the first of the two ends. |
 | Pool Prayer can retain individual character ownership | **CONFIRMED combat route:** `LIBRARY $3FEF/$3FF8/$3FFD` compares id and owner; `$4000` accepts the matching party slot. `COMBAT $28A4`, base `$0800`, supplies that slot; `SQRPACI01 $077A/$0791/$0797`, base `$0400`, reaches id 49's handler. Preserve a DOS character's id 49 with its corresponding C64 party slot; no merge is required to reach the equivalent handler. |
 | A global Prayer row is not proved equivalent to those individual rows | **CONFIRMED distinction:** camp spell 42's flag `$80` takes `SPELLE04 $A704` to `$A710`'s owner `$FF`; `CAMP $1415` and `SPELLE04 $A81C` store it with id 35. The predicate accepts a negative owner for any queried combatant (`LIBRARY $3FFB`). Combat check lists 10/12 ask id 49; none of the 20 lists asks 35. Merging per-character id 49 rows into `$FF`/35 is unsupported. |
 | Id 13 is not a proven strength mapping | **CONFIRMED negative:** the C64 combat dispatch shares id 14's charisma handler; DOS points it at the empty handler `0x11DF6`. Do not infer its value rule from the name Reduce. |
-| Later Strength, Enlarge and Friends data | **CONFIRMED reason not to copy Pool's restore rule:** DOS Curse's id 12/38 handler at `0x1024E` and id 14 at `0x1029C` immediately return; Silver Blades' corresponding handlers are `0x1126E` and `0x11297`. C64 recomputes abilities from the base and active modifiers: Curse `ECL65 $913B/$9160`, Silver Blades `$9612/$9637`, base `$8000`. The complete modifier crosswalk is **UNKNOWN**; see [201-the-two-ability-arrays.md](201-the-two-ability-arrays.md). |
+| Later Strength, Enlarge and Friends data | **CONFIRMED, and this row used to read UNKNOWN:** the magnitude is a modifier and the two ports encode it differently, so Pool's restore rule must not be copied there. The table above has each id's rule and the code behind it; what changed is reading the three casts and the recompute rather than only the combat handlers, which return immediately (DOS Curse `0x1024E`, `0x1029C`; Silver Blades `0x1126E`, `0x11297`) because nothing in a fight has to do the work twice. |
 | All ids not listed as a measured mapping | **UNKNOWN:** neither a shared number nor a shared spell name proves the data encoding. |
 
 ## Later-title value rules
@@ -220,12 +290,25 @@ Silver Blades' are `$EF90/$F001`. Their handlers run in `COMBAT` at `$0800`.
 | Curse, Prayer 49 | C64 bit 6 = DOS bit 4, **without Pool's inversion** | DOS equality bonus, `0x110BD–0x110F3`; C64 equality bonus, `$226A–$227A`, `BEQ $225D` |
 | Silver Blades, Prayer 49 | C64 bit 6 = DOS bit 4 | `0x122C8–0x12302`; `$27C3–$27D3`, `BEQ $27B6` |
 | Silver Blades, Mirror Image 28 | C64 count = DOS data >> 4 | DOS `0x117D7/0x117DA` extracts the upper nibble, `0x117DF` decrements it, `0x11816/0x11818` preserves the lower nibble; C64 `$25FB/$260E` reads/decrements the whole magnitude |
-| Curse, Mirror Image 28 | **UNKNOWN mapping; CONFIRMED mismatch** | DOS `0x10638/0x1063A` divides data by 16 for selection but `0x1067F/0x10686` decrements/tests the raw byte. C64 `$20DF/$20F2` uses one whole-byte count. Mapping the upper nibble preserves selection but not the decrement; copying the byte preserves the decrement but not selection. |
+| Curse, Mirror Image 28 | C64 count = DOS data >> 4, the same rule as Silver Blades | The cast at DOS `0x30703`-`0x30715` rolls `1d4` and shifts it up four before ORing the caster's level in; `0x10638/0x1063A` reads that nibble back for the selection roll. C64 `ECL65 $8282` writes a bare `1d4` and `COMBAT $20DF/$20F2` counts it down whole |
 
 For example, Silver Blades data `$4F` means four images, so its C64 magnitude
-is `$04`, not `$4F`. The lower nibble is retained by the DOS decrement but is
-not part of the image count. Curse's discrepancy is a mapping failure to
-resolve, not a claim here that an ordinary cast reaches a game defect.
+is `$04`, not `$4F`. The lower nibble is the caster's level and is not part of
+the image count.
+
+**Curse's raw decrement is a defect in its own handler, not a second meaning
+for the byte, and this page used to call the mapping UNKNOWN for that reason.**
+What settled it is the cast: both later titles build the byte the same way
+(Curse `GAME.OVR:0x30700`, Silver Blades `0x2EF6E`, `dice(1,4)` then `shl 4`),
+so the count is the upper nibble in both. Silver Blades then decrements that
+nibble and puts the low one back (`0x117D7`-`0x1181E`); Curse decrements the
+whole byte at `0x1067F` and removes the effect only when the byte reaches zero.
+So in Curse an image is lost on the first absorbed hit and then only on every
+sixteenth, and four images absorb up to 64 attacks. That is a bug in DOS Curse
+a player can reach by casting the spell -- it is not our misreading, because
+its own sibling engine decrements the nibble at the equivalent address -- and
+it says nothing about what the byte holds at the moment a save is converted:
+the images a player has are what the selection roll reads, `data >> 4`.
 
 ## Next bounded experiment
 
@@ -255,6 +338,12 @@ chosen effect slot
 query is itself a result. Stop at those three observations or after
 one combat round, with a five-minute wall-clock cap. Until that driver is
 specified and built, preserve individual ownership and leave merging unknown.
+
+**What a C64 writer still waits on, after the slot, the owner, the duration
+and the later titles' four ability ids:** Donald's choice for Pool's
+overlapping strength nodes, which the destination cannot hold two of; Pool's
+party-wide Prayer row; the effect ids nobody has read; and the two ageing
+routes the camp formula does not describe.
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; select either later title with `--title`.
