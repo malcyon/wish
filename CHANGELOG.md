@@ -9,13 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Convert now supports Curse of the Azure Bonds and Secret of the Silver Blades saves on the Amiga, in both directions; it previously refused both titles on that platform. ([#512](https://github.com/malcyon/wish/issues/512))
-- Character Editor can now open and save DOS saves and Amiga save disks directly, without first converting them to a Commodore 64 disk. ([#511](https://github.com/malcyon/wish/issues/511))
+- Convert any saved game to or from C64, Amiga, or DOS formats. Works on Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver Blades. ([#512](https://github.com/malcyon/wish/issues/512))
 - Fast Travel now supports Curse of the Azure Bonds and Secret of the Silver Blades, with a Preferences tab and destination choices for each game. ([#15](https://github.com/malcyon/wish/issues/15))
-
-### Changed
-
-- File ▸ Import is now File ▸ Convert…, converting a Pool of Radiance, Curse of the Azure Bonds or Secret of the Silver Blades save between any two of DOS, Commodore 64 and Amiga, instead of only from DOS to Commodore 64. ([#52](https://github.com/malcyon/wish/issues/52))
 
 ### Fixed
 

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SlotPicker</class>
+ <widget class="QDialog" name="SlotPicker">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>360</width>
+    <height>110</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string/>
+  </property>
+  <layout class="QVBoxLayout" name="outer_layout">
+   <item>
+    <layout class="QFormLayout" name="form">
+     <item row="0" column="0">
+      <widget class="QLabel" name="label_slot">
+       <property name="text">
+        <string>Saved game slot:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QComboBox" name="saved_game_slot"/>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttons">
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Open</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>buttons</sender>
+   <signal>accepted()</signal>
+   <receiver>SlotPicker</receiver>
+   <slot>accept()</slot>
+  </connection>
+  <connection>
+   <sender>buttons</sender>
+   <signal>rejected()</signal>
+   <receiver>SlotPicker</receiver>
+   <slot>reject()</slot>
+  </connection>
+ </connections>
+</ui>

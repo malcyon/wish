@@ -66,13 +66,20 @@ SPELLBOOK_FIELDS = ("spells_known", "spells_known_high")
 #: `editor` still imports nothing from `wish`.
 _log = logging.getLogger("wish.editor.window")
 
-#: What the Open and Save As pickers offer to filter on. Donald's wording,
-#: 2026-08-27: *"These should be described as 'C64 disk image (*.d64 *.D64)'"*
-#: -- the file is a Commodore 64 disk image, and "Gold Box" named the games on
-#: it rather than the thing being opened.
+#: What Save As offers to filter on. The editor writes a C64 image only when
+#: it is saving under a new name.
 DISK_FILTER = "C64 disk image (*.d64 *.D64);;All files (*)"
 #: The Save As picker's title.
 SAVE_AS_TITLE = "Save the disk as"
+
+#: Direct-open controls, approved together for the native DOS and Amiga save
+#: repair. Save As remains a C64-image operation and deliberately keeps
+#: `DISK_FILTER` above.
+OPEN_TITLE = "Open a saved game"
+OPEN_FILE_TEXT = "Choose a save file…"
+OPEN_FOLDER_TEXT = "Choose a DOS save folder…"
+OPEN_FILTER = ("Saved game (*.d64 *.D64 *.adf *.ADF SAVGAM?.DAT SAVGAM?.PTY);;"
+               "All files (*)")
 
 #: Donald's wording, approved verbatim (#145) -- one line per field that
 #: refused, `{label}` filled from the widget's own on-screen label
@@ -104,6 +111,24 @@ def _size_combo(combo: QComboBox) -> None:
     width = widest + _combo_chrome(combo) + CARET
     combo.setMinimumWidth(width)
     combo.setMaximumWidth(width)
+
+
+class SlotPicker(QDialog):
+    """The saved-game slot after a folder or disk names more than one."""
+
+    def __init__(self, slots: list[str], parent=None):
+        super().__init__(parent)
+        from .ui_slotpicker import Ui_SlotPicker
+
+        self.ui = Ui_SlotPicker()
+        self.ui.setupUi(self)
+        self.setWindowTitle(OPEN_TITLE)
+        self.ui.saved_game_slot.addItems(slots)
+
+    @property
+    def slot(self) -> str:
+        """The selected saved-game slot."""
+        return self.ui.saved_game_slot.currentText()
 
 
 class _NoClassCode(int):
@@ -338,8 +363,8 @@ HEADER_IDENTITY_MIN_WIDTH = 480
 HEADER_FLOOR = {"box_identity": HEADER_IDENTITY_MIN_WIDTH}
 #: And the row of buttons above the header, which does not scroll either.
 TOOLBAR_BUTTON_MIN_WIDTH = 80
-TOOLBAR_BUTTONS = ("button_open", "button_save", "button_save_as",
-                   "button_preview")
+TOOLBAR_BUTTONS = ("button_open_file", "button_open_folder", "button_save",
+                   "button_save_as", "button_preview")
 
 # Room for the frame and, on a spin box, the two arrows. A guess at this was
 # the bug: 36 px is what Fusion and Breeze want, and Windows draws its up/down
@@ -705,7 +730,8 @@ class EditorBinding(QObject):
         self._connect("button_item_add", self.add_item)
         self._connect("button_item_delete", self.delete_item)
 
-        self._connect("button_open", self.open_file)
+        self._connect("button_open_file", self.open_file)
+        self._connect("button_open_folder", self.open_folder)
         self._connect("button_save", self.save)
         self._connect("button_save_as", self.save_as)
         self._toolbar_icons()
@@ -739,7 +765,8 @@ class EditorBinding(QObject):
     def _toolbar_icons(self) -> None:
         """Icons beside the button text, never instead of it."""
         from ui.iconpaint import icon_pixmap
-        for name, icon in (("button_open", "open-folder"),
+        for name, icon in (("button_open_file", "open-folder"),
+                           ("button_open_folder", "open-folder"),
                            ("button_save", "save"),
                            ("button_save_as", "save"),
                            ("button_preview", "brass-eye")):
@@ -1122,27 +1149,46 @@ class EditorBinding(QObject):
 
     def open_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self.root, "Open a save disk",
+            self.root, OPEN_TITLE,
             files.open_start_dir(self.last_save_folder, self.path,
                                  self.saves_folder),
-            DISK_FILTER)
+            OPEN_FILTER)
+        if path:
+            self.load(path)
+
+    def open_folder(self) -> None:
+        """Choose a DOS save folder directly, without a wrapper dialog."""
+        path = QFileDialog.getExistingDirectory(
+            self.root, OPEN_TITLE,
+            files.open_start_dir(self.last_save_folder, self.path,
+                                 self.saves_folder))
         if path:
             self.load(path)
 
     def load(self, path: str) -> None:
         try:
-            party = Party(path)
+            from .convert import Source
+
+            source = Source.detect(path) if Source.looks_like_a_save(path) else None
+            if (source is not None and source.available_slots is not None
+                    and len(source.available_slots) > 1):
+                picker = SlotPicker(source.available_slots, self.root)
+                if picker.exec() != QDialog.DialogCode.Accepted:
+                    return
+                source = Source.detect(path, slot=picker.slot)
+            party = Party(source if source is not None else path)
         except Exception as exc:
             _log.exception("could not open %s", path)
             QMessageBox.critical(self.root, "Cannot open", str(exc))
             return
-        self._adopt(party, path)
+        self._adopt(party, str(source.path) if source is not None else path)
 
     def _adopt(self, party: Party, path: str | None, note: str | None = None,
                dirty: bool = False) -> None:
         """Show a party that is already built, from wherever it came."""
         self.party = party
         self.path = pathlib.Path(path) if path else None
+        self._set_save_as_enabled()
         self.dirty = set(range(len(party))) if dirty else set()
         self.current_row = -1
         self._fill_combos(party.game)
@@ -1166,6 +1212,12 @@ class EditorBinding(QObject):
         self._retitle()
         if self.path is not None:
             self.opened.emit(str(self.path))
+
+    def _set_save_as_enabled(self) -> None:
+        """Save As is a C64-image operation, never a native-save write."""
+        button = self._child("button_save_as")
+        if button is not None:
+            button.setEnabled(self.party is None or self.party.port == "c64")
 
     # -- importing --------------------------------------------------------
 
@@ -1511,7 +1563,8 @@ class EditorBinding(QObject):
         if env:
             candidates.append(env)
         if self.path:
-            candidates += sorted(glob.glob(str(self.path.parent / pattern)))
+            candidates += sorted(glob.glob(str(files.source_folder(self.path)
+                                               / pattern)))
         for named in (self.game_disk, os.environ.get("POR_GAME_DISK")):
             if named:
                 beside = pathlib.Path(named).parent
@@ -1698,7 +1751,7 @@ class EditorBinding(QObject):
         return text
 
     def save_as(self) -> None:
-        if self.party is None:
+        if self.party is None or self.party.port != "c64":
             return
         if self._choose_save_path():
             self.save()

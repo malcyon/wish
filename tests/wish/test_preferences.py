@@ -824,6 +824,26 @@ def test_the_dialog_is_on_the_file_menu_with_a_shortcut_a_keyboard_has(
     assert "&Preferences…" in menu_texts(win)
 
 
+def test_file_menu_has_direct_file_and_dos_folder_actions(app, tmp_path,
+                                                          monkeypatch):
+    from PyQt6.QtGui import QKeySequence
+
+    from editor.window import OPEN_FILE_TEXT, OPEN_FOLDER_TEXT
+
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        actions = {action.text(): action for menu in win.menuBar().actions()
+                   for action in (menu.menu().actions() if menu.menu() else [])}
+        assert OPEN_FILE_TEXT in actions
+        assert OPEN_FOLDER_TEXT in actions
+        assert actions[OPEN_FILE_TEXT].shortcut() == QKeySequence(
+            QKeySequence.StandardKey.Open)
+        assert actions[OPEN_FOLDER_TEXT].shortcut().isEmpty()
+    finally:
+        win.close()
+
+
 def menu_texts(win) -> list[str]:
     return [a.text() for m in win.menuBar().actions()
             for a in (m.menu().actions() if m.menu() else [])]

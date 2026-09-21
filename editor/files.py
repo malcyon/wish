@@ -34,9 +34,20 @@ class NoBackupFolder(RuntimeError):
     """Nowhere to put the copy, so the save does not happen."""
 
 
+def source_folder(target: str | pathlib.Path) -> pathlib.Path:
+    """The folder holding a save file, or a save folder itself.
+
+    A DOS save is a directory of files.  Treating it as though it were one
+    file puts both the next Open picker and automatic backups beside the save
+    folder instead of in it.
+    """
+    target = pathlib.Path(target)
+    return target if target.is_dir() else target.parent
+
+
 def automatic_dir(target: str | pathlib.Path) -> pathlib.Path:
     """`backups/` beside the save. The answer until somebody chooses another."""
-    return pathlib.Path(target).parent / BACKUP_DIR
+    return source_folder(target) / BACKUP_DIR
 
 
 def open_start_dir(remembered: str, current: str | pathlib.Path | None,
@@ -61,7 +72,7 @@ def open_start_dir(remembered: str, current: str | pathlib.Path | None,
     if preference and pathlib.Path(preference).is_dir():
         return preference
     if current:
-        return str(pathlib.Path(current).parent)
+        return str(source_folder(current))
     remembered = (remembered or "").strip()
     if remembered and pathlib.Path(remembered).is_dir():
         return remembered
