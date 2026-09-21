@@ -229,6 +229,12 @@ those numbers.
 
 ## Opening and saving
 
+The selected replacement design is [Open and Save As in the Character
+Editor](227-editor-open-save-as.md): split Open and Save controls, with native
+copies and platform conversion through Save As. The behavior below describes
+the existing implementation; the separate design records the change because
+the editor will own the complete save workflow.
+
 The form has `button_open_file`, `button_open_folder` and `button_save`, wired
 to `QAction`s so the menu and the shortcuts (`Ctrl+O`, `Ctrl+S`,
 `Ctrl+Shift+S`) share one implementation. Named, so Designer can move them like
