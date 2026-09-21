@@ -265,10 +265,11 @@ COMBAT_FIGURE = 0x0BD
 #: for the eighteen humans, elves and half-elves.
 SIZE = 0x0BE
 #: The six colour bytes of the combat icon. Character creation fills them
-#: from a six-entry table at `0x00FCE6`-`0x00FD1E`, one byte each as
-#: `t * 16 + t + 0x80`, and the table holds 1, 2, 3, 4, 6, 7 -- which is
-#: :data:`ICON_COLOURS_DEFAULT`, the six bytes 11 of the 19 `.pc` files hold
-#: exactly. The other eight were edited on the ICON screen.
+#: in the loop at `0x00FCE6`-`0x00FD1E`, one byte each as `t * 16 + t + 0x80`.
+#: That is the fill loop and not the table, which the loop reads through
+#: `-$6158(a4)`, so the values t = 1, 2, 3, 4, 6, 7 are inferred from the ten
+#: `.pc` files that hold exactly :data:`ICON_COLOURS_DEFAULT`. The other nine
+#: were edited on the ICON screen.
 ICON_COLOURS = 0x0BF
 ICON_COLOUR_COUNT = 6
 #: `02 02` in 19 of 19, as DOS's `unnamed_1a4` is in 12 of 12, and character
@@ -328,6 +329,14 @@ SPELLS_MEMORISED_LENGTH = 141
 #: The memorised byte with its pending bit set. Every reader in the engine
 #: masks the entry with `0x7f` before it indexes the spell table.
 SPELLS_MEMORISED_PENDING = 0x80
+
+
+def is_memorised_byte(value: int) -> bool:
+    """Whether `value` is a byte the memorised region can hold: an id of 1-127,
+    or one of 129-255, which is the same id with the pending bit set. 0 is an
+    empty slot and 128 is the pending bit on one, so neither names a spell."""
+    return (0 < value <= 0xFF
+            and value & ~SPELLS_MEMORISED_PENDING != 0)
 #: The spellbook, as a bitmask rather than DOS's byte per spell: bit `i` of
 #: byte `i >> 3` is DOS array index `i`, which is spell id `i + 1`. Sixteen
 #: bytes for 125 ids, bounded above by the cleric's slot array at 0x169.
@@ -1204,6 +1213,11 @@ class PodWriter:
             raise ValueError("the combat icon's head is 0 to 13")
         if self.icon_body is not None and not 0 <= self.icon_body <= 31:
             raise ValueError("the combat icon's body is 0 to 31")
+        for spell in self.spells_memorised or ():
+            if not is_memorised_byte(spell):
+                raise ValueError(
+                    f"memorised spell id {spell}: a byte of 1-127, or 129-255 "
+                    f"with the pending bit set")
         if self.armour_class > COMBAT_BIAS:
             raise ValueError("armour class is stored as 60 - AC; 60 is the cap")
         if (self.treasure_share is not None
@@ -2689,14 +2703,15 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     memorised: tuple[int, ...] | None = None
     if memorised_value is not None:
         ids = [int(i) for i in (memorised_value.value or ())]
-        over = [i for i in ids if not 0 < (i & 0x7F) <= 0x7F]
+        over = [i for i in ids if not is_memorised_byte(i)]
         if over:
             rep.dropped.append(
                 f"{len(over)} memorised spell ids the region at "
                 f"{SPELLS_MEMORISED:#05x} has no room for -- its byte is the "
-                f"id with bit 7 as the pending flag, so 1-127 is what fits: "
+                f"id with bit 7 as the pending flag, so 1-127 is what fits, "
+                f"or 129-255 with the flag set: "
                 f"{', '.join(str(i) for i in over)}")
-        ids = [i for i in ids if i not in over]
+        ids = [i for i in ids if is_memorised_byte(i)]
         if len(ids) > SPELLS_MEMORISED_LENGTH:
             rep.dropped.append(
                 f"{len(ids) - SPELLS_MEMORISED_LENGTH} memorised spells past "

@@ -2121,7 +2121,7 @@ rather than dropped, and the writer emits creation's 13.
 |---|---|
 | `icon_head` `0x0BB` | halfling → 3; otherwise female → 9 medium, 7 small; male → 5 medium, 0 small |
 | `icon_body` `0x0BC` | the first class slot with a level: cleric → `0x17`, ranger → 1, paladin or fighter → `0x18`, magic-user → `0x1D`, else 5 |
-| `icon_colours` `0x0BF`-`0x0C4` | `t * 17 + 0x80` for t in 1, 2, 3, 4, 6, 7 — the bytes `91 A2 B3 C4 E6 F7` |
+| `icon_colours` `0x0BF`-`0x0C4` | `t * 17 + 0x80` for t in 1, 2, 3, 4, 6, 7 — the bytes `91 A2 B3 C4 E6 F7`; the fill loop is `0x00FCE6`-`0x00FD1E` and reads its values through `-$6158(a4)`, so 1, 2, 3, 4, 6, 7 are inferred from the ten unedited files |
 | `icon_dimension` `0x082` | 1 |
 
 The rule reproduces the stored head in 15 of 19 files and the body in 11 of 19,
@@ -2167,7 +2167,7 @@ a state a loaded record stays in.
 
 **A chosen combat icon does not survive a conversion.** No neutral field holds
 one, so an Amiga character who picked his own head comes back with the default
-for his race and class; 8 of the 19 characters on the disks had made a choice.
+for his race and class; 13 of the 19 characters on the disks differ from the engine's default in at least one of head, body and colours (4 in the head, 8 in the body, 9 in the colours).
 It was a loss before this as well — to zero — and it is now a loss to a value
 the engine itself would have written. Giving it a neutral home is vocabulary
 work.

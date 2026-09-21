@@ -595,9 +595,14 @@ def test_the_items_and_the_portraits_are_named_as_losses():
     named = " ".join(rep.dropped)
     for what in ("portrait_head", "portrait_body", "copper"):
         assert what in named, what
-    # The memorised list converts now (#475): the region fills from 0x0CC
-    # forwards, which is what the engine's own MEMORIZE screen does.
-    assert "spells_memorised" not in named
+    # A memorised list is written, not dropped: the region fills from 0x0CC
+    # forwards, which is what the engine's own MEMORIZE screen does. The
+    # specimen above has an empty list, which would pass without the field
+    # ever being written, so this one has ids and the bytes are checked.
+    record, rep = amiga_pod.to_pc(sample(spells_memorised=[34, 21, 3]))
+    assert "spells_memorised" not in " ".join(rep.dropped)
+    at = amiga_pod.SPELLS_MEMORISED
+    assert record[at:at + 4] == bytes((3, 21, 34, 0))
 
 
 def test_a_built_filename_is_uppercase_and_eight_characters():

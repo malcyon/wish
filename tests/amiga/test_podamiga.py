@@ -270,7 +270,8 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
     recomputes (`DERIVED`); the combat icon at `0x0BB`-`0x0BD` and
     `0x0BF`-`0x0C4`, which the writer fills from the engine's own creation
     defaults rather than from the source, because no neutral field holds a
-    player's choice on the ICON screen and 8 of these 19 characters made one;
+    player's choice on the ICON screen and 13 of these 19 characters differ from
+    the engine's default in at least one of head, body and colours;
     the memorised list at `0x0CC`, which is zero in 19 of 19 files and so has
     nothing to compare; and the rest of the bytes no neutral field names --
     the stale item count at `0x0C7` and `hands_used` at `0x0C8`, which the
@@ -640,6 +641,30 @@ def test_a_spell_still_being_memorised_keeps_its_pending_bit():
     assert out[at:at + 2] == bytes((pending, 34))
 
 
+def test_a_memorised_id_that_is_not_a_byte_is_reported_and_not_fatal():
+    """The region's byte is an id in 1-255 with bit 7 as the pending flag. 300
+    and 256 do not fit a byte, -1 is not an id, 0 is an empty slot and 128 is
+    the pending flag on an empty slot -- each is reported and the rest of the
+    list is written, where one of them used to abort the whole conversion with
+    `bytes must be in range(0, 256)`."""
+    pending = 5 | amiga_pod.SPELLS_MEMORISED_PENDING
+    char = a_neutral_fighter()
+    char.set("spells_memorised", [300, 256, 128, 34, pending, 3, 0, -1], "test")
+    out, rep = amiga_pod.to_pc(char)
+    at = amiga_pod.SPELLS_MEMORISED
+    assert out[at:at + 4] == bytes((3, pending, 34, 0))
+    assert [line for line in rep.dropped
+            if line.startswith("5 memorised spell ids")
+            and line.endswith("300, 256, 128, 0, -1")]
+
+
+def test_the_writer_refuses_a_memorised_id_that_is_not_a_byte():
+    for bad in (300, 256, 128, 0, -1):
+        with pytest.raises(ValueError):
+            amiga_pod.PodWriter(
+                name="SPELL", spells_memorised=(bad,)).to_bytes()
+
+
 def test_more_memorised_spells_than_the_region_holds_are_reported():
     char = a_neutral_fighter()
     char.set("spells_memorised", [7] * 200, "test")
@@ -653,7 +678,7 @@ def test_more_memorised_spells_than_the_region_holds_are_reported():
 
 def test_the_combat_icon_is_the_one_the_engine_would_have_created():
     """A converted character arrives with the picture creation would have
-    given him, not with zeroes (#475).
+    given him.
 
     The routine at `0x00C736` is what character creation calls at `0x00FD92`:
     a halfling has his own head, the other races split by sex and size, and
@@ -729,9 +754,10 @@ def test_every_specimens_icon_is_inside_the_screens_own_range():
 
 def test_the_engines_icon_default_is_what_most_of_the_disks_records_hold():
     """The rule at `0x00C736` is the ICON screen's *starting position*, so a
-    record matching it is one nobody changed: 15 of the 19 heads, 11 of the
-    19 bodies and 10 of the 19 colour blocks. The rest are player choices,
-    which is what makes this the default and not a constraint."""
+    record matching it is one nobody changed. Across all 19 records that is 15
+    heads, 11 bodies and 10 colour blocks; the exact counts are asserted only
+    when all 19 are present. The rest are player choices, which is what makes
+    this the default and not a constraint."""
     heads = bodies = colours = 0
     records = pc_records()
     for _name, raw in records:
@@ -745,7 +771,46 @@ def test_the_engines_icon_default_is_what_most_of_the_disks_records_hold():
                        amiga_pod.ICON_COLOURS
                        + amiga_pod.ICON_COLOUR_COUNT] == (
             amiga_pod.ICON_COLOURS_DEFAULT)
-    assert (len(records), heads, bodies, colours) == (19, 15, 11, 10)
+    if len(records) == 19:
+        assert (heads, bodies, colours) == (15, 11, 10)
+    else:
+        # A player with some of the disks has some of the records, and the
+        # counts above are only true of all of them. A count still cannot
+        # exceed the records present.
+        assert max(heads, bodies, colours) <= len(records)
+
+
+@pytest.mark.parametrize("race,size", (
+    ("DWARF", 1), ("GNOME", 1), ("HALFLING", 1),
+    ("ELF", 2), ("HALF-ELF", 2), ("HUMAN", 2),
+))
+def test_the_engine_sizes_each_race_by_name(race, size):
+    """`0x00E552`'s jump table: the three small races write 1, the other
+    three 2. Checked by name because the disks hold one dwarf and no gnome or
+    halfling."""
+    assert amiga_pod.engine_size_for_race(amiga_pod.RACES.index(race)) == size
+
+
+def test_the_writers_icon_body_colours_and_figure_can_be_overridden():
+    """A source that does have a choice for these three writes it and not the
+    engine's default."""
+    colours = bytes((1, 2, 3, 4, 5, 6))
+    out = amiga_pod.PodWriter(
+        name="PICK", icon_head=2, icon_body=9, icon_colours=colours,
+        combat_figure=4).to_bytes()
+    assert out[amiga_pod.ICON_HEAD] == 2
+    assert out[amiga_pod.ICON_BODY] == 9
+    assert out[amiga_pod.ICON_COLOURS:
+               amiga_pod.ICON_COLOURS + amiga_pod.ICON_COLOUR_COUNT] == colours
+    assert out[amiga_pod.COMBAT_FIGURE] == 4
+
+
+def test_the_unnamed_pair_at_0c5_is_two_two_without_any_disk():
+    """`02 02` is what creation writes and what the Silver Blades importer
+    forces, so a writer with nothing to go on emits it."""
+    out = amiga_pod.PodWriter(name="PAIR").to_bytes()
+    assert out[amiga_pod.UNNAMED_1A4:amiga_pod.UNNAMED_1A4 + 2] == bytes(
+        (amiga_pod.UNNAMED_1A4_DEFAULT,) * 2) == bytes((2, 2))
 
 
 def test_the_size_byte_is_the_one_the_race_routine_writes():
