@@ -41,6 +41,7 @@ a port fixed one, that is said.
 | 14 | A ranger who reaches level 11 can memorize only one first-level magic-user spell, where the DOS version of the same game offers two | Curse of the Azure Bonds | engine | CONFIRMED, in game |
 | 15 | A paladin who reaches level 11 carries a second-level cleric spell slot he can never fill | Curse of the Azure Bonds | engine | CONFIRMED, in game |
 | 16 | A DOS magic-user of level 1 to 5 hits one point more easily than the game's own table gives him | Curse of the Azure Bonds, Secret of the Silver Blades | engine | CONFIRMED, in game |
+| 17 | DOS Curse's Mirror Image loses an image only once every sixteen absorbed attacks | Curse of the Azure Bonds | engine | CONFIRMED, from the code |
 
 ---
 
@@ -810,3 +811,44 @@ shows it is PROBABLE rather than CONFIRMED.
 The Commodore 64 builds are unaffected. Whether the Amiga builds do the same is
 not known, and Pools of Darkness has not been read.
 CONFIRMED, in game, for the stored number.
+
+---
+
+## 17. DOS Curse's Mirror Image loses an image only once every sixteen absorbed attacks
+
+**Confirmed by reading the game's own code, and by the sibling engine doing the
+same job correctly -- not by playing it.**
+
+**How a player ends up there.** A magic-user casts Mirror Image in DOS Curse of
+the Azure Bonds, `1d4` images appear, and enemies start attacking the caster.
+
+**What the game does.** The spell's data byte holds the image count in its high
+nibble and the caster's level in its low one. Each time an image absorbs an
+attack, Curse subtracts one from the whole byte and removes the effect only when
+the byte reaches zero. The level nibble is used up first, one attack at a time, and
+after that the image count in the high nibble falls once per sixteen absorbed
+attacks. Four images therefore absorb 64 plus the caster's level attacks before
+the spell ends.
+
+**What it should do.** What Silver Blades' DOS engine does with the same byte:
+subtract one from the image count in the high nibble, put the level nibble back,
+and end the spell when the count reaches zero, so every absorbed attack costs an
+image.
+
+**The evidence.** Both later titles build the byte at cast as `dice(1,4)` shifted
+left four with the caster's level in the low nibble (Curse `GAME.OVR:0x30703`
+to `0x30715`, Silver Blades `0x2EF6E` to `0x2EF78`), so the byte means the same
+in both. Curse's selection roll reads the count as the high nibble
+(`0x10638`, `0x1063A`), then decrements the whole byte at `0x1067F` and compares
+the whole byte with zero at `0x10686`. Silver Blades decrements the nibble and
+re-packs the low one (`0x117D7` to `0x1181E`). The disassembly is in
+[`docs/226-the-c64-running-effect-crosswalk.md`](docs/226-the-c64-running-effect-crosswalk.md).
+No running game was watched: the DOS behaviour is read from the code alone.
+
+**What the player sees.** Mirror Image lasts far longer in DOS Curse than the
+image count suggests, and much longer than the same spell does in DOS Silver
+Blades.
+
+**Version.** Curse of the Azure Bonds, DOS. The Commodore 64 counts the whole
+byte down as the image count, so it is unaffected; Silver Blades is unaffected.
+The Amiga builds have not been read. CONFIRMED, from the code.

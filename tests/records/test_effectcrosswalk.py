@@ -280,9 +280,13 @@ def test_silver_blades_mirror_image_removes_the_caster_level_nibble(data, count)
     assert cross.mirror_image_value("secret-of-the-silver-blades", data) == count
 
 
-def test_curse_mirror_image_is_not_silently_given_silver_blades_rule():
+def test_curse_mirror_image_magnitude_is_the_data_high_nibble():
+    assert cross.mirror_image_value("curse-of-the-azure-bonds", 0x41) == 4
+
+
+def test_mirror_image_is_not_mapped_outside_the_titles_read():
     with pytest.raises(ValueError, match="not mapped"):
-        cross.mirror_image_value("curse-of-the-azure-bonds", 0x41)
+        cross.mirror_image_value("champions-of-krynn", 0x41)
 
 
 @pytest.mark.parametrize("phase, exact", [(0, 216), (17, 215), (1439, 214)])
@@ -320,6 +324,7 @@ def test_the_cli_reuses_the_resolved_registry_root(monkeypatch, tmp_path):
     monkeypatch.setattr(cross, "spell_pairs", lambda *_: ())
     monkeypatch.setattr(cross, "confirm_pool_values", lambda *_: ())
     monkeypatch.setattr(cross, "confirm_pool_state", lambda *_: ())
+    monkeypatch.setattr(cross, "confirm_slot_rule", lambda *_: ())
     monkeypatch.setattr(unexepack, "unpack", lambda _: (b"", {}))
     (tmp_path / "GAME.OVR").write_bytes(b"")
     (tmp_path / "START.EXE").write_bytes(b"")
