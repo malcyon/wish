@@ -129,9 +129,9 @@ def duration_unit(byte: int) -> Duration:
     """Split a duration byte into its count and unit.
 
     A byte of exactly zero is skipped by the ageing routines, so
-    `never_expires` is set and the count is not a time. What the routines do
-    to a non-zero byte whose count bits are zero (`$40`, say) is not
-    established, so `never_expires` is False for it and nothing more is claimed.
+    `never_expires` is set and the count is not a time. A non-zero byte whose
+    count bits are zero does not expire either: it drops a whole unit at its
+    next boundary, `$40` becoming `$3F`, which `remaining_minutes` counts.
     """
     _check_byte("duration", byte)
     unit = byte >> DURATION_UNIT
@@ -141,6 +141,80 @@ def duration_unit(byte: int) -> Duration:
         minutes_per_unit=DURATION_UNIT_MINUTES[unit],
         never_expires=byte == 0,
     )
+
+
+def remaining_minutes(byte: int, clock_minutes: int) -> int:
+    """The camp-clock minutes a duration byte has left at a time of day.
+
+    `clock_minutes` is the game clock as minutes since midnight, the reading
+    `$49C7`-`$49C9` holds. The count of a byte in unit `u` runs out on the
+    `count`-th wrap of the digit one place coarser, and the radix tables make
+    that wrap land on every multiple of `u` minutes, so the time left is
+    `count * u - (clock % u)` -- never a whole `count * u`, which is why
+    `Duration.minutes` is only an upper bound.
+
+    CONFIRMED from the camp ageing routine of all three C64 titles, which is
+    the same code at three addresses: Pool of Radiance `CAMP $1283` with its
+    per-slot rule at `$12BE`, Curse of the Azure Bonds `CAMP $1432` and
+    `$146D`, Secret of the Silver Blades `CAMP $126B` and `$12A6`, each at
+    load base `$0800`. It holds while no single camp call passes two boundaries
+    of one digit, which is what the wrapped-digit **mask** the sweep reads can
+    record; rest passes five minutes a call (`CAMP $1D7A`). Both driven rests
+    in `docs/133-active-effects.md` agree with it on all four units.
+
+    **Two other routes age a slot differently** and this function does not
+    describe them: a combat round decrements unit `00` and nothing else
+    (`COMBAT $221E`, `COMBAT2 $FA72`, `COMBAT2 $F747`), and walking ages one
+    unit a minute in Pool of Radiance and Curse, so a minute-count is skipped
+    in the minute a ten-minute boundary is crossed.
+
+    A whole zero byte never expires and returns 0. A non-zero byte with a zero
+    count does expire: `$12D6`'s `DEX` on a zero count gives `$FF` rather than
+    zero, so `$12D9` takes one off the whole byte and `$40` becomes `$3F`.
+    """
+    _check_byte("duration", byte)
+    if byte == 0:
+        return 0
+    unit = DURATION_UNIT_MINUTES[byte >> DURATION_UNIT]
+    count = byte & DURATION_COUNT
+    phase = clock_minutes % unit
+    if count:
+        return count * unit - phase
+    wait = unit - phase
+    return wait + remaining_minutes(byte - 1, clock_minutes + wait)
+
+
+def exact_durations(minutes: int, clock_minutes: int) -> tuple[int, ...]:
+    """Every duration byte that runs out after exactly `minutes`, in byte order.
+
+    Counts of 1 to 63 only, which is what a cast writes. Empty for most
+    values: at a given time of day the four units reach 213 to 216 of the
+    65,535 an engine-written DOS duration word can hold.
+    """
+    return tuple(byte for byte in range(1, 0x100)
+                 if byte & DURATION_COUNT
+                 and remaining_minutes(byte, clock_minutes) == minutes)
+
+
+def longest_duration_within(minutes: int, clock_minutes: int) -> int | None:
+    """The duration byte with the most time left that does not outlast `minutes`.
+
+    A measurement of what the destination can hold, not a conversion policy:
+    which byte a converted running effect should get is a decision nobody has
+    taken. Ties go to the smaller unit, which is the byte the engine's own
+    walking and combat routines age most finely.
+
+    `None` for a source with less than a minute left, which no engine-written
+    DOS record holds -- its ageing removes a node rather than storing zero.
+    """
+    best, best_left = None, 0
+    for byte in range(1, 0x100):
+        if not byte & DURATION_COUNT:
+            continue
+        left = remaining_minutes(byte, clock_minutes)
+        if best_left < left <= minutes:
+            best, best_left = byte, left
+    return best
 
 
 @dataclass(frozen=True)

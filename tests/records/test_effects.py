@@ -8,8 +8,9 @@ from __future__ import annotations
 import pytest
 from gamedata import game_disk
 
-from goldbox import effects
-from tools.c64 import coldread
+from automap import gamedisks
+from goldbox import c64_port, effects
+from tools.c64 import coldread, d6502
 
 # --- S1: the port, and the two new writers -----------------------------------
 
@@ -167,7 +168,8 @@ def test_an_expired_slot_is_dropped_and_a_never_expiring_one_is_kept():
 
 
 def test_only_a_duration_byte_of_exactly_zero_is_marked_never_expires():
-    # Pins the flag only: what the ageing routines do to `$40` is not established.
+    # Pins the flag only. `$40` does count down, a whole unit at a time --
+    # `test_a_zero_count_drops_a_unit_rather_than_expiring` has that.
     assert effects.duration_unit(0x00).never_expires
     assert effects.duration_unit(0x00).minutes == 0
     assert not effects.duration_unit(0x40).never_expires
@@ -176,6 +178,138 @@ def test_only_a_duration_byte_of_exactly_zero_is_marked_never_expires():
 def test_duration_unit_refuses_a_value_that_is_not_a_byte():
     with pytest.raises(ValueError):
         effects.duration_unit(256)
+
+
+# --- S2a: what one duration byte is worth at a given time of day -------------
+#
+# The camp ageing routine, written out as the engine runs it, one minute to a
+# call: Pool of Radiance `CAMP $1283` ticks the clock and ORs a bit into a
+# wrapped-digit mask, then `$12BE` takes the elapsed minutes off a unit-00
+# count and one off a coarser count whose digit wrapped. Curse of the Azure
+# Bonds (`$1432`, `$146D`) and Secret of the Silver Blades (`$126B`, `$12A6`)
+# are the same code at their own addresses. This is the model
+# `effects.remaining_minutes` states in closed form, and the point of keeping
+# both is that they were written from different ends.
+_WRAPS_AT = (None, 10, 60, 1440)
+
+
+def _age_one_minute(byte: int, clock: int) -> int:
+    """The byte a camp call passing one minute leaves behind."""
+    count, unit = byte & effects.DURATION_COUNT, byte >> effects.DURATION_UNIT
+    if byte == 0:
+        return 0                                     # skipped, never aged
+    if unit == 0:
+        return max(count - 1, 0)
+    if (clock + 1) % _WRAPS_AT[unit]:
+        return byte                                  # its digit did not wrap
+    return 0 if count == 1 else byte - 1             # `$12D6`'s DEX, then DEC
+
+
+def _minutes_until_gone(byte: int, clock: int) -> int:
+    for minute in range(1, 200_000):
+        byte, clock = _age_one_minute(byte, clock), (clock + 1) % 1440
+        if byte == 0:
+            return minute
+    raise AssertionError("a running byte that never expired")
+
+
+@pytest.mark.parametrize("clock", [0, 1, 6, 17, 59, 1439])
+@pytest.mark.parametrize("byte", [b for b in range(1, 0x80)
+                                  if b & effects.DURATION_COUNT])
+def test_the_closed_form_agrees_with_the_camp_sweep_minute_by_minute(byte, clock):
+    """Every minute and ten-minute byte, at six times of day."""
+    assert effects.remaining_minutes(byte, clock) == _minutes_until_gone(byte, clock)
+
+
+@pytest.mark.parametrize("clock", [0, 23, 1439])
+@pytest.mark.parametrize("byte", [0x81, 0x82, 0x98, 0xBF, 0xC1, 0xC2])
+def test_the_closed_form_agrees_on_the_hour_and_day_units(byte, clock):
+    assert effects.remaining_minutes(byte, clock) == _minutes_until_gone(byte, clock)
+
+
+@pytest.mark.parametrize("byte, clock", [(0x40, 0), (0x40, 7), (0x80, 23),
+                                         (0xC0, 1439)])
+def test_a_zero_count_drops_a_unit_rather_than_expiring(byte, clock):
+    """`$12BE` takes the count into X, and `$12D6`'s `DEX` on a zero count
+    gives `$FF` rather than zero, so `$12D9` takes one off the whole byte:
+    `$40` becomes `$3F` at the next ten-minute boundary. So the byte does run
+    out, a unit later than its count says.
+    """
+    assert effects.remaining_minutes(byte, clock) == _minutes_until_gone(byte, clock)
+    assert effects.remaining_minutes(byte, clock) > 0
+
+
+# The two driven rests again, this time as clock readings: the same four
+# slots, the same two rests, read as the time each had left rather than as
+# counts. `remaining_minutes` has to lose exactly the minutes that passed.
+DRIVEN_RESTS = [
+    # before, clock before, after, clock after, minutes rested
+    (0x1F, 21 * 60 + 16, 0x01, 21 * 60 + 46, 30),
+    (0x60, 21 * 60 + 16, 0x5D, 21 * 60 + 46, 30),
+    (0xA0, 21 * 60 + 17, 0x98, 5 * 60 + 17, 480),
+    (0xE0, 21 * 60 + 17, 0xDF, 5 * 60 + 17, 480),
+]
+
+
+@pytest.mark.parametrize("before, was, after, now, rested", DRIVEN_RESTS)
+def test_the_two_driven_rests_lose_exactly_the_minutes_they_passed(
+        before, was, after, now, rested):
+    assert effects.remaining_minutes(before, was) - rested == \
+        effects.remaining_minutes(after, now)
+
+
+def test_a_running_bless_of_two_minutes_converts_exactly_at_every_clock():
+    """The six `CHRDATJ` records on this machine each hold `01 02 00 01 00`,
+    a Bless with two minutes left. Every DOS duration of 1 to 63 minutes has
+    an exact C64 byte whatever the time of day, so the case the conversion
+    actually meets loses nothing.
+    """
+    for clock in range(1440):
+        assert 0x02 in effects.exact_durations(2, clock)
+        assert effects.longest_duration_within(2, clock) == 0x02
+
+
+def test_every_duration_up_to_63_minutes_is_exact_and_most_above_it_are_not():
+    """At one time of day the four units reach 213 to 216 of the 65,535 values
+    a DOS duration word can hold. Counted here over every byte the engine
+    writes, independently of `tools/c64/effectcrosswalk.py`'s own census, and
+    it agrees with it phase for phase. The ceiling is the DOS word: a count of
+    47 days or more outlives anything a DOS record can ask for.
+    """
+    spread: dict[int, int] = {}
+    for clock in range(1440):
+        values = {left for left in
+                  (effects.remaining_minutes(b, clock)
+                   for b in range(1, 0x100) if b & effects.DURATION_COUNT)
+                  if left <= 0xFFFF}
+        assert set(range(1, 64)) <= values
+        spread[len(values)] = spread.get(len(values), 0) + 1
+    assert spread == {213: 21, 214: 276, 215: 702, 216: 441}
+
+
+#: The most a byte chosen this way can fall short, by how long the source has
+#: left: exact below the minute unit's ceiling, then one unit short of each
+#: coarser unit's. Measured over every duration to 4,200 minutes and a sample
+#: above it, at sixteen times of day.
+LOSS_CEILING = ((63, 0), (630, 9), (3780, 59), (0xFFFF, 1439))
+
+
+@pytest.mark.parametrize("clock", [0, 7, 23, 59, 600, 1439])
+def test_the_longest_byte_within_a_duration_never_outlasts_it(clock):
+    """The bound on what any never-lengthen policy can cost. Only a duration
+    longer than 63 hours needs the day unit and its 1,439 minutes, and no
+    spell row in the three titles' own tables can produce one.
+    """
+    for minutes in list(range(1, 700)) + [720, 3780, 3781, 5000, 0xFFFF]:
+        byte = effects.longest_duration_within(minutes, clock)
+        left = effects.remaining_minutes(byte, clock)
+        assert 0 < left <= minutes
+        ceiling = next(most for upto, most in LOSS_CEILING if minutes <= upto)
+        assert minutes - left <= ceiling
+
+
+def test_nothing_fits_a_source_with_less_than_a_minute_left():
+    assert effects.longest_duration_within(0, 0) is None
 
 
 def test_the_ids_that_read_their_magnitude_back():
@@ -260,3 +394,127 @@ def test_record_1_is_bless(table):
 def test_record_12_is_enlarge_and_scales_entirely_by_level(table):
     assert table[12].duration == 0
     assert table[12].per_level == 0x0A
+
+
+# --- S3: the camp ageing routine, read off the player's own disks -------------
+#
+# `remaining_minutes` above states in closed form what these three routines
+# do, so its grade rests on them: the same code at three sets of addresses,
+# each read here from the title's own overlay rather than quoted. Every
+# address is at load base `$0800` except Silver Blades' clock tick, which its
+# `LIBRARY` holds at `$2DC8`. `docs/226-the-c64-running-effect-crosswalk.md`
+# is the write-up.
+
+#: Per title: the CAMP sites, then the clock tick's file, base and sites.
+#: `id_read` and `dur_read` are the sweep's two skips, `count_mask` and
+#: `unit_mask` split the byte, `mask_read` asks whether that unit's digit
+#: wrapped, `dex`/`dec` take one off a coarse count and `sub` takes the whole
+#: elapsed minutes off a unit-00 one.
+CAMP_AGEING = {
+    "pool-of-radiance": dict(
+        arrays=(0x4900, 0x4980), id_read=0x129E, dur_read=0x12A3,
+        dur_store=0x12AE, count_mask=0x12C2, unit_mask=0x12C6,
+        mask_read=0x12D1, dex=0x12D6, dec=0x12D9, sub=0x12E2,
+        tick_file="CAMP", tick_base=0x0800, tick=0x124A, clock=0x49C6,
+        radix_cmp=0x1250, radix=0x127D, bit_ora=0x1269, bits=0x165A),
+    "curse-of-the-azure-bonds": dict(
+        arrays=(0x4B00, 0x4B80), id_read=0x144D, dur_read=0x1452,
+        dur_store=0x145D, count_mask=0x1471, unit_mask=0x1475,
+        mask_read=0x1480, dex=0x1485, dec=0x1488, sub=0x1491,
+        tick_file="CAMP", tick_base=0x0800, tick=0x13F9, clock=0x4BC6,
+        radix_cmp=0x13FF, radix=0x142C, bit_ora=0x1418, bits=0x18AF),
+    "secret-of-the-silver-blades": dict(
+        arrays=(0x4B00, 0x4B80), id_read=0x1286, dur_read=0x128B,
+        dur_store=0x1296, count_mask=0x12AA, unit_mask=0x12AE,
+        mask_read=0x12B9, dex=0x12BE, dec=0x12C1, sub=0x12CA,
+        tick_file="LIBRARY", tick_base=0x2DC8, tick=0x46B6, clock=0x4BC6,
+        radix_cmp=0x46C8, radix=0x46DE, bit_ora=0x46D5, bits=0x46E5),
+}
+
+#: The combat round's ageing, which decrements unit `00` and nothing else.
+COMBAT_AGEING = {
+    "pool-of-radiance": ("COMBAT", 0x0800, 0x4980, 0x2228, 0x222D, 0x2231),
+    "curse-of-the-azure-bonds": ("COMBAT2", 0xE000, 0x4B80, 0xFA7C, 0xFA81,
+                                 0xFA85),
+    "secret-of-the-silver-blades": ("COMBAT2", 0xE000, 0x4B80, 0xF751, 0xF756,
+                                    0xF75A),
+}
+
+
+def _disks(title):
+    try:
+        root = gamedisks.find(title)
+    except gamedisks.RegistryMissing:
+        root = None
+    if root is None:
+        pytest.skip(f"Needs the player's {title} disks")
+    return str(root)
+
+
+def _overlay(title, name):
+    return coldread.overlay(c64_port.by_key(title), name.encode(), _disks(title))
+
+
+def _operand(body, base, at, opcode):
+    """The operand of the instruction that has to be at `at`, or fail loudly."""
+    off = at - base
+    assert body[off] == opcode, f"${at:04X} is ${body[off]:02X}, not ${opcode:02X}"
+    width = d6502.SZ[d6502.T[opcode][1]]
+    return int.from_bytes(body[off + 1:off + width], "little")
+
+
+@pytest.mark.parametrize("title", sorted(CAMP_AGEING))
+def test_the_camp_sweep_skips_a_zero_id_and_a_zero_duration(title):
+    site = CAMP_AGEING[title]
+    camp = _overlay(title, "CAMP")
+    ids, durations = site["arrays"]
+    assert _operand(camp, 0x0800, site["id_read"], 0xBD) == ids
+    assert _operand(camp, 0x0800, site["dur_read"], 0xBD) == durations
+    assert _operand(camp, 0x0800, site["dur_store"], 0x9D) == durations
+    for at in (site["id_read"], site["dur_read"]):
+        assert camp[at - 0x0800 + 3] == 0xF0          # BEQ past the slot
+
+
+@pytest.mark.parametrize("title", sorted(CAMP_AGEING))
+def test_a_coarse_count_loses_one_per_wrap_and_a_minute_count_the_elapsed(title):
+    """The per-slot rule `remaining_minutes` is the closed form of."""
+    site = CAMP_AGEING[title]
+    camp = _overlay(title, "CAMP")
+    assert _operand(camp, 0x0800, site["count_mask"], 0x29) == effects.DURATION_COUNT
+    assert _operand(camp, 0x0800, site["unit_mask"], 0x29) == 0xC0
+    assert _operand(camp, 0x0800, site["mask_read"], 0x39) == site["bits"]
+    assert camp[site["dex"] - 0x0800] == 0xCA         # DEX, then
+    assert camp[site["dec"] - 0x0800] == 0xCE         # DEC the whole byte
+    assert camp[site["sub"] - 0x0800] == 0xED         # SBC the elapsed minutes
+
+
+@pytest.mark.parametrize("title", sorted(CAMP_AGEING))
+def test_the_clock_radix_is_what_makes_a_wrap_land_on_a_unit_boundary(title):
+    """Ten minute-units to a wrap, six tens to an hour, 24 hours to a day, so
+    the digit one coarser than a unit wraps on every multiple of that unit.
+    """
+    site = CAMP_AGEING[title]
+    where = _overlay(title, site["tick_file"])
+    base = site["tick_base"]
+    assert _operand(where, base, site["tick"], 0xFE) == site["clock"]
+    radix = _operand(where, base, site["radix_cmp"], 0xDD)
+    assert radix == site["radix"]
+    at = radix - base
+    assert tuple(where[at + 1:at + 6]) == (10, 6, 24, 30, 12)
+    bits = _operand(where, base, site["bit_ora"], 0x1D)
+    assert bits == site["bits"]
+    at = bits - base
+    assert tuple(where[at:at + 8]) == (1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80)
+
+
+@pytest.mark.parametrize("title", sorted(COMBAT_AGEING))
+def test_a_combat_round_ages_the_minute_unit_and_nothing_coarser(title):
+    """`CMP #$40 / BCS` leaves every ten-minute, hour and day count alone, so
+    the camp formula does not describe a fight.
+    """
+    name, base, durations, read, test, dec = COMBAT_AGEING[title]
+    body = _overlay(title, name)
+    assert _operand(body, base, read, 0xBD) == durations
+    assert _operand(body, base, test, 0xC9) == 0x40
+    assert body[test - base + 2] == 0xB0              # BCS past the slot
+    assert _operand(body, base, dec, 0xDE) == durations

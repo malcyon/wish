@@ -46,13 +46,57 @@ division rule to the larger DOS input.
 | 3840 | `$C2` | 2 days | 2880 |
 | 65535 | `$ED` | 45 days | 64800 |
 
-**CONFIRMED for Pool's camp clock:** for a nonzero count, the remaining time
-is `count * unit_minutes - (clock_minutes % unit_minutes)`. Counts decrease
-at clock boundaries, as measured by the two rests in
-[133-active-effects.md](133-active-effects.md#the-duration-byte).
-Walking defers expiry and combat treats coarse units differently; this
-formula describes camp-clock expiry only. A whole zero byte never expires;
-nonzero bytes with zero count remain unmeasured.
+**CONFIRMED for all three titles' camp clock:** for a nonzero count, the
+remaining time is `count * unit_minutes - (clock_minutes % unit_minutes)`.
+The three camp ageing routines are the same code at three sets of addresses,
+all at load base `$0800` except Silver Blades' clock tick, which its
+`LIBRARY` holds at base `$2DC8`. The entry stores the elapsed minutes, ticks
+the clock a minute at a time and ORs a bit into a wrapped-digit mask; the
+sweep skips a slot whose id or duration byte is zero; the per-slot rule takes
+the whole elapsed minutes off a unit-`00` count and one off a coarser count
+whose digit wrapped. The claim used to be graded on Pool alone, from the two
+rests in [133-active-effects.md](133-active-effects.md#the-duration-byte);
+what upgraded it is reading the other two engines.
+
+| Title | Camp entry | Clock tick | Per-slot rule | Sweep | Expiry call | Radix table | Digit-bit table |
+|---|---|---|---|---|---|---|---|
+| Pool of Radiance | `CAMP $1283` | `CAMP $124A` | `$12BE` | `$1299` | `$131F` | `$127E`: 10, 6, 24, 30, 12 | `$165A`: 01 02 04 08 10 20 40 80 |
+| Curse of the Azure Bonds | `CAMP $1432` | `CAMP $13F9` | `$146D` | `$1448` | `$14CD` | `$142D`: the same five | `$18AF`: the same eight |
+| Secret of the Silver Blades | `CAMP $126B` | `LIBRARY $46B6` | `$12A6` | `$1281` | `$1306` | `$46DF`: the same five | `$46E5`: the same eight |
+
+The radix table is what makes the arithmetic exact: the minute-units digit
+wraps at 10 and the tens digit at 6, so the digit one coarser than a unit
+wraps on every multiple of that unit in minutes since midnight. The formula
+holds while no one camp call passes two boundaries of one digit, which is all
+a bitmask can record; rest passes five minutes a call (`CAMP $1D7A`).
+
+**CONFIRMED, and it replaces this page's earlier "remains unmeasured":** a
+nonzero byte with a zero count does not expire, it drops a unit. `$12BE`
+takes the count into X and `$12D6`'s `DEX` on zero gives `$FF`, so `$12D9`
+decrements the whole byte and `$40` becomes `$3F`. A `$40` slot lives for the
+time to the next ten-minute boundary and then 63 minutes. A whole zero byte
+is still skipped by every ageing routine and never expires.
+
+**CONFIRMED: the time one byte is worth depends on the route, not only on the
+byte.** A combat round ages unit `00` and nothing else, on every title --
+`COMBAT $221E`, `COMBAT2 $FA72` and `COMBAT2 $F747`, base `$E000` for the
+later two, each testing `CMP #$40 / BCS` first -- so an hour-unit effect does
+not age in a fight however long it lasts. Walking ages one unit a minute in
+Pool and Curse (`DUNGEON $0E0D`, `DUNGEON $0D70`, the same code), the one
+matching the coarsest digit that advanced, so a minute-count is skipped in the
+minute a ten-minute boundary is crossed and 63 minutes of unit `00` take 70
+minutes of walking. Silver Blades' walking rule is not that one: `DUNGEON
+$0D95` ages every slot whose unit is the advanced digit's or finer, and a
+table at `$0DE5` (60, 6) supplies a larger amount to a caller passing coarser
+time, which its walking call at `$0DEA` does not. The source side has no such
+split: DOS subtracts the elapsed minutes from an exact `u16` in every route
+(`GAME.OVR:0x23F83`, [162-spc-permanence.md](162-spc-permanence.md)).
+
+`goldbox/effects.py` holds the arithmetic -- `remaining_minutes`,
+`exact_durations` and `longest_duration_within` --
+and `tests/records/test_effects.py` checks the closed form against a
+minute-by-minute run of the engine's own rule, for every minute and
+ten-minute byte at six times of day, and against both driven rests.
 
 Thus 64 minutes at clock phase 0 has no exact byte. At phase 6, `$47` expires
 after exactly 64 minutes. `$46` expires after 60 or 54 minutes respectively.
@@ -79,8 +123,38 @@ and never turn a running effect into duration zero. This preserves every
 exact case and shortens the others by at most **1,439 minutes**, at every
 phase. At midnight, 64 minutes becomes 63 (`$3F`), and 3,840 becomes 3,780
 (`$BF`); copying the cast-time promotion instead gives 60 and 2,880.
-`duration_census()` reproduces these bounds. This policy concerns camp-clock
-expiry; combat and deferred walking expiry still need their own live checks.
+`duration_census()` reproduces these bounds, and
+`goldbox.effects.longest_duration_within` is that choice as a function. This
+policy concerns camp-clock expiry; combat and deferred walking expiry still
+need their own live checks.
+
+**CONFIRMED, and it is what the choice actually costs:** the loss is bounded
+by the finest unit that can reach the source's remaining time, not by the day
+unit, and the day unit is out of reach of the game's own spell rows.
+
+| DOS minutes left | The most the chosen byte falls short |
+|---|---|
+| 1 to 63 | nothing, at every time of day |
+| 64 to 630 | 9 minutes |
+| 631 to 3,780 | 59 minutes |
+| above 3,780 | 1,439 minutes |
+
+Measured over every duration to 4,200 minutes and a sample above it at
+sixteen times of day, in `tests/records/test_effects.py`. **The bottom row
+needs a duration the three titles' own spell tables cannot produce.** Each
+seven-byte spell row holds its duration in the same packed byte the save
+does (`CAMP $1430` copies the row; the cast reads its count and unit at
+`SPELLE04 $A7B5`), and the tables are at `ECL65 $9900` in Pool, `$97CB` in
+Curse and `$9307` in Silver Blades. Their rows use the minute, ten-minute and
+hour units; the longest fixed row is Pool's 24 hours, and a level-scaled
+count reaches the day unit only past 63 hours, which needs a caster level in
+the sixties. What is UNMEASURED is whether an area script can write a longer
+duration than a cast can, which the DOS word allows to 45 days: reading the
+`ECL` opcode that adds an effect would settle it.
+
+The six `CHRDATJ` records on this machine hold a Bless with two minutes left,
+which is the top row: exact at every time of day, whichever way the policy
+question is settled.
 
 ## Pool of Radiance ids and values
 

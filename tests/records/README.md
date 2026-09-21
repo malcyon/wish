@@ -20,7 +20,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_dualclass_c64.py` | Checks that the C64 reader and writer find a dual-classed character's former class by its name and read an ordinary record as having none. |
 | `test_dualclass_dos.py` | Checks that the later DOS titles' former-class level array reads as a named former class, and that the Amiga reader agrees. |
 | `test_dualclassregain.py` | Checks the rule a DOS engine uses to decide a dual-classed human has got his old class back, and what the record holds when he has. |
-| `test_effects.py` | Checks `goldbox/effects.py`: the effect-array offsets, writing and clearing an effect, and the ECL65 spell-effect table. |
+| `test_effects.py` | Checks `goldbox/effects.py`: the effect-array offsets, writing and clearing an effect, the ECL65 spell-effect table, and what a duration byte is worth at a time of day, against the three engines' own camp ageing routines. |
 | `test_effectcrosswalk.py` | Re-reads C64 duration packing and Pool's DOS/C64 effect-value rules from the player's engine files, checks clock-dependent representability, and rejects unproven strength encodings. |
 | `test_enccensus.py` | Checks that `tools/records/enccensus.py` counts an encumbrance failure only where a record's items are known, and that the C64 record has no encumbrance field. |
 | `test_fieldcensus.py` | Checks that `tools/records/fieldcensus.py` picks a title's specimen disks by title rather than by directory and tallies every value it reads. |
