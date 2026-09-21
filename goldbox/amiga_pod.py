@@ -42,6 +42,7 @@ here imports any of the other three titles' modules at all.
 from __future__ import annotations
 
 import struct
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from . import amiga_port, dos_port, neutral, titles
@@ -236,26 +237,62 @@ HP_ROLLED = 0x0B8
 PORTRAIT_HEAD = 0x0B9
 #: The combat icon, which is a different thing: `CHEAD.TLB` and `CBODY.TLB`
 #: art, a figure slot and the character's size.
+#:
+#: **Both are menu positions and both have a measured range**: the ICON
+#: screen steps `0x0BB` and wraps it to 0 past 13 (`addq.b #$1, $bb(a0)` then
+#: `cmpi.b #$d` at `0x00CAC8`), and steps `0x0BC` and wraps it past 31
+#: (`cmpi.b #$1f` at `0x00CDF8`), so the head is 0-13 and the body 0-31. The
+#: drawing routine at `0x0255F0` builds the library name `CHEAD%c` from
+#: :data:`SIZE` and asks it for item `0x0BB`, which is where a value past the
+#: end gets `ERROR: INVALID ITEM` from -- the head and body numbers are the
+#: index, and the figure slot below is not.
 ICON_HEAD = 0x0BB
 ICON_BODY = 0x0BC
 #: Which of eight loaded combat pictures the character draws with (#305). The
 #: code compares it against 7 and 8 and writes 0xFF for none.
+#:
+#: **The engine assigns it when the character joins the party, whatever the
+#: file held**: the join routine at `0x027398` stores `0xFF` here
+#: (`move.b #$ff, $bd(a3)`) before it appends the record to the roster chain,
+#: then walks the chain marking the slots 0-7 already taken and counts this
+#: byte up from 0 to the first free one (`0x0273FE`-`0x027432`). Character
+#: creation leaves :data:`NO_PARTY_SLOT` here instead, which is what 17 of
+#: the 19 `.pc` files on the disks hold; the other two hold 3 and 4, the
+#: marching slots their parties gave them.
 COMBAT_FIGURE = 0x0BD
 #: 1 small, 2 medium -- DOS's own encoding, one greater than the neutral
 #: `size_small`. 1 for BOHLO BART AB, the one dwarf on the Amiga disks, and 2
 #: for the eighteen humans, elves and half-elves.
 SIZE = 0x0BE
+#: The six colour bytes of the combat icon. Character creation fills them
+#: from a six-entry table at `0x00FCE6`-`0x00FD1E`, one byte each as
+#: `t * 16 + t + 0x80`, and the table holds 1, 2, 3, 4, 6, 7 -- which is
+#: :data:`ICON_COLOURS_DEFAULT`, the six bytes 11 of the 19 `.pc` files hold
+#: exactly. The other eight were edited on the ICON screen.
 ICON_COLOURS = 0x0BF
 ICON_COLOUR_COUNT = 6
-#: `02 02` in 19 of 19, as DOS's `unnamed_1a4` is in 12 of 12.
+#: `02 02` in 19 of 19, as DOS's `unnamed_1a4` is in 12 of 12, and character
+#: creation writes 2 into both bytes (`0x00FDA2` and `0x00FDAC`). The Silver
+#: Blades importer copies that title's own byte into 0x0C5 and then
+#: overwrites it with 2 at `0x0262C8`, so 2 is what every record the engine
+#: makes holds however it was made. What the pair *is* remains UNKNOWN.
 UNNAMED_1A4 = 0x0C5
+UNNAMED_1A4_DEFAULT = 2
 #: A cached item count the save leaves stale: 3 in 17 of 19 against an item
 #: region that holds four, five or six. **The count the loader uses is the
 #: longword at 0x008**, which `404 + 20 * count + 10 * effects` consumes
 #: exactly in 19 of 19.
+#:
+#: It is rebuilt with `encumbrance` and :data:`HANDS_USED`: the routine at
+#: `0x019430` clears the thirteen readied-item longwords at 0x00C, this byte,
+#: 0x0C8 and the encumbrance word, then walks the item chain adding one here
+#: per node -- so the writer leaves all three zero and the game fills them.
 ITEM_COUNT_CACHE = 0x0C7
-#: How many hands the readied weapon takes. 2 in 18 of 19, as DOS's is in 12
-#: of 12; the one exception is `?T`, the thief among the nineteen.
+#: How many hands the readied items take. 2 in 18 of 19, as DOS's is in 12
+#: of 12; the one exception is `?T`, the thief among the nineteen. The same
+#: rebuild at `0x019430` sums it out of each item type's own table entry
+#: (`g6968[type * 16 + 1]`), so a converted record's zero is filled in by the
+#: game rather than left beside a readied weapon.
 HANDS_USED = 0x0C8
 UNNAMED_0C9 = 0x0C9
 UNNAMED_0CA = 0x0CA
@@ -270,8 +307,27 @@ UNNAMED_0CB = 0x0CB
 #: `0x03CD56` and again at `0x03CE00`, either side of `memset($169, 0, 0x1B)`.
 #: Zero in 19 of 19 specimens, which is what nothing-memorised looks like and
 #: is why no specimen could have found it.
+#:
+#: **This port fills the region forwards, from 0x0CC, and DOS fills its own
+#: backwards from the end.** CONFIRMED in the engine: the MEMORIZE screen
+#: scans up from index 0 for the first zero byte and writes the id there
+#: (`0x000A5C`-`0x000A86`), the tidy pass sorts the entries ascending by
+#: `id & 0x7f` towards index 0 and closes any hole behind them
+#: (`0x000864`-`0x00090C`), the surplus-trimmer keeps the earliest entries of
+#: a level and clears the later ones (`0x015CE0`), and every routine that
+#: reads the region counts `d2` from 0 to 0x8C. So a converted list belongs at
+#: the *front* of the region, and reading it back out in the neutral
+#: highest-first order is the same reversal DOS's needs.
+#:
+#: **Bit 7 is the pending flag, as in DOS**: memorising stores `id + 0x80`
+#: (`subi.b #$80` on a byte, at `0x000A76`), and the rest that completes it
+#: subtracts the bit back off (`0x002F30`) and prints "has memorized". The
+#: byte crosses between the ports unchanged.
 SPELLS_MEMORISED = 0x0CC
 SPELLS_MEMORISED_LENGTH = 141
+#: The memorised byte with its pending bit set. Every reader in the engine
+#: masks the entry with `0x7f` before it indexes the spell table.
+SPELLS_MEMORISED_PENDING = 0x80
 #: The spellbook, as a bitmask rather than DOS's byte per spell: bit `i` of
 #: byte `i >> 3` is DOS array index `i`, which is spell id `i + 1`. Sixteen
 #: bytes for 125 ids, bounded above by the cleric's slot array at 0x169.
@@ -343,6 +399,74 @@ ALIGNMENTS = tuple(f"{law} {m}" for law in LAWS for m in MORALITIES)
 #: one non-zero level in the slot its class code names, and the thief `?T`
 #: has its 16 in slot 6.
 CLASS_LEVEL_SLOTS = CLASSES[:CLASS_LEVEL_COUNT]
+
+#: What character creation leaves in :data:`COMBAT_FIGURE` -- `move.b #$d,
+#: $bd(a0)` at `0x00FD5A`, past the end of the eight slots the marching order
+#: uses, so it reads as "this character is in nobody's line". 17 of the 19
+#: `.pc` files hold it.
+NO_PARTY_SLOT = 13
+#: The six :data:`ICON_COLOURS` character creation writes: `t * 17 + 0x80`
+#: for t in 1, 2, 3, 4, 6, 7.
+ICON_COLOURS_DEFAULT = bytes(t * 17 + 0x80 for t in (1, 2, 3, 4, 6, 7))
+#: What :data:`ICON_DIMENSION` holds in 19 of 19 records, and what creation
+#: writes (`move.b #$1, $82(a0)` at `0x00FD50`).
+ICON_DIMENSION_DEFAULT = 1
+
+
+def engine_size_for_race(race: int) -> int:
+    """1 or 2 for :data:`SIZE`, the way the engine's own race routine sets it.
+
+    CONFIRMED at `0x00E552`: the routine switches on `0x058` through a
+    five-entry jump table at `0x00E648` and writes `1` into `0x0BE` for the
+    dwarf, the gnome and the halfling and `2` for the elf, the half-elf and
+    the human, granting each race's own effects in the same breath.  It is
+    what `BOHLO BART AB`, the one dwarf on the Amiga disks, holds against the
+    eighteen others' 2.
+
+    The byte is not decoration: the combat-icon drawing routine at `0x0255F0`
+    indexes a table with it to build the library name `CHEAD%c`, so a record
+    with zero here asks for a file the game has not got.
+    """
+    small = (RACES.index("DWARF"), RACES.index("GNOME"),
+             RACES.index("HALFLING"))
+    return 1 if race in small else 2
+
+
+def engine_default_icon(race: int, sex: int, size: int,
+                        class_levels: Sequence[int]) -> tuple[int, int]:
+    """The head and body art the engine itself gives a new character.
+
+    Read off the routine at `0x00C736`, which character creation calls at
+    `0x00FD92` once race, sex, size and the class levels are settled.  The
+    head is the character's build -- a halfling has his own, and the other
+    five races split by sex and by :data:`SIZE` -- and the body is the first
+    class slot with a level in it.
+
+    It matches what the player's own disks hold in 15 of 19 records for the
+    head and 11 of 19 for the body; the rest were changed on the ICON screen,
+    which is the screen this routine supplies the starting position for.
+    """
+    if race == RACES.index("HALFLING"):
+        return 3, _default_body(class_levels)
+    medium = size == 2
+    if sex == SEXES.index("FEMALE"):
+        return (9 if medium else 7), _default_body(class_levels)
+    return (5 if medium else 0), _default_body(class_levels)
+
+
+def _default_body(class_levels: Sequence[int]) -> int:
+    """`0x00C79E`: the first class slot with a level, in the engine's order."""
+    levels = tuple(class_levels) + (0,) * CLASS_LEVEL_COUNT
+    slot = {name: levels[i] for i, name in enumerate(CLASS_LEVEL_SLOTS)}
+    if slot["CLERIC"]:
+        return 0x17
+    if slot["RANGER"]:
+        return 1
+    if slot["PALADIN"] or slot["FIGHTER"]:
+        return 0x18
+    if slot["MAGIC-USER"]:
+        return 0x1D
+    return 5
 
 #: Read but not written, because no probe has put them on screen. The
 #: readings come from the twelve genuine records and are PROBABLE:
@@ -874,11 +998,14 @@ class PodCharacter:
     def spells_memorised(self) -> list[int]:
         """Memorised spell ids, highest first -- the neutral order.
 
-        Pools of Darkness fills the region from its end backwards, which is
-        what DOS does with its own 141 bytes, so reversing is the transpose
-        and the zeroes fall out.  **No specimen has a spell in it**: all
-        nineteen `.pc` files on the Amiga disks are zero here, so the *order*
-        is DOS's rather than something this port has been watched doing.
+        **This port fills the region forwards from 0x0CC and sorts it
+        ascending by id**, where DOS fills its own 141 bytes backwards from
+        the end and so also ends up ascending towards the last byte
+        (:data:`SPELLS_MEMORISED` has the four routines that say so).  Either
+        way the ids run ascending through memory, so reversing is the
+        transpose in both directions and the zeroes fall out.  No specimen
+        has a spell in it: all nineteen `.pc` files on the Amiga disks are
+        zero here.
         """
         raw = self.raw[SPELLS_MEMORISED:
                        SPELLS_MEMORISED + SPELLS_MEMORISED_LENGTH]
@@ -968,12 +1095,14 @@ class PodWriter:
     """Build a `Save/NAME.pc` Amiga Pools of Darkness will load.
 
     Every field the record is decoded for is written. What is left zero is the
-    heap pointers at 0x00-0x5F, which the loader overwrites; the derived block
-    the game recomputes on load (:data:`DERIVED`); the icon art at 0x0BB-0x0BD
-    and 0x0BF-0x0C4, where a value past the end of `CHEAD.TLB` makes the loader
-    refuse the file; and the memorised list at 0x0CC, whose fill direction
-    nothing has watched this port choose. `provenance()` says where every non-zero byte of the
-    output came from, so nothing lands in the file uncredited.
+    heap pointers at 0x00-0x5F, which the loader overwrites, and the derived
+    block the game recomputes on load (:data:`DERIVED`). The combat icon at
+    0x0BB-0x0BD and 0x0BF-0x0C4 is not taken from the source at all: it is
+    what the engine's own creation routine would have given this character
+    (:func:`engine_default_icon`), because the numbers are menu positions in
+    this port's own art and a value past the end of `CHEAD.TLB` makes the
+    loader refuse the file. `provenance()` says where every non-zero byte of
+    the output came from, so nothing lands in the file uncredited.
 
     The tail past the 404-byte record is built here too: `items` are twenty
     bytes each and the count goes in the longword at 0x008, a scroll is
@@ -1038,6 +1167,19 @@ class PodWriter:
     #: for the three nine-byte arrays at 0x169, 0x172 and 0x17B, by class name.
     spells_known: tuple[int, ...] | None = None
     spells_castable: dict[str, tuple[int, ...]] | None = None
+    #: Memorised spell ids, highest first as the neutral record keeps them.
+    #: They go into 0x0CC ascending from the front, which is the end this
+    #: port fills from -- see :data:`SPELLS_MEMORISED`.
+    spells_memorised: tuple[int, ...] | None = None
+    #: The roster byte at 0x0BD. The engine overwrites it when the character
+    #: joins a party, so the default is the :data:`NO_PARTY_SLOT` creation
+    #: itself writes rather than a slot taken from the source.
+    combat_figure: int = NO_PARTY_SLOT
+    #: The combat icon. `None` takes what the engine's own creation routine
+    #: would have given this character -- see :func:`engine_default_icon`.
+    icon_head: int | None = None
+    icon_body: int | None = None
+    icon_colours: bytes | None = None
     #: The tail: twenty bytes an item, head items only, and ten an effect.
     items: tuple[bytes, ...] = ()
     effects: tuple[bytes, ...] = ()
@@ -1055,6 +1197,13 @@ class PodWriter:
             raise ValueError("six abilities, in the sheet's own order")
         if len(self.class_levels) != CLASS_LEVEL_COUNT:
             raise ValueError(f"{CLASS_LEVEL_COUNT} class levels")
+        # The ICON screen's own wrap points, which are what the art libraries
+        # have: a head past 13 or a body past 31 is an item `CHEAD.TLB` has
+        # not got, and the loader refuses the whole file for one.
+        if self.icon_head is not None and not 0 <= self.icon_head <= 13:
+            raise ValueError("the combat icon's head is 0 to 13")
+        if self.icon_body is not None and not 0 <= self.icon_body <= 31:
+            raise ValueError("the combat icon's body is 0 to 31")
         if self.armour_class > COMBAT_BIAS:
             raise ValueError("armour class is stored as 60 - AC; 60 is the cap")
         if (self.treasure_share is not None
@@ -1145,7 +1294,6 @@ class PodWriter:
                 (self.identity, UNNAMED_0AB, 1, "identity"),
                 (self.experience_award, EXPERIENCE_AWARD, 2,
                  "experience_award"),
-                (self.size, SIZE, 1, "size"),
                 (self.npc_control_byte, NPC_CONTROL, 1, "npc_control_byte"),
                 (self.former_level, FORMER_LEVEL, 1, "former_level")):
             if value is not None:
@@ -1168,6 +1316,15 @@ class PodWriter:
             plan.append((SPELLS_CASTABLE,
                          SPELL_SLOT_LEVELS * len(SPELL_SLOT_CLASSES),
                          "spells_castable"))
+        if self.spells_memorised:
+            plan.append((SPELLS_MEMORISED,
+                         min(len(self.spells_memorised),
+                             SPELLS_MEMORISED_LENGTH), "spells_memorised"))
+        plan.extend([(SIZE, 1, "size"), (UNNAMED_1A4, 2, "unnamed_1a4"),
+                     (ICON_HEAD, 1, "icon_head"), (ICON_BODY, 1, "icon_body"),
+                     (ICON_COLOURS, ICON_COLOUR_COUNT, "icon_colours"),
+                     (ICON_DIMENSION, 1, "icon_dimension"),
+                     (COMBAT_FIGURE, 1, "combat_figure")])
         nodes, effects = self._tail_nodes()
         if self.items:
             plan.append((ITEM_CHAIN, 4, "item_count"))
@@ -1261,7 +1418,6 @@ class PodWriter:
                           (self.paladin_cures, PALADIN_CURES),
                           (self.hit_points_rolled, HP_ROLLED),
                           (self.identity, UNNAMED_0AB),
-                          (self.size, SIZE),
                           (self.npc_control_byte, NPC_CONTROL),
                           (self.former_level, FORMER_LEVEL)):
             if value is not None:
@@ -1291,6 +1447,32 @@ class PodWriter:
                 slots = tuple(self.spells_castable.get(class_name, ()))
                 at = SPELLS_CASTABLE + SPELL_SLOT_LEVELS * i
                 out[at:at + len(slots)] = bytes(slots)
+        # Ascending by id with the pending bit masked off, which is the order
+        # the engine's own tidy pass leaves the region in, and from the front,
+        # which is the end the MEMORIZE screen fills from.
+        if self.spells_memorised:
+            ids = sorted(self.spells_memorised,
+                         key=lambda i: i & ~SPELLS_MEMORISED_PENDING
+                         )[:SPELLS_MEMORISED_LENGTH]
+            out[SPELLS_MEMORISED:SPELLS_MEMORISED + len(ids)] = bytes(ids)
+
+        # The combat icon and the roster slot: what the engine's own creation
+        # routine writes, for a record it did not create. A source with no
+        # size of its own gets the one its race would have been given, which
+        # is also what the icon's own art library is chosen by.
+        size = self.size if self.size else engine_size_for_race(self.race)
+        out[SIZE] = size
+        head, body = engine_default_icon(self.race, self.sex, size,
+                                         self.class_levels)
+        out[ICON_HEAD] = self.icon_head if self.icon_head is not None else head
+        out[ICON_BODY] = self.icon_body if self.icon_body is not None else body
+        colours = (ICON_COLOURS_DEFAULT if self.icon_colours is None
+                   else bytes(self.icon_colours))
+        out[ICON_COLOURS:ICON_COLOURS + ICON_COLOUR_COUNT] = colours[
+            :ICON_COLOUR_COUNT].ljust(ICON_COLOUR_COUNT, b"\0")
+        out[ICON_DIMENSION] = ICON_DIMENSION_DEFAULT
+        out[COMBAT_FIGURE] = self.combat_figure
+        out[UNNAMED_1A4] = out[UNNAMED_1A4 + 1] = UNNAMED_1A4_DEFAULT
 
         if self.items:
             struct.pack_into(">I", out, ITEM_CHAIN, len(self.items))
@@ -1509,7 +1691,11 @@ POD_WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("status", "one of the game's own nine status words -> the byte at 0x05E, "
                "which indexes DOS's nine in DOS's order"),
     ("size_small", "the neutral 0 small / 1 large -> this port's 1 small / "
-                   "2 medium at 0x0BE"),
+                   "2 medium at 0x0BE. A source with no size of its own gets "
+                   "the one the engine's race routine would have given him "
+                   "(1 for a dwarf, a gnome and a halfling), because the "
+                   "byte chooses the combat icon's art library and a zero "
+                   "asks for a file the game has not got"),
     ("npc", "bit 7 of the control byte at 0x093: the source's own byte where "
             "it has one, and bit 7 alone where it says `npc` without one"),
     ("spells_known", "the ids packed into the sixteen-byte mask at 0x159: bit "
@@ -1519,6 +1705,12 @@ POD_WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "0x17B, by class name: cleric, druid, magic-user. A "
                         "source keeping fewer spell levels fills the low "
                         "ones and the rest stay zero"),
+    ("spells_memorised", "the neutral highest-first list reversed into the "
+                         "141 bytes at 0x0CC, ascending from the front, "
+                         "which is the end this port's own MEMORIZE screen "
+                         "fills from and the order its tidy pass leaves. The "
+                         "pending bit 7 crosses unchanged: both ports store "
+                         "`id + 0x80` until a night's rest takes it off"),
     ("inventory", "the shared sixteen-byte items -> the twenty bytes a `.pc` "
                   "holds, through the DOS record both ports' item nodes are "
                   "cut from. The count goes in the longword at 0x008 and a "
@@ -1610,23 +1802,6 @@ POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                       "own DOS record has no such field -- so a source of "
                       "this title never holds one"),
     ("portrait_body", "see `portrait_head`: the title draws no sheet face"),
-    ("spells_memorised", "the 141 bytes at 0x0CC. **Which end the region "
-                         "fills from is not established**: DOS fills its own "
-                         "141 backwards from the end, all nineteen `.pc` "
-                         "files on the Amiga disks are zero here, and nothing "
-                         "has watched this port do it -- so writing the list "
-                         "the wrong way round would hand a character "
-                         "somebody else's spells. The experiment is a `.pc` "
-                         "with one known id at 0x158 and another with it at "
-                         "0x0CC, each added through `Add Character -> Pools`, "
-                         "and the MEMORIZE screen says which"),
-    ("combat_figure", "the byte at 0x0BD. This port's own records hold 13 in "
-                      "17 of 19 where DOS holds the marching slot -- 0 to 5 "
-                      "across each party of six, in 12 of 12 -- so the two "
-                      "ports' bytes are not the same number and copying one "
-                      "into the other would write a figure the engine's own "
-                      "compares at 7 and 8 do not expect. What 13 means here "
-                      "is UNKNOWN"),
     ("turn_power", "a cleric's turning strength is worked out from the class "
                    "levels when TURN is pressed, on both ports; the record's "
                    "0x05A is DOS's `turn_class`, which is a property of what "
@@ -1666,6 +1841,16 @@ POD_WRITE_DERIVED: tuple[tuple[str, str], ...] = (
                      "recomputed from what the character is wearing"),
     ("movement_current", "the byte at 0x192: a probe that set it to 99 drew "
                          "the base's 12"),
+    ("combat_figure", "the byte at 0x0BD, which the engine assigns when the "
+                      "character joins a party and not from the file: the "
+                      "join routine at 0x027398 stores 0xFF over whatever "
+                      "was there before it appends the record to the roster "
+                      "chain, then counts the byte up from 0 to the first of "
+                      "the eight marching slots nobody else holds "
+                      "(0x0273FE-0x027432). The writer emits the 13 creation "
+                      "itself writes, which 17 of the 19 `.pc` files hold. "
+                      "**Read out of the engine rather than watched on "
+                      "screen**, which is the one row of this table that is"),
 )
 
 #: Neutral fields written as a value every record measured holds, rather than
@@ -2085,8 +2270,9 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     out.set("spells_memorised", char.spells_memorised,
             f"Amiga .pc memorised list @{SPELLS_MEMORISED:#05x}, "
             f"{SPELLS_MEMORISED_LENGTH} bytes reversed into the neutral "
-            f"highest-first order",
-            Confidence.PROBABLE, neutral.Provenance.RESHAPED)
+            f"highest-first order -- the region fills forwards from its "
+            f"first byte and its entries run ascending",
+            Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
     out.set("spells_castable", char.spells_castable,
             f"Amiga .pc spell slots @{SPELLS_CASTABLE:#05x}, three "
             f"{SPELL_SLOT_LEVELS}-byte arrays: "
@@ -2499,6 +2685,25 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
                 free = free[:SPELL_SLOT_LEVELS]
             castable[key] = free
 
+    memorised_value = w.use("spells_memorised")
+    memorised: tuple[int, ...] | None = None
+    if memorised_value is not None:
+        ids = [int(i) for i in (memorised_value.value or ())]
+        over = [i for i in ids if not 0 < (i & 0x7F) <= 0x7F]
+        if over:
+            rep.dropped.append(
+                f"{len(over)} memorised spell ids the region at "
+                f"{SPELLS_MEMORISED:#05x} has no room for -- its byte is the "
+                f"id with bit 7 as the pending flag, so 1-127 is what fits: "
+                f"{', '.join(str(i) for i in over)}")
+        ids = [i for i in ids if i not in over]
+        if len(ids) > SPELLS_MEMORISED_LENGTH:
+            rep.dropped.append(
+                f"{len(ids) - SPELLS_MEMORISED_LENGTH} memorised spells past "
+                f"the {SPELLS_MEMORISED_LENGTH} the region holds")
+            ids = ids[:SPELLS_MEMORISED_LENGTH]
+        memorised = tuple(ids)
+
     # -- what he is carrying, and what is running on him --------------------
     carried_value = w.use("inventory")
     carried: list[bytes] = []
@@ -2558,6 +2763,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         attack_forms=forms,
         spells_known=book,
         spells_castable=castable,
+        spells_memorised=memorised,
         items=tuple(carried),
         effects=tuple(nodes),
     )

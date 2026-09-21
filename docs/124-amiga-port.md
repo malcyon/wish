@@ -2015,6 +2015,7 @@ ports draw a name red for.
 | the three spell-slot arrays | `0x169`, `0x172`, `0x17B` | round trip, 19 of 19 |
 | the item region, and its count | `404`, `0x008` | **93 of 93 items byte for byte** |
 | the effect chain, and its head | after the items, `0x004` | 11 of 11 nodes but for two bytes named below |
+| the memorised list, the combat icon and the roster byte | `0x0CC`, `0x0BB`-`0x0BD`, `0x0BF`-`0x0C4`, `0x082` | §1.19a, which is the engine's own code and came after this run |
 
 **The tail is the strongest of these.** A `.pc` read into the neutral record
 and written back out reproduces every one of the 93 item nodes on the disks
@@ -2038,22 +2039,138 @@ in the file would be where the loader expected it otherwise.
 
 | field | why not |
 |---|---|
-| `spells_memorised`, `0x0CC` | **which end the region fills from is not established.** DOS fills its own 141 bytes backwards from the end; all nineteen files here are zero, so no specimen can say. Writing it the wrong way round hands a character somebody else's spells |
-| `combat_figure`, `0x0BD` | the two ports' bytes are **not the same number**: this port holds 13 in 17 of 19 and DOS holds the marching slot, 0 to 5 across each party of six, in 12 of 12. What 13 means here is UNKNOWN |
-| the icon art, `0x0BB`-`0x0BC` and `0x0BF`-`0x0C4` | a value past the end of `CHEAD.TLB`'s 29 items makes the loader refuse the file with `ERROR: INVALID ITEM`, and nothing has established what it accepts |
 | `encumbrance`, `thac0_current`, `armour_class`, `movement_current` | the game recomputes them on load, each demonstrated by a probe that wrote a wrong value and read the right one back off the sheet |
 | `armour_class_base`, `0x0B3` | written as the unarmoured `60 - 10`, which is what 19 of 19 `.pc` files — whose characters all carry items — and 12 of 12 DOS records hold |
 | `roster_tail`, `0x188` | three of its nine bytes are in the recomputed set; the rest has not been watched being rebuilt |
-| bytes no neutral field names, all left zero | `icon_dimension` `0x082` (1 in 19 of 19), `unnamed_1a4` `0x0C5`-`0x0C6` (`02 02` in 19 of 19), the stale item count `0x0C7`, `hands_used` `0x0C8` (2 in 18 of 19) and `gap_19a` `0x0C9` (2 in 5 of 19, 0 in the other 14; its neighbour `0x0CA` is 0 in 19 of 19) |
+| bytes no neutral field names, all left zero | the stale item count `0x0C7`, `hands_used` `0x0C8` (2 in 18 of 19) and `gap_19a` `0x0C9` (2 in 5 of 19, 0 in the other 14; its neighbour `0x0CA` is 0 in 19 of 19) |
 
-**`icon_dimension` and `0x0C5`-`0x0C6` are values every one of the 19 records holds, and `hands_used` is 2 in 18 of them; the writer leaves all three zero.** Now that readied items are written, `hands_used` 0 beside a readied weapon is a state no genuine record shows. What any of these zeros does to the game is **unmeasured**: nothing has loaded a record with them zero and looked at the sheet or fought with it, so the table does not call them harmless.
+**The first two of those are rebuilt on load and `gap_19a` is not.** §1.19a has the routine: `0x019430` clears the item count, `hands_used` and the encumbrance word together and then walks the item chain filling all three, which is the same rebuild §2.3's encumbrance probe watched happen. `gap_19a` has no routine anybody has found, and what its zero does to the game is **unmeasured**.
 
 **None of this has been in front of the game yet**, and that is the boundary
 of the claim: the bytes match and the lengths match, and a conversion is not
-proven until a party made this way walks. The two experiments a driven
-session owes are the memorised list's fill direction and whether writing the
-combat block shows on the sheet — the STATUS line for `status`, and the party
-panel's red name for `active`.
+proven until a party made this way walks. What a driven session still owes is
+the sheet — the STATUS line for `status`, and what the party panel draws for a
+character whose `active` is 0, which §1.19a settles the *meaning* of and not
+the colour.
+
+### 1.19a What the engine itself puts in the eight fields the writer left zero (#475 (The Amiga Pools of Darkness writer leaves 27 decoded fields zero, and one of them may mark a converted character as out of the party))
+
+§1.19 left eight fields zero and named three driven experiments to settle
+them. **The engine's own code settles all three**, so none of them was run.
+The disassembly is of the build most disk-1 images agree on, the one
+`tools/amiga/podimportmap.py` takes.
+
+#### `active` at `0x184`, which this issue is named for
+
+CONFIRMED, and 0 is out of the party. Four sites, and the first is the
+decisive one:
+
+| where | what it does |
+|---|---|
+| `0x003712` | walks the roster chain and counts a member only when `$184 == 1` **and** `$5E == 0` **and** `$5F != 1` — the party enumeration itself |
+| `0x011D98` | the field setter writes `$5E` and then puts 1 in `$184` when the new status is 0 and 0 otherwise, so **`active` is "status is Okay"** |
+| `0x011E6C` | the routine that gives a character a bad status clears `$184` and `$191` on its way past |
+| `0x00FD46` | character creation writes 1, which is what 19 of 19 files hold |
+
+**The join path does not repair it.** The routine at `0x027398` that appends a
+record to the roster chain writes `$BD`, the chain and the NPC byte and never
+touches `$184`, so a `.pc` carrying 0 joins as a character the enumeration
+above does not count. What the party panel *draws* for that is still
+unmeasured; that the engine does not count him is not.
+
+#### The memorised list fills from `0x0CC` forwards
+
+CONFIRMED, and neither of the two payloads §1.19 proposed would have been
+needed:
+
+* `0x000A5C` — the MEMORIZE screen counts up from index 0 for the first zero
+  byte and writes the spell there;
+* `0x000864` — the tidy pass sorts the region ascending by `id & 0x7F`
+  towards index 0 and closes the hole behind a cleared entry;
+* `0x015CE0` — the surplus check counts entries per class and level from
+  index 0 and clears the **later** ones when a character holds more than
+  `spells_castable` allows;
+* `0x002EE6`, `0x02208E` and `0x0154F6` — every reader iterates 0 to `0x8C`.
+
+**Bit 7 is the pending flag here as in DOS**: memorising stores `id + 0x80`
+(`subi.b #$80` on a byte, `0x000A76`) and the rest that completes it takes the
+bit off and prints "has memorized" (`0x002F30`), so the byte crosses between
+the ports unchanged.
+
+This corrects §1.19 and the reader's own note, both of which said this port
+fills from the end backwards as DOS does. The reader's *output* was right
+regardless — ids run ascending through memory on both ports, DOS ending at the
+last byte and this one starting at the first, so reversing is the transpose
+either way — but the reason was wrong.
+
+#### `combat_figure` at `0x0BD` is assigned on join, not read from the file
+
+`0x027398` stores `0xFF` over whatever the file held, appends the record to the
+chain, walks the chain marking which of the eight marching slots are taken, and
+counts the byte up from 0 to the first free one (`0x0273FE`-`0x027432`) — which
+is what the compares at 7 and 8 are. So the 13 in 17 of 19 files is what
+creation writes (`0x00FD5A`) for a character in nobody's line, and LADYGWEN's 3
+and MAGNUS MAGNUSSON's 4 are their parties' own slots. The field is derived
+rather than dropped, and the writer emits creation's 13.
+
+#### The combat icon has an engine default, and zero was not it
+
+`0x00C736`, which creation calls at `0x00FD92`:
+
+| byte | what the engine gives a new character |
+|---|---|
+| `icon_head` `0x0BB` | halfling → 3; otherwise female → 9 medium, 7 small; male → 5 medium, 0 small |
+| `icon_body` `0x0BC` | the first class slot with a level: cleric → `0x17`, ranger → 1, paladin or fighter → `0x18`, magic-user → `0x1D`, else 5 |
+| `icon_colours` `0x0BF`-`0x0C4` | `t * 17 + 0x80` for t in 1, 2, 3, 4, 6, 7 — the bytes `91 A2 B3 C4 E6 F7` |
+| `icon_dimension` `0x082` | 1 |
+
+The rule reproduces the stored head in 15 of 19 files and the body in 11 of 19,
+and the colours in 10 of 19; the rest were changed on the ICON screen, which is
+the screen this routine supplies the starting position for. That screen's wrap
+points bound both bytes — `cmpi.b #$d` at `0x00CAC8` and `cmpi.b #$1f` at
+`0x00CDF8` — so the head is 0-13 and the body 0-31, and 19 of 19 files are
+inside both.
+
+**`size` at `0x0BE` was the unnamed risk.** The drawing routine at `0x0255F0`
+builds the icon library's name as `CHEAD%c`/`CBODY%c` with a letter indexed by
+`size`, so a converted character whose source had no `size_small` — the byte
+was left zero — asked for a file that does not exist. That is a likelier cause
+of §2.3's `ERROR: INVALID ITEM (-1/29)` than `icon_head` was, because the ramp
+moved `0x0B6`-`0x0C7` together and `0x0BE` is inside it. The engine sets the
+byte from race at `0x00E552` through the jump table at `0x00E648`: **1 for the
+dwarf, the gnome and the halfling and 2 for the elf, the half-elf and the
+human**, each with its own racial effects granted in the same breath. The
+writer now writes the source's size when it has one and the race's otherwise.
+
+#### The rest of the bytes no neutral field names
+
+`0x0C5`-`0x0C6` is `02 02` in 19 of 19, and creation writes 2 into each
+(`0x00FDA2`, `0x00FDAC`); the Silver Blades importer copies that title's byte
+into `0x0C5` and then overwrites it with 2 at `0x0262C8`, so every record the
+engine makes holds it however it was made. The writer emits the pair. What it
+*is* stays UNKNOWN.
+
+**The stale item count `0x0C7` and `hands_used` `0x0C8` are rebuilt on load,
+so leaving them zero is right.** The routine at `0x019430` clears the thirteen
+readied-item longwords at `0x00C`, then `0x0C7`, `0x0C8` and the encumbrance
+word at `0x056`, and walks the item chain adding one to the count per node,
+each item type's hands out of `g6968[type * 16 + 1]`, and each item's weight
+into the encumbrance. §2.3's probe wrote 1234 into that encumbrance word and
+read 233 back off the sheet, which is this routine running on load and is what
+the other two bytes ride on. So `hands_used` 0 beside a readied weapon is not
+a state a loaded record stays in.
+
+`gap_19a` `0x0C9` is still zero and still has no routine: 2 in 5 of the 19 and
+0 in the other 14, and nothing says what either value means.
+
+#### What a player still loses
+
+**A chosen combat icon does not survive a conversion.** No neutral field holds
+one, so an Amiga character who picked his own head comes back with the default
+for his race and class; 8 of the 19 characters on the disks had made a choice.
+It was a loss before this as well — to zero — and it is now a loss to a value
+the engine itself would have written. Giving it a neutral home is vocabulary
+work.
 
 ### 1.20 The saved game, read from the routine that writes it (#599 (How is the Amiga Pools of Darkness saved game laid out, so a whole save can convert and not only its characters?))
 

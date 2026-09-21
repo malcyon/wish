@@ -267,13 +267,14 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
     The whole record is **not** compared, and the spans below are the honest
     boundary. What is deliberately outside them, and why: the heap pointers at
     `0x000`-`0x03F`, which the loader overwrites; the derived block the game
-    recomputes (`DERIVED`); the icon art at `0x0BB`-`0x0BD` and
-    `0x0BF`-`0x0C4`, where a value past the end of `CHEAD.TLB` makes the
-    loader refuse the file; the
-    memorised list at `0x0CC`, whose fill direction nothing has watched this
-    port choose; and the bytes no neutral field names -- `icon_dimension` at
-    `0x082`, `unnamed_1a4` at `0x0C5`-`0x0C6`, the stale item count at
-    `0x0C7`, `hands_used` at `0x0C8` and `gap_19a` at `0x0C9`, which is 2 in
+    recomputes (`DERIVED`); the combat icon at `0x0BB`-`0x0BD` and
+    `0x0BF`-`0x0C4`, which the writer fills from the engine's own creation
+    defaults rather than from the source, because no neutral field holds a
+    player's choice on the ICON screen and 8 of these 19 characters made one;
+    the memorised list at `0x0CC`, which is zero in 19 of 19 files and so has
+    nothing to compare; and the rest of the bytes no neutral field names --
+    the stale item count at `0x0C7` and `hands_used` at `0x0C8`, which the
+    game rebuilds with `encumbrance`, and `gap_19a` at `0x0C9`, which is 2 in
     5 of the 19.
 
     **`paladin_cures` at `0x080` is inside the spans**: JORILD and TURBO K
@@ -320,6 +321,11 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         "unnamed_0ab": (amiga_pod.UNNAMED_0AB, 1),
         "experience_award": (amiga_pod.EXPERIENCE_AWARD, 2),
         "size": (amiga_pod.SIZE, 1),
+        # No neutral field names it, and the writer emits the 1 the engine's
+        # creation routine writes; 19 of 19 hold it, so it is inside.
+        "icon_dimension": (amiga_pod.ICON_DIMENSION, 1),
+        # Likewise `02 02`, which creation writes and the importer forces.
+        "unnamed_1a4": (amiga_pod.UNNAMED_1A4, 2),
         "npc_control_byte": (amiga_pod.NPC_CONTROL, 1),
         "former_level": (amiga_pod.FORMER_LEVEL, 1),
         "former_class_levels": (amiga_pod.FORMER_CLASS_LEVELS,
@@ -599,6 +605,162 @@ def test_an_effect_listed_as_granted_and_as_innate_is_written_once():
     back = amiga_pod.PodCharacter.from_bytes(out)
     assert [node[0] for node in back.effects] == [5]
     assert [line for line in rep.dropped if "already in the chain" in line]
+
+
+def test_a_memorised_spell_lands_at_the_front_of_the_region():
+    """The end the engine's own MEMORIZE screen fills from (#475).
+
+    `0x000A5C` counts up from index 0 for the first zero byte and writes the
+    id there, and the tidy pass at `0x000864` sorts what is in the region
+    ascending by `id & 0x7f` towards index 0. So a converted list belongs
+    against `0x0CC` and not against `0x158`, and writing it the other way
+    round would leave the whole of it past every entry the engine reads.
+    """
+    char = a_neutral_fighter()
+    # Highest first, which is the order the neutral record keeps.
+    char.set("spells_memorised", [34, 21, 3], "test")
+    out, rep = amiga_pod.to_pc(char)
+    at = amiga_pod.SPELLS_MEMORISED
+    assert out[at:at + 4] == bytes((3, 21, 34, 0))
+    assert out[at + amiga_pod.SPELLS_MEMORISED_LENGTH - 1] == 0
+    assert not [line for line in rep.dropped if "memorised" in line]
+    assert amiga_pod.pod_to_neutral(out).get("spells_memorised") == [34, 21, 3]
+
+
+def test_a_spell_still_being_memorised_keeps_its_pending_bit():
+    """Both ports store `id + 0x80` until a night's rest takes it off, and
+    the Amiga sorts by the id with that bit masked away (`andi.b #$7f` at
+    every reader, `0x000890` in the tidy pass), so a pending level-1 spell
+    stays in front of a ready level-9 one."""
+    char = a_neutral_fighter()
+    pending = 3 | amiga_pod.SPELLS_MEMORISED_PENDING
+    char.set("spells_memorised", [34, pending], "test")
+    out, _rep = amiga_pod.to_pc(char)
+    at = amiga_pod.SPELLS_MEMORISED
+    assert out[at:at + 2] == bytes((pending, 34))
+
+
+def test_more_memorised_spells_than_the_region_holds_are_reported():
+    char = a_neutral_fighter()
+    char.set("spells_memorised", [7] * 200, "test")
+    out, rep = amiga_pod.to_pc(char)
+    at = amiga_pod.SPELLS_MEMORISED
+    length = amiga_pod.SPELLS_MEMORISED_LENGTH
+    assert out[at:at + length] == bytes([7] * length)
+    assert out[at + length] == 0            # the spellbook mask, untouched
+    assert [line for line in rep.dropped if "59 memorised spells past" in line]
+
+
+def test_the_combat_icon_is_the_one_the_engine_would_have_created():
+    """A converted character arrives with the picture creation would have
+    given him, not with zeroes (#475).
+
+    The routine at `0x00C736` is what character creation calls at `0x00FD92`:
+    a halfling has his own head, the other races split by sex and size, and
+    the body is the first class slot with a level in it.
+    """
+    char = a_neutral_fighter()
+    out, _rep = amiga_pod.to_pc(char)
+    assert out[amiga_pod.ICON_HEAD] == 5          # male, medium
+    assert out[amiga_pod.ICON_BODY] == 0x18       # a fighter
+    assert out[amiga_pod.ICON_COLOURS:
+               amiga_pod.ICON_COLOURS + amiga_pod.ICON_COLOUR_COUNT] == (
+        amiga_pod.ICON_COLOURS_DEFAULT)
+    assert out[amiga_pod.ICON_DIMENSION] == amiga_pod.ICON_DIMENSION_DEFAULT
+    assert amiga_pod.ICON_COLOURS_DEFAULT.hex() == "91a2b3c4e6f7"
+
+
+@pytest.mark.parametrize("race,sex,size,levels,head,body", (
+    ("HUMAN", "MALE", 2, {"cleric": 14}, 5, 0x17),
+    ("HUMAN", "FEMALE", 2, {"paladin": 12}, 9, 0x18),
+    ("DWARF", "MALE", 1, {"fighter": 9, "thief": 13}, 0, 0x18),
+    ("HALFLING", "FEMALE", 2, {"thief": 16}, 3, 5),
+    ("ELF", "FEMALE", 1, {"magic-user": 14}, 7, 0x1D),
+    ("ELF", "MALE", 2, {"ranger": 13}, 5, 1),
+))
+def test_the_engines_own_icon_rule_by_race_sex_size_and_class(
+        race, sex, size, levels, head, body):
+    """Every branch of `0x00C736` and of the body chain at `0x00C79E`."""
+    slots = [0] * amiga_pod.CLASS_LEVEL_COUNT
+    for name, level in levels.items():
+        slots[amiga_pod.CLASS_LEVEL_SLOTS.index(name.upper())] = level
+    assert amiga_pod.engine_default_icon(
+        amiga_pod.RACES.index(race), amiga_pod.SEXES.index(sex), size,
+        slots) == (head, body)
+
+
+def test_the_writer_refuses_an_icon_past_the_screens_own_wrap():
+    """13 and 31 are where the ICON screen wraps each byte back to zero, so
+    they are the last art `CHEAD.TLB` and `CBODY.TLB` have; a value past
+    either makes the loader refuse the whole file."""
+    for kwargs in ({"icon_head": 14}, {"icon_body": 32},
+                   {"icon_head": -1}, {"icon_body": -1}):
+        with pytest.raises(ValueError):
+            amiga_pod.PodWriter(name="ICON", **kwargs).to_bytes()
+    assert amiga_pod.PodWriter(
+        name="ICON", icon_head=13, icon_body=31).to_bytes()[
+            amiga_pod.ICON_HEAD] == 13
+
+
+def test_the_roster_byte_is_what_creation_writes_and_not_a_marching_slot():
+    """`0x0BD` is assigned when the character joins: the join routine at
+    `0x027398` stores 0xFF over it and then counts it up to the first free
+    slot of eight. So the writer emits creation's own 13, which is what 17
+    of the 19 `.pc` files hold."""
+    char = a_neutral_fighter()
+    char.set("combat_figure", 2, "the source's own marching slot")
+    out, rep = amiga_pod.to_pc(char)
+    assert out[amiga_pod.COMBAT_FIGURE] == amiga_pod.NO_PARTY_SLOT == 13
+    assert [line for line in rep.dropped
+            if "combat_figure" in line and "0x027398" in line]
+
+
+def test_every_specimens_icon_is_inside_the_screens_own_range():
+    """The wrap points read off the ICON screen, checked against the files:
+    no record on the disks holds a head past 13 or a body past 31."""
+    records = pc_records()
+    heads = [raw[amiga_pod.ICON_HEAD] for _name, raw in records]
+    bodies = [raw[amiga_pod.ICON_BODY] for _name, raw in records]
+    assert max(heads) <= 13, heads
+    assert max(bodies) <= 31, bodies
+    assert all(raw[amiga_pod.ICON_DIMENSION]
+               == amiga_pod.ICON_DIMENSION_DEFAULT for _name, raw in records)
+
+
+def test_the_engines_icon_default_is_what_most_of_the_disks_records_hold():
+    """The rule at `0x00C736` is the ICON screen's *starting position*, so a
+    record matching it is one nobody changed: 15 of the 19 heads, 11 of the
+    19 bodies and 10 of the 19 colour blocks. The rest are player choices,
+    which is what makes this the default and not a constraint."""
+    heads = bodies = colours = 0
+    records = pc_records()
+    for _name, raw in records:
+        want = amiga_pod.engine_default_icon(
+            raw[amiga_pod.RACE], raw[amiga_pod.SEX], raw[amiga_pod.SIZE],
+            raw[amiga_pod.CLASS_LEVELS:
+                amiga_pod.CLASS_LEVELS + amiga_pod.CLASS_LEVEL_COUNT])
+        heads += raw[amiga_pod.ICON_HEAD] == want[0]
+        bodies += raw[amiga_pod.ICON_BODY] == want[1]
+        colours += raw[amiga_pod.ICON_COLOURS:
+                       amiga_pod.ICON_COLOURS
+                       + amiga_pod.ICON_COLOUR_COUNT] == (
+            amiga_pod.ICON_COLOURS_DEFAULT)
+    assert (len(records), heads, bodies, colours) == (19, 15, 11, 10)
+
+
+def test_the_size_byte_is_the_one_the_race_routine_writes():
+    """`0x00E552` sets `0x0BE` from race: 1 for the dwarf, the gnome and the
+    halfling, 2 for the other three. 19 of 19 records agree, and the writer
+    falls back on it for a source that keeps no size of its own."""
+    for name, raw in pc_records():
+        assert raw[amiga_pod.SIZE] == amiga_pod.engine_size_for_race(
+            raw[amiga_pod.RACE]), name
+    out = amiga_pod.PodWriter(
+        name="DWARF", race=amiga_pod.RACES.index("DWARF")).to_bytes()
+    assert out[amiga_pod.SIZE] == 1
+    out = amiga_pod.PodWriter(
+        name="HUMAN", race=amiga_pod.RACES.index("HUMAN")).to_bytes()
+    assert out[amiga_pod.SIZE] == 2
 
 
 def test_an_effect_duration_is_byte_swapped_into_the_amiga_node():
