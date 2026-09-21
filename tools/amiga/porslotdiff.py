@@ -47,6 +47,8 @@ def field_at(offset: int) -> str:
             return f.name
     if offset == amiga_por.AMIGA_POR_PAD:
         return "pad 0x07F"
+    if offset == amiga_por.AMIGA_POR_MONEY_PAD:
+        return "pad 0x089"
     if offset == amiga_por.AMIGA_POR_TAIL_PAD:
         return "pad 0x11F"
     return f"unmapped {offset:#05x}"

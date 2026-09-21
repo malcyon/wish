@@ -124,10 +124,11 @@ takes the field from, `goldbox.dos_codec.write_targets`.
 
 ### Amiga Pool of Radiance -- 130 characters
 
-`field_83_87` has **no Amiga span at all**: the second insertion has not been
-located inside the run it straddles, so `amiga_por_offset` refuses it and the
-engine's own five bytes stay where they are. It is the only field on any port
-with no span.
+Every field has an Amiga span. `field_83_87` used to have none, because the
+second insertion had not been located inside the run it straddles and
+`amiga_por_offset` refused it; the insertion is now located (the money pad at
+0x089), so the field is a five-byte span at 0x084 and no port has an unplaced
+field.
 
 | field | characters | rendered | writer says |
 |---|---|---|---|

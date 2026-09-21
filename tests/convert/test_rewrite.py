@@ -156,13 +156,12 @@ def test_every_dos_field_has_a_span_on_every_title():
                                             table[span.name].size)
 
 
-def test_the_amiga_pool_record_has_no_span_for_field_83_87():
-    """The second insertion has not been located inside the run
-    `field_83_87` straddles, so there is no offset to copy it to and the
-    engine's own bytes stay there.  It is the only such field."""
+def test_every_amiga_pool_field_has_a_span():
+    """All three insertions are located, so every DOS field has an Amiga
+    offset to copy to -- `field_83_87` included, at 0x084 for five bytes."""
     spans, unplaced = rewrite.amiga_por_spans()
-    assert unplaced == ["field_83_87"]
-    assert "field_83_87" not in {s.name for s in spans}
+    assert unplaced == []
+    assert rewrite.Span("field_83_87", 0x084, 5) in spans
     assert ("name", 0, amiga_por.AMIGA_POR_NAME_SIZE) in spans
 
 
@@ -553,8 +552,7 @@ def test_the_result_names_what_moved_and_what_has_no_span(port):
     char, before = _make(port, 1)
     out = _rewrite(port, char, before, _edited(before, gold=4321))
     assert "gold" in out.moved
-    assert out.unplaced == (("field_83_87",) if port[0] == "amiga-por"
-                            else ())
+    assert out.unplaced == ()
 
 
 @pytest.mark.parametrize("port", PORTS, ids=_port_id)

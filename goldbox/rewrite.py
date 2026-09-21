@@ -95,11 +95,10 @@ def amiga_por_spans() -> tuple[list[Span], list[str]]:
     Built the way :func:`goldbox.amiga_por.from_dos_record` writes them: the
     name is one sixteen-byte NUL-padded run where DOS spends a count byte and
     fifteen, and everything else goes through
-    :func:`goldbox.amiga_por.amiga_por_offset`.  A DOS offset inside the
-    window the second insertion is somewhere in has no Amiga counterpart, so
-    `field_83_87` is returned as unplaced rather than guessed at -- which
-    leaves the engine's own bytes there, since an unplaced field is never
-    copied.
+    :func:`goldbox.amiga_por.amiga_por_offset`.  A field the offset map
+    refuses is returned as unplaced, which leaves the engine's own bytes
+    there, since an unplaced field is never copied.  All three insertions are
+    located, so none is refused today.
     """
     spans = [Span("name", 0, amiga_por.AMIGA_POR_NAME_SIZE)]
     unplaced: list[str] = []
@@ -463,10 +462,8 @@ def rewrite_amiga_por(original: "amiga_por.AmigaPorCharacter",
     is the DOS one re-cut: `original` is an `AmigaPorCharacter` and the three
     byte strings returned are its `CHRDAT<slot><n>.sav`, `.itm` and `.spc`.
 
-    **`field_83_87` is never copied**, because the Amiga's second insertion
-    has not been located inside the run it straddles and there is no offset
-    to copy it to; the engine's own bytes stay there.  Nothing the sheet can
-    edit reaches that field.
+    Every DOS field has an Amiga span, `field_83_87` at 0x084 included, so
+    nothing is left unplaced.
 
     `game` defaults to the C64 Pool of Radiance container, which is the only
     title this port's record can be.
