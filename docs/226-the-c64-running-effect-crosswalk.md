@@ -77,8 +77,8 @@ decrements the whole byte and `$40` becomes `$3F`. A `$40` slot lives for the
 time to the next ten-minute boundary and then 63 minutes. A whole zero byte
 is still skipped by every ageing routine and never expires.
 
-**CONFIRMED: the time one byte is worth depends on the route, not only on the
-byte.** A combat round ages unit `00` and nothing else, on every title --
+**CONFIRMED: how much time one byte has left depends on the route, not only on
+the byte.** A combat round ages unit `00` and nothing else, on every title --
 `COMBAT $221E`, `COMBAT2 $FA72` and `COMBAT2 $F747`, base `$E000` for the
 later two, each testing `CMP #$40 / BCS` first -- so an hour-unit effect does
 not age in a fight however long it lasts. Walking ages one unit a minute in
@@ -93,7 +93,7 @@ split: DOS subtracts the elapsed minutes from an exact `u16` in every route
 (`GAME.OVR:0x23F83`, [162-spc-permanence.md](162-spc-permanence.md)).
 
 `goldbox/effects.py` holds the arithmetic -- `remaining_minutes`,
-`exact_durations` and `longest_duration_within` --
+`exact_durations`, `closest_duration` and `longest_duration_within` --
 and `tests/records/test_effects.py` checks the closed form against a
 minute-by-minute run of the engine's own rule, for every minute and
 ten-minute byte at six times of day, and against both driven rests.
@@ -116,31 +116,35 @@ and the quotient is 1–63. Exhausting all 1,440 minute phases gives:
 | 215 | 702 |
 | 216 | 441 |
 
-**RECOMMENDATION, not implemented:** at the destination's actual camp clock,
-choose the byte with the greatest remaining time no greater than the DOS
-duration; break ties in favour of the smaller unit. Keep the existing clock
-and never turn a running effect into duration zero. This preserves every
-exact case and shortens the others by at most **1,439 minutes**, at every
-phase. At midnight, 64 minutes becomes 63 (`$3F`), and 3,840 becomes 3,780
-(`$BF`); copying the cast-time promotion instead gives 60 and 2,880.
-`duration_census()` reproduces these bounds, and
-`goldbox.effects.longest_duration_within` is that choice as a function. This
-policy concerns camp-clock expiry; combat and deferred walking expiry still
-need their own live checks.
+**DECIDED, function written, no writer calls it yet:** at the destination's
+actual camp clock, give a running effect the byte whose camp-clock time left is
+nearest the DOS duration, in either direction, so a converted effect may
+outlast its source slightly. A tie goes to the shorter time left and then to
+the smaller unit. Keep the existing clock and never turn a running effect into
+duration zero. Every exact case is preserved and the others are wrong by at most
+**720 minutes** at any phase, and by less until the day unit is the only choice
+(table below). At midnight 64 minutes becomes 63 (`$3F`), and 3,840 becomes
+3,780 (`$BF`); copying the cast-time promotion instead gives 60 and 2,880. `goldbox.effects.closest_duration` is the choice.
+`goldbox.effects.longest_duration_within`, the greatest time left that does not
+outlast the source, is kept as the measurement of the never-lengthen
+alternative, which was not adopted; `duration_census()` reports that
+alternative's bound of 1,439 minutes. This concerns camp-clock expiry;
+combat and deferred walking expiry still need their own live checks.
 
-**CONFIRMED, and it is what the choice actually costs:** the loss is bounded
+**CONFIRMED, and it is what the choice actually costs:** the error is bounded
 by the finest unit that can reach the source's remaining time, not by the day
 unit, and the day unit is out of reach of the game's own spell rows.
 
-| DOS minutes left | The most the chosen byte falls short |
-|---|---|
-| 1 to 63 | nothing, at every time of day |
-| 64 to 630 | 9 minutes |
-| 631 to 3,780 | 59 minutes |
-| above 3,780 | 1,439 minutes |
+| DOS minutes left | The most the closest byte is wrong by | The most the longest-within byte falls short |
+|---|---|---|
+| 1 to 63 | nothing, at every time of day | nothing |
+| 64 to 630 | 9 minutes | 9 minutes |
+| 631 to 3,780 | 59 minutes | 59 minutes |
+| above 3,780 | 720 minutes | 1,439 minutes |
 
-Measured over every duration to 4,200 minutes and a sample above it at
-sixteen times of day, in `tests/records/test_effects.py`. **The bottom row
+Measured over every duration to 4,200 minutes and a stride of 37 above it, at
+all 1,440 times of day, in `tests/records/test_effects.py`, which also asserts
+that each figure is reached. **The bottom row
 needs a duration the three titles' own spell tables cannot produce.** Each
 seven-byte spell row holds its duration in the same packed byte the save
 does (`CAMP $1430` copies the row; the cast reads its count and unit at
@@ -153,8 +157,7 @@ duration than a cast can, which the DOS word allows to 45 days: reading the
 `ECL` opcode that adds an effect would settle it.
 
 The six `CHRDATJ` records on this machine hold a Bless with two minutes left,
-which is the top row: exact at every time of day, whichever way the policy
-question is settled.
+which is the top row: exact at every time of day under either rule.
 
 ## Pool of Radiance ids and values
 

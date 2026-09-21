@@ -166,7 +166,8 @@ def remaining_minutes(byte: int, clock_minutes: int) -> int:
     describe them: a combat round decrements unit `00` and nothing else
     (`COMBAT $221E`, `COMBAT2 $FA72`, `COMBAT2 $F747`), and walking ages one
     unit a minute in Pool of Radiance and Curse, so a minute-count is skipped
-    in the minute a ten-minute boundary is crossed.
+    in the minute a ten-minute boundary is crossed. Silver Blades' walking
+    rule differs from both Pool's and Curse's (`DUNGEON $0D95`).
 
     A whole zero byte never expires and returns 0. A non-zero byte with a zero
     count does expire: `$12D6`'s `DEX` on a zero count gives `$FF` rather than
@@ -214,6 +215,30 @@ def longest_duration_within(minutes: int, clock_minutes: int) -> int | None:
         left = remaining_minutes(byte, clock_minutes)
         if best_left < left <= minutes:
             best, best_left = byte, left
+    return best
+
+
+def closest_duration(minutes: int, clock_minutes: int) -> int | None:
+    """The duration byte whose time left is nearest `minutes`, in either direction.
+
+    The converted effect may outlast its source slightly. Ties go to the
+    shorter time left and then to the smaller unit, which is the byte the
+    engine's own walking and combat routines age most finely. Counts of 1 to
+    63 only, which is what a cast writes.
+
+    `None` for a source with less than a minute left, which no engine-written
+    DOS record holds -- its ageing removes a node rather than storing zero.
+    """
+    if minutes < 1:
+        return None
+    best, best_key = None, None
+    for byte in range(1, 0x100):
+        if not byte & DURATION_COUNT:
+            continue
+        left = remaining_minutes(byte, clock_minutes)
+        key = (abs(left - minutes), left, byte >> DURATION_UNIT)
+        if best_key is None or key < best_key:
+            best, best_key = byte, key
     return best
 
 

@@ -5,12 +5,14 @@ effects, in two separate panels)`.
 
 from __future__ import annotations
 
+import bisect
+
 import pytest
 from gamedata import game_disk
 
 from automap import gamedisks
 from goldbox import c64_port, effects
-from tools.c64 import coldread, d6502
+from tools.c64 import coldread, d6502, effectcrosswalk
 
 # --- S1: the port, and the two new writers -----------------------------------
 
@@ -180,7 +182,7 @@ def test_duration_unit_refuses_a_value_that_is_not_a_byte():
         effects.duration_unit(256)
 
 
-# --- S2a: what one duration byte is worth at a given time of day -------------
+# --- S2a: how much time a duration byte has left at a time of day -----------
 #
 # The camp ageing routine, written out as the engine runs it, one minute to a
 # call: Pool of Radiance `CAMP $1283` ticks the clock and ORs a bit into a
@@ -260,13 +262,15 @@ def test_the_two_driven_rests_lose_exactly_the_minutes_they_passed(
 
 def test_a_running_bless_of_two_minutes_converts_exactly_at_every_clock():
     """The six `CHRDATJ` records on this machine each hold `01 02 00 01 00`,
-    a Bless with two minutes left. Every DOS duration of 1 to 63 minutes has
-    an exact C64 byte whatever the time of day, so the case the conversion
-    actually meets loses nothing.
+    a Bless with two minutes left (asserted, from the player's own saves, by
+    `tests/convert/test_runningeffects.py::test_the_six_running_bless_records_in_the_players_saves_come_back_whole`).
+    Every DOS duration of 1 to 63 minutes has an exact C64 byte whatever the
+    time of day, so the case the conversion actually meets loses nothing.
     """
     for clock in range(1440):
         assert 0x02 in effects.exact_durations(2, clock)
         assert effects.longest_duration_within(2, clock) == 0x02
+        assert effects.closest_duration(2, clock) == 0x02
 
 
 def test_every_duration_up_to_63_minutes_is_exact_and_most_above_it_are_not():
@@ -287,25 +291,161 @@ def test_every_duration_up_to_63_minutes_is_exact_and_most_above_it_are_not():
     assert spread == {213: 21, 214: 276, 215: 702, 216: 441}
 
 
-#: The most a byte chosen this way can fall short, by how long the source has
-#: left: exact below the minute unit's ceiling, then one unit short of each
-#: coarser unit's. Measured over every duration to 4,200 minutes and a sample
-#: above it, at sixteen times of day.
-LOSS_CEILING = ((63, 0), (630, 9), (3780, 59), (0xFFFF, 1439))
+#: Source durations the two selection rules are measured over: every minute to
+#: 4,200, a stride of 37 above it to the DOS word's ceiling, and the two values
+#: just under a day-unit boundary that the stride can miss.
+COST_MINUTES = (list(range(1, 4201)) + list(range(4201, 0x10000, 37))
+                + [5759, 0xFFFF])
+
+#: Bands of source duration, by the coarsest unit that can reach them: the
+#: minute unit is exact to 63, the ten-minute unit ends at 630 (less the phase),
+#: the hour unit at 3,780, and only the day unit goes past that.
+COST_BANDS = ((1, 63), (64, 630), (631, 3780), (3781, 0xFFFF))
+
+#: The most a byte can miss its source by, per band, over every time of day.
+#: `longest_duration_within` never outlasts the source and falls short by up to
+#: this much; `closest_duration` may err either way and by less. Measured over
+#: `COST_MINUTES` at all 1,440 clocks; each is also attained, so it is the
+#: worst case and not merely a bound that happens to hold.
+FALLS_SHORT_BY = (0, 9, 59, 1439)
+CLOSEST_ERR = (0, 9, 59, 720)
 
 
-@pytest.mark.parametrize("clock", [0, 7, 23, 59, 600, 1439])
-def test_the_longest_byte_within_a_duration_never_outlasts_it(clock):
-    """The bound on what any never-lengthen policy can cost. Only a duration
-    longer than 63 hours needs the day unit and its 1,439 minutes, and no
-    spell row in the three titles' own tables can produce one.
+def _times_left(clock: int) -> list[int]:
+    """Every distinct time a count-bearing duration byte has left at `clock`."""
+    return sorted({effects.remaining_minutes(b, clock) for b in range(1, 0x100)
+                   if b & effects.DURATION_COUNT})
+
+
+def _nearest_by_search(minutes: int, times: list[int]) -> int:
+    i = bisect.bisect_left(times, minutes)
+    return min((times[j] for j in (i - 1, i) if 0 <= j < len(times)),
+               key=lambda left: (abs(left - minutes), left))
+
+
+@pytest.fixture(scope="module")
+def cost_by_band():
+    """Worst (error, minutes, clock) per band for each rule, over every clock.
+
+    Found from the sorted set of times a byte can have left, so the two rules
+    are not run 2 million times; `test_both_rules_pick_what_a_brute_force_picks`
+    is what ties this search to the functions themselves.
     """
-    for minutes in list(range(1, 700)) + [720, 3780, 3781, 5000, 0xFFFF]:
+    short = [(0, 0, 0)] * len(COST_BANDS)
+    err = [(0, 0, 0)] * len(COST_BANDS)
+    for clock in range(1440):
+        times = _times_left(clock)
+        for minutes in COST_MINUTES:
+            band = next(i for i, (_, hi) in enumerate(COST_BANDS) if minutes <= hi)
+            below = times[bisect.bisect_right(times, minutes) - 1]
+            lost = minutes - below
+            if lost > short[band][0]:
+                short[band] = (lost, minutes, clock)
+            miss = abs(_nearest_by_search(minutes, times) - minutes)
+            if miss > err[band][0]:
+                err[band] = (miss, minutes, clock)
+    return short, err
+
+
+def test_the_longest_byte_within_a_duration_never_outlasts_it_and_falls_short_by_a_bounded_amount(
+        cost_by_band):
+    """The bound on what a never-lengthen policy costs, and that it is reached.
+    Only a duration longer than 63 hours needs the day unit and its 1,439
+    minutes, and no spell row in the three titles' own tables can produce one.
+    """
+    short, _ = cost_by_band
+    assert tuple(worst for worst, _, _ in short) == FALLS_SHORT_BY
+    for worst, minutes, clock in short[1:]:
         byte = effects.longest_duration_within(minutes, clock)
-        left = effects.remaining_minutes(byte, clock)
-        assert 0 < left <= minutes
-        ceiling = next(most for upto, most in LOSS_CEILING if minutes <= upto)
-        assert minutes - left <= ceiling
+        assert minutes - effects.remaining_minutes(byte, clock) == worst
+
+
+def test_the_closest_byte_to_a_duration_errs_by_a_bounded_amount(cost_by_band):
+    """The rule Donald chose: at most 9 minutes wrong to 630 minutes, 59 to
+    3,780 and 720 beyond, exact to 63, at every time of day, and each reached.
+    """
+    _, err = cost_by_band
+    assert tuple(worst for worst, _, _ in err) == CLOSEST_ERR
+    for worst, minutes, clock in err[1:]:
+        byte = effects.closest_duration(minutes, clock)
+        assert abs(effects.remaining_minutes(byte, clock) - minutes) == worst
+
+
+def test_the_closest_byte_is_never_further_away_than_the_longest_within():
+    for clock in (0, 9, 59, 600, 1439):
+        for minutes in list(range(1, 700)) + [3780, 3781, 5000, 5759, 0xFFFF]:
+            near = effects.closest_duration(minutes, clock)
+            low = effects.longest_duration_within(minutes, clock)
+            assert (abs(effects.remaining_minutes(near, clock) - minutes)
+                    <= minutes - effects.remaining_minutes(low, clock))
+
+
+#: Sixteen times of day: midnight, both sides of every unit's boundary, and the
+#: two clocks that hit the worst cases above.
+SIXTEEN_CLOCKS = [0, 1, 6, 7, 9, 10, 23, 59, 60, 61, 600, 719, 720, 1000, 1439,
+                  1438]
+
+
+@pytest.mark.parametrize("clock", SIXTEEN_CLOCKS)
+def test_both_rules_pick_what_a_brute_force_picks(clock):
+    """Every byte tried against `remaining_minutes`, nothing else: the byte
+    nearest the source, then the shorter time, then the smaller unit; and the
+    byte with the most time left that does not outlast it.
+    """
+    candidates = [(b, effects.remaining_minutes(b, clock))
+                  for b in range(1, 0x100) if b & effects.DURATION_COUNT]
+    for minutes in (list(range(1, 800)) + list(range(800, 0x10000, 211))
+                    + [3780, 3781, 5759, 0xFFFF]):
+        nearest = min(candidates, key=lambda c: (abs(c[1] - minutes), c[1],
+                                                 c[0] >> effects.DURATION_UNIT))
+        assert effects.closest_duration(minutes, clock) == nearest[0]
+        under = [c for c in candidates if c[1] <= minutes]
+        if under:
+            most = max(left for _, left in under)
+            byte = effects.longest_duration_within(minutes, clock)
+            assert effects.remaining_minutes(byte, clock) == most
+        else:
+            assert effects.longest_duration_within(minutes, clock) is None
+
+
+def test_a_tie_in_error_goes_to_the_shorter_time_left():
+    # At midnight 75 minutes is 5 from both 70 (`$47`) and 80 (`$48`).
+    assert (effects.remaining_minutes(0x47, 0), effects.remaining_minutes(0x48, 0)) \
+        == (70, 80)
+    assert effects.closest_duration(75, 0) == 0x47
+
+
+def test_a_tie_in_time_left_goes_to_the_smaller_unit():
+    # At midnight 60 minutes is exactly `$3C` (unit 00), `$46` (unit 01) and
+    # `$81` (unit 10); the minute unit is the one the engine ages most finely.
+    assert {0x3C, 0x46, 0x81} <= set(effects.exact_durations(60, 0))
+    assert effects.closest_duration(60, 0) == 0x3C
+    assert effects.closest_duration(10, 0) == 0x0A       # not `$41`, also 10
+
+
+def test_the_closest_byte_is_exact_when_an_exact_byte_exists():
+    for clock in SIXTEEN_CLOCKS:
+        for minutes in range(1, 700):
+            exact = effects.exact_durations(minutes, clock)
+            if exact:
+                byte = effects.closest_duration(minutes, clock)
+                assert effects.remaining_minutes(byte, clock) == minutes
+                assert byte in exact
+
+
+def test_nothing_is_closest_to_a_source_with_less_than_a_minute_left():
+    assert effects.closest_duration(0, 0) is None
+
+
+def test_the_closed_form_is_the_one_the_crosswalk_tool_holds():
+    """`tools/c64/effectcrosswalk.py` states the same formula with a stricter
+    contract (a zero count raises); the two must not drift apart.
+    """
+    for clock in range(1440):
+        for byte in range(1, 0x100):
+            if byte & effects.DURATION_COUNT:
+                assert effects.remaining_minutes(byte, clock) == \
+                    effectcrosswalk.remaining_minutes(byte, clock)
 
 
 def test_nothing_fits_a_source_with_less_than_a_minute_left():
