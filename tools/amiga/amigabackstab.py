@@ -151,8 +151,9 @@ def _call_target(raw: bytes, at: int) -> int | None:
 def _predicate_call(raw: bytes, tail: int, title: Title) -> tuple[int, int]:
     """The gate call before the arithmetic, as `(call site, target)`.
 
-    The call is the last one before the arithmetic whose result is tested and
-    branched on, which is what makes it the gate rather than a neighbour.
+    The call is the nearest one before the arithmetic. It must be followed
+    within ten bytes by the byte pair of `tst.b d0` and a `beq` opcode byte,
+    which is a byte search rather than a decode; anything else raises.
     """
     for at in range(tail - 2, max(0, tail - 0x40), -2):
         target = _call_target(raw, at)
@@ -165,6 +166,46 @@ def _predicate_call(raw: bytes, tail: int, title: Title) -> tuple[int, int]:
         raise ValueError(
             f"{title.title}: the call before the arithmetic is not tested")
     raise ValueError(f"{title.title}: no predicate call before the arithmetic")
+
+
+def _regain_run(raw: bytes, call: int, tail: int, predicate: int,
+                title: Title) -> dict[str, int]:
+    """Check `former * regain() + current` between the gate and the subtract.
+
+    The run must be the small-data `jsr d16(a4)`, `ext.w`, the former slot
+    loaded and sign-extended, `muls.w d1,d0`, the current slot loaded and
+    sign-extended, `add.w d1,d0`, and then the subtract at `tail`. The same
+    `jsr` must also occur in the predicate, which is what makes it the regain
+    routine the gate uses. Returns the three addresses.
+    """
+    md = capstone.Cs(capstone.CS_ARCH_M68K, capstone.CS_MODE_M68K_000)
+    run = [i for i in md.disasm(raw[call:tail], call) if i.address > call]
+    start = next((n for n, i in enumerate(run)
+                  if i.mnemonic == "jsr" and i.op_str.endswith("(a4)")), None)
+    if start is None:
+        raise ValueError(f"{title.title}: no regain call before the arithmetic")
+    steps = [i for i in run[start:] if i.mnemonic != "movea.l"]
+    wanted = ["jsr", "ext.w", "move.b", "ext.w", "muls.w", "move.b", "ext.w",
+              "add.w"]
+    if [i.mnemonic for i in steps] != wanted:
+        raise ValueError(
+            f"{title.title}: the arithmetic before the subtract is "
+            f"{[i.mnemonic for i in steps]}, not {wanted}")
+    jsr, sign_d0, _former, sign_former, multiply, _current, sign_current, \
+        add = steps
+    if (sign_d0.op_str != "d0" or sign_former.op_str != "d1"
+            or sign_current.op_str != "d1" or multiply.op_str != "d1, d0"
+            or add.op_str != "d1, d0"
+            or add.address + add.size != tail):
+        raise ValueError(
+            f"{title.title}: the regain result is not multiplied by the "
+            f"former slot and added to the current one")
+    if raw[jsr.address:jsr.address + jsr.size] not in \
+            raw[predicate:predicate + 0x80]:
+        raise ValueError(
+            f"{title.title}: the predicate does not call the regain routine")
+    return {"regain_call": jsr.address, "regain_multiply": multiply.address,
+            "regain_add": add.address}
 
 
 def _callers(raw: bytes, target: int) -> list[int]:
@@ -232,11 +273,20 @@ def _damage(raw: bytes, tail: int, reg: int, title: Title) -> str:
 
 
 def inspect(raw: bytes, title: Title) -> dict:
-    """Return instruction evidence for one Amiga title's backstab path."""
+    """Return instruction evidence for one Amiga title's backstab path.
+
+    Pool of Radiance's multiply call is a jump-table thunk that is not
+    followed: that it multiplies is taken from its operands, the factor and
+    the damage byte going in and the damage byte coming back.
+    """
     tail, reg = _tail(raw, title)
     call, predicate = _predicate_call(raw, tail, title)
     reads = _record_reads(raw, call, tail)
 
+    regain = {"regain_call": None, "regain_multiply": None,
+              "regain_add": None}
+    if title.form == "inline":
+        regain = _regain_run(raw, call, tail, predicate, title)
     if title.form == "helper":
         if _THIEF_INDEX not in raw[call:tail]:
             raise ValueError(
@@ -291,6 +341,7 @@ def inspect(raw: bytes, title: Title) -> dict:
         "predicate_call": call,
         "predicate_callers": _callers(raw, predicate),
         "record_reads": reads,
+        **regain,
         "current_thief": title.current_thief,
         "former_thief": title.former_thief,
         "clamp": clamp,

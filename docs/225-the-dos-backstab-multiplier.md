@@ -82,7 +82,12 @@ the thief -- and that routine answers
 max(class_levels[c], former_class_levels[c] * Regained)
 ```
 
-taking the larger rather than the sum. `Regained` is the same rule as in the
+taking the larger rather than the sum. There is no multiply in it: it calls the
+regain helper, reads `former_class_levels[c]` into a local only when the call
+answered true and zeroes that local otherwise, then keeps the larger of the two
+locals, so the product above is that branch written as arithmetic.
+`tools/dos/backstab.py` matches the whole routine byte for byte, and a copy
+with the branch or the zeroing erased is refused. `Regained` is the same rule as in the
 two earlier titles: `GAME.OVR:0x38C8A` calls the active-class-level routine at
 `0x38C19`, which requires race 5 (human at record `0x0AD`) and returns the
 first positive entry in `class_levels` at record `0x151`, and accepts only an
@@ -100,11 +105,15 @@ edited to carry both would multiply damage by more in Curse and Silver Blades
 than in Pools of Darkness, which is the experiment that would settle it.
 
 The multiplier itself is `((effective thief level - 1) div 4) + 2` again, but
-**clamped after the arithmetic rather than before it**: `cmp al, 5 / jbe /
-mov al, 5` at `0x1E87B` holds it at ×5 however high the thief level goes. The
+**clamped after the arithmetic rather than before it**: the result is stored
+into a local, then `cmp byte [bp+d], 5 / jbe / mov byte [bp+d], 5` at
+`0x1E87B` holds it at ×5 however high the thief level goes. The
 C64 Silver Blades and Death Knights clamp the *level* at 14 instead, which
-gives the same ceiling by a different route, and DOS Curse and Silver Blades
-clamp neither.
+gives the same ceiling by a different route. DOS Curse and Silver Blades have
+no clamp in the run: the tool matches their arithmetic as one contiguous byte
+run, from the former slot read through the `+ 2` and into the multiply, and
+that run contains no compare. Whether any other code clamps the level or the
+product before it is not read.
 
 | Site | Offset in `GAME.OVR` |
 |---|---:|
@@ -122,9 +131,13 @@ clamp neither.
 The three callers are the same three as in Curse and Silver Blades, and the
 to-hit caller subtracts 4 from record `roster_tail` at `0x1F3` exactly as
 Curse's does from its own `0x19B`. `class_bits` at `0x17B` does not occur in
-the bounded predicate, whose only record displacements are `0x2E`, `0x131`,
-`0x1AB`, `0x1AD`, `0x1B3`, `0x1B5` and `0x1E7`. CONFIRMED from the direct
-ES-relative operands between the predicate's prologue and the next routine.
+the bounded predicate. Its ES-relative displacements are `0x2E`, `0x8`, `0xE`,
+`0x131`, `0x1AB`, `0x1AD`, `0x1B3`, `0x1B5` and `0x1E7`; of those, `0x2E` is
+read off the pointer held at record `0x1AB`, and `0x8` and `0xE` off the
+pointer held at record `0x1E7`, so they are offsets in another structure and
+not record fields. CONFIRMED from the direct ES-relative operands between the
+predicate's prologue and the next routine, which the tool reads and the
+disassembly of it confirms by hand.
 
 `tools/dos/backstab.py --game DARKNESS` reproduces all of it, resolving the
 far calls through `GAME.EXE` because this title ships no `START.EXE`.
@@ -154,8 +167,9 @@ past that. CONFIRMED from the complete arithmetic in each engine.
 **The cap only ever matters in the two titles that have it.** `GEN`'s training
 ceiling for the thief slot, which `tools/c64/coldread.py levels` reads, is 12
 in Curse, 8 in Gateway and 9 in Champions -- none of them within reach of a
-13th thief level -- against 18 in Silver Blades and Death Knights, which is
-why those two are the ones that clamp the input. Pool of Radiance does not use
+13th thief level -- against 18 in Silver Blades and Death Knights. That the
+two with the high ceiling are the two that clamp the input is a likely reason
+and an inference; nothing read says what the authors intended. Pool of Radiance does not use
 the ceiling table the other five share, so its thief ceiling is not read here.
 The multiplier a player can therefore see is ×4 in Curse and Champions, ×3 in
 Gateway and ×5 in Silver Blades and Death Knights. PROBABLE: a character
@@ -163,7 +177,7 @@ imported from an earlier title arrives with whatever level that title allowed,
 and the ceiling is what `GEN` refuses to train past rather than a bound on the
 record.
 
-| Title | Thief-level gate and formula | Factor copied to | Damage multiply | To-hit adjustment | Byte multiply |
+| Title | Thief-level gate and formula | Predicate call, then factor byte | Damage multiply | To-hit adjustment | Byte multiply |
 |---|---:|---:|---:|---:|---:|
 | Pool of Radiance | `SQRPACI01 $06A8` | `$068B` → `$2B7C` | `SQRPACI01 $06E1` | `COMBAT $11F9` | `$2E30` |
 | Curse of the Azure Bonds | `COMBAT2 $F832` | `$8164` → `$A981` | `ECL64 $86B7` | `ECL64 $83E1` | `$2FB9` |
@@ -183,12 +197,15 @@ calls, and the answer agrees with what `tools/c64/coldread.py` established by
 an unrelated route.
 
 **Pool of Radiance keeps the whole predicate in a 1024-byte overlay at
-`$0400`,** which is the one place its memory map differs. Two calls from
-`COMBAT`, which runs at `$0800`, land exactly on routine entries at that base
--- `$1A23` calls the eligibility wrapper at `$0680` and `$0CCF` calls the
-damage multiply at `$06E1`, immediately after `COMBAT $0CAD` rolls the damage
-(`docs/147-combat-rolls.md`). The file is exactly `$0400`-`$07FF` long.
-CONFIRMED: no other base makes both calls land on an instruction.
+`$0400`,** which is the one place its memory map differs. The tool pins that
+base only as far as the overlay's own call goes: it finds the one `JSR` to the
+gate at the address the base implies, and would find none at another. What
+follows was read by hand and is not in the tool or a test: two calls from
+`COMBAT`, which runs at `$0800`, appear to land on routine entries at that
+base -- `$1A23` calling the eligibility wrapper at `$0680` and `$0CCF` calling
+the damage multiply at `$06E1`, immediately after `COMBAT $0CAD` rolls the
+damage (`docs/147-combat-rolls.md`) -- and the file is `$0400`-`$07FF` long.
+Whether no other base would put both calls on an instruction was not tested.
 
 The predicate first refuses a zero thief level, computes the factor into
 zero-page `$B0`, then checks the weapons. The attack overlay checks the attack
@@ -264,8 +281,8 @@ images agree on.
 | Secret of the Silver Blades | `/Secret` | `0x7FD0` | `0x9E26` | `0x7FA2`, `0x8DAC`, `0x8E4A` | `-$1A39(a4)` |
 | Pools of Darkness | `/Pools of Darkness` | `0x7FD8` | `0x9F4C` | `0x7FBC`, `0x905E`, `0x90FC` | `-$152E(a4)` |
 
-**Each Amiga port computes what its DOS counterpart computes.** CONFIRMED from
-the instructions in all four:
+**Each Amiga port computes what its DOS counterpart computes,** as far as the
+instructions go. CONFIRMED from the instructions in all four:
 
 ```text
 Pool of Radiance:  (class_levels[thief] div 4) + 2
@@ -280,25 +297,41 @@ Pool of Radiance alone does not subtract a level first, so its steps fall at 4,
 `docs/221-thief-abilities-in-dos-pool-of-radiance.md` reads out of the DOS
 build of that title, now corroborated on a second port. It also has no former
 level to add: `class_levels[thief]` at record `0x09E` is the whole sum. Curse
-reads record `0x110` and `0x118`, Silver Blades `0x0B2` and `0x0B9`, and each
-multiplies the former slot by the small-data regain predicate's result exactly
-as the DOS build does. Pools of Darkness pushes class index 6 to its shared
-class-level routine and clamps the multiplier at 5, again as DOS does.
+reads record `0x110` and `0x118`, Silver Blades `0x0B2` and `0x0B9`. In both,
+`tools/amiga/amigabackstab.py` checks the whole run after the gate: a
+small-data `jsr d16(a4)`, the former slot loaded and multiplied into its
+result with `muls.w`, the current slot loaded and added with `add.w`, then the
+subtract; erasing the call, the multiply or the add is refused. It also checks
+that the predicate makes the same `jsr`. What it does not read is the routine
+that `jsr` reaches, which lies behind the `a4` jump table, so that it is the
+same regain rule as DOS is inferred from its role -- the gate calls it and the
+arithmetic multiplies by its answer -- and is PROBABLE. Pools of Darkness
+pushes class index 6 to a shared class-level routine, also through `a4` and
+also not read, so that it takes the larger of the two slots as DOS does is
+likewise not established on the Amiga; the tool checks the push and the clamp
+of the multiplier at 5.
 
 Pool of Radiance has no `muls` here: it loads the damage into a second
 register and calls a multiply routine, the way its C64 port calls `LIBRARY`'s.
+The tool treats any `jsr` there as the multiply, and the one it finds goes
+through a jump-table thunk (`jmp` to an absolute address) that was not
+followed, so that the callee multiplies is inferred from its operands -- the
+factor and the damage byte go in and the damage byte is stored back.
 The other three multiply in place, Pools of Darkness on a word where the
 earlier two use a byte.
 
 **Every Amiga predicate has exactly three callers**, as on DOS: damage, the
-to-hit adjustment and the message. Amiga Pool of Radiance's to-hit caller at
-`0xC906` subtracts 2 from record `0x114`, where DOS Curse's subtracts 4 from
-its `roster_tail`. Whether that is a real difference in the bonus or two
-different quantities is **UNKNOWN** and was not chased: the two ports do not
-hold the to-hit number in the same place, and
+to-hit adjustment and the message. Read by hand from the second caller of
+each, and not in the tool or a test: Amiga Pool of Radiance (`0xC906`) loads a
+byte from record `0x114` and subtracts 2 with a byte `subq`, while Curse (`0x7F0C`, record
+`0x1A0`), Silver Blades (`0x8DAC`, `0x149`) and Pools of Darkness (`0x905E`,
+`0x188`) load a byte and subtract 4 with a word `subq`. So the Amiga split is by title and
+matches DOS, where Curse and Pools of Darkness subtract 4; the six C64
+titles all subtract 2. What is **UNKNOWN** is whether the Amiga and DOS
+records hold the same quantity at the offsets read, and whether DOS Pool of
+Radiance subtracts 2 or 4; neither was chased, because
 `#607 (Show a thief's backstab bonus in the Character Editor)` needs the
-damage multiplier. Reading Amiga Curse's own to-hit caller at `0x7F0C` and DOS Pool
-of Radiance's beside it would settle it.
+damage multiplier.
 
 Nothing on the Amiga was driven; these are instruction reads.
 
@@ -314,7 +347,8 @@ their record fields or arithmetic, but would independently corroborate the
 instruction reads, and none was made on any port. DOS Pool of Radiance is in
 `docs/221-thief-abilities-in-dos-pool-of-radiance.md` rather than here.
 
-Two things are read and not settled. The to-hit adjustment differs between
-ports in a way this page does not resolve, above. And the C64 titles' thief
+Two things are read and not settled. The to-hit adjustment is 2 in the C64
+titles and Amiga Pool of Radiance and 4 in the later DOS and Amiga titles,
+and this page does not say whether the quantity subtracted from is the same. And the C64 titles' thief
 ceilings come from `GEN`'s training table, which bounds what a player can
 train to rather than what a record can hold.

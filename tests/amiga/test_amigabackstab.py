@@ -21,6 +21,9 @@ EXPECTED = {
         "predicate_call": 0xB8CC,
         "predicate_callers": [0xB8CC, 0xC906, 0xC992],
         "record_reads": [0x09E],
+        "regain_call": None,
+        "regain_multiply": None,
+        "regain_add": None,
         "current_thief": 0x09E,
         "former_thief": None,
         "clamp": None,
@@ -35,6 +38,9 @@ EXPECTED = {
         "predicate_call": 0x6F82,
         "predicate_callers": [0x6F82, 0x7F0C, 0x7F8C],
         "record_reads": [0x118, 0x110],
+        "regain_call": 0x6F8E,
+        "regain_multiply": 0x6F9A,
+        "regain_add": 0x6FA2,
         "current_thief": 0x110,
         "former_thief": 0x118,
         "clamp": None,
@@ -50,6 +56,9 @@ EXPECTED = {
         "predicate_call": 0x7FA2,
         "predicate_callers": [0x7FA2, 0x8DAC, 0x8E4A],
         "record_reads": [0x0B9, 0x0B2],
+        "regain_call": 0x7FB2,
+        "regain_multiply": 0x7FC2,
+        "regain_add": 0x7FCE,
         "current_thief": 0x0B2,
         "former_thief": 0x0B9,
         "clamp": None,
@@ -65,6 +74,9 @@ EXPECTED = {
         "predicate_call": 0x7FBC,
         "predicate_callers": [0x7FBC, 0x905E, 0x90FC],
         "record_reads": [],
+        "regain_call": None,
+        "regain_multiply": None,
+        "regain_add": None,
         "current_thief": None,
         "former_thief": None,
         "clamp": 5,
@@ -75,11 +87,23 @@ EXPECTED = {
 }
 
 
+#: Reading every disk image for a title takes seconds, so each executable is
+#: read once per process and every test below works on that copy.
+_RAW: dict[str, bytes | None] = {}
+
+
+def _executable(key: str) -> bytes:
+    if key not in _RAW:
+        _RAW[key] = amigabackstab.executable(amigabackstab.TITLES[key])
+    raw = _RAW[key]
+    if raw is None:
+        pytest.skip(f"No Amiga {amigabackstab.TITLES[key].title} executable "
+                    f"on any disk here.")
+    return raw
+
+
 def _finding(key: str) -> dict:
-    try:
-        return amigabackstab.inspect_title(amigabackstab.TITLES[key])
-    except SystemExit as exc:
-        pytest.skip(str(exc))
+    return amigabackstab.inspect(_executable(key), amigabackstab.TITLES[key])
 
 
 def test_every_amiga_title_is_read():
@@ -118,6 +142,31 @@ def test_pool_of_radiance_alone_does_not_subtract_a_level_first():
     for key in ("curse-of-the-azure-bonds", "secret-of-the-silver-blades",
                 "pools-of-darkness"):
         assert _finding(key)["form"] != "divide"
+
+
+def _with_nops(key: str, at: int, size: int) -> bytes:
+    """A copy of the executable with `size` bytes at `at` turned into `nop`s."""
+    raw = bytearray(_executable(key))
+    raw[at:at + size] = b"\x4e\x71" * (size // 2)
+    return bytes(raw)
+
+
+@pytest.mark.parametrize("key", ["curse-of-the-azure-bonds",
+                                 "secret-of-the-silver-blades"])
+@pytest.mark.parametrize("step, size", [("regain_call", 4),
+                                        ("regain_multiply", 2),
+                                        ("regain_add", 2)])
+def test_the_regain_arithmetic_is_read_and_not_assumed(key, step, size):
+    """Erasing the regain call, the multiply or the add is refused.
+
+    The engine adds the former thief slot times the regain call's result to
+    the current slot before it subtracts one; each of the three instructions
+    is what makes that sentence true.
+    """
+    at = _finding(key)[step]
+    title = amigabackstab.TITLES[key]
+    with pytest.raises(ValueError):
+        amigabackstab.inspect(_with_nops(key, at, size), title)
 
 
 def test_a_missing_title_is_reported_and_check_controls_the_exit_status(

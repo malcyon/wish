@@ -280,10 +280,40 @@ _POD_FORMULA = _POD_THIEF_LEVEL + (
 )
 POD_CLAMP = 5
 
-#: `al = max(al, ah)` spelled out by the compiler, in the class-level helper.
-_POD_MAX = (0x8A, 0x46, None, 0x3A, 0x46, None, 0x76, 0x08,
-            0x8A, 0x46, None, 0x88, 0x46, None, 0xEB, 0x06,
-            0x8A, 0x46, None, 0x88, 0x46, None)
+#: Where each local of the class-level helper sits in `_pod_level_helper`'s
+#: pattern: the current level, the regained former level, and the result.
+_POD_LOCALS = {"current": (22, 62, 70), "former": (53, 58, 65, 78),
+               "result": (73, 81)}
+
+
+def _pod_level_helper(fields: dict[str, int]) -> tuple[int | None, ...]:
+    """The class-level helper, from its prologue through `max(cur, former)`.
+
+    It reads `class_levels[c]` into a local, calls the regain helper, reads
+    `former_class_levels[c]` into a second local only when the call answered
+    true (otherwise that local is 0 -- the branch is the multiply by 0 or 1),
+    and returns the larger of the two.
+    """
+    current = tuple(_u16(fields["class_levels"]))
+    former = tuple(_u16(fields["former_class_levels"]))
+    lookup = (0x8A, 0x46, 0x06, 0x98, 0xC4, 0x7E, 0x08, 0x03, 0xF8)
+    return (
+        0x55, 0x89, 0xE5, 0x83, 0xEC, 0x04,
+        *lookup, 0x26, 0x8A, 0x85, *current, 0x88, 0x46, None,
+        0xFF, 0x76, 0x0A, 0xFF, 0x76, 0x08, 0x0E, 0xE8, None, None,
+        0x08, 0xC0, 0x74, 0x13,
+        *lookup, 0x26, 0x8A, 0x85, *former, 0x88, 0x46, None,
+        0xEB, 0x04, 0xC6, 0x46, None, 0x00,
+        0x8A, 0x46, None, 0x3A, 0x46, None, 0x76, 0x08,
+        0x8A, 0x46, None, 0x88, 0x46, None, 0xEB, 0x06,
+        0x8A, 0x46, None, 0x88, 0x46, None,
+    )
+
+
+#: Offset of the regain helper's `call` and of the `or al,al` that tests its
+#: answer, from the class-level helper's start.
+_POD_REGAIN_CALL = 30
+_POD_FORMER_GATE = 33
 
 #: `mov al,0 / jbe +1 / inc ax`: the regain helper's strictly-greater test.
 _POD_STRICT = b"\xb0\x00\x76\x01\x40"
@@ -318,18 +348,17 @@ def inspect_pools_of_darkness(overlay: bytes, loader: bytes,
     if not window.startswith(PROLOGUE):
         raise ValueError(f"{title.stem}: the class-level helper has no prologue")
     current_read = b"\x26\x8a\x85" + _u16(fields["class_levels"])
-    former_read = b"\x26\x8a\x85" + _u16(fields["former_class_levels"])
-    if current_read not in window or former_read not in window:
+    body = _pod_level_helper(fields)
+    if _all_wild(overlay[helper:helper + len(body)], body) != [0]:
         raise ValueError(
-            f"{title.stem}: the class-level helper reads neither level array")
-    if not _all_wild(window, _POD_MAX):
-        raise ValueError(
-            f"{title.stem}: the class-level helper does not take the larger")
-
-    regain_call = window.find(b"\x0e\xe8")
-    if regain_call < 0:
-        raise ValueError(f"{title.stem}: the class-level helper calls nothing")
-    regain_helper = _near_target(overlay, helper + regain_call + 1)
+            f"{title.stem}: the class-level helper does not take the larger "
+            f"of the current level and the former level a regain call allows")
+    for name, places in _POD_LOCALS.items():
+        if len({overlay[helper + at] for at in places}) != 1:
+            raise ValueError(
+                f"{title.stem}: the class-level helper's {name} local is not "
+                f"the same variable throughout")
+    regain_helper = _near_target(overlay, helper + _POD_REGAIN_CALL)
     former_level_cmp = overlay.find(
         b"\x26\x3a\x85" + _u16(fields["former_level"]),
         regain_helper, regain_helper + 0x40)
@@ -388,6 +417,7 @@ def inspect_pools_of_darkness(overlay: bytes, loader: bytes,
         "predicate_gate": gate,
         "level_helper_far": (helper_seg, helper_off),
         "level_helper": helper,
+        "former_gate": helper + _POD_FORMER_GATE,
         "regain_helper": regain_helper,
         "current_level_routine": current_level_routine,
         "former_level_cmp": former_level_cmp,

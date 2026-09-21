@@ -123,6 +123,7 @@ def test_pools_of_darkness_takes_its_thief_level_from_a_shared_helper():
     assert finding["predicate_callers"] == [0x1E85A, 0x1FBE1, 0x1FC86]
     assert finding["level_helper_far"] == (0x0102, 0x0048)
     assert finding["level_helper"] == 0x392EE
+    assert finding["former_gate"] == 0x3930F
     assert finding["regain_helper"] == 0x38C8A
     assert finding["current_level_routine"] == 0x38C19
     assert finding["former_level_cmp"] == 0x38C9D
@@ -133,3 +134,33 @@ def test_pools_of_darkness_takes_its_thief_level_from_a_shared_helper():
     assert finding["regained"] == "human and active class level > former_level"
     assert finding["multiplier"] == (
         "min(((effective thief level - 1) // 4) + 2, 5)")
+
+
+def _inspect_darkness(mutate) -> dict:
+    """Inspect a copy of the Pools of Darkness overlay after `mutate(bytearray)`."""
+    title = backstab.TITLES["DARKNESS"]
+    game = backstab.find_game(title)
+    overlay = bytearray((game / "GAME.OVR").read_bytes())
+    mutate(overlay)
+    return backstab.inspect_pools_of_darkness(
+        bytes(overlay), (game / title.loader).read_bytes(), title)
+
+
+def test_pools_of_darkness_reads_the_former_level_only_after_a_regain():
+    """The class-level helper's regain answer is what lets the former slot in.
+
+    The engine has no multiply by 0 or 1 here: it tests the regain call's
+    answer and reads the former slot or zeroes its local. Erasing that test,
+    or the zeroing, leaves a helper that no longer means `former * regained`.
+    """
+    gate = _finding("DARKNESS")["former_gate"]
+
+    def erase_test(overlay):
+        overlay[gate + 2:gate + 4] = b"\x90\x90"        # je +0x13 -> nop nop
+
+    def erase_zeroing(overlay):
+        overlay[gate + 23:gate + 27] = b"\x90" * 4      # mov [bp-3], 0
+
+    for mutate in (erase_test, erase_zeroing):
+        with pytest.raises(ValueError, match="class-level helper"):
+            _inspect_darkness(mutate)

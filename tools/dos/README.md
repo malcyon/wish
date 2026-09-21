@@ -4,7 +4,7 @@ Scripts for the DOS ports: DOSBox and the drivers built on it, overlay and recor
 
 | file | purpose |
 |---|---|
-| `backstab.py` | Reads the backstab gate and multiplier from DOS Curse, Silver Blades and Pools of Darkness: current and former thief-level slots, the shared dual-class regain helper, Pools of Darkness' shared class-level routine and multiplier clamp, and the three attack-path callers; `--check` fails if an engine no longer matches. `docs/225-the-dos-backstab-multiplier.md`. |
+| `backstab.py` | Reads the backstab gate, multiplier and regain helper out of DOS Curse, Silver Blades and Pools of Darkness by instruction structure; `docs/225-the-dos-backstab-multiplier.md`. |
 | `daxls.py` | Lists the blocks of a DOS Gold Box `.DAX` container with id, offset, sizes and image dimensions; `--dump` writes one unpacked block and `--png` draws an image block as EGA. Layout in `docs/168-dos-dax-and-combat-icons.md`. |
 | `dosabilitypair.py` | Shows which byte of a DOS ability pair the engine treats as in force: `sites` and `census` read `GAME.OVR`, `stage` writes unequal pair bytes for a boot, `read` prints every pair. Archives are read only; `docs/204-the-dos-ability-pair.md`. |
 | `dosaddchar.py` | Drives DOS Pool of Radiance's ADD CHARACTER TO PARTY with two `.CHA` files that differ only in the identity byte at `0x0AB` (`--ident`, or `--writer` for our writer's value) to test the duplicate check, reading the resulting `CHRDAT` files as ground truth. |
