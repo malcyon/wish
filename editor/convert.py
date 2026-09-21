@@ -68,10 +68,13 @@ the check that direction needs.
 `.D64`, an Amiga `.adf`, a `SAVGAM<slot>.DAT`/`.PTY` file, or a DOS save
 folder directly, the way `tools/dos/dosdisk.py` and `tools/dos/dosnewsave.py`
 already do. When the path is
-the save the editor already has open, the caller passes `party` and this
-reads its in-memory bytes instead, so unsaved edits cross -- the same rule
+the save the editor already has open, the caller passes `party` and
+`editor.saveplan` assembles that save's own bytes with the pending edits in
+them, on every port, so unsaved edits cross -- the same rule
 `exports.Source.from_party` followed before that module was deleted.
-`exports.Source` retired into this one at step 5.
+`exports.Source` retired into this one at step 5. A DOS or an Amiga
+snapshot rides on the `Source` as `files` or `image`, and `folder()` and
+`amiga_disk()` are what a direction reads it through.
 
 **`ConvertDialog`, below, is step B of `#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment** (also
 `#52`'s comment of 2026-09-05 13:58:53): the source and destination rows, a
@@ -98,12 +101,14 @@ literal ` (NOT APPROVED)`; see the block below it.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import datetime
 import logging
 import pathlib
 import re
 import tempfile
+from collections.abc import Iterator
 from typing import Any
 
 from PyQt6.QtWidgets import (
@@ -132,7 +137,7 @@ from goldbox import (
 from goldbox.amiga_port import AmigaRecordError
 from goldbox.iconparts import amiga_combat_icon
 
-from . import dosimport
+from . import dosimport, saveplan
 
 _log = logging.getLogger("wish.editor.convert")
 
@@ -175,6 +180,12 @@ class Source:
     (`#372 (An Amiga disk with more than one saved game converts its first
     slot, whichever one the player meant)`) is built from, and it is a list
     of one when either source holds only one saved game.
+
+    `files` and `image` are a DOS or an Amiga saved game held in memory
+    rather than read off `path` -- `editor.saveplan`'s snapshot of the open
+    party, edits included. They are `None` for every source read off a path,
+    and `folder()` and `amiga_disk()` below are how a direction reads either
+    kind without knowing which it has.
     """
 
     port: str                      # "c64", "dos" or "amiga"
@@ -185,10 +196,56 @@ class Source:
     disk: bytes | None = None
     slot: str | None = None
     available_slots: list[str] | None = None
+    files: dict[str, bytes] | None = None
+    image: bytes | None = None
 
     @property
     def key(self) -> str:
         return self.title.key
+
+    @classmethod
+    def of_snapshot(cls, snapshot: saveplan.Snapshot) -> "Source":
+        """The source a snapshot of the open party is."""
+        return cls(port=snapshot.port, title=snapshot.title,
+                   path=snapshot.path, save0=snapshot.save0,
+                   save1=snapshot.save1, disk=snapshot.disk,
+                   slot=snapshot.slot,
+                   available_slots=snapshot.available_slots,
+                   files=snapshot.files, image=snapshot.image)
+
+    @contextlib.contextmanager
+    def folder(self) -> Iterator[pathlib.Path]:
+        """The DOS save folder to read this source out of.
+
+        `path` for a source read off disk, which is the same folder every
+        caller used before snapshots existed. A source carrying one has no
+        folder of its own, so its files are written into a temporary
+        directory for as long as the block runs: `goldbox.dos_codec` reads a
+        party out of a folder rather than out of bytes, and a scratch copy is
+        what lets an unsaved edit reach it without the player's own save
+        being touched.
+        """
+        if self.files is None:
+            yield self.path
+            return
+        with tempfile.TemporaryDirectory(prefix="wish-source-") as scratch:
+            scratch_path = pathlib.Path(scratch)
+            for name, data in self.files.items():
+                (scratch_path / name).write_bytes(data)
+            yield scratch_path
+
+    def amiga_disk(self) -> Any:
+        """The Amiga disk to read this source out of.
+
+        A snapshot's `image` is already a whole `.adf`, so unlike a DOS save
+        it needs no scratch copy -- `AmigaDisk` works in memory and touches no
+        file until it is saved.
+        """
+        from goldbox.amiga_adf import AmigaDisk
+
+        if self.image is not None:
+            return AmigaDisk(self.image)
+        return AmigaDisk.open(str(self.path))
 
     @staticmethod
     def looks_like_a_save(path: str | pathlib.Path) -> bool:
@@ -211,9 +268,17 @@ class Source:
         already open at `path`.
 
         `party` is a duck-typed `editor.roster.Party` -- `.path`, `.game`,
-        `.save0`, `.save1`, `.disk` -- and is used only when its own path is
-        the one asked for, so unsaved edits on screen cross into the
-        conversion instead of whatever is on disk.
+        `.save0`, `.save1`, `.disk`, and `.members` when it has a roster --
+        and is used only when its own path is the one asked for, so unsaved
+        edits on screen cross into the conversion instead of whatever is on
+        disk. **On every port**: `editor.saveplan.prepare` assembles the
+        port's own bytes with the pending edits in them, which is what a DOS
+        or an Amiga source used to be reread from disk without (the stage-1
+        regression of `#511 (Open a DOS save folder and an Amiga save disk in
+        the Character Editor, so editing a DOS character does not mean two
+        conversions)`). A stand-in with no `.members` has no roster to read
+        edits off and falls back to the payload bytes it holds, which is what
+        this did for every party before snapshots existed.
 
         `slot` names which of an Amiga disk's several saved games to read --
         the dialog's own slot row passes the letter the player chose. Every
@@ -227,18 +292,21 @@ class Source:
         # this branch exists to avoid -- and it would do it silently.
         if (party is not None and party.path
                 and _same_file(pathlib.Path(party.path), path)):
-            if getattr(party, "port", "c64") != "c64":
-                party = None
-            elif party.save0 is None:
-                raise ConvertError(f"{path} has no saved game open")
-        if (party is not None and party.path
-                and getattr(party, "port", "c64") == "c64"
-                and _same_file(pathlib.Path(party.path), path)):
-            return cls(port="c64", title=party.game, path=path,
-                      save0=party.save0.to_bytes(),
-                      save1=(party.save1.to_bytes()
-                             if party.save1 is not None else None),
-                      disk=party.disk.to_bytes())
+            snapshot = saveplan.prepare(party)
+            if snapshot is not None:
+                return cls.of_snapshot(dataclasses.replace(snapshot,
+                                                           path=path))
+            # No roster to read edits off. A C64 stand-in answers with the
+            # payload it holds, as it always has; one reporting another port
+            # holds no bytes of its own, so the save is read off the path.
+            if getattr(party, "port", "c64") == "c64":
+                if party.save0 is None:
+                    raise ConvertError(f"{path} has no saved game open")
+                return cls(port="c64", title=party.game, path=path,
+                          save0=party.save0.to_bytes(),
+                          save1=(party.save1.to_bytes()
+                                 if party.save1 is not None else None),
+                          disk=party.disk.to_bytes())
         if path.is_dir():
             return cls._detect_dos_folder(path, slot)
         if path.is_file():
@@ -501,7 +569,8 @@ class DosToC64(Direction):
 
     def rehearse(self, source: Source, slot: str,
                 options: "dosimport.GameFiles") -> Rehearsal:
-        conversion = dosimport.rehearse(source.path, slot, options)
+        with source.folder() as folder:
+            conversion = dosimport.rehearse(folder, slot, options)
         name = self._name.format(slot=slot)
         return Rehearsal(conversion.report, {name: conversion.disk.to_bytes()})
 
@@ -544,9 +613,7 @@ class AmigaToC64(DosToC64):
 
     def rehearse(self, source: Source, slot: str,
                 options: "dosimport.GameFiles") -> Rehearsal:
-        from goldbox.amiga_adf import AmigaDisk
-
-        disk = AmigaDisk.open(str(source.path))
+        disk = source.amiga_disk()
         if self.shape is dos_port.POOL_OF_RADIANCE:
             party, savgam = amiga_savegame.read_por_slot(disk, slot)
             state = amiga_savegame.read_por_state(
@@ -714,8 +781,6 @@ class AmigaToDos(C64ToDos):
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path") -> AmigaDosRehearsal:
-        from goldbox.amiga_adf import AmigaDisk
-
         if not source.slot:
             # Unreachable through `Source.detect`, whose `.adf` branch always
             # names the first slot the disk holds files for; only a caller
@@ -723,7 +788,7 @@ class AmigaToDos(C64ToDos):
             # slot to guess at for it.
             raise ConvertError(f"{source.path} names no Amiga save slot")
         game_dir = pathlib.Path(options)
-        disk = AmigaDisk.open(str(source.path))
+        disk = source.amiga_disk()
         if self.shape is dos_port.POOL_OF_RADIANCE:
             party, savgam = amiga_savegame.read_por_slot(disk, source.slot)
             state = amiga_savegame.read_por_state(
@@ -983,7 +1048,12 @@ class DosToAmiga(Direction):
             raise ConvertError(f"{source.path} names no DOS save slot")
         letter = source.slot
         game_data = _amiga_destination_data(self.shape, options)
-        raw_party = dos_codec.read_party(source.path, letter)
+        with source.folder() as folder:
+            raw_party = dos_codec.read_party(folder, letter)
+            container = dos_savegame.container_for(self.shape.key)
+            savgam_path = pathlib.Path(folder) / (
+                f"SAVGAM{letter}{container.suffix}")
+            savgam = savgam_path.read_bytes()
         party = [dos_codec.to_neutral(c) for c in raw_party]
         # `amiga_combat_icon` is duck-typed to `goldbox.dos_codec.DosCharacter`
         # too (its own docstring) and reads the icon straight off the raw
@@ -991,11 +1061,11 @@ class DosToAmiga(Direction):
         # `AmigaToDos.rehearse` already uses for an Amiga source (#424,
         # mirroring #422's fix for a C64 source).
         icons = [amiga_combat_icon(c) for c in raw_party]
-        container = dos_savegame.container_for(self.shape.key)
-        savgam_path = pathlib.Path(source.path) / (
-            f"SAVGAM{letter}{container.suffix}")
+        # Named for the player's own save rather than for the scratch copy a
+        # snapshot is read through: the name only ever labels the state.
         state = world_state.from_dos(
-            savgam_path.read_bytes(), container, source=str(savgam_path))
+            savgam, container,
+            source=str(pathlib.Path(source.path) / savgam_path.name))
         return _rehearse_amiga_savegame(
             state, self.shape, letter, party, game_data, icons=icons)
 
