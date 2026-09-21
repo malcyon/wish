@@ -310,6 +310,92 @@ def test_e_a_size_and_a_class_mask_hold_what_the_writer_says(game):
         in rep.warnings
 
 
+@pytest.mark.parametrize("game", doswidths.GAMES)
+@pytest.mark.parametrize("length", [0, 1, 15, 16, 40])
+def test_e_the_name_count_byte_is_the_length_up_to_fifteen(game, length):
+    """The count byte is the name's length, held to the fifteen characters the
+    text field has: 15 characters fills it, 16 or more is cut to 15 with a
+    line saying so, and the name reads back as what was kept."""
+    table = dos_port.FIELDS_BY_NAME_FOR[game]
+    assert table["name_length"].size == 1 and table["name_text"].size == 15
+    name = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn"[:length]
+    char = doswidths.base(game)
+    char.set("name", name, "boundary")
+    rec, _, _, rep = dos_codec.write(char)
+    kept = name[:15]
+    assert rec[table["name_length"].offset] == len(kept), (game, length)
+    assert (any("longer than the DOS 15 characters" in w for w in rep.warnings)
+            == (length > 15)), (game, length, rep.warnings)
+    back, _ = _round_trip(char)
+    assert back.get("name") == kept, (game, length)
+
+
+@pytest.mark.parametrize("game", [CURSE, SILVER, POOLS_OF_DARKNESS])
+@pytest.mark.parametrize("value", [0, 1, 255])
+def test_e_a_paladin_cure_count_the_source_holds_is_copied(game, value):
+    """A source that holds a cure-disease byte has it copied; the boundary base
+    character holds none, so it is set here."""
+    table = dos_port.FIELDS_BY_NAME_FOR[game]
+    f = table["paladin_cures"]
+    assert f.size == 1 and f.kind is layout.Kind.U8
+    char = doswidths.base(game)
+    char.set("paladin_cures", value, "boundary")
+    rec, _, _, rep = dos_codec.write(char)
+    assert rec[f.offset] == value, (game, value)
+    assert rep.warnings == [], (game, rep.warnings)
+
+
+@pytest.mark.parametrize("game", [CURSE, SILVER, POOLS_OF_DARKNESS])
+def test_e_a_source_with_no_cure_count_gets_the_class_rule(game):
+    """No byte from the source: 1 for a character holding or having left the
+    paladin class, 0 for any other."""
+    f = dos_port.FIELDS_BY_NAME_FOR[game]["paladin_cures"]
+    for levels, want in (({"paladin": 5}, 1), ({"fighter": 5}, 0)):
+        char = doswidths.base(game)
+        char.set("levels", levels, "boundary")
+        assert "paladin_cures" not in char.fields
+        assert dos_codec.write(char)[0][f.offset] == want, (game, levels)
+
+
+def test_e_only_pools_of_darkness_copies_attack_level():
+    """The writer works `attack_level` out from the class levels in the three
+    titles with a measured rule and copies the source's byte in the one
+    without, so a value set on the character reaches its byte in Pools of
+    Darkness alone."""
+    assert {g for g in doswidths.GAMES
+            if doswidths.attack_level_copied(g)} == {POOLS_OF_DARKNESS}
+    for game in doswidths.GAMES:
+        f = dos_port.FIELDS_BY_NAME_FOR[game]["attack_level"]
+        assert f.size == 1 and f.kind is layout.Kind.U8, game
+        bytes_ = []
+        for value in (0, 200):
+            char = doswidths.base(game)
+            char.set("attack_level", value, "boundary")
+            bytes_.append(dos_codec.write(char)[0][f.offset])
+        assert (bytes_[0] != bytes_[1]) == (game == POOLS_OF_DARKNESS), \
+            (game, bytes_)
+
+
+@pytest.mark.parametrize("value", [0, 1, 255])
+def test_e_a_copied_attack_level_holds_a_byte(value, caplog):
+    char = doswidths.base(POOLS_OF_DARKNESS)
+    char.set("attack_level", value, "boundary")
+    with caplog.at_level(logging.WARNING, logger="wish.goldbox.dos_codec"):
+        back, rep = _round_trip(char)
+    assert back.get("attack_level") == value
+    assert rep.warnings == [] and _warnings(caplog) == []
+
+
+@pytest.mark.parametrize("past,kept", [(256, 255), (-1, 0)])
+def test_e_a_copied_attack_level_is_clamped_one_past_a_byte(past, kept):
+    char = doswidths.base(POOLS_OF_DARKNESS)
+    char.set("attack_level", past, "boundary: one past")
+    back, rep = _round_trip(char)
+    assert back.get("attack_level") == kept
+    assert (f"attack_level: {past} does not fit the DOS one-byte field; "
+            f"clamped") in rep.warnings
+
+
 # --- F: one past a width is clamped, refused or (I8) wrapped, by name -------
 
 #: The scalars a DOS field cannot hold one past, with the width each is
@@ -334,18 +420,13 @@ _WRAPPED = {f"thief_{n}" for n in (
     "pick_pockets", "open_locks", "find_traps", "move_silently",
     "hide_in_shadows", "hear_noise", "climb_walls", "read_languages")}
 
-_SWEPT_PAST = [(game, s) for game in doswidths.GAMES
-               for s in doswidths.scalars(game)
-               if s.neutral not in doswidths.ALWAYS_RECOMPUTED]
-
-
 def _side(game, s) -> str:
     if s.neutral in _REFUSED[game]:
         return "refused"
     return "wrapped" if s.neutral in _WRAPPED else "clamped"
 
 
-@pytest.mark.parametrize("pair", _SWEPT_PAST, ids=_ids)
+@pytest.mark.parametrize("pair", _SWEPT, ids=_ids)
 def test_f_one_past_a_width_is_handled_the_way_its_side_says(pair):
     game, s = pair
     side = _side(game, s)
@@ -467,7 +548,7 @@ def _later_holds(char, combo, caplog):
     assert _warnings(caplog) == [], combo.name
     # A dual-classed character who has regained his old class carries both in
     # the source's level array; DOS never stores that, so the old slot stays
-    # zero and the class he left comes back as `former_levels` (#408).
+    # zero and the class he left comes back as `former_levels`.
     held = {k: v for k, v in combo.class_levels.items()
             if k not in combo.former_levels}
     assert _held(back) == held, (combo.name, _held(back))

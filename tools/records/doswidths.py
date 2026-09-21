@@ -47,10 +47,6 @@ class Scalar:
     low: int
     high: int
 
-    @property
-    def one_byte(self) -> bool:
-        return self.size == 1
-
 
 #: What the boundary is for every numeric DOS target that is not a simple copy
 #: of one neutral scalar, one sentence each, keyed by the neutral field the
@@ -59,10 +55,12 @@ class Scalar:
 #: table nor `scalars()`, so a field added to the writer has to say what its
 #: extreme is.
 STRUCTURED: dict[str, str] = {
-    "name": "the count byte is the length of the name, 0 to 15, and follows "
-            "from it rather than being set",
+    "name": "the count byte is the length of the name, 0 to 15, and is "
+            "computed from it rather than being set",
     "levels": "attack_level is worked out from the class levels through the "
-              "title's own rule, never copied",
+              "title's own rule, and never copied, except in Pools of "
+              "Darkness, where no rule has been measured and the source's "
+              "own byte is copied as a one-byte number",
     "size_small": "DOS stores size_small plus one, so the neutral ceiling is "
                   "one under the byte's own, and 255 is clamped with a "
                   "line naming `size`",
@@ -71,7 +69,8 @@ STRUCTURED: dict[str, str] = {
     "former_levels": "the one level a dual-classed character left, again in "
                      "its own byte, taken from the class it left",
     "paladin_cures": "the source's own byte, or the class rule's when the "
-                     "source has none; no base character sets one",
+                     "source has none; the boundary base character sets none, "
+                     "so `test_boundary.py` sets one directly",
 }
 
 #: Neutral fields the writer recomputes on every character, so a value set on
@@ -79,36 +78,51 @@ STRUCTURED: dict[str, str] = {
 #: width says anything about it.  Reasons are the writer's own.
 ALWAYS_RECOMPUTED: dict[str, str] = {
     "thac0_base": "recomputed from the class levels through the title's own "
-                  "DOS table (#366)",
+                  "DOS table",
     "char_class": "recomputed from the class mask when the source record "
-                  "contradicts itself (#310)",
+                  "contradicts itself",
     "attack_level": "the destination's own rule from the class levels: the "
                     "constant 1 in DOS Pool of Radiance, the best fighting "
-                    "level floored at 1 elsewhere (#527)",
+                    "level floored at 1 in Curse and Silver Blades; Pools of "
+                    "Darkness has no rule and copies the byte, so "
+                    "`recomputed(game)` leaves it out there",
     "spells_castable": "recomputed from the class levels and wisdom through "
                        "DOS's own table for a C64 source, whose engine "
-                       "never stores one (#547)",
+                       "never stores one",
 }
 
 #: Everything the writer may recompute for some character, which is a longer
 #: list than the one above: the eight thief percentages when the character has
-#: a thief level (#431), and the five saves and current THAC0 when the race or
-#: the class rewrites them (#191).  `tests/records/test_boundary.py` part A's
+#: a thief level, and the five saves and current THAC0 when the race or the
+#: class rewrites them.  `tests/records/test_boundary.py` part A's
 #: four cases include all of those, so it leaves the whole set out of the
 #: round trip by name.
 RECOMPUTED: dict[str, str] = {
     **ALWAYS_RECOMPUTED,
     "thac0_current": "rebuilt from thac0_base, so it moves with it",
     "save_paralysis": "the DOS engine recomputes all five saves on load from "
-                      "class, level and the `.SPC` records (#191)",
+                      "class, level and the `.SPC` records",
     "save_petrification": "see save_paralysis",
     "save_wands": "see save_paralysis",
     "save_breath": "see save_paralysis",
     "save_spell": "see save_paralysis",
     **{name: "recomputed from the title's own thief table for race, level "
-             "and dexterity, for a character with a thief level (#431)"
+             "and dexterity, for a character with a thief level"
        for name, _ in dos_codec.WRITE_DIRECT if name.startswith("thief_")},
 }
+
+
+def attack_level_copied(game: str) -> bool:
+    """Whether `game`'s writer copies the source's `attack_level` byte rather
+    than working it out, which it does where no rule has been measured."""
+    return dos_codec.attack_level_written(dos_port.deltas_for(game), {}) is None
+
+
+def recomputed(game: str) -> dict[str, str]:
+    """`RECOMPUTED` as it holds in `game`: `attack_level` is left out where the
+    writer copies it."""
+    return {name: why for name, why in RECOMPUTED.items()
+            if name != "attack_level" or not attack_level_copied(game)}
 
 
 def scalars(game: str) -> list[Scalar]:
@@ -169,13 +183,13 @@ def base(game: str) -> NeutralCharacter:
 def main(argv=None) -> int:
     for game in GAMES:
         print(game)
-        skipped = ALWAYS_RECOMPUTED
+        skipped = recomputed(game)
         for s in scalars(game):
-            note = f"  (recomputed: {skipped[s.neutral]})" \
-                if s.neutral in skipped else ""
+            note = f"  ({skipped[s.neutral]})" if s.neutral in skipped else ""
             print(f"  {s.neutral:26} {s.low:>7} .. {s.high:<10}{note}")
         for dos_name, neutral in structured_targets(game).items():
-            print(f"  {dos_name:26} structured, from {neutral}")
+            note = f"  ({skipped[dos_name]})" if dos_name in skipped else ""
+            print(f"  {dos_name:26} structured, from {neutral}{note}")
         print()
     return 0
 
