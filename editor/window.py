@@ -1309,17 +1309,16 @@ class EditorBinding(QObject):
         `Direction.write` puts the files in it. A C64 destination is opened
         afterwards the same way `File ▸ Open` opens anything; a DOS or
         Amiga destination is not something the editor can show, so it only
-        gets a status line. **Flushes the open party first**: without it the
-        sheet's widgets have not reached the records at all, and the dialog
-        converts the save as it was opened rather than as it is on screen
+        gets a status line. **Flushes the open party first**, which puts the
+        sheet's widgets into the records the conversion reads
         (`#478 (File ▸ Convert converts the save as it was opened, not as it
         is on screen, because it never flushes the editor's own edits)`).
-        The flushed records reach the conversion through
-        `editor.saveplan`'s snapshot, which `Source.detect` builds -- nothing
-        here writes the edits into the party's own payload first, so a
-        conversion leaves the open document exactly as it was. Guarded on
-        `self.party`, since Convert opens with nothing open too, to let the
-        picker choose a source.
+        The records reach the conversion through `editor.saveplan`'s snapshot,
+        which `Source.detect` builds from the open party without writing
+        anything into its payload, image or files, so a conversion leaves the
+        open document exactly as it was. Guarded on `self.party`, since
+        Convert opens with nothing open too, to let the picker choose a
+        source.
         """
         from editor import convert as convert_mod
 

@@ -43,7 +43,7 @@ from support.convertparty import _fixture_payloads, _six_icon_party
 from support.dossave import _save_dir, needs_dos_saves
 
 from editor import convert, dosimport
-from editor.window import EditorBinding
+from editor.window import OPEN_FILE_TEXT, OPEN_FOLDER_TEXT, EditorBinding
 from goldbox import c64_port, dos_codec, dos_port, dos_savegame, titles
 
 #: The played DOS Curse session this reads, and the slot in it.  It was
@@ -1964,8 +1964,8 @@ def test_the_file_menu_carries_convert_with_nothing_set(app, tmp_path,
     monkeypatch.delenv("WISH_EXPERIMENTAL_CONVERT", raising=False)
     window = _wish_window(tmp_path, monkeypatch)
     assert [a.text() for a in _file_menu(window).actions()] == [
-        "&Open…", "&Save", "Save &As…", convert.MENU_CONVERT,
-        "", "&Preferences…", "", "&Quit"]
+        OPEN_FILE_TEXT, OPEN_FOLDER_TEXT, "&Save", "Save &As…",
+        convert.MENU_CONVERT, "", "&Preferences…", "", "&Quit"]
     assert window.convert_action.text() == convert.MENU_CONVERT
     window.close()
 

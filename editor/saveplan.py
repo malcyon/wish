@@ -33,11 +33,6 @@ from goldbox.d64 import D64
 from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0, SaveGame1, store_save
 
-#: Where the sixteen item blocks sit in the 580-byte C64 record the sheet
-#: edits -- `editor.roster`'s own `_ITEMS_AT`, which is where a converted
-#: character's inventory was read from.
-_ITEMS_AT = 0x120
-
 #: The file names one DOS saved game is made of: `SAVGAM<slot>.DAT`/`.PTY`,
 #: the six `CHRDAT<slot><n>` records with their item and effect files, and
 #: Pools of Darkness' `VAULT<slot>.DAT`. Case-insensitive, because a renamed
@@ -53,8 +48,7 @@ class Snapshot:
     Exactly one of the three groups below is filled, by port. `files` is a
     DOS saved game -- every file of one slot, by name, the rewritten records
     among them. `image` is a whole Amiga `.adf`. `save0`, `save1` and `disk`
-    are a C64 save's two payloads and its disk image, which is the group
-    `editor.convert.Source` already carried.
+    are a C64 save's two payloads and its disk image.
 
     `path` is where the save was read from, kept so a caller can name it;
     nothing here is written back to it.
@@ -122,6 +116,10 @@ def edited_record(member: Any) -> CharacterRecord:
     the record's own item page, which is where `Party._append_converted` read
     them from.
     """
+    # Imported here because `editor.roster` imports `editor.convert`, which
+    # imports this module.
+    from .roster import _ITEMS_AT
+
     raw = bytearray(member.record.to_bytes())
     if member.inventory is not None:
         blocks = member.inventory.raws

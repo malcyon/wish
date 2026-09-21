@@ -155,6 +155,33 @@ def _same_file(a: pathlib.Path, b: pathlib.Path) -> bool:
         return False
 
 
+def _is_slot_file_of(party: Any, path: pathlib.Path) -> bool:
+    """Whether `path` is the `SAVGAM<slot>` file of the party's own DOS folder
+    and slot, which is the open save picked by its file rather than its
+    folder."""
+    match = _SAVGAM_FILE_RE.match(path.name)
+    source = getattr(party, "source", None)
+    slot = getattr(source, "slot", None)
+    return (match is not None and slot is not None
+            and match.group(1).upper() == slot.upper()
+            and _same_file(pathlib.Path(party.path), path.parent))
+
+
+def _asks_for_slot_of(party: Any, slot: str | None,
+                      path: pathlib.Path) -> bool:
+    """Whether a request for `slot` at `path` is for the slot the party has
+    open.
+
+    A picked `SAVGAM<slot>` file names its own slot, so `slot` does not apply
+    to it; a party with no slot of its own (a C64 disk) has only one saved
+    game to ask for.
+    """
+    open_slot = getattr(getattr(party, "source", None), "slot", None)
+    return (slot is None or open_slot is None
+            or bool(_SAVGAM_FILE_RE.match(path.name))
+            or slot == open_slot)
+
+
 # ---------------------------------------------------------------------------
 # What is being converted
 # ---------------------------------------------------------------------------
@@ -217,8 +244,7 @@ class Source:
     def folder(self) -> Iterator[pathlib.Path]:
         """The DOS save folder to read this source out of.
 
-        `path` for a source read off disk, which is the same folder every
-        caller used before snapshots existed. A source carrying one has no
+        `path` for a source read off disk. A source holding a snapshot has no
         folder of its own, so its files are written into a temporary
         directory for as long as the block runs: `goldbox.dos_codec` reads a
         party out of a folder rather than out of bytes, and a scratch copy is
@@ -269,21 +295,25 @@ class Source:
 
         `party` is a duck-typed `editor.roster.Party` -- `.path`, `.game`,
         `.save0`, `.save1`, `.disk`, and `.members` when it has a roster --
-        and is used only when its own path is the one asked for, so unsaved
-        edits on screen cross into the conversion instead of whatever is on
-        disk. **On every port**: `editor.saveplan.prepare` assembles the
-        port's own bytes with the pending edits in them, which is what a DOS
-        or an Amiga source used to be reread from disk without (the stage-1
-        regression of `#511 (Open a DOS save folder and an Amiga save disk in
-        the Character Editor, so editing a DOS character does not mean two
-        conversions)`). A stand-in with no `.members` has no roster to read
-        edits off and falls back to the payload bytes it holds, which is what
-        this did for every party before snapshots existed.
+        and is used only when it is the save asked for, so unsaved edits on
+        screen cross into the conversion instead of whatever is on disk. It
+        is the save asked for when its own path is `path`, or when `path` is
+        the `SAVGAM<slot>.DAT`/`.PTY` file of the party's own folder and
+        slot, which is what the Convert window's picker hands over for a DOS
+        save (`Party.path` is the folder). Every port takes this branch:
+        `editor.saveplan.prepare` assembles the port's own bytes with the
+        pending edits in them (`#511 (Open a DOS save folder and an Amiga
+        save disk in the Character Editor, so editing a DOS character does
+        not mean two conversions)`). A stand-in with no `.members` has no
+        roster to read edits off, so a C64 one answers with the payload
+        bytes it holds and another port's is read off the path.
 
-        `slot` names which of an Amiga disk's several saved games to read --
-        the dialog's own slot row passes the letter the player chose. Every
-        other branch ignores it: a C64 disk holds one saved game and a DOS
-        save file already names its own slot.
+        `slot` names which of a DOS folder's or an Amiga disk's several saved
+        games to read -- the dialog's own slot row passes the letter the
+        player chose. The editor holds edits for the slot it has open only,
+        so a different `slot` is read off the path like any other source.
+        Every other branch ignores it: a C64 disk holds one saved game and a
+        DOS save file already names its own slot.
         """
         path = pathlib.Path(path)
         # Both sides resolved: a caller may hand us a relative path where
@@ -291,14 +321,19 @@ class Source:
         # them raw falls through to reading the file, which is the stale copy
         # this branch exists to avoid -- and it would do it silently.
         if (party is not None and party.path
-                and _same_file(pathlib.Path(party.path), path)):
+                and _asks_for_slot_of(party, slot, path)
+                and (_same_file(pathlib.Path(party.path), path)
+                     or _is_slot_file_of(party, path))):
             snapshot = saveplan.prepare(party)
             if snapshot is not None:
-                return cls.of_snapshot(dataclasses.replace(snapshot,
-                                                           path=path))
-            # No roster to read edits off. A C64 stand-in answers with the
-            # payload it holds, as it always has; one reporting another port
-            # holds no bytes of its own, so the save is read off the path.
+                # A picked `SAVGAM<slot>` file leaves the snapshot on the
+                # party's folder, which is what every DOS source's path is.
+                at = path if _same_file(pathlib.Path(party.path), path) \
+                    else snapshot.path
+                return cls.of_snapshot(dataclasses.replace(snapshot, path=at))
+            # No roster to read edits off: a C64 stand-in answers with the
+            # payload it holds, and one reporting another port holds no bytes
+            # of its own, so the save is read off the path.
             if getattr(party, "port", "c64") == "c64":
                 if party.save0 is None:
                     raise ConvertError(f"{path} has no saved game open")
