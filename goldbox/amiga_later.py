@@ -1605,9 +1605,9 @@ def write_later(char: NeutralCharacter,
     # `goldbox.dos_codec.write` rest on DOS's and the C64's own routines (#431,
     # #440). Nobody has read Amiga Curse's, so this record keeps the source's
     # bytes rather than carrying another port's answer into an Amiga save.
-    # `thac0_floor=False` is the same reasoning for `thac0_base`: the limit of
-    # THAC0 20 is the DOS engine's own loop, and what Amiga Curse or Silver Blades stores
-    # for a magic-user of level 1-5 is UNKNOWN.
+    # Both later Amiga engines' unguarded import and training loops read entry
+    # zero for every absent class.  That gives a level 1--5 magic-user THAC0
+    # 20, the same floor `dos_codec.write` applies for a C64 source.
     # `into="Amiga"` (#389, A conversion to the Amiga tells the player what
     # DOS does with their character): otherwise a drop line this function
     # cannot place names DOS to a player who is not converting to DOS.
@@ -1619,7 +1619,7 @@ def write_later(char: NeutralCharacter,
     # drift apart the day one of them turns out to need it.
     record, itm, spc, dosrep = _dos.write(
         char, deltas=deltas.dos, icon=icon,
-        recompute_thief_skills=False, into="Amiga", thac0_floor=False,
+        recompute_thief_skills=False, into="Amiga",
         portraits=neutral_menu(deltas.dos.key))
     out = from_dos_record_later(record, deltas)
 

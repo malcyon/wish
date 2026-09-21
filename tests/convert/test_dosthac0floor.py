@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT))
 import gamedata  # noqa: E402
 from support.neutralrecords import _filled  # noqa: E402
 
-from goldbox import c64_codec, c64_port, dos_codec, items  # noqa: E402
+from goldbox import amiga_later, c64_codec, c64_port, dos_codec, items  # noqa: E402
 from goldbox import levels as level_tables  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.encoding import COMBAT_BIAS, combat_value  # noqa: E402
@@ -144,6 +144,11 @@ def _stored(char, **kwargs):
     return dos_codec.DosCharacter(rec).get("thac0_base")
 
 
+def _amiga_stored(char):
+    built, _rep = amiga_later.write_later(char)
+    return built.get("thac0_base")
+
+
 @pytest.mark.parametrize("title", LATER)
 def test_a_c64_magic_user_of_level_five_arrives_holding_40(title):
     """THAC0 20, the number the DOS engine writes for him; 39 was the C64's."""
@@ -152,14 +157,18 @@ def test_a_c64_magic_user_of_level_five_arrives_holding_40(title):
     assert combat_value(_stored(char)) == 20
 
 
+def test_the_floor_leaves_a_c64_pool_magic_user_unchanged():
+    char = _char(POOL, {"magic-user": 5}, "C64")
+    assert _stored(char) == _stored(char, thac0_floor=False)
+    assert _stored(char) == COMBAT_BIAS - 20
+
+
 @pytest.mark.parametrize("title", LATER)
-def test_the_c64_rule_is_still_available_for_a_caller_writing_a_stepping_stone(
-        title):
-    """`goldbox.amiga_later.write_later` passes `thac0_floor=False`: what an
-    Amiga build stores for this magic-user is unknown, so it keeps the value
-    it had before the limit existed."""
+def test_a_c64_magic_user_of_level_five_arrives_at_an_amiga_holding_40(title):
+    """The later Amiga import/training loop reads every level-zero row."""
     char = _char(title, {"magic-user": 5}, "C64")
-    assert combat_value(_stored(char, thac0_floor=False)) == 21
+    assert _amiga_stored(char) == COMBAT_BIAS - 20
+    assert combat_value(_amiga_stored(char)) == 20
 
 
 @pytest.mark.parametrize("title", LATER)
@@ -176,6 +185,7 @@ def test_a_source_that_is_not_the_c64_keeps_its_own_byte(title, port):
     char = _char(title, {"magic-user": 5}, port)
     char.set("thac0_base", COMBAT_BIAS - 21, "the source's own byte")
     assert combat_value(_stored(char)) == 21
+    assert combat_value(_amiga_stored(char)) == 21
 
 
 # --- the specimen this was found on -----------------------------------------
