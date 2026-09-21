@@ -15,7 +15,7 @@ from support.editorwindow import make_root
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel, QWidget
+from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
 
 from editor.binding import (
     binding_for,
@@ -4482,6 +4482,191 @@ def test_a_dos_party_can_be_opened_from_a_source(tmp_path):
     _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
     party = Party(Source.detect(tmp_path))
     assert len(party) == 3 and party.path == str(tmp_path)
+
+
+def test_a_dos_folder_source_can_name_its_second_slot(tmp_path):
+    """Opening a folder must preserve the slot chosen after its scan."""
+    from editor.convert import Source
+    from goldbox import dos_port
+
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    (tmp_path / "SAVGAMB.DAT").write_bytes(b"")
+    # A real second record has the same measured length, which is all Source
+    # needs to identify its title.
+    (tmp_path / "CHRDATB1.SAV").write_bytes(
+        (tmp_path / "CHRDATA1.SAV").read_bytes())
+
+    source = Source.detect(tmp_path, slot="B")
+    assert source.slot == "B"
+    assert source.available_slots == ["A", "B"]
+
+
+def test_a_dos_folder_skips_an_incomplete_slot_and_opens_the_valid_one(
+        tmp_path):
+    """A damaged first slot must not hide the usable second saved game."""
+    from editor.convert import Source
+    from goldbox import dos_port
+
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    valid = (tmp_path / "CHRDATA2.SAV").read_bytes()
+    (tmp_path / "CHRDATA1.SAV").unlink()
+    (tmp_path / "SAVGAMB.DAT").write_bytes(b"")
+    (tmp_path / "CHRDATB1.SAV").write_bytes(valid)
+
+    source = Source.detect(tmp_path)
+    assert source.slot == "B"
+    assert source.available_slots == ["B"]
+
+
+def test_save_as_leaves_a_native_dos_save_untouched(app, tmp_path, monkeypatch):
+    """A native party never retargets Save As to a C64 file it cannot write."""
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    before = {path: path.read_bytes() for path in tmp_path.iterdir()
+              if path.is_file()}
+    binding = EditorBinding(make_root(), str(tmp_path))
+    binding.roster.selectRow(0)
+    binding._widgets["gold"].setValue(1234)
+    binding._edited()
+    target = tmp_path / "copy.d64"
+    monkeypatch.setattr(
+        "editor.window.QFileDialog.getSaveFileName",
+        lambda *_args: (str(target), ""))
+
+    binding.save_as()
+
+    assert {path: path.read_bytes() for path in before} == before
+    assert not target.exists()
+    assert not binding._child("button_save_as").isEnabled()
+
+
+def test_open_toolbar_buttons_keep_their_floor_and_height_at_supported_fonts(
+        app):
+    """Both direct-open controls remain part of the sized toolbar."""
+    from PyQt6.QtGui import QFont
+
+    from editor.window import TOOLBAR_BUTTON_MIN_WIDTH, EditorBinding
+
+    base, heights = app.font(), []
+    try:
+        for extra in (0, 6, 10):
+            font = QFont(base)
+            font.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(font)
+            binding = EditorBinding(make_root())
+            buttons = [binding._child(name) for name in (
+                "button_open_file", "button_open_folder")]
+            assert all(button is not None for button in buttons)
+            if extra == 0:
+                for button in buttons:
+                    assert button.minimumWidth() >= TOOLBAR_BUTTON_MIN_WIDTH
+                    assert (button.minimumSizeHint().width()
+                            >= button.fontMetrics().horizontalAdvance(button.text()))
+            heights.append([button.minimumSizeHint().height()
+                            for button in buttons])
+    finally:
+        app.setFont(base)
+    assert heights == sorted(heights)
+
+
+def test_a_folder_source_starts_the_next_picker_inside_that_folder(tmp_path):
+    """A DOS folder is itself the last place opened, not a file beside it."""
+    from editor import files
+
+    folder = tmp_path / "SAVE"
+    folder.mkdir()
+    assert files.open_start_dir("", folder) == str(folder)
+    assert files.automatic_dir(folder) == folder / "backups"
+
+
+def test_open_buttons_choose_their_source_without_a_wrapper_dialog(
+        app, tmp_path, monkeypatch):
+    """The two controls each invoke the native picker once and load its path."""
+    from editor.window import (
+        OPEN_FILE_TEXT,
+        OPEN_FILTER,
+        OPEN_FOLDER_TEXT,
+        OPEN_TITLE,
+        EditorBinding,
+    )
+
+    root = make_root()
+    binding = EditorBinding(root)
+    picked, loaded = {}, []
+
+    def choose_file(_parent, title, directory, file_filter):
+        picked["file"] = (title, directory, file_filter)
+        return str(tmp_path / "save.adf"), ""
+
+    def choose_folder(_parent, title, directory):
+        picked["folder"] = (title, directory)
+        return str(tmp_path / "SAVE")
+
+    monkeypatch.setattr("editor.window.QFileDialog.getOpenFileName", choose_file)
+    monkeypatch.setattr("editor.window.QFileDialog.getExistingDirectory",
+                        choose_folder)
+    monkeypatch.setattr(binding, "load", loaded.append)
+
+    binding.open_file()
+    binding.open_folder()
+
+    assert picked["file"] == (OPEN_TITLE, "", OPEN_FILTER)
+    assert picked["folder"] == (OPEN_TITLE, "")
+    assert loaded == [str(tmp_path / "save.adf"), str(tmp_path / "SAVE")]
+    assert root.findChild(QPushButton, "button_open_file").text() == OPEN_FILE_TEXT
+    assert (root.findChild(QPushButton, "button_open_folder").text()
+            == OPEN_FOLDER_TEXT)
+
+
+def test_opening_a_multi_slot_dos_folder_uses_the_slot_picker(
+        app, tmp_path, monkeypatch):
+    """The picker is conditional and its selected letter reaches the party."""
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    (tmp_path / "SAVGAMB.DAT").write_bytes(b"")
+    (tmp_path / "CHRDATB1.SAV").write_bytes(
+        (tmp_path / "CHRDATA1.SAV").read_bytes())
+    shown = []
+
+    class PickB:
+        def __init__(self, slots, _parent):
+            shown.append(slots)
+
+        def exec(self):
+            from PyQt6.QtWidgets import QDialog
+            return QDialog.DialogCode.Accepted
+
+        @property
+        def slot(self):
+            return "B"
+
+    monkeypatch.setattr("editor.window.SlotPicker", PickB)
+    binding = EditorBinding(make_root())
+    binding.load(str(tmp_path))
+
+    assert shown == [["A", "B"]]
+    assert binding.party.source.slot == "B"
+    assert [member.name for member in binding.party.members] == ["HERO1"]
+
+
+def test_opening_a_one_slot_dos_folder_skips_the_slot_picker(
+        app, tmp_path, monkeypatch):
+    """A one-slot source opens immediately, with no question to answer."""
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    monkeypatch.setattr(
+        "editor.window.SlotPicker",
+        lambda *_args: pytest.fail("a one-slot source opened a slot picker"))
+    binding = EditorBinding(make_root())
+    binding.load(str(tmp_path))
+
+    assert binding.party.source.slot == "A"
 
 
 def test_a_dos_party_has_one_path_whether_opened_from_its_file_or_its_folder(

@@ -169,13 +169,12 @@ class Source:
     in `savgam<slot>.dat`; it stays `None` for a C64 source, which has none.
 
     `available_slots` is every slot the source actually holds files for --
-    `None` for a DOS or a C64 source, which the dialog's own save picker or
-    file choice already names exactly one slot for (`_SAVGAM_FILE_RE`'s
-    comment). An Amiga `.adf` has no per-file equivalent: every slot lives
-    inside the one image, so this is what the dialog's slot row
+    `None` for a C64 source or a DOS save file, which already names exactly
+    one slot through `_SAVGAM_FILE_RE`. A DOS save folder and an Amiga `.adf`
+    can each hold several saved games, so this is what the editor's slot row
     (`#372 (An Amiga disk with more than one saved game converts its first
     slot, whichever one the player meant)`) is built from, and it is a list
-    of one for an Amiga disk that only ever had one game saved to it.
+    of one when either source holds only one saved game.
     """
 
     port: str                      # "c64", "dos" or "amiga"
@@ -218,9 +217,8 @@ class Source:
 
         `slot` names which of an Amiga disk's several saved games to read --
         the dialog's own slot row passes the letter the player chose. Every
-        other branch ignores it: a C64 disk holds one saved game, a DOS
-        folder or file already names its own slot, and neither has a row to
-        pick a different one from.
+        other branch ignores it: a C64 disk holds one saved game and a DOS
+        save file already names its own slot.
         """
         path = pathlib.Path(path)
         # Both sides resolved: a caller may hand us a relative path where
@@ -242,7 +240,7 @@ class Source:
                              if party.save1 is not None else None),
                       disk=party.disk.to_bytes())
         if path.is_dir():
-            return cls._detect_dos_folder(path)
+            return cls._detect_dos_folder(path, slot)
         if path.is_file():
             if not cls.looks_like_a_save(path):
                 return cls._detect_c64_disk(path)
@@ -254,19 +252,22 @@ class Source:
             f"{path} is neither a save disk nor a DOS save folder")
 
     @classmethod
-    def _detect_dos_folder(cls, path: pathlib.Path) -> "Source":
+    def _detect_dos_folder(cls, path: pathlib.Path,
+                           slot: str | None = None) -> "Source":
         slots = _dos_slots(path)
         if not slots:
             raise ConvertError(f"{path} holds no DOS saved game")
-        return cls._detect_dos_file(path, slots[0])
+        chosen = slot if slot in slots else slots[0]
+        return cls._detect_dos_file(path, chosen, available_slots=slots)
 
     @classmethod
-    def _detect_dos_file(cls, folder: pathlib.Path, slot: str) -> "Source":
+    def _detect_dos_file(cls, folder: pathlib.Path, slot: str,
+                         available_slots: list[str] | None = None) -> "Source":
         """The DOS shape at `folder`, for the save at `slot`.
 
         The one thing the two callers above disagree on is which slot: a
         bare folder (`tools/dos/dosdisk.py`, `tools/dos/dosnewsave.py`, and the
-        Step 1 tests) takes the first one `_dos_slots` finds, and a
+        Step 1 tests) takes the first complete slot `_dos_slots` finds, and a
         `SAVGAM<slot>.DAT`/`.PTY` file picked directly -- the dialog's own
         save picker -- names its own. Either way the title comes off
         `CHRDAT<slot>1.SAV`'s own size (`goldbox.dos_port.deltas_for`),
@@ -281,7 +282,8 @@ class Source:
             shape = dos_port.deltas_for(record.stat().st_size)
         except dos_port.DosDeltasError as exc:
             raise ConvertError(str(exc)) from exc
-        return cls(port="dos", title=shape, path=folder, slot=slot)
+        return cls(port="dos", title=shape, path=folder, slot=slot,
+                   available_slots=available_slots)
 
     @classmethod
     def _detect_amiga_disk(cls, path: pathlib.Path,
@@ -302,9 +304,8 @@ class Source:
         convert. Every slot it finds is kept as `available_slots`, which is
         what the dialog's slot row lists (`#372 (An Amiga disk with more
         than one saved game converts its first slot, whichever one the
-        player meant)`) -- a DOS folder has no row because `SAVGAM<slot>.DAT`
-        picked directly already names its own slot; an `.adf` has no
-        per-file equivalent, since every slot lives inside the one image.
+        player meant)`) -- a DOS save file already names its own slot, while
+        a folder and an `.adf` can each hold several saved games.
         A `slot` the disk does not actually hold files for is treated the
         same as none named, rather than raised on -- the combo below is
         always built from `available_slots`, so this can only happen when a
@@ -375,7 +376,7 @@ AMIGA_SUFFIX = ".adf"
 
 
 def _dos_slots(folder: pathlib.Path) -> list[str]:
-    """Slot letters present, from either save-container suffix.
+    """Complete and readable slot letters, from either save-container suffix.
 
     `goldbox.dos_codec.slots_available` only globs `SAVGAM?.DAT`, which finds every
     title but Pools of Darkness -- its container is `SAVGAM?.PTY`
@@ -386,7 +387,20 @@ def _dos_slots(folder: pathlib.Path) -> list[str]:
     slots = set()
     for pattern in ("SAVGAM?.DAT", "SAVGAM?.PTY"):
         slots.update(p.name[6] for p in folder.glob(pattern))
-    return sorted(slots)
+    return [slot for slot in sorted(slots)
+            if _dos_slot_is_readable(folder, slot)]
+
+
+def _dos_slot_is_readable(folder: pathlib.Path, slot: str) -> bool:
+    """Whether a slot has a readable first character record of a known shape."""
+    record = folder / f"CHRDAT{slot}1.SAV"
+    try:
+        with record.open("rb") as source:
+            source.read(1)
+        dos_port.deltas_for(record.stat().st_size)
+    except (OSError, dos_port.DosDeltasError):
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1899,9 +1913,8 @@ class ConvertDialog(QDialog):
         """The slot combo on the `From` row: shown only when the source
         names more than one saved game (`#372 (An Amiga disk with more than
         one saved game converts its first slot, whichever one the player
-        meant)`) -- an Amiga `.adf` today, since a DOS folder or file
-        already names its own slot through the save picker and has nothing
-        to list here.
+        meant)`) -- an Amiga `.adf` or a DOS save folder, while a DOS save
+        file already names its own slot through the save picker.
 
         **A widget's own visibility, not a form row's**, since 2026-09-09
         (`#413 (The Convert window changes shape depending on which

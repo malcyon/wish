@@ -229,17 +229,25 @@ those numbers.
 
 ## Opening and saving
 
-Two buttons on the form, `button_open` and `button_save`, wired to `QAction`s so
-the menu and the shortcuts (`Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`) share one
-implementation. Named, so Designer can move them like anything else.
+The selected replacement design is [Open and Save As in the Character
+Editor](227-editor-open-save-as.md): split Open and Save controls, with native
+copies and platform conversion through Save As. The behavior below describes
+the existing implementation; the separate design records the change because
+the editor will own the complete save workflow.
 
-**Open** is a `QFileDialog` filtered to `*.d64` plus all-files. Only disk images
-are offered: a `.chr` export is a file *inside* a D64, not on the host, so there
-is nothing else to pick.
+The form has `button_open_file`, `button_open_folder` and `button_save`, wired
+to `QAction`s so the menu and the shortcuts (`Ctrl+O`, `Ctrl+S`,
+`Ctrl+Shift+S`) share one implementation. Named, so Designer can move them like
+anything else.
 
-**Save writes back to the file you opened.** No forced new filename, no
-`-EDITED` suffix. *Save As* opens the dialog if you want a copy; plain Save does
-not ask.
+**Choose a save file** opens a `QFileDialog` for C64 and Amiga disk images or a
+DOS save-container file. **Choose a DOS save folder** opens a folder picker.
+Either source shows a slot picker only when it contains more than one complete
+saved game.
+
+**Save writes back to the file or folder you opened.** No forced new filename,
+no `-EDITED` suffix. *Save As* opens the dialog for a C64 save if you want a
+copy; native DOS and Amiga saves keep writing back to their original source.
 
 That is a deliberate departure from the CLI, which **refuses** to write over its
 input (`tools/wish.py`, "--output must differ from the original save"). The CLI

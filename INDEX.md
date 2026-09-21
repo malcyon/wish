@@ -5,7 +5,7 @@ What each directory in this repository is for; the API documentation is at https
 | directory | purpose |
 |---|---|
 | [`goldbox/`](goldbox/README.md) | The game's formats, decoded — character records, save games, maps, items, spells — with no Qt, no emulator and no transport. |
-| [`editor/`](editor/README.md) | The character editor GUI, which opens a `.D64` and writes it back and imports nothing from `automap/`, so it works with no emulator anywhere. |
+| [`editor/`](editor/README.md) | The character editor GUI, which opens C64 and Amiga save files or DOS save folders, writes them back, and imports nothing from `automap/`, so it works with no emulator anywhere. |
 | [`automap/`](automap/README.md) | The live automapper: everything that knows about a running machine — the VICE client, the map state, the rendering geometry, the window. |
 | [`wish/`](wish/README.md) | The application that wraps the other two — the tabbed window, preferences, the debug log, the backend session, the CLI entry point. |
 | [`ui/`](ui/README.md) | Shared widget-level helpers both GUIs use: the app icon, icon painting, the icon path data. |

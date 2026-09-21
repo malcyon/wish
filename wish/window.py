@@ -203,19 +203,29 @@ class WishWindow(QMainWindow):
     def _menu(self) -> None:
         """File actions, so the keys work from either tab.
 
-        The editor's own buttons stay: this is the same three calls, reachable
+        The editor's own buttons stay: these are the same calls, reachable
         without going back to the editor tab to click them.
         """
         menu = self.menuBar().addMenu("&File")
+        from editor.window import OPEN_FILE_TEXT, OPEN_FOLDER_TEXT
+        self.save_as_action = None
         for text, slot, key in (
-                ("&Open…", self.editor.open_file, QKeySequence.StandardKey.Open),
+                (OPEN_FILE_TEXT, self.editor.open_file,
+                 QKeySequence.StandardKey.Open),
+                (OPEN_FOLDER_TEXT, self.editor.open_folder, None),
                 ("&Save", self.editor.save, QKeySequence.StandardKey.Save),
                 ("Save &As…", self.editor.save_as,
                  QKeySequence.StandardKey.SaveAs)):
             action = QAction(text, self)
-            action.setShortcut(key)
+            if key is not None:
+                action.setShortcut(key)
             action.triggered.connect(lambda _checked=False, s=slot: s())
             menu.addAction(action)
+            if text == "Save &As…":
+                self.save_as_action = action
+        if self.save_as_action is not None:
+            party = self.editor.party
+            self.save_as_action.setEnabled(party is None or party.port == "c64")
 
         # One entry for every direction the registry holds, rather than a
         # submenu per port -- `#52 (File ▸ Import and File ▸ Export for
@@ -473,8 +483,12 @@ class WishWindow(QMainWindow):
                 self.settings.backup_folder = where
                 self.settings.save()
         self.editor.set_backup_folder(self.settings.backup_folder or "")
+        if getattr(self, "save_as_action", None) is not None:
+            party = self.editor.party
+            self.save_as_action.setEnabled(party is None or party.port == "c64")
         if self.editor.path:
-            folder = str(self.editor.path.parent)
+            from editor.files import source_folder
+            folder = str(source_folder(self.editor.path))
             if folder != (self.settings.last_save_folder or ""):
                 self.settings.last_save_folder = folder
                 self.settings.save()

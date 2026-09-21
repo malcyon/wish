@@ -1492,9 +1492,16 @@
         <item>
          <layout class="QHBoxLayout" name="buttons">
           <item>
-           <widget class="QPushButton" name="button_open">
+           <widget class="QPushButton" name="button_open_file">
             <property name="text">
-             <string>&amp;Open…</string>
+             <string>Choose a save file…</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="button_open_folder">
+            <property name="text">
+             <string>Choose a DOS save folder…</string>
             </property>
            </widget>
           </item>
