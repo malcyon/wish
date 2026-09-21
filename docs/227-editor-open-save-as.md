@@ -1,16 +1,21 @@
 # Open and Save As in the Character Editor
 
-**Design selected; implementation pending.** Donald selected option C on
-2026-09-21 for #511 (Open a DOS save folder and an Amiga save disk in the
-Character Editor, so editing a DOS character does not mean two conversions):
-split Open and Save buttons, with the destination platform chosen from Save's
-menu. Compactness and fewer clicks take priority over a permanently visible
-Save As button or destination row.
+**Design selected; implementation pending.** The Character Editor will open
+C64, DOS and Amiga saves and save to any supported platform through two split
+buttons. Each button has a main action and a separate menu arrow: Open opens a
+save file, while its arrow also offers a DOS folder picker; Save updates the
+current save, while its arrow offers Save As C64, Save As DOS and Save As Amiga.
 
-This replaces the separate File > Convert workflow and the earlier direct-open
-prototype as the intended design. It also withdraws the initial proposal for
-conversion warnings: Donald explicitly rejected any dropped-fields panel.
-The existing editor is described in [The character editor](97-editor.md).
+Choosing a destination platform reveals a compact section for its output path
+inside the editor. It stays hidden during ordinary editing. This replaces the
+separate File > Convert workflow, keeping conversion beside the save being
+edited without a permanent row of destination controls. Conversion must
+preserve the player's data; there is no dropped-fields panel.
+
+Donald approved this layout on 2026-09-21 for #511 (Open a DOS save folder and an
+Amiga save disk in the Character Editor, so editing a DOS character does not
+mean two conversions), prioritizing compactness and fewer clicks. The existing
+editor is described in [The character editor](97-editor.md).
 
 ## Selected layout
 
@@ -56,7 +61,7 @@ Do not insert a conversion wizard or a success acknowledgement.
 File-menu actions call the same handlers. Ctrl+O opens a file, Ctrl+S saves,
 and Ctrl+Shift+S opens the destination-platform menu. Preserve Preview changes
 as the comparison of the player's edits, not a conversion-loss report.
-The menu labels above come from the selected option; additional necessary
+The menu labels above are part of the approved layout; additional necessary
 player-facing wording still follows the GUI-text rule before implementation.
 
 ## Save behavior
@@ -148,7 +153,7 @@ the actual title's supported directions plus its native-copy operation.
 |---|---|---|
 | 1. Capture current edits | Reverse-engineering agent: new `editor/saveplan.py`, native assembly in `editor/window.py::_write_back`, source/rehearsal interfaces in `editor/convert.py`, focused new `tests/editor/test_saveplan.py` | An isolated snapshot combines original native data with all pending edits, including inventory and supported traits/effects. Preparing it writes neither source files nor live editor baselines. C64, DOS and Amiga conversions consume it. |
 | 2. Prepare and publish | Reverse-engineering agent: `editor/saveplan.py`, `editor/convert.py`, `editor/files.py`, relevant conversion/editor tests | Extract asset resolution, rehearsal and output preparation from `ConvertDialog`. Add native copies, validation, loss refusal, explicit output paths, backups and publication with recovery on failure. Return a destination descriptor and a validated party for adoption. |
-| 3. Wire option C | Qt UI specialist: `wish/window.ui`, generated `wish/ui_window.py`, `wish/window.py`, `editor/window.py`, editor/preferences/layout tests | Implement split buttons and the conditional destination section in Designer; connect toolbar, menus and shortcuts to one controller. Adopt the prepared destination only after successful publication. |
+| 3. Wire split Open and Save buttons | Qt UI specialist: `wish/window.ui`, generated `wish/ui_window.py`, `wish/window.py`, `editor/window.py`, editor/preferences/layout tests | Implement split buttons and the conditional destination section in Designer; connect toolbar, menus and shortcuts to one controller. Adopt the prepared destination only after successful publication. |
 | 4. Establish parity and retire Convert | Qt UI specialist after backend verification: obsolete conversion-dialog wiring/form, affected tests, `docs/97-editor.md`, `docs/117-save-conversion.md`, package inventory rows | Remove File > Convert and obsolete dialog code only when native copies and every previously available direction work from the editor. Retain the direction registry, codecs and conversion tests. |
 
 Stages are sequential; ownership transfers explicitly because they share files.
