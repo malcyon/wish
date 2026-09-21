@@ -200,6 +200,79 @@ disable the password check at save time.
 
 ---
 
+### Topic 4138: remaining leads and the converter's limits
+
+Rechecked all seven pages (replies 0–91) and GoldBoxEditor at
+[`f7d6a7fdb8b1a717216c2b862189362daa727ee4`](https://github.com/kblood/GoldBoxEditor/tree/f7d6a7fdb8b1a717216c2b862189362daa727ee4/GoldBoxEditor).
+The rows below add what the earlier sweep omitted. **PROBABLE** means a
+third-party observation not reproduced here; **GUESS** means an unresolved
+interpretation. Source-code behaviour is **CONFIRMED about that tool**, not
+about the game. DQK means Dark Queen of Krynn; DKK means Death Knights of Krynn.
+
+| Missing lead | Evidence and limit |
+|---|---|
+| DQK DOS spell arrays | **PROBABLE:** Joonas gives `0x0CE–0x156` for 137 memorised entries and `0x157–0x166` for a sixteen-byte known-spell bitset ([reply 18](https://forums.goldbox.games/index.php?topic=4138.15)). These are DQK offsets, not Pools of Darkness offsets. |
+| DQK may need a restart to see a newly exported character | **PROBABLE:** Caldor traced missing `.QCH` files to the directory listing cached at startup ([reply 15](https://forums.goldbox.games/index.php?topic=4138.15)). Useful when testing future DQK exports; not established for our supported titles. |
+| DKK effect-name extraction | **PROBABLE:** Joonas locates effect 1 at unpacked executable offset `0x10C95`, stride `0x26`, with 121 slots and the last named effect at 113; Berserk is 107 (`0x6B`) ([reply 37](https://forums.goldbox.games/index.php?topic=4138.30)). Preserve blank slots: Caldor's earlier guessed tables shift IDs. |
+| Item spell IDs need their context | **PROBABLE for FRUA:** Null Null reports that potion item ID 57 selects spell record 127, while character spell 57 means something else ([replies 47 and 55](https://forums.goldbox.games/index.php?topic=4138.45)). Matching some DQK item IDs does not establish the same dispatch there. Keep title and item/scroll/character context with an ID. |
+| Later item ability selectors | **PROBABLE:** Null Null gives selectors 0 for an activated spell, 128 for a granted effect, and 129/131/133 for Ring of Wizardry/Girdle of Giant Strength/Gauntlets of Ogre Power; the girdle's strength is reportedly 18 plus the second byte ([reply 58](https://forums.goldbox.games/index.php?topic=4138.45)). Verify per title before extending §6's general description. |
+| DKK item extraction has an unresolved tail | **GUESS:** Caldor finds five unexplained apparent records after extracting 17-byte DAX items, and reports two leading zero bytes in older item-type files, absent in Pools of Darkness ([replies 49, 53–57](https://forums.goldbox.games/index.php?topic=4138.45)). This is a parser check to investigate, not a settled record count. |
+| Caldor's DQK spell lists are disputed | **CONFIRMED disagreement:** Null Null challenges IDs 57–59, 66, 68, 97 and 99 ([replies 63, 65–70](https://forums.goldbox.games/index.php?topic=4138.60)); shared spell names also make name-only matching ambiguous. Do not import the lists as authoritative mappings. |
+| The final conversion remained unfinished | Caldor still reports DKK output the game will not recognise in [reply 91](https://forums.goldbox.games/index.php?topic=4138.90). The pending-spell observation in [reply 87](https://forums.goldbox.games/index.php?topic=4138.75), byte 251 for spell 123, only corroborates the high-bit convention already established in [`127-community-formats.md`](127-community-formats.md). |
+
+The source is less complete than the three declared maps suggest:
+
+| Confirmed implementation at the pinned revision | Consequence |
+|---|---|
+| [Save As targets DQK DOS](https://github.com/kblood/GoldBoxEditor/blob/f7d6a7fdb8b1a717216c2b862189362daa727ee4/GoldBoxEditor/Form1.cs#L251-L293). | It is not a general whole-save converter. |
+| [Effect export](https://github.com/kblood/GoldBoxEditor/blob/f7d6a7fdb8b1a717216c2b862189362daa727ee4/GoldBoxEditor/GoldBoxUtility.cs#L694-L721) replaces every duration with zero and modifier with 255, and manufactures link values. | It cannot validate running-effect preservation or establish duration units. |
+| [Amiga item import](https://github.com/kblood/GoldBoxEditor/blob/f7d6a7fdb8b1a717216c2b862189362daa727ee4/GoldBoxEditor/GoldBoxUtility.cs#L432-L460) swaps words at item offsets 4 and 6 and drops byte 17 from an 18-byte item. | A DQK hypothesis only. Our Pools of Darkness loader evidence establishes 20-byte nodes in [`124-amiga-port.md`](124-amiga-port.md). |
+| [Amiga map entries overlap](https://github.com/kblood/GoldBoxEditor/blob/f7d6a7fdb8b1a717216c2b862189362daa727ee4/GoldBoxEditor/GameMaps.cs#L235-L287): movement and cure count both use 136; cleric history and thief level both use 163. Attack fields extend through 409, beyond the declared item start of 406. | The field names are leads requiring independent verification. |
+| [Money and age](https://github.com/kblood/GoldBoxEditor/blob/f7d6a7fdb8b1a717216c2b862189362daa727ee4/GoldBoxEditor/GoldBoxUtility.cs#L291-L299) use host-endian signed `Int16` reads even for Amiga. | Small values can conceal a bad multi-byte read. |
+| [The DKK map](https://github.com/kblood/GoldBoxEditor/blob/f7d6a7fdb8b1a717216c2b862189362daa727ee4/GoldBoxEditor/GameMaps.cs#L349-L493) leaves item/effect widths zero; the loader divides by the effect width. | A declared map is not a working parser. |
+| [`FileHandler`](https://github.com/kblood/GoldBoxEditor/blob/f7d6a7fdb8b1a717216c2b862189362daa727ee4/GoldBoxEditor/Services/FileHandler.cs#L77-L96) loads external `GoldBoxData.json`, absent from the tracked tree. | The item/effect map classes do not supply the proposed cross-game database. |
+
+**Open-issue result:** none of these sources resolves a current blocker.
+For #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both),
+the exporter is a caution, not an independent check. For
+#194 (Import and export a Pools of Darkness save between DOS and the Amiga),
+the Krynn layouts add no verified Pools of Darkness fields. The DQK bitset
+and pending-spell flag do not explain the anomalous known-spell byte in
+#461 (One Pools of Darkness spellbook byte holds 8 where every other spellbook byte in 476 records holds 1).
+
+The forum text was readable through cached pages; direct HTTP and message-anchor
+requests failed. Links therefore identify pages plus reply numbers. Attachments
+were not examined, and no game experiment was performed.
+
+### Transferring characters into FRUA adventures
+
+Null Null proposes continuing an existing Gold Box party into a fan-made sequel
+in [reply 89](https://forums.goldbox.games/index.php?topic=4138.75);
+[replies 90–91](https://forums.goldbox.games/index.php?topic=4138.90) discuss the
+same use. **CONFIRMED proposal, not a demonstrated transfer.** Donald expressed
+interest during this review and asked that no new ticket be created.
+
+**PROBABLE feasibility:** the community already documents FRUA's 450-byte
+`CHR_10` record ([`127-community-formats.md`](127-community-formats.md)),
+`CCHFORM.TXT`, item records and special abilities (§6 and §9). That gives a
+starting format, not proof that a complete exported `.CCH` is 450 bytes or that
+an existing character will work unchanged.
+
+| Question | Evidence needed |
+|---|---|
+| Complete export format | Characters created, exported and reloaded by one named FRUA version; locate any appended items and effects. |
+| Character meaning across titles | Explicit race/class, dual-class, level, spell, item and effect mappings; matching names or numeric IDs alone is insufficient. |
+| Modified adventure compatibility | Inspect the destination's rules and item tables: FRUA modules can alter classes, spells and item names, so a stock-game mapping is not universal. |
+| Playable result | Join the exported characters to a FRUA party, save and reload, then check possessions, spell state and relevant effects in play. |
+
+A first experiment should use one source title/port and stock DOS FRUA.
+This would be a specific extension beyond Wish's current same-title conversion
+scope: characters enter a new adventure; the source campaign's quest flags and
+map position do not describe that adventure. No converter or interface was
+implemented by this review.
+
+---
+
 ## 4. Walls — the best format work on the board
 
 Two threads ten years apart, and between them they close the wall question for
@@ -445,12 +518,16 @@ before an encounter reduces the size of the enemy party.**
   of those tables in seven DOS executables and notes the per-title alphabet
   offset varies — Death Knights uses eight different alphabets across its fifty
   passwords.
-* **Text packing.** Every Gold Box game packs its strings **four characters into
+* **Text packing.** Gold Box ECL/script strings use **four characters into
   three bytes**, six bits each, with the compressed length in the byte before
   the string ([997](https://forums.goldbox.games/index.php?topic=997.0),
   [981](https://forums.goldbox.games/index.php?topic=981.0)). The C64 `ECL`
   strings use exactly this packing — `analysis6/ecl6.py::unpack` (scratch, deleted) is the
   VM's `$150A` unpacker, and it is what read every string quoted in §2's table.
+  This is not every string in an executable: topic 4138 reports fixed-width
+  Pascal strings ([replies 20/25](https://forums.goldbox.games/index.php?topic=4138.15))
+  and NUL-separated DQK effect names ([reply 43](https://forums.goldbox.games/index.php?topic=4138.30)),
+  which is why the earlier blanket claim is narrowed here.
 * **No file names a map.** Simeon Pilgrim, flatly: "there is no data in the game
   that names the `GEO` blocks"
   ([1272](https://forums.goldbox.games/index.php?topic=1272.0)). Area names are
@@ -502,7 +579,7 @@ a per-thread index with authors and post counts is
 | **`gbc.zorbus.net`** | Gold Box Companion, **ECL-Tool**, **ECL-Monitor** (a live ECL disassembler over a running DOSBox game, following the script PC and *editing* flags and operands — the closest existing thing to `wish`, on the other port), `savefiles_compared.txt` (already in `docs/60`), `formats.zip` |
 | **`frua.rosedragon.org`** | The FRUA archive; 137 of the 151 links resolve under `/pc/`. `pc/uashell/hackdocs.zip`, 202 KB, holds 56 text files including `SAVGAM.TXT`, `CCHFORM.TXT`, `GEOGRIDS.TXT`, `GEOEVENT.TXT`, `ITEM.TXT`/`ITEMS.TXT`, `VOCAB.TXT`, `SPECAB.TXT`, `VAULT.TXT`, `TLBFORM.TXT`. All FRUA, but it is the primary source most of the board is quoting |
 | **`github.com/simeonpilgrim/goldboxexplorer`**, **`github.com/bsimser/Gold-Box-Explorer`** | Gold Box Explorer, C# `DAX`/`GEO`/`ECL`/`GLB` plugins; version 1.2 added ECL decoding for most games, search, and a first-person map view ([3089](https://forums.goldbox.games/index.php?topic=3089.0)). The CodePlex original is gone. Its own users report it mis-sorts image resources and its PNG export is unreliable |
-| **`github.com/kblood/GoldBoxEditor`** | Caldor's cross-port character converter. Three offset maps, no C64 map — §3 |
+| **`github.com/kblood/GoldBoxEditor`** | Caldor's unfinished character converter: Save As targets DQK DOS; three declared maps, no C64 map, overlapping Amiga fields and effect durations discarded — §3 |
 | **`simeonpilgrim.com/blog`** | The cheat-code and code-wheel write-ups behind topics 1082 and 1133 |
 | **`web.archive.org`** | Carries `personal.inet.fi/koti/jhirvonen/gbc/` in full; `items/info.txt` (23 KB) and `items/por_items.txt` (99 KB) recovered — §6 |
 | **Blackthorn's DOS disassembly**, [4605](https://forums.goldbox.games/index.php?topic=4605.0), 2025– | A full DOS Pool of Radiance disassembly in progress, down to the Turbo Pascal v4–v6 libraries, feeding a revision of his GameFAQs guide; an unofficial bugfix build is the stated next step. Active, serious, and the only other person doing this on any port. He notes **v1.0 and v1.3 differ** in random item generation — a version axis we have not considered |
