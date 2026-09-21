@@ -11,7 +11,7 @@ The tests that start an emulator or talk to hardware, kept apart because the nor
 | `test_live_dosboxx.py` | Boots DOSBox-X and re-runs the debugger worked example of `docs/142-dosbox-x-debugger.md`. |
 | `test_live_c64u.py` | Reads the raster counter twice from a C64 Ultimate on the network and checks it moved; fails when the `c64u` command-line tool is missing or not executable, skips when the device does not answer. |
 
-A test belongs here when it starts an emulator or talks to a device; being in this directory is the opt-in, so there is no environment variable to set. The weekly run in the agent VM and a run by hand are the same command:
+A test belongs here when it starts an emulator or talks to a device; being in this directory is the opt-in, so there is no environment variable to set. Nothing runs them on a schedule; they are run by hand with:
 
 ```sh
 .venv/bin/python -m pytest livetests -n0 -rs

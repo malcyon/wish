@@ -1,7 +1,0 @@
-# Managed by Ansible — roles/agent-vm-guest.
-[Unit]
-Description=Run the suite's live tests
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/emulator-tests {{ agent_guest_live_tests | join(' ') }}

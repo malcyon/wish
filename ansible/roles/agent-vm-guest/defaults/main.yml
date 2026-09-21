@@ -234,20 +234,3 @@ agent_guest_claude_output_style: Concise
 agent_guest_claude_remote_control_at_startup: true
 # The session quality survey never appears in the guest: nobody is there to answer it.
 agent_guest_claude_feedback_survey_rate: 0
-
-# --- The weekly live tests --------------------------------------------------
-# The suite's `livetests/` directory holds the tests that boot an emulator or
-# talk to hardware, too slow for every pre-push run, so a systemd user timer
-# runs them weekly instead. A single directory target, not a file list, so a
-# test the wish repo adds under `livetests/` is picked up with no change here.
-agent_guest_live_tests:
-  - livetests
-agent_guest_emulator_tests_schedule: weekly
-agent_guest_emulator_tests_log_dir: "{{ ansible_user_dir }}/.cache/wish/emulator-tests"
-# Logs kept on disk: the newest, and the four before it.
-agent_guest_emulator_tests_keep: 5
-# A sentence a person would say, not a test name: also how a re-run finds an
-# issue it already filed, with `gh issue list --search`.
-agent_guest_emulator_tests_issue_title: "The weekly live tests are failing"
-# malcyon/wish, read off agent_guest_wish_repo rather than written out again.
-agent_guest_wish_slug: "{{ agent_guest_wish_repo | regex_replace('^https://github.com/', '') | regex_replace('\\.git$', '') }}"
