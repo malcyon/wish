@@ -139,14 +139,6 @@ def _weighted(char, count: int):
 
 # --- Pool of Radiance ---------------------------------------------------------
 
-#: What `write_por` cannot carry through, by neutral field.  DOS keeps the NPC
-#: control byte in `field_83_87`, and the Amiga re-cut writes that whole window
-#: as the six bytes the game's own records hold because the second insertion
-#: has never been located inside it, so `npc` and `npc_control_byte` come back
-#: as an ordinary player character and the report says nothing.
-_POR_NOT_CARRIED = {"npc": False, "npc_control_byte": None}
-
-
 def _por_readback(char):
     rec, itm, spc, rep = amiga_por.write_por(char)
     back = amiga_por.to_neutral(amiga_por.por_character(rec, itm, spc))
@@ -161,8 +153,7 @@ def test_por_a_boundary_character_writes_and_reads_back_whole(name):
     assert len(rec) == amiga_por.AMIGA_POR_RECORD_SIZE == 288
     assert rep.dropped == [], (name, rep.dropped)
     _only(rep.warnings, [_POR_PROVENANCE])
-    assert _mismatches(char, back, POR) == {
-        f: (char.get(f), v) for f, v in _POR_NOT_CARRIED.items()}, name
+    assert _mismatches(char, back, POR) == {}, name
 
 
 @pytest.mark.parametrize("name", sorted(boundarychars.CASES))
@@ -217,9 +208,29 @@ def test_por_the_three_insertions_and_the_chain_are_written_not_converted(
     rec, *_ = amiga_por.write_por(boundarychars.CASES[name]())
     assert rec[0x07F] == 0, "the first insertion"
     assert rec[0x080:0x084] == bytes(4), "the effect chain head"
-    assert rec[0x084:0x08A] == b"\x00\x00\x01\x00\x00\x00", (
-        "field_83_87 and the second insertion")
+    assert rec[amiga_por.AMIGA_POR_MONEY_PAD] == 0, "the second insertion"
     assert rec[0x11F] == 0, "the trailing pad"
+
+
+def test_por_a_companion_keeps_his_control_byte_and_his_share():
+    """`field_83_87` is converted, not written over.
+
+    The Amiga engine reads `0x085` as the control byte -- `/program` tests it
+    against `0x7F` and stores `0xB2` and `0xB3` into it -- and masks `0x086`
+    with 7 for the treasure split, so a companion who arrives with `0x085`
+    zero is an ordinary player character on the other side.
+    """
+    char = _distinct(boundarychars.CASES["warrior"]())
+    drec, *_ = dos_codec.write(char, into="Amiga",
+                               portraits=neutral_menu(POR))
+    rec, _itm, _spc, rep, back = _por_readback(char)
+    window = dos_port.FIELDS_BY_NAME["field_83_87"]
+    assert rec[0x084:0x089] == drec[window.span]
+    assert rec[0x085] == 0x9F, "bit 7 plus the morale the source held"
+    assert rec[0x086] == 3, "the treasure share, masked with 7 by the engine"
+    assert (back.get("npc"), back.get("npc_control_byte")) == (True, 0x9F)
+    assert back.get("treasure_share") == 3
+    assert rep.dropped == []
 
 
 @pytest.mark.parametrize("items", [0, 1, 16])
@@ -293,10 +304,9 @@ def test_por_every_field_the_record_holds_arrives_unchanged():
     drec, *_ = dos_codec.write(char, into="Amiga",
                                portraits=neutral_menu(POR))
     rec, *_ = amiga_por.write_por(char)
-    by_hand = {"name_length", "name_text", "experience", "field_83_87",
-               "effect_chain"}
+    by_hand = {"name_length", "name_text", "experience", "effect_chain"}
     covered = set(range(0x10)) | set(range(0x0AE, 0x0B2)) | set(
-        range(0x07F, 0x084)) | set(range(0x084, 0x08A)) | {0x11F}
+        range(0x07F, 0x084)) | {amiga_por.AMIGA_POR_MONEY_PAD, 0x11F}
     for f in dos_port.LAYOUT:
         if f.name in by_hand:
             continue

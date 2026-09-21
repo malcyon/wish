@@ -142,9 +142,12 @@ fourteen specimens (#27 (Decode the Amiga Pool of Radiance record, so a shared t
 1. one pad byte at `0x07F`, ahead of the effect pointer — zero in 14 of 14,
    and it is there because the Amiga keeps one `u32` where DOS keeps an
    offset word and a segment word, so a 68000 compiler even-aligns it;
-2. a second insertion **inside DOS `0x083`-`0x087`**, located to a window and
-   not to a byte: that region is zero in 12 of the 14, so no file
-   differential can place it. A ramp probe under the emulator is what would;
+2. one pad byte at **Amiga `0x089`**, between `field_83_87` and the `u16`
+   money block. This said "inside DOS `0x083`-`0x087`, located to a window
+   and not to a byte" until the two engines were read: no file differential
+   could place it because the region is zero in 12 of the 14, and §1.21 has
+   the reading that did — `field_83_87` is Amiga `0x084`-`0x088` at the `+1`
+   shift, so the pad is the byte after it;
 3. **one trailing byte at `0x11F`**, past DOS's last field. 285 + 2 is odd
    and the struct is padded to an even size; the byte is junk in 3 of 14 and
    zero in the rest, which is what an uninitialised pad looks like.
@@ -655,11 +658,11 @@ are byte-swapped; experience is one Amiga `u32` where DOS keeps a four-byte
 `u32le`; and the two live heap pointers — the effect chain and each
 item's `next` — are written NULL rather than converted.
 
-**Two regions are reported rather than guessed.** DOS `0x083`-`0x087`, where
-the second insertion is still unplaced, is written **zero** — DOS's own
-specimens hold `00 00 01 00 00` in 24 of 24, and copying that in would be
-putting a DOS value into a record built from an Amiga one. And the Amiga's
-trailing byte at `0x11F` has no DOS home. Both are named in the report.
+**One region is reported rather than guessed:** the Amiga's trailing byte at
+`0x11F`, which has no DOS home, and the report names it. DOS `0x083`-`0x087`
+was written zero here too while the second insertion was unplaced inside it;
+it is placed now (§1.21), so `field_83_87` is transposed like any other field
+and a companion's control byte crosses.
 
 ### 1.9a The Amiga Pool of Radiance saved game is a byte out (#28 (Decode an Amiga saved game, not just a character file))
 
@@ -1214,26 +1217,28 @@ in -- six on Pool of Radiance disk 1 and fourteen on the Curse save disk -- and
 earlier corpus was extracted into gitignored scratch and was lost,
 and every one of these tests was skipping until 2026-09-04.
 
-**The second insertion is narrowed from six candidate positions to three, and
-it is measured.** DOS holds `00 00 01 00 00` at `0x083`-`0x087` in 24 of 24
-specimens. On the Amiga that `01` reads at **`0x086`** in **8 of 20** -- all
-six `CHRDATA<n>.sav` the game itself wrote on disk 1, plus two of the fourteen
-`.cha` exports -- and `0x086` is `amiga_por_offset(0x085)`, which is where
-DOS's `01` lands only if the insertion sits *after* it. A pad at `0x084`,
-`0x085` or `0x086` would put the `01` at `0x087`, and **no specimen reads 1
-there**. So the insertion is one of `0x087`, `0x088`, `0x089`; the other twelve
-specimens hold six zeros and say nothing either way. PROBABLE, resting on the
-DOS constant being the same field on both ports.
+**The second insertion was narrowed here from six candidate positions to
+three, from the specimens alone.** DOS holds `00 00 01 00 00` at
+`0x083`-`0x087` in 24 of 24 specimens. On the Amiga that `01` reads at
+**`0x086`** in **8 of 20** -- all six `CHRDATA<n>.sav` the game itself wrote on
+disk 1, plus two of the fourteen `.cha` exports -- and `0x086` is
+`amiga_por_offset(0x085)`, which is where DOS's `01` lands only if the
+insertion sits *after* it. A pad at `0x084`, `0x085` or `0x086` would put the
+`01` at `0x087`, and **no specimen reads 1 there**. So the insertion was one of
+`0x087`, `0x088`, `0x089`.
 
-All three survivors are zero in all twenty, so **a writer does not have to know
-which**: `AMIGA_POR_FIELD_83_87` is the six bytes `00 00 01 00 00 00` and it is
-right whichever one the pad turns out to be. `AMIGA_POR_UNPLACED` is
-deliberately *not* narrowed to match -- the reader's refusal exists to stop a
-caller guessing, and this reading is an inference rather than a probe.
+**It is `0x089`, and the writer did have to know which** -- §1.21 reads it out
+of two executables. The claim this paragraph rested on, that all three
+survivors are zero in all twenty so a writer need not know, is true of the pad
+and false of the two bytes beside it: `0x087` and `0x088` are DOS `0x086` and
+`0x087`, and writing the six-byte constant `00 00 01 00 00 00` over the window
+threw away the control byte and the treasure share with it (#614 (A converted
+companion arrives at Amiga Pool of Radiance as a player character, because
+write_por overwrites the NPC control byte and reports nothing)).
 
 **What the writer does with the three Amiga-only bytes**, each measured on the
-twenty specimens rather than assumed: `0x07F` zero (20 of 20), the `0x084`
-window as above, and `0x11F` zero (15 of 20, junk in the other five, which is
+twenty specimens rather than assumed: `0x07F` zero (20 of 20), `0x089` zero
+(20 of 20), and `0x11F` zero (15 of 20, junk in the other five, which is
 what an uninitialised pad looks like). The effect chain at `0x080` and each
 item's `next` at `0x02A` are written NULL, because they are live Amiga heap
 addresses and the engine relinks both on load.
@@ -1594,9 +1599,11 @@ one: `hidden` and `cursed` read **zero in all seventeen** nodes, so there is
 nothing to align the window against. `readied` at `0x034` is CONFIRMED (§1.9),
 which fixes the window's left edge and no more. A 68000 compiler pads
 immediately before the field that needs the alignment, which puts the pad at
-`0x037`, in front of the `u16` weight at `0x038` -- the same inference that
-places the record's own second insertion at the end of its window (§1.12), and
-the same grade: an inference, not a probe.
+`0x037`, in front of the `u16` weight at `0x038`. That is the same inference
+that put the record's own second insertion at the end of its window, and the
+record's turned out to be right when it was read out of the engines (§1.21) --
+which raises the odds here and is still not a probe. The grade stays an
+inference.
 
 ### 1.16 The `.pc` loader, read (#148 (The Amiga port's tools are gone, and phase 1 still needs the disassembler), phase 1)
 
@@ -2303,6 +2310,87 @@ path builder at `0x3F7D8` prefixes `SAVE` only on a hard-disk install and
 `DF0:` otherwise, leaving the name unqualified — so the file lands in whatever
 directory the game is in, and the shipped slots are in disk 3's `Save` drawer.
 PROBABLE, from the code; one `ENCAMP ▸ SAVE` settles it.
+
+### 1.21 Where Amiga Pool of Radiance keeps the NPC control byte, and the second insertion (#614 (A converted companion arrives at Amiga Pool of Radiance as a player character, because write_por overwrites the NPC control byte and reports nothing))
+
+`field_83_87` is Amiga **`0x084`-`0x088`**, the whole five bytes at the `+1`
+shift, and the second insertion is **`0x089`**, the alignment pad in front of
+the `u16` money block at `0x08A`. CONFIRMED, from two executables that agree,
+and it corrects §1.12's reading that the pad could be any of `0x087`, `0x088`
+and `0x089` and that a writer need not know which.
+
+What it cost while it was wrong: `goldbox.amiga_por.write_por` wrote the
+constant `00 00 01 00 00 00` over `0x084`-`0x089`, so a companion converted
+into Amiga Pool of Radiance arrived as an ordinary player character, his
+morale and his treasure share gone, with nothing in the conversion report.
+
+#### `/program`: the engine's own reads
+
+Every site found with `tools/amiga/amigarecordrefs.py` across all seventeen
+CODE hunks of `/program` and then read in `tools/amiga/amiga68k.py disasm`.
+File offsets into the executable:
+
+| where | what it does | what it says |
+|---|---|---|
+| `0x02DA28` | `cmpi.b #$7f, $85(a3)` / `bls` → the character takes one share; otherwise `moveq #$7, d0` / `and.b $86(a3), d0`, added to the split | `0x085` bit 7 is the engine-driven test; `0x086` is the treasure share, masked with 7 |
+| `0x02DB08` | `cmpi.b #$0, $86(a3)` | a share of zero is skipped, as DOS's `0x085` is |
+| `0x01B568`, `0x01B5C8` | `move.b $85(a0), d0` compared against `0x80`; RENAME is drawn only below it | a player character may be renamed, a companion may not |
+| `0x00B196` | `move.b #$b2, $85(a2)` while building a joining character's record | `0xB2` is bit 7 plus morale 50, stored halved |
+| `0x010290` | `cmpi.b #$7f, $85(a3)` / `bhi` / `move.b #$b3, $85(a3)` | the engine takes a character over |
+| `0x010244` | reads `$85(a3)`, compares it with `0xB3`, writes `0` | and hands him back: `0` is a player character |
+
+Those are the same three immediates — `0x00`, `0xB2`, `0xB3` — and the same
+`0x7F`/`0x80` comparisons that `goldbox/dos_codec.py`'s `FIELD_83_87` note
+records out of the DOS overlays. The split walks the party through
+`movea.l $106(a3), a3`, Amiga `0x106` = DOS `0x104` = `heap_104`, and its
+status test is `tst.b $10E(a3)` = DOS `0x10C` = `field_10c_10f`, which is the
+"status test" the DOS note names. Nothing in `/program` reaches `0x084`,
+`0x087` or `0x088`: the displacement search's candidates there are a `movep`,
+a `negx` and a word store into another struct, which agrees with the DOS
+reading that the first, fourth and fifth bytes have no site in any overlay.
+
+#### `/Curse`: Amiga Curse's Pool of Radiance importer places the window
+
+`/Curse` on Curse disk 1, file offset `0x02565E`, five consecutive one-byte
+copies from the source record in `a3` into the Curse record in `a2`:
+
+```
+02565e: move.b $84(a3), $f6(a2)
+025664: move.b $85(a3), $f7(a2)
+02566a: move.b $86(a3), $f8(a2)
+025670: move.b $87(a3), $f9(a2)
+025676: move.b $88(a3), $fa(a2)
+```
+
+[`166-amiga-records-from-the-code.md`](166-amiga-records-from-the-code.md) has
+Amiga Curse's `field_83_87` at `0x0F6`-`0x0FA` at shift 0, CONFIRMED from that
+title's own unpacker, and `/Curse` tests `$f7(a2)` against `0x7F` and `0x80`
+and stores `0xB2`, `0xB3` and `0` into it in some thirty places. So Pool of
+Radiance's `0x085` is the same field as Curse's `0x0F7`, which is DOS `0x084`.
+
+**`a3` is an Amiga record and not a packed DOS one**, which is what makes those
+five copies place the window rather than merely repeat it. The same routine
+copies `$a0(a3)` to `$11a(a2)`, and Curse `0x11A` is `sex` = DOS `0x119`; Pool
+of Radiance's `sex` is DOS `0x09E`, which is Amiga `0x0A0` under the `+2`
+shift. A DOS-layout source would have had `sex` at `0x09E` and `field_83_87` at
+`0x083`-`0x087`. `$2e(a3)` → `$74(a2)` is race to race, `$30(a3)` → `$76(a2)`
+the age word, and `$77(a3)` → `$ea(a2)` the eight thief percentages.
+
+#### What the twenty specimens hold
+
+| specimen | `0x084`-`0x089` |
+|---|---|
+| the six `CHRDATA<n>.sav` on disk 1 | `00 00 01 00 00 00` |
+| two of the fourteen `.cha` | `00 00 01 00 00 00` |
+| one `.cha`, a companion | `ff b2 00 00 00 00` |
+| the other eleven `.cha` | `00 00 00 00 00 00` |
+
+`0x089` is zero in 20 of 20, which is what a pad looks like. Placed through
+the `+1` shift, the six records the game itself wrote read `00 00 01 00 00` at
+DOS `0x083`-`0x087` — `goldbox/dos_codec.py`'s DOS constant byte for byte in
+24 of 24 DOS records, the same corroboration Curse's own placement got. The
+companion reads `0xB2` at `0x085`, the value `/program` `0x00B196` writes, and
+`0xFF` at `0x084`, so the first byte is not always zero either.
 
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 

@@ -61,44 +61,38 @@ if TYPE_CHECKING:          # avoided at runtime: goldbox.dos_codec is the
 # re-encoded, and three insertions.  Nothing here is a second field table --
 # the DOS one is read through a shift map, so the two cannot drift apart.
 #
-# The three insertions, measured on fourteen specimens (#27):
+# The three insertions, each located to the byte:
 #
-#   * `0x07F` -- one pad byte, zero in 14 of 14, ahead of the effect-chain
-#     pointer.  DOS keeps an offset word and a segment word there; the Amiga
-#     keeps one `u32` and a 68000 compiler even-aligns it.
-#   * somewhere in DOS `0x083`-`0x087` -- **located to a window, not a byte**.
-#     That region is zero in 12 of the 14, so no file differential can place
-#     it; what would is a ramp probe under the emulator.  The money block
-#     that follows is `u16`, so alignment says the pad is at the end of the
-#     window, but that is inference and is not graded.
+#   * `0x07F` -- one pad byte, zero in 20 of 20 specimens, ahead of the
+#     effect-chain pointer.  DOS keeps an offset word and a segment word
+#     there; the Amiga keeps one `u32` and a 68000 compiler even-aligns it.
+#   * `0x089` -- one pad byte before the `u16` money block, zero in 20 of 20.
+#     `docs/124-amiga-port.md` §1.21 has the two readings that place it:
+#     `/program` tests `0x085` against `0x7F` and masks `0x086` with 7, which
+#     are DOS's control byte and treasure share; and Amiga Curse's Pool of
+#     Radiance importer copies this record's `0x084`-`0x088` into Curse's own
+#     `field_83_87` at `0x0F6`-`0x0FA`, one byte for one.
 #   * `0x11F`, the last byte -- 285 + 2 is odd, and the struct is padded to an
-#     even size.  Junk in 3 of 14 and zero in the rest, which is what an
+#     even size.  Junk in 5 of 20 and zero in the rest, which is what an
 #     uninitialised pad looks like.
 #
 # So a DOS offset maps to an Amiga offset by adding 0 below `0x07F`, 1 through
-# the effect pointer, and 2 from the money block on.
+# `field_83_87`, and 2 from the money block on.
 AMIGA_POR_RECORD_SIZE = 288
 AMIGA_POR_NAME_SIZE = 16          # NUL-padded, where DOS has a count byte
 AMIGA_POR_PAD = 0x07F             # the first insertion
+AMIGA_POR_MONEY_PAD = 0x089       # the second, ahead of the money block
 AMIGA_POR_TAIL_PAD = 0x11F        # the third
 #: `(first DOS offset, bytes inserted before it)`, ascending.
 AMIGA_POR_SHIFTS = ((0x000, 0), (0x07F, 1), (0x088, 2))
-#: DOS offsets whose Amiga counterpart cannot be placed: the second insertion
-#: is somewhere inside this run, so every byte of it is suspect.
-AMIGA_POR_UNPLACED = range(0x083, 0x088)
 
 
 def amiga_por_offset(dos_offset: int) -> int:
     """Where a DOS record offset lands in the Amiga one.
 
-    Raises for the unplaced window rather than guessing: a caller that wants
-    those bytes has to say so and read them raw.
+    Every DOS offset has an answer: all three insertions are located, so the
+    map has no window it has to refuse.
     """
-    if dos_offset in AMIGA_POR_UNPLACED:
-        raise AmigaRecordError(
-            f"DOS offset {dos_offset:#05x} is inside {AMIGA_POR_UNPLACED.start:#05x}"
-            f"-{AMIGA_POR_UNPLACED.stop - 1:#05x}, where the second insertion "
-            f"has not been located; there is no Amiga offset to give")
     shift = 0
     for first, amount in AMIGA_POR_SHIFTS:
         if dos_offset >= first:
@@ -405,15 +399,10 @@ def amiga_por_effect_to_dos(node: bytes) -> bytes:
 #   * the two live pointers -- the effect chain and each item's `next` -- are
 #     written NULL rather than converted.  They are Amiga heap addresses.
 #
-# Two regions are **not** transposed and are reported instead of guessed:
-#
-#   * DOS `0x083`-`0x087`, where the second insertion has not been located.
-#     Those five bytes are written zero, which is what the Amiga's own six
-#     read in 11 of the 14 that could show anything.  DOS's own specimens
-#     hold `00 00 01 00 00` in 24 of 24, and copying that constant in would
-#     be putting a DOS value into a record built from an Amiga one --
-#     inheriting rather than measuring.  `goldbox/dos_codec.py` drops the field anyway;
-#   * the Amiga's trailing byte at `0x11F`, which DOS does not have.
+# One byte is **not** transposed: the Amiga's trailing pad at `0x11F`, which
+# DOS does not have.  `field_83_87` is transposed like anything else --
+# `0x084`-`0x088` are DOS's `0x083`-`0x087`, so the control byte and the
+# treasure share cross.
 DOS_RECORD_SIZE = dos_port.RECORD_SIZE
 
 
@@ -443,8 +432,7 @@ def to_dos_record(char: AmigaPorCharacter) -> bytes:
     out[exp.offset:exp.offset + 4] = int.from_bytes(
         char.raw[at:at + 4], "big").to_bytes(4, "little")
 
-    skip = {"name_length", "name_text", "experience",
-            "field_83_87", "effect_chain"}
+    skip = {"name_length", "name_text", "experience", "effect_chain"}
     for f in dos_port.LAYOUT:
         if f.name in skip:
             continue
@@ -490,8 +478,8 @@ def to_neutral(char) -> NeutralCharacter:
     The Amiga third of `goldbox/neutral.py`'s reader set, beside
     `goldbox.c64_codec.read` and `goldbox.dos_codec.to_neutral`.  It reports what it could
     not convert rather than filling it in: an item file the record's own count
-    disagrees with, a name that fills all sixteen bytes, and the unplaced
-    window.
+    disagrees with, a name that fills all sixteen bytes, and the trailing pad
+    DOS has no room for.
 
     An `AmigaCharacter` -- Curse or Silver Blades -- goes to
     :func:`to_neutral_later`, which reads its own title's field table.  The
@@ -533,8 +521,6 @@ def to_neutral(char) -> NeutralCharacter:
         out.warnings.append(
             f"The record counts {stored} items and {len(char.items)} were "
             f"read from the .itm file; the shorter of the two was used")
-    out.drop("Amiga 0x083-0x087: the second insertion is not located, so "
-             "those bytes were written zero rather than guessed")
     # No "DOS" (#389): this reader does not yet know which port the
     # character is going to -- an Amiga Pool of Radiance save converts to
     # the C64 as well as to DOS (`tests/convert/test_amigatoc64.py`), and naming DOS
@@ -620,38 +606,22 @@ def describe_unconverted_effect(node: bytes) -> str:
 #     node per `.spc` record and per `.itm` record on load and relinks them
 #     itself, which is what the reader measured in the other direction.
 #
-# Three bytes have no DOS source and are written rather than converted:
+# Three bytes have no DOS source and are written rather than converted, and
+# all three are pads:
 #
 #   * `0x07F`, the first insertion: zero in 20 of 20 specimens;
-#   * `0x089`ish, the second: see AMIGA_POR_FIELD_83_87 below;
+#   * `0x089`, the second, ahead of the `u16` money block: zero in 20 of 20;
 #   * `0x11F`, the trailing pad: junk in 5 of 20 and zero in 15, which is what
 #     an uninitialised pad looks like.  Zero is the value fifteen specimens
 #     hold and it is what the writer emits.
+#
+# `field_83_87` itself is converted, at `0x084`-`0x088`, which is what carries
+# a companion's control byte and his treasure share.  Placed there, the six
+# records the game itself wrote on disk 1 read `00 00 01 00 00` -- DOS's own
+# constant in 24 of 24 DOS records -- and the one companion among the twenty
+# specimens reads `0xB2` at `0x085`, the byte `/program` writes when the
+# engine takes a character over.
 
-#: Amiga `0x084`-`0x089`: DOS's `field_83_87` under the `+1` shift, plus the
-#: second insertion, whichever of the last three bytes it is.
-#:
-#: **This narrows the unplaced insertion and the measurement is new.**  DOS
-#: holds `00 00 01 00 00` at `0x083`-`0x087` in 24 of 24 specimens.  On the
-#: Amiga the `01` reads at `0x086` in **8 of 20** -- all six `CHRDATA<n>.sav`
-#: the game itself wrote on disk 1, and two of the fourteen `.cha` exports --
-#: and `0x086` is `amiga_por_offset(0x085)`, which is where DOS's `01` lands
-#: if the insertion is *after* it.  A pad at `0x084`, `0x085` or `0x086` would
-#: put the `01` at `0x087`, and no specimen reads 1 there.  So the insertion
-#: is one of `0x087`, `0x088` and `0x089`; the other twelve specimens read six
-#: zeros and say nothing either way.  All three candidates are zero in all
-#: twenty, so these six bytes are right whichever of them it turns out to be.
-AMIGA_POR_FIELD_83_87 = b"\x00\x00\x01\x00\x00\x00"
-AMIGA_POR_FIELD_83_87_AT = 0x084
-#: Where DOS's `01` lands in that window, and so the last Amiga offset the
-#: shift map is now *measured* to place rather than merely to assume.
-AMIGA_POR_INSERTION_AFTER = 0x086
-#: What is left of the second insertion: one of these three, all zero in all
-#: twenty specimens, which is why a writer does not have to know which.
-#: `AMIGA_POR_UNPLACED` is deliberately **not** narrowed to match -- the
-#: reader's refusal is a guard against guessing and this reading is PROBABLE,
-#: resting on the DOS constant being the same field on both ports.
-AMIGA_POR_INSERTION_CANDIDATES = (0x087, 0x088, 0x089)
 #: The Amiga offset of the `u32be` experience total.
 AMIGA_POR_EXPERIENCE = 0x0AE
 
@@ -668,21 +638,18 @@ POR_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
      "the effect chain: a live Amiga heap address. The engine allocates a "
      "node per .spc record on load and writes the head itself, which is what "
      "goldbox.dos_codec.WRITE_UNSOURCED records for the DOS field it maps onto"),
-    (AMIGA_POR_FIELD_83_87_AT, len(AMIGA_POR_FIELD_83_87),
-     "DOS's field_83_87 plus the second insertion, written as the six bytes "
-     "all six of the game's own disk-1 records hold; twelve of the fourteen "
-     "exported .cha files hold six zeros instead, so this one is written "
-     "rather than converted"),
+    (AMIGA_POR_MONEY_PAD, 1,
+     "the second insertion, a pad ahead of the u16 money block; zero in 20 "
+     "of 20 specimens, and the five bytes before it are DOS's field_83_87, "
+     "which is converted rather than written"),
     (AMIGA_POR_TAIL_PAD, 1,
      "the trailing pad, which the 285-byte DOS record has no room for; zero "
      "in 15 of 20 and uninitialised junk in the other five"),
 )
 
 #: DOS fields the record writer places itself rather than through the shift
-#: map: the name is re-cut, experience spans two DOS fields, and the unplaced
-#: window has no per-byte map to shift through.
-_POR_SPECIAL = frozenset(
-    {"name_length", "name_text", "experience", "field_83_87"})
+#: map: the name is re-cut and experience spans two DOS fields.
+_POR_SPECIAL = frozenset({"name_length", "name_text", "experience"})
 
 
 def _por_special(f) -> bool:
@@ -768,10 +735,6 @@ def from_dos_record(record: bytes) -> bytes:
     assert amiga_por_offset(exp.offset) == AMIGA_POR_EXPERIENCE
     out[AMIGA_POR_EXPERIENCE:AMIGA_POR_EXPERIENCE + 4] = int.from_bytes(
         record[exp.offset:exp.offset + 4], "little").to_bytes(4, "big")
-
-    out[AMIGA_POR_FIELD_83_87_AT:
-        AMIGA_POR_FIELD_83_87_AT + len(AMIGA_POR_FIELD_83_87)] = \
-        AMIGA_POR_FIELD_83_87
 
     for f in dos_port.LAYOUT:
         if _por_special(f):
@@ -940,11 +903,9 @@ def write_por(char: NeutralCharacter,
     rep.note(AMIGA_POR_PAD, 1,
              "0x07F: the first insertion, a pad ahead of the effect pointer. "
              "Zero in 20 of 20 Amiga specimens")
-    rep.note(AMIGA_POR_FIELD_83_87_AT, len(AMIGA_POR_FIELD_83_87),
-             "0x084-0x089: DOS's field_83_87 constant plus the second "
-             "insertion. 00 00 01 00 00 00 in all six records Amiga Pool of "
-             "Radiance itself wrote on disk 1; the insertion is one of the "
-             "last three bytes and all three are zero in all twenty")
+    rep.note(AMIGA_POR_MONEY_PAD, 1,
+             "0x089: the second insertion, a pad ahead of the money block. "
+             "Zero in 20 of 20 Amiga specimens")
     rep.note(AMIGA_POR_TAIL_PAD, 1,
              "0x11F: the trailing pad DOS has no room for. Zero in 15 of 20 "
              "specimens and uninitialised junk in the other five")
@@ -952,7 +913,16 @@ def write_por(char: NeutralCharacter,
     for f in dos_port.LAYOUT:
         if _por_special(f):
             continue
-        rep.note(amiga_por_offset(f.offset), f.size, converted(f.name))
+        at = amiga_por_offset(f.offset)
+        if f.name == "field_83_87":
+            # Noted byte by byte: the control byte and the treasure share
+            # carry their own DOS provenance, and one line for the whole run
+            # would hide both behind the constant the rest of it holds.
+            for i in range(f.size):
+                rep.note(at + i, 1, dosrep.sources.get(
+                    f.offset + i, converted(f.name)))
+            continue
+        rep.note(at, f.size, converted(f.name))
 
     for n in range(len(items)):
         base = AMIGA_POR_RECORD_SIZE + n * AMIGA_POR_ITEM_SIZE

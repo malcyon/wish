@@ -62,7 +62,6 @@ from goldbox.amiga_pod import (
 from goldbox.amiga_por import (
     AMIGA_POR_NAME_SIZE,
     AMIGA_POR_RECORD_SIZE,
-    AMIGA_POR_UNPLACED,
     AmigaPorCharacter,
     amiga_por_offset,
 )
@@ -736,17 +735,22 @@ def test_the_shift_map_places_the_three_regions_at_their_measured_offsets():
     assert amiga_por_offset(0x11C) == 0x11E      # movement_current, DOS's last
 
 
-def test_the_unplaced_window_refuses_rather_than_guessing():
-    """The second insertion is somewhere in DOS 0x083-0x087 and 12 of the 14
-    specimens are zero across it, so no offset there can be given. A map that
-    answered anyway would be believed."""
-    for dos_offset in AMIGA_POR_UNPLACED:
-        with pytest.raises(AmigaRecordError):
-            amiga_por_offset(dos_offset)
+def test_field_83_87_is_placed_at_the_plus_one_shift():
+    """The window the map used to refuse, from the engines' own code.
+
+    Amiga Curse's Pool of Radiance importer copies this record's
+    `0x084`-`0x088` into Curse's `field_83_87` at `0x0F6`-`0x0FA`, one byte
+    for one, and `/program` reads `0x085` as the control byte and masks
+    `0x086` with 7 for the treasure split -- DOS's `0x084` and `0x085`.
+    """
+    window = dos_port.FIELDS_BY_NAME["field_83_87"]
+    assert (window.offset, window.size) == (0x083, 5)
+    assert [amiga_por_offset(o) for o in range(window.offset, window.end)] == \
+        [0x084, 0x085, 0x086, 0x087, 0x088]
 
 
 def test_the_record_size_is_the_dos_record_plus_three():
-    """285 + one pad at 0x07F + one in the unplaced window + one trailing."""
+    """285 + one pad at 0x07F + one at 0x089 + one trailing."""
     assert AMIGA_POR_RECORD_SIZE == dos_port.RECORD_SIZE + 3
 
 
@@ -1006,7 +1010,6 @@ NOT_TRANSPOSED = {
     "name_length": "re-cut from 16 NUL-padded bytes to a count and fifteen",
     "name_text": "re-cut from 16 NUL-padded bytes to a count and fifteen",
     "effect_chain": "a live Amiga heap address; written NULL",
-    "field_83_87": "the unplaced window; written zero rather than guessed",
     "experience": "one u32 on the Amiga, DOS's four-byte field",
 }
 
@@ -1031,17 +1034,26 @@ def test_the_dos_recut_carries_every_field_it_does_not_declare_dropped():
         assert d.get("experience") == a.experience
 
 
-def test_the_recut_refuses_to_invent_the_unplaced_window():
-    """DOS holds `00 00 01 00 00` there in 24 of 24 specimens and the Amiga's
-    own bytes are zero.  Copying the DOS constant in would be putting a DOS
-    value into a record built from an Amiga one, which is the thing
-    `.claude/rules/conversions.md` forbids -- so the re-cut writes zero and
-    says so."""
+def test_the_recut_carries_the_window_the_engines_place():
+    """A free check on the window this re-cut used to write zero.
+
+    `goldbox/dos_codec.py` records `00 00 01 00 00` at DOS `0x083` in 24 of
+    24 Pool of Radiance records.  Placed at the `+1` shift, the six records
+    the game itself wrote on disk 1 read exactly that, and the one companion
+    among the twenty specimens comes out of the re-cut with his control byte
+    -- `0xB2`, the value `/program` stores when the engine takes a character
+    over.
+    """
+    window = dos_port.FIELDS_BY_NAME["field_83_87"]
+    seen = []
     for path in amiga_por_records():
         a = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
         record = amiga_por.to_dos_record(a)
-        window = dos_port.FIELDS_BY_NAME["field_83_87"]
-        assert record[window.span] == bytes(window.size), path
+        assert record[window.span] == a.raw[0x084:0x089], path
+        seen.append(record[window.span])
+    written = [s for s in seen if s == b"\x00\x00\x01\x00\x00"]
+    assert len(written) >= 6, [s.hex() for s in seen]
+    assert [s for s in seen if s[1] & 0x80] == [b"\xff\xb2\x00\x00\x00"]
 
 
 def test_the_neutral_record_carries_the_amiga_port_and_its_items():
@@ -1214,8 +1226,7 @@ def por_write_mask() -> set[int]:
         if f is None:
             return set()
         return {amiga_por_offset(o)
-                for o in range(f.offset, f.offset + f.size)
-                if o not in AMIGA_POR_UNPLACED}
+                for o in range(f.offset, f.offset + f.size)}
 
     for name, _ in dos_codec.WRITE_UNSOURCED:
         mask |= field(name)
@@ -1258,8 +1269,7 @@ def test_every_masked_field_is_one_the_declared_tables_name():
                 for o in range(first, first + size)}
     for offset in por_write_mask() - declared:
         hit = [f.name for f in dos_port.LAYOUT
-               if f.offset not in AMIGA_POR_UNPLACED
-               and amiga_por_offset(f.offset) <= offset
+               if amiga_por_offset(f.offset) <= offset
                < amiga_por_offset(f.offset) + f.size]
         assert hit and hit[0] in named, (hex(offset), hit)
 
@@ -1439,24 +1449,23 @@ def test_the_effect_chain_is_written_null():
     assert AmigaPorCharacter.from_bytes(written).effect_chain == 0
 
 
-def test_the_three_insertions_hold_what_the_specimens_hold():
-    """`0x07F` and `0x11F` zero, and the unplaced window's six measured bytes.
+def test_the_three_insertions_are_pads_and_are_written_zero():
+    """All three are zero in the specimens and all three are written zero.
 
-    The six are `00 00 01 00 00 00`, which every record Amiga Pool of
-    Radiance itself wrote on disk 1 holds -- DOS's `field_83_87` constant
-    under the `+1` shift, with the second insertion after it.
+    The second is `0x089`, between `field_83_87` and the `u16` money block:
+    `docs/124-amiga-port.md` §1.21 places it from Amiga Curse's own Pool of
+    Radiance importer, which copies this record's `0x084`-`0x088` into
+    Curse's `field_83_87` one byte for one.
     """
     record, _, _, _ = amiga_por.write_por(sample())
     assert record[amiga_por.AMIGA_POR_PAD] == 0
+    assert record[amiga_por.AMIGA_POR_MONEY_PAD] == 0
     assert record[amiga_por.AMIGA_POR_TAIL_PAD] == 0
-    at = amiga_por.AMIGA_POR_FIELD_83_87_AT
-    assert record[at:at + 6] == b"\x00\x00\x01\x00\x00\x00"
-    # The `01` lands two bytes into the window, which is where DOS's own
-    # sits under the `+1` shift -- and that is what narrows the second
-    # insertion to the three bytes after it rather than the three before.
-    assert at + 2 == amiga_por.AMIGA_POR_INSERTION_AFTER
-    assert all(o > amiga_por.AMIGA_POR_INSERTION_AFTER
-               for o in amiga_por.AMIGA_POR_INSERTION_CANDIDATES)
+    window = dos_port.FIELDS_BY_NAME["field_83_87"]
+    assert amiga_por_offset(window.end - 1) == \
+        amiga_por.AMIGA_POR_MONEY_PAD - 1
+    assert amiga_por_offset(dos_port.FIELDS_BY_NAME["copper"].offset) == \
+        amiga_por.AMIGA_POR_MONEY_PAD + 1
 
 
 def test_write_por_gives_a_character_his_own_menu_position():
@@ -1851,10 +1860,8 @@ def test_the_shift_map_covers_every_dos_field_the_writer_does_not_special_case()
     special = set(range(amiga_por.AMIGA_POR_NAME_SIZE))
     special |= set(range(amiga_por.AMIGA_POR_EXPERIENCE,
                          amiga_por.AMIGA_POR_EXPERIENCE + 4))
-    special |= set(range(amiga_por.AMIGA_POR_FIELD_83_87_AT,
-                         amiga_por.AMIGA_POR_FIELD_83_87_AT
-                         + len(amiga_por.AMIGA_POR_FIELD_83_87)))
-    special |= {amiga_por.AMIGA_POR_PAD, amiga_por.AMIGA_POR_TAIL_PAD}
+    special |= {amiga_por.AMIGA_POR_PAD, amiga_por.AMIGA_POR_MONEY_PAD,
+                amiga_por.AMIGA_POR_TAIL_PAD}
     assert covered | special == set(range(AMIGA_POR_RECORD_SIZE))
 
 
