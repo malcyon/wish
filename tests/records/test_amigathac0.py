@@ -49,6 +49,23 @@ def test_every_pinned_loop_instruction_is_checked_in_the_executable(key):
                        for error in errors), expected
 
 
+@pytest.mark.parametrize("key,at,replacement", [
+    ("curse-of-the-azure-bonds", 0x38A72, bytes.fromhex("4a03 6f7c")),
+    ("secret-of-the-silver-blades", 0x3C822, bytes.fromhex("4a03 6f74")),
+])
+def test_an_inserted_zero_level_guard_invalidates_the_unguarded_proof(
+        key, at, replacement):
+    """A level test and branch cannot hide in the index calculation."""
+    title, raw = _executable(key)
+    changed = bytearray(raw)
+    changed[at:at + len(replacement)] = replacement
+    mnemonic, operands = amigathac0._instruction(bytes(changed), at + 2)
+    assert mnemonic == "ble.b"
+    assert operands in ("$38af2", "$3c89a")
+    assert any(error.startswith(f"{at:#x}:")
+               for error in amigathac0.check(bytes(changed), title))
+
+
 def test_direct_pc_relative_callers_are_included():
     """The caller scan accepts both PC-relative jsr and bsr encodings."""
     raw = bytes.fromhex("4eba000e 6100000a 4e71 4e71 4e71 4e71 4e75")
