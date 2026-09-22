@@ -343,6 +343,29 @@ def test_renaming_a_paladin_leaves_his_cures_and_lay_on_hands_alone(
         assert rec.slice(0x012, 2) == bytes([cures, lay])
 
 
+def test_a_c64_write_does_not_claim_the_cure_and_lay_on_hands_bytes_for_the_name() -> None:
+    """#626: `write` used to `emit(name, ..., 20, ...)`, claiming 0x012 and
+    0x013 -- the paladin's cure-disease and lay-on-hands uses -- as part of
+    the name's provenance, so `Report.sources` hid that a converted paladin
+    gets zero in both instead of showing the loss.
+    """
+    from goldbox import c64_codec, neutral
+    from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS
+
+    char = neutral.NeutralCharacter("test", source="built here",
+                                     game=CURSE_OF_THE_AZURE_BONDS)
+    for name, value in {
+        "name": "GALAHAD", "level": 9, "levels": {"paladin": 9},
+        "class_bits": 0x40,
+    }.items():
+        char.set(name, value, "built here")
+    _, rep = c64_codec.write(char)
+    assert not rep.sources[0x012].startswith("name")
+    assert not rep.sources[0x013].startswith("name")
+    assert "paladin_cures" in rep.sources[0x012]
+    assert "lay_on_hands_uses" in rep.sources[0x013]
+
+
 def test_directory_names_are_a_separate_convention() -> None:
     raw = petscii.encode_directory_name("POOL DATA")
     assert len(raw) == petscii.DIR_NAME_SIZE

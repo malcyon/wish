@@ -723,12 +723,20 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     w = neutral.Writer(char, rep, into="C64", dropped=DROPPED, derived=DERIVED)
     use, emit = w.use, w.emit
 
-    # -- the name: 20 NUL-padded bytes ---------------------------------------
+    # -- the name: 18 NUL-padded bytes ---------------------------------------
     name = use("name")
     if name is not None:
         rec.set("name", name.value)
-        emit(name, "name", 0x000, 20,
-             ", re-padded to the C64's 20 NUL-padded bytes")
+        emit(name, "name", 0x000, _field("name").size,
+             ", re-padded to the C64's 18 NUL-padded bytes")
+    # 0x012 and 0x013, freed from the old 20-byte name field, are the
+    # paladin's cure-disease and lay-on-hands uses (#626).  Seeding them from
+    # a source is #600 stage 2 and not built here, so a converted paladin's
+    # sheet still reads zero for both; the two bytes are reported rather than
+    # silently claimed by the name above.
+    rep.note(0x012, 2,
+             "paladin_cures/lay_on_hands_uses: zero -- not seeded yet (#600 "
+             "stage 2)")
 
     for field, c64_name in DIRECT:
         # Recomputed below rather than copied (#366, #405): `DIRECT` still
@@ -1525,7 +1533,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
 # ---------------------------------------------------------------------------
 #: Neutral fields the writer takes by a rule rather than by a copy.
 TRANSFORMED: tuple[tuple[str, str], ...] = (
-    ("name", "re-padded into the C64's 20 NUL-padded bytes at 0x000"),
+    ("name", "re-padded into the C64's 18 NUL-padded bytes at 0x000"),
     ("levels", "permuted onto the C64's eight slots, which are indexed by the "
                "class bit; a class with no bit is reported"),
     ("spells_known", "packed into the C64 mask at 0x078, as many bytes of it "
@@ -1966,7 +1974,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                     grade(c64_name))
 
     out.set("name", rec.get("name"),
-            "the C64's 20 NUL-padded bytes at 0x000", grade("name"),
+            "the C64's 18 NUL-padded bytes at 0x000", grade("name"),
             Provenance.RESHAPED)
 
     for neutral_name, c64_name in DIRECT:
