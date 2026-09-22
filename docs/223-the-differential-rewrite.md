@@ -314,12 +314,28 @@ against it, which is shorter than six lists and says the same thing.
 
 | port and title | read-only on all 12 | writable on some characters and not others |
 |---|---|---|
-| DOS Pool of Radiance | 29: `attack_level`, `char_class`, `dual_class_level`, `dual_class_slot`, `flags_0b8`, `infravision`, `item_effects`, `level_knight`, `missile_attack_adjustment`, `portrait_body`, `portrait_head`, `spells_known_high`, `strength_bonus_flag`, `strength_index`, `thac0_base`, `turn_class`, `turn_power`, and the twelve `gap_*` and `region_*` runs | 9: `thac0`, the eight `thief_*` |
-| DOS Curse of the Azure Bonds | 28: that list without `dual_class_level`, `dual_class_slot` and `spells_known_high`, and with `gap_06c` and `identity_pair` | 11: `dual_class_slot`, `level_paladin`, `spells_castable`, the eight `thief_*` |
-| DOS Secret of the Silver Blades | 27: DOS Curse's without `gap_01b` | 3: `dual_class_slot`, `level_ranger`, `spells_castable` |
-| Amiga Pool of Radiance | 28: DOS Pool of Radiance's without `portrait_head` and `portrait_body`, and with `treasure_share` | 9: `thac0`, the eight `thief_*` |
+| DOS Pool of Radiance | 28: `attack_level`, `char_class`, `dual_class_level`, `dual_class_slot`, `infravision`, `item_effects`, `level_knight`, `missile_attack_adjustment`, `portrait_body`, `portrait_head`, `spells_known_high`, `strength_bonus_flag`, `strength_index`, `thac0_base`, `turn_class`, `turn_power`, and the twelve `gap_*` and `region_*` runs | 9: `thac0`, the eight `thief_*` |
+| DOS Curse of the Azure Bonds | 27: that list without `dual_class_level`, `dual_class_slot` and `spells_known_high`, and with `gap_06c` and `identity_pair` | 12: `dual_class_slot`, `level_paladin`, `spells_castable`, `treasure_share`, the eight `thief_*` |
+| DOS Secret of the Silver Blades | 26: DOS Curse's without `gap_01b` | 4: `dual_class_slot`, `level_ranger`, `spells_castable`, `treasure_share` |
+| Amiga Pool of Radiance | 27: DOS Pool of Radiance's without `portrait_head` and `portrait_body`, and with `treasure_share` | 9: `thac0`, the eight `thief_*` |
 | Amiga Curse of the Azure Bonds | 29: DOS Curse's with `dual_class_slot` | 1: `spells_castable` |
-| Amiga Secret of the Silver Blades | 28: DOS Silver Blades' with `dual_class_slot` | 1: `spells_castable` |
+| Amiga Secret of the Silver Blades | 27: DOS Silver Blades' with `dual_class_slot` | 2: `spells_castable`, `treasure_share` |
+
+**`flags_0b8` left every read-only list, and `treasure_share` moved into three
+of the "some and not others" ones**, in the re-run of 2026-09-21. It is the
+same measurement of a changed writer rather than a correction: `flags_0b8` bit
+0 is the ability-altered flag and now converts into the byte DOS and the Amiga
+keep it in, so an edit to it moves a byte where it used to move none
+(`docs/195-three-dos-record-bytes-named-from-the-overlays.md`, and
+`#620 (A C64 party that used the trainer
+cannot be saved as a DOS save, because the DOS writer zeroes the byte
+recording it)`). `treasure_share` is the other end of that crossing: for a
+player character a +1 fuzz of the C64 byte becomes that flag, so it moves a
+destination byte only for a character whose flag was not already set, which is
+what "some characters and not others" says. The Amiga Curse row is the one the
+re-run did not reach -- this machine's registry led to no specimen for it --
+so its `flags_0b8` entry is the old measurement and the new code path is the
+same one the other five rows measured.
 
 **The sheet portrait is read-only on five of the six**, and writable only on
 Amiga Pool of Radiance. That is the same fact as the census's `portrait_head`

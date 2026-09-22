@@ -1452,7 +1452,10 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "docs/169-dos-combat-side.md)"),
     ("field_83_87", "the control byte becomes neutral npc and "
                       "npc_control_byte, and the next byte becomes the raw "
-                      "neutral treasure_share"),
+                      "neutral treasure_share -- a companion's share of "
+                      "treasure, and for a player character the "
+                      "ability-altered flag this engine keeps there, which "
+                      "the C64 keeps in bit 0 of its own control byte"),
     ("unnamed_0ab", "the identity draw the C64's add screen never needs, "
                     "given a home instead of a digest: written into the "
                     "C64's identity_pair at 0x0E6, with 0x0E7 left zero "
@@ -2618,16 +2621,19 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                     "digest instead, exactly as before (#258, WRITE_DERIVED, "
                     "IDENTITY_HELD_PORTS)"),
     ("npc", "written over the WRITE_CONSTANTS blob below, into "
-            "field_83_87's control byte -- 0x00 for a player character "
-            "whatever the source's own trainer bit or treasure share hold "
-            "(#303)"),
+            "field_83_87's control byte -- exactly 0x00 for a player "
+            "character, which is what the engine's own equality tests "
+            "demand (#303)"),
     ("npc_control_byte", "written unchanged into field_83_87's control "
                          "byte when npc is true -- bit 7 plus the low "
                          "seven bits of morale, stored halved; nothing to "
                          "write when npc is false (#303)"),
     ("treasure_share", "written over field_83_87's destination default at "
                        "the byte after its control byte; explicit zero is "
-                       "preserved"),
+                       "preserved. For a player character that byte is the "
+                       "ability-altered flag MODIFY CHARACTER's KEEP writes "
+                       "rather than a share, and a C64 source's own flag "
+                       "arrives in it"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -3276,8 +3282,10 @@ WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
 #: specially -- `cmp byte ptr es:[di+85h], 0` at `0x006998` skips a character
 #: with no share out of the split entirely, so a converted companion would
 #: silently get nothing once `npc` reaches bit 7 of the byte before it (#303).
-#: For a player character it is inert either way, so no choice here is
-#: something a player can see.
+#: For a player character no site reads it at all, so no choice here is
+#: something a player can see -- but the byte is still the record of whether
+#: MODIFY CHARACTER was left by KEEP, which is what a C64 source's own
+#: ability-altered bit converts into and back out of.
 #:
 #: **It stays in `WRITE_CONSTANTS` rather than moving to `WRITE_DEFAULTS`,
 #: deliberately.**  A default is masked out of the round trip, and masking
@@ -4537,9 +4545,12 @@ def write(char: NeutralCharacter,
     else:
         rec[control_offset] = 0x00
         rep.note(control_offset, 1,
-                 "field_83_87: 0x00 -- a player character, bit 7 clear "
-                 "whatever the C64's own trainer bit holds; that is not "
-                 "this byte's business")
+                 "field_83_87: 0x00 -- a player character, and exactly "
+                 "0x00: two sites in GAME.OVR test this byte for equality "
+                 "with zero rather than for bit 7, so a non-zero low bit "
+                 "would leave the character out of the party's coin pool. "
+                 "The C64's own ability-altered flag goes to the share "
+                 "byte, where this engine keeps its own")
         if npc is not None:
             rep.dropped.extend(npc.dropped)
         if control is not None:

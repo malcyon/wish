@@ -9,6 +9,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_amigaporcharacters.py` | Checks that `read_por_characters` reads an Amiga Pool of Radiance slot's character files in order, stops at the first missing one and refuses a bad slot letter. |
 | `test_amigatoc64.py` | Checks an Amiga Pool of Radiance save slot becoming a C64 one: the party's square, area, clock and quest flags. |
 | `test_amigatodos.py` | Checks the writing half of an Amiga Pool of Radiance save becoming a DOS save folder. |
+| `test_c64abilityaltered.py` | Checks that the flag a score altered in the modification screen sets crosses between the C64's own control-byte bit and the byte DOS and the Amiga keep it in, both ways and on the player's save disks. |
 | `test_c64classcode.py` | Checks that `goldbox.c64_codec.read` repairs a class code the C64 engine stopped maintaining after training. |
 | `test_c64identity.py` | Checks that the DOS identity byte crosses into the C64 identity pair and back. |
 | `test_c64noportrait.py` | Checks that a C64 character with no sheet portrait is read as having none rather than as the menu's first head. |

@@ -269,6 +269,43 @@ def test_every_pool_of_radiance_c64_save_on_this_machine_copies_to_c64(
             if went_in != came_out] == []
 
 
+def test_no_pool_of_radiance_c64_save_is_refused_for_the_altered_flag(
+        tmp_path):
+    """The symptom of #620, against the player's own disks: a C64 party whose
+    scores were altered in the modification screen refused a DOS destination
+    with `flags_0b8: 1 arrived as 0` on twelve of the fifteen save disks
+    here, one character of six in each. No refusal may name that field now.
+
+    Other refusals are not this test's business and are counted rather than
+    asserted on, so a route that loses something else fails its own test and
+    not this one. Skips where this machine's registry has no Pool of Radiance
+    C64 disks or no DOS Pool of Radiance game folder.
+    """
+    saves = _c64_pool_saves()
+    files_for = _registry_game_files(POOL_OF_RADIANCE)
+    game_folder = _dos_game_folder()
+    if not saves or files_for is None or game_folder is None:
+        pytest.skip("needs the Pool of Radiance C64 disks and DOS game folder")
+    assets = saveplan.Assets(dos_folder=game_folder, source_files=files_for)
+    went_ahead, refused, roster_disks = [], {}, []
+    for path in saves:
+        party = Party(str(path))
+        if saveplan.prepare(party) is None:
+            roster_disks.append(path.name)
+            continue
+        try:
+            saveplan.prepare_save_as(party, "dos", tmp_path / path.stem,
+                                     assets)
+        except saveplan.DroppedFields as caught:
+            refused[path.name] = caught.lost
+        else:
+            went_ahead.append(path.name)
+
+    assert went_ahead, f"every save refused: {refused}"
+    assert {name: lost for name, lost in refused.items()
+            if any("flags_0b8" in line for line in lost)} == {}
+
+
 def test_a_native_copy_needs_no_game_data_and_has_no_conversion_report(
         tmp_path):
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
@@ -481,8 +518,10 @@ def test_every_known_field_is_compared_or_named_as_not_compared():
     """The two lists are a partition of the layout's known fields.
 
     A known field in neither list is invisible to the guard, whatever the
-    conversion does to it: `flags_0b8` goes from 1 to 0 on six of the seven
-    real Pool of Radiance C64 saves converted to DOS here.
+    conversion does to it: `flags_0b8` went from 1 to 0 on twelve of the
+    fifteen real Pool of Radiance C64 saves converted to DOS here until the
+    ability-altered flag was given the byte DOS keeps it in, and the guard is
+    what caught it.
     """
     known = {field.name for field in LAYOUT if field.is_known}
     kept, skipped = set(saveplan.KEPT_FIELDS), set(saveplan._NOT_COMPARED)

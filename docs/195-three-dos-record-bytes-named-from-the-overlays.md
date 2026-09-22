@@ -155,7 +155,11 @@ inc byte ptr [bp-6]               ; the else branch: a player takes one part
 
 A second reader at `0x006998` runs the same guards then `cmp byte ptr
 es:[di+85h], 0` / `jbe`, so a companion whose share is zero is skipped out of
-the split. **For a player character the byte is never read.**
+the split. **For a player character the byte is never read.** Those three
+reads and the one store below are the whole of the byte in the overlay:
+`tools/dos/dosbyteimm.py --offset 0x85 --sites` finds four sites and no
+register store at all, so a DOS record's share is whatever the file it was
+loaded from held.
 
 **Exactly one instruction in each engine stores an immediate into it, and it
 stores 1**: Pool of Radiance `0x01C263`, Curse `0x023463`, Silver Blades
@@ -255,13 +259,21 @@ The sixteen C64 records at `$01` are BRUTUS, thirteen times, plus three players
 of `npc_party.d64`: bit 0 is the trainer flag, set by `GEN $155D` when a score
 is changed in the character-modification screen and restored from a saved copy
 at `$157F` if the player leaves without keeping. **DOS records the same thing
-in the share byte instead** -- 174 of 318 Pool of Radiance records at
-`0x085` = 1 -- so the ports keep one flag in two different bytes, and a DOS
-control byte's bit 0 stands for nothing.
+in the share byte instead** -- 64 of the 177 Pool of Radiance records this
+machine holds read `0x085` = 1, and the counts per title are in the table
+below -- so the ports keep one flag in two different bytes, and a DOS control
+byte's bit 0 stands for nothing. That crossing is what the conversion has to
+do, and the last section says how.
 
 ### The C64's own treasure share is `0x0FA`, not the byte beside the control
 
-`POST.COM $194A` is DOS `0x006885` on the other port, guard for guard:
+`POST.COM $194A` is DOS `0x006885` on the other port, guard for guard, and
+**it is the only instruction in the title that touches the byte at all**:
+`tools/c64/recordsweep.py --game pool --offset 0xFA` finds one reference in
+589 distinct files and `--indirect` finds none, so nothing in C64 Pool of
+Radiance ever *writes* `0x0FA`, and a C64 player character's share is zero
+because no code puts anything else there -- 90 of 90 records on the fifteen
+`PORSAVE*.D64` save disks.
 
 ```
 LDA $6BB8 / BPL out      ; only for a character the engine drives
@@ -275,17 +287,65 @@ The engines' own consumers settle the port boundary: C64 masks `0x0FA` with
 byte for zero before applying its mask. `goldbox.layout` names the C64 field
 and the neutral record preserves the raw byte, including explicit zero.
 
-## What the conversion does with them, and what it still cannot
+## What the conversion does with them
 
 `goldbox.dos_codec.WRITE_CONSTANTS` supplies the destination's `1` only when a
 source has no neutral treasure share. A present field overwrites it, including
 `0`; the C64 writer likewise writes only a present field.
 
 The control byte remains separate: bit 7 and the low seven morale bits cross
-through `npc` and `npc_control_byte` as before.
+through `npc` and `npc_control_byte`, and a player character's DOS control byte
+is written **exactly** `0x00`, which is what `0x0251B7`'s equality test
+demands.
+
+### For a player character the two ports' live bytes are crossed over
+
+This is the correction `#620 (A C64 party that used the trainer cannot be
+saved as a DOS save, because the DOS writer zeroes the byte recording it)`
+made, and the reason the page previously stopped short of it is that the two
+flags had been read as separate facts about separate ports rather than as one
+field in two places:
+
+| | the ability-altered flag | the treasure share |
+|---|---|---|
+| C64 | `0x0B8` bit 0, written by `GEN $155D` | `0x0FA`, read only for an engine-driven character and **written by nothing** |
+| DOS | `0x085`, written by MODIFY's KEEP at `0x01C263` | `0x085`, the same byte |
+| Amiga Pool of Radiance | `0x086` | `0x086`, the same byte (`docs/124-amiga-port.md` 1.21) |
+
+So the neutral `treasure_share` field is the byte DOS and the Amiga keep after
+their control byte, and `goldbox/c64_codec.py` converts both ways: for a
+player character it reads `flags_0b8` bit 0 in place of `0x0FA`, and writes
+the value back to `flags_0b8` bit 0 with `0x0FA` left at zero. A companion is
+untouched, and no Amiga writer needed a change, because it already writes that
+neutral field into its own aligned byte.
+
+What every record on this machine holds in the share byte,
+`tools/dos/dostailcensus.py --field field_83_87 --per-title` and a sweep of
+the registry's `PORSAVE*.D64` through `editor.saveplan.c64_slot_records`:
+
+| port and title | records | `0` | `1` | above 1 |
+|---|---|---|---|---|
+| DOS Pool of Radiance | 177 | 113 | 64 | 0 |
+| DOS Curse | 79 | 18 | 61 | 0 |
+| DOS Silver Blades | 52 | 11 | 41 | 0 |
+| DOS Pools of Darkness | 12 | 8 | 4 | 0 |
+| C64 Pool of Radiance save disks | 90 | 90 | 0 | 0 |
+
+The control byte is `0x00` in all 320 DOS records, so every one of them is a
+player character and every `1` above is the modify flag.
+
+### What still refuses
 
 Values `0` through `3` preserve the raw byte and engine behaviour across all
-three ports. DOS and Amiga preserve `4` through `7` between themselves. A
-value with bit 2 set refuses before output when crossing the C64 two-bit family
-and the DOS/Amiga three-bit family: masking, clamping or defaulting would lose
-the raw-zero condition or change the engine-effective share.
+three ports for a companion. DOS and Amiga preserve `4` through `7` between
+themselves. A value with bit 2 set refuses before output when crossing the C64
+two-bit family and the DOS/Amiga three-bit family: masking, clamping or
+defaulting would lose the raw-zero condition or change the engine-effective
+share.
+
+One record reports a loss and no engine writes it: a C64 **player character**
+holding both bit 0 of `0x0B8` and a non-zero `0x0FA`. The other ports have one
+byte for the two, so the raw share crosses as it always did and the flag is
+reported dropped, which refuses the conversion rather than losing it in
+silence. Nothing in C64 Pool of Radiance writes `0x0FA` and 90 of 90 records
+hold zero, so no save here can reach it.

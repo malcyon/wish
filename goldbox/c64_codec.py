@@ -764,8 +764,31 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # for a number the destination computes better than we could copy it.
     use("encumbrance")
 
+    # -- the share byte, and the flag that shares it ------------------------
+    # A companion's share goes to 0x0FA, which is where the C64's own split
+    # reads it.  A **player character** has no share anybody reads: the C64's
+    # one reference to 0x0FA (`POST.COM $194F`) and all three DOS references
+    # to its own 0x085 (`GAME.OVR 0x0068A7`, `0x0068B4`, `0x0069B6`) sit
+    # behind the control byte's "engine drives this character" test, and no
+    # file of C64 Pool of Radiance stores 0x0FA at all.  What DOS and the
+    # Amiga keep in that byte for a player character is the ability-altered
+    # flag -- their 1, written by MODIFY CHARACTER's KEEP -- and the C64 keeps
+    # the same fact in bit 0 of 0x0B8.  So 0 and 1 on a player character are
+    # that flag and go to 0x0B8 below, leaving 0x0FA the zero every C64
+    # record holds; 2 to 7 are a share no engine writes for a player
+    # character and cross as the raw byte they always did.
+    is_npc = bool(w.get("npc"))
     share = use("treasure_share")
-    if share is not None:
+    modify_flag = None
+    if share is not None and not is_npc and int(share.value) in (0, 1):
+        modify_flag = share
+        rec.set("treasure_share", 0x00)
+        rep.note(0x0FA, 1,
+                 "treasure_share: zero -- a player character, whose share "
+                 "byte no engine reads and no C64 file writes; the byte's "
+                 "player-character meaning is the ability-altered flag and "
+                 "it goes to flags_0b8 bit 0")
+    elif share is not None:
         if char.port != "C64" and int(share.value) & 0x04:
             raise ValueError(
                 f"treasure share {int(share.value):#04x} has bit 2 set; "
@@ -1305,9 +1328,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
 
     # -- the NPC control byte: bit 7 says the engine drives this character --
     # DOS keeps the same byte in the same encoding at field_83_87's control
-    # byte, so the source's own value crosses unchanged; a player character
-    # gets 0x00, whatever the C64's own trainer bit (bit 0, unrelated) or
-    # DOS's own treasure-share byte hold (#303).
+    # byte, so the source's own value crosses unchanged.  A player character
+    # gets bit 7 clear and bit 0 from `modify_flag` above, which is the
+    # ability-altered flag the other ports keep in the byte after their
+    # control byte (#303).
     npc = use("npc")
     control = use("npc_control_byte")
     if npc is not None and npc.value:
@@ -1322,8 +1346,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                      "source gave no control byte, so no morale to carry")
         rep.dropped.extend(npc.dropped)
     else:
-        rec.set("flags_0b8", 0x00)
-        rep.note(0x0B8, 1, "flags_0b8: zero -- a player character, bit 7 clear")
+        if modify_flag is None:
+            rec.set("flags_0b8", 0x00)
+            rep.note(0x0B8, 1,
+                     "flags_0b8: zero -- a player character, bit 7 clear")
+        else:
+            rec.set("flags_0b8", int(modify_flag.value) & 0x01)
+            emit(modify_flag, "flags_0b8", 0x0B8, 1,
+                 " -- bit 0, the ability-altered flag, with bit 7 clear for "
+                 "a player character")
         if npc is not None:
             rep.dropped.extend(npc.dropped)
         if control is not None:
@@ -1533,13 +1564,20 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                   "rest are warned about"),
     ("roster_tail", "copied as a block into the C64's roster tail"),
     ("npc", "bit 7 of 0x0B8, the byte the game itself counts player "
-            "characters with; a player character gets 0x00 there whatever "
-            "the source held (#303)"),
+            "characters with; a player character gets bit 7 clear and bit 0 "
+            "from the share byte's own ability-altered flag (#303)"),
     ("npc_control_byte", "written unchanged to 0x0B8 when npc is true -- "
                          "bit 7 plus the low seven bits of morale, stored "
                          "halved; nothing to write when npc is false (#303)"),
-    ("treasure_share", "written unchanged to 0x0FA; a DOS or Amiga raw "
-                       "value with bit 2 set refuses because C64 masks with 3"),
+    ("treasure_share", "written unchanged to 0x0FA for a companion, whose "
+                       "share the C64's own split reads there; a DOS or "
+                       "Amiga raw value with bit 2 set refuses because C64 "
+                       "masks with 3. For a player character, whose share "
+                       "no engine reads, 0 and 1 are the ability-altered "
+                       "flag the other ports keep in that byte and go to "
+                       "bit 0 of 0x0B8 with 0x0FA left at the zero every "
+                       "C64 record holds; a larger raw value is written to "
+                       "0x0FA as a companion's would be"),
     ("status", "the name indexed into the C64's own seven-value table, into "
                "the low three bits of record 0x100; a state the C64 does not "
                "have is reported and the character arrives OK"),
@@ -1801,9 +1839,15 @@ READ_TARGETS: dict[str, str] = (
        "spells_castable": "nibbles unpacked into neutral spells_castable",
        "item_effects": "zeroes stripped into neutral innate_effects",
        "flags_0b8": "bit 7 read as neutral npc, and the whole byte read "
-                    "again as neutral npc_control_byte when it is set "
-                    "(#303)",
-       "treasure_share": "read unchanged as neutral treasure_share",
+                    "again as neutral npc_control_byte when it is set; for "
+                    "a player character bit 0, the ability-altered flag, "
+                    "is read as neutral treasure_share, which is the byte "
+                    "the other two ports keep that same flag in (#303)",
+       "treasure_share": "read unchanged as neutral treasure_share for a "
+                         "companion, and for a player character whose byte "
+                         "is not zero; for the ordinary player character, "
+                         "whose 0x0FA nothing in the title writes, "
+                         "flags_0b8 bit 0 is read in its place",
        "attack_forms": "read as neutral attack_forms",
        "infravision": "read as neutral infravision",
        "turn_power": "read as neutral turn_power",
@@ -1954,9 +1998,40 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 "the C64's own 0x0B8, unchanged: bit 7 plus the low seven "
                 "bits of morale, stored halved", grade("flags_0b8"))
 
-    out.set("treasure_share", rec.get("treasure_share"),
-            "the C64's raw treasure-share byte at 0x0FA",
-            grade("treasure_share"))
+    # -- the share byte, whose meaning depends on who the character is ------
+    # For a character the engine drives it is the treasure share, and the
+    # three ports keep it at aligned bytes: C64 0x0FA, DOS 0x085, Amiga Pool
+    # of Radiance 0x086.  For a **player character** no engine reads it --
+    # the C64's one reference to 0x0FA (`POST.COM $194F`) and DOS's three to
+    # 0x085 (`GAME.OVR 0x0068A7`, `0x0068B4`, `0x0069B6`) all sit behind the
+    # control byte's "engine drives this character" test -- and what DOS and
+    # the Amiga keep there instead is the ability-altered flag, the 1 that
+    # MODIFY CHARACTER's KEEP writes (`GAME.OVR 0x01C263`).  The C64 keeps
+    # that same fact in bit 0 of 0x0B8, set by `GEN $155D` when a score
+    # changes at the trainer.  So a player character's neutral share is that
+    # flag, in the form the other two ports store it.
+    #
+    # A player character whose own 0x0FA is not zero hands the raw byte on
+    # instead, which is what it has always done: nothing in C64 Pool of
+    # Radiance stores that byte, so such a record is not one an engine wrote,
+    # and a share it may have been given is a value with somewhere to go
+    # where the flag would not be.  The flag is then the loss and is
+    # reported.
+    own_share = int(rec.get("treasure_share"))
+    if is_npc or own_share != 0:
+        out.set("treasure_share", own_share,
+                "the C64's raw treasure-share byte at 0x0FA",
+                grade("treasure_share"),
+                dropped=() if is_npc or not rec.get("flags_0b8") & 0x01 else (
+                    "flags_0b8 bit 0: a player character with an "
+                    f"ability-altered flag and a raw share of "
+                    f"{own_share:#04x} at 0x0FA, where the other ports have "
+                    f"one byte for the two",))
+    else:
+        out.set("treasure_share", rec.get("flags_0b8") & 0x01,
+                "bit 0 of the C64's 0x0B8, the ability-altered flag DOS and "
+                "the Amiga keep in the byte after their control byte "
+                "instead", grade("flags_0b8"), Provenance.RESHAPED)
 
     # -- the status byte, unpacked into the two things it holds --------------
     # Zero is not a state: it is an **empty roster slot**, which is what DROP

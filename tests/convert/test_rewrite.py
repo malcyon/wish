@@ -206,13 +206,20 @@ def test_a_treasure_share_edit_lands_on_the_amiga_window():
 
 
 def test_an_npc_flag_edit_lands_on_the_amiga_control_byte():
-    """The flag is bit 7 of `0x085`, the byte `/program` tests against 0x7F."""
+    """The flag is bit 7 of `0x085`, the byte `/program` tests against 0x7F.
+
+    `0x086` reads 0 afterwards, and that is the edit rather than a loss: the
+    byte is the ability-altered flag while the control byte is below 0x80 and
+    the character's treasure share once it is not, and the sheet's own record
+    gives an engine-driven character no share. The three bytes no engine
+    reads are the ones this case is here for and they are untouched.
+    """
     char, before = _amiga_por_with_window(b"\xff\x00\x01\x5a\xa5")
     after = _edited(before, flags_0b8=0xB3)
     out = rewrite.rewrite_amiga_por(char, before, after)
     assert "field_83_87" in out.moved
     assert out.record[AMIGA_POR_CONTROL] == 0xB3
-    assert out.record[AMIGA_POR_WINDOW] == b"\xff\xb3\x01\x5a\xa5"
+    assert out.record[AMIGA_POR_WINDOW] == b"\xff\xb3\x00\x5a\xa5"
 
 
 def test_an_edit_elsewhere_leaves_the_amiga_window_alone():

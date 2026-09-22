@@ -683,7 +683,8 @@ KEPT_FIELDS = (
 #: Silver Blades to Amiga and to DOS, DOS Pool of Radiance to C64, Amiga
 #: Curse to Amiga and to C64, and Amiga Pool of Radiance to C64. Every one
 #: of the fields above that ever differed is here; the one that differed and
-#: is **not** here is `flags_0b8`, which is a real drop and refused.
+#: is **not** here is `flags_0b8`, whose bit 0 the DOS and Amiga records keep
+#: in the byte after their control byte and now comes back equal.
 _NOT_COMPARED = ("identity_pair", "party_order", "item_effects", "thac0",
                  "armour_class", "hp_current", "combat_side", "roster_in_use",
                  "roster_tail", "roster_movement", "inventory",
