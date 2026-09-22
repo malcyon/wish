@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import c64_codec, classcode
+from goldbox import backstab, c64_codec, classcode
 from goldbox import c64_port as por_games
 from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
@@ -2571,6 +2571,7 @@ class EditorBinding(QObject):
                     _fit_height(w, fixed=True)
         self._show_boxes(record)
         self._describe_spells(record)
+        self._show_backstab(member)
         self.items.set_inventory(member.inventory)
         self._size_item_columns()
         self._show_traits()
@@ -2664,6 +2665,49 @@ class EditorBinding(QObject):
         memorised.set_capacity(
             capacity_by_class(class_levels, record.get("wisdom"), game),
             casts=bool(record.class_bits & caster_bits(game)))
+
+    def _show_backstab(self, member) -> None:
+        """The row at the bottom of the Thief skills box: what a backstab
+        multiplies rolled damage by.
+
+        The row greys with the rest of the box in `_show_boxes`, off
+        `class_bits`, since a `QGroupBox` disables every child it holds; this
+        only sets what the value reads. `goldbox.backstab` needs the open
+        party's real port -- since #511 that is not always the C64, and DOS
+        Pool of Radiance's rule disagrees with the C64's once a thief passes
+        level four. On the C64, `member.record` (the record the sheet edits
+        on every port) already holds the thief level `c64_codec.LEVEL_FIELDS`
+        names. On DOS and the Amiga that record has been converted away from
+        the port's own shape, so this reads `member.native` -- the port's own
+        character -- through the same neutral reader the conversion itself
+        uses, which is what carries `former_levels` and race the way those
+        ports' rules need them (#607).
+        """
+        value = self._child("value_thief_backstab")
+        if value is None:
+            return
+        if self.party is None:
+            return
+        try:
+            port = self.party.port
+            if port == "c64":
+                levels = {name: member.record.get(field)
+                          for name, field in c64_codec.LEVEL_FIELDS.items()}
+                multiplier = backstab.backstab_multiplier(
+                    {"levels": levels}, title=self.party.game, port="C64")
+            elif port == "dos":
+                from goldbox import dos_codec
+                multiplier = backstab.backstab_multiplier(
+                    dos_codec.to_neutral(member.native))
+            else:
+                from goldbox import amiga_por
+                multiplier = backstab.backstab_multiplier(
+                    amiga_por.to_neutral(member.native))
+        except Exception:
+            _log.exception("could not compute the backstab multiplier")
+            multiplier = None
+        value.setText(f"×{multiplier}" if multiplier is not None
+                     else "None")
 
     # -- items ------------------------------------------------------------
 

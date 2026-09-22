@@ -2714,6 +2714,58 @@ def test_a_fighter_is_shown_no_spellbook_and_no_thief_skills(app, save):
     assert spells.isEnabled()
 
 
+@game_disks
+def test_backstab_row_shows_the_multiplier_and_greys_with_the_box(app, save):
+    """#607: the row at the bottom of Thief skills shows what
+    `goldbox.backstab.backstab_multiplier` computes, and reads "None" for a
+    character the box is greyed for."""
+    from editor.window import EditorBinding
+    from goldbox import backstab, c64_codec
+    w = EditorBinding(make_root(), str(save))
+    box = w._child("box_thief_skills")
+    label, value = w._child("label_thief_backstab"), w._child("value_thief_backstab")
+
+    w.roster.selectRow(0)                         # BRUTUS -- row 0, #160; a fighter
+    assert not box.isEnabled()
+    assert value.text() == "None"
+
+    w.roster.selectRow(4)                         # LADY KATHERINE -- row 4, #160; mu/thief
+    assert box.isEnabled()
+    record = w.party.member(4).record
+    levels = {name: record.get(field)
+              for name, field in c64_codec.LEVEL_FIELDS.items()}
+    expected = backstab.backstab_multiplier(
+        {"levels": levels}, title=w.party.game, port="C64")
+    assert expected is not None
+    assert value.text() == f"×{expected}"
+    assert label.text() == "Backstab"
+
+
+def test_backstab_reads_the_open_partys_own_port_not_always_the_c64(tmp_path):
+    """#607: a DOS save's thief must read DOS Pool of Radiance's own backstab
+    rule, not the C64's -- since #511 the editor opens DOS saves too, and the
+    two rules disagree once the thief level passes four (DOS Pool of
+    Radiance subtracts nothing before the divide; the C64's subtracts one)."""
+    from editor.window import EditorBinding
+    from goldbox import backstab, dos_port
+
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE, numbers=(1,),
+                          class_bits=0x04, levels={"thief": 8})
+    w = EditorBinding(make_root(), str(tmp_path / "SAVGAMA.DAT"))
+    assert w.party.port == "dos"
+    w.roster.selectRow(0)
+    value = w._child("value_thief_backstab")
+
+    dos_multiplier = backstab.backstab_multiplier(
+        {"levels": {"thief": 8}}, title=dos_port.POOL_OF_RADIANCE.key,
+        port="DOS")
+    c64_multiplier = backstab.backstab_multiplier(
+        {"levels": {"thief": 8}}, title=dos_port.POOL_OF_RADIANCE.key,
+        port="C64")
+    assert dos_multiplier != c64_multiplier   # the two rules disagree here
+    assert value.text() == f"×{dos_multiplier}"
+
+
 def _silver_blades_save(tmp_path):
     """A throwaway copy of the shipped Silver Blades party, or skip.
 
@@ -4426,12 +4478,15 @@ def _converted_dos_disk(folder, slot, key):
     return game, dos_codec.save_disk(bytes(save0), bytes(save1), game)
 
 
-def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None):
+def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
+                          levels=None):
     """A DOS save folder written from filled neutral characters, no game data.
     `numbers` are the `CHRDAT<slot><n>` file numbers that exist.  `class_bits`
     overrides `_filled`'s own arbitrary byte -- needed wherever the writer
     recomputes a field (`char_class`, the thief skills) from the classes
-    themselves, since `_filled`'s byte names no real class combination."""
+    themselves, since `_filled`'s byte names no real class combination.
+    `levels` overrides `_filled`'s own class-level dict the same way, for a
+    test that needs a particular thief level."""
     from support.neutralrecords import _filled
 
     from goldbox import c64_port, dos_codec
@@ -4442,6 +4497,8 @@ def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None):
                  c64_codec.Provenance.RESHAPED)
         if class_bits is not None:
             char.set("class_bits", class_bits, "made up, class-consistent")
+        if levels is not None:
+            char.set("levels", levels, "made up, chosen for the test")
         record, itm, spc, _rep = dos_codec.write(char, deltas=deltas)
         (tmp_path / f"CHRDATA{n}.SAV").write_bytes(record)
         (tmp_path / f"CHRDATA{n}.ITM").write_bytes(itm)
