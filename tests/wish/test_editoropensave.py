@@ -86,3 +86,25 @@ def test_save_as_is_disabled_with_nothing_open(app):
     save_as = next(a for a in _file_menu(win).actions()
                    if a.text() == "Save &As…")
     assert not save_as.isEnabled()
+
+
+def test_save_as_reports_the_failure_when_the_open_save_cannot_be_read(
+        app, tmp_path, monkeypatch):
+    from gamedata import synthetic_save
+
+    from editor import convert
+    from editor.window import CANNOT_SAVE_TITLE, SAVE_AS_FAILED
+
+    path = synthetic_save(tmp_path)
+    win = window(app, str(path))
+
+    def _raise(*a, **k):
+        raise ValueError("could not read it")
+
+    monkeypatch.setattr(convert.Source, "detect", staticmethod(_raise))
+    shown = []
+    monkeypatch.setattr(
+        "editor.window.QMessageBox.critical",
+        lambda *a: shown.append(a))
+    win.editor.begin_save_as("dos")
+    assert shown == [(win.editor.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)]

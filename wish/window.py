@@ -230,7 +230,8 @@ class WishWindow(QMainWindow):
             if text == "Save &As…":
                 self.save_as_action = action
         if self.save_as_action is not None:
-            self.save_as_action.setEnabled(self.editor.party is not None)
+            self.save_as_action.setEnabled(
+                self.editor.party is not None and self.editor.path is not None)
 
         # One entry for every direction the registry holds, rather than a
         # submenu per port -- `#52 (File ▸ Import and File ▸ Export for
@@ -489,7 +490,8 @@ class WishWindow(QMainWindow):
                 self.settings.save()
         self.editor.set_backup_folder(self.settings.backup_folder or "")
         if getattr(self, "save_as_action", None) is not None:
-            self.save_as_action.setEnabled(self.editor.party is not None)
+            self.save_as_action.setEnabled(
+                self.editor.party is not None and self.editor.path is not None)
         if self.editor.path:
             from editor.files import source_folder
             folder = str(source_folder(self.editor.path))

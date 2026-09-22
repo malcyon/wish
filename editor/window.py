@@ -2014,6 +2014,7 @@ class EditorBinding(QObject):
             source = Source.detect(str(self.path), self.party)
         except Exception:
             _log.exception("could not read the open save for Save As")
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
             return
         self._save_as_source = source
         self._save_as_port = port
@@ -2341,6 +2342,7 @@ class EditorBinding(QObject):
             return
         except files.RecoveryFailed as exc:
             destination = plan.destination.path
+            _log.debug("recovery left %s behind at %s", exc.left, destination)
             text = (RECOVERY_FAILED_WITH_BACKUP.format(
                         destination=destination, backup=exc.backup)
                     if exc.backup is not None else
