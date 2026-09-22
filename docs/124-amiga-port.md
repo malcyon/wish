@@ -2438,13 +2438,10 @@ morale and his treasure share gone, with nothing in the conversion report.
 
 #### `/program`: the engine's own reads
 
-Every site found by calling `tools/amiga/amigarecordrefs.py`'s `sites()`
-function from a throwaway wrapper, once per CODE hunk, over all seventeen of
-`/program`'s — the committed command-line tool searches the first hunk alone,
-which in `/program` is 9,936 bytes of 459,028 and holds none of these, and
-`#618 (amigarecordrefs.py searches only the first CODE hunk, so it finds
-nothing in Pool of Radiance's /program)` is that defect. Each site was then
-read in `tools/amiga/amiga68k.py disasm`. File offsets into the executable:
+Every site found with `tools/amiga/amigarecordrefs.py`, over all seventeen of
+`/program`'s CODE hunks -- the command-line tool searches every one of them.
+Each site was then read in `tools/amiga/amiga68k.py disasm`. File offsets into
+the executable:
 
 | where | what it does | what it says |
 |---|---|---|

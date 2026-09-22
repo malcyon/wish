@@ -42,6 +42,7 @@ a port fixed one, that is said.
 | 15 | A paladin who reaches level 11 carries a second-level cleric spell slot he can never fill | Curse of the Azure Bonds | engine | CONFIRMED, in game |
 | 16 | A DOS magic-user of level 1 to 5 hits one point more easily than the game's own table gives him | Curse of the Azure Bonds, Secret of the Silver Blades | engine | CONFIRMED, in game |
 | 17 | DOS Curse's Mirror Image loses an image only once every sixteen absorbed attacks | Curse of the Azure Bonds | engine | CONFIRMED, from the code |
+| 18 | A human who regains paladin in DOS Curse loses his cure-disease through Silver Blades' import | Curse of the Azure Bonds, Secret of the Silver Blades | engine | CONFIRMED, in game |
 
 ---
 
@@ -201,7 +202,7 @@ $9B26 RANDOM [$6E79], [$6E82]           $9C03 RANDOM [$6E79], [$6E82]
 **The evidence.** Exhaustive rather than sampled. `01 4F C0` is the VM's operand
 for "read `$C04F`", the square's attribute byte, and it is the only way a script
 can see it. `ECL03` has five `ATTR` references and `ECL05` has four — the same
-four, minus the bit-5 test. A corpus-wide byte search for the whole instruction
+four, minus the bit-5 test. A byte search across every script for the whole instruction
 finds it in `ECL03`, `ECL04`, `ECL06` and `ECL09` and nowhere else, and
 `ECL64`/`ECL65`, the two scripts resident alongside every area, contain no
 `ATTR` reference at all, so nothing is reading it on area 5's behalf.
@@ -852,3 +853,54 @@ Blades.
 **Version.** Curse of the Azure Bonds, DOS. The Commodore 64 counts the whole
 byte down as the image count, so it is unaffected; Silver Blades is unaffected.
 The Amiga builds have not been read. CONFIRMED, from the code.
+
+## 18. A human who regains paladin in DOS Curse loses his cure-disease through Silver Blades' import
+
+**Predicted from the two engines' own code, then driven on a running DOSBox
+machine.**
+
+**How a player ends up there.** A human paladin trains into another class in
+DOS Curse of the Azure Bonds, keeps playing, and eventually passes the level
+he had reached as a paladin -- so by the game's own rule he is a paladin
+again, with his cure-disease/lay-on-hands use back. He copies the character's
+`.GUY` into Secret of the Silver Blades' `SAVE` directory, picks `ADD
+CHARACTER TO PARTY`, answers `CURSE`, and adds him to the party.
+
+**What the game does.** Curse's class-change routine never writes the byte at
+record offset `0x0F9`, and Silver Blades' importer is the only thing that
+reads it: it takes it as the class a dual-classed human left (3 for paladin,
+4 for ranger) and, when the character has since passed his old level, grants
+the innate back -- Protection from Evil and a cure-disease use for a paladin,
+the ranger's own effect for a ranger. With `0x0F9` left at 0, that branch
+never fires, however the character's own class-level arrays read.
+
+**What it should do.** Read where the character actually stands: Curse
+already keeps `former_class_levels` and `former_level`, the pair the DOS
+family uses everywhere else to answer "which class did he leave, and at what
+level" (`docs/209`), and could write the same answer into `0x0F9` at the
+change of class the way the C64 build's `GEN $20A3` keeps its own dual-class
+pair current.
+
+**The evidence.** `tools/dos/ssbimport.py` drove DOS Secret of the Silver
+Blades' own party-import screens on `WISH-SPEC-curse-408-regained-paladin`'s
+MATHEW (human, magic-user 6, `former_class_levels[paladin]` 5,
+`former_level` 5, `class_levels[paladin]` 0 -- engine-written by DOS Curse,
+his own `0x0F9` left at 0), comparing the record as the engine wrote it
+against a copy staged with `0x0F9` = 3 and nothing else changed. Imported,
+rested a day and offered the cure:
+
+| stage | `0x0F9` = 0 (as Curse wrote it) | `0x0F9` = 3 |
+|---|---|---|
+| import | no Protection from Evil node, no `.SFX` written, sheet reads `HEAL EXIT` | node 8, `paladin_cures` 1, sheet reads `HEAL CURE EXIT` |
+| after a one-day rest | unchanged | unchanged |
+| CURE pressed | not offered | offered; `paladin_cures` 1 to 0, node 110 added |
+
+**What the player sees.** MATHEW reaches Silver Blades exactly as if he had
+never regained his paladin levels: no cure-disease use, no CURE on his sheet,
+and no way to reach it. DOS Curse's own save shows him passing 6 fighter
+levels past his old paladin 5 threshold; Silver Blades never asks.
+
+**Version.** Curse of the Azure Bonds to Secret of the Silver Blades, DOS.
+The Commodore 64 build makes the same check against its own dual-class pair,
+which its class-change routine keeps current, so a C64 party does not hit
+this. The Amiga builds have not been driven. CONFIRMED, in game.

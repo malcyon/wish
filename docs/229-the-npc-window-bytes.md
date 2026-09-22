@@ -182,32 +182,40 @@ DOS Curse never writes it. So on DOS and the Amiga the paladin's
 `paladin_cures` and Protection from Evil node, and the ranger's node `0x69`,
 are not restored at import for a regained class. On the C64, `GEN $20A3`
 writes the old level back into the slot and the first branch catches him.
-Whether Silver Blades recomputes the innate in play from
-`former_class_levels`, which would make the import step redundant, is
-**UNMEASURED**, and that decides whether this is a game bug a player sees.
-It is not in `goldbox-bugs.md` for that reason.
 
-**The experiment.** DOS Silver Blades importing a Curse `.GUY` for a human
-ex-paladin (`class_levels[3]` 0, `former_class_levels[3]` > 0, `former_level`
-below his level) with `0x0F9` = 3, against a control copy with `0x0F9` = 0.
-Prediction: the `.FX` gets node 8 and `paladin_cures` (`0x6D`) = 1 on the
-first and neither on the second; then a rest and a cure attempt on each to
-see whether play differs. It needs a DOSBox driver through Silver Blades'
-party import, which `tools/dos/` does not have. For the first and fifth bytes
-no experiment adds anything: there is no reader to trigger.
+**CONFIRMED in the running game.** `tools/dos/ssbimport.py` drove DOS Secret
+of the Silver Blades' own `ADD CHARACTER TO PARTY > CURSE` on
+`WISH-SPEC-curse-408-regained-paladin`'s MATHEW, once with `0x0F9` staged at 3
+and once at 0, and captured the party sheet after import, after a one-day
+rest, and after a cure attempt. With `0x0F9` = 3 he arrives with Protection
+from Evil (effect node 8), one cure-disease use, and CURE on his sheet
+(`HEAL CURE EXIT`); all three survive the rest; using the cure spends it
+(`paladin_cures` 1 to 0, node 110 added). With `0x0F9` = 0 none of it is
+there at any stage, and Silver Blades writes no `.SFX` at all. Silver Blades
+does not recompute the innate from `former_class_levels` in play: the import
+step is not redundant, and this is a bug a player can hit. It is
+`goldbox-bugs.md`'s "A DOS human who regains paladin loses his cure-disease
+through Silver Blades' import" entry.
 
-## What a writer must do
+A C64 source's former class now reaches this byte on every DOS and Amiga
+destination, and the same driven route confirms it for a Wish-converted
+character too: `#614 (A converted companion arrives at Amiga Pool of Radiance
+as a player character, because write_por overwrites the NPC control byte and
+reports nothing)`.
 
-* **Routes with the window on both sides:** all five bytes byte for byte.
-  The fourth is not dead data; a later title in the family reads it.
-* **A C64 source:** the first byte is the C64's `0xB7` and can be copied
-  rather than written as the constant -- a template-built companion carries
-  `0xFF`, a player character 0, on the C64 as on DOS. The fourth and fifth
-  are the C64's `0xB9`/`0xBA`. DOS Curse never writes them for its own
-  characters, so zero reproduces a DOS-native record; writing the C64 pair
-  would make Silver Blades' import restore an ex-paladin's cures the way the
-  C64 does. That is the `#234 (A dual-classed Curse or Silver Blades
-  character converted to DOS loses the class he trained out of)` decision
-  and is Donald's; nothing here forces it either way.
+## What a writer does
+
+* **Routes with the window on both sides:** all five bytes byte for byte,
+  through `goldbox.dos_codec.window_source`/`set_window_source`. The fourth
+  is not dead data; a later title in the family reads it.
+* **A C64 source:** the fourth byte -- the C64's `dual_class_slot` position --
+  carries the one class `former_levels` names, translated through the shared
+  DOS class numbering (`goldbox.dos_codec._DOS_CLASS_SLOT`), on every
+  destination that byte exists on. Donald's decision on `#614 (A converted
+  companion arrives at Amiga Pool of Radiance as a player character, because
+  write_por overwrites the NPC control byte and reports nothing)`: converted
+  characters keep what they earned. The first and fifth bytes still get the
+  writer's constant from a C64 source -- neither has a reader anywhere, so
+  there is nothing for a C64 record's `0xB7` or `0xBA` to restore.
 * **Templates:** `0xFF` in the first byte means nothing to any engine. A
   writer building a companion from a template copies it and is correct to.
