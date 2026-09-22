@@ -1,6 +1,7 @@
 ---
 # One tool from agent_guest_release_tools, named by agent_guest_tool_name:
-# installs its updater, runs it, and puts the updater on a weekly user timer.
+# installs its updater, runs it, and puts the updater on a weekly user timer
+# unless the tool is pinned to a tag (`version`), which nothing would move.
 
 - name: Set the tool being installed
   ansible.builtin.set_fact:
@@ -27,7 +28,7 @@
     msg: "{{ agent_guest_tool_update.stdout_lines }}"
 
 - name: Ask for the version of {{ agent_guest_tool_name }}
-  ansible.builtin.command: "{{ ansible_user_dir }}/.local/bin/{{ agent_guest_tool_name }} --version"
+  ansible.builtin.command: "{{ ansible_user_dir }}/.local/bin/{{ agent_guest_tool_name }} {{ agent_guest_tool.version_command | default('--version') }}"
   changed_when: false
 
 - name: Install the update units for {{ agent_guest_tool_name }}
@@ -38,6 +39,7 @@
   loop:
     - service
     - timer
+  when: agent_guest_tool.version is not defined
 
 - name: Enable the weekly update for {{ agent_guest_tool_name }}
   ansible.builtin.systemd:
@@ -48,3 +50,4 @@
     state: started
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"
+  when: agent_guest_tool.version is not defined

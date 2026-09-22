@@ -2,10 +2,11 @@
 # Managed by Ansible — roles/agent-vm-guest.
 """Bring {{ agent_guest_tool_name }} up to date and point ~/.local/bin/{{ agent_guest_tool_name }} at it.
 
-Asks GitHub for the newest {{ agent_guest_tool.repo }} release, and installs it under
-~/.local/share/{{ agent_guest_tool_name }}/<tag> only if that tag is not already there. Run by the
-playbook, and weekly by the {{ agent_guest_tool_name }}-update systemd user timer, so the guest keeps
-itself current between playbook runs.
+Asks GitHub for the newest {{ agent_guest_tool.repo }} release, or for exactly the tag the tool is
+pinned to, and installs it under ~/.local/share/{{ agent_guest_tool_name }}/<tag> only if that tag is
+not already there. A pinned tool never moves to a newer release. Run by the playbook, and weekly by
+the {{ agent_guest_tool_name }}-update systemd user timer for a tool that is not pinned, so the guest
+keeps itself current between playbook runs.
 
 The download is checked against the SHA-256 GitHub publishes for the asset in the
 same API response, and nothing is installed without one. Each version has a
@@ -31,6 +32,7 @@ ASSET = "{{ agent_guest_tool.asset }}"
 BINARY = "{{ agent_guest_tool.binary }}"
 ARCHIVE = {{ 'True' if agent_guest_tool.archive else 'False' }}
 KEEP = {{ agent_guest_release_keep }}
+PINNED_TAG = "{{ agent_guest_tool.version | default('') }}"
 
 HOME = Path.home()
 VERSIONS = HOME / ".local/share" / NAME
@@ -43,6 +45,11 @@ def get(url):
         url, headers={"User-Agent": f"{NAME}-update", "Accept": "application/vnd.github+json"}
     )
     return urllib.request.urlopen(request, timeout=60)
+
+
+def release_url():
+    base = f"https://api.github.com/repos/{REPO}/releases"
+    return f"{base}/tags/{PINNED_TAG}" if PINNED_TAG else f"{base}/latest"
 
 
 def version_key(name):
@@ -107,7 +114,7 @@ def main():
     lock = open(VERSIONS / ".lock", "w")
     fcntl.flock(lock, fcntl.LOCK_EX)  # the timer and a playbook run must not overlap
 
-    with get(f"https://api.github.com/repos/{REPO}/releases/latest") as response:
+    with get(release_url()) as response:
         release = json.load(response)
     tag = release["tag_name"]
     if not re.fullmatch(r"[A-Za-z0-9._-]+", tag):

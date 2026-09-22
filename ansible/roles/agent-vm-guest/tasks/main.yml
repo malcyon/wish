@@ -214,6 +214,15 @@
     agent_guest_tool_name: herdr
   tags: herdr
 
+- name: The c64u command-line tool
+  ansible.builtin.include_tasks:
+    file: release-tool.yml
+    apply:
+      tags: c64u
+  vars:
+    agent_guest_tool_name: c64u
+  tags: c64u
+
 - name: Codex
   ansible.builtin.include_tasks:
     file: codex.yml

@@ -141,6 +141,23 @@ agent_guest_release_tools:
     asset: herdr-linux-x86_64
     binary: herdr-linux-x86_64
     archive: false
+  # A tool with `version` set is installed at exactly that tag and never updated,
+  # so it gets no weekly timer. The download is still checked against the SHA-256
+  # GitHub publishes for the asset; there is no field for a checksum of our own.
+  # `version_command` (default `--version`) is what asks the installed binary for
+  # its version afterwards. c64u has no --version flag, and its `version` command
+  # stops at "no C64 Ultimate configured" with exit status 1 unless a host is
+  # given, so it is given the loopback address: the command only prints the build
+  # and sends nothing. v0.9.4 is what docs/161-c64-ultimate.md and
+  # tools/c64/c64u.py were written against, and v1.0.0 panics with no display.
+  # tools/c64/c64u.py finds it at ~/.local/bin/c64u.
+  c64u:
+    repo: cybersorcerer/c64u
+    asset: c64u_Linux_x86_64.tar.gz
+    binary: c64u
+    archive: true
+    version: v0.9.4
+    version_command: version --host 127.0.0.1
 # Herdr versions kept on disk: the newest, and the one before it.
 agent_guest_release_keep: 2
 agent_guest_release_schedule: weekly
