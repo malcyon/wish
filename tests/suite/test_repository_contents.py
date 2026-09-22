@@ -139,13 +139,12 @@ def test_no_hardcoded_user_paths(files):
     # home out names one person's and nobody else's.
     for path in (p for p in files
                  if p.suffix == ".toml" or p.name.endswith(".yaml.example")):
-        # `.codex/agents/<name>.toml` (#506) is generated verbatim from
-        # `.claude/agents/<name>.md`'s body by `tools/generate/gencodex.py`, so a line
-        # this loop would otherwise flag is only a problem if it is *new* --
-        # if the same text is not already sitting, unflagged, in the source
-        # `.md` (this test does not walk `.md` at all). This is narrower than
-        # exempting the whole directory: a hardcoded path introduced by the
-        # generator itself, rather than copied from its source, still fails.
+        # `.codex/agents/<name>.toml` repeats `.claude/agents/<name>.md`'s
+        # body by hand, so a line this loop would otherwise flag is only a
+        # problem if it is *new* -- if the same text is not already sitting,
+        # unflagged, in the matching `.md` (this test does not walk `.md` at
+        # all). This is narrower than exempting the whole directory: a
+        # hardcoded path that appears only in the TOML still fails.
         source_text = None
         if path.parent.as_posix() == ".codex/agents":
             source_md = ROOT / ".claude" / "agents" / f"{path.stem}.md"

@@ -222,11 +222,10 @@ the agent is not for stops and says so, because pressing on into a decision
 that was not its own costs more than the re-route.
 
 **What differs between the two tools is mechanism, not the practice above.**
-The agent definitions have one source, `.claude/agents/<name>.md`, which
-Claude Code reads directly and `tools/generate/gencodex.py` generates into
-`.codex/agents/<name>.toml` for Codex -- `--check` fails if the two drift --
-and the two name different models, since a Claude model name (`sonnet`,
-`opus`, `fable`, `haiku`) has no Codex counterpart. `.claude/rules/` also
+Each agent has two hand-kept definitions, `.claude/agents/<name>.md` for
+Claude Code and `.codex/agents/<name>.toml` for Codex, and a change to one is
+made to the other by hand. The two name different models, since a Claude model
+name (`sonnet`, `opus`, `fable`, `haiku`) has no Codex counterpart. `.claude/rules/` also
 loads automatically into a Claude Code session and does not load into a Codex
 one at all, which is the whole reason the table above exists.
 
@@ -258,6 +257,6 @@ agents each running the whole suite is six copies of Qt on one machine.
 **One run, not six -- that is the rule, and who starts it is not.** Whoever is about to push either makes that
 run itself or sends it to a `test-runner` subagent, whose whole job it is;
 never both, and never two at once. Claude Code's is
-`.claude/agents/test-runner.md`; Codex's is the same definition, generated
-into `.codex/agents/test-runner.toml`. The message, the push, the CI check,
+`.claude/agents/test-runner.md`; Codex's is
+`.codex/agents/test-runner.toml`. The message, the push, the CI check,
 and where to run it: `.claude/rules/commits.md`.

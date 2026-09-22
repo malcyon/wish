@@ -11,7 +11,7 @@ Three PreToolUse hooks in .codex/hooks.json guard this session: check-issue-read
 
 ## The agents, and when to use each
 
-The definitions are .codex/agents/<name>.toml, generated from .claude/agents/<name>.md; each names its own Codex model. Do not edit the TOML by hand.
+The definitions are .codex/agents/<name>.toml, each naming its own Codex model and kept in step with its .claude/agents/<name>.md by hand; a change to one is made to the other.
 
 - senior-analyst: an issue that names a goal and not its mechanism, when the code it touches already exists. Reads the issue and the code, posts a plan on the issue naming files, functions and tests, and says which agent builds it.
 - architect: a plan when working out how is harder than doing it: a subsystem that does not exist, or stages across several agents. Writes the plan, builds nothing.

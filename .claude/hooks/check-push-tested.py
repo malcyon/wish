@@ -172,9 +172,8 @@ def is_code(path: str) -> bool:
     commits.md's exception is for prose: a `.md` that no test reads as data.
     Everything else counts -- `.py`, `.ui`, every file under `tests/` except
     its READMEs, and also `pyproject.toml`, the hook wiring, and the agent TOML
-    files, which tests read. `.claude/agents/*.md` is the source the TOML is
-    generated from and `tests/generate/test_gencodex.py` checks the two agree,
-    so it counts too.
+    files, which tests read. `.claude/agents/*.md` counts too:
+    `tests/suite/test_repository_contents.py` reads it.
     """
     if not path.endswith(".md"):
         return True

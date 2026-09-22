@@ -258,7 +258,7 @@ gamedisks.yaml
 # /orchestrate session hands off to the next.
 !.claude/orchestrator-queue.md
 skills-lock.json
-# `.codex/agents/*.toml` (#506) is generated from `.claude/agents/*.md` and is
+# `.codex/agents/*.toml` holds Codex's agent definitions and is
 # the project's, not one machine's; everything else Codex writes under
 # `.codex/` -- its own session and cache state -- is local.
 .codex/*

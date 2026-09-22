@@ -18,8 +18,8 @@ What each directory in this repository is for; the API documentation is at https
 | `assets/` | Shipped non-code files — the application icons, the `.desktop` entry, and the artist's own logo files under `assets/logo/`. |
 | `images/` | The screenshots the README links. |
 | `designer` | A launcher for Qt Designer that opens `wish/window.ui`, the unified layout (`docs/146-unified-ui.md`). |
-| `.claude/agents/` | Source subagent definitions — each supplies Claude Code's model, tool list and prompt, and `tools/generate/gencodex.py` generates the Codex profiles from them. |
-| `.codex/agents/` | Generated project subagent profiles for Codex; do not edit them by hand, run `tools/generate/gencodex.py`. |
+| `.claude/agents/` | Claude Code's subagent definitions — each supplies the model, tool list and prompt; its Codex twin under `.codex/agents/` is kept in step by hand. |
+| `.codex/agents/` | Codex's subagent definitions, one per `.claude/agents/<name>.md` and kept in step with it by hand. |
 | `.claude/rules/` | The working standards split out of `CLAUDE.md`; a file with `paths:` frontmatter loads only when a file it names is read, and one without loads at launch for the main window and every subagent. |
 | `.agents/rules/` | The same files as `.claude/rules/`, as symlinks, for tools that read `AGENTS.md` and `.agents/rules/`; `AGENTS.md` holds the rules themselves and `CLAUDE.md` imports it and adds only what is true of Claude Code alone. |
 | `.agents/skills/` | Skills Codex and Antigravity read; `caveman` is shared with Claude Code by symlink from `.claude/skills/`, and `orchestrate` here is Codex's own copy of `.claude/skills/orchestrate/`, allowed to differ from it. |
