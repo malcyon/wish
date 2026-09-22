@@ -315,19 +315,30 @@ the permanent array, so the two ports disagree about a running boost's
 percentile; the fields themselves convert exactly and the destination's own
 recompute is what a player then sees.
 
-**CONFIRMED, a difference between the ports at high caster level:** the DOS
-Enlarge ladder's last test is `cmp al, 0xb`, so levels 10 and 11 share the
-22 entry and a level of **12 or more falls through to the 18/00 the cast
-started with**, where the C64 clamps the level at 10 and gives 22 (`$91D6`:
-`CMP #$0A`). It changes nothing about a conversion, because the level a
-converted Enlarge needs is read back off its own node's score rather than from
-the caster, and both ports then agree on what that score is.
+**CONFIRMED, a difference between the ports at high caster level: the DOS
+Enlarge ladder's last test is `cmp al, 0xb`, so levels 10 and 11 share the 22
+entry and a level of 12 or more matches none of the ten tests, where the C64
+clamps the level at 10 and gives 22 (`$91D6`: `CMP #$0A`).** What that fall-out
+case actually stores or shows is **NOT ESTABLISHED**, and this page used to
+read it as "the 18/00 the cast started with" -- `docs/50-experiments.md` and
+commit dc6e1de6 (Show the DOS ability cast writes the in-force byte only, so
+the capped 18/100 case is not a conversion loss, #600 (The neutral record has
+no field for an effect's remaining duration or a paladin's cure-disease uses,
+so a converted character loses both)) since found, in a
+separate part of this same ability system, that the DOS ability record keeps a
+**permanent** score and an **in-force** one as distinct bytes, and that at
+least one cast writes only the in-force half. Enlarge's own recompute has not
+been re-read in light of that split: whether the level-12-or-more case reads
+the permanent score, the in-force one, writes neither and leaves the prior
+in-force value standing, or does something else, is unread. It changes nothing
+about a conversion, because the level a converted Enlarge needs is read back
+off its own node's score rather than from the caster, and both ports then
+agree on what that score is once written.
 
 **Which title a player can meet it in: Silver Blades only, and the ladder's top
-rung says why.** `goldbox-bugs.md` entry 18 carried "reachability not read"
-until each title's own experience table was looked at, in the loader image
-where the trainer indexes it -- a run of `u32` thresholds ended by
-`0xFFFFFFFF`:
+rung says why.** This reachability question was resolved by reading each
+title's own experience table, in the loader image where the trainer indexes
+it -- a run of `u32` thresholds ended by `0xFFFFFFFF`:
 
 | title | magic-user thresholds in `START.EXE` | last level | C64 `GEN` class ceiling |
 |---|---|---|---|
@@ -339,14 +350,28 @@ So the ladder's last test, level 11, is exactly Curse's magic-user ceiling: the
 cast was written to cover every level a Curse caster can hold, and no Curse
 party can fall out the bottom of it. Silver Blades raised the class to 15 and
 shipped the ladder unchanged, which is where the fall-through becomes something
-a player meets. A human magic-user has no racial limit below the class ceiling
-in either title (`goldbox/levels.py`, `racial_limits`), so nothing else stands
-in the way. **CONFIRMED** from the two ports' own tables; what is not measured
-is whether a Silver Blades playthrough accumulates the 750,001 experience level
-12 asks for, and the highest magic-user among the 86 DOS Silver Blades records
-on this machine is level 8 -- all of them ours or the archives' early-game
-shipped party, so that is a statement about our records rather than about the
-game.
+a player can reach. A human magic-user has no racial limit below the class
+ceiling in either title (`goldbox/levels.py`, `racial_limits`), so nothing
+else stands in the way. **CONFIRMED** from the two ports' own tables that a
+Silver Blades party can reach a caster level the ladder does not cover; what
+is not measured is whether a Silver Blades playthrough accumulates the 750,001
+experience level 12 asks for, and the highest magic-user among the 86 DOS
+Silver Blades records on this machine is level 8 -- all of them ours or the
+archives' early-game shipped party, so that is a statement about our records
+rather than about the game.
+
+**This finding used to sit in `goldbox-bugs.md` as entry 18, "A DOS
+magic-user of level 12 or higher who casts Enlarge gives the target the
+weakest Strength the spell can give, not the strongest", marked CONFIRMED.**
+It moved out this session: the reachability half above still holds, but the
+entry's claim about the actual displayed outcome does not meet
+`goldbox-bugs.md`'s bar of a confirmed, player-visible result, given the
+permanent/in-force split above. **Next step, not yet taken:** read Enlarge's
+own recompute call at DOS Silver Blades `0x2E80D`-`0x2E88B` and its caller,
+asking specifically which half of the ability pair it reads and writes for a
+caster past level 11 -- the permanent byte, the in-force byte, both, or
+neither -- before restating any claim about what a player would see on the
+character sheet.
 
 ## Which slot a converted effect takes, and who owns it
 

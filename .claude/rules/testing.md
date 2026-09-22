@@ -193,9 +193,11 @@ the engine's own work:**
 it were: Pool of Radiance's recompute takes 5000 off for one, and no item in
 any title's own tables carries the name word that fires it -- 0 in 1,883 C64
 item records and 1,171 DOS ones (`tools/dos/dosencrecompute.py stock`,
-`docs/125-bug-notes.md` N24). A record storing exactly 5000 below the sum is
-one somebody built rather than one the game wrote -- which is a statement about
-that number and not about the direction.
+`docs/125-bug-notes.md` N24). The bag-of-holding explanation is unsupported,
+because no obtainable item fires it -- but that does not exclude every other
+sequence of play that could land a record exactly 5000 below the sum, so a
+record found there is not, on that reason alone, established as evidence of an
+edit.
 
 **So the check is not weakened, it is narrowed: name the operation, or the
 miss still means something.** A miss you can attribute to one of those is
