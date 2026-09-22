@@ -240,3 +240,8 @@ were listed and left; and no drawer other than `Save` on disk 3 was tried.
   the one that breaks a lazy version of that search: it is white to the client
   area's last row, so "walk up while the row is light" walks seven rows into
   the picture. `tests/amiga/test_amigashots.py` holds that case.
+* **The stock `fs-uae` is a second emulator for the same runs**, alongside
+  WinUAE: `tools/amiga/fsuaepor.py` boots Amiga Pool of Radiance, Pools of
+  Darkness and Curse in an instance-pool slot. Allow about a minute before a
+  key does anything -- measured at about 58 s to the code wheel, 60 s to the
+  title and 50 s to the menu.
