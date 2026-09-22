@@ -1413,8 +1413,7 @@ NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
 
 #: Which of the refusals above each requirement of
 #: `editor.saveplan.requirements` is, so the service names what is missing
-#: and this module keeps the wording. Every line here is approved and
-#: unchanged; only the lookup is new.
+#: and this module keeps the wording a player reads.
 MISSING_ASSET_BLOCKS: dict[str, tuple[str, str]] = {
     saveplan.DESTINATION_DISKS: (NO_DISKS_TITLE, NO_DISKS),
     saveplan.SOURCE_DISKS: (NO_DISKS_TITLE, NO_DISKS),

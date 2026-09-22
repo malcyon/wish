@@ -23,7 +23,8 @@ which is what keeps a snapshot and a Save producing the same bytes.
 The second half of this module is the Save As over that snapshot, in three
 steps a caller takes in order: `resolve_assets` finds whatever game data the
 route needs off the player's own disks, `prepare_save_as` rehearses the whole
-output in memory and refuses a conversion that would lose a field, and
+output in memory and refuses it if reading it back gives a party the sheet
+would not recognise, and
 `publish` puts the prepared bytes where the player asked and opens them again
 as the document to adopt. Nothing on disk changes before the last of the
 three, and a `Published` knows how to undo itself if adoption then fails.
@@ -42,8 +43,8 @@ from typing import Any
 
 from goldbox import amiga_por, amiga_savegame, rewrite
 from goldbox.d64 import D64
-from goldbox.record import CharacterRecord
-from goldbox.savegame import SaveGame0, SaveGame1, store_save
+from goldbox.record import RECORD_SIZE, CharacterRecord
+from goldbox.savegame import SaveGame0, SaveGame1, load_save, store_save
 
 from . import files as editor_files
 
@@ -338,9 +339,10 @@ class MissingAssets(SaveAsError):
 class DroppedFields(SaveAsError):
     """The conversion would lose something, so nothing is written.
 
-    `lost` is `report.dropped` followed by every line of `report.losses`,
-    including a name the destination's own field could not hold whole. Each
-    one is a high-priority defect in the conversion
+    `lost` is what the conversion's own accounting calls a loss followed by
+    every difference `compare` found between the sheet and the output read
+    back, a name the destination's own field could not hold whole among
+    them. Each one is a high-priority defect in the conversion
     (`docs/227-editor-open-save-as.md`), never a choice to put to a player.
     """
 
@@ -355,17 +357,12 @@ class StalePlan(SaveAsError):
     the assets it was prepared from."""
 
 
-class RecoveryFailed(SaveAsError):
-    """Undoing a publication itself failed.
-
-    `backup` is the copy of whatever was there before, still on disk, so a
-    caller can say where the player's own bytes are rather than claim nothing
-    was written.
-    """
-
-    def __init__(self, message: str, backup: "pathlib.Path | None" = None):
-        self.backup = backup
-        super().__init__(message)
+#: Undoing a publication itself failed, carrying the backup that still holds
+#: the destination's own bytes and whatever is left on disk. One class for a
+#: failed rollback wherever it happens: `editor.files.publish_folder` raises
+#: it for a partly published folder it cannot clear up, and `Published.
+#: roll_back` for an image it cannot put back.
+RecoveryFailed = editor_files.RecoveryFailed
 
 
 #: The destination title's own C64 game disks -- the combat icon tables and
@@ -423,8 +420,8 @@ def requirements(source: Any, port: str) -> tuple[str, ...]:
 
     A native copy needs nothing: every byte comes from the save itself. What
     a conversion needs is per destination **and per title** -- an Amiga
-    Silver Blades save stages no script, so it asks for no game disk, which
-    is what the old Convert window's blanket Amiga requirement got wrong.
+    Silver Blades save stages no area script, so it asks for no game disk at
+    all where a Pool of Radiance or a Curse one does.
     """
     from .convert import amiga_needs_game_disk
 
@@ -475,14 +472,20 @@ class Assets:
     def token(self) -> tuple[str, ...]:
         """What a prepared output would change if this changed.
 
-        The paths a caller named, and a digest of the one thing behind them
-        that can change without the path changing -- `ANIMATE00`, read off
-        whichever disk answered.
+        The paths a caller named, and a digest of everything behind them a
+        conversion actually reads and that can change without the path
+        changing: `ANIMATE00` off whichever C64 disk answered, the whole
+        Amiga disk the area's script comes off, and the `ECL<n>.DAX` files
+        of the DOS game folder. The rest of a DOS game folder is the
+        installed game and no writer reads it, so digesting the folder whole
+        would be tens of megabytes to answer a question about eight files.
         """
         return (str(self.dos_folder or ""), str(self.amiga_disk or ""),
                 str(self.c64_folder or ""),
                 _digest(getattr(self.game_files, "animate", None)),
-                _digest(getattr(self.source_files, "animate", None)))
+                _digest(getattr(self.source_files, "animate", None)),
+                _file_digest(self.amiga_disk),
+                _script_digest(self.dos_folder))
 
 
 def resolve_assets(source: Any, port: str, *, game_files: Any = None,
@@ -562,16 +565,103 @@ def rehearse(direction: Any, source: Any, assets: Assets) -> tuple[Any, str]:
 
 
 def losses(report: Any) -> list[str]:
-    """Every field a conversion would lose, from both of the lists that hold
-    one.
+    """Every field the conversion's own accounting says it lost.
 
-    `report.dropped` is the fields with no home in the destination, and
-    `report.losses` is the subset of the warnings that is a player's own loss
-    -- a name the destination's field could not hold whole among them. Each
-    is a defect in the conversion, and neither is a thing to ask a player to
-    accept (`docs/227-editor-open-save-as.md`).
+    `report.dropped` is the fields with no home in the destination and every
+    report has it. `report.losses` is a second list **only
+    `goldbox.dos_codec.C64SaveReport` has** -- the reports of the other five
+    directions carry no such field -- so this is a floor rather than the
+    guard: a name a DOS destination could not hold whole is a line of
+    `report.warnings` and reaches neither list, which is why `compare` below
+    reads the output back instead of trusting either
+    (`docs/227-editor-open-save-as.md`).
     """
     return [*getattr(report, "dropped", ()), *getattr(report, "losses", ())]
+
+
+#: What the player's own character is, in the C64 record every port's sheet
+#: is bound to, and so what every destination has to come back holding. The
+#: name, which a 15-character DOS field and a 16-character Amiga one can both
+#: cut; everything the writers can clamp to a narrower field; and the rest of
+#: what a player would call their character. Measured rather than chosen:
+#: every one of these comes back unchanged on every route and native copy
+#: this project can drive, with nothing edited.
+KEPT_FIELDS = (
+    "name", "sex", "race", "char_class", "class_bits", "alignment", "age",
+    "strength", "exceptional_strength", "intelligence", "wisdom", "dexterity",
+    "constitution", "charisma", "experience", "hp_max", "hp_rolled",
+    "hp_lost_to_drain", "levels_drained", "level", "level_cleric",
+    "level_fighter", "level_knight", "level_magic_user", "level_paladin",
+    "level_ranger", "level_thief", "dual_class_level", "copper", "silver",
+    "electrum", "gold", "platinum", "gems", "jewelry", "spells_known",
+    "spells_known_high", "spells_memorised", "movement", "portrait_head",
+    "portrait_body")
+
+#: What is deliberately **not** compared, and why, each one measured on the
+#: routes above rather than assumed:
+#:
+#: * `identity_pair` and `party_order` -- the engine's own bookkeeping, which
+#:   a DOS destination renumbers;
+#: * `item_effects` -- the ten trait slots, which an Amiga destination stores
+#:   in the opposite order, so the bytes differ where the traits do not;
+#: * `thac0`, `armour_class`, `hp_current`, `combat_side`, `roster_*` and
+#:   `inventory` -- not in the 256 bytes a C64 save stores per slot, so a C64
+#:   destination read back at slot width has nothing to compare;
+#: * every `gap_*` -- bytes nobody has named.
+_NOT_COMPARED = ("identity_pair", "party_order", "item_effects", "thac0",
+                 "armour_class", "hp_current", "combat_side", "inventory")
+
+
+def kept(record: CharacterRecord) -> "dict[str, Any]":
+    """`KEPT_FIELDS` off one record, by name."""
+    return {name: record.get(name) for name in KEPT_FIELDS}
+
+
+def written_records(port: str, at: pathlib.Path,
+                    slot: "str | None") -> "list[CharacterRecord]":
+    """Every character record a written destination holds, as a C64 record.
+
+    A DOS folder and an Amiga disk are read back the way the editor itself
+    opens one, through `editor.roster.Party`. A C64 image is read slot by
+    slot instead, because `goldbox.savegame.looks_occupied` calls a slot a
+    character only when all six abilities are 3 to 25 -- so a party built for
+    a test reads back as nobody out of a save that really does hold its
+    records, and comparing through the roster would refuse a conversion that
+    lost nothing.
+    """
+    from .convert import Source
+    from .roster import Party
+
+    if port == "c64":
+        _game, save0, _save1 = load_save(D64.open(str(at)))
+        return [CharacterRecord(
+            one.window + bytes(RECORD_SIZE - len(one.window)),
+            stored_size=len(one.window))
+            for one in save0.slots if any(one.window)]
+    return [member.record
+            for member in Party(Source.detect(at, slot=slot)).members]
+
+
+def compare(expected: "list[CharacterRecord]",
+            written: "list[CharacterRecord]") -> list[str]:
+    """What the sheet holds and the written destination does not.
+
+    Compared field by field as a multiset, because the two ports list a party
+    from opposite ends (`goldbox.dos_codec.c64_party`) and a conversion that
+    reversed the order lost nothing. A field whose values differ is named
+    with both, which is the evidence for the defect each difference is.
+    """
+    out = []
+    if len(expected) != len(written):
+        return [f"{len(expected)} character(s) went in and {len(written)} "
+                f"came back out"]
+    for name in KEPT_FIELDS:
+        was = sorted(repr(record.get(name)) for record in expected)
+        now = sorted(repr(record.get(name)) for record in written)
+        if was != now:
+            out.append(f"{name}: {', '.join(was)} arrived as "
+                       f"{', '.join(now)}")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -585,7 +675,10 @@ class Destination:
     `path` is the file for a C64 `.d64` or an Amiga `.adf` and the save
     folder itself for DOS. `slot` is the letter the written save holds --
     the source's own on a native copy, `A` for a fresh DOS folder, the
-    source's letter for a DOS party converted to an Amiga disk.
+    source's letter for a DOS party converted to an Amiga disk, and `None`
+    for a C64 destination, which keeps one saved game and names no slot.
+    The letter a C64 conversion reads *from* is the source's and belongs to
+    the rehearsal rather than here.
     """
 
     port: str
@@ -644,14 +737,76 @@ def _digest(data: "bytes | None") -> str:
     return "" if data is None else hashlib.sha256(bytes(data)).hexdigest()
 
 
+def _file_digest(path: "pathlib.Path | None") -> str:
+    """A digest of one file's bytes, empty for a path with nothing at it."""
+    if path is None:
+        return ""
+    try:
+        return _digest(pathlib.Path(path).read_bytes())
+    except OSError:
+        return ""
+
+
+def _script_digest(folder: "pathlib.Path | None") -> str:
+    """A digest over a DOS game folder's `ECL<n>.DAX` files, by name."""
+    if folder is None:
+        return ""
+    sha = hashlib.sha256()
+    try:
+        scripts = sorted(path for path in pathlib.Path(folder).iterdir()
+                         if path.is_file()
+                         and re.fullmatch(r"ECL\d*\.DAX", path.name,
+                                          re.IGNORECASE))
+        for path in scripts:
+            sha.update(path.name.upper().encode())
+            sha.update(path.read_bytes())
+    except OSError:
+        return ""
+    return sha.hexdigest()
+
+
+def _amiga_contents(image: bytes) -> dict[str, bytes]:
+    """Every file on an Amiga disk image, by path.
+
+    **The image is not the saved game and the files are.**
+    `goldbox.amiga_adf.AmigaDisk.write_file` stamps each directory entry with
+    the time of day, so writing the same party into the same disk twice gives
+    two images that differ in the directory blocks and nowhere else -- which
+    would make a plan prepared from an Amiga party stale the moment it was
+    compared with itself.
+    """
+    from goldbox.amiga_adf import AmigaDisk
+
+    disk = AmigaDisk(bytearray(image))
+    return {path: disk.read_file(path)
+            for path, _entry in sorted(disk.walk(), key=lambda one: one[0])}
+
+
+def _snapshot_files(snapshot: Snapshot) -> dict[str, bytes]:
+    """Everything a publication of this snapshot could put down, by name.
+
+    A DOS folder's other saved games among them: a native copy carries the
+    whole folder, so a file of another slot changing changes what a Save As
+    would write.
+    """
+    if snapshot.image is not None:
+        return _amiga_contents(snapshot.image)
+    files = dict(snapshot.files or {})
+    if snapshot.port == "dos" and snapshot.path.is_dir():
+        for path in sorted(snapshot.path.iterdir()):
+            if path.is_file() and path.name not in files:
+                files[path.name] = path.read_bytes()
+    return files
+
+
 def _snapshot_digest(snapshot: Snapshot) -> str:
     """One digest over everything a snapshot holds, whichever port it is."""
     sha = hashlib.sha256()
-    for part in (snapshot.save0, snapshot.save1, snapshot.disk,
-                 snapshot.image):
+    for part in (snapshot.save0, snapshot.save1, snapshot.disk):
         sha.update(b"\x00" if part is None else bytes(part))
-    for name, data in sorted((snapshot.files or {}).items()):
+    for name, data in sorted(_snapshot_files(snapshot).items()):
         sha.update(name.encode())
+        sha.update(b"\x00")
         sha.update(data)
     sha.update(str(snapshot.slot).encode())
     return sha.hexdigest()
@@ -668,6 +823,44 @@ def plan_key(snapshot: Snapshot, port: str, path: "str | pathlib.Path",
 # ---------------------------------------------------------------------------
 # Save As: preparing it
 # ---------------------------------------------------------------------------
+
+#: What a destination of each port has to be called for the editor to open it
+#: again. A DOS destination is a folder and is not here: it has no suffix.
+DESTINATION_SUFFIX = {"c64": ".d64", "amiga": ".adf"}
+
+
+def _inside_or_equal(path: pathlib.Path, other: pathlib.Path) -> bool:
+    """Whether `path` is `other` or sits under it, symlinks resolved."""
+    try:
+        here, there = path.resolve(), other.resolve()
+    except OSError:
+        return False
+    return here == there or here.is_relative_to(there)
+
+
+def refuse_alias(path: pathlib.Path, snapshot: Snapshot,
+                 assets: "Assets | None") -> None:
+    """Refuse a destination that is, holds or sits inside something this
+    Save As is reading.
+
+    The save itself first: writing a Save As over its own source destroys
+    the thing it is reading, and for a copy of the same save to the same
+    place there is already a Save. A DOS save is a folder, so a destination
+    *inside* it is the same collision under another name, and a destination
+    folder that holds the source is one too. Then the game data the route
+    reads -- a disk image or a game folder the player named -- which a
+    publication would overwrite with a saved game.
+    """
+    if _inside_or_equal(path, snapshot.path):
+        raise SaveAsError(f"{path} is the save this is being written from")
+    if snapshot.path.is_dir() and _inside_or_equal(snapshot.path, path):
+        raise SaveAsError(f"{path} holds the save this is being written from")
+    for what, where in (("game disk", (assets or Assets()).amiga_disk),
+                        ("DOS game folder", (assets or Assets()).dos_folder),
+                        ("C64 game folder", (assets or Assets()).c64_folder)):
+        if where is not None and _inside_or_equal(path, where):
+            raise SaveAsError(f"{path} is the {what} this conversion reads")
+
 
 def native_files(snapshot: Snapshot) -> dict[str, bytes]:
     """A copy of the save itself, with the editor's pending edits in it.
@@ -713,50 +906,68 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     reaches here with the open save's own path gets a refusal rather than
     either.
 
+    **The name decides whether the output can be opened again**, so it is
+    checked here rather than left to the reader: a C64 destination is a
+    `.d64` and an Amiga one an `.adf` (`DESTINATION_SUFFIX`), case
+    disregarded, and a DOS destination is a folder and has no suffix at all.
+    Without that check a player typing `MySave` for an Amiga destination gets
+    the validation's own sentence about a D64 image of 901,120 bytes.
+
     Raises `MissingAssets` for game data nothing answered for, `DroppedFields`
     for a conversion that loses something, and `SaveAsError` for a route that
-    does not exist, a destination that is the source, or output that cannot
-    be read back.
+    does not exist, a destination that is the source or one of the assets, a
+    name the destination cannot be read back from, or output that cannot be
+    read back.
     """
-    from .convert import Source, _same_file
+    from .convert import Source
 
     snapshot = prepare(party)
     if snapshot is None:
         raise SaveAsError("there is no saved game open to write")
     source = Source.of_snapshot(snapshot)
-    if _same_file(pathlib.Path(path), snapshot.path):
-        raise SaveAsError(f"{path} is the save this is being written from")
+    refuse_alias(pathlib.Path(path), snapshot, assets)
+    wanted = DESTINATION_SUFFIX.get(port)
+    if wanted and pathlib.Path(path).suffix.lower() != wanted:
+        raise SaveAsError(f"a {port} destination is a {wanted} file and "
+                          f"{path} is not")
     direction = route(source, port)
     if direction is None:
         files, slot, report = native_files(snapshot), snapshot.slot, None
         title = snapshot.title
     else:
         rehearsal, slot = rehearse(direction, source, assets or Assets())
-        lost = losses(rehearsal.report)
-        if lost:
-            # The accounting is the evidence for the defect each of these
-            # is, so it goes to the log whether or not the caller says
-            # anything (`.claude/rules/conversions.md`).
-            _log.info("refusing a %s to %s Save As: %s", source.port, port,
-                      "; ".join(lost))
-            raise DroppedFields(lost)
         files, report = dict(rehearsal.files), rehearsal.report
         title = direction.destination_game
-    destination = Destination(port=port, path=pathlib.Path(path), slot=slot,
+    destination = Destination(port=port, path=pathlib.Path(path),
+                              slot=None if port == "c64" else slot,
                               title=title, native=direction is None)
-    validate(destination, files)
+    validate(destination, files,
+             [edited_record(member) for member in party.members],
+             accounted=losses(report))
     return SavePlan(source=source, destination=destination, files=files,
                     report=report,
                     key=plan_key(snapshot, port, path, assets))
 
 
-def validate(destination: Destination, files: dict[str, bytes]) -> None:
+def validate(destination: Destination, files: dict[str, bytes],
+             expected: "list[CharacterRecord] | None" = None,
+             accounted: "list[str] | tuple[str, ...]" = ()) -> None:
     """Open the prepared bytes as a saved game, somewhere else entirely.
 
-    A conversion that produced something the editor cannot read is a failure
-    before publication rather than after it, which is the difference between
-    a Save As that changes nothing and one that leaves the player holding an
-    unreadable destination.
+    Two checks, both before a byte of the player's destination is touched.
+    Output the editor cannot read is a failure here rather than after
+    publication, which is the difference between a Save As that changes
+    nothing and one that leaves the player holding an unreadable
+    destination. Then `expected` -- the party as the sheet holds it -- is
+    compared with what the written save actually came back with, and **any
+    difference is refused**: a name cut to the destination's own width and a
+    value clamped to a narrower field are losses that reach no list on the
+    conversion's report at all (`losses` says which lists there are).
+
+    `accounted` is what that report did name, and it is raised together with
+    the comparison's own findings rather than ahead of them, so one refusal
+    names everything this route would cost the player instead of the first
+    thing it happened to notice.
 
     **It does not check that the destination holds a party**, and the reason
     is that the editor's own occupancy test is stricter than the save format:
@@ -783,6 +994,24 @@ def validate(destination: Destination, files: dict[str, bytes]) -> None:
             raise SaveAsError(
                 f"the {destination.port} save this would write cannot be "
                 f"read back: {exc}") from exc
+        written = []
+        if expected is not None:
+            try:
+                written = written_records(destination.port, where,
+                                          destination.slot)
+            except Exception as exc:
+                raise SaveAsError(
+                    f"the {destination.port} save this would write cannot be "
+                    f"read back: {exc}") from exc
+    lost = [*accounted,
+            *(compare(expected, written) if expected is not None else [])]
+    if lost:
+        # The accounting is the evidence for the defect each of these is, so
+        # it goes to the log whether or not the caller says anything
+        # (`.claude/rules/conversions.md`).
+        _log.info("refusing a Save As to %s: %s", destination.path,
+                  "; ".join(lost))
+        raise DroppedFields(lost)
 
 
 def open_destination(destination: Destination) -> Any:
@@ -814,6 +1043,11 @@ class Published:
     backup: pathlib.Path | None
     written: tuple[pathlib.Path, ...]
     folder_created: bool = False
+    #: The folders publication had to make on the way to the destination,
+    #: deepest first. A rollback takes them away again, so a Save As to
+    #: `~/new/place/save.adf` that is undone leaves neither the file nor the
+    #: two folders nobody had before.
+    created: tuple[pathlib.Path, ...] = ()
 
     def roll_back(self) -> None:
         """Undo the publication, or say what is left of it.
@@ -824,21 +1058,36 @@ class Published:
         """
         try:
             if self.backup is not None:
+                _log.info("putting %s back from %s", self.destination.path,
+                          self.backup)
                 editor_files.restore_file(self.destination.path, self.backup)
                 return
             for path in self.written:
                 path.unlink(missing_ok=True)
             if self.folder_created and self.destination.path.is_dir():
                 shutil.rmtree(self.destination.path)
+            editor_files.remove_if_empty(self.created)
         except OSError as exc:
+            _log.exception("could not undo the publication of %s; the "
+                           "backup is %s", self.destination.path,
+                           self.backup)
             raise RecoveryFailed(
                 f"could not put {self.destination.path} back: {exc}",
                 backup=self.backup) from exc
 
 
-def publish(plan: SavePlan,
-            backups: "str | pathlib.Path | None" = None) -> Published:
+def publish(plan: SavePlan, party: Any,
+            backups: "str | pathlib.Path | None" = None,
+            assets: "Assets | None" = None) -> Published:
     """Put a prepared output where the player asked, and open it.
+
+    `party` is the open party the plan was prepared from, and it is checked
+    against the plan rather than merely carried: the flag a caller sets is
+    only as good as the caller's own noticing, so the edits, the destination
+    and the assets are recomputed here and output that is no longer what
+    they would produce is refused. Publishing bytes a player has since
+    edited past is the one failure in this module nothing on disk would
+    show.
 
     An image is written through a temporary sibling and renamed over
     whatever was there, which is backed up first; a save folder is staged
@@ -847,27 +1096,39 @@ def publish(plan: SavePlan,
     its own right -- a destination that cannot be read is rolled back here
     rather than handed on.
 
-    Raises `StalePlan` for output the caller has invalidated, and whatever
-    `editor.files` raises for a refused or failed write.
+    Raises `StalePlan` for output the caller has invalidated or that the
+    party has moved past, and whatever `editor.files` raises for a refused
+    or failed write.
     """
-    if plan.stale:
-        raise StalePlan("this output was prepared before the last change")
     destination = plan.destination
+    if not plan.is_current(party, destination.port, destination.path, assets):
+        raise StalePlan("this output was prepared before the last change")
+    created = editor_files.missing_parents(destination.path)
     if destination.is_folder:
         existed = destination.path.is_dir()
         written = editor_files.publish_folder(destination.path, plan.files)
         published = Published(destination=destination, party=None,
                               backup=None, written=tuple(written),
-                              folder_created=not existed)
+                              folder_created=not existed,
+                              created=tuple(created))
     else:
         backup = editor_files.replace_file(
             destination.path, next(iter(plan.files.values())), backups)
         published = Published(destination=destination, party=None,
-                              backup=backup, written=(destination.path,))
+                              backup=backup, written=(destination.path,),
+                              created=tuple(created))
     try:
         published.party = open_destination(destination)
     except Exception as exc:
-        published.roll_back()
+        _log.exception("%s was written and cannot be opened",
+                       destination.path)
+        try:
+            published.roll_back()
+        except RecoveryFailed as failed:
+            raise RecoveryFailed(
+                f"{failed} after {destination.path} was written and could "
+                f"not be opened: {exc}", backup=failed.backup,
+                left=failed.left) from exc
         raise SaveAsError(
             f"{destination.path} was written and cannot be opened: {exc}"
         ) from exc

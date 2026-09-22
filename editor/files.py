@@ -21,10 +21,13 @@ save that would have gone through without it.
 from __future__ import annotations
 
 import datetime as _dt
+import logging
 import os
 import pathlib
 import shutil
 import tempfile
+
+_log = logging.getLogger("wish.editor.files")
 
 BACKUP_DIR = "backups"
 KEEP_BACKUPS = 20
@@ -32,6 +35,23 @@ KEEP_BACKUPS = 20
 
 class NoBackupFolder(RuntimeError):
     """Nowhere to put the copy, so the save does not happen."""
+
+
+class RecoveryFailed(RuntimeError):
+    """Undoing a write itself failed, so something of it is still on disk.
+
+    `backup` is the copy of whatever was there before, when there was one,
+    and `left` names every file the undo could not remove. A caller says
+    where the player's own bytes are rather than claiming nothing was
+    written. `editor.saveplan` re-exports this under the same name, so a
+    publication and its rollback raise one class between them.
+    """
+
+    def __init__(self, message: str, backup: "pathlib.Path | None" = None,
+                 left: "tuple[pathlib.Path, ...] | list[pathlib.Path]" = ()):
+        self.backup = backup
+        self.left = tuple(left)
+        super().__init__(message)
 
 
 class TargetNotEmpty(RuntimeError):
@@ -255,9 +275,39 @@ def replace_file(target: str | pathlib.Path, data: bytes,
             os.fsync(out.fileno())
         os.replace(temporary, target)
     except BaseException:
+        _log.exception("writing %s failed; %s is what it held and the "
+                       "half-written copy is gone", target,
+                       copy or "nothing was there")
         temporary.unlink(missing_ok=True)
         raise
     return copy
+
+
+def missing_parents(target: str | pathlib.Path) -> list[pathlib.Path]:
+    """The folders above `target` that do not exist yet, deepest first.
+
+    What a write is about to create on its way to the target, so an undo can
+    take exactly those away again and leave a folder that was already there.
+    """
+    out: list[pathlib.Path] = []
+    parent = pathlib.Path(target).parent
+    while not parent.exists() and parent != parent.parent:
+        out.append(parent)
+        parent = parent.parent
+    return out
+
+
+def remove_if_empty(folders: "tuple[pathlib.Path, ...] | list[pathlib.Path]"
+                    ) -> list[pathlib.Path]:
+    """Remove each folder that is empty, deepest first. Returns what went."""
+    gone = []
+    for folder in sorted(folders, key=lambda p: len(p.parts), reverse=True):
+        try:
+            folder.rmdir()
+        except OSError:
+            continue
+        gone.append(folder)
+    return gone
 
 
 def publish_folder(target: str | pathlib.Path,
@@ -271,8 +321,11 @@ def publish_folder(target: str | pathlib.Path,
     replacements rather than a transaction -- a failure part way through it
     removes the files already moved in.
 
-    Raises `TargetNotEmpty` for a folder that already holds anything, and
-    `ValueError` for a name that is not a simple file name.
+    Raises `TargetNotEmpty` for a folder that already holds anything,
+    `ValueError` for a name that is not a simple file name, and
+    `RecoveryFailed` naming what is left when the removal after a failed move
+    itself fails -- the original failure is chained to it, and a bare `OSError`
+    would otherwise report the second failure and lose the first.
     """
     target = pathlib.Path(target)
     for name in contents:
@@ -300,9 +353,23 @@ def publish_folder(target: str | pathlib.Path,
             for name in contents:
                 os.replace(staging / name, target / name)
                 moved.append(target / name)
-        except BaseException:
+        except BaseException as exc:
+            _log.exception("publishing %s failed after %d file(s) moved in",
+                           target, len(moved))
+            left = []
             for path in moved:
-                path.unlink(missing_ok=True)
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    left.append(path)
+            if left:
+                _log.error("could not remove %s",
+                           ", ".join(str(p) for p in left))
+                raise RecoveryFailed(
+                    f"{target} was partly written and "
+                    + ", ".join(str(p) for p in left)
+                    + f" could not be removed after: {exc}",
+                    left=left) from exc
             raise
         return sorted(moved)
     finally:
@@ -311,5 +378,25 @@ def publish_folder(target: str | pathlib.Path,
 
 def restore_file(target: str | pathlib.Path,
                  backup: str | pathlib.Path) -> None:
-    """Put a backed-up file back where it came from."""
-    shutil.copy2(pathlib.Path(backup), pathlib.Path(target))
+    """Put a backed-up file back where it came from, through a sibling.
+
+    The same guarantee every other write here gives: the bytes are written
+    and fsynced beside the target and renamed over it, so a restore that is
+    interrupted leaves the file it is repairing whole rather than half of
+    each. A copy straight over the live destination is the one write in a
+    publication that could destroy both the old and the new bytes at once.
+    """
+    target = pathlib.Path(target)
+    data = pathlib.Path(backup).read_bytes()
+    fd, name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+    temporary = pathlib.Path(name)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    shutil.copystat(pathlib.Path(backup), target)
