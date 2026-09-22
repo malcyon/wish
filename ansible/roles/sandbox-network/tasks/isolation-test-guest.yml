@@ -28,8 +28,15 @@
            'name': 'internet',
            'want': 0,
            'cmd': ('curl.exe -sS --max-time 5 -o NUL ' if win else 'curl -sS --max-time 5 -o /dev/null ') ~ sandbox_net_internet_url ~ tail}) %}
-      {% for peer in sandbox_net_leases | dict2items | rejectattr('key', 'equalto', guest.domain) | selectattr('key', 'in', sandbox_net_test_running.stdout_lines) | map(attribute='value.ip') %}
-      {% set _ = probes.append({'name': 'peer VM ' ~ peer, 'want': 0, 'cmd': ping ~ peer ~ tail}) %}
+      {% for peer in sandbox_net_leases | dict2items | rejectattr('key', 'equalto', guest.domain)
+                     | selectattr('key', 'in', sandbox_net_test_running.stdout_lines) %}
+      {% set _ = probes.append({'name': 'peer VM ' ~ peer.value.ip, 'want': 0, 'cmd': ping ~ peer.value.ip ~ tail}) %}
+      {% for port in sandbox_net_peer_tcp[peer.key] | default([]) %}
+      {% set tcp = ('powershell -NoProfile -Command "if ((New-Object Net.Sockets.TcpClient).ConnectAsync(\''
+                    ~ peer.value.ip ~ '\', ' ~ port ~ ').Wait(3000)) { exit 0 } else { exit 1 }"') if win
+                   else ('timeout 3 bash -c \'exec 3<>/dev/tcp/' ~ peer.value.ip ~ '/' ~ port ~ '\'') %}
+      {% set _ = probes.append({'name': 'peer VM ' ~ peer.value.ip ~ ' tcp/' ~ port, 'want': 0, 'cmd': tcp ~ tail}) %}
+      {% endfor %}
       {% endfor %}
       {% for t in sandbox_net_lan_targets %}
       {% set _ = probes.append({'name': 'LAN ' ~ t.name ~ ' ping', 'want': 1, 'cmd': ping ~ t.ip ~ tail}) %}

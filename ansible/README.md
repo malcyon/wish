@@ -21,6 +21,7 @@ The playbooks that build the agent sandbox on your own desktop (an isolated libv
 | `agent-vm` | builds and starts the Ubuntu guest on the host | `agent-vm.yml` (play 1), `agent-vm-teardown.yml` |
 | `agent-vm-guest` | configures the inside of the Ubuntu guest over ssh | `agent-vm.yml` (play 2) |
 | `windows-vm` | builds the Windows 11 guest and installs WinUAE and VICE in it | `windows-vm.yml`, `windows-vm-teardown.yml` |
+| `agent-winvm-access` | gives the Ubuntu guest its own ssh key for the Windows guest, pins the Windows host key in it and installs its `winvm` | `agent-winvm-access.yml` |
 
 | file | for |
 |---|---|
@@ -37,12 +38,13 @@ Copy `inventory.yml.example` to `inventory.yml` and `group_vars/all/vault.yml.ex
 ansible-playbook -i ansible/inventory.yml ansible/sandbox-network.yml   # the network and filter, on their own
 ansible-playbook -i ansible/inventory.yml ansible/agent-vm.yml          # the Ubuntu guest; ends with the isolation test
 ansible-playbook -i ansible/inventory.yml ansible/windows-vm.yml        # the Windows guest, which then needs installing
+ansible-playbook -i ansible/inventory.yml ansible/agent-winvm-access.yml # the Ubuntu guest's way into Windows; both guests running
 ansible-playbook -i ansible/inventory.yml ansible/sandbox-isolation-test.yml   # the proof, alone
 ```
 
 Every playbook is idempotent. The first `agent-vm.yml` run downloads Canonical's cloud image (about 600 MB, once, checksum-verified), builds the guest from it with a cloud-init seed, boots it, then installs the toolchain over ssh; the DOSBox-X source build is the long part. Nothing is downloaded by hand and no installer is involved, except the Windows ISO below.
 
-A section can be run alone by its tag: `boot`, `packages`, `gh`, `claude`, `vice`, `dosbox`, `wish`, `node`, `agenthud`, `herdr`, `codex`, `c64u`, `herdr_integrations`, `environment`, `credential`, `disks`, `exporter`, `login`, `codewheel`; or `agent_vm` for play 1, `agent_vm_guest` for play 2, `isolation` for the test, `agent_network` for the `sandbox-network` role in `sandbox-network.yml`, `winvm` for the `windows-vm` role.
+A section can be run alone by its tag: `boot`, `packages`, `gh`, `claude`, `vice`, `dosbox`, `wish`, `node`, `agenthud`, `herdr`, `codex`, `c64u`, `herdr_integrations`, `environment`, `credential`, `disks`, `exporter`, `login`, `codewheel`; or `agent_vm` for play 1, `agent_vm_guest` for play 2, `isolation` for the test, `agent_network` for the `sandbox-network` role in `sandbox-network.yml`, `winvm` for the `windows-vm` role, `winvm_access` for `agent-winvm-access.yml`.
 
 `inventory.yml` and `group_vars/all/vault.yml` hold one machine's own values and are gitignored; `tests/suite/test_repository_contents.py` refuses a tracked file under `ansible/` that names a home directory, a LAN address or a credential.
 
@@ -69,6 +71,8 @@ Each row is a variable `inventory.yml.example` has a placeholder for; everything
 | `ansible_host`, `ansible_user`, `ansible_ssh_private_key_file` on the `agent-vm` host | The guest's `10.77.0.10` address, `agent`, the account the guest is built with (`agent_vm_user`), and `agent_vm_keypair_path` |
 | `agent_guest_codewheel_slug` | The private repository holding the code-wheel arithmetic, which the guest clones; empty skips the clone |
 | `agent_guest_private_repos` | Optional: further private repositories the guest clones with the same GitHub App; the list replaces the default, so keep the code-wheel entry |
+| `agent_winvm_host_key` | Optional: the Windows guest's `ssh_host_ed25519_key.pub` line, read off its console, for when the QEMU guest agent refuses `guest-exec`; empty reads it through the guest agent |
+| `agent_winvm_operator_key` | Optional: the private key on this desktop that Windows already trusts, for writing the Ubuntu guest's key into it; empty is ssh's own default |
 | `vault_windows_admin_password` | In `group_vars/all/vault.yml`, not the inventory: the Windows administrator's password, at least 8 characters |
 
 `sandbox_net_drops` is a default and needs naming only to change it. The commented lines at the end of the workstation's variables in the example (`winvm_memory_mb`, `winvm_disk_gb`, `winvm_graphics`, `winvm_forwarded_ports`, `winvm_disable_default_network`, `winvm_install_winuae`) are each the role's own default, for a machine that needs a different one. The guest's account is `agent_vm_user` (default `agent`); changing it breaks the isolation test unless the `user` in `sandbox_net_probe_guests` is changed to match.
@@ -145,7 +149,7 @@ It is an sshfs mount made by a systemd user unit, `agent-wish.service`, which mo
 
 ## The credential
 
-The `wish-agent` GitHub App is the only credential in the guest: no ssh key, no `gh` login, nothing of yours. `docs/218-the-wish-agent-bot.md` says how to create, rotate and revoke it. The role copies the App's private key and `config.json` from `agent_guest_wish_agent_src` (default `~/.config/wish-agent`) on this machine, so they never enter this repository, to the same path under `agent`, mode `0600` in a `0700` directory.
+The `wish-agent` GitHub App is the only GitHub credential in the guest, and nothing of yours is there: no ssh key, no `gh` login. Its one other secret is its own ssh key for the Windows guest ([Driving it from the Ubuntu guest](#driving-it-from-the-ubuntu-guest)). `docs/218-the-wish-agent-bot.md` says how to create, rotate and revoke it. The role copies the App's private key and `config.json` from `agent_guest_wish_agent_src` (default `~/.config/wish-agent`) on this machine, so they never enter this repository, to the same path under `agent`, mode `0600` in a `0700` directory.
 
 | in the guest | what it does |
 |---|---|
@@ -167,6 +171,7 @@ A wrong filter fails silently, so the test is a task, not a memory. `ansible-pla
 | the internet answers, and the peer guest does | a request and a ping |
 | no `sandbox_net_lan_targets` machine answers | a ping and a TCP connect |
 | `ssh` to `10.77.0.1` is refused while DNS through it works | a connect and a lookup |
+| the Windows guest's ssh port answers from the Ubuntu guest (`sandbox_net_peer_tcp`) | a TCP connect |
 | the writable mount can be written and the read-only one cannot | a write as `agent` and as `root`, and the device's write protection |
 | no GitHub token (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`) is in a file or a process environment | a search of `/home /root /etc /opt /tmp /var/tmp` and the game disks, and every process's environment |
 
@@ -284,6 +289,34 @@ SPICE carries audio, which is why it is used instead of VNC: WinUAE is not much 
 | `winvm ssh [cmd...]` | ssh into the guest as `winvm_admin_user` |
 | `winvm guest-setup` | Re-run the first-logon install script (WinUAE, VICE, QXL, ROMs) on a running guest, so a role change reaches it without a rebuild; the static IP and Defender exclusions are set in autounattend.xml and still need a rebuild |
 | `winvm scp ...` | `scp` with the guest's options |
+
+### Driving it from the Ubuntu guest
+
+The agents run in the Ubuntu guest, which has no libvirt, so the `winvm` above does not work there. `agent-winvm-access.yml` gives the guest a `winvm` of its own, `/usr/local/bin/winvm` running `tools/amiga/winvmguest.py`, which reaches Windows over ssh at `10.77.0.11:22` and nothing else. With both guests running:
+
+```bash
+ansible-playbook -i ansible/inventory.yml ansible/agent-winvm-access.yml
+```
+
+| play | where | what it changes |
+|---|---|---|
+| 1 | this desktop | nothing on either guest: reads the Windows host key off its disk through the QEMU guest agent (`virsh qemu-agent-command ... guest-exec`), checks with `ssh-keyscan` that the network presents the same key, and writes a pinned copy, `win11_known_hosts`, beside the Ubuntu guest's login key |
+| 2 | the Ubuntu guest | generates `~/.ssh/winvm_ed25519` there if absent; writes `/etc/ssh/wish-winvm_known_hosts` and `/etc/ssh/ssh_config.d/wish-winvm.conf`, both root's; installs `/usr/local/bin/winvm` |
+| 3 | this desktop, as you | logs in to Windows with your key, checked against the pinned host key, and adds the Ubuntu guest's public key to `administrators_authorized_keys` with `from="10.77.0.10"`, replacing any earlier line with the comment `wish-agent-vm` |
+| 4 | the Ubuntu guest | runs `winvm ssh hostname` and fails the run if it does not answer |
+
+No network rule changes: the filter already lets the Ubuntu guest reach its own subnet, and the playbook asserts the Windows guest's address is on it and is not a pinhole. The isolation test proves the port answers.
+
+| in the Ubuntu guest | what it does |
+|---|---|
+| `winvm ssh [cmd...]`, `winvm scp ...` | the desktop's arguments, with the pinned configuration |
+| `winvm ps 'Get-Date'` | PowerShell, sent as `-EncodedCommand` |
+| `winvm put a.uae C:/Amiga/configs/`, `winvm get C:/Amiga/send.log .` | copies either way |
+| `winvm shot /tmp/win11.png` | the console screen, captured on Windows by a one-off Interactive scheduled task and fetched over the same ssh call; needs a console logon |
+| `winvm status`, `winvm lane --expect <holder>` | the Windows guest's boot time and the WinUAE lane, from `winuae.ps1 status` |
+| `acquire`, `release`, `up`, `down`, `save`, `promote`, `revert`, `guest-setup` | refused; the Windows guest's state is this desktop's to change, and WinUAE's lane is `winuae.ps1 claim` |
+
+**Run it again** after rebuilding either guest, and after `winvm revert`, which discards the authorized key with everything else since golden; or `winvm promote` once with the key in place. `winvm guest-setup` keeps it. If the guest agent refuses `guest-exec`, set `agent_winvm_host_key` in `inventory.yml` to the line `type C:\ProgramData\ssh\ssh_host_ed25519_key.pub` prints on the Windows console. If Windows refuses the key, set `agent_winvm_key_from: ""` to drop the address restriction.
 
 ### Leases, for several agents
 

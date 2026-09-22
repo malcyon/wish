@@ -1,0 +1,155 @@
+---
+# On the host: read the Windows guest's ssh host key without trusting the
+# network it would otherwise be read over, and keep a pinned copy.
+#
+# The agent guest shares the sandbox bridge with the Windows guest, and nothing
+# stops a guest on a bridge answering for another's address. So the key is not
+# taken from whoever answers 10.77.0.11 on port 22; it is read off the Windows
+# guest's own disk through the QEMU guest agent, whose channel is virtio-serial
+# between QEMU and the guest. ssh-keyscan is then a cross-check: the network must
+# present the same key, or the run stops.
+
+- name: Assert the inventory names the Windows account
+  ansible.builtin.assert:
+    that:
+      - agent_winvm_user is defined
+      - not (agent_winvm_user | string).startswith('CHANGE-ME')
+    fail_msg: >-
+      winvm_admin_user still holds its CHANGE-ME placeholder. Set it in
+      `ansible/inventory.yml`; `inventory.yml.example` is the template.
+
+# The one endpoint the agent guest gains must already be inside what the
+# `no-lan` filter lets it reach, so that no rule has to change for it.
+- name: Assert the Windows guest is on the sandbox subnet, not the LAN
+  ansible.builtin.assert:
+    that:
+      - agent_winvm_ip is string
+      - agent_winvm_ip.startswith(agent_winvm_subnet_prefix)
+      - agent_winvm_ip not in (sandbox_net_pinholes | default([]))
+      - agent_winvm_agent_ip.startswith(agent_winvm_subnet_prefix)
+    fail_msg: >-
+      The Windows guest ({{ agent_winvm_ip }}) or the agent guest
+      ({{ agent_winvm_agent_ip }}) is not on the sandbox subnet
+      {{ agent_winvm_subnet_prefix }}0/24, or is listed as a pinhole. The agent
+      guest may reach the Windows guest only across the sandbox network.
+
+- name: Check the Windows guest is running
+  ansible.builtin.command:
+    argv: [virsh, -c, "qemu:///system", domstate, "{{ agent_winvm_domain }}"]
+  register: agent_winvm_state
+  changed_when: false
+  check_mode: false
+
+- name: Assert the Windows guest is running
+  ansible.builtin.assert:
+    that:
+      - agent_winvm_state.stdout | trim == 'running'
+    fail_msg: >-
+      {{ agent_winvm_domain }} is {{ agent_winvm_state.stdout | trim }}. Start it
+      with `winvm up` on this host and run the playbook again.
+
+- name: Read the Windows host key through the QEMU guest agent
+  when: agent_winvm_host_key | length == 0
+  block:
+    - name: Start `type` on the host key file inside Windows
+      ansible.builtin.command:
+        argv:
+          - virsh
+          - -c
+          - "qemu:///system"
+          - qemu-agent-command
+          - "{{ agent_winvm_domain }}"
+          - "{{ {'execute': 'guest-exec',
+                 'arguments': {'path': agent_winvm_cmd_exe,
+                               'arg': ['/c', 'type', agent_winvm_host_key_file],
+                               'capture-output': true}} | to_json }}"
+      register: agent_winvm_exec
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Stop if the guest agent would not run it
+      ansible.builtin.assert:
+        that:
+          - agent_winvm_exec.rc == 0
+        fail_msg: >-
+          The QEMU guest agent in {{ agent_winvm_domain }} refused guest-exec
+          ({{ agent_winvm_exec.stderr | trim }}). Read the key off the console
+          instead -- in the Windows guest, `type {{ agent_winvm_host_key_file }}`
+          -- and set the whole line as agent_winvm_host_key in
+          `ansible/inventory.yml`.
+
+    - name: Wait for it to finish and collect what it printed
+      ansible.builtin.command:
+        argv:
+          - virsh
+          - -c
+          - "qemu:///system"
+          - qemu-agent-command
+          - "{{ agent_winvm_domain }}"
+          - "{{ {'execute': 'guest-exec-status',
+                 'arguments': {'pid': (agent_winvm_exec.stdout | from_json)['return']['pid']}} | to_json }}"
+      register: agent_winvm_exec_status
+      until: (agent_winvm_exec_status.stdout | from_json)['return']['exited']
+      retries: 20
+      delay: 1
+      changed_when: false
+      check_mode: false
+
+    - name: Keep the key the guest agent read
+      ansible.builtin.set_fact:
+        agent_winvm_host_key_read: >-
+          {{ ((agent_winvm_exec_status.stdout | from_json)['return']['out-data'] | default(''))
+             | b64decode | trim }}
+
+- name: Take the host key from the inventory instead
+  ansible.builtin.set_fact:
+    agent_winvm_host_key_read: "{{ agent_winvm_host_key | trim }}"
+  when: agent_winvm_host_key | length > 0
+
+- name: Assert it is an ed25519 public key
+  ansible.builtin.assert:
+    that:
+      - agent_winvm_host_key_read is match('^ssh-ed25519 [A-Za-z0-9+/]+=*( .*)?$')
+    fail_msg: >-
+      What was read as the Windows host key is not an ed25519 public key:
+      '{{ agent_winvm_host_key_read | truncate(120) }}'.
+
+# As facts, so the guest play can read them through hostvars: role defaults
+# are not part of another host's hostvars.
+- name: Split the key into its type and its body, and publish the endpoint
+  ansible.builtin.set_fact:
+    agent_winvm_pin_ip: "{{ agent_winvm_ip }}"
+    agent_winvm_pin_user: "{{ agent_winvm_user }}"
+    agent_winvm_pin_domain: "{{ agent_winvm_domain }}"
+    agent_winvm_host_key_type: "{{ agent_winvm_host_key_read.split()[0] }}"
+    agent_winvm_host_key_blob: "{{ agent_winvm_host_key_read.split()[1] }}"
+
+# Run as the person, not root: nothing here needs privilege.
+- name: Ask the network which key answers at the Windows guest's address
+  ansible.builtin.command:
+    argv: [ssh-keyscan, -T, "5", -t, ed25519, "{{ agent_winvm_ip }}"]
+  register: agent_winvm_keyscan
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  become: false
+
+- name: Assert the network presents the key Windows holds on disk
+  ansible.builtin.assert:
+    that:
+      - agent_winvm_host_key_blob in agent_winvm_keyscan.stdout.split()
+    fail_msg: >-
+      The key that answers at {{ agent_winvm_ip }}:22 is not the one in
+      {{ agent_winvm_host_key_file }}
+      (scan said: '{{ agent_winvm_keyscan.stdout | trim | default('nothing', true) }}').
+      Either sshd in the Windows guest is not running, or something else on the
+      sandbox network is answering for that address. Pin nothing until that is
+      explained.
+
+- name: Keep the host's own pinned copy of the Windows host key
+  ansible.builtin.copy:
+    dest: "{{ agent_winvm_host_known_hosts }}"
+    content: "{{ agent_winvm_ip }} {{ agent_winvm_host_key_type }} {{ agent_winvm_host_key_blob }}\n"
+    mode: "0600"
+  become: false

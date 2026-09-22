@@ -1,0 +1,48 @@
+---
+# The agent guest's way into the Windows guest: its own ssh key, authorized on
+# Windows, and the Windows host key pinned in it, read on this host through the
+# hypervisor. Both guests must be running. Changes no network rule.
+# docs/219-the-agent-sandbox.md, "The agent guest drives Windows over ssh".
+#
+#   ansible-playbook -i ansible/inventory.yml ansible/agent-winvm-access.yml
+#
+# Run it again after the Windows guest is rebuilt (a new host key), after the
+# agent guest is rebuilt (a new identity), and after `winvm revert` unless the
+# authorized key was promoted into the golden image.
+- name: Read and pin the Windows host key on the host
+  hosts: agent_vm_hosts
+  become: true
+  tasks:
+    - name: Read the Windows host key through the guest agent
+      ansible.builtin.include_role:
+        name: agent-winvm-access
+        tasks_from: hostkey
+      tags: winvm_access
+
+- name: Give the agent guest its key, the pinned host key and winvm
+  hosts: agent_vms
+  tasks:
+    - name: Configure the agent guest
+      ansible.builtin.include_role:
+        name: agent-winvm-access
+        tasks_from: guest
+      tags: winvm_access
+
+- name: Authorize the agent guest's key on Windows
+  hosts: agent_vm_hosts
+  become: false
+  tasks:
+    - name: Write the key into administrators_authorized_keys
+      ansible.builtin.include_role:
+        name: agent-winvm-access
+        tasks_from: authorize
+      tags: winvm_access
+
+- name: Prove the agent guest reaches Windows
+  hosts: agent_vms
+  tasks:
+    - name: Run a command on Windows from the agent guest
+      ansible.builtin.include_role:
+        name: agent-winvm-access
+        tasks_from: verify
+      tags: winvm_access

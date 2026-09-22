@@ -119,11 +119,15 @@ Step 'sshd firewall rule' {
 # For a member of Administrators, sshd reads this file and NOT the user's
 # ~/.ssh/authorized_keys — and it refuses the file outright unless only
 # SYSTEM and Administrators can write it. SIDs, not names: group names are
-# localised.
+# localised. The agent guest's own key, written by roles/agent-winvm-access and
+# found by its comment, is kept, so re-running this script does not lock the
+# agent guest out.
 Step 'authorized key' {
     $akf = Join-Path $env:ProgramData 'ssh\administrators_authorized_keys'
     New-Item -ItemType Directory -Force -Path (Split-Path $akf) | Out-Null
-    Set-Content -Path $akf -Value '{{ winvm_ssh_pubkey }}' -Encoding ascii
+    $agent = @(Get-Content -Path $akf -ErrorAction SilentlyContinue |
+               Where-Object { $_.EndsWith(' {{ winvm_agent_key_comment }}') })
+    Set-Content -Path $akf -Value (@('{{ winvm_ssh_pubkey }}') + $agent) -Encoding ascii
     icacls $akf /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null
 }
 Step 'powershell as default ssh shell' {

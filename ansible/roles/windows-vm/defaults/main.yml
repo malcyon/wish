@@ -160,6 +160,10 @@ winvm_admin_user: CHANGE-ME-GUEST-ADMIN-ACCOUNT
 # Claude Code agents can drive the VM over ssh/scp.
 winvm_ssh_pubkey_path: ~/.ssh/id_ed25519.pub
 winvm_ssh_pubkey: "{{ lookup('file', winvm_ssh_pubkey_path) }}"
+# The comment on the agent guest's own key, which roles/agent-winvm-access adds
+# to the same file; the first-logon script keeps a line ending in it. The same
+# word as that role's agent_winvm_key_comment.
+winvm_agent_key_comment: wish-agent-vm
 # A Windows time zone name, not a tz database one. The inventory sets it.
 winvm_timezone: UTC
 winvm_locale: en-US

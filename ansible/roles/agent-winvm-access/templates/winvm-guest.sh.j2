@@ -1,0 +1,7 @@
+#!/bin/sh
+# Managed by Ansible -- roles/agent-winvm-access.
+# `winvm` in the agent guest: the Windows guest over ssh alone, with no libvirt.
+# tools/amiga/winvmguest.py is the whole of it; `winvm --help` lists what it does.
+export SSH_ASKPASS_REQUIRE=never
+exec /usr/bin/python3 {{ agent_winvm_wish_dir }}/tools/amiga/winvmguest.py \
+    --config {{ agent_winvm_ssh_config }} "$@"

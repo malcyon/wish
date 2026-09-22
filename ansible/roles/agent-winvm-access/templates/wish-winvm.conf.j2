@@ -1,0 +1,22 @@
+# Managed by Ansible -- roles/agent-winvm-access.
+# The agent guest's one way into the Windows guest. `winvm` passes this file
+# with -F, so nothing in ~/.ssh/config applies to it; `ssh {{ agent_winvm_conf_host }}` on its own
+# reads it through /etc/ssh/ssh_config. The host key is pinned: it was read on the
+# host through the hypervisor, and a key that differs is refused, never learnt.
+Host {{ agent_winvm_conf_host }} {{ agent_winvm_conf_ip }}
+    HostName {{ agent_winvm_conf_ip }}
+    User {{ agent_winvm_conf_user }}
+    IdentityFile ~/.ssh/{{ agent_winvm_key_name }}
+    IdentitiesOnly yes
+    UserKnownHostsFile {{ agent_winvm_known_hosts }}
+    GlobalKnownHostsFile /dev/null
+    StrictHostKeyChecking yes
+    UpdateHostKeys no
+    CheckHostIP no
+    BatchMode yes
+    ConnectTimeout 10
+    ServerAliveInterval 15
+    ServerAliveCountMax 4
+    ForwardAgent no
+    ForwardX11 no
+    LogLevel ERROR

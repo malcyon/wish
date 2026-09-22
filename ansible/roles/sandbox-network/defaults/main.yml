@@ -71,6 +71,12 @@ sandbox_net_pinholes: []
 # --- Isolation test ---------------------------------------------------------
 # What a guest must reach, and what it must not.
 sandbox_net_internet_url: https://api.github.com/
+# TCP ports each guest must reach on a running peer, keyed by the peer's domain
+# name. The agent guest drives the Windows guest over ssh
+# (roles/agent-winvm-access), across the subnet accept above, which is why no
+# rule is needed for it; this proves it still gets through.
+sandbox_net_peer_tcp:
+  win11: [22]
 # TCP ports on the gateway that must be refused, tried by the isolation test.
 sandbox_net_gateway_denied_tcp: [22]
 # Hosts on the home LAN that must stay unreachable, such as the router and the

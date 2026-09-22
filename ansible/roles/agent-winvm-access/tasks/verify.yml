@@ -1,0 +1,25 @@
+---
+# In the agent guest: prove the endpoint works with the pinned key and the
+# guest's own identity, through the same `winvm` the agents use. Changes
+# nothing, so it runs under --check.
+
+- name: Run one command on Windows from the agent guest
+  ansible.builtin.command:
+    argv: ["{{ agent_winvm_command }}", ssh, hostname]
+  register: agent_winvm_hostname
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Assert it ran
+  ansible.builtin.assert:
+    that:
+      - agent_winvm_hostname.rc == 0
+      - agent_winvm_hostname.stdout | trim | length > 0
+    success_msg: "The agent guest reached {{ agent_winvm_hostname.stdout | trim }} over ssh."
+    fail_msg: >-
+      `winvm ssh hostname` from the agent guest failed (exit
+      {{ agent_winvm_hostname.rc }}: {{ agent_winvm_hostname.stderr | trim }}).
+      "Host key verification failed" means the pinned key is not the one
+      Windows presents; "Permission denied" means the key was not authorized,
+      or Windows refused the from= restriction (set agent_winvm_key_from to "").

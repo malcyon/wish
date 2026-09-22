@@ -1,0 +1,60 @@
+---
+# On the host, as the person running the playbook: put the agent guest's public
+# key in the Windows administrators_authorized_keys, logging in with the key
+# Windows already trusts and checking the host key just pinned. Any earlier line
+# with the same comment, from an agent guest since rebuilt, is replaced.
+
+- name: Read the agent guest's public key
+  ansible.builtin.set_fact:
+    agent_winvm_authorized_line: "{{ [agent_winvm_options_field,
+                                      hostvars[groups['agent_vms'][0]].agent_winvm_guest_pubkey,
+                                      agent_winvm_key_comment] | select | join(' ') }}"
+  vars:
+    agent_winvm_options_field: >-
+      {{ ((['from="' ~ agent_winvm_key_from ~ '"'] if agent_winvm_key_from | length else [])
+          + agent_winvm_key_options) | join(',') }}
+
+- name: Assert it is one ed25519 key, and nothing else
+  ansible.builtin.assert:
+    that:
+      - agent_winvm_authorized_line is match('^([^ ]+ )?ssh-ed25519 [A-Za-z0-9+/]+=* ' ~ agent_winvm_key_comment ~ '$')
+      - "'\\n' not in agent_winvm_authorized_line"
+      - "\"'\" not in agent_winvm_authorized_line"
+    fail_msg: "Not a line to write into administrators_authorized_keys: {{ agent_winvm_authorized_line }}"
+
+# Sent as -EncodedCommand, so neither this shell, ssh nor the PowerShell login
+# shell on Windows re-quotes it. The ACL is the one roles/windows-vm sets: sshd
+# refuses the file unless only SYSTEM and Administrators can write it.
+- name: Authorize the agent guest's key on Windows
+  ansible.builtin.command:
+    argv: >-
+      {{ ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+          '-o', 'UserKnownHostsFile=' ~ agent_winvm_host_known_hosts,
+          '-o', 'GlobalKnownHostsFile=/dev/null', '-o', 'CheckHostIP=no',
+          '-o', 'ConnectTimeout=10', '-o', 'LogLevel=ERROR']
+         + (['-i', agent_winvm_operator_key, '-o', 'IdentitiesOnly=yes']
+            if agent_winvm_operator_key | length else [])
+         + [agent_winvm_user ~ '@' ~ agent_winvm_ip,
+            'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand '
+            ~ (agent_winvm_authorize_script | b64encode(encoding='utf-16-le'))] }}
+  vars:
+    agent_winvm_authorize_script: |
+      $ErrorActionPreference = 'Stop'
+      $akf  = Join-Path $env:ProgramData 'ssh\administrators_authorized_keys'
+      $line = '{{ agent_winvm_authorized_line }}'
+      $tag  = ' {{ agent_winvm_key_comment }}'
+      $old  = @(Get-Content -Path $akf -ErrorAction SilentlyContinue | Where-Object { $_ -ne '' })
+      if ($old -contains $line) { 'present'; exit 0 }
+      $new  = @($old | Where-Object { -not $_.EndsWith($tag) }) + $line
+      Set-Content -Path $akf -Value $new -Encoding ascii
+      icacls $akf /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null
+      'changed'
+  register: agent_winvm_authorize
+  changed_when: "'changed' in agent_winvm_authorize.stdout"
+  failed_when: >-
+    agent_winvm_authorize.rc != 0
+    or ('changed' not in agent_winvm_authorize.stdout
+        and 'present' not in agent_winvm_authorize.stdout)
+  environment:
+    SSH_ASKPASS_REQUIRE: never
+  become: false

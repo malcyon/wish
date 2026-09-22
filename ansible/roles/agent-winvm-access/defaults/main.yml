@@ -1,0 +1,71 @@
+---
+# The agent guest's own way into the Windows guest: one ssh identity, made in the
+# agent guest and authorized on Windows, and the Windows host key, read on the
+# host through the hypervisor and pinned in the agent guest.
+# docs/219-the-agent-sandbox.md, "The agent guest drives Windows over ssh", is
+# the design.
+#
+# Nothing here changes the network. The `no-lan` filter already lets the agent
+# guest reach its own subnet, the Windows guest included, and this role neither
+# includes nor changes roles/sandbox-network.
+
+# --- The two guests ---------------------------------------------------------
+# libvirt domain names, as in sandbox_net_leases, which the inventory sets.
+agent_winvm_domain: win11
+agent_winvm_agent_domain: agent-vm
+agent_winvm_ip: "{{ sandbox_net_leases[agent_winvm_domain].ip }}"
+agent_winvm_agent_ip: "{{ sandbox_net_leases[agent_winvm_agent_domain].ip }}"
+# The sandbox subnet, as a prefix. The Windows guest's address must be in it, so
+# the one endpoint the agent guest gains is inside what the filter already
+# allows and never a hole towards the LAN.
+agent_winvm_subnet_prefix: "10.77.0."
+
+# The Windows account the agent guest logs in as: the administrator the
+# windows-vm role creates, which `tools/amiga/winuae.ps1` registers its
+# session 1 tasks for. The inventory sets it.
+agent_winvm_user: "{{ winvm_admin_user }}"
+
+# --- The identity -------------------------------------------------------------
+# Generated inside the agent guest by the guest's own ssh-keygen, so the private
+# half is never on the host or anywhere else. Only the public half leaves it.
+agent_winvm_key_name: winvm_ed25519
+# The comment on the key, and how its line in administrators_authorized_keys is
+# found again: a rebuilt agent guest has a new key, and its line replaces the
+# old one rather than piling up beside it. roles/windows-vm's
+# `winvm_agent_key_comment` must be the same word, so that re-running the
+# guest's first-logon script keeps the line.
+agent_winvm_key_comment: wish-agent-vm
+# The key works only from the agent guest's address. Set "" to drop the
+# restriction if a Windows OpenSSH build ever refuses it.
+agent_winvm_key_from: "{{ agent_winvm_agent_ip }}"
+# Options written in front of the key on Windows, after `from=`.
+agent_winvm_key_options:
+  - no-agent-forwarding
+  - no-X11-forwarding
+
+# --- The Windows host key ---------------------------------------------------
+# Read on the host through the QEMU guest agent (virtio-serial, not the
+# network), so nothing on the sandbox bridge can put itself in the Windows
+# guest's place while it is read. Set this to the whole line of
+# ssh_host_ed25519_key.pub, read off the console by hand, when the guest agent
+# refuses `guest-exec`.
+agent_winvm_host_key: ""
+agent_winvm_host_key_file: 'C:\ProgramData\ssh\ssh_host_ed25519_key.pub'
+agent_winvm_cmd_exe: 'C:\Windows\System32\cmd.exe'
+
+# --- Files ------------------------------------------------------------------
+# In the agent guest. The ssh configuration and known_hosts are root's, so a
+# process running as the agent cannot loosen either; the private key is the
+# agent's, 0600.
+agent_winvm_ssh_config: /etc/ssh/ssh_config.d/wish-winvm.conf
+agent_winvm_known_hosts: /etc/ssh/wish-winvm_known_hosts
+agent_winvm_command: /usr/local/bin/winvm
+# The host's own pinned copy, used to write the public key on Windows, beside
+# the agent guest's login key.
+agent_winvm_host_known_hosts: "{{ agent_vm_keypair_path | dirname }}/{{ agent_winvm_domain }}_known_hosts"
+# The key the host logs in to Windows with to authorize the agent guest's key:
+# the one Windows already trusts. "" is ssh's own default identities.
+agent_winvm_operator_key: ""
+# The agent guest's wish checkout, whose tools/amiga/winvmguest.py `winvm` runs;
+# the same path as roles/agent-vm-guest's agent_guest_wish_dir.
+agent_winvm_wish_dir: "{{ ansible_user_dir }}/src/wish"

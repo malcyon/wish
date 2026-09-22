@@ -1,0 +1,86 @@
+---
+# In the agent guest: its own key for Windows, the pinned host key, the ssh
+# configuration that uses both, and `winvm`. Reads the host play's facts through
+# hostvars, so the host play must have run first in the same playbook.
+
+- name: Read what the host play found
+  ansible.builtin.set_fact:
+    agent_winvm_from_host: "{{ hostvars[groups['agent_vm_hosts'][0]] }}"
+
+- name: Assert the host play pinned a key
+  ansible.builtin.assert:
+    that:
+      - agent_winvm_from_host.agent_winvm_host_key_blob is defined
+    fail_msg: >-
+      The host play did not read the Windows host key, so there is nothing to
+      pin. Run the whole of `ansible/agent-winvm-access.yml`, not this play
+      alone.
+
+- name: Create ~/.ssh
+  ansible.builtin.file:
+    path: "{{ ansible_user_dir }}/.ssh"
+    state: directory
+    mode: "0700"
+
+# Made here, by the guest's own ssh-keygen, so the private half never exists
+# anywhere else. creates-guarded: a new key would need authorizing again, and
+# the host play replaces the old line on Windows by its comment when it does.
+- name: Generate the agent guest's key for Windows
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -q
+      - -t
+      - ed25519
+      - -N
+      - ""
+      - -C
+      - "{{ agent_winvm_key_comment }}"
+      - -f
+      - "{{ ansible_user_dir }}/.ssh/{{ agent_winvm_key_name }}"
+  args:
+    creates: "{{ ansible_user_dir }}/.ssh/{{ agent_winvm_key_name }}"
+
+- name: Read its public half
+  ansible.builtin.slurp:
+    src: "{{ ansible_user_dir }}/.ssh/{{ agent_winvm_key_name }}.pub"
+  register: agent_winvm_pub
+
+- name: Keep the public half for the host play
+  ansible.builtin.set_fact:
+    agent_winvm_guest_pubkey: "{{ (agent_winvm_pub.content | b64decode).split()[0:2] | join(' ') }}"
+
+# Root's, so the account the agents run as cannot swap the key it checks
+# against or loosen the options.
+- name: Pin the Windows host key
+  ansible.builtin.copy:
+    dest: "{{ agent_winvm_known_hosts }}"
+    content: "{{ [agent_winvm_from_host.agent_winvm_pin_ip,
+                  agent_winvm_from_host.agent_winvm_host_key_type,
+                  agent_winvm_from_host.agent_winvm_host_key_blob] | join(' ') }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Write the ssh configuration for the Windows guest
+  ansible.builtin.template:
+    src: wish-winvm.conf.j2
+    dest: "{{ agent_winvm_ssh_config }}"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    agent_winvm_conf_ip: "{{ agent_winvm_from_host.agent_winvm_pin_ip }}"
+    agent_winvm_conf_user: "{{ agent_winvm_from_host.agent_winvm_pin_user }}"
+    agent_winvm_conf_host: "{{ agent_winvm_from_host.agent_winvm_pin_domain }}"
+  become: true
+
+- name: Install winvm, the guest's ssh-only counterpart of the desktop's
+  ansible.builtin.template:
+    src: winvm-guest.sh.j2
+    dest: "{{ agent_winvm_command }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
