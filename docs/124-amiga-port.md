@@ -2048,10 +2048,10 @@ in the file would be where the loader expected it otherwise.
 |---|---|
 | `encumbrance`, `thac0_current`, `armour_class`, `movement_current` | the game recomputes them on load, each demonstrated by a probe that wrote a wrong value and read the right one back off the sheet |
 | `armour_class_base`, `0x0B3` | written as the unarmoured `60 - 10`, which is what 19 of 19 `.pc` files — whose characters all carry items — and 12 of 12 DOS records hold |
-| `roster_tail`, `0x188` | three of its nine bytes are in the recomputed set; the rest has not been watched being rebuilt |
+| `roster_tail`, `0x188` | all nine bytes are rebuilt by the engine — §1.19b, which is why the row is in `POD_WRITE_DERIVED` rather than the drop list |
 | bytes no neutral field names, all left zero | the stale item count `0x0C7`, `hands_used` `0x0C8` (2 in 18 of 19) and `gap_19a` `0x0C9` (2 in 5 of 19, 0 in the other 14; its neighbour `0x0CA` is 0 in 19 of 19) |
 
-**The first two of those are rebuilt on load and `gap_19a` is not.** §1.19a has the routine: `0x019430` clears the item count, `hands_used` and the encumbrance word together and then walks the item chain filling all three, which is the same rebuild §2.3's encumbrance probe watched happen. `gap_19a` has no routine anybody has found, and what its zero does to the game is **unmeasured**.
+**All three of those bytes are rebuilt on load**, by the one routine at `0x019428`: it clears the item count, `hands_used`, `gap_19a` and the encumbrance word together and then walks the item chain filling all four, which is the rebuild §2.3's encumbrance probe watched happen. This section said `gap_19a` had no routine and that what its zero does was unmeasured; §1.19b has both, and the byte is the readied items' saving-throw bonus.
 
 **None of this has been in front of the game yet**, and that is the boundary
 of the claim: the bytes match and the lengths match, and a conversion is not
@@ -2167,8 +2167,9 @@ read 233 back off the sheet, which is this routine running on load and is what
 the other two bytes ride on. So `hands_used` 0 beside a readied weapon is not
 a state a loaded record stays in.
 
-`gap_19a` `0x0C9` is still zero and still has no routine: 2 in 5 of the 19 and
-0 in the other 14, and nothing says what either value means.
+`gap_19a` `0x0C9` is the third byte of that same rebuild and §1.19b has it;
+this section said it had no routine, which was true of what had been read and
+not of the engine.
 
 #### What a player still loses
 
@@ -2178,6 +2179,93 @@ for his race and class; 13 of the 19 characters on the disks differ from the eng
 It was a loss before this as well — to zero — and it is now a loss to a value
 the engine itself would have written. Giving it a neutral home is vocabulary
 work.
+
+### 1.19b The last two zeros, and the routine that fills them both (#475 (The Amiga Pools of Darkness writer leaves 27 decoded fields zero, and one of them may mark a converted character as out of the party))
+
+§1.19a left `roster_tail` at `0x188` and `gap_19a` at `0x0C9` as the two bytes
+that were neither written nor known-derived. **Both are rebuilt on load, by
+one routine, and the `.pc` load path is what calls it.** Read out of the same
+disk-1 build; nothing was run in an emulator.
+
+#### The load path, which is what makes this a claim about loading a file
+
+*Add Character* is `0x026A1C`-`0x026A78`. It allocates `0x194` bytes, calls the
+`.pc` loader at `0x025806`, and on success calls **`0x019428`** and then the
+roster join at `0x027394`. The inter-title import path does the same at
+`0x026326`. `0x019428` is the derived-fields rebuild §1.19a already credits
+with the item count, `hands_used` and the encumbrance word — and §2.3's probe
+wrote 1234 into that encumbrance word and read 233 off the sheet, so there is
+a run in the running game behind everything this routine does. Twenty-seven
+call sites reach it in all.
+
+#### `roster_tail` `0x188`-`0x190`: every one of the nine
+
+| byte | what it is | who writes it |
+|---|---|---|
+| `0x188` | the armour bonus | `0x0196E8`, the rebuild's last act: the four accumulated armour terms less 2 |
+| `0x189`, `0x18A` | the two attack counts | **not on load.** A fight's setup loop walks every combatant (`0x003972`-`0x003990`) calling `0x007D5E`, which clears the combat block's `$0A` and then sets `0x189` from `attack_forms`' first byte (`0x008A4E`, inside `0x008A34`) and `0x18A` from its second (`0x007E6A`) |
+| `0x18B`-`0x190` | the running damage | the rebuild copies `0x0AD`-`0x0B2` here (`0x019556`-`0x0195AE`), then `0x018778` — called at `0x019610` — overwrites `0x18B`, `0x18D` and `0x18F` from the readied weapon's own item-table entry (`$9`, `$a`, `$b` of `g6968[type * 16]`), and `0x019604` adds the unarmed bonus when nothing is readied |
+
+**The nineteen `.pc` files agree, and two columns settle it:**
+
+| byte | across 19 records |
+|---|---|
+| `0x188` | 56 in 5, 58 in 14 |
+| `0x189`, `0x18A` | **0 in 19 of 19** |
+| `0x18B` | 1 in 19 of 19 |
+| `0x18C`, `0x18E`, `0x190` | 0 in 19 of 19 |
+| `0x18D` | 6 in 7, 8 in 12 — while `0x0AF`, the byte the copy puts there, is **2 in 19 of 19** |
+| `0x18F` | 4, 5, 6, 7, 8 or 9 |
+
+`0x18D` holding a weapon's die size where its copy source holds the unarmed 2
+is `0x018778`'s overwrite showing in the files. And the two bytes the code says
+are combat-time only are the two that are zero in every record the game wrote,
+which is exactly what this writer emits.
+
+So no part of the block can come from a source: five bytes are zero in every
+engine record, three are the readied weapon's numbers out of a table the record
+does not hold, and one is an accumulation the rebuild computes. `roster_tail`
+leaves `POD_WRITE_DROPPED` for `POD_WRITE_DERIVED`, and the drop list is
+**twelve rows where it was thirteen**.
+
+#### `gap_19a` `0x0C9` is the readied items' saving-throw bonus
+
+No neutral field names it, so it is on no list — but it is no longer
+unexplained:
+
+* the rebuild clears it at `0x0195C0`, beside the item count and `hands_used`;
+* `0x01891E`, called from the rebuild's own item loop at `0x019638`, adds each
+  readied item's `plus_save` in at `0x0189AC`-`0x0189B8` (`move.b $c9(a0), d0;
+  add.b $34(a2), d0; move.b d0, $c9(a0)`, where `a2` is the item node and item
+  `+$34` is DOS's `plus_save` — the Amiga node runs one byte later than DOS's
+  from `0x032` on);
+* the saving-throw routine at `0x012EB0` reads it back at `0x012F10`, into the
+  roll's modifier before it indexes the five throws at `0x083`.
+
+**19 of 19 `.pc` files equal the sum of `plus_save` over their own readied
+items**: 2 for the five characters wearing the type-59 item that carries
+`plus_save` 2 — BJORK, KRISTIN, MAGIC JHO, MAGNUSMA and ?T — and 0 for the
+other fourteen. Two independent sources, so this corrects §1.19 and §1.19a,
+both of which said no routine had been found and that what the zero does to
+the game was unmeasured. The game fills it in, as it does `hands_used`.
+
+#### What is left, and one limit on the claim
+
+Nothing on this issue is now both zero and unexplained. `0x0CA` is 0 in 19 of
+19 and is written only by the Silver Blades importer and a field setter at
+`0x011D90`; `0x0CB` is still the UNKNOWN cached count; the heap pointers at
+`0x000`-`0x03F` stay zero because the loader overwrites them.
+
+For `0x189` and `0x18A` the argument that nothing reads them before the fight
+setup writes them rests on the displacement search, which sees `d16(An)` and
+would miss a read through a pointer computed some other way. The five readers
+it does find are all inside combat. The `0 in 19 of 19` measurement is the
+independent half, and it is what makes the pair CONFIRMED rather than
+PROBABLE: a writer emitting zero emits what the engine emits.
+
+`tests/amiga/test_podamiga.py` re-derives the six instructions and the load
+call off the player's own disk 1 rather than quoting them, and checks the
+`plus_save` sum and the five zero bytes against all nineteen records.
 
 ### 1.20 The saved game, read from the routine that writes it (#599 (How is the Amiga Pools of Darkness saved game laid out, so a whole save can convert and not only its characters?))
 

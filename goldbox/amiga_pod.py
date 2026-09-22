@@ -295,7 +295,21 @@ ITEM_COUNT_CACHE = 0x0C7
 #: (`g6968[type * 16 + 1]`), so a converted record's zero is filled in by the
 #: game rather than left beside a readied weapon.
 HANDS_USED = 0x0C8
+#: The saving-throw bonus the readied items add, and the third byte the same
+#: rebuild fills: :data:`DERIVED_REBUILD` clears it at `0x0195C0` beside the
+#: item count and :data:`HANDS_USED`, and `0x01891E` -- called from that
+#: routine's own item loop at `0x019638` -- adds each readied item's
+#: `plus_save` into it at `0x0189AC`-`0x0189B8`. The saving-throw routine at
+#: `0x012EB0` reads it back (`move.b $c9(a0), d1`, `0x012F10`) into the roll's
+#: modifier before it indexes the five throws at :data:`SAVING_THROWS`.
+#:
+#: CONFIRMED twice: the routines above, and **19 of 19 `.pc` files equal the
+#: sum of `plus_save` over their own readied items** -- 2 for the five
+#: characters wearing the type-59 item that carries `plus_save` 2, 0 for the
+#: other fourteen. So the writer leaves it zero and the game fills it in.
 UNNAMED_0C9 = 0x0C9
+#: 0 in 19 of 19. Written only by the Silver Blades importer and by a field
+#: setter at `0x011D90`. UNKNOWN.
 UNNAMED_0CA = 0x0CA
 #: Written from a routine's return value in eight places, one of them
 #: immediately after the engine prints `SCROLLS DROPPED!`, so it is a cached
@@ -371,8 +385,29 @@ QUICKFIGHT = 0x185
 #: hp_current, movement_current`.
 THAC0_CURRENT = 0x186
 ARMOUR_CLASS_CURRENT = 0x187
+#: The armour bonus and the eight running attack-form bytes, in DOS's own
+#: order. **Every one of the nine is rebuilt by the engine** and none can come
+#: from a source, which is why the writer leaves the block zero:
+#:
+#: * `0x188`, the armour bonus, is the last thing :data:`DERIVED_REBUILD`
+#:   does -- the four accumulated armour terms less 2, at `0x0196E8`;
+#: * `0x189` and `0x18A`, the two attack counts, are **not** touched on load.
+#:   A fight's setup loop walks every combatant (`0x003972`-`0x003990`)
+#:   calling `0x007D5E`, which sets `0x189` from :data:`ATTACK_FORMS`
+#:   (`0x008A4E`) and `0x18A` from the byte after it (`0x007E6A`). Both are
+#:   **0 in 19 of 19** `.pc` files, so zero is what the engine writes too;
+#: * `0x18B`-`0x190`, the running damage, are copied from `0x0AD`-`0x0B2` by
+#:   :data:`DERIVED_REBUILD` (`0x019556`-`0x0195AE`), and then `0x018778`
+#:   overwrites `0x18B`, `0x18D` and `0x18F` from the readied weapon's own
+#:   item-table entry. That overwrite is visible in the files: `0x18D` is 6 or
+#:   8, a weapon's die size, where its copy source `0x0AF` is the unarmed 2 in
+#:   19 of 19.
 ROSTER_TAIL = 0x188
 ROSTER_TAIL_LENGTH = 9
+#: The five bytes of :data:`ROSTER_TAIL` that are zero in all 19 `.pc` files,
+#: which is what this writer emits for the whole block: the two attack counts
+#: and the second half of each damage pair.
+ROSTER_TAIL_ZERO = (0x189, 0x18A, 0x18C, 0x18E, 0x190)
 #: **One byte, not the big-endian word at 0x190.** The importer copies Silver
 #: Blades' one-byte `hp_current` here, and 0x190 is `roster_tail`'s last byte.
 #: The word reading gave the same answer on every record anybody had, because
@@ -499,12 +534,47 @@ CLASS_BITS = 0x0B7
 #: :data:`HP_ROLLED`.
 PORTRAIT_BODY = PORTRAIT_HEAD + 1
 
+#: The routine that rebuilds every derived byte of a record, and the reason
+#: :data:`DERIVED` is a claim about the running game rather than about a
+#: listing. *Add Character* calls it between the `.pc` loader at `0x025806`
+#: and the roster join at `0x027394` (`0x026A34`, `0x026A6C`, `0x026A74`), and
+#: the inter-title import path calls it at `0x026326`; §2.3's probe wrote 1234
+#: into the encumbrance word and read 233 off the sheet, which is this routine
+#: running on load.
+DERIVED_REBUILD = 0x019428
 #: The game recomputes these on load and ignores what the file holds, so the
 #: writer must not fill them in: 0x056 encumbrance (it is the coin count),
-#: 0x186 `60 - THAC0` (it is the best of the class levels), 0x187 armour
-#: class, 0x18B/0x18D/0x18F damage, 0x192 movement.
-DERIVED = (ENCUMBRANCE, THAC0_CURRENT, ARMOUR_CLASS_CURRENT,
-           0x18B, 0x18D, 0x18F, MOVEMENT_CURRENT)
+#: 0x0C7 the stale item count, 0x0C8 `hands_used`, 0x0C9 the readied items'
+#: saving-throw bonus, 0x186 `60 - THAC0` (it is the best of the class
+#: levels), 0x187 armour class, the whole of :data:`ROSTER_TAIL`, and 0x192
+#: movement. :data:`DERIVED_REBUILD` writes all of them but 0x189 and 0x18A,
+#: which a fight's own setup loop fills from :data:`ATTACK_FORMS` and which
+#: are zero in 19 of 19 records the game wrote.
+DERIVED = (ENCUMBRANCE, ITEM_COUNT_CACHE, HANDS_USED, UNNAMED_0C9,
+           THAC0_CURRENT, ARMOUR_CLASS_CURRENT,
+           *range(ROSTER_TAIL, ROSTER_TAIL + ROSTER_TAIL_LENGTH),
+           MOVEMENT_CURRENT)
+#: The `jsr` *Add Character* makes on the loaded record, two instructions
+#: after the `.pc` loader at `0x025806` returns and two before the roster join
+#: at `0x027394`. It resolves through the small-data table to
+#: :data:`DERIVED_REBUILD`, which is what makes that routine the **load**
+#: path's and not merely a routine that exists.
+DERIVED_LOAD_CALL = 0x026A6C
+#: One instruction for each byte of :data:`DERIVED` that no probe has watched,
+#: as `(file offset in the Pools of Darkness executable, the instruction)`.
+#: The first two are inside :data:`DERIVED_REBUILD`; the third is the item
+#: loop it calls; the fourth is the saving-throw routine reading
+#: :data:`UNNAMED_0C9` back; the last two are the fight setup filling
+#: :data:`ROSTER_TAIL`'s two attack counts from :data:`ATTACK_FORMS` and the
+#: byte after it.
+DERIVED_SITES: tuple[tuple[int, str], ...] = (
+    (0x0196E8, "move.b d0, $188(a2)"),
+    (0x0195C0, "clr.b $c9(a2)"),
+    (0x0189B8, "move.b d0, $c9(a0)"),
+    (0x012F10, "move.b $c9(a0), d1"),
+    (0x008A4E, "move.b $ab(a0), $189(a1)"),
+    (0x007E6A, "move.b d0, $18a(a0)"),
+)
 
 #: Ramping 0x0B6-0x0C7 makes the loader reject the file with
 #: `ERROR: INVALID ITEM (-1/29)`. That is the GLIB library reader's own
@@ -1832,11 +1902,6 @@ POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                      "`paladin_cures` here and 0x082 is `icon_dimension`. So "
                      "there is nothing to write rather than a byte nobody has "
                      "found"),
-    ("roster_tail", "the nine bytes at 0x188: the armour bonus and the "
-                    "running attack forms. 0x18B, 0x18D and 0x18F are in "
-                    ":data:`DERIVED`, read off a probe; the rest of the block "
-                    "has not been watched being rebuilt, so it is named here "
-                    "rather than called derived"),
     ("experience_per_hit_point", "Pools of Darkness' own engine keeps no "
                                  "such byte in any of its records; the "
                                  "later engine adds the base award alone"),
@@ -1864,7 +1929,19 @@ POD_WRITE_DERIVED: tuple[tuple[str, str], ...] = (
                       "(0x0273FE-0x027432). The writer emits the 13 creation "
                       "itself writes, which 17 of the 19 `.pc` files hold. "
                       "**Read out of the engine rather than watched on "
-                      "screen**, which is the one row of this table that is"),
+                      "screen**"),
+    ("roster_tail", "the nine bytes at 0x188, and no part of them can come "
+                    "from a source. The rebuild at 0x019428 -- which *Add "
+                    "Character* calls between the `.pc` loader and the roster "
+                    "join, and which the encumbrance probe watched run -- "
+                    "computes the armour bonus at 0x188 (0x0196E8) and copies "
+                    "0x0AD-0x0B2 over 0x18B-0x190 (0x019556-0x0195AE) before "
+                    "0x018778 overwrites the damage triple from the readied "
+                    "weapon's item-table entry. 0x189 and 0x18A are filled "
+                    "from `attack_forms` by a fight's own setup loop "
+                    "(0x003972 calling 0x007D5E) and are **0 in 19 of 19** "
+                    "`.pc` files, so the zero this writer emits is the zero "
+                    "the engine emits"),
 )
 
 #: Neutral fields written as a value every record measured holds, rather than
