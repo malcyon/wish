@@ -11,6 +11,8 @@ rather than guessed at.
 """
 
 
+import dataclasses
+
 import pytest
 from support.dossave import _save_dir, needs_dos_saves
 from support.neutralrecords import _filled
@@ -527,6 +529,52 @@ def test_the_summary_lists_the_count_then_each_warning_then_each_drop():
         "  WARNING: a value was clamped",
         "  dropped: a field with no home",
     ]
+
+
+def test_lost_puts_the_line_on_losses_and_on_warnings():
+    rep = neutral.Report()
+    rep.lost("hp_max: 65535 does not fit the DOS one-byte field; clamped")
+    line = "hp_max: 65535 does not fit the DOS one-byte field; clamped"
+    assert rep.losses == [line]
+    assert rep.warnings == [line]
+    assert rep.dropped == []
+
+
+def test_a_readers_warning_copied_by_the_closing_sweep_is_not_a_loss():
+    char = NeutralCharacter("test")
+    char.warnings.append("the reader found a name with no terminator")
+    w, rep = _writer(char)
+    w.finish()
+    assert rep.warnings == ["the reader found a name with no terminator"]
+    assert rep.losses == []
+
+
+def test_the_summary_of_a_report_with_no_losses_has_no_lost_line():
+    rep = neutral.Report(total=1)
+    rep.warnings.append("a note")
+    assert "lost" not in rep.summary()
+
+
+def test_the_summary_lists_each_loss_after_the_drops():
+    rep = neutral.Report(total=4)
+    rep.dropped.append("a field with no home")
+    rep.lost("a value was clamped")
+    assert rep.summary().split("\n") == [
+        "0/4 bytes accounted for",
+        "  WARNING: a value was clamped",
+        "  dropped: a field with no home",
+        "  lost: a value was clamped",
+    ]
+
+
+def test_a_subclass_that_declares_its_own_losses_field_still_works():
+    @dataclasses.dataclass
+    class Sub(neutral.Report):
+        losses: list[str] = dataclasses.field(default_factory=list)
+
+    rep = Sub()
+    rep.lost("x")
+    assert rep.losses == ["x"] and rep.warnings == ["x"]
 
 
 # --- the C64 reader, as far as the Amiga and YAML writers need it ------------

@@ -466,6 +466,22 @@ class Report:
     dropped: list[str] = dataclasses.field(default_factory=list)
     #: Anything the conversion could not do faithfully.
     warnings: list[str] = dataclasses.field(default_factory=list)
+    #: Values this conversion cut or clamped into a narrower field: what the
+    #: player had and the destination now holds less of.  Distinct from
+    #: `dropped` (no home at all) and `warnings` (notes about the run).
+    losses: list[str] = dataclasses.field(default_factory=list)
+
+    def lost(self, line: str) -> None:
+        """Record a value the conversion narrowed, on `losses` and `warnings`.
+
+        The line goes on `warnings` as well so every existing reader of that
+        list still sees the same text.  Only the code that does the narrowing
+        calls this; nothing copies `warnings` into `losses` wholesale, because
+        a reader's own warnings (`Writer.finish` puts them on the report) are
+        not this conversion's losses.
+        """
+        self.losses.append(line)
+        self.warnings.append(line)
 
     def note(self, offset: int, size: int, why: str) -> None:
         for i in range(offset, offset + size):
@@ -482,6 +498,8 @@ class Report:
             lines.append(f"  WARNING: {w}")
         for d in self.dropped:
             lines.append(f"  dropped: {d}")
+        for lost in self.losses:
+            lines.append(f"  lost: {lost}")
         return "\n".join(lines)
 
 
@@ -564,6 +582,8 @@ class Writer:
                 f"{name}: the neutral record carries it and the {self.into} "
                 f"conversion takes nothing from it")
         self.report.dropped.extend(self.char.dropped)
+        # The reader's warnings are not this conversion's narrowing, so they
+        # stay off `losses`.
         self.report.warnings.extend(self.char.warnings)
 
 
