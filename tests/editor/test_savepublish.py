@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import pathlib
 import stat
+import sys
 
 import pytest
 from gamedata import synthetic_save
@@ -862,6 +863,10 @@ def test_publishing_without_naming_the_assets_again_is_not_stale(tmp_path):
 # What `editor.files` guarantees about the two writes publication makes
 # ---------------------------------------------------------------------------
 
+#: Windows has no POSIX permission bits -- `os.stat().st_mode` reports 0o666
+#: for every file regardless of what was requested, so the mode-bit half of
+#: these two tests checks nothing there.
+
 def test_replacing_a_file_keeps_the_permissions_it_had(tmp_path):
     """`tempfile.mkstemp` makes its file 0600 and the rename carries that
     over, so a save disk the player had shared with a group would quietly
@@ -873,7 +878,8 @@ def test_replacing_a_file_keeps_the_permissions_it_had(tmp_path):
     files.replace_file(target, b"new bytes", tmp_path / "backups")
 
     assert target.read_bytes() == b"new bytes"
-    assert stat.S_IMODE(target.stat().st_mode) == 0o664
+    if sys.platform != "win32":
+        assert stat.S_IMODE(target.stat().st_mode) == 0o664
 
 
 def test_a_restore_writes_a_sibling_and_syncs_it_before_the_rename(
@@ -915,7 +921,8 @@ def test_a_restore_puts_the_backups_mode_and_times_back(tmp_path):
     files.restore_file(party_free, backup)
 
     assert party_free.read_bytes() == b"what was there before"
-    assert stat.S_IMODE(party_free.stat().st_mode) == 0o640
+    if sys.platform != "win32":
+        assert stat.S_IMODE(party_free.stat().st_mode) == 0o640
     assert int(party_free.stat().st_mtime) == 1_000_000
 
 
