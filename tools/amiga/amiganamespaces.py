@@ -5,6 +5,7 @@
     tools/amiga/amiganamespaces.py --title pool-of-radiance
     tools/amiga/amiganamespaces.py --model "MARY SUE FOX" --model "J. R"
     tools/amiga/amiganamespaces.py --census-only
+    tools/amiga/amiganamespaces.py --watched       # the running game's saves
 
 Every title has one routine that removes a fixed set of characters from a
 string: `" .*,?/:;|"` in Pool of Radiance's `/program`, `' =+<>"[].*,?/\\:;|'`
@@ -19,7 +20,11 @@ is what Pool of Radiance's character creation does before its first save.
 
 `--model` runs a name through what `/program` does to it at a save, as read
 from the instructions (the `.`-pair remover, then the set remover, then the
-upper-casing), and through what creation does before that.
+upper-casing), and through what creation does before that. `--watched`
+reads the two specimens `tools/amiga/fsuaepor.py` recorded in the running
+game -- a `$FF`, a double space and `J. R` through three saves and a cold
+boot, and a name typed into Create New Character -- and checks each save
+against the model.
 
 The census reads every character record on the player's Amiga disks and in
 the specimen tree (`$WISH_SPECIMENS`, then `~/wish-specimens`) and counts the
@@ -404,6 +409,73 @@ def por_created(name: bytes) -> bytes:
     return por_saved(name.replace(b" ", b"\xff"))
 
 
+def por_chain(name: bytes) -> list[bytes]:
+    """`name` and what each further save leaves, until a save changes nothing."""
+    out = [name]
+    while (after := por_saved(out[-1])) != out[-1]:
+        out.append(after)
+    return out
+
+
+# --- Watched in the running game -----------------------------------------
+
+#: The `por-amiga-ff-names` specimen: three names staged into slot C, then the
+#: engine's own saves of that party.  G and H are two saves in one boot; I is
+#: a save after a cold boot that loaded H.  Each value is the name field up to
+#: its first NUL, records 1 to 3.
+WATCHED_SLOTS = {
+    "C": (b"MARY\xffSUE", b"A  B", b"J. R"),
+    "G": (b"MARY\xffSUE", b"A B", b"J R"),
+    "H": (b"MARY\xffSUE", b"AB", b"JR"),
+    "I": (b"MARY\xffSUE", b"AB", b"JR"),
+}
+
+#: Which slot each save was made from.
+WATCHED_FROM = {"G": "C", "H": "G", "I": "H"}
+
+WATCHED_SPECIMEN = "WISH-SPEC-por-amiga-ff-names"
+
+#: The `por-amiga-created-space` specimen: `MARY SUE` typed into Create New
+#: Character, then added, saved to slot A and removed again, on a blank
+#: `POOLSAVE` disk.  File name to the record's name field up to its NUL.
+CREATED_FILES = {
+    "MARY\xffSUE.cha": b"MARY\xffSUE",
+    "CHRDATA1.sav": b"MARY\xffSUE",
+}
+
+CREATED_SPECIMEN = "WISH-SPEC-por-amiga-created-space"
+
+
+def specimen(name: str) -> pathlib.Path | None:
+    """One specimen directory in the Amiga tree, or `None` when absent."""
+    for root in _specimen_roots():
+        if (root / name).is_dir():
+            return root / name
+    return None
+
+
+def watched() -> dict[str, tuple[bytes, ...]] | None:
+    """Slots C, G, H and I of the `por-amiga-ff-names` disk, as `WATCHED_SLOTS`."""
+    where = specimen(WATCHED_SPECIMEN)
+    if where is None:
+        return None
+    disk = AmigaDisk((where / "por1-after.adf").read_bytes())
+    return {slot: tuple(
+        disk.read_file(f"save/CHRDAT{slot}{n}.sav")[:NAME_BYTES].split(b"\0", 1)[0]
+        for n in (1, 2, 3)) for slot in WATCHED_SLOTS}
+
+
+def created() -> dict[str, bytes] | None:
+    """The name fields the engine's own creation wrote, as `CREATED_FILES`."""
+    where = specimen(CREATED_SPECIMEN)
+    if where is None:
+        return None
+    disk = AmigaDisk((where / "poolsave-after.adf").read_bytes())
+    return {path.lstrip("/"): disk.read_file(path)[:NAME_BYTES].split(b"\0", 1)[0]
+            for path, entry in disk.walk()
+            if not entry.is_dir and path.lower().endswith((".cha", ".sav"))}
+
+
 # --- The census ----------------------------------------------------------
 
 @dataclasses.dataclass(frozen=True)
@@ -583,6 +655,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", action="append", default=[],
                         help="a name to run through Pool of Radiance's save")
     parser.add_argument("--census-only", action="store_true")
+    parser.add_argument("--watched", action="store_true",
+                        help="the names the running game saved, against the model")
     parser.add_argument("--no-census", action="store_true")
     args = parser.parse_args(argv)
 
@@ -592,6 +666,21 @@ def main(argv: list[str] | None = None) -> int:
               f"{por_saved(por_saved(raw))!r}, created {por_created(raw)!r}")
     if args.model and not args.title and not args.census_only:
         return 0
+    if args.watched:
+        seen = watched()
+        if seen is None:
+            print(f"no {WATCHED_SPECIMEN} in the specimen tree")
+            return 2
+        status = 0
+        for slot, names in seen.items():
+            source = WATCHED_FROM.get(slot)
+            for n, name in enumerate(names, 1):
+                want = por_saved(seen[source][n - 1]) if source else name
+                mark = "" if name == want else f"  MODEL SAYS {want!r}"
+                status |= int(bool(mark))
+                print(f"  {slot}{n} {_hexname(name):<30} {name!r}{mark}")
+        print(f"  created: {created()}")
+        return status
 
     status = 0
     if not args.census_only:

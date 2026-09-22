@@ -118,8 +118,10 @@ def test_creation_keeps_a_space_as_ff():
 def test_every_pool_of_radiance_resave_on_the_disks_matches_the_model():
     """A record the engine resaved beside ours holds what `por_saved` predicts.
 
-    Among the records on the same image with the same letters, each one is
-    either our record unchanged or exactly the modelled resave.
+    The records on one image with the same letters all lie on one chain of
+    saves: one of them is where it starts, and every other is what some
+    number of saves leaves of it. A space behind a stripped byte takes two
+    saves to go, and `por-amiga-ff-names` holds both steps.
     """
     every = amiganamespaces.everything()
     pairs = amiganamespaces.resaved(every)
@@ -128,13 +130,54 @@ def test_every_pool_of_radiance_resave_on_the_disks_matches_the_model():
                     "character on any disk or specimen here.")
     assert any(match is not None for _name, match in pairs)
     por = [n for n in every if n.title == "Pool of Radiance"]
+
+    def letters(name):
+        return bytes(c for c in name.text if chr(c).isalnum())
+
     for name, _match in pairs:
         image = name.where.split(":", 1)[0]
-        letters = bytes(c for c in name.text if chr(c).isalnum())
-        for other in por:
-            if (other.where.split(":", 1)[0] == image
-                    and bytes(c for c in other.text
-                              if chr(c).isalnum()) == letters):
-                assert other.text in (name.text,
-                                      amiganamespaces.por_saved(name.text)), (
-                    other.where)
+        group = {other.text for other in por
+                 if other.where.split(":", 1)[0] == image
+                 and letters(other) == letters(name)}
+        assert any(group <= set(amiganamespaces.por_chain(start))
+                   for start in group), (image, sorted(group))
+
+
+def test_the_model_chain_ends_where_a_save_changes_nothing():
+    assert amiganamespaces.por_chain(b"A  B") == [b"A  B", b"A B", b"AB"]
+    assert amiganamespaces.por_chain(b"MARY\xffSUE") == [b"MARY\xffSUE"]
+
+
+def _watched():
+    seen = amiganamespaces.watched()
+    if seen is None:
+        pytest.skip(f"No {amiganamespaces.WATCHED_SPECIMEN} in the specimen "
+                    f"tree here.")
+    return seen
+
+
+def test_the_running_game_keeps_ff_and_strips_the_rest_one_step_a_save():
+    """What the engine saved, read off the disk it wrote.
+
+    `MARY<FF>SUE` comes through two saves in one boot and a third after a
+    cold boot unchanged; `A  B` and `J. R` lose one byte to each save.
+    """
+    assert _watched() == amiganamespaces.WATCHED_SLOTS
+
+
+@pytest.mark.parametrize("slot", sorted(amiganamespaces.WATCHED_FROM))
+def test_every_watched_save_is_what_the_model_predicts(slot):
+    seen = _watched()
+    source = amiganamespaces.WATCHED_FROM[slot]
+    assert seen[slot] == tuple(amiganamespaces.por_saved(name)
+                               for name in seen[source])
+
+
+def test_creation_stores_a_typed_space_as_ff():
+    """`MARY SUE` typed at Create New Character, in the file and its name."""
+    made = amiganamespaces.created()
+    if made is None:
+        pytest.skip(f"No {amiganamespaces.CREATED_SPECIMEN} in the specimen "
+                    f"tree here.")
+    assert made == amiganamespaces.CREATED_FILES
+    assert amiganamespaces.por_created(b"MARY SUE") == made["CHRDATA1.sav"]
