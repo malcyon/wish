@@ -4,9 +4,10 @@ A C64 trait slot carries an effect id and nothing else, so a converter that
 writes one as a DOS effect node has to choose bytes 3 (the value) and 4 (the
 flag) itself. This page answers, from each DOS engine's own code, which ids'
 nodes the engine reads past the duration, what a readied magical item writes,
-what a strength item's value byte holds, and whether Secret of the Silver
-Blades' C64 halfling id 92 is the effect DOS gives a halfling. It is Stage 2
-of the plan on
+what a strength item's value byte holds, whether Secret of the Silver
+Blades' C64 halfling id 92 is the effect DOS gives a halfling and what DOS's
+own 92 protects against, and whether any C64 title's Dispel Magic can remove
+an effect held in a trait slot. It is Stage 2 of the plan on
 #621 (A C64 character carrying an effect in a trait slot cannot be saved as a DOS or Amiga save, because the writer keeps only the eight ids the game's own importer keeps),
 and the DOS column of #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s
 Stage 4c.
@@ -14,7 +15,10 @@ Stage 4c.
 The reader is [`tools/dos/dosaffectreads.py`](../tools/dos/dosaffectreads.py);
 [`tests/dos/test_dosaffectreads.py`](../tests/dos/test_dosaffectreads.py) pins
 every address and answer below against the player's own `GAME.OVR` and
-`START.EXE` from the archives. Everything is static; no emulator was run. The
+`START.EXE` from the archives. The C64 half is
+[`tools/c64/dispelread.py`](../tools/c64/dispelread.py), pinned by the same
+test file against the player's C64 disks. Everything is static; no emulator
+was run. The
 node layout is `docs/162-spc-permanence.md`'s: id, duration `u16`, value,
 flag, next pointer.
 
@@ -27,6 +31,8 @@ flag, next pointer.
 | what a readied magical item writes | `id 00 00 0C 00`, for eight power bytes | `id 00 00 FF 01`, for power `0x80` only | `id 00 00 FF 01`, for power `0x80` only | CONFIRMED |
 | a strength item's node | `26 00 00 vv 01`, `vv` the pre-item strength encoded | none: no power other than `0x80` writes a node | none | CONFIRMED |
 | C64 halfling 92 against DOS halfling 97 | -- | -- | two different effects | CONFIRMED |
+| what a DOS 92 node cancels when a spell's effect is applied | -- | -- | Fear (111) only; no DOS effect cancels Ray of Enfeeblement (29) or Feeblemind (68) | CONFIRMED |
+| can the **C64** Dispel Magic remove an effect held in a trait slot | no | no | no | CONFIRMED |
 
 ## How it was read
 
@@ -183,20 +189,122 @@ there is nothing to write for them.
 
 So a C64 halfling's 92 is not DOS's 97 renamed. DOS's 92 is the same kind of
 effect -- an immunity -- and nothing reads its node past the duration, so it
-can be written as `5C 00 00 FF 00`. What stays UNKNOWN is whether DOS covers
-Ray of Enfeeblement and Feeblemind for a 92 carrier somewhere other than its
-handler: the handler names only Fear. Settle it by reading the five
-table-driven `find_affect` callers in Silver Blades that take their id from
-`ds:0x1B3D` (`0x5BD2`, `0x5ED5`, `0x1CA0A`, `0x1CDC0`, `0x2B0B6`) and the
-spell handlers for 29 and 68.
+can be written as `5C 00 00 FF 00`.
+
+### What DOS Silver Blades' 92 protects against
+
+**Fear, and nothing else.** CONFIRMED from the code; this section used to leave
+Ray of Enfeeblement and Feeblemind UNKNOWN, and reading the one route an
+immunity can take settled it.
+
+Every title applies a spell's effect through one routine that parks the id in
+a global, walks check list 9 over the target, and adds the node only if the
+global is still set; a handler cancels by handing one helper the id it blocks,
+or 0 for whatever is parked (`dosaffectreads.apply_walk`, `cancels`):
+
+| | Pool of Radiance | Curse | Silver Blades |
+|---|---|---|---|
+| apply routine, global | `0x2C540`, `[0x6817]` | `0x37303`, `[0x6FAD]` | `0x37EB0`, `[0x87D3]` |
+| cancel helper | `0xEC5B` | `0xFF00` | `0x10D4A` |
+| list 9 | 105-112, 124, 125 | 105-112, 124, 125, 63, 129 | 18, 28, 63, 76, 79, **92**, 95, 96, 99 |
+
+In Silver Blades 92 is on list 9 and its handler hands the helper 111 and
+nothing else. **No handler of the 113 hands it 29 or 68**: the fourteen that
+call it cancel 0, 11, 52, 53, 55 or 111. Nothing else compares the global
+with 29 or 68 either: its seven reads are in the helper, the apply routine,
+the list walk's prologue at `0x35FC9` (which compares it with 82 and 91) and
+one test for 64 at `0x30A7C`. The rest of what the plan asked to read:
+
+* the only `find_affect` naming 92 as a constant is `0x13755`, inside effect
+  82's handler, which skips a target that has 92;
+* the five callers that take their id from `ds:0x1B3D` (`0x5BD2`, `0x5ED5`,
+  `0x1CA0A`, `0x1CDC0`, `0x2B0B6`) index bytes 1-4 of that array, which hold
+  **31, 34, 43 and 44** -- helpless and the three disease ids -- and each hands
+  the same id to `remove_affect`. They are cures, the list `docs/171` found in
+  the C64's own cure disease, and none of them is a protection.
+
+Curse is the control that the reader sees such a handler when one exists: its
+133 cancels 29, 68 and 142. So a converted C64 Silver Blades halfling written
+with `5C 00 00 FF 00` keeps his immunity to Fear and to effect 82, and **no
+DOS Silver Blades node exists that keeps his immunity to Ray of Enfeeblement
+or Feeblemind** -- the engine has none to give. A DOS-born halfling has
+neither immunity and has 97's constitution bonus on his saving throws, which
+the C64's 97 does not give. That is a difference between the two engines,
+read from both, and not a gap in our reading.
+
+## (e) The C64's Dispel Magic never reaches a trait slot
+
+**CONFIRMED for all three C64 titles, from the code.** Each title's spell
+table sends both DISPEL MAGIC spells (41 and 46 in all three) to one routine
+per route, and every one of them finds an effect through the **array-only**
+predicate, so an effect held only in a trait slot is never found and never
+removed:
+
+| | Pool of Radiance, combat | Pool of Radiance, camp | Curse | Silver Blades |
+|---|---|---|---|---|
+| table | `SPELLE65 +0x211`, 9 bytes, routine at +7 | `ECL65 +0`, 7 bytes, +5 | `COMBAT2 +2732`, 9 bytes, +2 | `COMBAT2 +2937`, 9 bytes, +2 |
+| routine | `SPELLE00 $ABCE` | `SPELLE04 $AA5B` | `COMBAT $18BD` | `COMBAT $1C7C` |
+| ids tried | 63 down to 1 | 63 down to 1 | 48, from `$F10A` | 35, from `$F213` |
+| predicate | `$3FE1` (array only) | `$3FE1` | `$409C` (array only) | `$3851` (array only) |
+| removal | `$A82F`, asks `$3FE4` | `CAMP $131F` on the index `$3FE1` returned | `$11DB`, asks `$409F` | `$11D0`, asks `$3854` |
+| caster's level | `$2B05` | `$2878` | `$A90A` | `$A90A` |
+
+For each id the array holds for the target, a magnitude of `$FF` is skipped
+and any other has its low nibble taken as the effect's level; the chance is
+50% plus 5% for every level the caster is above it, or less 2% for every
+level below (`$AC10` and its three twins), and the routine compares it with
+the random routine's result for `Y = $63`. **No
+instruction in the four routines, their chance routines or their removals
+names the trait block** (`$6BAD` in Pool of Radiance, `$7CAD` in the later
+two). In Pool of Radiance the census of the block's 17 absolute references
+finds only the predicate, the racial seed, the item grant and revoke, the
+slot `SPELLE04 $AA18` writes 32 into and the cures; the later titles' 20 and
+21 were not each attributed, and none of them lies in a dispel routine.
+
+So the C64's own rule is that a trait-slot effect cannot be dispelled, and
+DOS's `FF` value byte, which its Dispel Magic passes over, is the faithful
+one. `tools/c64/dispelread.py` prints the table above.
+
+Three things were seen on the way, none of them about a trait slot:
+
+* **Curse and Silver Blades never test their list's first entry.** The loop
+  counts X down from 48 (35) and stops at 1, and the byte at index 0 is 1,
+  Bless, in both. CONFIRMED that the routine never reads it; PROBABLE that a
+  player on those two C64 titles cannot dispel Bless, since no second dispel
+  routine exists (the chance routine's bytes occur once in each title). Cast
+  Bless on the enemy side and Dispel Magic over it in a C64 Curse fight to
+  settle it.
+* **The C64 ranges are narrower than DOS's.** Pool of Radiance dispels array
+  ids 1-63 only and the later titles only their lists; DOS walks every node.
+  That is the concern of
+  #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)
+  -- a running effect's value byte -- and not this page's.
+* **One removal can clear a slot indirectly.** Removing an effect whose
+  magnitude has bit 7 set dispatches its handler, and Pool of Radiance's
+  handler for 22 and 32 (`SPELLE01 $A889`) revokes 55 through the combat
+  revoke, which looks in the ten slots before the array. So dispelling a
+  flagged Slow Poison can clear a poison held in a slot. PROBABLE, from the
+  code only; it touches 55 and no id this page's converter writes.
+
+## The value and flag bytes a converted trait slot gets
+
+The rule follows from (a), (b) and (e). **CONFIRMED** for every row but the
+last:
+
+| a C64 trait-slot id that is | DOS bytes 3-4 | why |
+|---|---|---|
+| unread past the duration in this title ((a)'s complement), not an item grant | `FF 00` | undispellable, as on the C64; no remove path runs, as when the C64 clears a slot |
+| Pool of Radiance, the `+14` of a readied item with power `0x80`-`0x82`, `0x85`, `0x86`, `0x88`, `0x8A`, `0x8B` | `0C 00` | what DOS itself writes for that item ((b)) |
+| Curse or Silver Blades, the `+14` of a readied item with power `0x80` | `FF 01` | the same ((b)) |
+| on (a)'s list for this title and no item grant | none known | a reader of that byte needs its own value; read per id |
+
+A readied Pool of Radiance item's `0C` is dispellable at level 12 on DOS and
+not on the C64. That is how DOS treats the same item on a DOS-born character,
+so the row writes the destination's own form; whether that is acceptable is a
+decision for the conversion, not a reading.
 
 ## What this does not settle
 
-* **Whether a C64 trait slot can be dispelled.** DOS's `FF` makes a node
-  immune to Dispel Magic. If the C64's Dispel Magic never looks at the ten
-  trait slots, `FF` is the faithful choice for a trait id; if it does, it is
-  not. UNKNOWN; settle it by reading the C64 Dispel Magic handler (its spell
-  row through `tools/c64/traitquery.py --spells`) for a read of `$6BAD`.
 * **Code that holds a node in a global.** Every `find_affect` caller stores
   into a local (41, 74 and 82 of them); a routine that copies a node pointer
   into a global and reads it elsewhere would not be seen. None was found, and

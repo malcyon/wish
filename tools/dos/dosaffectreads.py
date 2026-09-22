@@ -39,6 +39,11 @@ cannot be resolved.
 `item_powers` reads how a readied magical item (item byte `0x3E` >= `0x80`)
 reaches `add_affect`: Pool of Radiance dispatches on byte `0x3E` itself, the
 later two route power 0 through the hook and nothing else.
+
+`apply_walk` and `cancels` read what an effect protects against: the apply
+routine parks the incoming id in a global, walks check list 9 over the
+target, and each handler on it cancels by handing a helper the ids it
+blocks (`tools/dos/dosaffectreads.py --title silver-blades --apply`).
 """
 
 from __future__ import annotations
@@ -676,6 +681,137 @@ def score_bands(eng: Engine, eid: int) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Applying an effect: what the target's own effects cancel
+# --------------------------------------------------------------------------
+# Every title applies a spell's effect through one routine that parks the id
+# in a global, walks check list 9 over the target -- the target's handler for
+# each id on the list that it carries -- and adds the node only if the global
+# is still set.  A handler cancels by calling one helper with an id: if the
+# id is the one parked (or the constant is 0, whatever is parked), the helper
+# clears it.  So what an effect protects against is the constants its handler
+# hands that helper, and that the id is on list 9.
+
+
+def cancel_helper(eng: Engine) -> tuple[int, int]:
+    """`(file offset, global)` of the helper that cancels the effect being applied.
+
+    The routine most handlers call with a constant whose body is `cmp byte
+    ptr [bp + 6], 0 / je / mov al, byte ptr [G] / cmp al, byte ptr [bp + 6]`.
+    """
+    count = collections.Counter()
+    for eid in eng.effect_ids:
+        for callee, _ in constant_calls(eng, eid):
+            count[(eng.handlers[eid][0], callee)] += 1
+    for (where, callee), _ in count.most_common():
+        text = [f"{i.mnemonic} {i.op_str}" for i in body(eng.code(where), callee)]
+        if len(text) > 5 and text[2] == "cmp byte ptr [bp + 6], 0" \
+                and text[3].startswith("je ") \
+                and text[4].startswith("mov al, byte ptr [0x") \
+                and text[5] == "cmp al, byte ptr [bp + 6]":
+            return callee, int(text[4].split("[")[1].rstrip("]"), 0)
+    raise ValueError(f"{eng.title}: no cancel helper")
+
+
+def cancels(eng: Engine) -> dict[int, list[int]]:
+    """Handler id -> the ids its handler cancels on application (0: any)."""
+    helper, _ = cancel_helper(eng)
+    out = {}
+    for eid in eng.effect_ids:
+        hits = sorted(c for callee, c in constant_calls(eng, eid) if callee == helper)
+        if hits:
+            out[eid] = hits
+    return out
+
+
+def apply_walk(eng: Engine) -> dict:
+    """The apply routine, the check list it walks, and every list's ids.
+
+    Found by its `mov byte ptr [G], al` into the cancel helper's global,
+    followed by `mov al, <list>` and a near call to the list walker.  The
+    walker is a switch on the list number: `cmp al, n` opens list `n`, and
+    each `mov al, id / push ax / push cs / call <ask>` puts `id` on it.
+    """
+    _, glob = cancel_helper(eng)
+    store = b"\xa2" + struct.pack("<H", glob)
+    for m in re.finditer(re.escape(store), eng.ovr):
+        start = eng.ovr.rfind(b"\x55\x89\xe5", 0, m.start())
+        ins = body(eng.ovr, start)
+        at = [i.address for i in ins]
+        if m.start() not in at:
+            continue
+        k = at.index(m.start())
+        nxt = ins[k + 1]
+        call = next(i for i in ins[k + 1:] if i.mnemonic == "call")
+        if not re.fullmatch(r"al, (0x[0-9a-f]+|\d+)", nxt.op_str):
+            continue
+        walker = int(call.op_str, 0)
+        return dict(apply=start, glob=glob, list=int(nxt.op_str[4:], 0),
+                    walker=walker, lists=walker_lists(eng, walker))
+    raise ValueError(f"{eng.title}: no routine stores the applied effect and walks a list")
+
+
+def walker_lists(eng: Engine, walker: int) -> dict[int, list[int]]:
+    ins = body(eng.ovr, walker, 0x3000)
+    calls = collections.Counter(i.op_str for i in ins if i.mnemonic == "call")
+    ask = calls.most_common(1)[0][0]
+    lists: dict[int, list[int]] = {}
+    current = None
+    for k, insn in enumerate(ins):
+        ops = insn.op_str
+        if insn.mnemonic == "cmp" and re.fullmatch(r"al, (0x[0-9a-f]+|\d+)", ops):
+            current = int(ops[4:], 0)
+            lists.setdefault(current, [])
+        elif insn.mnemonic == "call" and ops == ask and current is not None:
+            back = [f"{i.mnemonic} {i.op_str}" for i in ins[max(0, k - 3):k]]
+            if back[-2:] == ["push ax", "push cs"] and \
+                    re.fullmatch(r"mov al, (0x[0-9a-f]+|\d+)", back[0]):
+                lists[current].append(int(back[0][8:], 0))
+    return lists
+
+
+def data_list(eng: Engine, offset: int, first: int, last: int) -> list[int]:
+    """Bytes `first`..`last` of a byte array in the data segment at `offset`."""
+    from tools.dos import dosspellslots
+    at = dosspellslots.data_segment(eng.img) * 16 + offset
+    return list(eng.img[at + first:at + last + 1])
+
+
+def data_indexed_callers(eng: Engine, offset: int) -> list[dict]:
+    """Every `find_affect` call whose id is `byte ptr [di + offset]`.
+
+    Returns each call site, its routine, and whether the same routine hands
+    the same indexed id to `remove_affect` -- which is what a cure does.
+    """
+    ref = f"al, byte ptr [di + {offset:#x}]"
+    out = []
+    for where, site, eid, _slot in find_affect_sites(eng):
+        if eid is not None:
+            continue
+        code = eng.code(where)
+        start = code.rfind(b"\x55\x89\xe5", 0, site)
+        ins = body(code, start, 0x3000)
+        before = [i for i in ins if i.address < site][-8:]
+        if not any(i.op_str == ref for i in before):
+            continue
+        removes = any(
+            i.mnemonic == "lcall" and _far(eng, i.op_str) == ("GAME.OVR", eng.remove_affect_at)
+            and any(j.op_str == ref for j in ins[max(0, k - 8):k])
+            for k, i in enumerate(ins))
+        out.append(dict(file=where, site=site, routine=start, removes=removes))
+    return out
+
+
+def _far(eng: Engine, op_str: str) -> tuple[str, int] | None:
+    direct = re.fullmatch(r"(0x[0-9a-f]+|\d+), (0x[0-9a-f]+|\d+)", op_str)
+    if direct is None:
+        return None
+    try:
+        return eng.resolve(int(direct.group(1), 0), int(direct.group(2), 0))
+    except ValueError:
+        return None
+
+
+# --------------------------------------------------------------------------
 
 
 def _game_dir(title: str, arg: str | None) -> pathlib.Path:
@@ -695,6 +831,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--game-dir", help="a directory holding GAME.OVR and START.EXE")
     ap.add_argument("--ids", help="comma-separated ids to print (default: all)")
     ap.add_argument("--items", action="store_true", help="print the item-power reading")
+    ap.add_argument("--apply", action="store_true",
+                    help="print check list 9 and what each handler cancels on application")
     a = ap.parse_args(argv)
     for title in a.title or list(TITLES):
         try:
@@ -737,6 +875,14 @@ def main(argv: list[str] | None = None) -> int:
                 s = strength_encoding(eng)
                 print(f"   strength item: handler 0x{s['handler']:x}, encoder 0x{s['encoder']:x}:"
                       f" score + {s['offset']}, or percentile + 1 at {s['eighteen']}")
+        if a.apply:
+            w = apply_walk(eng)
+            helper, glob = cancel_helper(eng)
+            print(f"   apply GAME.OVR:0x{w['apply']:x} parks the id in [0x{glob:x}] and walks"
+                  f" list {w['list']} through 0x{w['walker']:x}: {w['lists'][w['list']]}")
+            print(f"   cancel helper 0x{helper:x}; each handler cancels (0 = any):")
+            for eid, ids in sorted(cancels(eng).items()):
+                print(f"   {eid:3d} {ids}")
     return 0
 
 

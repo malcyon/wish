@@ -248,3 +248,139 @@ def test_silver_blades_c64_92_cancels_three_effects_and_97_is_the_filler():
                if code[i] == 0xA9 and code[i + 2] in (0x20, 0x4C)]
     assert [c for c, _ in cancels] == [29, 68, 111]
     assert len({t for _, t in cancels}) == 1
+
+
+# --------------------------------------------------------------------------
+# Applying an effect: what a target's own effects cancel
+# --------------------------------------------------------------------------
+
+#: title -> apply routine, the global it parks the incoming id in, the cancel
+#: helper, and check list 9's ids -- the list the apply routine walks.
+APPLY = {
+    "pool": (0x2C540, 0x6817, 0xEC5B,
+             [105, 106, 107, 108, 109, 110, 111, 112, 124, 125]),
+    "curse": (0x37303, 0x6FAD, 0xFF00,
+              [105, 106, 107, 108, 109, 110, 111, 112, 124, 125, 63, 129]),
+    "silver-blades": (0x37EB0, 0x87D3, 0x10D4A,
+                      [18, 28, 63, 76, 79, 92, 95, 96, 99]),
+}
+
+
+def test_an_applied_effect_is_checked_against_list_9_of_the_target(engine):
+    apply, glob, helper, list9 = APPLY[engine.title]
+    walk = reads.apply_walk(engine)
+    assert (walk["apply"], walk["glob"], walk["list"]) == (apply, glob, 9)
+    assert walk["lists"][9] == list9
+    assert reads.cancel_helper(engine) == (helper, glob)
+
+
+def test_silver_blades_dos_92_protects_against_fear_and_nothing_else():
+    """A C64 halfling's 92 cancels Ray of Enfeeblement (29), Feeblemind (68)
+    and Fear (111).  On DOS 92 is on list 9 and cancels 111 alone, no handler
+    of the 113 cancels 29 or 68, and the five `find_affect` callers that take
+    their id from `ds:0x1B3D` walk the cure list 31, 34, 43, 44 and remove it."""
+    eng = _title("silver-blades")
+    blocked = reads.cancels(eng)
+    assert blocked[92] == [111]
+    assert 92 in reads.apply_walk(eng)["lists"][9]
+    assert not any({29, 68} & set(ids) for ids in blocked.values())
+    assert reads.data_list(eng, 0x1B3D, 1, 4) == [31, 34, 43, 44]
+    callers = reads.data_indexed_callers(eng, 0x1B3D)
+    assert [c["site"] for c in callers] == [0x5BD2, 0x5ED5, 0x1CA0A, 0x1CDC0, 0x2B0B6]
+    assert all(c["removes"] for c in callers)
+    constant_92 = [s for s in reads.find_affect_sites(eng) if s[2] == 92]
+    assert [s[1] for s in constant_92] == [0x13755]
+    assert eng.ovr.rfind(b"\x55\x89\xe5", 0, 0x13755) == eng.handlers[82][1]
+
+
+def test_curse_is_the_title_whose_dos_engine_cancels_29_and_68():
+    """The negative above is Silver Blades' own: Curse's DOS 133 does cancel
+    both, so the reader can see such a handler when one exists."""
+    assert reads.cancels(_title("curse"))[133] == [0, 29, 68, 142]
+
+
+# --------------------------------------------------------------------------
+# The C64 Dispel Magic, `tools/c64/dispelread.py`
+# --------------------------------------------------------------------------
+
+
+def _c64_dispel_routine(predicate: int, trait_read: bool = False) -> bytes:
+    """A dispel loop at `$A700` in the form the C64 titles use, asking
+    `predicate`; `trait_read` puts a `LDA $6BAD,X` after the removal.  The
+    chance routine sits at `$A720` and the removal at `$A740`."""
+    after = bytes.fromhex("20" "40a7") + (bytes.fromhex("bdad6b") if trait_read else b"")
+    tail = bytes.fromhex("b0") + bytes((len(after),)) + after
+    test = bytes.fromhex("c9ff") + bytes((0xF0, 2 + 3 + len(tail))) + \
+        bytes.fromhex("290f" "20" "20a7") + tail
+    body = bytes.fromhex("bd804b") + test
+    loop = bytes.fromhex("a23f" "8a" "20") + struct.pack("<H", predicate) + \
+        bytes((0x90, len(body))) + body
+    loop += b"\xca" + bytes((0xD0, (2 - (len(loop) + 1) - 2) & 0xFF)) + b"\x60"
+    chance = bytes.fromhex("38ed052baaa932b0081869" "05e830fa100ae000f00638e902cad0fa60")
+    removal = bytes.fromhex("20e43f60")
+    return loop.ljust(0x20, b"\xea") + chance.ljust(0x20, b"\xea") + removal
+
+
+def _c64_read(blob: bytes):
+    from tools.c64 import dispelread, traitquery
+
+    library = bytes(0x3FE1 - 0x2C48) + b"\xae"      # the LDX wrapper's opcode
+    pred = traitquery.Predicate("LIBRARY", 0x2C48, 0x4027, 0x3FE4, 0x6E6E, 0x402D)
+    route = dispelread.Route("combat", ("X", 0, 9, 7), ("SPELLE00",), 0xA700)
+    return dispelread._read_routine(c64_port.POOL_OF_RADIANCE, route, "SPELLE00",
+                                    blob, 0xA700, pred, library, {})
+
+
+def test_a_c64_dispel_asking_the_array_only_is_read_as_blind_to_trait_slots():
+    d = _c64_read(_c64_dispel_routine(0x3FE1))
+    assert d.predicate_kind == "array only"
+    assert d.ids == list(range(63, 0, -1))
+    assert (d.skip, d.level_mask) == (0xFF, 0x0F)
+    assert (d.chance_base, d.per_level_above, d.per_level_below) == (50, 5, 2)
+    assert d.removal_asks == [(0x3FE4, "array only")]
+    assert d.trait_refs == []
+
+
+def test_a_c64_dispel_asking_the_trait_predicate_is_read_as_such():
+    """The mutation: the same loop through `$4027`, and one reading the
+    block, are both reported rather than read as blind."""
+    assert _c64_read(_c64_dispel_routine(0x4027)).predicate_kind == \
+        "array then trait slots"
+    assert _c64_read(_c64_dispel_routine(0x3FE1, trait_read=True)).trait_refs == [0xA719]
+
+
+#: title -> (route, file, entry, the ids it tries or how many, index 0 of the list)
+C64_DISPEL = {
+    "pool-of-radiance": [("combat", "SPELLE00", 0xABCE, list(range(63, 0, -1)), None),
+                         ("camp", "SPELLE04", 0xAA5B, list(range(63, 0, -1)), None)],
+    "curse-of-the-azure-bonds": [("combat", "COMBAT", 0x18BD, 48, 1)],
+    "secret-of-the-silver-blades": [("combat", "COMBAT", 0x1C7C, 35, 1)],
+}
+
+
+@pytest.mark.parametrize("key", sorted(C64_DISPEL))
+def test_the_c64_dispel_magic_never_reaches_a_trait_slot(key):
+    """Both DISPEL MAGIC spells of each title run one routine per route; it
+    finds an effect through the array-only predicate, skips a magnitude of
+    0xFF, rolls against the low nibble, removes through a routine that asks
+    the array only, and names the trait block nowhere."""
+    from tools.c64 import dispelread
+
+    game = c64_port.by_key(key)
+    root = gamedisks.find(game.key)
+    if root is None:
+        pytest.skip(f"no {game.title} disks on this machine")
+    got = dispelread.read(str(root), game)
+    assert [(d.route, d.file, d.entry) for d in got] == \
+        [(r, f, e) for r, f, e, _, _ in C64_DISPEL[key]]
+    for d, (_r, _f, _e, ids, zero) in zip(got, C64_DISPEL[key]):
+        assert sorted(d.spells) == [41, 46]
+        assert d.ids == ids if isinstance(ids, list) else len(d.ids) == ids
+        assert d.skipped_index_zero == zero
+        assert d.predicate_kind == "array only"
+        assert {k for _a, k in d.removal_asks} <= {
+            "array only", "the index the loop's own predicate returned"}
+        assert d.removal_asks
+        assert (d.skip, d.level_mask) == (0xFF, 0x0F)
+        assert (d.chance_base, d.per_level_above, d.per_level_below) == (50, 5, 2)
+        assert d.trait_refs == []
