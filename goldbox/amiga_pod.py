@@ -945,6 +945,16 @@ class PodCharacter:
         return self.raw[FIELD_83_87_SECOND]
 
     @property
+    def field_83_87_window(self) -> bytes:
+        """`field_83_87` reassembled in the shared DOS order: control, share,
+        the class a dual-classed human left, and the byte after it -- the
+        first three read from their own scattered offsets, the fourth from
+        :data:`FIELD_83_87_THIRD`, which the Silver Blades importer's own
+        copy places at 0x05B (`docs/229-the-npc-window-bytes.md`)."""
+        return bytes((self.raw[NPC_CONTROL], self.raw[FIELD_83_87_SECOND],
+                     self.raw[FIELD_83_87_THIRD], self.raw[FIELD_83_87_FOURTH]))
+
+    @property
     def level(self) -> int:
         return self.raw[LEVEL]
 
@@ -1294,6 +1304,12 @@ class PodWriter:
     npc_control_byte: int | None = None
     former_level: int | None = None
     former_class_levels: tuple[int, ...] | None = None
+    #: `field_83_87`'s third and fourth bytes in the shared DOS order --
+    #: the class a dual-classed human left (0x05B) and the byte after it
+    #: (0x095) -- neither read by this title's own engine, carried across a
+    #: route that has the window on both sides rather than dropped (#614).
+    field_83_87_third: int | None = None
+    field_83_87_fourth: int | None = None
     #: The permanent half of each pair -- the first byte, where the score in
     #: force is the second. Both halves take `abilities` when this is None,
     #: which is what every record measured on either port holds.
@@ -1439,7 +1455,11 @@ class PodWriter:
                 (self.experience_award, EXPERIENCE_AWARD, 2,
                  "experience_award"),
                 (self.npc_control_byte, NPC_CONTROL, 1, "npc_control_byte"),
-                (self.former_level, FORMER_LEVEL, 1, "former_level")):
+                (self.former_level, FORMER_LEVEL, 1, "former_level"),
+                (self.field_83_87_third, FIELD_83_87_THIRD, 1,
+                 "field_83_87_third"),
+                (self.field_83_87_fourth, FIELD_83_87_FOURTH, 1,
+                 "field_83_87_fourth")):
             if value is not None:
                 plan.append((at, width, what))
         if self.former_class_levels is not None:
@@ -1563,7 +1583,9 @@ class PodWriter:
                           (self.hit_points_rolled, HP_ROLLED),
                           (self.identity, UNNAMED_0AB),
                           (self.npc_control_byte, NPC_CONTROL),
-                          (self.former_level, FORMER_LEVEL)):
+                          (self.former_level, FORMER_LEVEL),
+                          (self.field_83_87_third, FIELD_83_87_THIRD),
+                          (self.field_83_87_fourth, FIELD_83_87_FOURTH)):
             if value is not None:
                 out[at] = min(value, 0xFF)
         if self.experience_award is not None:
@@ -2476,6 +2498,13 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
                 f"low seven bits of morale, stored halved",
                 Confidence.PROBABLE)
 
+    # `field_83_87`'s other two bytes -- the class a dual-classed human left
+    # (scattered to FIELD_83_87_THIRD) and the byte after it -- have no
+    # reader in this title either, so they travel as the window attribute
+    # `goldbox.dos_codec.set_window_source` carries for every other port,
+    # rather than being dropped over a rewrite (#614).
+    _dos.set_window_source(out, char.field_83_87_window)
+
     # -- size: the Amiga's 1 small / 2 medium, the neutral 0 small / 1 large -
     out.set("size_small", max(0, char.size - 1),
             f"Amiga .pc size @{SIZE:#05x} less one. 1 for the one "
@@ -2850,6 +2879,16 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     if control is None and npc:
         control = 0x80
 
+    # `field_83_87`'s third and fourth bytes: read by no site in this
+    # title's own engine, so a source that carries its own window (a DOS or
+    # Amiga record) gets them back unchanged, rather than the writer's
+    # zero -- the same rule every other port follows (#614). Pools of
+    # Darkness has no C64 release, so there is no source here with no
+    # window at all to fall back on.
+    window = _dos.window_source(char)
+    field_83_87_third = window[2] if window is not None else None
+    field_83_87_fourth = window[3] if window is not None else None
+
     # -- the permanent half of each ability pair ----------------------------
     second_value = w.use("abilities_second")
     second = dict(second_value.value or {}) if second_value else {}
@@ -2987,6 +3026,8 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         npc_control_byte=control,
         former_level=former_level,
         former_class_levels=former_slots,
+        field_83_87_third=field_83_87_third,
+        field_83_87_fourth=field_83_87_fourth,
         abilities_permanent=permanent,
         exceptional_strength_permanent=permanent_exceptional,
         attack_forms=forms,

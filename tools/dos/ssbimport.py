@@ -138,6 +138,14 @@ def guy_stem(name: str) -> str:
     return stem or "GUY"
 
 
+def _former_class_arg(s: str) -> int | None:
+    """`--former-class`'s own type: `keep` (any case, either side stripped)
+    is `None`, `stage_guy`'s own "leave the record's own byte alone" -- the
+    way a Wish-converted Curse character already carries the class he left
+    (#614). Anything else is a byte."""
+    return None if s.strip().lower() == "keep" else int(s, 0)
+
+
 def stage_guy(record: bytes, former_class: int | None) -> bytes:
     """The Curse record to stage, with `0x0F9` set when `former_class` is given.
 
@@ -579,9 +587,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="with --curse-save: the save's slot letter")
     ap.add_argument("--who", type=int, default=1,
                     help="with --curse-save: the party position, 1-6")
-    ap.add_argument("--former-class", type=lambda s: int(s, 0), default=None,
+    ap.add_argument("--former-class", type=_former_class_arg, default=None,
                     help="write this at Curse record 0x0F9 before staging "
-                         "(3 paladin, 4 ranger, 0 none); left alone if not given")
+                         "(3 paladin, 4 ranger, 0 none); `keep` or omitting "
+                         "the flag stages the record's own byte unchanged "
+                         "-- the way a Wish-converted character already "
+                         "carries it (#614)")
     ap.add_argument("--rest-days", type=int, default=1)
     ap.add_argument("--letters", default="CDE",
                     help="the three Silver Blades save slots: after import, "

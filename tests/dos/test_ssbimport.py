@@ -54,6 +54,19 @@ def test_staging_without_a_value_leaves_the_record_alone():
     assert si.stage_guy(bytes(rec), None) == bytes(rec)
 
 
+@pytest.mark.parametrize("word", ["keep", "KEEP", " Keep "])
+def test_the_former_class_flag_takes_keep_as_no_override(word):
+    """`--former-class keep` parses to the same `None` `stage_guy` treats as
+    "leave the record's own byte alone" -- the way a Wish-converted Curse
+    character already carries the class he left (#614)."""
+    assert si._former_class_arg(word) is None
+
+
+def test_the_former_class_flag_still_takes_a_byte():
+    assert si._former_class_arg("3") == 3
+    assert si._former_class_arg("0x04") == 4
+
+
 @pytest.mark.parametrize("size", [si.CURSE_RECORD - 1, si.SSB_RECORD])
 def test_staging_refuses_a_record_that_is_not_curse(size):
     with pytest.raises(ValueError, match="422"):

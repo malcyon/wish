@@ -177,6 +177,30 @@ def test_the_pod_conversion_keeps_an_explicit_treasure_share(share):
         "treasure_share <- Amiga")
 
 
+@pytest.mark.parametrize("third,fourth", ((0, 0), (3, 0xAB)))
+def test_the_pod_window_carries_its_third_and_fourth_bytes(third, fourth):
+    """`field_83_87`'s other two bytes -- the class a dual-classed human
+    left, which Silver Blades' importer scatters to 0x05B, and the byte
+    after it at 0x095 -- have no reader anywhere in this title's own engine
+    and used to be dropped on every rewrite: `pod_to_neutral` never hung them
+    on the neutral record at all, so a PoD-to-PoD conversion silently zeroed
+    them (#614)."""
+    raw = bytearray(amiga_pod.PodWriter(
+        name="TEST",
+        character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 1, 0, 0, 0, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"],
+    ).to_bytes())
+    raw[amiga_pod.FIELD_83_87_THIRD] = third
+    raw[amiga_pod.FIELD_83_87_FOURTH] = fourth
+    character = amiga_pod.pod_to_neutral(bytes(raw))
+
+    written, report = amiga_pod.to_pc(character)
+    assert written[amiga_pod.FIELD_83_87_THIRD] == third
+    assert written[amiga_pod.FIELD_83_87_FOURTH] == fourth
+    assert report.unaccounted(written) == []
+
+
 def test_write_pod_reports_the_derived_and_constant_fields_as_derived():
     """`write_pod` itself, not just `pod_write_field_disposition`, routes
     :data:`amiga_pod.POD_WRITE_DERIVED` and :data:`amiga_pod.POD_WRITE_CONSTANTS`

@@ -4719,6 +4719,40 @@ def write(char: NeutralCharacter,
             rep.dropped.append("npc_control_byte: npc is false, so the "
                                "control byte has nothing to attach to")
 
+    # -- the class a dual-classed C64 human left, into the window's own -----
+    # fourth byte -------------------------------------------------------
+    # A DOS or Amiga source already has this byte in its own window and it
+    # was carried unchanged above (`window is not None`).  A C64 source has
+    # no window at all, so without this the byte stays whatever
+    # `write_constants` put there.  `former`, computed above for the
+    # `former_class_levels` array, is the same value: one class name and the
+    # level it was left at.  Silver Blades' importer reads this byte as that
+    # class, in the shared DOS numbering (`docs/229-the-npc-window-bytes.md`),
+    # to decide whether to give a regained paladin or ranger his innate back
+    # (Donald, #614: "converted characters keep what they earned").
+    if window is None and former is not None:
+        held = {n: lv for n, lv in former.value.items() if lv}
+        fourth_offset = f83.offset + control_index + 2
+        if len(held) == 1:
+            name_ = next(iter(held))
+            slot = _DOS_CLASS_SLOT.get(name_)
+            if slot is None:
+                rep.lost(
+                    f"the class {name_} was left at has no slot in the "
+                    f"shared DOS class numbering, so field_83_87's fourth "
+                    f"byte cannot say which class Silver Blades' import "
+                    f"should restore")
+            else:
+                rec[fourth_offset] = slot
+                rep.note(fourth_offset, 1,
+                         f"field_83_87: {slot} -- the class {name_} was left "
+                         f"at, in the shared DOS class numbering, from the "
+                         f"C64's dual_class_slot (#614)")
+        elif held:
+            rep.lost(
+                f"{len(held)} former classes held; field_83_87's fourth "
+                f"byte can name only one, so it is left at the constant")
+
     # -- measured defaults, where the source holds no matching value --------
     # The provenance note carries both halves: why this value, and what the
     # source held that is not being converted.  It does **not** go in
