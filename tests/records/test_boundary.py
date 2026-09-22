@@ -19,7 +19,8 @@ for -- every scalar at its width and one past it, the one place a C64 field is
 wider than its DOS one, and every legal Curse and Silver Blades character --
 with `tools/records/doswidths.py` building the characters, and part I settles
 whether the C64's item block can be handed a wrong-length item by anything
-that builds one from a DOS record.
+that builds one from a DOS record.  Part J pins that every value the writer
+narrows is on `report.losses` and that a reader's own warning never is.
 """
 
 import dataclasses
@@ -84,6 +85,7 @@ def test_a_boundary_character_writes_and_reads_back_whole(name, caplog):
         back, rep = _round_trip(char, tables)
 
     assert rep.warnings == [], (name, rep.warnings)
+    assert rep.losses == [], (name, rep.losses)
     expected_dropped = ([] if tables is not None else
                         [d for d in rep.dropped
                          if any(f in d for f in _PORTRAIT_FIELDS)])
@@ -302,6 +304,8 @@ def test_e_a_size_and_a_class_mask_hold_what_the_writer_says(game):
     assert back.get("size_small") == 254
     assert "size: 256 does not fit the DOS one-byte field; clamped" \
         in rep.warnings
+    assert "size: 256 does not fit the DOS one-byte field; clamped" \
+        in rep.losses
 
     char = doswidths.base(game)
     char.set("class_bits", 256, "boundary: one past")
@@ -326,6 +330,8 @@ def test_e_the_name_count_byte_is_the_length_up_to_fifteen(game, length):
     assert rec[table["name_length"].offset] == len(kept), (game, length)
     assert (any("longer than the DOS 15 characters" in w for w in rep.warnings)
             == (length > 15)), (game, length, rep.warnings)
+    assert (any("longer than the DOS 15 characters" in w for w in rep.losses)
+            == (length > 15)), (game, length, rep.losses)
     back, _ = _round_trip(char)
     assert back.get("name") == kept, (game, length)
 
@@ -343,6 +349,23 @@ def test_e_a_paladin_cure_count_the_source_holds_is_copied(game, value):
     rec, _, _, rep = dos_codec.write(char)
     assert rec[f.offset] == value, (game, value)
     assert rep.warnings == [], (game, rep.warnings)
+    assert rep.losses == [], (game, rep.losses)
+
+
+@pytest.mark.parametrize("game", [CURSE, SILVER, POOLS_OF_DARKNESS])
+@pytest.mark.parametrize("past,kept", [(256, 255), (-1, 0)])
+def test_e_a_paladin_cure_count_one_past_a_byte_is_clamped_and_reported(
+        game, past, kept):
+    """A count the byte cannot hold is clamped with a line on `losses`, like
+    every other one-byte field, and a negative one no longer raises."""
+    f = dos_port.FIELDS_BY_NAME_FOR[game]["paladin_cures"]
+    char = doswidths.base(game)
+    char.set("paladin_cures", past, "boundary: one past")
+    rec, _, _, rep = dos_codec.write(char)
+    line = (f"paladin_cures: {past} does not fit the DOS one-byte field; "
+            f"clamped")
+    assert rec[f.offset] == kept, (game, past)
+    assert line in rep.losses and line in rep.warnings, (game, rep.losses)
 
 
 @pytest.mark.parametrize("game", [CURSE, SILVER, POOLS_OF_DARKNESS])
@@ -392,11 +415,13 @@ def test_e_a_copied_attack_level_is_clamped_one_past_a_byte(past, kept):
     char.set("attack_level", past, "boundary: one past")
     back, rep = _round_trip(char)
     assert back.get("attack_level") == kept
-    assert (f"attack_level: {past} does not fit the DOS one-byte field; "
-            f"clamped") in rep.warnings
+    line = (f"attack_level: {past} does not fit the DOS one-byte field; "
+            f"clamped")
+    assert line in rep.warnings
+    assert line in rep.losses
 
 
-# --- F: one past a width is clamped, refused or (I8) wrapped, by name -------
+# --- F: one past a width is clamped or refused, by name ---------------------
 
 #: The scalars a DOS field cannot hold one past, with the width each is
 #: declared at: every multi-byte one, which the writer refuses with a
@@ -414,16 +439,15 @@ _REFUSED = {
                         **{n: 2 for n in ("platinum", "gems", "jewelry")}},
 }
 
-#: The eight thief percentages: `Kind.I8`, which `dos_codec.write` does not
-#: clamp the way it clamps a `U8`.  One past 127 wraps to -128 with no line.
-_WRAPPED = {f"thief_{n}" for n in (
+#: The eight thief percentages: `Kind.I8`, clamped into -128..127 the way a
+#: `U8` is clamped into 0..255.
+_THIEF_COLUMNS = {f"thief_{n}" for n in (
     "pick_pockets", "open_locks", "find_traps", "move_silently",
     "hide_in_shadows", "hear_noise", "climb_walls", "read_languages")}
 
+
 def _side(game, s) -> str:
-    if s.neutral in _REFUSED[game]:
-        return "refused"
-    return "wrapped" if s.neutral in _WRAPPED else "clamped"
+    return "refused" if s.neutral in _REFUSED[game] else "clamped"
 
 
 @pytest.mark.parametrize("pair", _SWEPT, ids=_ids)
@@ -443,21 +467,18 @@ def test_f_one_past_a_width_is_handled_the_way_its_side_says(pair):
         for past, kept in ((above, s.high), (below, s.low)):
             char.set(s.neutral, past, "boundary: one past")
             back, rep = _round_trip(char)
-            assert (f"{s.dos}: {past} does not fit the DOS one-byte field; "
-                    f"clamped") in rep.warnings, (game, s.neutral, rep.warnings)
+            line = (f"{s.dos}: {past} does not fit the DOS one-byte field; "
+                    f"clamped")
+            assert line in rep.warnings, (game, s.neutral, rep.warnings)
+            assert line in rep.losses, (game, s.neutral, rep.losses)
             assert back.get(s.neutral) == kept, (game, s.neutral)
-    else:
-        char.set(s.neutral, above, "boundary: one past")
-        back, rep = _round_trip(char)
-        assert back.get(s.neutral) == s.low, (game, s.neutral)
-        assert rep.warnings == []
 
 
 @pytest.mark.parametrize("game", doswidths.GAMES)
 def test_f_the_two_sides_exhaust_the_scalars(game):
-    """Every swept scalar is a refused multi-byte field, a wrapped `I8` or a
-    clamped `U8` -- by the layout's own kind, so a field that changes width
-    or kind is caught by the names above no longer agreeing with it."""
+    """Every swept scalar is a refused multi-byte field or a clamped one-byte
+    one, `I8` or `U8` -- by the layout's own width, so a field that changes
+    width is caught by the names above no longer agreeing with it."""
     table = dos_port.FIELDS_BY_NAME_FOR[game]
     names = {s.neutral for s in doswidths.scalars(game)
              if s.neutral not in doswidths.ALWAYS_RECOMPUTED}
@@ -468,20 +489,20 @@ def test_f_the_two_sides_exhaust_the_scalars(game):
         if s.neutral in doswidths.ALWAYS_RECOMPUTED:
             continue
         kind = table[s.dos].kind
-        want = ("refused" if s.size > 1 else
-                "wrapped" if kind is layout.Kind.I8 else "clamped")
+        want = "refused" if s.size > 1 else "clamped"
         assert _side(game, s) == want, (game, s.neutral, kind, s.size)
-    assert _WRAPPED <= names
+    assert _THIEF_COLUMNS <= names
 
 
-def test_f_a_wrapped_thief_column_is_unreachable_from_any_source():
-    """The `I8` wrap needs a source that can hold 128 in a thief column, and
+def test_f_a_clamped_thief_column_is_unreachable_from_any_source():
+    """The `I8` clamp needs a source that can hold 128 in a thief column, and
     every reader hands the column back as a signed byte too: the C64 record's
     and every DOS title's are `I8`, so the value cannot exist."""
-    assert {layout.FIELDS_BY_NAME[n].kind for n in _WRAPPED} == {layout.Kind.I8}
+    assert {layout.FIELDS_BY_NAME[n].kind
+            for n in _THIEF_COLUMNS} == {layout.Kind.I8}
     for game in doswidths.GAMES:
         table = dos_port.FIELDS_BY_NAME_FOR[game]
-        assert {table[n].kind for n in _WRAPPED} == {layout.Kind.I8}, game
+        assert {table[n].kind for n in _THIEF_COLUMNS} == {layout.Kind.I8}, game
 
 
 # --- G: the only field wider in the C64 than in DOS is hit points ------------
@@ -527,8 +548,9 @@ def test_g_a_hit_point_total_the_c64_holds_is_clamped_and_reported(
     char.set(name, value, "boundary: a C64 two-byte total")
     back, rep = _round_trip(char)
     assert back.get(name) == 255, (game, name, value)
-    assert f"{name}: {value} does not fit the DOS one-byte field; clamped" \
-        in rep.warnings
+    line = f"{name}: {value} does not fit the DOS one-byte field; clamped"
+    assert line in rep.warnings
+    assert line in rep.losses
 
 
 # --- H: every legal Curse and Silver Blades character, C64 to DOS ------------
@@ -619,6 +641,64 @@ def test_h_the_sweep_reports_a_memorised_list_narrower_than_the_engines(
     assert len(back.get("spells_memorised")) == wanted - 8
     assert any(f"spells_memorised: {wanted} ids" in m
                for m in _warnings(caplog))
+
+    _, rep = _round_trip(doswidths.c64_sourced(char))
+    assert any(f"spells_memorised: {wanted} ids" in m for m in rep.losses)
+    assert not any("spells_memorised" in w for w in rep.warnings)
+
+
+# --- J: every narrowing lands on `losses`, and nothing else does ------------
+
+def _write_report(char):
+    return dos_codec.write(char)[3]
+
+
+@pytest.mark.parametrize("game", doswidths.GAMES)
+def test_j_a_class_level_past_a_byte_is_clamped_and_on_losses(game):
+    char = doswidths.base(game)
+    char.set("levels", {"fighter": 300}, "boundary: one past")
+    rep = _write_report(char)
+    line = "class_levels: 300 does not fit the DOS one-byte field; clamped"
+    assert line in rep.losses and line in rep.warnings, (game, rep.losses)
+
+
+def test_j_a_class_with_no_slot_in_the_title_array_is_on_losses():
+    """Silver Blades' level array has no monk slot."""
+    char = doswidths.base(SILVER)
+    char.set("levels", {"fighter": 3, "monk": 4}, "boundary")
+    rep = _write_report(char)
+    assert [w for w in rep.losses if "has no monk slot" in w], rep.losses
+
+
+@pytest.mark.parametrize("game", [CURSE, SILVER, POOLS_OF_DARKNESS])
+def test_j_a_spell_run_deeper_than_the_title_keeps_is_on_losses(game):
+    depth = dos_port.FIELDS_BY_NAME_FOR[game]["spells_castable_cleric"].size
+    char = doswidths.base(game)
+    char.set("spells_castable", {"cleric": (1,) * (depth + 1)}, "boundary")
+    rep = _write_report(char)
+    assert [w for w in rep.losses if "spell slots" in w and "the rest dropped"
+            in w], (game, rep.losses)
+
+
+@pytest.mark.parametrize("game", [CURSE, SILVER, POOLS_OF_DARKNESS])
+def test_j_a_spell_run_entry_past_a_byte_is_clamped_and_on_losses(game):
+    char = doswidths.base(game)
+    char.set("spells_castable", {"cleric": (256,)}, "boundary: one past")
+    rep = _write_report(char)
+    line = ("spells_castable_cleric: 256 does not fit the DOS one-byte field; "
+            "clamped")
+    assert line in rep.losses and line in rep.warnings, (game, rep.losses)
+
+
+@pytest.mark.parametrize("game", doswidths.GAMES)
+def test_j_a_reader_warning_reaches_warnings_and_never_losses(game):
+    """`Writer.finish` puts the reader's own notes on the report; a caller that
+    refuses on `losses` must not refuse on those."""
+    char = doswidths.base(game)
+    char.warnings.append("a note the reader made about its own source")
+    rep = _write_report(char)
+    assert "a note the reader made about its own source" in rep.warnings
+    assert rep.losses == [], (game, rep.losses)
 
 
 # --- I: the C64's item block is never handed a wrong-length item -------------

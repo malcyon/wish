@@ -3655,15 +3655,26 @@ def write(char: NeutralCharacter,
     for _no_field_name, _ in WRITE_NO_SUCH_FIELD:
         use(_no_field_name)
 
+    def narrow(dos_name: str, val: Any, low: int, high: int) -> Any:
+        """`val` clamped into `low..high`, with the cut on `rep.losses`.
+
+        Every one-byte write goes through here, so a value the byte cannot
+        hold is a reported loss rather than a wrap or a bare `ValueError`.
+        """
+        if low <= int(val) <= high:
+            return val
+        rep.lost(f"{dos_name}: {val} does not fit the DOS one-byte field; "
+                 f"clamped")
+        return max(low, min(int(val), high))
+
     def put(v: neutral.Value, dos_name: str, extra: str = "",
             value: Any = None) -> None:
         f = table[dos_name]
         val = v.value if value is None else value
-        if f.kind is Kind.U8 and not 0 <= int(val) <= 0xFF:
-            rep.warnings.append(
-                f"{dos_name}: {val} does not fit the DOS one-byte field; "
-                f"clamped")
-            val = max(0, min(int(val), 0xFF))
+        if f.kind is Kind.U8:
+            val = narrow(dos_name, val, 0, 0xFF)
+        elif f.kind is Kind.I8:
+            val = narrow(dos_name, val, -0x80, 0x7F)
         _encode(f, rec, val)
         emit(v, dos_name, f.offset, f.size, extra)
 
@@ -3673,7 +3684,7 @@ def write(char: NeutralCharacter,
         width = table["name_text"].size
         text = str(name.value)[:width].encode("ascii", "replace")
         if len(str(name.value)) > width:
-            rep.warnings.append(
+            rep.lost(
                 f"Name {str(name.value)!r} is longer than the DOS {width} "
                 f"characters; truncated")
         at = table["name_length"].offset
@@ -3850,9 +3861,10 @@ def write(char: NeutralCharacter,
     # Pool of Radiance, 84 in Curse, 75 in Silver Blades, 141 in Pools of
     # Darkness.  Against the C64's own regions -- 81, 69 and 74 -- only Pool
     # of Radiance's is the narrower of the pair, and no character in any
-    # corpus on this machine holds more than five.  Truncating still goes to
-    # the debug log rather than to the player: a route that loses something
-    # is a route to fix, not one to apologise for.
+    # corpus on this machine holds more than five.  Truncating goes to the
+    # debug log and to `losses`, which is accounting a caller reads; no
+    # sentence is shown to the player: a route that loses something is a
+    # route to fix, not one to apologise for.
     memorised = use("spells_memorised")
     if memorised is not None:
         slots = table["spells_memorised"].size
@@ -3862,6 +3874,13 @@ def write(char: NeutralCharacter,
                 "spells_memorised: %s ids and %s allots %s slots, so %s were "
                 "not written (#508)", len(memorised.value), deltas.title,
                 slots, len(memorised.value) - slots)
+            # On `losses` alone: `test_a_list_past_the_engines_own_slots_is_
+            # logged_and_not_shown` holds that no sentence about this reaches
+            # `warnings`, and `lost` would put it there.
+            rep.losses.append(
+                f"spells_memorised: {len(memorised.value)} ids and "
+                f"{deltas.title} allots {slots} slots, so "
+                f"{len(memorised.value) - slots} were not written")
         put(memorised, "spells_memorised",
             f" reversed -- DOS fills its {slots} slots from the end",
             value=bytes(slots - len(ids)) + bytes(reversed(ids)))
@@ -3878,12 +3897,12 @@ def write(char: NeutralCharacter,
             n = _DOS_CLASS_SLOT.get(cname)
             if n is None or n >= slots:
                 if lv:
-                    rep.warnings.append(
+                    rep.lost(
                         f"{port} carries {cname} level {lv}, and "
                         f"{deltas.title}'s {slots}-slot array has no {cname} "
                         f"slot")
                 continue
-            raw[n] = min(int(lv), 0xFF)
+            raw[n] = narrow(dos_name, lv, 0, 0xFF)
         put(v, dos_name, extra, value=bytes(raw))
 
     # `_dos_levels`, computed above, already has any regained class's old
@@ -4201,12 +4220,12 @@ def write(char: NeutralCharacter,
                 run = tuple(castable.value.get(school, ()))
                 extra = f", the {school} run"
             if len(run) > depth and any(run[depth:]):
-                rep.warnings.append(
+                rep.lost(
                     f"{port} carries {school} spell slots {len(run)} levels "
                     f"deep and {deltas.title} keeps {depth}; the rest dropped")
             run = (run + (0,) * depth)[:depth]
             put(castable, dos_name, extra,
-                value=bytes(min(int(n), 0xFF) for n in run))
+                value=bytes(narrow(dos_name, n, 0, 0xFF) for n in run))
 
     # -- size: neutral 0 small / 1 large, DOS 1 small / 2 medium -------------
     size_small = use("size_small")
@@ -4611,7 +4630,7 @@ def write(char: NeutralCharacter,
         f = table[_pal_name]
         held = use(_pal_name)
         if held is not None:
-            rec[f.offset] = min(int(held.value), 0xFF)
+            rec[f.offset] = narrow(_pal_name, held.value, 0, 0xFF)
             rep.note(f.offset, f.size,
                      f"{_pal_name}: {rec[f.offset]} -- copied from the "
                      f"source's own byte")
