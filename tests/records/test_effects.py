@@ -1039,3 +1039,50 @@ def test_no_saved_game_on_these_disks_corroborates_the_allocation_order():
                if payload[effects.EFFECT_ID_OFFSET + slot]]
     assert nonzero == []
     assert len(saves) >= 1
+
+
+# --- the neutral running effect -----------------------------------------------
+
+_NULL = bytes(4)
+
+
+def test_a_nine_byte_record_reads_as_id_minutes_data_and_flag():
+    record = bytes((1, 2, 0, 1, 0)) + _NULL
+    assert effects.RunningEffect.from_record(record) == \
+        effects.RunningEffect(1, 2, 1, 0)
+    assert effects.RunningEffect(1, 2, 1, 0).to_record() == record
+
+
+def test_the_two_minute_bytes_are_little_endian():
+    found = effects.RunningEffect.from_record(bytes((1, 0x02, 0x01, 1, 0)) + _NULL)
+    assert found.minutes == 0x0102
+    assert found.to_record() == bytes((1, 0x02, 0x01, 1, 0)) + _NULL
+
+
+def test_the_longest_time_left_is_0xffff_and_round_trips():
+    record = bytes((38, 0xFF, 0xFF, 0xE2, 1)) + _NULL
+    found = effects.RunningEffect.from_record(record)
+    assert (found.id, found.minutes, found.data, found.flag) == \
+        (38, 65535, 0xE2, 1)
+    assert found.to_record() == record
+
+
+def test_a_record_at_zero_minutes_is_refused():
+    with pytest.raises(ValueError, match="never expires"):
+        effects.RunningEffect.from_record(bytes((1, 0, 0, 1, 0)) + _NULL)
+    with pytest.raises(ValueError, match="never expires"):
+        effects.RunningEffect(1, 0, 1, 0)
+
+
+def test_a_record_that_is_not_nine_bytes_is_refused():
+    with pytest.raises(ValueError, match="9 bytes, got 8"):
+        effects.RunningEffect.from_record(bytes((1, 2, 0, 1, 0, 0, 0, 0)))
+    with pytest.raises(ValueError, match="9 bytes, got 10"):
+        effects.RunningEffect.from_record(bytes((1, 2, 0, 1, 0)) + _NULL + b"\0")
+
+
+def test_a_running_effect_refuses_a_value_that_does_not_fit_its_bytes():
+    for args in ((256, 2, 1, 0), (1, 2, 256, 0), (1, 2, 1, 256),
+                 (1, 65536, 1, 0), (-1, 2, 1, 0)):
+        with pytest.raises(ValueError):
+            effects.RunningEffect(*args)

@@ -237,9 +237,13 @@ FIELDS: dict[str, str] = {
                        "after the effect id are the time left as a "
                        "little-endian count of game-clock minutes and are "
                        "never zero: a record at zero never expires and "
-                       "belongs in `granted_effects`. A destination that "
-                       "keeps its running effects somewhere other than the "
-                       "character's own record reports it as dropped",
+                       "belongs in `granted_effects`. The DOS encoding is "
+                       "the neutral one, and the owner is the record's own "
+                       "character. A destination that keeps its running "
+                       "effects somewhere other than the character's own "
+                       "record, as the C64 does in the save's effect "
+                       "arrays, has the conversion write them there; "
+                       "`goldbox.effects.RunningEffect` is the typed view",
     "roster_tail": "the derived combat block the roster keeps beside the "
                    "record",
     # -- how the character is, and whether the game is still playing them ---

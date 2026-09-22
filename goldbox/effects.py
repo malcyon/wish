@@ -242,6 +242,62 @@ def closest_duration(minutes: int, clock_minutes: int) -> int | None:
     return best
 
 
+# --- the neutral running effect ----------------------------------------------
+#
+# `goldbox/neutral.py`'s `running_effects` holds one whole DOS `.SPC` record per
+# spell still counting down. **The DOS encoding is the neutral encoding**: DOS
+# and Amiga hold it literally, and a C64 slot's magnitude is a per-title,
+# per-id function of it rather than a copy. The owner is implicit -- the
+# record's own character -- so a party-wide effect has no home in a
+# per-character record.
+RUNNING_EFFECT_SIZE = 9
+_RUNNING_EFFECT_NEXT = bytes(4)
+
+
+@dataclass(frozen=True)
+class RunningEffect:
+    """One neutral running effect: a DOS `.SPC` record with time left.
+
+    `id` is the effect id in `goldbox/traits.py`'s namespace, `minutes` the
+    time left as an exact count of game-clock minutes (bytes 1-2 of the record,
+    little-endian), `data` the DOS data byte and `flag` the DOS flag byte. Bytes
+    5-8 of the record are the next pointer, NULL because the engine rebuilds
+    the chain on load.
+
+    `minutes` is never zero: a record at zero never expires and belongs in
+    `granted_effects`.
+    """
+
+    id: int
+    minutes: int
+    data: int
+    flag: int
+
+    def __post_init__(self) -> None:
+        _check_byte("id", self.id)
+        _check_byte("data", self.data)
+        _check_byte("flag", self.flag)
+        if not 1 <= self.minutes <= 0xFFFF:
+            raise ValueError(
+                f"minutes left must be 1..65535, got {self.minutes}: a "
+                "record at zero never expires and is not a running effect")
+
+    @classmethod
+    def from_record(cls, record: bytes) -> RunningEffect:
+        """Read the nine-byte `.SPC` record; the next pointer is not read."""
+        if len(record) != RUNNING_EFFECT_SIZE:
+            raise ValueError(
+                f"a running effect is {RUNNING_EFFECT_SIZE} bytes, "
+                f"got {len(record)}")
+        return cls(id=record[0], minutes=record[1] | record[2] << 8,
+                   data=record[3], flag=record[4])
+
+    def to_record(self) -> bytes:
+        """The nine-byte record, with the next pointer NULL."""
+        return (bytes((self.id, self.minutes & 0xFF, self.minutes >> 8,
+                       self.data, self.flag)) + _RUNNING_EFFECT_NEXT)
+
+
 @dataclass(frozen=True)
 class Effect:
     """One slot of the effect table.
