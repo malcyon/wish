@@ -28,6 +28,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_enccensus.py` | Checks that `tools/records/enccensus.py` counts an encumbrance failure only where a record's items are known, and that the C64 record has no encumbrance field. |
 | `test_fieldcensus.py` | Checks that `tools/records/fieldcensus.py` picks a title's specimen disks by title rather than by directory and tallies every value it reads. |
 | `test_fieldnames.py` | Checks corrections to field names against the player's disks: the effect-id table, the roster block's readied-weapon die and the armour-protection encoding. |
+| `test_flags0b8.py` | Checks, against the six C64 titles' disks, that only Pool of Radiance writes the trainer flag into record byte `0x0B8`, that every title doubles the morale and the later five clamp it at 100, and that no title but Pool of Radiance hands control back; skips per title with no disks. |
 | `test_gametables.py` | Checks the per-title race, class-bit and item-name tables on each `Game` descriptor, and how a title's disks are found through the registry. |
 | `test_geoports.py` | Checks which of Curse's maps differ between the C64 and Amiga disks and that `ResidentGeo` still names an area when it holds the other port's map. |
 | `test_infravision.py` | Checks where infravision comes from on each port and what a conversion does with it. |
