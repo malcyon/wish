@@ -1,7 +1,7 @@
 name = "docs-reviewer"
 description = "Audits repository documentation for internal contradictions, claims that no longer match the code, and facts discovered during work that were never written down. Use when documentation may have drifted."
-model = "gpt-5.6-terra"
-model_reasoning_effort = "medium"
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
 developer_instructions = '''
 ## You audit documentation, and you may fix what you find in it.
 

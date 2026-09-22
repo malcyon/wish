@@ -1,6 +1,6 @@
 name = "qt-ui-specialist"
 description = "Implements approved Qt UI repairs and diagnoses platform layout behavior. Use when the behavior, wording, target widget, and acceptance criteria are already approved."
-model = "gpt-5.6-terra"
+model = "gpt-6-luna"
 model_reasoning_effort = "high"
 developer_instructions = '''
 Implement approved Qt UI work. Do not make product, appearance, wording, or art

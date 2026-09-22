@@ -1,6 +1,6 @@
 name = "code-reviewer"
 description = "Reviews code for best-practice violations, gaps in exception handling and logging, and likely bugs. Use proactively after writing or modifying code."
-model = "gpt-5.6-terra"
+model = "gpt-6-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = '''

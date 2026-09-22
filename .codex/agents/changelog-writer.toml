@@ -1,6 +1,6 @@
 name = "changelog-writer"
 description = "Keeps CHANGELOG.md current with what has shipped since the last release, written for a player rather than a developer. Use after a batch of work lands, and before cutting a release."
-model = "gpt-5.6-terra"
+model = "gpt-6-luna"
 model_reasoning_effort = "medium"
 developer_instructions = '''
 You keep `CHANGELOG.md` current. You write directly to it; Donald rewrites your
