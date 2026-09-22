@@ -285,28 +285,33 @@ UNNAMED_1A4_DEFAULT = 2
 #: exactly in 19 of 19.
 #:
 #: It is rebuilt with `encumbrance` and :data:`HANDS_USED`: the routine at
-#: `0x019430` clears the thirteen readied-item longwords at 0x00C, this byte,
+#: `0x019428` clears the thirteen readied-item longwords at 0x00C, this byte,
 #: 0x0C8 and the encumbrance word, then walks the item chain adding one here
 #: per node -- so the writer leaves all three zero and the game fills them.
 ITEM_COUNT_CACHE = 0x0C7
 #: How many hands the readied items take. 2 in 18 of 19, as DOS's is in 12
 #: of 12; the one exception is `?T`, the thief among the nineteen. The same
-#: rebuild at `0x019430` sums it out of each item type's own table entry
+#: rebuild at `0x019428` sums it out of each item type's own table entry
 #: (`g6968[type * 16 + 1]`), so a converted record's zero is filled in by the
 #: game rather than left beside a readied weapon.
 HANDS_USED = 0x0C8
 #: The saving-throw bonus the readied items add, and the third byte the same
 #: rebuild fills: :data:`DERIVED_REBUILD` clears it at `0x0195C0` beside the
 #: item count and :data:`HANDS_USED`, and `0x01891E` -- called from that
-#: routine's own item loop at `0x019638` -- adds each readied item's
-#: `plus_save` into it at `0x0189AC`-`0x0189B8`. The saving-throw routine at
-#: `0x012EB0` reads it back (`move.b $c9(a0), d1`, `0x012F10`) into the roll's
-#: modifier before it indexes the five throws at :data:`SAVING_THROWS`.
+#: routine's own item loop at `0x019638` -- adds an item's `plus_save` into it
+#: at `0x0189AC`-`0x0189B8`, **behind a branch**: the item-table entry's
+#: byte 6 must have bit 7 set with its low seven bits zero, and the item type
+#: must not be 1. The saving-throw routine at `0x012EB0` reads it back
+#: (`move.b $c9(a0), d1`, `0x012F10`) into the roll's modifier before it
+#: indexes the five throws at :data:`SAVING_THROWS`.
 #:
-#: CONFIRMED twice: the routines above, and **19 of 19 `.pc` files equal the
-#: sum of `plus_save` over their own readied items** -- 2 for the five
-#: characters wearing the type-59 item that carries `plus_save` 2, 0 for the
-#: other fourteen. So the writer leaves it zero and the game fills it in.
+#: CONFIRMED as rebuilt, and **not** as a rule: the sum of `plus_save` over the
+#: readied items that qualify is what the files show -- 19 of 19 `.pc` files
+#: equal the sum over all their readied items, 2 for the five characters
+#: wearing the one type-59 item that carries `plus_save` 2, 0 for the other
+#: fourteen, and no other value occurs -- but which items qualify is the
+#: branch above and not what nineteen files can settle. The writer leaves it
+#: zero and the game fills it in.
 UNNAMED_0C9 = 0x0C9
 #: 0 in 19 of 19. Written only by the Silver Blades importer and by a field
 #: setter at `0x011D90`. UNKNOWN.
@@ -393,9 +398,21 @@ ARMOUR_CLASS_CURRENT = 0x187
 #:   does -- the four accumulated armour terms less 2, at `0x0196E8`;
 #: * `0x189` and `0x18A`, the two attack counts, are **not** touched on load.
 #:   A fight's setup loop walks every combatant (`0x003972`-`0x003990`)
-#:   calling `0x007D5E`, which sets `0x189` from :data:`ATTACK_FORMS`
-#:   (`0x008A4E`) and `0x18A` from the byte after it (`0x007E6A`). Both are
-#:   **0 in 19 of 19** `.pc` files, so zero is what the engine writes too;
+#:   calling `0x007D5E`, which clears the combat block's `$0A` at `0x007E26`
+#:   and then sets `0x189` from :data:`ATTACK_FORMS` (`0x008A4E`, inside
+#:   `0x008A34`) and `0x18A` from the byte after it (`0x007E6A`), both
+#:   unconditionally. **That order is the evidence**: whatever a record holds
+#:   there is overwritten before a fight reads it. Other code does read the
+#:   pair -- indexed `adda.w #$188` accesses (index 1 or 2) at `0x0088DA`,
+#:   `0x0088F4`, `0x008904`, `0x008F3A` and `0x009122`, `adda.l #$189` at
+#:   `0x009142`, `adda.w #$18A` at `0x007F68`, and `0x0088FC`-`0x008908`
+#:   writes 1 into a count that is zero -- but the routines around the six
+#:   at `0x0088DA`-`0x009142` dereference the combat block at `$40(a2)`,
+#:   `0x007F68` is a helper handed the record, and the attack routine
+#:   `0x007738` has callers only at `0x0067DA` and `0x00725A`. This is read
+#:   from the engine's code and has not been run. The pair is 0 in 19 of 19
+#:   `.pc` files, which shows only that the shipped files were saved outside a
+#:   fight and is not a second, independent half of the argument;
 #: * `0x18B`-`0x190`, the running damage, are copied from `0x0AD`-`0x0B2` by
 #:   :data:`DERIVED_REBUILD` (`0x019556`-`0x0195AE`), and then `0x018778`
 #:   overwrites `0x18B`, `0x18D` and `0x18F` from the readied weapon's own
@@ -544,36 +561,72 @@ PORTRAIT_BODY = PORTRAIT_HEAD + 1
 DERIVED_REBUILD = 0x019428
 #: The game recomputes these on load and ignores what the file holds, so the
 #: writer must not fill them in: 0x056 encumbrance (it is the coin count),
-#: 0x0C7 the stale item count, 0x0C8 `hands_used`, 0x0C9 the readied items'
-#: saving-throw bonus, 0x186 `60 - THAC0` (it is the best of the class
-#: levels), 0x187 armour class, the whole of :data:`ROSTER_TAIL`, and 0x192
-#: movement. :data:`DERIVED_REBUILD` writes all of them but 0x189 and 0x18A,
-#: which a fight's own setup loop fills from :data:`ATTACK_FORMS` and which
-#: are zero in 19 of 19 records the game wrote.
+#: 0x0C7 the stale item count, 0x0C8 `hands_used`, 0x0C9 the qualifying
+#: readied items' saving-throw bonus, 0x186 `60 - THAC0` (it is the best of
+#: the class levels), 0x187 armour class, the whole of :data:`ROSTER_TAIL`, and
+#: 0x192 movement. :data:`DERIVED_REBUILD` writes all of them but 0x189 and 0x18A,
+#: which a fight's own setup loop fills from :data:`ATTACK_FORMS`.
 DERIVED = (ENCUMBRANCE, ITEM_COUNT_CACHE, HANDS_USED, UNNAMED_0C9,
            THAC0_CURRENT, ARMOUR_CLASS_CURRENT,
            *range(ROSTER_TAIL, ROSTER_TAIL + ROSTER_TAIL_LENGTH),
            MOVEMENT_CURRENT)
-#: The `jsr` *Add Character* makes on the loaded record, two instructions
-#: after the `.pc` loader at `0x025806` returns and two before the roster join
-#: at `0x027394`. It resolves through the small-data table to
-#: :data:`DERIVED_REBUILD`, which is what makes that routine the **load**
-#: path's and not merely a routine that exists.
+#: The `jsr` *Add Character* makes on the loaded record. The `.pc` loader at
+#: `0x025806` is called at `0x026A34`, its return code is tested, and this
+#: call at `0x026A6C` follows about a dozen instructions later, one push
+#: before the roster join at `0x027394` is called at `0x026A74`. It resolves
+#: through the small-data table to :data:`DERIVED_REBUILD`, which is what
+#: makes that routine the **load** path's and not merely a routine that exists.
 DERIVED_LOAD_CALL = 0x026A6C
-#: One instruction for each byte of :data:`DERIVED` that no probe has watched,
-#: as `(file offset in the Pools of Darkness executable, the instruction)`.
-#: The first two are inside :data:`DERIVED_REBUILD`; the third is the item
-#: loop it calls; the fourth is the saving-throw routine reading
-#: :data:`UNNAMED_0C9` back; the last two are the fight setup filling
-#: :data:`ROSTER_TAIL`'s two attack counts from :data:`ATTACK_FORMS` and the
-#: byte after it.
+#: The same `jsr` on the inter-title import path, which is the second of the
+#: two places the game rebuilds a record it has just read.
+DERIVED_IMPORT_CALL = 0x026326
+#: The instruction, as `(file offset in the Pools of Darkness executable, the
+#: instruction)`, that the engine's own rebuild or fight setup uses on each
+#: byte of :data:`DERIVED` that no probe has watched -- every one but
+#: `encumbrance`, `THAC0_CURRENT`, `ARMOUR_CLASS_CURRENT` and
+#: :data:`MOVEMENT_CURRENT`:
+#:
+#: * `0x0C7`, `0x0C8`: cleared at `0x01944C` and `0x019454`, counted up in the
+#:   item chain's loop at `0x01946A` and `0x01952A`;
+#: * `0x0C9`: cleared at `0x0195C0`, accumulated at `0x0189B8` by the routine
+#:   the item loop calls at `0x019638`, read back at `0x012F10`;
+#: * `0x188`: written last, at `0x0196E8`;
+#: * `0x189`, `0x18A`: filled from :data:`ATTACK_FORMS` by the fight setup
+#:   (`0x008A4E`, `0x007E6A`);
+#: * `0x18B`-`0x190`: the copy loop at `0x019556`-`0x0195AE` runs its counter
+#:   1 to 2 (`moveq #1`, `cmpi.b #2`) and copies `0x0AC + n`, `0x0AE + n` and
+#:   `0x0B0 + n` to `0x18A + n`, `0x18C + n` and `0x18E + n`, so the sources
+#:   are `0x0AD`-`0x0B2`; then the weapon routine `0x018778`, called at
+#:   `0x019610`, overwrites `0x18B`, `0x18D` and `0x18F` from the item table
+#:   (`0x018898`, `0x0188A8`, `0x0187C6`).
 DERIVED_SITES: tuple[tuple[int, str], ...] = (
-    (0x0196E8, "move.b d0, $188(a2)"),
+    (0x01944C, "clr.b $c7(a2)"),
+    (0x019454, "clr.b $c8(a2)"),
+    (0x019466, "lea.l $c7(a2), a0"),
+    (0x01946A, "addq.b #$1, (a0)"),
+    (0x01952A, "move.b d1, $c8(a2)"),
     (0x0195C0, "clr.b $c9(a2)"),
+    (0x019638, "jsr $1891e(pc)"),
     (0x0189B8, "move.b d0, $c9(a0)"),
     (0x012F10, "move.b $c9(a0), d1"),
+    (0x0196E8, "move.b d0, $188(a2)"),
     (0x008A4E, "move.b $ab(a0), $189(a1)"),
     (0x007E6A, "move.b d0, $18a(a0)"),
+    (0x019556, "moveq #$1, d3"),
+    (0x0195AA, "cmpi.b #$2, d3"),
+    (0x019560, "adda.w #$ac, a0"),
+    (0x01956A, "adda.w #$18a, a1"),
+    (0x01956E, "move.b (a0, d0.w), (a1, d1.w)"),
+    (0x01957A, "adda.w #$ae, a0"),
+    (0x019584, "adda.w #$18c, a1"),
+    (0x019588, "move.b (a0, d0.w), (a1, d1.w)"),
+    (0x019594, "adda.w #$b0, a0"),
+    (0x01959E, "adda.w #$18e, a1"),
+    (0x0195A2, "move.b (a0, d0.w), (a1, d1.w)"),
+    (0x019610, "jsr $18778(pc)"),
+    (0x018898, "move.b $9(a0, d0.l), $18b(a2)"),
+    (0x0188A8, "move.b $a(a0, d0.l), $18d(a2)"),
+    (0x0187C6, "move.b $b(a0, d0.l), $18f(a2)"),
 )
 
 #: Ramping 0x0B6-0x0C7 makes the loader reject the file with

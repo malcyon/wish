@@ -1065,8 +1065,8 @@ def test_the_roster_tail_is_derived_and_not_dropped():
     `.claude/rules/conversions.md`: *a field the destination recomputes on
     load* is not a drop and has its own list. Every byte of the block is
     written by a routine named in `DERIVED_SITES` or by the copy inside
-    `DERIVED_REBUILD`, and the two the rebuild does not touch are zero in 19
-    of 19 records the game itself wrote -- which is what this writer emits.
+    `DERIVED_REBUILD`, and the two the rebuild does not touch are filled by a
+    fight's own setup loop.
 
     Needs no disk: it reads the writer's own declared tables.
     """
@@ -1082,8 +1082,23 @@ def test_the_roster_tail_is_derived_and_not_dropped():
     assert amiga_pod.UNNAMED_0C9 in amiga_pod.DERIVED
 
 
+def test_derived_holds_the_sixteen_offsets_the_engine_rebuilds():
+    """Dropping an offset from `DERIVED` would make the writer's zero there
+    look like an unaccounted byte, so the list is pinned by count and by the
+    two ends the last change added.
+
+    Needs no disk: it reads the writer's own declared table.
+    """
+    assert len(amiga_pod.DERIVED) == 16, len(amiga_pod.DERIVED)
+    assert len(set(amiga_pod.DERIVED)) == 16
+    for at in (amiga_pod.ITEM_COUNT_CACHE, amiga_pod.HANDS_USED,
+               amiga_pod.UNNAMED_0C9):
+        assert at in amiga_pod.DERIVED, hex(at)
+
+
 def test_the_writer_leaves_every_byte_the_engine_rebuilds_alone():
-    """A record this writer makes is zero at all sixteen `DERIVED` offsets.
+    """A record this writer makes is zero at all sixteen `DERIVED` offsets,
+    and at the low byte of the encumbrance word beside the first of them.
 
     The other half of the row above: a table saying a field is derived is only
     true while the writer actually declines to write it. Built from the writer
@@ -1106,6 +1121,11 @@ def test_the_writer_leaves_every_byte_the_engine_rebuilds_alone():
         items=(bytes(node),)).to_bytes()
     left = {at: built[at] for at in amiga_pod.DERIVED if built[at]}
     assert left == {}, {hex(k): v for k, v in left.items()}
+    # `encumbrance` is a big-endian word and `DERIVED` names its high byte,
+    # which stays zero under 256 whatever is written; the low byte is where
+    # a weight would land.
+    assert built[amiga_pod.ENCUMBRANCE:amiga_pod.ENCUMBRANCE + 2] == \
+        bytes(2), built[amiga_pod.ENCUMBRANCE:amiga_pod.ENCUMBRANCE + 2].hex()
     # And `attack_forms`, which the fight setup fills `0x189` and `0x18A`
     # from, does reach the file -- otherwise the two bytes would be derived
     # from nothing.
@@ -1116,13 +1136,16 @@ def test_the_writer_leaves_every_byte_the_engine_rebuilds_alone():
 
 def test_the_saving_throw_byte_is_the_readied_items_own_plus_save():
     """`gap_19a` at `0x0C9` is the sum of `plus_save` over the readied items,
-    **19 of 19**, which is the half of that claim the files can carry.
+    **19 of 19**, which is the pattern the files show and not the engine's
+    whole rule.
 
-    The other half is the code: `DERIVED_REBUILD` clears the byte at
-    `0x0195C0` and `0x01891E`, called from its item loop, adds each readied
-    item's `plus_save` in at `0x0189AC`-`0x0189B8`. Five of the nineteen wear
-    the type-59 item that carries `plus_save` 2 and hold 2 here; the other
-    fourteen hold 0.
+    The rule is the code: `DERIVED_REBUILD` clears the byte at `0x0195C0` and
+    `0x01891E`, called from its item loop, adds an item's `plus_save` in at
+    `0x0189AC`-`0x0189B8` only when the item-table entry's byte 6 has bit 7
+    set with its low seven bits zero and the item type is not 1. Five
+    of the nineteen wear the one type-59 item that carries `plus_save` 2 and
+    hold 2 here; the other fourteen hold 0, so nothing in these files
+    separates a qualifying item from any other.
 
     Had the byte been anything the game does not rebuild, the writer's zero
     would be a loss rather than the state a loaded record leaves.
@@ -1143,10 +1166,12 @@ def test_the_two_attack_counts_are_zero_in_every_record_the_game_wrote():
     """`0x189` and `0x18A` are the only bytes of `roster_tail` the load-time
     rebuild does not touch, and they are **0 in 19 of 19**.
 
-    That is what makes the writer's zero right rather than merely untested:
-    the fight's setup loop fills them from `attack_forms` before anything
-    reads them, and outside a fight the engine leaves them at zero itself.
-    The other three bytes asserted here are the second half of each damage
+    That records what the shipped files hold and nothing more: they were saved
+    outside a fight, so it is not an independent half of the argument for the
+    writer's zero. The argument is the engine's setup order -- a fight's setup
+    loop clears `$0A` and then fills both bytes from `attack_forms`
+    (`DERIVED_SITES`), so a loaded value is overwritten before a fight reads
+    it. The other three bytes asserted here are the second half of each damage
     pair, which the rebuild copies from `attack_forms` and which is zero in
     every record too.
 
@@ -1166,40 +1191,46 @@ def test_the_two_attack_counts_are_zero_in_every_record_the_game_wrote():
 
 
 def test_the_engine_writes_every_derived_byte_this_writer_leaves_zero():
-    """`DERIVED_SITES` and `DERIVED_LOAD_CALL`, re-derived off the player's
-    own disk 1 rather than quoted.
+    """`DERIVED_SITES` and the two calls of `DERIVED_REBUILD`, re-derived off
+    the player's own disk 1 rather than quoted.
 
-    Six instructions, one for each byte of `DERIVED` no probe has watched, and
-    the `jsr` that puts the rebuild on the `.pc` load path: *Add Character*
-    calls `DERIVED_REBUILD` between the loader at `0x025806` and the roster
-    join at `0x027394`, which is what makes "the game fills it in" a claim
-    about loading a file and not about a routine that merely exists.
+    Each site is one instruction of the engine's own rebuild, item loop or
+    fight setup, and together they cover every byte of `DERIVED` no probe has
+    watched: the item count and `hands_used` cleared and counted, the
+    saving-throw byte cleared, accumulated and read back, the armour bonus,
+    the two attack counts, and the `0x18B`-`0x190` copy loop with its source
+    and destination bases and the weapon routine that overwrites three of the
+    six. The calls put the rebuild on the `.pc` load path: *Add Character*
+    calls it between the loader at `0x025806` and the roster join at
+    `0x027394`, and the inter-title import path calls it too, which is what
+    makes "the game fills it in" a claim about loading a file and not about a
+    routine that merely exists.
 
     Needs `capstone` and the player's own Amiga disk images; skips without
     either, which is what CI does.
     """
     capstone = pytest.importorskip("capstone")
-    assert capstone
     from automap import gamedisks
-    from tools.amiga import amiga68k, amigarecordrefs, podimportmap
+    from tools.amiga import amiga68k, podimportmap
 
     if not gamedisks.candidates("amiga"):
         pytest.skip("no Amiga disk images; set $AMIGA_DISKS")
-    data = podimportmap.executable(quiet=True)
-    start, end = amigarecordrefs.code_range(data)
+    try:
+        data = podimportmap.executable(quiet=True)
+    except SystemExit as why:
+        pytest.skip(str(why))
 
+    md = capstone.Cs(capstone.CS_ARCH_M68K, capstone.CS_MODE_M68K_000)
     for where, instruction in amiga_pod.DERIVED_SITES:
-        displacement = int(instruction.split("$")[-1].split("(")[0], 16)
-        found = dict(amigarecordrefs.sites(data, displacement, start, end))
-        assert found.get(where) == instruction, (hex(where), found.get(where))
+        one = next(md.disasm(data[where:where + 12], where, count=1), None)
+        found = f"{one.mnemonic} {one.op_str}" if one else None
+        assert found == instruction, (hex(where), found)
 
     exe = amiga68k.Executable.parse(data)
-    assert data[amiga_pod.DERIVED_LOAD_CALL:
-                amiga_pod.DERIVED_LOAD_CALL + 2] == b"\x4e\xac"
-    d16 = int.from_bytes(data[amiga_pod.DERIVED_LOAD_CALL + 2:
-                              amiga_pod.DERIVED_LOAD_CALL + 4],
-                         "big", signed=True)
-    assert exe.resolve_a4(d16) == amiga_pod.DERIVED_REBUILD
+    for call in (amiga_pod.DERIVED_LOAD_CALL, amiga_pod.DERIVED_IMPORT_CALL):
+        assert data[call:call + 2] == b"\x4e\xac", hex(call)
+        d16 = int.from_bytes(data[call + 2:call + 4], "big", signed=True)
+        assert exe.resolve_a4(d16) == amiga_pod.DERIVED_REBUILD, hex(call)
 
 
 def test_the_attack_table_check_fails_when_a_record_disagrees():

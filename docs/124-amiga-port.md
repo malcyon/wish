@@ -2158,7 +2158,7 @@ engine makes holds it however it was made. The writer emits the pair. What it
 *is* stays UNKNOWN.
 
 **The stale item count `0x0C7` and `hands_used` `0x0C8` are rebuilt on load,
-so leaving them zero is right.** The routine at `0x019430` clears the thirteen
+so leaving them zero is right.** The routine at `0x019428` clears the thirteen
 readied-item longwords at `0x00C`, then `0x0C7`, `0x0C8` and the encumbrance
 word at `0x056`, and walks the item chain adding one to the count per node,
 each item type's hands out of `g6968[type * 16 + 1]`, and each item's weight
@@ -2203,10 +2203,10 @@ call sites reach it in all.
 | byte | what it is | who writes it |
 |---|---|---|
 | `0x188` | the armour bonus | `0x0196E8`, the rebuild's last act: the four accumulated armour terms less 2 |
-| `0x189`, `0x18A` | the two attack counts | **not on load.** A fight's setup loop walks every combatant (`0x003972`-`0x003990`) calling `0x007D5E`, which clears the combat block's `$0A` and then sets `0x189` from `attack_forms`' first byte (`0x008A4E`, inside `0x008A34`) and `0x18A` from its second (`0x007E6A`) |
+| `0x189`, `0x18A` | the two attack counts | **not on load.** A fight's setup loop walks every combatant (`0x003972`-`0x003990`) calling `0x007D5E`, which clears the combat block's `$0A` at `0x007E26` and then sets `0x189` from `attack_forms`' first byte (`0x008A4E`, inside `0x008A34`) and `0x18A` from its second (`0x007E6A`), both unconditionally |
 | `0x18B`-`0x190` | the running damage | the rebuild copies `0x0AD`-`0x0B2` here (`0x019556`-`0x0195AE`), then `0x018778` — called at `0x019610` — overwrites `0x18B`, `0x18D` and `0x18F` from the readied weapon's own item-table entry (`$9`, `$a`, `$b` of `g6968[type * 16]`), and `0x019604` adds the unarmed bonus when nothing is readied |
 
-**The nineteen `.pc` files agree, and two columns settle it:**
+**The nineteen `.pc` files agree, and two columns settle the copy:**
 
 | byte | across 19 records |
 |---|---|
@@ -2218,9 +2218,10 @@ call sites reach it in all.
 | `0x18F` | 4, 5, 6, 7, 8 or 9 |
 
 `0x18D` holding a weapon's die size where its copy source holds the unarmed 2
-is `0x018778`'s overwrite showing in the files. And the two bytes the code says
-are combat-time only are the two that are zero in every record the game wrote,
-which is exactly what this writer emits.
+is `0x018778`'s overwrite showing in the files. The two bytes the code says are
+combat-time only are zero in every record the game wrote, which is what this
+writer emits; that column shows what the shipped files hold and does not decide
+the question (see the limit below).
 
 So no part of the block can come from a source: five bytes are zero in every
 engine record, three are the readied weapon's numbers out of a table the record
@@ -2234,20 +2235,27 @@ No neutral field names it, so it is on no list — but it is no longer
 unexplained:
 
 * the rebuild clears it at `0x0195C0`, beside the item count and `hands_used`;
-* `0x01891E`, called from the rebuild's own item loop at `0x019638`, adds each
-  readied item's `plus_save` in at `0x0189AC`-`0x0189B8` (`move.b $c9(a0), d0;
+* `0x01891E`, called from the rebuild's own item loop at `0x019638`, adds an
+  item's `plus_save` in at `0x0189AC`-`0x0189B8` (`move.b $c9(a0), d0;
   add.b $34(a2), d0; move.b d0, $c9(a0)`, where `a2` is the item node and item
   `+$34` is DOS's `plus_save` — the Amiga node runs one byte later than DOS's
-  from `0x032` on);
+  from `0x032` on), **behind a branch**: the item-table entry's byte 6 must
+  have bit 7 set, its low seven bits must be zero, and the item type
+  (`g6968[type * 16]`) must not be 1 (types 7 and 9 write their own
+  byte through the third argument first and then reach the add);
 * the saving-throw routine at `0x012EB0` reads it back at `0x012F10`, into the
   roll's modifier before it indexes the five throws at `0x083`.
 
 **19 of 19 `.pc` files equal the sum of `plus_save` over their own readied
-items**: 2 for the five characters wearing the type-59 item that carries
+items**: 2 for the five characters wearing the one type-59 item that carries
 `plus_save` 2 — BJORK, KRISTIN, MAGIC JHO, MAGNUSMA and ?T — and 0 for the
-other fourteen. Two independent sources, so this corrects §1.19 and §1.19a,
-both of which said no routine had been found and that what the zero does to
-the game was unmeasured. The game fills it in, as it does `hands_used`.
+other fourteen, and no other value occurs. That is the pattern the files show
+and not the engine's whole rule, which is the branch above: only the readied
+items that qualify are summed, and nineteen files with one item type between
+them cannot say which those are. The conclusion stands on the routines, which
+clear, accumulate and read the byte back: this corrects §1.19 and §1.19a, both
+of which said no routine had been found and that what the zero does to the game
+was unmeasured. The game fills it in, as it does `hands_used`.
 
 #### What is left, and one limit on the claim
 
@@ -2256,15 +2264,31 @@ Nothing on this issue is now both zero and unexplained. `0x0CA` is 0 in 19 of
 `0x011D90`; `0x0CB` is still the UNKNOWN cached count; the heap pointers at
 `0x000`-`0x03F` stay zero because the loader overwrites them.
 
-For `0x189` and `0x18A` the argument that nothing reads them before the fight
-setup writes them rests on the displacement search, which sees `d16(An)` and
-would miss a read through a pointer computed some other way. The five readers
-it does find are all inside combat. The `0 in 19 of 19` measurement is the
-independent half, and it is what makes the pair CONFIRMED rather than
-PROBABLE: a writer emitting zero emits what the engine emits.
+For `0x189` and `0x18A` the evidence is the **setup order**: a fight's setup
+loop (`0x003972`-`0x003990`) calls `0x007D5E`, which clears the combat block's
+`$0A` at `0x007E26`, then sets `0x189` through `0x008A34` (`0x008A4E`) and
+`0x18A` at `0x007E6A`, both unconditionally, so a loaded value is overwritten
+before that fight reads it. The displacement search sees `d16(An)` and would
+miss a read through a pointer computed another way, and it does: indexed
+`adda.w #$188` accesses (index 1 or 2) at `0x0088DA`, `0x0088F4`, `0x008904`,
+`0x008F3A` and `0x009122`, `adda.l #$189` at `0x009142` and `adda.w #$18A` at
+`0x007F68`. `0x0088FC`-`0x008908` writes 1 into `0x189` or `0x18A` when it is
+zero. The six routines from `0x0088DA` to `0x009142` dereference the combat
+block at `$40(a2)`, `0x007F68` is a helper handed the record, and the attack
+routine `0x007738` has callers only at `0x0067DA` and `0x00725A`. All of this
+is read from the engine's code; nothing was run.
 
-`tests/amiga/test_podamiga.py` re-derives the six instructions and the load
-call off the player's own disk 1 rather than quoting them, and checks the
+**The `0 in 19 of 19` column is not an independent half of that argument.** It
+shows only that the shipped files were saved outside a fight, when the engine
+holds zero there whatever the setup would write. The claim is the code's, not
+the measurement's.
+
+`tests/amiga/test_podamiga.py` re-derives the load call, the import call and
+the twenty-seven instructions of `DERIVED_SITES` off the player's own disk 1
+rather than quoting them — the item count and `hands_used` cleared and
+counted, `gap_19a` cleared, accumulated and read back, the armour bonus, the
+two attack counts, the `0x18B`-`0x190` copy loop with its source and
+destination bases, and the weapon routine's three overwrites — and checks the
 `plus_save` sum and the five zero bytes against all nineteen records.
 
 ### 1.20 The saved game, read from the routine that writes it (#599 (How is the Amiga Pools of Darkness saved game laid out, so a whole save can convert and not only its characters?))
