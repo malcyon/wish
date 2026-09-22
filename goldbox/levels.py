@@ -30,6 +30,11 @@ carries, and where:
 `GEN` is resident at `$0800` in all three games whatever its PRG header
 claims.
 
+**Pools of Darkness has an entry too, read off its DOS `GAME.OVR` rather than
+a `GEN`**, because it never shipped on the C64. `POOLS_OF_DARKNESS` says which
+of its tables are read, where, and what every lookup answers for the ones
+that are not.
+
 **One of those tables is not the same on the DOS side.** Everything above is
 the C64's, and for every table but one the DOS build agrees. The exception is
 THAC0, and the three titles do not disagree with the C64 in the same way.
@@ -1106,6 +1111,13 @@ class LevelTables:
     #: Blades, which is right rather than merely unread for Curse --
     #: `wisdom_bonus_level` already starts at 13 on both builds (#547).
     dos_wisdom_bonus_from: int = 0
+    #: Whether :meth:`saving_throws` may answer from the class rows, the racial
+    #: columns and nothing else. False where the title's recompute adjusts a
+    #: column by a rule nobody has read closely enough to reproduce, so the
+    #: method answers None -- "write nothing" -- rather than a row the engine
+    #: would not store. Pools of Darkness' `GAME.OVR:0x0387B0` is the case:
+    #: see `POOLS_OF_DARKNESS`.
+    saving_throw_rule_read: bool = True
 
     def divide_rounds_up(self, remainder: int, roll: int) -> bool:
         """Whether a divided hit-die or constitution total's leftover point
@@ -1433,7 +1445,11 @@ class LevelTables:
         level the engine leaves all five columns at 20 and this answers None,
         which every caller reads as "write nothing".  Writing 20 over a row we
         could not compute would be worse than leaving the stored one alone.
+        A title whose `saving_throw_rule_read` is False answers None for the
+        same reason, whatever the levels.
         """
+        if not self.saving_throw_rule_read:
+            return None
         rows = [row.saves for row in
                 (self.at_level(name, int(level))
                  for name, level in dict(class_levels).items() if int(level))
@@ -1621,9 +1637,247 @@ SECRET_OF_THE_SILVER_BLADES = LevelTables(
     dos_thac0_level0=_DOS_THAC0_LEVEL0_SSB,
 )
 
+# --- Pools of Darkness --------------------------------------------------------
+# DOS only: the title never shipped on the C64. Every number below is read out
+# of the player's own `GAME.OVR` and the expanded `GAME.EXE` by
+# `tools/dos/dospodlevels.py`, which finds each table through the instruction
+# that indexes it, and `tests/records/test_pod_levels.py` reads them back off
+# the disk. The engine numbers its classes cleric 0, druid 1, fighter 2,
+# paladin 3, ranger 4, magic-user 5, thief 6; every table is indexed that way.
+#
+# The authority for every number is the instruction that reads it. As a
+# check on the reading -- strides, clamps, the dual-class level -- THAC0
+# (`0xAC`), the five saves (`0x132`) and `attack_forms` (`0x168`) recompute
+# from these rows for 12 of the 12 records under the archive install's
+# `SAVE` directory (`dospodlevels.py check`). Those records were found, not
+# watched being written, so they corroborate the reader and prove nothing
+# about the game on their own.
+
+#: `GAME.OVR:0x039349` answers a threshold by class and level: levels 2-11 out
+#: of `DS:71AE + class * 0x12D + level * 4`, and from 12 on entry 11 plus
+#: `DS:6EDB[class]` for every level past 11. **Level 41 and above answer
+#: 0x7FFFFFFF**, so no class goes past 40 by experience. Entries 0 and 1 of
+#: each row overlap the neighbouring tables' bytes and are never a threshold;
+#: level 1's 0 is the definition of a new character, not a read.
+#:
+#: Two readings differ from Curse and Silver Blades: the ranger's second level
+#: is 2251 (Curse 2250), and the paladin's and ranger's eleventh are 1050000
+#: and 650000 -- one short of Curse's 1050001 and 650001, which carries into
+#: every threshold past it (paladin 12 is 1400000, Silver Blades 1400001).
+#: The fighter's eleventh is 750001, not Curse's 749937. Druid's row holds
+#: 0xFFFFFFFF throughout: a druid in this engine never earns a level.
+_XP_POD = {
+    "cleric": ((1501, 3001, 6001, 13001, 27501, 55001, 110001, 225001,
+                450001, 675001), 225000),
+    "fighter": ((2001, 4001, 8001, 18001, 35001, 70001, 125001, 250001,
+                 500001, 750001), 250000),
+    "paladin": ((2751, 5501, 12001, 24001, 45001, 95001, 175001, 350001,
+                 700001, 1050000), 350000),
+    "ranger": ((2251, 4501, 10001, 20001, 40001, 90001, 150001, 225001,
+                325001, 650000), 325000),
+    "magic-user": ((2501, 5001, 10001, 22501, 40001, 60001, 90001, 135001,
+                    250001, 375001), 375000),
+    "thief": ((1251, 2501, 5001, 10001, 20001, 42501, 70001, 110001, 160001,
+               220001), 220000),
+}
+#: The last level `0x039349` gives a threshold for (`cmp byte ptr [bp+8],
+#: 0x29 / jae` returns 0x7FFFFFFF). Not a class ceiling: the racial and class
+#: limits the trainer applies are unread, which is why `ceilings` is empty.
+POD_LAST_LEVEL = 40
+
+#: `GAME.OVR:0x03836D` clamps every class level at 21 (`cmp byte ptr [bp-4],
+#: 0x15`) before it reads THAC0, and `0x0387B0` clamps the same way before it
+#: reads a save row, so level 22 and above answer level 21's rows.
+POD_TABLE_CLAMP = 21
+
+#: `DS:6D18 + class * 22 + level`, as THAC0 rather than the stored
+#: `60 - THAC0`, levels 1 to 21; entry 0 is `_DOS_THAC0_LEVEL0_POD`. The
+#: recompute keeps the best over all seven class slots without testing the
+#: level, the loop `dos_engine_thac0` reproduces. A magic-user of level 1-5 is
+#: 20 here, as in DOS Pool of Radiance and not 21 as in Curse, and the fighter
+#: group improves two points every two levels -- AD&D 1st edition's table,
+#: not Curse's `21 - level`.
+_DOS_THAC0_POD = (
+    ("cleric",     (20, 20, 20, 18, 18, 18, 16, 16, 16, 14, 14, 14, 12, 12,
+                    12, 10, 10, 10, 9, 9, 9)),
+    ("fighter",    (20, 20, 18, 18, 16, 16, 14, 14, 12, 12, 10, 10, 8, 8, 6,
+                    6, 4, 4, 4, 4, 4)),
+    ("paladin",    (20, 20, 18, 18, 16, 16, 14, 14, 12, 12, 10, 10, 8, 8, 6,
+                    6, 4, 4, 4, 4, 4)),
+    ("ranger",     (20, 20, 18, 18, 16, 16, 14, 14, 12, 12, 10, 10, 8, 8, 6,
+                    6, 4, 4, 4, 4, 4)),
+    ("magic-user", (20, 20, 20, 20, 20, 19, 19, 19, 19, 19, 16, 16, 16, 16,
+                    16, 13, 13, 13, 13, 13, 11)),
+    ("thief",      (20, 20, 20, 20, 19, 19, 19, 19, 16, 16, 16, 16, 14, 14,
+                    14, 14, 12, 12, 12, 12, 10)),
+)
+#: Entry 0 of each of the seven rows, in class-number order: Silver Blades'
+#: seven numbers exactly.
+_DOS_THAC0_LEVEL0_POD = _DOS_THAC0_LEVEL0_SSB
+
+#: `DS:79FA + class * 105 + level * 5 + column`, by the last level of each
+#: band, levels 1 to 21. Three bands are not the AD&D table and are the
+#: engine's own bytes, read at the index the routine computes: a paladin 5-6
+#: stores 9 rather than 10 for petrification and a paladin 8 stores 9 rather
+#: than 8 for poison, a thief 19 reverts to the thief 13-16 row, and a cleric
+#: keeps the 16th-level row to 19 where AD&D improves it at 19. No record
+#: read here holds a character at any of those levels.
+_SAVES_POD = {
+    "cleric": ((3, (10, 13, 14, 16, 15)), (6, (9, 12, 13, 15, 14)),
+               (9, (7, 10, 11, 13, 12)), (12, (6, 9, 10, 12, 11)),
+               (15, (5, 8, 9, 11, 10)), (19, (4, 7, 8, 10, 9)),
+               (21, (2, 5, 6, 8, 7))),
+    "fighter": _SAVES_FIGHTER_SSB[:-1] + ((16, (4, 5, 6, 4, 7)),
+                                          (21, (3, 4, 5, 4, 6))),
+    "paladin": ((2, (12, 13, 14, 15, 15)), (4, (11, 12, 13, 14, 14)),
+                (6, (9, 9, 11, 11, 12)), (7, (8, 9, 10, 10, 11)),
+                (8, (9, 9, 10, 10, 11)), (10, (6, 7, 8, 7, 9)),
+                (12, (5, 6, 7, 6, 8)), (14, (3, 4, 5, 3, 6)),
+                (16, (2, 3, 4, 2, 5)), (21, (1, 2, 3, 2, 4))),
+    "magic-user": _SAVES_MAGIC_USER + ((20, (10, 7, 5, 9, 6)),
+                                       (21, (8, 5, 3, 7, 4))),
+    "thief": _SAVES_THIEF_SSB[:-1] + ((18, (9, 8, 6, 12, 7)),
+                                      (19, (10, 9, 8, 13, 9)),
+                                      (20, (9, 8, 6, 12, 7)),
+                                      (21, (8, 7, 4, 11, 5))),
+}
+_SAVES_POD["ranger"] = _SAVES_POD["fighter"]
+
+#: `GAME.OVR:0x026F4B`: `(sides, last level that rolls, flat a level after,
+#: dice at level 1)`. The sides are `DS:6DD7[class]`; a class rolls while its
+#: level is below `DS:6DC9[class]`, `DS:6DD0[class]` dice at level 1 (2 for
+#: the ranger, 1 for everyone else) and one a level after; past that the flat
+#: amount is set in code by class number. Every die is rolled twice and the
+#: higher kept, Curse's rule.
+_HIT_DICE_POD = {
+    "cleric": (8, 9, 2, 1),
+    "fighter": (10, 9, 3, 1),
+    "paladin": (10, 9, 3, 1),
+    "ranger": (8, 10, 2, 2),
+    "magic-user": (4, 11, 1, 1),
+    "thief": (6, 10, 2, 1),
+}
+
+#: The loop in `0x03836D` that writes `attack_forms` at `0x168`: 3 (3/2,
+#: doubled) above fighter or paladin 6 and 4 above 12; the ranger's bands are
+#: 7 and 14. Silver Blades' bands exactly. It writes nothing for any other
+#: class, and 4 of 4 records here without a fighter-group class hold 2.
+_ATTACKS_POD = {"fighter": _ATTACKS_FIGHTER_SSB,
+                "paladin": _ATTACKS_FIGHTER_SSB,
+                "ranger": _ATTACKS_RANGER_SSB}
+
+#: `GAME.OVR:0x026ECC` (and its copy at `0x01848C`): `DS:719C[constitution]`,
+#: signed, plus for class numbers 2, 3 and 4 -- fighter, paladin, ranger -- 1
+#: at 17, 2 at 18, 3 at 19-20, 4 at 21-23 and 5 at 24-25, written in code.
+#: Laid out as Curse's row (the uncapped sum) with the score clamped at 16 for
+#: everyone else, which gives the table's own +2 from 16 up. It is Curse's
+#: `_HP_BONUS_CURSE` from 3 up; entries 1 and 2 read 0 and entry 0 is the
+#: preceding table's byte, all three below any race's minimum.
+_HP_BONUS_POD = (8, 0, 0, -2, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0,
+                 1, 2, 3, 4, 5, 5, 6, 6, 6, 7, 7)
+
+#: The cleric helper's six compares (`GAME.OVR:0x03860C`): wisdom above 12,
+#: 13, 14, 15, 16 and 17 each add one slot at cleric spell levels 1, 1, 2, 2,
+#: 3 and 4 -- read by `tools/dos/dospodtables.py` and
+#: `docs/228-pools-of-darkness-spells-and-creation.md`. Curse's
+#: `_WISDOM_BONUS_CURSE` less its seventh entry: there is no compare above
+#: 17, so wisdom 19 gives what 18 gives.
+_WISDOM_BONUS_POD = (0, 0, 1, 1, 2, 3)
+
+
+def _pod_progression(name: str) -> tuple[Level, ...]:
+    """One class's rows, level 1 to `POD_LAST_LEVEL`, out of the tables above.
+
+    `spells` is left empty: `goldbox.spells.POOLS_OF_DARKNESS` carries this
+    title's slot rows, nine wide and read off the same engine.
+    """
+    direct, step = _XP_POD[name]
+    thac0 = dict(_DOS_THAC0_POD)[name]
+    die, roll_to, flat, first = _HIT_DICE_POD[name]
+    rows = []
+    for level in range(1, POD_LAST_LEVEL + 1):
+        if level == 1:
+            experience = 0
+        elif level <= len(direct) + 1:
+            experience = direct[level - 2]
+        else:
+            experience = direct[-1] + step * (level - len(direct) - 1)
+        dice = min(level, roll_to) + first - 1
+        extra = (level - roll_to) * flat if level > roll_to else 0
+        at = min(level, POD_TABLE_CLAMP)
+        rows.append(Level(
+            level=level,
+            experience=experience,
+            hit_dice=f"{dice}d{die}" + (f"+{extra}" if extra else ""),
+            thac0=thac0[at - 1],
+            attacks=_band(_ATTACKS_POD.get(name, ((99, 1),)), level),
+            saves=_band(_SAVES_POD[name], at),
+        ))
+    return tuple(rows)
+
+
+#: **What this entry does not carry, and what each lookup answers instead:**
+#:
+#: * `ceilings` and `racial_limits` are unread, so `ceiling` and
+#:   `racial_limit` answer None;
+#: * the thief skill tables (the routine is near `GAME.OVR:0x038A4F`) are
+#:   unread, so `thief_skill_row` answers None;
+#: * `turn_power` is empty and `turning_level` answers None -- the DOS record
+#:   keeps no caster-side turning byte (`goldbox.derive.turning_level`);
+#: * `saving_throws` answers None: after the class rows, `0x0387B0` adjusts
+#:   column 0 alone by constitution -- from 19 up for everyone, and by a
+#:   banded amount from 4 up when a walk of the item list finds a flag --
+#:   and that rule is not read closely enough to reproduce
+#:   (`saving_throw_rule_read`);
+#: * the trainer's own rules -- whether one press raises every ready class,
+#:   the divide's round-up (`0x027084` divides and floors at 1 with no
+#:   round-up at all, which neither setting of
+#:   `hit_die_divide_round_up_on_tie` says), whether `attack_forms` is
+#:   overwritten -- keep the defaults, and `trainer_measured` is False, so
+#:   `goldbox/levelup.py` refuses the title before it reads any of them.
+#:
+#: `class_order` is the layout Curse and Silver Blades share. This title has
+#: no C64 record for it to describe; it is there so that `class_slot` and
+#: `hp_bonus_uncapped_from=3` mean what they mean in Curse, which is the
+#: fighter, paladin and ranger -- the three classes `0x026ECC` pays more.
+POOLS_OF_DARKNESS = LevelTables(
+    key="pools-of-darkness",
+    title="Pools of Darkness",
+    class_order=("magic-user", "cleric", "thief", "fighter",
+                 None, None, "paladin", "ranger"),
+    classes=tuple((name, _pod_progression(name))
+                  for name in ("magic-user", "cleric", "thief", "fighter",
+                               "paladin", "ranger")),
+    ceilings=(),
+    racial_limits=(),
+    constitution_save_columns=(),
+    sturdy_races=(),
+    saving_throw_rule_read=False,
+    hp_bonus_by_score=_HP_BONUS_POD,
+    hp_bonus_score_cap=HP_BONUS_SCORE_CAP_CURSE,
+    hp_bonus_uncapped_from=HP_BONUS_UNCAPPED_FROM_CURSE,
+    wisdom_bonus_level=_WISDOM_BONUS_POD,
+    wisdom_bonus_from=WISDOM_BONUS_FROM_CURSE,
+    hit_die_rolls=2,
+    hit_die_fighter_floor=None,     # no `cmp 4` in `0x026F4B`'s class loop
+    hit_die_divide_floor=1,         # `0x027084 cmp byte ptr [bp-3], 1 / jae`
+    #: The slot builder `GAME.OVR:0x03808A` writes the record's own three
+    #: nine-byte arrays (`docs/228-pools-of-darkness-spells-and-creation.md`).
+    stores_spell_capacity=True,
+    dos_thac0=_DOS_THAC0_POD,
+    dos_thac0_level0=_DOS_THAC0_LEVEL0_POD,
+)
+
 TITLES: tuple[LevelTables, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
                                    SECRET_OF_THE_SILVER_BLADES)
-BY_KEY = {t.key: t for t in TITLES}
+
+#: Titles with an entry of their own whose ceilings and racial limits are
+#: unread, kept out of `TITLES` because the checks that loop it hold every
+#: title's rows to its ceilings and its class order to a C64 record. Every
+#: lookup against them answers from their own tables or answers None.
+PARTLY_READ: tuple[LevelTables, ...] = (POOLS_OF_DARKNESS,)
+
+BY_KEY = {t.key: t for t in TITLES + PARTLY_READ}
 
 #: What a caller gets when it says nothing. Every caller predates the second
 #: game and means this one.
@@ -1879,6 +2133,8 @@ def for_game(game=None) -> LevelTables:
     one string from that one, and a title it has no tables for falls back to
     Pool of Radiance rather than raising, because every geometry-only title in
     `goldbox/c64_port.py` runs an engine whose progression has not been read.
+    Pools of Darkness has an entry of its own (`PARTLY_READ`), so its key
+    no longer falls back.
     """
     if isinstance(game, LevelTables):
         return game
