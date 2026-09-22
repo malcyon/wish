@@ -224,7 +224,7 @@ def test_write_pod_reports_the_derived_and_constant_fields_as_derived():
     assert names.isdisjoint(dropped_names)
 
 
-def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
+def test_the_writers_drops_are_a_strict_subset_of_the_readers():
     """The two lists say different things, and this is the one crossing
     between them that is allowed.
 
@@ -252,9 +252,8 @@ def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
     `portrait_head` and `portrait_body` moving to `POD_WRITE_CONSTANTS`
     (`#617`) took the writer's last member the reader does not also drop, so
     `writer - reader` is now empty: every name the writer drops, the reader
-    drops too, the reverse of the function's own title. That reversal is a
-    fact about the two current lists rather than a defect, so it is pinned
-    here rather than smoothed over.
+    drops too. That is a fact about the two current lists rather than a
+    defect, so it is pinned here rather than smoothed over.
     """
     writer = {n for n, _ in amiga_pod.POD_WRITE_DROPPED}
     reader = {n for n, _ in amiga_pod.pod_read_dropped()}
@@ -428,12 +427,19 @@ def test_every_dos_record_converts_into_a_pc():
     DOS reader learned this title today and the Amiga writer has always had
     it. Each output is read back with `PodCharacter` and checked against the
     DOS record it came from, which is stronger than checking it is 484 bytes.
+
+    `report.dropped` is empty for every one of them (#617): every field the
+    engine rebuilds on load or holds a constant value for is on
+    `POD_WRITE_DERIVED` or `POD_WRITE_CONSTANTS`, not on `POD_WRITE_DROPPED`,
+    so `editor/saveplan.losses()` -- `[*report.dropped, *report.losses]` --
+    would not refuse a Save As over a byte nobody loses.
     """
     seen = 0
     for path in dos_records():
         char = dos_codec.read_character(path)
         out = dos_codec.to_neutral(char)
         pc, report = amiga_pod.to_pc(out)
+        assert report.dropped == [], path.name
         # 404 of record, twenty a carried item, ten a running effect -- and
         # never shorter than the 484 the game's own shortest file is.
         back = amiga_pod.PodCharacter.from_bytes(pc)

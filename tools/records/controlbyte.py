@@ -86,11 +86,15 @@ def dos_offsets(shape) -> tuple[int, int]:
 def reading(value: int, port: str = "c64") -> str:
     """What the engine makes of one control byte.
 
-    Bit 0 is named only for the C64, where `GEN $155D` sets it when a score
-    is changed in the character-modification screen and restores the whole
-    byte if the player leaves without keeping.  The DOS engine records the
-    same thing in the *share* byte instead, so a DOS control byte's bit 0
-    stands for nothing anybody has read.
+    Bit 0 is named only for the C64, where Pool of Radiance's `GEN $155D`
+    sets it when a score **or the hit points** are changed and kept in
+    MODIFY CHARACTER, restoring the whole byte if the player leaves without
+    keeping (`docs/232-the-c64-control-byte-per-title.md`).  **Only Pool of
+    Radiance writes it** -- Curse, Silver Blades, Gateway, Champions and
+    Death Knights never touch bit 0, so the label printed here for a record
+    from one of those titles names a bit that game never sets.  The DOS
+    engine records the ability-change flag in the *share* byte instead, so
+    a DOS control byte's bit 0 stands for nothing anybody has read.
     """
     if value < 0x80:
         if port == "c64":

@@ -1955,20 +1955,6 @@ POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                          "title has nothing to give"),
     ("levels_drained", "see `hp_lost_to_drain`: the high-water marks are what "
                        "this title stores instead"),
-    # #451 (The Amiga Pools of Darkness notes call the combat icon a sheet
-    # portrait, and describe a menu the title has not got).  `CHEAD.TLB` and
-    # `CBODY.TLB` are the **combat icon** (`docs/199-amiga-combat-icons.md`),
-    # and the title has no sheet portrait at all.  CONFIRMED three ways
-    # (#194): neither port ships head or body art -- 52 DOS files and 55
-    # Amiga ones with no `HEAD*`/`BODY*` among them;
-    # `goldbox.dos_port.POOLS_OF_DARKNESS` gives the pair a width of zero;
-    # and the fourteen-and-twelve creation menu is cut out of the Amiga
-    # engine's own copy of the data block that carries it, in 60 bytes
-    # otherwise byte-identical across four binaries.
-    #
-    # The rows stay, because `pod_write_field_disposition` is the whole
-    # contract and a neutral field this writer takes nothing from has to be
-    # named whether or not a Pools of Darkness source could hold one.
     ("turn_power", "a cleric's turning strength is worked out from the class "
                    "levels when TURN is pressed, on both ports; the record's "
                    "0x05A is DOS's `turn_class`, which is a property of what "
@@ -2040,7 +2026,20 @@ POD_WRITE_CONSTANTS: tuple[tuple[str, str], ...] = (
                       "format rather than a field it has none of: "
                       "`pod_to_neutral` reads it at 0x0B9, the census across "
                       "all nineteen `.pc` files on disk 3 is zero in 19 of "
-                      "19, and this writer emits the same zero"),
+                      "19, and this writer emits the same zero. `#451` "
+                      "(the Amiga Pools of Darkness notes call the combat "
+                      "icon a sheet portrait, and describe a menu the title "
+                      "has not got) is the confusion this clears up: "
+                      "`CHEAD.TLB` and `CBODY.TLB` are the **combat icon** "
+                      "(`docs/199-amiga-combat-icons.md`), and the title has "
+                      "no sheet portrait at all, CONFIRMED three ways -- "
+                      "neither port ships head or body art (52 DOS files and "
+                      "55 Amiga ones with no `HEAD*`/`BODY*` among them), "
+                      "`goldbox.dos_port.POOLS_OF_DARKNESS` gives the pair a "
+                      "width of zero, and the fourteen-and-twelve creation "
+                      "menu is cut out of the Amiga engine's own copy of the "
+                      "data block that carries it, in 60 bytes otherwise "
+                      "byte-identical across four binaries"),
     ("portrait_body", "see `portrait_head`: read at 0x0BA, zero in 19 of 19, "
                       "and written zero here"),
 )

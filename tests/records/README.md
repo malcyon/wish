@@ -39,6 +39,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_liveparty.py` | Checks `goldbox/levels.py` against the values the game's training hall wrote over twenty-nine level-ups. |
 | `test_pairs.py` | Checks that a value the save holds twice survives export and import unchanged even when its two halves disagree. |
 | `test_pod_spells.py` | Checks Pools of Darkness' spell-slot rows, spell groups, spellbook ceiling and creation menus in `goldbox/spells.py` against the game's own DOS engine, and pins the committed table with no game data. |
+| `test_podwindowtodos.py` | Checks that the Amiga Pools of Darkness `field_83_87` window at bytes `0x05B`/`0x095` reaches `goldbox.dos_codec.write`'s DOS output byte for byte at `0x149`/`0x14A`, through `dos_codec.window_source` rather than the writer's constant. |
 | `test_record.py` | Checks `goldbox/record.py` against the committed `brutus.chr`: field decoding, byte-exact round trips, and that setting a field changes only its bytes. |
 | `test_ringoffire.py` | Checks the two Ring of Fire Resistance records the C64 ships and which one Wish hands out. |
 | `test_second_game.py` | Checks that Curse of the Azure Bonds reads through Pool of Radiance's decoders, over both games' records, roster block, maps and item tables. |

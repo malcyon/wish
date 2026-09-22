@@ -41,3 +41,4 @@ Tests for the DOS port: the DOS saved game and character record, the DOS record 
 | `test_dualclassdos.py` | Checks how `tools/dos/dualclassdos.py` names the game tree a record came from, and its boundary listing and string search. |
 | `test_innateids.py` | Checks that `tools/dos/innateids.py` reads the innate effect ids character creation adds for each race and class out of the engine. |
 | `test_ssbimport.py` | Checks that `tools/dos/ssbimport.py`'s two inputs differ only at Curse `0x0F9`, that it reads the Silver Blades record at `goldbox.dos_port`'s offsets, and that a capture finds the imported character by name. |
+| `test_windowroundtrip.py` | Checks that the Pool of Radiance, Curse and Silver Blades `field_83_87` window survives `dos_codec.to_neutral`/`write` unchanged in full, on records built from `goldbox/dos_port.py`'s own field table, no disk. |
