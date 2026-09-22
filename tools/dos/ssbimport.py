@@ -113,6 +113,13 @@ BARS = {
     "0b48cd02f99dbdfd": "cure_anyway",    # (is not diseased) CURE ANYWAY: YES NO
     "a7e6e1e306491ae5": "rest_menu",      # REST DAYS HOURS MINS ADD SUBTRACT EXIT
     "7d9dc294ffc6763d": "quit_to_dos",    # QUIT TO DOS YES NO
+    # The character sheet.  Where its highlight opens depends on the route
+    # (HEAL from the party menu, the second word from camp), and whether CURE
+    # is on it at all is what the experiment measures, so each is listed.
+    "ad08d02bfc41ed3c": "sheet",          # HEAL CURE EXIT, HEAL highlighted
+    "b12a60e0cba8e46d": "sheet",          # HEAL CURE EXIT, CURE highlighted
+    "bd37ba2e14ba64cd": "sheet",          # HEAL EXIT, HEAL highlighted
+    "570d9fcc5bf6d613": "sheet",          # HEAL EXIT, EXIT highlighted
 }
 
 
@@ -545,6 +552,7 @@ def run(args) -> int:
         note(event="stage", stage="2-rest", **_brief(stage))
 
         d.s.key("v")
+        d.wait_bar("sheet")
         stage = d.sheet_cure("3-cure", use=True)
         d.back_to_camp()
         d.camp_save(c)
@@ -560,11 +568,16 @@ def run(args) -> int:
         try:
             shots = out / "shots"
             shots.mkdir(parents=True, exist_ok=True)
+            for old in shots.glob("*.png"):
+                old.unlink()
             for png in sorted((session.dir / "shots").glob("*.png")):
                 shutil.copy(png, shots / png.name)
         except OSError as e:
             print(f"could not keep the shots: {e}", file=sys.stderr)
-        (out / "summary.json").write_text(json.dumps(summary, indent=2))
+        try:
+            (out / "summary.json").write_text(json.dumps(summary, indent=2))
+        except OSError as e:
+            print(f"could not write summary.json: {e}", file=sys.stderr)
         session.close()
         slot.release()
     return 0 if summary.get("completed") else 1

@@ -175,3 +175,69 @@ def test_the_two_runs_of_the_specimen_differ_in_one_byte():
     assert zero == rec
     assert [i for i in range(si.CURSE_RECORD) if three[i] != zero[i]] == [
         si.CURSE_FORMER_CLASS]
+
+
+class _FakeSlot:
+    def __init__(self):
+        self.released = False
+
+    def release(self):
+        self.released = True
+
+
+class _FakeSession:
+    """Just enough of `dosbox.Session` for `run()` to reach its `finally`."""
+
+    def __init__(self, root):
+        self.dir = root / "instance"
+        self.save_dir = self.dir / "SAVE"
+        self.closed = False
+
+    def stage(self, fresh):
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+
+    def boot(self, fresh):
+        (self.dir / "shots" / "001-party-menu.png").write_bytes(b"new")
+
+    def close(self):
+        self.closed = True
+
+
+def _lost_run(tmp_path, monkeypatch):
+    """`run()` against a fake slot, losing the route at the first screen."""
+    slot, session = _FakeSlot(), _FakeSession(tmp_path)
+    monkeypatch.setattr(si.dosbox, "claim", lambda note: slot)
+    monkeypatch.setattr(si.dosbox, "Session", lambda s, game: session)
+    monkeypatch.setattr(si.dosbox, "find_game", lambda stem: tmp_path)
+
+    def lost(self, timeout=120.0):
+        raise si.RouteLost("never reached the PLAY DEMO screen")
+
+    monkeypatch.setattr(si.Driver, "to_party_menu", lost)
+    guy = tmp_path / "MATHEW.GUY"
+    guy.write_bytes(bytes(_curse()))
+    return slot, session, ["--guy", str(guy), "--out", str(tmp_path / "out")]
+
+
+def test_the_slot_is_released_when_the_summary_cannot_be_written(
+        tmp_path, monkeypatch):
+    """A `summary.json` that cannot be written must not strand the DOSBox
+    slot: the close and the release run whatever the write does."""
+    slot, session, argv = _lost_run(tmp_path, monkeypatch)
+    (tmp_path / "out" / "summary.json").mkdir(parents=True)
+    assert si.main(argv) == 1
+    assert session.closed and slot.released
+
+
+def test_an_earlier_runs_shots_do_not_survive_into_this_ones(
+        tmp_path, monkeypatch):
+    """Two runs into one `--out` must not interleave their screenshots:
+    `021-saved-E.png` from one run beside `022-saved-E.png` from the next
+    reads as one run that saved twice."""
+    _slot, _session, argv = _lost_run(tmp_path, monkeypatch)
+    shots = tmp_path / "out" / "shots"
+    shots.mkdir(parents=True)
+    (shots / "021-saved-E.png").write_bytes(b"old")
+    assert si.main(argv) == 1
+    assert sorted(p.name for p in shots.iterdir()) == ["001-party-menu.png"]
+    assert (tmp_path / "out" / "summary.json").is_file()

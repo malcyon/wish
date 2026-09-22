@@ -162,6 +162,9 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     ("dostrain.py", "shots / png.name"): "this run's own shots directory",
     ("dostrainprobe.py", "shots / png.name"): "this run's own shots directory",
     ("dualclassagain.py", "shots / png.name"): "this run's own shots directory",
+    ("ssbimport.py", "shots / png.name"):
+        "this run's own shots directory, emptied of *.png files once the slot "
+        "was claimed; the *.png files already in `out/shots` are removed first",
     ("portraitshot.py", 'out / "portrait.png"'): "the portrait this run shot",
     ("portraitshot.py", 'out / "sheet.png"'): "the character sheet this run shot",
     ("portraitshot.py", 'out / f"key{n}-{key}.png"'):
