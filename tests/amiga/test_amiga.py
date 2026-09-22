@@ -568,7 +568,8 @@ def test_hit_points_over_the_amiga_byte_are_clamped_and_reported():
 
 
 def test_the_lighter_coins_and_the_hit_point_clamp_are_on_losses_as_well():
-    _, rep = amiga_pod.to_pc(sample(gold=900, silver=10, copper=7, hp_max=300))
+    _, rep = amiga_pod.to_pc(sample(gold=900, silver=10, copper=7, hp_max=300,
+                                    portrait_head=0, portrait_body=0))
     coins = [w for w in rep.warnings if "917" in w]
     clamp = [w for w in rep.warnings if "300" in w]
     assert len(coins) == len(clamp) == 1, rep.warnings
@@ -576,7 +577,8 @@ def test_the_lighter_coins_and_the_hit_point_clamp_are_on_losses_as_well():
 
 
 def test_a_name_past_fifteen_is_cut_and_on_losses():
-    _, rep = amiga_pod.to_pc(sample(name="ABCDEFGHIJKLMNOP"))
+    _, rep = amiga_pod.to_pc(sample(name="ABCDEFGHIJKLMNOP",
+                                    portrait_head=0, portrait_body=0))
     line = ("Name 'ABCDEFGHIJKLMNOP' is 16 characters; PoD keeps 15, so it "
             "arrives as 'ABCDEFGHIJKLMNO'")
     assert rep.losses == [line]
@@ -584,7 +586,8 @@ def test_a_name_past_fifteen_is_cut_and_on_losses():
 
 
 def test_attack_forms_of_the_wrong_length_are_cut_and_on_losses():
-    _, rep = amiga_pod.to_pc(sample(attack_forms=bytes(10)))
+    _, rep = amiga_pod.to_pc(sample(attack_forms=bytes(10),
+                                    portrait_head=0, portrait_body=0))
     assert len(rep.losses) == 1 and "attack forms are 10 bytes" in rep.losses[0]
     assert rep.losses[0] in rep.warnings
 
@@ -599,7 +602,8 @@ def test_current_hit_points_cut_to_the_maximum_are_on_losses():
 
 
 def test_a_former_class_level_past_a_byte_is_clamped_and_on_losses():
-    _, rep = amiga_pod.to_pc(sample(former_levels={"fighter": 300}))
+    _, rep = amiga_pod.to_pc(sample(former_levels={"fighter": 300},
+                                    portrait_head=0, portrait_body=0))
     assert rep.losses == [
         "the former fighter level 300 does not fit the Amiga's one byte; "
         "clamped to 255"]
@@ -607,21 +611,23 @@ def test_a_former_class_level_past_a_byte_is_clamped_and_on_losses():
 
 @pytest.mark.parametrize("field, top", amiga_pod._POD_CLAMPED_SCALARS)
 def test_a_scalar_the_writer_clamps_without_a_word_is_on_losses(field, top):
-    _, rep = amiga_pod.to_pc(sample(**{field: top + 1}))
+    _, rep = amiga_pod.to_pc(sample(portrait_head=0, portrait_body=0,
+                                    **{field: top + 1}))
     assert rep.losses == [
         f"{field}: {top + 1} does not fit the Amiga's field, which holds up "
         f"to {top}; clamped"]
-    _, rep = amiga_pod.to_pc(sample(**{field: top}))
+    _, rep = amiga_pod.to_pc(sample(portrait_head=0, portrait_body=0,
+                                    **{field: top}))
     assert rep.losses == []
 
 
 def test_an_ordinary_character_writes_to_pod_with_nothing_on_losses():
-    _, rep = amiga_pod.to_pc(sample())
+    _, rep = amiga_pod.to_pc(sample(portrait_head=0, portrait_body=0))
     assert rep.losses == []
 
 
 def test_a_reader_warning_never_reaches_the_pod_losses():
-    char = sample()
+    char = sample(portrait_head=0, portrait_body=0)
     char.warnings.append("a note the reader made about its own source")
     _, rep = amiga_pod.to_pc(char)
     assert "a note the reader made about its own source" in rep.warnings
@@ -650,16 +656,27 @@ def test_a_field_graded_below_the_floor_is_refused_rather_than_guessed():
     assert any("age" in d and "UNKNOWN" in d for d in rep.dropped), rep.dropped
 
 
-def test_the_items_and_the_portraits_are_named_as_losses():
+def test_the_copper_is_dropped_and_a_nonzero_portrait_is_a_loss():
+    """`copper` has no home in the `.pc` and stays on `report.dropped`.
+
+    The portrait pair is different (#617): every measured record holds zero
+    there, so a source's zero is a constant of the format and reaches
+    neither list, but the specimen here (`portrait_head=3, portrait_body=4`)
+    carries something else, which the writer's guard reports as a loss
+    rather than silently replacing with the format's own zero.
+    """
     _, rep = amiga_pod.to_pc(sample())
-    named = " ".join(rep.dropped)
-    for what in ("portrait_head", "portrait_body", "copper"):
-        assert what in named, what
+    assert "copper" in " ".join(rep.dropped)
+    assert not any("portrait_head" in d or "portrait_body" in d
+                  for d in rep.dropped)
+    assert any("portrait_head" in loss for loss in rep.losses)
+    assert any("portrait_body" in loss for loss in rep.losses)
     # A memorised list is written, not dropped: the region fills from 0x0CC
     # forwards, which is what the engine's own MEMORIZE screen does. The
     # specimen above has an empty list, which would pass without the field
     # ever being written, so this one has ids and the bytes are checked.
-    record, rep = amiga_pod.to_pc(sample(spells_memorised=[34, 21, 3]))
+    record, rep = amiga_pod.to_pc(sample(spells_memorised=[34, 21, 3],
+                                         portrait_head=0, portrait_body=0))
     assert "spells_memorised" not in " ".join(rep.dropped)
     at = amiga_pod.SPELLS_MEMORISED
     assert record[at:at + 4] == bytes((3, 21, 34, 0))

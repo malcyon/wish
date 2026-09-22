@@ -1947,16 +1947,21 @@ POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     # The rows stay, because `pod_write_field_disposition` is the whole
     # contract and a neutral field this writer takes nothing from has to be
     # named whether or not a Pools of Darkness source could hold one.
-    ("portrait_head", "Pools of Darkness has no character-sheet portrait on "
-                      "either of its ports -- neither ships the art and its "
-                      "own DOS record has no such field -- so a source of "
-                      "this title never holds one"),
-    ("portrait_body", "see `portrait_head`: the title draws no sheet face"),
     ("turn_power", "a cleric's turning strength is worked out from the class "
                    "levels when TURN is pressed, on both ports; the record's "
                    "0x05A is DOS's `turn_class`, which is a property of what "
                    "is being turned, and DOS's own reader takes nothing from "
                    "it either (#297)"),
+    ("experience_per_hit_point", "Pools of Darkness' own engine keeps no "
+                                 "such byte in any of its records; the "
+                                 "later engine adds the base award alone"),
+)
+
+#: Neutral fields the game works out for itself on load, which is why writing
+#: them would be pointless rather than a loss.  Each row carries the run that
+#: demonstrated it in the running game, as
+#: `.claude/rules/conversions.md` requires of this category.
+POD_WRITE_DERIVED: tuple[tuple[str, str], ...] = (
     ("attack_level", "**this title keeps no such field, and that is read out "
                      "of its own engine** (#462): the two routines that "
                      "derive `thac0_base` -- the derived-fields rebuild at "
@@ -1968,16 +1973,6 @@ POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                      "`paladin_cures` here and 0x082 is `icon_dimension`. So "
                      "there is nothing to write rather than a byte nobody has "
                      "found"),
-    ("experience_per_hit_point", "Pools of Darkness' own engine keeps no "
-                                 "such byte in any of its records; the "
-                                 "later engine adds the base award alone"),
-)
-
-#: Neutral fields the game works out for itself on load, which is why writing
-#: them would be pointless rather than a loss.  Each row carries the run that
-#: demonstrated it in the running game, as
-#: `.claude/rules/conversions.md` requires of this category.
-POD_WRITE_DERIVED: tuple[tuple[str, str], ...] = (
     ("encumbrance", "the word at 0x056: a probe that set it to 1234 drew 233, "
                     "which is the character's own coins, gems and jewelry"),
     ("thac0_current", "the byte at 0x186: the game recomputes THAC0 from the "
@@ -2018,15 +2013,15 @@ POD_WRITE_DERIVED: tuple[tuple[str, str], ...] = (
 POD_WRITE_CONSTANTS: tuple[tuple[str, str], ...] = (
     ("armour_class_base", "the unarmoured 60 - 10 at 0x0B3, which is what "
                           "every record on either port holds"),
+    ("portrait_head", "Pools of Darkness draws no sheet face on either port "
+                      "(#194), but the byte itself is a constant of the "
+                      "format rather than a field it has none of: "
+                      "`pod_to_neutral` reads it at 0x0B9, the census across "
+                      "all nineteen `.pc` files on disk 3 is zero in 19 of "
+                      "19, and this writer emits the same zero"),
+    ("portrait_body", "see `portrait_head`: read at 0x0BA, zero in 19 of 19, "
+                      "and written zero here"),
 )
-
-#: The reasons `neutral.Writer` quotes for a field it was given and did not
-#: write: what is genuinely left behind, plus the two kinds that are not
-#: losses. A report line is `name: why` and does not say which of the three
-#: it is; `pod_write_field_disposition` does, with its `dropped:`, `derived:`
-#: and `constant:` prefixes.
-POD_WRITE_UNTAKEN = (POD_WRITE_DROPPED + POD_WRITE_DERIVED
-                     + POD_WRITE_CONSTANTS)
 
 
 def pod_write_field_disposition() -> dict[str, str]:
@@ -2631,7 +2626,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     from . import dos_codec as _dos
 
     rep = Report()
-    w = neutral.Writer(char, rep, into="Amiga", dropped=POD_WRITE_UNTAKEN,
+    w = neutral.Writer(char, rep, into="Amiga", dropped=POD_WRITE_DROPPED,
                        derived=POD_WRITE_DERIVED, constants=POD_WRITE_CONSTANTS)
 
     def num(name: str, default: int = 0) -> int:
@@ -2759,7 +2754,34 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
 
     # Armour class needs no line of its own here: `armour_class_base` is a
     # row of :data:`POD_WRITE_CONSTANTS` and `armour_class` one of
-    # :data:`POD_WRITE_DERIVED`, and `neutral.Writer.finish` quotes both.
+    # :data:`POD_WRITE_DERIVED`, and `neutral.Writer.finish` quotes both --
+    # both are now reported as derived rather than dropped.
+    #
+    # **The guard that keeps the constant honest.** Every source measured --
+    # an Amiga source and a DOS Pools of Darkness record alike -- holds
+    # `COMBAT_BIAS - UNARMOURED_AC` (50) here, which is what this writer
+    # emits regardless of the source. If a source ever holds something else,
+    # writing the constant would silently replace the player's own value, so
+    # that case is reported as a loss rather than folded into "derived".
+    base = w.get("armour_class_base")
+    if base is not None and int(base) != COMBAT_BIAS - UNARMOURED_AC:
+        rep.lost(
+            f"armour_class_base {int(base)} is not the "
+            f"{COMBAT_BIAS - UNARMOURED_AC} every record measured holds; "
+            f"the .pc's unarmoured base at {ARMOUR_CLASS:#05x} is written "
+            f"{COMBAT_BIAS - UNARMOURED_AC} regardless")
+
+    # **The same guard for the portrait pair.** Zero in 19 of 19 `.pc` files
+    # on disk 3, and this writer emits zero at both offsets; a source
+    # carrying anything else is reported rather than silently replaced.
+    for portrait_field, offset in (("portrait_head", PORTRAIT_HEAD),
+                                   ("portrait_body", PORTRAIT_BODY)):
+        value = w.get(portrait_field)
+        if value is not None and int(value) != 0:
+            rep.lost(
+                f"{portrait_field} {int(value)} is not the 0 every record "
+                f"measured holds; the .pc's byte at {offset:#05x} is "
+                f"written 0 regardless")
 
     current = w.use("hp_current")
     if current is None:
