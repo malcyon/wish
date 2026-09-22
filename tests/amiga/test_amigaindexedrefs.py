@@ -27,10 +27,7 @@ from tools.amiga import amiga68k, amigaindexedrefs  # noqa: E402
 RTS = b"\x4e\x75"
 
 #: `move.b $44(a3, d0.w), d1`: a brief extension word, D/A=0 (Dn), index
-#: register D0, size word, displacement byte 0x44.  Kept below 0x80 so the
-#: displacement decodes as a positive byte rather than a negative one -- a
-#: displacement of 0x84 disassembles as `-$7c(...)`, which the tool's own
-#: `INDEXED` pattern never matches, so no site above 0x7f can ever be found.
+#: register D0, size word, displacement byte 0x44.
 INDEXED_44 = bytes.fromhex("12330044")
 
 #: The same indexed form at a different displacement: a decoy that must be
@@ -44,11 +41,18 @@ LEA_8C = bytes.fromhex("49EB008C")
 #: search that reaches only as far as 0x8C.
 LEA_88 = bytes.fromhex("49EB0088")
 
+#: `move.b -$7c(a3, d0.w), d1`: displacement byte 0x84, which the 68000 reads
+#: as a signed -0x7C and capstone prints that way.  Every Amiga window byte
+#: but one sits at 0x80 or above, so this is the form those searches need.
+INDEXED_84 = bytes.fromhex("12330084")
+
 
 def code_hunk() -> bytes:
-    """One CODE hunk: an indexed read at 0x44, a decoy at 0x50, and two
-    `lea` bases below 0x90, one within a reach of 4 and one outside it."""
-    body = pad4(RTS + INDEXED_44 + INDEXED_50 + LEA_8C + LEA_88 + RTS)
+    """One CODE hunk: an indexed read at 0x44, a decoy at 0x50, two `lea`
+    bases below 0x90, one within a reach of 4 and one outside it, and an
+    indexed read whose displacement byte is 0x84."""
+    body = pad4(RTS + INDEXED_44 + INDEXED_50 + LEA_8C + LEA_88 + INDEXED_84
+                + RTS)
     return hunk_file([(amiga68k.HUNK_CODE, body, [])])
 
 
@@ -89,3 +93,12 @@ def test_widening_the_reach_picks_up_the_base_that_was_out_of_range():
     bases = amigaindexedrefs.lea_bases(data, 0x90, reach=8)
     assert bases == [(fo + 10, 0, 0x8C, "lea.l $8c(a3), a4"),
                       (fo + 14, 0, 0x88, "lea.l $88(a3), a4")]
+
+
+def test_a_displacement_byte_of_0x80_or_above_is_found_by_its_raw_byte():
+    data = code_hunk()
+    fo = _file_offset(data)
+    assert amigaindexedrefs.indexed_sites(data, 0x84) == \
+        [(fo + 18, 0, "move.b -$7c(a3, d0.w), d1")]
+    # The signed value is not the byte: a search for 0x7C finds nothing.
+    assert amigaindexedrefs.indexed_sites(data, 0x7C) == []

@@ -142,16 +142,35 @@ scans could not see.
 | DOS resident code | `tools/dos/unexepack.py` on each title's `START.EXE` and Pools of Darkness' three executables, then `dosfieldrefs.references` | zero `ES` sites for any window byte **and for the control byte** in all four: record access is entirely in the overlays |
 | DOS addressing without `ES` (`[bx+d16]`, `[si+d16]`, `[bp+si+d16]`) | `references(..., prefixes=())` | the extra hits are `[bp+si+0x86]`, `[bx+di+0x87]` and the like, forms Turbo Pascal never emits for a far record; the same scan adds six such hits to Pool of Radiance's control byte (43 against 37), so that is the noise level |
 | the ECL script VM reaching a field by address | COAB `ovr008.cs` `get_player_values` / `alter_character`: an explicit switch over C64 offsets (`0x15`, `0x18`, `0x72`, `0x73`, `0x9B`, `0xA0`, `0xA5`-`0xAC`, `0xB8`, `0xBB`-`0xC3`, `0xC9`, `0xD6`, `0xD8`, `0xE4`, `0xF7`, `0xF9`, `0x100`, `0x10C`, `0x10D`, `0x11B`, `0x2B1`, `0x2B4`, `0x2CF`, `0x312`, `0x33E`; on the set side also `0x322`-`0x326`) | an unmapped `$7Cxx` address falls back to a word array, never to the record; `0xF6`, `0xF9`, `0xFA` are not mapped. The other three titles' dispatchers are the `es:[di+off]` chains `docs/215` reads, so any arm on a window byte would be in the displacement count, which is zero |
-| Amiga `d8(An,Xn)`, the indexed form | `tools/amiga/amigaindexedrefs.py`, every CODE hunk, each candidate decoded from its own start | zero for every window byte on all four executables. The decoder was checked against a linear sweep of `/Secret`: it finds every non-zero indexed displacement the sweep finds (`$1e(a0, d0.w)`, the spell list, among them) |
+| Amiga `d8(An,Xn)`, the displacement byte | `tools/amiga/amigaindexedrefs.py`, every CODE hunk, each candidate decoded from its own start, the displacement compared as the raw byte | 17 candidates on the window bytes, control bytes and shares (Pool of Radiance 10, Curse 2, Silver Blades 4, Pools of Darkness 1), every one a byte pair inside another instruction or in data -- `ori #imm, d8(An,Xn)` read out of a branch displacement, `move.b -$7a(a0, d4.l)` out of `move.b $1770.l` -- each checked against the listing around it. CONFIRMED zero. An earlier pass reported zero here from a search that could not match: it compared capstone's signed rendering, `-$7c(a3, d0.w)` for byte `0x84`, against a positive pattern, so for every window byte but Pools of Darkness `0x5B` this route had not been searched |
+| Amiga base register past the record start: `lea d16(An), Am` or `adda #imm, Am`, then `(Am)`, `(Am)+`, `-(Am)`, `d16(Am)` or `d8(Am,Xn)` in the same straight-line run -- the only way a signed `d8` reaches a byte at `0x80` or above | the same tool; 638, 3,216, 3,188 and 2,930 uses followed in `/program`, `/Curse`, `/Secret` and `Pools of Darkness` | no use lands on a first, fourth or fifth byte or on a share. The one exact hit anywhere in the window is Pools of Darkness `adda.l #$93, a0` / `ori.b #$80, (a0)` at `0x0268CC`, setting the control byte's NPC bit where the `d16` search cannot see it, so the search does find real accesses. Indexed uses from an array up to `0x40` below a window byte, each bounded from its own code: the thief skills at Curse `0xE9` and Silver Blades `0x8C` (13 each; index `case - 0xA4` over switch cases `0xA5`-`0xAC`, or a loop from `moveq #$1` to `cmpi.b #$8`, so 1-8, ending at `0xF1` and `0x94`); Pools of Darkness `0x8A`/`0x8B` (5; loop 1-8, cases `0x13B`-`0x142` for 0-7, ending at `0x92`); the saving throws at Curse `0xDF`, Silver Blades `0x82`, Pools of Darkness `0x83` (6, 6, 4; loops 0-4 and the save roll, below); Curse `0xB7` (1; a four-byte importer copy, 0-3) |
+| an index register carrying the offset: `moveq`, `move #imm`, `movea #imm` or `addi #imm`, then `d8(Ax,Rn)` indexed by it | the same tool; 113, 15, 33 and 18 such uses | zero on every window byte, control byte and share |
+| a `.w`, `.l` or `movem` access one to three bytes below, covering the byte without its own displacement | the same tool | none on a record: `movep` and `or.l` decodes in `/program` hunk 27's data and inside a `movem` mask, `$98(a6)` on the `Process` structure and a `BPTR` store at `/Secret` `0x049928` in the startup code, a stack read in Pools of Darkness |
 | Amiga `lea d16(An), Am` then `(Am)` | the same tool, bases up to 16 below each byte, each site read | Curse `lea $f6(a2/a3), a0` at `0x00B356`, `0x00B35C`, `0x0271EA` and Secret `lea $9a(a2), a0` at `0x028374` are 3- and 2-byte `memcpy` calls in the packer and unpacker; Pools of Darkness `lea $52`/`$56(a2)` are `addq.w`/`add.w` on word fields, `lea $4c`/`$8b(a2)` are copies ending at `0x51` and `0x92`, `lea $87(a2)` a byte counter. Nothing spans `0x95` or `0x5B` |
 | C64 absolute operands on the equivalent bytes | `tools/c64/c64recordoperandsweep.py 0xB7 0xBA` | `0xB7` none in code on any title; `0xB9`/`0xBA` none in Pool of Radiance, 59/77 in Curse and 47/49 in Silver Blades, all in `GEN`, `POST.COM`, `COMBAT2` and the `ECL65`/`SPELLE65` overlay |
 | whole-record copies | save and load (`pea $120` around the Amiga `.sav`/`.cha` I/O at `/program` `0x026668`; the DOS `.sav`/`.cha` files are whole records), the join copy, the importers | copies, which is why the bytes survive from title to title without a reader |
 
+**The save roll.** Each later title's saving-throw routine reads
+`saves[type]` with a caller's byte as the index; reaching the window would
+take type 18 or -40 in Pools of Darkness, 23-27 in Curse, 26-27 in Silver
+Blades. Pools of Darkness: 32 of 37 call sites pass a constant 0, 1, 3 or 4,
+three pass a script operand masked `andi.b #$7`, two pass column 9 of the spell
+table, which holds 0-4 in entries 0-138 and none of the needed values in any
+of 256 -- CONFIRMED that it cannot land on `0x95` or `0x5B`. Curse (27 of 34
+constant) and Silver Blades (23 of 29) are the same, with one pass-through
+each not traced (`/Curse` `0x03249A`, `/Secret` `0x035936`, the caller's own
+argument), and in Curse four spell-table entries past the table's end (190,
+195, 205, 218) that do hold 23-27 -- PROBABLE that it cannot. Settled by
+reading the callers of `/Curse` `0x032406` and `/Secret` `0x0358A8` for the
+word they push at `$e`: any value outside 0-7 would refute it.
+
 Not excluded by any of this: an indexed overrun from the C64 trait array
-(`$6BAD,X` with X past 9 would land on `0xB7`), and a computed store on DOS
-(`rep movsb` into the window) that no displacement carries. Neither has a
-positive sign anywhere; both are named so the next reader knows the edge of
-the search.
+(`$6BAD,X` with X past 9 would land on `0xB7`), a computed store on DOS
+(`rep movsb` into the window) that no displacement carries, and on the Amiga
+an address built in a data register and moved into an address register
+(`movea.l d0, a0` after arithmetic other than `adda`), which none of the
+searches above follows. None has a positive sign anywhere; they are named so
+the next reader knows the edge of the search.
 
 ## The one consequence a player could meet
 
