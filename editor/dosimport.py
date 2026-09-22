@@ -13,7 +13,7 @@ supports)`): `editor/convert.py`'s `ConvertDialog` was the only route once
 the flag came off, and two menu items reaching the same conversion was
 always the state the flag's own removal was meant to end, condition 7. The
 module **keeps its name**: `editor/convert.py` imports `GameFiles`,
-`rehearse`, `pane_text`, `name_warnings`, `log_unshown_losses`, `NO_DISKS`,
+`rehearse`, `pane_text`, `log_unshown_losses`, `NO_DISKS`,
 `NO_DISKS_TITLE` and `DROPPED_HEADING` from it at module load, and so do
 several tools and test files, so renaming the file to match what it now is
 would touch every one of them for no behaviour change. What is gone is only
@@ -23,20 +23,22 @@ would touch every one of them for no behaviour change. What is gone is only
 removing it directly, on 2026-09-14, the way `editor/convert.py`'s dialog
 lost its own on 2026-09-10. It drew `pane_text` -- `C64SaveReport.messages`,
 then every `C64SaveReport.losses` line, unfiltered -- from 2026-09-06 until
-then. What it showed instead, in its last form, was two modals and nothing
+then. What it showed instead, in its last form, was one modal and nothing
 else, ported from `editor/convert.py`'s own `_maybe_warn`: one of the
-refusals below, or a name DOS's own fifteen-character field could not hold
-whole (`name_warnings`). Everything else that used to reach the pane --
-`C64SaveReport.messages` entirely, and `C64SaveReport.losses` beyond the one
-name-length kind -- went to the debug log instead (`log_unshown_losses`).
-Two of those losses are Donald's own examples of why: a magic-user
-memorising more spells than the destination title's own slots and a spell id
-outside the destination's own book are both **bugs** (#508, #509), not
-platform limits, and a modal reporting a bug instead of it getting fixed is
-the pattern that dialog was kept narrow to stop, the same ruling
-`editor/convert.py`'s own docstring quotes -- *"the agents find a bug, and
-instead of fixing it, they want to write an excuse to the player and then
-they never fix it... We need it to be correct."*
+refusals below. `C64SaveReport.messages` and every `C64SaveReport.losses`
+line, name truncation included, went to the debug log instead
+(`log_unshown_losses`) -- a loss does not become acceptable by being shown
+to a player rather than fixed, and the name-truncation consent modal this
+paragraph once described (`name_warnings`) is retired for the same reason
+(#619, `docs/227-editor-open-save-as.md`). Two of those losses are Donald's
+own examples of why: a magic-user memorising more spells than the
+destination title's own slots and a spell id outside the destination's own
+book are both **bugs** (#508, #509), not platform limits, and a modal
+reporting a bug instead of it getting fixed is the pattern that dialog was
+kept narrow to stop, the same ruling `editor/convert.py`'s own docstring
+quotes -- *"the agents find a bug, and instead of fixing it, they want to
+write an excuse to the player and then they never fix it... We need it to
+be correct."*
 
 **`goldbox.dos_codec.NOT_SET_OUT` and `C64SaveReport.messages` stay,
 unshortened, in `goldbox/dos_codec.py`.** Removing this dialog does not make
@@ -54,8 +56,9 @@ it is this project's own bookkeeping (a quest-flag byte count, a party's
 roster slots left empty), which fires on every conversion and is not a fact
 about anything the player owns.  `losses` is the hand-picked subset
 `write_c64_save` already knows is the player's own loss; see its docstring
-in `goldbox/dos_codec.py` for which lines those are -- and `name_warnings` below
-for the one kind of those Donald ruled real.
+in `goldbox/dos_codec.py` for which lines those are. Every one of them goes
+to the debug log (`log_unshown_losses` below) and none is shown to a player
+(#619).
 
 **There is no template any more** (#118). The dialog used to make the user
 pick an existing `.d64` to convert *onto*, and every byte the conversion did
@@ -247,42 +250,19 @@ def pane_text(report: dos_codec.Report) -> str:
     return "\n\n".join("\n".join(half) for half in halves if half)
 
 
-#: The one substring of a `C64SaveReport.losses` line Donald ruled real,
-#: 2026-09-10: a name DOS's own fifteen-character field could not hold in
-#: full. `goldbox.dos_codec.write`'s own words, kept verbatim rather than
-#: reworded here -- *"do not 'improve' either of the two warning
-#: strings"* governs this one too, even though it is the one that is shown.
-NAME_TRUNCATED_MARKER = "is longer than the DOS "
-
-
-def name_warnings(report: dos_codec.Report) -> list[str]:
-    """`report.losses` filtered to the one kind of loss Donald ruled a
-    player is entitled to see: a name too long for DOS's own field.
-
-    Everything else on that list -- a magic-user memorising more spells
-    than the destination title's own slots, a spell id outside the
-    destination's own book -- is a bug (#508, #509) rather than a platform
-    limit, so it is not returned here; `log_unshown_losses` below is where
-    it goes instead. Matched by substring because `goldbox.dos_codec.write`
-    appends all three kinds to the one list, `rep.warnings`, with no marker
-    of which is which beyond the sentence itself, and that sentence is not
-    this function's to reword (`.claude/rules/conversions.md`, 2026-09-10:
-    "do not... delete the code that raises them... only their destination
-    changes").
-    """
-    return [line for line in getattr(report, "losses", ())
-           if NAME_TRUNCATED_MARKER in line]
-
-
 def log_unshown_losses(report: dos_codec.Report) -> None:
-    """Every `report.losses` line `name_warnings` does not return, to the
-    debug log instead of a player -- evidence for #508 and #509 without
-    putting an excuse in front of somebody. Donald, 2026-09-10, on being
-    shown two such lines: *"Things like this are WHY we have to remove the
-    Convert dialog... It's not okay. We need it to be correct."*
+    """Every `report.losses` line, to the debug log and nowhere a player
+    reads.
+
+    Until 2026-09-22 (#619) one kind of loss -- a name too long for DOS's
+    own field -- was filtered out of here and shown in a modal instead,
+    matched by the substring `"is longer than the DOS "`
+    (`NAME_TRUNCATED_MARKER`). That consent path is retired
+    (`docs/227-editor-open-save-as.md`: "a loss does not become acceptable
+    by being classified outside the drop list"), so every loss line, name
+    truncation included, is evidence for the bug that produced it rather
+    than a fact a player is asked to accept.
     """
-    unshown = [line for line in getattr(report, "losses", ())
-              if NAME_TRUNCATED_MARKER not in line]
-    if unshown:
-        _log.info("Not shown to the player (#508, #509): %s",
-                  "; ".join(unshown))
+    losses = list(report.losses)
+    if losses:
+        _log.info("Not shown to the player: %s", "; ".join(losses))

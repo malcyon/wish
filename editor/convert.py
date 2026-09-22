@@ -916,6 +916,8 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
     `report.warnings` gets the same, plus `PorSaveReport.converted` -- the
     place, the clock and the quest-flag count `tools/amiga/toamigapor.py` already
     prints -- so a player reading the pane sees where the party has arrived.
+    `report.losses` is each character's own `write_por` losses, the same way
+    (#619).
 
     `icons` is each character's own `goldbox.iconparts.DosIcon`, `None`
     where there is none, in the same order as `party` -- `write_por`'s own
@@ -947,6 +949,7 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
         _, _, _, char_report = amiga_por.write_por(char, icon=icon)
         report.dropped.extend(char_report.dropped)
         report.warnings.extend(char_report.warnings)
+        report.losses.extend(char_report.losses)
     report.warnings.extend(save_report.converted)
 
     return AmigaWriteRehearsal(
@@ -1644,19 +1647,10 @@ class ConvertDialog(QDialog):
         #: shown verbatim as `QMessageBox.critical`, in place of a line in a
         #: pane that no longer exists (2026-09-10).
         self._blocked: tuple[str, str] | None = None
-        #: A name DOS's own fifteen-character field could not hold whole
-        #: (`dosimport.name_warnings`), or `None` -- the one thing left in
-        #: `report.losses` a player is shown; everything else there is
-        #: evidence for a bug (#508, #509) and goes to the debug log
-        #: instead (`dosimport.log_unshown_losses`, Donald's ruling of
-        #: 2026-09-10: *"Things like this are WHY we have to remove the
-        #: Convert dialog... We need it to be correct."*).
-        self._name_warning: str | None = None
         #: What `_maybe_warn` last actually showed, so replanning after an
         #: unrelated change -- cancelling a picker, say -- does not repeat
         #: an identical modal the player has already read.
         self._last_blocked_shown: tuple[str, str] | None = None
-        self._last_name_warning_shown: str | None = None
         #: `False` through the constructor's own first `replan()` below, so
         #: building a `ConvertDialog` with a state already prefilled --
         #: every test in `tests/convert/test_convert.py` that does that -- never
@@ -1803,7 +1797,6 @@ class ConvertDialog(QDialog):
         #: blank rather than naming a file Convert will not write.
         self.ui.convert_destination_line.setText("")
         self._blocked = None
-        self._name_warning = None
 
         if not self._source_path:
             self._populate_destinations([])
@@ -1857,10 +1850,15 @@ class ConvertDialog(QDialog):
     _SILENT_BLOCKS = frozenset((NO_FOLDER, NO_GAME_FOLDER, NO_DISK, NO_DISKS))
 
     def _maybe_warn(self) -> None:
-        """Tell the player the one or two things left to tell them, now
-        that `replan()` has nowhere to draw a running status: why Convert
-        will not go (`self._blocked`), or a name DOS's own field could not
-        hold whole (`self._name_warning`).
+        """Tell the player the one thing left to tell them, now that
+        `replan()` has nowhere to draw a running status: why Convert will
+        not go (`self._blocked`).
+
+        A loss `report.losses` names -- a name cut to fit, a value clamped
+        to a narrower field -- is never shown here. That consent path
+        (`dosimport.name_warnings`) is retired (#619,
+        `docs/227-editor-open-save-as.md`); every loss goes to the debug
+        log only (`dosimport.log_unshown_losses`).
 
         **Only a real refusal pops a modal.** `self._blocked` also carries
         the four `_SILENT_BLOCKS` reasons -- a row the player has simply not
@@ -1889,10 +1887,6 @@ class ConvertDialog(QDialog):
             if self._blocked is not None and self._blocked[1] not in self._SILENT_BLOCKS:
                 title, text = self._blocked
                 QMessageBox.critical(self, title, text)
-        if self._name_warning != self._last_name_warning_shown:
-            self._last_name_warning_shown = self._name_warning
-            if self._name_warning:
-                QMessageBox.warning(self, DIALOG_TITLE, self._name_warning)
 
     def _chosen_direction(self, options: list["Direction"]) -> "Direction":
         for d in options:
@@ -1962,20 +1956,13 @@ class ConvertDialog(QDialog):
         #: library supports)`.
         dosimport.pane_text(self.rehearsal.report)
 
-        #: `report.losses` split in two, Donald's ruling of 2026-09-10 on
-        #: being shown two of the three lines this could produce: a name
-        #: DOS's own field could not hold whole is real and goes to the
-        #: player; a magic-user memorising more spells than the destination
-        #: title's own slots (#508) and a spell id outside the destination's
-        #: own book (#509) are bugs, not platform limits, and a modal
-        #: reporting a bug instead of it getting fixed is the pattern this
-        #: dialog is being rebuilt to stop -- *"the agents find a bug, and
-        #: instead of fixing it, they want to write an excuse to the player
-        #: and then they never fix it... We need it to be correct."* Those
-        #: two still go to the debug log, so the evidence for both issues
-        #: is not lost along with the pane.
-        names = dosimport.name_warnings(self.rehearsal.report)
-        self._name_warning = "\n".join(names) if names else None
+        #: Every `report.losses` line goes to the debug log and nowhere a
+        #: player reads (#619): the name-truncation consent modal this
+        #: comment once described is retired
+        #: (`docs/227-editor-open-save-as.md` -- "a loss does not become
+        #: acceptable by being classified outside the drop list"), so a
+        #: loss is evidence for a bug (#508, #509 among them) rather than a
+        #: sentence a player is asked to accept.
         dosimport.log_unshown_losses(self.rehearsal.report)
 
     # -- what is shown, and when Convert is pressable -----------------

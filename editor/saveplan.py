@@ -590,12 +590,17 @@ def losses(report: Any) -> list[str]:
     `report.dropped` is the fields with no home in the destination and
     `report.losses` is the fields a value was cut or clamped to fit --
     every direction's report carries both, from the shared `neutral.Report`
-    base. `compare` below still reads the output back instead of trusting
-    either, because a name a destination could not hold whole can still
-    reach neither list on its own if a writer forgets to copy it
-    (`docs/227-editor-open-save-as.md`).
+    base. `report` itself is `None` for a native, same-platform copy --
+    `prepare_save_as` runs no conversion and builds no report for one --
+    which is the one case `getattr` was ever guarding here, not a report
+    missing either attribute. `compare` below still reads the output back
+    instead of trusting either list, because a name a destination could not
+    hold whole can still reach neither list on its own if a writer forgets
+    to copy it (`docs/227-editor-open-save-as.md`).
     """
-    return [*getattr(report, "dropped", ()), *getattr(report, "losses", ())]
+    if report is None:
+        return []
+    return [*report.dropped, *report.losses]
 
 
 #: What the player's own character is, in the C64 record every port's sheet
@@ -1144,8 +1149,10 @@ def validate(destination: Destination, files: dict[str, bytes],
     destination. Then `expected` -- the party as the sheet holds it -- is
     compared with what the written save actually came back with, and **any
     difference is refused**: a name cut to the destination's own width and a
-    value clamped to a narrower field are losses that reach no list on the
-    conversion's report at all (`losses` says which lists there are).
+    value clamped to a narrower field are losses `losses()` also names off
+    the conversion's own report (#619), and this comparison is the second
+    guard rather than a redundant one -- it catches a loss no writer admitted
+    to, including one whose report was thrown away before it reached here.
 
     `accounted` is what that report did name, and it is raised together with
     the comparison's own findings rather than ahead of them, so one refusal

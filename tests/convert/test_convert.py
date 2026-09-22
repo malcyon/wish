@@ -1602,8 +1602,7 @@ def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detai
                                        game=str(_game_dir()),
                                        folder=str(destination))
         try:
-            text = (dialog.ui.convert_destination_line.text()
-                    + (dialog._name_warning or ""))
+            text = dialog.ui.convert_destination_line.text()
             dropped = dialog.rehearsal.report.dropped
         finally:
             dialog.close()
@@ -2096,25 +2095,24 @@ def test_a_successful_rehearsal_still_calls_pane_text_for_its_own_logging(
         dialog.close()
 
 
-def test_a_name_too_long_for_dos_pops_a_warning_and_nothing_else_does(
+def test_a_name_too_long_for_dos_pops_no_modal_at_all(
         tmp_path, monkeypatch):
-    """The one `C64SaveReport.losses` line Donald ruled a player is
-    entitled to see -- a name DOS's own fifteen-character field could not
-    hold whole -- reaches a modal; the other two kinds his ruling named as
-    bugs rather than platform limits (#508, #509) reach the debug log
-    instead, and `report.messages` and `report.dropped` reach neither.
+    """The name-truncation consent modal Donald ruled real on 2026-09-10 is
+    retired (#619, `docs/227-editor-open-save-as.md`): a loss does not
+    become acceptable by being classified outside the drop list, so a name
+    DOS's own fifteen-character field could not hold whole pops nothing any
+    more, exactly like the other two kinds his ruling named as bugs (#508,
+    #509) and like `report.messages` and `report.dropped`.
 
     The dialog's own first `replan()`, inside `__init__`, is not
     `_interactive` (`ConvertDialog.__init__`'s own docstring note), so a
     second `replan()` is what a real player's next action would trigger --
     changing the destination combo, say -- and is what is called here to
-    reach the point `_maybe_warn` actually pops anything.
+    reach the point `_maybe_warn` would have popped anything.
 
-    Fails before the fix: with `name_warnings` returning the whole
-    `losses` list instead of the filtered one, `warned` below gains the
-    spell-count line as a second entry -- seen red by reverting
-    `editor.dosimport.name_warnings` to `return list(report.losses)`, then
-    the fix put back.
+    Fails before the fix: with the retired `name_warnings` filter still
+    wired into `_maybe_warn`, `warned` below gains the name-truncation line
+    -- seen red by restoring that wiring, then the fix put back.
     """
     folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
     destination = tmp_path / "out"
@@ -2154,7 +2152,7 @@ def test_a_name_too_long_for_dos_pops_a_warning_and_nothing_else_does(
     finally:
         dialog.close()
 
-    assert warned == [(convert.DIALOG_TITLE, report.losses[0])], warned
+    assert warned == [], warned
     assert critical == [], critical
 
 
@@ -2500,11 +2498,10 @@ def test_a_refusal_on_construction_is_shown_not_swallowed(tmp_path,
 def test_a_conversion_with_messages_a_drop_and_a_platform_loss_shows_nothing(
         tmp_path, monkeypatch):
     """`DosImportDialog` carried a pane from 2026-09-06 until it lost it on
-    2026-09-10, and `ConvertDialog` never carried one at all. Neither
-    `_blocked` nor `_name_warning` is set by a message, a drop, or a
-    `report.losses` line that is not a name truncation -- `_maybe_warn`
-    only ever shows a real refusal or a truncated name -- and Convert stays
-    pressable throughout.
+    2026-09-10, and `ConvertDialog` never carried one at all. `_blocked` is
+    not set by a message, a drop, or any `report.losses` line, including a
+    name truncation -- `_maybe_warn` only ever shows a real refusal (#619) --
+    and Convert stays pressable throughout.
 
     Ported from `tests/convert/test_dosimport.py` (`#52 (File ▸ Import and File ▸
     Export for every direction the library supports)`, 2026-09-14), where
@@ -2512,8 +2509,8 @@ def test_a_conversion_with_messages_a_drop_and_a_platform_loss_shows_nothing(
     plan as one of the four to port because it sat in the "rehearsal"
     section the plan otherwise kept whole.
     `ConvertDialog._rehearse_and_report` calls the same `pane_text`/
-    `name_warnings`/`log_unshown_losses` trio `DosImportDialog._attempt`
-    did, so the guarantee carries over unchanged.
+    `log_unshown_losses` pair `DosImportDialog._attempt` did, so the
+    guarantee carries over unchanged.
     """
     from types import SimpleNamespace
 
@@ -2537,7 +2534,6 @@ def test_a_conversion_with_messages_a_drop_and_a_platform_loss_shows_nothing(
                                    folder=str(tmp_path / "out"))
     try:
         assert dialog._blocked is None
-        assert dialog._name_warning is None
         assert dialog.buttons.button(
             QDialogButtonBox.StandardButton.Ok).isEnabled()
     finally:
@@ -3489,3 +3485,56 @@ def test_window_convert_hands_the_dialog_its_own_preferences_folder():
     assert "game_folder=self._own_disk_folder" in source, (
         "EditorBinding.convert must pass game_folder= or the C64 row is "
         "blank however the player has set Preferences")
+
+
+def test_rehearse_por_savegame_copies_each_characters_own_losses():
+    """`_rehearse_por_savegame` (#619) copies `dropped` and `warnings` off
+    each character's own `write_por` report onto the rehearsal's report,
+    and now does the same for `losses` -- a name cut to the Amiga's own
+    field width, or a value clamped into a narrower one, has to reach the
+    same report `saveplan.losses` and `File > Convert...` read, not stop at
+    each character's own.
+
+    Fails before the fix: `report.losses` is empty even though
+    `char_report.losses` names something -- seen red by removing the
+    `report.losses.extend(char_report.losses)` line and putting it back.
+    """
+    from types import SimpleNamespace
+
+    from goldbox import neutral
+
+    party = [{"name": "ONE"}, {"name": "TWO"}]
+
+    def fake_write_por(char, icon=None):
+        report = neutral.Report()
+        report.lost(f"{char['name']}: Name is longer than the Amiga field; "
+                   f"truncated")
+        return b"", b"", b"", report
+
+    fake_savegame = SimpleNamespace(converted=[])
+
+    def fake_new_por_savegame(state, slot, count, ecl_dax, portraits=False):
+        return b"", fake_savegame
+
+    fake_disk = SimpleNamespace(verify=lambda: [], to_bytes=lambda: b"")
+
+    import editor.convert as convert_mod
+
+    orig_write_por = convert_mod.amiga_por.write_por
+    orig_new_por_savegame = convert_mod.amiga_savegame.new_por_savegame
+    orig_make_por_save_disk = convert_mod.amiga_savegame.make_por_save_disk
+    convert_mod.amiga_por.write_por = fake_write_por
+    convert_mod.amiga_savegame.new_por_savegame = fake_new_por_savegame
+    convert_mod.amiga_savegame.make_por_save_disk = \
+        lambda slot, party, savegame, icons: fake_disk
+    try:
+        rehearsal = convert_mod._rehearse_por_savegame(
+            state=None, slot="A", party=party, ecl_dax=b"")
+    finally:
+        convert_mod.amiga_por.write_por = orig_write_por
+        convert_mod.amiga_savegame.new_por_savegame = orig_new_por_savegame
+        convert_mod.amiga_savegame.make_por_save_disk = orig_make_por_save_disk
+
+    assert rehearsal.report.losses == [
+        "ONE: Name is longer than the Amiga field; truncated",
+        "TWO: Name is longer than the Amiga field; truncated"]

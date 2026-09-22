@@ -13,7 +13,7 @@ def make_root():
 """`editor/dosimport.py`: `editor/convert.py`'s own DOS-to-C64 helper.
 
 The conversion itself is `tests/convert/test_dosconvert.py`'s. What is tested here is
-`rehearse`, `pane_text`, `name_warnings` and `log_unshown_losses` -- the
+`rehearse`, `pane_text` and `log_unshown_losses` -- the
 functions `editor/convert.py`'s `ConvertDialog` calls in for -- plus the two
 `#176 (A player importing a Curse of the Azure Bonds save is shown an issue
 number)` refusal tests that build no dialog at all. This module carried a
@@ -249,47 +249,34 @@ def test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_pane():
     assert "Not converted:" in log_text
 
 
-def test_name_warnings_keeps_only_the_truncated_name():
-    """Donald's ruling of 2026-09-10, on being shown three lines
-    `write_c64_save` puts on `C64SaveReport.losses` alike: a name DOS's own
-    fifteen-character field could not hold whole is real and a player is
-    entitled to see it; a magic-user memorising more spells than the
-    destination title's own slots (#508) and a spell id outside the
-    destination's own book (#509) are bugs, not platform limits, and
-    `name_warnings` is the filter that keeps the second two off whatever
-    reads its return.
-
-    Fails before the fix: with no filter, `name_warnings` returning the
-    whole list makes the second assert below fail on the spell-count line
-    -- seen red by reverting the body to `return list(report.losses)`,
-    then the fix put back.
+def test_name_warnings_is_retired_as_a_consent_path():
+    """`name_warnings` no longer exists (#619): Donald's ruling of
+    2026-09-10 that a name too long for DOS's own field was a loss a player
+    is "entitled to see" was superseded by the later, project-wide ruling
+    that no conversion loss becomes acceptable by being shown in a modal
+    (`docs/227-editor-open-save-as.md`, "Retire `dosimport.name_warnings`
+    as a player-consent path; a loss does not become acceptable by being
+    classified outside the drop list"). Every loss line, name truncation
+    included, now reaches only `log_unshown_losses` below.
     """
-    from editor.dosimport import name_warnings
-    from goldbox.dos_codec import C64SaveReport
+    import editor.dosimport as dosimport
 
-    report = C64SaveReport(save0_size=0x1C00)
-    report.losses.extend([
-        "SOVELISS: Name 'Soveliss the Magnificent' is longer than the DOS "
-        "15 characters; truncated",
-        "MIALEE: 8 spells memorised and Curse of the Azure Bonds has 6 "
-        "slots; the rest dropped",
-        "MIALEE: Spell id 71 is outside the Pool of Radiance book's ids "
-        "1-64"])
-
-    assert name_warnings(report) == [
-        "SOVELISS: Name 'Soveliss the Magnificent' is longer than the DOS "
-        "15 characters; truncated"]
+    assert not hasattr(dosimport, "name_warnings")
+    assert not hasattr(dosimport, "NAME_TRUNCATED_MARKER")
 
 
-def test_log_unshown_losses_keeps_the_evidence_out_of_the_players_way():
-    """The other half of the same split: everything `name_warnings` leaves
-    out goes to the debug log, not nowhere -- the evidence #508 and #509
-    need, without putting an excuse in front of a player. Donald,
-    2026-09-10: *"Things like this are WHY we have to remove the Convert
-    dialog... We need it to be correct."* Proven by turning the log on for
-    real and reading the file it wrote, the same recipe
-    `test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_pane`
+def test_log_unshown_losses_sends_every_loss_to_the_debug_log():
+    """`log_unshown_losses` is the whole of what happens to a `losses` line
+    now that nothing shows any of them to a player (#619) -- a name too
+    long for DOS's own field goes to the log exactly like the two bugs
+    (#508, #509) that used to be the only kind logged here. Proven by
+    turning the log on for real and reading the file it wrote, the same
+    recipe `test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_pane`
     above uses.
+
+    Fails before the fix: with the old filter still in place, `"Soveliss"`
+    is absent from the log text below -- seen red by restoring the
+    substring filter, then the fix put back.
     """
     from editor.dosimport import log_unshown_losses
     from goldbox.dos_codec import C64SaveReport
@@ -309,7 +296,7 @@ def test_log_unshown_losses_keeps_the_evidence_out_of_the_players_way():
     finally:
         debuglog.stop()
 
-    assert "Soveliss" not in log_text
+    assert "Soveliss" in log_text
     assert "MIALEE" in log_text and "8 spells memorised" in log_text
 
 

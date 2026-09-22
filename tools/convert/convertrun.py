@@ -149,7 +149,8 @@ def write_via_dialog(source: pathlib.Path, to: str, folder: pathlib.Path,
         # see can still reach, now that it is gone.
         report["destination_line"] = preview.ui.convert_destination_line.text()
         report["blocked"] = preview._blocked
-        report["name_warning"] = preview._name_warning
+        report["losses"] = list(preview.rehearsal.report.losses) \
+            if preview.rehearsal is not None else []
         report["destinations"] = [
             preview.ui.convert_destination.itemText(i)
             for i in range(preview.ui.convert_destination.count())]
