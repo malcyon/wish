@@ -545,6 +545,7 @@ def new_savegame(state: world_state.WorldState,
         char_reports.append(char_report)
         report.dropped.extend(char_report.dropped)
         report.warnings.extend(char_report.warnings)
+        report.losses.extend(char_report.losses)
 
     script = None
     if container.ecl_bytes:
@@ -810,9 +811,19 @@ def _remove_file(disk: AmigaDisk, path: str) -> None:
     disk.remove_file(path)
 
 
+class WrittenFiles(list):
+    """The paths `write_por_slot` wrote, carrying each character's own report.
+
+    Behaves as the plain `list[str]` this returned before, so every existing
+    caller that only iterates or indexes it is unaffected; `.reports` is the
+    new part, one `amiga_por.write_por` report per character, in party order.
+    """
+    reports: list[neutral.Report]
+
+
 def write_por_slot(disk: AmigaDisk, slot: str, characters: Sequence[neutral.NeutralCharacter],
                    savegame: bytes | None = None, drawer: str = POR_SAVE_DRAWER,
-                   icons: Sequence[object | None] | None = None) -> list[str]:
+                   icons: Sequence[object | None] | None = None) -> WrittenFiles:
     from . import amiga_por
     letter = _por_slot(slot)
     if not 1 <= len(characters) <= PARTY_MAX:
@@ -822,8 +833,10 @@ def write_por_slot(disk: AmigaDisk, slot: str, characters: Sequence[neutral.Neut
         raise AmigaSaveError("the icon count does not match the party count")
     with _atomic_slot(disk):
         written = []
+        reports = []
         for index, (character, icon) in enumerate(zip(characters, icons), 1):
             record, items, effects, report = amiga_por.write_por(character, icon=icon)
+            reports.append(report)
             if report.unaccounted:
                 raise AmigaSaveError(f"character {index} has unaccounted bytes")
             stem = por_save_path(amiga_por.por_filename(letter, index, ""), drawer)
@@ -853,7 +866,9 @@ def write_por_slot(disk: AmigaDisk, slot: str, characters: Sequence[neutral.Neut
         written.append(listing)
         if letter not in read_slot_list(disk, drawer):
             raise AmigaSaveError(f"slot {letter} is not listed after writing")
-    return written
+    result = WrittenFiles(written)
+    result.reports = reports
+    return result
 
 
 def make_por_save_disk(slot: str, characters: Sequence[neutral.NeutralCharacter],
