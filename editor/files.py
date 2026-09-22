@@ -25,6 +25,7 @@ import logging
 import os
 import pathlib
 import shutil
+import stat
 import tempfile
 
 _log = logging.getLogger("wish.editor.files")
@@ -257,14 +258,21 @@ def replace_file(target: str | pathlib.Path, data: bytes,
     output has nothing to lose, so it needs no backup and an unset `into` is
     not an error for it. Overwriting with nowhere to put the copy raises
     `NoBackupFolder`, exactly as `save_disk` does.
+
+    **A replaced file keeps the permissions it had.** `tempfile.mkstemp`
+    makes its file 0600 and the rename carries that over, so replacing a
+    save disk the player shares with a group would quietly make it theirs
+    alone.
     """
     target = pathlib.Path(target)
     data = bytes(data)
     target.parent.mkdir(parents=True, exist_ok=True)
     copy = None
+    mode = None
     if target.exists():
         if not into:
             raise _no_backup_folder(target.name)
+        mode = target.stat().st_mode
         copy = back_up(target, into)
     fd, name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
     temporary = pathlib.Path(name)
@@ -273,6 +281,8 @@ def replace_file(target: str | pathlib.Path, data: bytes,
             out.write(data)
             out.flush()
             os.fsync(out.fileno())
+        if mode is not None:
+            os.chmod(temporary, stat.S_IMODE(mode))
         os.replace(temporary, target)
     except BaseException:
         _log.exception("writing %s failed; %s is what it held and the "
@@ -385,6 +395,11 @@ def restore_file(target: str | pathlib.Path,
     interrupted leaves the file it is repairing whole rather than half of
     each. A copy straight over the live destination is the one write in a
     publication that could destroy both the old and the new bytes at once.
+
+    The mode and the times are copied on to the **temporary**, before the
+    rename rather than after it. A `copystat` that failed afterwards would
+    raise out of a restore whose bytes were already back, and the caller
+    reports that as a rollback that did not happen.
     """
     target = pathlib.Path(target)
     data = pathlib.Path(backup).read_bytes()
@@ -395,8 +410,8 @@ def restore_file(target: str | pathlib.Path,
             out.write(data)
             out.flush()
             os.fsync(out.fileno())
+        shutil.copystat(pathlib.Path(backup), temporary)
         os.replace(temporary, target)
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
-    shutil.copystat(pathlib.Path(backup), target)

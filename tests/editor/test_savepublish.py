@@ -14,13 +14,14 @@ whose unlink fails, and an adoption that never happens, each with the state
 afterwards asserted.
 
 The tests needing the player's own disks say so and skip: the DOS Pool of
-Radiance game folder and the C64 game disks, both through
-`automap/gamedisks.py`.
+Radiance game folder, the C64 game disks and the C64 save disks, all three
+through `automap/gamedisks.py`.
 """
 from __future__ import annotations
 
 import os
 import pathlib
+import stat
 
 import pytest
 from gamedata import synthetic_save
@@ -39,8 +40,9 @@ from editor.window import EditorBinding
 from goldbox import amiga_savegame, dos_port
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.d64 import D64
+from goldbox.layout import LAYOUT
 from goldbox.record import RECORD_SIZE, CharacterRecord
-from goldbox.savegame import SLOT_STRIDE, load_save
+from goldbox.savegame import SLOT_STRIDE, load_save, store_save
 
 POOL_OF_RADIANCE = "pool-of-radiance"
 
@@ -62,6 +64,27 @@ def edited_dos_party(tmp_path, **kwargs):
     quantity = member.inventory.raws[0][10] + 7
     member.inventory.set_quantity(0, quantity)
     return party, folder, quantity
+
+
+def save_with_residue_slots(tmp_path, name="RESIDUE.D64", slots=(6, 7)):
+    """A C64 save disk carrying a dropped character's residue.
+
+    `ENCAMP > ALTER > DROP` leaves the whole of a character's record in his
+    slot and clears the first byte of the name, which is what slots 6 and 7
+    of the player's own Pool of Radiance save disks hold -- `.OLAND` and
+    `.RUTUS`, one for each character dropped since. This builds the same
+    thing from the format.
+    """
+    path = synthetic_save(tmp_path, name)
+    disk = D64.open(str(path))
+    game, save0, save1 = load_save(disk)
+    residue = bytearray(save0.slot(0).window)
+    residue[0] = 0
+    for index in slots:
+        save0.write_record(index, bytes(residue))
+    store_save(disk, save0, save1, game)
+    disk.save(path)
+    return path
 
 
 def slot_bytes(path, title, slot):
@@ -189,6 +212,62 @@ def test_a_c64_native_copy_writes_the_edited_image(tmp_path):
     assert path.read_bytes() == before
 
 
+def test_a_c64_copy_of_a_save_holding_a_dropped_characters_residue_goes_ahead(
+        tmp_path):
+    """Six characters in the roster, eight slots with bytes in them, and the
+    copy is not a loss.
+
+    Counting every slot with any non-zero byte in it makes the two slots
+    still holding a dropped character's record part of the party, so six
+    characters arrive as eight and every real Pool of Radiance save is
+    refused. The copy keeps the residue: a native copy is the image itself.
+    """
+    path = save_with_residue_slots(tmp_path)
+    party = Party(str(path))
+    assert len(party.members) == 6
+    out = tmp_path / "copy.d64"
+
+    published = saveplan.publish(saveplan.prepare_save_as(party, "c64", out),
+                                 party, backups=tmp_path / "backups")
+
+    assert len(saveplan.c64_slot_records(out)) == 6
+    _game, before, _save1 = load_save(D64.open(str(path)))
+    _game, after, _save1 = load_save(D64.open(str(out)))
+    assert after.slot(6).window == before.slot(6).window
+    assert after.slot(6).window[0] == 0
+    assert published.party is not None
+
+
+def test_every_pool_of_radiance_c64_save_on_this_machine_copies_to_c64(
+        tmp_path):
+    """The same guard against the player's own save disks rather than a
+    generated one.
+
+    Skips where this machine's registry (`automap/gamedisks.py`) has no Pool
+    of Radiance disks. A `PORSAVE` image with no saved game on it is a roster
+    disk and is counted separately rather than treated as a failure.
+    """
+    saves = _c64_pool_saves()
+    if not saves:
+        pytest.skip("needs the Pool of Radiance C64 save disks")
+    copied, roster_disks = [], []
+    for path in saves:
+        party = Party(str(path))
+        if saveplan.prepare(party) is None:
+            roster_disks.append(path.name)
+            continue
+        out = tmp_path / f"{path.stem}-copy.d64"
+        plan = saveplan.prepare_save_as(party, "c64", out)
+        # The bytes publication would put down, read back the way the guard
+        # reads them -- preparing writes no file of its own.
+        out.write_bytes(next(iter(plan.files.values())))
+        copied.append((path.name, len(party.members),
+                       len(saveplan.c64_slot_records(out))))
+    assert copied, f"nothing but roster disks: {roster_disks}"
+    assert [name for name, went_in, came_out in copied
+            if went_in != came_out] == []
+
+
 def test_a_native_copy_needs_no_game_data_and_has_no_conversion_report(
         tmp_path):
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
@@ -289,8 +368,8 @@ def test_a_truncated_name_stops_a_save_as_and_is_on_no_list_at_all(
     """The name a player typed is 20 characters, the destination's own field
     holds fifteen, and the conversion's accounting says nothing: neither
     `report.dropped` nor `report.losses` names it -- the truncation is a line
-    of `report.warnings`, and the report of this direction has no `losses`
-    field at all. What refuses it is the output read back.
+    of `report.warnings` and nothing calls `Report.lost` for it. What refuses
+    it is the output read back.
 
     No game data: Silver Blades stages no area script, so this is the one
     cross-platform direction that runs anywhere.
@@ -303,15 +382,15 @@ def test_a_truncated_name_stops_a_save_as_and_is_on_no_list_at_all(
     source = convert.Source.of_snapshot(saveplan.prepare(party))
     direction = saveplan.route(source, "amiga")
     rehearsal, _slot = saveplan.rehearse(direction, source, saveplan.Assets())
-    assert saveplan.losses(rehearsal.report) == []      # both lists are empty
-    assert not hasattr(rehearsal.report, "losses")      # and one is absent
+    assert rehearsal.report.dropped == []
+    assert rehearsal.report.losses == []
+    assert saveplan.losses(rehearsal.report) == []
 
     with pytest.raises(saveplan.DroppedFields) as caught:
         saveplan.prepare_save_as(party, "amiga", out)
 
     assert caught.value.lost == [
-        "name: 'ABCDEFGHIJKLMNOPQRST', 'HERO2' arrived as "
-        "'ABCDEFGHIJKLMNO', 'HERO2'"]
+        "name: 'ABCDEFGHIJKLMNOPQRST' arrived as 'ABCDEFGHIJKLMNO'"]
     assert not out.exists()
     assert files_under(folder) == before
 
@@ -334,9 +413,83 @@ def test_the_comparison_names_the_field_and_both_of_its_values():
 
     assert saveplan.compare(records, records) == []
     assert saveplan.compare(records, [clamped, records[1]]) == [
-        "gold: 1234, 1234 arrived as 1234, 255"]
+        "gold: 1234 arrived as 255"]
     assert saveplan.compare(records, records[:1]) == [
         "2 character(s) went in and 1 came back out"]
+
+
+def _pair(first_gold, first_hp, second_gold, second_hp):
+    """Two characters, told apart by their money and their hit points."""
+    out = []
+    for name, gold, hp in (("ALPHA", first_gold, first_hp),
+                           ("OMEGA", second_gold, second_hp)):
+        record = CharacterRecord.from_bytes(bytes(RECORD_SIZE))
+        record.set("name", name)
+        record.set("gold", gold)
+        record.set("hp_max", hp)
+        out.append(record)
+    return out
+
+
+def test_two_characters_values_swapping_places_is_a_difference(tmp_path):
+    """Whole characters are compared, not each field on its own.
+
+    Sorting every field by itself makes the party a bag of values: one
+    character's 5,000 gold arriving on the other and the other's 10 arriving
+    on him leaves every per-field multiset matching exactly, and the guard
+    sees nothing at all.
+    """
+    expected = _pair(5000, 90, 10, 5)
+    swapped = _pair(10, 90, 5000, 5)
+
+    lost = saveplan.compare(expected, swapped)
+
+    assert lost, "two characters' gold changed places and nothing was named"
+    assert any(line.startswith("gold:") for line in lost)
+
+
+def test_two_characters_the_sheet_holds_identical_still_match(tmp_path):
+    """The multiset is of characters, so duplicates are not a difference."""
+    twins = _pair(100, 20, 100, 20)
+    twins[1].set("name", "ALPHA")
+
+    assert saveplan.compare(twins, list(reversed(twins))) == []
+
+
+@pytest.mark.parametrize("field", saveplan.KEPT_FIELDS)
+def test_every_kept_field_is_a_refusal_when_it_changes(field):
+    """Each of the kept fields, one at a time: change it in one of the two
+    written records and the comparison names it.
+
+    A name dropped out of `KEPT_FIELDS` fails no other test in this file,
+    so each one is pinned by a case of its own.
+    """
+    expected = _pair(1234, 40, 99, 12)
+    written = [CharacterRecord.from_bytes(record.to_bytes())
+               for record in expected]
+    raw = written[0].get_raw(field)
+    written[0].set_raw(field, bytes((byte ^ 0x01) for byte in raw))
+    assert written[0].get(field) != expected[0].get(field), field
+
+    lost = saveplan.compare(expected, written)
+
+    assert [line for line in lost if line.startswith(f"{field}:")], lost
+
+
+def test_every_known_field_is_compared_or_named_as_not_compared():
+    """The two lists are a partition of the layout's known fields.
+
+    A known field in neither list is invisible to the guard, whatever the
+    conversion does to it: `flags_0b8` goes from 1 to 0 on six of the seven
+    real Pool of Radiance C64 saves converted to DOS here.
+    """
+    known = {field.name for field in LAYOUT if field.is_known}
+    kept, skipped = set(saveplan.KEPT_FIELDS), set(saveplan._NOT_COMPARED)
+
+    assert kept & skipped == set()
+    assert kept | skipped == known, {
+        "in neither": sorted(known - kept - skipped),
+        "in neither list of the layout": sorted((kept | skipped) - known)}
 
 
 def test_a_c64_party_that_does_not_fit_a_dos_save_is_refused(tmp_path):
@@ -650,6 +803,142 @@ def test_a_rollback_that_cannot_clear_a_part_written_folder_names_what_is_left(
     assert saveplan.RecoveryFailed is files.RecoveryFailed
 
 
+def test_a_rollback_names_every_file_it_could_not_remove(tmp_path,
+                                                         monkeypatch):
+    """A folder publication leaves several files, and an undo that cannot
+    remove the first goes on to the rest rather than stopping there with
+    five more still on disk and unmentioned."""
+    party, _folder, _quantity = edited_dos_party(tmp_path / "save")
+    out = tmp_path / "copy"
+    published = saveplan.publish(saveplan.prepare_save_as(party, "dos", out),
+                                 party, backups=tmp_path / "backups")
+    assert len(published.written) > 1
+    monkeypatch.setattr(
+        pathlib.Path, "unlink",
+        lambda self, missing_ok=False: (_ for _ in ()).throw(
+            OSError("read-only")))
+
+    with pytest.raises(saveplan.RecoveryFailed) as caught:
+        published.roll_back()
+
+    assert sorted(caught.value.left) == sorted(published.written)
+
+
+def test_a_write_that_fails_takes_the_folders_it_made_away_again(
+        tmp_path, monkeypatch):
+    """The disk fills up as the output is written. The two folders
+    publication made on the way to the chosen path go with it, rather than
+    leaving an empty `~/new/place/` behind for a save that never landed."""
+    party, _folder, _quantity = edited_dos_party(tmp_path / "save")
+    kept = tmp_path / "somewhere"
+    kept.mkdir()
+    out = kept / "new" / "deeper" / "chosen.adf"
+    plan = saveplan.prepare_save_as(party, "amiga", out)
+    monkeypatch.setattr(files.os, "fsync",
+                        lambda _fd: (_ for _ in ()).throw(OSError("no room")))
+
+    with pytest.raises(OSError):
+        saveplan.publish(plan, party, backups=tmp_path / "backups")
+
+    assert not (kept / "new").exists()
+    assert kept.is_dir()
+
+
+def test_publishing_without_naming_the_assets_again_is_not_stale(tmp_path):
+    """The plan keeps the game data it was prepared from, so a caller that
+    does not hand the same assets back a second time gets its output
+    published rather than a `StalePlan` for output that is current."""
+    party, _folder, _quantity = edited_dos_party(tmp_path / "save")
+    out = tmp_path / "chosen.adf"
+    assets = saveplan.Assets(amiga_disk=tmp_path / "nothing-here.adf")
+    plan = saveplan.prepare_save_as(party, "amiga", out, assets)
+
+    published = saveplan.publish(plan, party, backups=tmp_path / "backups")
+
+    assert published.party.members[0].record.get("gold") == 1234
+
+
+# ---------------------------------------------------------------------------
+# What `editor.files` guarantees about the two writes publication makes
+# ---------------------------------------------------------------------------
+
+def test_replacing_a_file_keeps_the_permissions_it_had(tmp_path):
+    """`tempfile.mkstemp` makes its file 0600 and the rename carries that
+    over, so a save disk the player had shared with a group would quietly
+    have become theirs alone."""
+    target = tmp_path / "target.adf"
+    target.write_bytes(b"old bytes")
+    os.chmod(target, 0o664)
+
+    files.replace_file(target, b"new bytes", tmp_path / "backups")
+
+    assert target.read_bytes() == b"new bytes"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o664
+
+
+def test_a_restore_writes_a_sibling_and_syncs_it_before_the_rename(
+        tmp_path, monkeypatch):
+    """A restore is the one write in a publication that could destroy both
+    the old bytes and the new at once, so it goes through a temporary
+    sibling like every other write here: a failure while it is being written
+    leaves the file it is repairing exactly as it was, and leaves no
+    temporary behind. A plain `shutil.copy2` passes neither half."""
+    target = tmp_path / "target.adf"
+    target.write_bytes(b"what publication left")
+    backup = tmp_path / "backup"
+    backup.write_bytes(b"what was there before")
+    synced = []
+
+    def fsync(fd):
+        synced.append(fd)
+        raise OSError("no room")
+
+    monkeypatch.setattr(files.os, "fsync", fsync)
+
+    with pytest.raises(OSError):
+        files.restore_file(target, backup)
+
+    assert synced                                  # it did sync, and failed
+    assert target.read_bytes() == b"what publication left"
+    assert [p for p in tmp_path.iterdir()
+            if p.name.startswith(".target")] == []
+
+
+def test_a_restore_puts_the_backups_mode_and_times_back(tmp_path):
+    party_free = tmp_path / "target.adf"
+    party_free.write_bytes(b"what publication left")
+    backup = tmp_path / "backup"
+    backup.write_bytes(b"what was there before")
+    os.chmod(backup, 0o640)
+    os.utime(backup, (1_000_000, 1_000_000))
+
+    files.restore_file(party_free, backup)
+
+    assert party_free.read_bytes() == b"what was there before"
+    assert stat.S_IMODE(party_free.stat().st_mode) == 0o640
+    assert int(party_free.stat().st_mtime) == 1_000_000
+
+
+def test_a_restore_whose_copystat_fails_leaves_the_target_as_it_was(
+        tmp_path, monkeypatch):
+    """The mode and the times go on the temporary, before the rename. After
+    it, a `copystat` that raised would leave the bytes back and the caller
+    reporting a rollback that did not happen."""
+    target = tmp_path / "target.adf"
+    target.write_bytes(b"what publication left")
+    backup = tmp_path / "backup"
+    backup.write_bytes(b"what was there before")
+    monkeypatch.setattr(files.shutil, "copystat",
+                        lambda *_a: (_ for _ in ()).throw(OSError("no")))
+
+    with pytest.raises(OSError):
+        files.restore_file(target, backup)
+
+    assert target.read_bytes() == b"what publication left"
+    assert [p for p in tmp_path.iterdir()
+            if p.name.startswith(".target")] == []
+
+
 def test_a_dos_target_that_already_holds_files_is_refused(tmp_path):
     """A folder with somebody else's save in it is not mixed into."""
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
@@ -845,8 +1134,8 @@ def test_the_game_data_behind_an_assets_path_is_in_its_token(tmp_path):
 def test_a_destination_without_the_right_suffix_is_refused(tmp_path):
     """The name decides whether the output can be opened again, so it is
     checked rather than left to the reader: `MySave` for an Amiga
-    destination used to reach validation and come back as a sentence about a
-    D64 image of 901,120 bytes."""
+    destination otherwise reaches validation and comes back as a sentence
+    about a D64 image of 901,120 bytes."""
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
 
     for port, name in (("amiga", "MySave"), ("amiga", "chosen.d64"),
@@ -880,20 +1169,49 @@ def test_a_destination_that_is_the_conversions_own_game_data_is_refused(
         tmp_path):
     """The game disks are read-only inputs and never a place to publish
     into: a Save As over one would overwrite the player's own game with a
-    saved game."""
+    saved game.
+
+    What is refused is the file or folder itself, and a destination folder
+    that would swallow it -- **not everything underneath it**. A save beside
+    the game disks, or a DOS save folder made inside the game folder,
+    overwrites nothing and is the player's business.
+    """
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     disk = tmp_path / "disk2.adf"
     disk.write_bytes(b"not really a disk")
-    game = tmp_path / "game"
-    game.mkdir()
+    games = tmp_path / "games"
+    game = games / "pool"
+    game.mkdir(parents=True)
+    pool = game / "POOL1.D64"
+    pool.write_bytes(b"not really a disk either")
 
-    with pytest.raises(saveplan.SaveAsError):
+    with pytest.raises(saveplan.SaveAsError) as caught:
         saveplan.prepare_save_as(party, "amiga", disk,
                                  saveplan.Assets(amiga_disk=disk))
-    with pytest.raises(saveplan.SaveAsError):
-        saveplan.prepare_save_as(party, "dos", game / "SAVE",
-                                 saveplan.Assets(dos_folder=game))
+    assert "this conversion reads" in str(caught.value)
+    # And a destination beside the game disks lands rather than being refused.
+    assert saveplan.prepare_save_as(party, "amiga", game / "mine.adf",
+                                    saveplan.Assets(amiga_disk=disk))
+
+    # The rest against the check itself, which runs before the route needs
+    # any of the game data these assets stand for.
+    snapshot = saveplan.prepare(party)
+    for path, assets in ((game, saveplan.Assets(dos_folder=game)),
+                         (games, saveplan.Assets(dos_folder=game)),
+                         (pool, saveplan.Assets(game_disks=(pool,))),
+                         (game, saveplan.Assets(game_disks=(pool,))),
+                         (game, saveplan.Assets(c64_folder=game))):
+        with pytest.raises(saveplan.SaveAsError) as caught:
+            saveplan.refuse_alias(path, snapshot, assets)
+        assert "this conversion reads" in str(caught.value)
+    for path, assets in ((game / "SAVE", saveplan.Assets(dos_folder=game)),
+                         (game / "MYSAVE.D64",
+                          saveplan.Assets(game_disks=(pool,))),
+                         (game / "MYSAVE.D64",
+                          saveplan.Assets(c64_folder=game))):
+        saveplan.refuse_alias(path, snapshot, assets)      # allowed
     assert disk.read_bytes() == b"not really a disk"
+    assert pool.read_bytes() == b"not really a disk either"
 
 
 # ---------------------------------------------------------------------------
@@ -954,6 +1272,17 @@ def _dos_game_folder():
         return None
     folder = pathlib.Path(where)
     return folder if any(folder.glob("ECL*.DAX")) else None
+
+
+def _c64_pool_saves():
+    """Every Pool of Radiance C64 save disk this machine's registry leads to,
+    roster disks among them -- `PORSAVE*.D64` beside the game disks."""
+    from automap import gamedisks
+
+    where = gamedisks.find(POOL_OF_RADIANCE)
+    if where is None:
+        return []
+    return sorted(pathlib.Path(where).glob("PORSAVE*.[dD]64"))
 
 
 def _registry_game_files(key):

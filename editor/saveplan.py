@@ -450,6 +450,14 @@ class Assets:
     `amiga_disk` are paths the writers read their area script out of, and
     `c64_folder` records a folder a caller named by hand rather than taking
     whatever preferences answered.
+
+    `game_disks` is the `.d64` files those `GameFiles` were actually read
+    off, when anybody knows: `refuse_alias` will not let a Save As land on
+    one of them. **It is empty when the disks came from the injected
+    `game_files` callable**, because `editor.dosimport.GameFiles` does not
+    keep which disk each part came from -- so a destination that is one of
+    *those* disks is refused only by the folder the caller named, if it
+    named one.
     """
 
     game_files: Any = None
@@ -457,6 +465,7 @@ class Assets:
     dos_folder: pathlib.Path | None = None
     amiga_disk: pathlib.Path | None = None
     c64_folder: pathlib.Path | None = None
+    game_disks: tuple[pathlib.Path, ...] = ()
 
     def has(self, requirement: str) -> bool:
         if requirement == DESTINATION_DISKS:
@@ -474,16 +483,18 @@ class Assets:
 
         The paths a caller named, and a digest of everything behind them a
         conversion actually reads and that can change without the path
-        changing: `ANIMATE00` off whichever C64 disk answered, the whole
-        Amiga disk the area's script comes off, and the `ECL<n>.DAX` files
-        of the DOS game folder. The rest of a DOS game folder is the
-        installed game and no writer reads it, so digesting the folder whole
-        would be tens of megabytes to answer a question about eight files.
+        changing: `ANIMATE00`, the icon tables and the creation menu off
+        whichever C64 disk answered, the whole Amiga disk the area's script
+        comes off, and the `ECL<n>.DAX` files of the DOS game folder. The
+        rest of a DOS game folder is the installed game and no writer reads
+        it, so digesting the folder whole would be tens of megabytes to
+        answer a question about eight files.
         """
         return (str(self.dos_folder or ""), str(self.amiga_disk or ""),
                 str(self.c64_folder or ""),
-                _digest(getattr(self.game_files, "animate", None)),
-                _digest(getattr(self.source_files, "animate", None)),
+                ",".join(str(disk) for disk in self.game_disks),
+                _files_token(self.game_files),
+                _files_token(self.source_files),
                 _file_digest(self.amiga_disk),
                 _script_digest(self.dos_folder))
 
@@ -511,12 +522,21 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
         amiga_disk=pathlib.Path(amiga_disk) if amiga_disk else None,
         c64_folder=pathlib.Path(c64_folder) if c64_folder else None)
     if DESTINATION_DISKS in needs:
-        found = (_game_files_from_folder(pathlib.Path(c64_folder),
-                                         direction.destination_game)
-                 if c64_folder else
-                 (game_files(direction.destination_game) if game_files
-                  else None))
-        resolved = dataclasses.replace(resolved, game_files=found)
+        disks: tuple[pathlib.Path, ...] = ()
+        if c64_folder:
+            folder = pathlib.Path(c64_folder)
+            found = _game_files_from_folder(folder,
+                                            direction.destination_game)
+            # Whichever of these answered is the one that was read, and
+            # `_game_files_from_folder` tries them in this order, so all of
+            # them are files this route may open.
+            disks = tuple(sorted(
+                folder.glob(direction.destination_game.disk_glob)))
+        else:
+            found = (game_files(direction.destination_game) if game_files
+                     else None)
+        resolved = dataclasses.replace(resolved, game_files=found,
+                                       game_disks=disks)
     if SOURCE_DISKS in needs:
         found = game_files(direction.title) if game_files else None
         resolved = dataclasses.replace(resolved, source_files=found)
@@ -570,8 +590,8 @@ def losses(report: Any) -> list[str]:
     `report.dropped` is the fields with no home in the destination and every
     report has it. `report.losses` is a second list **only
     `goldbox.dos_codec.C64SaveReport` has** -- the reports of the other five
-    directions carry no such field -- so this is a floor rather than the
-    guard: a name a DOS destination could not hold whole is a line of
+    directions carry no such field -- so this names less than the guard does:
+    a name a DOS destination could not hold whole is a line of
     `report.warnings` and reaches neither list, which is why `compare` below
     reads the output back instead of trusting either
     (`docs/227-editor-open-save-as.md`).
@@ -582,39 +602,129 @@ def losses(report: Any) -> list[str]:
 #: What the player's own character is, in the C64 record every port's sheet
 #: is bound to, and so what every destination has to come back holding. The
 #: name, which a 15-character DOS field and a 16-character Amiga one can both
-#: cut; everything the writers can clamp to a narrower field; and the rest of
-#: what a player would call their character. Measured rather than chosen:
-#: every one of these comes back unchanged on every route and native copy
-#: this project can drive, with nothing edited.
+#: cut; everything the writers can clamp to a narrower field; the derived
+#: caches the sheet shows; and the rest of what a player would call their
+#: character. Measured rather than chosen: with `_NOT_COMPARED` below this
+#: is **every known field of the layout**, and
+#: `test_every_known_field_is_compared_or_named_as_not_compared` fails if a
+#: new one joins neither list.
 KEPT_FIELDS = (
     "name", "sex", "race", "char_class", "class_bits", "alignment", "age",
     "strength", "exceptional_strength", "intelligence", "wisdom", "dexterity",
-    "constitution", "charisma", "experience", "hp_max", "hp_rolled",
-    "hp_lost_to_drain", "levels_drained", "level", "level_cleric",
-    "level_fighter", "level_knight", "level_magic_user", "level_paladin",
-    "level_ranger", "level_thief", "dual_class_level", "copper", "silver",
-    "electrum", "gold", "platinum", "gems", "jewelry", "spells_known",
-    "spells_known_high", "spells_memorised", "movement", "portrait_head",
-    "portrait_body")
+    "constitution", "charisma", "abilities_second", "experience", "hp_max",
+    "hp_rolled", "hp_lost_to_drain", "levels_drained", "level",
+    "level_cleric", "level_fighter", "level_knight", "level_magic_user",
+    "level_paladin", "level_ranger", "level_thief", "dual_class_level",
+    "dual_class_slot", "copper", "silver", "electrum", "gold", "platinum",
+    "gems", "jewelry", "spells_known", "spells_known_high",
+    "spells_memorised", "movement", "portrait_head", "portrait_body",
+    # Stored values a writer carries rather than derives, each one measured
+    # equal on every route below. A destination that came back without one
+    # is a destination the sheet would draw differently.
+    "abilities_second", "size_small", "armour_class_base", "attack_forms",
+    "strength_bonus_flag", "turn_power", "flags_0b8", "experience_award",
+    "experience_per_hit_point", "treasure_share")
 
-#: What is deliberately **not** compared, and why, each one measured on the
-#: routes above rather than assumed:
+#: What is deliberately **not** compared, and why. Every known field of the
+#: layout is here or in `KEPT_FIELDS`, and each line below is a measurement
+#: on the routes this machine can drive rather than an assumption:
 #:
-#: * `identity_pair` and `party_order` -- the engine's own bookkeeping, which
-#:   a DOS destination renumbers;
+#: * `identity_pair` -- the two GEN bytes a DOS destination redraws:
+#:   `b'D\x0d'` arrives as `b'D\x00'` on all six real Pool of Radiance C64
+#:   saves converted to DOS here;
+#: * `party_order` -- the marching order a DOS destination renumbers 0 to 5
+#:   where a C64 save leaves it zero;
 #: * `item_effects` -- the ten trait slots, which an Amiga destination stores
 #:   in the opposite order, so the bytes differ where the traits do not;
-#: * `thac0`, `armour_class`, `hp_current`, `combat_side`, `roster_*` and
-#:   `inventory` -- not in the 256 bytes a C64 save stores per slot, so a C64
-#:   destination read back at slot width has nothing to compare;
-#: * every `gap_*` -- bytes nobody has named.
+#: * `thac0`, `armour_class`, `hp_current`, `combat_side`, `roster_in_use`,
+#:   `roster_tail`, `roster_movement` and `inventory` -- not in the 256 bytes
+#:   a C64 save stores per slot, so a C64 destination read back at slot width
+#:   has nothing to compare;
+#: * every field the layout does not call known -- `gap_*` and `region_*`,
+#:   bytes nobody has named.
+#:
+#: **And the values a writer derives rather than carries**, each one a
+#: measured decision of the codec with its own issue behind it. Forcing these
+#: equal would refuse a conversion for writing the *right* value:
+#:
+#: * `thac0_base` -- `goldbox.dos_codec._THAC0_RECOMPUTE_FROM_PORTS`: the two
+#:   ports ship different THAC0 tables (#366), so a C64 source's byte is
+#:   recomputed from the class levels rather than copied;
+#: * the eight `thief_*` columns -- `_THIEF_SKILL_RECOMPUTE_FROM_PORTS`: the
+#:   two ports ship different racial rows and DOS applies a dexterity block
+#:   the C64 build never reads (#431);
+#: * `spells_castable` -- `_SPELL_SLOT_RECOMPUTE_FROM_PORTS`: the C64 reader
+#:   hands back zeros for a title that stores no slots, so the array is
+#:   rebuilt (#547);
+#: * the five `save_*` -- the DOS engine recomputes all five on load from
+#:   class, level and the character's `.SPC` records, so a copied number is
+#:   discarded before anybody reads it (#191);
+#: * `attack_level` -- DOS Pool of Radiance leaves the byte at its creation
+#:   value where every other port keeps a fighting level, so the writer picks
+#:   per port and title (#527);
+#: * `strength_index` -- no DOS field holds one, and
+#:   `goldbox.c64_codec.strength_index` computes it from the strength and the
+#:   percentile at write time;
+#: * `missile_attack_adjustment` -- no DOS field holds one either, and
+#:   `COM.PREP $1633` rebuilds it from the record's own dexterity at the
+#:   start of every fight and at no other time (the routine read end to end,
+#:   and measured in the running game: `$7F` poked into all six records of
+#:   the PORSAVE13 party read back as the table's own values four steps
+#:   later). Dexterity is compared, so nothing the player chose is at stake
+#:   -- but a C64 destination reached through DOS shows a THAC0 short by the
+#:   adjustment until the next fight rewrites it;
+#: * `infravision` -- the C64 computes its own from the race
+#:   (`goldbox.c64_codec.DROPPED`);
+#: * `turn_class` -- the undead's own row rather than the caster's, and zero
+#:   for every player character (#297, #288).
+#:
+#: Measured over 36 runs: the fifteen Pool of Radiance C64 saves this
+#: machine's registry holds, each to a C64 and a DOS destination, plus DOS
+#: Silver Blades to Amiga and to DOS, DOS Pool of Radiance to C64, Amiga
+#: Curse to Amiga and to C64, and Amiga Pool of Radiance to C64. Every one
+#: of the fields above that ever differed is here; the one that differed and
+#: is **not** here is `flags_0b8`, which is a real drop and refused.
 _NOT_COMPARED = ("identity_pair", "party_order", "item_effects", "thac0",
-                 "armour_class", "hp_current", "combat_side", "inventory")
+                 "armour_class", "hp_current", "combat_side", "roster_in_use",
+                 "roster_tail", "roster_movement", "inventory",
+                 "thac0_base", "attack_level", "strength_index",
+                 "missile_attack_adjustment", "infravision", "turn_class",
+                 "spells_castable", "save_paralysis", "save_petrification",
+                 "save_wands", "save_breath", "save_spell",
+                 "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
+                 "thief_move_silently", "thief_hide_in_shadows",
+                 "thief_hear_noise", "thief_climb_walls",
+                 "thief_read_languages")
 
 
 def kept(record: CharacterRecord) -> "dict[str, Any]":
     """`KEPT_FIELDS` off one record, by name."""
     return {name: record.get(name) for name in KEPT_FIELDS}
+
+
+def c64_slot_records(at: pathlib.Path) -> "list[CharacterRecord]":
+    """Every slot of a C64 save image that holds a character, as a record.
+
+    **A slot is a character when the first byte of its name is not zero.**
+    That is the format's own free-slot marker rather than a heuristic: a
+    character dropped from the party leaves the whole of his record behind
+    and only that byte cleared, which is what `.OLAND` and `.RUTUS` are in
+    slots 6 and 7 of the player's own save disks. Counted on the fifteen
+    Pool of Radiance C64 saves this machine's registry holds, the rule
+    agrees with the editor's own reader on every one of them -- six
+    characters each, where "any non-zero byte in the slot" says eight on
+    thirteen of the fifteen and would refuse a Save As that lost nothing.
+
+    It is deliberately **weaker than `goldbox.savegame.looks_occupied`**,
+    which also demands all six abilities in 3 to 25: a party built for a
+    test rolls 1 to 6, so the editor's own occupancy test reads a save that
+    really does hold its records as an empty roster, and comparing through
+    `editor.roster.Party` would refuse those conversions instead.
+    """
+    _game, save0, _save1 = load_save(D64.open(str(at)))
+    return [CharacterRecord(one.window + bytes(RECORD_SIZE - len(one.window)),
+                            stored_size=len(one.window))
+            for one in save0.slots if one.window and one.window[0]]
 
 
 def written_records(port: str, at: pathlib.Path,
@@ -623,44 +733,52 @@ def written_records(port: str, at: pathlib.Path,
 
     A DOS folder and an Amiga disk are read back the way the editor itself
     opens one, through `editor.roster.Party`. A C64 image is read slot by
-    slot instead, because `goldbox.savegame.looks_occupied` calls a slot a
-    character only when all six abilities are 3 to 25 -- so a party built for
-    a test reads back as nobody out of a save that really does hold its
-    records, and comparing through the roster would refuse a conversion that
-    lost nothing.
+    slot instead, by `c64_slot_records`, which says why.
     """
     from .convert import Source
     from .roster import Party
 
     if port == "c64":
-        _game, save0, _save1 = load_save(D64.open(str(at)))
-        return [CharacterRecord(
-            one.window + bytes(RECORD_SIZE - len(one.window)),
-            stored_size=len(one.window))
-            for one in save0.slots if any(one.window)]
+        return c64_slot_records(at)
     return [member.record
             for member in Party(Source.detect(at, slot=slot)).members]
+
+
+def _signature(record: CharacterRecord) -> tuple[str, ...]:
+    """One character as the comparison sees him: every kept field, in order."""
+    return tuple(repr(record.get(name)) for name in KEPT_FIELDS)
 
 
 def compare(expected: "list[CharacterRecord]",
             written: "list[CharacterRecord]") -> list[str]:
     """What the sheet holds and the written destination does not.
 
-    Compared field by field as a multiset, because the two ports list a party
-    from opposite ends (`goldbox.dos_codec.c64_party`) and a conversion that
-    reversed the order lost nothing. A field whose values differ is named
-    with both, which is the evidence for the defect each difference is.
+    **Whole characters are compared, as a multiset of characters.** A
+    multiset because the two ports list a party from opposite ends
+    (`goldbox.dos_codec.c64_party`) and a conversion that reversed the order
+    lost nothing; whole characters because sorting each field on its own
+    would let values move between them unseen -- one character's 5,000 gold
+    arriving on another and the other's 10 arriving on him is two fields
+    swapped and a per-field multiset that matches exactly. Two characters
+    the sheet holds identical still match two identical ones written.
+
+    The diagnosis then pairs the two sorted lists and names each field that
+    differs with both of its values, which is the evidence for the defect
+    each difference is.
     """
-    out = []
     if len(expected) != len(written):
         return [f"{len(expected)} character(s) went in and {len(written)} "
                 f"came back out"]
-    for name in KEPT_FIELDS:
-        was = sorted(repr(record.get(name)) for record in expected)
-        now = sorted(repr(record.get(name)) for record in written)
-        if was != now:
-            out.append(f"{name}: {', '.join(was)} arrived as "
-                       f"{', '.join(now)}")
+    want = sorted(_signature(record) for record in expected)
+    got = sorted(_signature(record) for record in written)
+    if want == got:
+        return []
+    out: list[str] = []
+    for mine, theirs in zip(want, got):
+        for name, was, now in zip(KEPT_FIELDS, mine, theirs):
+            line = f"{name}: {was} arrived as {now}"
+            if was != now and line not in out:
+                out.append(line)
     return out
 
 
@@ -701,6 +819,12 @@ class SavePlan:
     player's choice, and the whole set for a DOS folder. `report` is the
     conversion's own accounting, `None` for a native copy, which converts
     nothing.
+
+    `assets` is the game data the output was prepared from, kept so that
+    `publish` can recompute the freshness key from it. A caller that has to
+    hand the same assets back a second time is a caller that can forget
+    them, and forgetting them looks exactly like an edit: `StalePlan`, on
+    output that is current.
     """
 
     source: Any
@@ -708,6 +832,7 @@ class SavePlan:
     files: dict[str, bytes]
     report: Any
     key: tuple
+    assets: "Assets | None" = None
     stale: bool = False
 
     def invalidate(self) -> None:
@@ -735,6 +860,40 @@ class SavePlan:
 
 def _digest(data: "bytes | None") -> str:
     return "" if data is None else hashlib.sha256(bytes(data)).hexdigest()
+
+
+def _files_token(game_files: Any) -> str:
+    """A digest of one `editor.dosimport.GameFiles`, all three parts of it.
+
+    `animate` is bytes and digests directly. The icon tables are an
+    `goldbox.iconparts.IconParts`, so what is digested is the geometry it
+    fitted and the figure it composes -- its table addresses and counts, the
+    class bytes, the fillers and `default_icon()`. That is what a conversion
+    draws each character's combat figure out of; two `SPELLE64` files
+    differing nowhere in any of it would not change a converted save. The
+    creation menu is its two tables of art ids and the disk it came off.
+    """
+    if game_files is None:
+        return ""
+    sha = hashlib.sha256()
+    sha.update(_digest(getattr(game_files, "animate", None)).encode())
+    icon = getattr(game_files, "icon", None)
+    if isinstance(icon, (bytes, bytearray)):
+        sha.update(_digest(icon).encode())
+    elif icon is not None:
+        sha.update(repr(sorted(getattr(icon, "tables", {}).items())).encode())
+        sha.update(bytes(getattr(icon, "classes", b"")))
+        for filler in getattr(icon, "fillers", ()):
+            sha.update(bytes(filler))
+        compose = getattr(icon, "default_icon", None)
+        if callable(compose):
+            sha.update(bytes(compose()))
+    portraits = getattr(game_files, "portraits", None)
+    if portraits is not None:
+        sha.update(repr((getattr(portraits, "heads", ()),
+                         getattr(portraits, "bodies", ()),
+                         getattr(portraits, "source", ""))).encode())
+    return sha.hexdigest()
 
 
 def _file_digest(path: "pathlib.Path | None") -> str:
@@ -830,12 +989,24 @@ DESTINATION_SUFFIX = {"c64": ".d64", "amiga": ".adf"}
 
 
 def _inside_or_equal(path: pathlib.Path, other: pathlib.Path) -> bool:
-    """Whether `path` is `other` or sits under it, symlinks resolved."""
+    """Whether `path` is `other` or sits under it, symlinks resolved.
+
+    `os.path.samefile` decides it where both exist, because two paths can
+    resolve differently and still be one file -- a hard link, or a mount
+    reached by two names -- and being the same file is the question.
+    """
     try:
         here, there = path.resolve(), other.resolve()
     except OSError:
         return False
-    return here == there or here.is_relative_to(there)
+    if here == there:
+        return True
+    try:
+        if here.exists() and there.exists() and here.samefile(there):
+            return True
+    except OSError:
+        pass
+    return here.is_relative_to(there)
 
 
 def refuse_alias(path: pathlib.Path, snapshot: Snapshot,
@@ -847,19 +1018,31 @@ def refuse_alias(path: pathlib.Path, snapshot: Snapshot,
     the thing it is reading, and for a copy of the same save to the same
     place there is already a Save. A DOS save is a folder, so a destination
     *inside* it is the same collision under another name, and a destination
-    folder that holds the source is one too. Then the game data the route
-    reads -- a disk image or a game folder the player named -- which a
-    publication would overwrite with a saved game.
+    folder that holds the source is one too.
+
+    Then the game data, and **only what publication would actually land
+    on**: a destination that *is* one of those files or folders, or one that
+    holds it. A save beside the game disks is none of the project's
+    business -- `<disks>/MYSAVE.D64` next to `POOL1.D64` overwrites nothing
+    -- and refusing everything under the folder takes a place the player may
+    well keep saves in away from them for nothing.
     """
     if _inside_or_equal(path, snapshot.path):
         raise SaveAsError(f"{path} is the save this is being written from")
     if snapshot.path.is_dir() and _inside_or_equal(snapshot.path, path):
         raise SaveAsError(f"{path} holds the save this is being written from")
-    for what, where in (("game disk", (assets or Assets()).amiga_disk),
-                        ("DOS game folder", (assets or Assets()).dos_folder),
-                        ("C64 game folder", (assets or Assets()).c64_folder)):
-        if where is not None and _inside_or_equal(path, where):
-            raise SaveAsError(f"{path} is the {what} this conversion reads")
+    assets = assets or Assets()
+    reads: list[tuple[str, pathlib.Path]] = [
+        ("game disk", disk) for disk in assets.game_disks]
+    for what, where in (("game disk", assets.amiga_disk),
+                        ("DOS game folder", assets.dos_folder),
+                        ("C64 game folder", assets.c64_folder)):
+        if where is not None:
+            reads.append((what, where))
+    for what, where in reads:
+        if _inside_or_equal(where, path):
+            raise SaveAsError(f"{path} is, or holds, the {what} this "
+                              f"conversion reads")
 
 
 def native_files(snapshot: Snapshot) -> dict[str, bytes]:
@@ -945,7 +1128,7 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
              [edited_record(member) for member in party.members],
              accounted=losses(report))
     return SavePlan(source=source, destination=destination, files=files,
-                    report=report,
+                    report=report, assets=assets,
                     key=plan_key(snapshot, port, path, assets))
 
 
@@ -1053,8 +1236,10 @@ class Published:
         """Undo the publication, or say what is left of it.
 
         Raises `RecoveryFailed`, carrying the backup that still holds the
-        destination's own bytes, rather than let a caller report that nothing
-        was written.
+        destination's own bytes and **every path still on disk**, rather
+        than let a caller report that nothing was written. The removals go
+        on past a file that refuses to go, so one unremovable file does not
+        leave five more beside it unmentioned and unremoved.
         """
         try:
             if self.backup is not None:
@@ -1062,18 +1247,36 @@ class Published:
                           self.backup)
                 editor_files.restore_file(self.destination.path, self.backup)
                 return
-            for path in self.written:
-                path.unlink(missing_ok=True)
-            if self.folder_created and self.destination.path.is_dir():
-                shutil.rmtree(self.destination.path)
-            editor_files.remove_if_empty(self.created)
         except OSError as exc:
             _log.exception("could not undo the publication of %s; the "
                            "backup is %s", self.destination.path,
                            self.backup)
             raise RecoveryFailed(
                 f"could not put {self.destination.path} back: {exc}",
-                backup=self.backup) from exc
+                backup=self.backup, left=(self.destination.path,)) from exc
+        left: list[pathlib.Path] = []
+        failure: OSError | None = None
+        for path in self.written:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                failure = failure or exc
+                left.append(path)
+        try:
+            if self.folder_created and self.destination.path.is_dir():
+                shutil.rmtree(self.destination.path)
+        except OSError as exc:
+            failure = failure or exc
+            left.append(self.destination.path)
+        editor_files.remove_if_empty(self.created)
+        if failure is not None:
+            _log.error("could not undo the publication of %s; the backup is "
+                       "%s and %s is still there", self.destination.path,
+                       self.backup, ", ".join(str(path) for path in left),
+                       exc_info=failure)
+            raise RecoveryFailed(
+                f"could not put {self.destination.path} back: {failure}",
+                backup=self.backup, left=left) from failure
 
 
 def publish(plan: SavePlan, party: Any,
@@ -1089,34 +1292,50 @@ def publish(plan: SavePlan, party: Any,
     edited past is the one failure in this module nothing on disk would
     show.
 
+    **`assets` defaults to the plan's own**, so a caller that does not pass
+    them again gets the freshness check it meant rather than a `StalePlan`
+    for output that is current.
+
     An image is written through a temporary sibling and renamed over
     whatever was there, which is backed up first; a save folder is staged
     complete and moved in, and a folder that already holds files is refused
     rather than mixed into. The published output is then opened as a save in
     its own right -- a destination that cannot be read is rolled back here
-    rather than handed on.
+    rather than handed on. A write that fails takes the folders publication
+    made on the way to the path away again, so a disk that filled up leaves
+    no empty `~/new/place/` behind.
 
     Raises `StalePlan` for output the caller has invalidated or that the
     party has moved past, and whatever `editor.files` raises for a refused
-    or failed write.
+    or failed write: `NoBackupFolder`, `TargetNotEmpty` and `OSError`.
+    **`RecoveryFailed` has to be caught beside those three**: it is a
+    `RuntimeError` rather than a `SaveAsError`, and it means bytes are on
+    disk that a caller must name to the player rather than report a save
+    that did not happen.
     """
     destination = plan.destination
+    if assets is None:
+        assets = plan.assets
     if not plan.is_current(party, destination.port, destination.path, assets):
         raise StalePlan("this output was prepared before the last change")
     created = editor_files.missing_parents(destination.path)
-    if destination.is_folder:
-        existed = destination.path.is_dir()
-        written = editor_files.publish_folder(destination.path, plan.files)
-        published = Published(destination=destination, party=None,
-                              backup=None, written=tuple(written),
-                              folder_created=not existed,
-                              created=tuple(created))
-    else:
-        backup = editor_files.replace_file(
-            destination.path, next(iter(plan.files.values())), backups)
-        published = Published(destination=destination, party=None,
-                              backup=backup, written=(destination.path,),
-                              created=tuple(created))
+    try:
+        if destination.is_folder:
+            existed = destination.path.is_dir()
+            written = editor_files.publish_folder(destination.path, plan.files)
+            published = Published(destination=destination, party=None,
+                                  backup=None, written=tuple(written),
+                                  folder_created=not existed,
+                                  created=tuple(created))
+        else:
+            backup = editor_files.replace_file(
+                destination.path, next(iter(plan.files.values())), backups)
+            published = Published(destination=destination, party=None,
+                                  backup=backup, written=(destination.path,),
+                                  created=tuple(created))
+    except BaseException:
+        editor_files.remove_if_empty(created)
+        raise
     try:
         published.party = open_destination(destination)
     except Exception as exc:
