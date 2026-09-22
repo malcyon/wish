@@ -700,6 +700,13 @@ CONFIDENCE = {
     "portrait": "CONFIRMED",
     "attack_forms": "CONFIRMED",
     "roster_tail": "CONFIRMED",
+    # CONFIRMED as *fields*, off the engine's own Silver Blades importer
+    # (`tools/amiga/podimportmap.py`), which copies DOS's own icon_head,
+    # icon_body and icon_colours untranslated into these three offsets --
+    # not because a probe has drawn a converted figure (#612).
+    "icon_head": "CONFIRMED",
+    "icon_body": "CONFIRMED",
+    "icon_colours": "CONFIRMED",
 }
 
 
@@ -1891,6 +1898,12 @@ POD_WRITE_WHEN_PRESENT: tuple[tuple[str, str], ...] = (
                         "than CONFIRMED: no node on any Amiga disk holds a "
                         "value there, so the swap has never been read back "
                         "by the game"),
+    ("icon_head", "the byte at 0x0BB unchanged, 0-13. Only a source that "
+                  "kept a chosen head has one to give; a source with none "
+                  "gets the engine's own creation default instead (#612, "
+                  "see `engine_default_icon`)"),
+    ("icon_body", "the byte at 0x0BC unchanged, 0-31 -- see `icon_head`"),
+    ("icon_colours", "the six bytes at 0x0BF unchanged -- see `icon_head`"),
 )
 
 #: Neutral fields this writer takes nothing from, and why. Reported, never
@@ -2099,6 +2112,11 @@ POD_READ_DIRECT: tuple[tuple[str, str], ...] = (
     ("portrait_body", "portrait_body, the .pc's byte at 0x0BA"),
     ("spells_castable", "spells_castable, the three nine-byte arrays at "
                         "0x169, 0x172 and 0x17B"),
+    ("icon_head", "icon_head, the .pc's byte at 0x0BB, DOS's own numbering "
+                  "(#612)"),
+    ("icon_body", "icon_body, the .pc's byte at 0x0BC, DOS's own numbering"),
+    ("icon_colours", "icon_colours, the six bytes at 0x0BF, DOS's own "
+                     "nibble pairs"),
 )
 
 #: Neutral fields the reader builds by a rule rather than a copy.
@@ -2329,11 +2347,19 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
         "portrait_body": (char.raw[PORTRAIT_BODY], PORTRAIT_BODY, "portrait"),
         "attack_forms": (char.attack_forms, ATTACK_FORMS, "attack_forms"),
         "roster_tail": (char.roster_tail, ROSTER_TAIL, "roster_tail"),
+        "icon_head": (char.raw[ICON_HEAD], ICON_HEAD, "icon_head"),
+        "icon_body": (char.raw[ICON_BODY], ICON_BODY, "icon_body"),
     }
     for name, (value, offset, key) in scalars.items():
         out.set(name, value, f"Amiga .pc {name} @{offset:#05x} "
                              f"({CONFIDENCE.get(key, 'PROBABLE')})",
                 grade(key))
+
+    out.set("icon_colours",
+            bytes(char.raw[ICON_COLOURS:ICON_COLOURS + ICON_COLOUR_COUNT]),
+            f"Amiga .pc icon_colours @{ICON_COLOURS:#05x} "
+            f"({CONFIDENCE.get('icon_colours', 'PROBABLE')})",
+            grade("icon_colours"))
 
     for key, value in zip(ABILITY_KEYS, char.abilities):
         out.set(key, value,
@@ -2621,6 +2647,11 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     def flag(name: str, default: bool = False) -> bool:
         v = w.use(name)
         return default if v is None else bool(v.value)
+
+    def raw_opt(name: str) -> bytes | None:
+        """One neutral field as bytes, or None where the source has none."""
+        v = w.use(name)
+        return None if v is None else bytes(v.value)
 
     name_value = w.use("name")
     name = str(name_value.value if name_value else "").rstrip("\0").strip()
@@ -2927,6 +2958,9 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         hit_points_rolled=opt("hp_rolled"),
         identity=opt("unnamed_0ab"),
         experience_award=opt("experience_award"),
+        icon_head=opt("icon_head"),
+        icon_body=opt("icon_body"),
+        icon_colours=raw_opt("icon_colours"),
         size=(None if size_small is None else size_small + 1),
         npc_control_byte=control,
         former_level=former_level,
@@ -3090,6 +3124,9 @@ _SOURCE_OF: dict[str, str] = {
     "item_count": "inventory, how many items follow",
     "effect_chain": "granted_effects and innate_effects, non-zero when a "
                     "node follows",
+    "icon_head": "icon_head",
+    "icon_body": "icon_body",
+    "icon_colours": "icon_colours",
 }
 
 

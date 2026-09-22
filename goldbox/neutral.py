@@ -297,6 +297,24 @@ FIELDS: dict[str, str] = {
                      "spelling; the DOS codec converts its menu position to "
                      "and from it",
     "portrait_body": "the body half of the same pair, one of twelve",
+    "icon_head": "which of the fourteen combat-icon heads the character's "
+                 "figure draws in battle, 0-13, in DOS's own numbering, "
+                 "which both DOS and the Amiga index their art with. Not "
+                 "`portrait_head`, which is the character sheet's face and "
+                 "a different art set. The C64 stores no index -- it keeps "
+                 "the composed figure as eighteen screen codes in a table "
+                 "beside the records -- and `goldbox.iconparts` converts "
+                 "between the two. The number names art in the library "
+                 "`size_small` chooses, so the two travel together",
+    "icon_body": "the body half of the same figure, 0-31, likewise DOS's "
+                 "numbering; the body carries the pose, the arms and "
+                 "anything held",
+    "icon_colours": "the figure's six colour bytes, one per part in the "
+                    "order body, arm, leg, hair, shield, weapon, each a "
+                    "pair of 4-bit values with the low nibble the main "
+                    "colour and the high one the highlight. The Amiga "
+                    "stores DOS's own nibbles and translates them to its "
+                    "own palette when it draws",
     "unnamed_0ab": "the identity draw the engine makes at creation and uses "
                    "for exactly one thing -- telling two characters of the "
                    "same name apart when one is added to a party. DOS keeps "

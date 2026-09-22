@@ -2579,6 +2579,13 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("attack_forms", "copied as a block to 0x0A1"),
     ("roster_tail", "copied as a block to 0x112, the combat tail the C64 "
                     "roster keeps at -2"),
+    ("icon_head", "composed, with icon_body and icon_colours, into a "
+                  "`DosIcon` and copied to 0x0BB unchanged, 0-13 in DOS's "
+                  "own numbering -- unless the caller supplied `icon` "
+                  "explicitly, whose own numbers win instead (#612)"),
+    ("icon_body", "see icon_head; 0-31, copied to 0x0BC"),
+    ("icon_colours", "see icon_head; the six bytes copied to 0x0BF "
+                     "unchanged"),
     ("inventory", "each sixteen-byte record unpacked onto a 63-byte .ITM "
                   "record; the count and the encumbrance are computed from "
                   "it, and an empty inventory writes no .ITM file at all "
@@ -2844,10 +2851,10 @@ WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
     ("icon_head", "the **combat** icon's head -- a different art set and a "
                   "different pair from the two above, and a different "
                   "ticket (#320, the mirror of #130).  Zero **only when the "
-                  "caller gave `write` no `icon`**, which is every source "
-                  "but a C64 one whose caller recognised the record's own "
-                  "eighteen screen codes -- `icon_written` in `write` skips "
-                  "this row when it did"),
+                  "source held nothing**: neither an explicit `icon` nor a "
+                  "neutral `icon_head`/`icon_body`/`icon_colours` of its "
+                  "own -- `icon_written` in `write` skips this row whenever "
+                  "either supplied a figure (#612)"),
     ("icon_body", "see icon_head"),
     ("item_chain", "live heap pointer block; the items themselves are in "
                    "the .ITM file. **Zero is what the engine itself writes "
@@ -2911,9 +2918,10 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "per part: body, arm, leg, hair and skin, shield, weapon; the low "
      "nibble is the main colour and the high one the highlight, which is "
      "what the game's own icon editor writes as COLOR-1 and COLOR-2. This "
-     "row fires **only when `write` was given no `icon`**: a C64 source "
-     "whose caller recognised the record's own combat icon converts its "
-     "seven colour parts to these six instead, through "
+     "row fires **only when the source held nothing** -- neither an "
+     "explicit `icon` nor a neutral `icon_colours` of its own (#612): a C64 "
+     "source whose caller recognised the record's own combat icon converts "
+     "its seven colour parts to these six instead, through "
      "`tools/icons/iconreverse.yaml`'s colour table (#320) -- the C64's one "
      "3-bit colour a part becomes both nibbles of the pair, the shape "
      "every freshly-made DOS record's own default set already has",
@@ -3606,19 +3614,19 @@ def write(char: NeutralCharacter,
     have reopened.  :func:`write_deltas` says how the title is chosen.
 
     `icon` is this character's own combat figure -- `icon_head`, `icon_body`
-    and the six `icon_colours` bytes -- when the source is a C64 record and
-    the caller has already recognised it: `goldbox.iconparts.IconParts.
-    dos_icon_from_c64`, over the raw eighteen screen codes `c64_party` reads
-    off the record before `c64_codec.read` drops them (#320, the mirror of
-    `#130 (A converted DOS party arrives with six identical combat figures,
-    not its own)`).  A neutral record carries no such field -- the C64
-    stores drawn cells, not an index, so there is nowhere in the vocabulary
-    to put it, the same reason `write_c64_save`'s own `icon` argument reads
-    the *DOS* side's `icon_head`/`icon_body` directly rather than through a
-    neutral field.  With none given, `icon_head` and `icon_body` are written
-    zero and `icon_colours` the game's own freshly-made default, exactly as
-    before #320 -- which is every source but a C64 one whose caller passed
-    `icon`, since nothing else has a combat icon to convert from.
+    and the six `icon_colours` bytes -- when the caller has already
+    recognised it off a source the neutral vocabulary cannot carry it for:
+    `goldbox.iconparts.IconParts.dos_icon_from_c64`, over the raw eighteen
+    screen codes `c64_party` reads off a C64 record before `c64_codec.read`
+    drops them (#320, the mirror of `#130 (A converted DOS party arrives
+    with six identical combat figures, not its own)`), or
+    `goldbox.iconparts.amiga_combat_icon` off an Amiga or DOS source's own
+    record.  An explicit `icon` wins over `char`'s own neutral `icon_head`,
+    `icon_body` and `icon_colours` fields, which every other source gives
+    through the ordinary neutral vocabulary now (#612).  With neither an
+    explicit `icon` nor any of the three neutral fields, `icon_head` and
+    `icon_body` are written zero and `icon_colours` the game's own
+    freshly-made default.
 
     `portraits` is the creation menu's two tables, from
     :func:`portrait_tables`.  With them the sheet portrait crosses -- the C64
@@ -4315,6 +4323,32 @@ def write(char: NeutralCharacter,
     # was already these DOS numbers, and only whoever built `icon` knows
     # which is true (#379, "The DOS writer's byte accounting says an Amiga
     # party's combat figure was recognised off C64 screen codes").
+    # -- the neutral record's own combat icon, the default source ------------
+    # `icon_head`, `icon_body` and `icon_colours` are taken here whether or
+    # not the caller also supplied `icon` explicitly, so `Report.unaccounted`
+    # stays empty either way -- an explicit `icon` still wins, since it is
+    # the caller's own recognition of the same three numbers, off a source
+    # `write` has no other way to reach (a C64's screen codes, #320) (#612).
+    icon_head_field = use("icon_head")
+    icon_body_field = use("icon_body")
+    icon_colours_field = use("icon_colours")
+    if icon is None and (icon_head_field is not None
+                          or icon_body_field is not None
+                          or icon_colours_field is not None):
+        icon = DosIcon(
+            head=(int(icon_head_field.value)
+                  if icon_head_field is not None else 0),
+            body=(int(icon_body_field.value)
+                  if icon_body_field is not None else 0),
+            colours=(bytes(icon_colours_field.value)
+                     if icon_colours_field is not None
+                     else bytes.fromhex("91a2b3c4e6f7")),
+            figure_source="the source record's own combat icon, through "
+                          "the neutral record's icon_head/icon_body (#612)",
+            colours_source="the source record's own combat icon colours, "
+                           "through the neutral record's icon_colours "
+                           "(#612)")
+
     icon_written: set[str] = set()
     if icon is not None:
         for iname, value in (("icon_head", icon.head),

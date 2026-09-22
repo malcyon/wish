@@ -718,6 +718,35 @@ def test_the_combat_icon_is_the_one_the_engine_would_have_created():
     assert amiga_pod.ICON_COLOURS_DEFAULT.hex() == "91a2b3c4e6f7"
 
 
+def test_a_chosen_combat_icon_survives_a_round_trip():
+    """A player's own choice on the ICON screen is not the engine's default
+    (#612): a source record with `icon_head` 12, `icon_body` 31 and colours
+    `84546cdee6f7`, none of which `engine_default_icon` would give a male
+    medium fighter (5, 0x18, `91a2b3c4e6f7`), must read back and write back
+    out unchanged rather than converting to that default."""
+    colours = bytes.fromhex("84546cdee6f7")
+    raw = amiga_pod.PodWriter(
+        name="CHOSEN", character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 3, 0, 0, 0, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"],
+        icon_head=12, icon_body=31, icon_colours=colours).to_bytes()
+    default_head, default_body = amiga_pod.engine_default_icon(
+        0, 0, 2, (0, 0, 3, 0, 0, 0, 0))
+    assert (12, 31, colours) != (default_head, default_body,
+                                 amiga_pod.ICON_COLOURS_DEFAULT)
+
+    char = amiga_pod.pod_to_neutral(raw)
+    assert char.get("icon_head") == 12
+    assert char.get("icon_body") == 31
+    assert bytes(char.get("icon_colours")) == colours
+
+    out, _rep = amiga_pod.to_pc(char)
+    assert out[amiga_pod.ICON_HEAD] == 12
+    assert out[amiga_pod.ICON_BODY] == 31
+    assert out[amiga_pod.ICON_COLOURS:
+               amiga_pod.ICON_COLOURS + amiga_pod.ICON_COLOUR_COUNT] == colours
+
+
 @pytest.mark.parametrize("race,sex,size,levels,head,body", (
     ("HUMAN", "MALE", 2, {"cleric": 14}, 5, 0x17),
     ("HUMAN", "FEMALE", 2, {"paladin": 12}, 9, 0x18),
@@ -955,14 +984,15 @@ def test_the_reader_has_nothing_left_to_say_to_a_player():
         assert out.warnings == [], name
 
 
-def test_the_reader_fills_sixty_four_of_the_neutral_records_fields():
+def test_the_reader_fills_sixty_seven_of_the_neutral_records_fields():
     """The count that says how far the Amiga decode has got, pinned so it
     moves when somebody decodes another region rather than drifting.
 
-    64 of the 78, and 65 for a character with an effect that never expires,
+    67 of the 78, and 68 for a character with an effect that never expires,
     since `granted_effects` is set only when there is one -- the same way the
     Curse and Silver Blades reader sets it. On this machine that is ten
-    characters at 64 and nine at 65.
+    characters at 67 and nine at 68. Three higher than before #612 gave
+    `icon_head`, `icon_body` and `icon_colours` a neutral home.
 
     The names it does not fill for a character on these disks:
     `npc_control_byte`, which is set only for a companion and so is absent
@@ -975,14 +1005,14 @@ def test_the_reader_fills_sixty_four_of_the_neutral_records_fields():
     for _name, raw in pc_records():
         out = amiga_pod.pod_to_neutral(raw)
         effects = amiga_pod.PodCharacter.from_bytes(raw).effects
-        assert len(out.fields) == 64 + bool(effects), sorted(out.fields)
+        assert len(out.fields) == 67 + bool(effects), sorted(out.fields)
         named = set(out.fields) | {n for n, _ in amiga_pod.pod_read_dropped()}
         assert set(neutral.FIELDS) - named == (
             {"npc_control_byte", "running_effects"} if effects
             else {"npc_control_byte", "running_effects", "granted_effects"})
         counts[len(out.fields)] = counts.get(len(out.fields), 0) + 1
     assert sum(counts.values()) >= 12, counts
-    assert counts.get(64), counts
+    assert counts.get(67), counts
 
 
 # --- the engine's own account of its record, read off the player's disk ------

@@ -760,6 +760,13 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     And `npc_control_byte` is set only for a companion -- `_filled` builds
     an ordinary player character, so `npc` is set true here to exercise it;
     otherwise the reader has nothing to set it from (#303).
+
+    And `icon_head`, `icon_body` and `icon_colours` never come back under
+    their own names either: the C64 keeps no head/body index at all, only
+    the composed figure in the save's own table of eight, so `write` never
+    reads the three off `char` directly -- a caller composes `write`'s own
+    `icon` argument from them first, through `goldbox/iconparts.py` -- and
+    `read` has nothing in the record to decompose them back out of (#612).
     """
     char = _filled(game=game)
     char.set("npc", True, "test fixture: exercise npc_control_byte")
@@ -774,6 +781,9 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     if not c64_codec.deltas_for(game).dual_class:
         taken.discard("former_levels")
     taken.discard("granted_effects")
+    taken.discard("icon_head")
+    taken.discard("icon_body")
+    taken.discard("icon_colours")
     assert taken - set(back.keys()) == set()
 
 

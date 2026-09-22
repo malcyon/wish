@@ -1600,6 +1600,20 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                     "never draws the pair (#258, The C64 side of 0x0AB is "
                     "unnamed, so the conversion drops it with no issue "
                     "behind it)"),
+    # The C64 keeps no head/body index at all: the composed figure is
+    # eighteen screen codes and eighteen colours in the save's own
+    # table of eight, indexed by roster slot, not a byte of the
+    # character record.  `write`'s own `icon` argument is that composed
+    # figure, built off these three fields through `goldbox/iconparts.py`
+    # before `write` is called; it is a transform of the three, not a
+    # drop of them.
+    ("icon_head", "composed, with icon_body and icon_colours, into the "
+                  "eighteen CHARPIC00 screen codes and eighteen colours "
+                  "`write`'s own `icon` argument carries -- see "
+                  "`goldbox/iconparts.py`, which builds that figure before "
+                  "`write` is called"),
+    ("icon_body", "see icon_head"),
+    ("icon_colours", "see icon_head"),
 )
 
 #: Neutral fields the C64 writer takes nothing from, and why.  Reported by

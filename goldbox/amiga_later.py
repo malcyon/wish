@@ -627,21 +627,16 @@ def party_in_savegame(data: bytes, deltas: AmigaDeltas) -> list[AmigaCharacter]:
 #: never appears in `later_field_disposition`'s table, the same way DOS's own
 #: `field_disposition` never names it either.
 #:
-#: **The combat icon is a fourth kind of "not here", by design rather than by
-#: omission.** `icon_head`, `icon_body` and `icon_colours` are TRANSFORMED
-#: below -- and `icon_dimension` stays DROPPED -- but none of the three is
-#: ever set on the `NeutralCharacter` this function returns, the same way
-#: `goldbox.dos_codec.to_neutral` neither sets nor drops them for a DOS source
-#: (watched: a synthetic DOS record with a chosen figure comes back from
-#: `goldbox.dos_codec.to_neutral` with no `icon_head` field and nothing in
-#: `dropped`). The neutral vocabulary has nowhere to put a combat figure --
-#: the C64 stores drawn cells, not an index -- so both readers leave these
-#: three silent and the actual conversion is a raw-record bypass:
-#: `goldbox.iconparts.amiga_combat_icon` reads them straight off this
+#: **The combat icon has a neutral home now (#612).** `icon_head`, `icon_body`
+#: and `icon_colours` are TRANSFORMED below -- and `icon_dimension` stays
+#: DROPPED -- and all three are set on the `NeutralCharacter` this function
+#: returns, the same way `goldbox.dos_codec.to_neutral` sets them for a DOS
+#: source. A caller with a raw record in hand still has the faster bypass
+#: too: `goldbox.iconparts.amiga_combat_icon` reads them straight off this
 #: `AmigaCharacter` (or off a `DosCharacter`, for Pool of Radiance) and hands
 #: the result to `goldbox.dos_codec.write`'s own `icon` argument, which
-#: `write_later` below now takes too (#396, #319,
-#: docs/199-amiga-combat-icons.md).
+#: `write_later` below still takes and which wins over the neutral fields
+#: when both are given (#396, #319, docs/199-amiga-combat-icons.md).
 LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("class_bits", "reread from the level array into the shared bit order, "
                    "the way the DOS reader rereads its own: this port gives "
@@ -681,13 +676,13 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
                     "that recomputes it should"),
     ("icon_head", "the combat icon's head: DOS's own CHEAD.DAX index, read "
                   "by the same routine at the same offset both Amiga "
-                  "binaries carry (#396, docs/199-amiga-combat-icons.md). "
-                  "Converted the way `goldbox.dos_codec`'s own icon_head is -- "
-                  "the caller who has a raw record in hand builds a "
-                  "`goldbox.iconparts.DosIcon` from it (`goldbox.iconparts."
-                  "amiga_combat_icon`) rather than through this reader's "
-                  "own neutral vocabulary, which has nowhere to put a "
-                  "combat figure (#379)"),
+                  "binaries carry (#396, docs/199-amiga-combat-icons.md), "
+                  "into the neutral icon_head. A caller with the raw record "
+                  "in hand may still build a `goldbox.iconparts.DosIcon` "
+                  "straight off it (`goldbox.iconparts.amiga_combat_icon`) "
+                  "and hand that to `goldbox.dos_codec.write`'s own `icon` "
+                  "argument, which wins over the neutral field when both "
+                  "are given (#379, #612)"),
     ("icon_body", "the combat icon's body: DOS's own CBODY.DAX index, "
                   "likewise -- see icon_head"),
     ("icon_colours", "the six DOS icon_colours pairs, unchanged: both "
@@ -724,7 +719,7 @@ LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
                        "has one size byte where DOS and the Amiga both keep "
                        "two fields -- see icon_head's LATER_TRANSFORMED "
                        "entry for the other three combat-icon fields, which "
-                       "this reader used to drop alongside it"),
+                       "this reader converts into the neutral vocabulary"),
     ("portrait_head", "the sheet portrait's head: Pool of Radiance's Amiga "
                       "creation menu has been read, but neither later "
                       "title's has. 0 in 21 of the 21 Amiga records on this "
@@ -1065,6 +1060,19 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
             f"Amiga encumbrance @"
             f"{deltas.offset(table['encumbrance'].offset):#05x}",
             grade("encumbrance"))
+    out.set("icon_head", char.get("icon_head"),
+            f"Amiga icon_head @"
+            f"{deltas.offset(table['icon_head'].offset):#05x}, DOS's own "
+            f"numbering (#612)",
+            grade("icon_head"))
+    out.set("icon_body", char.get("icon_body"),
+            f"Amiga icon_body @"
+            f"{deltas.offset(table['icon_body'].offset):#05x}",
+            grade("icon_body"))
+    out.set("icon_colours", bytes(char.get("icon_colours")),
+            f"Amiga icon_colours @"
+            f"{deltas.offset(table['icon_colours'].offset):#05x}",
+            grade("icon_colours"))
 
     tail = char.get(AMIGA_LATER_STATUS_FIELD)
     at = deltas.offset(table[AMIGA_LATER_STATUS_FIELD].offset)
@@ -1587,18 +1595,19 @@ def write_later(char: NeutralCharacter,
 
     `icon` is this character's own combat figure -- `icon_head`, `icon_body`
     and the six `icon_colours` bytes -- passed straight through to
-    `goldbox.dos_codec.write`'s own `icon` argument, which is where it is actually
-    written: the neutral vocabulary has nowhere to put a combat figure, so
-    `LATER_TRANSFORMED`'s entries for these three names describe this
-    bypass rather than anything this function's own body does with `char`.
-    Build one with `goldbox.iconparts.amiga_combat_icon`, which reads the
-    numbers straight off a source record that already stores DOS's own
+    `goldbox.dos_codec.write`'s own `icon` argument, and it wins over `char`'s own
+    neutral `icon_head`/`icon_body`/`icon_colours` fields when both are
+    given (#612): the caller's recognition of the same three numbers off a
+    source `write` cannot reach any other way, such as a C64's screen
+    codes.  Build one with `goldbox.iconparts.amiga_combat_icon`, which reads
+    the numbers straight off a source record that already stores DOS's own
     ones -- an `AmigaCharacter` of either later title, or a `DosCharacter`
     for Pool of Radiance -- or with `goldbox.iconparts.IconParts.
     dos_icon_from_c64` for a C64 source (#396, #319,
-    docs/199-amiga-combat-icons.md).  With none given, `icon_head` and
-    `icon_body` are written zero and `icon_colours` the game's own
-    freshly-made default, exactly as before this parameter existed.
+    docs/199-amiga-combat-icons.md).  With neither given, `write` takes the
+    figure from `char`'s own neutral fields instead, and only a character
+    with none of the three set arrives with `icon_head`/`icon_body` written
+    zero and `icon_colours` the game's own freshly-made default.
     """
     from . import dos_codec as _dos
 
