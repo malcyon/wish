@@ -31,6 +31,8 @@ Keep protections against corrupt input, destructive overwrites, missing
 required files, and failed writes. Diagnose the actual failure; never classify
 a valid game state as corrupt merely because Wish does not understand it.
 
+## Between two ports of one title
+
 **A conversion is between two ports of the same title, and never between
 titles.** A Curse character is never converted into a Pool character. **The
 title is fixed and the port is what changes**: a DOS Curse save converts to a
@@ -125,13 +127,13 @@ Dropping anything when converting a save is a bug, and the feature flag cannot
 be lifted until it is not. A converted character wearing a Ring of Fire
 Resistance has to resist fire on the other side.
 
-So the three reasons below explain why a field is not converted **yet** --
-they are not a licence, and a drop list is not a state a conversion is allowed
-to rest in. The first of them, "the destination has no such field," is a
-description of the destination as we currently understand it rather than
-permission to stop: if the destination has no home for something a player
-would notice, finding it one is the work. **Every entry on every drop list has
-an issue.**
+So the list below sorts why a field is not converted **yet** -- it is not a
+licence, and a drop list is not a state a conversion is allowed to rest in.
+Only a field the destination derives on load, or holds at a measured constant,
+loses nothing; the rest is open work. "The destination has no such field" is
+a description of the destination as we currently understand it rather than
+permission to stop: if the destination has no home for a value, finding it one
+is the work. **Every entry on every drop list has an issue.**
 
 **The standard is every direction, not only the DOS-to-C64 import.** A player
 who finds things missing from a converted character calls the feature buggy,
@@ -142,14 +144,15 @@ keeps six more lists of the same kind -- `dos.WRITE_DROPPED`,
 covered.** A list is not exempt because its direction is the less travelled
 one, and the Amiga lists are not exempt because they are the longest.
 
-**The one carve-out is narrow, and it is not the same as "we have not decoded
-it yet".** A field is legitimately unconverted only when the destination
-*platform* has nothing that field could be -- not when we have not yet found
-its home, not when the home is inconvenient, and not when the value is one we
-guess a player would not miss. The identity byte is the worked example and it
-goes the other way: Curse and Silver Blades on the C64 never write the pair
-and nothing reads it, which looks like the carve-out, and it is **written
-anyway** because the bytes are there and a later conversion back to DOS then
+**A destination with nowhere to put a value is not a place to stop.** It is
+work for Wish to resolve: find where the destination engine keeps the
+equivalent, or, for a verified capacity limit, let the player resolve what
+fits. A field left unconverted is an open defect, never an accepted end state
+-- whether we have not yet found its home, the home is inconvenient, or the
+value is one we guess a player would not miss. The identity byte is the worked
+example: Curse and Silver Blades on the C64 never write the pair and nothing
+reads it, which looks like nowhere to put it, and it is **written anyway**
+because the bytes are there and a later conversion back to DOS then
 returns the player's own number instead of inventing one. The player is not
 told about it.
 
@@ -203,7 +206,8 @@ else with a hard count are all written the same way: say what will not fit, and 
 the player pick which of them to keep. Do not design a chooser for items and
 a different one for effects.
 
-**And do not build it until a measurement says it is needed.** Known limits and
+**And do not build it until a measurement says it is needed** -- a capacity
+limit is verified when it has been measured, and not before. Known limits and
 what is measured about reaching them:
 
 | | the ceiling | can it be reached? |
@@ -227,25 +231,41 @@ plus 18 colours out of the C64's own character set -- and the converter needs a
 route between the two. Compressing "no equivalent encoding" into "none" reads
 as a claim about the game the player owns.
 
-Three reasons are legitimate:
+Two reasons lose nothing:
 
-* the destination format **has no such field** -- and that has been established
-  by reading its layout, not assumed;
 * the destination **derives it** on load, so writing it is pointless -- and that
-  has been *demonstrated in the running game*, not argued from plausibility;
-* we **do not understand the bytes well enough to write them**, in which case
-  the entry is a defect with a settling experiment, not a permanent exemption.
+  has been *demonstrated in the running game*, not argued from plausibility.
+  That is conversion: the destination rebuilds the value, and it is reported
+  as derived, not dropped;
+* the destination format holds it at a **measured constant** -- a
+  `WRITE_CONSTANTS` row, or the zero the engine itself writes because it
+  rebuilds the field (`WRITE_UNSOURCED`, below). That value is written, not
+  lost.
 
-The third kind is a bug that has not been filed yet. Treat it that way.
+Two are open work, never legitimate reasons:
 
-**A template is not one of the three reasons, and "the template supplies it" is
+* the destination format **has no such field** -- established by reading its
+  layout, not assumed -- and the work is to find where the destination engine
+  keeps the equivalent, or, for a verified capacity limit, to let the player
+  resolve what fits;
+* we **do not understand the bytes well enough to write them** -- a blocker to
+  be read, with a settling experiment. While it is open, a development-time
+  check stops Wish writing output known or suspected to be wrong, and the
+  investigation continues and has an owner. That check is not the fix, and
+  never a reason to stop working the conversion or to accept the refusal.
+
+Both are bugs that have not been filed yet. Treat them that way.
+
+**A template is not one of these reasons, and "the template supplies it" is
 not an answer.** Building a converted save on top of a save the engine wrote
 means every byte nobody has decoded silently keeps a value belonging to a
 different party in a different place -- wrong data that looks right, and
-invisible because the file loads. Do not use a template; block on not
-understanding everything and go back and understand what is needed.
+invisible because the file loads. Do not use a template; do not write the
+output until the field is understood, and keep working to understand what is
+needed.
 
-So **an undecoded field is a blocker, not a gap the template fills.** When the
+So **an undecoded field blocks the output, not the work: it is not a gap the
+template fills and not a reason to accept refusing the save.** When the
 conversion needs a byte nobody has attributed, the work is to go and measure
 it, and the ticket says so.
 
