@@ -39,10 +39,7 @@ def field_at(offset: int) -> str:
     is the point: a difference is worth reading only if it can be looked up.
     """
     for f in dos_port.LAYOUT:
-        try:
-            at = amiga_por.amiga_por_offset(f.offset)
-        except amiga_port.AmigaRecordError:
-            continue
+        at = amiga_por.amiga_por_offset(f.offset)
         if at <= offset < at + f.size:
             return f.name
     if offset == amiga_por.AMIGA_POR_PAD:

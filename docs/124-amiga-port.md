@@ -2414,9 +2414,13 @@ morale and his treasure share gone, with nothing in the conversion report.
 
 #### `/program`: the engine's own reads
 
-Every site found with `tools/amiga/amigarecordrefs.py` across all seventeen
-CODE hunks of `/program` and then read in `tools/amiga/amiga68k.py disasm`.
-File offsets into the executable:
+Every site found by calling `tools/amiga/amigarecordrefs.py`'s `sites()`
+function from a throwaway wrapper, once per CODE hunk, over all seventeen of
+`/program`'s — the committed command-line tool searches the first hunk alone,
+which in `/program` is 9,936 bytes of 459,028 and holds none of these, and
+`#618 (amigarecordrefs.py searches only the first CODE hunk, so it finds
+nothing in Pool of Radiance's /program)` is that defect. Each site was then
+read in `tools/amiga/amiga68k.py disasm`. File offsets into the executable:
 
 | where | what it does | what it says |
 |---|---|---|
@@ -2477,8 +2481,41 @@ the age word, and `$77(a3)` → `$ea(a2)` the eight thief percentages.
 the `+1` shift, the six records the game itself wrote read `00 00 01 00 00` at
 DOS `0x083`-`0x087` — `goldbox/dos_codec.py`'s DOS constant byte for byte in
 24 of 24 DOS records, the same corroboration Curse's own placement got. The
-companion reads `0xB2` at `0x085`, the value `/program` `0x00B196` writes, and
-`0xFF` at `0x084`, so the first byte is not always zero either.
+companion reads `0xB2` at `0x085`, the value `/program` `0x00B196` writes while
+it builds a joining character's record, and `0xFF` at `0x084`, so the first
+byte is not always zero either. `0xB3`, the other immediate `/program` stores
+there, is the take-over value at `0x010290`.
+
+#### The three bytes nothing reads convert too
+
+`0x084`, `0x087` and `0x088` — DOS's `0x083`, `0x086` and `0x087` — have no
+site in any of the four DOS overlays and none in `/program`, so nobody can say
+what they are. That is a reason to **carry** them and not a reason to write
+over them: `goldbox/dos_codec.py`'s `WRITE_CONSTANTS` wrote `00 00 01 00 00`
+across the whole run, so the companion's `0xFF` became `0x00` on every route
+out of an Amiga or DOS record, with nothing in the report.
+
+They cross on `dos_codec.set_window_source`, an attribute the DOS reader hangs
+the source's own run on and the DOS writer reads back, which puts them on every
+route both ends of which have the window: DOS to DOS, DOS to Amiga, Amiga to
+DOS and Amiga to Amiga, the Amiga three by way of
+`goldbox.amiga_por.to_dos_record` and `from_dos_record`. The constant is now
+what a source with no window of its own gets — a C64 record, which keeps the
+control byte at `0x0B8` and the share at `0x0FA` and has nowhere for the rest.
+
+**They are deliberately not a neutral field.** `goldbox/neutral.py`'s
+vocabulary names the *thing* a character has, and no name exists for these;
+and `neutral.Writer.finish` reports every neutral field a writer took nothing
+from, so declaring them would put three bytes no engine reads on the drop list
+of every conversion to the C64 — a reported loss where there is nothing a
+player could lose.
+
+**What the `0xFF` is, is still UNKNOWN**, and it is the only non-zero any of
+the three has shown in twenty Amiga specimens and twenty-four DOS ones. The
+specimen holding it is a `.cha` found on a save disk, so it has no chain of
+custody; what would name the byte is a differential in the running game, a
+character saved before and after whatever sets it, and nobody knows what that
+is. The conversion no longer has to know.
 
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 

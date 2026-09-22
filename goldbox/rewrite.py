@@ -95,25 +95,18 @@ def amiga_por_spans() -> tuple[list[Span], list[str]]:
     Built the way :func:`goldbox.amiga_por.from_dos_record` writes them: the
     name is one sixteen-byte NUL-padded run where DOS spends a count byte and
     fifteen, and everything else goes through
-    :func:`goldbox.amiga_por.amiga_por_offset`.  A field the offset map
-    refuses is returned as unplaced, which leaves the engine's own bytes
-    there, since an unplaced field is never copied.  All three insertions are
-    located, so none is refused today.
+    :func:`goldbox.amiga_por.amiga_por_offset`, which has an answer for every
+    DOS offset.  So the second list is always empty, as
+    :func:`dos_spans`' is; it is returned anyway so the three ports answer the
+    same question the same way.
     """
     spans = [Span("name", 0, amiga_por.AMIGA_POR_NAME_SIZE)]
-    unplaced: list[str] = []
     for f in dos_port.LAYOUT:
         if f.name in ("name_length", "name_text"):
             continue
-        try:
-            at = amiga_por.amiga_por_offset(f.offset)
-            for i in range(1, f.size):
-                amiga_por.amiga_por_offset(f.offset + i)
-        except AmigaRecordError:
-            unplaced.append(f.name)
-            continue
-        spans.append(Span(f.name, at, f.size))
-    return spans, unplaced
+        spans.append(Span(f.name, amiga_por.amiga_por_offset(f.offset),
+                          f.size))
+    return spans, []
 
 
 def amiga_later_spans(deltas: Any) -> tuple[list[Span], list[str]]:
@@ -212,6 +205,23 @@ def patch(original: bytes, before: bytes, after: bytes,
             f"any of the {len(spans)} spans, so nothing would be written "
             f"and the next read would return the unedited character")
     return bytes(out), [s.name for s in moved]
+
+
+def _carry_window(char: Any, original: bytes, spans: Sequence[Span]) -> None:
+    """Give a rendering the record's own `field_83_87` before it is written.
+
+    The C64 record the sheet binds to keeps the control byte at `0x0B8` and
+    the treasure share at `0x0FA` and has nowhere at all for the other three
+    bytes of the DOS and Amiga window, so a rendering built from it holds
+    `goldbox.dos_codec.FIELD_83_87`'s constant there.  :func:`patch` copies a
+    whole field span when any byte of it differs, so without this an edit to
+    the share or the NPC flag would carry that constant over three bytes of
+    the engine's own record that nothing on the sheet can reach (#614).
+    """
+    span = next((s for s in spans if s.name == "field_83_87"), None)
+    if span is not None:
+        dos_codec.set_window_source(char,
+                                    original[span.at:span.at + span.size])
 
 
 def _span_named(spans: Sequence[Span], name: str) -> Span:
@@ -423,15 +433,17 @@ def rewrite_dos(original: "dos_codec.DosCharacter",
     stride = deltas.item_size
     game = c64_port.by_key(deltas.key) if game is None else game
 
+    spans, unplaced = dos_spans(deltas)
+
     def render(rec: CharacterRecord) -> tuple[bytes, bytes]:
         neutral = c64_codec.read(rec, game=game)
+        _carry_window(neutral, original.to_bytes(), spans)
         record, itm, _spc, _rep = dos_codec.write(neutral, deltas=deltas,
                                                   icon=icon)
         return record, itm
 
     rendered_before, _ = render(before)
     rendered_after, _ = render(after)
-    spans, unplaced = dos_spans(deltas)
 
     edits = _item_edits(before, after, len(original.items))
     nodes, item_moved = _rewrite_items(
@@ -472,12 +484,13 @@ def rewrite_amiga_por(original: "amiga_por.AmigaPorCharacter",
     game = (c64_port.by_key(dos_port.POOL_OF_RADIANCE.key) if game is None
             else game)
 
+    spans, unplaced = amiga_por_spans()
+
     def render(rec: CharacterRecord) -> bytes:
         neutral = c64_codec.read(rec, game=game)
+        _carry_window(neutral, original.raw, spans)
         record, _itm, _spc, _rep = amiga_por.write_por(neutral, icon=icon)
         return record
-
-    spans, unplaced = amiga_por_spans()
     item_spans, _item_unplaced = amiga_item_spans(
         amiga_por.amiga_por_item_offset)
     edits = _item_edits(before, after, len(original.items))
@@ -524,13 +537,14 @@ def rewrite_amiga_later(original: "amiga_later.AmigaCharacter",
     deltas = original.deltas
     game = c64_port.by_key(deltas.key) if game is None else game
 
+    spans, unplaced = amiga_later_spans(deltas)
+
     def render(rec: CharacterRecord) -> bytes:
         neutral = c64_codec.read(rec, game=game)
+        _carry_window(neutral, original.raw, spans)
         written, _rep = amiga_later.write_later(neutral, deltas=deltas,
                                                 icon=icon)
         return written.raw
-
-    spans, unplaced = amiga_later_spans(deltas)
     if deltas.item_size is None:
         item_spans: list[Span] = []
     else:

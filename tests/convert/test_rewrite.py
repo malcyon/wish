@@ -165,6 +165,64 @@ def test_every_amiga_pool_field_has_a_span():
     assert ("name", 0, amiga_por.AMIGA_POR_NAME_SIZE) in spans
 
 
+#: Amiga Pool of Radiance's `field_83_87`: the control byte at `0x085` and
+#: the treasure share at `0x086`, DOS's `0x084` and `0x085` at the `+1` shift.
+AMIGA_POR_WINDOW = slice(0x084, 0x089)
+AMIGA_POR_CONTROL = 0x085
+AMIGA_POR_SHARE = 0x086
+
+
+def _amiga_por_with_window(window: bytes):
+    """A synthetic Amiga Pool of Radiance character holding `window`.
+
+    The bytes are poked straight into the record the writer made, which is
+    what an engine-written record looks like to the rewrite: the first,
+    fourth and fifth bytes of the run are read by no engine, so no writer of
+    ours puts anything but zero there.
+    """
+    pool = _game(dos_port.POOL_OF_RADIANCE)
+    record, itm, spc, _rep = amiga_por.write_por(_neutral(pool, 1))
+    raw = bytearray(record)
+    raw[AMIGA_POR_WINDOW] = window
+    char = amiga_por.por_character(bytes(raw), itm, spc)
+    rec, _ = dos_codec.to_c64_record(amiga_por.to_dos_character(char))
+    return char, rec
+
+
+def test_a_treasure_share_edit_lands_on_the_amiga_window():
+    """The share is `0x086`, and the three bytes beside it stay the record's.
+
+    `patch` copies a whole field span when any byte of it differs, and the
+    C64 record the sheet binds to has nowhere to keep the window's other
+    three bytes -- so a share edit would carry the writer's constant over
+    them if the rendering were not given the record's own (#614).
+    """
+    char, before = _amiga_por_with_window(b"\xff\x00\x01\x5a\xa5")
+    after = _edited(before, treasure_share=2)
+    out = rewrite.rewrite_amiga_por(char, before, after)
+    assert "field_83_87" in out.moved
+    assert out.record[AMIGA_POR_SHARE] == 2
+    assert out.record[AMIGA_POR_WINDOW] == b"\xff\x00\x02\x5a\xa5"
+
+
+def test_an_npc_flag_edit_lands_on_the_amiga_control_byte():
+    """The flag is bit 7 of `0x085`, the byte `/program` tests against 0x7F."""
+    char, before = _amiga_por_with_window(b"\xff\x00\x01\x5a\xa5")
+    after = _edited(before, flags_0b8=0xB3)
+    out = rewrite.rewrite_amiga_por(char, before, after)
+    assert "field_83_87" in out.moved
+    assert out.record[AMIGA_POR_CONTROL] == 0xB3
+    assert out.record[AMIGA_POR_WINDOW] == b"\xff\xb3\x01\x5a\xa5"
+
+
+def test_an_edit_elsewhere_leaves_the_amiga_window_alone():
+    """The control for the two above: a gold edit moves no byte of the run."""
+    char, before = _amiga_por_with_window(b"\xff\x00\x01\x5a\xa5")
+    out = rewrite.rewrite_amiga_por(char, before, _edited(before, gold=4321))
+    assert "field_83_87" not in out.moved
+    assert out.record[AMIGA_POR_WINDOW] == b"\xff\x00\x01\x5a\xa5"
+
+
 def test_the_silver_blades_spellbook_is_its_own_bitmask_span():
     """Silver Blades packs DOS's 117 flag bytes into fifteen of mask, so the
     span is the Amiga's own run rather than a shifted DOS one."""

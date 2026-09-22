@@ -297,10 +297,6 @@ def test_the_written_record_is_the_amiga_record(shipped_adf, tmp_path):
     which is `.claude/rules/conversions.md`'s rule for a round trip. What is
     allowed to differ, and why:
 
-    * `field_83_87` -- `goldbox.amiga_por.to_dos_record` writes those five bytes
-      zero because the second insertion is not located, and the DOS writer
-      writes the constant `00 00 01 00 00` that 101 of 101 engine-written
-      Pool of Radiance records hold;
     * `unnamed_0ab` -- the identity byte, replaced by `identity_byte`'s
       digest rather than the Amiga record's own, which is
       `#378 (An Amiga character converted to DOS loses the identity byte his
@@ -315,8 +311,7 @@ def test_the_written_record_is_the_amiga_record(shipped_adf, tmp_path):
     rehearsal = direction.rehearse(source, "A", _game_dir())
     direction.write(rehearsal, tmp_path / "out")
 
-    allowed = {"field_83_87", "unnamed_0ab", "item_chain", "hands_used",
-               "heap_104"}
+    allowed = {"unnamed_0ab", "item_chain", "hands_used", "heap_104"}
     party, _ = amiga_savegame.read_por_slot(AmigaDisk.open(str(shipped_adf)),
                                    source.slot)
     assert len(party) == 6

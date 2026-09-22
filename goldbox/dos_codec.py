@@ -2029,6 +2029,11 @@ def to_neutral(dos: DosCharacter,
     out.set("treasure_share", control_raw[share_index],
             f"DOS field_83_87 @{share_offset:#05x}, the raw treasure share",
             Confidence.CONFIRMED)
+    # The other three bytes of the run are read by no site in any engine, so
+    # they have no neutral name; `write` puts the source's own back rather
+    # than the constant.  `_FIELD_83_87_SOURCE` says why they travel beside
+    # the vocabulary instead of in it (#614).
+    set_window_source(out, control_raw)
 
     # -- the combat tail: how the character is, and which side it fights on --
     # `field_10c_10f` is four bytes and all four are a character's own state
@@ -2867,9 +2872,11 @@ WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
      "a player character who takes one share of treasure. **Not one value "
      "every record holds**: the third byte is 1 in every record of the "
      "archives and 0 in 45 of the 54 Pool of Radiance records this project "
-     "rolled itself, and `FIELD_83_87` has the counts and why (#304). The "
-     "second byte -- the control byte -- is written over this constant "
-     "afterwards, from the neutral npc and npc_control_byte fields (#303)"),
+     "rolled itself, and `FIELD_83_87` has the counts and why (#304). **It "
+     "is what a source with no window of its own gets**: a DOS or Amiga "
+     "source's own five bytes are written over this run first, and the "
+     "control byte and the share then over those, from the neutral npc, "
+     "npc_control_byte and treasure_share fields (#303, #614)"),
     ("strength_bonus", b"\x01", "1 in all 24 DOS specimens"),
     ("unnamed_1a4", b"\x02\x02",
      "`02 02` in 24 of 24 Pools of Darkness records, which is every one on "
@@ -3275,13 +3282,54 @@ WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
 #: **It stays in `WRITE_CONSTANTS` rather than moving to `WRITE_DEFAULTS`,
 #: deliberately.**  A default is masked out of the round trip, and masking
 #: this one would hide MALACHITE's real difference rather than convert it.
-#: **The control byte now converts** -- `write` patches it, over this
-#: constant, from the neutral `npc` and `npc_control_byte` fields (#303) --
-#: and the share byte deliberately does not: it stays the constant `1` this
-#: table writes, which is what keeps a converted companion's own share from
-#: reading `0` and being skipped by the split entirely, the trap named above.
+#: **The control byte and the share both convert**, over this constant:
+#: `write` patches the control byte from the neutral `npc` and
+#: `npc_control_byte` fields and the share from `treasure_share` (#303).  The
+#: `1` here is what a source with neither gets, which keeps a converted
+#: companion's share from reading `0` and being skipped by the split
+#: entirely, the trap named above.
 FIELD_83_87: dict[int, bytes] = {5: b"\x00\x00\x01\x00\x00",
                                  4: b"\x00\x01\x00\x00"}
+
+#: The name of the attribute :func:`to_neutral` hangs `field_83_87`'s own
+#: bytes on, and :func:`write` reads back.
+#:
+#: **Three of those bytes have no neutral name and are not dropped either.**
+#: The control byte and the treasure share are named fields; the rest of the
+#: run -- the first, fourth and fifth in Pool of Radiance and Curse, the third
+#: and fourth in Silver Blades and Pools of Darkness -- is read by no site in
+#: any of the four DOS overlays and by no site in Amiga Pool of Radiance's
+#: `/program`, so nobody can say what thing they are and the neutral
+#: vocabulary, which names things rather than storage, has nowhere to put
+#: them.  :data:`WRITE_CONSTANTS` used to write zero over all three, which
+#: loses a source holding anything else: the one companion among the twenty
+#: Amiga Pool of Radiance specimens reads `0xFF` at Amiga `0x084`, DOS's
+#: `0x083` (#614).
+#:
+#: So they cross as an attribute on the neutral record rather than as a field
+#: in it, between the two ends of every route that has the window on both
+#: sides -- DOS to DOS, DOS to Amiga, Amiga to DOS and Amiga to Amiga, the
+#: Amiga three by way of `goldbox.amiga_por.to_dos_record` and
+#: `goldbox.amiga_por.from_dos_record`, which transpose the run at the `+1`
+#: shift.
+#:
+#: **Outside the vocabulary on purpose.** `neutral.Writer.finish` reports
+#: every neutral field a writer took nothing from, and the C64 record has no
+#: such window anywhere in it, so declaring these would put three bytes no
+#: engine reads on the drop list of every conversion to the C64 -- a reported
+#: loss where there is nothing a player could lose.
+_FIELD_83_87_SOURCE = "_field_83_87_source"
+
+
+def window_source(char: NeutralCharacter) -> bytes | None:
+    """`field_83_87` as the source record held it, or None for a source with
+    no such window -- a C64 record, or a neutral character built by hand."""
+    return getattr(char, _FIELD_83_87_SOURCE, None)
+
+
+def set_window_source(char: NeutralCharacter, raw: bytes) -> None:
+    """Hand :func:`write` the source's own `field_83_87` run."""
+    setattr(char, _FIELD_83_87_SOURCE, bytes(raw))
 
 #: DOS bytes with no source that only the **later titles** declare.  Zeroed
 #: and reported, exactly as :data:`WRITE_UNSOURCED` is, and the round trip
@@ -4425,14 +4473,22 @@ def write(char: NeutralCharacter,
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size, f"{cname}: {why}")
 
-    # -- the NPC control byte, over the constant just written ----------------
-    # field_83_87's second byte in Pool of Radiance and Curse, first in
-    # Secret of the Silver Blades -- see `to_neutral`'s own comment on the
-    # shift.  The rest of the run -- the treasure share and the two bytes
-    # with no site in any of the four engines' overlays -- keeps the
-    # constant above; only this one byte carries the source's own value
-    # (#303).
+    # -- field_83_87, over the constant just written -------------------------
+    # A source with a window of its own -- a DOS record, or an Amiga one
+    # re-cut by `goldbox.amiga_por.to_dos_record` -- gets all five of its own
+    # bytes back here, and the control byte and the share are then written
+    # over this from their own neutral fields.  So what this line carries is
+    # the three bytes that have no neutral name, and the constant is what a
+    # source without a window gets (#614).  `_FIELD_83_87_SOURCE` is the
+    # whole account of why they are not a neutral field.
     f83 = table["field_83_87"]
+    window = window_source(char)
+    if window is not None and len(window) == f83.size:
+        rec[f83.offset:f83.end] = window
+        rep.note(f83.offset, f83.size,
+                 f"field_83_87 <- {char.port} field_83_87 "
+                 f"@{f83.offset:#05x}, the source's own {f83.size} bytes, "
+                 f"unchanged")
     control_index = 1 if f83.size == 5 else 0
     control_offset = f83.offset + control_index
     share_index = control_index + 1

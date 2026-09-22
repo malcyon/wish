@@ -420,7 +420,8 @@ def to_dos_record(char: AmigaPorCharacter) -> bytes:
     Not a conversion between games -- the same record in the other port's
     shape, so that `goldbox/dos_codec.py` can read it.  Every byte written came from a
     named Amiga field or is a documented zero; see the note above this
-    function for the four rules and the two regions left blank.
+    function for the four rules and the one byte left behind, the Amiga's
+    trailing pad at `0x11F`.
     """
     out = bytearray(DOS_RECORD_SIZE)
     count, text = _amiga_por_name(char.raw)
@@ -619,8 +620,15 @@ def describe_unconverted_effect(node: bytes) -> str:
 # a companion's control byte and his treasure share.  Placed there, the six
 # records the game itself wrote on disk 1 read `00 00 01 00 00` -- DOS's own
 # constant in 24 of 24 DOS records -- and the one companion among the twenty
-# specimens reads `0xB2` at `0x085`, the byte `/program` writes when the
-# engine takes a character over.
+# specimens reads `0xB2` at `0x085`, the byte `/program` writes at `0x00B196`
+# while it builds a joining character's record.  `0xB3` is the other value it
+# stores there, at `0x010290`, when it takes a character over.
+#
+# The window's other three bytes -- `0x084`, `0x087` and `0x088`, DOS's first,
+# fourth and fifth -- cross as well, on
+# `goldbox.dos_codec.set_window_source`, because no engine site reads them and
+# so they have no neutral name.  The companion's `0xFF` at `0x084` is the one
+# non-zero any of the three has shown in twenty specimens (#614).
 
 #: The Amiga offset of the `u32be` experience total.
 AMIGA_POR_EXPERIENCE = 0x0AE

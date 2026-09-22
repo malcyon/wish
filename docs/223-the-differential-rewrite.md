@@ -130,6 +130,18 @@ second insertion had not been located inside the run it straddles and
 0x089), so the field is a five-byte span at 0x084 and no port has an unplaced
 field.
 
+**That span is the one place a rendering is given the record's own bytes
+before it is written.** The C64 record the sheet binds to keeps the control
+byte at 0x0B8 and the treasure share at 0x0FA and has nowhere at all for the
+window's other three bytes, so a rendering built from it holds
+`dos_codec.FIELD_83_87`'s constant there. `patch` copies a whole field span
+when any byte of it differs, so an edit to the share or the NPC flag would
+carry three zeroes over three bytes of the engine's own record that nothing on
+the sheet can reach. `rewrite._carry_window` hands both renderings the
+original's own run through `dos_codec.set_window_source`, and it does the same
+for the DOS and the Amiga Curse and Silver Blades rewrites, which have the same
+window and the same C64 record in the middle.
+
 | field | characters | rendered | writer says |
 |---|---|---|---|
 | `heap_104` | 75 | one value | zero |

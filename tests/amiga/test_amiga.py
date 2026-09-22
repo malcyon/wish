@@ -736,7 +736,7 @@ def test_the_shift_map_places_the_three_regions_at_their_measured_offsets():
 
 
 def test_field_83_87_is_placed_at_the_plus_one_shift():
-    """The window the map used to refuse, from the engines' own code.
+    """Where the window sits, from the engines' own code.
 
     Amiga Curse's Pool of Radiance importer copies this record's
     `0x084`-`0x088` into Curse's `field_83_87` at `0x0F6`-`0x0FA`, one byte
@@ -1035,14 +1035,14 @@ def test_the_dos_recut_carries_every_field_it_does_not_declare_dropped():
 
 
 def test_the_recut_carries_the_window_the_engines_place():
-    """A free check on the window this re-cut used to write zero.
+    """A free check on the window, through the re-cut.
 
     `goldbox/dos_codec.py` records `00 00 01 00 00` at DOS `0x083` in 24 of
     24 Pool of Radiance records.  Placed at the `+1` shift, the six records
     the game itself wrote on disk 1 read exactly that, and the one companion
     among the twenty specimens comes out of the re-cut with his control byte
-    -- `0xB2`, the value `/program` stores when the engine takes a character
-    over.
+    -- `0xB2`, the value `/program` stores at `0x00B196` while it builds a
+    joining character's record.
     """
     window = dos_port.FIELDS_BY_NAME["field_83_87"]
     seen = []
@@ -1054,6 +1054,46 @@ def test_the_recut_carries_the_window_the_engines_place():
     written = [s for s in seen if s == b"\x00\x00\x01\x00\x00"]
     assert len(written) >= 6, [s.hex() for s in seen]
     assert [s for s in seen if s[1] & 0x80] == [b"\xff\xb2\x00\x00\x00"]
+
+
+def test_the_window_crosses_the_neutral_record_whole():
+    """All five bytes, on the Amiga-to-Amiga route the specimens can drive.
+
+    The control byte and the treasure share are neutral fields.  The other
+    three -- `0x084`, `0x087` and `0x088` -- have no site in any engine and
+    so no neutral name, and `goldbox.dos_codec.set_window_source` is what
+    carries them.  Without it the writer's constant goes over the run and the
+    one companion among the twenty specimens arrives with `0x00` at `0x084`
+    where his own record holds `0xFF`, which is what #614 left behind.
+    """
+    seen = []
+    for path in amiga_por_records():
+        c = amiga_por.read_amiga_por(path)
+        record, _itm, _spc, rep = amiga_por.write_por(amiga_por.to_neutral(c))
+        assert record[0x084:0x089] == c.raw[0x084:0x089], path
+        assert not rep.unaccounted, path
+        seen.append(record[0x084:0x089])
+    assert [s for s in seen if s[0]] == [b"\xff\xb2\x00\x00\x00"], \
+        [s.hex() for s in seen]
+
+
+def test_a_source_with_no_window_of_its_own_gets_the_writers_constant():
+    """The other half of the rule, and it needs no disk.
+
+    A C64 record keeps the control byte at `0x0B8` and the share at `0x0FA`
+    and has no window at all, so a neutral character read from one -- or
+    built by hand, as here -- leaves `goldbox.dos_codec.FIELD_83_87` to fill
+    the run.  Only a source that actually holds those bytes replaces it.
+    """
+    from goldbox import dos_codec
+
+    built = amiga_por.write_por(sample())[0]
+    assert built[0x084:0x089] == b"\x00\x00\x01\x00\x00"
+
+    carried = sample()
+    dos_codec.set_window_source(carried, b"\xff\x00\x01\x5a\xa5")
+    written = amiga_por.write_por(carried)[0]
+    assert written[0x084:0x089] == b"\xff\x00\x01\x5a\xa5"
 
 
 def test_the_neutral_record_carries_the_amiga_port_and_its_items():
@@ -1231,7 +1271,11 @@ def por_write_mask() -> set[int]:
     for name, _ in dos_codec.WRITE_UNSOURCED:
         mask |= field(name)
     for name, _, _ in dos_codec.WRITE_CONSTANTS:
-        mask |= field(name)
+        # `field_83_87` is in that table and is **not** masked: the constant
+        # is only what a source with no window of its own gets, and an Amiga
+        # source has one, so all five bytes have to come back (#614).
+        if name != "field_83_87":
+            mask |= field(name)
     for name, _, _, _ in dos_codec.WRITE_DEFAULTS:
         mask |= field(name)
     for name, _ in dos_codec.WRITE_DERIVED:
@@ -2082,12 +2126,12 @@ def test_every_curse_insertion_is_placed_to_the_byte():
     for char in curse_characters():
         for name in ("field_83_87", "spells_castable_druid",
                       "experience_award"):
-            char.get(name)          # no longer raises
+            char.get(name)          # each has an offset in this map
         assert list(char.get("spells_castable_druid")) == [0] * 5
 
 
 def test_the_placed_field_83_87_reads_the_constant_dos_holds():
-    """A free check on the window this map used to refuse.
+    """A free check on the window, through the Curse map.
 
     `goldbox/dos_codec.py` records `00 00 01 00 00` at DOS `0x0F6` in 24 of 24 Pool
     of Radiance records.  Placing the Amiga field at the same offset makes
