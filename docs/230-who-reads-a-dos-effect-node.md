@@ -6,8 +6,9 @@ flag) itself. This page answers, from each DOS engine's own code, which ids'
 nodes the engine reads past the duration, what a readied magical item writes,
 what a strength item's value byte holds, whether Secret of the Silver
 Blades' C64 halfling id 92 is the effect DOS gives a halfling and what DOS's
-own 92 protects against, and whether any C64 title's Dispel Magic can remove
-an effect held in a trait slot. It is Stage 2 of the plan on
+own 92 protects against, what else in DOS Silver Blades stands between Ray of
+Enfeeblement or Feeblemind and a halfling, and whether any C64 title's Dispel
+Magic can remove an effect held in a trait slot. It is Stage 2 of the plan on
 #621 (A C64 character carrying an effect in a trait slot cannot be saved as a DOS or Amiga save, because the writer keeps only the eight ids the game's own importer keeps),
 and the DOS column of #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s
 Stage 4c.
@@ -32,6 +33,9 @@ flag, next pointer.
 | a strength item's node | `26 00 00 vv 01`, `vv` the pre-item strength encoded | none: no power other than `0x80` writes a node | none | CONFIRMED |
 | C64 halfling 92 against DOS halfling 97 | -- | -- | two different effects | CONFIRMED |
 | what a DOS 92 node cancels when a spell's effect is applied | -- | -- | Fear (111) only; no DOS effect cancels Ray of Enfeeblement (29) or Feeblemind (68) | CONFIRMED |
+| what else protects a DOS halfling from Ray of Enfeeblement | -- | -- | nothing racial: an ordinary save against spells, which no racial effect adjusts | CONFIRMED |
+| from Feeblemind | -- | -- | his class: the spell answers "unaffected" to a fighter, a thief and a fighter/thief before any save | CONFIRMED |
+| does any saving throw ask the constitution bonus, 97 | yes, list 12 | yes, list 12 | **no**: 97 is on no list | CONFIRMED |
 | can the **C64** Dispel Magic remove an effect held in a trait slot | no | no | no | CONFIRMED |
 
 ## How it was read
@@ -226,11 +230,17 @@ one test for 64 at `0x30A7C`. The rest of what the plan asked to read:
 Curse is the control that the reader sees such a handler when one exists: its
 133 cancels 29, 68 and 142. So a converted C64 Silver Blades halfling written
 with `5C 00 00 FF 00` keeps his immunity to Fear and to effect 82, and **no
-DOS Silver Blades node exists that keeps his immunity to Ray of Enfeeblement
-or Feeblemind** -- the engine has none to give. A DOS-born halfling has
-neither immunity and has 97's constitution bonus on his saving throws, which
-the C64's 97 does not give. That is a difference between the two engines,
-read from both, and not a gap in our reading.
+DOS Silver Blades node exists that cancels Ray of Enfeeblement or Feeblemind**.
+Section (f) reads the rest of the spell path and changes what that costs him:
+Feeblemind never reaches a halfling on DOS whatever nodes he carries, because
+the spell passes over every class a halfling can be, and Ray of Enfeeblement
+reaches every halfling, DOS-born or converted, subject to an ordinary save.
+
+**The DOS 97 in the table above is a handler nothing in DOS Silver Blades
+asks.** Its body is the constitution bonus, but no check list holds 97 and
+nothing else looks for it (section (f)), so a DOS-born halfling carries it and
+gains nothing on any saving throw. This page used to say he had the bonus;
+reading the saving throw itself is what changed it.
 
 ## (e) The C64's Dispel Magic never reaches a trait slot
 
@@ -286,6 +296,81 @@ Three things were seen on the way, none of them about a trait slot:
   flagged Slow Poison can clear a poison held in a slot. PROBABLE, from the
   code only; it touches 55 and no id this page's converter writes.
 
+## (f) What else stands between a DOS Silver Blades halfling and 29 or 68
+
+**Nothing racial.** CONFIRMED from the code, every route below read to its
+end. `tools/dos/dosaffectreads.py --title silver-blades --spells 29,68` prints
+it.
+
+A spell reaches a target through its routine in the spell table the
+dispatcher at `0x2DD5C` calls through (`ds:0x8A8E`, 118 entries), then, for a
+table effect, through `0x2D691`, which reads the spell's 16-byte row at
+`ds:0x449D + 16 * spell`: level at `+1`, save action at `+8`, save column at
+`+9`, effect id at `+10`. `0x2D691` rolls the save when the action byte is set,
+and the apply routine `0x37EB0` refuses the effect when the target saved and
+the action is 1. Only two rows name 29 or 68, and none of the 22 calls to the
+apply routine passes either as a constant:
+
+| | Ray of Enfeeblement | Feeblemind |
+|---|---|---|
+| spell, row | 33: level 2, action 1, column 4 (spells) | 93: level 5, action 1, column 4 |
+| routine | `0x2EFBF`: calls `0x2D691` with the spell id, nothing else | `0x31B94`: a switch on the record's class byte `0x6C`, then `0x2D691` only if the arm set the flag at `[bp - 6]` |
+| race or class read | none, there or in `0x2D691` | class only; race only to choose +4 (human) or +2 for a magic-user's save |
+| the handler | `0x11828`: on list 4, takes a quarter off damage dealt | `0x12E87`: sets intelligence and wisdom to 3 |
+
+**The saving throw** (`0x36F1F`) is a d20, where 1 fails and 20 saves, plus
+the record's `0x19A` (the only writer that adds to it is readying an item, from
+the item's `0x33`, `0x3848C`), plus its own argument (0 from both spells). It
+parks the column in `[0x87E7]`, walks check list 12 (`8, 9, 10, 13, 17, 20, 33,
+36, 45, 46, 49, 50, 54, 61, 78, 94`), and saves when the total reaches the
+record's `0xE8 + column`. Those targets are rebuilt at `0x3C644` from the
+class tables alone: no read of the race byte, and the only constitution term
+is on column 0. **97 is on no list**, where Pool of Radiance and Curse both ask
+it on list 12, and the id is pushed only by the creation routine's race
+switch (`0x1DD62`); nothing calls `find_affect` with it. So a halfling saves
+against Ray of Enfeeblement exactly as a human of his class and level does.
+
+**Feeblemind's class gate**, read path by path from `0x31B94` (`class_gate`):
+
+| class byte | classes | Feeblemind |
+|---|---|---|
+| 1, 2, 6, 7, 14, 17 | druid, fighter, thief, monk, fighter/thief, monster | "unaffected", before any save |
+| 3, 4, 5, 9, 10, 11, 13, 15, 16 | paladin, ranger, magic-user and every multi-class with magic-user or ranger | cast, with the save shifted by class |
+| 0, 8, 12 | cleric, cleric/fighter, cleric/thief | the arm lowers the save target by one and never writes the flag, so what follows depends on whatever the stack held |
+
+A C64 Silver Blades halfling may be a fighter, a thief or both
+(`goldbox/levels.py`'s racial limits for race 5, read from the C64 trainer),
+so no converted halfling is feebleminded on DOS unless his class was edited.
+DOS's own race-class table was not read; that a DOS-born halfling has the same
+three classes is PROBABLE, from AD&D's rule and the C64 table. Curse's Feeblemind
+(`0x335A7`) has no gate: it shifts the save by class and applies to everyone.
+The cleric arms' unwritten flag is CONFIRMED from the code; what a player sees
+is not: a DOS Silver Blades cleric feebleminded on one cast and "unaffected" on
+another would show it.
+
+**What else can cancel either effect on application**, from list 9:
+
+* **63**, Minor Globe of Invulnerability (spell 88, magic-user level 4):
+  cancels whatever a spell
+  of level 3 or below applies (`0x12714`, row `+1` compared with 3). It stops
+  Ray of Enfeeblement and not Feeblemind, and every other spell of level 1-3
+  with it, so it is no carrier for a halfling's immunity.
+* **28**, the Mirror Image handler (`0x1174E`): cancels anything on a roll
+  weighted by the images left in its node's byte 3, and spends one.
+* **79** (`0x13354`): cancels anything, healing fire damage and applying 42
+  (Slow) on electricity first -- the iron golem's immunity, as the C64's 79
+  is. No spell row names it and no race or class seeds it.
+* **Magic resistance**: list 9's prologue (`0x35FC9`) rolls d100 against the
+  record's `0x1A5` plus 5 for every level the caster is below 11. No
+  instruction in `GAME.OVR` writes `0x1A5` by displacement; it is loaded with
+  the record (PROBABLE that no player character has any).
+
+None of these is racial, and 92 is on the list only for 111. **So a DOS
+Silver Blades halfling, DOS-born or converted, is immune to Feeblemind through
+his class, immune to Fear only if he carries 92, and has no protection from
+Ray of Enfeeblement but his save.** The C64 halfling's immunity to Ray of
+Enfeeblement is the one of the three that DOS has no way to keep.
+
 ## The value and flag bytes a converted trait slot gets
 
 The rule follows from (a), (b) and (e). **CONFIRMED** for every row but the
@@ -309,3 +394,18 @@ decision for the conversion, not a reading.
   into a local (41, 74 and 82 of them); a routine that copies a node pointer
   into a global and reads it elsewhere would not be seen. None was found, and
   none was searched for beyond that.
+* **What a DOS Silver Blades cleric sees from Feeblemind.** The cleric arms
+  of `0x31B94` leave the flag unwritten, so the answer is whatever byte the
+  stack held. Settle it in DOSBox-X: break at `GAME.OVR:0x31C7A` while an
+  enemy casts Feeblemind at a cleric and read `[bp - 6]`, several casts.
+* **Whether any player character has magic resistance.** Nothing writes
+  record `0x1A5` by displacement; a block copy from a monster or item template
+  would not be seen.
+* **The halfling reading has not been watched in the game.** It rests on the
+  code alone. The experiment that would show it: in DOS Silver Blades, have an
+  enemy cast Ray of Enfeeblement and Feeblemind at a halfling fighter/thief,
+  once as the game made him and once with a `5C 00 00 FF 00` node added.
+  Expected: Feeblemind answers "unaffected" both times, and Ray of Enfeeblement
+  lands on a failed save both times. No driver in the tree casts a chosen
+  spell at a party member in DOS Silver Blades; `tools/dos/dosfightrun.py`
+  drives Pool of Radiance only.

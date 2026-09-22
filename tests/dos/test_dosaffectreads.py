@@ -7,7 +7,9 @@ player's own `GAME.OVR` and `START.EXE`, which ids have a handler, a
 readers that read them for every id (Dispel Magic's `0xFF` test and
 `remove_affect`'s flag test); what a readied magical item writes; Pool of
 Radiance's strength-item value byte; and that Silver Blades' C64 halfling id
-92 is not the effect DOS gives a halfling, 97.
+92 is not the effect DOS gives a halfling, 97; and, on the spell side, where
+each title saves, which spell applies Ray of Enfeeblement and Feeblemind, and
+the class gate in Silver Blades' Feeblemind.
 `docs/230-who-reads-a-dos-effect-node.md` has the reading.
 
 The synthetic tests pin the pointer tracker on routines assembled here and
@@ -297,6 +299,127 @@ def test_curse_is_the_title_whose_dos_engine_cancels_29_and_68():
     """The negative above is Silver Blades' own: Curse's DOS 133 does cancel
     both, so the reader can see such a handler when one exists."""
     assert reads.cancels(_title("curse"))[133] == [0, 29, 68, 142]
+
+
+# --------------------------------------------------------------------------
+# Casting the spell: the saving throw, the spell table, the spell's own gate
+# --------------------------------------------------------------------------
+
+#: title -> the saving throw, the record byte it adds to the d20 and the
+#: record's save-target base, the routine that applies a spell's table effect,
+#: and the spell table's offset in the data segment.
+SPELLS = {
+    "pool": (0x2BC4D, 0x101, 0x6D, 0x278DB, 0x31FA),
+    "curse": (0x36313, 0x186, 0xDF, 0x2EF34, 0x37DC),
+    "silver-blades": (0x36F1F, 0x19A, 0xE8, 0x2D691, 0x449D),
+}
+
+
+def test_the_saving_throw_and_the_spell_table_are_where_the_reading_says(engine):
+    """Every title saves through one routine that walks list 12, and applies a
+    spell's effect through one routine that reads a 16-byte row whose byte 10
+    names it: Ray of Enfeeblement is spell 33 and effect 29 in all three."""
+    save, bonus, targets, routine, base = SPELLS[engine.title]
+    s = reads.saving_throw(engine)
+    assert (s["routine"], s["bonus"], s["targets"]) == (save, bonus, targets)
+    sp = reads.spell_effect_routine(engine)
+    assert (sp["routine"], sp["base"]) == (routine, base)
+    assert reads.spells_applying(engine, 29) == [33]
+    row = reads.spell_rows(engine)[33]
+    assert (row[1], row[8], row[9]) == (2, 1, 4)     # level 2, a save negates, vs spell
+
+
+def test_only_silver_blades_never_asks_the_constitution_bonus():
+    """Pool of Radiance and Curse ask 97 on list 12, the saving throw's list.
+    Silver Blades asks it on no list, and pushes the id only to add it at
+    creation, so a DOS Silver Blades halfling, dwarf or gnome carries a 97
+    that no saving throw ever reads."""
+    assert 97 in reads.apply_walk(_title("pool"))["lists"][12]
+    assert 97 in reads.apply_walk(_title("curse"))["lists"][12]
+    eng = _title("silver-blades")
+    assert reads.lists_holding(eng, 97) == []
+    assert not [s for s in reads.find_affect_sites(eng) if s[2] == 97]
+    pushes = {eng.ovr.rfind(b"\x55\x89\xe5", 0, m)
+              for m in range(len(eng.ovr)) if eng.ovr.startswith(b"\xb0\x61\x50", m)}
+    assert pushes == {0x1DD62}                  # the creation routine's race switch
+
+
+def test_silver_blades_ray_of_enfeeblement_reads_no_race_or_class():
+    """Spell 33 hands its id straight to the effect routine, and neither reads
+    the record's race (0x6B) or class (0x6C): a save is the only defence."""
+    eng = _title("silver-blades")
+    where, at = reads.spell_routines(eng)[33]
+    assert (where, at) == ("GAME.OVR", 0x2EFBF)
+    for start in (at, 0x2D691):
+        text = [i.op_str for i in reads.body(eng.ovr, start, 0x3000)]
+        assert not any("es:[di + 0x6b]" in t or "es:[di + 0x6c]" in t for t in text)
+    assert reads.class_gate(eng, where, at) is None
+
+
+#: Silver Blades' Feeblemind (`0x31B94`) by the record's class byte: 1 lets the
+#: spell through, 0 answers "unaffected", None leaves the flag unwritten.
+FEEBLEMIND_GATE = {0: {None}, 1: {0}, 2: {0}, 3: {1}, 4: {1}, 5: {1}, 6: {0}, 7: {0},
+                   8: {None}, 9: {1}, 10: {1}, 11: {1}, 12: {None}, 13: {1}, 14: {0},
+                   15: {1}, 16: {1}, 17: {0}}
+
+
+def test_the_class_gate_reader_follows_each_class_to_the_flag_it_sets():
+    """A hand-assembled switch on `es:[di + 0x6C]`: class 0 jumps straight to
+    the join, 2, 6 and 14 clear the flag, everything else sets it."""
+    blob = PROLOGUE + bytes.fromhex(
+        "83ec10" "c47e06" "268a456c"          # sub sp / les di, [bp + 6] / mov al, class
+        "3c00" "7416" "3c02" "740e" "3c06" "740a" "3c0e" "7406"
+        "c646fa01" "eb04"                      # mov byte ptr [bp - 6], 1 / jmp join
+        "c646fa00"                             # mov byte ptr [bp - 6], 0
+        "807efa00"                             # join: cmp byte ptr [bp - 6], 0
+        "89ec" "5dcb")
+    gate = reads.class_gate(_engine(blob), "GAME.OVR", 0)
+    assert (gate["field"], gate["flag"]) == (0x6C, "byte ptr [bp - 6]")
+    assert gate["classes"][0] == {None}
+    assert {c for c, v in gate["classes"].items() if v == {0}} == {2, 6, 14}
+    assert gate["classes"][5] == {1}
+
+
+def test_silver_blades_feeblemind_passes_over_every_class_a_halfling_can_be():
+    """A halfling may be a fighter, a thief or both (the racial limits the C64
+    trainer reads), and DOS Silver Blades' Feeblemind answers "unaffected" to
+    all three before any save.  The cleric arms never write the flag."""
+    from goldbox import dos_port, levels
+
+    eng = _title("silver-blades")
+    where, at = reads.spell_routines(eng)[reads.spells_applying(eng, 68)[0]]
+    assert at == 0x31B94
+    gate = reads.class_gate(eng, where, at)
+    assert (gate["field"], gate["flag"]) == (0x6C, "byte ptr [bp - 6]")
+    assert gate["classes"] == FEEBLEMIND_GATE
+    ssb = levels.SECRET_OF_THE_SILVER_BLADES
+    single = {c for c in ("magic-user", "cleric", "thief", "fighter", "paladin", "ranger")
+              if ssb.racial_limit(5, c)}
+    assert single == {"fighter", "thief"}
+    for name in ("fighter", "thief", "fighter/thief"):
+        assert gate["classes"][dos_port.CLASS_NUMBERS.index(name)] == {0}
+
+
+def test_curse_feeblemind_has_no_class_gate():
+    """The gate is Silver Blades' own: Curse's Feeblemind shifts the save by
+    class and applies to everyone."""
+    eng = _title("curse")
+    where, at = reads.spell_routines(eng)[reads.spells_applying(eng, 68)[0]]
+    assert at == 0x335A7
+    assert reads.class_gate(eng, where, at) is None
+
+
+def test_silver_blades_minor_globe_63_cancels_only_spells_of_level_three_or_below():
+    """The one list-9 effect that stops Ray of Enfeeblement by spell rather than
+    by chance: 63 cancels whatever a spell of level 3 or below applies, so it
+    stops Ray of Enfeeblement (level 2) and not Feeblemind (level 5)."""
+    eng = _title("silver-blades")
+    level = reads.spell_effect_routine(eng)["level"]
+    text = [f"{i.mnemonic} {i.op_str}" for i in reads.body(eng.ovr, eng.handlers[63][1])]
+    assert f"cmp byte ptr [di + {level:#x}], 3" in text
+    assert reads.cancels(eng)[63] == [0]
+    rows = reads.spell_rows(eng)
+    assert (rows[33][1], rows[93][1]) == (2, 5)
 
 
 # --------------------------------------------------------------------------

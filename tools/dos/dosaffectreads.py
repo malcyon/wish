@@ -44,6 +44,12 @@ later two route power 0 through the hook and nothing else.
 routine parks the incoming id in a global, walks check list 9 over the
 target, and each handler on it cancels by handing a helper the ids it
 blocks (`tools/dos/dosaffectreads.py --title silver-blades --apply`).
+
+`saving_throw`, `spell_effect_routine`, `spell_rows` and `class_gate` read
+the rest of what stands between a spell and its target: the saving throw's
+record bytes and list 12, the 16-byte spell table row that names the effect
+and the save, and a switch on the record's class inside a spell's own routine
+(`--spells 29,68`).
 """
 
 from __future__ import annotations
@@ -801,6 +807,202 @@ def data_indexed_callers(eng: Engine, offset: int) -> list[dict]:
     return out
 
 
+# --------------------------------------------------------------------------
+# Casting a spell: the saving throw, the spell table and a spell's own gate
+# --------------------------------------------------------------------------
+# What protects a target from a spell's effect is not only list 9.  The spell
+# routine may refuse a target before anything is applied, the saving throw
+# adds a record byte and walks list 12, and the spell's row in the 16-byte
+# spell table names the effect, whether a save negates it and against which
+# column.  These read each of those out of the engine.
+
+
+def routine_callers(eng: Engine, at: int) -> list[tuple[int, int]]:
+    """`(site, routine)` for every near and far call to `GAME.OVR:at`."""
+    unit = dosovrmap.unit_of(eng.units, at)
+    sites = set()
+    for stub, code in unit["ents"]:
+        if unit["fileoff"] + code == at:
+            far = b"\x9a" + struct.pack("<HH", stub, unit["seg"])
+            sites |= {m.start() for m in re.finditer(re.escape(far), eng.ovr)}
+    lo, hi = unit["fileoff"], unit["fileoff"] + unit["code"]
+    for p in range(lo, hi - 3):
+        if eng.ovr[p] == 0xE8 and \
+                p + 3 + struct.unpack_from("<h", eng.ovr, p + 1)[0] == at:
+            sites.add(p)
+    return sorted((s, eng.ovr.rfind(b"\x55\x89\xe5", 0, s)) for s in sites)
+
+
+def saving_throw(eng: Engine) -> dict:
+    """The saving-throw routine and the record bytes it adds and compares.
+
+    It is the one routine that walks check list 12 (`mov al, 0xc` a few
+    instructions before the near call to the walker).  It rolls a d20, adds
+    the record byte `bonus` and its own argument, parks the save column in a
+    global, walks list 12 over the target, and saves when the roll reaches the
+    record's `targets + column`.
+    """
+    walker = apply_walk(eng)["walker"]
+    hits = []
+    for site, start in routine_callers(eng, walker):
+        before = dosovrmap.window(eng.ovr, site, 40)[-7:]
+        if any(i.op_str == "al, 0xc" for i in before):
+            hits.append((site, start))
+    if len(hits) != 1:
+        raise ValueError(f"{eng.title}: {len(hits)} routines walk list 12")
+    site, start = hits[0]
+    ins = body(eng.ovr, start)
+    reads_ = [(i.address, int(DISP.search(i.op_str).group(2), 0)) for i in ins
+              if i.mnemonic == "mov" and i.op_str.startswith("al, byte ptr es:[di + 0x")]
+    bonus = next(off for a, off in reads_ if a < site)
+    targets = next(off for a, off in reads_ if a > site)
+    return dict(routine=start, walk=site, list=12, bonus=bonus, targets=targets)
+
+
+def spell_effect_routine(eng: Engine) -> dict:
+    """The routine that applies a spell's table effect, and the table's layout.
+
+    Of the apply routine's callers it is the one that also calls the saving
+    throw.  Before that call it tests the row's save-action byte, `cmp byte
+    ptr [di + A], 0`, and pushes the save column, `mov al, byte ptr [di +
+    A + 1]`; the row is 16 bytes (`shl di, cl` with `cl = 4`), so the table
+    starts at `A - 8` and the effect id is its byte 10.
+    """
+    save = saving_throw(eng)["routine"]
+    apply = apply_walk(eng)["apply"]
+    for _site, start in routine_callers(eng, apply):
+        ins = body(eng.ovr, start, 0x3000)
+        calls = [k for k, i in enumerate(ins) if i.mnemonic == "lcall"
+                 and _far(eng, i.op_str) == ("GAME.OVR", save)]
+        if not calls:
+            continue
+        back = ins[max(0, calls[0] - 6):calls[0]]
+        column = next((i for i in reversed(back) if i.mnemonic == "mov"
+                       and re.fullmatch(r"al, byte ptr \[di \+ 0x[0-9a-f]+\]", i.op_str)), None)
+        if column is None:
+            continue
+        col = int(column.op_str.split("+ ")[1].rstrip("]"), 0)
+        action = f"byte ptr [di + {col - 1:#x}], 0"
+        if not any(i.mnemonic == "cmp" and i.op_str == action for i in ins):
+            continue
+        base = col - 9
+        return dict(routine=start, save_call=ins[calls[0]].address, base=base,
+                    level=base + 1, action=base + 8, column=base + 9, effect=base + 10)
+    raise ValueError(f"{eng.title}: no apply caller calls the saving throw")
+
+
+def spell_routines(eng: Engine) -> dict[int, tuple[str, int]]:
+    """Spell id -> its routine, from the far-pointer table the spell dispatcher
+    calls through: the dispatcher-form table other than the effect handlers'
+    with the most code-filled entries."""
+    best: dict = {}
+    for m in re.finditer(re.escape(dosracialseed.DISPATCH), eng.ovr):
+        base = struct.unpack_from("<H", eng.ovr, m.end())[0]
+        if base == eng.table:
+            continue
+        fills = dosracialseed._fills(eng.ovr, base)
+        if len(fills) > len(best):
+            best = fills
+    out = {}
+    for sid, (seg, off) in sorted(best.items()):
+        try:
+            out[sid] = eng.resolve(seg, off)
+        except ValueError:
+            continue
+    return out
+
+
+def spell_rows(eng: Engine) -> dict[int, bytes]:
+    """Spell id -> its 16-byte row in the spell table, for every routine's id."""
+    from tools.dos import dosspellslots
+    at = dosspellslots.data_segment(eng.img) * 16 + spell_effect_routine(eng)["base"]
+    return {sid: eng.img[at + 16 * sid:at + 16 * sid + 16] for sid in spell_routines(eng)}
+
+
+def spells_applying(eng: Engine, eid: int) -> list[int]:
+    """The spell ids whose row names `eid` as its effect."""
+    return [sid for sid, row in spell_rows(eng).items() if row[10] == eid]
+
+
+def lists_holding(eng: Engine, eid: int) -> list[int]:
+    """The check lists the walker asks `eid` on."""
+    return sorted(n for n, ids in apply_walk(eng)["lists"].items() if eid in ids)
+
+
+_JCC = {"je", "jne", "jb", "jbe", "ja", "jae", "jl", "jle", "jg", "jge", "js", "jns"}
+
+
+def class_gate(eng: Engine, where: str, at: int) -> dict | None:
+    """Which record classes a spell routine lets through, read from its switch.
+
+    The switch is `mov al, byte ptr es:[di + F]` followed by `cmp al, n` /
+    `je`/`jne` chains, each arm ending in a jump to a join that tests a local
+    flag (`cmp byte ptr [bp - k], 0`), the flag an arm sets with `mov byte ptr
+    [bp - k], 1`.  Each class value 0-17 is followed through the chain; a
+    comparison that is not against `al` takes both branches.  Returns the
+    field and, per class, the set of values the flag holds at the join --
+    `None` in the set where a path reaches it without writing the flag.
+    Returns None for a routine with no such switch.
+    """
+    ins = body(eng.code(where), at, 0x3000)
+    index = {i.address: k for k, i in enumerate(ins)}
+    sets = collections.Counter(i.op_str.split(",")[0] for i in ins if i.mnemonic == "mov"
+                               and re.fullmatch(r"byte ptr \[bp - \w+\], 1", i.op_str))
+    if not sets:
+        return None
+    flag = sets.most_common(1)[0][0]
+    join = f"{flag}, 0"
+    start = next((k for k, i in enumerate(ins[:-1]) if i.mnemonic == "mov"
+                  and re.fullmatch(r"al, byte ptr es:\[di \+ 0x[0-9a-f]+\]", i.op_str)
+                  and ins[k + 1].mnemonic == "cmp"
+                  and re.fullmatch(r"al, (0x[0-9a-f]+|\d+)", ins[k + 1].op_str)
+                  and sum(1 for j in ins[k + 1:k + 40] if j.mnemonic == "cmp"
+                          and re.fullmatch(r"al, (0x[0-9a-f]+|\d+)", j.op_str)) >= 3), None)
+    if start is None:
+        return None
+    field = int(DISP.search(ins[start].op_str).group(2), 0)
+    out = {}
+    for cls in range(18):
+        seen, result = set(), set()
+        stack = [(start + 1, cls, None, None)]
+        while stack:
+            k, al, cmpd, value = stack.pop()
+            if (k, al, cmpd, value) in seen or k >= len(ins):
+                continue
+            seen.add((k, al, cmpd, value))
+            i = ins[k]
+            m, ops = i.mnemonic, i.op_str
+            if m == "cmp" and ops == join:
+                result.add(value)
+                continue
+            if m == "cmp":
+                imm = re.fullmatch(r"al, (0x[0-9a-f]+|\d+)", ops)
+                cmpd = (al, int(imm.group(1), 0)) if imm and al is not None else "?"
+                stack.append((k + 1, al, cmpd, value))
+                continue
+            if m == "mov" and ops.startswith("al,"):
+                al = None
+            if m == "mov" and ops.startswith(f"{flag}, "):
+                value = int(ops.split(", ")[1], 0)
+            if m == "jmp":
+                stack.append((index[int(ops, 0)], al, cmpd, value))
+                continue
+            if m in _JCC:
+                taken = (index[int(ops, 0)], al, cmpd, value)
+                fall = (k + 1, al, cmpd, value)
+                if isinstance(cmpd, tuple) and m in ("je", "jne"):
+                    equal = cmpd[0] == cmpd[1]
+                    stack.append(taken if equal == (m == "je") else fall)
+                else:
+                    stack += [taken, fall]
+                continue
+            if m in ("ret", "retf"):
+                continue
+            stack.append((k + 1, al, cmpd, value))
+        out[cls] = result
+    return dict(field=field, flag=flag, classes=out)
+
+
 def _far(eng: Engine, op_str: str) -> tuple[str, int] | None:
     direct = re.fullmatch(r"(0x[0-9a-f]+|\d+), (0x[0-9a-f]+|\d+)", op_str)
     if direct is None:
@@ -833,6 +1035,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--items", action="store_true", help="print the item-power reading")
     ap.add_argument("--apply", action="store_true",
                     help="print check list 9 and what each handler cancels on application")
+    ap.add_argument("--spells", metavar="IDS",
+                    help="comma-separated effect ids: the spells that apply each, their save"
+                         " and the class gate in their routine")
     a = ap.parse_args(argv)
     for title in a.title or list(TITLES):
         try:
@@ -883,6 +1088,27 @@ def main(argv: list[str] | None = None) -> int:
             print(f"   cancel helper 0x{helper:x}; each handler cancels (0 = any):")
             for eid, ids in sorted(cancels(eng).items()):
                 print(f"   {eid:3d} {ids}")
+        if a.spells:
+            s = saving_throw(eng)
+            print(f"   saving throw GAME.OVR:0x{s['routine']:x}: d20 + record 0x{s['bonus']:x},"
+                  f" walks list 12 {apply_walk(eng)['lists'].get(12, [])},"
+                  f" saves at record 0x{s['targets']:x} + column")
+            sp = spell_effect_routine(eng)
+            rows, routines = spell_rows(eng), spell_routines(eng)
+            print(f"   spell effect routine GAME.OVR:0x{sp['routine']:x}, spell table"
+                  f" ds:0x{sp['base']:x} (16 bytes: level +1, save action +8, column +9,"
+                  f" effect +10)")
+            for eid in [int(x) for x in a.spells.split(",")]:
+                print(f"   effect {eid}: on lists {lists_holding(eng, eid) or 'none'}")
+                for sid in spells_applying(eng, eid):
+                    row, (where, at) = rows[sid], routines[sid]
+                    gate = class_gate(eng, where, at)
+                    shown = "no class gate" if gate is None else (
+                        f"class byte 0x{gate['field']:x}: " + ", ".join(
+                            f"{c}={'/'.join('unset' if v is None else str(v) for v in sorted(vs, key=str))}"
+                            for c, vs in gate["classes"].items()))
+                    print(f"     spell {sid} {where}:0x{at:x} level {row[1]} save action {row[8]}"
+                          f" column {row[9]}; {shown}")
     return 0
 
 
