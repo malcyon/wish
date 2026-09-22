@@ -77,11 +77,14 @@ REFUSED = {
                "with `winuae.ps1 claim -Holder <id>` instead",
     "release": "leases are libvirt's, on the desktop; give the WinUAE lane "
                "back with `winuae.ps1 release -Holder <id>` instead",
-    "up": "the Windows guest autostarts with the host; agents never start it",
-    "down": "agents never stop the Windows guest",
-    "save": "agents never suspend the Windows guest",
-    "promote": "only the desktop changes the Windows guest's golden image",
-    "revert": "only the desktop reverts the Windows guest",
+    "up": "the Windows guest autostarts with the host; this tool refuses "
+          "to start it",
+    "down": "this tool refuses to stop the Windows guest",
+    "save": "this tool refuses to suspend the Windows guest",
+    "promote": "this tool refuses to change the Windows guest's golden image; "
+               "that runs from the desktop",
+    "revert": "this tool refuses to revert the Windows guest; that runs "
+              "from the desktop",
     "guest-setup": "the first-logon script is re-run from the desktop, "
                    "off the UNATTEND volume",
 }
@@ -120,13 +123,26 @@ def remote_path(path: str) -> str:
     return path.replace("\\", "/")
 
 
+class ScpArgumentError(WinvmError):
+    """A source or target that scp would read as an option."""
+
+
+def _check_not_option(paths: list[str]) -> None:
+    for path in paths:
+        if path.startswith("-"):
+            raise ScpArgumentError(
+                f"'{path}' starts with '-' and scp would read it as an option; "
+                "prefix it with './' if that is really the path")
+
+
 def scp_argv(config: str, sources: list[str], target: str,
              recursive: bool = False) -> list[str]:
     """The scp command line copying `sources` to `target`."""
+    _check_not_option([*sources, target])
     argv = ["scp", "-F", config, *FORCED_OPTIONS]
     if recursive:
         argv.append("-r")
-    return argv + list(sources) + [target]
+    return argv + ["--"] + list(sources) + [target]
 
 
 def put_argv(config: str, host: str, sources: list[str], remote: str,
@@ -437,8 +453,34 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _split_scp_argv(argv: list[str]) -> tuple[list[str], list[str] | None]:
+    """`argv` split at a bare `scp`, so its own arguments never reach argparse.
+
+    `argparse.REMAINDER` mis-parses a `scp` argument that starts with `-` as
+    an unrecognized option of the top-level parser rather than as part of the
+    positional -- a known argparse limitation -- which would let a source or
+    target such as `-oProxyCommand=x` escape `scp_argv`'s own check by
+    failing earlier, for the wrong reason. Splitting `scp` out by hand keeps
+    every one of its arguments, however they are spelled, in the list that
+    `scp_argv` checks.
+    """
+    i = 0
+    while i < len(argv):
+        if argv[i] in ("--config", "--host"):
+            i += 2
+            continue
+        if argv[i] == "scp":
+            return argv[:i + 1], argv[i + 1:]
+        i += 1
+    return argv, None
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    before_scp, scp_rest = _split_scp_argv(raw)
+    args = _parser().parse_args(before_scp)
+    if scp_rest is not None:
+        args.args = scp_rest
     cfg, host = args.config, args.host
     try:
         if args.cmd in REFUSED:
@@ -463,7 +505,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "scp":
             if not args.args:
                 raise WinvmError("scp needs its arguments")
-            return _run(scp_argv(cfg, args.args[:-1], args.args[-1])).returncode
+            try:
+                argv = scp_argv(cfg, args.args[:-1], args.args[-1])
+            except ScpArgumentError as exc:
+                print(f"winvm: {exc}", file=sys.stderr)
+                return 2
+            return _run(argv).returncode
         if args.cmd == "shot":
             size = take_shot(cfg, host, pathlib.Path(args.file), args.timeout)
             print(f"{args.file} ({size} bytes)")

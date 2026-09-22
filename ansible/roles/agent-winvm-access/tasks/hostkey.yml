@@ -96,6 +96,18 @@
       changed_when: false
       check_mode: false
 
+    - name: Stop if `type` failed inside the guest
+      ansible.builtin.assert:
+        that:
+          - (agent_winvm_exec_status.stdout | from_json)['return']['exitcode'] == 0
+        fail_msg: >-
+          guest-exec ran `type {{ agent_winvm_host_key_file }}` inside
+          {{ agent_winvm_domain }} but it exited
+          {{ (agent_winvm_exec_status.stdout | from_json)['return']['exitcode'] }},
+          so there is no key to read. Check the path exists on the Windows
+          guest, or read the key off the console and set it as
+          agent_winvm_host_key in `ansible/inventory.yml`.
+
     - name: Keep the key the guest agent read
       ansible.builtin.set_fact:
         agent_winvm_host_key_read: >-

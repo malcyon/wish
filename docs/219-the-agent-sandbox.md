@@ -125,7 +125,7 @@ Everything else, the internet through libvirt's own NAT, keeps working, because 
 
 **The deny is one-directional, deliberately.** The operator reaches in from the desktop by ssh to the guest's `10.77.0.x` address, and the replies go back to `10.77.0.1`, which the `in` rule lets through. Reaching in from any other machine on the LAN would need the replies to cross the filter and is not supported; go through the desktop.
 
-**The Windows guest is on this network too.** On a network of its own with libvirt's default NAT and no filter it could reach the home LAN, and a Windows guest on the LAN's side is a way in. It is built from scratch on `sandbox`: `win11` is at `10.77.0.11`, with gateway and DNS at `10.77.0.1` (`winvm_dns_server`), all written by `autounattend.xml`. Its golden image, promoted once after the install, is the baseline; `winvm promote` and `winvm revert` touch only the disk and the varstore, never the domain, so the network, the filter and the vCPU count survive both. Both guests autostart with the host, and agents never start, stop or revert Windows: they drive it over ssh once it is up.
+**The Windows guest is on this network too.** On a network of its own with libvirt's default NAT and no filter it could reach the home LAN, and a Windows guest on the LAN's side is a way in. It is built from scratch on `sandbox`: `win11` is at `10.77.0.11`, with gateway and DNS at `10.77.0.1` (`winvm_dns_server`), all written by `autounattend.xml`. Its golden image, promoted once after the install, is the baseline; `winvm promote` and `winvm revert` touch only the disk and the varstore, never the domain, so the network, the filter and the vCPU count survive both. Both guests autostart with the host, and the guest's own `winvm` refuses the commands that start, stop or revert Windows: they drive it over ssh once it is up. That refusal is `tools/amiga/winvmguest.py`'s own convenience, not a boundary the key enforces -- see "What the guest's `winvm` does, and what it refuses" below.
 
 ### Prove it, every time the filter changes
 
@@ -324,7 +324,9 @@ The check is `(Get-CimInstance Win32_VideoController).Name`, which says *Red Hat
 | `put LOCAL... REMOTE`, `get REMOTE LOCAL` | scp in either direction, with a Windows path's backslashes turned into forward slashes |
 | `shot [file]` | a one-off scheduled task with an Interactive principal captures the console session, session 1, since ssh lands in session 0 and cannot see the screen; the PNG comes back base64-encoded on the same ssh call and the task and file are removed before it returns |
 | `status`, `lane` | the Windows guest's name, account and boot time, and `winuae.ps1 status`: who holds the WinUAE lane, and which `winuae64` is running for whom |
-| `acquire`, `release`, `up`, `down`, `save`, `promote`, `revert`, `guest-setup` | refused. The Windows guest autostarts and only the desktop changes its state |
+| `acquire`, `release`, `up`, `down`, `save`, `promote`, `revert`, `guest-setup` | refused with a one-line error, by the guest's own `winvm`, before anything runs |
+
+**The refusal above is a convenience, not an access-control boundary.** The key that logs in carries no `command=` restriction, so `winvm ssh` and `winvm ps` already hand the agent guest a full Administrator PowerShell session on the Windows guest -- `Restart-Computer`, `Stop-Computer`, anything else an administrator can type reaches Windows exactly the same way `virsh` does from the desktop. What stops an agent calling those is that `tools/amiga/winvmguest.py`'s own `main()` refuses the eight names in the table above before running anything; a caller going around that file, over the same ssh identity, is refused nothing. Lane ownership is the same kind of thing: `winuae.ps1 claim` is a file two cooperating callers agree to check, not a lock Windows enforces, and an ssh session that skips it can start `winuae64` anyway.
 
 **Lane ownership is `winuae.ps1 claim`, not the Linux instance pool and not a lease.** The pool in `tools/registry/instance.py` hands out ports and displays on the machine it runs on and knows nothing of Windows, and a `winvm` lease only counts who wants the domain running. Who may drive WinUAE is decided on Windows, where the driver is, by the claim file `winuae.ps1 claim` creates atomically, and `winvm lane --expect <holder>` reads it back through `winuae.ps1 status`.
 
@@ -346,7 +348,7 @@ Where this design is silent, these are the answers, chosen to match what `ansibl
 | Guest address | DHCP from `sandbox`, with a fixed lease by MAC so the isolation test and the inventory can name it |
 | Inventory | `agent_vm_hosts` and `winvm_hosts` groups that both contain `workstations`, an `agent_vms` group for the guest, and a host entry for it reached over ssh at its `10.77.0.x` address from the desktop |
 | Agents inside | started by the operator in `herdr` or a `tmux` session over ssh; the role installs the CLIs and herdr's hooks for them and does not try to daemonise them |
-| Autostart | both guests autostart with the host; agents never start, stop or revert either |
+| Autostart | both guests autostart with the host; the guest's own `winvm` refuses to start, stop or revert either, by convenience rather than by what the ssh key allows |
 | Host firewall | untouched; the filter on the NIC is the whole enforcement |
 | Filter and network | defined with `virsh` from templates in `sandbox-network`, which both guest roles depend on, checked for existence first so the role is idempotent |
 | `wish` checkout | cloned over HTTPS during the build; a checkout that is a clean `main` is fast-forwarded on each run, and any other is left as it is; its origin stays `agent_guest_wish_repo`, and it pushes as the App through git's credential helper |

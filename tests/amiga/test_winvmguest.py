@@ -58,7 +58,28 @@ def test_put_with_nothing_to_copy_is_refused():
 
 def test_get_names_the_remote_side_first():
     argv = w.get_argv(CFG, "win11", r"C:\Amiga\send.log", ".", recursive=True)
-    assert argv[-3:] == ["-r", "win11:C:/Amiga/send.log", "."]
+    assert argv[-4:] == ["-r", "--", "win11:C:/Amiga/send.log", "."]
+
+
+def test_scp_argv_puts_a_separator_before_the_paths():
+    argv = w.scp_argv(CFG, ["a"], "win11:C:/b")
+    assert "--" in argv
+    assert argv[argv.index("--") + 1:] == ["a", "win11:C:/b"]
+
+
+def test_scp_argv_rejects_a_path_that_looks_like_an_option():
+    with pytest.raises(w.ScpArgumentError):
+        w.scp_argv(CFG, ["-oProxyCommand=x"], "win11:C:/b")
+    with pytest.raises(w.ScpArgumentError):
+        w.scp_argv(CFG, ["a"], "-oProxyCommand=x")
+
+
+def test_winvm_scp_exits_2_on_a_dashed_argument_without_running_anything(
+        monkeypatch, capsys):
+    monkeypatch.setattr(w.subprocess, "run",
+                        lambda *a, **k: pytest.fail("ran something"))
+    assert w.main(["scp", "-oProxyCommand=x", "a", "win11:C:/b"]) == 2
+    assert "starts with '-'" in capsys.readouterr().err
 
 
 def test_powershell_is_sent_encoded_so_no_shell_expands_it():
