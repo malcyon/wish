@@ -1136,8 +1136,11 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     out.set("treasure_share", control_raw[share_index],
             f"Amiga {deltas.title} field_83_87 @{share_offset:#05x}, the raw "
             "treasure share", Confidence.CONFIRMED)
+    # The run's other bytes have no neutral name; `dos_codec.write` puts the
+    # source's own back, as it does for a DOS source.
+    _dos.set_window_source(out, control_raw)
 
-    declared = {f.name for f in dos_port.layout_for(deltas.dos)}
+    declared ={f.name for f in dos_port.layout_for(deltas.dos)}
     for name, _why in LATER_DROPPED:
         if name in declared and name in LATER_DROPPED_PLAYER_TEXT:
             out.drop(LATER_DROPPED_PLAYER_TEXT[name])
