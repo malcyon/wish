@@ -31,13 +31,13 @@ understood is worse than one that does not.
 
 Run all three locally, or CI will find what you did not:
 
-1. `pytest` (all tests pass)
+1. `pytest` on the files touched, with `-n4` or fewer workers (all selected tests pass)
 2. `.venv/bin/ruff check .` (no unused imports or linting errors)
 3. `.venv/bin/python3 tools/generate/genui.py --check` (every `.ui` compiled and current)
 
-**Run the whole suite, not the files you touched.** A scoped run is for
-working; it is not the check, because a change can break a test in a file you
-did not run.
+**Scoped checks precede each commit; the whole suite gates the push batch.**
+A change can break a test outside the files touched, so scoped checks do not
+replace the whole-suite run before pushing code.
 
 **A subagent that is doing work runs only the files it touched.** Six agents
 each running the whole suite is six copies of Qt on one machine, and under that
@@ -49,8 +49,7 @@ anything, so nothing is lost by the agents not repeating it.
 hold of. **`test-runner` is the agent whose whole job is that one run**, and
 handing it the suite is not the thing this rule forbids -- what it forbids is
 six of them at once. The main window still owns the decision and reads the
-result; it just does not have to sit and watch, because a four-minute run in
-the main window is four minutes Donald cannot ask anything.
+result; it just does not have to sit and watch while Donald waits for an answer.
 
 So: **the main window either runs the suite itself or sends it to
 `test-runner`, and never both, and never two of them at once.** A `test-runner`
@@ -61,32 +60,31 @@ the definition.
 **The exception is a change that touches no code.** Prose in `docs/`, a rule
 file, `AGENTS.md`, a README row: the only test that reads any of those is
 `tests/suite/test_repository_contents.py`, which takes a second and a half. Run that
-and `ruff`, and push. The full suite takes minutes and proves nothing about a
+and `ruff` before pushing the batch. The full suite takes minutes and proves nothing about a
 sentence.
 
 **"Touches no code" means no `.py`, no `.ui`, and no file a test reads as
 data.** A docstring is code for this purpose -- it ships in the module, and a
 comment edit can turn out to sit inside a string literal. If the diff has a
-`.py` in it at all, run everything.
+`.py` in it at all, run everything once for the fixed batch before pushing.
 
 **And in a shared tree, run it somewhere the other agents are not.** With two
 subagents mid-edit -- the normal state on a busy night -- a run in place tests
 *their* half-finished code and says nothing about the commits you are about to
-push. A detached worktree at `HEAD` tests exactly what will land:
+push. Fix the batch's target SHA before starting. The suite runner creates a
+detached worktree there, runs both data modes and all required checks, and
+records the green marker:
 
 ```sh
-git worktree add -q --detach "$WT" HEAD
-ln -sfn "$PWD/gamedisks.yaml" "$WT/gamedisks.yaml"   # ditto: one machine's own registry
-(cd "$WT" && /path/to/.venv/bin/python -m pytest -q)
-git worktree remove "$WT" --force
+PYTEST_XDIST_AUTO_NUM_WORKERS=4 .venv/bin/python tools/suite/suiterun.py "$TARGET_SHA"
 ```
 
-**A bare `pytest -q` is already this fast: parallel is the default, not an
-extra flag.** `-n auto --dist loadgroup` lives in `pyproject.toml`'s
-`addopts`, so the command above already runs on every core the machine has --
-about 2:15 on twelve cores for the pass with data and about 1:20 for the pass
-without it, measured on 7,975 tests with the machine otherwise idle.
-`--dist loadgroup` keeps `tests/registry/test_instance.py`,
+**Use four workers as the local default to reduce fan noise; longer runs are
+acceptable.** `-n auto --dist loadgroup` lives in `pyproject.toml`'s `addopts`;
+the environment variable above sets four workers for both suite passes.
+Use `-n4` or fewer for scoped runs. Report the actual worker count and elapsed
+time; do not claim a measured noise improvement without a measurement.
+Keep `--dist loadgroup`: it keeps `tests/registry/test_instance.py`,
 `tests/dos/test_dosbox.py`, `tests/dos/test_dosboxx.py` and
 `tests/c64/test_walkrun.py` -- which claim a synthetic emulator-pool slot by a
 fixed, shared display number -- in one worker together, because two workers
@@ -98,9 +96,9 @@ isolation.
 **The symlink is the part that is easy to miss, and without it the run lies
 by omission.** `gamedisks.yaml` is gitignored, so a bare worktree skips every
 test that reads a specimen or a disk through the registry -- the ones with
-real game data behind them. CI has no registry, so the bare run is the closest thing to what CI will do and
-the in-tree run is what covers the specimen-backed tests. Neither is the whole
-check on its own.
+real game data behind them. The suite runner supplies the symlink for the
+data-backed pass and removes it for the pass without data, matching CI's lack
+of a registry. Neither pass is the whole check on its own.
 
 **`git add X && git commit` commits the whole index, not just `X`.** Several
 agents share this tree and they stage files; a commit made after naming your
@@ -129,18 +127,27 @@ fourth way. `tools/areas/geomap.py` is the one-liner.
 
 ## Pushing
 
-**Push once the code has been reviewed and the findings dealt with.** The
-sequence is: a subagent reports, the `code-reviewer` runs on what it wrote, the
-findings are fixed or explicitly rejected with a reason, and *then* it goes to
-the remote. Donald has standing approval on that; he does not have to be asked
+**Aim for one reviewed and tested push per hour during active work.** A
+subagent reports, the `code-reviewer` runs on what it wrote, and the findings
+are fixed or explicitly rejected with a reason before the work joins a push
+batch. Donald has standing approval for the push; he does not have to be asked
 each time.
 
-A documentation-only or `CLAUDE.md`-only commit needs no code review and can go
-straight out.
+A documentation-only or `CLAUDE.md`-only commit needs no code review and follows
+the prose-only checks above.
 
-**Do not sit on commits.** Unpushed work is work no CI has seen, and a local
-`closes #N` leaves its issue open while everything looks finished. Push in the
-batches the reviews land in.
+**At 12–16 unpushed commits, check readiness.** The count is a checkpoint,
+not an automatic trigger for another whole-suite run. Choose a coherent batch,
+finish its reviews, and fix its target SHA. Run the suite once for that batch,
+then push the tested target and check its exact CI runs. New unrelated work
+belongs in the next batch; it must not keep moving the target or delaying a
+ready push. Never push a later code change under the earlier tree's marker.
+
+If the hourly aim is missed, report the exact blocker: unfinished review,
+required fixes, a running or failed check, or an unresolved dependency. Name
+the affected work and the next action; an unrelated investigation is not a
+reason to hold a ready batch. A failed check still blocks the push and requires
+a fresh successful run for the corrected batch.
 
 **The push is refused until the run is recorded.** `tools/suite/suiterun.py`
 writes `~/.cache/wish/testrun/<tree>.green` after a green whole-suite run,

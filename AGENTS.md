@@ -207,6 +207,14 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python your_script.py
 An emulator takes a slot from the instance pool, which gives each one its own
 ports, from 6520 up, and its own X display: `.claude/rules/emulator.md`.
 
+## The advisor and orchestrator
+
+Donald calls the Codex session the **advisor** and the Claude Code session the
+**orchestrator**. When asked to inspect or communicate with the other session
+through Herdr, read [the connection guide](docs/233-herdr-advisor-and-orchestrator.md).
+Discover the live target before sending; the guide's recorded pane IDs are
+evidence from a test, not permanent addresses.
+
 ## Delegating
 
 **The default is to delegate, and that is practice, not mechanism -- it holds
@@ -251,6 +259,12 @@ It is not what you set out to learn.
 1. `pytest` **on the files you touched**
 2. `.venv/bin/ruff check .`
 3. `.venv/bin/python3 tools/generate/genui.py --check`
+
+**Aim for one reviewed, tested push per hour during active work.** At 12–16
+unpushed commits, assess readiness rather than automatically rerunning the
+suite. Test a fixed batch with four local pytest workers to reduce fan noise;
+longer runs are acceptable. `.claude/rules/commits.md` defines the batch and
+blocker handling, and the test-runner profiles give the command.
 
 **The whole suite runs once, in a detached worktree, before the push.** Six
 agents each running the whole suite is six copies of Qt on one machine.
