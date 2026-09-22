@@ -2766,6 +2766,80 @@ def test_backstab_reads_the_open_partys_own_port_not_always_the_c64(tmp_path):
     assert value.text() == f"×{dos_multiplier}"
 
 
+def test_backstab_refreshes_after_an_edit_leaving_the_row_not_only_on_reopen(
+        tmp_path):
+    """#607: a player raises a thief's level on the open sheet, and the
+    Backstab row must show the new answer once that edit is flushed --
+    leaving the row for another and coming back -- not only after the file
+    is closed and reopened. `_show_backstab` used to read `member.native`,
+    the file as it was on disk, which `_flush` never touches; only
+    `member.record`, the sheet's own record, changes."""
+    from editor.window import EditorBinding
+    from goldbox import backstab, dos_port
+
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE, numbers=(1, 2),
+                          class_bits=0x04, levels={"thief": 4})
+    w = EditorBinding(make_root(), str(tmp_path / "SAVGAMA.DAT"))
+    w.roster.selectRow(0)
+    value = w._child("value_thief_backstab")
+    before = backstab.backstab_multiplier(
+        {"levels": {"thief": 4}}, title=dos_port.POOL_OF_RADIANCE.key,
+        port="DOS")
+    assert value.text() == f"×{before}"
+
+    w._widgets["level_thief"].setValue(12)
+    w.roster.selectRow(1)                         # flushes row 0's edit
+    w.roster.selectRow(0)                         # repopulates row 0
+
+    after = backstab.backstab_multiplier(
+        {"levels": {"thief": 12}}, title=dos_port.POOL_OF_RADIANCE.key,
+        port="DOS")
+    assert after != before
+    assert value.text() == f"×{after}"
+
+
+def test_backstab_reads_a_dual_classed_humans_regained_former_level(tmp_path):
+    """#607: Curse and Silver Blades on DOS add a regained former thief level
+    back in (`goldbox.backstab.RULES`'s `former="sum"`), once a human's new
+    class passes the level he left thief at -- and that rule reads the
+    character's race and his former-class pair from `member.record`, the
+    sheet's own record, so the row on a title whose rule needs them shows
+    the DOS rule's own answer, not the C64 rule's (`former=None`, since the
+    C64 keeps no separate former-class array).
+
+    HERO1 is human, dual-classed out of thief at level 25, and now a
+    level-30 fighter -- past the level he left thief at, so DOS regains it.
+    (The levels are chosen clear of `c64_codec.write`'s own dual-class
+    fold-in, which pokes the C64's thief slot directly once its *unrelated*
+    aggregate `level` field passes the former level -- `_filled`'s made-up
+    `level` is 20, so a former level above that never triggers it, and the
+    thief slot this test's own record carries stays the 0 a trained-out DOS
+    character's main array actually holds.)"""
+    from editor.window import EditorBinding
+    from goldbox import backstab, c64_codec, dos_port
+
+    _synthetic_dos_folder(
+        tmp_path, dos_port.CURSE_OF_THE_AZURE_BONDS, numbers=(1,),
+        class_bits=0x08,                          # fighter
+        levels={"fighter": 30}, race=7,            # 7 is human in Curse
+        former_levels={"thief": 25})
+    w = EditorBinding(make_root(), str(tmp_path / "SAVGAMA.DAT"))
+    assert w.party.port == "dos"
+    w.roster.selectRow(0)
+    value = w._child("value_thief_backstab")
+
+    char = c64_codec.read(w.party.member(0).record, game=w.party.game)
+    assert char.get("former_levels")               # the dual-class pair travelled
+    assert char.get("race") == 7                    # and the race, for the regain test
+    dos_multiplier = backstab.backstab_multiplier(
+        char, title=dos_port.CURSE_OF_THE_AZURE_BONDS.key, port="DOS")
+    c64_multiplier = backstab.backstab_multiplier(
+        char, title=dos_port.CURSE_OF_THE_AZURE_BONDS.key, port="C64")
+    assert dos_multiplier is not None
+    assert dos_multiplier != c64_multiplier   # DOS sums the former slot; C64 does not
+    assert value.text() == f"×{dos_multiplier}"
+
+
 def _silver_blades_save(tmp_path):
     """A throwaway copy of the shipped Silver Blades party, or skip.
 
@@ -4479,14 +4553,16 @@ def _converted_dos_disk(folder, slot, key):
 
 
 def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
-                          levels=None):
+                          levels=None, race=None, former_levels=None):
     """A DOS save folder written from filled neutral characters, no game data.
     `numbers` are the `CHRDAT<slot><n>` file numbers that exist.  `class_bits`
     overrides `_filled`'s own arbitrary byte -- needed wherever the writer
     recomputes a field (`char_class`, the thief skills) from the classes
     themselves, since `_filled`'s byte names no real class combination.
     `levels` overrides `_filled`'s own class-level dict the same way, for a
-    test that needs a particular thief level."""
+    test that needs a particular thief level. `race` and `former_levels`
+    override `_filled`'s own race and (unset) dual-class pair, for a test of
+    a dual-classed human's regain rule."""
     from support.neutralrecords import _filled
 
     from goldbox import c64_port, dos_codec
@@ -4499,6 +4575,10 @@ def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
             char.set("class_bits", class_bits, "made up, class-consistent")
         if levels is not None:
             char.set("levels", levels, "made up, chosen for the test")
+        if race is not None:
+            char.set("race", race, "made up, chosen for the test")
+        if former_levels is not None:
+            char.set("former_levels", former_levels, "made up, chosen for the test")
         record, itm, spc, _rep = dos_codec.write(char, deltas=deltas)
         (tmp_path / f"CHRDATA{n}.SAV").write_bytes(record)
         (tmp_path / f"CHRDATA{n}.ITM").write_bytes(itm)

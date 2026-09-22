@@ -2666,6 +2666,9 @@ class EditorBinding(QObject):
             capacity_by_class(class_levels, record.get("wisdom"), game),
             casts=bool(record.class_bits & caster_bits(game)))
 
+    #: `Party.port` to the name `goldbox.backstab.RULES` keys its rules by.
+    _BACKSTAB_PORTS = {"c64": "C64", "dos": "DOS", "amiga": "Amiga"}
+
     def _show_backstab(self, member) -> None:
         """The row at the bottom of the Thief skills box: what a backstab
         multiplies rolled damage by.
@@ -2675,13 +2678,18 @@ class EditorBinding(QObject):
         only sets what the value reads. `goldbox.backstab` needs the open
         party's real port -- since #511 that is not always the C64, and DOS
         Pool of Radiance's rule disagrees with the C64's once a thief passes
-        level four. On the C64, `member.record` (the record the sheet edits
-        on every port) already holds the thief level `c64_codec.LEVEL_FIELDS`
-        names. On DOS and the Amiga that record has been converted away from
-        the port's own shape, so this reads `member.native` -- the port's own
-        character -- through the same neutral reader the conversion itself
-        uses, which is what carries `former_levels` and race the way those
-        ports' rules need them (#607).
+        level four.
+
+        `member.record` -- the C64-shaped record the sheet edits on every
+        port, kept current by `_flush` -- is read back through
+        `c64_codec.read`, the same neutral reader a C64-to-anything
+        conversion uses, rather than through `member.native`: `native` is the
+        file as it was opened and never changes, so reading it here showed a
+        thief's level, race or dual-class pair as they were on disk even
+        after the sheet edited them away (#607). `read` gives back
+        `former_levels` and `race` from `member.record`'s own dual-class
+        pair, which is what Curse's and Silver Blades' rules need on every
+        port, and needs no roster or inventory block to do it.
         """
         value = self._child("value_thief_backstab")
         if value is None:
@@ -2689,20 +2697,10 @@ class EditorBinding(QObject):
         if self.party is None:
             return
         try:
-            port = self.party.port
-            if port == "c64":
-                levels = {name: member.record.get(field)
-                          for name, field in c64_codec.LEVEL_FIELDS.items()}
-                multiplier = backstab.backstab_multiplier(
-                    {"levels": levels}, title=self.party.game, port="C64")
-            elif port == "dos":
-                from goldbox import dos_codec
-                multiplier = backstab.backstab_multiplier(
-                    dos_codec.to_neutral(member.native))
-            else:
-                from goldbox import amiga_por
-                multiplier = backstab.backstab_multiplier(
-                    amiga_por.to_neutral(member.native))
+            port = self._BACKSTAB_PORTS[self.party.port]
+            char = c64_codec.read(member.record, game=self.party.game)
+            multiplier = backstab.backstab_multiplier(
+                char, title=self.party.game, port=port)
         except Exception:
             _log.exception("could not compute the backstab multiplier")
             multiplier = None
