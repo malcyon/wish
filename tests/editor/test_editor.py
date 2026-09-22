@@ -15,7 +15,7 @@ from support.editorwindow import make_root
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
+from PyQt6.QtWidgets import QLabel, QWidget
 
 from editor.binding import (
     binding_for,
@@ -4518,8 +4518,14 @@ def test_a_dos_folder_skips_an_incomplete_slot_and_opens_the_valid_one(
     assert source.available_slots == ["B"]
 
 
-def test_save_as_leaves_a_native_dos_save_untouched(app, tmp_path, monkeypatch):
-    """A native party never retargets Save As to a C64 file it cannot write."""
+def test_opening_the_destination_section_for_a_dos_party_writes_nothing(
+        app, tmp_path, monkeypatch):
+    """Building the Save arrow's menu and opening the destination section
+    for a native party touches no file -- the platform-blind Save As this
+    used to pin (`save_as()`, a plain C64 file dialog whatever the open
+    party's own port was) is gone; every destination is now explicit and
+    `editor.saveplan` does the actual writing (`#511`,
+    `tests/editor/test_saveasui.py` covers the write itself)."""
     from editor.window import EditorBinding
     from goldbox import dos_port
 
@@ -4530,21 +4536,22 @@ def test_save_as_leaves_a_native_dos_save_untouched(app, tmp_path, monkeypatch):
     binding.roster.selectRow(0)
     binding._widgets["gold"].setValue(1234)
     binding._edited()
-    target = tmp_path / "copy.d64"
+    opened = []
     monkeypatch.setattr(
         "editor.window.QFileDialog.getSaveFileName",
-        lambda *_args: (str(target), ""))
+        lambda *_args: opened.append(True) or ("", ""))
 
-    binding.save_as()
+    binding.begin_save_as("dos")
+    binding.cancel_save_as()
 
     assert {path: path.read_bytes() for path in before} == before
-    assert not target.exists()
-    assert not binding._child("button_save_as").isEnabled()
+    assert opened == []
+    assert binding._child("destination_section").isHidden()
 
 
 def test_open_toolbar_buttons_keep_their_floor_and_height_at_supported_fonts(
         app):
-    """Both direct-open controls remain part of the sized toolbar."""
+    """The split Open and Save buttons remain part of the sized toolbar."""
     from PyQt6.QtGui import QFont
 
     from editor.window import TOOLBAR_BUTTON_MIN_WIDTH, EditorBinding
@@ -4557,7 +4564,7 @@ def test_open_toolbar_buttons_keep_their_floor_and_height_at_supported_fonts(
             app.setFont(font)
             binding = EditorBinding(make_root())
             buttons = [binding._child(name) for name in (
-                "button_open_file", "button_open_folder")]
+                "button_open", "button_save")]
             assert all(button is not None for button in buttons)
             if extra == 0:
                 for button in buttons:
@@ -4585,9 +4592,9 @@ def test_open_buttons_choose_their_source_without_a_wrapper_dialog(
         app, tmp_path, monkeypatch):
     """The two controls each invoke the native picker once and load its path."""
     from editor.window import (
-        OPEN_FILE_TEXT,
+        OPEN_BUTTON_TEXT,
         OPEN_FILTER,
-        OPEN_FOLDER_TEXT,
+        OPEN_MENU_FOLDER,
         OPEN_TITLE,
         EditorBinding,
     )
@@ -4615,9 +4622,9 @@ def test_open_buttons_choose_their_source_without_a_wrapper_dialog(
     assert picked["file"] == (OPEN_TITLE, "", OPEN_FILTER)
     assert picked["folder"] == (OPEN_TITLE, "")
     assert loaded == [str(tmp_path / "save.adf"), str(tmp_path / "SAVE")]
-    assert root.findChild(QPushButton, "button_open_file").text() == OPEN_FILE_TEXT
-    assert (root.findChild(QPushButton, "button_open_folder").text()
-            == OPEN_FOLDER_TEXT)
+    assert binding._child("button_open").text() == OPEN_BUTTON_TEXT
+    assert [a.text() for a in binding._open_menu.actions()
+           if a.text() == OPEN_MENU_FOLDER]
 
 
 def test_opening_a_multi_slot_dos_folder_uses_the_slot_picker(

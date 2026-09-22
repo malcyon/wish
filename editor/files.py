@@ -145,6 +145,21 @@ def prune(target: pathlib.Path, into: pathlib.Path,
     return dropped
 
 
+def written_note(target: str | pathlib.Path,
+                 backup: "pathlib.Path | None") -> str:
+    """"wrote X" or "wrote X, backup Y" -- what every successful write here
+    says, so a Save, a Save As and a native-copy publication all say it the
+    same way. `backup` beside `automatic_dir(target)` is named by its own
+    folder and file name; anywhere else, in full.
+    """
+    target = pathlib.Path(target)
+    if backup is None:
+        return f"wrote {target.name}"
+    if backup.parent == automatic_dir(target):
+        return f"wrote {target.name}, backup {backup.parent.name}/{backup.name}"
+    return f"wrote {target.name}, backup {backup}"
+
+
 def save_disk(disk, target: str | pathlib.Path,
               into: str | pathlib.Path | None) -> str:
     """Write `disk` to `target`, backing up into `into` first.
@@ -167,14 +182,7 @@ def save_disk(disk, target: str | pathlib.Path,
         raise _no_backup_folder(target.name)
     copy = back_up(target, into)
     disk.save(target)
-    if copy is None:
-        return f"wrote {target.name}"
-    # Beside the disk, `backups/NAME` is enough -- it is the folder the user
-    # was already looking at. A folder somewhere else is one they chose, and
-    # naming it in full is how the message stays checkable.
-    if copy.parent == automatic_dir(target):
-        return f"wrote {target.name}, backup {copy.parent.name}/{copy.name}"
-    return f"wrote {target.name}, backup {copy}"
+    return written_note(target, copy)
 
 
 def save_folder(written: dict[pathlib.Path, bytes | None],
@@ -232,12 +240,7 @@ def save_folder(written: dict[pathlib.Path, bytes | None],
     finally:
         for path in temporary.values():
             path.unlink(missing_ok=True)
-    copy = copies[first]
-    if copy is None:
-        return f"wrote {first.name}"
-    if copy.parent == automatic_dir(first):
-        return f"wrote {first.name}, backup {copy.parent.name}/{copy.name}"
-    return f"wrote {first.name}, backup {copy}"
+    return written_note(first, copies[first])
 
 
 # ---------------------------------------------------------------------------

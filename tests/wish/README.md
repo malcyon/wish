@@ -9,6 +9,7 @@ Tests for the application in `wish/`: the window, preferences, game folders, the
 | `test_assets.py` | Checks that every file the program reads at run time is found in a checkout and a frozen build, exists, and is listed in `wish.spec`. |
 | `test_debuglog.py` | Checks that the debug log is off until asked for, keeps a crash regardless, and records no absolute path, character name or save byte. |
 | `test_debugmode.py` | Checks debug mode's Fast Travel row against a `MemoryTarget`, the addresses written and their order, and how a backend is chosen. |
+| `test_editoropensave.py` | Checks the File menu's own copies of the split Open and Save actions and their mnemonics, and that `Ctrl+Shift+S` pops the Save button's own destination menu rather than saving anywhere itself. |
 | `test_gamefolders.py` | Checks that the shared disks folder folds into each title's own folder setting and that a title with no folder is not answered with another's. |
 | `test_installdesktop.py` | Checks that `wish/installdesktop.py` writes the desktop entry and icon theme entries under a redirected data directory when it finds none, and never stops the window. |
 | `test_licenses.py` | Checks that every glyph that ships is credited to the artist the program names in `THIRD_PARTY_LICENSES.md`, and that the Licenses dialog opens. |

@@ -1492,37 +1492,35 @@
         <item>
          <layout class="QHBoxLayout" name="buttons">
           <item>
-           <widget class="QPushButton" name="button_open_file">
+           <widget class="QToolButton" name="button_open">
             <property name="text">
-             <string>Choose a save file…</string>
+             <string>Open…</string>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonTextBesideIcon</enum>
+            </property>
+            <property name="popupMode">
+             <enum>QToolButton::MenuButtonPopup</enum>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="button_open_folder">
+           <widget class="QToolButton" name="button_save">
             <property name="text">
-             <string>Choose a DOS save folder…</string>
+             <string>Save</string>
             </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="button_save">
-            <property name="text">
-             <string>&amp;Save</string>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonTextBesideIcon</enum>
             </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="button_save_as">
-            <property name="text">
-             <string>Save &amp;As…</string>
+            <property name="popupMode">
+             <enum>QToolButton::MenuButtonPopup</enum>
             </property>
            </widget>
           </item>
           <item>
            <widget class="QPushButton" name="button_preview">
             <property name="text">
-             <string>&amp;Preview changes…</string>
+             <string>Preview changes…</string>
             </property>
            </widget>
           </item>
@@ -1540,6 +1538,189 @@
            </spacer>
           </item>
          </layout>
+        </item>
+        <item>
+         <widget class="QWidget" name="destination_section">
+          <property name="visible">
+           <bool>false</bool>
+          </property>
+          <layout class="QVBoxLayout" name="destination_layout">
+           <property name="leftMargin"><number>0</number></property>
+           <property name="topMargin"><number>0</number></property>
+           <property name="rightMargin"><number>0</number></property>
+           <property name="bottomMargin"><number>0</number></property>
+           <item>
+            <layout class="QHBoxLayout" name="row_destination_path">
+             <item>
+              <widget class="QLabel" name="label_destination_path">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLineEdit" name="destination_path"/>
+             </item>
+             <item>
+              <widget class="QPushButton" name="button_destination_browse">
+               <property name="text">
+                <string>Browse…</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QWidget" name="box_destination_slot">
+             <layout class="QHBoxLayout" name="row_destination_slot">
+              <property name="leftMargin"><number>0</number></property>
+              <property name="topMargin"><number>0</number></property>
+              <property name="rightMargin"><number>0</number></property>
+              <property name="bottomMargin"><number>0</number></property>
+              <item>
+               <widget class="QLabel" name="label_slot_caption">
+                <property name="text">
+                 <string>Slot:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="label_destination_slot">
+                <property name="text">
+                 <string/>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="spacer_destination_slot">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QWidget" name="box_c64_disks">
+             <layout class="QHBoxLayout" name="row_c64_disks">
+              <property name="leftMargin"><number>0</number></property>
+              <property name="topMargin"><number>0</number></property>
+              <property name="rightMargin"><number>0</number></property>
+              <property name="bottomMargin"><number>0</number></property>
+              <item>
+               <widget class="QLabel" name="label_c64_disks_caption">
+                <property name="text">
+                 <string>C64 game disks</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLineEdit" name="destination_c64_disks"/>
+              </item>
+              <item>
+               <widget class="QPushButton" name="button_c64_disks_browse">
+                <property name="text">
+                 <string>Browse…</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QWidget" name="box_dos_folder">
+             <layout class="QHBoxLayout" name="row_dos_folder">
+              <property name="leftMargin"><number>0</number></property>
+              <property name="topMargin"><number>0</number></property>
+              <property name="rightMargin"><number>0</number></property>
+              <property name="bottomMargin"><number>0</number></property>
+              <item>
+               <widget class="QLabel" name="label_dos_folder_caption">
+                <property name="text">
+                 <string>DOS game folder</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLineEdit" name="destination_dos_folder"/>
+              </item>
+              <item>
+               <widget class="QPushButton" name="button_dos_folder_browse">
+                <property name="text">
+                 <string>Browse…</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QWidget" name="box_amiga_disk">
+             <layout class="QHBoxLayout" name="row_amiga_disk">
+              <property name="leftMargin"><number>0</number></property>
+              <property name="topMargin"><number>0</number></property>
+              <property name="rightMargin"><number>0</number></property>
+              <property name="bottomMargin"><number>0</number></property>
+              <item>
+               <widget class="QLabel" name="label_amiga_disk_caption">
+                <property name="text">
+                 <string>Amiga game disk 2</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLineEdit" name="destination_amiga_disk"/>
+              </item>
+              <item>
+               <widget class="QPushButton" name="button_amiga_disk_browse">
+                <property name="text">
+                 <string>Browse…</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="row_destination_buttons">
+             <item>
+              <spacer name="spacer_destination_buttons">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QPushButton" name="button_destination_cancel">
+               <property name="text">
+                <string>Cancel</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="button_destination_save_as">
+               <property name="text">
+                <string>Save As</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
         </item>
         <item>
          <widget class="QSplitter" name="editor_split">

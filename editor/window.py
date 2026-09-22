@@ -72,12 +72,9 @@ DISK_FILTER = "C64 disk image (*.d64 *.D64);;All files (*)"
 #: The Save As picker's title.
 SAVE_AS_TITLE = "Save the disk as"
 
-#: Direct-open controls, approved together for the native DOS and Amiga save
-#: repair. Save As remains a C64-image operation and deliberately keeps
-#: `DISK_FILTER` above.
+#: The Open button's own dialog title and file filter, and the tooltip on the
+#: button itself (D1, `#511`).
 OPEN_TITLE = "Open a saved game"
-OPEN_FILE_TEXT = "Choose a save file…"
-OPEN_FOLDER_TEXT = "Choose a DOS save folder…"
 OPEN_FILTER = ("Saved game (*.d64 *.D64 *.adf *.ADF SAVGAM?.DAT SAVGAM?.PTY);;"
                "All files (*)")
 
@@ -86,6 +83,110 @@ OPEN_FILTER = ("Saved game (*.d64 *.D64 *.adf *.ADF SAVGAM?.DAT SAVGAM?.PTY);;"
 #: (`_field_label`), never the internal snake_case field name. No reason, no
 #: value, no second sentence: he approved this sentence whole.
 FIELD_NOT_SAVED = "Error: {label} could not be saved."
+
+# ---------------------------------------------------------------------------
+# The split Open and Save buttons, their arrow menus and the File menu
+# (docs/227-editor-open-save-as.md, #511 comment 5769421923, Donald's
+# decisions on it, comment 5770669768). Every string here is approved
+# verbatim; nothing in this block is a wording choice left to build.
+# ---------------------------------------------------------------------------
+
+#: The toolbar buttons' own words (no mnemonic -- D2/Q4: mnemonics live only
+#: in the File menu, because the arrow half of a split button never responds
+#: to one).
+OPEN_BUTTON_TEXT = "Open…"
+SAVE_BUTTON_TEXT = "Save"
+PREVIEW_BUTTON_TEXT = "Preview changes…"
+
+#: The Open arrow's own menu: a duplicate of the main action, plus the one
+#: thing only the arrow offers.
+OPEN_MENU_FILE = "Open file…"
+OPEN_MENU_FOLDER = "Open DOS folder…"
+
+#: The Save arrow's menu: one entry per port `saveplan.destination_ports`
+#: answers, including the save's own platform for a native copy.
+SAVE_AS_ENTRY = "Save As {label}…"
+PORT_LABEL = {"c64": "C64", "dos": "DOS", "amiga": "Amiga"}
+
+#: D1: accessible names and tooltips. Nothing on screen reads these -- a
+#: screen reader does, and Qt gives a split button's arrow no name of its
+#: own, so without them it announces the main button's name twice.
+OPEN_ACCESSIBLE_NAME = "Open"
+OPEN_ARROW_ACCESSIBLE_NAME = "Other ways to open"
+SAVE_ACCESSIBLE_NAME = "Save"
+SAVE_ARROW_ACCESSIBLE_NAME = "Save a copy"
+SAVE_BUTTON_TOOLTIP = "Save to the file you opened"
+
+#: A1: the destination section's path-row label, one per platform.
+DESTINATION_PATH_LABEL = {
+    "c64": "New C64 disk image:",
+    "amiga": "New Amiga disk image:",
+    "dos": "New DOS save folder:",
+}
+#: A2, A3: the picker button beside every path in the section, and the
+#: button that writes.
+DESTINATION_BROWSE = "Browse…"
+SAVE_AS_BUTTON_TEXT = "Save As"
+
+#: B1: the DOS folder picker's own title -- not the Convert window's
+#: `Choose where to write`, because the chosen folder *is* the save here,
+#: where Convert's is a folder a fresh save folder is created inside.
+DOS_FOLDER_TITLE = "Choose a new folder for the DOS save"
+
+#: C1: reused for Open replacing a document with pending edits, and for
+#: choosing another save letter of the open source -- both go through
+#: `_guard_unsaved`, which `close()` also calls with its own text.
+UNSAVED_CHANGES_TITLE = "Unsaved changes"
+UNSAVED_BEFORE_CLOSE = "Save your changes before closing?"
+UNSAVED_BEFORE_OPEN = "Save your changes before opening another saved game?"
+
+#: C3 - C12: every refusal and failure text the destination section can
+#: show, wired to the `saveplan`/`editor.files` exception it answers.
+CANNOT_SAVE_TITLE = "Cannot save"
+#: C3. Donald's ruling, comment 5770669768: exactly this sentence, no "This
+#: is a fault in Wish.", no field list, no acknowledgement. The field names
+#: and both values go to the debug log only (`saveplan.validate` already
+#: logs them).
+LOSS_REFUSED = "The save could not be converted."
+#: C4.
+TARGET_NOT_EMPTY = ("That folder already holds files, so nothing was "
+                    "written. Choose an empty folder, or type a new folder "
+                    "name.")
+#: C5.
+REPLACE_TITLE = "Replace this file?"
+REPLACE_TEXT = ("{name} already exists. Saving replaces the whole disk "
+                "image, including any other saved games on it. A copy of "
+                "the file as it is now goes into your backups folder.")
+#: C6, one sentence per image platform -- a DOS destination is a folder and
+#: has no ending to check.
+WRONG_EXTENSION = {
+    "c64": "A C64 save is a .d64 disk image. Give the file a name ending "
+          "in .d64.",
+    "amiga": "An Amiga save is a .adf disk image. Give the file a name "
+            "ending in .adf.",
+}
+#: C7.
+DESTINATION_IS_SOURCE = ("Wish cannot write this copy over the save it is "
+                         "reading. Choose another name or another folder.")
+#: C8.
+DESTINATION_IS_GAME_FILE = ("That is one of your game files. Choose "
+                            "another name or another folder for the new "
+                            "save.")
+#: C10, with a backup to name and without one -- `RecoveryFailed.backup`
+#: says which.
+RECOVERY_FAILED_WITH_BACKUP = (
+    "The save failed, and Wish could not undo what it had already written. "
+    "Some of the files at {destination} may be incomplete. A copy of what "
+    "was there before is at {backup}.")
+RECOVERY_FAILED_NO_BACKUP = (
+    "The save failed, and Wish could not remove what it had already "
+    "written. Some of the files at {destination} may be incomplete. You "
+    "can delete that folder yourself; nothing else was touched.")
+#: C12: any failure not covered by one of the sentences above --
+#: `saveplan.SaveAsError`'s own text is a developer's note
+#: ("no registered dos to amiga conversion for por") and never reaches a
+#: player.
+SAVE_AS_FAILED = "The save could not be written, and your saved game is unchanged."
 
 
 def _size_combo(combo: QComboBox) -> None:
@@ -363,8 +464,7 @@ HEADER_IDENTITY_MIN_WIDTH = 480
 HEADER_FLOOR = {"box_identity": HEADER_IDENTITY_MIN_WIDTH}
 #: And the row of buttons above the header, which does not scroll either.
 TOOLBAR_BUTTON_MIN_WIDTH = 80
-TOOLBAR_BUTTONS = ("button_open_file", "button_open_folder", "button_save",
-                   "button_save_as", "button_preview")
+TOOLBAR_BUTTONS = ("button_open", "button_save", "button_preview")
 
 # Room for the frame and, on a spin box, the two arrows. A guess at this was
 # the bug: 36 px is what Fusion and Breeze want, and Windows draws its up/down
@@ -730,11 +830,17 @@ class EditorBinding(QObject):
         self._connect("button_item_add", self.add_item)
         self._connect("button_item_delete", self.delete_item)
 
-        self._connect("button_open_file", self.open_file)
-        self._connect("button_open_folder", self.open_folder)
+        self._connect("button_open", self.open_file)
         self._connect("button_save", self.save)
-        self._connect("button_save_as", self.save_as)
+        #: The destination section's own working state, set by
+        #: `begin_save_as` and read by `confirm_save_as` and `cancel_save_as`.
+        self._save_as_source = None
+        self._save_as_port: str | None = None
+        self._build_open_menu()
+        self._build_save_menu()
+        self._wire_destination_section()
         self._toolbar_icons()
+        self._apply_accessible_names()
 
         self._widgets = self._find_field_widgets()
         self._build_trait_buttons()
@@ -765,14 +871,96 @@ class EditorBinding(QObject):
     def _toolbar_icons(self) -> None:
         """Icons beside the button text, never instead of it."""
         from ui.iconpaint import icon_pixmap
-        for name, icon in (("button_open_file", "open-folder"),
-                           ("button_open_folder", "open-folder"),
+        for name, icon in (("button_open", "open-folder"),
                            ("button_save", "save"),
-                           ("button_save_as", "save"),
                            ("button_preview", "brass-eye")):
             button = self._child(name)
             if button is not None:
                 button.setIcon(QIcon(icon_pixmap(icon, TOOLBAR_ICON, MUTED_INK)))
+
+    def _apply_accessible_names(self) -> None:
+        """D1: names for a screen reader, since Qt gives a split button's
+        arrow no name of its own and it would otherwise announce the main
+        button's name twice.
+
+        Qt exposes no separate accessible object for a `QToolButton`'s
+        dropdown region, so the arrow's own name is set on the `QMenu` it
+        pops -- a screen reader names the menu when it opens, which is the
+        moment the arrow's own name matters.
+        """
+        open_button = self._child("button_open")
+        if open_button is not None:
+            open_button.setAccessibleName(OPEN_ACCESSIBLE_NAME)
+            open_button.setToolTip(OPEN_TITLE)
+        save_button = self._child("button_save")
+        if save_button is not None:
+            save_button.setAccessibleName(SAVE_ACCESSIBLE_NAME)
+            save_button.setToolTip(SAVE_BUTTON_TOOLTIP)
+
+    # -- the split buttons' arrow menus ------------------------------------
+
+    def _build_open_menu(self) -> None:
+        """The Open arrow: a duplicate of the main action, plus the one
+        thing only the arrow offers -- a DOS folder picker."""
+        button = self._child("button_open")
+        if button is None:
+            return
+        from PyQt6.QtWidgets import QMenu
+
+        menu = QMenu(button)
+        menu.setAccessibleName(OPEN_ARROW_ACCESSIBLE_NAME)
+        menu.addAction(OPEN_MENU_FILE,
+                       lambda: self.open_file())
+        menu.addAction(OPEN_MENU_FOLDER,
+                       lambda: self.open_folder())
+        button.setMenu(menu)
+        self._open_menu = menu
+
+    def _build_save_menu(self) -> None:
+        """The Save arrow: every destination `saveplan.destination_ports`
+        answers for the open save, rebuilt on every open (decision 8)."""
+        button = self._child("button_save")
+        if button is None:
+            return
+        from PyQt6.QtWidgets import QMenu
+
+        menu = QMenu(button)
+        menu.setAccessibleName(SAVE_ARROW_ACCESSIBLE_NAME)
+        button.setMenu(menu)
+        self._save_menu = menu
+        self._refresh_save_menu()
+
+    def _refresh_save_menu(self) -> None:
+        """Disabled with nothing open; otherwise every destination the open
+        save's title supports, nothing greyed inside the menu."""
+        button = self._child("button_save")
+        menu = getattr(self, "_save_menu", None)
+        if button is None or menu is None:
+            return
+        menu.clear()
+        if self.party is None or self.path is None:
+            button.setEnabled(False)
+            return
+        button.setEnabled(True)
+        from .convert import Source
+
+        try:
+            source = Source.detect(str(self.path), self.party)
+        except Exception:
+            _log.exception("could not read the open save for its Save As menu")
+            return
+        for port in saveplan.destination_ports(source):
+            label = PORT_LABEL.get(port, port)
+            menu.addAction(SAVE_AS_ENTRY.format(label=label),
+                           lambda _checked=False, p=port: self.begin_save_as(p))
+
+    def open_save_as_menu(self) -> None:
+        """`Ctrl+Shift+S` and the File menu's own `Save As…` entry: pop the
+        Save button's own menu, at the button (decision 1) -- the keyboard
+        and the mouse then reach the same three-entry menu."""
+        button = self._child("button_save")
+        if button is not None and button.isEnabled():
+            button.showMenu()
 
     def _child(self, name: str) -> QWidget | None:
         """A widget by objectName, or None if Designer no longer has one."""
@@ -1165,7 +1353,39 @@ class EditorBinding(QObject):
         if path:
             self.load(path)
 
+    def _guard_unsaved(self, text: str) -> bool:
+        """Ask about pending edits before discarding the current document.
+
+        Shared by `close()` (its own text, "before closing?") and by `load()`
+        (`UNSAVED_BEFORE_OPEN`, C1) -- opening another source or choosing
+        another save letter of one already open both discard the party this
+        binding currently holds, and both want the same confirmation `close()`
+        already gave a window going away. True means it is safe to go on:
+        nothing was pending, Discard was chosen, or the save that followed
+        Save actually wrote.
+        """
+        if not self.dirty:
+            return True
+        box = QMessageBox(self.root)
+        box.setWindowTitle(UNSAVED_CHANGES_TITLE)
+        box.setText(text)
+        box.setStandardButtons(
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel
+        )
+        box.button(QMessageBox.StandardButton.Discard).setText("Don't Save")
+        box.setDefaultButton(QMessageBox.StandardButton.Save)
+        ans = box.exec()
+        if ans == QMessageBox.StandardButton.Cancel:
+            return False
+        if ans == QMessageBox.StandardButton.Discard:
+            return True
+        return self.save() not in ("failed", "no destination")
+
     def load(self, path: str) -> None:
+        if not self._guard_unsaved(UNSAVED_BEFORE_OPEN):
+            return
         try:
             from .convert import Source
 
@@ -1188,7 +1408,6 @@ class EditorBinding(QObject):
         """Show a party that is already built, from wherever it came."""
         self.party = party
         self.path = pathlib.Path(path) if path else None
-        self._set_save_as_enabled()
         self.dirty = set(range(len(party))) if dirty else set()
         self.current_row = -1
         self._fill_combos(party.game)
@@ -1210,14 +1429,10 @@ class EditorBinding(QObject):
                     + ("" if self.charset else
                        "  -- no game disk, so no item names and no icons"))
         self._retitle()
+        self._refresh_save_menu()
+        self._hide_destination_section()
         if self.path is not None:
             self.opened.emit(str(self.path))
-
-    def _set_save_as_enabled(self) -> None:
-        """Save As is a C64-image operation, never a native-save write."""
-        button = self._child("button_save_as")
-        if button is not None:
-            button.setEnabled(self.party is None or self.party.port == "c64")
 
     # -- importing --------------------------------------------------------
 
@@ -1754,17 +1969,30 @@ class EditorBinding(QObject):
         return text
 
     def save_as(self) -> None:
+        """Name a file for a party that was adopted with none.
+
+        Not reachable from any widget any more -- every Save As a player can
+        reach goes through the destination section (`begin_save_as`,
+        `confirm_save_as`) -- but a C64 party can still be adopted with
+        `self.path is None` from inside this class (`_adopt` with no path,
+        the state `File ▸ Convert…`'s own dialog leaves behind before it is
+        opened again), and that state has no destination section to open
+        for it: it is a party with no save yet, not a party choosing another
+        one. Kept for that one caller, and for `save()`'s own fallback.
+        """
         if self.party is None or self.party.port != "c64":
             return
         if self._choose_save_path():
             self.save()
 
     def _choose_save_path(self) -> bool:
-        """Open the `Save As` chooser and adopt what it picks.
+        """Open a plain C64 file chooser and adopt what it picks.
 
-        Shared by `save_as()` and by `save()` when a converted-but-unnamed
-        party (#515) needs somewhere to go before it can write. False means
-        the chooser was cancelled and `self.path` is untouched.
+        The one caller left is `save()`, for a converted-but-unnamed party
+        (#515) that needs somewhere to go before it can write -- every other
+        Save As is the destination section now (`begin_save_as`,
+        `confirm_save_as`). False means the chooser was cancelled and
+        `self.path` is untouched.
         """
         path, _ = QFileDialog.getSaveFileName(
             self.root, SAVE_AS_TITLE, str(self.path or ""), DISK_FILTER)
@@ -1773,6 +2001,364 @@ class EditorBinding(QObject):
         self.path = pathlib.Path(path)
         self.opened.emit(str(self.path))
         return True
+
+    # -- Save As: the destination section ----------------------------------
+
+    def begin_save_as(self, port: str) -> None:
+        """A Save As entry was chosen: open the destination section for
+        `port`, with a suggested path and the game-files rows only the route
+        actually needs and preferences could not resolve on their own (A5).
+        """
+        if self.party is None or self.path is None:
+            return
+        self._report_flush_failures(self._flush())
+        from .convert import Source
+
+        try:
+            source = Source.detect(str(self.path), self.party)
+        except Exception:
+            _log.exception("could not read the open save for Save As")
+            return
+        self._save_as_source = source
+        self._save_as_port = port
+        section = self._child("destination_section")
+        label = self._child("label_destination_path")
+        field = self._child("destination_path")
+        if section is None or label is None or field is None:
+            return
+        label.setText(DESTINATION_PATH_LABEL[port])
+        path = self._suggest_destination_path(source, port)
+        field.setText(str(path))
+        self._show_destination_slot(source, port)
+        self._clear_destination_asset_fields()
+        self._resolve_destination_assets()
+        section.setVisible(True)
+        field.setFocus()
+        text = field.text()
+        name = pathlib.Path(text).name
+        start = len(text) - len(name)
+        field.setSelection(start, len(pathlib.Path(text).stem))
+
+    def _suggest_destination_path(self, source, port: str) -> pathlib.Path:
+        """Beside the save being edited (decision 5), named for the title
+        and the platform, with a number added until it is unused."""
+        folder = files.source_folder(self.path)
+        title = getattr(source.title, "title", "") or "save"
+        stem = "".join(ch for ch in title if ch.isalnum()) or "save"
+        suffix = saveplan.DESTINATION_SUFFIX.get(port, "")
+        candidate = folder / f"{stem}-{port}{suffix}"
+        n = 1
+        while candidate.exists():
+            n += 1
+            candidate = folder / f"{stem}-{port}{n}{suffix}"
+        return candidate
+
+    def _show_destination_slot(self, source, port: str) -> None:
+        """A4: the destination's own saved-game letter, read-only, shown
+        only where the destination has one at all (`docs/227`'s
+        Destinations table: none for C64; the source's own for a native
+        copy and for DOS converted to Amiga; `A` for a fresh save)."""
+        box = self._child("box_destination_slot")
+        value = self._child("label_destination_slot")
+        if box is None or value is None:
+            return
+        if port == "c64":
+            box.setVisible(False)
+            return
+        if port == source.port or (port == "amiga" and source.port == "dos"):
+            slot = source.slot
+        else:
+            slot = "A"
+        value.setText(slot or "")
+        box.setVisible(True)
+
+    def _clear_destination_asset_fields(self) -> None:
+        for name in ("destination_c64_disks", "destination_dos_folder", "destination_amiga_disk"):
+            field = self._child(name)
+            if field is not None:
+                field.clear()
+        for name in ("box_c64_disks", "box_dos_folder", "box_amiga_disk"):
+            box = self._child(name)
+            if box is not None:
+                box.setVisible(False)
+
+    def _destination_manual_assets(self) -> dict[str, str]:
+        """What the player has typed or browsed into the asset rows.
+
+        `saveplan.resolve_assets` takes a manual override for
+        `DESTINATION_DISKS` only (`c64_folder=`) -- a C64 party converting
+        *away* (`SOURCE_DISKS`) is read through the injected `game_files`
+        callable alone, the same as the Convert window it replaces, so there
+        is nothing a Browse row here could feed into for that one.
+        """
+        manual: dict[str, str] = {}
+        c64 = self._child("destination_c64_disks")
+        dos = self._child("destination_dos_folder")
+        amiga = self._child("destination_amiga_disk")
+        if c64 is not None and c64.text().strip():
+            manual[saveplan.DESTINATION_DISKS] = c64.text().strip()
+        if dos is not None and dos.text().strip():
+            manual[saveplan.DOS_GAME_FOLDER] = dos.text().strip()
+        if amiga is not None and amiga.text().strip():
+            manual[saveplan.AMIGA_GAME_DISK] = amiga.text().strip()
+        return manual
+
+    def _resolve_destination_assets(self) -> "saveplan.Assets | None":
+        """Try to resolve every asset the route needs; show a row for
+        whichever one is still missing and has one (A5) rather than a modal
+        -- Save As stays disabled while anything is still missing, shown row
+        or not."""
+        source, port = self._save_as_source, self._save_as_port
+        if source is None or port is None:
+            return None
+        manual = self._destination_manual_assets()
+        try:
+            assets = saveplan.resolve_assets(
+                source, port, game_files=self.game_files_for,
+                c64_folder=manual.get(saveplan.DESTINATION_DISKS),
+                dos_folder=manual.get(saveplan.DOS_GAME_FOLDER),
+                amiga_disk=manual.get(saveplan.AMIGA_GAME_DISK))
+        except saveplan.MissingAssets as exc:
+            self._show_asset_rows(exc.missing)
+            return None
+        self._show_asset_rows(())
+        path = self._child("destination_path")
+        self._set_save_as_button_enabled(
+            bool(path is not None and path.text().strip()))
+        return assets
+
+    def _show_asset_rows(self, missing) -> None:
+        rows = {
+            "box_c64_disks": saveplan.DESTINATION_DISKS in missing,
+            "box_dos_folder": saveplan.DOS_GAME_FOLDER in missing,
+            "box_amiga_disk": saveplan.AMIGA_GAME_DISK in missing,
+        }
+        for name, visible in rows.items():
+            box = self._child(name)
+            if box is not None:
+                box.setVisible(visible)
+        # `missing` may hold `SOURCE_DISKS`, which shows no row of its own
+        # (above) -- Save As stays off for that too, not only for what a row
+        # here could still fix.
+        self._set_save_as_button_enabled(not missing)
+
+    def _set_save_as_button_enabled(self, enabled: bool) -> None:
+        button = self._child("button_destination_save_as")
+        if button is not None:
+            button.setEnabled(enabled)
+
+    def _wire_destination_section(self) -> None:
+        self._connect("button_destination_browse", self._destination_browse)
+        self._connect(
+            "button_c64_disks_browse",
+            lambda: self._destination_asset_browse(saveplan.DESTINATION_DISKS))
+        self._connect(
+            "button_dos_folder_browse",
+            lambda: self._destination_asset_browse(saveplan.DOS_GAME_FOLDER))
+        self._connect(
+            "button_amiga_disk_browse",
+            lambda: self._destination_asset_browse(saveplan.AMIGA_GAME_DISK))
+        self._connect("button_destination_cancel", self.cancel_save_as)
+        self._connect("button_destination_save_as", self.confirm_save_as)
+        for name in ("destination_path", "destination_c64_disks",
+                     "destination_dos_folder", "destination_amiga_disk"):
+            field = self._child(name)
+            if field is not None:
+                field.textChanged.connect(self._destination_field_edited)
+        section = self._child("destination_section")
+        if section is not None:
+            from PyQt6.QtGui import QKeySequence, QShortcut
+
+            shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), section)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(self.cancel_save_as)
+
+    def _destination_field_edited(self, _text: str) -> None:
+        """A row the player typed into by hand (decision 10: never
+        remembered) -- re-check whether Save As can be enabled."""
+        if self._save_as_port is not None:
+            self._resolve_destination_assets()
+
+    def _destination_browse(self) -> None:
+        """A2, B1, B2: the picker beside the output path, by platform.
+
+        `DontConfirmOverwrite` (decision 2): Qt's own picker prompt says
+        nothing about the other saved games an image replacement can take
+        with it, and a suggested or typed path never opens the picker at
+        all, so the one confirmation that always fires is `_replace_
+        confirmed`'s own, at Save As time.
+        """
+        port = self._save_as_port
+        field = self._child("destination_path")
+        if port is None or field is None:
+            return
+        current = field.text() or str(self.path or "")
+        no_confirm = QFileDialog.Option.DontConfirmOverwrite
+        if port == "dos":
+            path = QFileDialog.getExistingDirectory(
+                self.root, DOS_FOLDER_TITLE, current)
+        elif port == "amiga":
+            from . import convert as convert_mod
+            path, _ = QFileDialog.getSaveFileName(
+                self.root, SAVE_AS_TITLE, current, convert_mod.DISK_FILTER,
+                "", no_confirm)
+        else:
+            path, _ = QFileDialog.getSaveFileName(
+                self.root, SAVE_AS_TITLE, current, DISK_FILTER, "", no_confirm)
+        if path:
+            field.setText(path)
+
+    def _destination_asset_browse(self, requirement: str) -> None:
+        """A5's own three Browse buttons, reusing the Convert window's own
+        titles and filter -- `#511` comment 5769421923, "already approved"."""
+        field_name = {saveplan.DESTINATION_DISKS: "destination_c64_disks",
+                      saveplan.DOS_GAME_FOLDER: "destination_dos_folder",
+                      saveplan.AMIGA_GAME_DISK: "destination_amiga_disk"}[requirement]
+        field = self._child(field_name)
+        if field is None:
+            return
+        current = field.text() or str(self.path or "")
+        from . import convert as convert_mod
+
+        if requirement == saveplan.AMIGA_GAME_DISK:
+            path, _ = QFileDialog.getOpenFileName(
+                self.root, convert_mod.DISK_TITLE, current,
+                convert_mod.DISK_FILTER)
+        elif requirement == saveplan.DOS_GAME_FOLDER:
+            path = QFileDialog.getExistingDirectory(
+                self.root, convert_mod.GAME_TITLE, current)
+        else:
+            # No title of its own, same as the Convert window's own C64 row
+            # (`editor/convert.py::_choose_files`) -- `LABEL_C64` already
+            # says what it is and a second sentence in the picker's own
+            # caption would be a second string nobody has approved.
+            path = QFileDialog.getExistingDirectory(self.root, "", current)
+        if path:
+            field.setText(path)
+
+    def cancel_save_as(self) -> None:
+        """Cancel, or Esc (decision 6): close the section and forget it."""
+        self._hide_destination_section()
+
+    def _hide_destination_section(self) -> None:
+        section = self._child("destination_section")
+        if section is not None:
+            section.setVisible(False)
+        self._save_as_source = None
+        self._save_as_port = None
+
+    def confirm_save_as(self) -> None:
+        """The Save As button: check the name, refuse an alias, confirm a
+        replacement, prepare the output and publish it."""
+        source, port = self._save_as_source, self._save_as_port
+        if source is None or port is None or self.party is None:
+            return
+        field = self._child("destination_path")
+        if field is None:
+            return
+        typed = field.text().strip()
+        if not typed:
+            return
+        path = pathlib.Path(typed)
+        if port in saveplan.DESTINATION_SUFFIX:
+            wanted = saveplan.DESTINATION_SUFFIX[port]
+            if not path.suffix:
+                path = path.with_suffix(wanted)
+            elif path.suffix.lower() != wanted:
+                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE,
+                                     WRONG_EXTENSION[port])
+                return
+        field.setText(str(path))
+        self._report_flush_failures(self._flush())
+        assets = self._resolve_destination_assets()
+        if assets is None:
+            return
+        snapshot = saveplan.prepare(self.party)
+        if snapshot is not None:
+            try:
+                saveplan.refuse_alias(path, snapshot, assets)
+            except saveplan.SaveAsError as exc:
+                text = (DESTINATION_IS_SOURCE
+                       if "being written from" in str(exc)
+                       else DESTINATION_IS_GAME_FILE)
+                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, text)
+                return
+        if not self._replace_confirmed(path):
+            return
+        plan = self._prepare_plan(source, port, path, assets)
+        if plan is None:
+            return
+        self._publish_plan(plan, assets)
+
+    def _replace_confirmed(self, path: pathlib.Path) -> bool:
+        """C5: confirm before an existing image is replaced. A DOS
+        destination is never "replaced" this way -- `TargetNotEmpty` refuses
+        a folder that already holds files, so there is nothing to confirm
+        for that port."""
+        if self._save_as_port == "dos" or not path.exists():
+            return True
+        box = QMessageBox(self.root)
+        box.setWindowTitle(REPLACE_TITLE)
+        box.setText(REPLACE_TEXT.format(name=path.name))
+        box.setStandardButtons(QMessageBox.StandardButton.Cancel)
+        replace = box.addButton("Replace", QMessageBox.ButtonRole.AcceptRole)
+        box.setDefaultButton(replace)
+        box.exec()
+        return box.clickedButton() is replace
+
+    def _prepare_plan(self, source, port: str, path: pathlib.Path,
+                      assets) -> "saveplan.SavePlan | None":
+        try:
+            return saveplan.prepare_save_as(self.party, port, path, assets)
+        except saveplan.DroppedFields as exc:
+            _log.debug("Save As to %s refused: %s", path, exc)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+        except saveplan.MissingAssets:
+            self._resolve_destination_assets()
+        except saveplan.SaveAsError as exc:
+            _log.debug("Save As to %s refused: %s", path, exc)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
+        return None
+
+    def _publish_plan(self, plan, assets, _retried: bool = False) -> None:
+        try:
+            published = saveplan.publish(
+                plan, self.party, backups=self.backup_dir(), assets=assets)
+        except saveplan.StalePlan:
+            # C11: no text at all -- the sheet moved on since this was
+            # prepared, so prepare it again and carry on; only a second
+            # failure gets a sentence, and then it is one of the ones above.
+            if _retried:
+                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
+                return
+            fresh = self._prepare_plan(self._save_as_source, self._save_as_port,
+                                       plan.destination.path, assets)
+            if fresh is None:
+                return
+            self._publish_plan(fresh, assets, _retried=True)
+            return
+        except files.NoBackupFolder as exc:
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, str(exc))
+            return
+        except files.TargetNotEmpty:
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, TARGET_NOT_EMPTY)
+            return
+        except files.RecoveryFailed as exc:
+            destination = plan.destination.path
+            text = (RECOVERY_FAILED_WITH_BACKUP.format(
+                        destination=destination, backup=exc.backup)
+                    if exc.backup is not None else
+                    RECOVERY_FAILED_NO_BACKUP.format(destination=destination))
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, text)
+            return
+        except (saveplan.SaveAsError, OSError):
+            _log.exception("could not publish a Save As to %s",
+                           plan.destination.path)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
+            return
+        note = files.written_note(published.destination.path, published.backup)
+        self._hide_destination_section()
+        self._adopt(published.party, str(published.destination.path), note=note)
 
     def _write_back(self) -> dict[pathlib.Path, bytes | None]:
         """Push edited records into the disk image.
@@ -2199,29 +2785,14 @@ class EditorBinding(QObject):
         `self.dirty` is this binding's own record of which rows changed,
         added to by `_edited` -- which `_wire_dirty` connects to every
         bound widget's changed signal -- and cleared by `save`.
+
+        `_guard_unsaved` carries the "no destination" reading too (Not
+        `!= "failed"`: a converted party with no destination -- `_adopt` with
+        no path, constructible only from inside this class since
+        `adopt_conversion` was deleted, `#52 (File ▸ Import and File ▸ Export
+        for every direction the library supports)`, 2026-09-14 -- answers
+        `"no destination"` here, neither an exception nor a written file, and
+        treating that as success closed the window and threw the party away,
+        `#505`, `#514`).
         """
-        if not self.dirty:
-            return True
-        box = QMessageBox(self.root)
-        box.setWindowTitle("Unsaved changes")
-        box.setText("Save your changes before closing?")
-        box.setStandardButtons(
-            QMessageBox.StandardButton.Save
-            | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel
-        )
-        box.button(QMessageBox.StandardButton.Discard).setText("Don't Save")
-        box.setDefaultButton(QMessageBox.StandardButton.Save)
-        ans = box.exec()
-        if ans == QMessageBox.StandardButton.Cancel:
-            return False
-        if ans == QMessageBox.StandardButton.Discard:
-            return True
-        # Not `!= "failed"`: a converted party with no destination (`_adopt`
-        # with no path -- constructible only from inside this class since
-        # `adopt_conversion` was deleted, `#52 (File ▸ Import and File ▸
-        # Export for every direction the library supports)`, 2026-09-14)
-        # answers `"no destination"` here, neither an exception nor a
-        # written file, and treating that as success closed the window and
-        # threw the party away (#505, #514).
-        return self.save() not in ("failed", "no destination")
+        return self._guard_unsaved(UNSAVED_BEFORE_CLOSE)

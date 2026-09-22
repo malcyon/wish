@@ -826,20 +826,21 @@ def test_the_dialog_is_on_the_file_menu_with_a_shortcut_a_keyboard_has(
 
 def test_file_menu_has_direct_file_and_dos_folder_actions(app, tmp_path,
                                                           monkeypatch):
+    """`&Open…` opens a file directly and `Open &DOS folder…` sits beside
+    it -- the File menu's own copies of the split Open button's main action
+    and its arrow's one extra entry (#511)."""
     from PyQt6.QtGui import QKeySequence
-
-    from editor.window import OPEN_FILE_TEXT, OPEN_FOLDER_TEXT
 
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     try:
         actions = {action.text(): action for menu in win.menuBar().actions()
                    for action in (menu.menu().actions() if menu.menu() else [])}
-        assert OPEN_FILE_TEXT in actions
-        assert OPEN_FOLDER_TEXT in actions
-        assert actions[OPEN_FILE_TEXT].shortcut() == QKeySequence(
+        assert "&Open…" in actions
+        assert "Open &DOS folder…" in actions
+        assert actions["&Open…"].shortcut() == QKeySequence(
             QKeySequence.StandardKey.Open)
-        assert actions[OPEN_FOLDER_TEXT].shortcut().isEmpty()
+        assert actions["Open &DOS folder…"].shortcut().isEmpty()
     finally:
         win.close()
 

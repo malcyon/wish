@@ -207,15 +207,21 @@ class WishWindow(QMainWindow):
         without going back to the editor tab to click them.
         """
         menu = self.menuBar().addMenu("&File")
-        from editor.window import OPEN_FILE_TEXT, OPEN_FOLDER_TEXT
         self.save_as_action = None
+        # D2: the File menu's own mnemonics -- the split toolbar buttons and
+        # their arrow menus carry none (Q4), since an `&` on a split
+        # button's own text underlines a letter its arrow half never
+        # responds to. `Save &As…` keeps `Ctrl+Shift+S` and pops the Save
+        # button's own destination menu at the button rather than saving
+        # anywhere itself (Q1, `EditorBinding.open_save_as_menu`).
         for text, slot, key in (
-                (OPEN_FILE_TEXT, self.editor.open_file,
+                ("&Open…", self.editor.open_file,
                  QKeySequence.StandardKey.Open),
-                (OPEN_FOLDER_TEXT, self.editor.open_folder, None),
+                ("Open &DOS folder…", self.editor.open_folder, None),
                 ("&Save", self.editor.save, QKeySequence.StandardKey.Save),
-                ("Save &As…", self.editor.save_as,
-                 QKeySequence.StandardKey.SaveAs)):
+                ("Save &As…", self.editor.open_save_as_menu,
+                 QKeySequence("Ctrl+Shift+S")),
+                ("&Preview changes…", self.editor.preview, None)):
             action = QAction(text, self)
             if key is not None:
                 action.setShortcut(key)
@@ -224,8 +230,7 @@ class WishWindow(QMainWindow):
             if text == "Save &As…":
                 self.save_as_action = action
         if self.save_as_action is not None:
-            party = self.editor.party
-            self.save_as_action.setEnabled(party is None or party.port == "c64")
+            self.save_as_action.setEnabled(self.editor.party is not None)
 
         # One entry for every direction the registry holds, rather than a
         # submenu per port -- `#52 (File ▸ Import and File ▸ Export for
@@ -484,8 +489,7 @@ class WishWindow(QMainWindow):
                 self.settings.save()
         self.editor.set_backup_folder(self.settings.backup_folder or "")
         if getattr(self, "save_as_action", None) is not None:
-            party = self.editor.party
-            self.save_as_action.setEnabled(party is None or party.port == "c64")
+            self.save_as_action.setEnabled(self.editor.party is not None)
         if self.editor.path:
             from editor.files import source_folder
             folder = str(source_folder(self.editor.path))

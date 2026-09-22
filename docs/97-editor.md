@@ -229,25 +229,57 @@ those numbers.
 
 ## Opening and saving
 
-The selected replacement design is [Open and Save As in the Character
-Editor](227-editor-open-save-as.md): split Open and Save controls, with native
-copies and platform conversion through Save As. The behavior below describes
-the existing implementation; the separate design records the change because
-the editor will own the complete save workflow.
+The design is [Open and Save As in the Character Editor](227-editor-open-save-as.md):
+split Open and Save controls in the toolbar (`wish/window.ui`'s `buttons` row,
+inside `tab_editor`), with native copies and platform conversion through Save
+As. `File ▸ Convert…` is still the only route to Import and to a destination
+the toolbar cannot yet reach on its own; stage 4 of the design retires it once
+parity is confirmed.
 
-The form has `button_open_file`, `button_open_folder` and `button_save`, wired
-to `QAction`s so the menu and the shortcuts (`Ctrl+O`, `Ctrl+S`,
-`Ctrl+Shift+S`) share one implementation. Named, so Designer can move them like
-anything else.
+**Open** (`button_open`, a `QToolButton`) opens the file picker directly for a
+C64 `.d64`, an Amiga `.adf` or a DOS `SAVGAM<slot>.DAT`/`.PTY`. Its arrow
+duplicates that action and adds **Open DOS folder…**, a plain folder picker.
+Either source shows the existing slot picker only when it contains more than
+one complete saved game. Opening another source with unsaved edits on screen,
+or picking another slot of the one already open, asks "Save your changes
+before opening another saved game?" -- the same three-button prompt `close()`
+shows, with its own wording so "closing" is never said about something that
+is not.
 
-**Choose a save file** opens a `QFileDialog` for C64 and Amiga disk images or a
-DOS save-container file. **Choose a DOS save folder** opens a folder picker.
-Either source shows a slot picker only when it contains more than one complete
-saved game.
+**Save** (`button_save`) writes back to the file or folder you opened, in its
+own native format -- no forced new filename, no `-EDITED` suffix, no modal
+diff. Its arrow lists every platform `editor.saveplan.destination_ports`
+answers for the open title -- the save's own platform first, for a native
+copy, then whatever the registry can convert it to -- as **Save As C64…**,
+**Save As DOS…**, **Save As Amiga…**; nothing in that menu is ever greyed, and
+the arrow itself is disabled with nothing open. `Ctrl+Shift+S` and the File
+menu's own **Save &As…** open that same menu at the Save button rather than
+picking a platform for the player.
 
-**Save writes back to the file or folder you opened.** No forced new filename,
-no `-EDITED` suffix. *Save As* opens the dialog for a C64 save if you want a
-copy; native DOS and Amiga saves keep writing back to their original source.
+Choosing a Save As entry opens a compact **destination section** above the
+roster (`destination_section` in the same `.ui`, hidden except while it is
+in use): a path field, pre-filled beside the save being edited with a name
+derived from the title and platform and a number added until it is unused,
+and a **Browse…** button reusing the existing *Save the disk as* picker for a
+C64 or an Amiga image, or a new **Choose a new folder for the DOS save**
+folder picker. A read-only **Slot** field shows the saved-game letter the
+write will hold, where the destination has one at all -- never for a C64
+image. Up to three more rows -- **C64 game disks**, **DOS game folder**,
+**Amiga game disk 2** -- appear only for whichever asset `editor.saveplan.
+resolve_assets` could not resolve from Preferences on its own; **Save As**
+stays disabled while one is empty. Esc, or **Cancel**, closes the section
+without writing anything; a failed **Save As** leaves it open so one
+character can be corrected.
+
+Every Save As is prepared and validated in memory before anything is written
+(`editor.saveplan.prepare_save_as`), and a conversion that would lose a field
+is refused outright with "The save could not be converted." -- never a
+partial write, never a choice to lose the field anyway. Publishing the
+prepared output (`editor.saveplan.publish`) then backs up and replaces an
+existing image with confirmation, or stages a whole new DOS save folder and
+refuses one that is not empty; on success the editor adopts the destination
+the way `File ▸ Open` adopts anything, and the status line names what was
+written the same way an ordinary Save does.
 
 That is a deliberate departure from the CLI, which **refuses** to write over its
 input (`tools/wish.py`, "--output must differ from the original save"). The CLI
