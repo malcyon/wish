@@ -206,11 +206,8 @@ def test_the_spell_groups_are_the_games_own(game):
 def test_the_wisdom_bonus_is_curses_table_and_not_pool_of_radiances(game):
     """Read off the cleric helper's own six compares.
 
-    `goldbox.levels` has no entry for this title, so
-    `goldbox.levels.wisdom_bonus_spells` answers with Pool of Radiance's
-    table -- a bonus at wisdom 12 this game does not grant, and one at 13
-    where it grants two. What the engine does is Curse's and Silver Blades'
-    table point for point, which is the tuple this checks against.
+    What the engine does is Curse's and Silver Blades' table point for
+    point, which is the tuple this checks against.
     """
     tables, ovr, image, ds = game
     site = tables.dosspellslots.builder_site(

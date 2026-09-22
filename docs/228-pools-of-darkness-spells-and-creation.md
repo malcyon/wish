@@ -80,12 +80,41 @@ the nine-wide array stay zero), the paladin plateaus at level 20 with
   each one's own record offsets.
 
 **`goldbox.spells.capacity_by_class` applies neither ceiling**, and its wisdom
-bonus comes out of `goldbox.levels`, which has no entry for this title -- so it
-answers with Pool of Radiance's bonus, which grants a spell at wisdom 12 that
-this game does not and one at 13 where this game grants two. A
-`pools-of-darkness` entry in `goldbox/levels.py` carrying `wisdom_bonus_from=13`
-and `wisdom_bonus_level=(0, 0, 1, 1, 2, 3, 4)` -- Curse's own tuple -- is the
-fix.
+bonus used to come out of `goldbox.levels`, which had no entry for this title
+and so answered with Pool of Radiance's bonus, which grants a spell at wisdom
+12 that this game does not and one at 13 where this game grants two.
+`goldbox.levels.POOLS_OF_DARKNESS` (`#622 (goldbox.levels has no Pools of
+Darkness entry, so its cleric wisdom bonus answers with Pool of Radiance's
+numbers)`) now carries that engine's own wisdom bonus, built by
+`tools/dos/dospodlevels.py`: the table read at `GAME.OVR:0x03860C` gives
+`(0, 0, 1, 1, 2, 3)` from wisdom 13, not Curse's seven-entry tuple -- wisdom 19
+gives what 18 gives here, where Curse's table has a seventh row.
+
+The entry does not carry the rest of `LevelTables`. Its ceilings, racial
+limits, thief-skill row, turning level and the constitution save adjustment
+are unread; see the table below.
+
+### What else the same reading found, graded
+
+Read off the player's own `GAME.OVR`/`GAME.EXE`, `tools/dos/dospodlevels.py`
+and `tests/records/test_pod_levels.py`.
+
+| table | where | grade |
+|---|---|---|
+| wisdom bonus | `0x03860C`: six compares, wisdom 13-18 give levels 1,1,2,2,3,4 | CONFIRMED (bytecode) |
+| experience | `0x039349`: `DS:71AE + class*0x12D + level*4` for levels 2-11, then entry 11 + `DS:6EDB[class]` a level; `0x7FFFFFFF` from level 41 | CONFIRMED (bytecode) |
+| THAC0 | `0x03836D`: `DS:6D18 + class*22 + level`, level clamped at 21, best over all 7 slots with no level test | CONFIRMED (bytecode) |
+| saving throws | `0x0387B0`: `DS:79FA + class*105 + level*5 + col`, clamp 21, slots with level 0 skipped; rows CONFIRMED, the column-0 rule unread | CONFIRMED (rows); SPECULATIVE (column 0) |
+| attacks | same loop, record `0x168`: fighter/paladin >6 -> 3, >12 -> 4; ranger >7, >14 | CONFIRMED (bytecode) |
+| hit dice | `0x026F4B`: sides `DS:6DD7`, roll while level < `DS:6DC9`, `DS:6DD0` dice at level 1 (ranger 2), rolled twice keep higher, flat 2/3/3/2/1/2 after | CONFIRMED (bytecode) |
+| constitution hit points | `0x026ECC` (copy at `0x01848C`): `DS:719C[con]` plus 1-5 for fighter, paladin, ranger from 17 up, the same as Curse's `_HP_BONUS_CURSE` from 3 up | CONFIRMED (bytecode) |
+
+**Not read:** the ceilings, the racial ability limits, the thief-skill row
+(near `0x038A4F`, rows at `DS:6DDB + level*8`), the turning level (the DOS
+record keeps no caster-side byte for it) and the constitution save
+adjustment -- SPECULATIVE from `0x0387B0`'s column-0 adds, one banded on
+constitution from 19 up and one on an item-list walk from constitution 4 up,
+neither settled.
 
 ## The spell table
 

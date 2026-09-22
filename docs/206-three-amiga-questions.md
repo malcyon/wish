@@ -61,7 +61,7 @@ so the entry belongs beside the unsourced ones with that as its reason.
 anywhere. The character sheet is what was opened; the game's own
 character-creation screens were not.
 
-## 2. The engine strips every space out of every name it saves
+## 2. The engine strips a name's spaces at save, except one it stored as `$FF`
 
 `#308 (Does Amiga Pool of Radiance drop the space out of a character's name
 when it saves?)`.
@@ -105,10 +105,25 @@ Sample: 4 typed names and 6 converted characters across 4 engine saves, 5 slots
 of records read. 9 of 9 names holding a space lost every space; 0 of 26 names
 without one changed at all.
 
-Nothing our writer can do prevents it, so the writer should keep writing the
-player's name with its space -- the game draws it correctly until the first
-save. What is left is a sentence in the messages pane, which is Donald's to
-word and `.claude/rules/gui-text.md`'s to govern.
+**The removal is one ordinary space a save, not every space at once** -- a
+double space takes two saves to disappear (`A  B` gives `A B`, then `AB`),
+CONFIRMED in the running game under `fs-uae` (`tools/amiga/fsuaepor.py`), in
+`#619 (A name cut to the destination's width and a value clamped into a narrower field reach report.warnings only, so no caller can see the loss)`'s
+comment of 2026-09-22T22:18:52Z. `MARY SUE FOX`'s two-space loss above was two
+spaces gone in one save because the field held two engine saves' worth already
+by the time it was read back.
+
+**A space stored as `$FF` -- what Create New Character writes for a typed
+space -- is drawn as a blank cell and never stripped.** The same run measured
+it, by pixel width, through four saves and a cold reload: `$FF` draws as one
+blank cell, the same width as a space, on the party panel, the character sheet
+and the roster picker, and the byte survives every save unchanged. So the
+writer has a way to keep a converted name's space intact: write `$FF` where a
+DOS or C64 name holds a space, rather than a real `$20`. That needs the reader
+to change in the same commit, because `goldbox` today decodes an Amiga `$FF`
+as U+FFFD -- filed as `#631 (A Pool of Radiance character created in the Amiga
+game with a space in his name converts as MARY?SUE, because the reader decodes
+the game's $FF as a replacement character)`.
 
 The disk the engine wrote all four of those slots onto is
 `~/wish-specimens/por-amiga/WISH-SPEC-por-amiga-name-spaces`, copied out of the
