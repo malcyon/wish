@@ -2015,17 +2015,18 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
     destination = tmp_path / "out"
     destination.mkdir()
 
-    real = dos_codec.new_dos_save
+    real = dos_codec.new_dos_save_from
 
-    def half_a_write(save0, save1, folder, *args, **kwargs):
+    def half_a_write(state, characters, folder, *args, **kwargs):
         #: The rehearsal calls this too, into a temporary directory of its
         #: own -- let that one through, so the dialog reaches the state
         #: where its button is live, and fail only the real write into the
         #: player's chosen destination.
         if pathlib.Path(destination) not in pathlib.Path(folder).parents:
-            return real(save0, save1, folder, *args, **kwargs)
+            return real(state, characters, folder, *args, **kwargs)
         #: One file, then the failure a full disk would give: the state
         #: `rmdir` cannot clear.
+        pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
         pathlib.Path(folder).joinpath("SAVGAMA.DAT").write_bytes(b"half")
         raise OSError(28, "No space left on device")
 
@@ -2042,18 +2043,17 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
         return real_refuse(self, text)
 
     monkeypatch.setattr(convert.ConvertDialog, "refuse", note_refusal)
-    # `editor.convert` calls `dos_codec.new_dos_save` directly now (#470 stage
-    # 9), not through the `goldbox.dos_codec` shim this test otherwise uses, so the
-    # patch has to land on the module the caller actually looks the name up
-    # on -- patching the shim's own attribute leaves `dos_codec`'s untouched.
-    monkeypatch.setattr(dos_codec, "new_dos_save", half_a_write)
+    # `editor.convert`'s `C64ToDos` calls `dos_codec.new_dos_save_from`
+    # directly (#619's Stage A), not `new_dos_save`, so the patch has to
+    # land on the function the caller actually looks up.
+    monkeypatch.setattr(dos_codec, "new_dos_save_from", half_a_write)
     try:
         outcome = window.convert(source=str(_por_c64_disk(tmp_path)),
                                  destination="dos",
                                  game=str(_game_dir()),
                                  folder=str(destination))
     finally:
-        monkeypatch.setattr(dos_codec, "new_dos_save", real)
+        monkeypatch.setattr(dos_codec, "new_dos_save_from", real)
         window.close()
 
     assert outcome == "cancelled"
@@ -2127,7 +2127,7 @@ def test_a_name_too_long_for_dos_pops_no_modal_at_all(
                 "slots; the rest dropped"],
         dropped=["quickfight: the C64 has no matching option"])
 
-    def fake_rehearse(self, source, slot, options):
+    def fake_rehearse(self, source, slot, options, names=None):
         return convert.Rehearsal(report, {"PORSAVEA.D64": b"\x00" * 4})
 
     monkeypatch.setattr(convert.DosToC64, "rehearse", fake_rehearse)

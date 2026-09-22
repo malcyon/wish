@@ -39,9 +39,10 @@ import pathlib
 import re
 import shutil
 import tempfile
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from goldbox import amiga_por, amiga_savegame, rewrite
+from goldbox import amiga_por, amiga_savegame, dos_port, layout, rewrite
 from goldbox.d64 import D64
 from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import SaveGame0, SaveGame1, load_save, store_save
@@ -336,6 +337,27 @@ class MissingAssets(SaveAsError):
         super().__init__("this route needs " + ", ".join(self.missing))
 
 
+class NamesDoNotFit(SaveAsError):
+    """A name too long for the destination's field, with a chosen name still
+    to be asked for.
+
+    `unfit` is every distinct name over `width`, in party order -- the ones
+    `fit_names` found nobody had a replacement for. `taken` is every name in
+    the party that already fits, its own or a replacement already chosen,
+    so a caller offering a chooser can refuse a duplicate. The message is
+    for the debug log only.
+    """
+
+    def __init__(self, unfit: "tuple[str, ...] | list[str]", width: int,
+                 taken: "tuple[str, ...] | list[str]" = ()):
+        self.unfit = tuple(unfit)
+        self.width = width
+        self.taken = tuple(taken)
+        super().__init__(
+            f"{len(self.unfit)} name(s) do not fit the {width}-character "
+            f"field: " + "; ".join(self.unfit))
+
+
 class DroppedFields(SaveAsError):
     """The conversion would lose something, so nothing is written.
 
@@ -550,7 +572,8 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
 # Save As: rehearsing it
 # ---------------------------------------------------------------------------
 
-def rehearse(direction: Any, source: Any, assets: Assets) -> tuple[Any, str]:
+def rehearse(direction: Any, source: Any, assets: Assets,
+            names: "Mapping[str, str] | None" = None) -> tuple[Any, str]:
     """Run `direction` in memory, and say which slot it wrote.
 
     The slot is not always the source's: a C64 source has none of its own and
@@ -558,6 +581,10 @@ def rehearse(direction: Any, source: Any, assets: Assets) -> tuple[Any, str]:
     letter into an Amiga disk (`editor.convert.DosToAmiga`). Nothing is
     written anywhere -- the whole output is bytes in the returned
     `Rehearsal`.
+
+    `names` is passed straight to `direction.rehearse`, which calls
+    `fit_names` on the neutral party it builds -- a name still too long
+    raises `NamesDoNotFit` from in there.
 
     Raises `MissingAssets` before running anything when `assets` does not
     cover what `requirements` names.
@@ -580,8 +607,73 @@ def rehearse(direction: Any, source: Any, assets: Assets) -> tuple[Any, str]:
         slot, options = "A", assets.dos_folder
     if direction.source_port == "c64" and port in ("dos", "amiga"):
         return direction.rehearse(source, slot, options,
-                                  icon_parts=assets.source_files.icon), slot
-    return direction.rehearse(source, slot, options), slot
+                                  icon_parts=assets.source_files.icon,
+                                  names=names), slot
+    return direction.rehearse(source, slot, options, names=names), slot
+
+
+def name_width(port: str, title_key: str) -> int:
+    """How many characters a name field of this port and title holds.
+
+    `"c64"` is the same eighteen bytes on every title (`goldbox.layout.
+    NAME_SIZE`, since #626); `"dos"` and `"amiga"` share one answer, because
+    both Amiga writers re-cut the DOS record's own count and fifteen
+    characters (`goldbox.amiga_por._por_name_bytes`, `goldbox.amiga_later.
+    _later_name_bytes`) rather than keeping their own sixteenth byte.
+    """
+    if port == "c64":
+        return layout.NAME_SIZE
+    return dos_port.FIELDS_BY_NAME_FOR[title_key]["name_text"].size
+
+
+def fit_names(party: "Sequence[Any]", port: str, title_key: str,
+             names: "Mapping[str, str] | None" = None) -> "list[Any]":
+    """Give the destination a name it has nowhere to cut, or say who has none.
+
+    `party` is a list of `goldbox.neutral.NeutralCharacter`, keyed by the
+    name each one is read holding -- not by position, because the C64
+    party comes out of `goldbox.dos_codec.c64_party` in a different order
+    from the sheet's own rows, and a name is the one key both share.
+    `names` maps that name to the one the player chose for it; every
+    character sharing a long name takes the same replacement, since the C64
+    game itself refuses a duplicate name in its own party
+    (`docs/170-c64-identity-pair.md`).
+
+    A chosen replacement that is empty, over `width`, or not printable
+    ASCII raises `SaveAsError` -- a caller's own mistake, never a player's
+    typing reaching this far unchecked. Every name still over `width` once
+    the replacements are applied is collected and raised as
+    `NamesDoNotFit`, naming every one, in party order, so a caller can put
+    up one dialog rather than refusing after the first.
+    """
+    width = name_width(port, title_key)
+    names = names or {}
+    unfit: list[str] = []
+    taken: list[str] = []
+    for char in party:
+        held = char.value("name")
+        old = held.value
+        if old in names:
+            new = names[old]
+            if (not new or len(new) > width
+                    or any(not (0x20 <= ord(ch) <= 0x7E) for ch in new)):
+                raise SaveAsError(
+                    f"{new!r} does not fit the {port} {width}-character "
+                    f"name field, or is not printable ASCII")
+            char.fields["name"] = dataclasses.replace(
+                held, value=new,
+                origin=f"{held.origin}, renamed to fit the {port} {width}-"
+                      f"character name field")
+            if new not in taken:
+                taken.append(new)
+        elif len(old) > width:
+            if old not in unfit:
+                unfit.append(old)
+        elif old not in taken:
+            taken.append(old)
+    if unfit:
+        raise NamesDoNotFit(unfit, width, taken)
+    return list(party)
 
 
 def losses(report: Any) -> list[str]:
@@ -854,6 +946,11 @@ class SavePlan:
     key: tuple
     assets: "Assets | None" = None
     stale: bool = False
+    #: The name each character was given, keyed by the name it was read
+    #: holding -- empty for a plan that needed no chosen name. A
+    #: re-preparation (`StalePlan`) passes this straight back, so a player is
+    #: not asked a second time for a name already chosen.
+    names: "dict[str, str]" = dataclasses.field(default_factory=dict)
 
     def invalidate(self) -> None:
         """Mark this output as no longer the answer, so `publish` refuses it."""
@@ -1093,7 +1190,8 @@ def native_files(snapshot: Snapshot) -> dict[str, bytes]:
 
 
 def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
-                    assets: "Assets | None" = None) -> SavePlan:
+                    assets: "Assets | None" = None,
+                    names: "Mapping[str, str] | None" = None) -> SavePlan:
     """Everything a Save As would write, in memory and validated.
 
     The open party's own snapshot is the source on every port, so the edits
@@ -1116,11 +1214,18 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     Without that check a player typing `MySave` for an Amiga destination gets
     the validation's own sentence about a D64 image of 901,120 bytes.
 
+    `names` maps a name as the sheet holds it to the one the player chose
+    for it, and is threaded through to `rehearse` and, from there, to
+    `fit_names`; a source name still too long once `names` is applied
+    raises `NamesDoNotFit`, propagated rather than caught here, so the
+    caller can put up a chooser and try again.
+
     Raises `MissingAssets` for game data nothing answered for, `DroppedFields`
-    for a conversion that loses something, and `SaveAsError` for a route that
-    does not exist, a destination that is the source or one of the assets, a
-    name the destination cannot be read back from, or output that cannot be
-    read back.
+    for a conversion that loses something, `NamesDoNotFit` for a name over
+    the destination's width nobody has chosen a replacement for yet, and
+    `SaveAsError` for a route that does not exist, a destination that is the
+    source or one of the assets, a name the destination cannot be read back
+    from, or output that cannot be read back.
     """
     from .convert import Source
 
@@ -1138,18 +1243,28 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
         files, slot, report = native_files(snapshot), snapshot.slot, None
         title = snapshot.title
     else:
-        rehearsal, slot = rehearse(direction, source, assets or Assets())
+        rehearsal, slot = rehearse(direction, source, assets or Assets(),
+                                   names=names)
         files, report = dict(rehearsal.files), rehearsal.report
         title = direction.destination_game
     destination = Destination(port=port, path=pathlib.Path(path),
                               slot=None if port == "c64" else slot,
                               title=title, native=direction is None)
-    validate(destination, files,
-             [edited_record(member) for member in party.members],
-             accounted=losses(report))
+    expected = [edited_record(member) for member in party.members]
+    if names:
+        # `compare` reads the written destination back against these
+        # records, so a chosen name goes into the copy here or `compare`
+        # reports the player's own choice as a loss. The member's own
+        # record, which the sheet still shows, is never touched.
+        for record in expected:
+            old = record.get("name")
+            if old in names:
+                record.set("name", names[old])
+    validate(destination, files, expected, accounted=losses(report))
     return SavePlan(source=source, destination=destination, files=files,
                     report=report, assets=assets,
-                    key=plan_key(snapshot, port, path, assets))
+                    key=plan_key(snapshot, port, path, assets),
+                    names=dict(names) if names else {})
 
 
 def validate(destination: Destination, files: dict[str, bytes],

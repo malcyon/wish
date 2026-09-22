@@ -569,10 +569,15 @@ def test_every_known_field_is_compared_or_named_as_not_compared():
 
 
 def test_a_c64_party_that_does_not_fit_a_dos_save_is_refused(tmp_path):
-    """The same guard on a conversion driven whole, with the player's own
-    disks: a 20-character C64 name is cut to the DOS field's fifteen and
-    65,535 maximum hit points are clamped to a one-byte 255. Both are lines
-    of `report.warnings` and neither is on a list `losses` reads.
+    """A conversion driven whole, with the player's own disks, whose C64
+    party carries an eighteen-character name and 65,535 maximum hit points.
+
+    Refusing the whole party for a name alone is the defect `#619`'s Stage A
+    plan fixes: with no chosen replacement, `prepare_save_as` raises
+    `NamesDoNotFit` naming that name, and only that -- no game writes 65,535
+    hit points, so `hp_max`'s own clamp is not this test's business. With a
+    replacement supplied, the party still refuses on `hp_max` alone, and the
+    name is no longer among what it names.
 
     Skips where this machine's registry has no Pool of Radiance C64 disks or
     no DOS Pool of Radiance game folder.
@@ -584,13 +589,82 @@ def test_a_c64_party_that_does_not_fit_a_dos_save_is_refused(tmp_path):
     party = Party(str(synthetic_save(tmp_path)))
     assets = saveplan.Assets(dos_folder=game_folder, source_files=files_for)
     out = tmp_path / "copy"
+    long_name = "W" * NAME_SIZE
+
+    with pytest.raises(saveplan.NamesDoNotFit) as caught:
+        saveplan.prepare_save_as(party, "dos", out, assets)
+    assert caught.value.unfit == (long_name,)
+    assert not out.exists()
 
     with pytest.raises(saveplan.DroppedFields) as caught:
-        saveplan.prepare_save_as(party, "dos", out, assets)
+        saveplan.prepare_save_as(party, "dos", out, assets,
+                                 names={long_name: "W" * 15})
 
     named = {line.split(":", 1)[0] for line in caught.value.lost}
-    assert "name" in named and "hp_max" in named
+    assert "hp_max" in named and "name" not in named
     assert not out.exists()
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_c64_name_too_long_for_dos_converts_under_the_name_the_player_chose(
+        tmp_path, port):
+    """You have a Commodore 64 Pool of Radiance save in which one character
+    is called `ABCDEFGHIJKLMNOPQR`, eighteen letters. `File ▸ Save As…`
+    refuses the whole party today over that one name, though every other
+    field of every character would convert -- `.claude/rules/conversions.md`,
+    "Refusing a save is not a fix". `#619`'s Stage A design instead asks for
+    a name that fits the destination and converts the whole party once it
+    has one.
+
+    The chosen replacement, `RENAMED`, is deliberately not a cut of the old
+    name, so this cannot pass by truncating instead of asking.
+
+    Skips where this machine's registry has no Pool of Radiance C64 save
+    disks or DOS game folder, or, for the Amiga destination, no Amiga Pool
+    of Radiance disk 2.
+    """
+    from support.toamigapor import _por_disk_2
+
+    saves = _c64_pool_saves()
+    files_for = _registry_game_files(POOL_OF_RADIANCE)
+    if not saves or files_for is None:
+        pytest.skip("needs the Pool of Radiance C64 save disks")
+    if port == "dos":
+        game_folder = _dos_game_folder()
+        if game_folder is None:
+            pytest.skip("needs the DOS Pool of Radiance game folder")
+        assets = saveplan.Assets(dos_folder=game_folder, source_files=files_for)
+        out = tmp_path / "copy"
+    else:
+        disk2 = _por_disk_2(tmp_path)
+        assets = saveplan.Assets(amiga_disk=disk2, source_files=files_for)
+        out = tmp_path / "copy.adf"
+
+    long_name = "ABCDEFGHIJKLMNOPQR"
+    party = Party(str(saves[0]))
+    party.members[0].record.set("name", long_name)
+
+    with pytest.raises(saveplan.NamesDoNotFit) as caught:
+        saveplan.prepare_save_as(party, port, out, assets)
+    assert caught.value.unfit == (long_name,)
+    assert not out.exists()
+
+    plan = saveplan.prepare_save_as(party, port, out, assets,
+                                    names={long_name: "RENAMED"})
+    assert plan.report.losses == []
+    published = saveplan.publish(plan, party, assets=assets,
+                                 backups=tmp_path / "backups")
+
+    written = Party(convert.Source.detect(out, slot=published.destination.slot))
+    assert "RENAMED" in {member.record.get("name")
+                         for member in written.members}
+
+    expected = [saveplan.edited_record(member) for member in party.members]
+    for record in expected:
+        if record.get("name") == long_name:
+            record.set("name", "RENAMED")
+    assert saveplan.compare(
+        expected, [member.record for member in written.members]) == []
 
 
 def test_a_dropped_field_stops_a_save_as_before_any_destination_write(

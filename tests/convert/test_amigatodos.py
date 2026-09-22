@@ -106,14 +106,16 @@ def test_an_amiga_source_offers_dos_as_well_as_the_commodore_64(shipped_adf):
 
 
 def test_the_amiga_to_dos_row_takes_the_c64_to_dos_constructor():
-    """`AmigaToDos` derives from `C64ToDos` for `__init__` and nothing else,
-    the way `AmigaToC64` derives from `DosToC64`: the destination is the same
-    DOS save folder written by the same engine, and only the source read
-    differs. A copy of that constructor would be a second place for the
-    `games.by_key` check that fails loudly at import time."""
+    """`AmigaToDos` derives from `C64ToDos` for `__init__` and `write`, the
+    way `AmigaToC64` derives from `DosToC64` for everything but `rehearse`:
+    the destination is the same DOS save folder written by the same engine
+    to the same file names (`goldbox.dos_codec.new_dos_save_from`), so the
+    shape lookup and the put-the-bytes-down are one implementation rather
+    than two (#619's Stage A). What differs is where the party and the
+    place are read from, which is `rehearse` alone."""
     assert issubclass(convert.AmigaToDos, convert.C64ToDos)
     assert convert.AmigaToDos.rehearse is not convert.C64ToDos.rehearse
-    assert convert.AmigaToDos.write is not convert.C64ToDos.write
+    assert convert.AmigaToDos.write is convert.C64ToDos.write
     direction = _direction()
     assert direction.source_port == "amiga"
     assert direction.source_key == dos_port.POOL_OF_RADIANCE.key

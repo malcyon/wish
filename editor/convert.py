@@ -108,7 +108,7 @@ import logging
 import pathlib
 import re
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 from PyQt6.QtWidgets import (
@@ -538,7 +538,8 @@ class Direction:
     destination_port: str
     destination_game: Any
 
-    def rehearse(self, source: Source, slot: str, options: Any) -> Rehearsal:
+    def rehearse(self, source: Source, slot: str, options: Any,
+                names: "Mapping[str, str] | None" = None) -> Rehearsal:
         raise NotImplementedError
 
     def write(self, rehearsal: Rehearsal,
@@ -603,7 +604,14 @@ class DosToC64(Direction):
                 f"it") from None
 
     def rehearse(self, source: Source, slot: str,
-                options: "dosimport.GameFiles") -> Rehearsal:
+                options: "dosimport.GameFiles",
+                names: "Mapping[str, str] | None" = None) -> Rehearsal:
+        if names:
+            # A DOS name is at most fifteen characters and the C64 field
+            # holds eighteen (`goldbox.layout.NAME_SIZE`, #626), so this
+            # direction never has a name to ask the player about.
+            raise saveplan.SaveAsError(
+                f"{self.source_port} to c64 never needs a chosen name")
         with source.folder() as folder:
             conversion = dosimport.rehearse(folder, slot, options)
         name = self._name.format(slot=slot)
@@ -647,12 +655,21 @@ class AmigaToC64(DosToC64):
     source_port = "amiga"
 
     def rehearse(self, source: Source, slot: str,
-                options: "dosimport.GameFiles") -> Rehearsal:
+                options: "dosimport.GameFiles",
+                names: "Mapping[str, str] | None" = None) -> Rehearsal:
         disk = source.amiga_disk()
         if self.shape is dos_port.POOL_OF_RADIANCE:
             party, savgam = amiga_savegame.read_por_slot(disk, slot)
             state = amiga_savegame.read_por_state(
                 savgam, source=f"{source.path} slot {slot}")
+            # `read_por_slot` hands back `goldbox.dos_codec.DosCharacter`,
+            # not a neutral party -- `fit_names` cannot run against it, and
+            # a fifteen-character Pool of Radiance name never overflows the
+            # C64's eighteen, so this direction never has one to ask about.
+            if names:
+                raise saveplan.SaveAsError(
+                    f"{self.source_port} to c64 never needs a chosen name "
+                    f"for {self.shape.key}")
             characters = party
             party_icons = None
         else:
@@ -661,6 +678,12 @@ class AmigaToC64(DosToC64):
             characters = [amiga_later.to_neutral_later(c)
                           for c in save.characters]
             party_icons = [amiga_combat_icon(c) for c in save.characters]
+            # Cannot fire today: an Amiga name is at most fifteen
+            # characters and the C64 field holds eighteen (#619's plan).
+            # Called anyway, so a direction added later does not have to
+            # remember to.
+            characters = saveplan.fit_names(
+                characters, self.destination_port, self.shape.key, names)
         if party_icons is None:
             save0, save1, report = dos_codec.new_save_from(
                 state, characters, options.icon, options.animate,
@@ -673,28 +696,6 @@ class AmigaToC64(DosToC64):
                               self.destination_game)
         name = self._name.format(slot=slot)
         return Rehearsal(report, {name: image.to_bytes()})
-
-
-@dataclasses.dataclass
-class DosWriteRehearsal(Rehearsal):
-    """What `C64ToDos.write` needs to run the conversion again.
-
-    `goldbox.dos_codec.new_dos_save` writes real files, so the rehearsal itself
-    runs into a scratch directory and `write` calls it a second time straight
-    into the folder the player chose -- the same order `editor/exports.py`'s
-    `DosPlan` followed before that module was deleted (`#52`), and the reason
-    `files` is measured from the scratch run rather than replayed from it.
-    """
-
-    save0: bytes
-    save1: bytes | None
-    slot: str
-    game_dir: pathlib.Path
-    #: The source C64 title's own `IconParts` (`goldbox.iconparts`), so the
-    #: second run in `write` recognises the same combat icons the rehearsal
-    #: did -- `None` when the dialog could not read the source disk, in
-    #: which case this direction writes exactly what it wrote before #383.
-    icon_parts: "Any | None" = None
 
 
 class C64ToDos(Direction):
@@ -739,25 +740,31 @@ class C64ToDos(Direction):
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
-                icon_parts: "Any | None" = None) -> DosWriteRehearsal:
+                icon_parts: "Any | None" = None,
+                names: "Mapping[str, str] | None" = None
+                ) -> "AmigaDosRehearsal":
         game_dir = pathlib.Path(options)
+        c64 = dos_codec.c64_title(source.save0, self.title)
+        state = world_state.from_c64(source.save0, game=c64)
+        characters, icons = dos_codec.c64_party(
+            source.save0, source.save1, c64, icon_parts=icon_parts)
+        characters = saveplan.fit_names(
+            characters, self.destination_port, self.shape.key, names)
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
             scratch_path = pathlib.Path(scratch)
-            report = dos_codec.new_dos_save(source.save0, source.save1,
-                                      scratch_path, slot, game_dir,
-                                      title=self.title,
-                                      icon_parts=icon_parts)
+            report = dos_codec.new_dos_save_from(
+                state, characters, scratch_path, slot, game_dir, icons=icons)
             files = {p.name: p.read_bytes()
                     for p in sorted(scratch_path.iterdir())}
-        return DosWriteRehearsal(report, files, source.save0, source.save1,
-                                 slot, game_dir, icon_parts)
+        return AmigaDosRehearsal(report, files, state, characters, icons,
+                                 slot, game_dir)
 
-    def write(self, rehearsal: DosWriteRehearsal,
+    def write(self, rehearsal: "AmigaDosRehearsal",
              folder: str | pathlib.Path) -> list[pathlib.Path]:
         folder = pathlib.Path(folder)
-        dos_codec.new_dos_save(rehearsal.save0, rehearsal.save1, folder,
-                         rehearsal.slot, rehearsal.game_dir, title=self.title,
-                         icon_parts=rehearsal.icon_parts)
+        dos_codec.new_dos_save_from(rehearsal.state, rehearsal.characters,
+                              folder, rehearsal.slot, rehearsal.game_dir,
+                              icons=rehearsal.icons)
         return sorted(folder / name for name in rehearsal.files)
 
 
@@ -815,7 +822,9 @@ class AmigaToDos(C64ToDos):
     source_port = "amiga"
 
     def rehearse(self, source: Source, slot: str,
-                options: "str | pathlib.Path") -> AmigaDosRehearsal:
+                options: "str | pathlib.Path",
+                names: "Mapping[str, str] | None" = None
+                ) -> AmigaDosRehearsal:
         if not source.slot:
             # Unreachable through `Source.detect`, whose `.adf` branch always
             # names the first slot the disk holds files for; only a caller
@@ -834,6 +843,11 @@ class AmigaToDos(C64ToDos):
             state = amiga_savegame.state_from_savegame(save)
             party = list(save.characters)
             characters = [amiga_later.to_neutral_later(c) for c in party]
+        # Cannot fire today: an Amiga name is at most fifteen characters and
+        # the DOS field holds the same fifteen. Called anyway, so a
+        # direction added later does not have to remember to.
+        characters = saveplan.fit_names(
+            characters, self.destination_port, self.shape.key, names)
         # The Amiga file order **is** the DOS file order (`docs/165-amiga-
         # savegame.md`), so there is no reversal here; `goldbox.dos_codec.
         # marching_slot` and `c64_party`'s own `reverse()` are the C64's
@@ -847,14 +861,6 @@ class AmigaToDos(C64ToDos):
                     for p in sorted(scratch_path.iterdir())}
         return AmigaDosRehearsal(report, files, state, characters, icons,
                                  slot, game_dir)
-
-    def write(self, rehearsal: AmigaDosRehearsal,
-             folder: str | pathlib.Path) -> list[pathlib.Path]:
-        folder = pathlib.Path(folder)
-        dos_codec.new_dos_save_from(rehearsal.state, rehearsal.characters, folder,
-                              rehearsal.slot, rehearsal.game_dir,
-                              icons=rehearsal.icons)
-        return sorted(folder / name for name in rehearsal.files)
 
 
 # ---------------------------------------------------------------------------
@@ -1046,10 +1052,13 @@ class C64ToAmiga(Direction):
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
-                icon_parts: "Any | None" = None) -> AmigaWriteRehearsal:
+                icon_parts: "Any | None" = None,
+                names: "Mapping[str, str] | None" = None) -> AmigaWriteRehearsal:
         game_data = _amiga_destination_data(self.shape, options)
         party, icons = dos_codec.c64_party(source.save0, source.save1,
                                      game=self.title, icon_parts=icon_parts)
+        party = saveplan.fit_names(
+            party, self.destination_port, self.shape.key, names)
         state = world_state.from_c64(
             source.save0, game=self.title, source=str(source.path))
         return _rehearse_amiga_savegame(
@@ -1090,7 +1099,8 @@ class DosToAmiga(Direction):
         self.destination_game = deltas
 
     def rehearse(self, source: Source, slot: str,
-                options: "str | pathlib.Path") -> AmigaWriteRehearsal:
+                options: "str | pathlib.Path",
+                names: "Mapping[str, str] | None" = None) -> AmigaWriteRehearsal:
         if not source.slot:
             # Unreachable through `Source.detect`, whose DOS branches always
             # name a slot; only a caller building a `Source` by hand can get
@@ -1105,6 +1115,12 @@ class DosToAmiga(Direction):
                 f"SAVGAM{letter}{container.suffix}")
             savgam = savgam_path.read_bytes()
         party = [dos_codec.to_neutral(c) for c in raw_party]
+        # Cannot fire today: a DOS name is at most fifteen characters and an
+        # Amiga field holds the same fifteen (`amiga_por._por_name_bytes`).
+        # Called anyway, so a direction added later does not have to
+        # remember to.
+        party = saveplan.fit_names(
+            party, self.destination_port, self.shape.key, names)
         # `amiga_combat_icon` is duck-typed to `goldbox.dos_codec.DosCharacter`
         # too (its own docstring) and reads the icon straight off the raw
         # record, before `dos_codec.to_neutral` discards it -- the same shape
@@ -1931,6 +1947,14 @@ class ConvertDialog(QDialog):
         try:
             self.rehearsal, self.slot = saveplan.rehearse(
                 direction, self.source, assets)
+        except saveplan.NamesDoNotFit as exc:
+            # No dialog to ask for a replacement yet (#619's Stage C), so
+            # this stops the write the way a name too long for the C64's
+            # field already refuses it: a real refusal, not a silent cut.
+            _log.info("names do not fit the %s destination: %s",
+                      direction.destination_port, exc)
+            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
+            return
         except dos_codec.DosRecordError as exc:
             _log.exception("could not rehearse %s", self._source_path)
             self._blocked = (DIALOG_TITLE, exc.player_message)

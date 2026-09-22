@@ -2311,6 +2311,11 @@ class EditorBinding(QObject):
                       assets) -> "saveplan.SavePlan | None":
         try:
             return saveplan.prepare_save_as(self.party, port, path, assets)
+        except saveplan.NamesDoNotFit as exc:
+            # No dialog to ask for a replacement yet (#619's Stage C), so
+            # this refuses the way `DroppedFields` already does.
+            _log.debug("Save As to %s refused: %s", path, exc)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
         except saveplan.DroppedFields as exc:
             _log.debug("Save As to %s refused: %s", path, exc)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
