@@ -34,10 +34,18 @@ CURSE_EXCEPTIONS = {
     # `former_class_levels`, folded in by the regained-class loop without
     # clearing -- `docs/209-the-regained-dual-class-on-dos.md`.
     "WISH-SPEC-curse-408-regained-paladin/CHRDATJ1.SAV": 16,
+    # MARK's former paladin level 5 folds in the same way, in the specimen's
+    # own DOS resave -- same category, `#632 (A C64 Curse party converted to
+    # DOS gets saving throws and THAC0 that DOS Curse replaces on its first
+    # save)`.
+    "WISH-SPEC-curse-632-wish-converted-resave/CHRDATB2.SAV": 16,
     # Written by `goldbox/dos_codec.py` rather than by the game: the two
     # magic-users `#608` is about, holding the table's own 21.
     "WISH-SPEC-curse-551-party-as-converted/CHRDATA1.SAV": 21,
     "WISH-SPEC-curse-551-party-as-converted/CHRDATA2.SAV": 21,
+    # Wish's own conversion of MARK, before DOS Curse's first save folds his
+    # former paladin level in above -- `#632`.
+    "WISH-SPEC-curse-632-wish-converted-resave/CHRDATA2.SAV": 16,
 }
 
 

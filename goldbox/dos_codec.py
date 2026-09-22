@@ -1144,7 +1144,16 @@ class DosCharacter(_Fielded):
         n = self.get("name_length")
         if not 0 <= n <= width:
             raise DosRecordError(f"name length {n} is not 0-{width}")
-        return self.raw("name_text")[:n].decode("ascii", "replace")
+        raw = self.raw("name_text")[:n]
+        if self.is_pool_of_radiance:
+            # Amiga Pool of Radiance's Create New Character writes `$FF` for
+            # a typed space, drawn as a blank cell rather than as a
+            # replacement character -- `docs/206-three-amiga-questions.md`,
+            # `#631 (A Pool of Radiance character created in the Amiga game
+            # with a space in his name converts as MARY?SUE, because the
+            # reader decodes the game's $FF as a replacement character)`.
+            raw = raw.replace(b"\xff", b" ")
+        return raw.decode("ascii", "replace")
 
     @property
     def spells_known(self) -> list[int]:

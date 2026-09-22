@@ -58,8 +58,13 @@ DISAGREE = {
 #: `WISH-SPEC-curse-574-area2-spiritual-hammer-rest/CHRDATB2.SAV` and
 #: `CHRDATB6.SAV` add the same level-5 magic-user mismatch.  The one exception is
 #: a record the rebuild loop has not run over since it was dual-classed --
-#: see `docs/135-levelling.md`.
-RECORDS = {POOL: (202, 0), CURSE: (77, 14), SSB: (72, 2)}
+#: see `docs/135-levelling.md`.  `WISH-SPEC-curse-632-wish-converted-resave`'s
+#: MARK adds two more, in both its Wish-written slot A and its engine-written
+#: slot B: his former paladin level 5 folds into `thac0_base` without his
+#: `class_levels` slot ever holding it, the same regained-class fold
+#: `docs/209-the-regained-dual-class-on-dos.md` describes for
+#: `WISH-SPEC-curse-408-regained-paladin`.
+RECORDS = {POOL: (202, 0), CURSE: (106, 16), SSB: (72, 2)}
 
 
 def _located(title: str):
