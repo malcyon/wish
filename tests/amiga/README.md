@@ -14,6 +14,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigacontainercheck.py` | Checks the parts of `tools/amiga/amigacontainercheck.py` that decide what it says, on synthetic input, and that its two readers share no code. |
 | `test_amigacursewheel.py` | Checks `tools/amiga/amigacursewheel.py`'s whole-number rescale of a WinUAE capture and that a machine without the private tables is told so. |
 | `test_amigadrive.py` | Checks `tools/amiga/amigadrive.py`'s key table and the two settings a party walks on, through the command line the driver would send. |
+| `test_amigaindexedrefs.py` | Checks `tools/amiga/amigaindexedrefs.py`'s `d8(An,Xn)` indexed-site search and its `lea` base-within-reach search, on hand-built instructions in a synthetic hunk. |
 | `test_amigaglobal.py` | Checks `tools/amiga/amigaglobal.py` finds a global's references and a routine's callers on an executable built here. |
 | `test_amigaicons.py` | Checks the Amiga Curse and Silver Blades combat-icon art against DOS's own, off the player's disks. |
 | `test_amigalaterproof.py` | Checks the party ordering and the mask of engine-recomputed bytes in `tools/amiga/amigalaterproof.py`. |
