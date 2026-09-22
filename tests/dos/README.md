@@ -40,3 +40,4 @@ Tests for the DOS port: the DOS saved game and character record, the DOS record 
 | `test_dosxpaward.py` | Checks the experience-award bytes before a DOS record's portrait against three routes read out of the shipped engines. |
 | `test_dualclassdos.py` | Checks how `tools/dos/dualclassdos.py` names the game tree a record came from, and its boundary listing and string search. |
 | `test_innateids.py` | Checks that `tools/dos/innateids.py` reads the innate effect ids character creation adds for each race and class out of the engine. |
+| `test_ssbimport.py` | Checks that `tools/dos/ssbimport.py`'s two inputs differ only at Curse `0x0F9`, that it reads the Silver Blades record at `goldbox.dos_port`'s offsets, and that a capture finds the imported character by name. |
