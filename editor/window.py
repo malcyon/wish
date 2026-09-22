@@ -149,14 +149,10 @@ CANNOT_SAVE_TITLE = "Cannot save"
 #: logs them).
 LOSS_REFUSED = "The save could not be converted."
 #: C4.
-TARGET_NOT_EMPTY = ("That folder already holds files, so nothing was "
-                    "written. Choose an empty folder, or type a new folder "
-                    "name.")
+TARGET_NOT_EMPTY = "You must choose an empty folder or type a new folder name."
 #: C5.
 REPLACE_TITLE = "Replace this file?"
-REPLACE_TEXT = ("{name} already exists. Saving replaces the whole disk "
-                "image, including any other saved games on it. A copy of "
-                "the file as it is now goes into your backups folder.")
+REPLACE_TEXT = "Really overwrite {name}?"
 #: C6, one sentence per image platform -- a DOS destination is a folder and
 #: has no ending to check.
 WRONG_EXTENSION = {
