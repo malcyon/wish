@@ -18,6 +18,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_communityformats.py` | Checks that saving throws, castable spells, damage type and armour protection decode the way a community spreadsheet said. |
 | `test_controlbyte.py` | Checks that `tools/records/controlbyte.py` derives each DOS title's control-byte offset from the record layout and reads a value the way the engine does. |
 | `test_corrections.py` | Checks corrections to the level ceilings, the promoted effect names and the armour rule against the player's own disks rather than a third-party document. |
+| `test_curedisease.py` | Checks that C64 Curse and Silver Blades keep a paladin's cure-disease and lay-on-hands uses at record `0x012` and `0x013`, with a timer row in the effect arrays whose expiry resets them, read off the player's own overlays. |
 | `test_derive.py` | Checks that `goldbox/derive.py` recomputes the values the game caches, including THAC0 with a ranged weapon readied. |
 | `test_dualclass_c64.py` | Checks that the C64 reader and writer find a dual-classed character's former class by its name and read an ordinary record as having none. |
 | `test_dualclass_dos.py` | Checks that the later DOS titles' former-class level array reads as a named former class, and that the Amiga reader agrees. |
