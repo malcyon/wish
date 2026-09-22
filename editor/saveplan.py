@@ -587,13 +587,12 @@ def rehearse(direction: Any, source: Any, assets: Assets) -> tuple[Any, str]:
 def losses(report: Any) -> list[str]:
     """Every field the conversion's own accounting says it lost.
 
-    `report.dropped` is the fields with no home in the destination and every
-    report has it. `report.losses` is a second list **only
-    `goldbox.dos_codec.C64SaveReport` has** -- the reports of the other five
-    directions carry no such field -- so this names less than the guard does:
-    a name a DOS destination could not hold whole is a line of
-    `report.warnings` and reaches neither list, which is why `compare` below
-    reads the output back instead of trusting either
+    `report.dropped` is the fields with no home in the destination and
+    `report.losses` is the fields a value was cut or clamped to fit --
+    every direction's report carries both, from the shared `neutral.Report`
+    base. `compare` below still reads the output back instead of trusting
+    either, because a name a destination could not hold whole can still
+    reach neither list on its own if a writer forgets to copy it
     (`docs/227-editor-open-save-as.md`).
     """
     return [*getattr(report, "dropped", ()), *getattr(report, "losses", ())]

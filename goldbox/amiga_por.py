@@ -882,6 +882,11 @@ def write_por(char: NeutralCharacter,
     # The DOS writer's own narrowing lines only: they arrive from the code
     # that cut a value, never from `warnings` wholesale.
     rep.losses = list(dosrep.losses)
+    # `dos_codec.write` never fails to route a name to `dosrep.derived`
+    # today -- both its `WRITE_DERIVED` entries are always explicitly
+    # `use()`'d before the closing sweep runs -- but a field this writer
+    # genuinely rebuilds must never silently become a drop here either.
+    rep.derived = list(dosrep.derived)
     rep.warnings.append(
         "Written as a 288-byte Amiga Pool of Radiance record by re-cutting "
         "the 285-byte DOS one built by goldbox.dos_codec.write; the provenance lines "

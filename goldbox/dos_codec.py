@@ -7274,6 +7274,7 @@ def write_dos_save_from(state: "world_state.WorldState",
         report.dropped.extend(d for d in one.dropped
                               if d not in report.dropped)
         report.warnings.extend(f"{who}: {w}" for w in one.warnings)
+        report.losses.extend(f"{who}: {w}" for w in one.losses)
 
     savgam_writes(savgam, report, state, slot, len(characters), script,
                   portraits=bool(faces), game=c64, dax=dax)

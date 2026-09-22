@@ -1451,6 +1451,33 @@ def test_the_party_writer_uses_the_written_name_when_deduplicating(
     assert len({record[field.offset] for record in records}) == 2
 
 
+def test_a_truncated_name_reaches_the_party_reports_losses(tmp_path,
+                                                            monkeypatch):
+    """A per-character loss -- here a name too long for the fifteen-byte
+    DOS field -- reaches `report.losses`, not just `report.warnings`, so
+    `editor/saveplan.py`'s guard can refuse the Save As rather than write it
+    silently."""
+    from goldbox import areas
+
+    char = _filled()
+    char.set("name", "ABCDEFGHIJKLMNOPQRST", "made up",
+             Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
+    state = world_state.WorldState(
+        title=areas.POOL_OF_RADIANCE, area=0, geo=0, x=0, y=0, facing=0,
+        clock=(0,) * 6, wallset=(0, 0, 0), flags=(), scratch={},
+        outdoors=False, travel=(0, 0), set_out=True, header={})
+    where = areas.area_in(0, areas.POOL_OF_RADIANCE)
+    assert where is not None
+    monkeypatch.setattr(dos_codec, "_area_dax", lambda *args: (where, 1))
+    monkeypatch.setattr(dos_codec, "_area_script", lambda *args: b"")
+    monkeypatch.setattr(dos_codec, "portrait_tables", lambda *args: (None, ""))
+    monkeypatch.setattr(dos_codec, "savgam_writes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *args: None)
+
+    report = dos_codec.write_dos_save_from(state, [char], None, tmp_path, "A")
+    assert any("truncated" in loss for loss in report.losses)
+
+
 @needs_dos_saves
 def test_every_shipped_record_writes_the_identity_its_own_bytes_derive():
     """On the real specimens, and distinct within each party.

@@ -2605,7 +2605,8 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     from . import dos_codec as _dos
 
     rep = Report()
-    w = neutral.Writer(char, rep, into="Amiga", dropped=POD_WRITE_UNTAKEN)
+    w = neutral.Writer(char, rep, into="Amiga", dropped=POD_WRITE_UNTAKEN,
+                       derived=POD_WRITE_DERIVED, constants=POD_WRITE_CONSTANTS)
 
     def num(name: str, default: int = 0) -> int:
         """One neutral field as a number, taken and counted as consumed."""

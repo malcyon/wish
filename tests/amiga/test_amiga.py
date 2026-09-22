@@ -1593,6 +1593,32 @@ def test_write_por_gives_a_character_his_own_menu_position():
     assert not any("portrait" in d for d in rep.dropped), rep.dropped
 
 
+def test_write_por_forwards_the_dos_writer_s_own_derived_list(monkeypatch):
+    """`write_por` copies `dosrep.derived`, not just `dropped`/`warnings`/
+    `losses` -- a field `goldbox.dos_codec.write` genuinely rebuilds must
+    never silently become a drop line on the Amiga side either.
+
+    `dos_codec.write` never actually leaves `derived` non-empty today (both
+    its `WRITE_DERIVED` entries are always explicitly consumed before its
+    closing sweep runs), so this drives the real writer and appends one
+    fabricated entry to its report -- the only way to exercise the copy
+    without inventing a table.
+    """
+    from goldbox import dos_codec
+
+    real_write = dos_codec.write
+
+    def stub(*args, **kwargs):
+        record, itm, spc, rep = real_write(*args, **kwargs)
+        rep.derived.append("made_up_field: made up for this test")
+        return record, itm, spc, rep
+
+    monkeypatch.setattr(dos_codec, "write", stub)
+    _record, _itm, _spc, rep = amiga_por.write_por(sample())
+    assert "made_up_field: made up for this test" in rep.derived
+    assert not any("made_up_field" in d for d in rep.dropped)
+
+
 def test_write_por_writes_the_menu_position_for_the_body_the_two_ports_number_differently():
     """The eighth body, which is the whole of #480.
 
@@ -2902,6 +2928,29 @@ def test_a_later_amiga_control_and_treasure_share_reach_neutral():
             written, _ = amiga_later.write_later(out, deltas=shape)
             assert written.raw[shape.offset(f.offset) + share_index] == share
             assert not any("Treasure share" in line for line in out.dropped)
+
+
+def test_write_later_forwards_the_dos_writer_s_own_derived_list(monkeypatch):
+    """`write_later` copies `dosrep.derived` the same way `write_por` must.
+
+    `dos_codec.write` never actually leaves `derived` non-empty today, so
+    this drives the real writer and appends one fabricated entry to its
+    report -- the only way to exercise the copy without inventing a table.
+    """
+    from goldbox import dos_codec
+
+    real_write = dos_codec.write
+
+    def stub(*args, **kwargs):
+        record, itm, spc, rep = real_write(*args, **kwargs)
+        rep.derived.append("made_up_field: made up for this test")
+        return record, itm, spc, rep
+
+    monkeypatch.setattr(dos_codec, "write", stub)
+    _character, rep = amiga_later.write_later(
+        sample(), deltas=amiga_port.CURSE_DELTAS)
+    assert "made_up_field: made up for this test" in rep.derived
+    assert not any("made_up_field" in d for d in rep.dropped)
 
 
 def test_a_later_amiga_identity_byte_reaches_the_neutral_record():

@@ -177,6 +177,29 @@ def test_the_pod_conversion_keeps_an_explicit_treasure_share(share):
         "treasure_share <- Amiga")
 
 
+def test_write_pod_reports_the_derived_and_constant_fields_as_derived():
+    """`write_pod` itself, not just `pod_write_field_disposition`, routes
+    :data:`amiga_pod.POD_WRITE_DERIVED` and :data:`amiga_pod.POD_WRITE_CONSTANTS`
+    to `report.derived` rather than `report.dropped`."""
+    raw = bytearray(amiga_pod.PodWriter(
+        name="TEST",
+        character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 1, 0, 0, 0, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"],
+    ).to_bytes())
+    character = amiga_pod.pod_to_neutral(bytes(raw))
+
+    _writer, report = amiga_pod.write_pod(character)
+
+    names = {"armour_class_base", "armour_class", "encumbrance",
+             "thac0_current", "movement_current", "combat_figure",
+             "roster_tail"}
+    derived_names = {line.split(":", 1)[0] for line in report.derived}
+    dropped_names = {line.split(":", 1)[0] for line in report.dropped}
+    assert names <= derived_names
+    assert names.isdisjoint(dropped_names)
+
+
 def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
     """The two lists say different things, and this is the one crossing
     between them that is allowed.
@@ -736,7 +759,9 @@ def test_the_roster_byte_is_what_creation_writes_and_not_a_marching_slot():
     char.set("combat_figure", 2, "the source's own marching slot")
     out, rep = amiga_pod.to_pc(char)
     assert out[amiga_pod.COMBAT_FIGURE] == amiga_pod.NO_PARTY_SLOT == 13
-    assert [line for line in rep.dropped
+    # A field the engine rebuilds on load is a derived field, not a drop
+    # (Fix 1): `write_pod`'s `neutral.Writer` now routes it that way.
+    assert [line for line in rep.derived
             if "combat_figure" in line and "0x027398" in line]
 
 

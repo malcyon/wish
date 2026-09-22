@@ -1652,6 +1652,11 @@ def write_later(char: NeutralCharacter,
     # The DOS writer's own narrowing lines only: they arrive from the code
     # that cut a value, never from `warnings` wholesale.
     rep.losses = list(dosrep.losses)
+    # `dos_codec.write` never fails to route a name to `dosrep.derived`
+    # today -- both its `WRITE_DERIVED` entries are always explicitly
+    # `use()`'d before the closing sweep runs -- but a field this writer
+    # genuinely rebuilds must never silently become a drop here either.
+    rep.derived = list(dosrep.derived)
     rep.warnings.append(
         f"Written as a {deltas.record_size}-byte Amiga {deltas.title} record "
         f"by re-cutting the {deltas.dos.record_size}-byte DOS one built by "
