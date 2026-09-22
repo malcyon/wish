@@ -64,16 +64,20 @@ def _sane_name(raw: bytes) -> None:
     """The name reads to its NUL, and every byte of it is printable PETSCII.
 
     **Not NUL-padded, and asserting that it is fails on real specimens.** The
-    field is 20 bytes and the game terminates at the first NUL without clearing
-    what follows: `MALCYON\\x00N` and `SILAS\\x00S` in Pool of Radiance are
-    characters renamed shorter, and Curse's `PALADIN` carries `\\x01\\x01` in
-    its last two bytes where Silver Blades' `GUY DE VALOIS` carries
-    `\\x02\\x01`. The residue is stale, not name.
+    field is 18 bytes and the game terminates at the first NUL without
+    clearing what follows: `MALCYON\\x00N` and `SILAS\\x00S` in Pool of
+    Radiance are characters renamed shorter. Curse's `PALADIN` and Silver
+    Blades' `GUY DE VALOIS` used to carry `\\x01\\x01` and `\\x02\\x01` in
+    what were then the name field's last two bytes; those are now
+    `paladin_cures` and `lay_on_hands_uses`, `goldbox/layout.py`, #626 (A
+    paladin written into a C64 Curse or Silver Blades save, or renamed there
+    in the editor, loses CURE and HEAL from his sheet, because the name
+    field covers the two bytes that hold them).
     """
     text = raw.split(b"\x00")[0]
     assert text, "a character with no name"
     assert set(text) <= _NAME_BYTES, f"{raw!r} is not printable PETSCII"
-    assert len(raw) == 20
+    assert len(raw) == 18
 
 
 def _sane_character(rec) -> None:

@@ -241,6 +241,15 @@ NOT_ON_THE_SHEET = (
     # here for a player to set; `goldbox/derive.py` reads it to say whether
     # the cached THAC0 beside it is stale (#202).
     "missile_attack_adjustment",
+    # A paladin's cure-disease and lay-on-hands uses left, Curse and Silver
+    # Blades only, zero for every other class -- newly named from the record's
+    # last two name bytes, so `editor/character.ui` has no widget for either
+    # yet (#626, A paladin written into a C64 Curse or Silver Blades save, or
+    # renamed there in the editor, loses CURE and HEAL from his sheet, because
+    # the name field covers the two bytes that hold them). The rename bug is
+    # fixed by narrowing the name field; a sheet presentation is separate work.
+    "paladin_cures",
+    "lay_on_hands_uses",
 )
 
 

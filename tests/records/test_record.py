@@ -135,7 +135,7 @@ def test_setting_name_changes_only_the_name_field(record_bytes: bytes) -> None:
         record_bytes,
         rec.to_bytes(),
         "name",
-        petscii.encode_record_name("ALIAS"),
+        petscii.encode_record_name("ALIAS", layout.NAME_SIZE),
     )
     assert rec.name == "ALIAS"
 
@@ -276,7 +276,7 @@ def test_record_name_stops_at_first_nul() -> None:
 def test_short_name_written_into_record_is_nul_padded(record_bytes: bytes) -> None:
     rec = CharacterRecord(record_bytes)
     rec.name = "AL"
-    assert rec.get_raw("name") == b"AL" + b"\x00" * 18
+    assert rec.get_raw("name") == b"AL" + b"\x00" * (layout.NAME_SIZE - 2)
 
 
 def test_a_renamed_record_folds_a_lowercase_name(record_bytes: bytes) -> None:
@@ -287,7 +287,60 @@ def test_a_renamed_record_folds_a_lowercase_name(record_bytes: bytes) -> None:
     rec = CharacterRecord(record_bytes)
     rec.name = "guy"
     assert rec.name == "GUY"
-    assert rec.get_raw("name") == b"GUY" + b"\x00" * 17
+    assert rec.get_raw("name") == b"GUY" + b"\x00" * (layout.NAME_SIZE - 3)
+
+
+def _paladin_disk(where, glob: str, skip: str):
+    """The first save disk in *where* carrying a live paladin, or skip."""
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
+
+    if where is None:
+        pytest.skip(skip)
+    for path in sorted(where.glob(glob)):
+        try:
+            _, sg0, _ = load_save(D64.open(str(path)))
+        except Exception:
+            continue
+        for slot in sg0.characters:
+            if slot.record.get("class_bits") & 0x40:  # paladin, docs/20
+                return slot.record
+    pytest.skip(f"no disk here carries a live paladin ({glob})")
+
+
+def test_renaming_a_disk_paladin_leaves_his_cures_and_lay_on_hands_alone() -> None:
+    """The same regression as the synthetic test below, off real saves:
+    Curse's PALADIN and Silver Blades' GUY DE VALOIS (#626)."""
+    import gamedata
+    from support import silverblades
+
+    for where, glob, env in (
+        (gamedata.curse_dir(), "CURSE*.[dD]64", gamedata.CURSE_ENV),
+        (silverblades.ssb_dir(), "SILVER*.[dD]64", silverblades.SSB_ENV),
+    ):
+        rec = _paladin_disk(where, glob, f"needs the disks; set {env}")
+        before = rec.slice(0x012, 2)
+        rec.name = "SIR ROBIN"
+        assert rec.slice(0x012, 2) == before
+
+
+def test_renaming_a_paladin_leaves_his_cures_and_lay_on_hands_alone(
+    record_bytes: bytes,
+) -> None:
+    """#626: `0x012` and `0x013` used to be the name field's last two bytes,
+    so a rename zeroed a paladin's cure-disease and lay-on-hands uses and his
+    sheet lost CURE and HEAL until he left and rejoined the party.
+
+    Synthetic, no disk needed: SILVER-6's GUY DE VALOIS carries `02 01` at
+    those bytes and the Curse disk's PALADIN carries `01 01`
+    (`tools/c64/curedisease.py`).
+    """
+    for cures, lay in ((2, 1), (1, 1)):
+        raw = bytearray(record_bytes)
+        raw[0x012], raw[0x013] = cures, lay
+        rec = CharacterRecord(bytes(raw))
+        rec.name = "SIR ROBIN"
+        assert rec.slice(0x012, 2) == bytes([cures, lay])
 
 
 def test_directory_names_are_a_separate_convention() -> None:

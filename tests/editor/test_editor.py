@@ -3125,10 +3125,10 @@ def _test_each_tab_scrolls_inside_itself(app, save):
 
 def test_the_widest_value_comes_from_the_kind_and_the_byte_width():
     from editor.binding import value_range, widest_text
-    from goldbox.layout import FIELDS_BY_NAME
+    from goldbox.layout import FIELDS_BY_NAME, NAME_SIZE
     assert widest_text(FIELDS_BY_NAME["strength"]) == "255"
     assert widest_text(FIELDS_BY_NAME["gold"]) == "65535"
-    assert widest_text(FIELDS_BY_NAME["name"]) == "W" * 20
+    assert widest_text(FIELDS_BY_NAME["name"]) == "W" * NAME_SIZE
     assert widest_text(FIELDS_BY_NAME["thief_open_locks"]) == "-128"
     assert value_range(FIELDS_BY_NAME["experience"]) == (0, 0xFFFFFF)
 

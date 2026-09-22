@@ -27,7 +27,9 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 
 | offset | size | name | type | confidence | notes |
 |---|---:|---|---|---|---|
-| `0x000` | 20 | `name` | ASCII, NUL-padded | CONFIRMED | NUL-padded; 'BRUTUS' |
+| `0x000` | 18 | `name` | ASCII, NUL-padded | CONFIRMED | NUL-padded; 'BRUTUS' |
+| `0x012` | 1 | `paladin_cures` | unsigned byte | CONFIRMED | Curse and Silver Blades only; 0 for every other class. GEN seeds it from the paladin level (1, 2 or 3 below level 6, below 11, from 11 up), LIBRARY's sheet-menu mask hides CURE while it is 0, ECL65 decrements it on a cure and starts a timer effect whose expiry resets it. Used to sit inside the 20-byte `name` field's last two bytes, so renaming a character in the editor zeroed it -- `tools/c64/curedisease.py`, #626 (A paladin written into a C64 Curse or Silver Blades save, or renamed there in the editor, loses CURE and HEAL from his sheet, because the name field covers the two bytes that hold them). Named to match the same byte on the Amiga and DOS ports (`goldbox.amiga_pod`, `goldbox.dos_port`). |
+| `0x013` | 1 | `lay_on_hands_uses` | unsigned byte | CONFIRMED | Curse and Silver Blades only; 0 for every other class. Same seeding, hiding and reset machinery as `paladin_cures`, one byte over -- LIBRARY hides HEAL while this is 0. Was the name field's very last byte; see `paladin_cures` and #626. |
 | `0x014` | 1 | `strength` | unsigned byte | CONFIRMED | 18 in specimen |
 | `0x015` | 1 | `intelligence` | unsigned byte | CONFIRMED | 16 in specimen |
 | `0x016` | 1 | `wisdom` | unsigned byte | CONFIRMED | 13 in specimen |

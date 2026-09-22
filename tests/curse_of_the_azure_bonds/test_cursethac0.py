@@ -129,7 +129,7 @@ def a_payload() -> bytearray:
 
 
 def test_the_names_come_off_curses_own_sixteen_byte_table():
-    """Not `goldbox.layout.NAME_SIZE`, which is the record head's twenty.
+    """Not `goldbox.layout.NAME_SIZE`, which is the record head's own width.
 
     The first run of this tool read slot 1 as `A` and put MATHEW's spoiled
     byte in MARK's block, because it used the record's width for the name
