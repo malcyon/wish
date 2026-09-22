@@ -129,6 +129,21 @@ typed."* Then the cause. A reader who has not seen the code cannot tell from a
 description of it whether the bug matters. Write the situation even when it is
 unflattering: **"no user can reach this" is an answer.**
 
+This applies to progress reports, findings, recommendations, and questions
+asking Donald to decide. Before sending, check that the explanation answers:
+What was the player doing? How did they reach this situation? What goes wrong
+for them? Put those answers before function names, fields, offsets, or byte
+values.
+
+Frame a decision in terms of what the player will experience. Explain each
+option's consequence in ordinary language before its implementation. If the
+consequence is unknown, name the experiment that will establish it. If Donald's
+standing rules already settle the desired behavior, investigate the
+implementation rather than asking him to choose it.
+
+When an investigation finds a different problem, introduce it separately.
+Explain its player consequence and how it relates to the original ticket.
+
 **Every line a person reads opens with a capital letter** -- your replies in the
 terminal as much as anything in the window. **Never open a sentence with a
 quotation that starts lowercase**; put words in front of it. Anything a user
