@@ -1757,6 +1757,17 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
                    "#383 and #422 convert it when the source title's own "
                    "icon tables are supplied; without source disks there "
                    "are no tables to supply (#482)"),
+    ("paladin_cures", "the paladin's cure-disease uses, named by #626 as the "
+                      "C64's own 0x012, freed from the old 20-byte name "
+                      "field. The neutral vocabulary already has a "
+                      "same-named field, added for the DOS and Amiga ports, "
+                      "but reading this byte into it and writing it back "
+                      "out is not built -- #600 stage 2"),
+    ("lay_on_hands_uses", "the paladin's lay-on-hands uses, named by #626 "
+                          "as the C64's own 0x013, the other byte freed "
+                          "from the old name field. Unlike paladin_cures, "
+                          "the neutral vocabulary has no field for this at "
+                          "all, on either port -- #628"),
 )
 
 #: What a player reads for each name in :data:`READ_DROPPED` -- the read
@@ -1792,6 +1803,10 @@ READ_DROPPED_PLAYER_TEXT: dict[str, str] = {
     "region_220": "Combat figure: Wish cannot yet turn the C64's own combat "
                   "icon into this game's own art, so your character's "
                   "figure is not set.",
+    "paladin_cures": "Cure disease: your paladin's remaining uses are not "
+                     "converted yet.",
+    "lay_on_hands_uses": "Lay on hands: your paladin's remaining uses are "
+                         "not converted yet.",
 }
 
 #: C64 fields the reader leaves behind because the value is recomputed
