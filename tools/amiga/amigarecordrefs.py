@@ -13,8 +13,8 @@ combat-icon fields share DOS's own numbering is unmeasured)` needed one.
         145 146 148 149
     tools/amiga/amigarecordrefs.py --file PATH/TO/Curse de
 
-Give it Amiga record offsets in hex; it prints the file offset and the
-instruction for every site.  Feed a file offset straight to
+Give it Amiga record offsets in hex; it prints the file offset, the hunk and
+the instruction for every site, across every CODE hunk.  Feed a file offset straight to
 `tools/amiga/amiga68k.py disasm` to read the routine around it.  That is how the
 Amiga ICON menu (`cmpi.b #$d` against `icon_head`), the two shipped
 inter-title importers and `icon_dimension`'s combat test were all found.
@@ -79,11 +79,33 @@ def sites(data: bytes, displacement: int,
 
 def code_range(data: bytes) -> tuple[int, int]:
     """The first CODE hunk's file offsets, so a match in the data hunk -- a
-    constant, a string, a relocation -- is never decoded as an instruction."""
+    constant, a string, a relocation -- is never decoded as an instruction.
+
+    Right for a SAS/Lattice small-data build, whose code is one hunk; a
+    multi-hunk executable needs `code_ranges`."""
     for hunk in Executable.parse(data).hunks:
         if hunk.kind == "CODE" and hunk.file_offset is not None:
             return hunk.file_offset, hunk.file_offset + hunk.size
     return 0, len(data)
+
+
+def code_ranges(data: bytes) -> list[tuple[int, int, int]]:
+    """`(hunk number, start, end)` for every CODE hunk, in file order."""
+    found = [(hunk.number, hunk.file_offset, hunk.file_offset + hunk.size)
+             for hunk in Executable.parse(data).hunks
+             if hunk.kind == "CODE" and hunk.file_offset is not None]
+    return found or [(0, 0, len(data))]
+
+
+def hunk_sites(data: bytes, displacement: int) -> list[tuple[int, int, str]]:
+    """`(file offset, hunk number, instruction)` over every CODE hunk.
+
+    Each hunk is searched on its own, so a window never starts in the hunk
+    before; on a one-hunk executable the offsets and instructions are exactly
+    `sites` over `code_range`."""
+    return [(where, hunk, instruction)
+            for hunk, start, end in code_ranges(data)
+            for where, instruction in sites(data, displacement, start, end)]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -97,12 +119,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="record offsets, hex")
     args = parser.parse_args(argv)
     data = load(args)
-    start, end = code_range(data)
     for text in args.offsets:
         displacement = int(text, 16)
         print(f"--- record +0x{displacement:X}")
-        for where, instruction in sites(data, displacement, start, end):
-            print(f"  {where:06x}: {instruction}")
+        for where, hunk, instruction in hunk_sites(data, displacement):
+            print(f"  {where:06x}  hunk {hunk}: {instruction}")
     return 0
 
 
