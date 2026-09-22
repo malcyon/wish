@@ -290,12 +290,9 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
     The whole record is **not** compared, and the spans below are the honest
     boundary. What is deliberately outside them, and why: the heap pointers at
     `0x000`-`0x03F`, which the loader overwrites; the derived block the game
-    recomputes (`DERIVED`); the combat icon at `0x0BB`-`0x0BD` and
-    `0x0BF`-`0x0C4`, which the writer fills from the engine's own creation
-    defaults rather than from the source, because no neutral field holds a
-    player's choice on the ICON screen and 13 of these 19 characters differ from
-    the engine's default in at least one of head, body and colours;
-    the memorised list at `0x0CC`, which is zero in 19 of 19 files and so has
+    recomputes (`DERIVED`); the roster slot at `0x0BD`, which the engine
+    overwrites when the character joins a party and so is not the source's own
+    value; the memorised list at `0x0CC`, which is zero in 19 of 19 files and so has
     nothing to compare; and the rest of the bytes no neutral field names --
     the stale item count at `0x0C7` and `hands_used` at `0x0C8`, which the
     game rebuilds with `encumbrance`, and `gap_19a` at `0x0C9`, which is 2 in
@@ -345,6 +342,9 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         "unnamed_0ab": (amiga_pod.UNNAMED_0AB, 1),
         "experience_award": (amiga_pod.EXPERIENCE_AWARD, 2),
         "size": (amiga_pod.SIZE, 1),
+        "icon_head": (amiga_pod.ICON_HEAD, 1),
+        "icon_body": (amiga_pod.ICON_BODY, 1),
+        "icon_colours": (amiga_pod.ICON_COLOURS, amiga_pod.ICON_COLOUR_COUNT),
         # No neutral field names it, and the writer emits the 1 the engine's
         # creation routine writes; 19 of 19 hold it, so it is inside.
         "icon_dimension": (amiga_pod.ICON_DIMENSION, 1),

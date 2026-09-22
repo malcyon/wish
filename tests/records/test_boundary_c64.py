@@ -77,8 +77,13 @@ _THIEF_COLUMNS = tuple(n for n, _ in c64_codec._THIEF_SKILL_COLUMNS)
 #: `granted_effects` shares its trait slots with the racial ids, so `read`
 #: hands both back as `innate_effects` (`goldbox/c64_codec.py`, the trait-slot
 #: block of `write`).  `running_effects` is the accounted drop `_RUNNING`
-#: names, so it is not in the record to read back.
-_NOT_READ_BACK = {"granted_effects", "running_effects"}
+#: names, so it is not in the record to read back.  `icon_head`, `icon_body`
+#: and `icon_colours` have no C64 byte of their own at all -- the C64's own
+#: combat figure is eighteen screen codes and eighteen colours in the save's
+#: own table, not a field of the character record, so `read` has nothing to
+#: hand back under these three names (see `TRANSFORMED`'s own entry).
+_NOT_READ_BACK = {"granted_effects", "running_effects",
+                  "icon_head", "icon_body", "icon_colours"}
 
 
 @pytest.mark.parametrize("name", sorted(boundarychars.CASES))
@@ -129,6 +134,24 @@ def test_a_running_effect_is_reported_as_dropped_not_converted():
     assert rep.warnings == []
     assert {d.split(":")[0] for d in rep.dropped} - {"Combat icon"} \
         == {"running_effects"}, rep.dropped
+
+
+def test_a_bare_write_reports_the_combat_icon_fields_by_name():
+    """`write(char)`, no `icon=` supplied: `icon_head`, `icon_body` and
+    `icon_colours` are dropped under the "Combat icon" heading, by name, not
+    under `Writer.finish`'s generic "the C64 conversion takes nothing from
+    it" -- the sentence a field gets when nothing in `write` ever calls
+    `use()` on it, which is what happens when `write` marks the three taken
+    without composing a figure from them (#612)."""
+    char = boundarywidths.case("warrior")
+    assert char.get("icon_head") is not None, "the boundary base sets one"
+    _, rep, _ = _write(char)
+    icon_lines = [d for d in rep.dropped if d.startswith("Combat icon")]
+    for field in ("icon_head", "icon_body", "icon_colours"):
+        assert any(field in line for line in icon_lines), (field, rep.dropped)
+    assert not any(f"{field}: the neutral record carries it" in d
+                  for field in ("icon_head", "icon_body", "icon_colours")
+                  for d in rep.dropped), rep.dropped
 
 
 # --- B: every field the writer takes has a boundary -------------------------

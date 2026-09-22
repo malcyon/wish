@@ -1308,6 +1308,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         # been measured... I agree that we do not need the sentences."
 
     # -- the combat icon: only the C64 has one -------------------------------
+    # `use`d here, whether or not `icon` was also supplied, so `Writer.finish`
+    # never adds its own generic line for a field this block has already
+    # accounted for -- the three fields have no composer of their own inside
+    # `write` (see `TRANSFORMED`'s own entry for each), so leaving them
+    # unmarked reported them twice: once by name here and once, wrongly,
+    # as "the C64 conversion takes nothing from it".
+    icon_head_field = use("icon_head")
+    icon_body_field = use("icon_body")
+    icon_colours_field = use("icon_colours")
     if icon is not None:
         rec.set_raw("region_220", bytes(icon))
         rep.note(0x220, 36, "combat icon: supplied")
@@ -1325,6 +1334,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rep.dropped.append("Combat icon: Wish cannot yet turn "
                            f"{port}'s own combat art into a C64 combat "
                            "icon, so none is set for this character.")
+        for field, value in (("icon_head", icon_head_field),
+                             ("icon_body", icon_body_field),
+                             ("icon_colours", icon_colours_field)):
+            if value is not None:
+                rep.dropped.append(
+                    f"Combat icon: {field} is not among the combat icon's "
+                    f"bytes, since none was composed for this character")
 
     # -- the NPC control byte: bit 7 says the engine drives this character --
     # DOS keeps the same byte in the same encoding at field_83_87's control
@@ -1603,15 +1619,19 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     # The C64 keeps no head/body index at all: the composed figure is
     # eighteen screen codes and eighteen colours in the save's own
     # table of eight, indexed by roster slot, not a byte of the
-    # character record.  `write`'s own `icon` argument is that composed
-    # figure, built off these three fields through `goldbox/iconparts.py`
-    # before `write` is called; it is a transform of the three, not a
-    # drop of them.
-    ("icon_head", "composed, with icon_body and icon_colours, into the "
-                  "eighteen CHARPIC00 screen codes and eighteen colours "
-                  "`write`'s own `icon` argument carries -- see "
-                  "`goldbox/iconparts.py`, which builds that figure before "
-                  "`write` is called"),
+    # character record.  `write`'s own `icon` argument is meant to be that
+    # composed figure, but `goldbox/iconparts.py` has no function that
+    # builds the C64's eighteen screen codes out of these three
+    # DOS-numbered fields alone -- the composers it does have
+    # (`tools/icons/iconproposal.c64_figure`) also need the player's own
+    # disk art loaded, which `write` is never given.  So a caller that
+    # supplies `icon` is folding these fields into it itself; a bare
+    # `write(char)` folds them into the same "Combat icon" drop the icon
+    # bytes themselves get, each under its own name (#612).
+    ("icon_head", "folded into the combat icon `write`'s own `icon` "
+                  "argument carries when the caller composed one; dropped "
+                  "alongside it, under its own name, when the caller did "
+                  "not, since `write` composes nothing itself"),
     ("icon_body", "see icon_head"),
     ("icon_colours", "see icon_head"),
 )

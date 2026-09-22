@@ -4410,6 +4410,16 @@ def write(char: NeutralCharacter,
     icon_head_field = use("icon_head")
     icon_body_field = use("icon_body")
     icon_colours_field = use("icon_colours")
+    # The art library's own wrap points -- the same ones
+    # `amiga_pod.PodCharacter._check` refuses a Pool of Darkness source for,
+    # since both ports draw the combat icon out of the same fourteen heads
+    # and thirty-two bodies (#612).
+    if icon_head_field is not None and not 0 <= int(icon_head_field.value) <= 13:
+        raise ValueError(
+            f"icon_head {int(icon_head_field.value)} is not 0 to 13")
+    if icon_body_field is not None and not 0 <= int(icon_body_field.value) <= 31:
+        raise ValueError(
+            f"icon_body {int(icon_body_field.value)} is not 0 to 31")
     if icon is None and (icon_head_field is not None
                           or icon_body_field is not None
                           or icon_colours_field is not None):

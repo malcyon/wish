@@ -221,6 +221,11 @@ STRUCTURED: dict[str, str] = {
     "portrait_body": "a byte, the art's own id",
     "unnamed_0ab": "a byte, the first of the identity pair",
     "turn_power": "computed from the levels, never copied",
+    "icon_head": "0 to 13, the art library's own head count; folded into "
+                "the combat icon, or dropped by name beside it, never a "
+                "byte of its own",
+    "icon_body": "0 to 31, the art library's own body count; see icon_head",
+    "icon_colours": "six bytes; see icon_head",
 }
 
 

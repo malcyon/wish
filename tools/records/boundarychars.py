@@ -175,6 +175,10 @@ def _base(game: str = GAME) -> NeutralCharacter:
     char.set("portrait_head", 0x08, "base: HEAD08, the menu's own eighth "
              "entry, not the menu's first (#503)")
     char.set("portrait_body", 0x04, "base: BODY04")
+    char.set("icon_head", 5, "base: an arbitrary head within 0-13")
+    char.set("icon_body", 9, "base: an arbitrary body within 0-31")
+    char.set("icon_colours", bytes.fromhex("91a2b3c4e6f7"),
+             "base: an arbitrary six-byte palette")
     # The nine active/status/NPC-adjacent fields `c64_codec.DIRECT` does not
     # carry, each an unremarkable legal value.  `npc` is true and
     # `npc_control_byte` is given, since a control byte with `npc` false is
