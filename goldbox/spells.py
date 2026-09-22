@@ -90,8 +90,15 @@ class SpellTable:
     not_a_spell: tuple[int, ...] = ()
     #: How many bytes of the spellbook bitmask at record `0x078` this title
     #: uses. Measured per title -- the evidence is the comment above
-    #: `POOL_OF_RADIANCE` below.
+    #: `POOL_OF_RADIANCE` below. **Zero means the title has no such mask**,
+    #: which is a title with no C64 port: `spells_known` and `spellbook_bytes`
+    #: refuse it rather than reading sixteen unrelated bytes.
     spellbook_size: int = 7
+    #: How many spell ids the record records when it keeps **one byte per id**
+    #: instead of a bitmask. Pools of Darkness' DOS record has 125 such bytes
+    #: at `0x0B3`, so its last recordable id is 125 whatever any mask would
+    #: reach; zero means the title uses the mask and `spellbook_size` answers.
+    spellbook_ids: int = 0
     #: Ids that fall in one of the groups above and that the title's **trainer**
     #: never hands out, so a level-up must not either. Pool of Radiance has
     #: none: `GEN $20CF` ORs a whole spell level into the mask rather than
@@ -152,8 +159,12 @@ class SpellTable:
         Two ceilings, and the lower wins. Pool of Radiance's mask stops one id
         short of its own spell list -- seven bytes is 56 bits, ids 0-55, and id
         56 is RESTORATION, which the game can memorise and cannot record
-        knowing. The two later titles have bits to spare instead.
+        knowing. The two later titles have bits to spare instead, and Pools of
+        Darkness stops at 125 the same way Pool of Radiance stops at 55: its
+        spellbook is a byte an id and its spell list runs to 126.
         """
+        if self.spellbook_ids:
+            return min(self.spellbook_ids, self.last_spell)
         return min(self.spellbook_size * 8 - 1, self.last_spell)
 
     def in_spellbook(self, spell_id: int) -> bool:
@@ -411,8 +422,86 @@ SECRET_OF_THE_SILVER_BLADES = SpellTable(
     ranger_spell_level=((8, (1, 0)), (9, (1, 1)), (12, (2, 1)), (13, (2, 2))),
 )
 
+#: Pools of Darkness' own class and level bytes, one entry a spell id, read
+#: out of the engine's 16-byte spell table at `DS:651A` in the DOS build by
+#: `tools/dos/dospodtables.py spells` -- byte 0 the casting class (0 cleric,
+#: 1 druid, 2 magic-user, 3 no class) and byte 1 the spell level. So these
+#: are **not** a reading of names against AD&D: they are what the fourth
+#: engine itself says each id is, for all 126 ids its builder walks
+#: (`cmp byte ptr [bp-5], 0x7e / jne`). CONFIRMED, and
+#: `tests/records/test_pod_spells.py` reads them back off the player's own
+#: game.
+#:
+#: Three of them settle what `_GROUPS_SILVER_BLADES` above grades PROBABLE --
+#: 36 and 56 are cleric 6, and 115-117 magic-user 7 -- and one corrects a
+#: reading: **109 is a druid 3 spell**, not the magic-user 6 duplicate
+#: `_NOT_GRANTED_SILVER_BLADES` explains it away as. Silver Blades' trainer
+#: was not skipping a magic-user spell; 109 was never a magic-user spell.
+_GROUPS_POOLS_OF_DARKNESS = (
+    (1, 8, "cleric", 1),
+    (9, 21, "magic-user", 1),
+    (22, 28, "cleric", 2),
+    (29, 35, "magic-user", 2),
+    (36, 36, "cleric", 6),
+    (37, 44, "cleric", 3),
+    (45, 55, "magic-user", 3),
+    (56, 56, "cleric", 6),
+    (58, 58, "cleric", 4),
+    (66, 70, "cleric", 4),
+    (71, 76, "cleric", 5),
+    (77, 80, "druid", 1),
+    (81, 89, "magic-user", 4),
+    (90, 90, "druid", 2),
+    (91, 94, "magic-user", 5),
+    (96, 96, "druid", 2),
+    (98, 98, "druid", 2),
+    (100, 100, "magic-user", 4),
+    (101, 101, "cleric", 6),
+    (102, 105, "cleric", 7),
+    (106, 109, "druid", 3),
+    (110, 114, "magic-user", 6),
+    (115, 117, "magic-user", 7),
+    (118, 119, "magic-user", 5),
+    (120, 123, "magic-user", 8),
+    (124, 126, "magic-user", 9),
+)
+
+#: The eleven ids in 1-126 whose class byte is 3, which is the engine's own
+#: mark for a combat message or an unused slot. 115 spells and eleven
+#: non-spells, and no id is left without a group.
+_NOT_A_SPELL_POOLS_OF_DARKNESS = (57, 59, 60, 61, 62, 63, 64, 65, 95, 97, 99)
+
+POOLS_OF_DARKNESS = SpellTable(
+    key="pools-of-darkness",
+    title="Pools of Darkness",
+    # No C64 port: this title shipped for DOS and the Amiga, so there is no
+    # `SPELLN`-style name file, no resident base and no pointer array to
+    # name, and a zero `spellbook_size` says the record has no bitmask at
+    # `0x078` either. `load_spell_names` has nothing to read for it and the
+    # two mask helpers refuse it rather than answering from the wrong bytes.
+    file=b"",
+    entries=0,
+    resident_base=0,
+    text_offset=0,
+    low_offset=0,
+    high_offset=0,
+    first_id=1,
+    last_spell=126,
+    groups=_GROUPS_POOLS_OF_DARKNESS,
+    not_a_spell=_NOT_A_SPELL_POOLS_OF_DARKNESS,
+    spellbook_size=0,
+    # The DOS record's own 125 bytes at `0x0B3`, one an id, which the builder
+    # writes with `mov byte ptr es:[di + 0xb2], 1`, `di` the spell id. So id
+    # 126 is a spell the record cannot record, exactly as Pool of Radiance
+    # cannot record 56. The Amiga record keeps the same set as a sixteen-byte
+    # mask at `0x159` instead, and a conversion has to translate between the
+    # two encodings rather than copy either.
+    spellbook_ids=125,
+)
+
 TITLES: tuple[SpellTable, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
-                                  SECRET_OF_THE_SILVER_BLADES)
+                                  SECRET_OF_THE_SILVER_BLADES,
+                                  POOLS_OF_DARKNESS)
 BY_KEY = {t.key: t for t in TITLES}
 
 #: What a caller gets when it says nothing. Every caller predates the second
@@ -689,6 +778,188 @@ _RANGER_SSB = [
     ((2, 2, 0, 0, 0, 0, 0), (2, 1, 0, 0, 0, 0, 0)),  # 14
     ((2, 2, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0)),  # 15
 ]
+# --- Pools of Darkness -------------------------------------------------
+# Rows per class level 1-29, nine wide, which is the width of each of the
+# record's three arrays (`0x17D`, `0x186`, `0x18F` in DOS; `0x169`, `0x172`,
+# `0x17B` on the Amiga).  **29 is the engine's own ceiling**: the builder at
+# `GAME.OVR:0x03808A` and its cleric helper at `0x03860C` both clamp with
+# `cmp byte ptr [bp-2], 0x1d / jbe / mov byte ptr [bp-2], 0x1d`, so a class
+# level above 29 reads row 29, and the Amiga does the same twice over
+# (`cmpi.b #$1d`, `0x03BEAA` and `0x03C4A6`).
+#
+# **This title's tables hold running totals where Curse's and Silver Blades'
+# hold deltas**, and its cleric branch *assigns* (`mov byte ptr es:[di +
+# 0x17c], dl`) where the other three *add*.  So the numbers below are read at
+# the class level and not accumulated -- what a character sheet shows.
+# `tests/records/test_pod_spells.py` reads all four back off the player's own
+# game, so a transcription slip here fails rather than ships.
+#
+# **Both ports use the same bytes.**  The four tables are one 261-byte run
+# each in the Amiga executable, 1043 of 1044 bytes identical to the DOS ones,
+# and the byte that differs is the cleric table's column 0 at level 1, which
+# neither engine reads (both column loops start at 1).  The Amiga picks
+# between them with a class-slot index table holding `0 FF FF 1 2 3 FF`,
+# naming the same four classes as DOS' four branches.
+#
+# **Two gates the engine applies and `capacity_by_class` does not yet.**  The
+# cleric helper ends with the wisdom bonus and a wisdom ceiling, and the
+# magic-user branch calls a leaf that is nothing but an intelligence ceiling:
+#
+# * wisdom below 17 zeroes cleric spell level 6 and below 18 level 7;
+# * intelligence below 12, 14, 16 and 18 zeroes magic-user levels 6, 7, 8
+#   and 9.
+#
+# Both are the same on the Amiga, on its own record offsets.  Neither is
+# applied here, so a row below can be one or two slots wider than the game
+# would give a character with a low score -- and the wisdom *bonus* comes out
+# of `goldbox.levels`, which has no entry for this title, so
+# `capacity_by_class` adds Pool of Radiance's bonus rather than this game's.
+# The engine's bonus is Curse's and Silver Blades' table exactly: one spell a
+# point from wisdom 13, at levels 1, 1, 2, 2, 3, 4.
+
+#: `DS:77B5`, columns 1-9, added into the magic-user array from level 1.
+#: AD&D 1st edition's published magic-user table to level 29.
+_MAGIC_USER_POD = [
+    (1, 0, 0, 0, 0, 0, 0, 0, 0),  # 1
+    (2, 0, 0, 0, 0, 0, 0, 0, 0),  # 2
+    (2, 1, 0, 0, 0, 0, 0, 0, 0),  # 3
+    (3, 2, 0, 0, 0, 0, 0, 0, 0),  # 4
+    (4, 2, 1, 0, 0, 0, 0, 0, 0),  # 5
+    (4, 2, 2, 0, 0, 0, 0, 0, 0),  # 6
+    (4, 3, 2, 1, 0, 0, 0, 0, 0),  # 7
+    (4, 3, 3, 2, 0, 0, 0, 0, 0),  # 8
+    (4, 3, 3, 2, 1, 0, 0, 0, 0),  # 9
+    (4, 4, 3, 2, 2, 0, 0, 0, 0),  # 10
+    (4, 4, 4, 3, 3, 0, 0, 0, 0),  # 11
+    (4, 4, 4, 4, 4, 1, 0, 0, 0),  # 12
+    (5, 5, 5, 4, 4, 2, 0, 0, 0),  # 13
+    (5, 5, 5, 4, 4, 2, 1, 0, 0),  # 14
+    (5, 5, 5, 5, 5, 2, 1, 0, 0),  # 15
+    (5, 5, 5, 5, 5, 3, 2, 1, 0),  # 16
+    (5, 5, 5, 5, 5, 3, 3, 2, 0),  # 17
+    (5, 5, 5, 5, 5, 3, 3, 2, 1),  # 18
+    (5, 5, 5, 5, 5, 3, 3, 3, 1),  # 19
+    (5, 5, 5, 5, 5, 4, 3, 3, 2),  # 20
+    (5, 5, 5, 5, 5, 4, 4, 4, 2),  # 21
+    (5, 5, 5, 5, 5, 5, 4, 4, 3),  # 22
+    (5, 5, 5, 5, 5, 5, 5, 5, 3),  # 23
+    (5, 5, 5, 5, 5, 5, 5, 5, 4),  # 24
+    (5, 5, 5, 5, 5, 5, 5, 5, 5),  # 25
+    (6, 6, 6, 6, 5, 5, 5, 5, 5),  # 26
+    (6, 6, 6, 6, 6, 6, 6, 5, 5),  # 27
+    (6, 6, 6, 6, 6, 6, 6, 6, 6),  # 28
+    (7, 7, 7, 7, 6, 6, 6, 6, 6),  # 29
+]
+
+#: `DS:71D4`, columns 1-7, **assigned** into the cleric array from level 1.
+#: AD&D 1st edition's cleric table to 29, and its own loop stops at column 7,
+#: so cleric spell levels 8 and 9 of the nine-wide array stay zero.
+_CLERIC_POD = [
+    (1, 0, 0, 0, 0, 0, 0, 0, 0),  # 1
+    (2, 0, 0, 0, 0, 0, 0, 0, 0),  # 2
+    (2, 1, 0, 0, 0, 0, 0, 0, 0),  # 3
+    (3, 2, 0, 0, 0, 0, 0, 0, 0),  # 4
+    (3, 3, 1, 0, 0, 0, 0, 0, 0),  # 5
+    (3, 3, 2, 0, 0, 0, 0, 0, 0),  # 6
+    (3, 3, 2, 1, 0, 0, 0, 0, 0),  # 7
+    (3, 3, 3, 2, 0, 0, 0, 0, 0),  # 8
+    (4, 4, 3, 2, 1, 0, 0, 0, 0),  # 9
+    (4, 4, 3, 3, 2, 0, 0, 0, 0),  # 10
+    (5, 4, 4, 3, 2, 1, 0, 0, 0),  # 11
+    (6, 5, 5, 3, 2, 2, 0, 0, 0),  # 12
+    (6, 6, 6, 4, 2, 2, 0, 0, 0),  # 13
+    (6, 6, 6, 5, 3, 2, 0, 0, 0),  # 14
+    (7, 7, 7, 5, 4, 2, 0, 0, 0),  # 15
+    (7, 7, 7, 6, 5, 3, 1, 0, 0),  # 16
+    (8, 8, 8, 6, 5, 3, 1, 0, 0),  # 17
+    (8, 8, 8, 7, 6, 4, 1, 0, 0),  # 18
+    (9, 9, 9, 7, 6, 4, 2, 0, 0),  # 19
+    (9, 9, 9, 8, 7, 5, 2, 0, 0),  # 20
+    (9, 9, 9, 9, 8, 6, 2, 0, 0),  # 21
+    (9, 9, 9, 9, 9, 6, 3, 0, 0),  # 22
+    (9, 9, 9, 9, 9, 7, 3, 0, 0),  # 23
+    (9, 9, 9, 9, 9, 8, 3, 0, 0),  # 24
+    (9, 9, 9, 9, 9, 8, 4, 0, 0),  # 25
+    (9, 9, 9, 9, 9, 9, 4, 0, 0),  # 26
+    (9, 9, 9, 9, 9, 9, 5, 0, 0),  # 27
+    (9, 9, 9, 9, 9, 9, 6, 0, 0),  # 28
+    (9, 9, 9, 9, 9, 9, 7, 0, 0),  # 29
+]
+
+#: `DS:755B`, columns 1-4, added into the **cleric** array from level 9
+#: (`cmp byte ptr [bp-2], 8 / ja`) -- a paladin has no array of his own, as
+#: in the two titles before this one, and takes no wisdom bonus because the
+#: bonus lives in the cleric branch, which runs first. The table plateaus at
+#: level 20 and the rows to 29 repeat it.
+_PALADIN_POD = [
+    (0, 0, 0, 0, 0, 0, 0, 0, 0),  # 1
+    (0, 0, 0, 0, 0, 0, 0, 0, 0),  # 2
+    (0, 0, 0, 0, 0, 0, 0, 0, 0),  # 3
+    (0, 0, 0, 0, 0, 0, 0, 0, 0),  # 4
+    (0, 0, 0, 0, 0, 0, 0, 0, 0),  # 5
+    (0, 0, 0, 0, 0, 0, 0, 0, 0),  # 6
+    (0, 0, 0, 0, 0, 0, 0, 0, 0),  # 7
+    (0, 0, 0, 0, 0, 0, 0, 0, 0),  # 8
+    (1, 0, 0, 0, 0, 0, 0, 0, 0),  # 9
+    (2, 0, 0, 0, 0, 0, 0, 0, 0),  # 10
+    (2, 1, 0, 0, 0, 0, 0, 0, 0),  # 11
+    (2, 2, 0, 0, 0, 0, 0, 0, 0),  # 12
+    (2, 2, 1, 0, 0, 0, 0, 0, 0),  # 13
+    (3, 2, 1, 0, 0, 0, 0, 0, 0),  # 14
+    (3, 2, 1, 1, 0, 0, 0, 0, 0),  # 15
+    (3, 3, 1, 1, 0, 0, 0, 0, 0),  # 16
+    (3, 3, 2, 1, 0, 0, 0, 0, 0),  # 17
+    (3, 3, 3, 1, 0, 0, 0, 0, 0),  # 18
+    (3, 3, 3, 2, 0, 0, 0, 0, 0),  # 19
+    (3, 3, 3, 3, 0, 0, 0, 0, 0),  # 20
+    (3, 3, 3, 3, 0, 0, 0, 0, 0),  # 21
+    (3, 3, 3, 3, 0, 0, 0, 0, 0),  # 22
+    (3, 3, 3, 3, 0, 0, 0, 0, 0),  # 23
+    (3, 3, 3, 3, 0, 0, 0, 0, 0),  # 24
+    (3, 3, 3, 3, 0, 0, 0, 0, 0),  # 25
+    (3, 3, 3, 3, 0, 0, 0, 0, 0),  # 26
+    (3, 3, 3, 3, 0, 0, 0, 0, 0),  # 27
+    (3, 3, 3, 3, 0, 0, 0, 0, 0),  # 28
+    (3, 3, 3, 3, 0, 0, 0, 0, 0),  # 29
+]
+
+#: `DS:7688` from level 8 (`cmp byte ptr [bp-2], 7 / ja`), one table into two
+#: arrays: columns 1-3 into the druid array and columns 5-6 into the first
+#: two levels of the magic-user array (`sub ax, 4` is the shift). So each
+#: entry is `(druid run, magic-user run)`, as Curse's and Silver Blades'
+#: rangers are. It plateaus at level 17.
+_RANGER_POD = [
+    ((0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0)),  # 1
+    ((0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0)),  # 2
+    ((0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0)),  # 3
+    ((0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0)),  # 4
+    ((0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0)),  # 5
+    ((0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0)),  # 6
+    ((0, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0)),  # 7
+    ((1, 0, 0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 0, 0, 0, 0, 0, 0)),  # 8
+    ((1, 0, 0, 0, 0, 0, 0, 0, 0), (1, 0, 0, 0, 0, 0, 0, 0, 0)),  # 9
+    ((2, 0, 0, 0, 0, 0, 0, 0, 0), (1, 0, 0, 0, 0, 0, 0, 0, 0)),  # 10
+    ((2, 0, 0, 0, 0, 0, 0, 0, 0), (2, 0, 0, 0, 0, 0, 0, 0, 0)),  # 11
+    ((2, 1, 0, 0, 0, 0, 0, 0, 0), (2, 0, 0, 0, 0, 0, 0, 0, 0)),  # 12
+    ((2, 1, 0, 0, 0, 0, 0, 0, 0), (2, 1, 0, 0, 0, 0, 0, 0, 0)),  # 13
+    ((2, 2, 0, 0, 0, 0, 0, 0, 0), (2, 1, 0, 0, 0, 0, 0, 0, 0)),  # 14
+    ((2, 2, 0, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 15
+    ((2, 2, 1, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 16
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 17
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 18
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 19
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 20
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 21
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 22
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 23
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 24
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 25
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 26
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 27
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 28
+    ((2, 2, 2, 0, 0, 0, 0, 0, 0), (2, 2, 0, 0, 0, 0, 0, 0, 0)),  # 29
+]
+
 # Bonus first-, second- and third-level cleric spells for high Wisdom. **The
 # game's, not AD&D's**: `goldbox.levels.wisdom_bonus_spells` implements `GEN
 # $10AD` and the shifts `$2108` puts it through, and the game's first-level
@@ -715,6 +986,10 @@ _SLOTS: dict[str, dict[str, list]] = {
                                       "cleric": _CLERIC_SSB,
                                       "paladin": _PALADIN_SSB,
                                       "ranger": _RANGER_SSB},
+    POOLS_OF_DARKNESS.key: {"magic-user": _MAGIC_USER_POD,
+                            "cleric": _CLERIC_POD,
+                            "paladin": _PALADIN_POD,
+                            "ranger": _RANGER_POD},
 }
 
 
@@ -730,13 +1005,31 @@ def spells_known(record_bytes: bytes, game=None) -> list[int]:
     and hiding it would lose it on a rewrite.
     """
     table = for_game(game)
+    _needs_mask(table)
     return [i for i in range(1, table.last_spellbook_spell + 1)
             if record_bytes[SPELLBOOK_OFFSET + (i >> 3)] & (1 << (i & 7))]
+
+
+def _needs_mask(table: SpellTable) -> None:
+    """Refuse a title whose record keeps no bitmask at `0x078`.
+
+    The three functions around this one read and write the C64 and neutral
+    record's mask. A title with no C64 port has no such field -- Pools of
+    Darkness keeps a byte an id at `0x0B3` in DOS and a mask at `0x159` on
+    the Amiga -- and answering from `0x078` would report sixteen bytes of
+    some other field as a spellbook.
+    """
+    if not table.spellbook_size:
+        raise ValueError(
+            f"{table.title} keeps no spellbook bitmask at "
+            f"{SPELLBOOK_OFFSET:#05x}: read the record's own spellbook field "
+            f"instead ({table.spellbook_ids} ids, one byte each, in DOS)")
 
 
 def spellbook_bytes(ids, game=None) -> bytes:
     """The bitmask for a set of spell ids, as wide as the title's mask."""
     table = for_game(game)
+    _needs_mask(table)
     out = bytearray(table.spellbook_size)
     for i in ids:
         i = int(i)
