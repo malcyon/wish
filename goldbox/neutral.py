@@ -470,6 +470,10 @@ class Report:
     #: player had and the destination now holds less of.  Distinct from
     #: `dropped` (no home at all) and `warnings` (notes about the run).
     losses: list[str] = dataclasses.field(default_factory=list)
+    #: Fields the destination rebuilds on load or holds the same value in for
+    #: every record, reported so the accounting is complete and kept off
+    #: `dropped` so no caller counts them as a loss.
+    derived: list[str] = dataclasses.field(default_factory=list)
 
     def lost(self, line: str) -> None:
         """Record a value the conversion narrowed, on `losses` and `warnings`.
@@ -498,6 +502,8 @@ class Report:
             lines.append(f"  WARNING: {w}")
         for d in self.dropped:
             lines.append(f"  dropped: {d}")
+        for d in self.derived:
+            lines.append(f"  derived: {d}")
         for lost in self.losses:
             lines.append(f"  lost: {lost}")
         return "\n".join(lines)
@@ -529,16 +535,25 @@ class Writer:
     leaving a field behind rather than a generic sentence.  It reports what
     the character actually carries, which is why the whole-contract statement
     lives in the codec's `field_disposition()` and is tested there instead.
+
+    `derived` and `constants` are the same `(name, why)` form for fields the
+    destination rebuilds on load and fields it holds one value in for every
+    record.  The sweep puts those on `report.derived`, not `report.dropped`,
+    so a caller that counts drops as losses does not count them.  A name in
+    both `dropped` and either of these two is reported as derived.
     """
 
     def __init__(self, char: "NeutralCharacter", report: "Report",
                  into: str, floor: Confidence = Confidence.GUESS,
-                 dropped: Sequence[tuple[str, str]] = ()) -> None:
+                 dropped: Sequence[tuple[str, str]] = (),
+                 derived: Sequence[tuple[str, str]] = (),
+                 constants: Sequence[tuple[str, str]] = ()) -> None:
         self.char = char
         self.report = report
         self.into = into
         self.floor = floor
         self.reasons = dict(dropped)
+        self.rebuilt = dict(derived) | dict(constants)
         self.taken: list[str] = []
 
     def use(self, name: str) -> Value | None:
@@ -576,6 +591,10 @@ class Writer:
     def finish(self) -> None:
         """The closing sweep every writer used to copy by hand."""
         for name in self.char.unwritten(self.taken):
+            rebuilt = self.rebuilt.get(name)
+            if rebuilt is not None:
+                self.report.derived.append(f"{name}: {rebuilt}")
+                continue
             why = self.reasons.get(name)
             self.report.dropped.append(
                 f"{name}: {why}" if why else

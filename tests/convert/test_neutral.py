@@ -460,10 +460,12 @@ def test_a_name_dropped_from_a_writers_table_is_named_rather_than_lost():
 
 # --- the shared take-refuse-report protocol ----------------------------------
 
-def _writer(char, floor=Confidence.GUESS, dropped=()):
+def _writer(char, floor=Confidence.GUESS, dropped=(), derived=(),
+            constants=()):
     rep = neutral.Report()
     return neutral.Writer(char, rep, into="test", floor=floor,
-                          dropped=dropped), rep
+                          dropped=dropped, derived=derived,
+                          constants=constants), rep
 
 
 def test_the_minimum_grade_applies_to_a_derivation_as_much_as_to_a_copy():
@@ -575,6 +577,122 @@ def test_a_subclass_that_declares_its_own_losses_field_still_works():
     rep = Sub()
     rep.lost("x")
     assert rep.losses == ["x"] and rep.warnings == ["x"]
+
+
+# --- derived and constant rows are reported, and are not drops --------------
+
+def _three_untaken():
+    char = NeutralCharacter("test")
+    char.set("encumbrance", 300, "the DOS byte")
+    char.set("attack_level", 4, "the DOS byte")
+    char.set("armour_class_base", 50, "the DOS byte")
+    return char
+
+
+def test_a_derived_name_goes_to_derived_and_not_to_dropped():
+    w, rep = _writer(_three_untaken(),
+                     derived=(("encumbrance", "the engine rebuilds it"),))
+    w.finish()
+    assert "encumbrance: the engine rebuilds it" in rep.derived
+    assert not [d for d in rep.dropped if "encumbrance" in d]
+
+
+def test_a_constants_name_goes_to_derived_and_not_to_dropped():
+    w, rep = _writer(_three_untaken(),
+                     constants=(("armour_class_base", "fifty for every record"),))
+    w.finish()
+    assert "armour_class_base: fifty for every record" in rep.derived
+    assert not [d for d in rep.dropped if "armour_class_base" in d]
+
+
+def test_a_dropped_name_stays_on_dropped_when_other_tables_are_given():
+    w, rep = _writer(_three_untaken(),
+                     dropped=(("attack_level", "no such byte"),),
+                     derived=(("encumbrance", "rebuilt"),))
+    w.finish()
+    assert "attack_level: no such byte" in rep.dropped
+    assert not [d for d in rep.derived if "attack_level" in d]
+
+
+def test_each_untaken_name_lands_on_exactly_one_list():
+    w, rep = _writer(_three_untaken(),
+                     dropped=(("attack_level", "no such byte"),),
+                     derived=(("encumbrance", "rebuilt"),),
+                     constants=(("armour_class_base", "fifty"),))
+    w.finish()
+    assert rep.dropped == ["attack_level: no such byte"]
+    assert sorted(rep.derived) == ["armour_class_base: fifty",
+                                   "encumbrance: rebuilt"]
+    assert rep.losses == []
+
+
+def test_a_name_in_no_table_keeps_the_generic_drop_line_beside_derived_ones():
+    w, rep = _writer(_three_untaken(),
+                     derived=(("encumbrance", "rebuilt"),))
+    w.finish()
+    assert sorted(d.split(":")[0] for d in rep.dropped) == [
+        "armour_class_base", "attack_level"]
+    assert all("takes nothing from it" in d for d in rep.dropped)
+
+
+def test_a_taken_field_is_on_no_list_even_when_it_is_declared_derived():
+    char = NeutralCharacter("test")
+    char.set("encumbrance", 300, "the DOS byte")
+    w, rep = _writer(char, derived=(("encumbrance", "rebuilt"),))
+    assert w.use("encumbrance") is not None
+    w.finish()
+    assert rep.derived == [] and rep.dropped == []
+
+
+def test_the_derived_line_reads_as_a_drop_line_would_have():
+    char = NeutralCharacter("test")
+    char.set("encumbrance", 300, "the DOS byte")
+    w, as_drop = _writer(char, dropped=(("encumbrance", "rebuilt"),))
+    w.finish()
+    w, as_derived = _writer(char, derived=(("encumbrance", "rebuilt"),))
+    w.finish()
+    assert as_derived.derived == as_drop.dropped
+
+
+def test_the_summary_lists_each_derived_line_after_the_drops():
+    rep = neutral.Report(total=4)
+    rep.dropped.append("a field with no home")
+    rep.derived.append("a field the engine rebuilds")
+    rep.lost("a value was clamped")
+    assert rep.summary().split("\n") == [
+        "0/4 bytes accounted for",
+        "  WARNING: a value was clamped",
+        "  dropped: a field with no home",
+        "  derived: a field the engine rebuilds",
+        "  lost: a value was clamped",
+    ]
+
+
+def test_the_summary_of_a_report_with_no_derived_lines_has_no_derived_line():
+    rep = neutral.Report(total=1)
+    rep.dropped.append("a field with no home")
+    assert rep.summary() == ("0/1 bytes accounted for\n"
+                             "  dropped: a field with no home")
+
+
+def test_a_count_of_dropped_plus_losses_does_not_include_derived():
+    """The Save As refusal counts `dropped` and `losses` (`editor/saveplan.
+    losses`); a stand-in with the same two-list read is enough to show a
+    derived row cannot add to it while a real narrowing still does."""
+    def losses(report):
+        return [*report.dropped, *report.losses]
+
+    w, rep = _writer(_three_untaken(),
+                     dropped=(("attack_level", "no such byte"),
+                              ("armour_class_base", "no such byte")),
+                     derived=(("encumbrance", "rebuilt"),))
+    w.finish()
+    only_derived = neutral.Report()
+    only_derived.derived.append("encumbrance: rebuilt")
+    assert losses(only_derived) == []
+    assert len(losses(rep)) == 2
+    rep.lost("hp_max: clamped")
+    assert "hp_max: clamped" in losses(rep)
 
 
 # --- the C64 reader, as far as the Amiga and YAML writers need it ------------
