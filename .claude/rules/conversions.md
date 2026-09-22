@@ -5,6 +5,32 @@ paths:
 
 # Testing a conversion
 
+## Refusing a save is not a fix
+
+Refusing a valid save is a conversion bug, not a solution to one. Missing
+mappings, unknown fields, unimplemented effects, and differences in
+representation are work for Wish to resolve. Do not close their tickets, claim
+conversion support, or call them fixed because Wish now detects the problem and
+refuses the save.
+
+A regression test for a conversion fix must demonstrate successful conversion
+and the preserved player behavior. A test proving that Wish refuses the save
+can document an outstanding defect; it cannot serve as the acceptance test for
+fixing that defect.
+
+A verified destination capacity limit requires a way to complete the
+conversion. Let the player resolve what fits. One name needing shortening must
+not condemn the entire party.
+
+Do not replace refusal with silent loss. During development, checks may prevent
+writing output known to be wrong, and incomplete routes remain behind their
+feature flags. Those protections do not discharge the obligation to finish the
+conversion.
+
+Keep protections against corrupt input, destructive overwrites, missing
+required files, and failed writes. Diagnose the actual failure; never classify
+a valid game state as corrupt merely because Wish does not understand it.
+
 **A conversion is between two ports of the same title, and never between
 titles.** A Curse character is never converted into a Pool character. **The
 title is fixed and the port is what changes**: a DOS Curse save converts to a
