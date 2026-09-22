@@ -157,3 +157,72 @@ def test_pool_of_radiance_has_no_heal_on_dos_or_amiga():
         assert amigalayonhands.inspect(raw, "pool-of-radiance")["heal"] is None
     if not ran:
         pytest.skip("no DOS or Amiga Pool of Radiance on this machine")
+
+
+#: The Amiga expiry routine: where it scales the elapsed count by the clock's
+#: table, and where it takes the result off a node's duration word.
+EXPIRY_AT = {
+    "curse": (0x001E6E, 0x001F04),
+    "silver-blades": (0x002ABE, 0x002B4C),
+    "pools-of-darkness": (0x00288E, 0x0028FC),
+}
+
+
+@pytest.mark.parametrize("title", sorted(EXPIRY_AT))
+def test_amiga_node_duration_counts_minutes(title):
+    """The clock scales every elapsed count into the node's unit by 10, 6
+    and 24 -- ten minutes, an hour, a day -- exactly as DOS does, so the
+    1440 on the heal node is one day in minutes."""
+    f = _amiga(AMIGA[title])
+    e = f["expiry"]
+    assert (e["scale_site"], e["subtract_site"]) == EXPIRY_AT[title]
+    assert e["table"][:6] == (10, 10, 6, 24, 30, 12)
+    assert e["unit_minutes"] == (1, 10, 60, 1440)
+    assert f["heal"].minutes == e["unit_minutes"][3]
+
+
+#: Every caller of the Amiga handler dispatcher, by where its id comes from.
+#: `argument` is a routine whose own callers all push a constant id.
+DISPATCH = {
+    "silver-blades": dict(
+        dispatcher=0x0120DC, lea=0x01211A, item_slot=120, constants=15,
+        gated=(0x011E8C, 0x012774), item=(0x023596, 0x035616),
+        argument=(0x0120CE, 0x011FA0, 112)),
+    "pools-of-darkness": dict(
+        dispatcher=0x01214C, lea=0x01218A, item_slot=127, constants=16,
+        gated=(0x011F08,), item=(0x02201E, 0x031906),
+        argument=(0x01213E, 0x012016, 126)),
+}
+
+
+@pytest.mark.parametrize("title", sorted(DISPATCH))
+def test_amiga_heal_node_never_reaches_the_handler_table(title):
+    """Silver Blades and Pools of Darkness push 140, past the table's end.
+
+    No caller of the dispatcher can hand it 140: every constant id and every
+    id a wrapper's callers push is below it, the item path never indexes the
+    table, and the callers that pass a node's own id test its flag byte first,
+    which HEAL writes as 0.  The dispatcher is the one place the table's
+    base is loaded.
+    """
+    f = _amiga(AMIGA[title])
+    want = DISPATCH[title]
+    table = f["table"]
+    heal = f["heal"]
+    assert table["dispatcher"] == want["dispatcher"]
+    assert table["indexers"] == (want["lea"],)
+    assert f["item_slot"] == want["item_slot"]
+    assert heal.effect_id > max(table["filled"]) and heal.flag == 0
+    exe = amigalayonhands.amiga68k.Executable.parse(amigalayonhands.executable(AMIGA[title]))
+    found = amigalayonhands.dispatch_callers(exe.data, exe, table)
+    kinds = {}
+    for c in found:
+        kinds.setdefault(c.kind, []).append(c)
+        assert heal.effect_id not in c.ids
+    assert "unread" not in kinds
+    assert len(kinds["constant"]) == want["constants"]
+    assert tuple(c.site for c in kinds["flag-tested"]) == want["gated"]
+    assert tuple(c.site for c in kinds["item"]) == want["item"]
+    (arg,) = kinds["argument"]
+    assert (arg.site, arg.via, max(arg.ids)) == want["argument"]
+    assert max(i for c in found for i in c.ids) < want["item_slot"]

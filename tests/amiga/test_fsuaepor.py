@@ -126,3 +126,11 @@ def test_the_sheet_draws_ff_as_a_blank_cell(name):
                                fsuaepor.SHEET_NAME_COLUMNS, fsuaepor.green_ink)
     assert fsuaepor.blank_cells(runs, pitch).count(1) == 1
     assert sum(fsuaepor.blank_cells(runs, pitch)) == 1
+
+
+def test_curse_disks_come_out_of_the_registry_in_drive_order():
+    try:
+        disks = fsuaepor.curse_disks()
+    except SystemExit as exc:
+        pytest.skip(str(exc))
+    assert [AmigaDisk(d).volume_name for d in disks] == ["CurseA", "CurseB"]

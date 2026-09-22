@@ -12,9 +12,10 @@ The readers are [`tools/dos/layonhands.py`](../tools/dos/layonhands.py),
 for the C64,
 [`tools/c64/curedisease.py`](../tools/c64/curedisease.py).
 [`tests/records/test_layonhands.py`](../tests/records/test_layonhands.py) pins
-every address below against the player's own executables. It holds 9 tests,
-which all skip with no disks. Everything was read statically. No emulator was
-run.
+every address below against the player's own executables. It holds 14 tests,
+which all skip with no disks. Everything was read statically. Amiga Curse was
+booted under FS-UAE to measure the duration unit in the running game, and the
+run stopped at the code wheel ("What stays open").
 
 ## The answer
 
@@ -25,9 +26,10 @@ run.
 | Pools of Darkness | no C64 port (`goldbox.c64_port.GAMES` has none) | a node with id **109**, 1440, 0, 0 | a node with id **140**, 1440, 0, 0 |
 | Pool of Radiance | no heal | no heal | no heal |
 
-Every cell is CONFIRMED from the engine's own code, except where the Amiga
-duration unit is stated as minutes, which is PROBABLE (see "What stays
-open").
+Every cell is CONFIRMED from the engine's own code, the Amiga duration unit
+included. That unit was PROBABLE minutes while the only evidence was the
+constants the Amiga pushes; the expiry routine read below makes it
+CONFIRMED from the bytecode. It has not been measured in the running game.
 
 **In DOS and on the Amiga the spent state is only the node.** HEAL adds it,
 the character sheet offers HEAL only while the paladin has no node with that
@@ -46,11 +48,16 @@ unit 3 (`goldbox.effects.DURATION_UNIT_NAMES`), count 1.
 DOS and the C64 push 109.** In both of those Amiga executables, slot 109 of
 the effect handler table holds an empty handler (`rts`), which is the same
 empty slot the DOS build has there. The table ends before 140: Silver Blades
-fills ids 1-113 and slot 120, and Pools of Darkness fills up to 127 without
-117. The heal routine and its gate were left with Curse's number. The two
+fills ids 1-113 and Pools of Darkness ids 1-126 without 117, the same ranges
+as DOS. The start-up code also fills slot 120 (Silver Blades) and slot 127
+(Pools of Darkness), which this page first counted as table entries. They are
+the pointer the dispatcher calls on its item path, and no effect id selects
+them ("Nothing hands the table a 140 node" below). The heal routine and its
+gate were left with Curse's number. The two
 sites agree with each other, so a player on the Amiga sees HEAL once a day as
 usual. It is a porting quirk rather than a bug, and it only matters to a
-converter.
+converter. No path hands the dispatcher a node with id 140, so the missing
+handler is never looked up: CONFIRMED from the bytecode below.
 
 ## What a converter needs
 
@@ -144,8 +151,8 @@ it at zero. `docs/162-spc-permanence.md` measured that with Bless.
 
 **Amiga.** `tools/amiga/amigalayonhands.py` reads `/Curse`, `/Secret` and
 `/Pools of Darkness` from the registry's Amiga disks. It finds
-`clr.w -(a7) / clr.w -(a7) / move.w #1440,-(a7) / move.w #id,-(a7) /
-move.l An,-(a7) / jsr d16(a4)` and checks that the callee stores the id at
+`clr.w -(a7) / clr.w -(a7) / move.w #$5A0,-(a7) / move.w #id,-(a7) /
+move.l An,-(a7) / jsr d16(a4)` (`$5A0` is 1440) and checks that the callee stores the id at
 node `+0` and the duration at `+2`. It finds the `find_affect(id)` call and
 checks that its callee walks the paladin's chain comparing node byte 0.
 Then it reads the handler table from the dispatcher that `remove_affect`
@@ -159,9 +166,12 @@ each executable.
 | record stores in the heal routine | none | none | none |
 | gate: `find_affect` call, callee | `023A2A`, `01B6D2` | `024DC0`, `01AB12` | `023D30`, `01A6EE` |
 | handler table; dispatcher | `g58C2`; `00E222` | `g7778`; `0120DC` | `g7700`; `01214C` |
+| the one load of the table's base | `00E260` | `01211A` | `01218A` |
+| item-path pointer slot | 147 | 120 | 127 |
 | handler for the heal id | `0127AE`, `rts` | none, past the table | none, past the table |
 | handler for 109 | a real handler (109 is another effect in Curse) | `016B86`, `rts` | `016A18`, `rts` |
 | cure routine: id, record byte decremented | `023B64`: 141, `0x196` | `024EE6`: 110, `0x6D` | `023EA2`: 110, `0x80` |
+| expiry: scale by the clock's table; subtract from node `+2` | `001E6E`; `001F04` | `002ABE`; `002B4C` | `00288E`; `0028FC` |
 
 The id is pushed only at the gate and the add. The one exception is Silver
 Blades `0175C8`, which pushes 140 and 400 to `03DD0C`, a four-argument
@@ -173,38 +183,81 @@ second's at `+4`, the value; the cure's pushes (flag 1, value 0) land where
 DOS keeps its flag and value. So the heal node is `8C 00 05 A0 00 00` when
 it is added.
 
+**The Amiga duration unit is minutes. CONFIRMED from the bytecode in all
+three titles.** Each executable carries the same expiry routine as DOS
+(`docs/162-spc-permanence.md`, "The expiry routine"). It is called with an
+elapsed count and a clock unit. For unit `u` it multiplies the count by
+words 1 to `u - 1` of the clock's scale table. The table reads
+`10, 10, 6, 24, 30, 12` in all three (then 256 in Curse, 100 in the other
+two), so units 1 to 4 reach a node as 1, 10, 60 and 1440 times the count.
+Then, per party member, it walks the chain. A node whose duration word
+(`+2`) is 0 is skipped. Otherwise the routine subtracts at most ten at a
+time, and removes the node when the step would reach zero. So one hour
+rested takes 60 off the heal node, and its 1440 is one day. `tools/amiga/amigalayonhands.py` prints the
+table and both sites. `test_amiga_node_duration_counts_minutes` pins them.
+
+**Nothing hands the table a 140 node. CONFIRMED from the bytecode for
+Silver Blades and Pools of Darkness.** The dispatcher takes an id, a record,
+a node and a flag word. With the byte at table + 2 (Silver Blades) or
+table + 3 (Pools of Darkness) clear, it loads the table slot for the id
+with no bounds check and calls it. With that byte set, it calls the pointer
+in the item-path slot instead and never indexes the table. The dispatcher is
+the one instruction in each executable that loads the table's base. Every
+caller of it, by where its id comes from (`--dispatch`):
+
+| where the id comes from | Silver Blades (`0120DC`), 20 callers | Pools of Darkness (`01214C`), 20 callers |
+|---|---|---|
+| a constant pushed at the call | 15; ids 3-77 | 16; ids 3-77 |
+| a node's own id, after `tst.b 5(a2)` / `beq` skips a node whose flag is 0 (`remove_affect`) | `011E8C`, `012774` | `011F08` |
+| the byte argument of a wrapper, all of whose callers push a constant | `0120CE`, in `011FA0`: 126 callers, 85 distinct ids 1-112 | `01213E`, in `012016`: 141 callers, 100 distinct ids 1-126 |
+| the item path: the flag byte set to 1 in straight-line code before the call, so the table is never read | `023596`, `035616` | `02201E`, `031906` |
+
+HEAL writes the node with flag 0, so the only callers that pass a node's
+own id pass over it. Expiry calls `remove_affect` (Silver Blades `002B70`,
+Pools of Darkness `002920`), so a heal node that runs out is removed without
+a dispatch. Every other route to the table, Dispel Magic's included, has to
+be one of the callers in the table above. No constant or wrapper id is 140. The item routine
+(`016B88` in Silver Blades, `016A1A` in Pools of Darkness) clears the byte
+and then adds or removes the node named by the item's effect byte at `+0x40`
+through `add_affect` or `remove_affect`. It never reads the table.
+
+If a 140 node were dispatched anyway, the slot read would be four bytes past
+the table's end that the engine uses for other variables. In Silver Blades
+it is the low half of the pointer at `g79A6` and the word after it. In Pools
+of Darkness it is the two words at `g7930` and `g7932`, which the code sets
+to `$1F50` and `$1F44`. Neither is a code address, so the call would jump
+into data and very probably crash the machine. That consequence is PROBABLE,
+because it has not been run. It also cannot happen through the game's own
+code. A converter that wrote a heal node with its flag set could make it
+happen.
+
 **Pool of Radiance.** Neither DOS `GAME.OVR` nor the Amiga `/program` has a
 1440-minute `add_affect` call or a `Heal whom` prompt. The C64 side is
 `tools/c64/curedisease.py pool`.
 
 ## What stays open
 
-* **The Amiga duration unit is PROBABLE minutes, not measured.** The
-  evidence: the Amiga pushes the same constants as DOS (1440 for this node,
-  10080 for the cure), and the build is a mechanical translation of DOS
-  (`docs/124-amiga-port.md` 1.3). To settle it: in Amiga Curse under
-  `tools/amiga/fsuaepor.py serve --floppy ...`, lay on hands, save, rest a
-  known number of hours, save again, and read the paladin's 140 node.
-  Minutes are confirmed if the duration word drops from 1440 by 60 per hour
-  rested.
-* **Whether any Amiga Silver Blades or Pools of Darkness path dispatches a
-  140 node through the handler table is UNKNOWN.** 140 is past both tables'
-  ends. `remove_affect` dispatches only a node whose flag byte is set, and the
-  heal node's flag is 0, so expiry and Dispel Magic never reach the table
-  with it. The other 15 callers of Silver Blades' dispatcher (`0120DC`) have
-  not been read. The engine creates this node in ordinary play, so a crash
-  here would be a well-known bug. To settle it statically: read each caller
-  of `0120DC` for one that passes a node's own id without testing its flag.
-  To settle it driven: lay on hands in Amiga Silver Blades, fight one combat
-  and rest a day, and check that HEAL returns and the game does not crash.
-* **When a C64 row expires away from camp** is #600's open question and
+* **The Amiga duration unit has not been measured in the running game.** The
+  bytecode settles it (above). The driven check is still the one to run: in
+  Amiga Curse, GWYDION (the pregen paladin in `SAVE/` on disk A, class 3)
+  lays on hands, the party saves, rests a known number of hours and saves
+  again. The paladin's 140 node should drop from 1440 by 60 per hour.
+  `tools/amiga/fsuaepor.py curse-stage` and `serve --floppy curse1.adf
+  --floppy curse2.adf --window 704x556` boot Curse under FS-UAE to its code
+  wheel. There the private repository's reader, reached through
+  `fsuaepor.py wheel`, rejects the capture. At the best sampling offset its
+  rune matches score 0.905 and 0.986 against its 0.95 threshold, with
+  runners-up of 0.43 and 0.78. Its prompt fit scores 0.79 against 0.99. So
+  the reader needs tuning to FS-UAE's capture, in that repository, or the
+  run has to go through WinUAE with `tools/amiga/amigacursewheel.py`.
+* **When a C64 row expires away from camp** is #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s open question and
   applies to lay on hands unchanged. The one-row staging on `SSBC.D64` in
-  #600's stage 7 comment settles it for both timers.
+  #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s stage 7 comment settles it for both timers.
 
 ## Negative results
 
 * No save on this machine holds a paladin with a lay-on-hands node or row.
-  #600's census found none on the C64 or DOS. The Amiga readers' own census
+  #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s census found none on the C64 or DOS. The Amiga readers' own census
   (`docs/124-amiga-port.md`) found 11 of 11 nodes with duration 0. So this
   reading has not been checked against a save the game wrote after a HEAL.
   A DOS Silver Blades save made with `tools/dos/ssbimport.py` before and

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Drive Amiga Pool of Radiance in the stock FS-UAE inside an instance-pool slot.
+"""Drive Amiga Pool of Radiance and Curse in the stock FS-UAE inside an instance-pool slot.
 
-WinUAE lives in the Windows guest, which an agent inside the Ubuntu sandbox
-has no key for.  The stock `fs-uae` here runs the same `/program`, so a
-question about what the game does with a record is answered by it as well:
+FS-UAE is a second emulator the Amiga tools can use alongside WinUAE: it runs
+here, in a pool slot, and it runs the same `/program`, so a question about
+what the game does with a record can be answered in either:
 
     fsuaepor.py stage --out DIR --from ADF --slot C --name 1='MARY\\xffSUE'
     tools/registry/instance.py claim --game amiga-por --note NOTE -- \\
@@ -21,6 +21,25 @@ images in DIR, DF0 first, for another title.  It stays in the slot's
 process group, so the pool's teardown ends both.  `keys` and `shot` reach that
 display with `xdotool` and `import`; `names` prints every slot's names as the
 engine left them, to the first NUL and past it.
+
+Amiga Curse boots the same way from its own two disks, and asks its code
+wheel before it will play:
+
+    fsuaepor.py curse-stage --out DIR
+    tools/registry/instance.py claim --game amiga-curse --note NOTE -- \\
+        .venv/bin/python tools/amiga/fsuaepor.py serve --run DIR \\
+        --floppy curse1.adf --floppy curse2.adf
+    WHEELVENV/bin/python tools/amiga/fsuaepor.py wheel --display :10
+
+`curse-stage` copies disks A and B out of the registry, writable, as
+`curse1.adf` and `curse2.adf`.  `wheel` reads the challenge off the slot's
+display with the private code-wheel repository's reader and types the answer,
+printing only `answered` or `no challenge on screen`; the reader needs `numpy`,
+which this project's environment does not have.  Serve Curse with `--window
+704x556`, which draws each Amiga pixel exactly twice.  Even so the reader does
+not yet accept a stock FS-UAE capture -- its rune match and prompt fit fall
+short of its own thresholds -- so `wheel` prints `no challenge on screen` and
+the title stops at the wheel.
 """
 
 from __future__ import annotations
@@ -207,6 +226,82 @@ def stage(args) -> int:
     return 0
 
 
+#: Amiga Curse's game disks, by volume name, in drive order.
+CURSE_VOLUMES = ("CurseA", "CurseB")
+
+
+def curse_disks() -> list[bytes]:
+    """Curse disks A and B out of the registry's `amiga` entry, read-only."""
+    for root in gamedisks.candidates("amiga"):
+        found: dict[str, bytes] = {}
+        for adf in sorted(root.rglob("*.adf")):
+            data = adf.read_bytes()
+            try:
+                volume = AmigaDisk(data).volume_name
+            except Exception:
+                continue
+            if volume in CURSE_VOLUMES:
+                found.setdefault(volume, data)
+        if all(v in found for v in CURSE_VOLUMES):
+            return [found[v] for v in CURSE_VOLUMES]
+    raise SystemExit("no Amiga Curse disks (CurseA, CurseB) in the registry")
+
+
+def curse_stage(args) -> int:
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    for n, data in enumerate(curse_disks(), 1):
+        path = out / f"curse{n}.adf"
+        path.write_bytes(data)
+        os.chmod(path, 0o644)
+        print(f"staged {path}")
+    return 0
+
+
+def wheel(args) -> int:
+    """Answer Curse's code wheel on the slot's display; print only the outcome.
+
+    The same reader and arithmetic as `amigacursewheel.py`, which drives
+    WinUAE; neither the challenge nor the answer is printed or kept.
+    """
+    import tempfile
+
+    from tools.amiga import amigacursewheel
+    screen, arithmetic = amigacursewheel._wheel_modules()
+    assets = pathlib.Path(tempfile.mkdtemp(prefix="cursewheel-"))
+    handle = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    handle.close()
+    grab = pathlib.Path(handle.name)
+    try:
+        # The reader loads the rune tiles and the font from a directory of its
+        # own that the disks are unpacked into; point it at a private copy
+        # read from the registry's disks rather than write into its tree.
+        for disk, (drawer, name) in zip(curse_disks(), (("DISKA", "CURSE.FON"),
+                                                        ("DISKB", "TILES.TLB"))):
+            (assets / f"{drawer}_{name}").write_bytes(
+                AmigaDisk(disk).read_file(f"{drawer}/{name}"))
+        screen.EXE = assets
+        subprocess.run(["import", "-display", args.display, "-window", "root",
+                        str(grab)], env=_xenv(args.display), check=True)
+        challenge = screen.read_challenge(
+            amigacursewheel._to_reader_scale(grab, screen))
+        if challenge is None:
+            print("no challenge on screen")
+            return 1
+        character = arithmetic.answer_from_screen(
+            challenge["box"], challenge["pattern"],
+            challenge["espruar"], challenge["dethek"])
+    finally:
+        grab.unlink(missing_ok=True)
+        for leftover in assets.iterdir():
+            leftover.unlink()
+        assets.rmdir()
+    keys(argparse.Namespace(display=args.display, key=[character.lower(), "Return"],
+                            hold=0.12, settle=args.settle))
+    print("answered")
+    return 0
+
+
 def kickstart() -> pathlib.Path:
     for root in gamedisks.candidates("kickstarts"):
         if (root / KICKSTART).exists():
@@ -234,11 +329,12 @@ def serve(args) -> int:
               [run / name for name in ("por1.adf", "por2.adf", "poolsave.adf")
                if (run / name).exists()])
     floppies = [f"--floppy_drive_{i}={image}" for i, image in enumerate(images)]
+    width, height = (int(n) for n in args.window.split("x"))
     argv = ["fs-uae", f"--base_dir={base}", "--amiga_model=A500",
             f"--kickstart_file={kickstart()}",
             *floppies,
             "--writable_floppy_images=1", "--floppy_drive_speed=0",
-            "--fullscreen=0", "--window_width=720", "--window_height=568",
+            "--fullscreen=0", f"--window_width={width}", f"--window_height={height}",
             "--automatic_input_grab=0", "--initial_input_grab=0",
             "--volume=0", "--joystick_port_1=none"]
     emulator = subprocess.Popen(argv, env=env, cwd=str(run),
@@ -313,6 +409,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--floppy", action="append",
                    help="an image in --run for the next drive, DF0 first; "
                         "default por1.adf, por2.adf and poolsave.adf if staged")
+    p.add_argument("--window", default="720x568",
+                   help="fs-uae's window, WxH; 704x556 draws each Amiga pixel "
+                        "exactly twice, which Curse's code-wheel reader needs")
     p.set_defaults(func=serve)
     p = sub.add_parser("keys", help="press xdotool keys, one at a time")
     p.add_argument("--display", required=True)
@@ -324,6 +423,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--display", required=True)
     p.add_argument("path")
     p.set_defaults(func=shot)
+    p = sub.add_parser("curse-stage", help="copy Curse disks A and B into DIR")
+    p.add_argument("--out", required=True)
+    p.set_defaults(func=curse_stage)
+    p = sub.add_parser("wheel", help="answer Curse's code wheel on the display")
+    p.add_argument("--display", required=True)
+    p.add_argument("--settle", type=float, default=1.0)
+    p.set_defaults(func=wheel)
     p = sub.add_parser("names", help="every slot's names on a disk 1")
     p.add_argument("adf")
     p.set_defaults(func=names)

@@ -3,6 +3,7 @@
 
     tools/amiga/amigalayonhands.py
     tools/amiga/amigalayonhands.py --title secret-of-the-silver-blades
+    tools/amiga/amigalayonhands.py --dispatch --title pools-of-darkness
 
 The Amiga port keeps no lay-on-hands byte, exactly as DOS does: HEAL adds a
 ten-byte effect node to the paladin's chain, and the sheet offers HEAL only
@@ -24,7 +25,15 @@ Read from each executable by instruction pattern, not by address:
   byte its routine decrements;
 * the effect **handler table** -- the dispatcher `remove_affect` calls when
   a node's flag is set, and the ids the start-up code fills in it -- so the
-  heal id can be seen to lie inside it or past its end.
+  heal id can be seen to lie inside it or past its end;
+* the **expiry routine** -- the clock's scale table, `10, 10, 6, 24, ...`
+  as in DOS, and the `sub.w` that takes the elapsed count off node `+2`.
+
+`--dispatch` also classifies every caller of the handler dispatcher by
+where the id it passes comes from: a constant, a routine argument whose
+callers all pass constants, a node whose flag byte is tested first, or the
+item path that the dispatcher sends to another routine without touching the
+table.  Anything else prints as unread.
 
 Pool of Radiance has no heal call and no `Heal whom` prompt.  Executables
 come from the registry's `amiga` disks, read-only; nothing is written.
@@ -211,7 +220,178 @@ def handler_table(raw: bytes, exe) -> dict:
     top = max(filled)
     return {"dispatcher": dispatcher, "table": table, "highest": top,
             "unfilled": tuple(e for e in range(1, top) if e not in filled),
-            "filled": filled}
+            "filled": filled, "indexers": indexers(raw, exe, table)}
+
+
+def indexers(raw: bytes, exe, table: int) -> tuple:
+    """Every `lea table(a4), An` in the code: the places that can index it."""
+    code = _code(exe)
+    d16 = struct.pack(">h", table - amiga68k.SMALL_DATA_BIAS)
+    return tuple(m.start() for m in re.finditer(rb"[\x41\x43\x45\x47\x49\x4b\x4d]\xec"
+                                                + re.escape(d16), raw)
+                 if m.start() % 2 == 0 and code.holds(m.start()))
+
+
+#: `lea d16(a4), a0 / mulu.w (a0, d0.l), Dn`: the expiry routine scaling the
+#: elapsed count by the clock's table.
+#: Pools of Darkness clears the count's high word first (`swap / clr.w / swap`).
+_SCALE = re.compile(rb"\x41\xec(..)(?:\x48[\x40-\x47]\x42[\x40-\x47]\x48[\x40-\x47])?[\xc0-\xcf]\xf0\x08\x00",
+                    re.S)
+
+
+def expiry(raw: bytes, exe) -> dict:
+    """The expiry routine's scale table and its subtract from node `+2`.
+
+    The routine multiplies the elapsed count by table words 1 to unit - 1,
+    then takes at most ten off each node's duration word per pass: so with
+    the table `10, 10, 6, 24` a count in unit 3 reaches the node as 60 times
+    itself and one in unit 4 as 1440 times -- an hour and a day in minutes.
+    """
+    code, data = _code(exe), exe.small_data
+    for m in _SCALE.finditer(raw):
+        if m.start() % 2 or not code.holds(m.start()):
+            continue
+        g = amiga68k.SMALL_DATA_BIAS + _s16(m.group(1))
+        lea = raw.find(b"\x41\xea\x00\x02", m.end(), m.end() + 0x100)
+        sub = raw.find(b"\x91\x50", lea, lea + 10) if lea > 0 else -1
+        if sub < 0:
+            continue
+        table = struct.unpack(">7H", raw[data.file_offset + g:data.file_offset + g + 14])
+        minutes = [1]
+        for word in table[1:4]:
+            minutes.append(minutes[-1] * word)
+        return {"scale_site": m.start(), "table": table, "table_global": g,
+                "subtract_site": sub, "unit_minutes": tuple(minutes)}
+    raise ValueError("no expiry routine")
+
+
+# -- who hands the dispatcher an id -----------------------------------------
+
+#: `moveq #0, d0 / move.b Dn, d0 / move.w d0, -(a7)`: a byte register pushed.
+_REG_PUSH = re.compile(rb"\x70\x00\x10([\x00-\x07])\x3f\x00\Z", re.S)
+
+#: remove_affect: `tst.b 5(a2) / beq.b / move.w #1, -(a7) / move.l a2, -(a7) /
+#: move.l Rn, -(a7)`, then the id register pushed as above.
+_GATED = re.compile(rb"\x4a\x2a\x00\x05\x67.\x3f\x3c\x00\x01\x2f\x0a\x2f."
+                    rb"\x70\x00\x10.\x3f\x00\Z", re.S)
+
+
+#: `moveq #0, d0 / move.b $40(An), d0 / move.w d0, -(a7)`: an item's effect
+#: byte pushed as the id.
+_ITEM_ID = re.compile(rb"\x70\x00\x10[\x28-\x2f]\x00\x40\x3f\x00\Z", re.S)
+
+
+@dataclasses.dataclass(frozen=True)
+class Dispatch:
+    site: int           # the `jsr`/`bsr` to the dispatcher
+    kind: str           # constant | argument | flag-tested | item | item-id | unread
+    ids: tuple          # the ids it can pass, where they are constants
+    via: int | None     # the wrapper routine, for `argument`
+
+
+def call_sites(raw: bytes, exe, target: int) -> list[int]:
+    """Every `jsr`/`bsr` to `target`, direct or through the a4 jump table."""
+    code = _code(exe)
+    lo, hi = code.file_offset, code.file_offset + code.size
+    out = [p for p in amiga68k.pc_references(raw, target, lo, hi)
+           if raw[p:p + 2] == b"\x4e\xba" or raw[p] == 0x61]
+    for p in range(lo, hi - 4, 2):
+        if raw[p:p + 2] == b"\x4e\xac" and exe.resolve_a4(_s16(raw[p + 2:p + 4])) == target:
+            out.append(p)
+    return sorted(out)
+
+
+def _routine_span(raw: bytes, code, at: int) -> tuple[int, int]:
+    """From the nearest `link.w a5` or `movem.l ..., -(a7)` at or before `at`
+    to the next one after it: the routine, with any strings behind it."""
+    lo = code.file_offset
+    start = max(_aligned(raw, b"\x4e\x55", at + 2, back=True, lo=lo),
+                _aligned(raw, b"\x48\xe7", at + 2, back=True, lo=lo))
+    ends = [e for e in (_aligned(raw, b"\x4e\x55", at + 2), _aligned(raw, b"\x48\xe7", at + 2))
+            if e > at]
+    return start, min(ends) if ends else code.file_offset + code.size
+
+
+def branches(raw: bytes, start: int, end: int) -> set[tuple[int, int]]:
+    """`(source, target)` of every branch and jump-table entry in a stretch."""
+    ins = _insns(raw, start, end)
+    out = set()
+    for k, i in enumerate(ins):
+        op = i.mnemonic.split(".")[0]
+        if (op.startswith("b") and op not in ("btst", "bset", "bclr", "bchg")) \
+                or op.startswith("db"):
+            m = re.search(r"\$([0-9a-f]+)$", i.op_str)
+            if m:
+                out.add((i.address, int(m.group(1), 16)))
+        elif op == "jmp" and re.fullmatch(r"\$[0-9a-f]+\(pc,d0\.w\)", i.op_str) and k >= 3:
+            base = int(i.op_str[1:].split("(")[0], 16)
+            load = re.fullmatch(r"\$([0-9a-f]+)\(pc, d0\.w\), d0", ins[k - 1].op_str)
+            bound = next((re.fullmatch(r"#\$([0-9a-f]+), d0", j.op_str)
+                          for j in ins[k - 4:k - 1] if j.mnemonic == "cmpi.w"), None)
+            if load and bound:
+                table = int(load.group(1), 16)
+                for e in range(int(bound.group(1), 16)):
+                    out.add((i.address, base + _s16(raw[table + 2 * e:table + 2 * e + 2])))
+    return out
+
+
+def _constant_id(raw: bytes, site: int) -> int | None:
+    """The id of `move.w #id, -(a7) / jsr`, the push nearest the call."""
+    if raw[site - 4:site - 2] == b"\x3f\x3c":
+        return struct.unpack(">H", raw[site - 2:site])[0]
+    return None
+
+
+def _argument_register(raw: bytes, code, site: int, reg: int) -> int | None:
+    """The routine around `site` if `reg` is its byte argument `$d(a5)` and
+    nothing else in the routine writes it; else None."""
+    start = _aligned(raw, b"\x4e\x55", site, back=True, lo=code.file_offset)
+    load = bytes((0x10 | reg << 1, 0x2D, 0x00, 0x0D))
+    at = raw.find(load, start, start + 0x20)
+    if at < 0:
+        return None
+    for i in _insns(raw, at + 4, site):
+        if i.op_str.split(", ")[-1] == f"d{reg}" and not i.mnemonic.startswith(("cmp", "tst")):
+            return None
+    return start
+
+
+def dispatch_callers(raw: bytes, exe, table: dict) -> list[Dispatch]:
+    """Every caller of the handler dispatcher, by where its id comes from."""
+    code = _code(exe)
+    d = table["dispatcher"]
+    head = raw[d:d + 0x14]
+    at = head.find(b"\x4a\x2c")
+    item_flag = raw[d + at + 2:d + at + 4]
+    set_flag = b"\x19\x7c\x00\x01" + item_flag
+    out = []
+    for s in call_sites(raw, exe, d):
+        before = raw[s - 0x20:s]
+        eid = _constant_id(raw, s)
+        p = raw.rfind(set_flag, s - 0x30, s)
+        # The flag set reaches the call only if nothing in the routine
+        # outside the stretch between them jumps into it.
+        if p >= 0 and not any(p < t <= s and not p <= f < s for f, t in
+                              branches(raw, *_routine_span(raw, code, p))):
+            out.append(Dispatch(s, "item", (), None))
+        elif _ITEM_ID.search(before):
+            out.append(Dispatch(s, "item-id", (), None))
+        elif eid is not None:
+            out.append(Dispatch(s, "constant", (eid,), None))
+        elif _GATED.search(before):
+            out.append(Dispatch(s, "flag-tested", (), None))
+        elif (m := _REG_PUSH.search(before)) and (
+                wrapper := _argument_register(raw, code, s, m.group(1)[0])) is not None:
+            # `move.w #id, -(a7) / move.l a2|a3, -(a7) / jsr wrapper`
+            ids = [struct.unpack(">H", raw[c - 4:c - 2])[0] if raw[c - 6:c - 4] == b"\x3f\x3c"
+                   and raw[c - 2:c] in (b"\x2f\x0a", b"\x2f\x0b") else None
+                   for c in call_sites(raw, exe, wrapper)]
+            kind = "argument" if ids and None not in ids else "unread"
+            out.append(Dispatch(s, kind, tuple(sorted(set(i for i in ids if i is not None))),
+                                wrapper))
+        else:
+            out.append(Dispatch(s, "unread", (), None))
+    return out
 
 
 def inspect(raw: bytes, key: str) -> dict:
@@ -231,8 +411,22 @@ def inspect(raw: bytes, key: str) -> dict:
         add_affect_stores=(_STORE_ID in add, _STORE_DURATION in add),
         table=table, heal_handler=handler,
         heal_handler_empty=(handler is not None and raw[handler:handler + 2] == b"\x4e\x75"),
-        heal_pushes=pushes(raw, exe, heal.effect_id))
+        heal_pushes=pushes(raw, exe, heal.effect_id),
+        expiry=expiry(raw, exe), item_slot=item_slot(raw, table))
     return result
+
+
+def item_slot(raw: bytes, table: dict) -> int:
+    """The table slot the dispatcher's item path jumps through.
+
+    `tst.b flag(a4) / beq / ... / movea.l d16(a4), a0 / jsr (a0)`: with the
+    flag set, the dispatcher calls the routine stored here and never indexes
+    the table, so this slot is a pointer the start-up code fills like a
+    handler but no effect id selects.
+    """
+    d = table["dispatcher"]
+    at = raw.find(b"\x20\x6c", d, d + 0x30)
+    return (amiga68k.SMALL_DATA_BIAS + _s16(raw[at + 2:at + 4]) - table["table"]) // 4
 
 
 def pushes(raw: bytes, exe, eid: int) -> tuple:
@@ -280,18 +474,42 @@ def _print(f: dict) -> None:
     print(f"   cure routine {c.routine:06x}: id {c.effect_id} for {c.minutes} min, value "
           f"{c.value}, flag {c.flag}; decrements record "
           + (", ".join(f"0x{b:x}" for b in c.decrements) or "nothing"))
+    e = f["expiry"]
+    print(f"   expiry: scale table g{e['table_global']:04x} = {list(e['table'])} at "
+          f"{e['scale_site']:06x}, node +2 decremented at {e['subtract_site']:06x}; "
+          f"units 1-4 reach the node as {list(e['unit_minutes'])} minutes")
+    print(f"   slot {f['item_slot']} is the dispatcher's item path, not an effect handler")
+    print(f"   the table's base is loaded at {', '.join(f'{a:06x}' for a in t['indexers'])} only")
+
+
+def _print_dispatch(raw: bytes, key: str, f: dict) -> None:
+    exe = amiga68k.Executable.parse(raw)
+    found = dispatch_callers(raw, exe, f["table"])
+    heal = f["heal"].effect_id
+    print(f"   {len(found)} callers of dispatcher {f['table']['dispatcher']:06x}:")
+    for c in found:
+        via = f" via {c.via:06x}" if c.via is not None else ""
+        ids = (f" ids {c.ids[0]}" if len(c.ids) == 1 else
+               f" {len(c.ids)} ids {min(c.ids)}-{max(c.ids)}" if c.ids else "")
+        print(f"     {c.site:06x} {c.kind}{via}{ids}"
+              + ("  <-- can pass the heal id" if heal in c.ids or c.kind == "unread" else ""))
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--title", choices=sorted(TITLES), action="append")
+    ap.add_argument("--dispatch", action="store_true",
+                    help="also classify every caller of the handler dispatcher")
     a = ap.parse_args(argv)
     for key in a.title or list(TITLES):
         raw = executable(key)
         if raw is None:
             print(f"{key}: no executable on the registry's Amiga disks")
             continue
-        _print(inspect(raw, key))
+        f = inspect(raw, key)
+        _print(f)
+        if a.dispatch and f["heal"] is not None:
+            _print_dispatch(raw, key, f)
     return 0
 
 
