@@ -590,6 +590,182 @@ def test_a_c64_silver_blades_paladin_converts_with_protection_from_evil():
     assert _innate_drops(rep) == []
 
 
+# --- #621: a C64 trait slot the class table and the innate set both miss ---
+#
+# A C64 trait slot has no provenance byte, so the reader hands every
+# non-zero slot to `innate_effects` -- and #388's and #481's fixes both still
+# leave an id that is neither this title's own innate set nor a class seed
+# with nowhere to go.  SILAS, the sixth character of `PORSAVEA.D64` and
+# `PORSAVEB.D64`, carries two: Protection from Evil, 10' Radius (45) and
+# Detect Magic (5), both traced to his own DOS `CHRDATA6.SPC` --
+# `05 00 00 ff 00 08 00 5e 3b` then `2d 00 00 ff 00 00 00 00 00`, watched by
+# the DOS engine and kept unchanged across three clock minutes
+# (`docs/162-spc-permanence.md`).
+
+
+def _c64_item(effect: int = 0, power: int = 0, readied: bool = False
+              ) -> bytes:
+    """A synthetic sixteen-byte C64 item record naming only the readied
+    flag (byte 6 bit 7), the granted effect id (byte 14) and its power byte
+    (byte 15) -- the three bytes `c64_trait_nodes` rule 2 reads."""
+    item = bytearray(16)
+    if readied:
+        item[6] |= 0x80
+    item[14] = effect
+    item[15] = power
+    return bytes(item)
+
+
+def test_a_c64_pool_of_radiance_characters_permanent_ids_reach_the_spc_file():
+    """The test #621 is for: SILAS's two nodes, byte for byte his own
+    `CHRDATA6.SPC`, and no drop line -- red before `C64_TRAIT_PERMANENT_IDS`
+    existed, since neither 45 nor 5 is in Pool of Radiance's innate set or
+    race table."""
+    char = _c64_neutral(POOL.key, name="SILAS", innate_effects=[45, 5])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == bytes.fromhex("050000ff0000000000" "2d0000ff0000000000")
+    assert _innate_drops(rep) == []
+
+
+def test_a_dos_pool_of_radiance_character_round_trips_through_the_c64():
+    """DOS -> `to_neutral` -> `c64_codec.write` -> `c64_codec.read` ->
+    `dos_codec.write` gives back SILAS's own eighteen bytes exactly.  Before
+    the fix, the reader's trait slots read `2D 05` and the last write dropped
+    both ids."""
+    dos_char = _record(POOL, [
+        bytes.fromhex("050000ff00") + dos_codec.EFFECT_NEXT_NULL,
+        bytes.fromhex("2d0000ff00") + dos_codec.EFFECT_NEXT_NULL,
+    ])
+    neutral_char = dos_codec.to_neutral(dos_char)
+    c64_rec, _write_rep = c64_codec.write(neutral_char)
+    back = c64_codec.read(c64_rec, game=POOL.key,
+                          source="made up for the test")
+    assert sorted(back.get("innate_effects") or []) == [5, 45]
+    _rec, _itm, spc, rep = dos_codec.write(back)
+    assert spc == bytes.fromhex("050000ff0000000000" "2d0000ff0000000000")
+    assert _innate_drops(rep) == []
+
+
+def test_a_readied_pool_of_radiance_items_own_grant_reaches_the_spc_file():
+    """Rule 2: a readied item whose power byte is `0x80` grants the effect
+    its own byte 14 names, and gets `ITEM_GRANT_PAYLOAD` rather than
+    `INNATE_PAYLOAD` -- the shape `WISH-SPEC-por-item-granted` holds for
+    effect 61."""
+    item = _c64_item(effect=61, power=0x80, readied=True)
+    char = _c64_neutral(POOL.key, name="TESTER", innate_effects=[61],
+                        inventory=[item])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == bytes((61,)) + dos_codec.ITEM_GRANT_PAYLOAD + dos_codec.EFFECT_NEXT_NULL
+    assert _innate_drops(rep) == []
+
+
+def test_the_same_item_unreadied_grants_nothing_and_is_reported():
+    """The guard: an item sitting in the pack rather than worn grants
+    nothing, so its id is not one this character actually holds -- and it is
+    still reported rather than silently dropped."""
+    item = _c64_item(effect=61, power=0x80, readied=False)
+    char = _c64_neutral(POOL.key, name="TESTER", innate_effects=[61],
+                        inventory=[item])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == b""
+    assert _innate_drops(rep)
+
+
+def test_silver_blades_elf_racial_id_reaches_the_spc_file_by_its_race():
+    """Rule 1's race test: Secret of the Silver Blades' elf (race 1) carries
+    95 in `RACE_COMBAT_EFFECTS_SILVER_BLADES`, so a C64 trait slot holding it
+    converts as innate rather than being refused, guarded by the character's
+    own race the way `C64_CLASS_TRAITS` is guarded by class."""
+    char = _c64_neutral(SSB.key, name="TESTER", race=1, innate_effects=[95])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(95)
+    assert _innate_drops(rep) == []
+
+
+def test_silver_blades_gnomes_two_racial_ids_both_reach_the_spc_file():
+    char = _c64_neutral(SSB.key, name="TESTER", race=4,
+                        innate_effects=[48, 7])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(97) + _innate_node(48) + _innate_node(7)
+    assert _innate_drops(rep) == []
+
+
+def test_silver_blades_halflings_92_is_still_refused():
+    """Pinning what stays refused until #621's Stage 2 settles it: the
+    halfling's own C64 seed, 92, is not in
+    `RACE_COMBAT_EFFECTS_SILVER_BLADES` (which gives the halfling only 97)
+    and not in `C64_TRAIT_PERMANENT_IDS`, so it is dropped by name rather
+    than guessed at."""
+    char = _c64_neutral(SSB.key, name="TESTER", race=5, innate_effects=[92])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(97)
+    drops = _innate_drops(rep)
+    assert len(drops) == 1
+    assert "92" in drops[0]
+
+
+def test_a_pool_readied_item_with_an_unread_power_byte_is_still_refused():
+    """Pinning the other open case: rule 2 is limited to power byte `0x80`
+    (#621's Stage 2b is what would widen it), so a readied item granting 38
+    with a different power byte is dropped by name."""
+    item = _c64_item(effect=38, power=0x83, readied=True)
+    char = _c64_neutral(POOL.key, name="TESTER", innate_effects=[38],
+                        inventory=[item])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == b""
+    drops = _innate_drops(rep)
+    assert len(drops) == 1
+    assert "38" in drops[0]
+
+
+# --- #624: the Amiga side of the same classification -----------------------
+
+@pytest.mark.parametrize("key", [CURSE.key, SSB.key])
+def test_a_c64_paladin_saved_to_the_amiga_gets_protection_from_evil(key):
+    """`#624 (A C64 paladin saved as an Amiga Curse or Silver Blades save
+    gets Protection from Evil, 10' Radius instead of Protection from Evil,
+    with no report)`: `_later_effect_nodes` used to write the untranslated
+    45 straight from the neutral record.  Red before the fix: `built.effects`
+    held `amiga_por_effect_from_dos(_innate_node(45))` instead."""
+    from goldbox import amiga_later, amiga_por
+
+    char = _c64_neutral(key, name="TESTER",
+                        class_bits=dos_codec.PALADIN_CLASS_BIT,
+                        innate_effects=[PALADIN_C64_TRAIT])
+    built, rep = amiga_later.write_later(char)
+    assert built.effects == (amiga_por.amiga_por_effect_from_dos(
+        _innate_node(PALADIN_EFFECT)),)
+    assert _innate_drops(rep) == []
+
+
+@pytest.mark.parametrize("key", [CURSE.key, SSB.key])
+def test_a_c64_cleric_saved_to_the_amiga_gains_no_paladins_effect(key):
+    """The guard on the Amiga side: a cleric's own 45 is neither title's own
+    innate id, so it gets no node at all here -- the same refusal
+    `test_a_c64_cleric_carrying_the_same_id_gains_no_paladins_effect` pins on
+    the DOS side, reported rather than silently turned into the paladin's
+    8."""
+    from goldbox import amiga_later
+
+    char = _c64_neutral(key, name="TESTER", class_bits=2,
+                        innate_effects=[PALADIN_C64_TRAIT])
+    built, rep = amiga_later.write_later(char)
+    assert built.effects == ()
+    assert _innate_drops(rep)
+
+
+def test_a_c64_pool_of_radiance_character_has_no_innate_drop_line_on_the_amiga():
+    """`goldbox.amiga_por.write_por` builds an Amiga Pool of Radiance record
+    through `dos_codec.write` and needs no change of its own; SILAS's two ids
+    convert there exactly as they do to DOS, as two ten-byte Amiga nodes."""
+    from goldbox import amiga_por
+
+    char = _c64_neutral(POOL.key, name="SILAS", innate_effects=[45, 5])
+    _rec, _itm, spc, rep = amiga_por.write_por(char)
+    assert len(spc) == 2 * 10
+    assert _innate_drops(rep) == []
+
+
 def test_a_dos_paladin_crossing_to_the_c64_and_back_keeps_his_effect():
     """The round trip the fix must not have broken.  A DOS paladin's 8 is
     written into a C64 trait slot as 8, read back as 8, and written out as 8

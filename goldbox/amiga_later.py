@@ -1535,11 +1535,24 @@ LATER_EFFECTS_FROM_NEUTRAL = (
     "none is derived from the character's race")
 
 
-def _later_effect_nodes(char: NeutralCharacter) -> list[bytes]:
+def _later_effect_nodes(char: NeutralCharacter,
+                         dos_deltas: "dos_port.DosDeltas") -> list[bytes]:
     """The Amiga effect chain for this character, one 10-byte node each.
 
     :data:`LATER_EFFECTS_FROM_NEUTRAL` says why this reads the neutral
-    record instead of `goldbox.dos_codec.write`'s `.SPC` payload.
+    record instead of `goldbox.dos_codec.write`'s `.SPC` payload.  `dos_deltas`
+    is the same `deltas.dos` `write_later` already hands that call, so the
+    two halves classify a C64 source's trait-slot ids the one way
+    (`#621`'s plan, closing `#624`, A C64 paladin saved as an Amiga Curse or
+    Silver Blades save gets Protection from Evil, 10' Radius instead of
+    Protection from Evil, with no report): a C64 source's `class_bits`
+    translate a class seed the way `goldbox.dos_codec.write`'s `.SPC` half does
+    (`_from_c64_class_traits`), and `goldbox.dos_codec.c64_trait_nodes` is then
+    what decides each remaining id's payload, so a paladin's 45 becomes 8
+    here exactly as it does in the `.SPC` file rather than crossing
+    untranslated.  Its drop list is discarded: `write_later` already copies
+    `dosrep.dropped`, which carries the same lines from the DOS half's own
+    call.
 
     **The id check below is a guard against an invariant held elsewhere, and
     it has never fired.**  Every reader in the tree fills these two lists as
@@ -1568,12 +1581,26 @@ def _later_effect_nodes(char: NeutralCharacter) -> list[bytes]:
         record = bytes(r)[:5].ljust(5, b"\0") + bytes(4)
         seen.add(record[0])
         nodes.append(amiga_por_effect_from_dos(record))
-    for e in char.get("innate_effects", ()) or ():
-        if int(e) in seen:
-            continue
-        seen.add(int(e))
-        nodes.append(amiga_por_effect_from_dos(
-            bytes((int(e),)) + _dos.INNATE_PAYLOAD + bytes(4)))
+    innate = [int(e) for e in (char.get("innate_effects", ()) or ())]
+    if char.port == "C64":
+        ids = _dos._from_c64_class_traits(
+            dos_deltas.key, int(char.get("class_bits", 0) or 0), innate)
+        race = int(char.get("race", 0) or 0)
+        inventory = [bytes(i) for i in (char.get("inventory") or ())]
+        records, _dropped = _dos.c64_trait_nodes(
+            dos_deltas, race, ids, inventory)
+        for record, _rule in records:
+            if record[0] in seen:
+                continue
+            seen.add(record[0])
+            nodes.append(amiga_por_effect_from_dos(record + bytes(4)))
+    else:
+        for e in innate:
+            if e in seen:
+                continue
+            seen.add(e)
+            nodes.append(amiga_por_effect_from_dos(
+                bytes((e,)) + _dos.INNATE_PAYLOAD + bytes(4)))
     return nodes
 
 
@@ -1639,7 +1666,7 @@ def write_later(char: NeutralCharacter,
     items = [AmigaItem.from_bytes(
         amiga_later_item_from_dos(itm[n * stride:(n + 1) * stride], deltas),
         deltas) for n in range(len(itm) // stride)]
-    effects = _later_effect_nodes(char)
+    effects = _later_effect_nodes(char, deltas.dos)
     built = AmigaCharacter.from_bytes(out, deltas, char.source or "converted",
                                       items, effects)
     # Read the patched block back, so the object this returns holds the same

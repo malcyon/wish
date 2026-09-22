@@ -646,6 +646,84 @@ INNATE_PAYLOAD = bytes((0x00, 0x00, 0xFF, 0x00))
 #: NULL terminator.  So this is what a converter writes.  CONFIRMED.
 EFFECT_NEXT_NULL = bytes(4)
 
+#: Bytes 1-4 of a `.SPC` record for a readied item's own grant, on Pool of
+#: Radiance -- `add_affect` at `GAME.OVR:0x11B35` writes data `0x0C`, flag 0
+#: for a readied item whose power byte is `0x80`, and the specimen
+#: `WISH-SPEC-por-item-granted` holds `3D 00 00 0C 00` for it.  Curse and
+#: Silver Blades have no item-granted `.SPC` node anywhere on this machine
+#: (`#621`'s plan, Stage 2b): this holds for Pool of Radiance and for this one
+#: power byte only, and is widened only by that stage's further reads.
+ITEM_GRANT_PAYLOAD = bytes((0x00, 0x00, 0x0C, 0x00))
+
+#: Ids whose DOS `.SPC` node is complete as `id + INNATE_PAYLOAD`, because
+#: nothing on this title reads the node past its duration -- confirmed for
+#: Pool of Radiance by reading the three handlers `GAME.OVR` dispatches to
+#: for these ids: effect 45's (`0xEFD2`) reads only the attacker's alignment,
+#: effect 5's (`0x11DF6`) never touches the node at all, and effect 89's
+#: (`0x110EB`), the one PROBABLE counterexample, is not either of these ids.
+#: SILAS's own `CHRDATA6.SPC` (`#621`, A C64 character carrying an effect in
+#: a trait slot cannot be saved as a DOS or Amiga save) is `05 00 00 FF 00 ...`
+#: and `2D 00 00 FF 00 ...`, exactly this shape, and the DOS engine itself
+#: kept both nodes unchanged across three clock minutes.  Widened only by
+#: that issue's Stage 2's further reads; nothing else adds a row.
+C64_TRAIT_PERMANENT_IDS: dict[str, frozenset[int]] = {
+    POOL_OF_RADIANCE.key: frozenset({5, 45}),
+}
+
+
+def c64_trait_nodes(deltas: "DosDeltas", race: int, ids: Iterable[int],
+                     inventory: Sequence[bytes]
+                     ) -> tuple[list[tuple[bytes, str]], list[str]]:
+    """The `.SPC` records a C64 source's trait-slot ids become, and the drop
+    lines for the ids that still have no known DOS form.
+
+    `ids` are already class-translated (`_from_c64_class_traits`).  A C64
+    trait slot carries a racial seed, a class seed or an item's grant in one
+    namespace with no byte saying which, so for each id the first matching
+    rule wins:
+
+    1. this title's own innate set (`_innate_effects`) or its race's own
+       combat ids (`_race_combat_effects`) -- `id + INNATE_PAYLOAD`, since
+       nothing past the duration is read for either;
+    2. on Pool of Radiance, a readied item in `inventory` granting this id
+       (`item[6] & 0x80`, `item[15] == 0x80`, `item[14] == id`) --
+       `id + ITEM_GRANT_PAYLOAD`;
+    3. in :data:`C64_TRAIT_PERMANENT_IDS` for this title -- `id + INNATE_PAYLOAD`;
+    4. otherwise, a drop line: the id is a permanent effect whose other four
+       bytes on this title have not been read, so no record is written.
+
+    Rule 1's records come first, in `ids`' own order.  Rules 2 and 3's follow
+    in **reverse** order, which is DOS's own chain order: the C64's own class
+    seed and item-grant routines fill trait slots from slot 9 down and DOS
+    appends a grant to the end of the chain (`#621`).
+    """
+    innate_ids = _innate_effects(deltas.key)
+    race_ids = _race_combat_effects(None, race, deltas)
+    granting = {
+        int(item[14]) for item in inventory
+        if deltas.key == POOL_OF_RADIANCE.key
+        and item[6] & 0x80 and item[15] == 0x80}
+    permanent = C64_TRAIT_PERMANENT_IDS.get(deltas.key, frozenset())
+
+    front: list[tuple[bytes, str]] = []
+    back: list[tuple[bytes, str]] = []
+    dropped: list[str] = []
+    for e in ids:
+        if e in innate_ids or e in race_ids:
+            front.append((bytes((e,)) + INNATE_PAYLOAD, "innate"))
+        elif e in granting:
+            back.append((bytes((e,)) + ITEM_GRANT_PAYLOAD, "item_grant"))
+        elif e in permanent:
+            back.append((bytes((e,)) + INNATE_PAYLOAD, "permanent"))
+        else:
+            dropped.append(
+                f"innate_effects {e} ({traits.describe(e)}): a permanent "
+                f"effect from a C64 trait slot whose other four bytes on "
+                f"this title have not been read, so no "
+                f"{deltas.effect_suffix} record is written for it")
+    return front + list(reversed(back)), dropped
+
+
 #: Race name -> the innate ids a **C64** record cannot hand over, because the
 #: C64 engine either works them out when the blow lands or keeps them inside
 #: another field, and stores no trait id for them at all.
@@ -4422,8 +4500,27 @@ def write(char: NeutralCharacter,
     race = int(w.get("race", 0) or 0)
     derived = [e for e in _race_combat_effects(char.game, race, deltas)
                if e not in converted]
-    innate_ids = _innate_effects(deltas.key)
-    keep = derived + [e for e in converted if e in innate_ids]
+    # A C64 trait slot has no provenance byte, so every id the reader could
+    # not classify itself landed in `innate_effects`, and a filter that only
+    # recognises this title's own innate set throws the rest away
+    # (#621, A C64 character carrying an effect in a trait slot cannot be
+    # saved as a DOS or Amiga save).  `c64_trait_nodes` is the C64-source
+    # classification; a source that is not C64 keeps the plain filter, which
+    # is what #388 measured against a DOS-written `.SPC` file.
+    if port == "C64":
+        trait_records, trait_dropped = c64_trait_nodes(
+            deltas, race, converted, projected)
+    else:
+        innate_ids = _innate_effects(deltas.key)
+        trait_records = [(bytes((e,)) + INNATE_PAYLOAD, "innate")
+                          for e in converted if e in innate_ids]
+        trait_dropped = [
+            f"innate_effects {e} ({traits.describe(e)}): not one of the "
+            f"ids the game's own importer keeps, so it is an item power "
+            f"or a running effect rather than an innate one and no "
+            f"{deltas.effect_suffix} record is written for it"
+            for e in converted if e not in innate_ids]
+    rep.dropped.extend(trait_dropped)
 
     # An item's grant follows the innate records in the same file, each one
     # its own five bytes rather than `INNATE_PAYLOAD`: a girdle's record
@@ -4445,20 +4542,17 @@ def write(char: NeutralCharacter,
     running = [bytes(g)[:5] + EFFECT_NEXT_NULL
                for g in (counting.value if counting is not None else ())]
 
-    spc = b"".join([bytes((e,)) + INNATE_PAYLOAD + EFFECT_NEXT_NULL
-                    for e in keep] + grants + running)
+    spc = b"".join(
+        [bytes((e,)) + INNATE_PAYLOAD + EFFECT_NEXT_NULL for e in derived] +
+        [rec + EFFECT_NEXT_NULL for rec, _rule in trait_records] +
+        grants + running)
     base = size + len(itm)
-    for n, e in enumerate(keep):
+    for n, e in enumerate(derived):
         at = base + n * EFFECT_SIZE
-        whence = (f"derived from race {race} -- the C64 works this one out "
-                  f"at combat time and stores it nowhere"
-                  if e in derived else
-                  f"{port} innate_effects {seeded[e]}, this title's own C64 "
-                  f"seed for the class, written as the id DOS names the same "
-                  f"effect by" if e in seeded else
-                  f"{port} innate_effects")
         rep.note(at, 1, f"{deltas.effect_suffix} record {n}: effect {e} "
-                        f"({traits.describe(e)}), {whence}")
+                        f"({traits.describe(e)}), derived from race {race} "
+                        f"-- the C64 works this one out at combat time and "
+                        f"stores it nowhere")
         rep.note(at + 1, 4,
                  f"{deltas.effect_suffix} record {n}: INNATE_PAYLOAD, the four "
                  f"bytes every innate specimen in the archives holds")
@@ -4466,8 +4560,39 @@ def write(char: NeutralCharacter,
                  f"{deltas.effect_suffix} record {n}: next pointer NULL -- the "
                  f"loader allocates a node per record and relinks them, and "
                  f"the count comes from the file's length")
+    for i, (node, rule) in enumerate(trait_records):
+        n = len(derived) + i
+        at = base + n * EFFECT_SIZE
+        e = node[0]
+        payload = node[1:5]
+        if rule == "innate" and e in seeded:
+            whence = (f"{port} innate_effects {seeded[e]}, this title's own "
+                      f"C64 seed for the class, written as the id DOS names "
+                      f"the same effect by")
+        elif rule == "item_grant":
+            whence = (f"{port} innate_effects, a readied item of this title "
+                      f"granting it (byte 6 bit 7, byte 15 0x80, byte 14 "
+                      f"the id)")
+        elif rule == "permanent":
+            whence = (f"{port} innate_effects, a C64 trait slot whose DOS "
+                      f"node this title's own handlers never read past the "
+                      f"duration")
+        else:
+            whence = f"{port} innate_effects"
+        payload_why = (
+            "INNATE_PAYLOAD, the four bytes every innate specimen in the "
+            "archives holds" if payload == INNATE_PAYLOAD else
+            "ITEM_GRANT_PAYLOAD, the four bytes a readied Pool of Radiance "
+            "item's own grant holds")
+        rep.note(at, 1, f"{deltas.effect_suffix} record {n}: effect {e} "
+                        f"({traits.describe(e)}), {whence}")
+        rep.note(at + 1, 4, f"{deltas.effect_suffix} record {n}: {payload_why}")
+        rep.note(at + 5, 4,
+                 f"{deltas.effect_suffix} record {n}: next pointer NULL -- the "
+                 f"loader allocates a node per record and relinks them, and "
+                 f"the count comes from the file's length")
     for i, g in enumerate(grants):
-        n = len(keep) + i
+        n = len(derived) + len(trait_records) + i
         at = base + n * EFFECT_SIZE
         rep.note(at, 1, f"{deltas.effect_suffix} record {n}: effect {g[0]} "
                         f"({traits.describe(g[0])}), {port} granted_effects")
@@ -4484,7 +4609,7 @@ def write(char: NeutralCharacter,
                  f"loader allocates a node per record and relinks them, and "
                  f"the count comes from the file's length")
     for i, g in enumerate(running):
-        n = len(keep) + len(grants) + i
+        n = len(derived) + len(trait_records) + len(grants) + i
         at = base + n * EFFECT_SIZE
         minutes = int.from_bytes(g[1:3], "little")
         rep.note(at, 1, f"{deltas.effect_suffix} record {n}: effect {g[0]} "
@@ -4500,13 +4625,6 @@ def write(char: NeutralCharacter,
                  f"{deltas.effect_suffix} record {n}: next pointer NULL -- the "
                  f"loader allocates a node per record and relinks them, and "
                  f"the count comes from the file's length")
-    for e in converted:
-        if e not in innate_ids:
-            rep.dropped.append(
-                f"innate_effects {e} ({traits.describe(e)}): not one of the "
-                f"ids the game's own importer keeps, so it is an item power "
-                f"or a running effect rather than an innate one and no "
-                f"{deltas.effect_suffix} record is written for it")
 
     # -- computed, not copied ------------------------------------------------
     count = min(len(projected), 0xFF)

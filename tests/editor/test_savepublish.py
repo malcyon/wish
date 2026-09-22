@@ -306,6 +306,40 @@ def test_no_pool_of_radiance_c64_save_is_refused_for_the_altered_flag(
             if any("flags_0b8" in line for line in lost)} == {}
 
 
+def test_every_pool_of_radiance_c64_save_goes_ahead_to_dos(tmp_path):
+    """`#621 (A C64 character carrying an effect in a trait slot cannot be
+    saved as a DOS or Amiga save, because the writer keeps only the eight
+    ids the game's own importer keeps)`: SILAS, the sixth character of
+    `PORSAVEA.D64` and `PORSAVEB.D64`, carries Protection from Evil, 10'
+    Radius and Detect Magic in trait slots, which the writer used to drop
+    and refuse the whole save for. Every non-roster Pool of Radiance C64 save
+    on this machine now goes ahead. Skips where this machine's registry has
+    no Pool of Radiance C64 disks or no DOS Pool of Radiance game folder.
+    """
+    saves = _c64_pool_saves()
+    files_for = _registry_game_files(POOL_OF_RADIANCE)
+    game_folder = _dos_game_folder()
+    if not saves or files_for is None or game_folder is None:
+        pytest.skip("needs the Pool of Radiance C64 disks and DOS game folder")
+    assets = saveplan.Assets(dos_folder=game_folder, source_files=files_for)
+    went_ahead, refused, roster_disks = [], {}, []
+    for path in saves:
+        party = Party(str(path))
+        if saveplan.prepare(party) is None:
+            roster_disks.append(path.name)
+            continue
+        try:
+            saveplan.prepare_save_as(party, "dos", tmp_path / path.stem,
+                                     assets)
+        except saveplan.DroppedFields as caught:
+            refused[path.name] = caught.lost
+        else:
+            went_ahead.append(path.name)
+
+    assert went_ahead, f"every save refused: {refused}"
+    assert refused == {}, refused
+
+
 def test_a_native_copy_needs_no_game_data_and_has_no_conversion_report(
         tmp_path):
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
