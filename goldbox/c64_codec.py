@@ -720,7 +720,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     rep = Report()
     port = char.port
     deltas = deltas_for(char.game)
-    w = neutral.Writer(char, rep, into="C64", dropped=DROPPED)
+    w = neutral.Writer(char, rep, into="C64", dropped=DROPPED, derived=DERIVED)
     use, emit = w.use, w.emit
 
     # -- the name: 20 NUL-padded bytes ---------------------------------------
@@ -1639,8 +1639,6 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
 #: Neutral fields the C64 writer takes nothing from, and why.  Reported by
 #: `Writer.finish` for any character that carries one, never silent.
 DROPPED: tuple[tuple[str, str], ...] = (
-    ("infravision", "the C64 computes its own from race, so a source's value "
-                    "is recomputed rather than copied"),
     ("running_effects", "the C64 keeps a running effect in the save's own "
                         "64-slot active-effect arrays (`goldbox/effects.py`) "
                         "and not in the character record, and `write_c64_save` "
@@ -1693,6 +1691,12 @@ DROPPED: tuple[tuple[str, str], ...] = (
 #: destination's own arithmetic and not a loss, and that rests on a
 #: measurement rather than on the move being convenient.
 DERIVED: tuple[tuple[str, str], ...] = (
+    ("infravision", "the C64 computes its own from race, on `write`'s own "
+                    "line above: `rec.set(\"infravision\", "
+                    "_infravision(char.game, w.get(\"race\", 0)))` sets the "
+                    "byte from the destination title's own race table, so a "
+                    "source's value is not lost, it is replaced by the "
+                    "destination's own answer for the same race"),
     ("encumbrance", "the C64 record has no encumbrance field -- `encumbrance` "
                     "is in no C64 layout -- and the engine works the total out "
                     "again from the seven purses and the item weights the "

@@ -210,17 +210,32 @@ def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
     the writer converts -- would usually be a field this module claims to
     convert in a direction it cannot even read.
 
-    `innate_effects` is the one exception, and it is a classification rather
+    `innate_effects` is one exception, and it is a classification rather
     than a byte. The reader cannot tell an innate node from a readied item's
     grant in this title, so it puts every node that never expires into
     `granted_effects`; a DOS or C64 source *has* made that split, and the
-    writer puts both lists into the one chain the record holds. 1 of 1, named
-    here so a second one cannot appear without this going red.
+    writer puts both lists into the one chain the record holds.
+
+    `attack_level` is the other. The reader has no byte to give -- this
+    title's own engine keeps no such field, so reading one would be
+    inventing a value -- while the writer has one and reports it as
+    `derived` rather than `dropped`, because the destination rebuilds it
+    from class and level on load. Both statements are true at once: a name
+    can be on `POD_READ_DROPPED` for want of a byte and off
+    `POD_WRITE_DROPPED` because the destination needs no byte either. 2 of 2,
+    named here so a third cannot appear without this going red.
+
+    `portrait_head` and `portrait_body` moving to `POD_WRITE_CONSTANTS`
+    (`#617`) took the writer's last member the reader does not also drop, so
+    `writer - reader` is now empty: every name the writer drops, the reader
+    drops too, the reverse of the function's own title. That reversal is a
+    fact about the two current lists rather than a defect, so it is pinned
+    here rather than smoothed over.
     """
     writer = {n for n, _ in amiga_pod.POD_WRITE_DROPPED}
     reader = {n for n, _ in amiga_pod.pod_read_dropped()}
-    assert reader - writer == {"innate_effects"}
-    assert writer - reader
+    assert reader - writer == {"attack_level", "innate_effects"}
+    assert not writer - reader
     assert amiga_pod.pod_write_field_disposition()["innate_effects"].startswith(
         "an id each")
     for name in READ_ONLY:

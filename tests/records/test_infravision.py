@@ -228,6 +228,36 @@ def test_a_c64_party_converted_to_dos_is_not_told_about_infravision():
     assert not [d for d in rep.dropped if "infravision" in d]
 
 
+def test_a_neutral_character_written_to_c64_is_not_told_about_infravision():
+    """The reverse conversion: `c64_codec.write` computes its own byte from
+    race the same way, so a source's `infravision` is a rebuild
+    (`c64_codec.DERIVED`), never a loss (`#617`).
+
+    Red before that move: with `infravision` still on `c64_codec.DROPPED`,
+    `write`'s own line -- `rec.set("infravision", _infravision(char.game,
+    w.get("race", 0)))` -- still recomputes the byte, but the report calls
+    the source's value dropped in the same breath."""
+    from support.neutralrecords import _filled
+
+    char = _filled()
+    char.set("infravision", 6, "made up: a source's own byte")
+
+    _, rep = c64_codec.write(char)
+
+    assert not [d for d in rep.dropped if "infravision" in d]
+    assert [d for d in rep.derived if "infravision" in d]
+
+
+def test_the_c64_writers_infravision_row_moved_from_dropped_to_derived():
+    """The tripwire the encumbrance move got, in
+    `tests/records/test_enccensus.py::test_the_c64_record_has_no_
+    encumbrance_to_check`, for the same reason: `write` has always
+    recomputed the byte from race (`_infravision`), and until `#617` the
+    report called that a loss anyway."""
+    assert "infravision" in dict(c64_codec.DERIVED)
+    assert "infravision" not in dict(c64_codec.DROPPED)
+
+
 # -- stage: the copy must stay writable, whatever --source arrived as (#495) -
 
 def _synthetic_save_disk(path: pathlib.Path) -> pathlib.Path:

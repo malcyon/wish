@@ -597,6 +597,10 @@ def losses(report: Any) -> list[str]:
     instead of trusting either list, because a name a destination could not
     hold whole can still reach neither list on its own if a writer forgets
     to copy it (`docs/227-editor-open-save-as.md`).
+
+    `report.derived` also exists, for a field the destination rebuilds on
+    load or holds a constant value for -- not a loss, so it is deliberately
+    not read here (`#617`).
     """
     if report is None:
         return []
