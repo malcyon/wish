@@ -84,10 +84,12 @@ flag 0, which is what character creation passes for every racial id.
 
 Un-readying the item calls `remove_affect` with the same byte `0x3D`
 (`0x11B61`). The ready path is gated on byte `0x3E` of the item being
-`>= 0x80` (`0x22334`, `0x22514`) -- bit 7 is "magical", the low seven bits
-select the kind of grant and zero means "grant byte `0x3D`", as in `coab`'s
-`calc_items_effects`. CONFIRMED for the gate and the arguments; PROBABLE that
-the low bits map exactly as Curse's do, since only the zero case was run.
+`>= 0x80` (`0x22514`) -- `0x22334` is the branch for a power below `0x80`, not
+this gate. Bit 7 is "magical"; in Pool of Radiance the low seven bits are the
+handler id, dispatched through the handler table at `0x11B35`, which covers
+powers `0x80`-`0x8B` (see `docs/230-who-reads-a-dos-effect-node.md`), not a
+kind-of-grant selector as in `coab`'s `calc_items_effects`. CONFIRMED for the
+gate, the arguments, and that the power byte is the handler id.
 
 **The three Amiga item specimens match these shapes byte for byte.** Their
 ten-byte nodes (`p105/saves/` (scratch, deleted), a rebuilt corpus): CONJURER

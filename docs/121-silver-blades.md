@@ -409,7 +409,7 @@ CANARY here — so only a title's own `ITEM<nn>` lists say what its indices mean
 
 | left | blocked on |
 |---|---|
-| items and coins across the import | no specimen carried either; a Curse party with an inventory settles the 256-byte item block |
+| items and coins across the import | a driven DOS run (`tools/dos/ssbimport.py`) found MATHEW's four Curse items did not come across: Curse item_count 4, Silver Blades record after import item_count 0, no `.STF` written; neither SECRET/GAME.OVR nor START.EXE names `.swg` or `.fx`. PROBABLE, one character |
 | `0x0EC` | class-shaped after an import, `0xFB` in every native pregen. UNKNOWN |
 | ~~Silver Blades' per-race trait table at `0x0AD`~~ **read** (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)) | `GEN $0C4B` seeds **two** slots from `$0C5B` and `$0C62`, which is why the shipped dwarf carries two entries where the import wrote one. Elf 95, half-elf 18, dwarf 26 and 47, gnome 48 and 7, halfling 92, human none; `GEN $0FF0` then writes 45 for a paladin and 105 for a ranger. §4.3 |
 | the area byte across a boundary | the run never left `GEO10`, so `Fingerprint`'s narrowing is untested here |
