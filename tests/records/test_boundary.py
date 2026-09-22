@@ -47,15 +47,6 @@ _RECOMPUTED_ON_A_C64_SOURCE = set(doswidths.RECOMPUTED)
 #: `_portrait_tables()` can read the menu.
 _PORTRAIT_FIELDS = ("portrait_head", "portrait_body")
 
-#: `dos_codec.write` takes these three (#612), but `dos_codec.to_neutral` has
-#: no matching read: a DOS record's own combat icon bytes never come back out
-#: into the neutral record, on any source, so a round trip through the DOS
-#: writer and reader always hands back `None` for a case that set one --
-#: `#627 (A DOS Pool of Radiance character's chosen combat icon is not read
-#: into the neutral record, so it converts to the Amiga as the engine's
-#: default)`. Out of the round trip until that reader exists.
-_ICON_FIELDS_DOS_CANNOT_READ_BACK = ("icon_head", "icon_body", "icon_colours")
-
 
 def _active_fields() -> list[str]:
     """Every neutral field `write_field_disposition` copies or transforms."""
@@ -86,8 +77,7 @@ def test_a_boundary_character_writes_and_reads_back_whole(name, caplog):
     build = CASES[name]
     char = build()
     tables = _portrait_tables()
-    excluded = set(_RECOMPUTED_ON_A_C64_SOURCE) | set(
-        _ICON_FIELDS_DOS_CANNOT_READ_BACK)
+    excluded = set(_RECOMPUTED_ON_A_C64_SOURCE)
     if tables is None:
         excluded |= set(_PORTRAIT_FIELDS)
 

@@ -156,6 +156,32 @@ def test_por_a_boundary_character_writes_and_reads_back_whole(name):
     assert _mismatches(char, back, POR) == {}, name
 
 
+def test_por_a_real_specimens_combat_icon_survives_amiga_to_neutral_and_back():
+    """A real Amiga Pool of Radiance record's own `icon_head`, `icon_body`
+    and `icon_colours` -- not a generated boundary case -- read into the
+    neutral record through `amiga_por.to_neutral` and written back out
+    through `amiga_por.write_por` unchanged (`#629`, `#627`)."""
+    from support.amigarecords import amiga_por_records
+
+    from goldbox.amiga_por import AmigaPorCharacter
+
+    seen = 0
+    for path in amiga_por_records():
+        c = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
+        want_head, want_body = c.get("icon_head"), c.get("icon_body")
+        want_colours = c.get("icon_colours")
+
+        neutral_char = amiga_por.to_neutral(c)
+        rec, _itm, _spc, _rep = amiga_por.write_por(neutral_char)
+        back = AmigaPorCharacter.from_bytes(rec, "round trip")
+
+        assert back.get("icon_head") == want_head, path
+        assert back.get("icon_body") == want_body, path
+        assert back.get("icon_colours") == want_colours, path
+        seen += 1
+    assert seen > 0
+
+
 @pytest.mark.parametrize("name", sorted(boundarychars.CASES))
 def test_por_the_memorised_list_and_the_spellbook_come_back_whole(name):
     char = boundarychars.CASES[name]()

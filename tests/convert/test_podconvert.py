@@ -104,43 +104,49 @@ def test_the_title_reads_and_writes_now_that_it_has_a_second_port():
 
 def test_a_chosen_combat_icon_writes_to_pools_of_darknesss_own_offsets():
     """`icon_head`, `icon_body` and `icon_colours` write to `0x19A`, `0x19B`
-    and `0x19E` -- no archive needed, since this is the writer's own table
-    rather than a real save.
-
-    **Not a full round trip**: `dos_codec.to_neutral` has no matching read
-    for a DOS source, of any of the four titles (`#627`), so reading the
-    written record straight back does not yet hand these three fields back.
-    """
+    and `0x19E`, and `dos_codec.to_neutral` reads the same three bytes back
+    unchanged (`#627`) -- no archive needed, since this is the writer's and
+    reader's own table rather than a real save."""
     table = dos_port.FIELDS_BY_NAME_FOR[POD.key]
     char = neutral.NeutralCharacter("test", source="made up", game=POD.key)
     char.set("icon_head", 5, "test: an arbitrary head within 0-13")
     char.set("icon_body", 9, "test: an arbitrary body within 0-31")
     colours = bytes.fromhex("91a2b3c4e6f7")
     char.set("icon_colours", colours, "test: an arbitrary six-byte palette")
-    rec, _itm, _spc, rep = dos_codec.write(char)
+    rec, itm, spc, rep = dos_codec.write(char)
     assert rep.losses == []
     assert rec[table["icon_head"].offset] == 5
     assert rec[table["icon_body"].offset] == 9
     at = table["icon_colours"].offset
     assert rec[at:at + 6] == colours
 
+    back = dos_codec.to_neutral(dos_codec.DosCharacter(rec, [], []))
+    assert back.get("icon_head") == 5
+    assert back.get("icon_body") == 9
+    assert bytes(back.get("icon_colours")) == colours
+
 
 def test_a_chosen_combat_icon_writes_to_pool_of_radiances_own_offsets():
     """The same three fields at Pool of Radiance's own offsets, `0x0BD`,
-    `0x0BE` and `0x0C1` -- a different title's layout, same writer path, and
-    the same read gap `#627` names."""
+    `0x0BE` and `0x0C1` -- a different title's layout, same writer and
+    reader path."""
     table = dos_port.FIELDS_BY_NAME_FOR[POOL.key]
     char = neutral.NeutralCharacter("test", source="made up", game=POOL.key)
     char.set("icon_head", 2, "test: an arbitrary head within 0-13")
     char.set("icon_body", 17, "test: an arbitrary body within 0-31")
     colours = bytes.fromhex("112233445566")
     char.set("icon_colours", colours, "test: an arbitrary six-byte palette")
-    rec, _itm, _spc, rep = dos_codec.write(char)
+    rec, itm, spc, rep = dos_codec.write(char)
     assert rep.losses == []
     assert rec[table["icon_head"].offset] == 2
     assert rec[table["icon_body"].offset] == 17
     at = table["icon_colours"].offset
     assert rec[at:at + 6] == colours
+
+    back = dos_codec.to_neutral(dos_codec.DosCharacter(rec, [], []))
+    assert back.get("icon_head") == 2
+    assert back.get("icon_body") == 17
+    assert bytes(back.get("icon_colours")) == colours
 
 
 def test_dos_write_refuses_an_icon_head_past_the_art_librarys_thirteen():
