@@ -52,9 +52,10 @@ RULES: dict[tuple[str, str], Rule] = {
     ("curse-of-the-azure-bonds", "DOS"): Rule(former=_SUM),
     ("secret-of-the-silver-blades", "DOS"): Rule(former=_SUM),
     ("pools-of-darkness", "DOS"): Rule(former=_MAX, multiplier_cap=5),
-    # C64.  The generic dual-class regain writes the old level back into the
-    # current slot, so the current thief slot is the whole answer; two titles
-    # clamp the level at 14.
+    # C64.  The current thief slot is the whole answer: Curse, Silver Blades
+    # and Gateway have a generic dual-class regain that writes the old level
+    # back into it, and Pool of Radiance, Champions and Death Knights have no
+    # such path that has been found.  Two titles clamp the level at 14.
     ("pool-of-radiance", "C64"): Rule(former=None),
     ("curse-of-the-azure-bonds", "C64"): Rule(former=None),
     ("secret-of-the-silver-blades", "C64"): Rule(former=None, level_cap=14),
@@ -76,12 +77,21 @@ def _key(title: Any) -> str | None:
     return title if isinstance(title, str) else getattr(title, "key", None)
 
 
-def _is_human(title_key: str, race: Any) -> bool:
+def _is_human(char: Any, title_key: str) -> bool:
+    """Whether the record's race code names a human.
+
+    The code is an index into the table of the title the record was made in,
+    so it is read in the record's own `game` table when it has one, and in the
+    resolved title's otherwise.
+    """
+    game_key = _key(getattr(char, "game", None))
+    if game_key not in titles.BY_KEY:
+        game_key = title_key
     try:
-        names = titles.by_key(title_key).race_names
+        names = titles.by_key(game_key).race_names
     except titles.UnknownTitleError:
         return False
-    return bool(names) and names.get(race) == "human"
+    return bool(names) and names.get(char.get("race")) == "human"
 
 
 def _regained(char: Any, title_key: str, former_thief: int) -> bool:
@@ -90,7 +100,7 @@ def _regained(char: Any, title_key: str, former_thief: int) -> bool:
     The engine's active class level is the first positive entry of the level
     array, and the rule accepts only a strictly greater one.
     """
-    if not former_thief or not _is_human(title_key, char.get("race")):
+    if not former_thief or not _is_human(char, title_key):
         return False
     active = next((v for v in (char.get("levels") or {}).values() if v), 0)
     return active > former_thief
@@ -100,7 +110,8 @@ def effective_thief_level(char: Any, title: Any = None,
                           port: str | None = None) -> int:
     """The thief level the engine feeds its arithmetic, after any level cap.
 
-    0 means the engine finds no thief, so there is no backstab.
+    0 means the engine finds no thief, so there is no backstab; a record with
+    no `levels` and one with a thief level of 0 are not told apart.
     """
     rule, title_key = _rule(char, title, port)
     thief = int((char.get("levels") or {}).get("thief") or 0)
@@ -119,7 +130,8 @@ def effective_thief_level(char: Any, title: Any = None,
 
 
 def _rule(char: Any, title: Any, port: str | None) -> tuple[Rule, str]:
-    title_key = _key(title) or _key(getattr(char, "game", None))
+    title_key = (_key(title) or _key(getattr(char, "game", None))
+                 or titles.DEFAULT.key)
     port = port or getattr(char, "port", None)
     try:
         return RULES[(title_key, port)], title_key
@@ -136,16 +148,29 @@ def backstab_multiplier(char: Any, title: Any = None,
     `char` is a `NeutralCharacter` or anything with its `get`, read for
     `levels`, `former_levels` and `race`.  `title` is a `goldbox.titles` key
     and `port` one of :data:`PORTS`; each defaults to the record's own `game`
-    and `port`.  None means the engine's thief gate is closed -- no current
-    thief level, and no former one regained -- so the character has no
-    backstab.  A pair with no measured rule raises ValueError rather than
+    and `port`, and a record with no `game` is Pool of Radiance's, as
+    `NeutralCharacter` documents.  None means the engine's thief gate is
+    closed -- no current thief level, and no former one regained -- so the
+    character has no backstab; a missing `levels` and a thief level of 0 are
+    the same.  A pair with no measured rule raises ValueError rather than
     borrowing a neighbour's.
 
-    Every rule is CONFIRMED from the engine's instructions except two things,
-    which are PROBABLE or unpinned: Pools of Darkness taking the larger of the
-    current and former slot agrees with the sum only on records no engine
-    writes, and the Amiga Curse and Silver Blades regain test is taken to be
-    the DOS one because the instructions were matched and not the test itself.
+    An override chooses the rule and is valid only for a record already in
+    that title's and port's form: the race code is read in the record's own
+    `game` table, and a record from another port that stores the former slot
+    differently would be counted twice.
+
+    Unpinned rules, by the engine instructions read: the Amiga Pools of
+    Darkness class-level routine is not read at all, so taking the larger of
+    the current and former slot, and the regain test, are unestablished there;
+    the Amiga Pool of Radiance multiply callee is inferred from its operands;
+    the Amiga Curse and Silver Blades regain test is taken to be the DOS one
+    because the instructions were matched and not the routine; that no C64 Pool
+    of Radiance, Champions or Death Knights path regains a former thief is
+    PROBABLE; and whether anything else clamps in DOS Curse and Silver Blades
+    is not read.  Pools of Darkness on DOS taking the larger of the two slots
+    agrees with the sum only on records no engine writes.  The rest is read
+    from the instructions.
     """
     rule, _ = _rule(char, title, port)
     level = effective_thief_level(char, title, port)

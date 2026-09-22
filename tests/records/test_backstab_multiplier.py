@@ -37,7 +37,9 @@ EXPECTED = {
 
 HUMAN = {t.key: next(code for code, name in t.races if name == "human")
          for t in titles.TITLES}
-NOT_HUMAN = 1  # dwarf or elf in every title's table but Silver Blades' (elf)
+# Race 1 is dwarf in Pool of Radiance and Curse, elf in Silver Blades and
+# half-elf in Pools of Darkness: never human.
+NOT_HUMAN = 1
 
 SUMMING = [("curse-of-the-azure-bonds", "DOS"),
            ("secret-of-the-silver-blades", "DOS"),
@@ -141,6 +143,41 @@ def test_a_record_with_both_slots_takes_the_larger(key: str, port: str) -> None:
     assert backstab.backstab_multiplier(char) == 3
 
 
+@pytest.mark.parametrize("key,port", SUMMING + LARGEST)
+def test_a_current_thief_beside_an_unregained_former_one_reads_the_current(
+        key: str, port: str) -> None:
+    # The gate is open on the current slot, but 7 has not passed 8, so the
+    # former level is not added and not taken as the larger.
+    char = character(key, port, {"fighter": 7, "thief": 4}, {"thief": 8})
+    assert backstab.effective_thief_level(char) == 4
+    assert backstab.backstab_multiplier(char) == 2
+
+
+@pytest.mark.parametrize("key,port", SUMMING)
+def test_a_current_thief_beside_a_regained_former_one_sums(
+        key: str, port: str) -> None:
+    char = character(key, port, {"fighter": 9, "thief": 4}, {"thief": 8})
+    assert backstab.effective_thief_level(char) == 12
+    assert backstab.backstab_multiplier(char) == 4
+
+
+@pytest.mark.parametrize("key,port", LARGEST)
+def test_a_current_thief_beside_a_regained_former_one_takes_the_larger(
+        key: str, port: str) -> None:
+    char = character(key, port, {"fighter": 9, "thief": 4}, {"thief": 8})
+    assert backstab.effective_thief_level(char) == 8
+    assert backstab.backstab_multiplier(char) == 3
+
+
+@pytest.mark.parametrize("key,port", SUMMING + LARGEST)
+def test_a_non_human_current_thief_ignores_a_former_one(
+        key: str, port: str) -> None:
+    char = character(key, port, {"fighter": 9, "thief": 4}, {"thief": 8},
+                     race=NOT_HUMAN)
+    assert backstab.effective_thief_level(char) == 4
+    assert backstab.backstab_multiplier(char) == 2
+
+
 @pytest.mark.parametrize("key", [k for k, p in EXPECTED if p == "C64"])
 def test_the_c64_reads_the_current_slot_alone(key: str) -> None:
     former_only = character(key, "C64", {"fighter": 9}, {"thief": 5})
@@ -165,6 +202,36 @@ def test_title_and_port_default_from_the_record_and_can_be_overridden() -> None:
     assert backstab.backstab_multiplier(char, port="Amiga") == 6
 
 
+def test_the_race_is_read_in_the_records_own_table_under_an_override() -> None:
+    # Curse's human is 7, which Silver Blades' table calls a monster; Silver
+    # Blades' human is 6, which Curse's table does not name.
+    curse = character("curse-of-the-azure-bonds", "DOS", {"fighter": 9},
+                      {"thief": 8})
+    assert backstab.backstab_multiplier(
+        curse, "secret-of-the-silver-blades") == 3
+    silver = character("secret-of-the-silver-blades", "DOS", {"fighter": 9},
+                       {"thief": 8})
+    assert backstab.backstab_multiplier(
+        silver, "curse-of-the-azure-bonds") == 3
+
+
+def test_a_record_with_no_game_carries_pool_of_radiances_tables() -> None:
+    char = NeutralCharacter("DOS")
+    char.set("levels", {"thief": 4}, "test")
+    assert char.game is None
+    # Pool of Radiance subtracts nothing, so level 4 already steps to 3.
+    assert backstab.backstab_multiplier(char) == 3
+    assert backstab.backstab_multiplier(char, "curse-of-the-azure-bonds") == 2
+
+
+def test_absent_levels_and_a_zero_thief_level_are_both_no_thief() -> None:
+    absent = NeutralCharacter("DOS", game="curse-of-the-azure-bonds")
+    zero = character("curse-of-the-azure-bonds", "DOS", {"thief": 0})
+    for char in (absent, zero):
+        assert backstab.effective_thief_level(char) == 0
+        assert backstab.backstab_multiplier(char) is None
+
+
 def test_a_title_object_stands_for_its_key() -> None:
     char = character("secret-of-the-silver-blades", "C64", {"thief": 17})
     assert backstab.backstab_multiplier(
@@ -175,7 +242,6 @@ def test_a_title_object_stands_for_its_key() -> None:
     ("gateway-to-the-savage-frontier", "DOS"),
     ("champions-of-krynn", "Amiga"),
     ("pool-of-radiance", "Palm"),
-    (None, "DOS"),
 ])
 def test_a_pair_with_no_measured_rule_is_refused(key, port) -> None:
     char = NeutralCharacter(port, game=key)
