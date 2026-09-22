@@ -158,18 +158,47 @@ trainer's fee and a shop's change are coin movements, so neither is repaired.
 The one money-moving screen that does recompute is **appraising a gem or a
 jewel**, which decrements the count and rebuilds the total on its way out.
 
+**A screen that moves coins without charging for them keeps the total right by
+a third route: two leaf routines, `encumbrance ±= arg`, that adjust it by
+exactly what moved.** Pool, share, give and take call those; the trainer, the
+shop and the temple call neither them nor the recompute, which is where the
+drift comes from. `tools/dos/dosencrecompute.py helpers` re-takes the census.
+
+**A miss below the sum is the engine's work too, and the sign of a miss
+therefore says nothing about provenance.** A purchase writes the total from
+the purse as it stood **before** the price was paid, and the payment then
+re-expresses the purse in the denominations the change makes -- so the miss is
+the *coin count* before the payment less the count after it, in whichever
+direction that lands. It is usually positive, because change consolidates into
+larger coins: 140 gold less 1 gp leaves 27 platinum and 4 gold, a fall of 109
+coins, against a 1 gp price. It is negative whenever the payment has to break a
+larger coin, because the change comes back in more coins than were spent: one
+platinum piece less 1 gp leaves **four gold**, and a character holding nothing
+else who buys a 1 gp hand axe comes out storing 51 against a sum of 54.
+CONFIRMED in one driven boot, `WISH-SPEC-por-shop-change-below`, on a party
+staged balanced before the boot; the five characters who bought nothing came
+out exact.
+
 **Four things are known to leave a record failing it, and the first three are
 the engine's own work:**
 
 | what happened | what the record looks like |
 |---|---|
 | a training fee | stored **above** the sum by an exact multiple of 1000 |
-| a payment -- a purchase, an identify, a cure | stored above by the fall in the *coin count*, which after the engine consolidates change into a larger denomination can be far more than the price paid: 109 for a 1 gp axe |
-| a readied bag of holding, Pool of Radiance only | stored **5000 below** the sum, or at the readied items' own weight when the sum is under 5000. Read from the code; no record on this machine carries one, so nothing has confirmed it in a file |
+| a payment whose change consolidates | stored above by the fall in the *coin count*, which can be far more than the price paid: 109 for a 1 gp axe |
+| a payment that breaks a larger coin | stored **below** by the rise in the coin count: 3 for a 1 gp axe bought with a single platinum piece |
 | a field we poked before a boot | whatever we poked |
 
+**A readied bag of holding is not a fifth**, though the code reads as though
+it were: Pool of Radiance's recompute takes 5000 off for one, and no item in
+any title's own tables carries the name word that fires it -- 0 in 1,883 C64
+item records and 1,171 DOS ones (`tools/dos/dosencrecompute.py stock`,
+`docs/125-bug-notes.md` N24). A record storing exactly 5000 below the sum is
+one somebody built rather than one the game wrote -- which is a statement about
+that number and not about the direction.
+
 **So the check is not weakened, it is narrowed: name the operation, or the
-miss still means something.** A miss you can attribute to one of those four is
+miss still means something.** A miss you can attribute to one of those is
 explained and says nothing about who wrote the record. A miss you cannot is
 the signal the identity was built to be -- one of our offsets is wrong, or the
 record was edited -- and it has to be chased rather than waved past. The two

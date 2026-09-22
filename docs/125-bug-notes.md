@@ -543,6 +543,34 @@ the largest denomination it can, so the coin *count* falls by 109 while the
 value falls by 1. Encumbrance counts coins, not what they are worth. Curse's
 +3 is the same arithmetic at a scale where no denomination changes.
 
+**So the miss is the coin count before the payment less the count after it, and
+that subtraction has no sign.** Consolidation usually lowers the count and the
+record ends above the sum. A payment that has to **break** a larger coin raises
+it, because the change comes back in more coins than were spent, and then the
+same bug leaves the record **below**. One platinum piece is the smallest case:
+5 gp of value in one coin, and paying 1 gp of it leaves four gold.
+
+**Measured, and it is the first record on this machine the engine itself wrote
+below the sum.** `WISH-SPEC-por-shop-change-below`: the
+`WISH-SPEC-por-party-l1-intown` party restaged before the boot so that every
+character holds one platinum piece and nothing else, with stored encumbrance
+staged to the matching 1, so all six balance exactly on the way in. WISHFTR
+bought one HAND AXE listed at 1 gp in the same New Phlan shop.
+
+| | purses | Σ weight | stored | sum | miss |
+|---|---|---|---|---|---|
+| staged before the boot | 1 platinum | 0 | 1 | 1 | 0 |
+| after the axe | 4 gold | 50 | **51** | 54 | **−3** |
+
+`51 = 1 + 50` is the purse as it stood before it paid plus the axe, the same
+arithmetic as the 190 above; the −3 is the three extra coins the change came
+back in. The five who bought nothing kept their platinum and balance exactly.
+CONFIRMED, one driven boot, and it settles the question `#323 (The encumbrance
+identity does not survive the training fee, so failing it is not evidence of an
+edited record)` carried from 2026-09-05: **the sign of a miss is not evidence
+about who wrote a record.** The claim that it was rested on the routes anybody
+had measured, all of which happened to consolidate.
+
 **A thrown dart is not this bug, and an earlier reading of it here was
 wrong.** DARKSTAR appears twice in the archives' `Default files/Saves`, 16
 experience apart and with his money untouched: `CHRDATA5` has 11 darts by the
@@ -887,11 +915,13 @@ record)`.
 character with a readied bag of holding would store encumbrance **5000 below**
 `money + Σ(weight × quantity)`, so the identity
 `goldbox.dos_codec.expected_encumbrance` checks would fail on a record nobody
-edited. It was the engine's own counterexample to reading a "below" miss as
-evidence of an edit -- and the table sweep above takes it back, because no item
-in either port's tables can set the flag. So the counterexample is one an
-editor could build and the game cannot, which is the opposite of what a
-counterexample to "below means edited" has to be.
+edited. This note used to carry that as the one engine route to a "below" miss,
+and then as no route at all once the table sweep above showed no item can set
+the flag. **Neither reading is the one to keep: N19 has a route that is
+reachable and measured** -- a payment that breaks a larger coin leaves the
+record below by the number of extra coins the change came back in, three for a
+1 gp axe bought with a single platinum piece. What the sweep here establishes is
+narrower than it was written as: no record can be 5000 below *for this reason*.
 `.claude/rules/testing.md` says how to read a miss.
 
 ## Not yet confirmed

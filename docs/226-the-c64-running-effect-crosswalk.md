@@ -323,6 +323,31 @@ started with**, where the C64 clamps the level at 10 and gives 22 (`$91D6`:
 converted Enlarge needs is read back off its own node's score rather than from
 the caster, and both ports then agree on what that score is.
 
+**Which title a player can meet it in: Silver Blades only, and the ladder's top
+rung says why.** `goldbox-bugs.md` entry 18 carried "reachability not read"
+until each title's own experience table was looked at, in the loader image
+where the trainer indexes it -- a run of `u32` thresholds ended by
+`0xFFFFFFFF`:
+
+| title | magic-user thresholds in `START.EXE` | last level | C64 `GEN` class ceiling |
+|---|---|---|---|
+| Pool of Radiance | `0x1097B`, 2,501 to 40,001 | 6 | 6 (`$1E5C`) |
+| Curse of the Azure Bonds | `0xF06A`, 2,501 to 375,001 | **11** | 11 (`$15A1`) |
+| Secret of the Silver Blades | `0x13233`, 2,501 to 1,875,001 | **15** | 15 (`$17D0`) |
+
+So the ladder's last test, level 11, is exactly Curse's magic-user ceiling: the
+cast was written to cover every level a Curse caster can hold, and no Curse
+party can fall out the bottom of it. Silver Blades raised the class to 15 and
+shipped the ladder unchanged, which is where the fall-through becomes something
+a player meets. A human magic-user has no racial limit below the class ceiling
+in either title (`goldbox/levels.py`, `racial_limits`), so nothing else stands
+in the way. **CONFIRMED** from the two ports' own tables; what is not measured
+is whether a Silver Blades playthrough accumulates the 750,001 experience level
+12 asks for, and the highest magic-user among the 86 DOS Silver Blades records
+on this machine is level 8 -- all of them ours or the archives' early-game
+shipped party, so that is a statement about our records rather than about the
+game.
+
 ## Which slot a converted effect takes, and who owns it
 
 **CONFIRMED from all three engines, which share one allocator:** Pool of

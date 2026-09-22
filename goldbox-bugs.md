@@ -42,7 +42,7 @@ a port fixed one, that is said.
 | 15 | A paladin who reaches level 11 carries a second-level cleric spell slot he can never fill | Curse of the Azure Bonds | engine | CONFIRMED, in game |
 | 16 | A DOS magic-user of level 1 to 5 hits one point more easily than the game's own table gives him | Curse of the Azure Bonds, Secret of the Silver Blades | engine | CONFIRMED, in game |
 | 17 | DOS Curse's Mirror Image loses an image only once every sixteen absorbed attacks | Curse of the Azure Bonds | engine | CONFIRMED, from the code |
-| 18 | A DOS magic-user of level 12 or higher who casts Enlarge gives the target the weakest Strength the spell can give, not the strongest | Curse of the Azure Bonds, Secret of the Silver Blades | engine | CONFIRMED, from the code; reachability not read |
+| 18 | A DOS magic-user of level 12 or higher who casts Enlarge gives the target the weakest Strength the spell can give, not the strongest | Secret of the Silver Blades | engine | CONFIRMED, from the code |
 
 ---
 
@@ -859,13 +859,23 @@ The Amiga builds have not been read. CONFIRMED, from the code.
 ## 18. A DOS magic-user of level 12 or higher who casts Enlarge gives the target the weakest Strength the spell can give, not the strongest
 
 **Confirmed by reading the game's own code, and by the Commodore 64 build doing
-the same job correctly -- not by playing it.** How a player gets to level 12 as a
-magic-user has not been read, so whether the bug can be reached is not confirmed.
+the same job correctly -- not by playing it.**
 
 **How a player ends up there.** A magic-user of level 12 or higher casts Enlarge
-on a fighter in DOS Curse of the Azure Bonds or DOS Secret of the Silver Blades.
-Whether a party in either game can reach that level is unread: the training
-hall's table of level limits per class has not been looked at.
+on a fighter in DOS Secret of the Silver Blades. That game's training hall
+trains a magic-user to **15**, so the level is an ordinary one to be standing
+at: its own experience table runs 2,501 for level 2 through 1,875,001 for level
+15, and a human magic-user has no racial limit below the class's. The steps:
+
+1. Train a human magic-user in the hall until his sheet reads **level 12** or
+   more.
+2. Take him to a fight and `CAST` **ENLARGE** on a fighter.
+3. `VIEW` the fighter and read his Strength.
+
+**DOS Curse of the Azure Bonds carries the same ladder and no party can reach
+it**, because a Curse magic-user stops at level 11 -- the top rung of the
+ladder is exactly that game's ceiling. The bug is what Silver Blades inherited
+by raising the ceiling and reusing the ladder.
 
 **What the game does.** Enlarge sets the target's Strength from a ladder of ten
 scores chosen by the caster's level: 18/00, 18/01, 18/51, 18/76, 18/91, 18/100,
@@ -880,17 +890,19 @@ spell: cap the level at 10, so every caster above the top of the ladder gets 22.
 **The evidence.** The DOS ladder is at `GAME.OVR:0x2FFCD` to `0x3004B` in Curse
 and `0x2E80D` to `0x2E88B` in Silver Blades, and both decode to the same ten
 scores. The Commodore 64 reads the same ten from its table and clamps the level
-first (`$91D6`, `CMP #$0A`). The disassembly and the comparison of the two ports
-are in
+first (`$91D6`, `CMP #$0A`). The level a magic-user can be trained to comes out
+of each game's own experience table, in its `START.EXE`: Curse's magic-user
+column runs to 375,001 for level 11 and then a `0xFFFFFFFF` end marker, Silver
+Blades' runs on to 1,875,001 for level 15, and the two games' class ceilings
+read 11 and 15 in the Commodore 64 builds' own tables as well. The disassembly
+and the comparison of the two ports are in
 [`docs/226-the-c64-running-effect-crosswalk.md`](docs/226-the-c64-running-effect-crosswalk.md).
 No running game was watched: the DOS behaviour is read from the code alone.
 
 **What the player sees.** The more experienced the caster, the better Enlarge
 should be. At level 12 it turns to the worst result on the ladder: the fighter
-gets 18/00, where a level 10 or 11 caster gives him 22. This is what the code
-gives if such a caster exists; the player-visible part rests on the level being
-reachable, which is not read.
+gets 18/00, where a level 10 or 11 caster gives him 22.
 
-**Version.** Curse of the Azure Bonds and Secret of the Silver Blades, DOS. The
-Commodore 64 builds clamp the level and are unaffected. The Amiga builds have not
-been read. CONFIRMED, from the code, for the ladder; reachability not read.
+**Version.** Secret of the Silver Blades, DOS. DOS Curse of the Azure Bonds has
+the same ladder and cannot reach it. The Commodore 64 builds clamp the level and
+are unaffected. The Amiga builds have not been read. CONFIRMED, from the code.
