@@ -1051,15 +1051,19 @@ class EditorBinding(QObject):
             return
         add, remove = (self._child("button_trait_add"),
                        self._child("button_trait_remove"))
+        writable = view.isEnabled()
         if add is not None:
-            add.setEnabled(self.party is not None and bool(view.room()))
+            add.setEnabled(self.party is not None and writable
+                           and bool(view.room()))
         if remove is not None:
-            remove.setEnabled(self.party is not None and view.can_remove())
+            remove.setEnabled(self.party is not None and writable
+                              and view.can_remove())
 
     def add_trait(self) -> None:
         """Pick a code and put it in the first free slot."""
         view = self._widgets.get("item_effects")
-        if view is None or self.party is None or not view.room():
+        if (view is None or self.party is None or not view.isEnabled()
+                or not view.room()):
             return
         from .traitpicker import TraitPicker
         dialog = TraitPicker(self._game(), tuple(view.codes()), self.root)
@@ -1072,7 +1076,7 @@ class EditorBinding(QObject):
     def remove_trait(self) -> None:
         """Clear the selected slot and close the gap behind it."""
         view = self._widgets.get("item_effects")
-        if view is None or self.party is None:
+        if view is None or self.party is None or not view.isEnabled():
             return
         view.remove(view.selected_row())
 
@@ -2602,7 +2606,8 @@ class EditorBinding(QObject):
         """Grey what must not be edited, and say why in the tooltip."""
         if self.party is None:
             return
-        rules = bindings(in_save=self.party.in_save)
+        rules = bindings(in_save=self.party.in_save,
+                        unwritable=self.party.unwritable)
         for name, w in self._widgets.items():
             if name == "icon":
                 w.setEnabled(self.party.save0 is not None)
@@ -2636,6 +2641,10 @@ class EditorBinding(QObject):
             label = self._child(f"label_{name}")
             if label is not None:
                 label.setEnabled(not rule.read_only)
+        # `load` selects the first character (1420) before it calls this, so
+        # the trait Add/Remove buttons need refreshing once the table itself
+        # has just been greyed above.
+        self._show_trait_buttons()
 
     def _describe_spells(self, record) -> None:
         """Show what the spellbook holds and how much the class may memorise."""

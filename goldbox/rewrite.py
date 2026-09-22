@@ -566,3 +566,50 @@ def rewrite_amiga_later(original: "amiga_later.AmigaCharacter",
         amiga_later.AmigaCharacter.from_bytes(
             record, deltas, original.source, items, original.effects),
         tuple(moved + item_moved), tuple(unplaced))
+
+
+#: Fields the writer never lets an edit reach, on every DOS and Amiga title
+#: alike -- measured by fuzzing every editable field of a synthetic character
+#: and finding which never move a byte, not inferred from the writer's
+#: source. Written out by hand rather than computed when a save opens,
+#: because the fuzz sweep costs seconds per character; `tests/convert/
+#: test_rewrite.py`'s drift test re-measures it and fails if a writer change
+#: moves the set.
+_ALWAYS_UNWRITABLE = frozenset({
+    "char_class", "infravision", "turn_class", "item_effects",
+})
+
+#: The eight thief-skill fields, unwritable only on the port and title pairs
+#: whose writer recomputes them for any character with a thief level, rather
+#: than copying the engine's own byte -- `dos_codec.write`'s
+#: `recompute_thief_skills`. They move on a *non*-thief, whose byte is
+#: copied, and never move on a thief, where the recompute replaces whatever
+#: the sheet asked for.
+_THIEF_FIELDS = frozenset({
+    "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
+    "thief_move_silently", "thief_hide_in_shadows", "thief_hear_noise",
+    "thief_climb_walls", "thief_read_languages",
+})
+
+_THIEF_UNWRITABLE_FOR = frozenset({
+    ("dos", "pool-of-radiance"),
+    ("dos", "curse-of-the-azure-bonds"),
+    ("amiga", "pool-of-radiance"),
+})
+
+
+def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
+    """Fields the sheet must grey because this port's writer cannot take an
+    edit to them back -- either the field has nowhere to go
+    (`infravision`, `turn_class`), the writer rebuilds it from other fields
+    regardless of what is asked (`char_class`, and the eight thief skills on
+    a thief of these three port and title pairs), or the file is returned
+    exactly as read (`item_effects`, until Stage 5 wires the trait table to
+    the DOS effect nodes).
+    """
+    if port not in ("dos", "amiga"):
+        return frozenset()
+    fields = _ALWAYS_UNWRITABLE
+    if (port, title_key) in _THIEF_UNWRITABLE_FOR:
+        fields = fields | _THIEF_FIELDS
+    return fields

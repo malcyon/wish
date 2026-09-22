@@ -72,13 +72,29 @@ def _neutral(game, items: int):
     return neutral
 
 
-def _synthetic_dos(deltas, items: int = 1):
+def _class_consistent_neutral(game, items: int = 1):
+    """A filled character whose `class_bits` agrees with the fighter and
+    thief levels `_filled` already sets, rather than `_filled`'s own
+    arbitrary sequential byte -- needed wherever a writer recomputes a field
+    (`char_class`, the thief skills) from the classes themselves, since an
+    inconsistent record makes the recompute answer questions
+    (a paladin-only field, a mismatched class code) the drift test below is
+    not asking."""
+    neutral = _neutral(game, items)
+    from goldbox.classcode import CLASS_BIT_FOR_NAME
+    neutral.set("class_bits",
+                CLASS_BIT_FOR_NAME["fighter"] | CLASS_BIT_FOR_NAME["thief"],
+                "fighter/thief, made up, class-consistent")
+    return neutral
+
+
+def _synthetic_dos(deltas, items: int = 1, neutral_fn=_neutral):
     """A DOS character and the C64 record the editor would build from it.
 
     The record is what the DOS writer itself makes of a filled neutral
     character, so nothing here is a copy of anybody's save.
     """
-    neutral = _neutral(_game(deltas), items)
+    neutral = neutral_fn(_game(deltas), items)
     record, itm, spc, _rep = dos_codec.write(neutral, deltas=deltas)
     stride = deltas.item_size
     items = [dos_codec.DosItem(itm[n * stride:(n + 1) * stride], stride)
@@ -91,16 +107,16 @@ def _synthetic_dos(deltas, items: int = 1):
     return char, rec
 
 
-def _synthetic_amiga_por(items: int = 1):
+def _synthetic_amiga_por(items: int = 1, neutral_fn=_neutral):
     pool = _game(dos_port.POOL_OF_RADIANCE)
-    record, itm, spc, _rep = amiga_por.write_por(_neutral(pool, items))
+    record, itm, spc, _rep = amiga_por.write_por(neutral_fn(pool, items))
     char = amiga_por.por_character(record, itm, spc)
     rec, _ = dos_codec.to_c64_record(amiga_por.to_dos_character(char))
     return char, rec
 
 
-def _synthetic_amiga_later(deltas, items: int = 1):
-    char, _rep = amiga_later.write_later(_neutral(_game(deltas.dos), items),
+def _synthetic_amiga_later(deltas, items: int = 1, neutral_fn=_neutral):
+    char, _rep = amiga_later.write_later(neutral_fn(_game(deltas.dos), items),
                                          deltas=deltas)
     rec, _ = dos_codec.neutral_to_c64_record(
         amiga_later.to_neutral_later(char))
@@ -459,6 +475,18 @@ def _make(port, items: int):
     return _synthetic_amiga_later(deltas, items)
 
 
+def _make_class_consistent(port, items: int = 1):
+    """`_make`, with `class_bits` set to fighter and thief so the writer's
+    recomputes (`char_class`, the eight thief skills) answer a real
+    character rather than `_filled`'s own arbitrary byte."""
+    kind, deltas = port
+    if kind == "dos":
+        return _synthetic_dos(deltas, items, _class_consistent_neutral)
+    if kind == "amiga-por":
+        return _synthetic_amiga_por(items, _class_consistent_neutral)
+    return _synthetic_amiga_later(deltas, items, _class_consistent_neutral)
+
+
 def _rewrite(port, char, before, after, game=None):
     """The port's own rewrite.  `game` is left out by default, which is what
     exercises the per-title container each one falls back to."""
@@ -788,3 +816,61 @@ def test_the_combat_figure_is_never_disturbed_on_a_dos_specimen():
                 assert written.get(name) == char.get(name), f"{label} {name}"
             assert amiga_combat_icon(written).head == \
                 amiga_combat_icon(char).head
+
+
+# --- what the sheet must grey, measured rather than trusted ------------------
+
+def _rewrite_port_and_title(port) -> tuple[str, str]:
+    """`rewrite.unwritable_fields`'s two arguments for one `PORTS` entry."""
+    kind, deltas = port
+    if kind == "dos":
+        return "dos", deltas.key
+    if kind == "amiga-por":
+        return "amiga", deltas.key
+    return "amiga", deltas.dos.key
+
+
+def _fuzz_byte(rec, name: str, at: int):
+    """A copy of the record with one added to byte `at` of field `name`."""
+    out = c64_codec.CharacterRecord(rec.to_bytes(), rec.stored_size)
+    raw = bytearray(out.get_raw(name))
+    raw[at] = (raw[at] + 1) & 0xFF
+    out.set_raw(name, bytes(raw))
+    return out
+
+
+@pytest.mark.parametrize("port", PORTS, ids=_port_id)
+def test_the_fields_a_native_save_cannot_take_an_edit_to_match_the_hand_written_list(
+        port):
+    """`editor.roster.Party.unwritable` greys exactly the fields whose edit
+    the port's own writer discards -- measured here by fuzzing every field
+    the sheet leaves editable and finding which one never moves a byte, the
+    same sampler `tools/convert/rewritecensus.py` uses.  This is the test
+    that goes red when a writer change moves a field the hand-written table
+    in `goldbox/rewrite.py` still calls unwritable, or leaves one unwritable
+    that the table no longer names.
+    """
+    from editor import binding
+
+    char, before = _make_class_consistent(port)
+    rules = binding.bindings(in_save=False)
+    unwritable = set()
+    for f in binding.shown_fields(binding.editable_fields()):
+        if rules[f.name].read_only:
+            continue
+        moved = False
+        for at in sorted({0, f.size - 1}):
+            after = _fuzz_byte(before, f.name, at)
+            if after.to_bytes() == before.to_bytes():
+                continue
+            try:
+                _rewrite(port, char, before, after)
+            except rewrite.RewriteError:
+                continue
+            moved = True
+            break
+        if not moved:
+            unwritable.add(f.name)
+
+    expected = rewrite.unwritable_fields(*_rewrite_port_and_title(port))
+    assert unwritable == expected

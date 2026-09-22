@@ -34,6 +34,7 @@ from goldbox import (
     c64_port,
     dos_codec,
     dos_port,
+    rewrite,
 )
 from goldbox.c64_port import C64Container
 from goldbox.c64_save import ICON_TABLE_OFFSET
@@ -459,6 +460,18 @@ class Party:
         whole, converted in memory.
         """
         return self.is_save and self.port == "c64"
+
+    @property
+    def unwritable(self) -> frozenset[str]:
+        """Fields whose edit the open file's own writer cannot take back.
+
+        Empty for a C64 save, where `_write_back` writes the edited record
+        straight into its slot. Otherwise `goldbox.rewrite.unwritable_fields`
+        for this party's port and title.
+        """
+        if self.port == "c64":
+            return frozenset()
+        return rewrite.unwritable_fields(self.port, self.source.title.key)
 
     def write_items(self) -> None:
         """Push edited item blocks back into the save payload.

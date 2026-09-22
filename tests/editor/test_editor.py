@@ -4426,9 +4426,12 @@ def _converted_dos_disk(folder, slot, key):
     return game, dos_codec.save_disk(bytes(save0), bytes(save1), game)
 
 
-def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3)):
+def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None):
     """A DOS save folder written from filled neutral characters, no game data.
-    `numbers` are the `CHRDAT<slot><n>` file numbers that exist."""
+    `numbers` are the `CHRDAT<slot><n>` file numbers that exist.  `class_bits`
+    overrides `_filled`'s own arbitrary byte -- needed wherever the writer
+    recomputes a field (`char_class`, the thief skills) from the classes
+    themselves, since `_filled`'s byte names no real class combination."""
     from support.neutralrecords import _filled
 
     from goldbox import c64_port, dos_codec
@@ -4437,6 +4440,8 @@ def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3)):
         char = _filled(game)
         char.set("name", f"HERO{n}", "made up", Confidence.CONFIRMED,
                  c64_codec.Provenance.RESHAPED)
+        if class_bits is not None:
+            char.set("class_bits", class_bits, "made up, class-consistent")
         record, itm, spc, _rep = dos_codec.write(char, deltas=deltas)
         (tmp_path / f"CHRDATA{n}.SAV").write_bytes(record)
         (tmp_path / f"CHRDATA{n}.ITM").write_bytes(itm)
@@ -4725,6 +4730,105 @@ def test_a_dos_gold_edit_writes_only_its_record_bytes_and_keeps_a_backup(
     w.save(interactive=False)
     assert {path: path.read_bytes() for path in tmp_path.iterdir()
             if path.is_file()} == no_op
+
+
+def test_an_edit_to_a_flagged_field_on_an_open_dos_save_cannot_be_saved(
+        app, tmp_path):
+    """A player opens a DOS Pool of Radiance save, picks the party's thief,
+    raises Open locks and clicks Save. Before this fix that either writes
+    the edit nowhere and shows a developer sentence, or -- if another field
+    was also edited -- silently drops the locks change while reporting
+    success. #511."""
+    from editor.window import EditorBinding
+    from goldbox import classcode, dos_port
+
+    bits = (classcode.CLASS_BIT_FOR_NAME["fighter"]
+           | classcode.CLASS_BIT_FOR_NAME["thief"])
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE, numbers=(1,),
+                          class_bits=bits)
+    before = {path: path.read_bytes() for path in tmp_path.iterdir()
+              if path.is_file()}
+    w = EditorBinding(make_root(), str(tmp_path / "SAVGAMA.DAT"))
+    w.roster.selectRow(0)
+
+    for name in ("infravision", "thief_open_locks"):
+        old_value = w.party.member(0).record.get(name)
+        assert not w._widgets[name].isEnabled(), name
+        w._widgets[name].setValue(w._widgets[name].value() + 1)
+        w._edited()
+        assert w.save(interactive=False) == "no changes"
+        assert {path: path.read_bytes() for path in tmp_path.iterdir()
+                if path.is_file()} == before
+        assert not (tmp_path / "backups").exists()
+        assert w.party.member(0).record.get(name) == old_value
+
+
+def _dos_pool_editor(tmp_path):
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+    folder = tmp_path / "por"
+    folder.mkdir()
+    _synthetic_dos_folder(folder, dos_port.POOL_OF_RADIANCE)
+    return EditorBinding(make_root(), str(folder / "SAVGAMA.DAT"))
+
+
+def _dos_silver_blades_editor(tmp_path):
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+    folder = tmp_path / "ssb"
+    folder.mkdir()
+    _synthetic_dos_folder(folder, dos_port.SECRET_OF_THE_SILVER_BLADES)
+    return EditorBinding(make_root(), str(folder / "SAVGAMA.DAT"))
+
+
+def _amiga_pool_editor(tmp_path):
+    from support.neutralrecords import _filled
+
+    from editor.window import EditorBinding
+    from goldbox import amiga_savegame, c64_port
+    pool = c64_port.by_key("pool-of-radiance")
+    savgam = bytearray(amiga_savegame.POR_SAVEGAME_SIZE)
+    at = amiga_savegame.POOL_OF_RADIANCE.party_at
+    savgam[at:at + 8] = b"CHRDATA1"
+    disk = amiga_savegame.make_por_save_disk("A", [_filled(pool)],
+                                             bytes(savgam))
+    path = tmp_path / "pool.adf"
+    disk.save(str(path))
+    return EditorBinding(make_root(), str(path))
+
+
+def _amiga_curse_editor(tmp_path):
+    from support.amigasavegame import synthetic_curse
+
+    from editor.window import EditorBinding
+    from goldbox import amiga_savegame
+    disk = amiga_savegame.make_save_disk(
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA",)))
+    path = tmp_path / "curse.adf"
+    disk.save(path)
+    return EditorBinding(make_root(), str(path))
+
+
+@pytest.mark.parametrize("builder", [_dos_pool_editor, _dos_silver_blades_editor,
+                                     _amiga_pool_editor, _amiga_curse_editor],
+                        ids=["dos-pool-of-radiance",
+                            "dos-secret-of-the-silver-blades",
+                            "amiga-pool-of-radiance",
+                            "amiga-curse-of-the-azure-bonds"])
+def test_the_unwritable_fields_and_the_trait_add_button_are_disabled(
+        app, tmp_path, builder):
+    """On every port and title the sheet can open natively, a field the
+    open file's writer cannot take back is disabled, and so is the button
+    that would add a new trait."""
+    w = builder(tmp_path)
+    w.roster.selectRow(0)
+    for name in w.party.unwritable:
+        widget = w._widgets.get(name)
+        if widget is not None:
+            assert not widget.isEnabled(), name
+    add = w._child("button_trait_add")
+    assert add is not None
+    assert not add.isEnabled()
 
 
 def test_an_amiga_gold_edit_reaches_its_save_disk(app, tmp_path):

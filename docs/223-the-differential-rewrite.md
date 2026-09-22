@@ -344,8 +344,11 @@ portrait tables, so the writer renders zero for both whatever the sheet says.
 
 **A field writable for one character and not another is the class showing
 through**, not an inconsistency: `level_paladin` moves on a DOS Curse paladin
-and nothing else, the eight `thief_*` fields move on a thief, and
-`spells_castable` moves on a caster.
+and nothing else, and `spells_castable` moves on a caster. The eight
+`thief_*` fields are the opposite of what that pattern suggests: they move on
+a *non*-thief, whose byte the writer copies, and never move on a thief, whose
+skills the writer recomputes from level and dexterity regardless of what the
+sheet asks for.
 
 **Nothing in this measurement was refused for an illegal value**: 0 of 72
 characters had a field where every fuzz raised something other than the
@@ -392,3 +395,11 @@ at all.
   watched a running game redraw one.
 * **`.CHA` exports were not swept.** The census reads save slots, which is what
   the editor will open.
+
+## What the sheet greys
+
+The editor's sheet disables `char_class`, `infravision`, `turn_class` and
+`item_effects` on every DOS and Amiga party, and the eight `thief_*` fields on
+a thief of DOS Pool of Radiance, DOS Curse of the Azure Bonds and Amiga Pool
+of Radiance -- `goldbox.rewrite.unwritable_fields`, the measured list above
+written out by hand rather than fuzzed when a save opens.
