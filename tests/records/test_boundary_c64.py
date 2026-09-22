@@ -90,6 +90,7 @@ def test_a_reachable_character_writes_to_the_c64_and_reads_back_whole(
 
     assert rep.warnings == [], (name, rep.warnings)
     assert _losses(rep) == [], (name, _losses(rep))
+    assert rep.losses == [], (name, rep.losses)
     assert _no_warnings(caplog) == [], name
     assert set(char.keys()) - set(back.keys()) == _NOT_READ_BACK
 
@@ -161,6 +162,7 @@ def test_c_every_scalar_at_its_extreme_round_trips(game, high, caplog):
     with caplog.at_level(logging.WARNING, logger="wish.goldbox"):
         _, rep, back = _write(char)
     assert rep.warnings == [] and _losses(rep) == [], (game, rep.dropped)
+    assert rep.losses == [], (game, rep.losses)
     assert _no_warnings(caplog) == []
 
     skipped = boundarywidths.recomputed_on_write(game, char.get("levels"))
@@ -491,6 +493,7 @@ def _combination_holds(combo):
     char = laterchars.build(combo)
     _, rep, back = _write(char)
     assert rep.warnings == [] and _losses(rep) == [], (combo.name, rep.dropped)
+    assert rep.losses == [], (combo.name, rep.losses)
 
     held = {name: level for name, level in (back.get("levels") or {}).items()
             if level}
@@ -538,11 +541,14 @@ def test_i_the_sweep_catches_a_class_the_race_may_not_advance_in():
 
 def _caster_holds(game, memorised):
     """Write the deepest caster with `memorised` ids and hand back what
-    came off the record."""
+    came off the record.  `losses` is empty unless the list is past the
+    title's slots."""
     char = laterchars.caster(game)
     char.set("spells_memorised", list(range(1, memorised + 1)), "boundary")
     _, rep, back = _write(char)
     assert rep.warnings == [] and _losses(rep) == [], (game, rep.dropped)
+    assert bool(rep.losses) == (memorised > c64_codec.memorised_span(game)[1]), (
+        game, rep.losses)
     return back
 
 
@@ -607,3 +613,124 @@ def test_k_the_deepest_caster_is_the_one_the_engine_allows(game):
     kept = laterchars.DEEPEST[game]
     assert (total, held, former) == (kept["memorised"], kept["levels"],
                                      kept["former"]), game
+
+
+# --- L: every value the writer narrows is on `losses` ------------------------
+
+def _lost(char):
+    """`(report, caplog-free warnings)` for `char` written to the C64."""
+    _, rep, _ = _write(char)
+    return rep
+
+
+@pytest.mark.parametrize("game", GAMES)
+@pytest.mark.parametrize("value", [0x1000000, 0x7FFFFFFF])
+def test_l_experience_past_three_bytes_is_a_loss_and_a_warning(game, value):
+    char = boundarywidths.base(game)
+    char.set("experience", value, "boundary: one past")
+    rep = _lost(char)
+    line = (f"experience: DOS holds {value}, which does not fit the C64's 3 "
+            f"bytes; written as 16777215, the most they hold")
+    assert rep.losses == [line], (game, rep.losses)
+    assert line in rep.warnings
+    assert line not in rep.dropped
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_l_a_memorised_list_past_the_titles_slots_is_on_losses_and_no_sentence(
+        game):
+    """Donald's ruling is that no sentence reaches a player for it, so the line
+    is accounting only: `warnings` stays empty."""
+    _, size = c64_codec.memorised_span(game)
+    char = boundarywidths.base(game)
+    char.set("spells_memorised", list(range(1, size + 4)), "boundary: one past")
+    rep = _lost(char)
+    assert rep.losses == [f"spells_memorised: 3 ids past the {size} slots "
+                          f"this title's C64 record holds"], (game, rep.losses)
+    assert rep.warnings == []
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_l_a_full_memorised_list_is_not_a_loss(game):
+    _, size = c64_codec.memorised_span(game)
+    char = boundarywidths.base(game)
+    char.set("spells_memorised", list(range(1, size + 1)), "boundary")
+    assert _lost(char).losses == []
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_l_more_items_than_slots_are_on_losses_and_no_sentence(game):
+    ceiling = boundarywidths.ceilings(game).items
+    char = boundarywidths.base(game)
+    item = boundarychars._item()
+    char.set("inventory", [item] * (ceiling + 2), "boundary: one past")
+    rep = _lost(char)
+    assert rep.losses == [f"inventory: 2 items past the {ceiling} slots the "
+                          f"C64 record holds"], (game, rep.losses)
+    assert rep.warnings == []
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_l_more_trait_ids_than_slots_are_on_losses_and_no_sentence(game):
+    char = boundarywidths.base(game)
+    char.set("innate_effects", list(range(1, traits.SLOTS + 3)),
+             "boundary: one past")
+    rep = _lost(char)
+    assert len(rep.losses) == 1 and rep.losses[0].startswith(
+        "item_effects: 2 racial"), (game, rep.losses)
+    assert rep.warnings == []
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_l_spellbook_ids_above_the_mask_are_on_losses_and_no_sentence(game):
+    top = spells.for_game(game).last_spellbook_spell
+    char = boundarywidths.base(game)
+    char.set("spells_known", list(range(1, top + 3)), "boundary: one past")
+    rep = _lost(char)
+    assert rep.losses == [f"spells_known: 2 ids above {top}, the last spell "
+                          f"this title's spellbook mask holds"], (game, rep.losses)
+    assert rep.warnings == []
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_l_a_class_with_no_c64_slot_is_on_losses_and_no_sentence(game):
+    char = boundarywidths.base(game)
+    char.set("levels", {"fighter": 5, "no-such-class": 3}, "boundary")
+    rep = _lost(char)
+    assert rep.losses == ["levels: no-such-class 3 has no slot in the C64 "
+                          "record"], (game, rep.losses)
+    assert rep.warnings == []
+
+
+@pytest.mark.parametrize(
+    "game", [g for g in GAMES if c64_codec.deltas_for(g).spell_slots])
+def test_l_a_spell_count_past_a_nibble_is_clamped_and_a_loss(game):
+    # Only the titles whose record packs the counts have a nibble to overflow.
+    # `boundarywidths.base` is DOS-sourced, so the cleric column is rebuilt
+    # from the class levels; a magic-user column is copied.
+    char = boundarywidths.base(game)
+    char.set("spells_castable", {"magic-user": (16, 0, 0)}, "boundary")
+    rep = _lost(char)
+    line = ("spells_castable: magic-user level 1 holds 16, which does not fit "
+            "the C64's four-bit count; clamped to 15")
+    assert line in rep.losses and line in rep.warnings, (game, rep.losses)
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_l_a_control_byte_past_a_byte_is_wrapped_and_a_loss(game):
+    char = boundarywidths.base(game)
+    char.set("npc", True, "boundary")
+    char.set("npc_control_byte", 0x1FF, "boundary: one past")
+    rep = _lost(char)
+    line = ("npc_control_byte: 511 does not fit the C64's one-byte field; "
+            "wrapped to 255")
+    assert line in rep.losses and line in rep.warnings, (game, rep.losses)
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_l_a_reader_warning_reaches_warnings_and_never_losses(game):
+    char = boundarywidths.base(game)
+    char.warnings.append("a note the reader made about its own source")
+    rep = _lost(char)
+    assert "a note the reader made about its own source" in rep.warnings
+    assert rep.losses == [], (game, rep.losses)

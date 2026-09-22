@@ -637,6 +637,18 @@ def _clamp_nibble(n: int) -> int:
     return min(int(n), 0x0F)
 
 
+def _wrapped_byte(rep: "Report", name: str, value: int) -> None:
+    """Report a value a `& 0xFF` is about to wrap.
+
+    The mask is there for a source that already holds a byte, so this never
+    fires for one; it exists so a value outside a byte is a loss on the
+    report and not a different number in the record.
+    """
+    if not 0 <= int(value) <= 0xFF:
+        rep.lost(f"{name}: {int(value)} does not fit the C64's one-byte "
+                 f"field; wrapped to {int(value) & 0xFF}")
+
+
 def _field(name: str) -> Field:
     from . import layout as _l
     return _l.FIELDS_BY_NAME[name]
@@ -685,7 +697,7 @@ _DUAL_CLASS_SLOT_NAMES: dict[int, str] = {
 _SPELL_SLOT_RECOMPUTE_FROM_PORTS = ("DOS",)
 
 
-#: The drop line for an experience total the C64's three bytes cannot hold.
+#: The loss line for an experience total the C64's three bytes cannot hold.
 EXPERIENCE_CLAMPED = (
     "experience: {port} holds {value}, which does not fit the C64's {size} "
     "bytes; written as {top}, the most they hold")
@@ -735,9 +747,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
             # wider than the C64's three.  It is clamped to the field's
             # largest value rather than refused, so the character converts;
             # a negative value still reaches `rec.set` and is refused there.
-            # The line goes to the debug log only: nothing reads
-            # `report.dropped` on the way to a player.
-            rep.dropped.append(EXPERIENCE_CLAMPED.format(
+            # The value is narrowed rather than homeless, so the line is a
+            # loss: `lost` puts it on `losses` for a caller that refuses on
+            # one, and on `warnings` where the debug log reads it.
+            rep.lost(EXPERIENCE_CLAMPED.format(
                 port=port, value=int(value), size=dst.size, top=top))
             value, extra = top, f", clamped from {int(value)}"
         rec.set(c64_name, value)
@@ -757,6 +770,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
             raise ValueError(
                 f"treasure share {int(share.value):#04x} has bit 2 set; "
                 "a C64 record masks shares with 3")
+        _wrapped_byte(rep, "treasure_share", int(share.value))
         rec.set("treasure_share", int(share.value) & 0xFF)
         emit(share, "treasure_share", 0x0FA, 1)
 
@@ -859,6 +873,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     mem_at, mem_size = span_of(deltas.memorised)
     if memorised is not None:
         ids = list(memorised.value)[:mem_size]
+        if len(memorised.value) > mem_size:
+            rep.losses.append(
+                f"spells_memorised: {len(memorised.value) - mem_size} ids past "
+                f"the {mem_size} slots this title's C64 record holds")
         _set_span(rec, deltas.memorised, bytes(ids) + bytes(mem_size - len(ids)))
         emit(memorised, "spells_memorised", mem_at, mem_size,
              f" (the C64 fills this title's {mem_size} slots from the start, "
@@ -874,6 +892,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         # destination.  The game implements AD&D, so spell slots come from
         # class and level rather than anything a conversion could lose.
         # Donald, 2026-09-07: "I agree that we do not need the sentences."
+        # The accounting line above is not a sentence: it goes on `losses`
+        # alone, so `warnings` stays empty and nothing is drawn for a player.
 
     # -- the second ability array -------------------------------------------
     # Curse of the Azure Bonds keeps every ability twice and works in this
@@ -884,6 +904,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     second = use("abilities_second")
     if deltas.second_abilities:
         if second is not None:
+            for n in neutral.ABILITIES:
+                _wrapped_byte(rep, n, second.value.get(n, 0))
             rec.set_raw("abilities_second",
                         bytes(second.value.get(n, 0) & 0xFF
                               for n in neutral.ABILITIES))
@@ -891,6 +913,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                  ", the copy this title's engine works in; 0x014 is the copy "
                  "it makes of this one")
         else:
+            for n in neutral.ABILITIES:
+                _wrapped_byte(rep, n, w.get(n, 0))
             rec.set_raw("abilities_second",
                         bytes(w.get(n, 0) & 0xFF for n in neutral.ABILITIES))
             rep.note(0x065, 7,
@@ -918,6 +942,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         table = spells.for_game(char.game)
         ceiling = table.last_spellbook_spell
         converted = [i for i in known.value if i <= ceiling]
+        if len(converted) != len(known.value):
+            rep.losses.append(
+                f"spells_known: {len(known.value) - len(converted)} ids above "
+                f"{ceiling}, the last spell this title's spellbook mask holds")
         spells.write_spellbook(rec, converted, char.game)
         emit(known, "spells_known", 0x078, table.spellbook_size,
              " packed to one bit; ids are identical")
@@ -932,7 +960,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                 # of item or trait slots tells the player nothing, because
                 # the pane never shows a warning; Donald, 2026-09-07: "I
                 # agree that we do not need the sentences."): a source class
-                # the C64 game has no slot for.
+                # the C64 game has no slot for.  The accounting line is on
+                # `losses` alone, which nothing draws.
+                if level:
+                    rep.losses.append(
+                        f"levels: {name_} {level} has no slot in the C64 "
+                        f"record")
                 continue
             rec.set(field, level)
         for f in _LEVEL_ORDER:
@@ -985,6 +1018,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         cleric = (computed_cleric if computed_cleric is not None
                  else castable.value.get("cleric", (0, 0, 0)))
         mage = castable.value.get("magic-user", (0, 0, 0))
+        for column, counts in (("cleric", cleric), ("magic-user", mage)):
+            for i in range(3):
+                if int(counts[i]) > 0x0F:
+                    rep.lost(
+                        f"spells_castable: {column} level {i + 1} holds "
+                        f"{int(counts[i])}, which does not fit the C64's "
+                        f"four-bit count; clamped to 15")
         packed = bytes((_clamp_nibble(cleric[i]) << 4) | _clamp_nibble(mage[i])
                        for i in range(3)) + bytes(3)
         rec.set_raw("spells_castable", packed)
@@ -1178,6 +1218,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         granted_ids = ([int(node[0]) for node in granted.value]
                        if granted is not None else [])
         free = [i for i in range(9, -1, -1) if slots[i] == 0]
+        if len(innate_ids) > 10 or len(granted_ids) > len(free):
+            rep.losses.append(
+                f"item_effects: {max(len(innate_ids) - 10, 0)} racial and "
+                f"{max(len(granted_ids) - len(free), 0)} granted ids past the "
+                f"ten trait slots")
         for i, e in zip(free, granted_ids):
             slots[i] = e
         rec.set_raw("item_effects", bytes(slots))
@@ -1210,12 +1255,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         # dwarf's four innate ids plus one ring grant); on Pool of Radiance
         # the ten slots cannot be exceeded by the game's own items at all,
         # CONFIRMED by reading `SPELLE04 $ADD4`.  Donald, 2026-09-07: "I
-        # agree that we do not need the sentences."
+        # agree that we do not need the sentences."  The accounting line
+        # above is not a sentence: it is on `losses` alone.
 
     # -- the inventory: sixteen fixed slots ----------------------------------
     inventory = use("inventory")
     if inventory is not None:
         converted = list(inventory.value)
+        if len(converted) > ITEM_SLOTS:
+            rep.losses.append(
+                f"inventory: {len(converted) - ITEM_SLOTS} items past the "
+                f"{ITEM_SLOTS} slots the C64 record holds")
         inv = bytearray(ITEM_SLOTS * ITEM_SIZE)
         for n, item in enumerate(converted[:ITEM_SLOTS]):
             inv[n * ITEM_SIZE:(n + 1) * ITEM_SIZE] = item
@@ -1262,6 +1312,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     control = use("npc_control_byte")
     if npc is not None and npc.value:
         if control is not None:
+            _wrapped_byte(rep, "npc_control_byte", int(control.value))
             rec.set("flags_0b8", int(control.value) & 0xFF)
             emit(control, "flags_0b8", 0x0B8, 1,
                  " -- bit 7 plus the low seven bits of morale, unchanged")

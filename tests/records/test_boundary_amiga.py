@@ -183,6 +183,8 @@ def test_por_the_name_is_sixteen_bytes_built_from_dos_fifteen(length):
     assert rep.dropped == []
     _only(rep.warnings, [_POR_PROVENANCE]
           + ([_NAME_TRUNCATED] if length > 15 else []))
+    assert [line.startswith(_NAME_TRUNCATED) for line in rep.losses] == (
+        [True] if length > 15 else []), rep.losses
 
 
 def test_por_a_space_in_the_name_is_reported_once():
@@ -402,6 +404,8 @@ def test_later_the_name_is_sixteen_bytes_built_from_dos_fifteen(game, length):
     assert rep.dropped == []
     _only(rep.warnings, [_LATER_PROVENANCE, _LATER_EFFECTS]
           + ([_NAME_TRUNCATED] if length > 15 else []))
+    assert [line.startswith(_NAME_TRUNCATED) for line in rep.losses] == (
+        [True] if length > 15 else []), rep.losses
 
 
 @pytest.mark.parametrize("value", [0, 1, 0x01020304, 0xFFFFFFFF])
@@ -521,3 +525,30 @@ def test_later_every_field_the_record_holds_arrives_unchanged(game):
             f.kind, drec[f.offset:f.offset + f.size]), (game, f.name)
         checked += 1
     assert checked == len(dos_port.layout_for(deltas.dos)) - len(by_hand)
+
+
+_READER_NOTE = "a note the reader made about its own source"
+
+
+def test_por_a_reader_warning_reaches_warnings_and_never_losses():
+    char = boundarychars._base()
+    char.warnings.append(_READER_NOTE)
+    _, _, _, rep, _ = _por_readback(char)
+    assert _READER_NOTE in rep.warnings
+    assert rep.losses == []
+
+
+@pytest.mark.parametrize("game", laterchars.GAMES)
+def test_later_a_reader_warning_reaches_warnings_and_never_losses(game):
+    char = doswidths.c64_sourced(laterchars.caster(game))
+    char.warnings.append(_READER_NOTE)
+    _, rep, _ = _later_readback(char)
+    assert _READER_NOTE in rep.warnings
+    assert rep.losses == []
+
+
+def test_por_a_space_stripped_from_a_name_is_a_warning_and_not_a_loss():
+    char = boundarychars._base()
+    char.set("name", "A B", "boundary")
+    _, _, _, rep, _ = _por_readback(char)
+    assert rep.losses == []

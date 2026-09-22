@@ -1649,6 +1649,9 @@ def write_later(char: NeutralCharacter,
     rep = LaterWriteReport()
     rep.dropped = list(dosrep.dropped)
     rep.warnings = list(dosrep.warnings)
+    # The DOS writer's own narrowing lines only: they arrive from the code
+    # that cut a value, never from `warnings` wholesale.
+    rep.losses = list(dosrep.losses)
     rep.warnings.append(
         f"Written as a {deltas.record_size}-byte Amiga {deltas.title} record "
         f"by re-cutting the {deltas.dos.record_size}-byte DOS one built by "

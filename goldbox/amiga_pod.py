@@ -2583,11 +2583,22 @@ def _classes_of(names) -> tuple[list[str], list[str]]:
     return out, warnings
 
 
+#: The neutral fields `PodWriter.to_bytes` writes through a `min(...)`, and the
+#: largest value each holds.
+_POD_CLAMPED_SCALARS = (
+    ("thac0_base", 0xFF), ("paladin_cures", 0xFF), ("hp_rolled", 0xFF),
+    ("unnamed_0ab", 0xFF), ("npc_control_byte", 0xFF),
+    ("experience_award", 0xFFFF),
+)
+
+
 def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     """Build a `Save/NAME.pc` writer from a neutral character, and its report.
 
     Everything the Amiga cannot hold lands in `Report.dropped`; everything it
     holds differently lands in `Report.warnings`.
+    A value cut or clamped to fit lands in `Report.losses` as well as in
+    `Report.warnings`.
     """
     # The heavier module, for the item and effect re-cuts; this is its only
     # caller on this side.
@@ -2615,7 +2626,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     if not name:
         raise ConversionError("a character with no name cannot be converted")
     if len(name) > NAME_LENGTH:
-        rep.warnings.append(
+        rep.lost(
             f"Name {name!r} is {len(name)} characters; PoD keeps "
             f"{NAME_LENGTH}, so it arrives as {name[:NAME_LENGTH]!r}")
 
@@ -2701,7 +2712,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     max_hp = w.use("hp_max")
     hp_max = int(max_hp.value if max_hp else 0)
     if hp_max > 0xFF:
-        rep.warnings.append(
+        rep.lost(
             f"Hit points maximum {hp_max} does not fit the Amiga's one byte "
             f"at {HP_MAX:#05x}; clamped to 255")
         hp_max = 0xFF
@@ -2709,7 +2720,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     lighter = sum(int(w.get(k) or 0)
                   for k in ("copper", "silver", "electrum", "gold"))
     if lighter:
-        rep.warnings.append(
+        rep.lost(
             f"{lighter} copper, silver, electrum and gold pieces are left "
             f"behind: only platinum, gems and jewelry have a located home in "
             f"the .pc")
@@ -2726,6 +2737,10 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
             "maximum")
     else:
         hp_current = min(int(current.value), hp_max)
+        if int(current.value) > hp_current:
+            rep.lost(
+                f"Hit points current {int(current.value)} is above the "
+                f"maximum this record keeps, {hp_max}; written as {hp_current}")
 
     treasure_share = w.use("treasure_share")
 
@@ -2767,6 +2782,10 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
                     f"the former class {class_name}: Pools of Darkness has no "
                     f"slot for it in the array at {FORMER_CLASS_LEVELS:#05x}")
                 continue
+            if level > 0xFF:
+                rep.lost(
+                    f"the former {class_name} level {level} does not fit the "
+                    f"Amiga's one byte; clamped to 255")
             slots_was[CLASS_LEVEL_SLOTS.index(slot)] = min(level, 0xFF)
         former_slots = tuple(slots_was)
         former_level = max(slots_was)
@@ -2791,7 +2810,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     if forms_value is not None:
         block = bytes(forms_value.value or b"")
         if len(block) != ATTACK_FORM_COUNT:
-            rep.warnings.append(
+            rep.lost(
                 f"The source's attack forms are {len(block)} bytes and this "
                 f"record keeps {ATTACK_FORM_COUNT}, so it is cut to fit")
         forms = tuple(block[:ATTACK_FORM_COUNT].ljust(ATTACK_FORM_COUNT, b"\0"))
@@ -2864,6 +2883,14 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
             f"scroll are written empty")
 
     nodes = _pod_effect_nodes(char, w, rep)
+
+    # `PodWriter.to_bytes` clamps each of these to its width without a word.
+    for scalar, top in _POD_CLAMPED_SCALARS:
+        held = w.get(scalar)
+        if held is not None and int(held) > top:
+            rep.lost(
+                f"{scalar}: {int(held)} does not fit the Amiga's field, which "
+                f"holds up to {top}; clamped")
 
     writer = PodWriter(
         name=name[:NAME_LENGTH],

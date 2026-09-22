@@ -165,8 +165,8 @@ def convert(record: bytes, value: int) -> tuple[str, str]:
     if wrote == value:
         verdict = "kept"
     else:
-        lines = [d for d in rep.dropped if d.startswith("experience:")]
-        verdict = f"clamped from {value}; dropped: {' / '.join(lines)}"
+        lines = [d for d in rep.losses if d.startswith("experience:")]
+        verdict = f"clamped from {value}; lost: {' / '.join(lines)}"
     return f"{read_back}", f"wrote {wrote} ({wrote:#x}) -- {verdict}"
 
 

@@ -879,6 +879,9 @@ def write_por(char: NeutralCharacter,
     rep = PorWriteReport()
     rep.dropped = list(dosrep.dropped)
     rep.warnings = list(dosrep.warnings)
+    # The DOS writer's own narrowing lines only: they arrive from the code
+    # that cut a value, never from `warnings` wholesale.
+    rep.losses = list(dosrep.losses)
     rep.warnings.append(
         "Written as a 288-byte Amiga Pool of Radiance record by re-cutting "
         "the 285-byte DOS one built by goldbox.dos_codec.write; the provenance lines "
