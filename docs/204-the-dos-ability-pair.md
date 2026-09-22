@@ -83,6 +83,22 @@ appears nought times in all five. `tests/dos/test_dosabilitypair.py` asserts it.
 | the Pool of Radiance import | `0x1CC8E`-`0x1CFE9` | reads the Pool record's single copy, writes it to `[0x10 + 2i]`, and clamps **that** byte between the race-and-sex minimum and maximum. A racial limit belongs on a permanent score, and the C64's importer clamps `$7C65` in the same place |
 | "is this stronger than his own" | `0x3674A` | `cmp al, es:[di+0x10]` … `cmp al, es:[di+0x1D]` in four instructions -- the `(score, percentile)` pair the engine calls the character's own is `(0x10, 0x1D)`, one lower byte and one higher one. The only place in the file where those two comparisons appear together |
 
+**And it is the routine every ability cast calls, which settles the direction
+from a third side.** Curse's Strength, Enlarge and Friends casts
+(`0x30C10`-`0x30DC1`, `0x2FFBA`-`0x300DD`, `0x3018F`-`0x301D4`) and Silver
+Blades' (`0x2F477`-`0x2F607`, `0x2E7FA`-`0x2E92F`, `0x2E9D4`-`0x2EA25`) hold
+**no store at all through a pointer into the record**, and `0x3674A` itself
+(Silver Blades `0x372FC`) holds one store, into its caller's own local at
+`[bp + 6]`. Each cast ends by calling the recompute above, which writes the
+in-force bytes and no other -- `0x11`, `0x13`, `0x15`, `0x17`, `0x19`, `0x1B`,
+`0x1C`, 14 stores per engine and not one permanent byte. The removal routine
+calls the same recompute when a Strength, Enlarge, Friends or girdle-id node
+comes off (`0x35244`-`0x35273`, Silver Blades `0x35F91`-`0x35FC0`), so a
+temporary boost is undone by rebuilding the derived byte rather than by putting
+anything back. Graded **CONFIRMED** from the two engines; read in
+`tools/c64/effectcrosswalk.py`'s `confirm_later_ability_pair` and
+`docs/226-the-c64-running-effect-crosswalk.md`.
+
 ### The drain says the same thing from the other side
 
 `weaken` at `0x10F45` adds an affect with a duration of 60 ticks, tests

@@ -577,7 +577,13 @@ STRENGTH_CAP = (18, 100)
 
 
 def raise_strength(strength: int, percentile: int, steps: int) -> tuple[int, int]:
-    """Climb the later titles' strength ladder, the way the recompute does."""
+    """Climb the later titles' strength ladder, the way the recompute does.
+
+    There is no inverse, and none is needed: both ports keep the permanent
+    score beside the one in force, and every engine derives the second from the
+    first (`docs/204-the-dos-ability-pair.md`,
+    `docs/226-the-c64-running-effect-crosswalk.md`).
+    """
     if steps < 0:
         raise ValueError(f"steps must not be negative: {steps}")
     for _ in range(steps):
@@ -589,47 +595,6 @@ def raise_strength(strength: int, percentile: int, steps: int) -> tuple[int, int
             percentile = 100
         else:
             percentile += 10
-    return strength, percentile
-
-
-def lower_strength(strength: int, percentile: int,
-                   steps: int) -> tuple[int, int] | None:
-    """The score a later title's base array must hold under `steps` of boost,
-    or `None` where the boosted score does not say.
-
-    A partial inverse of `raise_strength`, which is what a conversion needs:
-    the DOS record holds only the boosted score, and the C64 rebuilds the
-    boosted one from the base. It is partial because **the ladder saturates**.
-    The DOS cast computes the arrival as `(new - 18) * 10 + old percentile` and
-    clamps it to 100 (Curse `GAME.OVR:0x30D3A`-`0x30D5D`), while the node keeps
-    `100 + the die roll` rather than the steps that were actually applied
-    (`0x30D87`), so 18/50 boosted by a roll of 6 and 18/90 boosted by a roll of
-    2 leave the same score and different nodes. At 18/100 the base is therefore
-    not in the record and this returns `None` rather than guessing one.
-
-    A score above 18 is left alone, because the ladder does not reach one: the
-    DOS cast turns any arrival past 18 into a percentile, so only Enlarge and
-    the girdle ids put a 19 there. A percentile of 1 to 9 under a step is not a
-    score the ladder can have arrived at -- one step is always ten -- and is
-    refused rather than walked past zero.
-    """
-    if steps < 0:
-        raise ValueError(f"steps must not be negative: {steps}")
-    for _ in range(steps):
-        if strength > 18:
-            break
-        if (strength, percentile) == STRENGTH_CAP:
-            return None
-        if strength == 18 and 0 < percentile < 10:
-            raise ValueError(
-                f"18/{percentile:02d} is not a score one step of the ladder "
-                "reaches, so it has no base under a boost")
-        if strength == 18 and percentile:
-            percentile -= 10
-        elif strength == 18:
-            strength, percentile = 17, 0
-        else:
-            strength -= 1
     return strength, percentile
 
 

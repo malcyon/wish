@@ -805,59 +805,42 @@ def test_a_later_ability_magnitude_is_the_bonus_less_one_and_the_level(bonus, le
     assert effects.later_ability_bonus(magnitude) == bonus
 
 
-def test_the_strength_ladder_is_the_recomputes_and_lowering_inverts_it():
+def test_the_strength_ladder_is_the_recomputes_own_steps():
     """One step is `+1` below 18 and `+10` percentile at it, stopping at
     18/100 -- and the DOS cast's own `(new - 18) * 10 + old` arrives at the
-    same score, which is why a converted base can be walked back down.
+    same score.
     """
     assert effects.raise_strength(15, 0, 3) == (18, 0)
     assert effects.raise_strength(18, 0, 1) == (18, 10)
     assert effects.raise_strength(18, 90, 1) == (18, 100)
     assert effects.raise_strength(18, 100, 4) == (18, 100)
-    for strength in range(3, 19):
-        for steps in range(1, 9):
-            up = effects.raise_strength(strength, 0, steps)
-            if up != effects.STRENGTH_CAP:
-                assert effects.lower_strength(*up, steps) == (strength, 0)
+    with pytest.raises(ValueError, match="negative"):
+        effects.raise_strength(18, 0, -1)
     # The DOS cast's arithmetic for an arrival past 18, from one at 18/00.
     for steps in range(1, 9):
         assert effects.raise_strength(18, 0, steps) == (18, min(steps * 10, 100))
 
 
-def test_every_base_and_boost_round_trips_except_where_the_ladder_saturates():
-    """The whole grid, counted: 18/100 is where a base stops being in the
-    record, and it is the only place the round trip is refused.
+def test_a_boosted_score_does_not_say_what_the_base_was():
+    """The whole grid, counted: 34 of 176 base-and-boost pairs arrive at
+    18/100, so a boosted score cannot be walked back down -- which is why both
+    ports keep the permanent score beside the one in force and no conversion
+    needs an inverse.
     """
     bases = [(strength, 0) for strength in range(3, 18)]
     bases += [(18, percentile) for percentile in (0, 10, 51, 76, 90, 91, 100)]
     tried = capped = 0
-    for base in bases:
-        for steps in range(1, 9):
+    for steps in range(1, 9):
+        reached: dict[tuple[int, int], list[tuple[int, int]]] = {}
+        for base in bases:
             tried += 1
-            up = effects.raise_strength(*base, steps)
-            down = effects.lower_strength(*up, steps)
-            if up == effects.STRENGTH_CAP:
-                capped += 1
-                assert down is None
-            else:
-                assert down == base
+            reached.setdefault(effects.raise_strength(*base, steps),
+                               []).append(base)
+        capped += len(reached[effects.STRENGTH_CAP])
+        # Knowing the boost, only the cap leaves two bases indistinguishable.
+        assert [score for score, from_ in reached.items()
+                if len(from_) > 1] == [effects.STRENGTH_CAP]
     assert (tried, capped) == (176, 34)
-    # Zero steps is not a boost, so the cap is still a base of its own.
-    assert effects.lower_strength(18, 100, 0) == (18, 100)
-
-
-def test_lowering_refuses_a_percentile_one_step_cannot_have_reached():
-    """One step of the ladder is always ten percentile, so 18/05 under a boost
-    is a score the engine never arrives at and there is no base to report.
-    """
-    with pytest.raises(ValueError, match="18/05"):
-        effects.lower_strength(18, 5, 1)
-    assert effects.lower_strength(18, 5, 0) == (18, 5)
-    assert effects.lower_strength(18, 51, 1) == (18, 41)
-    with pytest.raises(ValueError):
-        effects.lower_strength(18, 51, 6)          # 18/01 with a step left
-    with pytest.raises(ValueError):
-        effects.lower_strength(18, 0, -1)
 
 
 @pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
@@ -879,14 +862,15 @@ def test_the_recompute_climbs_one_more_step_than_the_nibble_holds(title):
 
 @pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
 def test_the_dos_cast_clamps_the_arrival_at_18_100(title):
-    """Why `lower_strength` answers `None` there: the clamp throws the steps
-    away and the node keeps the die roll instead.
+    """The clamp throws the steps away and the node keeps the die roll, so the
+    score in force says nothing about the base. Both ports keep the base.
     """
     ovr = _dos_engine(title)
     effectcrosswalk.dos_strength_arrival(title, ovr)
     # Two bases and two rolls that leave the record holding the same thing.
     assert effects.raise_strength(18, 50, 6) == effects.raise_strength(18, 90, 2)
-    assert effects.lower_strength(18, 100, 6) is None
+    assert effectcrosswalk.confirm_later_ability_pair(title, ovr)[2].startswith(
+        "The recompute derives the in-force bytes")
 
 
 #: What Enlarge sets a character's strength to, by caster level, with no

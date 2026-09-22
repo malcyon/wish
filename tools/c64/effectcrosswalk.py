@@ -727,9 +727,11 @@ def strength_ladder(title: str, ecl65: bytes) -> None:
 def dos_strength_arrival(title: str, dos_ovr: bytes) -> None:
     """Check the DOS cast's closed form for the same ladder, and its clamp.
 
-    `(new - 18) * 10 + the old percentile`, clamped to 100. The clamp is why
-    `goldbox.effects.lower_strength` has no answer at 18/100: the node keeps
-    the die roll rather than the steps the clamp let through.
+    `(new - 18) * 10 + the old percentile`, clamped to 100, with the old
+    percentile read from the in-force byte `0x1C`. The clamp is why a boosted
+    score says nothing about the base: the node keeps the die roll rather than
+    the steps the clamp let through, and the base is in the record's own `0x010`
+    instead (`confirm_later_ability_pair`).
     """
     site, at = ABILITIES[title], ABILITIES[title].dos_strength_ladder
     _x86(dos_ovr, at, "mov", "al, byte ptr [bp - 7]")
@@ -784,6 +786,228 @@ def dos_enlarge_ladder(title: str, dos_ovr: bytes) -> tuple[tuple[int, int], ...
     if sorted(out) != list(range(1, 12)):
         raise ValueError(f"The DOS Enlarge ladder has levels {sorted(out)}")
     return tuple(out[level] for level in range(1, 11))
+
+
+@dataclasses.dataclass(frozen=True)
+class AbilityPairSite:
+    """Where one later title's DOS engine keeps the ability-pair mechanism.
+
+    Each pair of routine bounds is `(prologue, retf)`: the linear decode below
+    must land on that `retf`, so a desynchronised read raises rather than
+    reporting a short list of stores.
+    """
+
+    setter: tuple[int, int]
+    setter_out: int
+    setter_permanent: int
+    setter_permanent_percentile: int
+    encoder: int
+    encoder_code: tuple[int, int, int]
+    decoder: int
+    decoder_code: tuple[int, int, int, int]
+    recompute: tuple[int, int]
+    recompute_entry: str
+    seed: tuple[int, int, int]
+    strength_node: tuple[int, int, int]
+    percentile_source: int
+    clamp: tuple[int, int]
+    enlarge_node: int
+    charisma_node: tuple[int, int, int]
+    stores: tuple[int, ...]
+    removal_charisma: tuple[int, int, int]
+    removal_strength_ids: tuple[tuple[int, int], ...]
+    removal_strength: tuple[int, int]
+    casts: tuple[tuple[str, int, int, int, int], ...]
+
+
+#: The character-record offsets a later title's ability recompute writes: every
+#: in-force score, plus current hit points and one status flag, which differ by
+#: title. The permanent bytes below are in no engine's store list.
+LATER_IN_FORCE = (0x11, 0x1C, 0x13, 0x15, 0x17, 0x19, 0x1B)
+LATER_PERMANENT = (0x10, 0x12, 0x14, 0x16, 0x18, 0x1A, 0x1D)
+
+ABILITY_PAIRS = {
+    "curse-of-the-azure-bonds": AbilityPairSite(
+        setter=(0x3674A, 0x36790), setter_out=0x36781,
+        setter_permanent=0x36756, setter_permanent_percentile=0x36768,
+        encoder=0x366D2, encoder_code=(0x366DD, 0x366E3, 0x366EE),
+        decoder=0x366FB, decoder_code=(0x36708, 0x36717, 0x36725, 0x3673D),
+        recompute=(0x368FB, 0x36F1C), recompute_entry="0xe3, 0x8e",
+        seed=(0x36928, 0x3692F, 0x36939),
+        strength_node=(0x36B43, 0x36B68, 0x36B89), percentile_source=0x36BE8,
+        clamp=(0x36BF3, 0x36BF9), enlarge_node=0x36C42,
+        charisma_node=(0x36EF4, 0x36F0C, 0x36F15),
+        stores=LATER_IN_FORCE + (0x78, 0x1A4),
+        removal_charisma=(0x35244, 0x35250, 0x35254),
+        removal_strength_ids=((0x0C, 0x35257), (0x26, 0x3525D), (0x92, 0x35263)),
+        removal_strength=(0x3526F, 0x35273),
+        casts=(("Strength", 0x30C10, 0x30DC1, 0x30DB9, 0),
+               ("Enlarge", 0x2FFBA, 0x300DD, 0x300B3, 0),
+               ("Friends", 0x3018F, 0x301D4, 0x301CC, 5))),
+    "secret-of-the-silver-blades": AbilityPairSite(
+        setter=(0x372FC, 0x37342), setter_out=0x37333,
+        setter_permanent=0x37308, setter_permanent_percentile=0x3731A,
+        encoder=0x37282, encoder_code=(0x3728D, 0x37293, 0x3729E),
+        decoder=0x372AB, decoder_code=(0x372B8, 0x372C7, 0x372D5, 0x372ED),
+        recompute=(0x374A8, 0x37AAC), recompute_entry="0x145, 0x8e",
+        seed=(0x374D2, 0x374D9, 0x374E3),
+        strength_node=(0x376FA, 0x3771F, 0x37740), percentile_source=0x3779F,
+        clamp=(0x377AA, 0x377B0), enlarge_node=0x377E9,
+        charisma_node=(0x37A84, 0x37A9C, 0x37AA5),
+        stores=LATER_IN_FORCE + (0x70, 0x1B5),
+        removal_charisma=(0x35F91, 0x35F9D, 0x35FA1),
+        removal_strength_ids=((0x0C, 0x35FA4), (0x26, 0x35FAA), (0x71, 0x35FB0)),
+        removal_strength=(0x35FBC, 0x35FC0),
+        casts=(("Strength", 0x2F477, 0x2F607, 0x2F5FF, 0),
+               ("Enlarge", 0x2E7FA, 0x2E92F, 0x2E8FA, 0),
+               ("Friends", 0x2E9D4, 0x2EA25, 0x2EA1D, 5))),
+}
+
+
+#: Instructions whose first operand is read rather than written, so a far
+#: pointer in one is not a store.
+_READS_ONLY = ("cmp", "test", "push", "les", "lds")
+
+
+def record_stores(dos_ovr: bytes, bounds: tuple[int, int]) -> tuple[tuple[int, str, int], ...]:
+    """Every store a routine makes through `es:di`, with the pointer it used.
+
+    A 16-bit linear decode from the routine's own prologue to its `retf`, which
+    it must reach: a decode that desynchronises raises rather than reporting a
+    short list. Each entry is the instruction's offset, the operand that last
+    loaded `es:di`, and the displacement written to.
+    """
+    import capstone
+
+    start, end = bounds
+    decoder = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    pointer, out, last = "", [], None
+    for instruction in decoder.disasm(dos_ovr[start:end + 4], start):
+        if instruction.address > end:
+            break
+        last = instruction
+        operands = instruction.op_str
+        if instruction.mnemonic in ("les", "lds"):
+            pointer = operands
+        target = operands.split(", ")[0]
+        if "es:[" not in target or instruction.mnemonic in _READS_ONLY:
+            continue
+        register, _, displacement = target.partition("es:[")[2] \
+            .rstrip("]").partition(" + ")
+        if register != "di":
+            raise ValueError(f"A store through es:[{register}] at "
+                             f"{instruction.address:#x}")
+        out.append((instruction.address, pointer,
+                    int(displacement, 0) if displacement else 0))
+    if last is None or (last.address, last.mnemonic) != (end, "retf"):
+        raise ValueError(f"The routine at {start:#x} does not end at {end:#x}")
+    return tuple(out)
+
+
+def later_node_score(data: int) -> tuple[int, int]:
+    """The score a later title's DOS engine reads out of an ability node.
+
+    One byte carries a whole `(strength, percentile)`: the engine's own decoder
+    reads `data & 0x7F` of 101 or less as `18/(data - 1)` and anything larger
+    as an ordinary score of `data - 100`. Curse `GAME.OVR:0x366FB`, Silver
+    Blades `0x372AB`.
+    """
+    if not 0 <= data <= 0xFF:
+        raise ValueError("DOS data must be a byte")
+    value = data & 0x7F
+    return (18, value - 1) if value <= 101 else (value - 100, 0)
+
+
+def later_node_data(strength: int, percentile: int) -> int:
+    """What the engine's encoder writes for one score, the inverse above.
+
+    Curse `GAME.OVR:0x366D2`, Silver Blades `0x37282`: `strength + 100`, or the
+    percentile plus one at strength 18. Both engines' ability setters call it
+    with the score the spell is about to produce, so an Enlarge node holds the
+    enlarged score itself. A strength of 1 encodes to the same 101 as 18/100
+    and the decoder answers 18/100, which is the one collision in the byte.
+    """
+    if not 1 <= strength <= 155 or not 0 <= percentile <= 100:
+        raise ValueError("A later-title score is 1 to 155 with a percentile")
+    return percentile + 1 if strength == 18 else strength + 100
+
+
+def confirm_later_ability_pair(title: str, dos_ovr: bytes) -> tuple[str, ...]:
+    """Check which byte of the DOS ability pair a later title's casts write.
+
+    The answer is neither: each cast asks the setter whether its arrival beats
+    the **permanent** pair at `0x10`/`0x1D`, adds a node, and calls the
+    recompute, which rebuilds the **in-force** bytes from the permanent ones
+    plus the items and the running nodes. Expiry is the same recompute, which
+    is why id 38's own removal handler is an empty stub.
+    """
+    site = ABILITY_PAIRS[title]
+    for name, start, end, recompute_call, index in site.casts:
+        stores = record_stores(dos_ovr, (start, end))
+        if stores:
+            raise ValueError(f"The {title} {name} cast stores {stores} in the record")
+        _x86(dos_ovr, recompute_call - 3, "mov", f"al, {index}")
+        _x86(dos_ovr, recompute_call, "lcall", site.recompute_entry)
+
+    out = record_stores(dos_ovr, site.setter)
+    if [(pointer, where) for _at, pointer, where in out] != [("di, ptr [bp + 6]", 0)]:
+        raise ValueError(f"The {title} ability setter stores "
+                         + ", ".join(f"{where:#x} through {pointer} at {at:#x}"
+                                     for at, pointer, where in out))
+    if out[0][0] != site.setter_out:
+        raise ValueError(f"The {title} setter's store moved to {out[0][0]:#x}")
+    _x86(dos_ovr, site.setter_permanent, "cmp", "al, byte ptr es:[di + 0x10]")
+    _x86(dos_ovr, site.setter_permanent_percentile, "cmp",
+         "al, byte ptr es:[di + 0x1d]")
+
+    add, test, increment = site.encoder_code
+    _x86(dos_ovr, add, "add", "ax, 0x64")
+    _x86(dos_ovr, test, "cmp", "byte ptr [bp + 8], 0x12")
+    _x86(dos_ovr, increment, "inc", "ax")
+    data, boundary, percentile, ordinary = site.decoder_code
+    _x86(dos_ovr, data, "mov", "al, byte ptr es:[di + 3]")
+    _x86(dos_ovr, boundary, "cmp", "byte ptr es:[di], 0x65")
+    _x86(dos_ovr, percentile, "dec", "ax")
+    _x86(dos_ovr, ordinary, "sub", "ax, 0x64")
+
+    written = {where for _at, _pointer, where
+               in record_stores(dos_ovr, site.recompute)}
+    permanent = written & set(LATER_PERMANENT)
+    if permanent:
+        raise ValueError(f"The {title} recompute writes the permanent byte "
+                         + ", ".join(f"{where:#x}" for where in sorted(permanent)))
+    if sorted(written) != sorted(site.stores):
+        raise ValueError(f"The {title} recompute writes "
+                         + ", ".join(f"{where:#x}" for where in sorted(written)))
+    double, seed, seed_percentile = site.seed
+    _x86(dos_ovr, double, "shl", "ax, 1")
+    _x86(dos_ovr, seed, "mov", "al, byte ptr es:[di + 0x10]")
+    _x86(dos_ovr, seed_percentile, "mov", "al, byte ptr es:[di + 0x1d]")
+    find, decode, add_node = site.strength_node
+    _x86(dos_ovr, find, "mov", "al, 0x26")
+    _x86(dos_ovr, decode, "call", f"{site.decoder:#x}")
+    _x86(dos_ovr, add_node, "add", "ax, dx")
+    _x86(dos_ovr, site.percentile_source, "mov", "al, byte ptr es:[di + 0x1c]")
+    _x86(dos_ovr, site.clamp[0], "cmp", "byte ptr [bp - 4], 0x64")
+    _x86(dos_ovr, site.clamp[1], "mov", "byte ptr [bp - 4], 0x64")
+    _x86(dos_ovr, site.enlarge_node, "mov", "al, 0xc")
+    find, add_node, store = site.charisma_node
+    _x86(dos_ovr, find, "mov", "al, 0xe")
+    _x86(dos_ovr, add_node, "add", "byte ptr [bp - 1], al")
+    _x86(dos_ovr, store, "mov", "byte ptr es:[di + 0x1b], al")
+
+    test, index, call = site.removal_charisma
+    _x86(dos_ovr, test, "cmp", "byte ptr [bp + 0xa], 0xe")
+    _x86(dos_ovr, index, "mov", "al, 5")
+    _x86(dos_ovr, call, "call", f"{site.recompute[0]:#x}")
+    for effect, at in site.removal_strength_ids:
+        _x86(dos_ovr, at, "cmp", f"byte ptr [bp + 0xa], {effect:#x}")
+    index, call = site.removal_strength
+    _x86(dos_ovr, index, "mov", "al, 0")
+    _x86(dos_ovr, call, "call", f"{site.recompute[0]:#x}")
+    return ("No cast writes an ability byte", "The setter only asks",
+            "The recompute derives the in-force bytes from the permanent ones",
+            "Expiry recomputes rather than restoring")
 
 
 def mirror_zero_roll(title: str, combat: bytes, library: bytes) -> int:
@@ -918,6 +1142,8 @@ def main(argv: list[str] | None = None) -> int:
         print("CONFIRMED Value checks: " + ", ".join(checks))
         abilities = confirm_later_ability_values(args.title, read("ECL65"), dos_ovr)
         print("CONFIRMED Ability checks: " + ", ".join(abilities))
+        pair = confirm_later_ability_pair(args.title, dos_ovr)
+        print("CONFIRMED DOS ability pair: " + ", ".join(pair))
         roll = mirror_zero_roll(args.title, read("COMBAT"), library)
         print(f"CONFIRMED Mirror Image rolls through ${roll:04X}; "
               "a zero magnitude absorbs nothing and never expires")

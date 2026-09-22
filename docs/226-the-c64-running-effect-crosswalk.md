@@ -193,7 +193,7 @@ Enlarge measurement. The boundary matters: DOS data 101 means 18/100,
 while C64 low bits 101 mean ordinary strength 1. Ordinary strength 15 uses
 115 on both ports, then `$F3` with the restore flag.
 
-## The later titles' ability effects hold a modifier, not the score replaced
+## The later titles' ability effects, and which byte of the DOS pair they touch
 
 **CONFIRMED, and it replaces this page's "the complete modifier crosswalk is
 UNKNOWN":** Curse and Silver Blades keep the permanent score at record `0x065`
@@ -211,63 +211,117 @@ more step than it finds.
 |---|---|---|---|
 | Strength 38 | `100 + steps`, the class die's roll | `$80 \| (steps - 1) << 4 \| level` | DOS cast Curse `0x30C8A`-`0x30DAB`, Silver Blades `0x2F5D2`-`0x2F5F1`, both `add ax, 0x64` before `add_affect(38, …, flag 1)`; C64 Curse `ECL65 $828D`, Silver Blades `$82D6`; the recompute's step loop Curse `$9175`-`$91B8`, Silver Blades `$9647`-`$968A` |
 | Friends 14 | `2d4`, the bonus itself | `$80 \| (bonus - 1) << 4 \| level` | DOS cast Curse `0x30199`, Silver Blades `0x2E9DF`; C64 Curse `$8231`, Silver Blades `$827A`; the charisma recompute adds `nibble + 1` at Curse `$9733`-`$9741`, Silver Blades `$9990`-`$999E` |
-| Enlarge 12 | the **old strength**, in the same encoding a strength item uses | `$80 \| level`, level capped at 10 | DOS cast Curse `0x2FFBB`-`0x300A5` sets the score through `0xE3:0x75` and passes back what it replaced; C64 Curse `$8214`, read at `$91D1` as `magnitude & $0F` capped at 10 |
+| Enlarge 12 | the **enlarged score**, in the one-byte score encoding below | `$80 \| level`, level capped at 10 | DOS cast Curse `0x2FFBB`-`0x300A5`, Silver Blades `0x2E7FA`-`0x2E8FA`: the ladder's own target score goes to `0xE3:0x75`/`0x145:0x75`, which hands back that score encoded; C64 Curse `$8214`, read at `$91D1` as `magnitude & $0F` capped at 10 |
 
 **CONFIRMED: both ports enlarge to the same ten scores.** The C64 table at
 Curse `ECL65 $9223`/`$922F` and Silver Blades `$96E9`/`$96F5` reads `18/00,
 18/01, 18/51, 18/76, 18/91, 18/100, 19, 20, 21, 22` (and two more, 23 and 24, a
 cast cannot reach), and the DOS ladder of `cmp al, <level>` tests at Curse
 `0x2FFCD`-`0x3004B` writes the same ten. So the level a converted Enlarge needs
-reads straight off the record's own strength: a DOS node exists only where the
-spell actually raised the score (`0x30068` skips `add_affect` when it did not).
+reads off its own node's score, decoded: a DOS node exists only where the spell
+actually raised the score (`0x30068` skips `add_affect` when it did not).
 
-**What this means for a writer, and it is not a byte mapping.** A DOS record
-holds one set of abilities -- the boosted one -- and the node holds what the
-spell replaced or how much it added. A C64 record holds both. So converting a
-running Strength or Friends sets the C64's `0x014` from the DOS score, walks
-`0x065` back down by the bonus, and writes the magnitude above; converting a
-running Enlarge sets `0x065` from the node's own old strength. Leaving `0x065`
-at the boosted score is what a writer would do by accident, and the character
-then keeps the boost for good when the effect ends.
-`goldbox/effects.py` holds the arithmetic -- `later_ability_magnitude`,
-`later_ability_bonus`, `raise_strength`, `lower_strength`, `enlarge_level`,
-`mirror_image_count`. `tests/records/test_effects.py` pins each against the
-byte it produces, written out (`later_ability_magnitude(4, 6)` is `$B6`, and
-each of the ten Enlarge levels is its own case), and separately against the
-operands the tool reads off the disks: the cast's own `DEX` before the packer,
-the recompute's ladder step and self-modified loop count, the DOS cast's
-closed form and its clamp, and the ten entries of the DOS Enlarge ladder
-decoded from its `cmp al, <level>` tests rather than the first of them.
+### The DOS record holds the base, so nothing is walked back down
 
-**CONFIRMED, and it is why `lower_strength` answers `None` at 18/100:** the
-DOS cast clamps the arrival percentile to 100 (`cmp byte ptr [bp - 5], 0x64`
-at Curse `0x30D57`, Silver Blades `0x2F59D`) and the node keeps `100 + the die
-roll` rather than the steps the clamp let through (`0x30D87`, `0x2F5CD`). A
-base of 18/50 with a roll of 6 and a base of 18/90 with a roll of 2 leave the
-same score and different nodes, so at the cap the base is not in the record
-and there is nothing for a writer to walk back down to. Of the 176
-base-and-boost pairs the ladder can produce, 34 end at the cap and are the
-only ones that do not round-trip. A percentile of 1 to 9 under a boost is
-refused outright: one step of the ladder is always ten.
+**CONFIRMED in both engines, and it replaces this page's "a DOS record holds
+one set of abilities -- the boosted one":** a later DOS record keeps the
+permanent score and the score in force side by side, exactly as the C64 does --
+permanent at `0x010`, `0x012` … and in force at `0x011`, `0x013` …, with the
+percentile the other way round
+([204-the-dos-ability-pair.md](204-the-dos-ability-pair.md)) -- and **no ability
+cast writes either byte.** What changed is reading the three casts to their
+`retf` rather than reading the routine they call by its name.
 
-**UNREAD, and it is the other half of that question:** what DOS Curse itself
-restores when a Strength node expires. Its removal routine calls the id's own
-handler with mode 1 (`0x3517F`-`0x351A8`, dispatching through the table at
-`DS:0x6FC0` at `0x35124`), and id 38's entry there is the empty stub at
-`0x1024E` -- `push bp / mov bp, sp / pop bp / retf 0xa`. So nothing is put
-back on that path, and where the boost does come off has not been found. A
-watchpoint on the record's strength byte while a cast Strength times out under
-DOSBox-X would say; until then the clamp argument above stands on the cast
-alone, which is enough for the conversion but not for a claim about what a DOS
-player sees.
+| what was read | Curse | Silver Blades |
+|---|---|---|
+| Strength, Enlarge and Friends casts: stores through `es:di` into the record | 0 in `0x30C10`-`0x30DC1`, `0x2FFBA`-`0x300DD`, `0x3018F`-`0x301D4` | 0 in `0x2F477`-`0x2F607`, `0x2E7FA`-`0x2E92F`, `0x2E9D4`-`0x2EA25` |
+| the routine every cast calls first, and its only store | `0x3674A`, one store, through its caller's own local at `[bp + 6]` (`0x36781`) | `0x372FC`, one store, `[bp + 6]` (`0x37333`) |
+| what that routine compares, which is why it is a question and not a setter | `cmp al, es:[di + 0x10]` `0x36756`, `cmp al, es:[di + 0x1d]` `0x36768` | `0x37308`, `0x3731A` |
+| the recompute each cast ends by calling, with the ability index | `lcall 0xe3, 0x8e` = `0x368FB`; index 0 at `0x30DB9` and `0x300B3`, index 5 at `0x301CC` | `lcall 0x145, 0x8e` = `0x374A8`; `0x2F5FF`, `0x2E8FA`, `0x2EA1D` |
+| the recompute's seed | `es:[di + 0x10 + 2 * index]` `0x3692F`, `es:[di + 0x1d]` `0x36939` | `0x374D9`, `0x374E3` |
+| every record byte the recompute writes | `0x11`, `0x13`, `0x15`, `0x17`, `0x19`, `0x1B`, `0x1C`, and hit points `0x78` and flag `0x1A4`: 14 stores, none permanent | the same seven, with `0x70` and `0x1B5` |
+
+**CONFIRMED, and it closes this page's earlier "UNREAD: what DOS Curse restores
+when a Strength node expires":** the removal routine recomputes. After
+unlinking the node it tests the removed id and calls the same recompute --
+charisma for id 14 (`cmp byte ptr [bp + 0xa], 0xe` at `0x35244`, `mov al, 5`,
+`call 0x368fb`) and strength for 12, 38 and 146 (`0x35257`, `0x3525D`,
+`0x35263`, then `mov al, 0` and `call 0x368fb` at `0x3526F`-`0x35273`). Silver
+Blades is the same code at `0x35F91`-`0x35FC0` with 113 for 146. So nothing is
+put back at expiry: the in-force byte is rebuilt from the permanent one with
+the node gone, and id 38's empty mode-1 stub at `0x1024E` is the right handler
+rather than a gap. No driven run is needed to say what a DOS player sees.
+
+**So the 18/100 case does not exist, and `goldbox.effects.lower_strength` is
+deleted.** The DOS cast does clamp its arrival percentile to 100 (`cmp byte ptr
+[bp - 5], 0x64` at Curse `0x30D57`, Silver Blades `0x2F59D`) and its node does
+keep `100 + the die roll` rather than the steps the clamp let through
+(`0x30D87`, `0x2F5CD`), so a boosted score still says nothing about the base --
+34 of the ladder's 176 base-and-boost pairs arrive at 18/100. That is now a
+statement about a score rather than a loss, because the base is in the record's
+own `0x010` and no writer has to reconstruct it. A converted character's C64
+`0x065` comes from `abilities_second`, which `dos_codec.to_neutral` already
+reads and `c64_codec.write` already copies.
+
+**CONFIRMED: one byte carries a whole score, and both node encodings go through
+it.** The engines' encoder and decoder are Curse `0x366D2`/`0x366FB` and Silver
+Blades `0x37282`/`0x372AB`: `data = strength + 100`, or `percentile + 1` at
+strength 18; decoding reads `data & $7F` of 101 or less as `18/(data - 1)` and
+anything larger as `data - 100`. The recompute **adds** a Strength node's
+decoded value to the seed (Curse `0x36B7D`-`0x36B8B`, Silver Blades
+`0x37734`-`0x37742`), which is what makes `100 + roll` an increment; it does
+**not** add an Enlarge node's, which goes straight to the "keep the larger
+score" merge (Curse `0x36793`, Silver Blades `0x37345`), which is what makes
+that node an absolute score. The ten Enlarge levels encode to `$01`, `$02`,
+`$34`, `$4D`, `$5C`, `$65`, `$77`, `$78`, `$79`, `$7A` and decode back exactly.
+`tools/c64/effectcrosswalk.py`'s `later_node_score`, `later_node_data`,
+`record_stores` and `confirm_later_ability_pair` are the readings, with the
+five-site mutation check in `tests/records/test_effectcrosswalk.py`.
+
+`goldbox/effects.py` holds the C64 arithmetic -- `later_ability_magnitude`,
+`later_ability_bonus`, `raise_strength`, `enlarge_level`, `mirror_image_count`.
+`tests/records/test_effects.py` pins each against the byte it produces, written
+out (`later_ability_magnitude(4, 6)` is `$B6`, and each of the ten Enlarge
+levels is its own case), and separately against the operands the tool reads off
+the disks: the cast's own `DEX` before the packer, the recompute's ladder step
+and self-modified loop count, the DOS cast's closed form and its clamp, and the
+ten entries of the DOS Enlarge ladder decoded from its `cmp al, <level>` tests
+rather than the first of them. `enlarge_level`'s own docstring still says the
+level reads off the record's strength; the finding above makes it the node's
+decoded score, and the sentence is one line in a function this page's stage did
+not own.
+
+**PROBABLE, a DOS defect a player can reach: a Strength spell that rolls a 1
+gives 18/100.** The cast rolls `1d4`, `1d6` or `1d8` by class (Curse `0x30C44`,
+`0x30C8C`, `0x30CBD`, through `dice(count, sides)` at `0x363A3`, which returns
+`random(sides) + 1` per die) and stores `100 + roll`. A roll of 1 makes the byte
+101, which the decoder above reads as 18/100 rather than as one step, so the
+recompute hands the target the maximum exceptional strength for the spell's
+duration -- and a magic-user reaches it too, because the merge takes the
+decoded percentile when the class ladder refuses the exceptional path. It is
+PROBABLE rather than CONFIRMED because it is an argument from two routines and
+nobody has cast the spell: casting Strength on a fighter at 15 under DOSBox
+until a 1 comes up and reading the sheet settles it. Encoding a strength of 1
+gives the same 101, which is the one collision in the byte.
+
+**PROBABLE, and it is why a converted character's percentile may not match:**
+the recompute's exceptional-strength arithmetic reads the **in-force**
+percentile it is about to overwrite, `mov al, byte ptr es:[di + 0x1c]` at Curse
+`0x36BE8` (Silver Blades `0x3779F`), rather than the permanent `0x1D` it seeded
+from. With a live Strength node on a character at permanent 18/xx, each of the
+recompute's 25 call sites in Curse pushes `0x1C` up by ten per step until the
+clamp at `0x36BF3` holds it at 100. The C64's recompute climbs its ladder from
+the permanent array, so the two ports disagree about a running boost's
+percentile; the fields themselves convert exactly and the destination's own
+recompute is what a player then sees.
 
 **CONFIRMED, a difference between the ports at high caster level:** the DOS
 Enlarge ladder's last test is `cmp al, 0xb`, so levels 10 and 11 share the
 22 entry and a level of **12 or more falls through to the 18/00 the cast
 started with**, where the C64 clamps the level at 10 and gives 22 (`$91D6`:
 `CMP #$0A`). It changes nothing about a conversion, because the level a
-converted Enlarge needs is read back off the record's own score rather than
-from the caster, and both ports then agree on what that score is.
+converted Enlarge needs is read back off its own node's score rather than from
+the caster, and both ports then agree on what that score is.
 
 ## Which slot a converted effect takes, and who owns it
 
@@ -358,7 +412,8 @@ clearing the other, refutes it.
 | Pool Prayer can retain individual character ownership | **CONFIRMED combat route:** `LIBRARY $3FEF/$3FF8/$3FFD` compares id and owner; `$4000` accepts the matching party slot. `COMBAT $28A4`, base `$0800`, supplies that slot; `SQRPACI01 $077A/$0791/$0797`, base `$0400`, reaches id 49's handler. Preserve a DOS character's id 49 with its corresponding C64 party slot; no merge is required to reach the equivalent handler. |
 | A global Prayer row is not proved equivalent to those individual rows | **CONFIRMED distinction:** camp spell 42's flag `$80` takes `SPELLE04 $A704` to `$A710`'s owner `$FF`; `CAMP $1415` and `SPELLE04 $A81C` store it with id 35. The predicate accepts a negative owner for any queried combatant (`LIBRARY $3FFB`). Combat check lists 10/12 ask id 49; none of the 20 lists asks 35. Merging per-character id 49 rows into `$FF`/35 is unsupported. |
 | Id 13 is not a proven strength mapping | **CONFIRMED negative:** the C64 combat dispatch shares id 14's charisma handler; DOS points it at the empty handler `0x11DF6`. Do not infer its value rule from the name Reduce. |
-| Later Strength, Enlarge and Friends data | **CONFIRMED, and this row used to read UNKNOWN:** the magnitude is a modifier and the two ports encode it differently, so Pool's restore rule must not be copied there. The table above has each id's rule and the code behind it; what changed is reading the three casts and the recompute rather than only the combat handlers, which return immediately (DOS Curse `0x1024E`, `0x1029C`; Silver Blades `0x1126E`, `0x11297`) because nothing in a fight has to do the work twice. |
+| Later Strength, Enlarge and Friends data | **CONFIRMED, and this row used to read UNKNOWN:** the C64 magnitude is a modifier for Strength and Friends and a caster level for Enlarge, and the two ports encode it differently, so Pool's restore rule must not be copied there. The table above has each id's rule and the code behind it; what changed is reading the three casts and the recompute rather than only the combat handlers, which return immediately (DOS Curse `0x1024E`, `0x1029C`; Silver Blades `0x1126E`, `0x11297`) because nothing in a fight has to do the work twice. |
+| A later DOS record has to be walked back down to its base | **CONFIRMED negative:** it holds the base already, at `0x010`, and no cast writes either half of the pair -- 0 record stores in six cast routines across the two engines, and the recompute writes only the in-force bytes. `lower_strength` was written for the mechanism this refutes and is gone. |
 | All ids not listed as a measured mapping | **UNKNOWN:** neither a shared number nor a shared spell name proves the data encoding. |
 
 ## Later-title value rules

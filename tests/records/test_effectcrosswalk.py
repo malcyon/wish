@@ -275,6 +275,100 @@ def test_later_proof_rejects_changed_handlers(later, part):
         cross.confirm_later_values(title, combat, table, ovr, image)
 
 
+def test_the_later_ability_casts_write_neither_half_of_the_dos_pair(later):
+    title, _combat, _table, ovr, _image = later
+    assert cross.confirm_later_ability_pair(title, ovr) == (
+        "No cast writes an ability byte", "The setter only asks",
+        "The recompute derives the in-force bytes from the permanent ones",
+        "Expiry recomputes rather than restoring")
+
+
+def test_no_later_ability_cast_stores_a_score_in_the_record(later):
+    title, _combat, _table, ovr, _image = later
+    site = cross.ABILITY_PAIRS[title]
+    assert [name for name, *_bounds in site.casts] == [
+        "Strength", "Enlarge", "Friends"]
+    for _name, start, end, _call, _index in site.casts:
+        assert cross.record_stores(ovr, (start, end)) == ()
+
+
+def test_the_later_recompute_writes_the_in_force_bytes_and_no_permanent_one(later):
+    title, _combat, _table, ovr, _image = later
+    site = cross.ABILITY_PAIRS[title]
+    written = {where for _at, _pointer, where
+               in cross.record_stores(ovr, site.recompute)}
+    assert written & set(cross.LATER_PERMANENT) == set()
+    assert sorted(written & set(cross.LATER_IN_FORCE)) == [
+        0x11, 0x13, 0x15, 0x17, 0x19, 0x1B, 0x1C]
+    assert written == set(site.stores)
+
+
+def test_only_the_setters_own_local_is_written_by_the_ability_setter(later):
+    title, _combat, _table, ovr, _image = later
+    site = cross.ABILITY_PAIRS[title]
+    assert cross.record_stores(ovr, site.setter) == (
+        (site.setter_out, "di, ptr [bp + 6]", 0),)
+
+
+@pytest.mark.parametrize("part", ["store", "seed", "removal", "setter", "bounds"])
+def test_the_ability_pair_proof_rejects_a_changed_engine(later, part):
+    title, _combat, _table, ovr, _image = later
+    at, value = {
+        "curse-of-the-azure-bonds": {
+            "store": (0x36C8F, 0x10), "seed": (0x36932, 0x11),
+            "removal": (0x35260, 0x27), "setter": (0x36780, 0x0E),
+            "bounds": (0x36F1C, 0x90)},
+        "secret-of-the-silver-blades": {
+            "store": (0x37836, 0x10), "seed": (0x374DC, 0x11),
+            "removal": (0x35FAD, 0x27), "setter": (0x37332, 0x0E),
+            "bounds": (0x37AAC, 0x90)},
+    }[title][part]
+    changed = bytearray(ovr)
+    changed[at] = value
+    with pytest.raises(ValueError):
+        cross.confirm_later_ability_pair(title, bytes(changed))
+
+
+@pytest.mark.parametrize("data, score", [
+    (1, (18, 0)), (2, (18, 1)), (52, (18, 51)), (77, (18, 76)),
+    (92, (18, 91)), (101, (18, 100)), (102, (2, 0)), (108, (8, 0)),
+    (119, (19, 0)), (120, (20, 0)), (121, (21, 0)), (122, (22, 0)),
+    (0xE6, (2, 0)),
+])
+def test_one_byte_carries_a_whole_later_score(data, score):
+    assert cross.later_node_score(data) == score
+    if data < 0x80:
+        assert cross.later_node_data(*score) == data
+
+
+def test_every_enlarge_level_round_trips_through_the_engines_own_byte():
+    data = [cross.later_node_data(*score) for score in effects.ENLARGE_STRENGTHS]
+    assert data == [1, 2, 52, 77, 92, 101, 119, 120, 121, 122]
+    assert [cross.later_node_score(byte) for byte in data] == list(
+        effects.ENLARGE_STRENGTHS)
+
+
+def test_a_strength_of_one_and_18_over_100_share_one_byte():
+    assert cross.later_node_data(1, 0) == cross.later_node_data(18, 100) == 101
+    assert cross.later_node_score(101) == (18, 100)
+
+
+@pytest.mark.parametrize("strength, percentile", [(0, 0), (156, 0), (18, 101)])
+def test_a_score_outside_the_engines_range_is_refused(strength, percentile):
+    with pytest.raises(ValueError, match="1 to 155"):
+        cross.later_node_data(strength, percentile)
+
+
+def test_a_record_store_sweep_reads_its_displacement_and_its_pointer():
+    routine = bytes.fromhex("5589e5" "c47e08" "26884511" "ca0600")
+    assert cross.record_stores(routine, (0, 0x0A)) == (
+        (6, "di, ptr [bp + 8]", 0x11),)
+    with pytest.raises(ValueError, match="does not end at"):
+        cross.record_stores(routine, (0, 9))
+    with pytest.raises(ValueError, match=r"through es:\[bx\]"):
+        cross.record_stores(bytes.fromhex("5589e5" "268807" "ca0600"), (0, 6))
+
+
 @pytest.mark.parametrize("data, count", [(0x11, 1), (0x4F, 4), (0xF1, 15)])
 def test_silver_blades_mirror_image_removes_the_caster_level_nibble(data, count):
     assert cross.mirror_image_value("secret-of-the-silver-blades", data) == count
