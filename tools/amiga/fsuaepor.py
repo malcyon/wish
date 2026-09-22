@@ -37,6 +37,7 @@ import zipfile
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
+from automap import gamedisks  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 
 #: The 16-byte name field at the start of a 288-byte `CHRDAT<L><n>.sav`.
@@ -207,10 +208,9 @@ def stage(args) -> int:
 
 
 def kickstart() -> pathlib.Path:
-    for root in (os.environ.get("WISH_KICKSTARTS"), "/mnt/disks/kickstarts",
-                 str(pathlib.Path.home() / "FS-UAE" / "Kickstarts")):
-        if root and (pathlib.Path(root) / KICKSTART).exists():
-            return pathlib.Path(root) / KICKSTART
+    for root in gamedisks.candidates("kickstarts"):
+        if (root / KICKSTART).exists():
+            return root / KICKSTART
     raise SystemExit(f"no {KICKSTART}; set $WISH_KICKSTARTS")
 
 
