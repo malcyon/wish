@@ -325,6 +325,7 @@ def test_the_cli_reuses_the_resolved_registry_root(monkeypatch, tmp_path):
     monkeypatch.setattr(cross, "confirm_pool_values", lambda *_: ())
     monkeypatch.setattr(cross, "confirm_pool_state", lambda *_: ())
     monkeypatch.setattr(cross, "confirm_slot_rule", lambda *_: ())
+    monkeypatch.setattr(cross, "confirm_pool_expiry", lambda *_: ())
     monkeypatch.setattr(unexepack, "unpack", lambda _: (b"", {}))
     (tmp_path / "GAME.OVR").write_bytes(b"")
     (tmp_path / "START.EXE").write_bytes(b"")

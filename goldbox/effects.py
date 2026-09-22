@@ -418,13 +418,13 @@ def write_effect(payload: bytearray, slot: int, id: int, owner: int,
 # and owner `$FF` for a free slot. So:
 #
 # * a new effect lands in the **highest-numbered slot whose id is zero**;
-# * there is at most **one slot per (id, owner) pair** -- a second cast of the
-#   same spell on the same character replaces the first rather than adding a
-#   row (Pool expires the old slot through `CAMP $131F` first, Curse and Silver
-#   Blades overwrite it in place);
-# * the replacement keeps whichever **duration byte** is numerically larger,
-#   which is not the same as the longer time left: `$41` beats `$3F` and lasts
-#   a tenth as long;
+# * a cast writes at most **one slot per (id, owner) pair** -- a second cast of
+#   the same spell on the same character replaces the first rather than adding
+#   a row (Pool expires the old slot through `CAMP $131F` first, Curse and
+#   Silver Blades overwrite it in place). That is what the *cast* does; the
+#   arrays themselves hold as many rows of one id as a writer puts in them, and
+#   every sweep in the engine is per slot;
+# * which of the two survives is `replaces_slot` below;
 # * with no free slot the cast silently does nothing (`$A811`, `$815D`).
 #
 # The owner is the party slot for a per-character effect and `PARTY_WIDE` for
@@ -453,6 +453,31 @@ def slot_for(payload: bytes, id: int, owner: int) -> int | None:
 def free_slot(payload: bytes) -> int | None:
     """The slot a cast would put a new effect in, or `None` when all 64 are taken."""
     return slot_for(payload, 0, PARTY_WIDE)
+
+
+def replaces_slot(old_duration: int, new_duration: int) -> bool:
+    """Whether a fresh cast takes over the slot it found for its id and owner.
+
+    The engines compare the two **duration bytes** rather than the time left,
+    so `$41` beats `$3F` and lasts a tenth as long, and the two zero cases go
+    opposite ways: a new duration of zero always takes the slot, an old one of
+    zero always keeps it. Otherwise the cast writes on a tie or a larger byte
+    and abandons its spell on a smaller one.
+
+    Pool of Radiance `SPELLE04 $A7F6`-`$A805` and the later titles' `ECL65
+    $8143`-`$8154` are the same four tests; Pool expires the old slot through
+    `CAMP $131F` and allocates a fresh one where the later titles overwrite in
+    place, which changes which slot ends up holding the effect and not which
+    cast wins.
+    """
+    for name, value in (("old duration", old_duration),
+                        ("new duration", new_duration)):
+        _check_byte(name, value)
+    if new_duration == 0:
+        return True
+    if old_duration == 0:
+        return False
+    return new_duration >= old_duration
 
 
 # --- the later titles' ability effects, which are modifiers and not old values
@@ -485,9 +510,13 @@ ENLARGE_STRENGTHS: tuple[tuple[int, int], ...] = (
 
 #: The strength ladder one step of a later title's Strength effect climbs:
 #: below 18 the score itself, at 18 the percentile in tens, stopping at 18/100.
-#: Curse `ECL65 $9191`-`$91B0`, Silver Blades `$9663`-`$9682`, and the DOS cast
-#: computes the same arrival from `(new - 18) * 10 + old percentile` capped at
-#: 100 (Curse `GAME.OVR:0x30D3A`).
+#: Curse `ECL65 $9191`-`$91B0`, Silver Blades `$9663`-`$9682`, under a loop
+#: whose count is the magnitude's nibble in the operand of `LDA #` at Curse
+#: `$91B6` (Silver Blades `$9688`), decremented at `$91B3`/`$9685` and run
+#: while it stays positive -- so the ladder climbs one more step than the
+#: nibble holds. The DOS cast computes the same arrival in closed form,
+#: `(new - 18) * 10 + old percentile` clamped to 100 (Curse
+#: `GAME.OVR:0x30D3A`-`0x30D5D`).
 STRENGTH_CAP = (18, 100)
 
 
@@ -507,22 +536,40 @@ def raise_strength(strength: int, percentile: int, steps: int) -> tuple[int, int
     return strength, percentile
 
 
-def lower_strength(strength: int, percentile: int, steps: int) -> tuple[int, int]:
-    """The score a later title's base array must hold under `steps` of boost.
+def lower_strength(strength: int, percentile: int,
+                   steps: int) -> tuple[int, int] | None:
+    """The score a later title's base array must hold under `steps` of boost,
+    or `None` where the boosted score does not say.
 
-    The inverse of `raise_strength`, which is what a conversion needs: the DOS
-    record holds only the boosted score, and the C64 rebuilds the boosted one
-    from the base. A score above 18 is left alone, because the ladder does not
-    reach one: the DOS cast turns any arrival past 18 into a percentile
-    (`GAME.OVR:0x30D3A`), so only Enlarge and the girdle ids put a 19 there.
+    A partial inverse of `raise_strength`, which is what a conversion needs:
+    the DOS record holds only the boosted score, and the C64 rebuilds the
+    boosted one from the base. It is partial because **the ladder saturates**.
+    The DOS cast computes the arrival as `(new - 18) * 10 + old percentile` and
+    clamps it to 100 (Curse `GAME.OVR:0x30D3A`-`0x30D5D`), while the node keeps
+    `100 + the die roll` rather than the steps that were actually applied
+    (`0x30D87`), so 18/50 boosted by a roll of 6 and 18/90 boosted by a roll of
+    2 leave the same score and different nodes. At 18/100 the base is therefore
+    not in the record and this returns `None` rather than guessing one.
+
+    A score above 18 is left alone, because the ladder does not reach one: the
+    DOS cast turns any arrival past 18 into a percentile, so only Enlarge and
+    the girdle ids put a 19 there. A percentile of 1 to 9 under a step is not a
+    score the ladder can have arrived at -- one step is always ten -- and is
+    refused rather than walked past zero.
     """
     if steps < 0:
         raise ValueError(f"steps must not be negative: {steps}")
     for _ in range(steps):
         if strength > 18:
             break
+        if (strength, percentile) == STRENGTH_CAP:
+            return None
+        if strength == 18 and 0 < percentile < 10:
+            raise ValueError(
+                f"18/{percentile:02d} is not a score one step of the ladder "
+                "reaches, so it has no base under a boost")
         if strength == 18 and percentile:
-            percentile = 90 if percentile == 100 else percentile - 10
+            percentile -= 10
         elif strength == 18:
             strength, percentile = 17, 0
         else:
@@ -537,6 +584,16 @@ def mirror_image_count(dos_data: int, *, later: bool) -> int:
     keep it in the **upper nibble** and the caster's level in the low one, which
     is what both engines' casts write (Curse `GAME.OVR:0x30700`, Silver Blades
     `0x2EF6E`) and what both selection rolls read back.
+
+    **A count of zero is not a C64 magnitude.** DOS Curse decrements the whole
+    byte, so a node can reach an upper nibble of zero with its low nibble still
+    holding the caster's level -- `0x0F` is a fifteenth-level caster's spent
+    Mirror Image -- and the C64 has nowhere to put that: the slot writer
+    substitutes the caster's level for a value byte of zero (`ECL65 $8171`), and
+    a slot that did hold zero would absorb nothing and never expire, because the
+    handler's roll is `random(0..count)` and only a nonzero roll decrements
+    (`COMBAT $20DF`-`$20F7` with `LIBRARY $2F46`). A writer has to decide what a
+    spent Mirror Image converts to; it must not write the zero.
     """
     _check_byte("data", dos_data)
     return dos_data >> 4 if later else dos_data

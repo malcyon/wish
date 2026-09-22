@@ -17,7 +17,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import c64_port  # noqa: E402
-from goldbox.effects import EFFECT_SLOTS, PARTY_WIDE  # noqa: E402
+from goldbox.effects import EFFECT_SLOTS, ENLARGE_STRENGTHS, PARTY_WIDE  # noqa: E402
 from tools.c64 import coldread, d6502  # noqa: E402
 
 
@@ -332,6 +332,67 @@ def confirm_pool_state(files: dict[str, bytes], dos_ovr: bytes) -> tuple[str, ..
     return ("Strength stacking differs", "Prayer character-owner route")
 
 
+#: Pool of Radiance's camp expiry dispatch, which `ECL65` holds immediately
+#: after its 469-byte spell table: the ids, then the handler's low and high
+#: bytes. `CAMP $12FD` walks the ids until one matches `$6E6E`.
+POOL_EXPIRY_IDS = 0x9AD5
+POOL_EXPIRY_LOW = 0x9AEE
+POOL_EXPIRY_HIGH = 0x9B06
+POOL_EXPIRY_ENTRIES = 24
+
+
+def pool_expiry_handlers(ecl65: bytes) -> dict[int, int]:
+    """Pool's expiry handler per effect id, read off the table after the
+    spell rows."""
+    count = POOL_EXPIRY_ENTRIES
+    start = POOL_EXPIRY_IDS - 0x9900
+    ids = ecl65[start:start + count + 1]               # the walk stops at a zero
+    low = ecl65[POOL_EXPIRY_LOW - 0x9900:][:count]
+    high = ecl65[POOL_EXPIRY_HIGH - 0x9900:][:count]
+    if len(ids) != count + 1 or len(low) != count or len(high) != count:
+        raise ValueError("The Pool expiry table runs off the end of ECL65")
+    if ids[count]:
+        raise ValueError(f"A {count + 1}th Pool expiry id, {ids[count]}")
+    out = {eid: lo | hi << 8 for eid, lo, hi in zip(ids, low, high)}
+    if len(out) != count or 0 in out:
+        raise ValueError(f"{len(out)} distinct Pool expiry ids, not {count}")
+    return out
+
+
+def confirm_pool_expiry(camp: bytes, spells: bytes,
+                        ecl65: bytes) -> tuple[str, ...]:
+    """Check that Pool expires each slot on its own, for that slot's owner.
+
+    The cast refuses a second strength node, and this is the other half of
+    that: the sweep and the handler read one slot at a time, so the arrays
+    themselves hold as many strength restores as a writer stages.
+    """
+    for at, opcode, value in (                        # the sweep, 63 down to 0
+            (0x1299, 0xA2, EFFECT_SLOTS - 1), (0x129E, 0xBD, 0x4900),
+            (0x12A3, 0xBD, 0x4980), (0x12AE, 0x9D, 0x4980),
+            (0x12B4, 0x20, 0x131F), (0x12BA, 0xCA, 0), (0x12BB, 0x10, 0xDE),
+            (0x131F, 0xBD, 0x4900), (0x1322, 0x8D, 0x6E6E),  # this slot's id
+            (0x1327, 0x9D, 0x4900), (0x132A, 0xBD, 0x4B80),  # and magnitude
+            (0x132D, 0x10, 0x0F), (0x132F, 0x8D, 0x28E7),
+            (0x1332, 0xBD, 0x4940), (0x1335, 0x8D, 0x28DE),  # and owner
+            (0x1338, 0x20, 0x0FC8), (0x133B, 0x20, 0x12F8),
+            (0x0FC8, 0x8D, 0x6DB4), (0x0FCE, 0x30, 5),       # owner selects
+            (0x0FD0, 0x20, 0x4415),                          # the character
+            (0x12FD, 0xBD, POOL_EXPIRY_IDS), (0x1302, 0xCD, 0x6E6E),
+            (0x130A, 0xBD, POOL_EXPIRY_LOW), (0x1310, 0xBD, POOL_EXPIRY_HIGH),
+            (0x1316, 0xAD, 0x28E7)):                  # magnitude in A
+        _c64(camp, at, opcode, value, 0x0800)
+    handlers = pool_expiry_handlers(ecl65)
+    if handlers.get(38) != 0xAD0B or handlers.get(12) != 0xAD0B:
+        raise ValueError("Pool's strength ids no longer share the restore handler")
+    for at, opcode, value in (                        # the restore itself
+            (0xAD0B, 0x29, 0x7F), (0xAD0D, 0xA2, 0x12), (0xAD0F, 0xC9, 101),
+            (0xAD13, 0xE9, 100), (0xAD18, 0x8D, 0x6B1A), (0xAD1B, 0x8E, 0x6B14)):
+        _c64(spells, at, opcode, value)
+    return ("One expiry call per slot", "The slot's own owner and magnitude",
+            "Ids 38 and 12 share the restore handler")
+
+
 def confirm_later_values(title: str, combat: bytes, table: bytes,
                          dos_ovr: bytes, dos_image: bytes) -> tuple[str, ...]:
     """Check each later title's own combat handlers, including an unmapped case."""
@@ -411,15 +472,27 @@ class SlotSite:
     cast_base: int
     cast_match: int
     cast_free: int
+    durations: int
+    new_duration: int
+    compare: int
+    replace_at: int
+    abandon_at: int
+    value_write: int
+    value: int
+    level: int
+    magnitudes: int
 
 
 SLOTS = {
     "pool-of-radiance": SlotSite(
-        0x3FE4, 0x4900, 0x4940, "SPELLE04", 0xA700, 0xA7F1, 0xA80A),
+        0x3FE4, 0x4900, 0x4940, "SPELLE04", 0xA700, 0xA7F1, 0xA80A,
+        0x4980, 0x2871, 0xA7F6, 0xA807, 0xA830, 0xA825, 0x2879, 0x2878, 0x4B80),
     "curse-of-the-azure-bonds": SlotSite(
-        0x409F, 0x4B00, 0x4B40, "ECL65", 0x8000, 0x813E, 0x8156),
+        0x409F, 0x4B00, 0x4B40, "ECL65", 0x8000, 0x813E, 0x8156,
+        0x4B80, 0x2BF4, 0x8143, 0x815F, 0x817C, 0x8171, 0x2BFC, 0x2BFB, 0x4D80),
     "secret-of-the-silver-blades": SlotSite(
-        0x3854, 0x4B00, 0x4B40, "ECL65", 0x8000, 0x813E, 0x8156),
+        0x3854, 0x4B00, 0x4B40, "ECL65", 0x8000, 0x813E, 0x8156,
+        0x4B80, 0x2A67, 0x8143, 0x815F, 0x817C, 0x8171, 0x2A6F, 0x2A6E, 0x4D80),
 }
 
 
@@ -446,8 +519,45 @@ def confirm_slot_rule(title: str, library: bytes, cast: bytes) -> tuple[str, ...
     _c64(cast, site.cast_free, 0xA9, 0, site.cast_base)
     _c64(cast, site.cast_free + 2, 0xA2, PARTY_WIDE, site.cast_base)
     _c64(cast, site.cast_free + 4, 0x20, site.search, site.cast_base)
+    slot_compare(title, cast)
+    # A value byte of zero is replaced by the caster's level on its way into
+    # the magnitude array, so no cast can leave a zero magnitude behind.
+    _c64(cast, site.value_write, 0xAD, site.value, site.cast_base)
+    _c64(cast, site.value_write + 3, 0xD0, 3, site.cast_base)
+    _c64(cast, site.value_write + 5, 0xAD, site.level, site.cast_base)
+    _c64(cast, site.value_write + 8, 0x9D, site.magnitudes, site.cast_base)
     return ("Highest free slot", "One slot per id and owner",
-            "A negative owner matches any query")
+            "A negative owner matches any query",
+            "The larger duration byte keeps the slot, and zero is not larger",
+            "A zero value becomes the caster's level")
+
+
+def slot_compare(title: str, cast: bytes) -> tuple[tuple[str, int], ...]:
+    """Where each of the cast's four duration tests goes, in the cast's code.
+
+    A cast that finds its own (id, owner) already in a slot compares the two
+    **duration bytes**: a new byte of zero takes the slot, an old byte of zero
+    keeps it, and otherwise the numerically larger byte wins with a tie going
+    to the new cast. `goldbox.effects.replaces_slot` is that rule.
+    """
+    site, at = SLOTS[title], SLOTS[title].compare
+    pool = title == "pool-of-radiance"
+    _c64(cast, at, 0xAD, site.new_duration, site.cast_base)
+    _c64(cast, at + 5, 0xBD, site.durations, site.cast_base)
+    _c64(cast, at + 10, 0xCD, site.new_duration, site.cast_base)
+    tests = ((3, 0xF0, site.replace_at), (8, 0xF0, site.abandon_at)) + (
+        ((13, 0xF0, site.replace_at), (15, 0xB0, site.abandon_at)) if pool else
+        ((13, 0x90, site.replace_at), (15, 0xF0, site.replace_at),
+         (17, 0xB0, site.abandon_at)))
+    out = []
+    for step, opcode, target in tests:
+        here = at + step
+        offset = operand(cast, site.cast_base, here, opcode)
+        went = here + 2 + (offset - 256 if offset > 127 else offset)
+        if went != target:
+            raise ValueError(f"Branch at ${here:04X} goes to ${went:04X}")
+        out.append((f"${here:04X}", went))
+    return tuple(out)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -475,18 +585,29 @@ class AbilitySite:
     dos_strength_id: int
     dos_enlarge_ladder: int
     dos_enlarge_field: str
+    dos_strength_ladder: int
+    dos_times_ten: tuple[tuple[str, str], ...]
+    dos_enlarge_change: int
 
 
 ABILITIES = {
     "curse-of-the-azure-bonds": AbilitySite(
         0x8241, 0x8214, 0x8231, 0x828D, 0x8282, 0x8068, 0x2BFB, 0x2BFC,
         0x9797, 0x9175, 0x9733, 0x91D1, 0x9223, 0x922F, (0xE3, 0x4D),
-        0x30710, 0x30199, 0x30D8C, 0x30D98, 0x2FFCD, "0x4ccd"),
+        0x30710, 0x30199, 0x30D8C, 0x30D98, 0x2FFCD, "0x4ccd",
+        0x30D3A, (("mov", "dx, 0xa"), ("mul", "dx")), 0x30068),
     "secret-of-the-silver-blades": AbilitySite(
         0x828A, 0x825D, 0x827A, 0x82D6, 0x82CB, 0x8068, 0x2A6E, 0x2A6F,
         0x99EA, 0x9647, 0x9990, 0x969D, 0x96E9, 0x96F5, (0x145, 0x43),
-        0x2EF75, 0x2E9DF, 0x2F5D2, 0x2F5DE, 0x2E80D, "0x64d8"),
+        0x2EF75, 0x2E9DF, 0x2F5D2, 0x2F5DE, 0x2E80D, "0x64d8",
+        0x2F580, (("mov", "cx, 0xa"), ("imul", "cx")), 0x2E8AF),
 }
+
+#: Where both later titles keep the score in force and the class levels the
+#: Strength cast picks its die from, in the staged record at `$7C00`.
+LATER_STRENGTH = 0x7C14
+LATER_PERCENTILE = 0x7C1A
+LATER_CLASS_LEVELS = 0x7CC9
 
 #: What Enlarge sets strength to by caster level, read off both ports.
 ENLARGE_TABLE = bytes.fromhex("12 12 12 12 12 12 13 14 15 16 17 18")
@@ -540,8 +661,13 @@ def confirm_later_ability_values(title: str, ecl65: bytes,
                          (site.percentiles, ENLARGE_PERCENTILES)):
         if ecl65[at - 0x8000:at - 0x8000 + len(expected)] != expected:
             raise ValueError(f"Different Enlarge table at ${at:04X}")
+    strength_cast_steps(title, ecl65)
+    strength_ladder(title, ecl65)
 
     unit, entry = site.dice
+    _x86(dos_ovr, site.dos_mirror_shift - 0x0D, "mov", "al, 1")
+    _x86(dos_ovr, site.dos_mirror_shift - 0x0A, "mov", "al, 4")
+    _x86(dos_ovr, site.dos_mirror_shift - 7, "lcall", f"{hex(unit)}, {hex(entry)}")
     _x86(dos_ovr, site.dos_mirror_shift, "mov", "cx, 4")
     _x86(dos_ovr, site.dos_mirror_shift + 3, "shl", "ax, cl")
     _x86(dos_ovr, site.dos_friends, "mov", "al, 2")
@@ -551,9 +677,139 @@ def confirm_later_ability_values(title: str, ecl65: bytes,
     _x86(dos_ovr, site.dos_strength_id, "mov", "al, 0x26")
     _x86(dos_ovr, site.dos_enlarge_ladder, "mov",
          f"byte ptr [{site.dos_enlarge_field}], 0x12")
+    _x86(dos_ovr, site.dos_enlarge_change, "or", "al, al")
+    dos_strength_arrival(title, dos_ovr)
+    if dos_enlarge_ladder(title, dos_ovr) != ENLARGE_STRENGTHS:
+        raise ValueError("Different DOS Enlarge ladder")
     return ("Strength bonus in the top nibble", "Friends bonus in the top nibble",
             "Enlarge level in the low nibble", "Mirror Image count alone",
             "The two ports' Enlarge tables agree")
+
+
+def strength_cast_steps(title: str, ecl65: bytes) -> None:
+    """Check that the Strength cast packs one less than the die it rolled.
+
+    It takes the highest nonzero class level as the class index, rolls that
+    class's die, and passes the roll **decremented** to the packer -- which is
+    the other half of the recompute applying one more step than the nibble
+    holds.
+    """
+    site = ABILITIES[title]
+    _c64(ecl65, site.strength, 0xA2, 7, 0x8000)
+    _c64(ecl65, site.strength + 2, 0xBD, LATER_CLASS_LEVELS, 0x8000)
+    _c64(ecl65, site.strength + 7, 0xCA, 0, 0x8000)      # down through the eight
+    _c64(ecl65, site.strength + 19, 0xCA, 0, 0x8000)     # the roll, less one
+    _c64(ecl65, site.strength + 20, 0x8A, 0, 0x8000)
+    _c64(ecl65, site.strength + 21, 0x20, site.packer, 0x8000)
+
+
+def strength_ladder(title: str, ecl65: bytes) -> None:
+    """Check the recompute's ladder step and the loop that runs it.
+
+    One step is `+1` below 18 and `+10` percentile at it; 90 to 99 becomes 100
+    and 18/100 is where it stops. The loop count is the operand of an `LDA #`
+    the routine writes to itself, so the ladder climbs one more step than the
+    magnitude's nibble holds.
+    """
+    site, at = ABILITIES[title], ABILITIES[title].strength_recompute
+    counter = at + 66                                   # the LDA # operand byte
+    for step, opcode, value in (
+            (0, 0xA9, 38), (2, 0x20, site.value_helper), (7, 0x8D, counter),
+            (10, 0xA9, 0x12), (12, 0xA2, 100), (14, 0xCD, LATER_STRENGTH),
+            (21, 0xEC, LATER_PERCENTILE), (28, 0xAD, LATER_STRENGTH),
+            (31, 0xC9, 0x12), (35, 0xEE, LATER_STRENGTH), (38, 0xA9, 0),
+            (42, 0xAD, LATER_PERCENTILE), (45, 0xC9, 100), (49, 0xC9, 90),
+            (53, 0xA9, 100), (57, 0x69, 10), (59, 0x8D, LATER_PERCENTILE),
+            (62, 0xCE, counter), (65, 0xA9, 0xFF), (67, 0x10, 0xC2)):
+        _c64(ecl65, at + step, opcode, value, 0x8000)
+
+
+def dos_strength_arrival(title: str, dos_ovr: bytes) -> None:
+    """Check the DOS cast's closed form for the same ladder, and its clamp.
+
+    `(new - 18) * 10 + the old percentile`, clamped to 100. The clamp is why
+    `goldbox.effects.lower_strength` has no answer at 18/100: the node keeps
+    the die roll rather than the steps the clamp let through.
+    """
+    site, at = ABILITIES[title], ABILITIES[title].dos_strength_ladder
+    _x86(dos_ovr, at, "mov", "al, byte ptr [bp - 7]")
+    _x86(dos_ovr, at + 5, "sub", "ax, 0x12")
+    for step, (mnemonic, operands) in zip((8, 11), site.dos_times_ten):
+        _x86(dos_ovr, at + step, mnemonic, operands)
+    _x86(dos_ovr, at + 18, "mov", "al, byte ptr es:[di + 0x1c]")
+    _x86(dos_ovr, at + 24, "add", "ax, dx")
+    _x86(dos_ovr, at + 29, "cmp", "byte ptr [bp - 5], 0x64")
+    _x86(dos_ovr, at + 35, "mov", "byte ptr [bp - 5], 0x64")
+
+
+def dos_enlarge_ladder(title: str, dos_ovr: bytes) -> tuple[tuple[int, int], ...]:
+    """The scores the DOS Enlarge cast writes, by caster level 1 to 10.
+
+    The cast writes 18/00 into its two scratch bytes and then a ladder of
+    `cmp al, <level>` tests overwrites one of them. A level past the ladder's
+    last test leaves the 18/00 it started with; levels 10 and 11 share the
+    last entry.
+    """
+    import capstone
+
+    site = ABILITIES[title]
+    at, field = site.dos_enlarge_ladder, int(site.dos_enlarge_field, 0)
+    decoder = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    head: list[int | None] = [None, None]
+    pending: list[int] = []
+    out: dict[int, tuple[int, int]] = {}
+    for instruction in decoder.disasm(dos_ovr[at:at + 0xA0], at):
+        mnemonic, operands = instruction.mnemonic, instruction.op_str
+        if mnemonic == "cmp" and operands.startswith("al, "):
+            pending.append(int(operands.split(", ")[1], 0))
+        elif mnemonic == "jmp":
+            pending = []
+        elif mnemonic == "mov" and operands.startswith("byte ptr ["):
+            where, _, value = operands.partition("], ")
+            index = {f"byte ptr [{field:#x}": 0,
+                     f"byte ptr [{field + 1:#x}": 1}.get(where)
+            if index is None:
+                continue
+            if not pending:
+                head[index] = int(value, 0)
+                continue
+            if None in head:
+                raise ValueError("The DOS Enlarge ladder writes before its default")
+            score = list(head)
+            score[index] = int(value, 0)
+            for level in pending:
+                out[level] = (score[0], score[1])
+        if len(out) >= 11:
+            break
+    if sorted(out) != list(range(1, 12)):
+        raise ValueError(f"The DOS Enlarge ladder has levels {sorted(out)}")
+    return tuple(out[level] for level in range(1, 11))
+
+
+def mirror_zero_roll(title: str, combat: bytes, library: bytes) -> int:
+    """Check what a later title's Mirror Image does with a magnitude of zero.
+
+    The handler puts the magnitude in Y and asks the shared `random(0..Y)`
+    helper for the image that absorbs the hit; only a nonzero answer costs an
+    image and only that decrement removes the slot. With Y zero the helper
+    returns zero, so a zero magnitude absorbs nothing and never expires. The
+    engines' own casts cannot write one (`confirm_slot_rule`), which is why
+    `goldbox.effects.mirror_image_count` of a spent DOS Curse node has no C64
+    magnitude to be.
+    """
+    load = {"curse-of-the-azure-bonds": 0x20DF,
+            "secret-of-the-silver-blades": 0x25FB}[title]
+    _c64(combat, load - 3, 0xAE, 0x7F78, 0x0800)
+    _c64(combat, load, 0xBC, 0x4D80, 0x0800)
+    roll = operand(combat, 0x0800, load + 3, 0x20)
+    _c64(combat, load + 6, 0xF0, 0x24, 0x0800)        # a zero roll absorbs none
+    _c64(library, roll, 0x98, 0, 0x2DC8)              # TYA, the count into A
+    at = roll + 1
+    if library[at - 0x2DC8] == 0xD0:                  # Curse tests both ways
+        at += 2
+    straight = at + 2 + operand(library, 0x2DC8, at, 0xF0)
+    _c64(library, straight, 0x8D, 0x03C8, 0x2DC8)     # a zero count stores zero
+    return roll
 
 
 def mirror_image_value(title: str, dos_data: int) -> int:
@@ -662,6 +918,9 @@ def main(argv: list[str] | None = None) -> int:
         print("CONFIRMED Value checks: " + ", ".join(checks))
         abilities = confirm_later_ability_values(args.title, read("ECL65"), dos_ovr)
         print("CONFIRMED Ability checks: " + ", ".join(abilities))
+        roll = mirror_zero_roll(args.title, read("COMBAT"), library)
+        print(f"CONFIRMED Mirror Image rolls through ${roll:04X}; "
+              "a zero magnitude absorbs nothing and never expires")
         print("UNKNOWN Prayer global merging and all unlisted ids")
         return 0
     files = {"SPELLE04": code, "LIBRARY": library}
@@ -671,6 +930,8 @@ def main(argv: list[str] | None = None) -> int:
     checks = confirm_pool_values(code, files["SPELLE01"], files["CAMP"],
                                  files["SPELLE65"], dos_ovr, dos_image)
     states = confirm_pool_state(files, dos_ovr)
+    expiry = confirm_pool_expiry(files["CAMP"], code, files["ECL65"])
+    print("CONFIRMED Expiry: " + ", ".join(expiry))
     print(f"CONFIRMED {len(pairs)} spell pairs; camp-id differences: "
           + str([(p.spell, p.dos_effect, p.c64_camp_effect) for p in pairs
                  if p.dos_effect != p.c64_camp_effect]))

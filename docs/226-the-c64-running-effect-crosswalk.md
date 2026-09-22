@@ -231,8 +231,43 @@ at the boosted score is what a writer would do by accident, and the character
 then keeps the boost for good when the effect ends.
 `goldbox/effects.py` holds the arithmetic -- `later_ability_magnitude`,
 `later_ability_bonus`, `raise_strength`, `lower_strength`, `enlarge_level`,
-`mirror_image_count` -- and `tests/records/test_effects.py` checks each against
-the operands read off the disks.
+`mirror_image_count`. `tests/records/test_effects.py` pins each against the
+byte it produces, written out (`later_ability_magnitude(4, 6)` is `$B6`, and
+each of the ten Enlarge levels is its own case), and separately against the
+operands the tool reads off the disks: the cast's own `DEX` before the packer,
+the recompute's ladder step and self-modified loop count, the DOS cast's
+closed form and its clamp, and the ten entries of the DOS Enlarge ladder
+decoded from its `cmp al, <level>` tests rather than the first of them.
+
+**CONFIRMED, and it is why `lower_strength` answers `None` at 18/100:** the
+DOS cast clamps the arrival percentile to 100 (`cmp byte ptr [bp - 5], 0x64`
+at Curse `0x30D57`, Silver Blades `0x2F59D`) and the node keeps `100 + the die
+roll` rather than the steps the clamp let through (`0x30D87`, `0x2F5CD`). A
+base of 18/50 with a roll of 6 and a base of 18/90 with a roll of 2 leave the
+same score and different nodes, so at the cap the base is not in the record
+and there is nothing for a writer to walk back down to. Of the 176
+base-and-boost pairs the ladder can produce, 34 end at the cap and are the
+only ones that do not round-trip. A percentile of 1 to 9 under a boost is
+refused outright: one step of the ladder is always ten.
+
+**UNREAD, and it is the other half of that question:** what DOS Curse itself
+restores when a Strength node expires. Its removal routine calls the id's own
+handler with mode 1 (`0x3517F`-`0x351A8`, dispatching through the table at
+`DS:0x6FC0` at `0x35124`), and id 38's entry there is the empty stub at
+`0x1024E` -- `push bp / mov bp, sp / pop bp / retf 0xa`. So nothing is put
+back on that path, and where the boost does come off has not been found. A
+watchpoint on the record's strength byte while a cast Strength times out under
+DOSBox-X would say; until then the clamp argument above stands on the cast
+alone, which is enough for the conversion but not for a claim about what a DOS
+player sees.
+
+**CONFIRMED, a difference between the ports at high caster level:** the DOS
+Enlarge ladder's last test is `cmp al, 0xb`, so levels 10 and 11 share the
+22 entry and a level of **12 or more falls through to the 18/00 the cast
+started with**, where the C64 clamps the level at 10 and gives 22 (`$91D6`:
+`CMP #$0A`). It changes nothing about a conversion, because the level a
+converted Enlarge needs is read back off the record's own score rather than
+from the caster, and both ports then agree on what that score is.
 
 ## Which slot a converted effect takes, and who owns it
 
@@ -248,19 +283,69 @@ write, then with id 0 and owner `$FF` for a free slot.
 | | what the engine does |
 |---|---|
 | slot | the **highest-numbered** slot whose id is zero; with none free the cast silently does nothing (`$A811`, `$815D`) |
-| owner | the party slot for a per-character effect, `$FF` for one the party carries; a negative owner answers every query (`$3FFB`, `$40B6`, `$386B`) |
-| duplicates | at most **one slot per (id, owner) pair** -- Pool expires the old slot through `CAMP $131F` and takes a fresh one, the later titles overwrite it in place |
-| which of two | the numerically larger **duration byte** wins, which is not the longer time left: `$41` beats `$3F` and lasts a tenth as long |
+| owner | the party slot for a per-character effect, `$FF` for one the party carries; **any** owner with bit 7 set answers every query, because the test is a `BMI` (`$3FFB`, `$40B6`, `$386B`) |
+| duplicates | a **cast** writes at most one slot per (id, owner) pair -- Pool expires the old slot through `CAMP $131F` and takes a fresh one, the later titles overwrite it in place. The arrays themselves hold as many rows of one id as a writer puts in them |
+| which of two | the four tests below |
+| a zero value | never reaches a magnitude: the writer substitutes the caster's level for a value byte of zero (Pool `$A825`, the later titles `$8171`) |
 
-`goldbox.effects.free_slot` and `slot_for` are that walk, and
-`tools/c64/effectcrosswalk.py`'s `confirm_slot_rule` reads the operands back
-off the player's disks for all three titles.
+**CONFIRMED, and it replaces this page's "the numerically larger duration byte
+wins":** that is the rule for two nonzero bytes, and the two zero cases go
+opposite ways. Pool `SPELLE04 $A7F6`-`$A805` and the later titles' `ECL65
+$8143`-`$8154` are the same four tests, and each branch's target is read here
+rather than assumed.
+
+| the two duration bytes | what happens |
+|---|---|
+| the new one is zero | the new cast takes the slot -- a permanent effect always writes |
+| the old one is zero and the new one is not | the old slot is kept and the cast does nothing |
+| the old one is larger | the old slot is kept, magnitude and all |
+| equal, or the new one is larger | the new cast takes the slot |
+
+The comparison is on the byte, so `$41` beats `$3F` and lasts a tenth as long.
+`goldbox.effects.free_slot`, `slot_for` and `replaces_slot` are those walks,
+and `tools/c64/effectcrosswalk.py`'s `confirm_slot_rule` and `slot_compare`
+read the operands and the branch targets back off the player's disks for all
+three titles.
 
 **Negative result, CONFIRMED:** no saved specimen corroborates the allocation
 order. All 32 `SAVEDGAME0` images on this machine's registered C64 disks carry
 a zero id in all 64 slots, so the rule rests on the code alone. Casting one
 spell in a driven session and reading which slot it lands in would corroborate
 it; the existing `tools/c64/effectdrive.py` stages slots rather than casting.
+`tests/records/test_effects.py` re-takes that census on whatever disks the
+machine running it has, rather than trusting the count.
+
+## Pool expires one slot at a time, for that slot's own owner
+
+**CONFIRMED from the bytecode, and it withdraws this page's earlier claim that
+two overlapping strength boosts are a thing C64 Pool cannot hold:** the cast is
+the only part of the engine that refuses a second node. Everything that ages,
+expires and restores works a slot at a time.
+
+| where | what it does |
+|---|---|
+| `CAMP $1299` | walks slot 63 down to 0, skipping a slot whose id (`$4900,X`) or duration (`$4980,X`) is zero, ages the byte at `$12BE`, stores it back, and calls `$131F` for each slot whose byte reached zero |
+| `CAMP $131F` | takes **that slot's** id into `$6E6E` and zeroes it, reads **that slot's** magnitude (`$4B80,X`) and returns at `$133E` unless bit 7 is set, then reads **that slot's** owner (`$4940,X`) |
+| `CAMP $0FC8` | stores the owner in `$6DB4` and loads that character (`JSR $4415`) unless it is negative, so the restore lands on the slot's own owner |
+| `CAMP $12F8` | finds the id in a 24-entry table and calls its handler with the magnitude in A. The table is immediately after `ECL65`'s 469-byte spell rows: ids at `$9AD5`, handler low bytes at `$9AEE`, high at `$9B06` |
+| `SPELLE04 $AD0B` | the restore itself: `AND #$7F`, and a value below 101 is the percentile at strength 18 while 101 or more is `value - 100` with percentile 0. It reads no other slot |
+
+**Ids 38 and 12 both point at `$AD0B`**, read off the player's own `ECL65`. So
+a converted character can carry two strength restores with their own expiry
+times, and where both reach zero in one camp call the sweep runs the
+higher-numbered slot first, which puts the later-expiring node in the
+lower-numbered slot. Neither Prayer id is in that table at all: an effect with
+nothing to put back expires with no handler call.
+
+PROBABLE that a staged pair behaves that way in the running game -- no save on
+this machine carries a nonzero effect id, so nothing corroborates it from a
+specimen. One driven run settles it, with no new driver: `POR_HEADLESS=1
+tools/c64/effectdrive.py --steps 0 --rest 5 --stage
+62=26:02:01:E2,61=0C:02:05:F3` on a copy of the registered `PORSAVE13.D64`,
+one ENCAMP, then the abilities and the four arrays. Slot 62 expires first and
+must leave strength 18/98 with slot 61 still present and still counting; a
+second camp must leave 15. A restore from the wrong slot, or one expiry
+clearing the other, refutes it.
 
 ## Negative results and remaining work
 
@@ -269,7 +354,7 @@ it; the existing `tools/c64/effectdrive.py` stages slots rather than casting.
 | A raw DOS data byte is not a C64 magnitude | **CONFIRMED:** exceptional strength differs by one, and Prayer uses a different allegiance bit and polarity. |
 | One minutes-only value does not encode every C64 duration | **CONFIRMED:** it omits clock phase, and 64 minutes at phase 0 has no exact candidate among all 252 nonzero-count bytes. A conversion policy is still required. |
 | Pool overlapping Enlarge/Strength nodes do not have independent equivalent magnitudes | **CONFIRMED:** DOS `0x2C0D3` finds the active low-bit node, `0x2C129/0x2C12F` parks the displaced boost with bit 7, and expiry `0xF173–0xF227` selects the strongest remaining boost and moves the baseline into it. C64 `SPELLE04 $A8F4/$A8FA` updates current strength, then `$A8FD/$A904` searches ids 38/12 and `$A902/$A909` returns at `$A911` if either exists, retaining its earlier timer. A future writer needs the entire DOS chain, including permanent item nodes, and a timeline policy; translating the bytes independently is insufficient. |
-| Pool overlapping nodes are a **platform limit** rather than an undecoded field | **CONFIRMED from the allocator and the cast:** the C64 keeps one slot per (id, owner) pair and its own cast refuses to add a second strength node while one runs, so two overlapping boosts with two different expiry times are a thing that C64 Pool cannot hold, however the bytes are written. `.claude/rules/conversions.md` sends that case to the player -- say what will not fit and let them choose -- which is Donald's wording and his decision, not a measurement. What a single converted node can still preserve exactly: the strength in force now, and the score the last expiry puts back. What it cannot: the intermediate step, where DOS drops to the middle value when the first of the two ends. |
+| Pool overlapping nodes are **unconverted work**, not a limit of the destination | **CONFIRMED that the destination holds them:** the cast refuses a second strength node (`SPELLE04 $A8FD`/`$A904`, returning at `$A911`), and that is all it proves, because a writer is not the cast. Every sweep is per slot -- see the section above -- so two staged slots expire at their own times and each restores its own score. A converted pair therefore reproduces the intermediate step, with the later-expiring node in the lower-numbered slot. What it needs is a value **recomputed from the DOS chain's timeline** rather than each node's byte translated on its own, and three concurrent boosts on one character still have nowhere to go: only ids 38 and 12 reach the restore handler. |
 | Pool Prayer can retain individual character ownership | **CONFIRMED combat route:** `LIBRARY $3FEF/$3FF8/$3FFD` compares id and owner; `$4000` accepts the matching party slot. `COMBAT $28A4`, base `$0800`, supplies that slot; `SQRPACI01 $077A/$0791/$0797`, base `$0400`, reaches id 49's handler. Preserve a DOS character's id 49 with its corresponding C64 party slot; no merge is required to reach the equivalent handler. |
 | A global Prayer row is not proved equivalent to those individual rows | **CONFIRMED distinction:** camp spell 42's flag `$80` takes `SPELLE04 $A704` to `$A710`'s owner `$FF`; `CAMP $1415` and `SPELLE04 $A81C` store it with id 35. The predicate accepts a negative owner for any queried combatant (`LIBRARY $3FFB`). Combat check lists 10/12 ask id 49; none of the 20 lists asks 35. Merging per-character id 49 rows into `$FF`/35 is unsupported. |
 | Id 13 is not a proven strength mapping | **CONFIRMED negative:** the C64 combat dispatch shares id 14's charisma handler; DOS points it at the empty handler `0x11DF6`. Do not infer its value rule from the name Reduce. |
@@ -295,6 +380,20 @@ Silver Blades' are `$EF90/$F001`. Their handlers run in `COMBAT` at `$0800`.
 For example, Silver Blades data `$4F` means four images, so its C64 magnitude
 is `$04`, not `$4F`. The lower nibble is the caster's level and is not part of
 the image count.
+
+**CONFIRMED, and it is the one Mirror Image node with no C64 magnitude:** a
+DOS Curse node whose count nibble has run down to zero -- `$0F` is a
+fifteenth-level caster's spent spell, which its own raw decrement produces --
+converts to a count of zero, and zero is not a magnitude the C64 can hold. The
+cast substitutes the caster's level for a value byte of zero on its way into
+the array, and a slot that did hold zero would absorb nothing and never
+expire: the handler asks `random(0..count)` for the image that takes the hit
+(`COMBAT $20DF`-`$20E5` through `LIBRARY $2F46`, Silver Blades `$25FB`
+through `$2E05`), a zero answer costs no image, and only the decrement that a
+nonzero answer triggers ever removes the slot. What a spent Mirror Image
+should convert to is a writer's decision nobody has taken;
+`goldbox.effects.mirror_image_count` reports the zero and does not invent a
+count.
 
 **Curse's raw decrement is a defect in its own handler, not a second meaning
 for the byte, and this page used to call the mapping UNKNOWN for that reason.**
@@ -340,10 +439,10 @@ one combat round, with a five-minute wall-clock cap. Until that driver is
 specified and built, preserve individual ownership and leave merging unknown.
 
 **What a C64 writer still waits on, after the slot, the owner, the duration
-and the later titles' four ability ids:** Donald's choice for Pool's
-overlapping strength nodes, which the destination cannot hold two of; Pool's
-party-wide Prayer row; the effect ids nobody has read; and the two ageing
-routes the camp formula does not describe.
+and the later titles' four ability ids:** a timeline conversion for Pool's
+overlapping strength nodes, which the destination does hold; what a spent
+Mirror Image converts to; Pool's party-wide Prayer row; the effect ids nobody
+has read; and the two ageing routes the camp formula does not describe.
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; select either later title with `--title`.

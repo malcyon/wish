@@ -693,6 +693,57 @@ def test_the_allocator_holds_one_slot_per_id_and_owner():
     assert effects.slot_for(payload, 12, 2) is None
 
 
+@pytest.mark.parametrize("owner", (0x80, 0xC0, 0xFE, effects.PARTY_WIDE))
+def test_any_owner_with_bit_7_set_answers_every_query(owner):
+    """`LIBRARY $3FFB` is a `BMI`, so the whole top half of the byte matches,
+    not `$FF` alone -- `$FF` is only the value the cast happens to write.
+    """
+    payload = _filled({20: (38, owner)})
+    assert effects.slot_for(payload, 38, 2) == 20
+    assert effects.slot_for(payload, 38, owner) == 20
+    assert effects.slot_for(payload, 38, 0x7F) == 20
+    assert effects.slot_for(payload, 12, 2) is None
+
+
+@pytest.mark.parametrize("old, new, replaced", [
+    (0x0A, 0x0A, True),                  # a tie goes to the new cast
+    (0x0A, 0x0B, True),
+    (0x0B, 0x0A, False),
+    (0x3F, 0x41, True),                  # the byte, not the time left
+    (0x41, 0x3F, False),
+    (0x0A, 0x00, True),                  # a new permanent effect always writes
+    (0x00, 0x3F, False),                 # an old permanent one is never lost
+    (0x00, 0x00, True),
+])
+def test_which_of_two_casts_keeps_the_slot(old, new, replaced):
+    assert effects.replaces_slot(old, new) is replaced
+
+
+def test_replaces_slot_refuses_a_value_that_is_not_a_byte():
+    with pytest.raises(ValueError):
+        effects.replaces_slot(0, 256)
+
+
+@pytest.mark.parametrize("title", sorted(effectcrosswalk.SLOTS))
+def test_the_cast_compares_the_two_duration_bytes_and_not_the_time_left(title):
+    """The four tests behind `replaces_slot`, read off the player's disks with
+    the address each branch goes to: Pool expires the old slot and allocates a
+    fresh one where the later titles overwrite in place, and both reach that
+    through the same comparison.
+    """
+    site = effectcrosswalk.SLOTS[title]
+    cast = _overlay(title, site.cast_file)
+    went = effectcrosswalk.slot_compare(title, cast)
+    assert [target for _at, target in went[:2]] == [site.replace_at,
+                                                    site.abandon_at]
+    assert {target for _at, target in went} == {site.replace_at, site.abandon_at}
+    # The cast reads the old byte from the duration array and compares it with
+    # the byte it is about to write, so it sees no clock and no unit.
+    assert _operand(cast, site.cast_base, site.compare + 5, 0xBD) == site.durations
+    assert _operand(cast, site.cast_base, site.compare + 10, 0xCD) == \
+        site.new_duration
+
+
 @pytest.mark.parametrize("title", sorted(effectcrosswalk.SLOTS))
 def test_all_three_engines_allocate_from_the_top_and_match_on_id_and_owner(title):
     """The rule above, read off the player's own disks: one allocator in three
@@ -703,7 +754,9 @@ def test_all_three_engines_allocate_from_the_top_and_match_on_id_and_owner(title
     cast = _overlay(title, site.cast_file)
     assert effectcrosswalk.confirm_slot_rule(title, library, cast) == (
         "Highest free slot", "One slot per id and owner",
-        "A negative owner matches any query")
+        "A negative owner matches any query",
+        "The larger duration byte keeps the slot, and zero is not larger",
+        "A zero value becomes the caster's level")
     assert _operand(library, effectcrosswalk.SITES[title].library_base,
                     site.search + 6, 0xA2) == effects.EFFECT_SLOTS - 1
 
@@ -771,6 +824,94 @@ def test_the_strength_ladder_is_the_recomputes_and_lowering_inverts_it():
         assert effects.raise_strength(18, 0, steps) == (18, min(steps * 10, 100))
 
 
+def test_every_base_and_boost_round_trips_except_where_the_ladder_saturates():
+    """The whole grid, counted: 18/100 is where a base stops being in the
+    record, and it is the only place the round trip is refused.
+    """
+    bases = [(strength, 0) for strength in range(3, 18)]
+    bases += [(18, percentile) for percentile in (0, 10, 51, 76, 90, 91, 100)]
+    tried = capped = 0
+    for base in bases:
+        for steps in range(1, 9):
+            tried += 1
+            up = effects.raise_strength(*base, steps)
+            down = effects.lower_strength(*up, steps)
+            if up == effects.STRENGTH_CAP:
+                capped += 1
+                assert down is None
+            else:
+                assert down == base
+    assert (tried, capped) == (176, 34)
+    # Zero steps is not a boost, so the cap is still a base of its own.
+    assert effects.lower_strength(18, 100, 0) == (18, 100)
+
+
+def test_lowering_refuses_a_percentile_one_step_cannot_have_reached():
+    """One step of the ladder is always ten percentile, so 18/05 under a boost
+    is a score the engine never arrives at and there is no base to report.
+    """
+    with pytest.raises(ValueError, match="18/05"):
+        effects.lower_strength(18, 5, 1)
+    assert effects.lower_strength(18, 5, 0) == (18, 5)
+    assert effects.lower_strength(18, 51, 1) == (18, 41)
+    with pytest.raises(ValueError):
+        effects.lower_strength(18, 51, 6)          # 18/01 with a step left
+    with pytest.raises(ValueError):
+        effects.lower_strength(18, 0, -1)
+
+
+@pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
+def test_the_recompute_climbs_one_more_step_than_the_nibble_holds(title):
+    """The ladder and its loop, off the player's own disks: the count is the
+    operand of an `LDA #` the routine writes to itself, so a nibble of 3
+    climbs four steps.
+    """
+    ecl = _overlay(title, "ECL65")
+    effectcrosswalk.strength_ladder(title, ecl)      # raises on a different build
+    effectcrosswalk.strength_cast_steps(title, ecl)
+    at = effectcrosswalk.ABILITIES[title].strength_recompute
+    assert _operand(ecl, 0x8000, at + 7, 0x8D) == at + 66
+    assert _operand(ecl, 0x8000, at + 62, 0xCE) == at + 66
+    assert _operand(ecl, 0x8000, at + 49, 0xC9) == 90      # 90..99 becomes 100
+    assert _operand(ecl, 0x8000, at + 57, 0x69) == 10
+    assert effects.later_ability_bonus(0x80 | 3 << 4) == 4
+
+
+@pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
+def test_the_dos_cast_clamps_the_arrival_at_18_100(title):
+    """Why `lower_strength` answers `None` there: the clamp throws the steps
+    away and the node keeps the die roll instead.
+    """
+    ovr = _dos_engine(title)
+    effectcrosswalk.dos_strength_arrival(title, ovr)
+    # Two bases and two rolls that leave the record holding the same thing.
+    assert effects.raise_strength(18, 50, 6) == effects.raise_strength(18, 90, 2)
+    assert effects.lower_strength(18, 100, 6) is None
+
+
+#: What Enlarge sets a character's strength to, by caster level, with no
+#: engine read in front of it: the ten entries both ports write.
+ENLARGE_BY_LEVEL = ((1, 18, 0), (2, 18, 1), (3, 18, 51), (4, 18, 76),
+                    (5, 18, 91), (6, 18, 100), (7, 19, 0), (8, 20, 0),
+                    (9, 21, 0), (10, 22, 0))
+
+
+@pytest.mark.parametrize("level, strength, percentile", ENLARGE_BY_LEVEL)
+def test_every_enlarge_level_reads_back_off_the_score_it_wrote(
+        level, strength, percentile):
+    """A DOS node exists only where the spell raised the score, so the level a
+    converted Enlarge needs is the table entry the record's strength is.
+    """
+    assert effects.ENLARGE_STRENGTHS[level - 1] == (strength, percentile)
+    assert effects.enlarge_level(strength, percentile) == level
+
+
+@pytest.mark.parametrize("strength, percentile", [
+    (18, 2), (18, 50), (17, 0), (23, 0), (22, 1)])
+def test_a_score_no_enlarge_writes_has_no_caster_level(strength, percentile):
+    assert effects.enlarge_level(strength, percentile) is None
+
+
 @pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
 def test_both_ports_enlarge_to_the_same_score_by_caster_level(title):
     """The C64 table and the DOS ladder hold the same ten entries, so the
@@ -782,9 +923,25 @@ def test_both_ports_enlarge_to_the_same_score_by_caster_level(title):
     percentiles = ecl[site.percentiles - 0x8000:site.percentiles - 0x8000 + 12]
     assert tuple(zip(strengths, percentiles))[:len(effects.ENLARGE_STRENGTHS)] == \
         effects.ENLARGE_STRENGTHS
+    ovr = _dos_engine(title)
+    assert effectcrosswalk.dos_enlarge_ladder(title, ovr) == \
+        effects.ENLARGE_STRENGTHS
     assert effects.enlarge_level(18, 51) == 3
     assert effects.enlarge_level(22, 0) == 10
     assert effects.enlarge_level(18, 2) is None
+
+
+@pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
+def test_a_later_mirror_image_slot_cannot_hold_a_zero_count(title):
+    """A DOS Curse node whose count nibble has run down to zero has no C64
+    magnitude: the cast substitutes the caster's level for a zero value byte,
+    and a slot that did hold zero would absorb nothing and never expire.
+    """
+    combat, library = _overlay(title, "COMBAT"), _overlay(title, "LIBRARY")
+    roll = effectcrosswalk.mirror_zero_roll(title, combat, library)
+    assert library[roll - 0x2DC8] == 0x98             # TYA, the count into A
+    assert effects.mirror_image_count(0x0F, later=True) == 0
+    assert effects.mirror_image_count(0x4F, later=True) == 4
 
 
 @pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
@@ -801,5 +958,84 @@ def test_the_later_engines_pack_a_bonus_and_a_level_where_dos_packs_neither(titl
     # as `data - 100` and the C64 magnitude one less than that in the nibble.
     assert ovr[site.dos_strength_add:site.dos_strength_add + 3] == \
         bytes.fromhex("056400")                       # add ax, 0x64
-    assert effects.later_ability_bonus(
-        effects.later_ability_magnitude(104 - 100, 6)) == 4
+    assert effects.later_ability_magnitude(104 - 100, 6) == 0xB6
+
+
+@pytest.mark.parametrize("bonus, level, magnitude", [
+    (1, 0, 0x80), (1, 15, 0x8F), (4, 6, 0xB6), (8, 1, 0xF1), (8, 15, 0xFF)])
+def test_the_packed_magnitude_is_the_byte_the_cast_writes(bonus, level, magnitude):
+    assert effects.later_ability_magnitude(bonus, level) == magnitude
+    assert effects.later_ability_bonus(magnitude) == bonus
+
+
+@pytest.mark.parametrize("bonus, level", [(0, 1), (9, 1), (-1, 1), (1, 16)])
+def test_a_magnitude_outside_the_nibbles_is_refused(bonus, level):
+    with pytest.raises(ValueError):
+        effects.later_ability_magnitude(bonus, level)
+
+
+# --- S8: what the destination does with a slot a writer staged ---------------
+
+
+def test_pool_expires_each_slot_on_its_own_for_that_slots_owner():
+    """The other half of "the cast refuses a second strength node": the sweep
+    and the handler read one slot at a time, so the arrays hold as many
+    strength restores as a writer stages, each with its own timer.
+    """
+    camp = _overlay("pool-of-radiance", "CAMP")
+    spells = _overlay("pool-of-radiance", "SPELLE04")
+    ecl = _overlay("pool-of-radiance", "ECL65")
+    assert effectcrosswalk.confirm_pool_expiry(camp, spells, ecl) == (
+        "One expiry call per slot", "The slot's own owner and magnitude",
+        "Ids 38 and 12 share the restore handler")
+    # The sweep runs from the top, so two slots expiring in one camp call
+    # restore in slot order and the lower-numbered one writes last.
+    assert _operand(camp, 0x0800, 0x1299, 0xA2) == effects.EFFECT_SLOTS - 1
+    assert _operand(camp, 0x0800, 0x12BB, 0x10) == 0xDE       # BPL, back up
+    # The handler takes the magnitude of the slot that expired, and the owner
+    # of that same slot chooses the character it restores.
+    assert _operand(camp, 0x0800, 0x132A, 0xBD) == 0x4B80
+    assert _operand(camp, 0x0800, 0x1332, 0xBD) == 0x4940
+    assert _operand(camp, 0x0800, 0x0FC8, 0x8D) == 0x6DB4
+
+
+def test_pools_expiry_table_sends_both_strength_ids_to_one_restore():
+    """Ids 38 and 12 share `$AD0B`, so a converted pair can use both without
+    the allocator's search ever seeing two rows of one id.
+    """
+    ecl = _overlay("pool-of-radiance", "ECL65")
+    handlers = effectcrosswalk.pool_expiry_handlers(ecl)
+    assert len(handlers) == effectcrosswalk.POOL_EXPIRY_ENTRIES == 24
+    assert handlers[38] == handlers[12] == 0xAD0B
+    assert handlers[14] == 0xAD27                    # charisma, its own handler
+    # Neither Prayer id is in it: an effect with nothing to put back expires
+    # with no handler call at all.
+    assert 35 not in handlers and 49 not in handlers
+
+
+def _saved_games():
+    """Every `SAVEDGAME0` image on the registered C64 disks of all three
+    titles, as `(title, disk, payload)`."""
+    out = []
+    for title in sorted(effectcrosswalk.SITES):
+        game = c64_port.by_key(title)
+        for image in coldread.disks(game, _disks(title)):
+            for entry in image.directory():
+                if not entry.name.startswith(b"SAVEDGAME0"):
+                    continue
+                out.append((title, image, image.read_file(entry)[2:]))
+    return out
+
+
+def test_no_saved_game_on_these_disks_corroborates_the_allocation_order():
+    """A negative result, and the reason the slot rule rests on the code: not
+    one save carries a nonzero effect id in any of its 64 slots.
+    """
+    saves = _saved_games()
+    if not saves:
+        pytest.skip("Needs the player's C64 disks")
+    nonzero = [(title, slot) for title, _image, payload in saves
+               for slot in range(effects.EFFECT_SLOTS)
+               if payload[effects.EFFECT_ID_OFFSET + slot]]
+    assert nonzero == []
+    assert len(saves) >= 1
