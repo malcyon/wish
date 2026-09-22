@@ -758,12 +758,16 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                      if char.port == "C64" else
                      "not written for a source other than the C64's own "
                      "(see `DROPPED` for why)"))
-    # `lay_on_hands_uses` has no neutral field yet (#628), so a converted
-    # paladin's sheet still reads zero there; the byte is reported rather
-    # than silently claimed by the name above.
+    # `lay_on_hands_minutes` (#628) is the neutral field now, but the C64's
+    # spent state also needs a row in the save's shared effect arrays, which
+    # this function has no way to write: it returns one `CharacterRecord`
+    # and is never given the arrays or the character's destination party
+    # slot. So a converted paladin's sheet still reads zero here; the byte
+    # is reported rather than silently claimed by the name above.
     rep.note(0x013, 1,
-             "lay_on_hands_uses: zero -- the neutral vocabulary has no field "
-             "for this yet (#628)")
+             "lay_on_hands_uses: zero -- the neutral lay_on_hands_minutes "
+             "value has nowhere to write its row in the save's effect "
+             "arrays from here (#628)")
 
     for field, c64_name in DIRECT:
         # Recomputed below rather than copied (#366, #405): `DIRECT` still
@@ -1709,6 +1713,13 @@ DROPPED: tuple[tuple[str, str], ...] = (
                       "development-time protection against writing a value "
                       "known to leave a paladin unable to ever recover "
                       "CURE, not the finished write"),
+    ("lay_on_hands_minutes", "a spent use needs a row in the save's shared "
+                             "effect arrays, id 140 (Curse) or 109 (Silver "
+                             "Blades), owner the character's own party "
+                             "slot, `write` has neither the arrays nor the "
+                             "slot to write into. See `write`'s own note "
+                             "beside the name field for the read-side "
+                             "mirror of this"),
 )
 
 #: Neutral fields the C64 **recomputes for itself**, so writing them would be
@@ -1796,14 +1807,15 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
                    "are no tables to supply (#482)"),
     ("lay_on_hands_uses", "the paladin's lay-on-hands uses, named by #626 "
                           "as the C64's own 0x013, the byte freed from the "
-                          "old name field beside `paladin_cures` at 0x012 -- "
-                          "which `DIRECT` above now copies, since the "
-                          "neutral vocabulary already names it for the DOS "
-                          "and Amiga ports. The neutral vocabulary has no "
-                          "field for `lay_on_hands_uses` at all, on either "
-                          "port -- #628. Reported only when the byte is "
-                          "non-zero: a character who has none to begin with "
-                          "loses nothing"),
+                          "old name field beside `paladin_cures` at 0x012. "
+                          "The neutral vocabulary now names the timer this "
+                          "byte tracks, `lay_on_hands_minutes` (#628), but "
+                          "reading it needs the matching row in the save's "
+                          "shared effect arrays, which this function is "
+                          "never given -- only the character's own record, "
+                          "roster and inventory. Reported only when the "
+                          "byte is non-zero: a character who has none to "
+                          "begin with loses nothing"),
 )
 
 #: What a player reads for each name in :data:`READ_DROPPED` -- the read

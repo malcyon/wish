@@ -163,6 +163,19 @@ FIELDS: dict[str, str] = {
                      "engine clears it on a use rather than counting it "
                      "down. Pool of Radiance keeps no such byte on either "
                      "port",
+    "lay_on_hands_minutes": "minutes until the paladin's lay-on-hands use "
+                            "comes back, 0 meaning he may heal now. Every "
+                            "port with a paladin keeps this as a spent-use "
+                            "timer rather than a count: a value greater "
+                            "than zero is the same one-day timer everywhere, "
+                            "recorded as an effect (a C64 row or a DOS/Amiga "
+                            "node) rather than a record byte, and its id "
+                            "differs by title and by port -- Curse uses 140 "
+                            "on every port, Silver Blades and Pools of "
+                            "Darkness use 109 on the C64 and DOS and 140 on "
+                            "the Amiga (docs/231-where-lay-on-hands-lives.md). "
+                            "Pool of Radiance has no paladin and keeps no "
+                            "such timer on any port",
     "levels_drained": "levels lost to undead and not yet restored",
     "hp_lost_to_drain": "hit points lost with those levels",
     "experience": "experience points",

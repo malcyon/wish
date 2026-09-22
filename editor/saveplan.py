@@ -786,8 +786,16 @@ KEPT_FIELDS = (
 #: * `turn_class` -- the undead's own row rather than the caster's, and zero
 #:   for every player character (#297, #288);
 #: * `lay_on_hands_uses` -- the C64's 0x013, freed from the old 20-byte name
-#:   field beside `paladin_cures` (#626): the neutral vocabulary has no
-#:   field for it on any port yet (#628), so no writer can put it back.
+#:   field beside `paladin_cures` (#626). The neutral vocabulary now has a
+#:   field for the timer this byte tracks, `lay_on_hands_minutes` (#628), and
+#:   DOS and the Amiga convert it as an effect node -- but the C64's own
+#:   spent state is also a row in the save's shared effect arrays, which
+#:   `goldbox.c64_codec.read` and `write` have no way to reach (neither
+#:   knows the destination party slot, and neither is handed the arrays):
+#:   `goldbox.c64_codec.DROPPED`'s own `running_effects` entry and
+#:   `docs/226-the-c64-running-effect-crosswalk.md` are the same gap for
+#:   every C64 running effect, not only this one. So a C64 source or
+#:   destination still leaves this byte unconverted.
 #:
 #: Measured over 36 runs: the fifteen Pool of Radiance C64 saves this
 #: machine's registry holds, each to a C64 and a DOS destination, plus DOS

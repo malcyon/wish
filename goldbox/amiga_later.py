@@ -99,6 +99,11 @@ AMIGA_LATER_STATUS_FIELD = "field_10c_10f"
 #: state that draws the name red and read it again.
 AMIGA_LATER_STATUS_GATE = 1
 
+#: The Amiga's own HEAL id, Curse and Silver Blades alike -- DOS Silver
+#: Blades pushes 109 for the same timer, and Curse's own id agrees on both
+#: ports at 140 (docs/231-where-lay-on-hands-lives.md).
+LAY_ON_HANDS_AMIGA_ID = 140
+
 # ---------------------------------------------------------------------------
 # What the loader needs of a block it did not write (#28, step 4)
 # ---------------------------------------------------------------------------
@@ -1092,7 +1097,21 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
 
     recut = [amiga_por_effect_to_dos(e) for e in char.effects]
     granted = [e for e in recut if int.from_bytes(e[1:3], "little") == 0]
-    running = [e for e in recut if int.from_bytes(e[1:3], "little") != 0]
+    # The paladin's lay-on-hands timer, id 140 on the Amiga in both later
+    # titles (docs/231-where-lay-on-hands-lives.md): read into its own
+    # field rather than `running_effects`, where a DOS writer would have to
+    # remap the id -- Silver Blades' own DOS heal id is 109, not 140.
+    heal_node = next((e for e in recut if e[0] == LAY_ON_HANDS_AMIGA_ID
+                      and int.from_bytes(e[1:3], "little") != 0), None)
+    out.set("lay_on_hands_minutes",
+            int.from_bytes(heal_node[1:3], "little") if heal_node else 0,
+            (f"a chain node with id {LAY_ON_HANDS_AMIGA_ID}, its duration "
+             f"read into game-clock minutes" if heal_node is not None else
+             f"no chain node with id {LAY_ON_HANDS_AMIGA_ID}: he may heal "
+             f"now"),
+            Confidence.CONFIRMED)
+    running = [e for e in recut if int.from_bytes(e[1:3], "little") != 0
+              and e[0] != LAY_ON_HANDS_AMIGA_ID]
     if running:
         # Every node on the Amiga Curse and Silver Blades disks is at
         # duration zero (29 of 29), so the byte order of the big-endian word
@@ -1580,6 +1599,17 @@ def _later_effect_nodes(char: NeutralCharacter,
     for r in char.get("running_effects", ()) or ():
         record = bytes(r)[:5].ljust(5, b"\0") + bytes(4)
         seen.add(record[0])
+        nodes.append(amiga_por_effect_from_dos(record))
+    # The paladin's lay-on-hands timer, id 140 on the Amiga rather than
+    # DOS Silver Blades' 109 (docs/231-where-lay-on-hands-lives.md).  Zero
+    # minutes writes no node at all, which is what the engine's own HEAL
+    # removes.
+    heal = char.get("lay_on_hands_minutes")
+    if heal:
+        minutes = int(heal)
+        record = (bytes((LAY_ON_HANDS_AMIGA_ID,))
+                 + minutes.to_bytes(2, "little") + bytes(2) + bytes(4))
+        seen.add(LAY_ON_HANDS_AMIGA_ID)
         nodes.append(amiga_por_effect_from_dos(record))
     innate = [int(e) for e in (char.get("innate_effects", ()) or ())]
     if char.port == "C64":

@@ -1029,15 +1029,16 @@ def test_the_reader_has_nothing_left_to_say_to_a_player():
         assert out.warnings == [], name
 
 
-def test_the_reader_fills_sixty_seven_of_the_neutral_records_fields():
+def test_the_reader_fills_sixty_eight_of_the_neutral_records_fields():
     """The count that says how far the Amiga decode has got, pinned so it
     moves when somebody decodes another region rather than drifting.
 
-    67 of the 78, and 68 for a character with an effect that never expires,
+    68 of the 78, and 69 for a character with an effect that never expires,
     since `granted_effects` is set only when there is one -- the same way the
     Curse and Silver Blades reader sets it. On this machine that is ten
-    characters at 67 and nine at 68. Three higher than before #612 gave
-    `icon_head`, `icon_body` and `icon_colours` a neutral home.
+    characters at 68 and nine at 69. One higher than before #628 gave
+    `lay_on_hands_minutes` a neutral home: it fills for every character,
+    paladin or not, since a chain with no heal node means he may heal now.
 
     The names it does not fill for a character on these disks:
     `npc_control_byte`, which is set only for a companion and so is absent
@@ -1050,14 +1051,14 @@ def test_the_reader_fills_sixty_seven_of_the_neutral_records_fields():
     for _name, raw in pc_records():
         out = amiga_pod.pod_to_neutral(raw)
         effects = amiga_pod.PodCharacter.from_bytes(raw).effects
-        assert len(out.fields) == 67 + bool(effects), sorted(out.fields)
+        assert len(out.fields) == 68 + bool(effects), sorted(out.fields)
         named = set(out.fields) | {n for n, _ in amiga_pod.pod_read_dropped()}
         assert set(neutral.FIELDS) - named == (
             {"npc_control_byte", "running_effects"} if effects
             else {"npc_control_byte", "running_effects", "granted_effects"})
         counts[len(out.fields)] = counts.get(len(out.fields), 0) + 1
     assert sum(counts.values()) >= 12, counts
-    assert counts.get(67), counts
+    assert counts.get(68), counts
 
 
 # --- the engine's own account of its record, read off the player's disk ------

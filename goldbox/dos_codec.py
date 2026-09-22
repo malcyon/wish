@@ -532,6 +532,20 @@ _INNATE_EFFECTS_TABLES: dict[str, frozenset[int]] = {
     POOLS_OF_DARKNESS.key: INNATE_EFFECTS_POOLS_OF_DARKNESS,
 }
 
+#: Title key -> the DOS `.SPC` effect id HEAL's `add_affect` writes and its
+#: gate's `find_affect` tests -- the timer for a paladin's lay-on-hands use,
+#: 1440 minutes (one day) when spent and no node at all when he may heal now
+#: (docs/231-where-lay-on-hands-lives.md).  Pool of Radiance has no paladin
+#: and no entry.  The Amiga uses 140 for all three titles, so a Silver
+#: Blades or Pools of Darkness conversion to or from the Amiga must remap
+#: this id rather than copy it: `goldbox.amiga_later.LAY_ON_HANDS_AMIGA_ID`
+#: and `goldbox.amiga_pod.LAY_ON_HANDS_AMIGA_ID`.
+LAY_ON_HANDS_DOS_ID: dict[str, int] = {
+    CURSE_OF_THE_AZURE_BONDS.key: 140,
+    SECRET_OF_THE_SILVER_BLADES.key: 109,
+    POOLS_OF_DARKNESS.key: 109,
+}
+
 
 def _innate_effects(shape_key: str | None) -> frozenset[int]:
     """This title's innate-effect ids, `INNATE_EFFECTS` for a title not
@@ -2240,8 +2254,26 @@ def to_neutral(dos: DosCharacter,
                 "item's grant, whole, since what it is worth is in the "
                 "record rather than in the id",
                 Confidence.CONFIRMED)
+    # The paladin's lay-on-hands timer is one more `.SPC` node by the same
+    # rule, but its id is not this title's on every port -- Silver Blades and
+    # Pools of Darkness push 109 here and 140 on the Amiga
+    # (docs/231-where-lay-on-hands-lives.md) -- so it is read into its own
+    # field rather than into `running_effects`, where a writer would have to
+    # copy an id a destination's own table may not have.
+    heal_id = LAY_ON_HANDS_DOS_ID.get(dos.deltas.key)
+    heal_node = next((e for e in dos.effects if e[0] == heal_id), None) \
+        if heal_id is not None else None
+    if heal_id is not None:
+        minutes = (int.from_bytes(heal_node[1:3], "little")
+                  if heal_node is not None else 0)
+        out.set("lay_on_hands_minutes", minutes,
+                (f"a .SPC node with id {heal_id}, its duration at bytes 1-2 "
+                 f"in game-clock minutes" if heal_node is not None else
+                 f"no .SPC node with id {heal_id}: he may heal now"),
+                Confidence.CONFIRMED)
+
     running = [bytes(e[:5]) + EFFECT_NEXT_NULL for e in dos.effects
-               if e[0] not in innate_ids
+               if e[0] not in innate_ids and e[0] != heal_id
                and int.from_bytes(e[1:3], "little") != 0]
     if running:
         out.set("running_effects", running,
@@ -2777,6 +2809,9 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                       "change class."),
     ("paladin_cures", "a Pool of Radiance record has no cure-disease byte "
                       "on either port, so there is nowhere to put one."),
+    ("lay_on_hands_minutes", "Pool of Radiance has no paladin and no heal "
+                             "effect id on either port, so there is nowhere "
+                             "to write a timer for it."),
 )
 
 #: Why a neutral field is not written when the destination title's record has
@@ -3331,6 +3366,13 @@ WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
     ("paladin_cures", "copied to the byte the title keeps it in, which the "
                       "later titles declare and Pool of Radiance does not; a "
                       "source with none gets the class rule instead"),
+    ("lay_on_hands_minutes", "written as an .SPC effect node rather than a "
+                             "record byte, id 140 in Curse and 109 in Secret "
+                             "of the Silver Blades and Pools of Darkness, "
+                             "duration the minutes little-endian, value and "
+                             "flag zero; a value of zero writes no node at "
+                             "all, which is what the engine's own HEAL "
+                             "writes and removes"),
 )
 
 #: `field_83_87` is five bytes in Pool of Radiance and Curse of the Azure
@@ -4574,6 +4616,25 @@ def write(char: NeutralCharacter,
     counting = use("running_effects")
     running = [bytes(g)[:5] + EFFECT_NEXT_NULL
                for g in (counting.value if counting is not None else ())]
+    # The paladin's lay-on-hands timer, one more `.SPC` node by the same
+    # rule as a running effect, except that its id is this title's own heal
+    # id rather than whatever id the source recorded -- Silver Blades and
+    # Pools of Darkness push 109 here, not the Amiga's 140
+    # (docs/231-where-lay-on-hands-lives.md).  Zero minutes writes no node
+    # at all, which is what the engine's own HEAL removes on the return.
+    heal = use("lay_on_hands_minutes")
+    heal_id = LAY_ON_HANDS_DOS_ID.get(deltas.key)
+    heal_node: bytes | None = None
+    if heal is not None and heal_id is not None and int(heal.value) > 0:
+        minutes = int(heal.value)
+        heal_node = (bytes((heal_id,)) + minutes.to_bytes(2, "little")
+                    + bytes(2) + EFFECT_NEXT_NULL)
+        running.append(heal_node)
+    elif heal is not None and heal_id is None and int(heal.value):
+        rep.dropped.append(
+            "lay_on_hands_minutes: Pool of Radiance has no paladin and no "
+            "heal effect id on either port, so there is nowhere to put "
+            "one")
 
     spc = b"".join(
         [bytes((e,)) + INNATE_PAYLOAD + EFFECT_NEXT_NULL for e in derived] +
@@ -4645,8 +4706,10 @@ def write(char: NeutralCharacter,
         n = len(derived) + len(trait_records) + len(grants) + i
         at = base + n * EFFECT_SIZE
         minutes = int.from_bytes(g[1:3], "little")
+        whence = (f"{port} lay_on_hands_minutes" if g is heal_node
+                  else f"{port} running_effects")
         rep.note(at, 1, f"{deltas.effect_suffix} record {n}: effect {g[0]} "
-                        f"({traits.describe(g[0])}), {port} running_effects")
+                        f"({traits.describe(g[0])}), {whence}")
         rep.note(at + 1, 2,
                  f"{deltas.effect_suffix} record {n}: {minutes} minutes left "
                  f"in game-clock minutes, the source record's own duration")

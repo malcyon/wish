@@ -35,6 +35,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_innateeffects.py` | Checks each title's set of innate effect ids and that a converted paladin's or ranger's innate effect reaches the DOS `.SPC` file. |
 | `test_items.py` | Checks `goldbox/items.py` against a save taken after the party bought equipment. |
 | `test_layonhands.py` | Checks where each port keeps a paladin's lay-on-hands use, against the player's own executables: the DOS and Amiga heal routines' effect id, one-day duration, value and flag, the sheet gate, the empty handler or the missing table slot, the cure timer beside it, and the C64's record `0x013` and one-day row; skips without the disks. |
+| `test_layonhandsconvert.py` | Checks the neutral `lay_on_hands_minutes` field converts a paladin's lay-on-hands timer between DOS and the Amiga, remapping the effect id per title where the two ports disagree (Silver Blades and Pools of Darkness), and that Pool of Radiance and a non-paladin write no node at all. |
 | `test_levels.py` | Checks the level table in `goldbox/levels.py` against the game's own files. |
 | `test_liveparty.py` | Checks `goldbox/levels.py` against the values the game's training hall wrote over twenty-nine level-ups. |
 | `test_pairs.py` | Checks that a value the save holds twice survives export and import unchanged even when its two halves disagree. |

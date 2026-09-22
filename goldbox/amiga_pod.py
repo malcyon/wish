@@ -97,6 +97,9 @@ EFFECT_NEXT = 0x006
 #: 0xFF, one each -- which is the same behaviour the two later Amiga titles'
 #: own nodes show, 3 of 5 there. UNKNOWN, and nothing reads it.
 EFFECT_UNNAMED = 1
+#: The Amiga's own HEAL id, all three titles alike -- DOS Pools of Darkness
+#: pushes 109 for the same timer (docs/231-where-lay-on-hands-lives.md).
+LAY_ON_HANDS_AMIGA_ID = 140
 
 #: The head of the running-effect chain, a longword. In memory it is a heap
 #: pointer -- BOHLO BART AB's file holds `0x24B946` here and its three ten-byte
@@ -1926,6 +1929,10 @@ POD_WRITE_WHEN_PRESENT: tuple[tuple[str, str], ...] = (
                   "see `engine_default_icon`)"),
     ("icon_body", "the byte at 0x0BC unchanged, 0-31 -- see `icon_head`"),
     ("icon_colours", "the six bytes at 0x0BF unchanged -- see `icon_head`"),
+    ("lay_on_hands_minutes", "a ten-byte node after the running effects, id "
+                             "140 (this title's own HEAL id on the Amiga, "
+                             "not DOS's 109), the minutes big-endian at "
+                             "0x002. A value of zero writes no node at all"),
 )
 
 #: Neutral fields this writer takes nothing from, and why. Reported, never
@@ -2181,6 +2188,13 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "duration little-endian in game-clock minutes. Its "
                         "byte order is PROBABLE and no node on any disk holds "
                         "a value there"),
+    ("lay_on_hands_minutes", "read out of the same chain rather than left in "
+                             "running_effects: a node with id 140 holds the "
+                             "minutes left in its big-endian duration word, "
+                             "and no such node means he may heal now. Every "
+                             "Amiga title, this one included, pushes 140 "
+                             "for HEAL where DOS Pools of Darkness pushes "
+                             "109 (docs/231-where-lay-on-hands-lives.md)"),
 )
 
 
@@ -2534,7 +2548,22 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     # read. The same standing unknown the two later Amiga titles have.
     recut = [pod_effect_to_dos(node) for node in effects]
     granted = [e for e in recut if int.from_bytes(e[1:3], "little") == 0]
-    running = [e for e in recut if int.from_bytes(e[1:3], "little") != 0]
+    # The paladin's lay-on-hands timer is one more node of the chain, id
+    # 140 on the Amiga in every title (docs/231-where-lay-on-hands-lives.md),
+    # and it is read into its own field rather than `running_effects`,
+    # where a writer would have to remap the id to DOS's 109 rather than
+    # copy it.
+    heal_node = next((e for e in recut if e[0] == LAY_ON_HANDS_AMIGA_ID
+                      and int.from_bytes(e[1:3], "little") != 0), None)
+    out.set("lay_on_hands_minutes",
+            int.from_bytes(heal_node[1:3], "little") if heal_node else 0,
+            (f"a chain node with id {LAY_ON_HANDS_AMIGA_ID}, its duration "
+             f"read into game-clock minutes" if heal_node is not None else
+             f"no chain node with id {LAY_ON_HANDS_AMIGA_ID}: he may heal "
+             f"now"),
+            Confidence.CONFIRMED)
+    running = [e for e in recut if int.from_bytes(e[1:3], "little") != 0
+              and e[0] != LAY_ON_HANDS_AMIGA_ID]
     if running:
         # A node with a duration left is a spell still counting down, kept
         # whole with its time. **No node in the nineteen genuine files has
@@ -3072,6 +3101,16 @@ def _pod_effect_nodes(char: NeutralCharacter, w: neutral.Writer,
         payload = bytes(record)[:dos_port.EFFECT_SIZE].ljust(
             dos_port.EFFECT_SIZE, b"\0")
         seen.add(payload[0])
+        nodes.append(pod_effect_from_dos(payload))
+    # The paladin's lay-on-hands timer, id 140 on the Amiga rather than
+    # DOS's 109 (docs/231-where-lay-on-hands-lives.md).  Zero minutes writes
+    # no node at all, which is what the engine's own HEAL removes.
+    heal = w.use("lay_on_hands_minutes")
+    if heal is not None and int(heal.value) > 0:
+        minutes = int(heal.value)
+        payload = (bytes((LAY_ON_HANDS_AMIGA_ID,))
+                  + minutes.to_bytes(2, "little") + bytes(2) + bytes(4))
+        seen.add(LAY_ON_HANDS_AMIGA_ID)
         nodes.append(pod_effect_from_dos(payload))
     innate = w.use("innate_effects")
     for effect_id in (innate.value if innate else None) or ():
