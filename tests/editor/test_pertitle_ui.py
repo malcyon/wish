@@ -450,6 +450,7 @@ def _is_save(path: pathlib.Path, game: c64_port.Game) -> bool:
 def test_synthetic_party_builds_a_save_for_every_title():
     from gamedata import synthetic_party
 
+    from goldbox import layout
     from goldbox.d64 import D64
     from goldbox.savegame import load_save
 
@@ -461,7 +462,7 @@ def test_synthetic_party_builds_a_save_for_every_title():
         assert len(chars) == 6, game.title
         for char in chars:
             record = char.record
-            assert record.name.rstrip() == "W" * 20, game.title
+            assert record.name.rstrip() == "W" * layout.NAME_SIZE, game.title
             assert record.hp_max == 65535, game.title
         assert sg1 is not None, game.title
         assert sg1.roster(0).thac0 == 20, game.title

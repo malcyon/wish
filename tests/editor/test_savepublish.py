@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import pathlib
 import stat
+import string
 import sys
 
 import pytest
@@ -41,7 +42,7 @@ from editor.window import EditorBinding
 from goldbox import amiga_savegame, dos_port
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.d64 import D64
-from goldbox.layout import LAYOUT
+from goldbox.layout import LAYOUT, NAME_SIZE
 from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import SLOT_STRIDE, load_save, store_save
 
@@ -437,18 +438,19 @@ def _drop_into(monkeypatch, direction, field=None, loss=None):
 
 def test_a_truncated_name_stops_a_save_as_and_is_on_no_list_at_all(
         tmp_path):
-    """The name a player typed is 20 characters, the destination's own field
-    holds fifteen, and the conversion's accounting says nothing: neither
-    `report.dropped` nor `report.losses` names it -- the truncation is a line
-    of `report.warnings` and nothing calls `Report.lost` for it. What refuses
-    it is the output read back.
+    """The name a player typed fills the shared record's own name field, the
+    destination's own field holds fifteen, and the conversion's accounting
+    says nothing: neither `report.dropped` nor `report.losses` names it --
+    the truncation is a line of `report.warnings` and nothing calls
+    `Report.lost` for it. What refuses it is the output read back.
 
     No game data: Silver Blades stages no area script, so this is the one
     cross-platform direction that runs anywhere.
     """
     party, folder, _quantity = edited_dos_party(tmp_path / "save")
     before = files_under(folder)
-    party.members[0].record.set("name", "ABCDEFGHIJKLMNOPQRST")
+    probe_name = string.ascii_uppercase[:NAME_SIZE]
+    party.members[0].record.set("name", probe_name)
     out = tmp_path / "chosen.adf"
 
     source = convert.Source.of_snapshot(saveplan.prepare(party))
@@ -462,7 +464,7 @@ def test_a_truncated_name_stops_a_save_as_and_is_on_no_list_at_all(
         saveplan.prepare_save_as(party, "amiga", out)
 
     assert caught.value.lost == [
-        "name: 'ABCDEFGHIJKLMNOPQRST' arrived as 'ABCDEFGHIJKLMNO'"]
+        f"name: {probe_name!r} arrived as {probe_name[:15]!r}"]
     assert not out.exists()
     assert files_under(folder) == before
 

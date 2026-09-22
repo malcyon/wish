@@ -4861,6 +4861,20 @@ def write(char: NeutralCharacter,
             rec[f.offset] = 1 if was.get("paladin") else 0
             rep.note(f.offset, f.size,
                      f"{_pal_name}: {rec[f.offset]} -- {_pal_why}")
+    else:
+        # A Pool of Radiance destination has no such byte on either port
+        # (`WRITE_DROPPED`'s own entry) -- `use()` regardless, so
+        # `Writer.finish` does not add its own generic drop line below, and
+        # report the drop only when the byte is actually non-zero.  Every
+        # C64 Pool of Radiance record reads zero here (the title has no
+        # paladin class, #626), so reporting it unconditionally refused
+        # every one of those saves for a byte that was never anything but
+        # zero.
+        held = use("paladin_cures")
+        if held is not None and int(held.value):
+            (why,) = (why for n, why in WRITE_DROPPED
+                      if n == "paladin_cures")
+            rep.dropped.append(f"paladin_cures: {why}")
 
     # -- derived from the record, once everything else in it is written ------
     # Last, so the digest covers the finished record: a field written after

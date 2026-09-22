@@ -730,13 +730,40 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         emit(name, "name", 0x000, _field("name").size,
              ", re-padded to the C64's 18 NUL-padded bytes")
     # 0x012 and 0x013, freed from the old 20-byte name field, are the
-    # paladin's cure-disease and lay-on-hands uses (#626).  Seeding them from
-    # a source is #600 stage 2 and not built here, so a converted paladin's
-    # sheet still reads zero for both; the two bytes are reported rather than
-    # silently claimed by the name above.
-    rep.note(0x012, 2,
-             "paladin_cures/lay_on_hands_uses: zero -- not seeded yet (#600 "
-             "stage 2)")
+    # paladin's cure-disease and lay-on-hands uses (#626).  `paladin_cures`
+    # is copied unchanged **for a C64 source only**: it is the same
+    # engine's own byte, and the C64's own recovery timer is bound to it, so
+    # a C64-to-C64 Save As keeps a paladin's remaining count exactly (a
+    # level 6 Curse paladin holding 2 stays 2).  A DOS source stores 1 for
+    # every paladin regardless of level, and a C64 destination's full count
+    # is level-dependent (1 below level 6, 2 below 11, 3 from 11 up) with a
+    # recovery row of its own once a use is spent -- what #600 is still
+    # establishing in the running game -- so writing a DOS or Amiga source's
+    # raw byte here without that row could leave a paladin unable to ever
+    # recover CURE. `paladin_cures` therefore stays on `DROPPED` below for
+    # every source but the C64's own, which is a development-time
+    # protection against writing an output known to be wrong rather than
+    # the finished write.
+    cures = use("paladin_cures") if char.port == "C64" else None
+    if cures is not None:
+        rec.set("paladin_cures", int(cures.value) & 0xFF)
+        emit(cures, "paladin_cures", 0x012, _field("paladin_cures").size)
+    else:
+        # Not consumed for a non-C64 source, so a value it does hold still
+        # reaches `Writer.finish` and is reported through `DROPPED` below --
+        # this note only accounts for the byte staying zero.
+        rep.note(0x012, 1,
+                 "paladin_cures: zero -- " + (
+                     "no C64 source value at a grade this conversion writes"
+                     if char.port == "C64" else
+                     "not written for a source other than the C64's own "
+                     "(see `DROPPED` for why)"))
+    # `lay_on_hands_uses` has no neutral field yet (#628), so a converted
+    # paladin's sheet still reads zero there; the byte is reported rather
+    # than silently claimed by the name above.
+    rep.note(0x013, 1,
+             "lay_on_hands_uses: zero -- the neutral vocabulary has no field "
+             "for this yet (#628)")
 
     for field, c64_name in DIRECT:
         # Recomputed below rather than copied (#366, #405): `DIRECT` still
@@ -1672,18 +1699,16 @@ DROPPED: tuple[tuple[str, str], ...] = (
                         "unit 00, and Silver Blades' walking rule differs from "
                         "Pool's and Curse's "
                         "(`docs/226-the-c64-running-effect-crosswalk.md`)"),
-    ("paladin_cures", "the paladin's cure-disease bookkeeping, which the C64 "
-                      "record has nowhere to keep: no byte of the C64 record "
-                      "is 1 for a paladin and 0 for everybody else across the "
-                      "78 C64 records this project holds, 12 of them "
-                      "paladins, and the only two that separate paladins at "
-                      "all are the class byte itself and one that tracks "
-                      "level. The DOS writer puts back the value every "
-                      "engine-written paladin record holds, derived from the "
-                      "class. **What a player gains by it is not "
-                      "established**: staged both ways in the running Silver "
-                      "Blades game the sheet offers CURE either way, so the "
-                      "byte does not gate the command there"),
+    ("paladin_cures", "a DOS or Amiga source's own byte is not written to "
+                      "the C64's 0x012 (a C64 source's is -- see `write`'s "
+                      "own note beside the name field). DOS stores 1 for "
+                      "every paladin regardless of level; the C64's full "
+                      "count is level-dependent and a depleted one needs a "
+                      "recovery row of its own, which #600 is still "
+                      "establishing in the running game. This is a "
+                      "development-time protection against writing a value "
+                      "known to leave a paladin unable to ever recover "
+                      "CURE, not the finished write"),
 )
 
 #: Neutral fields the C64 **recomputes for itself**, so writing them would be
@@ -1769,17 +1794,16 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
                    "#383 and #422 convert it when the source title's own "
                    "icon tables are supplied; without source disks there "
                    "are no tables to supply (#482)"),
-    ("paladin_cures", "the paladin's cure-disease uses, named by #626 as the "
-                      "C64's own 0x012, freed from the old 20-byte name "
-                      "field. The neutral vocabulary already has a "
-                      "same-named field, added for the DOS and Amiga ports, "
-                      "but reading this byte into it and writing it back "
-                      "out is not built -- #600 stage 2"),
     ("lay_on_hands_uses", "the paladin's lay-on-hands uses, named by #626 "
-                          "as the C64's own 0x013, the other byte freed "
-                          "from the old name field. Unlike paladin_cures, "
-                          "the neutral vocabulary has no field for this at "
-                          "all, on either port -- #628"),
+                          "as the C64's own 0x013, the byte freed from the "
+                          "old name field beside `paladin_cures` at 0x012 -- "
+                          "which `DIRECT` above now copies, since the "
+                          "neutral vocabulary already names it for the DOS "
+                          "and Amiga ports. The neutral vocabulary has no "
+                          "field for `lay_on_hands_uses` at all, on either "
+                          "port -- #628. Reported only when the byte is "
+                          "non-zero: a character who has none to begin with "
+                          "loses nothing"),
 )
 
 #: What a player reads for each name in :data:`READ_DROPPED` -- the read
@@ -1815,8 +1839,6 @@ READ_DROPPED_PLAYER_TEXT: dict[str, str] = {
     "region_220": "Combat figure: Wish cannot yet turn the C64's own combat "
                   "icon into this game's own art, so your character's "
                   "figure is not set.",
-    "paladin_cures": "Cure disease: your paladin's remaining uses are not "
-                     "converted yet.",
     "lay_on_hands_uses": "Lay on hands: your paladin's remaining uses are "
                          "not converted yet.",
 }
@@ -1883,6 +1905,9 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
 READ_TARGETS: dict[str, str] = (
     {c64_name: f"read as neutral {n}" for n, c64_name in DIRECT}
     | {"name": "read as neutral name",
+       "paladin_cures": "read as neutral paladin_cures, directly rather "
+                        "than through DIRECT (#626) -- see read's own note "
+                        "beside the name field",
        "spells_known": "the spellbook mask's low seven bytes, unpacked into "
                        "neutral spells_known",
        "spells_known_high": "the same mask's high nine bytes, 0x07F-0x087, "
@@ -1976,6 +2001,16 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     out.set("name", rec.get("name"),
             "the C64's 18 NUL-padded bytes at 0x000", grade("name"),
             Provenance.RESHAPED)
+    # 0x012, freed from the old 20-byte name field, is the paladin's
+    # cure-disease flag (#626); the neutral vocabulary already names it for
+    # the DOS and Amiga ports, so it copies like any other one-byte field.
+    # Read directly rather than through `DIRECT`: that table also drives
+    # `tools.records.boundarychars._base`'s generic scalar sweep, which would
+    # otherwise hand every Pool of Radiance boundary character a non-zero
+    # value for a byte that title's own DOS and Amiga records have no home
+    # for at all.
+    out.set("paladin_cures", rec.get("paladin_cures"),
+            origin("paladin_cures"), grade("paladin_cures"))
 
     for neutral_name, c64_name in DIRECT:
         if is_npc and neutral_name in {"levels_drained", "hp_lost_to_drain"}:
@@ -2342,6 +2377,13 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # names and issue numbers in them).
     for name, _why in READ_DROPPED:
         if name in out:
+            continue
+        if name == "lay_on_hands_uses" and not rec.get("lay_on_hands_uses"):
+            # A character who has none to begin with loses nothing: every
+            # Pool of Radiance character reads zero here (the title has no
+            # paladin), so reporting it unconditionally refused every Pool
+            # of Radiance C64 save for a byte that was never anything but
+            # zero.
             continue
         sentence = READ_DROPPED_PLAYER_TEXT.get(name)
         if sentence:

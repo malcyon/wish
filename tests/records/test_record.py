@@ -366,6 +366,46 @@ def test_a_c64_write_does_not_claim_the_cure_and_lay_on_hands_bytes_for_the_name
     assert "lay_on_hands_uses" in rep.sources[0x013]
 
 
+def test_a_c64_source_writes_its_own_cure_disease_count_back_unchanged() -> None:
+    """A C64 source's own byte is the C64's own recovery bookkeeping, so a
+    C64-to-C64 Save As keeps a paladin's remaining count exactly rather than
+    copying a DOS-shaped value over it (#626, #600)."""
+    from goldbox import c64_codec, neutral
+    from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS
+
+    char = neutral.NeutralCharacter("C64", source="built here",
+                                    game=CURSE_OF_THE_AZURE_BONDS)
+    for name, value in {
+        "name": "GALAHAD", "level": 9, "levels": {"paladin": 9},
+        "class_bits": 0x40, "paladin_cures": 2,
+    }.items():
+        char.set(name, value, "built here")
+    rec, rep = c64_codec.write(char)
+    assert rec.get("paladin_cures") == 2
+    assert not any("paladin_cures" in d for d in rep.dropped)
+
+
+def test_a_dos_source_does_not_write_its_cure_disease_count_to_the_c64() -> None:
+    """DOS stores 1 for every paladin whatever his level; the C64's full
+    count is level-dependent and a depleted one needs a recovery row #600 is
+    still establishing in the running game, so a DOS or Amiga source's raw
+    byte is not written to 0x012 -- writing it unchanged could leave a
+    paladin unable to ever recover CURE (#626, #600)."""
+    from goldbox import c64_codec, neutral
+    from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS
+
+    char = neutral.NeutralCharacter("DOS", source="built here",
+                                    game=CURSE_OF_THE_AZURE_BONDS)
+    for name, value in {
+        "name": "GALAHAD", "level": 9, "levels": {"paladin": 9},
+        "class_bits": 0x40, "paladin_cures": 1,
+    }.items():
+        char.set(name, value, "built here")
+    rec, rep = c64_codec.write(char)
+    assert rec.get("paladin_cures") == 0
+    assert any("paladin_cures" in d for d in rep.dropped)
+
+
 def test_directory_names_are_a_separate_convention() -> None:
     raw = petscii.encode_directory_name("POOL DATA")
     assert len(raw) == petscii.DIR_NAME_SIZE

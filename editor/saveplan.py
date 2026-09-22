@@ -631,7 +631,15 @@ KEPT_FIELDS = (
     # is a destination the sheet would draw differently.
     "abilities_second", "size_small", "armour_class_base", "attack_forms",
     "strength_bonus_flag", "turn_power", "flags_0b8", "experience_award",
-    "experience_per_hit_point", "treasure_share")
+    "experience_per_hit_point", "treasure_share",
+    # `paladin_cures` is the C64's 0x012, freed from the old 20-byte name
+    # field (#626): `c64_codec.read` copies it into the neutral field the
+    # DOS and Amiga ports already name, and `c64_codec.write` copies it
+    # straight back for a C64 source, so a C64-to-C64 Save As keeps it. A
+    # DOS or Amiga source's own byte is not written to the C64 yet -- #600
+    # is still establishing what a depleted count needs alongside it -- so
+    # that direction never reaches this comparison with a value to compare.
+    "paladin_cures")
 
 #: What is deliberately **not** compared, and why. Every known field of the
 #: layout is here or in `KEPT_FIELDS`, and each line below is a measurement
@@ -684,7 +692,10 @@ KEPT_FIELDS = (
 #: * `infravision` -- the C64 computes its own from the race
 #:   (`goldbox.c64_codec.DROPPED`);
 #: * `turn_class` -- the undead's own row rather than the caster's, and zero
-#:   for every player character (#297, #288).
+#:   for every player character (#297, #288);
+#: * `lay_on_hands_uses` -- the C64's 0x013, freed from the old 20-byte name
+#:   field beside `paladin_cures` (#626): the neutral vocabulary has no
+#:   field for it on any port yet (#628), so no writer can put it back.
 #:
 #: Measured over 36 runs: the fifteen Pool of Radiance C64 saves this
 #: machine's registry holds, each to a C64 and a DOS destination, plus DOS
@@ -703,7 +714,7 @@ _NOT_COMPARED = ("identity_pair", "party_order", "item_effects", "thac0",
                  "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
                  "thief_move_silently", "thief_hide_in_shadows",
                  "thief_hear_noise", "thief_climb_walls",
-                 "thief_read_languages")
+                 "thief_read_languages", "lay_on_hands_uses")
 
 
 def kept(record: CharacterRecord) -> "dict[str, Any]":
