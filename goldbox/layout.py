@@ -74,14 +74,10 @@ LOAD_ADDRESS = 0x6B00
 #:
 #: Not 20: the longest name across the 729 C64 records on this machine is 15
 #: characters and 0x010-0x011 are 0 in every one, so 18 bytes (0x000-0x011)
-#: covers every name seen with room to spare. The two bytes that used to be
-#: the name's last two, 0x012 and 0x013, are a paladin's cure-disease and
-#: lay-on-hands uses left (`paladin_cures`, `lay_on_hands_uses` below) --
-#: `tools/c64/curedisease.py`, #626 (A paladin written into a C64 Curse or
-#: Silver Blades save, or renamed there in the editor, loses CURE and HEAL
-#: from his sheet, because the name field covers the two bytes that hold
-#: them). Renaming a character used to zero them because the name setter
-#: wrote all 20 bytes; narrowing the field is the fix.
+#: covers every name seen with room to spare. Bytes 0x012 and 0x013, just
+#: past the name field, hold a paladin's cure-disease and lay-on-hands uses
+#: left (`paladin_cures`, `lay_on_hands_uses` below) --
+#: `tools/c64/curedisease.py`.
 NAME_SIZE = 18
 
 
@@ -203,19 +199,13 @@ _DECLARED: Sequence[Field] = (
            "it from the paladin level (1, 2 or 3 below level 6, below 11, "
            "from 11 up), LIBRARY's sheet-menu mask hides CURE while it is 0, "
            "ECL65 decrements it on a cure and starts a timer effect whose "
-           "expiry resets it. Used to sit inside the 20-byte `name` field's "
-           "last two bytes, so renaming a character in the editor zeroed it "
-           "-- `tools/c64/curedisease.py`, #626 (A paladin written into a "
-           "C64 Curse or Silver Blades save, or renamed there in the "
-           "editor, loses CURE and HEAL from his sheet, because the name "
-           "field covers the two bytes that hold them). Named to match the "
-           "same byte on the Amiga and DOS ports (`goldbox.amiga_pod`, "
+           "expiry resets it -- `tools/c64/curedisease.py`. Named to match "
+           "the same byte on the Amiga and DOS ports (`goldbox.amiga_pod`, "
            "`goldbox.dos_port`)."),
     _field(0x013, 1, _U8, "lay_on_hands_uses", "Lay on hands uses left", _OK,
            "Curse and Silver Blades only; 0 for every other class. Same "
            "seeding, hiding and reset machinery as `paladin_cures`, one byte "
-           "over -- LIBRARY hides HEAL while this is 0. Was the name "
-           "field's very last byte; see `paladin_cures` and #626."),
+           "over -- LIBRARY hides HEAL while this is 0."),
     _field(0x014, 1, _U8, "strength", "STR", _OK, "18 in specimen"),
     _field(0x015, 1, _U8, "intelligence", "INT", _OK, "16 in specimen"),
     _field(0x016, 1, _U8, "wisdom", "WIS", _OK, "13 in specimen"),
