@@ -25,18 +25,16 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from support.worldwindow import synthetic_window  # noqa: E402
 
-from goldbox.world import (
-    Tile,  # noqa: E402
-    Window,  # noqa: E402
-)
-from tools.pool_of_radiance.worldtiles import (  # noqa: E402
+from goldbox.world import (  # noqa: E402
     GLYPH_BASE,
     GLYPH_BYTES,
     TILE_PIXELS,
+    Tile,
+    Window,
     cell_pixels,
-    pane_codes,
     tile_pixels,
 )
+from tools.pool_of_radiance.worldtiles import pane_codes  # noqa: E402
 
 #: Three shared colours no two of which are the same, so a pixel that took the
 #: wrong one of them cannot pass by coincidence.

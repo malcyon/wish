@@ -24,6 +24,7 @@ from goldbox.world import (
     ROWS,
     SEAM_MIDDLE_EAST,
     SEAM_WEST_MIDDLE,
+    SITE_PAINT_TOLERANCE,
     STRIDE,
     TILE_COUNT,
     TILE_TABLE_SIZE,
@@ -243,3 +244,29 @@ def test_the_two_blocked_functions_say_what_blocks_them():
         said = str(caught.value)
         assert "ECL19" in said and "#136" in said, said
         assert "world-map.md" in said, said
+
+
+# -- identifying a window from a block of memory --------------------------------
+
+
+@needs_disks
+def test_identify_names_the_window_a_block_is_or_nearly_is():
+    world = World.from_disks(_pool_disks())
+    grids = [w.to_bytes()[:GRID_SIZE] for w in world.windows]
+    for index, grid in enumerate(grids):
+        assert world.identify(grid) == (index, 0)
+    # Three squares painted over by the game still name the window.
+    painted = bytearray(grids[1])
+    for at in (5, 100, 400):
+        painted[at] = (painted[at] + 1) % TILE_COUNT
+    assert world.identify(bytes(painted)) == (1, 3)
+    # A byte the grid can never hold is not a wilderness block.
+    bad = bytearray(grids[0])
+    bad[7] = TILE_COUNT
+    assert world.identify(bytes(bad)) is None
+    # Nothing near any window is refused, however far the nearest is.
+    assert world.identify(bytes(GRID_SIZE)) is None
+    far = bytearray(grids[2])
+    for at in range(SITE_PAINT_TOLERANCE + 1):
+        far[at] = (far[at] + 1) % TILE_COUNT
+    assert world.identify(bytes(far)) is None

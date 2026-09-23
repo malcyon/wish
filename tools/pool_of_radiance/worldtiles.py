@@ -55,6 +55,15 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import find_disks  # noqa: E402
 from goldbox import world as W  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
+from goldbox.world import (  # noqa: E402
+    CHARSET_GLYPHS,
+    CHARSET_NAMES,
+    GLYPH_BYTES,
+    SHARED,
+    TILE_CELLS,
+    TILE_PIXELS,
+    tile_pixels,
+)
 from tools.registry import scratch  # noqa: E402
 
 #: The C64's sixteen colours, the same table `tools/curse_of_the_azure_bonds/cursepic.py` draws its
@@ -66,30 +75,6 @@ PALETTE = [
     (221, 136, 85), (102, 68, 0), (255, 119, 119), (51, 51, 51),
     (119, 119, 119), (170, 255, 102), (0, 136, 255), (187, 187, 187),
 ]
-
-#: Every screen code in every tile the three grids use is `$40` or above, and
-#: the set holds 192 glyphs, so this is the offset from code to glyph.
-GLYPH_BASE = 0x40
-GLYPH_BYTES = 8
-CHARSET_GLYPHS = 192
-
-#: A tile is 3 x 3 characters.
-TILE_CELLS = 3
-TILE_PIXELS = TILE_CELLS * 8
-
-#: The wilderness charsets, one a window, in `WINDOW_NAMES` order.
-CHARSET_NAMES = ("SECSET04", "SECSET05", "SECSET06")
-
-#: `$D021`, `$D022`, `$D023` -- the three colours a multicolour cell shares
-#: with the whole screen, so no tile can carry them: black, light grey and
-#: green.  **Read off the chip on the travel grid**, 2026-09-08, measurement
-#: B of `docs/217-drawing-the-wilderness.md`: `tools/pool_of_radiance/worldregisters.py` booted
-#: `p190/C64OUT1.D64` (scratch, deleted) and read `$D021`-`$D023` as `$F0 $FF $F5` while the
-#: party stood at (8,27) on the middle window, the border `$D020` black with
-#: it.  Change this only against another such reading -- fitting it to a
-#: screenshot is how the plains came to be called light grey in
-#: `docs/137-wilderness-automap.md`.
-SHARED = (0x00, 0x0F, 0x05)
 
 
 def disks_dir() -> pathlib.Path:
@@ -122,49 +107,6 @@ def charset(disks: list[D64], index: int) -> bytes:
                     f"short of {CHARSET_GLYPHS * GLYPH_BYTES}")
             return payload
     raise SystemExit(f"no disk here carries {CHARSET_NAMES[index]}")
-
-
-def cell_pixels(glyph: bytes, attribute: int,
-                shared: tuple[int, int, int] = SHARED) -> list[list[int]]:
-    """One character cell as 8 x 8 colour indices, rows top to bottom.
-
-    Bit 3 of `attribute` selects multicolour, which is the whole of the
-    difference between the two branches: a multicolour row is four pixel
-    pairs out of a four-colour choice, a hi-res row eight pixels out of two.
-    """
-    colour = attribute & 0x0F
-    background, mc1, mc2 = shared
-    out = []
-    for row in range(8):
-        bits = glyph[row]
-        line = []
-        if colour & 0x08:
-            choice = (background, mc1, mc2, colour & 0x07)
-            for pair in range(4):
-                value = (bits >> (6 - pair * 2)) & 0x03
-                line.append(choice[value])
-                line.append(choice[value])
-        else:
-            for bit in range(8):
-                line.append(colour if (bits >> (7 - bit)) & 1 else background)
-        out.append(line)
-    return out
-
-
-def tile_pixels(tile: W.Tile, glyphs: bytes,
-                shared: tuple[int, int, int] = SHARED) -> list[list[int]]:
-    """One tile as 24 x 24 colour indices."""
-    rows = [[0] * TILE_PIXELS for _ in range(TILE_PIXELS)]
-    for cell in range(9):
-        code = tile.screen_codes[cell]
-        at = (code - GLYPH_BASE) * GLYPH_BYTES
-        glyph = glyphs[at:at + GLYPH_BYTES] if at >= 0 else bytes(8)
-        pixels = cell_pixels(glyph, tile.attributes[cell], shared)
-        cx, cy = (cell % TILE_CELLS) * 8, (cell // TILE_CELLS) * 8
-        for y in range(8):
-            for x in range(8):
-                rows[cy + y][cx + x] = pixels[y][x]
-    return rows
 
 
 def image_of(pixels: list[list[int]], scale: int = 1):

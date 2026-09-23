@@ -79,9 +79,8 @@ ROWS = 36
 GRID_SIZE = STRIDE * ROWS                        # 648
 
 #: 120 glyph entries, nine screen codes then nine colour attributes -- a
-#: 3 x 3 block of characters. PROBABLE (`docs/113-world-map.md`): the split
-#: between the two halves is measured from the file's own arithmetic, but
-#: which set the codes are drawn from is not independently confirmed.
+#: 3 x 3 block of characters. CONFIRMED: the game's own travel pane shows
+#: these screen codes on 225 of 225 cells checked.
 TILE_COUNT = 120
 TILE_SIZE = 18
 TILE_TABLE_SIZE = TILE_COUNT * TILE_SIZE          # 2160
@@ -123,6 +122,37 @@ WORLD_Y_MAX = WORLD_Y_MIN + WORLD_HEIGHT - 1       # 33
 SEAM_WEST_MIDDLE = PLAYABLE_X.stop - 1 + WINDOW_STEP * 0    # 15
 SEAM_MIDDLE_EAST = PLAYABLE_X.stop - 1 + WINDOW_STEP * 1    # 28
 
+#: Every screen code in every tile the three grids use is `$40` or above, and
+#: the set holds 192 glyphs, so this is the offset from code to glyph.
+GLYPH_BASE = 0x40
+GLYPH_BYTES = 8
+CHARSET_GLYPHS = 192
+
+#: A tile is 3 x 3 characters.
+TILE_CELLS = 3
+TILE_PIXELS = TILE_CELLS * 8
+
+#: The wilderness charsets, one a window, in `WINDOW_NAMES` order.
+CHARSET_NAMES = ("SECSET04", "SECSET05", "SECSET06")
+
+#: `$D021`, `$D022`, `$D023` -- the three colours a multicolour cell shares
+#: with the whole screen, so no tile can carry them: black, light grey and
+#: green. Read off the chip on the travel grid with the party at (8,27) on
+#: the middle window (`tools/pool_of_radiance/worldregisters.py`,
+#: `docs/217-drawing-the-wilderness.md` measurement B). Change this only
+#: against another such reading.
+SHARED = (0x00, 0x0F, 0x05)
+
+#: How many of a block's 648 bytes may differ from a window's grid and still
+#: name that window. Two windows are at least 532 bytes apart, so a tolerance
+#: under 266 can never match two of them; the nearest block that is not a
+#: window, over every file on the disks, is 554 bytes away
+#: (`docs/217-drawing-the-wilderness.md` §1); the largest difference the game
+#: paints over a grid is 3 bytes. How many squares a site entry can paint is
+#: not known, so the margin is kept wide rather than set to the 46 squares
+#: a full pane could cover.
+SITE_PAINT_TOLERANCE = 128
+
 
 class WorldError(ValueError):
     """A `SQRDATA` payload too short to hold a grid and its glyph table."""
@@ -132,12 +162,10 @@ class WorldError(ValueError):
 class Tile:
     """One of a window's 120 glyphs.
 
-    `screen_codes` and `attributes` are nine bytes each, PROBABLE as "a 3 x 3
-    block of characters out of `SECSET0n`" (`docs/113-world-map.md`) -- this
-    module hands the two halves back as measured and decodes no further,
-    since drawing the game's own art is not what any of this is for
-    (`docs/137-wilderness-automap.md` §5: "what a `SECSET0n` glyph looks
-    like -- not needed").
+    `screen_codes` and `attributes` are nine bytes each: a 3 x 3 block of
+    characters out of `SECSET0n` (`docs/113-world-map.md`). This
+    module hands the two halves back as measured; `tile_pixels` turns one
+    into pixels with a window's `SECSET0n` charset.
     """
 
     screen_codes: bytes
@@ -197,6 +225,49 @@ class Window:
         return self.tile(self.square(x, y))
 
 
+def cell_pixels(glyph: bytes, attribute: int,
+                shared: tuple[int, int, int] = SHARED) -> list[list[int]]:
+    """One character cell as 8 x 8 colour indices, rows top to bottom.
+
+    Bit 3 of `attribute` selects multicolour, which is the whole of the
+    difference between the two branches: a multicolour row is four pixel
+    pairs out of a four-colour choice, a hi-res row eight pixels out of two.
+    """
+    colour = attribute & 0x0F
+    background, mc1, mc2 = shared
+    out = []
+    for row in range(8):
+        bits = glyph[row]
+        line = []
+        if colour & 0x08:
+            choice = (background, mc1, mc2, colour & 0x07)
+            for pair in range(4):
+                value = (bits >> (6 - pair * 2)) & 0x03
+                line.append(choice[value])
+                line.append(choice[value])
+        else:
+            for bit in range(8):
+                line.append(colour if (bits >> (7 - bit)) & 1 else background)
+        out.append(line)
+    return out
+
+
+def tile_pixels(tile: Tile, glyphs: bytes,
+                shared: tuple[int, int, int] = SHARED) -> list[list[int]]:
+    """One tile as 24 x 24 colour indices."""
+    rows = [[0] * TILE_PIXELS for _ in range(TILE_PIXELS)]
+    for cell in range(9):
+        code = tile.screen_codes[cell]
+        at = (code - GLYPH_BASE) * GLYPH_BYTES
+        glyph = glyphs[at:at + GLYPH_BYTES] if at >= 0 else bytes(8)
+        pixels = cell_pixels(glyph, tile.attributes[cell], shared)
+        cx, cy = (cell % TILE_CELLS) * 8, (cell // TILE_CELLS) * 8
+        for y in range(8):
+            for x in range(8):
+                rows[cy + y][cx + x] = pixels[y][x]
+    return rows
+
+
 @dataclass(frozen=True)
 class World:
     """The three `SQRDATA` windows, addressed by the game's own world
@@ -207,6 +278,9 @@ class World:
     """
 
     windows: tuple[Window, Window, Window]
+    #: `SECSET04`, `05`, `06`, PRG header dropped, or None when a disk set
+    #: does not carry all three.
+    charsets: tuple[bytes, bytes, bytes] | None = None
 
     @classmethod
     def from_disks(cls, disks) -> "World":
@@ -238,7 +312,42 @@ class World:
                     break
             else:
                 raise WorldError(f"no disk here carries {name}")
-        return cls(tuple(windows))
+        charsets = []
+        for name in CHARSET_NAMES:
+            encoded = name.encode()
+            for image in images:
+                if image.find(encoded) is not None:
+                    # The PRG header's load address is not where the game
+                    # runs the set, so `load_payload` drops it.
+                    payload = load_payload(image, encoded)
+                    if len(payload) < CHARSET_GLYPHS * GLYPH_BYTES:
+                        raise WorldError(
+                            f"{name} is {len(payload)} bytes, short of "
+                            f"{CHARSET_GLYPHS * GLYPH_BYTES}")
+                    charsets.append(payload)
+                    break
+        return cls(tuple(windows),
+                   tuple(charsets) if len(charsets) == 3 else None)
+
+    def identify(self, block: bytes) -> tuple[int, int] | None:
+        """Which window a 648-byte grid block in memory is, and how many
+        bytes differ from it, or None.
+
+        None when any byte is `TILE_COUNT` or more (no grid holds one) or
+        when even the nearest window is over `SITE_PAINT_TOLERANCE` bytes
+        away.
+        """
+        if len(block) != GRID_SIZE or max(block) >= TILE_COUNT:
+            return None
+        best = None
+        for index, window in enumerate(self.windows):
+            grid = window.to_bytes()[:GRID_SIZE]
+            distance = sum(a != b for a, b in zip(block, grid))
+            if best is None or distance < best[1]:
+                best = (index, distance)
+        if best[1] > SITE_PAINT_TOLERANCE:
+            return None
+        return best
 
     def locate(self, world_x: int) -> tuple[Window, int]:
         """Which window owns `world_x`, and that window's own local x there.
