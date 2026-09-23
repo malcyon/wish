@@ -210,40 +210,11 @@ def cmd_stage(args) -> int:
 # --- driving ----------------------------------------------------------------
 
 def _session_class():
-    """`curserun.CurseSession` with a boot that survives a VICE dialog.
-
-    `CurseSession.boot` sends the fastloader answer once; with VICE's own
-    warning dialog up at that moment the key goes into the dialog and the
-    boot waits out its whole timeout on `DISABLE FASTLOADER (Y/N) ?`.
-    `Session._answer_fastloader` closes the dialog and resends, the last time
-    through the KERNAL buffer, so the boot uses that and otherwise does what
-    `CurseSession.boot` does.
-    """
+    """`curserun.CurseSession`, whose own `boot` already survives a VICE
+    dialog swallowing the fastloader answer."""
     from tools.curse_of_the_azure_bonds import curserun
 
-    class CureSession(curserun.CurseSession):
-        def boot(self) -> bool:
-            self.launch()
-            if self.wait_text("DISABLE FASTLOADER", 180)[0] is None:
-                self.log("no fastloader prompt")
-                return False
-            if not self._answer_fastloader():
-                return False
-            deadline = time.time() + 420
-            while time.time() < deadline:
-                s = self.screen()
-                text = s.text() if s is not None else "(bitmap)"
-                if "CREATE NEW CHARACTER" in text:
-                    return True
-                want = curserun.RE_START_CHECK.search(text)
-                if want:
-                    self.press_kernal(ord(want.group(1)))
-                elif "SSI" in text or "BROKEN" in text or "PRESENTS" in text:
-                    self.kbd.key("Return")
-                time.sleep(2.0)
-            return False
-
-    return CureSession
+    return curserun.CurseSession
 
 
 def _silver_session_class():

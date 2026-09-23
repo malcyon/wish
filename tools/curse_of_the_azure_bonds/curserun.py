@@ -543,12 +543,13 @@ class CurseSession(por.Session):
         nobody can name, so this presses Return only while the screen is one
         of the two it recognises, and gives up saying what it last saw.
         """
+        self.boot_failure = None
         self.launch()
         if self.wait_text("DISABLE FASTLOADER", 180)[0] is None:
             self.log("no fastloader prompt")
             return False
-        self.kbd.key(self.fastloader, 0.15, 0.28)
-        self.log(f"fastloader: {self.fastloader.upper()}")
+        if not self._answer_fastloader():
+            return False
         deadline = time.time() + 420
         last = ""
         while time.time() < deadline:

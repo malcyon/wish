@@ -95,3 +95,109 @@ def test_disk_prompt_uses_the_key_path_the_game_reads():
 
     assert ("attach", str(SLOT / "SIDE2.D64")) in session.events
     assert session.events[-1] == ("kernal", 0x20)
+
+
+class FakeBootScreen:
+    """A screen `CurseSession.boot` reads through `screen_text` and `.text()`."""
+
+    def __init__(self, text: str):
+        self._text = text
+
+    def text(self) -> str:
+        return self._text
+
+    def rows(self):
+        return [self._text]
+
+
+class FakeBootDisplay:
+    """The nested display's windows, and the keys `dismiss_error_dialog` sent."""
+
+    def __init__(self):
+        self.windows: dict[int, str] = {1: "VICE (C64SC)"}
+
+    def xdo(self, display, *args):
+        if args[0] == "search":
+            return " ".join(str(w) for w in self.windows)
+        if args[0] == "getwindowname":
+            return self.windows[int(args[1])]
+        return ""
+
+
+class FakeBootGame:
+    """A C64 whose fastloader-answer keypress is swallowed once.
+
+    A VICE dialog that grabs the keyboard eats exactly the first `y`; the
+    game only sees the second.  `screen()` stays on the fastloader prompt
+    until a key is actually taken, then jumps straight to the party menu.
+    """
+
+    def __init__(self):
+        self.deaf = 1
+        self.sent: list[str] = []
+        self.taken = False
+
+    def key(self, name, *a):
+        self.sent.append(name)
+        if self.deaf > 0:
+            self.deaf -= 1
+            return
+        self.taken = True
+
+    def screen(self):
+        return FakeBootScreen("CREATE NEW CHARACTER" if self.taken
+                              else "DISABLE FASTLOADER (Y/N) ?")
+
+
+class FakeClock:
+    """A `time` stand-in whose clock only moves when `sleep` is asked to."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def time(self):
+        return self.now
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def test_boot_resends_a_fastloader_answer_a_vice_dialog_swallowed(monkeypatch):
+    """`#642 (A driven C64 Curse boot waits out its timeout when a VICE
+    dialog swallows the fastloader answer)`: the first `y` never reaches the
+    game, and the unfixed boot sends it once and then just waits."""
+    display = FakeBootDisplay()
+    game = FakeBootGame()
+    order: list[str] = []
+
+    def xdo(disp, *args):
+        if args[0] == "search":
+            order.append("dialog-check")
+        return display.xdo(disp, *args)
+
+    def key(name, *a):
+        order.append("send")
+        game.key(name, *a)
+
+    sess = C.CurseSession()
+    sess.here = str(SLOT)
+    sess.kbd = SimpleNamespace(key=key)
+    sess.boot_failure = None
+    clock = FakeClock()
+    monkeypatch.setattr(C, "time", clock)
+    monkeypatch.setattr(C.por, "_xdo", xdo)
+    monkeypatch.setattr(C.por, "ANSWER_RESEND", 0.05)
+    monkeypatch.setattr(C.por.Session, "DIALOG_SETTLE", 0.0)
+    monkeypatch.setattr(sess, "launch", lambda: None)
+    monkeypatch.setattr(sess, "log", lambda *a: None)
+    monkeypatch.setattr(sess, "screen", game.screen)
+    monkeypatch.setattr(sess, "wait_text",
+                        lambda needle, timeout=180.0: (needle, game.screen()))
+
+    assert sess.boot() is True
+
+    assert game.sent == ["y", "y"]
+    assert order == ["dialog-check", "send", "dialog-check", "send"]
