@@ -375,6 +375,12 @@ BAR_ROWS = (415, 460)
 BAR_INK_MIN = 200
 #: Seconds between screenshots while waiting for the bar.
 BAR_POLL = 2
+#: Longest one screenshot may take; a hung X server otherwise blocks the driver
+#: past any `--boot`, which is only checked between grabs.
+GRAB_TIMEOUT = 30
+#: Seconds after the start before a missing FS-UAE window counts as a dead
+#: emulator; the window is not there in the first seconds of a boot.
+WINDOW_GRACE = 20
 
 
 def grab(display: str):
@@ -383,9 +389,28 @@ def grab(display: str):
 
     from PIL import Image
 
-    png = subprocess.run(["import", "-display", display, "-window", "root", "png:-"],
-                         env=_xenv(display), check=True, capture_output=True).stdout
+    try:
+        png = subprocess.run(["import", "-display", display, "-window", "root",
+                              "png:-"], env=_xenv(display), check=True,
+                             capture_output=True, timeout=GRAB_TIMEOUT).stdout
+    except subprocess.TimeoutExpired:
+        raise SystemExit(f"no screenshot from {display} in {GRAB_TIMEOUT:g} s; "
+                         "the X server is not answering") from None
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(f"cannot screenshot {display}: the X server is gone "
+                         f"(import exit {exc.returncode})") from None
     return Image.open(io.BytesIO(png)).convert("RGB")
+
+
+def window_up(display: str) -> bool:
+    """True when an FS-UAE window exists on the display (`keys` looks the same way)."""
+    try:
+        found = subprocess.run(["xdotool", "search", "--name", "FS-UAE"],
+                               env=_xenv(display), capture_output=True, text=True,
+                               check=False, timeout=GRAB_TIMEOUT).stdout.split()
+    except subprocess.TimeoutExpired:
+        return False
+    return bool(found)
 
 
 def title_bar_up(image) -> bool:
@@ -459,6 +484,8 @@ def pod_panel(args) -> int:
         if step[0] == "title":
             bar = _wait_for_bar(args.display, step[1], take)
         elif step[0] == "played":
+            # Raw bytes: an animated title screen would make an ignored `p` look
+            # like a change; a real boot is what shows whether it is static.
             if grab(args.display).tobytes() == bar.tobytes():
                 take("play-ignored")
                 raise SystemExit("the title bar did not take p; no more keys sent")
@@ -471,7 +498,11 @@ def pod_panel(args) -> int:
 
 
 def _wait_for_bar(display: str, limit: float, take):
-    """Grab until two in a row show the title bar; stop with no key past `limit`."""
+    """Grab until two in a row show the title bar; stop with no key past `limit`.
+
+    Also stops early, with no key, once the FS-UAE window is gone: Xvfb outlives a
+    dead emulator and keeps answering with black frames.
+    """
     start = _now()
     seen = False
     while True:
@@ -482,7 +513,14 @@ def _wait_for_bar(display: str, limit: float, take):
             take("title")
             return image
         seen = up
-        if _now() - start >= limit:
+        elapsed = _now() - start
+        if not up and elapsed >= WINDOW_GRACE and not window_up(display):
+            take("no-title-bar")
+            raise SystemExit(f"fs-uae has no window on {display} after "
+                             f"{elapsed:.0f} s (did it exit?); no key sent")
+        # A first sighting is always confirmed by one more grab, so a small
+        # `limit` cannot expire between the two.
+        if not seen and elapsed >= limit:
             take("no-title-bar")
             raise SystemExit(f"no title bar in {limit:g} s; no key sent")
         _wait(BAR_POLL)

@@ -243,6 +243,6 @@ were listed and left; and no drawer other than `Save` on disk 3 was tried.
 * **The stock `fs-uae` is a second emulator for the same runs**, alongside
   WinUAE: `tools/amiga/fsuaepor.py` boots Amiga Pool of Radiance, Pools of
   Darkness and Curse in an instance-pool slot. Allow about a minute before a
-  key does anything -- measured at about 58 s to the code wheel and 60 s to
-  the title -- but Pools of Darkness draws its `PLAY DEMO QUIT` bar only about
+  key does anything on Pool of Radiance and Curse -- measured at about 58 s to
+  the code wheel and 60 s to the title -- but Pools of Darkness draws its `PLAY DEMO QUIT` bar only about
   139 s after fs-uae starts, because its intro and credits run first.

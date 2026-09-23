@@ -246,6 +246,7 @@ def _screens(monkeypatch, calls, before, after=None):
 
     ticks = iter(range(0, 10**6, 2))
     monkeypatch.setattr(fsuaepor, "grab", grab)
+    monkeypatch.setattr(fsuaepor, "window_up", lambda display: True)
     monkeypatch.setattr(fsuaepor, "_now", lambda: next(ticks))
 
 
@@ -301,6 +302,58 @@ def test_the_script_stops_with_no_key_when_the_bar_never_comes(tmp_path, monkeyp
     assert "no key sent" in str(exc.value)
     assert [c for c in calls if c[0] == "key"] == []
     assert any("no-title-bar" in c[1] for c in calls if c[0] == "shot")
+
+
+def test_a_dead_emulator_stops_the_wait_early_with_no_key(tmp_path, monkeypatch):
+    calls, args = _run(tmp_path, monkeypatch, [_bar(colour=(0, 0, 0))], limit=300)
+    clock = []
+    real_now = fsuaepor._now
+
+    def now():
+        clock.append(real_now())
+        return clock[-1]
+
+    monkeypatch.setattr(fsuaepor, "_now", now)
+    monkeypatch.setattr(fsuaepor, "window_up", lambda display: False)
+    with pytest.raises(SystemExit) as exc:
+        fsuaepor.pod_panel(args)
+    assert "no window" in str(exc.value)
+    assert [c for c in calls if c[0] == "key"] == []
+    assert clock[-1] - clock[0] < 60
+
+
+def test_window_up_reads_xdotool_search(monkeypatch):
+    out = {"v": "12345\n"}
+    monkeypatch.setattr(fsuaepor.subprocess, "run",
+                        lambda *a, **k: type("R", (), {"stdout": out["v"]})())
+    assert fsuaepor.window_up(":9")
+    out["v"] = ""
+    assert not fsuaepor.window_up(":9")
+
+
+def test_grab_gives_a_readable_stop_for_a_hung_or_dead_display(monkeypatch):
+    seen = {}
+
+    def hung(*a, **k):
+        seen.update(k)
+        raise fsuaepor.subprocess.TimeoutExpired("import", k["timeout"])
+
+    monkeypatch.setattr(fsuaepor.subprocess, "run", hung)
+    with pytest.raises(SystemExit, match="not answering"):
+        fsuaepor.grab(":9")
+    assert seen["timeout"] == fsuaepor.GRAB_TIMEOUT
+
+    def dead(*a, **k):
+        raise fsuaepor.subprocess.CalledProcessError(1, "import")
+
+    monkeypatch.setattr(fsuaepor.subprocess, "run", dead)
+    with pytest.raises(SystemExit, match="X server is gone"):
+        fsuaepor.grab(":9")
+
+
+def test_a_zero_boot_still_succeeds_when_the_bar_is_up(tmp_path, monkeypatch):
+    calls, args = _run(tmp_path, monkeypatch, [_bar()], limit=0)
+    assert fsuaepor.pod_panel(args) == 0
 
 
 def test_the_script_stops_when_p_changes_nothing(tmp_path, monkeypatch):
