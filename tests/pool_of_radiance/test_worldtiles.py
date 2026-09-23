@@ -99,3 +99,91 @@ def test_a_pane_off_the_edge_of_the_grid_draws_nothing_there():
     rows = pane_codes(window, -1, 0, 2, 1)
     assert [c for c, _ in rows[0][:3]] == [0, 0, 0]
     assert [c for c, _ in rows[0][3:]] == list(window.tile_at(0, 0).screen_codes[:3])
+
+
+# -- the `sample` pictures ---------------------------------------------------
+
+def _solid_world():
+    """Three windows whose every square is one solid tile, a different colour
+    in each window, so a pixel names the window that drew it."""
+    from goldbox.world import ROWS, STRIDE, TILE_TABLE_SIZE, World
+    windows = []
+    for colour in (1, 2, 3):                # hi-res, so the colour is the index
+        tiles = bytearray(TILE_TABLE_SIZE)
+        tiles[0:9] = bytes([GLYPH_BASE]) * 9
+        tiles[9:18] = bytes([colour]) * 9
+        windows.append(Window(bytes(STRIDE * ROWS) + bytes(tiles)))
+    glyphs = bytes([0xFF]) * GLYPH_BYTES + bytes(GLYPH_BYTES * 191)
+    return World(tuple(windows), (glyphs, glyphs, glyphs))
+
+
+def _hex(colour: str) -> tuple[int, int, int]:
+    return tuple(int(colour[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def test_the_default_route_crosses_both_seams_along_row_27():
+    from tools.pool_of_radiance.worldtiles import DEFAULT_ROUTE
+    assert DEFAULT_ROUTE == [(x, 27) for x in range(4, 40)]
+
+
+def test_explored_squares_are_the_five_by_five_pane_around_every_route_square():
+    from tools.pool_of_radiance.worldtiles import explored_squares
+    seen = explored_squares([(10, 10), (11, 10)])
+    assert seen == {(x, y) for x in range(8, 14) for y in range(8, 13)}
+    assert explored_squares([(0, 0)]) == {(x, y) for x in range(3)
+                                          for y in range(3)}
+
+
+def test_the_four_pictures_have_the_sizes_the_plan_states(tmp_path):
+    from tools.pool_of_radiance.worldtiles import write_samples
+    paths = write_samples(_solid_world(), tmp_path)
+    from PIL import Image
+    sizes = {p.name: Image.open(p).size for p in paths}
+    assert sizes == {"whole-12.png": (44 * 12, 36 * 12),
+                     "whole-7.png": (44 * 7, 36 * 7),
+                     "piece-34.png": (16 * 34, 16 * 34),
+                     "piece-20.png": (16 * 20, 16 * 20)}
+
+
+def test_a_sample_draws_tiles_only_where_explored_over_paper_with_the_lattice_and_marker():
+    from automap.window import LATTICE, PAPER, PARTY
+    from goldbox.icons import C64_PALETTE
+    from tools.pool_of_radiance.worldtiles import (
+        DEFAULT_ROUTE,
+        explored_squares,
+        sample_image,
+    )
+    cell = 12
+    picture = sample_image(_solid_world(), explored_squares(DEFAULT_ROUTE),
+                           (28, 27), cell)
+
+    def inside(x, y):                   # a pixel clear of the lattice lines
+        return picture.getpixel((x * cell + 4, y * cell + 8))
+
+    # World x 27 is the middle window (colour 2), 28 the east one (colour 3):
+    # the seam is where the window changes.
+    assert inside(27, 25) == _hex(C64_PALETTE[2])
+    assert inside(28, 25) == _hex(C64_PALETTE[3])
+    assert inside(6, 25) == _hex(C64_PALETTE[1])
+    # The pane reaches two squares off the route and no further.
+    assert inside(20, 29) == _hex(C64_PALETTE[2])
+    assert inside(20, 30) == PAPER.getRgb()[:3]
+    assert inside(20, 24) == PAPER.getRgb()[:3]
+    # The lattice is over the tiles, and the marker over both.
+    assert picture.getpixel((20 * cell, 27 * cell + 8)) == LATTICE.getRgb()[:3]
+    assert picture.getpixel((28 * cell + cell // 2, 27 * cell + cell // 2)) \
+        == PARTY.getRgb()[:3]
+
+
+def test_a_piece_is_centred_on_the_party_and_kept_inside_the_wilderness():
+    from goldbox.icons import C64_PALETTE
+    from tools.pool_of_radiance.worldtiles import explored_squares, sample_image
+    seen = explored_squares([(x, 27) for x in range(4, 40)])
+    picture = sample_image(_solid_world(), seen, (28, 27), 34, piece=16)
+    # The party is the ninth column of a piece spanning x 20-35.
+    assert picture.getpixel((8 * 34 + 17, 8 * 34 + 17))[:3] != (255, 255, 255)
+    # Against the west edge the piece stops at x 0 instead of running off.
+    near = sample_image(_solid_world(), explored_squares([(3, 27)]), (3, 27),
+                        34, piece=16)
+    assert near.getpixel((1 * 34 + 4, 27 * 34 - 19 * 34 + 8))[:3] == \
+        _hex(C64_PALETTE[1])

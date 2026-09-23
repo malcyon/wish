@@ -38,6 +38,7 @@ does with it is not settled here.
     tools/pool_of_radiance/worldtiles.py view 5 7 29 --scale 4
     tools/pool_of_radiance/worldtiles.py codes 5 7 29
     tools/pool_of_radiance/worldtiles.py census
+    tools/pool_of_radiance/worldtiles.py sample
 """
 
 from __future__ import annotations
@@ -172,6 +173,117 @@ def pane_codes(window: W.Window, left: int, top: int,
     return out
 
 
+# -- the sample pictures ----------------------------------------------------
+
+#: World row 27 from x 4 to x 39: it crosses both seams, which are at x 15
+#: and x 28.
+DEFAULT_ROUTE = [(x, 27) for x in range(4, 40)]
+
+#: The whole wilderness in squares: three 18-wide windows 13 apart.
+WORLD_ACROSS = W.WINDOW_STEP * 2 + W.STRIDE
+WORLD_DOWN = W.ROWS
+
+PANE = 5
+
+
+def explored_squares(route, pane: int = PANE) -> set[tuple[int, int]]:
+    """The squares the party has seen after walking `route`: the `pane` x
+    `pane` block around every square on it, clipped to the wilderness."""
+    reach = pane // 2
+    return {(x, y)
+            for rx, ry in route
+            for x in range(max(rx - reach, 0),
+                           min(rx + reach, WORLD_ACROSS - 1) + 1)
+            for y in range(max(ry - reach, 0),
+                           min(ry + reach, WORLD_DOWN - 1) + 1)}
+
+
+def _tile_image(world: W.World, x: int, y: int):
+    """The tile at world `(x, y)` as a 24 x 24 image in the application's own
+    C64 palette.  `World.locate` refuses the two-square border a window
+    carries, which the game's pane still draws, so the window is chosen here."""
+    from PIL import Image
+
+    from goldbox.icons import C64_PALETTE
+    index = 0 if x < W.SEAM_WEST_MIDDLE else 1 if x < W.SEAM_MIDDLE_EAST else 2
+    tile = world.windows[index].tile_at(x - W.WINDOW_STEP * index, y)
+    pixels = tile_pixels(tile, world.charsets[index])
+    im = Image.new("RGB", (TILE_PIXELS, TILE_PIXELS))
+    for py, row in enumerate(pixels):
+        for px, colour in enumerate(row):
+            im.putpixel((px, py), _rgb(C64_PALETTE[colour]))
+    return im
+
+
+def _rgb(colour: str) -> tuple[int, int, int]:
+    return tuple(int(colour[i:i + 2], 16) for i in (1, 3, 5))   # type: ignore
+
+
+def sample_image(world: W.World, explored, party: tuple[int, int], cell: int,
+                 piece: int | None = None):
+    """The wilderness as the automapper's page could draw it.
+
+    `piece` is None for the whole wilderness, or the number of squares across
+    a square piece centred on `party` and kept inside the wilderness.  Paper,
+    then the explored tiles nearest-neighbour scaled to `cell` pixels, then
+    the dungeon map's lattice, then its party triangle.  Paper, lattice and
+    marker colours are the ones `automap/window.py` paints the dungeon map
+    with.
+    """
+    from PIL import Image, ImageDraw
+
+    from automap.render import party_marker
+    from automap.window import LATTICE, PAPER, PARTY
+    from goldbox.geo import EAST
+
+    if piece is None:
+        left, top, across, down = 0, 0, WORLD_ACROSS, WORLD_DOWN
+    else:
+        across = down = piece
+        left = min(max(party[0] - piece // 2, 0), WORLD_ACROSS - piece)
+        top = min(max(party[1] - piece // 2, 0), WORLD_DOWN - piece)
+    paper = PAPER.getRgb()[:3]
+    lattice = LATTICE.getRgb()[:3]
+    im = Image.new("RGB", (across * cell, down * cell), paper)
+    for y in range(top, top + down):
+        for x in range(left, left + across):
+            if (x, y) in explored:
+                tile = _tile_image(world, x, y).resize((cell, cell),
+                                                       Image.NEAREST)
+                im.paste(tile, ((x - left) * cell, (y - top) * cell))
+    draw = ImageDraw.Draw(im)
+    for i in range(across + 1):
+        draw.line([(i * cell, 0), (i * cell, down * cell)], fill=lattice)
+    for j in range(down + 1):
+        draw.line([(0, j * cell), (across * cell, j * cell)], fill=lattice)
+    marker = party_marker(party[0] - left, party[1] - top, EAST, cell, 0)
+    draw.polygon(list(marker.points), fill=PARTY.getRgb()[:3])
+    return im
+
+
+#: Pixels a square: the whole wilderness fitted to the map area, then its
+#: smallest; a 16 x 16 piece at the dungeon map's scale, then its smallest.
+SAMPLE_WHOLE = (12, 7)
+SAMPLE_PIECE = (34, 20)
+PIECE_SQUARES = 16
+
+
+def write_samples(world: W.World, out: pathlib.Path,
+                  route=DEFAULT_ROUTE) -> list[pathlib.Path]:
+    """The four pictures, in `out`, and their paths."""
+    out.mkdir(parents=True, exist_ok=True)
+    explored = explored_squares(route)
+    party = (W.SEAM_MIDDLE_EAST, route[0][1])
+    paths = []
+    for name, sizes, piece in (("whole", SAMPLE_WHOLE, None),
+                               ("piece", SAMPLE_PIECE, PIECE_SQUARES)):
+        for cell in sizes:
+            path = out / f"{name}-{cell}.png"
+            sample_image(world, explored, party, cell, piece).save(path)
+            paths.append(path)
+    return paths
+
+
 # -- commands ---------------------------------------------------------------
 
 def _windows(args):
@@ -252,6 +364,16 @@ def cmd_codes(args) -> int:
     return 0
 
 
+def cmd_sample(args) -> int:
+    out = pathlib.Path(args.out)
+    world = W.World.from_disks(images(disks_dir()))
+    if world.charsets is None:
+        raise SystemExit("These disks carry no SECSET04/05/06.")
+    for path in write_samples(world, out):
+        print(path)
+    return 0
+
+
 def cmd_census(args) -> int:
     """The numbers `docs/217`'s table rests on, re-takeable."""
     for index, window, glyphs in _windows(args):
@@ -303,6 +425,11 @@ def main(argv: list[str] | None = None) -> int:
 
     census = sub.add_parser("census", help="the tile and attribute counts")
     census.set_defaults(func=cmd_census)
+
+    sample = sub.add_parser(
+        "sample", help="the whole wilderness and a 16 x 16 piece, each at "
+                       "two sizes, for choosing between them")
+    sample.set_defaults(func=cmd_sample)
 
     args = p.parse_args(argv)
     if args.command in ("view", "codes") and args.window == "all":
