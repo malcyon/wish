@@ -53,12 +53,13 @@ from gamedata import specimen_root
 from PyQt6.QtWidgets import QApplication
 
 from automap import gamedisks
-from editor import convert, dosimport
+from editor import convert, dosimport, roster, saveplan
 from goldbox import c64_port, dos_codec, dos_port
 from goldbox.d64 import load_payload
 from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitError, tables_from_disks
 from goldbox.savegame import SaveGame0, SaveGame1
+from tools.convert import convertdrops
 from tools.dos import dosbox
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "fixtures"
@@ -312,3 +313,169 @@ def test_c64_to_dos_matches_the_library_for_every_title(
         assert (tmp_path / "dialog-write" / name).read_bytes() == \
             (reference_dir / name).read_bytes()
     assert dialog.rehearsal.report.dropped == list(ref_report.dropped)
+
+
+# ---------------------------------------------------------------------------
+# `#511 (Open a DOS save folder and an Amiga save disk in the Character
+# Editor, so editing a DOS character does not mean two conversions)`'s stage
+# 4 condition: `File > Open` + `File > Save As` have to cover every
+# registered direction "without losing any capability" before `File >
+# Convert...` can go. `saveplan.prepare_save_as` is Save As's own route --
+# `editor.window.EditorBinding.save_as` calls it the same way -- so this
+# proves it for the same specimens the dialog byte-comparison above already
+# exercises, plus the four Amiga directions that comparison does not cover.
+#
+# A case that raises `saveplan.SaveAsError` here is a real conversion defect
+# (`.claude/rules/conversions.md`: refusing a save is not a fix), not
+# something for this test to work around.
+# ---------------------------------------------------------------------------
+
+#: `DOS_TO_C64_CASES`, with a mark added for the one case that refuses
+#: today. `DOS_TO_C64_CASES` itself stays unmarked -- the byte-comparison
+#: test above passes for this specimen, because it never checks
+#: `report.losses` -- so the mark is only ever applied to the Save As
+#: proof, which does check it.
+_SAVE_AS_DOS_TO_C64_CASES = [
+    pytest.param(*case.values, id=case.id, marks=(
+        pytest.mark.xfail(
+            strict=True,
+            reason="#649 (Converting a dual-classed DOS Curse of the "
+                  "Azure Bonds character to C64 loses his leftover "
+                  "paladin cure-disease use): MATHEW's own confirmed "
+                  "paladin_cures byte is refused rather than converted")
+        if case.id == "curse-of-the-azure-bonds" else ()))
+    for case in DOS_TO_C64_CASES
+]
+
+
+@pytest.mark.parametrize("specimen_name, file_name, game",
+                         _SAVE_AS_DOS_TO_C64_CASES)
+def test_save_as_prepares_what_convert_writes_dos_to_c64(
+        app, tmp_path, specimen_name, file_name, game):
+    """`saveplan.prepare_save_as` returns a `SavePlan` for the same DOS
+    source and C64 destination the dialog comparison above already writes,
+    rather than raising `SaveAsError`."""
+    folder = _dos_specimen(specimen_name)
+    if folder is None:
+        pytest.skip(f"needs ~/wish-specimens/*-dos/WISH-SPEC-{specimen_name} "
+                    f"(tools/registry/specimens.py)")
+
+    source_path = (folder / file_name) if file_name else folder
+    party = roster.Party(str(source_path))
+    try:
+        assets = saveplan.resolve_assets(party.source, "c64",
+                                         game_files=convertdrops.game_files)
+    except saveplan.MissingAssets:
+        pytest.skip(f"needs {game.title}'s own C64 disks, found through "
+                    f"automap/gamedisks.py")
+
+    plan = saveplan.prepare_save_as(party, "c64", tmp_path / "out.d64", assets)
+    assert isinstance(plan, saveplan.SavePlan)
+
+
+@pytest.mark.parametrize("specimen_name, game, stem", C64_TO_DOS_CASES)
+def test_save_as_prepares_what_convert_writes_c64_to_dos(
+        app, tmp_path, specimen_name, game, stem):
+    """The C64 -> DOS half of the same proof, for the same specimens the
+    dialog comparison above already writes."""
+    try:
+        game_dir = dosbox.find_game(stem)
+    except FileNotFoundError:
+        pytest.skip(f"needs the DOS {game.title} archives ($FR_ARCHIVES)")
+
+    if specimen_name is None:
+        save0, save1 = _fixture_payloads()
+        disk_path = tmp_path / "PORSAVE.D64"
+        disk_path.write_bytes(dos_codec.save_disk(save0, save1).to_bytes())
+    else:
+        disk_path = _c64_specimen(specimen_name)
+        if disk_path is None:
+            pytest.skip(f"needs ~/wish-specimens/*-c64/"
+                        f"WISH-SPEC-{specimen_name}.D64 (tools/registry/specimens.py)")
+
+    party = roster.Party(str(disk_path))
+    # `Party.source` is `None` for a C64 disk -- the editor's own C64 party
+    # carries no `Source`, unlike a DOS or an Amiga one -- so the route is
+    # detected off the path directly, the same object `prepare_save_as`
+    # itself builds from the open party's snapshot.
+    source = party.source or convert.Source.detect(disk_path)
+    try:
+        assets = saveplan.resolve_assets(source, "dos",
+                                         game_files=convertdrops.game_files,
+                                         dos_folder=game_dir)
+    except saveplan.MissingAssets:
+        pytest.skip(f"needs {game.title}'s own C64 disks, found through "
+                    f"automap/gamedisks.py")
+
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "out", assets)
+    assert isinstance(plan, saveplan.SavePlan)
+
+
+# ---------------------------------------------------------------------------
+# The four Amiga directions: `AmigaToC64`, `AmigaToDos`, `C64ToAmiga` and
+# `DosToAmiga`, one instance per title in `goldbox.amiga_shared.CONVERTS`/
+# `WRITES`. Specimens come from `tools/convert/convertdrops.sources`, which
+# already knows how to turn the later titles' engine-written containers into
+# disk images `Source.detect` accepts; the destination's own Amiga game data
+# comes from `convertdrops.amiga_game_disks`.
+# ---------------------------------------------------------------------------
+
+_AMIGA_DIRECTIONS = [d for d in convert.DIRECTIONS
+                     if type(d) in (convert.AmigaToC64, convert.AmigaToDos,
+                                    convert.C64ToAmiga, convert.DosToAmiga)]
+
+
+@pytest.mark.parametrize(
+    "direction",
+    [pytest.param(d, id=f"{type(d).__name__}-{d.shape.key}")
+     for d in _AMIGA_DIRECTIONS])
+def test_save_as_prepares_what_convert_writes_amiga_directions(
+        app, tmp_path, direction):
+    """The Amiga half of the same proof: a source of `direction`'s own port
+    and title, found on this machine, prepares a `SavePlan` for `direction`'s
+    destination rather than raising `SaveAsError`."""
+    root = specimen_root()
+    if root is None:
+        pytest.skip("needs ~/wish-specimens (tools/registry/specimens.py)")
+    scratch = tmp_path / "convertdrops-scratch"
+    scratch.mkdir()
+
+    source_path = None
+    for candidate in convertdrops.sources(root, scratch):
+        try:
+            candidate_source = convert.Source.detect(candidate)
+        except Exception:
+            continue
+        if (candidate_source.port == direction.source_port
+                and candidate_source.key == direction.source_key):
+            source_path = candidate
+            break
+    if source_path is None:
+        pytest.skip(f"needs a {direction.source_port} specimen for "
+                    f"{direction.shape.key} (tools/convert/convertdrops.sources)")
+
+    party = roster.Party(str(source_path))
+    source = party.source or convert.Source.detect(source_path)
+
+    kwargs = {"game_files": convertdrops.game_files}
+    if direction.destination_port == "dos":
+        stem = convertdrops.DOS_DIRS.get(direction.shape.key)
+        try:
+            kwargs["dos_folder"] = dosbox.find_game(stem) if stem else None
+        except FileNotFoundError:
+            kwargs["dos_folder"] = None
+    elif direction.destination_port == "amiga":
+        kwargs["amiga_disk"] = convertdrops.amiga_game_disks(scratch).get(
+            direction.shape.key)
+
+    try:
+        assets = saveplan.resolve_assets(source, direction.destination_port,
+                                         **kwargs)
+    except saveplan.MissingAssets as exc:
+        pytest.skip(f"needs {', '.join(exc.missing)} for "
+                    f"{direction.shape.title} ({direction.destination_port})")
+
+    suffix = saveplan.DESTINATION_SUFFIX.get(direction.destination_port, "")
+    plan = saveplan.prepare_save_as(
+        party, direction.destination_port, tmp_path / f"out{suffix}", assets)
+    assert isinstance(plan, saveplan.SavePlan)
