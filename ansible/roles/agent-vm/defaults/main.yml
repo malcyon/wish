@@ -112,16 +112,18 @@ agent_vm_icons_url: https://game-icons.net/archives/000000/transparent/game-icon
 agent_vm_icons_dir: "{{ agent_vm_disks_dir }}/game-icons"
 agent_vm_icons_stamp: "{{ agent_vm_state_dir }}/game-icons.stamp"
 
-# --- A read-only view of the guest's code -----------------------------------
-# The way to look at what the agents are writing, from an editor on this desktop:
-# an sshfs mount of the guest's wish checkout, read-only, mounted by the person
-# who sits here and not by root. VS Code Remote SSH into the guest is deliberately
-# not the way: it installs a server in the guest and forwards the person's GitHub
+# --- A writable view of the guest's filesystem ------------------------------
+# The way to browse and edit what the agents are working on, from a GUI on this
+# desktop: an sshfs mount of the guest's whole filesystem, writable as the guest's
+# agent_vm_user, mounted by the person who sits here and not by root, and reachable
+# by that person only. VS Code Remote SSH into the guest is deliberately not the
+# way: it installs a server in the guest and forwards the person's GitHub
 # sign-in into it, and nothing of theirs belongs in the guest.
 # The desktop account that mounts it. Empty by default: the inventory sets it,
 # and the role's first task asserts it is not empty.
 agent_vm_operator: ""
-agent_vm_wish_remote: "/home/{{ agent_vm_user }}/src/wish"
+# The directory of the guest that is mounted; "/" is all of it.
+agent_vm_wish_remote: "/"
 agent_vm_wish_mount: "/home/{{ agent_vm_operator }}/agent-wish"
 # ssh notices a dead guest after ServerAliveInterval x ServerAliveCountMax
 # seconds, so this is how long a request on the mount waits before it errors.

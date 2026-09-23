@@ -41,9 +41,9 @@ all:
         home:
           ansible_connection: local
       vars:
-        # Your account on the desktop: the read-only sshfs mount of the
-        # checkout runs as this user, so the guest can see the code and cannot
-        # change it.
+        # Your account on the desktop: the writable sshfs mount of the guest's
+        # filesystem runs as this user, and only this user can reach it. Writes
+        # arrive in the guest as its agent account.
         agent_vm_operator: CHANGE-ME-DESKTOP-ACCOUNT
 
         # A tz database name, for the Ubuntu guest's clock.

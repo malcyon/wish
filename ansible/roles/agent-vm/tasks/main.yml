@@ -612,7 +612,7 @@
     timeout: "{{ agent_vm_boot_timeout }}"
   when: not ansible_check_mode
 
-# --- A read-only view of the guest's code -----------------------------------
+# --- A writable view of the guest's filesystem -----------------------------------
 
 - name: Install sshfs
   ansible.builtin.apt:
@@ -629,7 +629,7 @@
 # else, root included, so a task run as root on a mounted path would be refused.
 #
 # No `mode` on the mount point: once it is mounted it is the guest's directory,
-# read-only, and setting a mode is a chmod on it, which the mount refuses. The
+# and setting a mode is a chmod on the guest's `/`, which it refuses. The
 # directory is only created if it is missing.
 - name: Create the mount point
   ansible.builtin.file:
@@ -669,3 +669,81 @@
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ getent_passwd[agent_vm_operator][1] }}"
   when: not ansible_check_mode
+
+# Proves the view is writable as the operator, end to end, and leaves nothing
+# behind. Every step is the operator's, since only the mounting user can reach a
+# FUSE mount. Nothing here prints an environment or a token.
+- name: Prove the mount can be written, edited and read back
+  tags: verify
+  when: not ansible_check_mode
+  become: true
+  become_user: "{{ agent_vm_operator }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ getent_passwd[agent_vm_operator][1] }}"
+  block:
+    - name: Wait for the mount to be up
+      ansible.builtin.command: "mountpoint -q {{ agent_vm_wish_mount | quote }}"
+      register: agent_vm_wish_up
+      until: agent_vm_wish_up.rc == 0
+      retries: 30
+      delay: 2
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the mount is up
+      ansible.builtin.assert:
+        that:
+          - agent_vm_wish_up.rc == 0
+        fail_msg: >-
+          {{ agent_vm_wish_mount }} is not a mount after a minute. Is the guest
+          up, and what does `journalctl --user -u agent-wish` say?
+
+    - name: Choose a name for the test file
+      ansible.builtin.set_fact:
+        agent_vm_wish_probe: "tmp/agent-wish-verify-{{ now(fmt='%s%f') }}"
+
+    - name: Create, append to, read back and compare a file through the mount
+      ansible.builtin.shell: |
+        set -eu
+        f={{ (agent_vm_wish_mount ~ '/' ~ agent_vm_wish_probe) | quote }}
+        printf 'first\n' > "$f"
+        printf 'second\n' >> "$f"
+        got=$(cat "$f")
+        want=$(printf 'first\nsecond')
+        [ "$got" = "$want" ] || { echo "read-back differs from what was written" >&2; exit 1; }
+      args:
+        executable: /bin/bash
+      changed_when: false
+      register: agent_vm_wish_edit
+      failed_when: agent_vm_wish_edit.rc != 0
+
+    # Through the ssh alias the role installed. The key is the one the play
+    # generated and the alias names, so this needs no new access; where the
+    # operator cannot read it, the step says it was not checked and does not fail.
+    - name: Read the file from the guest's side
+      ansible.builtin.command:
+        argv:
+          - ssh
+          - -o
+          - BatchMode=yes
+          - "{{ agent_vm_name }}"
+          - cat
+          - "/{{ agent_vm_wish_probe }}"
+      register: agent_vm_wish_guest
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the guest holds what was written
+      ansible.builtin.assert:
+        that:
+          - agent_vm_wish_guest.rc != 0 or agent_vm_wish_guest.stdout == 'first\nsecond'
+        fail_msg: >-
+          The file written through {{ agent_vm_wish_mount }} is not what the
+          guest holds at /{{ agent_vm_wish_probe }}.
+        success_msg: "{{ 'The guest holds the file.' if agent_vm_wish_guest.rc == 0 else 'The guest side was not checked: ssh to the guest as this account failed.' }}"
+  always:
+    - name: Delete the test file
+      ansible.builtin.file:
+        path: "{{ agent_vm_wish_mount }}/{{ agent_vm_wish_probe }}"
+        state: absent
+      when: agent_vm_wish_probe is defined

@@ -767,7 +767,7 @@
 # VS Code's Remote SSH installs a server here and forwards the person's GitHub
 # sign-in into it: a token in its environment and in its logs, readable by every
 # agent that runs as this user. Nothing of the operator's belongs in this guest, so the
-# guest is looked at through a read-only sshfs mount instead (ansible/README.md),
+# guest is looked at through a writable sshfs mount instead (ansible/README.md),
 # and if a server turns up anyway this takes it, and what its Copilot extension
 # cached about the account, away. The isolation test fails on a token either way.
 - name: No editor server

@@ -57,7 +57,7 @@ Each row is a variable `inventory.yml.example` has a placeholder for; everything
 | `agent_vm_base_dir` | The directory the Ubuntu guest's image, keys and disks image live under; a path every user can traverse, on the disk with room for a 100 GB image |
 | `agent_vm_disks_dir` | Where the game disks are; set under `all` so the host play and the guest play read one value, and it must be the prefix the paths in `gamedisks.yaml.example` start with |
 | `agent_vm_keypair_path` | The Ubuntu guest's login keypair, both halves, outside the checkout; generated on the first run if absent, so move an existing pair here before running against a guest already built |
-| `agent_vm_operator` | Your account on the desktop; the read-only sshfs mount of the guest's checkout runs as it |
+| `agent_vm_operator` | Your account on the desktop; the writable sshfs mount of the guest's filesystem runs as it |
 | `agent_vm_timezone` | A tz database name for the Ubuntu guest's clock |
 | `sandbox_net_leases` | Each guest's MAC, in libvirt's locally administered range; the addresses are `10.77.0.10` and `10.77.0.11` on every machine |
 | `sandbox_net_pinholes` | The LAN hosts, each one bare address, the guests may reach, such as the C64 Ultimate; an empty list is no hole |
@@ -128,24 +128,24 @@ ansible-playbook -i ansible/inventory.yml ansible/agent-vm.yml
 
 **Inside the guest** the image is `/mnt/disks`, mounted by its label `agent-disks` through `fstab` (`ro,nodev,nosuid,nofail`), so a guest started without the disk still boots. The role also writes `~/src/wish/gamedisks.yaml` there from `gamedisks.yaml.example`, with every path under `/mnt/disks` except `codewheel`, and stops if any other path is not. `python -m automap.gamedisks` in the checkout prints what it finds.
 
-## Looking at the guest's code
+## Browsing and editing the guest's files
 
-The guest's `wish` checkout is mounted on the desktop, **read-only**, at `~/agent-wish`. Open it in a local editor:
+The guest's whole filesystem is mounted on the desktop, **writable as the guest's `agent` account**, at `~/agent-wish`, so the guest's home directory and its `/tmp` are under it, in `home/` and `tmp/`. Open it in a local editor:
 
 ```bash
 code ~/agent-wish
 ```
 
-It is an sshfs mount made by a systemd user unit, `agent-wish.service`, which mounts when you log in and needs nothing typed. It is mounted by you and not by root, so nothing needs `allow_other`.
+It is an sshfs mount made by a systemd user unit, `agent-wish.service`, which mounts when you log in and needs nothing typed. It is mounted by you and not by root, and neither `allow_other` nor `allow_root` is set, so only your desktop account can reach it. The mount is `follow_symlinks` (a symlink the guest plants is resolved on the guest, so an editor never opens or saves a file on this desktop through one) and `noexec` (nothing from the guest runs here from the mount). No editor server runs in the guest. What you write goes straight into files the agents are using: an edit under `~/src/wish` changes their working tree at once.
 
 | situation | what happens |
 |---|---|
-| A write | The kernel refuses it ("Read-only file system") whatever the guest's permissions say; nothing you do there can reach the guest |
+| A write | It reaches the guest as `agent`; the guest's own permissions decide whether it is allowed |
 | The guest reboots | The mount reconnects by itself; `ls` works again a few seconds after the guest answers ssh |
 | The guest is down when you log in | systemd retries every 10 seconds until it is up |
 | The guest is down or dies | ssh notices within a few seconds and a request on the mount returns an error rather than hanging; a stale mount left by a crash is cleared before each start |
 
-`systemctl --user status agent-wish` says what it is doing, `journalctl --user -u agent-wish` says why it is not, and `fusermount3 -u ~/agent-wish` unmounts it by hand. The path, the remote directory and the timings are role variables (`agent_vm_wish_mount`, `agent_vm_wish_remote`, `agent_vm_wish_mount_alive`, `agent_vm_wish_mount_retry`). Symlinks that point at absolute paths inside the guest point at this desktop's, so follow them in the guest. **VS Code Remote SSH into the guest is not used**: it forwards your GitHub sign-in into the guest; the design document has the finding.
+`systemctl --user status agent-wish` says what it is doing, `journalctl --user -u agent-wish` says why it is not, and `fusermount3 -u ~/agent-wish` unmounts it by hand. The path, the remote directory and the timings are role variables (`agent_vm_wish_mount`, `agent_vm_wish_remote`, `agent_vm_wish_mount_alive`, `agent_vm_wish_mount_retry`). A symlink shows as what it points at, resolved in the guest. **VS Code Remote SSH into the guest is not used**: it forwards your GitHub sign-in into the guest; the design document has the finding.
 
 ## The credential
 
