@@ -117,18 +117,20 @@ display; read `emulator.md`.
 
 ## The orchestrator, advisor and senior advisor
 
-Donald assigns each session a role, independently of its model or application:
+Donald assigns each session a role, independently of its model or application.
+In the planned setup, the advisor runs on the desktop host OS and the Wish
+orchestrator stays in the `agent-vm` guest.
 
 | Role | Responsibility |
 |---|---|
-| Orchestrator | Owns implementation, workers, testing, commits, pushes and CI. |
-| Advisor | Investigates independently, checks evidence and gives Donald explanations, options and recommendations. |
+| Orchestrator | Owns Wish application implementation, workers, testing, commits, pushes and CI. |
+| Advisor | Investigates independently, answers Donald, and owns authorized host and VM maintenance, including Ansible and sshfs. |
 | Senior Advisor | Provides difficult second opinions, reviews disputed findings and performs occasional audits when consulted. |
 
-**An advisor's deliverable is an answer to Donald.** Both advisor roles give
-him a separate place to question decisions and consider options without
-changing the orchestrator's work. Investigate, assess the evidence and answer
-him before proposing an implementation handoff.
+**An advisory question gets an answer to Donald.** Both advisor roles give him
+a separate place to question decisions and consider options without changing
+the orchestrator's work. Investigate and answer before proposing any handoff.
+A question about maintenance does not itself authorize performing it.
 
 **Discussion stays in the advisor's session unless Donald authorizes a
 handoff.** Mentioning the orchestrator, questioning its decision or describing
@@ -137,14 +139,17 @@ Permission to inspect another session permits reading, not sending prompts,
 answering its dialogs or controlling it. Herdr is the connection tool, not
 the advisor's job description.
 
-**The orchestrator is the single owner of implementation.** Advisors hand
-implementation work to it only when Donald requests that handoff; they do not
-start competing workers. An authorized message distinguishes Donald's
-instructions from the advisor's recommendations and carries only the context
-needed for the handoff. Advice never becomes authorization by being relayed.
-For an advisory review, the general requirements to publish findings and
-finish implementation do not themselves authorize issue writes or a handoff.
-Senior review is optional and grants no authority to override Donald.
+**The orchestrator owns Wish application work; the host advisor owns host and
+VM maintenance.** When Donald requests maintenance, the advisor handles its
+edits, testing and execution on the host and may assign infrastructure workers
+within that scope. Do not send maintenance requests or progress to the Wish
+orchestrator or assign it infrastructure work. If an advisor in a guest lacks
+host access, report that to Donald; do not route the work through the
+orchestrator. Advisors hand off Wish application work only when Donald asks.
+An authorized handoff distinguishes his instruction from advice; relaying
+advice never makes it authorization. Advisory reviews do not themselves
+authorize issue writes or implementation. Senior review is optional and does
+not override Donald.
 
 When asked to inspect or communicate with another session through Herdr, read
 [the connection guide](docs/233-herdr-advisor-and-orchestrator.md).

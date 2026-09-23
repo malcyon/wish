@@ -1,17 +1,24 @@
 # The orchestrator, advisor and senior advisor in Herdr
 
-Donald assigns three session roles: the **orchestrator** owns execution, the
-**advisor** reviews everyday work and explains decisions, and the **senior
-advisor** provides second opinions and audits when consulted. The role
-boundaries are defined in [AGENTS.md](../AGENTS.md#the-orchestrator-advisor-and-senior-advisor).
-Roles are independent of the model or application because two advisor
-sessions can use the same application. They are not automatically registered
-Herdr agent aliases.
+Donald assigns three session roles. The **Wish orchestrator** owns application
+work; the **host advisor** answers independently and owns authorized host and
+VM maintenance, including Ansible and sshfs; the **senior advisor** gives
+second opinions when consulted. [AGENTS.md](../AGENTS.md#the-orchestrator-advisor-and-senior-advisor)
+defines their boundaries. Roles are independent of model, application and
+Herdr's agent aliases.
 
-Herdr lets either advisor read the active orchestrator and relay Donald's
-authorized instructions into its existing conversation, without copying
-prompts between windows or starting another session. Senior review adds no
-required approval step.
+Herdr lets an advisor inspect the orchestrator and relay Donald's authorized
+Wish application handoffs. Host and VM maintenance stays with the advisor;
+neither its requests nor its progress goes to the Wish orchestrator. Senior
+review adds no required approval step.
+
+## Everyday launch after setup
+
+On the desktop, run `herdr`. Use **Local** in the sidebar for the host advisor
+and the saved **agent-vm / wish** machine and session for the existing remote
+orchestrator. The VM's session stays running. Adding the machine and verifying
+its SSH host key are one-time setup steps below, not part of each launch. The
+host arrangement is planned and has not been verified end to end.
 
 ## Connect to the existing conversation
 
@@ -27,9 +34,13 @@ herdr status
 herdr agent list
 ```
 
-Stop if the environment check fails. Within Herdr, commands use the inherited
-session/socket context. Map each role Donald assigned to its live conversation
-ID and pane ID using `herdr agent list` and the session's visible content.
+Stop if the environment check fails. Bare commands use the caller's Herdr
+server. From the host advisor, every VM discovery, read or prompt needs the
+saved machine prefix: `herdr --machine agent-vm agent list`,
+`herdr --machine agent-vm agent read ...`, or
+`herdr --machine agent-vm agent prompt ...`. Map each role to its live
+conversation ID and pane ID using the appropriate agent list and visible
+content.
 Agent kind and working directory help identify a session, but cannot
 distinguish two Codex advisors in the same repository. Do not infer a role
 from its model or pane order. If the assignment remains unclear, confirm it
@@ -37,7 +48,8 @@ with Donald before sending. `HERDR_PANE_ID` identifies the caller.
 Pane IDs and agent names belong to one server. Discover them again after a
 restart or move rather than assuming the IDs below still apply.
 
-The following commands use the orchestrator pane found in the connection test:
+The bare commands below ran on the same server in the connection test. The
+historical pane ID is an example; discover the live target before use:
 
 ```sh
 herdr agent read w1:p1 --source visible
@@ -64,10 +76,12 @@ the server, replace the orchestrator, or close its pane to establish access.
 
 ## Resume later: host advisor and VM orchestrator
 
-**Plan saved 2026-09-23; not applied or verified end to end.** Keep the
-orchestrator in the VM's existing `wish` session and run the advisor on the
-desktop, with both visible in one Herdr window. Separate servers remain;
-the host advisor reaches the VM through `herdr --machine agent-vm`.
+**The one-time connection plan was saved 2026-09-23 and has not been applied
+or verified end to end.** Keep the orchestrator in the VM's existing `wish`
+session and run the advisor on the desktop, with both visible in one Herdr
+window. Separate servers remain;
+the host advisor reaches the VM through `herdr --machine agent-vm` for CLI
+commands.
 
 The attempted `machine add` failed because strict SSH checking found no
 trusted ED25519 host key. The project's
@@ -86,25 +100,25 @@ key. Saving a key alone will not fix that configuration.
    desktop, run `ssh -o StrictHostKeyChecking=ask agent-vm true`; accept only
    if the fingerprint matches. Then confirm `ssh agent-vm true` succeeds.
    Do not bypass checking or blindly accept a changed key.
-3. **Connect both machines in one interface.** From a desktop terminal:
+3. **Save the VM as a machine.** From a desktop terminal:
 
    ```sh
    herdr machine add agent-vm --label agent-vm --remote-session wish
-   herdr
    ```
 
    Keep the existing remote session running. If setup proposes replacing its
    server and stopping panes, decline and resolve compatibility separately.
-4. **Start the advisor under Local.** Use a host checkout with the current
-   `AGENTS.md`. Verify cross-machine access with
+4. **Start the advisor under Local.** Run `herdr` on the desktop. Use a host
+   checkout with the current `AGENTS.md`. Verify cross-machine access with
    `herdr --machine agent-vm agent list`, discover the orchestrator's live
    pane, then read it with `herdr --machine agent-vm agent read <pane-id>
    --source visible`. No test message is needed.
-5. **Define the host operator role before applying Ansible.** The advisor
-   still answers questions without forwarding them. Document an explicit
-   exception allowing host Ansible runs when Donald requests them; routine
-   application implementation remains with the VM orchestrator. Use the
-   desktop's inventory and credentials, with scoped execution permissions.
+
+The host advisor role is now defined in `AGENTS.md`: Donald assigned VM
+maintenance to that role, so the earlier pending role decision is resolved.
+For requested maintenance, use the desktop's inventory and credentials with
+scoped execution permissions. An advisory question alone does not authorize
+an Ansible run.
 
 For a durable project fix, update the Ansible SSH template to retain verified
 host keys and specify how a rebuilt VM's replacement key is verified. That
