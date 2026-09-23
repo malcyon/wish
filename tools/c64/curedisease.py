@@ -6,8 +6,8 @@ instruction pattern that does the work, so the answer is re-derived rather
 than remembered:
 
 * the **counter** is character-record byte `0x012` (`$7C12`), and lay on
-  hands' is `0x013` (`$7C13`) -- both inside the 20 bytes `goldbox/layout.py`
-  calls `name`;
+  hands' is `0x013` (`$7C13`) -- `goldbox/layout.py`'s `paladin_cures` and
+  `lay_on_hands_uses`;
 * `GEN` **seeds** them from the paladin level `0x0CF`: `0x013` = 1 and `0x012`
   = 1, 2 or 3 below 6, below 11 and from 11 up, and both 0 for a character with
   no paladin level; four callers, and training is not one of them;
@@ -24,6 +24,11 @@ than remembered:
 So the whole state is in the save: two record bytes and up to two rows of the
 effect arrays. Pool of Radiance has no paladin, and `pool` says so from its
 disks.
+
+`dos_inspect` reads the DOS Curse and Silver Blades side the same way, from
+`GAME.OVR`, and `c64_cure_write` is the C64 state that plays a DOS paladin's
+uses and node back as DOS would -- or `Unrepresentable` where C64 Curse
+cannot (`docs/234-a-paladins-cure-disease-across-dos-and-the-c64.md`).
 
     tools/c64/curedisease.py                 # both later titles, and Pool
     tools/c64/curedisease.py --title curse-of-the-azure-bonds
@@ -337,6 +342,173 @@ def full_count(level: int, thresholds: tuple[int, int] = (6, 11)) -> int:
     if level <= 0:
         return 0
     return 1 + (level >= thresholds[0]) + (level >= thresholds[1])
+
+
+#: The DOS titles whose cure the conversion reads from, keyed as
+#: `tools/dos/layonhands.py` keys them.
+DOS_TITLES = ("curse", "silver-blades")
+
+
+def dos_inspect(title: str, game: pathlib.Path | None = None) -> dict:
+    """What the DOS engine does with a paladin's cure-disease uses.
+
+    Read from the player's `GAME.OVR` by instruction, not by address:
+
+    * the **cure** is the one `add_affect` with a 10080-minute duration; its
+      routine decrements the uses byte (only while it is above 0) and adds
+      the node only when `find_affect` finds none;
+    * **every** instruction in the executable that names the uses byte,
+      from a sweep of every `push bp / mov bp, sp` routine: the creation
+      seed of 1, the refresh, the gate's compare and the cure's two;
+    * the **refresh** is the node id's own handler, which on removal writes
+      `(level - 1) / 5 + 1`;
+    * the **gate** offers CURE only while the byte is above 0.
+    """
+    import re
+
+    import capstone
+
+    from tools.dos import layonhands
+
+    game = game or layonhands.find_game(title)
+    eng = layonhands.engine(game, title)
+    cure = layonhands._one(layonhands.timers(eng, layonhands.CURE_MINUTES),
+                           "cure add_affect")
+    (counter,) = cure.decrements
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    names = re.compile(r"es:\[di \+ " + hex(counter) + r"\]")
+
+    def routine(code: bytes, start: int) -> list:
+        out = []
+        for insn in md.disasm(code[start:start + 0x3000], start):
+            out.append(insn)
+            if insn.mnemonic == "retf":
+                break
+        return out
+
+    uses: list[tuple[str, int, str]] = []
+    for where, code in (("GAME.OVR", eng.ovr), ("image", eng.img)):
+        seen: set[int] = set()
+        at = code.find(b"\x55\x89\xe5")
+        while at >= 0:
+            for insn in routine(code, at):
+                if insn.address in seen:
+                    break
+                seen.add(insn.address)
+                if names.search(insn.op_str):
+                    uses.append((where, insn.address,
+                                 f"{insn.mnemonic} {insn.op_str}"))
+            at = code.find(b"\x55\x89\xe5", at + 1)
+
+    body = routine(eng.ovr, cure.routine)
+    text = [f"{i.mnemonic} {i.op_str}" for i in body]
+    dec = next(k for k, t in enumerate(text)
+               if t == f"dec byte ptr es:[di + {hex(counter)}]")
+    guarded = (text[dec - 3] == f"cmp byte ptr es:[di + {hex(counter)}], 0"
+               and body[dec - 2].mnemonic == "jbe")
+    add = next(k for k, i in enumerate(body) if i.address >= cure.site)
+    # `mov al, id / push ax / lea di / push ss / push di / lcall find` and
+    # a `jne` past the add: the node is added only when none is found.
+    only_if_absent = any(
+        text[k] == f"mov al, {hex(cure.effect_id)}"
+        and body[k + 6].mnemonic == "or" and body[k + 7].mnemonic == "jne"
+        and int(body[k + 7].op_str, 0) > cure.site
+        for k in range(dec, add))
+
+    where, at = eng.handlers[cure.effect_id]
+    handler = [f"{i.mnemonic} {i.op_str}" for i in routine(eng.code(where), at)]
+    refresh = (any(t == "mov cx, 5" for t in handler)
+               and any(t.startswith(("div cx", "idiv cx")) for t in handler)
+               and any(t.startswith("dec ax") for t in handler)
+               and any(t.startswith("inc ax") for t in handler)
+               and any(
+                   t == f"mov byte ptr es:[di + {hex(counter)}], al"
+                   for t in handler))
+    seeds = tuple(u for u in uses if u[2].startswith("mov")
+                  and u[2].endswith(", 1"))
+    return {"title": title, "counter": counter, "effect_id": cure.effect_id,
+            "minutes": cure.minutes, "value": cure.value, "flag": cure.flag,
+            "cure_routine": cure.routine, "decrement_guarded": guarded,
+            "node_only_if_absent": only_if_absent,
+            "handler": (where, at), "handler_refreshes": refresh,
+            "uses": tuple(uses), "seeds": seeds}
+
+
+def dos_full_count(level: int) -> int:
+    """What the DOS refresh writes: `(level - 1) / 5 + 1`."""
+    return (level - 1) // 5 + 1 if level > 0 else 0
+
+
+#: The cure timer's id and the magnitude the cure writes, per C64 title.
+CURE_TIMER = {"curse-of-the-azure-bonds": (141, 0xC7),
+              "secret-of-the-silver-blades": (110, 0xC7)}
+
+
+class Unrepresentable(ValueError):
+    """No C64 state gives this DOS paladin the same uses and recovery."""
+
+
+@dataclasses.dataclass(frozen=True)
+class CureWrite:
+    """What a C64 writer puts in the save for one paladin's cures.
+
+    `cures` is record `0x012`; each row is `(id, duration byte, magnitude)`
+    in the save's effect arrays, owned by the paladin's own save slot.
+    """
+
+    cures: int
+    rows: tuple[tuple[int, int, int], ...] = ()
+
+
+def c64_cure_write(title: str, level: int, cures: int,
+                   node_minutes: int | None, clock_minutes: int) -> CureWrite:
+    """The C64 state that plays a DOS paladin's cures back the way DOS would.
+
+    `title` is the C64 key, `level` the paladin level, `cures` the DOS uses
+    byte, `node_minutes` the minutes left on his DOS cure node (id 141 in
+    Curse, 110 in Silver Blades) or None, and `clock_minutes` the C64 save's
+    time of day.
+
+    Both DOS engines decrement the uses (never below 0), add a 10080-minute
+    node only when he has none, and on the node's removal write
+    `(level - 1) / 5 + 1`.  The C64 engines write the same count at a cure
+    row's camp expiry and hide CURE at 0.  Where they differ is when a cure
+    starts a timer: Silver Blades when he has no row, as DOS does; Curse
+    only when `0x012` equals the full count (`ECL65 $86F4`-`$86FA`).  So:
+
+    * the uses byte is always the DOS uses -- never a refill;
+    * a DOS node becomes one row, its duration the byte whose camp-clock
+      time left is nearest the node's minutes (`goldbox.effects.
+      closest_duration`), magnitude `$C7` as the cure writes it;
+    * no node, no row -- except a **Curse** paladin with 0 < uses < full,
+      whom no C64 Curse state reproduces: with no row his first cure starts
+      no timer and CURE never returns, and any row returns it at a time
+      fixed now rather than seven days after the cure.  That raises
+      `Unrepresentable`.
+
+    Level 16 and up, where DOS counts 4 and the C64 stops at 3, raises too.
+    """
+    from goldbox import effects
+
+    full = full_count(level)
+    if level <= 0:
+        return CureWrite(0)
+    if dos_full_count(level) != full:
+        raise Unrepresentable(f"paladin level {level}: DOS refreshes to "
+                              f"{dos_full_count(level)}, the C64 to {full}")
+    if not 0 <= cures <= full:
+        raise Unrepresentable(f"{cures} uses is more than the {full} a "
+                              f"paladin {level} is ever given")
+    eid, magnitude = CURE_TIMER[title]
+    if node_minutes is not None:
+        byte = effects.closest_duration(node_minutes, clock_minutes)
+        return CureWrite(cures, ((eid, byte, magnitude),))
+    if (title == "curse-of-the-azure-bonds" and 0 < cures < full):
+        raise Unrepresentable(
+            f"C64 Curse starts the cure timer only from the full {full}; "
+            f"{cures} with no timer either never recovers or recovers at a "
+            f"time fixed at conversion")
+    return CureWrite(cures)
 
 
 def records(paths: list[str]) -> list[str]:
