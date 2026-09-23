@@ -145,7 +145,7 @@ def test_reading_a_cure_row_gives_one_running_effects_entry():
 def test_the_specimen_paladins_cure_row_reads_back_as_a_running_effect():
     """`WISH-SPEC-curse-600-paladin6-cured`: PALADIN holds 1 cure and one row,
     id 141, duration and magnitude `$C7` (`tests/records/test_curedisease.py::
-    test_the_game_writes_the_cure_row_the_writer_is_asked_for`).  Today
+    test_the_game_writes_the_cure_row_the_writer_is_asked_for`).  Before this fix
     `c64_party` gives `running_effects` None and drops "Lay on hands"."""
     import gamedata
 
