@@ -547,25 +547,43 @@ def new_savegame(state: world_state.WorldState,
         report.warnings.extend(char_report.warnings)
         report.losses.extend(char_report.losses)
 
+    # A party that has not set out is written as the initialiser leaves it:
+    # no area, no script, the initialiser's square and wallset, mode 0.
+    # Measured on the shipped Silver Blades pre-adventure saves (header equal
+    # byte for byte, 4 of 4 files).  Not measured: no shipped Amiga Curse
+    # save is in this state, so its zero script region and the container
+    # number 2 in byte 0 and `$5012` are carried over from DOS Curse.  The
+    # Amiga loader overwrites the mode-before byte with the mode byte, so
+    # its 4 is only there to match the shipped file.  The disk number is
+    # taken from DOS's `PRE_ADVENTURE_DISK`, which agrees with the Amiga
+    # value for Silver Blades (1, from the shipped file) and is the
+    # probable one for Curse (2: every data library is on disk B).
+    fresh = (not state.set_out
+             and world_state.is_pre_adventure_area(state.title, state.area))
     script = None
     if container.ecl_bytes:
-        if ecl_glb is None:
+        if ecl_glb is None and not fresh:
             raise AmigaSaveError(
                 "Amiga Curse needs ECL.GLB from the player's game disk")
-        script = b"\0\0" + area_script(ecl_glb, state.area)
+        if not fresh:
+            script = b"\0\0" + area_script(ecl_glb, state.area)
     elif ecl_glb is not None:
         raise AmigaSaveError("Amiga Silver Blades does not stage ECL.GLB")
 
     dos_container = dos_savegame.container_for(container.key)
     dos = bytearray(dos_container.size)
     dos_report = dos_codec.SaveReport(total=dos_container.size)
-    where = areas.area_in(state.area, state.title)
-    if where is None:
-        raise AmigaSaveError(
-            f"area {state.area} has no {state.title} row in goldbox/areas.py")
+    if fresh:
+        dax = None
+    else:
+        where = areas.area_in(state.area, state.title)
+        if where is None:
+            raise AmigaSaveError(
+                f"area {state.area} has no {state.title} row in goldbox/areas.py")
+        dax = where.disk
     dos_codec.savgam_writes(
         dos, dos_report, state, slot_letter(slot), len(built), script,
-        game=container.key, dax=where.disk)
+        game=container.key, dax=dax)
     dos_codec.savgam_zeroes(dos, dos_report, dos_container)
 
     out = bytearray()
@@ -581,29 +599,50 @@ def new_savegame(state: world_state.WorldState,
         for i in range(start, start + ECL_BYTES):
             report.sources[i] = dos_report.sources[i]
     tail_at = len(out)
-    out += state.x.to_bytes(container.x_bytes, "big")
-    out += state.y.to_bytes(container.x_bytes, "big")
-    out += bytes((state.facing * dos_savegame.FACING_SCALE, 0, 0, 0))
-    out += bytes((GAME_MODE_OVERLAND if state.outdoors else
-                  GAME_MODE_ADVENTURING, GAME_MODE_CAMP))
-    wallset = (dos_savegame.OUTDOOR_WALLSET if state.outdoors
-               else state.wallset)
+    if fresh:
+        square_x, square_y, square_facing = dos_codec.PRE_ADVENTURE_SQUARE
+        modes = (GAME_MODE_ADVENTURING, 0)
+        wallset = dos_savegame.OUTDOOR_WALLSET
+        source = "the initialiser's"
+    else:
+        square_x, square_y, square_facing = state.x, state.y, state.facing
+        modes = (GAME_MODE_OVERLAND if state.outdoors else
+                 GAME_MODE_ADVENTURING, GAME_MODE_CAMP)
+        wallset = (dos_savegame.OUTDOOR_WALLSET if state.outdoors
+                   else state.wallset)
+        source = "copied from the source save:"
+    out += square_x.to_bytes(container.x_bytes, "big")
+    out += square_y.to_bytes(container.x_bytes, "big")
+    out += bytes((square_facing * dos_savegame.FACING_SCALE, 0, 0, 0))
+    out += bytes(modes)
     for index, block in enumerate(wallset):
         out += int(block).to_bytes(2, "big")
         out += int(EMPTY if block == EMPTY else index + 1).to_bytes(2, "big")
     out += len(built).to_bytes(2, "big")
-    report.note(tail_at, container.x_bytes, "x square copied from the source save")
+    report.note(tail_at, container.x_bytes,
+                f"x square {source if fresh else 'copied from the source save'}")
     report.note(tail_at + container.x_bytes, container.x_bytes,
-                "y square copied from the source save")
+                f"y square {source if fresh else 'copied from the source save'}")
     report.note(tail_at + 2 * container.x_bytes, 1,
-                "facing copied from the source save in the Amiga's doubled encoding")
+                "facing in the Amiga's doubled encoding, "
+                + ("north as the initialiser writes it" if fresh
+                   else "copied from the source save"))
     report.note(tail_at + 2 * container.x_bytes + 1, 3,
                 "the square block's three measured zero pad bytes")
-    report.note(container.first_mode_at, 1,
-                "overland or adventuring mode derived from the source position")
-    report.note(container.mode_at, 1, "camp mode, which is where a loaded save resumes")
-    report.note(container.wallset_at, 12,
-                "three wall blocks copied from the source area and numbered in order")
+    if fresh:
+        report.note(container.first_mode_at, 1,
+                    "adventuring mode, which the loader overwrites")
+        report.note(container.mode_at, 1,
+                    "mode 0, which every shipped pre-adventure save holds")
+        report.note(container.wallset_at, 12,
+                    "the initialiser's wall blocks, numbered in order")
+    else:
+        report.note(container.first_mode_at, 1,
+                    "overland or adventuring mode derived from the source position")
+        report.note(container.mode_at, 1,
+                    "camp mode, which is where a loaded save resumes")
+        report.note(container.wallset_at, 12,
+                    "three wall blocks copied from the source area and numbered in order")
     report.note(container.count_at, 2, "the number of converted characters")
     party_at = len(out)
     for block, char_report in zip(built, char_reports):
@@ -615,14 +654,25 @@ def new_savegame(state: world_state.WorldState,
 
     parsed = parse(bytes(out), container, source="converted")
     landed = state_from_savegame(parsed)
+    expected = state
+    if fresh:
+        # Reading a party that has not set out moves it to the title's first
+        # area, so the comparison is against the DOS buffer read the same way;
+        # the wallset is checked on its own.
+        expected = world_state.from_dos(bytes(dos), container.key)
+        if tuple(block for block, _slot in parsed.wallset) != \
+                dos_savegame.OUTDOOR_WALLSET:
+            raise AmigaSaveError("the built save changed world-state field wallset")
     for field in ("title", "area", "geo", "x", "y", "facing", "clock",
                   "wallset", "flags", "scratch", "outdoors", "travel"):
-        if getattr(landed, field) != getattr(state, field):
+        if fresh and field == "wallset":
+            continue
+        if getattr(landed, field) != getattr(expected, field):
             raise AmigaSaveError(
                 f"the built save changed world-state field {field}")
     report.total = len(out)
     report.converted.extend((
-        f"the party is at ({state.x},{state.y}) facing {state.facing}",
+        f"the party is at ({square_x},{square_y}) facing {square_facing}",
         f"the clock reads {state.clock[3]:02d}:{state.clock[2]}{state.clock[1]}",
         f"{len(built)} characters in marching order",
     ))

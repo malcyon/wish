@@ -239,3 +239,82 @@ def test_the_diagnostic_tool_parses_through_the_library(tmp_path, monkeypatch):
     assert calls == [(str(path), False)]
     assert len(reported) == 1
     assert isinstance(reported[0], amiga_savegame.AmigaSavegame)
+
+
+# --- a party saved before BEGIN ADVENTURING ----------------------------------
+
+#: `(registry entry, C64 disk, C64 save file, DOS archive directory)`.
+PRE_ADVENTURE = {
+    "curse-of-the-azure-bonds": (
+        "CURSE_C.D64", "SAVEAZURE", "CURSE"),
+    "secret-of-the-silver-blades": (
+        "SILVER-6.D64", "SAVEDBASH", "SECRET"),
+}
+
+
+def _c64_pre_adventure(key: str) -> bytes:
+    from automap import gamedisks
+    from goldbox.d64 import D64, split_load_address
+    disk, name, _stem = PRE_ADVENTURE[key]
+    for root in gamedisks.candidates(key):
+        path = root / disk
+        if path.is_file():
+            return split_load_address(D64.open(path).read_file(name))[1]
+    pytest.skip(f"needs {disk} from the {key} registry entry")
+
+
+def _dos_shipped(stem: str) -> bytes:
+    from support.dossave import _game_dirs
+    folder = _game_dirs().get(stem)
+    if folder is None or not (folder / "SAVGAMA.DAT").is_file():
+        pytest.skip("needs the archives' shipped saves")
+    return (folder / "SAVGAMA.DAT").read_bytes()
+
+
+def _shipped_amiga_silver_blades() -> bytes:
+    for _label, image in amigasaves.images():
+        try:
+            return AmigaDisk(image).read_file("/SAVE/savgamA.sav")
+        except Exception:
+            continue
+    pytest.skip("needs the player's Amiga Silver Blades disk")
+
+
+def _unswapped(data: bytes) -> bytes:
+    """The Amiga variable array with each word swapped back to DOS order."""
+    out = bytearray(data[:1 + amiga_savegame.VM_BYTES])
+    for i in range(1, len(out), 2):
+        out[i:i + 2] = out[i:i + 2][::-1]
+    return bytes(out)
+
+
+@pytest.mark.parametrize("key", sorted(PRE_ADVENTURE))
+def test_a_party_saved_before_begin_adventuring_converts_to_the_shipped_form(key):
+    """Area 0 is no area of either title, so the Amiga save is the
+    initialiser's form: Silver Blades' header equals the shipped Amiga
+    pre-adventure save's, and Curse's, with the word swap undone, equals the
+    DOS archives' pre-adventure save."""
+    from goldbox import c64_port, dos_codec, world_state
+    game = c64_port.by_key(key)
+    save0 = _c64_pre_adventure(key)
+    state = world_state.from_c64(save0, game=game)
+    assert state.set_out is False
+    assert (state.area, state.geo) == (0, 0)
+    characters, _icons = dos_codec.c64_party(save0, None, game)
+    shape = amiga_savegame.container_for(key)
+    is_curse = shape is amiga_savegame.CURSE
+
+    # The Curse script region stays zero, so no ECL.GLB is needed.
+    built, report = amiga_savegame.new_savegame(state, characters, "B")
+
+    assert report.unwritten == []
+    assert amiga_savegame.parse(built, shape).count == len(characters) == 6
+    if is_curse:
+        shipped = _dos_shipped("CURSE")
+        vm_end = 1 + amiga_savegame.VM_BYTES
+        assert _unswapped(built) == shipped[:vm_end]
+        assert built[vm_end:shape.square_at] == shipped[vm_end:shape.square_at]
+        assert not any(built[shape.ecl_at:shape.square_at])
+    else:
+        shipped = _shipped_amiga_silver_blades()
+        assert built[:shape.party_at] == shipped[:shape.party_at]
