@@ -454,7 +454,7 @@ def requirements(source: Any, port: str) -> tuple[str, ...]:
     Silver Blades save stages no area script, so it asks for no game disk at
     all where a Pool of Radiance or a Curse one does.
     """
-    from .convert import amiga_needs_game_disk
+    from .convert import amiga_needs_game_disk, dos_needs_game_folder
 
     direction = route(source, port)
     if direction is None:
@@ -463,7 +463,8 @@ def requirements(source: Any, port: str) -> tuple[str, ...]:
     if port == "c64":
         needs.append(DESTINATION_DISKS)
     elif port == "dos":
-        needs.append(DOS_GAME_FOLDER)
+        if dos_needs_game_folder(direction.shape):
+            needs.append(DOS_GAME_FOLDER)
     elif amiga_needs_game_disk(direction.shape):
         needs.append(AMIGA_GAME_DISK)
     if source.port == "c64" and port in ("dos", "amiga"):

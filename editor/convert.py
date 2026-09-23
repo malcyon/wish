@@ -48,7 +48,19 @@ rule against a template. Today that is:
   so a converted party arrives where it was standing)`). The disk this
   writes carries the party; the area's own script comes off the player's own
   Amiga disk 2 (`ecl.dax`, the `POOLDATA` volume), read and never written
-  to.
+  to;
+* Amiga `.adf` → DOS save folder, Pools of Darkness only, one row --
+  `PodAmigaToDos`, in `POD_DIRECTIONS` rather than `DIRECTIONS` because this
+  title has no C64 port and cannot join `amiga_shared.CONVERTS`/`WRITES`
+  (`goldbox.amiga_savegame.pod_from_amiga`/`pod_parse`,
+  `goldbox.amiga_pod.pod_to_neutral`, then `goldbox.dos_codec.
+  new_pod_save_from`). Offered only with `WISH_EXPERIMENTAL_POD_CONVERT`
+  set, until its own proof in the running game and #650 (A played Amiga
+  Pools of Darkness party converted to DOS loses a master thief's pick
+  pockets over 127 and a scroll case's extra spells) and #651 (Convert a
+  Pools of Darkness party's item vault between DOS and the Amiga along with
+  its saved game) close (`#194 (Import and export a Pools of Darkness save
+  between DOS and the Amiga)`).
 
 **This registry derives every row from a library tuple rather than listing
 them, which is the point:** DOS → C64 from `goldbox.dos_codec.CONVERTS`, C64 → DOS
@@ -105,6 +117,7 @@ import contextlib
 import dataclasses
 import datetime
 import logging
+import os
 import pathlib
 import re
 import tempfile
@@ -121,6 +134,7 @@ from PyQt6.QtWidgets import (
 
 from goldbox import (
     amiga_later,
+    amiga_pod,
     amiga_por,
     amiga_savegame,
     amiga_shared,
@@ -426,15 +440,18 @@ class Source:
             disk = AmigaDisk.open(str(path))
             por_slots = amiga_savegame.por_slots_present(disk)
             later_slots = amiga_savegame.slots_present(disk)
+            pod_slots = amiga_savegame.pod_slots_present(disk)
         except (AmigaDiskError, AmigaRecordError,
                 amiga_savegame.AmigaSaveError, OSError) as exc:
             raise ConvertError(str(exc)) from exc
-        slots = sorted(set(por_slots + later_slots))
+        slots = sorted(set(por_slots + later_slots + pod_slots))
         if not slots:
             raise ConvertError(f"{path} holds no Amiga saved game")
         chosen = slot if slot in slots else slots[0]
         try:
-            if chosen in por_slots:
+            if chosen in pod_slots:
+                shape = dos_port.POOLS_OF_DARKNESS
+            elif chosen in por_slots:
                 record = disk.read_file(amiga_savegame.por_save_path(
                     amiga_por.por_filename(chosen, 1),
                     amiga_savegame.por_save_drawer(disk)))
@@ -785,7 +802,7 @@ class AmigaDosRehearsal(Rehearsal):
     characters: list
     icons: list
     slot: str
-    game_dir: pathlib.Path
+    game_dir: pathlib.Path | None
 
 
 class AmigaToDos(C64ToDos):
@@ -861,6 +878,65 @@ class AmigaToDos(C64ToDos):
                     for p in sorted(scratch_path.iterdir())}
         return AmigaDosRehearsal(report, files, state, characters, icons,
                                  slot, game_dir)
+
+
+class PodAmigaToDos(Direction):
+    """An Amiga Pools of Darkness saved game becomes a DOS save folder.
+
+    Its own class rather than a row `amiga_shared.CONVERTS`/`WRITES` feed:
+    those two tuples build all four shared Amiga rows, including
+    `AmigaToC64` and `C64ToAmiga`, and this title cannot join either of
+    them -- it never shipped on the C64.  `AmigaToDos` inherits
+    `C64ToDos.__init__`, which calls `c64_port.by_key` and would raise at
+    import for a title with no C64 port, so this direction is not built on
+    that pair; it goes straight through `dos_codec.new_pod_save_from`
+    (`goldbox.amiga_savegame.pod_from_amiga`, `pod_parse`, `amiga_pod.
+    pod_to_neutral`) instead of the shared `WorldState`/`new_dos_save_from`
+    path the other three DOS destinations share.
+
+    Registered only in `POD_DIRECTIONS`, behind `WISH_EXPERIMENTAL_
+    POD_CONVERT` -- see the flag below for when that changes.
+    """
+
+    source_port = "amiga"
+    destination_port = "dos"
+
+    def __init__(self) -> None:
+        self.shape = dos_port.POOLS_OF_DARKNESS
+        self.destination_game = dos_port.POOLS_OF_DARKNESS
+        self.source_key = self.shape.key
+
+    def rehearse(self, source: Source, slot: str, options: Any,
+                names: "Mapping[str, str] | None" = None
+                ) -> AmigaDosRehearsal:
+        if not source.slot:
+            # Unreachable through `Source.detect`, whose `.adf` branch
+            # always names the first slot the disk holds files for; only a
+            # caller building a `Source` by hand can get here.
+            raise ConvertError(f"{source.path} names no Amiga save slot")
+        disk = source.amiga_disk()
+        data = amiga_savegame.pod_read_slot(disk, source.slot)
+        state = amiga_savegame.pod_from_amiga(
+            data, source=f"{source.path} slot {source.slot}")
+        characters = [amiga_pod.pod_to_neutral(block)
+                     for block in amiga_savegame.pod_parse(data).blocks]
+        characters = saveplan.fit_names(
+            characters, self.destination_port, self.shape.key, names)
+        with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
+            scratch_path = pathlib.Path(scratch)
+            report = dos_codec.new_pod_save_from(
+                state, characters, scratch_path, slot)
+            files = {p.name: p.read_bytes()
+                    for p in sorted(scratch_path.iterdir())}
+        return AmigaDosRehearsal(report, files, state, characters, [],
+                                 slot, None)
+
+    def write(self, rehearsal: AmigaDosRehearsal,
+             folder: str | pathlib.Path) -> list[pathlib.Path]:
+        folder = pathlib.Path(folder)
+        dos_codec.new_pod_save_from(rehearsal.state, rehearsal.characters,
+                                    folder, rehearsal.slot)
+        return sorted(folder / name for name in rehearsal.files)
 
 
 # ---------------------------------------------------------------------------
@@ -987,6 +1063,19 @@ def amiga_needs_game_disk(shape: dos_port.DosDeltas) -> bool:
     demanding a disk for every Amiga destination alike.
     """
     return shape is not dos_port.SECRET_OF_THE_SILVER_BLADES
+
+
+def dos_needs_game_folder(shape: dos_port.DosDeltas) -> bool:
+    """Whether a DOS destination of this title reads anything off the
+    player's own game folder.
+
+    Every other DOS destination stages the party's own area script out of
+    `ECL<n>.DAX`, which is the game's own file; Pools of Darkness stages no
+    script (`goldbox.dos_codec.new_pod_save_from` reads nothing off disk)
+    and so needs no game folder at all -- the same per-title question
+    `amiga_needs_game_disk` answers for an Amiga destination.
+    """
+    return shape is not dos_port.POOLS_OF_DARKNESS
 
 
 def _amiga_destination_data(shape: dos_port.DosDeltas,
@@ -1199,14 +1288,46 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
     DosToAmiga(shape) for shape in amiga_shared.WRITES
 )
 
+#: Pools of Darkness directions, kept out of `DIRECTIONS` because the title
+#: has no C64 port and cannot join `amiga_shared.CONVERTS`/`WRITES` --
+#: `#194 (Import and export a Pools of Darkness save between DOS and the
+#: Amiga)`'s 2026-09-23 plan comment, "the one design point". Offered only
+#: with `WISH_EXPERIMENTAL_POD_CONVERT` set, and each row comes off this
+#: tuple on its own proof: `PodAmigaToDos` moves into `DIRECTIONS` when its
+#: piece-2 proof has passed in its own running game and #650 (A played
+#: Amiga Pools of Darkness party converted to DOS loses a master thief's
+#: pick pockets over 127 and a scroll case's extra spells) and #651
+#: (Convert a Pools of Darkness party's item vault between DOS and the
+#: Amiga along with its saved game) are closed. The flag and this tuple are
+#: deleted once the tuple is empty.
+POD_DIRECTIONS: tuple[Direction, ...] = (PodAmigaToDos(),)
+
+#: The environment variable that gates `POD_DIRECTIONS`. `WISH_EXPERIMENTAL_`
+#: rather than `WISH_DEBUG`/`WISH_NATIVE_LOG`'s prefix, because this one is
+#: meant to be deleted and those two are permanent (`.claude/rules/
+#: feature-flags.md`).
+POD_CONVERT_ENV = "WISH_EXPERIMENTAL_POD_CONVERT"
+
+
+def pod_convert_enabled() -> bool:
+    """Whether `POD_DIRECTIONS` is offered.
+
+    The same truthy set `wish.debugmode.TRUE` uses, copied rather than
+    imported: `editor/` does not import `wish/`.
+    """
+    return os.environ.get(POD_CONVERT_ENV, "").strip().lower() in (
+        "1", "true", "yes", "on")
+
 
 def destinations_for(source: Source) -> list[Direction]:
     """Every registered direction this source can be converted to.
 
-    Empty for anything not in `DIRECTIONS`. An unready direction is never
-    offered and never refused.
+    Empty for anything not in `DIRECTIONS` and, unless
+    `WISH_EXPERIMENTAL_POD_CONVERT` is set, `POD_DIRECTIONS`.  An unready
+    direction is never offered and never refused.
     """
-    return [d for d in DIRECTIONS
+    directions = DIRECTIONS + (POD_DIRECTIONS if pod_convert_enabled() else ())
+    return [d for d in directions
            if d.source_port == source.port and d.source_key == source.key]
 
 

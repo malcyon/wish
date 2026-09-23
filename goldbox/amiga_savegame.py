@@ -1741,6 +1741,11 @@ class PodSavegame:
     def pad(self) -> bytes:
         return self.data[self.end:]
 
+    @property
+    def blocks(self) -> tuple[bytes, ...]:
+        """Each character's own bytes, record then items then effects."""
+        return tuple(self.data[c.at:c.at + c.size] for c in self.characters)
+
 
 def _pod_u16(data: bytes, at: int) -> int:
     return struct.unpack_from(">H", data, at)[0]
@@ -1851,3 +1856,50 @@ def pod_from_amiga(data: bytes,
         previous_mode=save.previous_mode, mode=save.mode,
         dungeon_map=save.dungeon_map, map_block=save.map_block,
         count=save.count, source=source)
+
+
+def pod_slot_path(slot: str) -> str:
+    """Where an Amiga Pools of Darkness slot's saved game lives on disk 3.
+
+    `AmigaDisk.lookup` compares path components case-insensitively, so this
+    resolves a drawer named `Save` or `SAVE` alike.
+    """
+    return f"/{SAVE_DRAWER}/SavGam{slot_letter(slot)}.pty"
+
+
+def pod_slots_present(disk: AmigaDisk) -> list[str]:
+    """The slot letters holding a valid Pools of Darkness saved game.
+
+    Never raises: a disk with no `Save` drawer, or none of whose files parse
+    as this title, is simply an empty list -- the same contract
+    `slots_present` and `por_slots_present` already have.
+    """
+    out = []
+    for letter in SLOT_LETTERS:
+        try:
+            data = disk.read_file(pod_slot_path(letter))
+        except AmigaDiskError:
+            continue
+        if len(data) != POD_SAVEGAME_SIZE:
+            continue
+        try:
+            pod_parse(data)
+        except PodSaveError:
+            continue
+        out.append(letter)
+    return out
+
+
+def pod_read_slot(disk: AmigaDisk, slot: str) -> bytes:
+    """One slot's raw `SavGam<L>.pty` bytes, refusing a missing or short one."""
+    letter = slot_letter(slot)
+    path = pod_slot_path(letter)
+    try:
+        data = disk.read_file(path)
+    except AmigaDiskError as e:
+        raise AmigaSaveError(f"{path}: {e}") from e
+    if len(data) != POD_SAVEGAME_SIZE:
+        raise AmigaSaveError(
+            f"{path} is {len(data)} bytes; a Pools of Darkness saved game is "
+            f"{POD_SAVEGAME_SIZE}")
+    return data

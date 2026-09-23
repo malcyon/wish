@@ -55,6 +55,7 @@ import hashlib
 import logging
 import pathlib
 import shutil
+import struct
 import tempfile
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -177,6 +178,8 @@ __all__ = [
     "write_dos_save",
     "new_dos_save_from",
     "new_dos_save",
+    "pod_savgam",
+    "new_pod_save_from",
 ]
 
 
@@ -7644,6 +7647,68 @@ def _c64_game_of(state: "world_state.WorldState") -> "c64_port.Game":
     return game
 
 
+def _build_character_files(characters: "Sequence[NeutralCharacter]",
+                           portraits: "PortraitTables | None",
+                           icons: "Sequence[DosIcon | None] | None", *,
+                           empty_shape: "DosDeltas | None" = None
+                           ) -> "tuple[DosDeltas, list]":
+    """Each character's DOS record and side files, in file order.
+
+    Split out of `write_dos_save_from` so `pod_savgam`/`new_pod_save_from`
+    can build a Pools of Darkness slot's character files the same way,
+    with no portrait table -- this title draws no sheet portrait -- and no
+    icon list of its own.  `empty_shape` is the record shape to report when
+    `characters` is empty; `write_dos_save_from` is the only caller that
+    ever passes one, because every other caller's party is 1 or more.
+    """
+    record_shape = (write_deltas(characters[0]) if characters
+                    else empty_shape)
+    order = FIELDS_BY_NAME_FOR[record_shape.key]["combat_figure"].offset
+
+    # `characters` is already in DOS file order, so `combat_figure` -- the
+    # character's combat-figure slot, 0-5 in file order in every DOS
+    # specimen (#101, #305) -- is this loop's own position and needs no
+    # second pass to renumber it after the fact.
+    built = []
+    for position, char in enumerate(characters):
+        icon = icons[position] if icons is not None and position < len(icons) else None
+        rec, itm, spc, one = write(char, portraits=portraits, icon=icon)
+        record = bytearray(rec)
+        record[order] = position
+        built.append((char, bytes(record), itm, spc, one))
+    return record_shape, _deduplicate_party_identities(built, record_shape)
+
+
+def _put_character_files(out: pathlib.Path, slot: str, built: list,
+                         record_shape: "DosDeltas",
+                         report: "SaveReport") -> None:
+    """Write each `_build_character_files` record and fold its own report
+    into `report`."""
+    for n, (char, rec, itm, spc, one) in enumerate(built, start=1):
+        stem = out / f"CHRDAT{slot}{n}"
+        stem.with_suffix(".SAV").write_bytes(rec)
+        # A character carrying nothing gets **no `.ITM` file at all**, and an
+        # empty one is not the same thing: the engine reads a zero-length
+        # `.ITM` as one item of whatever the heap held, draws it on the sheet
+        # (`WEAPON 254 PASSS`), and writes it into the save on the next resave.
+        # See ITM_OMITTED_WHEN_EMPTY.  Nothing is unlinked here: the slot was
+        # cleared above, so "not written" and "not present" are the same.
+        # The suffix is the title's own: `.ITM`, `.SWG`, `.STF` or `.THG`.
+        if itm:
+            stem.with_suffix(record_shape.item_suffix).write_bytes(itm)
+        # A character with no innate effects gets no side effects file,
+        # which is what the engine's own save writes for one with nothing
+        # running (#61): every human in the archives' twelve saved parties
+        # has no file at all.
+        if spc:
+            stem.with_suffix(record_shape.effect_suffix).write_bytes(spc)
+        who = char.get("name", f"CHRDAT{slot.upper()}{n}")
+        report.dropped.extend(d for d in one.dropped
+                              if d not in report.dropped)
+        report.warnings.extend(f"{who}: {w}" for w in one.warnings)
+        report.losses.extend(f"{who}: {w}" for w in one.losses)
+
+
 def write_dos_save_from(state: "world_state.WorldState",
                         characters: "Sequence[NeutralCharacter]",
                         template: str | pathlib.Path | None,
@@ -7737,23 +7802,14 @@ def write_dos_save_from(state: "world_state.WorldState",
         report.warnings.append(
             f"no character's sheet portrait crossed, because {why_not}")
 
-    record_shape = (write_deltas(characters[0]) if characters
-                    else deltas_for(c64.key))
-    suffixes = (".SAV", record_shape.item_suffix, record_shape.effect_suffix)
-    order = FIELDS_BY_NAME_FOR[record_shape.key]["combat_figure"].offset
-
     # `characters` is already in DOS file order (`c64_party`'s own
     # reversal), so `combat_figure` -- the character's combat-figure slot,
-    # 0-5 in file order in every DOS specimen (#101, #305) -- is this loop's
-    # own position and needs no second pass to renumber it after the fact.
-    built = []
-    for position, char in enumerate(characters):
-        icon = icons[position] if icons is not None and position < len(icons) else None
-        rec, itm, spc, one = write(char, portraits=faces, icon=icon)
-        record = bytearray(rec)
-        record[order] = position
-        built.append((char, bytes(record), itm, spc, one))
-    built = _deduplicate_party_identities(built, record_shape)
+    # 0-5 in file order in every DOS specimen (#101, #305) -- is
+    # `_build_character_files`'s own loop position and needs no second pass
+    # to renumber it after the fact.
+    record_shape, built = _build_character_files(
+        characters, faces, icons, empty_shape=deltas_for(c64.key))
+    suffixes = (".SAV", record_shape.item_suffix, record_shape.effect_suffix)
 
     # The unit a conversion overwrites is the *slot*, not the characters this
     # party happens to fill.  Converting one character into a directory that
@@ -7766,28 +7822,7 @@ def write_dos_save_from(state: "world_state.WorldState",
         report.converted.append(
             f"slot {slot} was already written here: {cleared} stale "
             f"CHRDAT{slot}<n> file(s) from the previous party removed")
-    for n, (char, rec, itm, spc, one) in enumerate(built, start=1):
-        stem = out / f"CHRDAT{slot}{n}"
-        stem.with_suffix(".SAV").write_bytes(rec)
-        # A character carrying nothing gets **no `.ITM` file at all**, and an
-        # empty one is not the same thing: the engine reads a zero-length
-        # `.ITM` as one item of whatever the heap held, draws it on the sheet
-        # (`WEAPON 254 PASSS`), and writes it into the save on the next resave.
-        # See ITM_OMITTED_WHEN_EMPTY.  Nothing is unlinked here: the slot was
-        # cleared above, so "not written" and "not present" are the same.
-        # The suffix is the title's own: `.ITM`, `.SWG` or `.STF` (#113).
-        if itm:
-            stem.with_suffix(record_shape.item_suffix).write_bytes(itm)
-        # A character with no innate effects gets no `.SPC`, which is what the
-        # engine's own save writes for one with nothing running (#61): every
-        # human in the archives' twelve saved parties has no file at all.
-        if spc:
-            stem.with_suffix(record_shape.effect_suffix).write_bytes(spc)
-        who = char.get("name", f"CHRDAT{slot.upper()}{n}")
-        report.dropped.extend(d for d in one.dropped
-                              if d not in report.dropped)
-        report.warnings.extend(f"{who}: {w}" for w in one.warnings)
-        report.losses.extend(f"{who}: {w}" for w in one.losses)
+    _put_character_files(out, slot, built, record_shape, report)
 
     savgam_writes(savgam, report, state, slot, len(characters), script,
                   portraits=bool(faces), game=c64, dax=dax)
@@ -8039,6 +8074,132 @@ def new_dos_save(save0: bytes, save1: bytes | None,
     state = world_state.from_c64(save0, game=c64)
     characters, icons = c64_party(save0, save1, c64, icon_parts=icon_parts)
     return new_dos_save_from(state, characters, out, slot, game, icons=icons)
+
+
+def pod_savgam(state: "world_state.PodWorldState", slot: str, count: int
+              ) -> "tuple[bytearray, SaveReport]":
+    """Build a Pools of Darkness `SAVGAM<slot>.PTY`'s 1364 bytes from zero.
+
+    `write_dos_save_from`'s own `savgam_writes`/`savgam_zeroes` reach
+    `dos_savegame.word_offset`, which refuses a container with no
+    word-wide variable array (`shape.var_words`) -- this title's own array
+    is byte-wide, so this writer names each field's own file offset
+    directly rather than adding a Pools of Darkness branch to those two.
+
+    `count` is the number of `CHRDAT<slot><n>` files this slot will name;
+    it has to agree with variable 32 (`dos_savegame.POD_PARTY_COUNT`),
+    the engine's own save-loop bound, or the file the game loads would
+    disagree with the file it names.  It agrees in 14 of 14 played Amiga
+    slots.
+    """
+    shape = dos_savegame.SAVE_POOLS_OF_DARKNESS
+    held = state.variables[dos_savegame.POD_PARTY_COUNT - 1]
+    if count != held:
+        raise DosRecordError(
+            f"variable {dos_savegame.POD_PARTY_COUNT} says the party is "
+            f"{held}; {count} character(s) given")
+
+    out = bytearray(shape.size)
+    report = SaveReport(total=shape.size)
+
+    out[:shape.var_bytes] = state.variables
+    report.note(0, shape.var_bytes, "the 1024 ECL variables, whole")
+
+    dos_savegame.put_position(out, state.x, state.y, state.facing, shape)
+    report.note(shape.pos_x, 3,
+                f"the square ({state.x},{state.y}) facing {state.facing}")
+
+    out[shape.tail_scratch] = state.wall_ahead
+    out[shape.tail_scratch + 1] = state.square_property
+    report.note(shape.tail_scratch, 1, "the wall ahead of the party")
+    report.note(shape.tail_scratch + 1, 1, "the square's property byte")
+
+    out[shape.previous_mode] = state.previous_mode
+    out[shape.mode] = state.mode
+    report.note(shape.previous_mode, 1, "the interface mode before this one")
+    report.note(shape.mode, 1, "the current interface mode")
+
+    struct.pack_into("<H", out, dos_savegame.POD_MAP, state.dungeon_map)
+    struct.pack_into("<H", out, dos_savegame.POD_MAP_BLOCK, state.map_block)
+    report.note(dos_savegame.POD_MAP, 2, "LoadMap's first argument")
+    report.note(dos_savegame.POD_MAP_BLOCK, 2, "LoadMap's second argument")
+
+    out[shape.party_size_byte] = count
+    report.note(shape.party_size_byte, 1, f"the party size, {count}")
+
+    dos_savegame.put_character_files(out, slot, shape)
+    for n in range(dos_savegame.PARTY_ENTRIES):
+        report.note(
+            shape.party_table + n * dos_savegame.PARTY_ENTRY,
+            dos_savegame.PARTY_NAME_LEN,
+            f"CHRDAT{slot.upper()}{n + 1}, which is what the engine loads "
+            f"the party from -- not the slot letter at the LOAD menu")
+        at = (shape.party_table + n * dos_savegame.PARTY_ENTRY
+              + dos_savegame.PARTY_NAME_LEN)
+        report.note(at, dos_savegame.PARTY_ENTRY - dos_savegame.PARTY_NAME_LEN,
+                    PARTY_TABLE_SCRATCH)
+
+    report.unwritten = [i for i in range(shape.size) if i not in report.sources]
+    return out, report
+
+
+def new_pod_save_from(state: "world_state.PodWorldState",
+                      characters: "Sequence[NeutralCharacter]",
+                      out: str | pathlib.Path, slot: str) -> "SaveReport":
+    """A whole Pools of Darkness DOS save from a place and a party.
+
+    Not built on `new_dos_save_from`: that goes through `_c64_game_of`,
+    which refuses a title with no C64 port, and this one never shipped on
+    the C64.  This is its sibling, keyed on
+    `dos_savegame.SAVE_POOLS_OF_DARKNESS` instead of a C64 title, and it
+    stages no area script and needs no game directory -- this title's own
+    `editor.saveplan.dos_needs_game_folder` says so.
+
+    Returns the report, whose `unwritten` is empty.  A byte here with no
+    source is a byte written zero by accident instead of by measurement.
+    """
+    if len(str(slot)) != 1 or not str(slot).isalpha():
+        raise DosRecordError(f"a save slot is a single letter, not {slot!r}")
+    characters = list(characters)
+    if not 1 <= len(characters) <= dos_savegame.PARTY_ENTRIES:
+        raise DosRecordError(
+            f"a Pools of Darkness party is 1 to {dos_savegame.PARTY_ENTRIES} "
+            f"characters; got {len(characters)}")
+
+    out = pathlib.Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    staging = pathlib.Path(tempfile.mkdtemp(prefix=f".wish-{slot}-", dir=out))
+    try:
+        shape = dos_savegame.SAVE_POOLS_OF_DARKNESS
+        savgam, report = pod_savgam(state, slot, len(characters))
+        record_shape, built = _build_character_files(characters, None, None)
+        _put_character_files(staging, slot, built, record_shape, report)
+
+        (staging / f"SAVGAM{slot}{shape.suffix}").write_bytes(bytes(savgam))
+        (staging / f"VAULT{slot}.DAT").write_bytes(bytes(12))
+        report.converted.append(
+            f"VAULT{slot}.DAT: 12 zero bytes, which is what every Pools of "
+            f"Darkness VAULT<slot>.DAT on this machine holds")
+
+        if report.unwritten:
+            raise DosRecordError(
+                f"{len(report.unwritten)} bytes of the saved game have no "
+                f"source and were left zero by accident rather than by "
+                f"measurement; the first is "
+                f"{report.address(report.unwritten[0])}")
+
+        cleared = _clear_slot(out, slot,
+                              (".SAV", record_shape.item_suffix,
+                               record_shape.effect_suffix))
+        if cleared:
+            report.converted.append(
+                f"slot {slot} was already written here: {cleared} stale "
+                f"CHRDAT{slot}<n> file(s) from the previous party removed")
+        for written in sorted(staging.iterdir()):
+            shutil.move(str(written), str(out / written.name))
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return report
 
 
 def _read_ecl_dax(template: "pathlib.Path | None",

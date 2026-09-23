@@ -31,6 +31,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_namefit.py` | Checks `editor.saveplan.fit_names` and `name_width`: a name over the destination's width is named rather than cut, a chosen replacement is written with nothing left to clamp, and every title's width per port. |
 | `test_neutral.py` | Checks the neutral character record and the codecs around it: what is written unchanged, what is reported and what is refused. |
 | `test_podconvert.py` | Checks converting a DOS Pools of Darkness character to the Amiga and back. |
+| `test_podsave.py` | Checks `goldbox.dos_codec.pod_savgam`/`new_pod_save_from` and `editor.convert.PodAmigaToDos` writing a Pools of Darkness DOS save from an Amiga saved game, behind `WISH_EXPERIMENTAL_POD_CONVERT`. |
 | `test_poolwisdombonus.py` | Checks that a converted DOS Pool of Radiance cleric with wisdom 12 or 13 gets the C64's own first-level spell count. |
 | `test_rewrite.py` | Checks that a DOS or Amiga character written back with nothing edited is byte-identical and that an edited field lands while the engine's own bytes survive everywhere else, on generated records and on every specimen. |
 | `test_runningeffects.py` | Checks that a spell with time left keeps its minutes going DOS to Amiga and back, in every Amiga title, on both byte orders. |
