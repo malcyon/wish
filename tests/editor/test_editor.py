@@ -495,6 +495,178 @@ def test_the_window_binds_every_field_widget(app, save):
     assert len(w._widgets) == len(expected_sheet_fields()) + 1
 
 
+# --- Control, Morale and Abilities altered replace the raw Flags 0b8 (#623) -
+#
+# `docs/232-the-c64-control-byte-per-title.md`: bit 7 says who drives the
+# character; for the engine's own the low seven bits are morale, halved, and
+# for a player character bit 0 is the ability-altered flag -- confirmed only
+# on Pool of Radiance. Built with `synthetic_save`, poked to the exact byte
+# each case needs, rather than a shipped save: every case here is a fact
+# about the editor's own display code, not about what a title's engine wrote,
+# so it does not need a specimen with a chain of custody (`.claude/rules/
+# testing.md`).
+
+def _shown_editor(path):
+    """An `EditorBinding` on the Stats tab, in a window that is actually
+    shown -- `setVisible` only reads back true once every ancestor tab is
+    the one on screen, and `tabs`' own default is the automap tab."""
+    from PyQt6.QtWidgets import QTabWidget
+
+    from editor.window import EditorBinding
+    root = make_root()
+    w = EditorBinding(root, str(path))
+    tabs = root.findChild(QTabWidget, "tabs")
+    for i in range(tabs.count()):
+        if tabs.widget(i).objectName() == "tab_editor":
+            tabs.setCurrentIndex(i)
+            break
+    root.resize(1875, 1030)
+    root.show()
+    return w
+
+
+def test_the_control_dropdown_is_editable(app):
+    """Donald's own instruction: the player may type into Control, not only
+    choose from its two items."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root())
+    assert w._child("control_combo").isEditable()
+
+
+def test_flags_0b8_is_no_longer_a_generic_sheet_field(app, party):
+    """The three widgets read and write the byte by hand
+    (`EditorBinding._show_control_fields`); the generic `field_*` mechanism
+    must no longer know its name, or a `field_flags_0b8` reintroduced by
+    accident would silently double-bind it instead of raising the typo
+    `KeyError` `_find_field_widgets` is there to raise."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(party))
+    assert "flags_0b8" not in w._widgets
+    assert w.root.findChild(QWidget, "field_flags_0b8") is None
+
+
+def test_a_player_character_shows_control_and_abilities_altered(app, tmp_path):
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
+    w = _shown_editor(save)
+    member = w.party.member(0)
+    member.record.set("flags_0b8", 0x01)
+    w._populate()
+    control = w._child("control_combo")
+    morale = w._child("morale_spin")
+    altered = w._child("abilities_altered_combo")
+    assert control.currentText() == "Player-controlled"
+    assert not morale.isVisible()
+    assert altered.isVisible() and not altered.isEnabled()
+    assert altered.currentText() == "Yes"
+    assert altered.toolTip() == (
+        "set when this character kept an ability or hit-point change at "
+        "the trainer")
+    # An untouched flush must not disturb a bit the player never offered to
+    # edit -- the read-only combo is never in `_flush`'s own widget loop.
+    assert w._flush(0) == []
+    assert member.record.get("flags_0b8") == 0x01
+
+
+def test_a_companion_shows_control_and_morale_not_abilities_altered(app, tmp_path):
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
+    w = _shown_editor(save)
+    member = w.party.member(0)
+    member.record.set("flags_0b8", 0xB2)  # 0x80 | 50 -> morale 100
+    w._populate()
+    control = w._child("control_combo")
+    morale = w._child("morale_spin")
+    altered = w._child("abilities_altered_combo")
+    assert control.currentText() == "Game-controlled"
+    assert morale.isVisible() and morale.isEnabled()
+    assert morale.value() == 100
+    assert not altered.isVisible()
+    assert w._flush(0) == []
+    assert member.record.get("flags_0b8") == 0xB2
+
+
+@pytest.mark.parametrize("game_attr", [
+    "CURSE_OF_THE_AZURE_BONDS", "SECRET_OF_THE_SILVER_BLADES",
+])
+def test_abilities_altered_is_empty_and_disabled_on_an_unconfirmed_title(
+        app, tmp_path, game_attr):
+    """docs/232: only Pool of Radiance's own engine sets bit 0 for a player
+    character. Donald's decision is to show the row empty rather than hide
+    it, so the player still sees the field and why it carries nothing.
+
+    Gateway, Champions and Death Knights are not in this parametrisation:
+    `goldbox.c64_codec.deltas_for` has no measured record deltas for them
+    yet, so the editor cannot open a save of any of the three at all -- a
+    pre-existing gap this ticket did not create and does not need to work
+    around to show the other five titles' own two confirmed-absent cases."""
+    from goldbox import c64_port
+    game = getattr(c64_port, game_attr)
+    save = synthetic_save(tmp_path, name=f"{game_attr}.D64", game=game)
+    w = _shown_editor(save)
+    altered = w._child("abilities_altered_combo")
+    assert altered.isVisible() and not altered.isEnabled()
+    assert altered.currentText() == ""
+    assert altered.toolTip() == "not recorded on this title"
+
+
+def test_morale_above_100_is_shown_read_only_not_clamped(app, tmp_path):
+    """A companion copied from a Pool of Radiance monster record can hold up
+    to 254 (docs/232): shown decoded and disabled, never clamped to 100 or
+    refused."""
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
+    w = _shown_editor(save)
+    member = w.party.member(0)
+    member.record.set("flags_0b8", 0xFF)
+    w._populate()
+    morale = w._child("morale_spin")
+    assert morale.isVisible()
+    assert morale.value() == 254
+    assert not morale.isEnabled()
+    assert "not editable" in morale.toolTip()
+    assert w._flush(0) == []
+    assert member.record.get("flags_0b8") == 0xFF
+
+
+def test_switching_control_to_game_controlled_shows_a_fresh_morale(app, tmp_path):
+    """Donald's instruction: a flip must never read the old ability-altered
+    bit as if it were a morale value. Flipping shows Morale at 0, not
+    `2 x (old & 0x7F)`, and only what the player then sets is written."""
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
+    w = _shown_editor(save)
+    member = w.party.member(0)
+    member.record.set("flags_0b8", 0x01)  # a player character, altered=Yes
+    w._populate()
+    control = w._child("control_combo")
+    morale = w._child("morale_spin")
+    control.setCurrentText("Game-controlled")
+    app.processEvents()
+    assert morale.isVisible() and morale.value() == 0
+    morale.setValue(42)
+    assert w._flush(0) == []
+    assert member.record.get("flags_0b8") == (0x80 | 21)
+
+
+def test_switching_control_to_player_controlled_zeroes_the_byte(app, tmp_path):
+    """The engine's own write on this switch is the whole byte zero -- never
+    the old morale's own low bits read back as the ability-altered flag."""
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
+    w = _shown_editor(save)
+    member = w.party.member(0)
+    member.record.set("flags_0b8", 0xB2)  # a companion, morale 100
+    w._populate()
+    control = w._child("control_combo")
+    altered = w._child("abilities_altered_combo")
+    control.setCurrentText("Player-controlled")
+    app.processEvents()
+    assert altered.isVisible() and altered.currentText() == "No"
+    assert w._flush(0) == []
+    assert member.record.get("flags_0b8") == 0x00
+
+
 def test_no_sheet_tooltip_shows_an_offset_a_field_name_or_a_grade(app, party):
     """`#419 (Hovering a box on the character sheet shows its byte offset and
     internal field name)`: hovering Strength used to read
@@ -2389,7 +2561,7 @@ IDENTITY_COLUMNS = (("name", "race", "char_class", "class_bits", "alignment"),
 COMBAT_FIELDS = ("thac0_base", "thac0", "armour_class_base", "armour_class",
                  "movement", "infravision")
 ROSTER_FIELDS = ("roster_in_use", "party_order", "roster_movement",
-                 "roster_tail", "turn_class", "flags_0b8")
+                 "roster_tail", "turn_class")
 
 
 def _form_fields(form) -> tuple[str, ...]:

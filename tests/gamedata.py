@@ -555,10 +555,15 @@ def synthetic_party(game=None, race=None, trait_codes=()) -> bytes:
     return _disk_with(files)
 
 
-def synthetic_save(tmp_path, name: str = "SYNTHETIC.D64"):
-    """`synthetic_party` written where a window can open it."""
+def synthetic_save(tmp_path, name: str = "SYNTHETIC.D64", game=None):
+    """`synthetic_party` written where a window can open it.
+
+    `game` is forwarded to `synthetic_party` -- Pool of Radiance when left
+    None, matching every existing caller -- so a test that needs a specific
+    title's own save layout does not need a real disk to get one.
+    """
     out = pathlib.Path(tmp_path) / name
-    out.write_bytes(synthetic_party())
+    out.write_bytes(synthetic_party(game=game))
     return out
 
 

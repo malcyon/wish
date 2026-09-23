@@ -184,6 +184,38 @@ RECOVERY_FAILED_NO_BACKUP = (
 #: player.
 SAVE_AS_FAILED = "The save could not be written, and your saved game is unchanged."
 
+# -- Control, Morale and Abilities altered: the three faces of `flags_0b8` --
+# (#623). Bit 7 says who drives the character; for an NPC the low seven bits
+# are morale, halved, and for a player character bit 0 is the ability-altered
+# flag on the titles where it means anything -- never both at once
+# (docs/232-the-c64-control-byte-per-title.md).
+
+#: Donald's own two labels for the Control dropdown.
+CONTROL_PLAYER = "Player-controlled"
+CONTROL_GAME = "Game-controlled"
+
+#: Morale's editable range: `2 x (byte & 0x7F)`, in steps of 2, is never above
+#: 100 on any of the five later titles' own writers and is clamped to that
+#: here too. Pool of Radiance can still store more (a companion copied from a
+#: monster record can hold 254); that case is shown read-only rather than
+#: offered on this spinner (docs/232).
+MORALE_MIN = 0
+MORALE_MAX = 100
+MORALE_STEP = 2
+
+#: `Abilities altered`'s two labels and its read-only tooltip -- the same
+#: disabled-plus-tooltip convention the thief-skill boxes already use
+#: (`_apply_read_only`).
+ABILITIES_ALTERED_NO = "No"
+ABILITIES_ALTERED_YES = "Yes"
+ABILITIES_ALTERED_TOOLTIP = (
+    "set when this character kept an ability or hit-point change at the "
+    "trainer")
+ABILITIES_ALTERED_UNCONFIRMED_TOOLTIP = "not recorded on this title"
+MORALE_ABOVE_RANGE_TOOLTIP = (
+    "stored above the normal 0-100 game range (a companion copied from a "
+    "monster record); shown decoded, not editable")
+
 
 def _size_combo(combo: QComboBox) -> None:
     """As wide as its longest name, and no wider.
@@ -851,6 +883,7 @@ class EditorBinding(QObject):
         self._size_roster()
         self._weight_columns()
         self._wire_dirty()
+        self._setup_control_fields()
 
         self._game_label = self._child("label_game")
         if self._game_label is None:
@@ -1281,6 +1314,146 @@ class EditorBinding(QObject):
         if book is not None and memorised is not None:
             book.changed.connect(
                 lambda: memorised.set_known(book.known()))
+
+    def _setup_control_fields(self) -> None:
+        """One-time sizing and wiring for the three widgets that now drive
+        `flags_0b8` by hand instead of through the generic field mechanism
+        (`editor/binding.py`'s `NOT_ON_THE_SHEET`, #623)."""
+        control = self._child("control_combo")
+        altered = self._child("abilities_altered_combo")
+        morale = self._child("morale_spin")
+        if control is not None:
+            _size_combo(control)
+            control.currentTextChanged.connect(self._control_changed)
+            control.currentTextChanged.connect(self._edited)
+        if altered is not None:
+            _size_combo(altered)
+        if morale is not None:
+            morale.valueChanged.connect(self._edited)
+
+    def _show_control_fields(self, member) -> None:
+        """Populate-time entry: draw Control from the record, then the one
+        of Morale and Abilities altered that applies."""
+        control = self._child("control_combo")
+        if control is None:
+            return
+        is_npc = member.is_npc
+        control.blockSignals(True)
+        control.setCurrentText(CONTROL_GAME if is_npc else CONTROL_PLAYER)
+        control.blockSignals(False)
+        self._apply_control_state(member, is_npc)
+
+    def _control_changed(self, *_a) -> None:
+        """The Control dropdown itself changed -- redraw Morale and
+        Abilities altered for the newly chosen side immediately, rather than
+        waiting for the row to change or the file to save (#623)."""
+        if self._loading or self.party is None or not 0 <= self.current_row < len(self.party):
+            return
+        member = self.party.member(self.current_row)
+        control = self._child("control_combo")
+        is_npc = control.currentText().strip() == CONTROL_GAME
+        self._apply_control_state(member, is_npc)
+
+    def _apply_control_state(self, member, is_npc: bool) -> None:
+        """Show Morale or Abilities altered for `is_npc`, the *drawn* state --
+        the record's own bit 7 at populate time, or the Control combo's own
+        live text once the player has changed it, and the two can disagree
+        mid-edit.
+
+        Donald's instruction is explicit that a flip must never read one
+        side's low bits as the other's meaning: an ability-altered bit is not
+        a morale value and a morale is not a trainer flag. So the decoded low
+        bits are only ever shown when `is_npc` still matches the record's own
+        bit 7; a flip shows the neutral value the engine's own control-switch
+        writes instead -- 0 for a fresh Morale, "No" for Abilities altered
+        (docs/232-the-c64-control-byte-per-title.md).
+        """
+        morale_label = self._child("label_morale")
+        morale = self._child("morale_spin")
+        altered_label = self._child("label_abilities_altered")
+        altered = self._child("abilities_altered_combo")
+        if morale is None or altered is None:
+            return
+        stored = int(member.record.get("flags_0b8") or 0)
+        same = is_npc == bool(stored & 0x80)
+
+        for w in (morale_label, morale):
+            if w is not None:
+                w.setVisible(is_npc)
+        if is_npc:
+            decoded = 2 * (stored & 0x7F) if same else MORALE_MIN
+            above_range = same and decoded > MORALE_MAX
+            morale.setEnabled(not above_range)
+            morale.setRange(MORALE_MIN, decoded if above_range else MORALE_MAX)
+            morale.setValue(decoded)
+            morale.setToolTip(MORALE_ABOVE_RANGE_TOOLTIP if above_range else "")
+
+        for w in (altered_label, altered):
+            if w is not None:
+                w.setVisible(not is_npc)
+        if not is_npc:
+            confirmed = (member.game is None
+                        or member.game.key == por_games.POOL_OF_RADIANCE.key)
+            altered.blockSignals(True)
+            altered.clear()
+            if confirmed:
+                altered.addItem(ABILITIES_ALTERED_NO)
+                altered.addItem(ABILITIES_ALTERED_YES)
+                value = same and bool(stored & 0x01)
+                altered.setCurrentIndex(1 if value else 0)
+                altered.setToolTip(ABILITIES_ALTERED_TOOLTIP)
+            else:
+                altered.addItem("")
+                altered.setCurrentIndex(0)
+                altered.setToolTip(ABILITIES_ALTERED_UNCONFIRMED_TOOLTIP)
+            altered.setEnabled(False)
+            altered.blockSignals(False)
+
+        self._resize_roster_box()
+
+    def _resize_roster_box(self) -> None:
+        """Re-measure Roster after Morale or Abilities altered toggles.
+
+        `_compact` clamps every box to its own `sizeHint` once, before any
+        party is open and before either row has ever been hidden; a row that
+        appears or disappears afterwards changes what that hint is."""
+        box = self._child("box_roster")
+        if box is None:
+            return
+        box.setMaximumWidth(16777215)
+        box.adjustSize()
+        box.setMaximumWidth(max(box.sizeHint().width(),
+                                box.minimumSizeHint().width()))
+
+    def _flush_control_fields(self, member) -> None:
+        """Copy Control and Morale into `flags_0b8`; Abilities altered is
+        never written back -- it is a read-only display, like the thief-skill
+        boxes.
+
+        Only touches the byte when the Control dropdown itself disagrees with
+        what is already stored, or Morale's own value moved: an unmodified
+        visit must never zero a player character's ability-altered bit or
+        perturb an NPC's morale (#623).
+        """
+        control = self._child("control_combo")
+        morale = self._child("morale_spin")
+        if control is None or morale is None:
+            return
+        record = member.record
+        stored = int(record.get("flags_0b8") or 0)
+        is_npc = control.currentText().strip() == CONTROL_GAME
+        if is_npc == bool(stored & 0x80):
+            if is_npc and morale.isEnabled():
+                byte = 0x80 | ((morale.value() // 2) & 0x7F)
+                if byte != stored:
+                    record.set("flags_0b8", byte)
+            return
+        # The control mode itself changed: the engine's own two writes
+        # (docs/232) -- to game-controlled, `0x80 | (morale / 2)`; to
+        # player-controlled, the whole byte zero, never the old
+        # ability-altered bit.
+        byte = (0x80 | ((morale.value() // 2) & 0x7F)) if is_npc else 0x00
+        record.set("flags_0b8", byte)
 
     def _spellbook_raw(self, record) -> bytes:
         """The whole mask at 0x078, both declared fields of it."""
@@ -2479,6 +2652,7 @@ class EditorBinding(QObject):
             except Exception:
                 _log.exception("could not flush %s", name)
                 failures.append(self._field_label(name))
+        self._flush_control_fields(member)
         self.party.member(row).name = record.name
         return failures
 
@@ -2575,6 +2749,7 @@ class EditorBinding(QObject):
                 if hasattr(w, "codes"):
                     _fit_height(w, fixed=True)
         self._show_boxes(record)
+        self._show_control_fields(member)
         self._describe_spells(record)
         self._show_backstab(member)
         self.items.set_inventory(member.inventory)

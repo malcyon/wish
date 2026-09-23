@@ -228,6 +228,13 @@ NOT_ON_THE_SHEET = (
     # alone -- so a widget would offer a number nobody chose, and changing
     # it would change nothing.
     "identity_pair",
+    # The NPC control byte: bit 7 (control), the low seven bits for an NPC
+    # (morale) and bit 0 for a player character on the titles where it means
+    # anything (abilities altered). Three separate meanings packed into one
+    # byte cannot be one generic field's widget; `editor/window.py`'s
+    # `_show_control_fields` reads and writes it directly through
+    # `control_combo`, `morale_spin` and `abilities_altered_combo` (#623).
+    "flags_0b8",
     "inventory",          # editor/inventory.py edits the item slots
     # The high nine bytes of the spellbook bitmask. Not a field of its own on
     # the sheet: `field_spells_known` reads and writes both halves as one mask,
