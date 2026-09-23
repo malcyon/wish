@@ -6144,13 +6144,12 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                         f"roster block: the derived combat numbers the "
                         f"character record does not hold")
         report.dropped.extend(d for d in one.dropped if d not in report.dropped)
-        # `one.warnings` is `to_c64_record`'s own report and holds nothing but
-        # a ceiling this character's own data hit -- never bookkeeping about
-        # the party as a whole -- so every line here is copied to `losses` as
-        # well as `warnings` (#399).
-        named = [f"{name}: {w}" for w in one.warnings]
-        report.warnings.extend(named)
-        report.losses.extend(named)
+        # `one.losses` is what the C64 writer itself narrowed for this
+        # character -- `Report.lost` and the direct `losses.append` sites in
+        # `goldbox.c64_codec` -- and `one.warnings` is the reader's own notes
+        # about its own source, which stay off `losses` (#619).
+        report.warnings.extend(f"{name}: {w}" for w in one.warnings)
+        report.losses.extend(f"{name}: {w}" for w in one.losses)
 
     at = container.portrait_switch
     faces = bool(party) and all_faced

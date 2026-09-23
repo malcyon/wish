@@ -1854,6 +1854,20 @@ def test_a_slot_written_onto_a_disk_is_offered_by_the_picker():
     assert disk.verify() == []
 
 
+def test_write_por_slot_returns_each_characters_own_losses():
+    """#619: `write_por_slot` used to discard each character's report, so a
+    name truncated on its way to an Amiga disk was named nowhere a caller
+    could read. `WrittenFiles.reports` carries `amiga_por.write_por`'s own
+    report per character, in party order."""
+    disk = save_disk_with("A")
+    written = amiga_savegame.write_por_slot(
+        disk, "B", [sample(name="A" * 20)], savegame=synthetic_savegame())
+    assert len(written.reports) == 1
+    assert written.reports[0].losses == [
+        "Name 'AAAAAAAAAAAAAAAAAAAA' is longer than the DOS 15 characters; "
+        "truncated"]
+
+
 def test_the_slot_list_is_ten_bytes_and_space_padded():
     """`"A         "` is what the shipped disk holds; ten bytes, not one."""
     assert amiga_savegame.slot_list_bytes(["A"]) == b"A         "

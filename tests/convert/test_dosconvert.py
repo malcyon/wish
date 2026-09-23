@@ -1253,6 +1253,54 @@ def test_the_partys_own_bookkeeping_never_reaches_losses():
     assert not any("emptied" in w for w in report.losses)
 
 
+def _one_character_c64_save(char):
+    """`write_c64_save`'s report for a single-character party built from
+    `char`, with no game disks needed."""
+    from goldbox import c64_save
+
+    container = c64_save.POOL_OF_RADIANCE
+    seed = bytes(range(1, container.icon_size + 1))
+    state = world_state.from_c64(bytes(container.payload_size))
+    _p0, _p1, report = dos_codec.new_save_from_neutral(
+        state, [char], [None], seed, bytes(dos_codec.ANIMATE_SIZE))
+    return report
+
+
+def test_a_readers_own_note_reaches_warnings_and_not_losses_through_the_party_save():
+    """#619: `write_c64_save`'s per-character loop used to build both
+    `report.warnings` and `report.losses` off the same `one.warnings` list,
+    so a note the DOS reader left about its own source -- never a value the
+    C64 writer itself narrowed -- reached `losses` too, and a caller reading
+    `losses` alone (`editor.dosimport`, `editor.saveplan`) saw a loss that
+    was not one."""
+    from tools.records import boundarywidths
+
+    char = boundarywidths.base("pool-of-radiance")
+    char.warnings.append("a note the reader made about its own source")
+    report = _one_character_c64_save(char)
+    name = char.get("name")
+    assert f"{name}: a note the reader made about its own source" \
+        in report.warnings
+    assert report.losses == []
+
+
+def test_a_writer_narrowed_inventory_still_reaches_losses_through_the_party_save():
+    """The control for the test above: a real narrowing the C64 writer makes
+    -- more items than the record's own slots -- still reaches `losses`
+    through the same per-character loop."""
+    from tools.records import boundarychars, boundarywidths
+
+    char = boundarywidths.base("pool-of-radiance")
+    ceiling = boundarywidths.ceilings("pool-of-radiance").items
+    item = boundarychars._item()
+    char.set("inventory", [item] * (ceiling + 2), "boundary: one past")
+    report = _one_character_c64_save(char)
+    name = char.get("name")
+    assert report.losses == [
+        f"{name}: inventory: 2 items past the {ceiling} slots the C64 "
+        f"record holds"], report.losses
+
+
 @needs_dos_saves
 def test_a_template_from_another_area_is_retargeted_not_refused():
     """`$FF` in all twenty-five slots, then slot 2 = the `GEO`, slot 8 = the
