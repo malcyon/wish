@@ -668,6 +668,10 @@ def test_a_c64_party_with_a_companion_saves_as_dos(app, tmp_path, disk_name):
         assert (data[offset("icon_head")], data[offset("icon_body")],
                 data[offset("icon_colours"):offset("icon_colours") + 6]) == (
                     want.head, want.body, bytes(want.colours))
+        # Measured on the disks, independent of `default_icon` and the table.
+        assert (data[offset("icon_head")], data[offset("icon_body")],
+                data[offset("icon_colours"):offset("icon_colours") + 6]) == (
+                    5, 0, bytes.fromhex("919191e69191"))
 
 
 # ---------------------------------------------------------------------------

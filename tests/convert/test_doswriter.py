@@ -1089,12 +1089,29 @@ def test_an_all_zero_icon_entry_converts_as_the_seeded_default(tmp_path):
     party = dos_codec.read_party(tmp_path, "A")
     want = parts.dos_icon_from_c64(
         parts.default_icon(), c64_icon_tables(title="pool-of-radiance"))
-    assert (party[0].get("icon_head"), party[0].get("icon_body"),
-            bytes(party[0].get("icon_colours"))) == (
-                want.head, want.body, bytes(want.colours))
+    got = (party[0].get("icon_head"), party[0].get("icon_body"),
+           bytes(party[0].get("icon_colours")))
+    assert got == (want.head, want.body, bytes(want.colours))
+    # Measured on the disks, independent of `default_icon` and the table.
+    assert got == (5, 0, bytes.fromhex("919191e69191"))
     assert not any("figure is not set" in d for d in report.dropped), \
         report.dropped
     assert not any("combat icon" in w for w in report.warnings), report.warnings
+
+
+def test_an_all_zero_icon_entry_under_a_later_title_is_not_seeded(tmp_path):
+    """Only Pool of Radiance is known to seed every slot, so the same zero
+    entry under Curse of the Azure Bonds gives the party no figure."""
+    parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
+    save0, save1 = _fixture_payloads()
+    container = c64_save.container_for("curse-of-the-azure-bonds")
+    poked = bytearray(save0.ljust(container.game.save_size, b"\0"))
+    poked[container.icon(0):container.icon(0) + container.icon_size] = (
+        bytes(container.icon_size))
+    _, icons = dos_codec.c64_party(bytes(poked), None,
+                                   "curse-of-the-azure-bonds",
+                                   icon_parts=parts)
+    assert icons[-1] is None
 
 
 def test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures(

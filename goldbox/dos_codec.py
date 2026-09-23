@@ -7699,10 +7699,12 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
             # reads and writes at exactly this same offset the other way.
             at = container.icon(char_slot.index)
             raw = bytes(save0[at:at + container.icon_size])
-            # The engine seeds every icon slot with the creation default
-            # before any character exists and never writes zeros, so an
-            # all-zero entry is a save an older writer left unset.
-            zero_entry = not any(raw)
+            # An all-zero entry converts as the seeded default, which the
+            # Pool of Radiance engine writes into every icon slot before a
+            # character exists; the later titles are not known to seed it,
+            # so a zero entry there keeps the drop line.
+            zero_entry = (not any(raw)
+                          and c64.key == POOL_OF_RADIANCE.key)
             if zero_entry:
                 raw = icon_parts.default_icon()
             try:
