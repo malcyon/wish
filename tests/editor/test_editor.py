@@ -560,7 +560,7 @@ def test_a_player_character_shows_control_and_abilities_altered(app, tmp_path):
     assert altered.isVisible() and not altered.isEnabled()
     assert altered.currentText() == "Yes"
     assert altered.toolTip() == (
-        "set when this character kept an ability or hit-point change at "
+        "Set when this character kept an ability or hit-point change at "
         "the trainer")
     # An untouched flush must not disturb a bit the player never offered to
     # edit -- the read-only combo is never in `_flush`'s own widget loop.
@@ -607,7 +607,7 @@ def test_abilities_altered_is_empty_and_disabled_on_an_unconfirmed_title(
     altered = w._child("abilities_altered_combo")
     assert altered.isVisible() and not altered.isEnabled()
     assert altered.currentText() == ""
-    assert altered.toolTip() == "not recorded on this title"
+    assert altered.toolTip() == "Not recorded on this title"
 
 
 def test_morale_above_100_is_shown_read_only_not_clamped(app, tmp_path):
@@ -665,6 +665,122 @@ def test_switching_control_to_player_controlled_zeroes_the_byte(app, tmp_path):
     assert altered.isVisible() and altered.currentText() == "No"
     assert w._flush(0) == []
     assert member.record.get("flags_0b8") == 0x00
+
+
+def test_a_typoed_control_value_reverts_instead_of_corrupting_flags_0b8(
+        app, tmp_path):
+    """Before the fix, a stray character typed into the editable Control
+    field -- "Game-Controled" for "Game-controlled" -- matched neither of
+    Donald's own two labels, was read the same as "Player-controlled", and
+    silently zeroed the whole byte on save, wiping this NPC's morale with no
+    error shown (#623 review). The combo must instead revert to whatever it
+    last validly held."""
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
+    w = _shown_editor(save)
+    member = w.party.member(0)
+    member.record.set("flags_0b8", 0xB2)  # an NPC, morale 100
+    w._populate()
+    control = w._child("control_combo")
+    control.setCurrentText("Game-Controled")
+    app.processEvents()
+    assert control.currentText() == "Game-controlled"
+    assert w._flush(0) == []
+    assert member.record.get("flags_0b8") == 0xB2
+
+
+def test_flush_control_fields_refuses_an_unrecognized_value_on_its_own(
+        app, tmp_path):
+    """`_control_changed`'s own revert (the test above) is not the only
+    guard: `_flush_control_fields` must independently refuse a Control value
+    it does not recognise, in case the combo ever ends up holding one some
+    other way, rather than defaulting to "Player-controlled" and wiping the
+    byte (#623 review)."""
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
+    w = _shown_editor(save)
+    member = w.party.member(0)
+    member.record.set("flags_0b8", 0xB2)  # an NPC, morale 100
+    w._populate()
+    control = w._child("control_combo")
+    control.blockSignals(True)
+    control.setCurrentText("Game-Controled")
+    control.blockSignals(False)
+    failures = w._flush(0)
+    assert "Control" in failures
+    assert member.record.get("flags_0b8") == 0xB2
+
+
+def test_a_morale_edit_survives_a_control_flip_away_and_back(app, tmp_path):
+    """Reproduction from the #623 review: open an NPC (morale 100), type a
+    new morale, flip Control to the other choice and back without saving --
+    before the fix, `_apply_control_state` redrew Morale from the stored
+    byte on the way back and the typed value was gone."""
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
+    w = _shown_editor(save)
+    member = w.party.member(0)
+    member.record.set("flags_0b8", 0xB2)  # an NPC, morale 100
+    w._populate()
+    control = w._child("control_combo")
+    morale = w._child("morale_spin")
+    morale.setValue(60)
+    control.setCurrentText("Player-controlled")
+    app.processEvents()
+    control.setCurrentText("Game-controlled")
+    app.processEvents()
+    assert morale.value() == 60
+    assert w._flush(0) == []
+    assert member.record.get("flags_0b8") == (0x80 | 30)
+
+
+def test_a_fresh_flip_to_game_controlled_never_shows_a_previous_rows_morale(
+        app, tmp_path):
+    """`_apply_control_state` only draws Morale's value at populate time now
+    (#623 review); this proves that does not leave the field showing
+    whatever a previously-viewed roster row last put there. Row 0 is an NPC
+    at morale 100; row 1 is a fresh player character switched to
+    Game-controlled for the first time and must read 0, the engine's own
+    neutral value, not 100 left over from row 0."""
+    party = synthetic_save(tmp_path)
+    w = _shown_editor(party)
+    npc = w.party.member(0)
+    npc.record.set("flags_0b8", 0xB2)  # an NPC, morale 100
+    pc = w.party.member(1)
+    pc.record.set("flags_0b8", 0x00)  # a player character
+    w.current_row = 0
+    w._populate()
+    w.current_row = 1
+    w._populate()
+    control = w._child("control_combo")
+    morale = w._child("morale_spin")
+    assert control.currentText() == "Player-controlled"
+    control.setCurrentText("Game-controlled")
+    app.processEvents()
+    assert morale.value() == 0
+
+
+def test_flush_control_fields_exception_is_isolated_like_other_fields(
+        app, tmp_path, monkeypatch):
+    """Every other widget in `_flush`'s own loop degrades an exception to a
+    reported failure instead of crashing the whole save
+    (`try/except Exception: ... failures.append(...)`); before the fix,
+    `_flush_control_fields` was called unguarded after that loop and would
+    have propagated out of `save()` instead (#623 review)."""
+    from editor.window import EditorBinding
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
+    w = _shown_editor(save)
+    member = w.party.member(0)
+    member.record.set("flags_0b8", 0xB2)
+    w._populate()
+
+    def boom(self, member):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(EditorBinding, "_flush_control_fields", boom)
+    failures = w._flush(0)
+    assert "Control" in failures
 
 
 def test_no_sheet_tooltip_shows_an_offset_a_field_name_or_a_grade(app, party):

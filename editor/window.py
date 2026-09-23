@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QCompleter,
     QDialog,
     QFileDialog,
     QFormLayout,
@@ -209,11 +210,11 @@ MORALE_STEP = 2
 ABILITIES_ALTERED_NO = "No"
 ABILITIES_ALTERED_YES = "Yes"
 ABILITIES_ALTERED_TOOLTIP = (
-    "set when this character kept an ability or hit-point change at the "
+    "Set when this character kept an ability or hit-point change at the "
     "trainer")
-ABILITIES_ALTERED_UNCONFIRMED_TOOLTIP = "not recorded on this title"
+ABILITIES_ALTERED_UNCONFIRMED_TOOLTIP = "Not recorded on this title"
 MORALE_ABOVE_RANGE_TOOLTIP = (
-    "stored above the normal 0-100 game range (a companion copied from a "
+    "Stored above the normal 0-100 game range (a companion copied from a "
     "monster record); shown decoded, not editable")
 
 
@@ -1318,12 +1319,26 @@ class EditorBinding(QObject):
     def _setup_control_fields(self) -> None:
         """One-time sizing and wiring for the three widgets that now drive
         `flags_0b8` by hand instead of through the generic field mechanism
-        (`editor/binding.py`'s `NOT_ON_THE_SHEET`, #623)."""
+        (`editor/binding.py`'s `NOT_ON_THE_SHEET`, #623).
+
+        `control_combo` is editable (`wish/window.ui`), so a `QCompleter`
+        offers Donald's own two labels back as the player types rather than
+        leaving the field a blank line to fill in from memory. It only
+        offers, though -- an editable combo still accepts whatever the
+        player finishes typing, so `_control_changed` and
+        `_flush_control_fields` are what actually refuse a value that is
+        neither label (review of #623).
+        """
         control = self._child("control_combo")
         altered = self._child("abilities_altered_combo")
         morale = self._child("morale_spin")
         if control is not None:
             _size_combo(control)
+            completer = QCompleter([CONTROL_PLAYER, CONTROL_GAME], control)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+            control.setCompleter(completer)
+            control.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
             control.currentTextChanged.connect(self._control_changed)
             control.currentTextChanged.connect(self._edited)
         if altered is not None:
@@ -1333,28 +1348,54 @@ class EditorBinding(QObject):
 
     def _show_control_fields(self, member) -> None:
         """Populate-time entry: draw Control from the record, then the one
-        of Morale and Abilities altered that applies."""
+        of Morale and Abilities altered that applies.
+
+        The only place Morale's own value is drawn from the stored byte --
+        `_control_changed` reacting to a later flip of the same combo must
+        not repeat that draw, or it discards whatever the player has typed
+        into Morale since (#623 review)."""
         control = self._child("control_combo")
         if control is None:
             return
         is_npc = member.is_npc
+        text = CONTROL_GAME if is_npc else CONTROL_PLAYER
         control.blockSignals(True)
-        control.setCurrentText(CONTROL_GAME if is_npc else CONTROL_PLAYER)
+        control.setCurrentText(text)
         control.blockSignals(False)
-        self._apply_control_state(member, is_npc)
+        self._control_last_valid = text
+        self._apply_control_state(member, is_npc, populate=True)
 
     def _control_changed(self, *_a) -> None:
         """The Control dropdown itself changed -- redraw Morale and
-        Abilities altered for the newly chosen side immediately, rather than
-        waiting for the row to change or the file to save (#623)."""
+        Abilities altered's *visibility* for the newly chosen side
+        immediately, rather than waiting for the row to change or the file
+        to save (#623).
+
+        The combo is editable, so this also fires for whatever the player
+        finishes typing, not only a selection from the list. A typo like
+        "Game-Controled" matches neither of Donald's own two labels and,
+        left unrejected, was read the same as "Player-controlled" and wiped
+        the whole byte -- including a companion's morale -- on the next
+        save with no error shown (#623 review). An unrecognised value is
+        reverted to whatever the combo last validly held instead of being
+        acted on."""
         if self._loading or self.party is None or not 0 <= self.current_row < len(self.party):
             return
-        member = self.party.member(self.current_row)
         control = self._child("control_combo")
-        is_npc = control.currentText().strip() == CONTROL_GAME
+        text = control.currentText().strip()
+        if text not in (CONTROL_PLAYER, CONTROL_GAME):
+            last = getattr(self, "_control_last_valid", CONTROL_PLAYER)
+            control.blockSignals(True)
+            control.setCurrentText(last)
+            control.blockSignals(False)
+            return
+        self._control_last_valid = text
+        member = self.party.member(self.current_row)
+        is_npc = text == CONTROL_GAME
         self._apply_control_state(member, is_npc)
 
-    def _apply_control_state(self, member, is_npc: bool) -> None:
+    def _apply_control_state(self, member, is_npc: bool, *,
+                              populate: bool = False) -> None:
         """Show Morale or Abilities altered for `is_npc`, the *drawn* state --
         the record's own bit 7 at populate time, or the Control combo's own
         live text once the player has changed it, and the two can disagree
@@ -1367,6 +1408,22 @@ class EditorBinding(QObject):
         bit 7; a flip shows the neutral value the engine's own control-switch
         writes instead -- 0 for a fresh Morale, "No" for Abilities altered
         (docs/232-the-c64-control-byte-per-title.md).
+
+        `populate` is true only for `_show_control_fields`'s one call per
+        character opened, and only then is Morale's own *value*, range and
+        enabled state ever drawn -- once, for whichever side `is_npc` is at
+        that moment (always the record's own, since populate's `is_npc` is
+        `member.is_npc`). A later call, from `_control_changed` reacting to
+        a Control flip, still shows or hides the field for the new side but
+        never touches what is in it: `_control_changed` recomputing this
+        every flip is what silently discarded whatever the player had just
+        typed into Morale, whichever side it happened on (#623 review).
+
+        Populate still initialises Morale even while it starts out hidden --
+        a player character shown fresh gets the neutral baseline `_flush`
+        would otherwise write on a first flip to Game-controlled -- so a
+        Control flip made later in the same visit never surfaces whatever
+        the previous row on the roster last showed there.
         """
         morale_label = self._child("label_morale")
         morale = self._child("morale_spin")
@@ -1380,9 +1437,13 @@ class EditorBinding(QObject):
         for w in (morale_label, morale):
             if w is not None:
                 w.setVisible(is_npc)
-        if is_npc:
-            decoded = 2 * (stored & 0x7F) if same else MORALE_MIN
-            above_range = same and decoded > MORALE_MAX
+        if populate:
+            # `is_npc` is always `member.is_npc` here, so it already matches
+            # the record's own bit 7 -- the low bits decode to morale only
+            # on that side; the other gets the neutral value the engine's
+            # own control-switch writes, never the record's unrelated bits.
+            decoded = 2 * (stored & 0x7F) if is_npc else MORALE_MIN
+            above_range = is_npc and decoded > MORALE_MAX
             morale.setEnabled(not above_range)
             morale.setRange(MORALE_MIN, decoded if above_range else MORALE_MAX)
             morale.setValue(decoded)
@@ -1434,14 +1495,24 @@ class EditorBinding(QObject):
         what is already stored, or Morale's own value moved: an unmodified
         visit must never zero a player character's ability-altered bit or
         perturb an NPC's morale (#623).
+
+        Raises when the combo holds neither of Donald's own two labels --
+        `_control_changed` already reverts a stray typed value on the way in,
+        but this is the second, independent check: whatever reaches here
+        unrecognised must refuse rather than be read as "Player-controlled"
+        and wipe the byte. `_flush`'s caller degrades that to a normal
+        per-field save failure (#623 review).
         """
         control = self._child("control_combo")
         morale = self._child("morale_spin")
         if control is None or morale is None:
             return
+        text = control.currentText().strip()
+        if text not in (CONTROL_PLAYER, CONTROL_GAME):
+            raise ValueError(f"unrecognized Control value {text!r}")
         record = member.record
         stored = int(record.get("flags_0b8") or 0)
-        is_npc = control.currentText().strip() == CONTROL_GAME
+        is_npc = text == CONTROL_GAME
         if is_npc == bool(stored & 0x80):
             if is_npc and morale.isEnabled():
                 byte = 0x80 | ((morale.value() // 2) & 0x7F)
@@ -2652,7 +2723,11 @@ class EditorBinding(QObject):
             except Exception:
                 _log.exception("could not flush %s", name)
                 failures.append(self._field_label(name))
-        self._flush_control_fields(member)
+        try:
+            self._flush_control_fields(member)
+        except Exception:
+            _log.exception("could not flush control fields")
+            failures.append(self._field_label("control"))
         self.party.member(row).name = record.name
         return failures
 
