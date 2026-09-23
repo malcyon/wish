@@ -873,6 +873,48 @@ def written_records(port: str, at: pathlib.Path,
             for member in Party(Source.detect(at, slot=slot)).members]
 
 
+def stored_name(member: Any) -> str:
+    """The name as the member's own port actually stores it.
+
+    `member.record` is always the C64-shaped sheet record, whose `name`
+    field round-trips through `goldbox.petscii.encode_record_name` and folds
+    to capitals -- correct for a C64 member, and wrong for a DOS or Amiga one,
+    whose own bytes the sheet's C64 shape never represents case-faithfully
+    (#638). So a C64 member (`member.native is None`) is read off the sheet
+    record, which `decode_record_name` does not fold, and any other member is
+    read off `member.native`, the port's own object, instead.
+
+    An Amiga Pool of Radiance member's `native` is an `amiga_por.
+    AmigaPorCharacter`, whose own `name` decodes the field directly rather
+    than through the `$FF`-for-space substitution the DOS shape applies
+    (#631), so it goes through `amiga_por.to_dos_character` first, the same
+    reader `dos_codec.write_c64_save` uses.
+    """
+    if member.native is None:
+        return member.record.get("name")
+    if isinstance(member.native, amiga_por.AmigaPorCharacter):
+        return amiga_por.to_dos_character(member.native).name
+    return member.native.name
+
+
+def written_names(port: str, at: pathlib.Path,
+                  slot: "str | None") -> "list[str] | None":
+    """Every character's name a written DOS or Amiga destination actually
+    holds, in `written_records`'s own order.
+
+    `None` for a C64 destination, whose comparison stays literal against the
+    C64's own capitals-only name field -- the verified C64 rule `stored_name`
+    above does not touch.
+    """
+    from .convert import Source
+    from .roster import Party
+
+    if port == "c64":
+        return None
+    return [stored_name(member)
+            for member in Party(Source.detect(at, slot=slot)).members]
+
+
 def _expected_char_class(record: CharacterRecord,
                           destination: "Destination") -> "int | None":
     """The `char_class` a non-native DOS or Amiga destination should hold.
@@ -940,7 +982,8 @@ def _expected_strength_bonus_flag(destination: "Destination") -> "int | None":
 
 
 def _signature(record: CharacterRecord,
-               destination: "Destination | None" = None) -> tuple[str, ...]:
+               destination: "Destination | None" = None,
+               name: "str | None" = None) -> tuple[str, ...]:
     """One character as the comparison sees him: every kept field, in order.
 
     `destination` makes `char_class`, `turn_power` and `strength_bonus_flag`
@@ -948,16 +991,22 @@ def _signature(record: CharacterRecord,
     and `_expected_strength_bonus_flag` -- and is only ever passed for the
     *expected* side of `compare()`; the written side stays literal so a
     genuinely wrong value still shows.
+
+    `name`, when given, replaces the `name` field's value outright -- the
+    name as `stored_name` reads it, rather than the sheet's own C64-folded
+    `record.get("name")` (#638).
     """
     values = []
-    for name in KEPT_FIELDS:
-        value = record.get(name)
-        if destination is not None:
-            if name == "char_class":
+    for field in KEPT_FIELDS:
+        value = record.get(field)
+        if field == "name" and name is not None:
+            value = name
+        elif destination is not None:
+            if field == "char_class":
                 override = _expected_char_class(record, destination)
-            elif name == "turn_power":
+            elif field == "turn_power":
                 override = _expected_turn_power(record, destination)
-            elif name == "strength_bonus_flag":
+            elif field == "strength_bonus_flag":
                 override = _expected_strength_bonus_flag(destination)
             else:
                 override = None
@@ -969,7 +1018,9 @@ def _signature(record: CharacterRecord,
 
 def compare(expected: "list[CharacterRecord]",
             written: "list[CharacterRecord]",
-            destination: "Destination | None" = None) -> list[str]:
+            destination: "Destination | None" = None,
+            expected_names: "list[str] | None" = None,
+            written_names: "list[str] | None" = None) -> list[str]:
     """What the sheet holds and the written destination does not.
 
     **Whole characters are compared, as a multiset of characters.** A
@@ -989,12 +1040,29 @@ def compare(expected: "list[CharacterRecord]",
     (#636), `turn_power` and `strength_bonus_flag` (#637) destination-aware:
     the written side is always compared literally, so a converter that
     genuinely gets one of these values wrong still shows.
+
+    `expected_names` and `written_names`, when both given, replace each
+    record's `name` field with its own list's entry, paired by index --
+    `written_records` and `written_names` build their lists from the same
+    iteration, and so does a caller's `expected` and `expected_names`. The
+    multiset comparison itself is unaffected: each pairing happens before
+    the two sides are sorted, so it only changes what `name` reads as for a
+    given character, never which characters are matched against which
+    (#638).
     """
     if len(expected) != len(written):
         return [f"{len(expected)} character(s) went in and {len(written)} "
                 f"came back out"]
-    want = sorted(_signature(record, destination) for record in expected)
-    got = sorted(_signature(record) for record in written)
+    if expected_names is not None:
+        want = sorted(_signature(record, destination, name)
+                      for record, name in zip(expected, expected_names))
+    else:
+        want = sorted(_signature(record, destination) for record in expected)
+    if written_names is not None:
+        got = sorted(_signature(record, name=name)
+                    for record, name in zip(written, written_names))
+    else:
+        got = sorted(_signature(record) for record in written)
     if want == got:
         return []
     out: list[str] = []
@@ -1363,6 +1431,30 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
                               slot=None if port == "c64" else slot,
                               title=title, native=direction is None)
     expected = [edited_record(member) for member in party.members]
+    expected_names = None
+    if port in ("dos", "amiga"):
+        # The name a DOS or Amiga destination should be read back holding.
+        # Every writer's actual input is the differential rewrite
+        # (`prepare`, above), which copies a byte span into the output only
+        # where the sheet disagrees with what was loaded -- so an untouched
+        # name reaches the destination as the source port's own bytes,
+        # `stored_name`'s reading, whatever the sheet's C64-folded `record.
+        # get("name")` shows for it, and only an actually renamed character
+        # reaches it as that folded value. Comparing the sheet's folded
+        # field either way, as `record.get("name")` alone did before #638,
+        # reports an unedited mixed-case DOS or Amiga name as having arrived
+        # folded to capitals when the true written bytes never were.
+        # `names[sheet]` is the player's own Save As replacement, kept
+        # verbatim rather than through either fold.
+        expected_names = []
+        for member, record in zip(party.members, expected):
+            sheet = record.get("name")
+            if names and sheet in names:
+                expected_names.append(names[sheet])
+            elif sheet != original_record(member).get("name"):
+                expected_names.append(sheet)
+            else:
+                expected_names.append(stored_name(member))
     if names:
         # `compare` reads the written destination back against these
         # records, so a chosen name goes into the copy here or `compare`
@@ -1372,7 +1464,8 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
             old = record.get("name")
             if old in names:
                 record.set("name", names[old])
-    validate(destination, files, expected, accounted=losses(report))
+    validate(destination, files, expected, accounted=losses(report),
+             expected_names=expected_names)
     return SavePlan(source=source, destination=destination, files=files,
                     report=report, assets=assets,
                     key=plan_key(snapshot, port, path, assets),
@@ -1381,7 +1474,8 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
 
 def validate(destination: Destination, files: dict[str, bytes],
              expected: "list[CharacterRecord] | None" = None,
-             accounted: "list[str] | tuple[str, ...]" = ()) -> None:
+             accounted: "list[str] | tuple[str, ...]" = (),
+             expected_names: "list[str] | None" = None) -> None:
     """Open the prepared bytes as a saved game, somewhere else entirely.
 
     Two checks, both before a byte of the player's destination is touched.
@@ -1400,6 +1494,14 @@ def validate(destination: Destination, files: dict[str, bytes],
     the comparison's own findings rather than ahead of them, so one refusal
     names everything this route would cost the player instead of the first
     thing it happened to notice.
+
+    `expected_names`, for a DOS or Amiga destination, is each character's
+    name as the destination actually stores it -- `stored_name`'s reading,
+    not the sheet's own C64-folded field -- read back the same way off the
+    written output and compared against it, so a mixed-case name a DOS or
+    Amiga save can hold as typed is never reported as arriving folded to
+    capitals (#638). A C64 destination ignores it: there, both sides are C64
+    records folded to capitals, which is the verified C64 rule.
 
     **It does not check that the destination holds a party**, and the reason
     is that the editor's own occupancy test is stricter than the save format:
@@ -1427,16 +1529,23 @@ def validate(destination: Destination, files: dict[str, bytes],
                 f"the {destination.port} save this would write cannot be "
                 f"read back: {exc}") from exc
         written = []
+        got_names = None
         if expected is not None:
             try:
                 written = written_records(destination.port, where,
                                           destination.slot)
+                if expected_names is not None and destination.port != "c64":
+                    got_names = written_names(destination.port, where,
+                                              destination.slot)
             except Exception as exc:
                 raise SaveAsError(
                     f"the {destination.port} save this would write cannot be "
                     f"read back: {exc}") from exc
     lost = [*accounted,
-            *(compare(expected, written, destination)
+            *(compare(expected, written, destination,
+                      expected_names=(expected_names
+                                      if destination.port != "c64" else None),
+                      written_names=got_names)
               if expected is not None else [])]
     if lost:
         # The accounting is the evidence for the defect each of these is, so

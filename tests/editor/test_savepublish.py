@@ -606,8 +606,9 @@ def test_a_c64_party_that_does_not_fit_a_dos_save_is_refused(tmp_path):
 
 
 @pytest.mark.parametrize("port", ["dos", "amiga"])
+@pytest.mark.parametrize("chosen", ["RENAMED", "Renamed"])
 def test_a_c64_name_too_long_for_dos_converts_under_the_name_the_player_chose(
-        tmp_path, port):
+        tmp_path, port, chosen):
     """You have a Commodore 64 Pool of Radiance save in which one character
     is called `ABCDEFGHIJKLMNOPQR`, eighteen letters. `File ▸ Save As…`
     refuses the whole party today over that one name, though every other
@@ -616,8 +617,12 @@ def test_a_c64_name_too_long_for_dos_converts_under_the_name_the_player_chose(
     a name that fits the destination and converts the whole party once it
     has one.
 
-    The chosen replacement, `RENAMED`, is deliberately not a cut of the old
-    name, so this cannot pass by truncating instead of asking.
+    `chosen`, `RENAMED` or `Renamed`, is deliberately not a cut of the old
+    name, so this cannot pass by truncating instead of asking. The mixed-case
+    `Renamed` pins #638's guard: `stored_name` has to read the destination's
+    own bytes rather than the sheet's C64-folded record, or a chosen name a
+    DOS or Amiga save can hold as typed reports as arriving folded to
+    capitals and refuses.
 
     Skips where this machine's registry has no Pool of Radiance C64 save
     disks or DOS game folder, or, for the Amiga destination, no Amiga Pool
@@ -650,7 +655,7 @@ def test_a_c64_name_too_long_for_dos_converts_under_the_name_the_player_chose(
     assert not out.exists()
 
     plan = saveplan.prepare_save_as(party, port, out, assets,
-                                    names={long_name: "RENAMED"})
+                                    names={long_name: chosen})
     assert plan.report.losses == []
     published = saveplan.publish(plan, party, assets=assets,
                                  backups=tmp_path / "backups")
@@ -658,13 +663,85 @@ def test_a_c64_name_too_long_for_dos_converts_under_the_name_the_player_chose(
     written = Party(convert.Source.detect(out, slot=published.destination.slot))
     assert "RENAMED" in {member.record.get("name")
                          for member in written.members}
+    assert chosen in {saveplan.stored_name(m) for m in written.members}
 
     expected = [saveplan.edited_record(member) for member in party.members]
     for record in expected:
         if record.get("name") == long_name:
-            record.set("name", "RENAMED")
+            record.set("name", chosen)
     assert saveplan.compare(
         expected, [member.record for member in written.members]) == []
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_lower_case_c64_name_saves_as_dos_and_amiga_with_its_spelling(
+        tmp_path, port):
+    """You have a Commodore 64 Secret of the Silver Blades party in which
+    Guy de Valois's name is spelled in mixed case -- Wish's own DOS-to-C64
+    conversion wrote it that way before #290 folded that direction to
+    capitals, and the C64 game has since saved the party again with the
+    mixed-case bytes intact. `File ▸ Save As…` to DOS or the Amiga writes
+    `Guy de Valois` exactly, as SSI's own DOS pregen and Amiga save do, but
+    before this fix the read-back guard rebuilds the written destination's
+    name through the sheet's C64-shaped record, which folds every name to
+    capitals regardless of port -- so it refuses the whole party on `name:
+    'Guy de Valois' arrived as 'GUY DE VALOIS'`, though the bytes just
+    written are exactly right.
+
+    Skips where this machine has no `WISH-SPEC-ssb-52-dialog-converted-
+    resave` specimen (`tools/registry/specimens.py`), no Secret of the
+    Silver Blades C64 disks (`automap/gamedisks.py`), or, per destination, no
+    DOS archive (`$FR_ARCHIVES`) or no Amiga game disk to stage against.
+    """
+    from support.doslatertitles import _c64_disk
+
+    from tools.convert import convertdrops
+    from tools.dos import dosbox
+
+    disk = _c64_disk("ssb-52-dialog-converted-resave")
+    files_for = _registry_game_files(SILVER_BLADES.key)
+    if files_for is None:
+        pytest.skip("needs the Secret of the Silver Blades C64 disks")
+    if port == "dos":
+        try:
+            game_dir = dosbox.find_game("SECRET")
+        except FileNotFoundError:
+            pytest.skip("needs the DOS Secret of the Silver Blades archive "
+                       "($FR_ARCHIVES)")
+        assets = saveplan.Assets(dos_folder=game_dir, source_files=files_for)
+        out = tmp_path / "copy"
+    else:
+        amiga_disk = convertdrops.amiga_game_disks(tmp_path).get(
+            SILVER_BLADES.key)
+        if amiga_disk is None:
+            pytest.skip("needs an Amiga game disk")
+        assets = saveplan.Assets(amiga_disk=amiga_disk, source_files=files_for)
+        out = tmp_path / "copy.adf"
+
+    party = Party(str(disk))
+    party.members[0].record.set_raw(
+        "name", b"Guy de Valois".ljust(NAME_SIZE, b"\x00"))
+
+    plan = saveplan.prepare_save_as(party, port, out, assets)
+    assert saveplan.losses(plan.report) == []
+    published = saveplan.publish(plan, party, assets=assets,
+                                 backups=tmp_path / "backups")
+
+    written = Party(convert.Source.detect(out, slot=published.destination.slot))
+    assert "Guy de Valois" in {saveplan.stored_name(m)
+                               for m in written.members}
+
+    # The guard was pointed at the destination's own stored name, not
+    # removed: a written destination that genuinely came back folded still
+    # has to be refused.
+    lost = saveplan.compare(
+        [saveplan.edited_record(m) for m in party.members],
+        [m.record for m in written.members],
+        published.destination,
+        expected_names=[saveplan.stored_name(m) for m in party.members],
+        written_names=[saveplan.stored_name(m).upper()
+                       for m in written.members])
+    assert any(line.startswith("name:") for line in lost)
 
 
 def _curse_game_dir():
