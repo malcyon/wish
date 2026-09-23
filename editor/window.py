@@ -1325,9 +1325,12 @@ class EditorBinding(QObject):
         offers Donald's own two labels back as the player types rather than
         leaving the field a blank line to fill in from memory. It only
         offers, though -- an editable combo still accepts whatever the
-        player finishes typing, so `_control_changed` and
-        `_flush_control_fields` are what actually refuse a value that is
-        neither label (review of #623).
+        player finishes typing, so `_control_committed` (once they finish,
+        on the line edit's `editingFinished`) and `_flush_control_fields`
+        are what actually refuse a value that is neither label (review of
+        #623). `_control_changed` must not do that refusing itself -- Qt
+        fires it on every keystroke, and rejecting a value there rejects
+        each partial keystroke before the player can finish typing.
         """
         control = self._child("control_combo")
         altered = self._child("abilities_altered_combo")
@@ -1341,6 +1344,9 @@ class EditorBinding(QObject):
             control.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
             control.currentTextChanged.connect(self._control_changed)
             control.currentTextChanged.connect(self._edited)
+            if control.lineEdit() is not None:
+                control.lineEdit().editingFinished.connect(
+                    self._control_committed)
         if altered is not None:
             _size_combo(altered)
         if morale is not None:
@@ -1371,28 +1377,51 @@ class EditorBinding(QObject):
         immediately, rather than waiting for the row to change or the file
         to save (#623).
 
-        The combo is editable, so this also fires for whatever the player
-        finishes typing, not only a selection from the list. A typo like
-        "Game-Controled" matches neither of Donald's own two labels and,
-        left unrejected, was read the same as "Player-controlled" and wiped
-        the whole byte -- including a companion's morale -- on the next
-        save with no error shown (#623 review). An unrecognised value is
-        reverted to whatever the combo last validly held instead of being
-        acted on."""
+        The combo is editable, and Qt fires `currentTextChanged` on every
+        keystroke while the player is still typing, not only once they
+        finish -- so this must never reject or revert what is here. Doing
+        that here used to discard each keystroke the instant it landed
+        (typing "G" alone was immediately reverted), making the field
+        Donald's own docstring on `_setup_control_fields` promises can be
+        typed into actually impossible to type into by hand (#623 review,
+        keystroke-loss finding). Validating and reverting an unrecognised
+        value now happens once, on commit -- `_control_committed`, wired to
+        the line edit's own `editingFinished` -- so this only ever acts on
+        a string that already matches one of Donald's own two labels."""
         if self._loading or self.party is None or not 0 <= self.current_row < len(self.party):
             return
         control = self._child("control_combo")
         text = control.currentText().strip()
         if text not in (CONTROL_PLAYER, CONTROL_GAME):
-            last = getattr(self, "_control_last_valid", CONTROL_PLAYER)
-            control.blockSignals(True)
-            control.setCurrentText(last)
-            control.blockSignals(False)
             return
         self._control_last_valid = text
         member = self.party.member(self.current_row)
         is_npc = text == CONTROL_GAME
         self._apply_control_state(member, is_npc)
+
+    def _control_committed(self) -> None:
+        """The player has finished editing Control -- its line edit's own
+        `editingFinished` (Enter, or focus leaving the field) -- not every
+        keystroke along the way (#623 review, keystroke-loss finding: see
+        `_control_changed`). A typo like "Game-Controled" matches neither of
+        Donald's own two labels and, left unrejected, was read the same as
+        "Player-controlled" and wiped the whole byte -- including a
+        companion's morale -- on the next save with no error shown (#623
+        review). An unrecognised value is reverted to whatever the combo
+        last validly held; `_flush_control_fields`'s own independent check
+        is the backstop regardless of what happens here."""
+        if self._loading or self.party is None or not 0 <= self.current_row < len(self.party):
+            return
+        control = self._child("control_combo")
+        if control is None:
+            return
+        text = control.currentText().strip()
+        if text in (CONTROL_PLAYER, CONTROL_GAME):
+            return
+        last = getattr(self, "_control_last_valid", CONTROL_PLAYER)
+        control.blockSignals(True)
+        control.setCurrentText(last)
+        control.blockSignals(False)
 
     def _apply_control_state(self, member, is_npc: bool, *,
                               populate: bool = False) -> None:

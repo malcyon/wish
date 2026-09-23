@@ -674,7 +674,12 @@ def test_a_typoed_control_value_reverts_instead_of_corrupting_flags_0b8(
     Donald's own two labels, was read the same as "Player-controlled", and
     silently zeroed the whole byte on save, wiping this NPC's morale with no
     error shown (#623 review). The combo must instead revert to whatever it
-    last validly held."""
+    last validly held, once the player finishes editing -- the line edit's
+    own `editingFinished`, not the `currentTextChanged` that fires on every
+    keystroke along the way (#623 review, keystroke-loss finding)."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
     from goldbox import c64_port
     save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
     w = _shown_editor(save)
@@ -684,14 +689,52 @@ def test_a_typoed_control_value_reverts_instead_of_corrupting_flags_0b8(
     control = w._child("control_combo")
     control.setCurrentText("Game-Controled")
     app.processEvents()
+    QTest.keyClick(control.lineEdit(), Qt.Key.Key_Return)
+    app.processEvents()
     assert control.currentText() == "Game-controlled"
     assert w._flush(0) == []
     assert member.record.get("flags_0b8") == 0xB2
 
 
+def test_typing_into_control_letter_by_letter_reaches_the_end_intact(
+        app, tmp_path):
+    """Review of #623: `_control_changed` used to fire its reject-and-revert
+    check on every `currentTextChanged` Qt emits while the player is still
+    typing, not only once they finish -- so a player typing "Game-controlled"
+    by hand into the field had each partial string (starting with a lone
+    "G") rejected and reverted before the next keystroke could land, and the
+    field could never actually be typed into despite `_setup_control_fields`'s
+    own docstring promising the player can type into it. `QTest.keyClicks`
+    drives the real widget's key events, unlike `setCurrentText` above, which
+    is why every other test in this file missed it."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
+    from goldbox import c64_port
+    save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
+    w = _shown_editor(save)
+    member = w.party.member(0)
+    member.record.set("flags_0b8", 0x00)  # a player character
+    w._populate()
+    control = w._child("control_combo")
+    assert control.currentText() == "Player-controlled"
+    line_edit = control.lineEdit()
+    line_edit.setFocus()
+    line_edit.selectAll()
+    QTest.keyClicks(line_edit, "Game-controlled")
+    app.processEvents()
+    assert line_edit.text() == "Game-controlled", (
+        "a keystroke must not be rejected and reverted before the next "
+        "one lands")
+    QTest.keyClick(line_edit, Qt.Key.Key_Return)
+    app.processEvents()
+    assert control.currentText() == "Game-controlled"
+    assert w._flush(0) == []
+
+
 def test_flush_control_fields_refuses_an_unrecognized_value_on_its_own(
         app, tmp_path):
-    """`_control_changed`'s own revert (the test above) is not the only
+    """`_control_committed`'s own revert (the test above) is not the only
     guard: `_flush_control_fields` must independently refuse a Control value
     it does not recognise, in case the combo ever ends up holding one some
     other way, rather than defaulting to "Player-controlled" and wiping the
