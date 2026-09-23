@@ -106,10 +106,10 @@ class WorldState:
     #: already does for the C64 side.
     travel: "tuple[int, int]"
     #: Has this party pressed `BEGIN ADVENTURING` at all?  False for a save
-    #: made from the party-formation menu, whose `area`, `geo`, `x`, `y` and
-    #: `facing` above are already the party's arrival square rather than the
-    #: initialiser's world state, substituted the way the game's own first
-    #: step would place it (`#301`, `#326`).
+    #: made from the party-formation menu.  `from_c64` leaves its `area` and
+    #: square as read (raw area 0); `from_dos` substitutes the arrival square
+    #: the game's own first step would give it.  Writers do not look at the
+    #: area: they ask `has_not_set_out`.
     set_out: bool
     #: The later titles' own copied header words, by address: `+$E7`-`+$E9`
     #: and `+$FD`-`+$FE` off `$4900` (`c64_save.Container.copied`,
@@ -252,7 +252,8 @@ def has_not_set_out(state: "WorldState") -> bool:
     """Whether a Curse or Silver Blades party is still in the placeless state
     before `BEGIN ADVENTURING`."""
     return (not state.set_out
-            and is_pre_adventure_area(state.title, state.area))
+            and state.title in (areas.CURSE_OF_THE_AZURE_BONDS,
+                                areas.SECRET_OF_THE_SILVER_BLADES))
 
 
 def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:

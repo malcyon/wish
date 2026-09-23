@@ -1060,7 +1060,7 @@ def amiga_needs_game_disk(shape: dos_port.DosDeltas,
 
     Pool of Radiance stages the area's own `ecl.dax` and Curse of the Azure
     Bonds its `ECL.GLB`; Secret of the Silver Blades stages neither and needs
-    no disk at all. A Curse party from a C64 `source` that has not set out
+    no disk at all. A Curse party from a C64 or DOS `source` that has not set out
     stages no script either. `editor.saveplan.requirements` asks this rather
     than demanding a disk for every Amiga destination alike.
     """
@@ -1072,6 +1072,16 @@ def amiga_needs_game_disk(shape: dos_port.DosDeltas,
         state = world_state.from_c64(
             source.save0, game=c64_port.by_key(shape.key),
             source=str(source.path))
+        return not world_state.has_not_set_out(state)
+    if (shape is dos_port.CURSE_OF_THE_AZURE_BONDS
+            and source is not None and source.port == "dos"
+            and source.slot):
+        container = dos_savegame.container_for(shape.key)
+        with source.folder() as folder:
+            savgam = (pathlib.Path(folder)
+                      / f"SAVGAM{source.slot}{container.suffix}").read_bytes()
+        state = world_state.from_dos(savgam, container,
+                                     source=str(source.path))
         return not world_state.has_not_set_out(state)
     return True
 

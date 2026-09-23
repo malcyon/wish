@@ -7321,6 +7321,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
         where = None
         dax = PRE_ADVENTURE_DISK[game.key]
         geo = 0
+        area = 0
         x, y, facing = PRE_ADVENTURE_SQUARE
         indoors = True
         script = bytes(dos_savegame.ECL_HEADER) if shape.script_buffer else None

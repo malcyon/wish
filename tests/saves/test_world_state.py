@@ -160,7 +160,7 @@ def test_a_party_that_has_never_set_out_is_placed_at_the_start_of_the_story():
     (areas.CURSE_OF_THE_AZURE_BONDS, 0, False, True),
     (areas.SECRET_OF_THE_SILVER_BLADES, 0, False, True),
     (areas.CURSE_OF_THE_AZURE_BONDS, 0, True, False),
-    (areas.CURSE_OF_THE_AZURE_BONDS, 1, False, False),
+    (areas.CURSE_OF_THE_AZURE_BONDS, 1, False, True),
     (areas.POOL_OF_RADIANCE, 0, False, False),
 ])
 def test_has_not_set_out_is_the_placeless_state_of_the_two_later_titles(
@@ -168,6 +168,24 @@ def test_has_not_set_out_is_the_placeless_state_of_the_two_later_titles(
     state = dataclasses.replace(world_state.from_dos(_fresh_savgam()),
                                 title=title, area=area, set_out=set_out)
     assert world_state.has_not_set_out(state) is expected
+
+
+def test_has_not_set_out_ignores_the_area_a_reader_substituted():
+    """`from_dos` moves a Silver Blades party from the party menu to area 0x10,
+    and `from_c64` leaves a Curse one at raw area 0; both are still parties
+    that have not set out.  Pool of Radiance's and a later state are not."""
+    shape = dos_savegame.SAVE_SECRET_OF_THE_SILVER_BLADES
+    savgam = bytearray(shape.size)
+    dos_savegame.put_word(savgam, dos_savegame.INDOORS, 1, shape)
+    dos_savegame.put_position(savgam, 7, 13, 0, shape)
+    state = world_state.from_dos(bytes(savgam), shape)
+    assert state.area == 0x10
+    assert world_state.has_not_set_out(state)
+
+    assert not world_state.has_not_set_out(
+        world_state.from_dos(_fresh_savgam()))
+    assert not world_state.has_not_set_out(
+        dataclasses.replace(state, set_out=True))
 
 
 def test_a_party_standing_in_the_world_is_left_where_it_is():

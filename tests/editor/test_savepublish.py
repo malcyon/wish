@@ -1914,3 +1914,19 @@ def test_the_silver_blades_dos_to_amiga_conversion_loses_nothing(tmp_path):
     assert saveplan.losses(plan.report) == []
     assert len(party.members) == 2
     assert plan.destination.title.key == SILVER_BLADES.key
+
+
+def test_a_dos_curse_party_not_yet_set_out_asks_for_no_amiga_game_disk(tmp_path):
+    """The DOS party-menu save converts to an Amiga save with no `ECL.GLB`, so
+    the dialog asks for no disk 2 either."""
+    import shutil
+
+    from support.dossave import _game_dirs
+    saves = _game_dirs().get("CURSE")
+    if saves is None or not (saves / "SAVGAMA.DAT").is_file():
+        pytest.skip("needs the archives' shipped Curse saves")
+    folder = tmp_path / "Saves"
+    shutil.copytree(saves, folder)
+    source = convert.Source.detect(folder)
+    assert source.port == "dos"
+    assert saveplan.requirements(source, "amiga") == ()

@@ -318,3 +318,82 @@ def test_a_party_saved_before_begin_adventuring_converts_to_the_shipped_form(key
     else:
         shipped = _shipped_amiga_silver_blades()
         assert built[:shape.party_at] == shipped[:shape.party_at]
+
+
+def _dos_saves_folder(stem: str) -> pathlib.Path:
+    from support.dossave import _game_dirs
+    folder = _game_dirs().get(stem)
+    if folder is None or not (folder / "SAVGAMA.DAT").is_file():
+        pytest.skip("needs the archives' shipped saves")
+    return folder
+
+
+@pytest.mark.parametrize("key", sorted(PRE_ADVENTURE))
+def test_a_dos_party_saved_before_begin_adventuring_converts_to_the_amiga_pre_adventure_form(key):
+    """A DOS save from the party menu reads back at the title's arrival square,
+    and the Amiga writer still emits the initialiser's form: Silver Blades'
+    header equals the shipped Amiga pre-adventure save's, and Curse's, with
+    the word swap undone, equals the DOS array with a zero script region."""
+    from goldbox import dos_codec, world_state
+    stem = PRE_ADVENTURE[key][2]
+    folder = _dos_saves_folder(stem)
+    shape = amiga_savegame.container_for(key)
+    container = dos_savegame.container_for(key)
+    dos = (folder / f"SAVGAMA{container.suffix}").read_bytes()
+    party = [dos_codec.to_neutral(c) for c in dos_codec.read_party(folder, "A")]
+    state = world_state.from_dos(dos, container)
+    assert state.set_out is False
+
+    built, report = amiga_savegame.new_savegame(state, party, "A")
+
+    assert report.unwritten == []
+    assert amiga_savegame.parse(built, shape).count == len(party) == 6
+    if shape is amiga_savegame.CURSE:
+        vm_end = 1 + amiga_savegame.VM_BYTES
+        assert _unswapped(built) == dos[:vm_end]
+        assert built[vm_end:shape.square_at] == dos[vm_end:shape.square_at]
+        assert not any(built[shape.ecl_at:shape.square_at])
+    else:
+        shipped = _shipped_amiga_silver_blades()
+        assert built[:shape.party_at] == shipped[:shape.party_at]
+
+
+@pytest.mark.parametrize("key", sorted(PRE_ADVENTURE))
+def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_dos_pre_adventure_form(
+        key, tmp_path):
+    """The Amiga reader hands the writer the arrival square, and the DOS save
+    is still the party menu's own: its bytes up to the party table equal the
+    archives' shipped pre-adventure save."""
+    from goldbox import amiga_later, c64_port, dos_codec, world_state
+    from goldbox.iconparts import amiga_combat_icon
+    from tools.dos import dosbox
+    stem = PRE_ADVENTURE[key][2]
+    folder = _dos_saves_folder(stem)
+    try:
+        game_dir = dosbox.find_game(stem)
+    except FileNotFoundError:
+        pytest.skip(f"needs the DOS {stem} archives")
+    container = dos_savegame.container_for(key)
+    shape = amiga_savegame.container_for(key)
+    if shape is amiga_savegame.CURSE:
+        game = c64_port.by_key(key)
+        save0 = _c64_pre_adventure(key)
+        characters, _icons = dos_codec.c64_party(save0, None, game)
+        data, _report = amiga_savegame.new_savegame(
+            world_state.from_c64(save0, game=game), characters, "A")
+    else:
+        data = _shipped_amiga_silver_blades()
+    save = amiga_savegame.parse(data, shape)
+    state = amiga_savegame.state_from_savegame(save)
+    party = list(save.characters)
+    neutral = [amiga_later.to_neutral_later(c) for c in party]
+
+    report = dos_codec.new_dos_save_from(
+        state, neutral, tmp_path, "A", game_dir,
+        icons=[amiga_combat_icon(c) for c in party])
+
+    shipped = (folder / f"SAVGAMA{container.suffix}").read_bytes()
+    written = (tmp_path / f"SAVGAMA{container.suffix}").read_bytes()
+    assert report.unwritten == []
+    assert written[:container.party_table] == shipped[:container.party_table]
+    assert len(dos_codec.read_party(tmp_path, "A")) == len(party) == 6
