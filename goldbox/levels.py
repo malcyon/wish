@@ -144,6 +144,14 @@ below implements it:
 > the best number in each column across every class it holds, less the AD&D
 > constitution bonus when the character is a dwarf, gnome or halfling.
 
+Curse and Silver Blades read one class differently: fighter, paladin and
+ranger fold into a single fighter row at the best of those three levels
+*before* that column-wise best is taken, and only once the best across all
+the character's classes is settled does a paladin's -2 come off it
+(`$0F01`/`$11C0`). A paladin who holds no other class gets the same answer
+either way, which is why `paladin_save_after_best` exists as a per-title flag
+rather than a change to the rule above.
+
 **"Every class it holds" is every slot of the array at `0x0C9` with a level in
 it**, and `$1F57 BEQ $1F9B` is where the engine says so: a slot holding zero is
 skipped, not read as a level-1 class. It is also the level array rather than
@@ -1118,6 +1126,15 @@ class LevelTables:
     #: would not store. Pools of Darkness' `GAME.OVR:0x0387B0` is the case:
     #: see `POOLS_OF_DARKNESS`.
     saving_throw_rule_read: bool = True
+    #: Whether the paladin's -2 comes off the best row across *all* the
+    #: character's classes, rather than off a paladin row of its own. Curse's
+    #: `GEN $0E5E` folds fighter, paladin and ranger into one fighter row at
+    #: the best of those three levels, takes the best of that row and every
+    #: other class the character holds, and only then runs `JSR $0F01`
+    #: (`LDA $7CCF / BEQ / SBC #$02`, floored at 0) if the character is a
+    #: paladin. Silver Blades does the same at `$10A2`/`$11C0`. Both set this
+    #: True (`#633`); Pool of Radiance has no paladin and leaves it False.
+    paladin_save_after_best: bool = False
 
     def divide_rounds_up(self, remainder: int, roll: int) -> bool:
         """Whether a divided hit-die or constitution total's leftover point
@@ -1447,12 +1464,47 @@ class LevelTables:
         could not compute would be worse than leaving the stored one alone.
         A title whose `saving_throw_rule_read` is False answers None for the
         same reason, whatever the levels.
+
+        Where `paladin_save_after_best` is set, fighter, paladin and ranger
+        are folded into one fighter row at the best of those three levels
+        before the column-wise best is taken across classes, and the
+        paladin's -2 is subtracted from that best afterwards -- see the
+        field's own docstring. Pool of Radiance leaves the flag False and
+        this method behaves exactly as it always has.
         """
         if not self.saving_throw_rule_read:
             return None
+        levels = {name: int(level) for name, level in dict(class_levels).items()
+                  if int(level)}
+        if not levels:
+            return None
+        if self.paladin_save_after_best:
+            fighter_group = ("fighter", "paladin", "ranger")
+            group_level = max((levels[name] for name in fighter_group
+                               if name in levels), default=0)
+            rows = []
+            if group_level:
+                row = self.at_level("fighter", group_level)
+                if row is not None:
+                    rows.append(row.saves)
+            rows += [row.saves for row in
+                     (self.at_level(name, level)
+                      for name, level in levels.items()
+                      if name not in fighter_group)
+                     if row is not None]
+            if not rows:
+                return None
+            best = [min(row[column] for row in rows) for column in range(5)]
+            if levels.get("paladin"):
+                best = [max(0, v - 2) for v in best]
+            if race in self.sturdy_races:
+                bonus = constitution_save_bonus(constitution)
+                for column in self.constitution_save_columns:
+                    best[column] = max(0, best[column] - bonus)
+            return tuple(best)
         rows = [row.saves for row in
-                (self.at_level(name, int(level))
-                 for name, level in dict(class_levels).items() if int(level))
+                (self.at_level(name, level)
+                 for name, level in levels.items())
                 if row is not None]
         if not rows:
             return None
@@ -1557,6 +1609,7 @@ CURSE_OF_THE_AZURE_BONDS = LevelTables(
                       ("paladin", 1400001), ("ranger", 975001)),
     dos_thac0=_DOS_THAC0_CURSE,
     dos_thac0_level0=_DOS_THAC0_LEVEL0_CURSE,
+    paladin_save_after_best=True,   # `GEN $0E5E`/`$0F01`
 )
 
 #: `DS:0x4C0C`, 7 rows of 19 -- no monk -- transcribed from
@@ -1635,6 +1688,7 @@ SECRET_OF_THE_SILVER_BLADES = LevelTables(
     stores_spell_capacity=False,
     dos_thac0=_DOS_THAC0_SSB,
     dos_thac0_level0=_DOS_THAC0_LEVEL0_SSB,
+    paladin_save_after_best=True,   # `$10A2`/`$11C0`
 )
 
 # --- Pools of Darkness --------------------------------------------------------

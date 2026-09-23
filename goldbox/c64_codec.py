@@ -846,43 +846,6 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rec.set("treasure_share", int(share.value) & 0xFF)
         emit(share, "treasure_share", 0x0FA, 1)
 
-    # -- saving throws: overwrite `DIRECT`'s plain-row copy for a sturdy race
-    # -----------------------------------------------------------------------
-    # DOS and Amiga store the plain class row and apply the constitution
-    # bonus at the moment a save is rolled; the C64 subtracts the bonus into
-    # the five stored bytes instead (`GEN $2359`,
-    # `goldbox.levels.constitution_save_bonus`).  Left as `DIRECT` copied it,
-    # a converted dwarf, gnome or halfling saves worse than the C64 itself
-    # would have made him (#311).  `w.get`, not `use`: the levels, race and
-    # constitution feeding this were already taken above, and a second `use`
-    # would report them dropped a second time.
-    #
-    # **Only where the racial bonus has been confirmed in the game.**  Pool
-    # of Radiance's whole trainer is measured, and Curse's five saving
-    # throws agreed with the engine on five driven level-ups (#18).  Silver
-    # Blades' constitution inputs are unread, so recomputing there would
-    # write a guess over the row the source actually held -- and a wrong
-    # saving throw looks exactly like a right one on a character sheet
-    # (#344).  Not `trainer_measured`, which asks a broader question and
-    # does not yet hold Curse for reasons that are #18's rather than this
-    # writer's.
-    computed_saves = None
-    if level_tables.racial_save_bonus_measured(char.game):
-        computed_saves = level_tables.saving_throws(
-            w.get("levels", {}), w.get("race", 0), w.get("constitution", 0),
-            char.game)
-    if computed_saves is not None:
-        for column, (field, c64_name) in enumerate(_SAVE_COLUMNS):
-            if not rec.is_stored(c64_name):
-                continue
-            dst = _field(c64_name)
-            rec.set(c64_name, computed_saves[column])
-            rep.note(dst.offset, dst.size,
-                     f"{c64_name}: the class row less the constitution "
-                     f"bonus on the columns it reaches, the way the C64's "
-                     f"own trainer stores it -- {port} keeps the plain row "
-                     f"and applies the bonus when the die is rolled")
-
     # -- thief skills: overwrite DIRECT's plain-row copy for a title whose
     # C64 table is confirmed to differ from the source's, or whose DOS
     # engine is confirmed to store a number no table produces -------------
@@ -1178,6 +1141,47 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                          f"since the new class's level ({current_level}) "
                          f"{'has' if regained else 'has not'} passed the "
                          f"{level} {name_} was left at (GEN $20A3, PROBABLE)")
+
+    # -- saving throws: overwrite `DIRECT`'s plain-row copy for a sturdy race
+    # -----------------------------------------------------------------------
+    # DOS and Amiga store the plain class row and apply the constitution
+    # bonus at the moment a save is rolled; the C64 subtracts the bonus into
+    # the five stored bytes instead (`GEN $2359`,
+    # `goldbox.levels.constitution_save_bonus`).  Left as `DIRECT` copied it,
+    # a converted dwarf, gnome or halfling saves worse than the C64 itself
+    # would have made him (#311).
+    #
+    # Read after the dual-class block, from the record's own level slots
+    # rather than `w.get("levels", {})`: a class the dual-class block has
+    # just restored into its C64 slot (`regained`, above) counts here exactly
+    # as `$7CCF` counts it on the C64 itself, where the old rule read the
+    # neutral levels before that restoration and so never saw it (#633).
+    #
+    # **Only where the racial bonus has been confirmed in the game.**  Pool
+    # of Radiance's whole trainer is measured, and Curse's five saving
+    # throws agreed with the engine on five driven level-ups (#18).  Silver
+    # Blades' constitution inputs are unread, so recomputing there would
+    # write a guess over the row the source actually held -- and a wrong
+    # saving throw looks exactly like a right one on a character sheet
+    # (#344).  Not `trainer_measured`, which asks a broader question and
+    # does not yet hold Curse for reasons that are #18's rather than this
+    # writer's.
+    computed_saves = None
+    if level_tables.racial_save_bonus_measured(char.game):
+        computed_saves = level_tables.saving_throws(
+            {name: rec.get(field) for name, field in LEVEL_FIELDS.items()},
+            w.get("race", 0), w.get("constitution", 0), char.game)
+    if computed_saves is not None:
+        for column, (field, c64_name) in enumerate(_SAVE_COLUMNS):
+            if not rec.is_stored(c64_name):
+                continue
+            dst = _field(c64_name)
+            rec.set(c64_name, computed_saves[column])
+            rep.note(dst.offset, dst.size,
+                     f"{c64_name}: the class row less the constitution "
+                     f"bonus on the columns it reaches, the way the C64's "
+                     f"own trainer stores it -- {port} keeps the plain row "
+                     f"and applies the bonus when the die is rolled")
 
     # -- size ----------------------------------------------------------------
     size = use("size_small")

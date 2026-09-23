@@ -16,14 +16,17 @@ import gamedata
 import pytest
 from support.cursetables import _cleric_grant_table
 
-from goldbox import levels, levelup, spells
+from goldbox import c64_codec, dos_codec, levels, levelup, spells
+from goldbox.d64 import D64
 from goldbox.record import CharacterRecord
+from goldbox.savegame import load_save
 from tools.c64 import laterthac0
 
 GEN_BASE = 0x0800
 
 POOL = levels.POOL_OF_RADIANCE
 CURSE = levels.CURSE_OF_THE_AZURE_BONDS
+SSB = levels.SECRET_OF_THE_SILVER_BLADES
 
 #: Pool of Radiance: class caps, racial limits, THAC0 (`X = class * 9 + level`
 #: off a base whose entry 0 is the `RTS` above it), and the spell-slot rows.
@@ -208,6 +211,110 @@ def _curse_records():
     if not out:
         pytest.skip("no Curse character records on the disks here")
     return out
+
+
+# --- a dual-classed paladin's saves (#633) -----------------------------------
+# Curse and Silver Blades fold fighter, paladin and ranger into one fighter
+# row at the best of those three levels, take the column-wise best of that
+# row and every other class the character holds, and only then subtract the
+# paladin's -2 -- `GEN $0E5E`/`$0F01` for Curse, `$10A2`/`$11C0` for Silver
+# Blades. A paladin who holds no other class gets the same answer either way,
+# which is why the difference only shows on a dual-classed human who has
+# regained paladin beside his current class.
+
+@pytest.mark.parametrize("class_levels, expected", [
+    ({"fighter": 7, "paladin": 6}, (8, 9, 10, 10, 11)),
+    ({"cleric": 6, "paladin": 5}, (7, 10, 11, 11, 12)),
+    ({"paladin": 5}, (9, 10, 11, 11, 12)),
+    ({"ranger": 8}, (10, 11, 12, 12, 13)),
+])
+def test_curse_folds_the_fighter_group_before_taking_the_paladin_off(
+        class_levels, expected):
+    """MATHEW (fighter 7, paladin 6) and MARK (cleric 6, paladin 5), the two
+    engine-written records #633 was opened over. A paladin or ranger alone
+    gets the same answer the old row-per-class rule gave, because there is
+    only one row to be the best of."""
+    assert CURSE.saving_throws(class_levels, race=7, constitution=17) == \
+        expected
+
+
+def test_silver_blades_folds_the_fighter_group_the_same_way():
+    """GUY DE VALOIS's shape: a cleric who has also regained paladin."""
+    assert SSB.saving_throws({"cleric": 8, "paladin": 8}, race=7,
+                             constitution=17) == (5, 8, 9, 10, 10)
+
+
+def _c64_specimen(name: str):
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
+    found = sorted(root.glob(f"*/WISH-SPEC-{name}.[dD]64"))
+    if not found:
+        pytest.skip(f"needs the C64 specimen WISH-SPEC-{name}")
+    return found[0]
+
+
+def _c64_party(path):
+    disk = D64.open(str(path))
+    game, sg0, sg1 = load_save(disk)
+    out = []
+    for slot in sg0.characters:
+        block = sg1.roster(slot.index) if sg1 is not None else None
+        out.append(c64_codec.read(slot.record, roster=block, game=game,
+                                  source=f"slot {slot.index}"))
+    return out
+
+
+_SAVE_FIELDS = ("save_paralysis", "save_petrification", "save_wands",
+               "save_breath", "save_spell")
+
+
+def test_a_c64_curse_read_then_write_keeps_a_regained_paladins_own_saves():
+    """`WISH-SPEC-curse-409-regained-paladin.d64` is the C64 engine's own
+    write of MATHEW (fighter 7, paladin 6 regained) and MARK (cleric 6,
+    paladin 5 regained). Reading the record and writing it straight back
+    through `c64_codec.write` must reproduce the five bytes the engine itself
+    stored, `8 9 10 10 11` and `7 10 11 11 12` -- not the `9 10 11 11 12`
+    both classes shared before this fix, because the old rule read every
+    class's own row and never gave the paladin's -2 a chance to come off the
+    *best* of them."""
+    party = _c64_party(_c64_specimen("curse-409-regained-paladin"))
+    by_name = {c.get("name").strip().upper(): c for c in party}
+    assert {"MATHEW", "MARK"} <= set(by_name)
+
+    expected = {
+        "MATHEW": (8, 9, 10, 10, 11),
+        "MARK": (7, 10, 11, 11, 12),
+    }
+    for who, wanted in expected.items():
+        rec, _rep = c64_codec.write(by_name[who])
+        got = tuple(rec.get(f) for f in _SAVE_FIELDS)
+        assert got == wanted, f"{who}: {got} != {wanted}"
+
+
+def _dos_specimen(name: str, filename: str):
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
+    found = sorted(root.glob(f"*/WISH-SPEC-{name}/{filename}"))
+    if not found:
+        pytest.skip(f"needs the DOS specimen WISH-SPEC-{name}")
+    return found[0]
+
+
+def test_a_regained_paladin_converted_from_dos_gets_the_folded_saves():
+    """MATHEW again, this time crossing from DOS to the C64
+    (`WISH-SPEC-curse-632-wish-converted-resave`, `CHRDATB1.SAV`). The
+    dual-class block restores his paladin level into the record before this
+    fix's saves computation runs, so the C64 record `dos_codec.to_c64_record`
+    builds now sees it -- `level_paladin` 6 and saves `8 9 10 10 11`, not the
+    `10 11 12 12 13` a saves computation that ran before the restore used to
+    write."""
+    path = _dos_specimen("curse-632-wish-converted-resave", "CHRDATB1.SAV")
+    dos = dos_codec.read_character(path)
+    rec, _rep = dos_codec.to_c64_record(dos)
+    assert rec.get("level_paladin") == 6
+    assert tuple(rec.get(f) for f in _SAVE_FIELDS) == (8, 9, 10, 10, 11)
 
 
 # --- the tables, against the disks -------------------------------------------
