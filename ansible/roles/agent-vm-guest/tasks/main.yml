@@ -176,6 +176,7 @@
           outputStyle: "{{ agent_guest_claude_output_style }}"
           remoteControlAtStartup: "{{ agent_guest_claude_remote_control_at_startup | bool }}"
           feedbackSurveyRate: "{{ agent_guest_claude_feedback_survey_rate }}"
+          spinnerTipsEnabled: "{{ agent_guest_claude_spinner_tips_enabled | bool }}"
 
 # --- herdr and Codex, from their releases ----------------------------------
 # Each has its own tag, and both share a task file and the user-timer setup.
