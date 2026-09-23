@@ -130,13 +130,13 @@ ansible-playbook -i ansible/inventory.yml ansible/agent-vm.yml
 
 ## Browsing and editing the guest's files
 
-The guest's whole filesystem is mounted on the desktop, **writable as the guest's `agent` account**, at `~/agent-wish`, so the guest's home directory and its `/tmp` are under it, in `home/` and `tmp/`. Open it in a local editor:
+The guest's whole filesystem is mounted on the desktop, **writable as the guest's `agent` account**, at `~/agent-wish`, so the guest's home directory and its `/tmp` are under it, in `home/` and `tmp/`. Open the checkout in a local editor:
 
 ```bash
-code ~/agent-wish
+code ~/agent-wish/home/<agent account>/src/wish
 ```
 
-It is an sshfs mount made by a systemd user unit, `agent-wish.service`, which mounts when you log in and needs nothing typed. It is mounted by you and not by root, and neither `allow_other` nor `allow_root` is set, so only your desktop account can reach it. The mount is `follow_symlinks` (a symlink the guest plants is resolved on the guest, so an editor never opens or saves a file on this desktop through one) and `noexec` (nothing from the guest runs here from the mount). No editor server runs in the guest. What you write goes straight into files the agents are using: an edit under `~/src/wish` changes their working tree at once.
+It is an sshfs mount made by a systemd user unit, `agent-wish.service`, which mounts when you log in and needs nothing typed. It is mounted by you and not by root, and neither `allow_other` nor `allow_root` is set, so only your desktop account can reach it. The mount is `follow_symlinks` (a symlink the guest plants is resolved on the guest, so an editor never opens or saves a file on this desktop through one) and `noexec` (nothing from the guest runs here from the mount). Open the checkout rather than `~/agent-wish` itself: the directory name no longer means the checkout, and a recursive search or a desktop indexer (baloo, tracker) started on the whole mount walks `/proc`, `/sys` and `/mnt/disks` over ssh. No editor server runs in the guest. What you write goes straight into files the agents are using: an edit under `~/src/wish` changes their working tree at once.
 
 | situation | what happens |
 |---|---|
@@ -145,7 +145,7 @@ It is an sshfs mount made by a systemd user unit, `agent-wish.service`, which mo
 | The guest is down when you log in | systemd retries every 10 seconds until it is up |
 | The guest is down or dies | ssh notices within a few seconds and a request on the mount returns an error rather than hanging; a stale mount left by a crash is cleared before each start |
 
-`systemctl --user status agent-wish` says what it is doing, `journalctl --user -u agent-wish` says why it is not, and `fusermount3 -u ~/agent-wish` unmounts it by hand. The path, the remote directory and the timings are role variables (`agent_vm_wish_mount`, `agent_vm_wish_remote`, `agent_vm_wish_mount_alive`, `agent_vm_wish_mount_retry`). A symlink shows as what it points at, resolved in the guest. **VS Code Remote SSH into the guest is not used**: it forwards your GitHub sign-in into the guest; the design document has the finding.
+`systemctl --user status agent-wish` says what it is doing, `journalctl --user -u agent-wish` says why it is not, and `fusermount3 -u ~/agent-wish` unmounts it by hand. The path, the remote directory and the timings are role variables (`agent_vm_wish_mount`, `agent_vm_wish_remote`, `agent_vm_wish_mount_alive`, `agent_vm_wish_mount_retry`). A symlink shows as what it points at, resolved in the guest. `--tags agent_vm` applies the unit and then verifies the mount; `--tags verify` alone only checks a mount that is already up. **VS Code Remote SSH into the guest is not used**: it forwards your GitHub sign-in into the guest; the design document has the finding.
 
 ## The credential
 

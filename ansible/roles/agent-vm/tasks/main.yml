@@ -620,7 +620,10 @@
     state: present
     cache_valid_time: 3600
 
+# Tagged `verify` as well, because the verify block reads the operator's uid from
+# it and `--tags verify` alone would otherwise skip it.
 - name: Look up the operator
+  tags: verify
   ansible.builtin.getent:
     database: passwd
     key: "{{ agent_vm_operator }}"
@@ -698,9 +701,16 @@
           {{ agent_vm_wish_mount }} is not a mount after a minute. Is the guest
           up, and what does `journalctl --user -u agent-wish` say?
 
+    # Under the mount's `tmp/` when the mount is the guest's `/`; directly under
+    # the remote directory otherwise. The mount-relative and guest-absolute paths
+    # name the same file.
     - name: Choose a name for the test file
       ansible.builtin.set_fact:
-        agent_vm_wish_probe: "tmp/agent-wish-verify-{{ now(fmt='%s%f') }}"
+        agent_vm_wish_probe: "{{ 'tmp/' if agent_vm_wish_remote == '/' else '' }}agent-wish-verify-{{ now(fmt='%s%f') }}"
+
+    - name: Work out where the guest sees it
+      ansible.builtin.set_fact:
+        agent_vm_wish_probe_guest: "{{ agent_vm_wish_remote | regex_replace('/+$', '') }}/{{ agent_vm_wish_probe }}"
 
     - name: Create, append to, read back and compare a file through the mount
       ansible.builtin.shell: |
@@ -726,9 +736,11 @@
           - ssh
           - -o
           - BatchMode=yes
+          - -o
+          - ConnectTimeout=3
           - "{{ agent_vm_name }}"
           - cat
-          - "/{{ agent_vm_wish_probe }}"
+          - "{{ agent_vm_wish_probe_guest }}"
       register: agent_vm_wish_guest
       changed_when: false
       failed_when: false
@@ -739,7 +751,7 @@
           - agent_vm_wish_guest.rc != 0 or agent_vm_wish_guest.stdout == 'first\nsecond'
         fail_msg: >-
           The file written through {{ agent_vm_wish_mount }} is not what the
-          guest holds at /{{ agent_vm_wish_probe }}.
+          guest holds at {{ agent_vm_wish_probe_guest }}.
         success_msg: "{{ 'The guest holds the file.' if agent_vm_wish_guest.rc == 0 else 'The guest side was not checked: ssh to the guest as this account failed.' }}"
   always:
     - name: Delete the test file

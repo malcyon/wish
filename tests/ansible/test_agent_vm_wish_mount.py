@@ -41,3 +41,21 @@ def test_mount_is_writable_whole_filesystem_of_the_mounting_user_only():
         assert kept in opts
     assert "follow_symlinks" in opts and "noexec" in opts
     assert "allow_other" not in line and "allow_root" not in line
+
+
+def _tasks(items):
+    for t in items:
+        yield t
+        for key in ("block", "always", "rescue"):
+            yield from _tasks(t.get(key, []))
+
+
+def test_verify_block_can_run_alone():
+    tasks = list(_tasks(yaml.safe_load((ROLE / "tasks" / "main.yml").read_text())))
+    lookup = next(t for t in tasks if "ansible.builtin.getent" in t)
+    tags = lookup.get("tags", [])
+    assert "verify" in ([tags] if isinstance(tags, str) else tags)
+    ssh = next(t for t in tasks if isinstance(t.get("ansible.builtin.command"), dict)
+               and "ssh" in t["ansible.builtin.command"].get("argv", []))
+    argv = ssh["ansible.builtin.command"]["argv"]
+    assert any(a.startswith("ConnectTimeout=") for a in argv)
