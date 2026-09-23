@@ -167,6 +167,66 @@ is an export beside a stale item file and is what `goldbox.dos_codec` documents.
 defect is reachable in the game and unexercised by the corpus, which is why
 `#432 (A joined scroll in a DOS Silver Blades save shifts everything after it out of the character's pack)` carries a recipe rather than a specimen.
 
+## 3. Pools of Darkness: a case on the Amiga, separate scrolls on DOS
+
+The Amiga port of Pools of Darkness keeps Silver Blades' case: a type-`0x49`
+item followed in the `.pc` by `quantity` twenty-byte nodes. **The DOS port has
+none, CONFIRMED** from `DARKNESS GAME.OVR` (264,086 bytes):
+
+* **Its item is 63 bytes with no pointer after it.** `dosscrollbundle.py sites
+  --game DARKNESS` counts 0 accesses at `0x03F`/`0x041` and 0 stores of type
+  `0x49`.
+* **The native `.THG` writer tests no type.** It is the routine that
+  BlockWrites the 510-byte record at `0x11703`. Its loop at `0x117A5` writes
+  63 bytes per node along `+0x2A`.
+* **The native reader tests no type and no count.** One routine,
+  `0x11903`-`0x122EB`, branches on the global byte `[0xAE83]`. For 1 or 2 it
+  reads the 510-byte record and then 63-byte items to end of file
+  (`0x11FFE`-`0x120B4`). For 0 it reads a 439-byte Silver Blades record and
+  67-byte items. The only `cmp es:[di+0x2E], 0x49` in a loader, **`0x11F06`**,
+  is on that Silver Blades branch, and it skips a joined case and its
+  `quantity x 67` bytes. The other, `0x483F`, is in the experience award.
+* **The `ITEMS` table gives type `0x49` slot 0 and one hand**, the values a
+  one-handed weapon has. The two scroll types, 39 and 40, get slots `0x0B` and
+  `0x0C` and no hands, so a readied scroll takes neither a ready slot nor a
+  hand (the recount at `0x034E27`).
+
+Each node chained off an Amiga case is a complete scroll item: type 40 for all
+seven of CLERIC's, type 39 for HILDE's four and INA's six. Each has its own
+three spell ids, weight and `readied`, and `quantity` 0. The case head's own
+spell bytes are zero and its `weight` equals its `quantity`.
+`goldbox.amiga_pod.unbundle` therefore puts a case's scrolls in its place, and
+the DOS item is written from the scrolls. HILDE's and INA's cases are
+readied, and their scrolls are not. **What readying a case does on the Amiga
+is UNKNOWN**, and with the case gone that flag has no DOS item to go on. To
+settle it: un-ready HILDE's case in the Amiga game, then compare her sheet and
+`SavGamB.pty` before and after.
+
+**The weight changes and the engine accepts it.** The Amiga weighs a case as
+its own `weight x quantity` and ignores its scrolls: `money + sum(weight x
+max(quantity, 1))` over the head items balances exactly in 4 of 4 records
+(3 characters). DOS weighs each scroll. The DOS recount (`0x034D5D`) adds
+`weight`, multiplied by `quantity` when that is non-zero, which is
+`goldbox.dos_codec.write`'s formula. The loader reads neither `encumbrance`
+nor `item_count`. CLERIC goes from 1478 to 1604, HILDE from 1067 to 1055 and
+INA from 424 to 442. **Whether CLERIC's +126 changes his movement is
+UNKNOWN.** Load the converted save and read his movement, then drop six
+scrolls (under 1478) and read it again.
+
+**CLERIC arrives holding 21 items, and the file allows it.** DOS Pools of
+Darkness compares `item_count` with 15 or 16 only where a character gains an
+item: the `Overloaded` gate at `0x2679A`, a node allocation at `0x1B163`,
+`HALVE` at `0x24A3F`, and the gem appraisal at `0x297B1` and `0x29AE9`. The
+loader has no compare, and its one counter is never read. That is PROBABLE
+from the absent instruction. The same pattern was measured in DOS Pool of
+Radiance, where a 20-item file loaded and saved back as 20
+(`173-carrying-limits.md`). **What the player sees:** every spell arrives, but
+until CLERIC is down to fifteen items the game refuses him another one. On
+the Amiga, where the case counts as one item, he had room for one more.
+HILDE (13) and INA (12) are under the limit. **The experiment that confirms
+it:** load the converted `SavGamA` in DOS, count CLERIC's 21 scrolls on
+`ITEMS`, save, and check `CHRDATA<n>.THG` is 1323 bytes.
+
 ## What a following agent needs
 
 * **Name the fields in `goldbox/dos_port.py`**: `experience_award` (`u16le`)

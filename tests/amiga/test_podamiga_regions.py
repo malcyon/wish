@@ -292,30 +292,33 @@ def test_an_effect_node_is_written_back_but_for_the_pad_and_the_pointer():
 
 
 def test_a_scroll_is_written_with_the_nodes_the_loader_will_read_after_it():
-    """A scroll's own `quantity` further twenty-byte nodes are part of the
-    file, so a writer that emitted the item alone would leave the loader
+    """A scroll case's own `quantity` further twenty-byte nodes are part of
+    the file, so a writer that emitted the item alone would leave the loader
     reading the next item's twenty bytes as a spell node and then running off
     the end of a file it had been told was longer.
 
-    No genuine record carries one, so this is built from the format: a scroll
-    of two and an ordinary sword after it. The two chained nodes are written
-    empty -- the neutral record has nowhere to hold their spell ids -- and the
-    loss is on the report rather than silent.
+    The reader never hands the writer a case -- it splits one into its
+    scrolls -- so the neutral input is built directly: a case of two made the
+    way the reader re-cuts any item, and an ordinary sword after it. The two
+    chained nodes are written empty, since a neutral case has no scrolls in
+    it to write, and the loss is on the report rather than silent.
     """
-    record = bytearray(a_record(
-        [an_item(type_index=amiga_pod.SCROLL_TYPE_INDEX, quantity=2, weight=1),
-         an_item(charges=11, effect=22, power=33),
-         an_item(charges=44, effect=55, power=66),
-         an_item(type_index=5, plus=2, weight=50, value=1400)], count=2))
-    record[:amiga_pod.RECORD_BYTES] = amiga_pod.PodWriter(
+    def neutral_item(raw: bytes) -> bytes:
+        return dos_codec.item_to_c64(
+            amiga_pod.PodItem.from_bytes(raw).to_dos_bytes())
+
+    source = amiga_pod.pod_to_neutral(amiga_pod.PodWriter(
         name="SCROLLER",
         character_class=amiga_pod.CLASSES.index("FIGHTER"),
         class_levels=(0, 0, 1, 0, 0, 0, 0),
         class_bits=amiga_pod.CLASS_BIT["fighter"],
-    ).to_bytes()[:amiga_pod.RECORD_BYTES]
-    record[amiga_pod.ITEM_CHAIN:amiga_pod.ITEM_CHAIN + 4] = (2).to_bytes(
-        4, "big")
-    out, rep = amiga_pod.to_pc(amiga_pod.pod_to_neutral(bytes(record)))
+    ).to_bytes())
+    source.set("inventory", [
+        neutral_item(an_item(type_index=amiga_pod.SCROLL_TYPE_INDEX,
+                             quantity=2, weight=1)),
+        neutral_item(an_item(type_index=5, plus=2, weight=50, value=1400))],
+        "a case of two and a sword, built from the format")
+    out, rep = amiga_pod.to_pc(source)
 
     assert len(out) == amiga_pod.RECORD_BYTES + 4 * amiga_pod.ITEM_FILE_SIZE
     assert int.from_bytes(out[amiga_pod.ITEM_CHAIN:
@@ -352,18 +355,21 @@ def test_a_record_with_no_items_and_no_effects_reads_empty():
 
 
 def test_a_scroll_carries_its_chained_nodes_and_the_next_item_still_reads():
-    """The loader reads a scroll's own `quantity` further twenty-byte nodes
-    before the next item, and a reader that did not would take the first of
-    them for the item after it.
+    """The loader reads a scroll case's own `quantity` further twenty-byte
+    nodes before the next item, and a reader that did not would take the
+    first of them for the item after it.
 
-    No item in the nineteen genuine files is a scroll, so this is built from
-    the format: a scroll of two, two chained nodes, and an ordinary sword
-    after them.
+    Built from the format: a case of two, two chained scrolls, and an
+    ordinary sword after them. DOS keeps no case, so the character arrives
+    carrying the two scrolls, each with its own three spell ids, and then the
+    sword -- three items, and nothing dropped.
     """
     scroll = an_item(type_index=amiga_pod.SCROLL_TYPE_INDEX, quantity=2,
-                     weight=1, value=100)
-    chained = [an_item(charges=11, effect=22, power=33),
-               an_item(charges=44, effect=55, power=66)]
+                     weight=2, value=100)
+    chained = [an_item(type_index=39, charges=11, effect=22, power=33,
+                       weight=1),
+               an_item(type_index=40, charges=44, effect=55, power=66,
+                       weight=25)]
     sword = an_item(type_index=5, plus=2, weight=50, quantity=0, value=1400,
                     readied=1)
     data = a_record([scroll] + chained + [sword], count=2)
@@ -375,8 +381,23 @@ def test_a_scroll_carries_its_chained_nodes_and_the_next_item_still_reads():
     assert char.scroll_nodes == tuple(chained)
 
     out = amiga_pod.pod_to_neutral(data)
-    assert len(out.get("inventory")) == 2
-    assert [line for line in out.dropped if "scroll" in line], out.dropped
+    items = [dos_codec.item_from_c64(bytes(i), dos_port.ITEM_SIZE)
+             for i in out.get("inventory")]
+    assert [it[0x2E] for it in items] == [39, 40, 5]
+    assert [tuple(it[0x3C:0x3F]) for it in items[:2]] == [
+        (11, 22, 33), (44, 55, 66)]
+    assert out.dropped == []
+
+
+def test_a_case_of_nothing_becomes_nothing_and_the_next_item_still_reads():
+    """A case whose `quantity` is 0 has no nodes after it and no spells in
+    it, and DOS has no empty case to hold, so :func:`amiga_pod.unbundle`
+    leaves it out and the item after it is the next thing in the pack."""
+    case = amiga_pod.PodItem.from_bytes(
+        an_item(type_index=amiga_pod.SCROLL_TYPE_INDEX, quantity=0))
+    sword = amiga_pod.PodItem.from_bytes(an_item(type_index=5, value=1400))
+    assert amiga_pod.unbundle([case, sword], []) == [sword]
+    assert amiga_pod.unbundle([case], []) == []
 
 
 def test_an_item_count_past_the_end_of_the_file_stops_the_walk():

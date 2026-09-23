@@ -18,7 +18,6 @@ buffers are built from the documented format and are nobody's game data.
 from __future__ import annotations
 
 import dataclasses
-import re
 import struct
 
 import pytest
@@ -171,15 +170,6 @@ def _pod_amiga_slots():
             for i, (_label, blob) in enumerate(copies)]
 
 
-#: `#650 (A played Amiga Pools of Darkness party converted to DOS loses a
-#: master thief's pick pockets over 127 and a scroll case's extra spells)`'s
-#: two kinds, measured over all 14 played slots on this machine. Any other
-#: dropped or lost line here is a new loss this writer has not accounted for.
-_POD_DROP_PATTERN = re.compile(
-    r"twenty-byte nodes chained off a scroll: each holds three more spell "
-    r"ids and the neutral record has nowhere to put them")
-
-
 def test_new_pod_save_from_writes_every_played_amiga_slot(tmp_path):
     seen = 0
     for name, blob in _pod_amiga_slots():
@@ -201,8 +191,7 @@ def test_new_pod_save_from_writes_every_played_amiga_slot(tmp_path):
         assert [c.name for c in party] == [
             c.get("name") for c in characters], name
 
-        for line in report.dropped:
-            assert _POD_DROP_PATTERN.search(line), (name, line)
+        assert report.dropped == [], name
         assert report.losses == [], name
     assert seen >= 8
 

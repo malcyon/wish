@@ -76,13 +76,13 @@ ITEM_FILE_SIZE = 20
 #: node `0x2E` is `type_index` in the later Amiga titles' own item map, and
 #: the loader's scroll test is `cmpi.b #$49, $2e(a2)`.
 ITEM_NODE_BASE = 0x02E
-#: A scroll's `type_index`, and the one item the file does not hold in a
+#: A scroll case's `type_index`, and the one item the file does not hold in a
 #: single node: the loader reads the item's own `quantity` further twenty-byte
-#: nodes after it, each carrying three more spell ids (§1.16, row 3). No item
-#: in the nineteen `.pc` files on the Amiga disks is one -- `type_index` reads
-#: 5, 8, 15, 18, 22, 28, 29, 30, 36, 37, 40, 50 and 59 across the 93 -- so the
-#: chain is walked to keep the item boundaries right and its spell ids are
-#: not converted: the neutral record has nowhere to put them.
+#: nodes after it (§1.16, row 3), each a complete scroll item of type 39 or 40
+#: with three spell ids of its own. None of the nineteen `.pc` files on the
+#: Amiga disks holds a case; three characters in the played saved games do,
+#: holding 7, 4 and 6 scrolls. DOS keeps those scrolls as separate items, so
+#: :func:`unbundle` puts them in the case's place.
 SCROLL_TYPE_INDEX = 0x49
 #: One effect node, the same ten bytes all three Amiga titles keep: the id at
 #: 0, one byte nobody has named at 1, the duration as a big-endian word at 2,
@@ -856,6 +856,37 @@ class PodItem:
         return cls(bytes(out))
 
 
+def unbundle(items: Sequence[PodItem],
+             nodes: Sequence[bytes]) -> list[PodItem]:
+    """The pack in file order, each scroll case replaced by its scrolls.
+
+    `items` and `nodes` are what :meth:`PodCharacter._tail` walks: the head
+    items, and every case's chained twenty-byte nodes one case after another.
+    Each node is a complete scroll item of its own -- type 39 or 40, three
+    spell ids in `charges`, `effect` and `power`, weight and `readied` its own
+    -- and a case contributes its own `quantity` of them, fewer if the file
+    ended first. DOS Pools of Darkness has no case: its 63-byte item has no
+    chain pointer, its `.THG` loader and writer test no type, and nothing in
+    its `GAME.OVR` stores type `0x49` into an item, so separate scrolls are how
+    it holds the same spells (docs/215-the-dos-experience-award-and-the-scroll-
+    bundle.md, section 3). A case of 0 holds nothing and becomes nothing.
+    """
+    out: list[PodItem] = []
+    at = 0
+    for item in items:
+        if not item.is_scroll:
+            out.append(item)
+            continue
+        for raw in nodes[at:at + item.quantity]:
+            out.append(PodItem.from_bytes(raw))
+        at += item.quantity
+    if at < len(nodes):
+        raise ValueError(
+            f"{len(nodes)} chained nodes and the cases hold {at}: the two "
+            f"lists are not from one walk of the same file")
+    return out
+
+
 def pod_effect_to_dos(node: bytes) -> bytes:
     """One ten-byte effect node as the nine bytes a DOS `.EFX` record holds.
 
@@ -1227,12 +1258,13 @@ class PodCharacter:
 
     @property
     def scroll_nodes(self) -> tuple[bytes, ...]:
-        """The twenty-byte nodes chained off a scroll, unconverted.
+        """The twenty-byte nodes chained off every scroll case, in file order.
 
-        Each holds three more spell ids in the bytes the item constructor
-        calls `charges`, `effect` and `power`, and the neutral record has
-        nowhere to put them. **Empty in 19 of 19 files on the Amiga disks**:
-        no item in the nineteen files is a scroll.
+        Each is a scroll item of its own, its three spell ids in the bytes the
+        item constructor calls `charges`, `effect` and `power`;
+        :func:`unbundle` puts them back in their cases' places. **Empty in 19
+        of 19 files on the Amiga disks**, and 17 in the three played
+        characters that carry a case.
         """
         return self._tail()[1]
 
@@ -2535,20 +2567,16 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
 
     # -- what the character is carrying, and what is running on him ---------
     # The tail past the 404-byte record: twenty bytes an item, ten an effect.
+    # A scroll case becomes the scrolls chained off it, each an item of its
+    # own, because DOS keeps no case (`unbundle`).
     items, scrolls, effects = char._tail()
-    out.set("inventory", [_dos.item_to_c64(it.to_dos_bytes()) for it in items],
+    out.set("inventory", [_dos.item_to_c64(it.to_dos_bytes())
+                          for it in unbundle(items, scrolls)],
             f"the {ITEM_FILE_SIZE}-byte item records from {RECORD_BYTES}, "
             f"read as the later Amiga titles' own item node and re-cut to the "
-            f"{dos_port.ITEM_SIZE} DOS holds, projected onto sixteen",
+            f"{dos_port.ITEM_SIZE} DOS holds, projected onto sixteen; a "
+            f"scroll case replaced by the scrolls chained off it",
             Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
-    if scrolls:
-        # A scroll's chained nodes carry three more spell ids each and the
-        # neutral record has no field for them. No item in the nineteen
-        # genuine files is a scroll, so nothing has ever been dropped here;
-        # the line is the accounting rather than a sentence for a player.
-        out.drop(f"{len(scrolls)} twenty-byte nodes chained off a scroll: "
-                 f"each holds three more spell ids and the neutral record has "
-                 f"nowhere to put them")
 
     # Everything that never expires goes into `granted_effects` whole, and
     # which node is an innate property and which a readied item's grant
