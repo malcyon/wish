@@ -67,6 +67,8 @@ def opening_step(row24: str, text: str, disk_wanted: bool) -> str:
         return "world"
     if "TAKE" in row24 and "EXIT" in row24:
         return "exit"
+    if row24.strip() == "EXIT":
+        return "exit"
     if "YES" in row24 and "NO" in row24:
         return "no"
     if "PRESS" in row24 or "CONTINUE" in row24 or "MORE" in row24:
@@ -85,11 +87,15 @@ def watch(read, save, act, disk_wanted, *, wait: float, max_screens: int = 200,
     `act(step, text)` is called for it.  After an action nothing is done again
     until the text changes; unchanged for `repeat_after` seconds, the same
     action is repeated, and after `max_repeats` repeats the run is `stuck`.
+    A text that differs only above the row 24 last answered is saved and not
+    answered again: the game redraws the screen under a prompt it has already
+    taken the key for.
     Returns `world`, `stuck`, `timeout` or `screens` (the screen limit).
     """
     deadline = clock() + wait
     last, n = None, 0
     step, acted_at, repeats = "wait", 0.0, 0
+    answered_row24 = None
     while clock() < deadline:
         text = read()
         if text is None:
@@ -100,15 +106,21 @@ def watch(read, save, act, disk_wanted, *, wait: float, max_screens: int = 200,
                 return "screens"
             n += 1
             save(n, text)
-            last, repeats, acted_at = text, 0, None
             rows = text.split("\n")
             row24 = rows[24] if len(rows) > 24 else ""
+            if answered_row24 is not None and row24 == answered_row24:
+                last = text
+                sleep(poll)
+                continue
+            answered_row24 = None
+            last, repeats, acted_at = text, 0, None
             step = opening_step(row24, text, disk_wanted(text))
             if step == "world":
                 return "world"
             if step != "wait":
                 act(step, text)
                 acted_at = clock()
+                answered_row24 = row24
         elif step not in ("wait", "world") and acted_at is not None \
                 and clock() - acted_at >= repeat_after:
             if repeats >= max_repeats:
@@ -134,8 +146,10 @@ def experience_delta(before: dict[str, int], after: dict[str, int]) -> list[dict
 
 
 def first_opening_text(texts: list[str]) -> str | None:
-    """The first screen that is neither the party menu nor a disk prompt."""
+    """The first screen that is not the party menu, a disk prompt or the loading screen."""
     for t in texts:
+        if "ONWARD BOUND" in t:
+            continue
         if "BEGIN ADVENTURING" in t or "CREATE NEW CHARACTER" in t:
             continue
         if "INSERT" in t and ("SIDE" in t or "DISK" in t):
@@ -182,6 +196,44 @@ def answer_bar(sess, step: str, s, *, sleep=time.sleep) -> None:
         sess.press_kernal(0x0D)
 
 
+def save_at_world(sess, shot, note, *, settle_s: float = 4) -> bool:
+    """Let the world bar settle, camp and save, then photograph what the save left.
+
+    The camp key sent the instant the bar is drawn is dropped while the view is
+    still redrawing; the screenshot and row 24 say which bar a failed save
+    stopped at.
+    """
+    sess.settle(settle_s)
+    saved = bool(sess.save_game())
+    shot("after-save")
+    s = sess.screen()
+    note(event="save", ok=saved, row24=None if s is None else s.row(24))
+    return saved
+
+
+def copy_resave(copy, detach, src, dest, note, *, clock=time.time,
+                attempts: int = 120, backoff: float = 0.5):
+    """Copy the save disk once its directory is closed, detaching it if it stays open.
+
+    The first copy polls for `attempts * backoff` seconds.  If the entry is
+    still open the image is detached, which makes VICE write it back, and one
+    more copy is made; a second refusal propagates.
+    """
+    t0 = clock()
+    try:
+        out = copy(src, dest, attempts=attempts, backoff=backoff)
+    except RuntimeError as exc:
+        note(event="copy", stage="polled", ok=False, error=str(exc),
+             seconds=round(clock() - t0, 1))
+        detach()
+        out = copy(src, dest)
+        note(event="copy", stage="after-detach", ok=True,
+             seconds=round(clock() - t0, 1))
+        return out
+    note(event="copy", stage="polled", ok=True, seconds=round(clock() - t0, 1))
+    return out
+
+
 def shut_down(sess, slot, write_summary) -> None:
     """Close the session and slot, then write the summary, whatever raises."""
     try:
@@ -206,6 +258,8 @@ def run(args) -> int:
 
     savecheck.catch_signals()
     os.environ.setdefault("POR_HEADLESS", "1")
+
+    from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
 
     curse = args.title == "curse"
     found = args.disks or gamedisks.find(
@@ -233,10 +287,7 @@ def run(args) -> int:
     try:
         note(event="slot", n=slot.n, dir=str(slot.dir), out=str(out))
         if curse:
-            from tools.curse_of_the_azure_bonds import (  # noqa: PLC0415
-                curseload,
-                curserun,
-            )
+            from tools.curse_of_the_azure_bonds import curserun  # noqa: PLC0415
             first = curserun.stage(slot, str(found), str(save))
             sess = curserun.CurseSession(first, slot=slot)
             container = c64_save.CURSE_OF_THE_AZURE_BONDS
@@ -344,11 +395,12 @@ def run(args) -> int:
         note(event="world", status=str(st), square=square, area=area)
         sess.kbd.screenshot(str(out / "world.png"))
 
-        saved = bool(sess.save_game())
-        note(event="save", ok=saved)
+        saved = save_at_world(sess, shot, note)
         sess.settle(4)
         if saved:
-            por.copy_closed_disk(side0, out / "resave.D64")
+            copy_resave(por.copy_closed_disk,
+                        lambda: curseload.detach(sess),
+                        side0, out / "resave.D64", note)
             summary["saved"] = True
             summary["experience"] = experience_delta(
                 experience_map(save), experience_map(out / "resave.D64"))

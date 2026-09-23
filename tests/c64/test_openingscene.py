@@ -30,6 +30,7 @@ def test_a_side_prompt_is_a_disk_prompt_not_a_press_prompt():
     ("PRESS BUTTON OR RETURN TO CONTINUE.", "return"),
     ("VIEW TAKE POOL SHARE EXIT", "exit"),
     ("YES NO", "no"),
+    ("EXIT" + " " * 36, "exit"),
     ("", "wait"),
 ])
 def test_opening_step_reads_each_bar(row24, step):
@@ -69,10 +70,22 @@ class Fake:
 def test_each_new_screen_is_saved_before_anything_is_pressed():
     a, b = screen("PRESS BUTTON OR RETURN TO CONTINUE.", "ONE"), \
         screen("PRESS BUTTON OR RETURN TO CONTINUE.", "TWO")
-    f = Fake([a, a, b, screen("MOVE ENCAMP")])
+    # The game blanks row 24 between story pages (the m2-ssb run,
+    # `~/.cache/wish/i653/m2-ssb/`, screens 10 to 20: PRESS, then blank, then
+    # PRESS), so the fake pages have a blank-row-24 screen between them.
+    blank = screen("", "ONE")
+    f = Fake([a, a, blank, b, screen("MOVE ENCAMP")])
     assert f.watch(wait=100) == "world"
     assert f.events == [("save", 1), ("act", "return"), ("save", 2),
-                        ("act", "return"), ("save", 3)]
+                        ("save", 3), ("act", "return"), ("save", 4)]
+
+
+def test_a_redraw_under_an_unchanged_prompt_is_not_answered_again():
+    prompt = "PRESS (RETURN) OR BUTTON TO CONTINUE"
+    f = Fake([screen(prompt, "EACH SHARE IS 2500 EXPERIENCE POINTS"),
+              screen(prompt, "PARTY PANEL"), screen("VIEW TAKE POOL SHARE EXIT")])
+    f.watch(wait=5)
+    assert [e[1] for e in f.events if e[0] == "act"] == ["return", "exit"]
 
 
 def test_an_unchanged_screen_presses_nothing_until_the_repeat_time():
@@ -122,9 +135,10 @@ def test_a_character_on_one_side_only_is_kept():
 
 def test_the_first_opening_text_skips_the_menu_and_disk_prompts():
     texts = [screen("", "CREATE NEW CHARACTER"),
+             screen("ONWARD BOUND ..."),
              screen("INSERT SIDE # 2, AND PRESS ANY KEY."), screen("", "STORY")]
-    assert openingscene.first_opening_text(texts) == texts[2]
-    assert openingscene.first_opening_text(texts[:2]) is None
+    assert openingscene.first_opening_text(texts) == texts[3]
+    assert openingscene.first_opening_text(texts[:3]) is None
 
 
 def test_the_game_s_own_silver_blades_party_reads_by_name():
@@ -216,3 +230,70 @@ def test_the_summary_and_release_run_when_closing_raises(failing):
 def test_two_characters_with_one_name_keep_both_rows():
     got = openingscene.keyed_by_name([("AL", 1), ("BO", 2), ("AL", 3)])
     assert got == {"AL": 1, "BO": 2, "AL (2)": 3}
+
+
+class World:
+    def __init__(self, saved=True):
+        self.log, self.saved = [], saved
+
+    def settle(self, s):
+        self.log.append(("settle", s))
+
+    def save_game(self):
+        self.log.append("save_game")
+        return self.saved
+
+    def screen(self):
+        return Bar("--SAVE ERROR--")
+
+
+@pytest.mark.parametrize("saved", [True, False])
+def test_the_world_bar_settles_before_camping_and_a_shot_follows(saved):
+    w, notes = World(saved), []
+    got = openingscene.save_at_world(
+        w, lambda tag: w.log.append(("shot", tag)),
+        lambda **kw: notes.append(kw))
+    assert got is saved
+    assert w.log == [("settle", 4), "save_game", ("shot", "after-save")]
+    assert notes == [{"event": "save", "ok": saved, "row24": "--SAVE ERROR--"}]
+
+
+def resave(outcomes):
+    """Run `copy_resave` with a copy that returns or raises each outcome in turn."""
+    calls, notes, seen = [], [], []
+
+    def copy(src, dest, **kw):
+        calls.append(kw)
+        seen.append(kw)
+        out = outcomes[len(seen) - 1]
+        if isinstance(out, Exception):
+            raise out
+        return out
+
+    def detach():
+        calls.append("detach")
+
+    return calls, notes, lambda: openingscene.copy_resave(
+        copy, detach, "s", "d", lambda **kw: notes.append(kw))
+
+
+def test_a_disk_that_closes_while_polled_is_copied_without_a_detach():
+    calls, notes, go = resave(["d"])
+    assert go() == "d"
+    assert calls == [{"attempts": 120, "backoff": 0.5}]
+    assert [n["ok"] for n in notes] == [True]
+
+
+def test_a_disk_still_open_after_polling_is_detached_and_copied_again():
+    calls, notes, go = resave([RuntimeError("open"), "d"])
+    assert go() == "d"
+    assert calls == [{"attempts": 120, "backoff": 0.5}, "detach", {}]
+    assert [(n["stage"], n["ok"]) for n in notes] == [
+        ("polled", False), ("after-detach", True)]
+
+
+def test_a_disk_open_even_after_the_detach_is_refused():
+    calls, notes, go = resave([RuntimeError("a"), RuntimeError("b")])
+    with pytest.raises(RuntimeError, match="b"):
+        go()
+    assert calls.count("detach") == 1
