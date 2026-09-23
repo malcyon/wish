@@ -42,7 +42,15 @@ import tempfile
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from goldbox import amiga_por, amiga_savegame, dos_port, layout, rewrite
+from goldbox import (
+    amiga_por,
+    amiga_savegame,
+    c64_codec,
+    classcode,
+    dos_port,
+    layout,
+    rewrite,
+)
 from goldbox.d64 import D64
 from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import SaveGame0, SaveGame1, load_save, store_save
@@ -864,13 +872,56 @@ def written_records(port: str, at: pathlib.Path,
             for member in Party(Source.detect(at, slot=slot)).members]
 
 
-def _signature(record: CharacterRecord) -> tuple[str, ...]:
-    """One character as the comparison sees him: every kept field, in order."""
-    return tuple(repr(record.get(name)) for name in KEPT_FIELDS)
+def _expected_char_class(record: CharacterRecord,
+                          destination: "Destination") -> "int | None":
+    """The `char_class` a non-native DOS or Amiga destination should hold.
+
+    Curse of the Azure Bonds' own trainer (`GEN $1939`) leaves the C64
+    record's `char_class` byte stale, so comparing it literally against a
+    destination that a converter got right calls the correct value a loss
+    (#636). This reads the sheet the same way `goldbox.c64_codec.read` would,
+    zeroes any former class the character has since trained past (matching
+    the DOS representation `docs/209-the-regained-dual-class-on-dos.md`
+    establishes: a dual-classed record keeps only the current class), and
+    asks the destination's own class-code table what that character's code
+    is. `None` when the table cannot name the state, so the raw sheet value
+    is compared instead and an unexplained change is still refused.
+    """
+    if destination.native or destination.port not in ("dos", "amiga"):
+        return None
+    neutral = c64_codec.read(record, game=destination.title)
+    bits = neutral.get("class_bits") or 0
+    levels = dict(neutral.get("levels") or {})
+    former = neutral.get("former_levels") or {}
+    for name, level in former.items():
+        if level and levels.get(name):
+            levels[name] = 0
+    return classcode.code_for(bits, levels, former, game=destination.title)
+
+
+def _signature(record: CharacterRecord,
+               destination: "Destination | None" = None) -> tuple[str, ...]:
+    """One character as the comparison sees him: every kept field, in order.
+
+    `destination` makes `char_class` destination-aware -- see
+    `_expected_char_class` -- and is only ever passed for the *expected*
+    side of `compare()`; the written side stays literal so a genuinely wrong
+    class byte still shows.
+    """
+    values = []
+    for name in KEPT_FIELDS:
+        value = record.get(name)
+        if name == "char_class" and destination is not None:
+            override = _expected_char_class(record, destination)
+            if override is not None:
+                value = override
+        values.append(repr(value))
+    return tuple(values)
 
 
 def compare(expected: "list[CharacterRecord]",
-            written: "list[CharacterRecord]") -> list[str]:
+            written: "list[CharacterRecord]",
+            destination: "Destination | None" = None) -> list[str]:
     """What the sheet holds and the written destination does not.
 
     **Whole characters are compared, as a multiset of characters.** A
@@ -885,11 +936,15 @@ def compare(expected: "list[CharacterRecord]",
     The diagnosis then pairs the two sorted lists and names each field that
     differs with both of its values, which is the evidence for the defect
     each difference is.
+
+    `destination`, when given, makes the *expected* side's `char_class`
+    destination-aware (#636): the written side is always compared literally,
+    so a converter that genuinely gets the class byte wrong still shows.
     """
     if len(expected) != len(written):
         return [f"{len(expected)} character(s) went in and {len(written)} "
                 f"came back out"]
-    want = sorted(_signature(record) for record in expected)
+    want = sorted(_signature(record, destination) for record in expected)
     got = sorted(_signature(record) for record in written)
     if want == got:
         return []
@@ -1332,7 +1387,8 @@ def validate(destination: Destination, files: dict[str, bytes],
                     f"the {destination.port} save this would write cannot be "
                     f"read back: {exc}") from exc
     lost = [*accounted,
-            *(compare(expected, written) if expected is not None else [])]
+            *(compare(expected, written, destination)
+              if expected is not None else [])]
     if lost:
         # The accounting is the evidence for the defect each of these is, so
         # it goes to the log whether or not the caller says anything

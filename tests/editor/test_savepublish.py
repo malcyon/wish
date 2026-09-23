@@ -667,6 +667,102 @@ def test_a_c64_name_too_long_for_dos_converts_under_the_name_the_player_chose(
         expected, [member.record for member in written.members]) == []
 
 
+def _curse_game_dir():
+    """The DOS Curse archive's own game directory, or None."""
+    from tools.dos import dosbox
+
+    try:
+        return dosbox.find_game("CURSE")
+    except FileNotFoundError:
+        return None
+
+
+def test_a_trained_c64_curse_character_saves_as_dos_with_its_current_class(
+        tmp_path):
+    """You train a Curse of the Azure Bonds character at the C64 game's own
+    training hall until he is a fighter 5 / thief 6, then use `File ▸ Save
+    As…` to write a DOS copy. Curse's own trainer (`GEN $1939`) never updates
+    the record's `char_class` byte, which still reads 0 -- a cleric, on a
+    character with no cleric level at all. Before this fix, Save As refused
+    the whole party with "char_class: 0 arrived as 14", though the DOS
+    record it was about to write held the right class for a fighter/thief.
+
+    Skips where this machine has no DOS Curse archive
+    (`tools/registry/registry.md`, `$FR_ARCHIVES`) or no Curse C64 disks
+    (`automap/gamedisks.py`) -- the source's own combat-icon table, needed so
+    this conversion reports no *other*, unrelated loss.
+    """
+    from gamedata import synthetic_party
+
+    from goldbox import c64_port, c64_save
+    from goldbox.savegame import SaveGame0
+
+    game_dir = _curse_game_dir()
+    files_for = _registry_game_files("curse-of-the-azure-bonds")
+    if game_dir is None or files_for is None:
+        pytest.skip("needs the DOS Curse archive ($FR_ARCHIVES) and the "
+                   "Curse C64 disks")
+
+    disk = tmp_path / "curse.d64"
+    disk.write_bytes(synthetic_party(game=c64_port.CURSE_OF_THE_AZURE_BONDS))
+    party = Party(str(disk))
+    payload = bytearray(party.save0.to_bytes())
+    # `synthetic_party` leaves the header at area 0, which is no area of
+    # Curse at all; area 1, Tilverton's streets, is where the conversion
+    # actually stages a script.
+    payload[party.game.current_script] = 1
+    # `synthetic_party` also leaves every slot's combat icon at zero, which
+    # is not a shape the game's own ICON menu ever draws -- `default_icon`
+    # is the 36 bytes a freshly rolled character actually gets (#57), so the
+    # conversion can recognise each character's figure instead of reporting
+    # one more loss this fix has nothing to do with.
+    container = c64_save.container_for(party.game)
+    default_icon = files_for.icon.default_icon()
+    for i in range(len(party.members)):
+        at = container.icon(i)
+        payload[at:at + container.icon_size] = default_icon
+    party.save0 = SaveGame0.from_bytes(bytes(payload), party.game)
+    for i, member in enumerate(party.members):
+        member.record.set("name", f"HERO{i}")    # `synthetic_party`'s own
+                                                  # name is too wide for DOS
+        member.record.set("hp_max", 30)          # `synthetic_party`'s own
+                                                  # 65535 does not fit DOS's
+                                                  # one-byte field
+        member.record.set("strength_bonus_flag", 1)  # what the DOS writer
+                                                      # always writes (#637)
+    trained = party.members[0].record
+    trained.set("class_bits", 0x0C)              # fighter | thief
+    trained.set("level_fighter", 5)
+    trained.set("level_thief", 6)
+    trained.set("char_class", 0)                 # Curse's trainer never fixes this
+
+    assets = saveplan.Assets(dos_folder=game_dir, source_files=files_for)
+    out = tmp_path / "copy"
+
+    plan = saveplan.prepare_save_as(party, "dos", out, assets)
+    published = saveplan.publish(plan, party, assets=assets,
+                                 backups=tmp_path / "backups")
+
+    written = Party(convert.Source.detect(out, slot=published.destination.slot))
+    record = written.members[0].record
+    assert record.get("char_class") == 14        # fighter/thief, Curse's own table
+    assert record.get("class_bits") == 0x0C
+    assert record.get("level_fighter") == 5
+    assert record.get("level_thief") == 6
+
+    # The guard was narrowed, not disabled: an actually wrong class code
+    # still has to show as a loss, so the read-back is corrupted by hand and
+    # `compare` is asked directly rather than through another Save As (which
+    # would refuse to write a destination this test never asks it to write).
+    wrong = type(record)(record.to_bytes())
+    wrong.set("char_class", 3)                   # anything but the real 14
+    destination = saveplan.Destination(port="dos", path=out, slot="A",
+                                       title=plan.destination.title, native=False)
+    lost = saveplan.compare(
+        [saveplan.edited_record(party.members[0])], [wrong], destination)
+    assert any(line.startswith("char_class:") for line in lost)
+
+
 def test_a_dropped_field_stops_a_save_as_before_any_destination_write(
         tmp_path, monkeypatch):
     """The guard is the drop list itself: a conversion whose accounting
