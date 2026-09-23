@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import pathlib
 from dataclasses import dataclass, field
 
 from goldbox import areas, c64_port
 from goldbox.areas import POOL_OF_RADIANCE
 from goldbox.geo import DIRECTIONS, GRID, STEP, Geo
+from goldbox.world import ROWS, STRIDE
 
 from . import notes as notemod
 from .area import (
@@ -46,6 +48,21 @@ AREA_NAMES = areas.GEO_NAMES
 #: the whole of what tells a player the map cannot follow them.
 OUTDOORS_WHERE = "Outdoors"
 OUTDOORS_AREA = "Wilderness"
+
+#: `WISH_EXPERIMENTAL_WILDERNESS_MAP`: recording where the party has been on the
+#: travel grid, and saving it. The truthiness rule is `wish/debugmode.py`'s: an
+#: empty string, `0` and `off` are off, so a variable somebody exported once and
+#: forgot does not put an unfinished feature in front of them.
+#:
+#: **Comes off when `#11 (Draw the wilderness on the automapper)` closes.**
+WILDERNESS_ENV = "WISH_EXPERIMENTAL_WILDERNESS_MAP"
+_TRUE = ("1", "true", "yes", "on")
+
+
+def wilderness_enabled() -> bool:
+    """Is the wilderness recording on in this run?"""
+    return os.environ.get(WILDERNESS_ENV, "").strip().lower() in _TRUE
+
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off. The window's
@@ -219,6 +236,15 @@ class AutomapState:
     #: `area`, `geo`, `exploration`, `notes`, `candidates` and the fingerprint
     #: are the last indoor ones and are left alone -- see `Automapper.poll`.
     outdoors: bool = False
+    #: Which wilderness window (0 west, 1 middle, 2 east) the party is in, or
+    #: None until one has been identified. Set only while `outdoors`.
+    window: int | None = None
+    #: The travel grid's heading byte. Nothing reads it yet.
+    heading: int | None = None
+    #: World square -> `(window, terrain code)` for every square the party has
+    #: seen outdoors. The world x is the window-local x plus 13 per window.
+    wilderness: dict[tuple[int, int], tuple[int, int]] = field(
+        default_factory=dict)
     candidates: Candidates | None = None
     reveal: bool = False
     exploration: Exploration = field(default_factory=Exploration)
@@ -283,6 +309,33 @@ class AutomapState:
             "seen": sorted(f"{x},{y}" for x, y in self.exploration.seen),
         }
         path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+
+    def wilderness_path(self) -> pathlib.Path:
+        """`{data dir}/maps/{title}/wilderness.json`.
+
+        Keyed `"seen"` like the notes files, so `automap.maps.forget` and the
+        Preferences button that blank `"seen"` in every file blank this one.
+        """
+        return data_dir() / title_dir(self.title) / "wilderness.json"
+
+    def save_wilderness(self) -> None:
+        path = self.wilderness_path()
+        if not self.wilderness and not path.exists():
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"seen": [[wx, wy, window, code] for (wx, wy), (window, code)
+                            in sorted(self.wilderness.items())]}
+        path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+
+    def load_wilderness(self) -> None:
+        """Merge the saved squares in; a missing or unreadable file adds none."""
+        try:
+            payload = json.loads(self.wilderness_path().read_text(
+                encoding="utf-8"))
+            for wx, wy, window, code in payload.get("seen", []):
+                self.wilderness[(int(wx), int(wy))] = (int(window), int(code))
+        except (OSError, ValueError, TypeError):
+            return
 
     def load_notes(self) -> None:
         migrate_flat_notes()
@@ -389,6 +442,12 @@ class Automapper:
         #: The tick a Gold Box game was last proved to be in memory on, or None
         #: for a connection that has never proved it. See `_running`.
         self._proved: int | None = None
+        #: The three wilderness windows, or None. See `use_world`.
+        self._world = None
+        #: The block last read at `$8C00` and which tick read it, so
+        #: `_running` and `_poll_outdoors` share one read.
+        self._block: tuple[int, bytes, tuple[int, int] | None] | None = None
+        self._outdoor_pending: tuple[int, int] | None = None
         if area:
             self.set_area(area)
 
@@ -416,6 +475,38 @@ class Automapper:
             self.game = c64_port.by_title(title)
         if self.state.area:
             self.state.geo = self._maps.get(self.state.area)
+
+    def use_world(self, world) -> None:
+        """The wilderness windows to identify the resident block against.
+
+        Ignored unless `WISH_EXPERIMENTAL_WILDERNESS_MAP` is on. The saved
+        squares are loaded here because this is where the title is settled.
+        """
+        self._world = world if wilderness_enabled() else None
+        self._block = None
+        if self._world is not None:
+            self.state.load_wilderness()
+
+    def _read_window(self) -> tuple[bytes, tuple[int, int] | None] | None:
+        """The block at `$8C00` and what `World.identify` says of it.
+
+        None when nothing may be read: no world, a title with no travel grid,
+        or a target that is not a C64's memory. Read once per tick.
+        """
+        if (self._world is None or self.game is None
+                or not self.game.travel_grid
+                or not getattr(self.target, "c64_memory", True)):
+            return None
+        if self._block is not None and self._block[0] == self._ticks:
+            return self._block[1], self._block[2]
+        from goldbox.world import GRID_SIZE
+
+        from . import c64
+        base = c64.machine_for(self.game).resident_window_base
+        block = bytes(self.target.read(base, GRID_SIZE))
+        found = self._world.identify(block) if len(block) == GRID_SIZE else None
+        self._block = (self._ticks, block, found)
+        return block, found
 
     def set_area(self, name: str) -> None:
         if name == self.state.area:
@@ -513,6 +604,8 @@ class Automapper:
             # loaded before the party left it, for up to `RESIDENT_EVERY`
             # ticks.
             self.state.outdoors = False
+            if wilderness_enabled():
+                self.state.save_wilderness()
             changed_area = self._check_resident()
 
         moved = (fix.x, fix.y) != (self.state.x, self.state.y)
@@ -582,13 +675,44 @@ class Automapper:
         to, or a second opinion to wait for.
         """
         moved = not self.state.outdoors or (fix.x, fix.y) != (self.state.x, self.state.y)
+        recorded = False
+        if moved:
+            read = self._read_window()
+            if read is not None:
+                block, found = read
+                if found is not None:
+                    jumped = (self.state.outdoors
+                              and abs(fix.x - self.state.x)
+                              + abs(fix.y - self.state.y) > 1)
+                    if (jumped and found[0] == self.state.window
+                            and self._outdoor_pending != (fix.x, fix.y)):
+                        # The fix moved ahead of a block that has not been
+                        # redrawn, or was garbled: wait for a second poll.
+                        self._outdoor_pending = (fix.x, fix.y)
+                        return False
+                    self._outdoor_pending = None
+                    recorded = self._record_pane(fix, found[0], block)
+                    self.state.window = found[0]
         self.state.outdoors = True
         self.state.x, self.state.y = fix.x, fix.y
         self.state.source = fix.source
         self._started = False
         self._last = None
         self._pending = None
-        return moved
+        return moved or recorded
+
+    def _record_pane(self, fix: Fix, window: int, block: bytes) -> bool:
+        """Record the 5 x 5 squares around the party. True if any is new."""
+        before = len(self.state.wilderness)
+        changed = False
+        for ly in range(max(fix.y - 2, 0), min(fix.y + 2, ROWS - 1) + 1):
+            for lx in range(max(fix.x - 2, 0), min(fix.x + 2, STRIDE - 1) + 1):
+                seen = (window, block[ly * STRIDE + lx])
+                key = (lx + 13 * window, ly)
+                if self.state.wilderness.get(key) != seen:
+                    self.state.wilderness[key] = seen
+                    changed = True
+        return changed or len(self.state.wilderness) != before
 
     def _new_connection(self) -> None:
         """A new target, which is a new machine until it proves otherwise.
@@ -608,6 +732,8 @@ class Automapper:
         """
         self._attached = self.target
         self._proved = None
+        self._block = None
+        self._outdoor_pending = None
         self._started = False
         self._pending = None
         self._last = None
@@ -647,6 +773,13 @@ class Automapper:
         standing = self._proved is not None
         if standing and self._ticks - self._proved < self.PROVEN_FOR:
             return True
+        # A camped party on the travel grid has a window in memory and no map
+        # block at $0400; the window is proof enough that a game is running.
+        if fix.outdoors:
+            read = self._read_window()
+            if read is not None and read[1] is not None:
+                self._proved = self._ticks
+                return True
         # `_check_resident` stamps `_proved` with this tick, and only when the
         # block at $0400 was a map we hold. Nothing else can stamp it here.
         self._check_resident()

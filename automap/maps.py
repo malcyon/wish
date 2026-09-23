@@ -41,6 +41,27 @@ def load_maps_titled(disks: str | None = None, game: C64Container | None = None)
         return _amiga_maps_titled(where, game)
     return found, game
 
+def load_world(disks: str | None, game: C64Container | None):
+    """The three wilderness windows off a title's C64 disks, or None.
+
+    None for a title without a travel grid, a folder with no C64 disks, and a
+    set of disks that does not carry all three windows.
+    """
+    from goldbox.world import World, WorldError
+    if game is None or disks is None or not game.travel_grid:
+        return None
+    paths: dict[str, str] = {}
+    for pattern in disk_globs(game):
+        for path in glob.glob(os.path.join(str(disks), pattern)):
+            paths.setdefault(os.path.normcase(os.path.abspath(path)), path)
+    if not paths:
+        return None
+    try:
+        return World.from_disks(sorted(paths.values()))
+    except (WorldError, OSError):
+        return None
+
+
 def _volume_title(volume: str) -> C64Container | None:
     """Which title an Amiga disk belongs to, by its volume name.
 

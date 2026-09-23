@@ -106,6 +106,13 @@ MODE_FLAG_POOL = 0x6E11
 #: issue #29.
 MODE_FLAG_LATER = 0x7F11
 
+#: Where the game keeps the wilderness window it is drawing: the 648-byte
+#: grid block `goldbox.world.World.identify` names.
+RESIDENT_WINDOW = 0x8C00
+
+#: The travel grid's heading byte.
+TRAVEL_HEADING = 0x033D
+
 
 @dataclass(frozen=True)
 class C64Machine:
@@ -217,6 +224,24 @@ class C64Machine:
         c = self.container
         return self.save_load_address + (c.travel_position if c else
                                          c64_port.TRAVEL_POSITION_OFFSET)
+
+    @property
+    def resident_window_base(self) -> int | None:
+        """`$8C00`: the 648-byte grid block of the wilderness window in memory.
+
+        None unless the title has a travel grid, for the same reason as
+        `indoors_flag_base`. Not inside the save image, so it is one address
+        for every title that has the grid rather than an offset.
+        """
+        return RESIDENT_WINDOW if self.title.travel_grid else None
+
+    @property
+    def travel_heading_base(self) -> int | None:
+        """`$033D`: the travel grid's heading byte.
+
+        None unless the title has a travel grid, as `travel_position_base`.
+        """
+        return TRAVEL_HEADING if self.title.travel_grid else None
 
     @property
     def roster_base(self) -> int:

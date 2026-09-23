@@ -733,6 +733,7 @@ class AutomapBinding(QObject):
         # was the third of the three orders this application had.
         self.disks = disks
         self.item_names = live.item_names(disks, game_named(self.state.title))
+        self._use_world(disks)
         #: No maps at all is its own state, and not the same as no emulator:
         #: an emulator will not fill the grid either. Said in the Messages
         #: panel, alongside `Waiting to connect...` and the rest -- the grid
@@ -790,7 +791,19 @@ class AutomapBinding(QObject):
             self.messages.say(NO_DISKS)
         self.disks = disks
         self.item_names = live.item_names(disks, game_named(self.state.title))
+        self._use_world(disks)
         self._refresh()
+
+    def _use_world(self, disks) -> None:
+        """Hand the mapper the wilderness windows off these disks, if the
+        experimental recording is on."""
+        from .maps import load_world
+        from .state import wilderness_enabled
+        world = None
+        if wilderness_enabled():
+            world = load_world(disks, game_named(self.state.title))
+        if hasattr(self.mapper, "use_world"):
+            self.mapper.use_world(world)
 
     def _apply_title(self) -> None:
         """Tell the per-title controls which game this is.
@@ -1353,6 +1366,9 @@ class AutomapBinding(QObject):
         """
         self.settings.save()
         self.state.save_notes()
+        from .state import wilderness_enabled
+        if wilderness_enabled():
+            self.state.save_wilderness()
 
     def closeEvent(self, event):
         self.shutdown()

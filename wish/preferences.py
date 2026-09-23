@@ -1029,6 +1029,10 @@ class PreferencesDialog(QDialog):
         if self.win.mapper.state:
             self.win.mapper.state.exploration.seen.clear()
             self.win.mapper.state.save_notes()
+            # Cleared before saving, or the in-memory squares rewrite the
+            # file the loop above just blanked.
+            self.win.mapper.state.wilderness.clear()
+            self.win.mapper.state.save_wilderness()
             
         if self.win.map and hasattr(self.win.map, 'canvas'):
             self.win.map.canvas.update()
