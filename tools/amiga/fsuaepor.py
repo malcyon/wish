@@ -12,6 +12,15 @@ what the game does with a record can be answered in either:
     fsuaepor.py shot --display :10 DIR/s01.png
     fsuaepor.py names DIR/por1.adf
 
+Pools of Darkness looks for its disks in DF0 and DF1 only, so `serve` puts disk 1
+there and disk 3 beside it when the run holds `pod1.adf`, and lists all three
+in the swap list:
+
+    fsuaepor.py pod-stage --out DIR --pc normal.pc --pc unconscious.pc
+    tools/registry/instance.py claim --game amiga-pod --note NOTE -- \\
+        .venv/bin/python tools/amiga/fsuaepor.py serve --run DIR
+    fsuaepor.py pod-panel --display :10 --adf DIR/pod3.adf --out DIR/shots
+
 `stage` copies a disk 1 into DIR, puts disk 2 beside it from the registry, and
 overwrites the name field of chosen records in one slot -- nothing else in the
 record changes.  `serve` is what the pool slot runs: a private `Xvfb` on the
@@ -258,6 +267,156 @@ def curse_stage(args) -> int:
     return 0
 
 
+#: Amiga Pools of Darkness' game disks, by volume name, in drive order.
+POD_VOLUMES = ("POD 1", "POD 2", "POD 3")
+
+#: Where the picker's character files live on disk 3.
+POD_SAVE_DRAWER = "Save"
+
+#: What a `pod-stage` payload holds at these offsets: the name, the two status
+#: bytes, and the in-party flag.
+POD_NAME_AT = 0x060
+POD_STATUS_AT = (0x05E, 0x05F)
+POD_ACTIVE_AT = 0x184
+
+#: The payload files `pod-panel` adds when `--payload` names none.
+POD_PAYLOADS = ("normal.pc", "unconscious.pc", "outofparty.pc")
+
+
+def pod_disks() -> list[bytes]:
+    """Pools of Darkness disks 1, 2 and 3 out of the registry, read-only.
+
+    The first container, in sorted order, holding all three volumes whose disk 1
+    carries the same executable build the offset tools read.
+    """
+    from tools.amiga import amigasaves, podimportmap
+    build = podimportmap.executable(quiet=True)
+    containers: dict[str, dict[str, bytes]] = {}
+    for label, data in amigasaves.images():
+        try:
+            volume = AmigaDisk(data).volume_name
+        except Exception:
+            continue
+        if volume in POD_VOLUMES:
+            containers.setdefault(label.split("!")[0], {}).setdefault(volume, data)
+    for label in sorted(containers):
+        found = containers[label]
+        if not all(v in found for v in POD_VOLUMES):
+            continue
+        try:
+            first = AmigaDisk(found[POD_VOLUMES[0]]).read_file(podimportmap.EXECUTABLE)
+        except Exception:
+            continue
+        if first == build:
+            return [found[v] for v in POD_VOLUMES]
+    raise SystemExit("no Amiga Pools of Darkness disks (POD 1, POD 2, POD 3) "
+                     "in the registry")
+
+
+def picker_rows(disk: AmigaDisk) -> list[str]:
+    """The `.pc` names in disk 3's `Save` drawer, in the picker's row order."""
+    return [e.name for e in disk.entries(disk.lookup(POD_SAVE_DRAWER).block)
+            if e.name.lower().endswith(".pc")]
+
+
+def payload_line(row: int, name: str, record: bytes) -> str:
+    """One line describing a staged payload: its row, name and state bytes."""
+    inside = record[POD_NAME_AT:POD_NAME_AT + 16].split(b"\0", 1)[0]
+    status = " ".join(f"{record[at]:02x}" for at in POD_STATUS_AT)
+    return (f"row {row}  {name}  {inside.decode('latin-1')!r}  "
+            f"0x5e/0x5f {status}  0x184 {record[POD_ACTIVE_AT]:02x}")
+
+
+def stage_pod(disks: list[bytes], out: pathlib.Path,
+              payloads: list[pathlib.Path]) -> list[str]:
+    """Write the three disks into `out`; disk 3 keeps only `payloads` as `.pc`.
+
+    Its `SavGam*` and `Vault*` files stay.  Returns one line per payload.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    disk3 = AmigaDisk(disks[2])
+    for name in picker_rows(disk3):
+        disk3.remove_file(f"{POD_SAVE_DRAWER}/{name}")
+    for path in payloads:
+        disk3.write_file(f"{POD_SAVE_DRAWER}/{path.name}", path.read_bytes())
+    disk3.save(out / "pod3.adf")
+    (out / "pod1.adf").write_bytes(disks[0])
+    (out / "pod2.adf").write_bytes(disks[1])
+    for n in (1, 2, 3):
+        os.chmod(out / f"pod{n}.adf", 0o644)
+    rows = picker_rows(disk3)
+    return [payload_line(rows.index(p.name) + 1, p.name, p.read_bytes())
+            for p in payloads]
+
+
+def pod_stage(args) -> int:
+    out = pathlib.Path(args.out)
+    for line in stage_pod(pod_disks(), out, [pathlib.Path(p) for p in args.pc]):
+        print(line)
+    print(f"staged {out / 'pod1.adf'}, {out / 'pod2.adf'} and {out / 'pod3.adf'}")
+    return 0
+
+
+def _wait(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def panel_script(rows: list[tuple[int, str]], members: int, boot: float
+                 ) -> list[tuple]:
+    """The fixed Pools of Darkness key script, as `(kind, ...)` steps.
+
+    `("wait", seconds)`, `("key", name, settle)` and `("shot", label)`.
+    `rows` are `(picker row, file name)` in ascending order.  The script never
+    sends `Up`, never `y`, and never two `e` in a row: `Up` at the top of an
+    FS-UAE menu then Return quits the emulator, and `e` on the party menu is
+    EXIT FROM GAME.
+    """
+    steps: list[tuple] = [("wait", boot), ("shot", "title"),
+                          ("key", "p", 4), ("shot", "play"),
+                          ("key", "a", 3), ("shot", "add-character"),
+                          ("key", "p", 10), ("shot", "picker")]
+    current = 1
+    for row, name in rows:
+        steps += [("key", "Down", 0.6)] * (row - current)
+        current = row
+        steps += [("shot", f"on-{name}"), ("key", "a", 4),
+                  ("shot", f"added-{name}")]
+    steps += [("key", "e", 3), ("shot", "panel")]
+    for k in range(1, members + 1):
+        if k > 1:
+            steps.append(("key", "Down", 0.6))
+        steps += [("shot", f"panel-{k}"), ("key", "v", 3),
+                  ("shot", f"sheet-{k}"), ("key", "e", 3)]
+    for home in ("Home", "End"):
+        steps += [("key", home, 0.6), ("shot", f"panel-{home.lower()}"),
+                  ("key", "v", 3), ("shot", f"sheet-{home.lower()}"),
+                  ("key", "e", 3)]
+    steps.append(("shot", "last"))
+    return steps
+
+
+def pod_panel(args) -> int:
+    """Run the fixed key script on the slot's display, a shot at each checkpoint."""
+    disk = AmigaDisk(pathlib.Path(args.adf).read_bytes())
+    names = picker_rows(disk)
+    wanted = args.payload or [n for n in POD_PAYLOADS if n in names] or names
+    rows = sorted((names.index(n) + 1, n) for n in wanted)
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for step in panel_script(rows, len(rows), args.boot):
+        if step[0] == "wait":
+            _wait(step[1])
+        elif step[0] == "key":
+            keys(argparse.Namespace(display=args.display, key=[step[1]],
+                                    hold=0.12, settle=step[2]))
+        else:
+            count += 1
+            path = out / f"{count:02d}-{step[1]}.png"
+            shot(argparse.Namespace(display=args.display, path=path))
+    return 0
+
+
 def wheel(args) -> int:
     """Answer Curse's code wheel on the slot's display; print only the outcome.
 
@@ -309,6 +468,44 @@ def kickstart() -> pathlib.Path:
     raise SystemExit(f"no {KICKSTART}; set $WISH_KICKSTARTS")
 
 
+def default_images(run: pathlib.Path, floppy: list[str] | None = None,
+                   swap: list[str] | None = None
+                   ) -> tuple[list[pathlib.Path], list[pathlib.Path]]:
+    """The images for the drives, DF0 first, and those only the swap list holds.
+
+    Named floppies win.  A run holding `pod1.adf` is Pools of Darkness, whose
+    engine looks for its disks in DF0 and DF1 and never DF2, so disk 3 takes
+    DF1 and disk 2 waits in the swap list.  Otherwise whatever `stage` left in
+    `run` is used.
+    """
+    swaps = [run / name for name in swap or []]
+    if floppy:
+        return [run / name for name in floppy], swaps
+    if (run / "pod1.adf").exists():
+        return [run / "pod1.adf", run / "pod3.adf"], swaps or [run / "pod2.adf"]
+    return [run / name for name in ("por1.adf", "por2.adf", "poolsave.adf")
+            if (run / name).exists()], swaps
+
+
+def fsuae_argv(run: pathlib.Path, drives: list[pathlib.Path],
+               swaps: list[pathlib.Path], window: str,
+               kickstart_file: pathlib.Path) -> list[str]:
+    """The `fs-uae` command line: no process is started here."""
+    width, height = (int(n) for n in window.split("x"))
+    floppies = [f"--floppy_drive_{i}={image}" for i, image in enumerate(drives)]
+    # The F12 menu can only insert what `floppy_image_N` lists; a comma on a
+    # `floppy_drive_N` is read as one path.
+    floppies += [f"--floppy_image_{i}={image}"
+                 for i, image in enumerate([*drives, *swaps])]
+    return ["fs-uae", f"--base_dir={run / 'base'}", "--amiga_model=A500",
+            f"--kickstart_file={kickstart_file}",
+            *floppies,
+            "--writable_floppy_images=1", "--floppy_drive_speed=0",
+            "--fullscreen=0", f"--window_width={width}", f"--window_height={height}",
+            "--automatic_input_grab=0", "--initial_input_grab=0",
+            "--volume=0", "--joystick_port_1=none"]
+
+
 def serve(args) -> int:
     """Run Xvfb and fs-uae on the slot's display until either exits."""
     display = args.display or os.environ.get("POR_DISPLAY")
@@ -325,18 +522,8 @@ def serve(args) -> int:
     for name in ("WAYLAND_DISPLAY", "XDG_SESSION_TYPE"):
         env.pop(name, None)
     env.update(DISPLAY=display, SDL_AUDIODRIVER="dummy", ALSOFT_DRIVERS="null")
-    images = ([run / name for name in args.floppy] if args.floppy else
-              [run / name for name in ("por1.adf", "por2.adf", "poolsave.adf")
-               if (run / name).exists()])
-    floppies = [f"--floppy_drive_{i}={image}" for i, image in enumerate(images)]
-    width, height = (int(n) for n in args.window.split("x"))
-    argv = ["fs-uae", f"--base_dir={base}", "--amiga_model=A500",
-            f"--kickstart_file={kickstart()}",
-            *floppies,
-            "--writable_floppy_images=1", "--floppy_drive_speed=0",
-            "--fullscreen=0", f"--window_width={width}", f"--window_height={height}",
-            "--automatic_input_grab=0", "--initial_input_grab=0",
-            "--volume=0", "--joystick_port_1=none"]
+    drives, swaps = default_images(run, args.floppy, args.swap)
+    argv = fsuae_argv(run, drives, swaps, args.window, kickstart())
     emulator = subprocess.Popen(argv, env=env, cwd=str(run),
                                 stdout=(run / "fs-uae.log").open("wb"),
                                 stderr=subprocess.STDOUT)
@@ -409,6 +596,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--floppy", action="append",
                    help="an image in --run for the next drive, DF0 first; "
                         "default por1.adf, por2.adf and poolsave.adf if staged")
+    p.add_argument("--swap", action="append",
+                   help="an image in --run only the swap list holds")
     p.add_argument("--window", default="720x568",
                    help="fs-uae's window, WxH; 704x556 draws each Amiga pixel "
                         "exactly twice, which Curse's code-wheel reader needs")
@@ -426,6 +615,19 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("curse-stage", help="copy Curse disks A and B into DIR")
     p.add_argument("--out", required=True)
     p.set_defaults(func=curse_stage)
+    p = sub.add_parser("pod-stage", help="stage Pools of Darkness with payload .pc files")
+    p.add_argument("--out", required=True)
+    p.add_argument("--pc", action="append", required=True,
+                   help="a .pc file for disk 3's Save drawer, repeatable")
+    p.set_defaults(func=pod_stage)
+    p = sub.add_parser("pod-panel", help="run the Pools of Darkness key script")
+    p.add_argument("--display", required=True)
+    p.add_argument("--adf", required=True, help="the staged pod3.adf")
+    p.add_argument("--out", required=True, help="directory for the shots")
+    p.add_argument("--boot", type=float, default=90)
+    p.add_argument("--payload", action="append",
+                   help="a .pc name to add; default the three payload names")
+    p.set_defaults(func=pod_panel)
     p = sub.add_parser("wheel", help="answer Curse's code wheel on the display")
     p.add_argument("--display", required=True)
     p.add_argument("--settle", type=float, default=1.0)

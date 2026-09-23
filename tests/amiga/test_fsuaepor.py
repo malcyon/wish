@@ -134,3 +134,130 @@ def test_curse_disks_come_out_of_the_registry_in_drive_order():
     except SystemExit as exc:
         pytest.skip(str(exc))
     assert [AmigaDisk(d).volume_name for d in disks] == ["CurseA", "CurseB"]
+
+
+def _argv(run, floppy=None, swap=None):
+    drives, swaps = fsuaepor.default_images(run, floppy, swap)
+    return fsuaepor.fsuae_argv(run, drives, swaps, "720x568",
+                               run / "kick.rom"), drives, swaps
+
+
+def _touch(run, *names):
+    for name in names:
+        (run / name).write_bytes(b"")
+
+
+def test_a_pools_of_darkness_run_puts_disk_3_in_df1(tmp_path):
+    _touch(tmp_path, "pod1.adf", "pod2.adf", "pod3.adf")
+    argv, drives, swaps = _argv(tmp_path)
+    assert (drives, swaps) == ([tmp_path / "pod1.adf", tmp_path / "pod3.adf"],
+                               [tmp_path / "pod2.adf"])
+    assert f"--floppy_drive_0={tmp_path / 'pod1.adf'}" in argv
+    assert f"--floppy_drive_1={tmp_path / 'pod3.adf'}" in argv
+    assert not any(a.startswith("--floppy_drive_2") for a in argv)
+
+
+def test_every_image_is_offered_in_the_swap_list(tmp_path):
+    _touch(tmp_path, "pod1.adf", "pod2.adf", "pod3.adf")
+    argv, _, _ = _argv(tmp_path)
+    assert [a for a in argv if a.startswith("--floppy_image_")] == [
+        f"--floppy_image_{i}={tmp_path / name}"
+        for i, name in enumerate(("pod1.adf", "pod3.adf", "pod2.adf"))]
+    por = tmp_path / "por"
+    por.mkdir()
+    _touch(por, "por1.adf", "por2.adf", "poolsave.adf")
+    argv, drives, swaps = _argv(por)
+    assert [d.name for d in drives] == ["por1.adf", "por2.adf", "poolsave.adf"]
+    assert swaps == []
+    assert [a.split("=")[0] for a in argv if a.startswith("--floppy_")] == [
+        "--floppy_drive_0", "--floppy_drive_1", "--floppy_drive_2",
+        "--floppy_image_0", "--floppy_image_1", "--floppy_image_2",
+        "--floppy_drive_speed"]
+
+
+def _pc(name: str, status=(0, 0), active=1) -> bytes:
+    record = bytearray(0x200)
+    record[0x60:0x60 + len(name)] = name.encode()
+    record[0x5E], record[0x5F] = status
+    record[0x184] = active
+    return bytes(record)
+
+
+def _disk3(pcs: list[str], others=("VaultA.DAT", "SavGamA.pty")) -> AmigaDisk:
+    disk = AmigaDisk.blank("POD 3")
+    disk.make_dir("Save")
+    for name in [*others, *pcs]:
+        disk.write_file(f"Save/{name}", b"x")
+    return disk
+
+
+def test_the_picker_rows_are_the_pc_files_in_directory_order():
+    disk = _disk3(["ONE.pc", "TWO.pc", "THREE.pc"])
+    expected = [e.name for e in disk.entries(disk.lookup("Save").block)
+                if e.name.endswith(".pc")]
+    assert len(expected) == 3
+    assert fsuaepor.picker_rows(disk) == expected
+    assert "VaultA.DAT" not in expected
+
+
+def test_the_panel_script_reaches_each_row_and_never_ends_the_session(
+        tmp_path, monkeypatch):
+    disk = AmigaDisk.blank("POD 3")
+    disk.make_dir("Save")
+    for n in range(14):
+        disk.write_file(f"Save/{n:02d}.pc", b"x")
+    names = fsuaepor.picker_rows(disk)
+    adf = tmp_path / "pod3.adf"
+    disk.save(adf)
+    calls: list[tuple] = []
+    monkeypatch.setattr(fsuaepor, "keys",
+                        lambda a: calls.append(("key", tuple(a.key))))
+    monkeypatch.setattr(fsuaepor, "shot",
+                        lambda a: calls.append(("shot", a.path.name)))
+    monkeypatch.setattr(fsuaepor, "_wait", lambda s: None)
+    args = type("A", (), dict(display=":9", adf=str(adf), out=str(tmp_path / "s"),
+                              boot=0, payload=[names[4], names[11], names[13]]))
+    assert fsuaepor.pod_panel(args) == 0
+    pressed = [c[1][0] for c in calls if c[0] == "key"]
+    assert "Up" not in pressed and "y" not in pressed
+    assert not any(a == b == "e" for a, b in zip(pressed, pressed[1:]))
+    adds = [i for i, c in enumerate(calls) if c == ("key", ("a",))]
+    assert len(adds) == 4      # ADD CHARACTER's own `a`, then three payloads
+    downs = [sum(c == ("key", ("Down",)) for c in calls[lo:hi])
+             for lo, hi in zip(adds[:-1], adds[1:])]
+    assert downs == [4, 7, 2]
+    for i in adds[1:]:
+        assert calls[i + 1][0] == "shot"
+    for i, c in enumerate(calls):
+        if c == ("key", ("v",)):
+            assert calls[i + 1][0] == "shot"
+
+
+def test_pod_stage_leaves_only_the_payloads_in_the_save_drawer(
+        tmp_path, monkeypatch, capsys):
+    disk3 = _disk3(["OLD.pc"])
+    disk3.save(tmp_path / "src3.adf")
+    disks = [b"one", b"two", (tmp_path / "src3.adf").read_bytes()]
+    payload = tmp_path / "outofparty.pc"
+    payload.write_bytes(_pc("CLARISSA", active=0))
+    monkeypatch.setattr(fsuaepor, "pod_disks", lambda: disks)
+    out = tmp_path / "run"
+    assert fsuaepor.pod_stage(type("A", (), dict(out=str(out), pc=[str(payload)]))) == 0
+    staged = AmigaDisk((out / "pod3.adf").read_bytes())
+    assert fsuaepor.picker_rows(staged) == ["outofparty.pc"]
+    assert staged.read_file("Save/VaultA.DAT") == b"x"
+    assert staged.read_file("Save/SavGamA.pty") == b"x"
+    assert (out / "pod1.adf").read_bytes() == b"one"
+    line = next(t for t in capsys.readouterr().out.splitlines() if t.startswith("row"))
+    assert "row 1" in line and "'CLARISSA'" in line and "0x184 00" in line
+
+
+def test_pod_disks_come_out_of_the_registry_in_drive_order():
+    try:
+        disks = fsuaepor.pod_disks()
+    except SystemExit as exc:
+        pytest.skip(str(exc))
+    first, second, third = (AmigaDisk(d) for d in disks)
+    assert [d.volume_name for d in (first, second, third)] == ["POD 1", "POD 2", "POD 3"]
+    assert fsuaepor.picker_rows(third)
+    assert first.read_file("Pools of Darkness")
