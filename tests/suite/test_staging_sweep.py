@@ -119,6 +119,9 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     # -- a screenshot the run's own emulator took, seconds earlier.  `shot()`
     # writes the PNG through `import` into the instance's `shots/`, so it
     # arrives with the default mode and nothing downstream reads it as a save.
+    ("amigacampsave.py", "preserved"):
+        "the save-attempt screenshot `settle_fn` just wrote to the same "
+        "run's own output directory, renamed to flag it as the challenge",
     ("convertrun.py", 'out / "items.png"'): "the inventory screen this run shot",
     ("convertrun.py", 'out / "loaded.png"'): "the load screen this run shot",
     ("convertrun.py", 'out / "sheet.png"'): "the character sheet this run shot",

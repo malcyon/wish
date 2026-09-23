@@ -12,6 +12,9 @@ at the adventuring prompt. Nothing rebooted could ever have found one.
 
     tools/amiga/amigacampsave.py --holder wish449 --adf party.adf --max-saves 5
 
+Screenshots go under `scratch.scratch_dir("amigacampsave", "run")` unless
+`--out` says otherwise.
+
 What it does: claims the WinUAE lane, boots the disk, loads the party named by
 `--slot` and answers the journal challenge `BEGIN ADVENTURING` asks with
 `amigabladesjournal.answer`, then repeats `ENCAMP > SAVE > <slot> > RETURN`
@@ -170,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
                              "challenge screen (default 5)")
     parser.add_argument("--out", default=None,
                         help="where to keep the screenshots (default "
-                             "work/issue449 under this repository)")
+                             "the scratch directory for this tool)")
     parser.add_argument("--settle", type=float, default=1.0,
                         help="seconds after each keystroke before the next "
                              "(default 1)")
@@ -183,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     if not adf.is_file():
         raise SystemExit(f"{adf} is not a file")
     out_dir = pathlib.Path(args.out) if args.out else \
-        HERE.parent.parent / "work" / "issue449"
+        scratch.scratch_dir("amigacampsave", "run")
 
     if not args.skip_boot:
         boot_and_load(args.holder, adf, args.slot, out_dir, args.settle)
