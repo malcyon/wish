@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from . import classcode, derive, neutral, spells, titles
+from . import classcode, derive, effects, neutral, paladin, spells, titles
 from . import levels as level_tables
 from .encoding import COMBAT_BIAS
 from .layout import RECORD_SIZE, Confidence, Field
@@ -708,13 +708,23 @@ def _max_stored(size: int) -> int:
     return (1 << (8 * size)) - 1
 
 
-def write(char: NeutralCharacter, icon: bytes | None = None,
+def write(char: NeutralCharacter, icon: bytes | None = None, *,
+          payload: bytearray | None = None, party_slot: int | None = None,
+          clock_minutes: int | None = None,
           ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a neutral one.
 
     `icon` is the 36-byte combat icon.  No port outside the C64 has one -- it
     is a C64 character set -- so with none given the field is left zero and
     reported.
+
+    `payload`, `party_slot` and `clock_minutes` (#600, #626, #628) are what a
+    paladin's cure-disease and lay-on-hands rows need: the whole `SAVEDGAME0`
+    to write a row into, the character's own save slot to own it, and the
+    save's time of day to pick a duration byte.  Left out -- every caller but
+    `goldbox.dos_codec.write_c64_save` leaves them out -- a spent use has
+    nowhere to write its row and is reported lost instead; see the paladin
+    block below, placed after the per-class levels are written.
     """
     rec = CharacterRecord.blank()
     rep = Report()
@@ -730,44 +740,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         emit(name, "name", 0x000, _field("name").size,
              ", re-padded to the C64's 18 NUL-padded bytes")
     # 0x012 and 0x013, freed from the old 20-byte name field, are the
-    # paladin's cure-disease and lay-on-hands uses (#626).  `paladin_cures`
-    # is copied unchanged **for a C64 source only**: it is the same
-    # engine's own byte, and the C64's own recovery timer is bound to it, so
-    # a C64-to-C64 Save As keeps a paladin's remaining count exactly (a
-    # level 6 Curse paladin holding 2 stays 2).  A DOS source stores 1 for
-    # every paladin regardless of level, and a C64 destination's full count
-    # is level-dependent (1 below level 6, 2 below 11, 3 from 11 up) with a
-    # recovery row of its own once a use is spent -- what #600 is still
-    # establishing in the running game -- so writing a DOS or Amiga source's
-    # raw byte here without that row could leave a paladin unable to ever
-    # recover CURE. `paladin_cures` therefore stays on `DROPPED` below for
-    # every source but the C64's own, which is a development-time
-    # protection against writing an output known to be wrong rather than
-    # the finished write.
-    cures = use("paladin_cures") if char.port == "C64" else None
-    if cures is not None:
-        rec.set("paladin_cures", int(cures.value) & 0xFF)
-        emit(cures, "paladin_cures", 0x012, _field("paladin_cures").size)
-    else:
-        # Not consumed for a non-C64 source, so a value it does hold still
-        # reaches `Writer.finish` and is reported through `DROPPED` below --
-        # this note only accounts for the byte staying zero.
-        rep.note(0x012, 1,
-                 "paladin_cures: zero -- " + (
-                     "no C64 source value at a grade this conversion writes"
-                     if char.port == "C64" else
-                     "not written for a source other than the C64's own "
-                     "(see `DROPPED` for why)"))
-    # `lay_on_hands_minutes` (#628) is the neutral field now, but the C64's
-    # spent state also needs a row in the save's shared effect arrays, which
-    # this function has no way to write: it returns one `CharacterRecord`
-    # and is never given the arrays or the character's destination party
-    # slot. So a converted paladin's sheet still reads zero here; the byte
-    # is reported rather than silently claimed by the name above.
-    rep.note(0x013, 1,
-             "lay_on_hands_uses: zero -- the neutral lay_on_hands_minutes "
-             "value has nowhere to write its row in the save's effect "
-             "arrays from here (#628)")
+    # paladin's cure-disease and lay-on-hands uses (#626); both are handled
+    # in one block below, once the per-class levels are written, so
+    # `rec.get("level_paladin")` reads the destination's own level.
+    cures = use("paladin_cures")
+    heal = use("lay_on_hands_minutes")
+    running = use("running_effects")
 
     for field, c64_name in DIRECT:
         # Recomputed below rather than copied (#366, #405): `DIRECT` still
@@ -1007,6 +985,150 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
             dst = _field(f)
             emit(levels, f, dst.offset, dst.size)
     rep.note(0x0CE, 1, "the C64's unused sixth level slot: zero")
+
+    # -- the paladin's two bytes and his rows in the shared effect arrays ----
+    # (#600, #626, #628).  0x012 is cure-disease uses, 0x013 lay-on-hands;
+    # placed here so `rec.get("level_paladin")` reads the destination's own
+    # class level, already written above.
+    cure_off, cure_size = (_field("paladin_cures").offset,
+                           _field("paladin_cures").size)
+    heal_off, heal_size = (_field("lay_on_hands_uses").offset,
+                           _field("lay_on_hands_uses").size)
+    title_key = deltas.key
+    cure_entry = paladin.CURE_TIMER.get(title_key)
+    heal_entry = paladin.LAY_ON_HANDS_C64.get(title_key)
+    level_paladin = rec.get("level_paladin") or 0
+    clock = clock_minutes if clock_minutes is not None else 0
+
+    # Split `running_effects` into the node whose id is this title's own
+    # cure timer, and the rest -- which is `Writer.use`'s job normally, but
+    # a used field no longer reaches `Writer.finish`'s own sweep, so the
+    # remainder is reported here in its place, exactly as `DROPPED` would
+    # have (Stage 2 of #600 is what converts the rest).
+    cure_node = None
+    if running is not None:
+        rows = running.value if isinstance(running.value, (list, tuple)) else None
+        if rows is None:
+            # Not a list of nine-byte records at all -- a value this writer
+            # cannot make sense of, same as `Writer.finish`'s own generic
+            # sweep would report for a field never `use()`d.
+            rep.dropped.append(
+                "running_effects: " + dict(DROPPED)["running_effects"])
+        else:
+            remaining = []
+            for raw in rows:
+                row = effects.RunningEffect.from_record(
+                    bytes(raw)[:effects.RUNNING_EFFECT_SIZE])
+                if (cure_entry is not None and row.id == cure_entry[0]
+                        and cure_node is None):
+                    cure_node = row
+                else:
+                    remaining.append(raw)
+            if remaining:
+                rep.dropped.append(
+                    "running_effects: " + dict(DROPPED)["running_effects"])
+
+    cure_value = int(cures.value) if cures is not None else 0
+    heal_value = int(heal.value) if heal is not None else 0
+
+    def _row_lost(label: str, why: str) -> None:
+        rep.lost(f"{label}: {why}")
+
+    def _write_row(effect_id: int, duration: int, magnitude: int,
+                   label: str) -> bool:
+        """One paladin timer row, or a loss line when it cannot be written."""
+        if payload is None:
+            _row_lost(label, "no payload was given to write a row into "
+                             "the save's shared effect arrays")
+            return False
+        slot = effects.free_slot(payload)
+        if slot is None:
+            _row_lost(label, "no free slot in the save's shared effect "
+                             "arrays")
+            return False
+        effects.write_effect(payload, slot, effect_id,
+                             party_slot if party_slot is not None else 0,
+                             duration, magnitude)
+        rep.warnings.append(
+            f"{label}: row {slot}, id {effect_id}, duration ${duration:02X}")
+        return True
+
+    if cure_entry is None or level_paladin == 0:
+        # Pool of Radiance has no paladin at all, and a character with no
+        # paladin level in a title that does gets 0/0, which is what GEN
+        # writes -- both byte and any value it held are a loss, not a copy.
+        if cure_value:
+            _row_lost("paladin_cures",
+                      "Pool of Radiance keeps no cure-disease byte" if
+                      cure_entry is None else
+                      "not a paladin here, and GEN writes zero for one")
+        if heal_value:
+            _row_lost("lay_on_hands_minutes",
+                      "Pool of Radiance keeps no lay-on-hands byte" if
+                      cure_entry is None else
+                      "not a paladin here, and GEN writes zero for one")
+    else:
+        rec.set("paladin_cures", cure_value & 0xFF)
+        if cures is not None:
+            emit(cures, "paladin_cures", cure_off, cure_size,
+                 ", the C64's own byte and recovery timer, copied unchanged"
+                 if port == "C64" else
+                 ", played back through goldbox.paladin.c64_cure_write "
+                 "(#600)")
+        else:
+            rep.note(cure_off, cure_size, "paladin_cures: 0 -- no source "
+                     "value")
+        if port == "C64":
+            # The same engine's own byte and its own recovery timer, so a
+            # C64-to-C64 Save As keeps a paladin's remaining count exactly;
+            # no row is added that the source did not hold.
+            if cure_node is not None:
+                duration = effects.closest_duration(cure_node.minutes, clock)
+                _write_row(cure_entry[0], duration, cure_entry[1],
+                          "paladin_cures")
+        elif cure_value == 0 and cure_node is None:
+            # Nothing to lose: no uses and no recovery in flight, so this is
+            # representable whatever `level_paladin` is -- including a level
+            # neither engine's own refill rule agrees on, which only matters
+            # once there is a count or a row to refill.
+            pass
+        else:
+            try:
+                written = paladin.c64_cure_write(
+                    title_key, level_paladin, cure_value,
+                    cure_node.minutes if cure_node is not None else None,
+                    clock)
+            except paladin.Unrepresentable as exc:
+                rep.lost(f"paladin_cures: {exc}")
+            else:
+                full = paladin.full_count(level_paladin)
+                adjustment = (title_key == "curse-of-the-azure-bonds"
+                             and cure_node is None
+                             and 0 < cure_value < full)
+                for eid, duration, magnitude in written.rows:
+                    _write_row(eid, duration, magnitude,
+                              "paladin_cures (adjustment, #600)" if
+                              adjustment else "paladin_cures")
+
+        if heal_value <= 0:
+            rec.set("lay_on_hands_uses", 1)
+            rep.note(heal_off, heal_size,
+                     "lay_on_hands_uses: 1 -- may heal now")
+        else:
+            heal_id, heal_magnitude = heal_entry
+            duration = effects.closest_duration(heal_value, clock)
+            wrote = _write_row(heal_id, duration, heal_magnitude,
+                               "lay_on_hands_minutes")
+            rec.set("lay_on_hands_uses", 0 if wrote else 1)
+            rep.note(heal_off, heal_size,
+                     f"lay_on_hands_uses: {rec.get('lay_on_hands_uses')} -- "
+                     + ("spent, with a row in the save's shared effect "
+                        "arrays" if wrote else
+                        "a spent use has nowhere to write its row, so this "
+                        "reads as may heal now rather than the dead end of "
+                        "0 with no row"))
+        if heal is not None:
+            rep.dropped.extend(heal.dropped)
 
     # -- thac0_base: recomputed through this title's own table, not copied --
     # `DIRECT`'s copy is skipped above: a straight copy would hand back
@@ -1693,6 +1815,24 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                   "not, since `write` composes nothing itself"),
     ("icon_body", "see icon_head"),
     ("icon_colours", "see icon_head"),
+    ("paladin_cures", "record 0x012, freed from the old 20-byte name field "
+                      "(#626). Copied unchanged for a C64 source, whose own "
+                      "recovery timer is bound to the byte; for any other "
+                      "source, played back through `goldbox.paladin."
+                      "c64_cure_write` (#600) -- a paladin whose count and "
+                      "recovery no C64 state reproduces exactly still gets "
+                      "the byte, reported as a loss rather than refused. "
+                      "Zero, and any value lost rather than converted, for "
+                      "a title with no paladin or a character with no "
+                      "paladin level"),
+    ("lay_on_hands_minutes", "record 0x013: 1 when the source holds no "
+                             "spent use, 0 with a row in the save's shared "
+                             "effect arrays (id 140 Curse, 109 Silver "
+                             "Blades) when it does -- the row lost and "
+                             "0x013 left at 1 when `write` has no payload "
+                             "or no free slot to put it in (#628). Zero for "
+                             "a title with no paladin or a character with "
+                             "none"),
 )
 
 #: Neutral fields the C64 writer takes nothing from, and why.  Reported by
@@ -1721,25 +1861,10 @@ DROPPED: tuple[tuple[str, str], ...] = (
                         "from; Pool's party-wide Prayer row; the ids nobody "
                         "has read; and two ageing routes -- combat ages only "
                         "unit 00, and Silver Blades' walking rule differs from "
-                        "Pool's and Curse's "
+                        "Pool's and Curse's, and every id but the paladin's "
+                        "own cure timer, which is converted -- see "
+                        "`TRANSFORMED`'s `paladin_cures` row "
                         "(`docs/226-the-c64-running-effect-crosswalk.md`)"),
-    ("paladin_cures", "a DOS or Amiga source's own byte is not written to "
-                      "the C64's 0x012 (a C64 source's is -- see `write`'s "
-                      "own note beside the name field). DOS stores 1 for "
-                      "every paladin regardless of level; the C64's full "
-                      "count is level-dependent and a depleted one needs a "
-                      "recovery row of its own, which #600 is still "
-                      "establishing in the running game. This is a "
-                      "development-time protection against writing a value "
-                      "known to leave a paladin unable to ever recover "
-                      "CURE, not the finished write"),
-    ("lay_on_hands_minutes", "a spent use needs a row in the save's shared "
-                             "effect arrays, id 140 (Curse) or 109 (Silver "
-                             "Blades), owner the character's own party "
-                             "slot, `write` has neither the arrays nor the "
-                             "slot to write into. See `write`'s own note "
-                             "beside the name field for the read-side "
-                             "mirror of this"),
 )
 
 #: Neutral fields the C64 **recomputes for itself**, so writing them would be
@@ -1825,17 +1950,6 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
                    "#383 and #422 convert it when the source title's own "
                    "icon tables are supplied; without source disks there "
                    "are no tables to supply (#482)"),
-    ("lay_on_hands_uses", "the paladin's lay-on-hands uses, named by #626 "
-                          "as the C64's own 0x013, the byte freed from the "
-                          "old name field beside `paladin_cures` at 0x012. "
-                          "The neutral vocabulary now names the timer this "
-                          "byte tracks, `lay_on_hands_minutes` (#628), but "
-                          "reading it needs the matching row in the save's "
-                          "shared effect arrays, which this function is "
-                          "never given -- only the character's own record, "
-                          "roster and inventory. Reported only when the "
-                          "byte is non-zero: a character who has none to "
-                          "begin with loses nothing"),
 )
 
 #: What a player reads for each name in :data:`READ_DROPPED` -- the read
@@ -1871,8 +1985,6 @@ READ_DROPPED_PLAYER_TEXT: dict[str, str] = {
     "region_220": "Combat figure: Wish cannot yet turn the C64's own combat "
                   "icon into this game's own art, so your character's "
                   "figure is not set.",
-    "lay_on_hands_uses": "Lay on hands: your paladin's remaining uses are "
-                         "not converted yet.",
 }
 
 #: C64 fields the reader leaves behind because the value is recomputed
@@ -1940,6 +2052,12 @@ READ_TARGETS: dict[str, str] = (
        "paladin_cures": "read as neutral paladin_cures, directly rather "
                         "than through DIRECT (#626) -- see read's own note "
                         "beside the name field",
+       "lay_on_hands_uses": "read as neutral lay_on_hands_minutes: "
+                            "`remaining_minutes` of a row with this title's "
+                            "own lay-on-hands id owned by this character's "
+                            "party slot, or 0 with no such row -- which "
+                            "reads as 'may heal now', the same as the byte "
+                            "itself (#600, #626, #628)",
        "spells_known": "the spellbook mask's low seven bytes, unpacked into "
                        "neutral spells_known",
        "spells_known_high": "the same mask's high nine bytes, 0x07F-0x087, "
@@ -2006,7 +2124,9 @@ READ_TARGETS: dict[str, str] = (
 
 
 def read(rec: CharacterRecord, roster=None, inventory=None,
-         game=None, source: str | None = None) -> NeutralCharacter:
+         game=None, source: str | None = None, *,
+         payload: bytes | None = None, party_slot: int | None = None,
+         clock_minutes: int | None = None) -> NeutralCharacter:
     """Read one C64 record into the neutral record.
 
     `roster` is the character's roster block, which is where a *save slot*
@@ -2019,6 +2139,13 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
 
     `game` is the title whose race and class tables the record's indices are
     in; it travels on the neutral record so a writer can name them.
+
+    `payload`, `party_slot` and `clock_minutes` (#600, #626, #628) are the
+    whole `SAVEDGAME0`, this character's own save slot and the save's time
+    of day -- what reading a paladin's lay-on-hands row and his cure timer
+    row out of the save's shared effect arrays needs, beyond the record
+    itself.  Left out, `lay_on_hands_minutes` reads 0 (which reads as "may
+    heal now", the same as an unspent byte) and no cure row is read.
     """
     out = NeutralCharacter("C64", source=source, game=game)
     deltas = deltas_for(game)
@@ -2049,6 +2176,42 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # for at all.
     out.set("paladin_cures", rec.get("paladin_cures"),
             origin("paladin_cures"), grade("paladin_cures"))
+
+    # -- lay-on-hands and the cure timer: the byte plus a row, if given ------
+    # (#600, #626, #628).  `lay_on_hands_uses` (0x013) says only "may heal
+    # now" or "may not" -- the spent state's own timer is a row in the
+    # save's shared effect arrays, which `read` only has a route to when a
+    # caller supplies the payload and the character's own save slot.
+    title_key = getattr(deltas, "key", None)
+    heal_entry = paladin.LAY_ON_HANDS_C64.get(title_key)
+    heal_minutes = 0
+    cure_entry = paladin.CURE_TIMER.get(title_key)
+    clock = clock_minutes if clock_minutes is not None else 0
+    if payload is not None and party_slot is not None:
+        rows = effects.active_effects(bytes(payload))
+        if heal_entry is not None:
+            heal_id = heal_entry[0]
+            row = next((r for r in rows
+                       if r.id == heal_id and r.owner == party_slot), None)
+            if row is not None:
+                heal_minutes = effects.remaining_minutes(row.duration, clock)
+        if cure_entry is not None:
+            cure_id = cure_entry[0]
+            row = next((r for r in rows
+                       if r.id == cure_id and r.owner == party_slot), None)
+            if row is not None:
+                minutes = effects.remaining_minutes(row.duration, clock)
+                out.set("running_effects",
+                        [effects.RunningEffect(cure_id, minutes, 0,
+                                               1).to_record()],
+                        "the save's shared effect arrays: a row with this "
+                        "title's own cure timer id, owned by this "
+                        "character's own save slot", grade("paladin_cures"))
+    out.set("lay_on_hands_minutes", heal_minutes,
+            origin("lay_on_hands_uses") + (
+                ", and a row in the save's shared effect arrays"
+                if heal_minutes else ""),
+            grade("lay_on_hands_uses"))
 
     for neutral_name, c64_name in DIRECT:
         if is_npc and neutral_name in {"levels_drained", "hp_lost_to_drain"}:
@@ -2431,13 +2594,6 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # names and issue numbers in them).
     for name, _why in READ_DROPPED:
         if name in out:
-            continue
-        if name == "lay_on_hands_uses" and not rec.get("lay_on_hands_uses"):
-            # A character who has none to begin with loses nothing: every
-            # Pool of Radiance character reads zero here (the title has no
-            # paladin), so reporting it unconditionally refused every Pool
-            # of Radiance C64 save for a byte that was never anything but
-            # zero.
             continue
         sentence = READ_DROPPED_PLAYER_TEXT.get(name)
         if sentence:

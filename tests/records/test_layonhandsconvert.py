@@ -6,12 +6,8 @@ same one-day timer every port keeps as an effect node rather than a record
 byte. The id differs by title and by port: Curse is 140 everywhere, Silver
 Blades and Pools of Darkness are 109 on DOS and 140 on the Amiga.
 
-**The C64 side is not covered here.** Reading or writing the row needs the
-save's own 64-slot effect arrays and the character's destination party slot,
-neither of which `goldbox.c64_codec.read` or `write` can reach today --
-`goldbox/c64_codec.py`'s own `DROPPED` entry and
-`docs/226-the-c64-running-effect-crosswalk.md` say the same for every running
-effect, not only this one. `#628`'s own comment thread has the finding.
+The C64 side, a row in the save's own 64-slot effect arrays rather than a
+node, is `tests/records/test_paladinc64.py`.
 """
 from __future__ import annotations
 

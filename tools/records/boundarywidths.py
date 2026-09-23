@@ -226,6 +226,11 @@ STRUCTURED: dict[str, str] = {
                 "byte of its own",
     "icon_body": "0 to 31, the art library's own body count; see icon_head",
     "icon_colours": "six bytes; see icon_head",
+    "paladin_cures": "a byte, 0 to 3; a paladin level DOS and the C64 refill "
+                     "to different counts (255, say) is reported as a loss "
+                     "rather than written (#600)",
+    "lay_on_hands_minutes": "0, or a spent use's minutes, written as a row "
+                            "in the save's shared effect arrays (#628)",
 }
 
 

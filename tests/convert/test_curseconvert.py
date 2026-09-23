@@ -449,9 +449,9 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
     The `#131` specimen through `editor.dosimport.rehearse` showed three
     lines before this pair of fixes -- two portrait, one identity -- and
     shows neither kind now, the same measurement `tests/convert/test_ssbconvert.py`
-    takes on Silver Blades.  The two lines it does show are the paladin's
-    cure-disease count and his lay-on-hands timer, neither of which
-    `goldbox.c64_codec.write` can put into the C64's own record (#628)."""
+    takes on Silver Blades.  The paladin's cure-disease count and his
+    lay-on-hands timer, which used to be the two remaining lines, are now
+    written through `write_c64_save`'s own payload and slot (#600, #628)."""
     from editor.dosimport import GameFiles, rehearse
 
     files = GameFiles(icon=bytes(36), animate=bytes(852), portraits=None)
@@ -459,14 +459,7 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
     for line in conversion.report.dropped:
         assert "portrait" not in line.lower(), line
         assert "identity" not in line.lower(), line
-    # The drop list is the developer's accounting, logged and never shown to
-    # a player, so two lines are allowed: the paladin's cure-disease count
-    # and his lay-on-hands timer, neither of which the C64 record has a
-    # place for from here.
-    paladin = "paladin_cures: " + dict(c64_codec.DROPPED)["paladin_cures"]
-    heal = ("lay_on_hands_minutes: "
-           + dict(c64_codec.DROPPED)["lay_on_hands_minutes"])
-    assert conversion.report.dropped == [paladin, heal]
+    assert conversion.report.dropped == []
 
 
 def test_a_curse_save_is_written_whole():

@@ -386,24 +386,29 @@ def test_a_c64_source_writes_its_own_cure_disease_count_back_unchanged() -> None
 
 
 def test_a_dos_source_does_not_write_its_cure_disease_count_to_the_c64() -> None:
-    """DOS stores 1 for every paladin whatever his level; the C64's full
-    count is level-dependent and a depleted one needs a recovery row #600 is
-    still establishing in the running game, so a DOS or Amiga source's raw
-    byte is not written to 0x012 -- writing it unchanged could leave a
-    paladin unable to ever recover CURE (#626, #600)."""
+    """A DOS paladin 6 with 1 cure and no node -- 0 < 1 < the C64's full
+    count of 2 at that level, the one state no C64 Curse state reproduces
+    exactly -- gets Donald's adjustment: `0x012` = 1 and one row, id 141,
+    duration and magnitude both `$C7`, the same byte the C64's own cure
+    writes (#626, #600)."""
     from goldbox import c64_codec, neutral
     from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS
 
     char = neutral.NeutralCharacter("DOS", source="built here",
                                     game=CURSE_OF_THE_AZURE_BONDS)
     for name, value in {
-        "name": "GALAHAD", "level": 9, "levels": {"paladin": 9},
+        "name": "GALAHAD", "level": 6, "levels": {"paladin": 6},
         "class_bits": 0x40, "paladin_cures": 1,
     }.items():
         char.set(name, value, "built here")
-    rec, rep = c64_codec.write(char)
-    assert rec.get("paladin_cures") == 0
-    assert any("paladin_cures" in d for d in rep.dropped)
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=0,
+                               clock_minutes=222)
+    assert rec.get("paladin_cures") == 1
+    assert not any("paladin_cures" in d for d in rep.dropped)
+    rows = [(payload[i], payload[0x040 + i], payload[0x080 + i],
+            payload[0x280 + i]) for i in range(0x40) if payload[i]]
+    assert rows == [(141, 0, 0xC7, 0xC7)]
 
 
 def test_directory_names_are_a_separate_convention() -> None:

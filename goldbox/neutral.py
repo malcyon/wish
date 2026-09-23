@@ -158,11 +158,10 @@ FIELDS: dict[str, str] = {
                      "dice nor its abilities again, and a title that allows it "
                      "keeps the old level so the character can still be that "
                      "class in the parts of the rules that ask",
-    "paladin_cures": "the paladin's cure-disease bookkeeping, one byte: 1 "
-                     "for a paladin who may still cure and 0 otherwise. The "
-                     "engine clears it on a use rather than counting it "
-                     "down. Pool of Radiance keeps no such byte on either "
-                     "port",
+    "paladin_cures": "the paladin's cure-disease uses left, a count from 0 "
+                     "to 3 on the C64, decremented by a cure and refilled "
+                     "by its recovery timer. Pool of Radiance keeps no such "
+                     "byte on either port",
     "lay_on_hands_minutes": "minutes until the paladin's lay-on-hands use "
                             "comes back, 0 meaning he may heal now. Every "
                             "port with a paladin keeps this as a spent-use "

@@ -197,10 +197,11 @@ CLOCK = 222
 NODE = 4000
 
 #: (title, paladin level, DOS uses, DOS node minutes) -> record `0x012` and
-#: the rows `(id, duration, magnitude)`, or `None` where no C64 state does
-#: what DOS does.  Each Curse row is a state driven in the running game,
-#: `tools/c64/curedrive.py`; `docs/232-a-paladins-cures-on-the-c64.md`
-#: has what the game did with it.
+#: the rows `(id, duration, magnitude)` a writer must produce.  Each Curse
+#: row is a state driven in the running game, `tools/c64/curedrive.py`;
+#: `docs/234-a-paladins-cure-disease-across-dos-and-the-c64.md` has what the
+#: game did with it, including Donald's decision on the one state (1 left,
+#: no node) no C64 Curse state reproduces exactly.
 WRITER_CASES = {
     (CURSE, 11, 3, None): (3, ()),
     (CURSE, 6, 2, None): (2, ()),
@@ -211,9 +212,14 @@ WRITER_CASES = {
     (CURSE, 6, 0, NODE): (0, ((141, 0xC3, 0xC7),)),
     (CURSE, 11, 0, None): (0, ()),
     (CURSE, 6, 0, None): (0, ()),
-    (CURSE, 11, 1, None): None,
-    (CURSE, 11, 2, None): None,
-    (CURSE, 6, 1, None): None,
+    # Donald's decision (#600): rather than refuse this state,
+    # `c64_cure_write` writes an adjustment row -- id 141, duration and
+    # magnitude both the byte the cure itself writes -- rather than the
+    # state's own recovery time, which no C64 Curse state holds exactly
+    # (`test_no_c64_curse_state_gives_one_use_of_three_its_dos_recovery`).
+    (CURSE, 11, 1, None): (1, ((141, 0xC7, 0xC7),)),
+    (CURSE, 11, 2, None): (2, ((141, 0xC7, 0xC7),)),
+    (CURSE, 6, 1, None): (1, ((141, 0xC7, 0xC7),)),
     (CURSE, 5, 1, None): (1, ()),
     (CURSE, 0, 0, None): (0, ()),
     (SILVER, 11, 1, None): (1, ()),
@@ -372,11 +378,13 @@ def test_the_game_writes_the_cure_row_the_writer_is_asked_for():
 # --- the converter itself, once its C64 writer writes these bytes ----------
 
 def _dos_paladin_party(tmp_path, level: int, cures: int,
-                       minutes: int | None):
+                       minutes: int | None, heal_minutes: int | None = None):
     """A copy of the DOS Curse party `curse-551` with its paladin staged.
 
-    Inputs only, into the copy: paladin level `0x10C`, uses `0x191`, and a
-    cure node (141, `minutes`, value 0, flag 1) appended to his `.FX`.
+    Inputs only, into the copy: paladin level `0x10C`, uses `0x191`, a cure
+    node (141, `minutes`, value 0, flag 1) appended to his `.FX`, and, when
+    `heal_minutes` is given, a lay-on-hands node (140, `heal_minutes`, value
+    0, flag 1) beside it.
     """
     import shutil
 
@@ -402,20 +410,16 @@ def _dos_paladin_party(tmp_path, level: int, cures: int,
         fx.write_bytes(fx.read_bytes() + bytes(
             (141, minutes & 0xFF, minutes >> 8, 0, 1))
             + dos_codec.EFFECT_NEXT_NULL)
+    if heal_minutes is not None:
+        fx = party / "CHRDATA6.FX"
+        fx.write_bytes(fx.read_bytes() + bytes(
+            (140, heal_minutes & 0xFF, heal_minutes >> 8, 0, 1))
+            + dos_codec.EFFECT_NEXT_NULL)
     return party
 
 
-#: Until the C64 writer writes these bytes it writes `0x012` = 0 and no row,
-#: which is right only for a paladin DOS left at 0 with no node; every other
-#: case is expected to fail until then, and passing flags the mark to go.
-_UNWRITTEN = pytest.mark.xfail(strict=True, reason=(
-    "the C64 writer does not yet write the cure uses and "
-    "timer row; take this mark off when it does"))
-
-
 @pytest.mark.parametrize("case", [
-    pytest.param(c, marks=() if WRITER_CASES[c] in (None, (0, ()))
-                 else _UNWRITTEN, id=_case_id(c))
+    pytest.param(c, id=_case_id(c))
     for c in sorted((c for c in WRITER_CASES if c[0] == CURSE and c[1] > 0),
                     key=str)])
 def test_a_converted_dos_curse_paladin_gets_the_cure_state_above(
@@ -427,9 +431,6 @@ def test_a_converted_dos_curse_paladin_gets_the_cure_state_above(
     from goldbox import c64_port, c64_save, dos_codec
     _, level, cures, minutes = case
     want = WRITER_CASES[case]
-    if want is None:
-        pytest.skip("no C64 Curse state reproduces this; the choice between "
-                    "the two nearest is set out in docs/234")
     container = c64_save.CURSE_OF_THE_AZURE_BONDS
     save0 = bytearray(container.payload_size)
     dos_codec.convert_save(_dos_paladin_party(tmp_path, level, cures, minutes),
@@ -442,3 +443,33 @@ def test_a_converted_dos_curse_paladin_gets_the_cure_state_above(
                  if save0[i] in (140, 141) and save0[0x040 + i] == slot)
     assert list(save0[0xC6:0xCA]) == [0, 2, 4, 3]     # 03:42, as CLOCK says
     assert (save0[container.slot(slot) + 0x012], rows) == want
+
+
+#: The duration byte `closest_duration(1000, 222)` gives at the party's own
+#: camp clock, 03:42 -- computed once and written as a literal.
+_HEAL_1000_DURATION = 0x91
+
+
+@pytest.mark.parametrize("heal_minutes", [None, 1000], ids=["nonode", "node"])
+def test_a_converted_dos_curse_paladin_gets_the_lay_on_hands_state_above(
+        tmp_path, heal_minutes):
+    """DOS Curse -> C64 Curse through `dos_codec.convert_save`: no lay-on-
+    hands node gives `0x013` = 1 and no row; a node gives `0x013` = 0 and a
+    row owned by his own save slot."""
+    from goldbox import c64_port, c64_save, dos_codec
+    container = c64_save.CURSE_OF_THE_AZURE_BONDS
+    save0 = bytearray(container.payload_size)
+    dos_codec.convert_save(
+        _dos_paladin_party(tmp_path, 11, 3, None, heal_minutes),
+        "A", save0, game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    slot = next(i for i in range(8)
+                if save0[container.slot(i):container.slot(i) + 8]
+                == b"PALADIN\0")
+    rows = tuple((save0[i], save0[0x040 + i], save0[0x080 + i],
+                 save0[0x280 + i]) for i in range(0x40) if save0[i] == 140)
+    heal_byte = save0[container.slot(slot) + 0x013]
+    if heal_minutes is None:
+        assert (heal_byte, rows) == (1, ())
+    else:
+        assert (heal_byte, rows) == (0, ((140, slot, _HEAL_1000_DURATION,
+                                         0xC1),))

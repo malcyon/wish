@@ -551,11 +551,10 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
 
     `WISH-SPEC-ssb-234-party-pair` slot D through `editor.dosimport.rehearse`
     showed three lines before this pair of fixes -- two portrait, one
-    identity -- and shows neither kind now.  The lines it does show are the
-    paladin's cure-disease count and his lay-on-hands timer, neither of
-    which the C64 record has a byte for from here (#628), and the party's
-    running spell, which the C64 keeps in its own save arrays and this
-    converter does not write."""
+    identity -- and shows neither kind now.  The remaining line was the
+    party's one running effect, which turned out to be the paladin's own
+    cure timer: it is now written through `write_c64_save`'s own payload and
+    slot (#600, #628), so the party shows no drop line at all."""
     from editor.dosimport import GameFiles, rehearse
 
     folder = gamedata.specimen("ssb-234-party-pair")
@@ -564,17 +563,7 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
     for line in conversion.report.dropped:
         assert "portrait" not in line.lower(), line
         assert "identity" not in line.lower(), line
-    # The drop list is the developer's accounting, logged and never shown to
-    # a player, so three lines are allowed: the paladin's cure-disease count
-    # and his lay-on-hands timer, neither of which the C64 record has a
-    # place for from here, and a running spell, which the C64 keeps in the
-    # save's own arrays.
-    paladin = "paladin_cures: " + dict(c64_codec.DROPPED)["paladin_cures"]
-    heal = ("lay_on_hands_minutes: "
-           + dict(c64_codec.DROPPED)["lay_on_hands_minutes"])
-    running = "running_effects: " + dict(c64_codec.DROPPED)["running_effects"]
-    assert [d for d in conversion.report.dropped if d != running] == \
-        [paladin, heal]
+    assert conversion.report.dropped == []
 
 
 # --- the engine's own rewrite, from this ticket's VICE session ---------------

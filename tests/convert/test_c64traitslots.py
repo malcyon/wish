@@ -69,17 +69,11 @@ def _dos_record(shape, effects) -> dos_codec.DosCharacter:
 def test_a_curse_paladins_protection_from_evil_reaches_a_trait_slot():
     """The scenario #394 opens with, from the DOS record inward: a paladin's
     own effect record becomes a non-zero trait slot, and nothing tells the
-    player anything was lost.
-
-    `lay_on_hands_minutes` is excluded from the check below: every DOS or
-    Amiga source of these titles gets that line regardless of this test's
-    own trait effect, since the C64 writer has nowhere to put the timer from
-    here (#628) -- the same way `paladin_cures` already does."""
+    player anything was lost."""
     char = _dos_record(CURSE, [_innate_node(PALADIN_EFFECT)])
     rec, rep = c64_codec.write(dos_codec.to_neutral(char))
     assert PALADIN_EFFECT in _slots(rec)
-    assert not [d for d in rep.dropped
-               if "effect" in d.lower() and "lay_on_hands" not in d.lower()]
+    assert not [d for d in rep.dropped if "effect" in d.lower()]
 
 
 def test_an_id_the_neutral_record_calls_granted_still_reaches_a_slot():
@@ -241,15 +235,10 @@ def test_both_paladins_of_the_disagreeings_own_source_arrive_with_id_8(record):
     """`WISH-SPEC-curse-131-dualclassed-in-area-1` is the DOS save the
     surviving half of #394's disagreement was converted from, and MATHEW and
     MARK are its two paladins.  Each holds one `.FX` record, `08 00 00 FF 00`,
-    and each arrives with 8 in the block.
-
-    `lay_on_hands_minutes` is excluded from the check below the same way
-    `test_a_curse_paladins_protection_from_evil_reaches_a_trait_slot` does
-    (#628)."""
+    and each arrives with 8 in the block."""
     where = specimen("curse-131-dualclassed-in-area-1")
     char = dos_codec.read_character(where / record)
     assert [e[0] for e in char.effects] == [PALADIN_EFFECT]
     rec, rep = c64_codec.write(dos_codec.to_neutral(char))
     assert _slots(rec)[0] == PALADIN_EFFECT
-    assert not [d for d in rep.dropped
-               if "effect" in d.lower() and "lay_on_hands" not in d.lower()]
+    assert not [d for d in rep.dropped if "effect" in d.lower()]

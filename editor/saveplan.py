@@ -736,10 +736,9 @@ KEPT_FIELDS = (
     # `paladin_cures` is the C64's 0x012, freed from the old 20-byte name
     # field (#626): `c64_codec.read` copies it into the neutral field the
     # DOS and Amiga ports already name, and `c64_codec.write` copies it
-    # straight back for a C64 source, so a C64-to-C64 Save As keeps it. A
-    # DOS or Amiga source's own byte is not written to the C64 yet -- #600
-    # is still establishing what a depleted count needs alongside it -- so
-    # that direction never reaches this comparison with a value to compare.
+    # straight back for a C64 source, so a C64-to-C64 Save As keeps it, and
+    # plays a DOS or Amiga source's own byte back through
+    # `goldbox.paladin.c64_cure_write` for the other two directions (#600).
     "paladin_cures")
 
 #: What is deliberately **not** compared, and why. Every known field of the
@@ -797,14 +796,13 @@ KEPT_FIELDS = (
 #: * `lay_on_hands_uses` -- the C64's 0x013, freed from the old 20-byte name
 #:   field beside `paladin_cures` (#626). The neutral vocabulary now has a
 #:   field for the timer this byte tracks, `lay_on_hands_minutes` (#628), and
-#:   DOS and the Amiga convert it as an effect node -- but the C64's own
-#:   spent state is also a row in the save's shared effect arrays, which
-#:   `goldbox.c64_codec.read` and `write` have no way to reach (neither
-#:   knows the destination party slot, and neither is handed the arrays):
-#:   `goldbox.c64_codec.DROPPED`'s own `running_effects` entry and
-#:   `docs/226-the-c64-running-effect-crosswalk.md` are the same gap for
-#:   every C64 running effect, not only this one. So a C64 source or
-#:   destination still leaves this byte unconverted.
+#:   both `read` and `write` convert it through a row in the save's shared
+#:   effect arrays when they are given one. Still not compared literally: a
+#:   spent use with nowhere to write its row comes back as 0x013 = 1 rather
+#:   than the dead-end 0 with no row, which reads as "may heal now" either
+#:   way -- and `write` is not always given the arrays (`editor/roster.py`'s
+#:   own callers, for one), so a Save As through those routes still cannot be
+#:   held to the byte.
 #:
 #: Measured over 36 runs: the fifteen Pool of Radiance C64 saves this
 #: machine's registry holds, each to a C64 and a DOS destination, plus DOS

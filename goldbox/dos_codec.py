@@ -65,6 +65,7 @@ from . import (
     c64_save,
     classcode,
     dos_savegame,
+    effects,
     neutral,
     spells,
     titles,
@@ -2494,7 +2495,10 @@ def _neutral_icon_for(char: NeutralCharacter, source: DosIcon | None,
 
 
 def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
-                  portraits: PortraitTables | None = None,
+                  portraits: PortraitTables | None = None, *,
+                  payload: bytearray | None = None,
+                  party_slot: int | None = None,
+                  clock_minutes: int | None = None,
                   ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
@@ -2504,6 +2508,11 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     is left zero and reported.  `portraits` is the creation menu's two
     tables, from :func:`portrait_tables`; left out, :func:`to_neutral` uses
     the stored menu, so the sheet portrait converts either way (#57).
+
+    `payload`, `party_slot` and `clock_minutes` (#600, #626, #628) are handed
+    straight on to :func:`neutral_to_c64_record` and then to
+    `goldbox.c64_codec.write`, which is what a paladin's cure-disease and
+    lay-on-hands rows need; see that function's own docstring.
 
     The report names no character: it is one character's provenance, and which
     character that is belongs to the caller, which is the only thing that
@@ -2515,16 +2524,24 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     :func:`c64_name`.
     """
     out = to_neutral(dos, portraits=portraits)
-    return neutral_to_c64_record(out, icon=icon)
+    return neutral_to_c64_record(out, icon=icon, payload=payload,
+                                 party_slot=party_slot,
+                                 clock_minutes=clock_minutes)
 
 
-def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None,
+def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
+                          payload: bytearray | None = None,
+                          party_slot: int | None = None,
+                          clock_minutes: int | None = None,
                           ) -> tuple[CharacterRecord, Report]:
     """Build one C64 record from an already decoded neutral character.
 
     This is the core entry point for a non-DOS source.  The copy keeps the
     destination's name folding local without changing the neutral character
     that another destination may consume.
+
+    `payload`, `party_slot` and `clock_minutes` are `goldbox.c64_codec.
+    write`'s own three keyword arguments, handed straight on.
     """
     out = NeutralCharacter(char.port, source=char.source, game=char.game)
     out.fields = dict(char.fields)
@@ -2536,7 +2553,8 @@ def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None,
                 field.origin + ", folded to capitals for the C64's own "
                                "character set",
                 field.confidence, Provenance.RESHAPED)
-    return c64_codec.write(out, icon=icon)
+    return c64_codec.write(out, icon=icon, payload=payload,
+                           party_slot=party_slot, clock_minutes=clock_minutes)
 
 
 def c64_name(name: str) -> str:
@@ -6152,6 +6170,17 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     #: whole region is meant to keep what that save already held (#363).
     npc_icon = (icon.default_icon() if isinstance(icon, IconParts) else icon)
 
+    # Zeroed here, before the character loop, so a paladin's cure-disease
+    # and lay-on-hands rows (#600, #626, #628) -- written into `save0` by
+    # `neutral_to_c64_record`/`to_c64_record` below, through `payload` --
+    # land in arrays that start empty rather than being wiped out again
+    # afterwards, which is where this loop used to run.
+    for base, size in EFFECT_ARRAYS:
+        at = base - SAVE0_BASE
+        save0[at:at + size] = bytes(size)
+        report.note(at, size, "active effects: zeroed, which is 'none running'")
+
+    clock_mins = effects.clock_minutes(state.clock)
     all_faced = True
     for index, char in enumerate(party):
         place = marching_slot(index, len(party))
@@ -6161,14 +6190,16 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
             size = "large" if char.get("size_small") else "small"
             rec, one = neutral_to_c64_record(
                 char, icon=_neutral_icon_for(
-                    char, source_icon, icon, icon_tables.get(size)))
+                    char, source_icon, icon, icon_tables.get(size)),
+                payload=save0, party_slot=place, clock_minutes=clock_mins)
             name = str(char.get("name", ""))
         else:
             rec, one = to_c64_record(
                 char,
                 icon=_icon_for(char, icon,
                                icon_tables.get(dos_size(char.get("size")))),
-                portraits=portraits)
+                portraits=portraits,
+                payload=save0, party_slot=place, clock_minutes=clock_mins)
             name = char.name
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
@@ -6304,10 +6335,6 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
             f"save holds {dos_savegame.PARTY_ENTRIES} characters and a C64 "
             f"save {container.party_slots}")
 
-    for base, size in EFFECT_ARRAYS:
-        at = base - SAVE0_BASE
-        save0[at:at + size] = bytes(size)
-        report.note(at, size, "active effects: zeroed, which is 'none running'")
     if not any(at == SCRIPT_SCRATCH[0] - SAVE0_BASE
                for at, _, _ in container.copied):
         at = SCRIPT_SCRATCH[0] - SAVE0_BASE
@@ -7443,6 +7470,13 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     reverse_tables = (c64_icon_tables(title=c64.key)
                       if icon_parts is not None else None)
     stale_icon_note = c64_codec.READ_DROPPED_PLAYER_TEXT.get("region_220")
+    # The same six digits `world_state.from_c64` reads, straight off the
+    # payload -- a paladin's lay-on-hands and cure rows (#600, #626, #628)
+    # need the save's time of day to say how many minutes a duration byte
+    # has left.
+    clock_digits = tuple(save0[container.clock + i]
+                         for i in range(dos_savegame.CLOCK_DIGITS))
+    clock_mins = effects.clock_minutes(clock_digits)
     out: "list[NeutralCharacter]" = []
     icons: "list[DosIcon | None]" = []
     for char_slot in party:
@@ -7450,7 +7484,9 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
         inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
         character = c64_codec.read(char_slot.record, roster=block,
                                    inventory=inv, game=c64,
-                                   source=f"C64 slot {char_slot.index}")
+                                   source=f"C64 slot {char_slot.index}",
+                                   payload=save0, party_slot=char_slot.index,
+                                   clock_minutes=clock_mins)
         icon = None
         if icon_parts is not None:
             # Not `char_slot.record.get_raw("region_220")`: `Slot.record`

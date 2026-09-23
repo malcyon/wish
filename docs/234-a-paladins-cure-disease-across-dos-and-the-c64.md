@@ -35,7 +35,7 @@ the running game did with exactly those bytes. Every driven claim is
 | 1 left, node | cure once; full when the node ends | `0x012` = 1, row | level 11 and 6: the cure left 0 and added no row; CURE gone from the sheet; full back at 00:00 on day 3, the row's 4098 minutes; CURE offered |
 | 0 left, node | no CURE; full when the node ends | `0x012` = 0, row | the state the row above is in after its cure, byte for byte: no CURE, full back when the row ends |
 | 0 left, no node | no CURE, ever | `0x012` = 0, no row | the state the row below is in after its cure: no CURE, and nothing back after eight days' rest |
-| 1 left, no node | cure once; full 10080 minutes after that cure | **no C64 Curse state does this** -- see below | with `0x012` = 1 and no row (level 11 and 6): the cure left 0, added no row, and eight days' rest brought nothing back. With a `$C7` row as well (level 11 and 6): the cure left 0 and full came back at 00:00 on day 7 |
+| 1 left, no node | cure once; full 10080 minutes after that cure | **no C64 Curse state does this exactly -- see below**; written as `0x012` = 1, adjustment row 141 `$C7`/`$C7` | with `0x012` = 1 and no row (level 11 and 6): the cure left 0, added no row, and eight days' rest brought nothing back. With a `$C7` row as well (level 11 and 6): the cure left 0 and full came back at 00:00 on day 7 |
 | full, node (no DOS play reaches this) | cure, no new node; full when the node ends | `0x012` = full, row | level 11: the cure left 2 and added a second row, `$C7`; full at the first row's end (day 3); the second row ended on day 7 and wrote full again |
 
 For Silver Blades the same writes hold with id 110, and the partial state
@@ -134,11 +134,19 @@ has to be 1 for him to cure once and no more, and then:
   cured on the day he arrived, at 03:43, he had his full count back at 00:00
   on day 7 -- the moment a C64 cure from full would have given him.
 
-`c64_cure_write` raises `Unrepresentable` for this state rather than choosing,
-and the converter test skips it, naming the choice.
-`test_no_c64_curse_state_gives_one_use_of_three_its_dos_recovery` checks every
-row length from 1 minute to 64 days against two cure times and finds each at
-least two days from DOS's recovery for one of them.
+## Donald's decision
+
+Rather than refuse this state, `c64_cure_write` writes an adjustment: `0x012`
+= 1 and a row 141, duration and magnitude both `$C7` -- the same byte the C64
+cure itself writes, as if he had just cured from full on the day of
+conversion. **This is not DOS parity.** It gives up on reproducing whenever
+DOS would actually have brought his three back, in exchange for a recovery
+that exists at all: with no row his first cure would start no timer and CURE
+would never return.
+`test_no_c64_curse_state_gives_one_use_of_three_its_dos_recovery` is the
+measurement that shows no row length gets within two days of DOS's own
+recovery for both of two cure times, which is why no row was a better match
+than the adjustment picked here.
 
 **The C64 game makes this state itself.** `GEN` seeds the count when a
 character is created, added to the party, regains a class or changes class --

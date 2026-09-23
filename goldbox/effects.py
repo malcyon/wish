@@ -218,6 +218,19 @@ def longest_duration_within(minutes: int, clock_minutes: int) -> int | None:
     return best
 
 
+def clock_minutes(digits: "tuple[int, ...]") -> int:
+    """Minutes since midnight from the clock digits `WorldState.clock` holds.
+
+    `digits` is `(sub-minute, minute units, minute tens, hour, day, month)`,
+    the order `goldbox.dos_codec.apply_clock` writes and `goldbox.world_state.
+    from_c64`/`from_dos` read.  Same arithmetic as `tools/c64/curedrive.py`'s
+    own `clock_minutes`, which reads the three bytes straight out of a
+    payload rather than through `WorldState`.
+    """
+    _, units, tens, hour = digits[0], digits[1], digits[2], digits[3]
+    return hour * 60 + tens * 10 + units
+
+
 def closest_duration(minutes: int, clock_minutes: int) -> int | None:
     """The duration byte whose time left is nearest `minutes`, in either direction.
 
