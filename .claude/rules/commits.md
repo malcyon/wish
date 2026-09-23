@@ -36,9 +36,10 @@ Work goes out in reviewed, coherent batches, and CI is the full-suite gate:
    read private game data, which CI cannot run because it has no specimens.
 2. **`.venv/bin/ruff check .`** and
    **`.venv/bin/python3 tools/generate/genui.py --check`**.
-3. **The required code review** (`.claude/rules/delegating.md`), its findings
-   fixed or rejected with a reason.
-4. **Commit, then push** the batch.
+3. **Commit locally**, then run the required code review
+   (`.claude/rules/delegating.md`). Fix findings in a follow-up commit or
+   reject them with a reason.
+4. **Push** the reviewed batch.
 5. **Check CI for the exact pushed SHA** before taking more tickets, and fix
    what actually failed.
 
@@ -112,10 +113,11 @@ fourth way. `tools/areas/geomap.py` is the one-liner.
 
 ## Pushing
 
-**Push once the batch is reviewed and its focused checks pass.** A subagent
-reports, the `code-reviewer` runs on what it wrote, and the findings are fixed
-or explicitly rejected with a reason before the work joins a batch. Donald has
-standing approval for the push; he does not have to be asked each time.
+**Push once the locally committed batch is reviewed and its focused checks
+pass.** A subagent reports, the root commits locally, the `code-reviewer`
+reviews that commit, and the findings are fixed or explicitly rejected with a
+reason before push. Donald has standing approval for the push; he does not
+have to be asked each time.
 
 A documentation-only or `CLAUDE.md`-only commit needs no code review and follows
 the prose-only checks above.
@@ -154,7 +156,7 @@ neither belongs in the main window. The fix is checked with focused tests,
 pushed, and its own SHA's CI checked in turn.
 
 **Wind-down means finishing, not abandoning.** Stop taking new work; finish
-the changes in progress with focused validation and review; commit, push, and
+focused validation, commit locally, review, push, and
 check CI for the pushed SHA; then stop cleanly. Uncommitted or unpushed work is
 left behind only when Donald explicitly asks to stop immediately and leave it,
 and then the handoff names it, with any pending CI by SHA and run ID.
