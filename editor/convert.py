@@ -1053,14 +1053,6 @@ def _rehearse_later_savegame(state: Any, shape: dos_port.DosDeltas,
         savegame)
 
 
-def has_not_set_out(state: Any) -> bool:
-    """Whether a Curse or Silver Blades party is still in the placeless state
-    before BEGIN ADVENTURING -- the condition
-    `goldbox.amiga_savegame.new_savegame` builds its initialiser form on."""
-    return (not state.set_out
-            and world_state.is_pre_adventure_area(state.title, state.area))
-
-
 def amiga_needs_game_disk(shape: dos_port.DosDeltas,
                           source: "Source | None" = None) -> bool:
     """Whether an Amiga destination of this title reads anything off the
@@ -1080,7 +1072,7 @@ def amiga_needs_game_disk(shape: dos_port.DosDeltas,
         state = world_state.from_c64(
             source.save0, game=c64_port.by_key(shape.key),
             source=str(source.path))
-        return not has_not_set_out(state)
+        return not world_state.has_not_set_out(state)
     return True
 
 
@@ -1216,7 +1208,7 @@ class DosToAmiga(Direction):
             # here, mirroring `AmigaToDos.rehearse`'s own guard.
             raise ConvertError(f"{source.path} names no DOS save slot")
         letter = source.slot
-        game_data = _amiga_destination_data(self.shape, options)
+        game_data = _amiga_destination_data(self.shape, options, source)
         with source.folder() as folder:
             raw_party = dos_codec.read_party(folder, letter)
             container = dos_savegame.container_for(self.shape.key)

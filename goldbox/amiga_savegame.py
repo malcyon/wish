@@ -559,8 +559,7 @@ def new_savegame(state: world_state.WorldState,
     # taken from DOS's `PRE_ADVENTURE_DISK`, which agrees with the Amiga
     # value for Silver Blades (1, from the shipped file) and is the
     # probable one for Curse (2: every data library is on disk B).
-    fresh = (not state.set_out
-             and world_state.is_pre_adventure_area(state.title, state.area))
+    fresh = world_state.has_not_set_out(state)
     script = None
     if container.ecl_bytes:
         if ecl_glb is None and not fresh:

@@ -18,7 +18,7 @@ import struct
 import gamedata
 import pytest
 
-from goldbox import c64_port, c64_save, dos_codec, dos_savegame, world_state
+from goldbox import areas, c64_port, c64_save, dos_codec, dos_savegame, world_state
 
 
 def _c64_specimen(name: str) -> pathlib.Path:
@@ -154,6 +154,20 @@ def test_a_party_that_has_never_set_out_is_placed_at_the_start_of_the_story():
     assert state.area == 0
     assert (state.x, state.y, state.facing) == (15, 1, 3)
     assert state.outdoors is False
+
+
+@pytest.mark.parametrize("title, area, set_out, expected", [
+    (areas.CURSE_OF_THE_AZURE_BONDS, 0, False, True),
+    (areas.SECRET_OF_THE_SILVER_BLADES, 0, False, True),
+    (areas.CURSE_OF_THE_AZURE_BONDS, 0, True, False),
+    (areas.CURSE_OF_THE_AZURE_BONDS, 1, False, False),
+    (areas.POOL_OF_RADIANCE, 0, False, False),
+])
+def test_has_not_set_out_is_the_placeless_state_of_the_two_later_titles(
+        title, area, set_out, expected):
+    state = dataclasses.replace(world_state.from_dos(_fresh_savgam()),
+                                title=title, area=area, set_out=set_out)
+    assert world_state.has_not_set_out(state) is expected
 
 
 def test_a_party_standing_in_the_world_is_left_where_it_is():

@@ -248,6 +248,13 @@ def is_pre_adventure_area(title: str, area: int) -> bool:
             and areas.area_in(0, title) is None)
 
 
+def has_not_set_out(state: "WorldState") -> bool:
+    """Whether a Curse or Silver Blades party is still in the placeless state
+    before `BEGIN ADVENTURING`."""
+    return (not state.set_out
+            and is_pre_adventure_area(state.title, state.area))
+
+
 def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
     """A C64 `SAVEDGAME0` payload, as a place and a clock.
 

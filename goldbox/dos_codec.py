@@ -7251,12 +7251,6 @@ def c64_title(save0: bytes, title=None) -> c64_port.C64Container:
         f"titles; say which with `title=`")
 
 
-def _has_not_set_out(state: "world_state.WorldState") -> bool:
-    """A Curse or Silver Blades state made before `BEGIN ADVENTURING`."""
-    return (not state.set_out
-            and world_state.is_pre_adventure_area(state.title, state.area))
-
-
 def savgam_writes(savgam: bytearray, report: "SaveReport",
                   state: "world_state.WorldState",
                   slot: str, count: int, script: "bytes | None", *,
@@ -7321,7 +7315,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
             f"is {len(savgam)}")
     area = state.area
     geo = state.geo
-    fresh = _has_not_set_out(state)
+    fresh = world_state.has_not_set_out(state)
     if fresh:
         # No area and no script: the initialiser's own world state.
         where = None
@@ -7840,7 +7834,7 @@ def write_dos_save_from(state: "world_state.WorldState",
         raise DosRecordError(
             f"the template's SAVGAM{slot}{shape.suffix} is {len(savgam)} "
             f"bytes, not the {shape.size} a {shape.title} save is")
-    fresh = _has_not_set_out(state)
+    fresh = world_state.has_not_set_out(state)
     if fresh:
         if template is not None:
             raise DosRecordError(

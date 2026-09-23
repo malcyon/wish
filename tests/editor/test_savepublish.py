@@ -417,9 +417,33 @@ def test_a_curse_party_not_yet_set_out_asks_for_no_amiga_game_disk(
         saveplan.resolve_assets(source, "amiga",
                                 game_files=lambda title: object())
     assert caught.value.missing == (saveplan.AMIGA_GAME_DISK,)
-    with pytest.raises(Exception):
+    with pytest.raises(FileNotFoundError):
         convert._amiga_destination_data(
             shape, tmp_path / "no-such-disk.adf", source)
+
+
+def test_the_c64_to_amiga_rehearsal_hands_its_source_to_the_disk_check(
+        tmp_path):
+    """A pre-adventure Curse party rehearses without opening the named disk:
+    `rehearse` passes the source on, so the missing ADF is never read."""
+    source = convert.Source.detect(
+        synthetic_save(tmp_path, game=convert.c64_port.by_key(CURSE_KEY)))
+    direction = convert.C64ToAmiga(dos_port.CURSE_OF_THE_AZURE_BONDS)
+    seen = []
+    real = convert._amiga_destination_data
+
+    def spy(shape, options, source=None):
+        seen.append(source)
+        return real(shape, options, source)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(convert, "_amiga_destination_data", spy)
+        try:
+            direction.rehearse(source, "A", tmp_path / "no-such-disk.adf",
+                              names={"W" * 18: "Wren"})
+        except FileNotFoundError:
+            pytest.fail("the rehearsal opened the Amiga disk")
+    assert seen == [source]
 
 
 def test_a_pool_of_radiance_amiga_destination_asks_for_disk_two(tmp_path):
