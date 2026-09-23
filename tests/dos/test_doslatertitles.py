@@ -737,3 +737,55 @@ def test_a_dos_paladins_cure_byte_is_read_into_the_neutral_record(shape):
     raw[f.offset] = 1
     out = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw), deltas=shape))
     assert out.get("paladin_cures") == 1
+
+
+def _c64_round_trip(key, **fields):
+    """`fields` written as a C64 record, read back, and written as DOS."""
+    from goldbox import c64_codec
+    c64, _rep = c64_codec.write(_neutral(key, name="TESTER", **fields))
+    rec, _itm, _spc, rep = dos_codec.write(c64_codec.read(c64, game=key))
+    return rec, rep
+
+
+@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+@pytest.mark.parametrize("left, full", [(5, 1), (6, 2), (11, 3)])
+def test_a_c64_former_paladin_who_has_not_regained_gets_his_full_count(
+        shape, left, full):
+    """The C64 holds 0 until its regain reseeds the byte and DOS never
+    reseeds it, so the writer gives the full count for the old level."""
+    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
+    rec, rep = _c64_round_trip(
+        shape.key, levels={"magic-user": 1}, former_levels={"paladin": left},
+        paladin_cures=full)
+    assert rec[f.offset] == full
+    assert not [d for d in rep.dropped if "paladin_cures" in d]
+
+
+@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+def test_a_c64_regained_paladin_keeps_the_sources_byte(shape):
+    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
+    char = _neutral(shape.key, levels={"paladin": 6},
+                    former_levels={"paladin": 6}, paladin_cures=2)
+    char.port = "C64"
+    rec, _, _, _ = dos_codec.write(char)
+    assert rec[f.offset] == 2
+
+
+@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+def test_a_c64_character_who_never_was_a_paladin_writes_zero(shape):
+    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
+    char = _neutral(shape.key, levels={"magic-user": 1},
+                    former_levels={"magic-user": 5}, paladin_cures=0)
+    char.port = "C64"
+    rec, _, _, _ = dos_codec.write(char)
+    assert rec[f.offset] == 0
+
+
+@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+def test_a_dos_former_paladin_keeps_the_sources_byte(shape):
+    f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["paladin_cures"]
+    char = _neutral(shape.key, levels={"magic-user": 1},
+                    former_levels={"paladin": 6}, paladin_cures=1)
+    char.port = "DOS"
+    rec, _, _, _ = dos_codec.write(char)
+    assert rec[f.offset] == 1

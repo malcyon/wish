@@ -497,6 +497,48 @@ def test_a_dual_classed_former_paladin_below_his_full_count_still_reports():
     assert [x for x in rep.losses if "paladin_cures" in x]
 
 
+def _mathew_in(chars):
+    (mathew,) = [c for c in chars if c.get("name") == "MATHEW"]
+    return mathew
+
+
+def test_a_c64_former_paladin_specimen_converts_to_dos_at_his_full_count():
+    """`WISH-SPEC-curse-52-dialog-converted-resave`'s MATHEW is a former
+    paladin 5 who has not regained the class, so the C64 holds 0 for him;
+    DOS never reseeds the byte, so it must hold the full count."""
+    from support.doslatertitles import _c64_party
+    disk = _c64_specimen("curse-52-dialog-converted-resave")
+    if disk is None:
+        pytest.skip("needs ~/wish-specimens/*-c64/WISH-SPEC-"
+                    "curse-52-dialog-converted-resave")
+    _game, chars = _c64_party(disk)
+    mathew = _mathew_in(chars)
+    assert mathew.get("paladin_cures") == 0
+    assert not mathew.get("levels").get("paladin")
+    rec, _itm, _spc, rep = dos_codec.write(mathew)
+    at = dos_port.FIELDS_BY_NAME_FOR[mathew.game.key]["paladin_cures"].offset
+    assert rec[at] == 1
+    assert not [x for x in rep.dropped if "paladin_cures" in x]
+
+
+def test_a_dual_classed_dos_paladin_holds_his_count_again_through_the_c64():
+    from goldbox import c64_codec
+    folder = _dos_specimen("curse-131-dualclassed-in-area-1")
+    if folder is None:
+        pytest.skip("needs ~/wish-specimens/*-dos/WISH-SPEC-"
+                    "curse-131-dualclassed-in-area-1")
+    char = dos_codec.to_neutral(dos_codec.read_character(
+        folder / "CHRDATJ1.SAV"))
+    at = dos_port.FIELDS_BY_NAME_FOR[char.game]["paladin_cures"].offset
+    before, _, _, _ = dos_codec.write(char)
+    assert before[at] == 1
+    c64, _rep = c64_codec.write(char, payload=bytearray(0x4000), party_slot=0)
+    again = c64_codec.read(c64, game=char.game)
+    after, _, _, rep = dos_codec.write(again)
+    assert after[at] == 1
+    assert not [x for x in rep.dropped if "paladin_cures" in x]
+
+
 def test_mathew_dual_classed_writes_zero_cure_bytes_and_no_loss():
     """`WISH-SPEC-curse-131-dualclassed-in-area-1`'s MATHEW (CHRDATJ1.SAV, a
     save found in the specimen tree): 0x012 and 0x013 zero, no cure row."""

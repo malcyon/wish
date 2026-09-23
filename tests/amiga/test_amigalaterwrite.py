@@ -504,3 +504,21 @@ def test_a_paladins_cure_byte_survives_an_amiga_curse_or_silver_blades_round_tri
         assert out.get("paladin_cures") == held
         built, _ = amiga_later.write_later(out)
         assert built.raw[at] == held
+
+
+@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.dos.key)
+def test_a_c64_former_paladin_who_has_not_regained_is_written_at_his_full_count(shape):
+    """The C64 holds 0 for him until its regain, which the Amiga never
+    reseeds, so the block holds the full count for his old level."""
+    from goldbox import c64_codec
+    char = neutral.NeutralCharacter("test", source="made up",
+                                    game=shape.dos.key)
+    char.set("name", "TESTER", "test")
+    char.set("levels", {"magic-user": 1}, "test")
+    char.set("former_levels", {"paladin": 5}, "test")
+    char.set("paladin_cures", 1, "test")
+    c64, _rep = c64_codec.write(char)
+    built, _ = amiga_later.write_later(
+        c64_codec.read(c64, game=shape.dos.key))
+    at = shape.offset(shape.dos_field("paladin_cures").offset)
+    assert built.raw[at] == 1

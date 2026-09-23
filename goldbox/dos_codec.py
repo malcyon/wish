@@ -69,6 +69,7 @@ from . import (
     dos_savegame,
     effects,
     neutral,
+    paladin,
     spells,
     titles,
     traits,
@@ -5060,16 +5061,27 @@ def write(char: NeutralCharacter,
         rep.note(f.offset, f.size, f"{uname}: zero -- {why}")
 
     # -- the paladin's cure-disease byte -------------------------------------
-    # Copied when the source holds one.  A C64 source has no such byte and a
-    # Pool of Radiance source never declared one, so those fall back to the
-    # class rule: 1 for a class the character holds *or* one a dual-classed
-    # character left, which is what the DOS engine's own character creation
-    # writes and how it leaves the byte after HUMAN CHANGE CLASSES.
+    # Copied when the source holds one.  A C64 former paladin who has not
+    # regained the class is the exception: his byte is 0 until the C64 regain
+    # reseeds it to the full count, and DOS never reseeds it, so he gets the
+    # full count for his old level.  A source with no byte (Pool of Radiance)
+    # gets the class rule: 1 for a class the character holds *or* one a
+    # dual-classed character left, which is what the DOS engine's own
+    # character creation writes and how it leaves the byte after HUMAN CHANGE
+    # CLASSES.
     if "paladin_cures" in table:
         (_pal_name, _pal_why), = WRITE_DERIVED_LATER
         f = table[_pal_name]
         held = use(_pal_name)
-        if held is not None:
+        _left = int((w.get("former_levels") or {}).get("paladin") or 0)
+        if (port == "C64" and _left > 0
+                and not (w.get("levels") or {}).get("paladin")):
+            rec[f.offset] = paladin.full_count(_left)
+            rep.note(f.offset, f.size,
+                     f"{_pal_name}: {rec[f.offset]} -- the full count for "
+                     f"former paladin level {_left}, which the C64 regain "
+                     f"gives him")
+        elif held is not None:
             rec[f.offset] = narrow(_pal_name, held.value, 0, 0xFF)
             rep.note(f.offset, f.size,
                      f"{_pal_name}: {rec[f.offset]} -- copied from the "
