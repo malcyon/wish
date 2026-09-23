@@ -1115,3 +1115,63 @@ def test_silver_blades_has_one_caster_level_id_curse_lacks():
     curse = effects.LATER_CASTER_LEVEL_IDS["curse-of-the-azure-bonds"]
     blades = effects.LATER_CASTER_LEVEL_IDS["secret-of-the-silver-blades"]
     assert blades - curse == {57} and curse < blades
+
+
+# --- dos_record, the inverse of c64_row --------------------------------------
+
+
+def test_dos_record_reads_a_pool_bless_row_and_ages_it_by_the_clock():
+    row = effects.Effect(63, 1, 2, 0x02, 0x01)
+    assert effects.dos_record("pool-of-radiance", row, 0) \
+        == effects.RunningEffect(1, 2, 1, 0)
+    aged = effects.Effect(63, 1, 2, 0x41, 0x01)
+    assert effects.dos_record("pool-of-radiance", aged, 6).minutes == 4
+
+
+def test_dos_record_converts_the_later_titles_own_ids():
+    curse = "curse-of-the-azure-bonds"
+    assert effects.dos_record(curse, effects.Effect(63, 45, 0, 0x2F, 0x0A),
+                              0) == effects.RunningEffect(45, 47, 0x0A, 0)
+    row57 = effects.Effect(63, 57, 0, 0x02, 0x01)
+    assert isinstance(effects.dos_record("secret-of-the-silver-blades", row57,
+                                         0), effects.RunningEffect)
+    assert isinstance(effects.dos_record(curse, row57, 0),
+                      effects.Unconverted)
+    assert isinstance(effects.dos_record(
+        "pool-of-radiance", effects.Effect(63, 63, 0, 0x02, 0x01), 0),
+        effects.Unconverted)
+
+
+@pytest.mark.parametrize("eid,magnitude", [(13, 1), (49, 1), (1, 0),
+                                           (1, 0x80)])
+def test_dos_record_refuses_what_has_no_rule(eid, magnitude):
+    row = effects.Effect(63, eid, 0, 0x02, magnitude)
+    assert isinstance(effects.dos_record("pool-of-radiance", row, 0),
+                      effects.Unconverted)
+
+
+@pytest.mark.parametrize("byte", [0xEE, 0xFF])
+def test_dos_record_clamps_a_day_count_to_sixteen_bits(byte):
+    row = effects.Effect(63, 1, 0, byte, 1)
+    assert effects.dos_record("pool-of-radiance", row, 0).minutes == 0xFFFF
+
+
+def test_dos_record_refuses_a_never_expiring_row_by_raising():
+    with pytest.raises(ValueError):
+        effects.dos_record("pool-of-radiance", effects.Effect(63, 1, 0, 0, 1),
+                           0)
+
+
+@pytest.mark.parametrize("title", ["pool-of-radiance",
+                                   "curse-of-the-azure-bonds",
+                                   "secret-of-the-silver-blades"])
+def test_dos_record_inverts_c64_row(title):
+    for eid in effects._caster_level_ids(title):
+        for data in (1, 0x7F):
+            for minutes in (1, 2, 47, 63):
+                for clock in (0, 725):
+                    node = effects.RunningEffect(eid, minutes, data, 0)
+                    byte = effects.closest_duration(minutes, clock)
+                    _, magnitude = effects.c64_row(title, node)
+                    row = effects.Effect(63, eid, 0, byte, magnitude)
+                    assert effects.dos_record(title, row, clock) == node

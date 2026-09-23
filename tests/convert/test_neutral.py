@@ -783,8 +783,7 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     if not c64_codec.deltas_for(game).dual_class:
         taken.discard("former_levels")
     taken.discard("granted_effects")
-    # `read` is given no payload here, so it returns no effect rows; reading
-    # them back is a separate piece of work on the reader.
+    # `read` is given no payload here, so it returns no effect rows.
     taken.discard("running_effects")
     taken.discard("icon_head")
     taken.discard("icon_body")

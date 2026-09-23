@@ -642,7 +642,12 @@ shared arrays for Pool of Radiance's caster-level ids
 `tools/c64/effectcrosswalk.py`'s `later_caster_level_ids` re-reads the later
 titles' tuples from the C64 spell rows, the DOS spell rows and the DOS
 handlers that read a data byte, and `tests/records/test_effectcrosswalk.py`
-pins the constants to it. Still waiting: a timeline conversion for Pool's
+pins the constants to it. The C64 reader converts the same ids back through
+`goldbox.effects.dos_record`, with the time left from `remaining_minutes`. Still
+waiting: rows no party member owns (party-wide, monster and orphaned rows, now
+reported by name; converting them is #666 (A C64 party under a camp Prayer loses it on the way
+to DOS or the Amiga, because nothing converts the save's party-wide effect
+rows)); a timeline conversion for Pool's
 overlapping strength nodes, which the destination does hold; the later
 titles' Strength, Enlarge and Friends; what a spent Mirror Image converts to;
 Prayer, including Pool's party-wide row; Curse's and Silver Blades' id 25,

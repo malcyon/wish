@@ -132,8 +132,8 @@ def test_a_running_effect_is_written_as_a_row_and_reported_nowhere():
     char = boundarywidths.case("caster")
     assert char.get("running_effects"), "the boundary caster carries none"
     payload = bytearray(0x1C00)
-    _, rep = c64_codec.write(char, payload=payload, party_slot=0,
-                             clock_minutes=0)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=0,
+                               clock_minutes=0)
     assert rep.dropped == [d for d in rep.dropped if d.startswith(_ICON)]
     assert rep.warnings == []
     assert rep.losses == []
@@ -143,6 +143,10 @@ def test_a_running_effect_is_written_as_a_row_and_reported_nowhere():
              payload[effects.EFFECT_MAGNITUDE_OFFSET + i])
             for i in (63, 62)]
     assert rows == [(1, 0, 0xEE, 0x01), (1, 0, 0x01, 0x01)]
+    back = c64_codec.read(rec, game=char.game, payload=bytes(payload),
+                          party_slot=0, clock_minutes=0)
+    assert [effects.RunningEffect.from_record(bytes(r)).minutes
+            for r in back.get("running_effects")] == [65535, 1]
 
 
 def test_a_bare_write_reports_the_combat_icon_fields_by_name():

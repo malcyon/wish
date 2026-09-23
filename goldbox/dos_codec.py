@@ -7734,6 +7734,25 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
                     character.dropped.remove(stale_icon_note)
         out.append(character)
         icons.append(icon)
+    if out:
+        # `c64_codec.read` is per character, so a row no party member owns
+        # is reported here, on the first character; converting them is
+        # a separate piece of work.
+        occupied = {s.index for s in party}
+        for row in effects.active_effects(bytes(save0)):
+            if row.owner in occupied:
+                continue
+            if row.owner & 0x80:
+                who = "the whole party"
+            elif row.owner >= 8:
+                who = f"monster {row.owner}"
+            else:
+                who = f"party slot {row.owner}, which holds no character"
+            remaining = effects.remaining_minutes(row.duration, clock_mins)
+            out[0].dropped.append(
+                f"{c64_codec.running_effect_label(row.id, remaining, c64)} "
+                f"in slot {row.slot}, owned by {who}: no party member owns "
+                "it, and no rule yet converts such a row")
     out.reverse()
     icons.reverse()
     return out, icons

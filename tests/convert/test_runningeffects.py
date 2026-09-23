@@ -320,3 +320,89 @@ def test_a_refused_effect_line_names_the_effect_only_when_it_has_a_name(eid, nam
     line, = [d for d in rep.dropped if d.startswith("running_effects:")]
     assert ("(" in line) is named, line
     assert "trait" not in line, line
+
+
+# --- C64 rows back into DOS running effects ------------------------------------
+
+from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS, POOL_OF_RADIANCE  # noqa: E402
+from goldbox.record import CharacterRecord  # noqa: E402
+
+
+def _read(payload, slot, game=POOL_OF_RADIANCE, clock=0):
+    return c64_codec.read(CharacterRecord.blank(), game=game,
+                          payload=bytes(payload), party_slot=slot,
+                          clock_minutes=clock)
+
+
+def _lines(out):
+    return [d for d in out.dropped if d.startswith("running_effects:")]
+
+
+def test_a_pool_bless_row_reads_back_for_its_owner_and_no_one_else():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 1, 2, 0x02, 0x01)
+    got = _read(p, 2)
+    assert [bytes(r) for r in got.get("running_effects")] == [BLESS + NULL]
+    assert not _lines(got)
+    other = _read(p, 3)
+    assert other.get("running_effects") is None and not _lines(other)
+
+
+def test_a_row_with_no_rule_is_one_dropped_line():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 13, 2, 0x02, 0x01)
+    got = _read(p, 2)
+    assert got.get("running_effects") is None
+    lines = _lines(got)
+    assert len(lines) == 1 and lines[0].startswith("running_effects: effect 13")
+
+
+def test_a_never_expiring_row_is_an_innate_effect_with_no_line():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 45, 2, 0x00, 0x01)
+    got = _read(p, 2)
+    assert 45 in got.get("innate_effects") and not _lines(got)
+    assert got.get("running_effects") is None
+
+
+def test_curse_cure_and_shield_rows_both_read_and_a_second_cure_is_refused():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 141, 2, 0xC7, 0xC7)
+    effects.write_effect(p, 62, 17, 2, 0x02, 0x0B)
+    effects.write_effect(p, 61, 141, 2, 0xC7, 0xC7)
+    got = _read(p, 2, CURSE_OF_THE_AZURE_BONDS)
+    nodes = [effects.RunningEffect.from_record(bytes(r))
+             for r in got.get("running_effects")]
+    assert [n.id for n in nodes] == [141, 17]
+    assert nodes[1] == effects.RunningEffect(17, 2, 0x0B, 0)
+    assert len(_lines(got)) == 1
+
+
+def test_a_written_bless_reads_back_from_the_same_payload():
+    p = bytearray(0x1C00)
+    c64_codec.write(_pool_character(BLESS), payload=p, party_slot=2,
+                    clock_minutes=0)
+    got = _read(p, 2)
+    assert [bytes(r) for r in got.get("running_effects")] == [BLESS + NULL]
+
+
+def test_c64_party_carries_a_staged_bless_and_reports_a_row_no_one_owns():
+    from goldbox.savegame import SaveGame0, SaveGame1
+    fx = pathlib.Path(__file__).resolve().parents[1] / "fixtures"
+    payload = bytearray(SaveGame0.from_prg(
+        (fx / "savedgame0.bin").read_bytes()).to_bytes())
+    save1 = SaveGame1.from_prg(
+        (fx / "savedgame1.bin").read_bytes()).to_bytes()
+    effects.write_effect(payload, 63, 1, 0, 0x02, 0x01)
+    party, _ = dos_codec.c64_party(bytes(payload), save1,
+                                   game=POOL_OF_RADIANCE)
+    brutus = next(c for c in party if c.get("name") == "BRUTUS")
+    assert [bytes(r) for r in brutus.get("running_effects")] == [BLESS + NULL]
+    _rec, _itm, spc, _rep = dos_codec.write(brutus)
+    assert spc[:5] == BLESS
+
+    effects.write_effect(payload, 62, 35, 0xFF, 0x41, 0x01)
+    party, _ = dos_codec.c64_party(bytes(payload), save1,
+                                   game=POOL_OF_RADIANCE)
+    lines = [d for c in party for d in c.dropped if "effect 35" in d]
+    assert len(lines) == 1 and "the whole party" in lines[0]

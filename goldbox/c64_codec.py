@@ -1029,10 +1029,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     other_nodes.append(row)
 
     for node in other_nodes:
-        named = traits.for_game(char.game).get(node.id)
-        name = f" ({named[0]})" if named else ""
-        which = (f"running_effects: effect {node.id}{name}, "
-                 f"{node.minutes} minutes left")
+        which = running_effect_label(node.id, node.minutes, char.game)
         row_for = effects.c64_row(title_key, node)
         if isinstance(row_for, effects.Unconverted):
             rep.dropped.append(f"{which}: {row_for.reason}")
@@ -2143,6 +2140,13 @@ READ_TARGETS: dict[str, str] = (
 )
 
 
+def running_effect_label(eid: int, minutes: int, game) -> str:
+    """The prefix of a running-effect line: the id, its name if any, the time."""
+    named = traits.for_game(game).get(eid)
+    name = f" ({named[0]})" if named else ""
+    return f"running_effects: effect {eid}{name}, {minutes} minutes left"
+
+
 def read(rec: CharacterRecord, roster=None, inventory=None,
          game=None, source: str | None = None, *,
          payload: bytes | None = None, party_slot: int | None = None,
@@ -2162,10 +2166,11 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
 
     `payload`, `party_slot` and `clock_minutes` (#600, #626, #628) are the
     whole `SAVEDGAME0`, this character's own save slot and the save's time
-    of day -- what reading a paladin's lay-on-hands row and his cure timer
-    row out of the save's shared effect arrays needs, beyond the record
-    itself.  Left out, `lay_on_hands_minutes` reads 0 (which reads as "may
-    heal now", the same as an unspent byte) and no cure row is read.
+    of day -- what reading every row this character owns in the save's
+    shared effect arrays needs, beyond the record itself: the paladin's
+    lay-on-hands and cure rows, and each other row through
+    `effects.dos_record`.  Left out, `lay_on_hands_minutes` reads 0 (which
+    reads as "may heal now", the same as an unspent byte) and no row is read.
     """
     out = NeutralCharacter("C64", source=source, game=game)
     deltas = deltas_for(game)
@@ -2207,26 +2212,47 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     heal_minutes = 0
     cure_entry = paladin.CURE_TIMER.get(title_key)
     clock = clock_minutes if clock_minutes is not None else 0
+    running: list[bytes] = []
+    permanent: list[int] = []
     if payload is not None and party_slot is not None:
         rows = effects.active_effects(bytes(payload))
+        consumed: set[int] = set()
         if heal_entry is not None:
             heal_id = heal_entry[0]
             row = next((r for r in rows
                        if r.id == heal_id and r.owner == party_slot), None)
             if row is not None:
+                consumed.add(row.slot)
                 heal_minutes = effects.remaining_minutes(row.duration, clock)
         if cure_entry is not None:
             cure_id = cure_entry[0]
             row = next((r for r in rows
                        if r.id == cure_id and r.owner == party_slot), None)
             if row is not None:
+                consumed.add(row.slot)
                 minutes = effects.remaining_minutes(row.duration, clock)
-                out.set("running_effects",
-                        [effects.RunningEffect(cure_id, minutes, 0,
-                                               1).to_record()],
-                        "the save's shared effect arrays: a row with this "
-                        "title's own cure timer id, owned by this "
-                        "character's own save slot", grade("paladin_cures"))
+                running.append(effects.RunningEffect(
+                    cure_id, minutes, 0, 1).to_record())
+        # Highest slot first, the order the writer allocates in, so a round
+        # trip keeps each character's node order.
+        for row in sorted(rows, key=lambda r: -r.slot):
+            if row.owner != party_slot or row.slot in consumed:
+                continue
+            if row.duration == 0:
+                permanent.append(row.id)
+                continue
+            node = effects.dos_record(title_key or "", row, clock)
+            if isinstance(node, effects.Unconverted):
+                remaining = effects.remaining_minutes(row.duration, clock)
+                out.drop(f"{running_effect_label(row.id, remaining, game)}: "
+                         f"{node.reason}")
+            else:
+                running.append(node.to_record())
+        if running:
+            out.set("running_effects", running,
+                    "the save's shared effect arrays: the rows this "
+                    "character's own save slot owns, converted through "
+                    "effects.dos_record", grade("paladin_cures"))
     out.set("lay_on_hands_minutes", heal_minutes,
             origin("lay_on_hands_uses") + (
                 ", and a row in the save's shared effect arrays"
@@ -2567,8 +2593,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     out.set("attack_forms", rec.get_raw("attack_forms"),
             origin("attack_forms"), grade("attack_forms"))
     out.set("innate_effects",
-            [b for b in rec.get_raw("item_effects") if b],
-            "the C64's ten trait slots @0x0AD, zeroes stripped; racial "
+            [b for b in rec.get_raw("item_effects") if b] + permanent,
+            "the C64's ten trait slots @0x0AD, zeroes stripped, then the "
+            "shared effect-array rows at duration zero; racial "
             "abilities and item powers share one id namespace and the slots "
             "do not say which is which", grade("item_effects"))
 

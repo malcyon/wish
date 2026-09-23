@@ -329,6 +329,17 @@ LATER_CASTER_LEVEL_IDS = {
 }
 
 
+#: The most minutes a DOS or Amiga running-effect node holds (its `u16`).
+DOS_MINUTES_MAX = 0xFFFF
+
+
+def _caster_level_ids(title_key: str) -> frozenset[int]:
+    """The ids a title converts, the same set in both directions."""
+    if title_key == "pool-of-radiance":
+        return POOL_CASTER_LEVEL_IDS
+    return LATER_CASTER_LEVEL_IDS.get(title_key, frozenset())
+
+
 @dataclass(frozen=True)
 class Unconverted:
     """A running effect `c64_row` has no rule for, and the reason in a clause."""
@@ -343,15 +354,32 @@ def c64_row(title_key: str, node: RunningEffect) -> tuple[int, int] | Unconverte
     `POOL_CASTER_LEVEL_IDS` or `LATER_CASTER_LEVEL_IDS`, flag 0, whose data
     byte is a caster level.
     """
-    ids = (POOL_CASTER_LEVEL_IDS if title_key == "pool-of-radiance"
-           else LATER_CASTER_LEVEL_IDS.get(title_key, frozenset()))
-    if node.id not in ids:
+    if node.id not in _caster_level_ids(title_key):
         return Unconverted("no rule yet for this id in this title")
     if node.flag != 0:
         return Unconverted("a flag byte other than 0 on a caster-level effect")
     if not 1 <= node.data <= 0x7F:
         return Unconverted("a data byte that is not a caster level")
     return node.id, node.data
+
+
+def dos_record(title_key: str, row: "Effect",
+               clock_minutes: int) -> RunningEffect | Unconverted:
+    """The DOS running-effect node for a C64 row, or why there is none.
+
+    The inverse of `c64_row`. A minutes count DOS cannot hold is clamped to
+    the nearest value it can. A duration byte of zero never expires and has
+    no node, so the caller must route it elsewhere.
+    """
+    if row.duration == 0:
+        raise ValueError("a never-expiring row has no running-effect node")
+    if row.id not in _caster_level_ids(title_key):
+        return Unconverted("no rule yet for this id in this title")
+    if not 1 <= row.magnitude <= 0x7F:
+        return Unconverted("a magnitude that is not a caster level")
+    minutes = min(remaining_minutes(row.duration, clock_minutes),
+                  DOS_MINUTES_MAX)
+    return RunningEffect(row.id, minutes, row.magnitude, 0)
 
 
 @dataclass(frozen=True)
