@@ -190,6 +190,20 @@ are never asked for on that port. What is still open there is the C64 half —
 what the Class box and the roster column should show — and that is Donald's
 choice rather than a measurement.
 
+## The saving throws never take the regained class either
+
+The save routine, `GAME.OVR:0x3B45B`, walks the eight `class_levels` slots and
+takes the best row per column from the table at `DS:0x45BE`. The former-class
+test runs once, after that loop, for slot 7 (the monk) alone -- the loop
+counter is left holding 7 when it exits -- so a regained class never touches a
+character's stored saves, the same as `class_bits` above. `#632 (A C64 Curse
+party converted to DOS gets saving throws and THAC0 that DOS Curse replaces
+on its first save)` is where `goldbox.levels.LevelTables.
+dos_engine_saving_throws` reproduces the rule; the table itself is the C64's,
+except three paladin cells, and column 0 takes a constitution step of its
+own -- a dwarf, a halfling or a bonus item adds one, everybody adds another
+above constitution 18.
+
 ## What is in the tree
 
 | file | what |

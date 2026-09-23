@@ -1135,6 +1135,16 @@ class LevelTables:
     #: paladin. Silver Blades does the same at `$10A2`/`$11C0`. Both set this
     #: True (`#633`); Pool of Radiance has no paladin and leaves it False.
     paladin_save_after_best: bool = False
+    #: Three cells DOS Curse's own save table (`DS:0x45BE`, read by
+    #: `GAME.OVR:0x3B45B`) gets wrong against the C64's: paladin 5 and 6 read
+    #: `9 9 11 11 12` where the C64 reads `9 10 11 11 12`, and paladin 8 reads
+    #: `9 9 10 10 11` where the C64 reads `8 9 10 10 11`. Empty means nobody
+    #: has read this title's DOS table -- see :attr:`dos_save_rule_read`.
+    dos_save_overrides: tuple[tuple[tuple[str, int], tuple[int, ...]], ...] = ()
+    #: Whether :meth:`dos_engine_saving_throws` may answer at all. False means
+    #: this title's DOS load-time save rebuild has not been read, so the
+    #: method returns None rather than guessing the C64's rows apply unchanged.
+    dos_save_rule_read: bool = False
 
     def divide_rounds_up(self, remainder: int, roll: int) -> bool:
         """Whether a divided hit-die or constitution total's leftover point
@@ -1515,6 +1525,59 @@ class LevelTables:
                 best[column] -= bonus
         return tuple(best)
 
+    def dos_engine_saving_throws(self, class_levels, race: int = 0,
+                                 constitution: int = 0,
+                                 bonus_item: bool = False
+                                 ) -> tuple[int, ...] | None:
+        """The five saves DOS Curse's own load-time rebuild leaves in the record.
+
+        `GAME.OVR:0x3B45B`: each column starts at 20, then for every class
+        slot with a level in `class_levels` (`0x109`) the column is lowered to
+        that class's row at `DS:0x45BE`, with :attr:`dos_save_overrides`
+        standing in for the three cells the DOS table gets wrong against the
+        C64's. **No former class is an input**: the routine reads only the
+        current per-class level array, so a regained class contributes
+        nothing -- the caller is expected to have zeroed that slot. A class
+        this title's table has no row for contributes nothing either.
+
+        Column 0 alone then takes two more additions, both from the
+        constitution score at the in-force byte `0x019`:
+
+        * a dwarf (race 1), a halfling (race 5), or a character wearing an
+          item whose readied power counts as a constitution booster
+          (`bonus_item`) adds a step that runs 4-6 +1, 7-10 +2, 11-13 +3,
+          14-17 +4, 18 and up +5;
+        * every race then adds another step for constitution 19-20 (+1),
+          21-22 (+2), 23-24 (+3) and 25 (+4).
+
+        None where :attr:`dos_save_rule_read` is False, or no class in
+        `class_levels` has both a level and a row this title's table reaches.
+        """
+        if not self.dos_save_rule_read:
+            return None
+        overrides = dict(self.dos_save_overrides)
+        best = [20, 20, 20, 20, 20]
+        found = False
+        for name, level in dict(class_levels or {}).items():
+            level = int(level or 0)
+            if not level:
+                continue
+            row = overrides.get((name, level))
+            if row is None:
+                entry = self.at_level(name, level)
+                if entry is None:
+                    continue
+                row = entry.saves
+            found = True
+            best = [min(best[i], row[i]) for i in range(5)]
+        if not found:
+            return None
+        con = int(constitution or 0)
+        if race in (1, 5) or bonus_item:
+            best[0] += _dos_con_save_racial_step(con)
+        best[0] += _dos_con_save_high_step(con)
+        return tuple(best)
+
 
 #: Pool of Radiance offers four classes and no paladin or ranger, so bits 6 and
 #: 7 name nothing. Its racial rows are four bytes wide, which is why they stop
@@ -1610,6 +1673,12 @@ CURSE_OF_THE_AZURE_BONDS = LevelTables(
     dos_thac0=_DOS_THAC0_CURSE,
     dos_thac0_level0=_DOS_THAC0_LEVEL0_CURSE,
     paladin_save_after_best=True,   # `GEN $0E5E`/`$0F01`
+    dos_save_overrides=(
+        (("paladin", 5), (9, 9, 11, 11, 12)),
+        (("paladin", 6), (9, 9, 11, 11, 12)),
+        (("paladin", 8), (9, 9, 10, 10, 11)),
+    ),
+    dos_save_rule_read=True,
 )
 
 #: `DS:0x4C0C`, 7 rows of 19 -- no monk -- transcribed from
@@ -2208,6 +2277,46 @@ def constitution_save_bonus(constitution: int) -> int:
     return int(constitution or 0) * 2 // 7
 
 
+def _dos_con_save_racial_step(constitution: int) -> int:
+    """DOS Curse's dwarf/halfling/bonus-item column-0 addition.
+
+    `GAME.OVR:0x3B45B`, reading the in-force constitution at `0x019`: 4-6 is
+    +1, 7-10 +2, 11-13 +3, 14-17 +4, and 18 and up +5 -- the "and up" is not a
+    second reading of the same cell, it is that this step never falls once a
+    character reaches 18, and :func:`_dos_con_save_high_step` is what adds
+    further for 19 and above.
+    """
+    con = int(constitution or 0)
+    if con >= 18:
+        return 5
+    if con >= 14:
+        return 4
+    if con >= 11:
+        return 3
+    if con >= 7:
+        return 2
+    if con >= 4:
+        return 1
+    return 0
+
+
+def _dos_con_save_high_step(constitution: int) -> int:
+    """The high-constitution column-0 addition every race gets, same routine.
+
+    19-20 is +1, 21-22 +2, 23-24 +3, 25 +4.
+    """
+    con = int(constitution or 0)
+    if con >= 25:
+        return 4
+    if con >= 23:
+        return 3
+    if con >= 21:
+        return 2
+    if con >= 19:
+        return 1
+    return 0
+
+
 def table(class_name: str, game=None) -> tuple[Level, ...]:
     return for_game(game).table(class_name)
 
@@ -2259,6 +2368,13 @@ def dos_base_thac0(class_levels, game=None) -> int | None:
 
 def dos_engine_thac0(class_levels, game=None) -> int | None:
     return for_game(game).dos_engine_thac0(class_levels)
+
+
+def dos_engine_saving_throws(class_levels, race: int = 0, constitution: int = 0,
+                             bonus_item: bool = False, game=None
+                             ) -> tuple[int, ...] | None:
+    return for_game(game).dos_engine_saving_throws(
+        class_levels, race, constitution, bonus_item)
 
 
 def base_thac0(class_levels, game=None) -> int | None:

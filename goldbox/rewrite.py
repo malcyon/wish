@@ -597,19 +597,35 @@ _THIEF_UNWRITABLE_FOR = frozenset({
     ("amiga", "pool-of-radiance"),
 })
 
+#: The five saving-throw fields, unwritable on a DOS Curse save: the writer
+#: recomputes them from the class levels through DOS Curse's own load-time
+#: rebuild for a C64 source (`dos_codec.write`'s `_DOS_LOAD_REBUILD_FROM_PORTS`),
+#: and the game itself replaces whatever an edit asked for the next time the
+#: party loads (#632).
+_SAVE_FIELDS = frozenset({
+    "save_paralysis", "save_petrification", "save_wands", "save_breath",
+    "save_spell",
+})
+
+_SAVES_UNWRITABLE_FOR = frozenset({
+    ("dos", "curse-of-the-azure-bonds"),
+})
+
 
 def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
     """Fields the sheet must grey because this port's writer cannot take an
     edit to them back -- either the field has nowhere to go
     (`infravision`, `turn_class`), the writer rebuilds it from other fields
-    regardless of what is asked (`char_class`, and the eight thief skills on
-    a thief of these three port and title pairs), or the file is returned
-    exactly as read (`item_effects`, until Stage 5 wires the trait table to
-    the DOS effect nodes).
+    regardless of what is asked (`char_class`, the eight thief skills on a
+    thief of these three port and title pairs, and the five saving throws on
+    a DOS Curse save), or the file is returned exactly as read (`item_effects`,
+    until Stage 5 wires the trait table to the DOS effect nodes).
     """
     if port not in ("dos", "amiga"):
         return frozenset()
     fields = _ALWAYS_UNWRITABLE
     if (port, title_key) in _THIEF_UNWRITABLE_FOR:
         fields = fields | _THIEF_FIELDS
+    if (port, title_key) in _SAVES_UNWRITABLE_FOR:
+        fields = fields | _SAVE_FIELDS
     return fields

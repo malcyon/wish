@@ -904,3 +904,42 @@ levels past his old paladin 5 threshold; Silver Blades never asks.
 The Commodore 64 build makes the same check against its own dual-class pair,
 which its class-change routine keeps current, so a C64 party does not hit
 this. The Amiga builds have not been driven. CONFIRMED, in game.
+
+## 19. A DOS Curse character's saving throws never take a class he has regained
+
+**Predicted from the game's own code, then confirmed against an engine-written
+save.**
+
+**How a player ends up there.** A human paladin trains into another class in
+DOS Curse of the Azure Bonds and eventually passes the level he had reached as
+a paladin, so by the game's own rule he is a paladin again -- the same
+threshold `docs/209-the-regained-dual-class-on-dos.md` reads for `class_bits`
+and `thac0_base`.
+
+**What the game does.** The save routine, `GAME.OVR:0x3B45B`, walks the eight
+`class_levels` slots and takes the best row per column from its own table.
+The one test it makes against the former array runs once, after that loop,
+for slot 7 (the monk) alone -- the loop counter is left holding 7 when the
+loop exits -- so a regained paladin, cleric, fighter or thief never has that
+old class's row considered, whatever `former_class_levels` says.
+
+**What it should do.** Fold the former array into the same walk the way
+`thac0_base`'s own regain pass at `0x3B294` does, so a regained class's saves
+improve the same way its THAC0 already does.
+
+**The evidence.** `WISH-SPEC-curse-408-regained-paladin`'s MATHEW (human,
+`class_levels {fighter: 7}`, `former_class_levels {paladin: 6}`) and MARK
+(`class_levels {cleric: 6}`, `former_class_levels {paladin: 5}`) both stored
+the plain fighter 7 and cleric 6 rows in DOS Curse's own `ENCAMP > SAVE`
+resave of a converted copy of this party (`coab-dos/WISH-SPEC-curse-632-
+wish-converted-resave`, slot B) -- `10 11 12 12 13` and `9 12 13 15 14` -- not
+a row improved by the paladin he had regained.
+
+**What the player sees.** A human who trains back into his old paladin class
+keeps the saving throws of the class he changed to, with no sign anywhere on
+the sheet that the regain happened.
+
+**Version.** Curse of the Azure Bonds, DOS. Silver Blades has not been read.
+The Commodore 64 build's own save routine takes the C64's regained-class rule
+into account (`docs/209`), so a C64 party does not hit this. CONFIRMED, from
+the code and from the engine's own resave.

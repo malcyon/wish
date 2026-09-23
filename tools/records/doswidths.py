@@ -91,21 +91,34 @@ ALWAYS_RECOMPUTED: dict[str, str] = {
                        "never stores one",
 }
 
-#: Everything the writer may recompute for some character, which is a longer
-#: list than the one above: the eight thief percentages when the character has
-#: a thief level, and the five saves and current THAC0 when the race or the
-#: class rewrites them.  `tests/records/test_boundary.py` part A's
-#: four cases include all of those, so it leaves the whole set out of the
-#: round trip by name.
-RECOMPUTED: dict[str, str] = {
-    **ALWAYS_RECOMPUTED,
-    "thac0_current": "rebuilt from thac0_base, so it moves with it",
-    "save_paralysis": "the DOS engine recomputes all five saves on load from "
-                      "class, level and the `.SPC` records",
+#: The five saves and current THAC0, always recomputed for a C64 source **on
+#: the one title whose DOS load-time rebuild has been read** -- Curse of the
+#: Azure Bonds (#632). Every other title still copies the source's own byte,
+#: so these join `ALWAYS_RECOMPUTED` only for that one game, the way
+#: `attack_level_copied` keeps `attack_level` out of it for the one game
+#: that copies rather than computes.
+_CURSE_SAVES_ALWAYS_RECOMPUTED: dict[str, str] = {
+    "thac0_current": "recomputed through DOS Curse's own unarmed combat "
+                     "rebuild for a C64 source, the same as thac0_base",
+    "save_paralysis": "the DOS engine recomputes all five saves on load "
+                      "from class, level and the class rebuild's own table, "
+                      "for a C64 source",
     "save_petrification": "see save_paralysis",
     "save_wands": "see save_paralysis",
     "save_breath": "see save_paralysis",
     "save_spell": "see save_paralysis",
+}
+
+#: Everything the writer may recompute for some character, which is a longer
+#: list than the one above: the eight thief percentages when the character has
+#: a thief level, and the five saves and current THAC0 on titles other than
+#: Curse, where nothing forces the recompute but a C64 source's own class or
+#: race could still make one land there some day. `tests/records/
+#: test_boundary.py` part A's four cases include all of those, so it leaves
+#: the whole set out of the round trip by name.
+RECOMPUTED: dict[str, str] = {
+    **ALWAYS_RECOMPUTED,
+    **_CURSE_SAVES_ALWAYS_RECOMPUTED,
     **{name: "recomputed from the title's own thief table for race, level "
              "and dexterity, for a character with a thief level"
        for name, _ in dos_codec.WRITE_DIRECT if name.startswith("thief_")},
@@ -123,6 +136,16 @@ def recomputed(game: str) -> dict[str, str]:
     writer copies it."""
     return {name: why for name, why in RECOMPUTED.items()
             if name != "attack_level" or not attack_level_copied(game)}
+
+
+def always_recomputed(game: str) -> dict[str, str]:
+    """`ALWAYS_RECOMPUTED` as it holds in `game`: the five saves and current
+    THAC0 join it only on Curse of the Azure Bonds, the one title whose DOS
+    load-time rebuild has been read (#632)."""
+    out = dict(ALWAYS_RECOMPUTED)
+    if game == "curse-of-the-azure-bonds":
+        out |= _CURSE_SAVES_ALWAYS_RECOMPUTED
+    return out
 
 
 def scalars(game: str) -> list[Scalar]:

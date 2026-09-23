@@ -4918,6 +4918,15 @@ def _dos_silver_blades_editor(tmp_path):
     return EditorBinding(make_root(), str(folder / "SAVGAMA.DAT"))
 
 
+def _dos_curse_editor(tmp_path):
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+    folder = tmp_path / "curse"
+    folder.mkdir()
+    _synthetic_dos_folder(folder, dos_port.CURSE_OF_THE_AZURE_BONDS)
+    return EditorBinding(make_root(), str(folder / "SAVGAMA.DAT"))
+
+
 def _amiga_pool_editor(tmp_path):
     from support.neutralrecords import _filled
 
@@ -4947,9 +4956,11 @@ def _amiga_curse_editor(tmp_path):
 
 
 @pytest.mark.parametrize("builder", [_dos_pool_editor, _dos_silver_blades_editor,
+                                     _dos_curse_editor,
                                      _amiga_pool_editor, _amiga_curse_editor],
                         ids=["dos-pool-of-radiance",
                             "dos-secret-of-the-silver-blades",
+                            "dos-curse-of-the-azure-bonds",
                             "amiga-pool-of-radiance",
                             "amiga-curse-of-the-azure-bonds"])
 def test_the_unwritable_fields_and_the_trait_add_button_are_disabled(
@@ -4966,6 +4977,22 @@ def test_the_unwritable_fields_and_the_trait_add_button_are_disabled(
     add = w._child("button_trait_add")
     assert add is not None
     assert not add.isEnabled()
+
+
+def test_a_dos_curse_saves_saving_throw_boxes_are_disabled_with_no_tooltip(
+        app, tmp_path):
+    """Donald's decision on #632: once Wish writes the saving throws DOS
+    Curse's own load-time rebuild would leave, the five saving-throw boxes
+    are greyed on a DOS Curse save, the same way the thief skills already
+    are, and with the same blank tooltip -- an editable box would offer a
+    change the game discards the next time the party loads."""
+    w = _dos_curse_editor(tmp_path)
+    w.roster.selectRow(0)
+    for name in ("save_paralysis", "save_petrification", "save_wands",
+                "save_breath", "save_spell"):
+        widget = w._widgets[name]
+        assert not widget.isEnabled(), name
+        assert widget.toolTip() == "", name
 
 
 def test_an_amiga_gold_edit_reaches_its_save_disk(app, tmp_path):

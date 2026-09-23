@@ -218,7 +218,7 @@ _BASE_DROPS = {
 #: Every scalar the sweep sets, with its title, so each is a test of its own.
 _SWEPT = [(game, s) for game in doswidths.GAMES
           for s in doswidths.scalars(game)
-          if s.neutral not in doswidths.ALWAYS_RECOMPUTED]
+          if s.neutral not in doswidths.always_recomputed(game)]
 
 
 def _ids(pair):
@@ -258,7 +258,7 @@ def test_e_the_recomputed_scalars_never_reach_their_byte(game):
     nothing about them -- the two records are the same whatever was set."""
     swept = {s.neutral: s for s in doswidths.scalars(game)}
     checked = 0
-    for name in sorted(set(swept) & set(doswidths.ALWAYS_RECOMPUTED)):
+    for name in sorted(set(swept) & set(doswidths.always_recomputed(game))):
         records = []
         for value in (swept[name].low, swept[name].high):
             char = doswidths.base(game)

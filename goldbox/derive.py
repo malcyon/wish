@@ -98,6 +98,58 @@ def strength_bonuses(strength: int, percentile: int = 0) -> tuple[int, int]:
     return _STR_HIT.get(strength, 0), _STR_DAMAGE.get(strength, 0)
 
 
+def dos_strength_hit_bonus(strength: int, percentile: int = 0) -> int:
+    """The strength to-hit step DOS Curse's own combat rebuild adds.
+
+    `GAME.OVR:0x389BC`, fed an index from `0x38924`: strength up to 17 is its
+    own index; 18 splits by the percentile at record `0x01C` into 18 (00),
+    19 (01-50), 20 (51-75), 21 (76-90), 22 (91-99) and 23 (100); strength
+    19-25 becomes index 24-30. The index then bands to a bonus: 1-3 is -3,
+    4-5 -2, 6-7 -1, 17-19 +1, 20-22 +2, 23-25 +3, 26-27 +4, and 28-30 is the
+    index less 23. Everything else is 0.
+
+    Agrees with :func:`strength_bonuses`'s to-hit half from strength 8 to 18
+    -- below 8 or above 18 is this table alone, since no specimen on this
+    machine reaches either.
+    """
+    strength = int(strength or 0)
+    if strength <= 17:
+        index = strength
+    elif strength == 18:
+        pct = int(percentile or 0)
+        if pct <= 0:
+            index = 18
+        elif pct <= 50:
+            index = 19
+        elif pct <= 75:
+            index = 20
+        elif pct <= 90:
+            index = 21
+        elif pct <= 99:
+            index = 22
+        else:
+            index = 23
+    else:
+        index = strength + 5
+    if 1 <= index <= 3:
+        return -3
+    if index in (4, 5):
+        return -2
+    if index in (6, 7):
+        return -1
+    if 17 <= index <= 19:
+        return 1
+    if 20 <= index <= 22:
+        return 2
+    if 23 <= index <= 25:
+        return 3
+    if index in (26, 27):
+        return 4
+    if 28 <= index <= 30:
+        return index - 23
+    return 0
+
+
 def dexterity_ac_bonus(dexterity: int) -> int:
     """How many points of armour class dexterity is worth. Positive is better."""
     if dexterity >= 18:
