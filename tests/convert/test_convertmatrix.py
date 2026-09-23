@@ -549,6 +549,12 @@ def test_a_regained_paladin_specimen_goes_c64_to_dos_and_back(app, tmp_path):
                     "automap/gamedisks.py")
     again = saveplan.prepare_save_as(back, "c64", tmp_path / "out.d64", assets)
     assert isinstance(again, saveplan.SavePlan)
+    from support.doslatertitles import _c64_party
+    (image,) = again.files
+    (tmp_path / "read-back.d64").write_bytes(again.files[image])
+    _game, chars = _c64_party(tmp_path / "read-back.d64")
+    cures = {c.get("name"): c.get("paladin_cures") for c in chars}
+    assert cures["MATHEW"] == 2 and cures["MARK"] == 1
 
 
 def _mathew_in(chars):
