@@ -4959,13 +4959,22 @@ def test_a_dos_party_opens_with_no_disk_and_no_slot_window(tmp_path):
 
 
 def test_a_dos_member_is_keyed_by_its_file_number_not_its_position(tmp_path):
-    """A gap in `CHRDATA1`-`6` leaves the others' numbers where they are, since
+    """A gap in the numbered files leaves the others' numbers where they are, since
     the number is what a write-back has to name."""
     from goldbox import dos_port
     _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE, numbers=(1, 3, 6))
     party = Party(str(tmp_path / "SAVGAMA.DAT"))
     assert [m.index for m in party.members] == [1, 3, 6]
     assert [m.name for m in party.members] == ["HERO1", "HERO3", "HERO6"]
+
+
+def test_a_dos_party_of_seven_opens_all_seven_in_file_order(tmp_path):
+    from goldbox import dos_port
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE,
+                          numbers=tuple(range(1, 8)))
+    party = Party(str(tmp_path / "SAVGAMA.DAT"))
+    assert [m.index for m in party.members] == [1, 2, 3, 4, 5, 6, 7]
+    assert [m.name for m in party.members] == [f"HERO{n}" for n in range(1, 8)]
 
 
 def test_a_dos_party_can_be_opened_from_a_source(tmp_path):

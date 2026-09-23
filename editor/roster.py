@@ -34,6 +34,7 @@ from goldbox import (
     c64_port,
     dos_codec,
     dos_port,
+    dos_savegame,
     rewrite,
 )
 from goldbox.c64_port import C64Container
@@ -64,7 +65,7 @@ class Member:
     """One row of the roster."""
 
     #: The port's own storage key: the C64 slot (or position on a roster
-    #: disk), the DOS file number 1-6 in `CHRDAT<slot><n>.SAV`, or the Amiga
+    #: disk), the DOS file number in `CHRDAT<slot><n>.SAV`, or the Amiga
     #: file number, or for Curse and Silver Blades the 1-based position of the
     #: record inside the saved game. Not the marching position.
     index: int
@@ -345,9 +346,9 @@ class Party:
     def _load_dos(self) -> None:
         """A DOS save's characters, in file order, which is the marching order
         (`dos_codec.marching_slot`). `Member.index` is the file number, so a
-        gap in `CHRDAT<slot>1`-`6` leaves the others where they are."""
+        gap in the numbered files `CHRDAT<slot>1` upward leaves the others where they are."""
         folder = pathlib.Path(self.source.path)
-        for number in range(1, 7):
+        for number in range(1, dos_savegame.PARTY_ENTRIES + 1):
             path = folder / f"CHRDAT{self.source.slot}{number}.SAV"
             if not path.exists():
                 continue
