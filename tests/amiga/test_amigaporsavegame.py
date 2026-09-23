@@ -174,6 +174,24 @@ def test_a_fifteen_letter_amiga_por_name_gets_no_truncation_warning():
         out.warnings
 
 
+def test_a_sixteen_letter_amiga_por_name_with_no_terminator_still_warns():
+    """The truncation warning still fires on the record it was written for.
+
+    `cc16d140` fixed `#615` by testing for a NUL rather than `line >= size`,
+    and the sibling test above only proves the fifteen-letter false positive
+    is gone. Nothing else drives a genuine sixteen-byte, no-NUL name through
+    `to_neutral` -- so a change as broken as replacing the condition with
+    `False` would pass every other test in this file.
+    """
+    record, _, _, _ = amiga_por.write_por(sample(name="ABCDEFGHIJKLMNO"))
+    record = bytearray(record)
+    record[:amiga_por.AMIGA_POR_NAME_SIZE] = b"ABCDEFGHIJKLMNOP"
+    char = AmigaPorCharacter.from_bytes(bytes(record))
+    out = amiga_por.to_neutral(char)
+    assert any("no terminator" in w or "truncated" in w for w in out.warnings), \
+        out.warnings
+
+
 def test_a_dos_dax_is_refused_rather_than_read_as_an_amiga_one():
     """The two formats share an extension and nothing else (#65)."""
     with pytest.raises(amiga_dax.AmigaDaxError):
