@@ -2173,26 +2173,28 @@ def to_neutral(dos: DosCharacter,
             Confidence.CONFIRMED)
     out.set("quickfight", bool(tail[3]), "DOS 0x10F",
             Confidence.CONFIRMED)
-    out.set("attack_forms", dos.raw("attack_forms"), "DOS 0x0A1 (PROBABLE)",
-            FIELDS_BY_NAME["attack_forms"].confidence)
+    f = dos.fields["attack_forms"]
+    out.set("attack_forms", dos.raw("attack_forms"),
+            f"DOS {f.offset:#05x} ({f.confidence})", f.confidence)
+    f = dos.fields["roster_tail"]
     out.set("roster_tail", dos.raw("roster_tail"),
-            "DOS 0x112: the armour bonus and the eight running attack-form "
-            "bytes, one for one",
-            FIELDS_BY_NAME["roster_tail"].confidence)
+            f"DOS {f.offset:#05x}: the armour bonus and the eight running "
+            f"attack-form bytes, one for one",
+            f.confidence)
 
     # -- the combat icon: read as DOS's own numbering, unchanged (#627) ------
     # `write` already writes these three from a neutral source's own fields
     # (#612); this is the missing read that made a DOS-sourced conversion
     # come back with the engine's default instead.
+    f = dos.fields["icon_head"]
     out.set("icon_head", dos.get("icon_head"),
-            f"DOS icon_head @{FIELDS_BY_NAME['icon_head'].offset:#05x}",
-            FIELDS_BY_NAME["icon_head"].confidence)
+            f"DOS icon_head @{f.offset:#05x}", f.confidence)
+    f = dos.fields["icon_body"]
     out.set("icon_body", dos.get("icon_body"),
-            f"DOS icon_body @{FIELDS_BY_NAME['icon_body'].offset:#05x}",
-            FIELDS_BY_NAME["icon_body"].confidence)
+            f"DOS icon_body @{f.offset:#05x}", f.confidence)
+    f = dos.fields["icon_colours"]
     out.set("icon_colours", dos.raw("icon_colours"),
-            f"DOS icon_colours @{FIELDS_BY_NAME['icon_colours'].offset:#05x}",
-            FIELDS_BY_NAME["icon_colours"].confidence)
+            f"DOS icon_colours @{f.offset:#05x}", f.confidence)
 
     # -- the .SPC file splits in two: innate, and running ---------------------
     # Only the innate half crosses, which is what the game's own C64 importer

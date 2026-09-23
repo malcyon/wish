@@ -922,6 +922,22 @@ def test_a_character_with_no_portrait_is_not_reported_as_having_lost_one():
         neutral.dropped
 
 
+@pytest.mark.parametrize("deltas", [
+    dos_codec.POOL_OF_RADIANCE, dos_codec.CURSE_OF_THE_AZURE_BONDS,
+    dos_codec.SECRET_OF_THE_SILVER_BLADES, dos_codec.POOLS_OF_DARKNESS])
+def test_the_icon_and_tail_fields_name_their_own_titles_offset(deltas):
+    """#629's review point: `to_neutral` built these five fields' debug-log
+    text from the module-level Pool of Radiance table, so the log sent
+    somebody debugging a Curse, Silver Blades or Pools of Darkness
+    conversion to the wrong byte."""
+    dos = dos_codec.DosCharacter(bytes(deltas.record_size))
+    neutral = dos_codec.to_neutral(dos)
+    for name in ("icon_head", "icon_body", "icon_colours", "attack_forms",
+                "roster_tail"):
+        f = dos.fields[name]
+        assert f"{f.offset:#05x}".lower() in neutral.fields[name].origin.lower()
+
+
 def test_every_derived_field_carries_the_run_that_demonstrated_it():
     """#324 (The import pane tells a player nine fields could not be
     converted that the C64 recomputes for itself): `DERIVED`'s third field
