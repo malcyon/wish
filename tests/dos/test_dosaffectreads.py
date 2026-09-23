@@ -27,7 +27,7 @@ import pytest
 pytest.importorskip("capstone")
 
 from automap import gamedisks  # noqa: E402
-from goldbox import c64_port  # noqa: E402
+from goldbox import c64_port, dos_codec, dos_port  # noqa: E402
 from tools.dos import dosaffectreads as reads  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 
@@ -153,6 +153,22 @@ VALUE_READ = {
 #: title -> where Dispel Magic tests every node's byte 3 against 0xFF.
 DISPEL = {"pool": 0x2940E, "curse": 0x3120B, "silver-blades": 0x2F9EF}
 
+#: This table's own key -> `dos_codec`'s title key, for the constant below.
+_DOS_CODEC_KEY = {
+    "pool": dos_port.POOL_OF_RADIANCE.key,
+    "curse": dos_port.CURSE_OF_THE_AZURE_BONDS.key,
+    "silver-blades": dos_port.SECRET_OF_THE_SILVER_BLADES.key,
+}
+
+
+def test_c64_trait_permanent_ids_is_every_unflagged_id():
+    """`dos_codec.C64_TRAIT_PERMANENT_IDS` is this table's own reading,
+    copied rather than re-derived, so it cannot drift from what was read."""
+    for title, (n, flagged) in VALUE_READ.items():
+        key = _DOS_CODEC_KEY[title]
+        assert dos_codec.C64_TRAIT_PERMANENT_IDS[key] == \
+            set(range(1, n + 1)) - flagged, title
+
 
 def test_the_routines_are_where_the_reading_says(engine):
     (dispatcher, table, hook, hook_handler, find, remove, flag,
@@ -200,7 +216,7 @@ def test_a_readied_item_in_pool_of_radiance():
     powers = reads.item_powers(_title("pool"))
     grant = [("item[0x3d]", 0, 0x0C, 0)]
     assert {p for p, calls in powers.items() if calls == grant} == \
-        {0x80, 0x81, 0x82, 0x85, 0x86, 0x88, 0x8A, 0x8B}
+        dos_codec.POOL_ITEM_GRANT_POWERS
     assert powers[0x83] == [(38, 0, "local[bp - 1]", 1)]
     assert {p for p, calls in powers.items() if not calls} == {0x84, 0x87, 0x89}
 

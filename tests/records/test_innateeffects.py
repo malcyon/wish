@@ -428,12 +428,19 @@ def test_a_c64_cleric_carrying_the_same_id_gains_no_paladins_effect(shape):
     **cast** -- two DOS Curse records carry it for FLORENTZ, a human cleric.
     Translating without asking the class would give this cleric a paladin's
     permanent effect.
+
+    **45 is unread past its duration in both later titles** (`#621`'s Stage
+    2a, `docs/230-who-reads-a-dos-effect-node.md` (a)), so it is now in
+    `C64_TRAIT_PERMANENT_IDS` and converts as `INNATE_PAYLOAD` rather than
+    being refused -- what stays pinned is that the cleric never gains the
+    paladin's own 8.
     """
     char = _c64_neutral(shape.key, name="TESTER", class_bits=2,
                         innate_effects=[PALADIN_C64_TRAIT])
     _rec, _itm, spc, rep = dos_codec.write(char)
-    assert spc == b""
-    assert _innate_drops(rep), "a cleric's 45 must still be reported"
+    assert spc == _innate_node(PALADIN_C64_TRAIT)
+    assert _innate_node(PALADIN_EFFECT) not in spc
+    assert _innate_drops(rep) == []
 
 
 @pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
@@ -627,6 +634,28 @@ def test_a_c64_pool_of_radiance_characters_permanent_ids_reach_the_spc_file():
     assert _innate_drops(rep) == []
 
 
+_PERMANENT_CASES = [
+    (shape, e)
+    for shape in (POOL, CURSE, SSB)
+    for e in sorted(dos_codec.C64_TRAIT_PERMANENT_IDS[shape.key])
+]
+
+
+@pytest.mark.parametrize(
+    "shape,effect", _PERMANENT_CASES,
+    ids=[f"{s.key}-{e}" for s, e in _PERMANENT_CASES])
+def test_every_id_the_engine_never_reads_past_its_duration_converts(shape, effect):
+    """#621's Stage 3: `C64_TRAIT_PERMANENT_IDS` was widened to every id
+    `tests/dos/test_dosaffectreads.py`'s `VALUE_READ` found unread past its
+    duration, so a human fighter -- no race or class guard of rule 1's own --
+    carrying any one of them in a trait slot converts as `INNATE_PAYLOAD`
+    with no drop line."""
+    char = _c64_neutral(shape.key, name="TESTER", innate_effects=[effect])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(effect)
+    assert _innate_drops(rep) == []
+
+
 def test_a_dos_pool_of_radiance_character_round_trips_through_the_c64():
     """DOS -> `to_neutral` -> `c64_codec.write` -> `c64_codec.read` ->
     `dos_codec.write` gives back SILAS's own eighteen bytes exactly.  Before
@@ -659,16 +688,30 @@ def test_a_readied_pool_of_radiance_items_own_grant_reaches_the_spc_file():
     assert _innate_drops(rep) == []
 
 
-def test_the_same_item_unreadied_grants_nothing_and_is_reported():
-    """The guard: an item sitting in the pack rather than worn grants
-    nothing, so its id is not one this character actually holds -- and it is
-    still reported rather than silently dropped."""
+def test_the_pool_of_radiance_rings_own_power_byte_reaches_the_spc_file():
+    """Rule 2 widened to `POOL_ITEM_GRANT_POWERS`: the Ring of Fire
+    Resistance's own power byte, 0x81, grants exactly as 0x80 does
+    (`docs/230-who-reads-a-dos-effect-node.md` (b))."""
+    item = _c64_item(effect=61, power=0x81, readied=True)
+    char = _c64_neutral(POOL.key, name="TESTER", innate_effects=[61],
+                        inventory=[item])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == bytes((61,)) + dos_codec.ITEM_GRANT_PAYLOAD + dos_codec.EFFECT_NEXT_NULL
+    assert _innate_drops(rep) == []
+
+
+def test_the_same_item_unreadied_now_converts_by_its_own_permanent_id():
+    """The C64 honours a slot whether or not the ring is worn, so 61
+    unreadied is no longer the item-grant case at all: it is a plain trait
+    slot, and 61 is in Pool of Radiance's `C64_TRAIT_PERMANENT_IDS` (#621's
+    Stage 3), so it converts in the permanent form rather than the item
+    form."""
     item = _c64_item(effect=61, power=0x80, readied=False)
     char = _c64_neutral(POOL.key, name="TESTER", innate_effects=[61],
                         inventory=[item])
     _rec, _itm, spc, rep = dos_codec.write(char)
-    assert spc == b""
-    assert _innate_drops(rep)
+    assert spc == _innate_node(61)
+    assert _innate_drops(rep) == []
 
 
 def test_silver_blades_elf_racial_id_reaches_the_spc_file_by_its_race():
@@ -690,24 +733,28 @@ def test_silver_blades_gnomes_two_racial_ids_both_reach_the_spc_file():
     assert _innate_drops(rep) == []
 
 
-def test_silver_blades_halflings_92_is_still_refused():
-    """Pinning what stays refused until #621's Stage 2 settles it: the
-    halfling's own C64 seed, 92, is not in
-    `RACE_COMBAT_EFFECTS_SILVER_BLADES` (which gives the halfling only 97)
-    and not in `C64_TRAIT_PERMANENT_IDS`, so it is dropped by name rather
-    than guessed at."""
+def test_silver_blades_halflings_92_converts_with_a_logged_difference(caplog):
+    """92 is not in Silver Blades' `VALUE_READ`, so it is in
+    `C64_TRAIT_PERMANENT_IDS` and converts through rule 3 rather than being
+    refused -- Donald's decision on `#621` (2026-09-22 23:33): the halfling
+    keeps his immunity to Fear and to Feeblemind through his class, loses his
+    immunity to Ray of Enfeeblement the way a DOS-born halfling already does,
+    and the difference is recorded only in the debug log, as an engine
+    difference (`docs/230-who-reads-a-dos-effect-node.md` (f))."""
     char = _c64_neutral(SSB.key, name="TESTER", race=5, innate_effects=[92])
-    _rec, _itm, spc, rep = dos_codec.write(char)
-    assert spc == _innate_node(97)
-    drops = _innate_drops(rep)
-    assert len(drops) == 1
-    assert "92" in drops[0]
+    with caplog.at_level("WARNING", logger="wish.goldbox.dos_codec"):
+        _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(97) + _innate_node(92)
+    assert _innate_drops(rep) == []
+    assert sum("92" in r.message for r in caplog.records) == 1
 
 
 def test_a_pool_readied_item_with_an_unread_power_byte_is_still_refused():
-    """Pinning the other open case: rule 2 is limited to power byte `0x80`
-    (#621's Stage 2b is what would widen it), so a readied item granting 38
-    with a different power byte is dropped by name."""
+    """Pinning the strength node: 38 is the id Pool of Radiance's `0x83`
+    power grants, and its value byte needs the character's own strength
+    before the item (`docs/230-who-reads-a-dos-effect-node.md` (c)), which
+    Stage 3 does not settle, so it stays refused by name rather than being
+    guessed at as `INNATE_PAYLOAD`."""
     item = _c64_item(effect=38, power=0x83, readied=True)
     char = _c64_neutral(POOL.key, name="TESTER", innate_effects=[38],
                         inventory=[item])
@@ -716,6 +763,22 @@ def test_a_pool_readied_item_with_an_unread_power_byte_is_still_refused():
     drops = _innate_drops(rep)
     assert len(drops) == 1
     assert "38" in drops[0]
+
+
+def test_a_curse_readied_items_grant_with_an_unread_power_byte_is_still_refused():
+    """The new rule between 2 and 3: Curse's own item-power dispatch reaches
+    the `LATER_ITEM_GRANT_PAYLOAD` grant only for power `0x80` (`#621`'s
+    Stage 3b, `docs/230` (b)), so a readied item granting a permanent id with
+    any other power is refused by name rather than falling through to rule
+    3's `INNATE_PAYLOAD`, which would lose the remove path byte 4 selects."""
+    item = _c64_item(effect=56, power=0x81, readied=True)
+    char = _c64_neutral(CURSE.key, name="TESTER", innate_effects=[56],
+                        inventory=[item])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == b""
+    drops = _innate_drops(rep)
+    assert len(drops) == 1
+    assert "56" in drops[0]
 
 
 # --- #624: the Amiga side of the same classification -----------------------
@@ -741,17 +804,19 @@ def test_a_c64_paladin_saved_to_the_amiga_gets_protection_from_evil(key):
 @pytest.mark.parametrize("key", [CURSE.key, SSB.key])
 def test_a_c64_cleric_saved_to_the_amiga_gains_no_paladins_effect(key):
     """The guard on the Amiga side: a cleric's own 45 is neither title's own
-    innate id, so it gets no node at all here -- the same refusal
+    innate id nor the paladin's translated 8, so it gets his own 45's node --
+    45 is unread past its duration in both later titles (`#621`'s Stage 2a)
+    -- and not the paladin's 8, the same guard
     `test_a_c64_cleric_carrying_the_same_id_gains_no_paladins_effect` pins on
-    the DOS side, reported rather than silently turned into the paladin's
-    8."""
-    from goldbox import amiga_later
+    the DOS side."""
+    from goldbox import amiga_later, amiga_por
 
     char = _c64_neutral(key, name="TESTER", class_bits=2,
                         innate_effects=[PALADIN_C64_TRAIT])
     built, rep = amiga_later.write_later(char)
-    assert built.effects == ()
-    assert _innate_drops(rep)
+    assert built.effects == (amiga_por.amiga_por_effect_from_dos(
+        _innate_node(PALADIN_C64_TRAIT)),)
+    assert _innate_drops(rep) == []
 
 
 def test_a_c64_pool_of_radiance_character_has_no_innate_drop_line_on_the_amiga():

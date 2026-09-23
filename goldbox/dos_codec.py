@@ -662,26 +662,62 @@ EFFECT_NEXT_NULL = bytes(4)
 
 #: Bytes 1-4 of a `.SPC` record for a readied item's own grant, on Pool of
 #: Radiance -- `add_affect` at `GAME.OVR:0x11B35` writes data `0x0C`, flag 0
-#: for a readied item whose power byte is `0x80`, and the specimen
-#: `WISH-SPEC-por-item-granted` holds `3D 00 00 0C 00` for it.  Curse and
-#: Silver Blades have no item-granted `.SPC` node anywhere on this machine
-#: (`#621`'s plan, Stage 2b): this holds for Pool of Radiance and for this one
-#: power byte only, and is widened only by that stage's further reads.
+#: for a readied item whose power byte is one of `POOL_ITEM_GRANT_POWERS`,
+#: and the specimen `WISH-SPEC-por-item-granted` holds `3D 00 00 0C 00` for
+#: it.  Curse and Silver Blades' own item grant is a different shape,
+#: `LATER_ITEM_GRANT_PAYLOAD` below (`#621`'s plan, Stage 3b).
 ITEM_GRANT_PAYLOAD = bytes((0x00, 0x00, 0x0C, 0x00))
 
+#: Pool of Radiance's item power bytes that reach `add_affect`'s `0x0C 00`
+#: grant, read out of `GAME.OVR`'s own power-byte dispatch (`#621`'s plan,
+#: Stage 2b, `docs/230-who-reads-a-dos-effect-node.md` (b)): the power byte
+#: *is* the handler id, and eight of the twelve item-power handlers share
+#: this one.  `0x83` writes the strength node instead, whose value byte is
+#: not read yet, so `c64_trait_nodes`' drop rule keeps it refused; `0x84`,
+#: `0x87` and `0x89` write no node at all.
+#: `tests/dos/test_dosaffectreads.py::test_a_readied_item_in_pool_of_radiance`
+#: pins the read this set is copied from.
+POOL_ITEM_GRANT_POWERS = frozenset({0x80, 0x81, 0x82, 0x85, 0x86, 0x88, 0x8A, 0x8B})
+
+#: Bytes 1-4 of a `.SPC` record for a readied item's own grant, on Curse of
+#: the Azure Bonds and Secret of the Silver Blades -- both titles route power
+#: `0x80` through their item-power hook (Curse `0x125BA`, Silver Blades
+#: `0x145D3`), which writes `id 00 00 FF 01` rather than Pool's `0x0C 00`:
+#: undispellable, and `remove_affect` runs the handler when the item comes
+#: off (`#621`'s plan, Stage 2, `docs/230` (b)).  The C64 grant on both
+#: titles was then read and confirmed to use the same item layout Pool's
+#: does -- item byte 14 the effect id, byte 15 bit 7 the magical flag, byte 6
+#: bit 7 readied, and power code `0x80` the one that writes byte 14 into a
+#: trait slot (`#621`, Stage 3b comment) -- so this payload is written for
+#: the same readied-item rule as Pool's, only for power `0x80` and only on
+#: these two titles.
+LATER_ITEM_GRANT_PAYLOAD = bytes((0x00, 0x00, 0xFF, 0x01))
+
 #: Ids whose DOS `.SPC` node is complete as `id + INNATE_PAYLOAD`, because
-#: nothing on this title reads the node past its duration -- confirmed for
-#: Pool of Radiance by reading the three handlers `GAME.OVR` dispatches to
-#: for these ids: effect 45's (`0xEFD2`) reads only the attacker's alignment,
-#: effect 5's (`0x11DF6`) never touches the node at all, and effect 89's
-#: (`0x110EB`), the one PROBABLE counterexample, is not either of these ids.
+#: nothing on this title reads the node past its duration -- `set(range(1,
+#: N + 1)) - VALUE_READ`, copied from `tests/dos/test_dosaffectreads.py`'s
+#: `VALUE_READ`, which is itself read out of the player's own `GAME.OVR` and
+#: `START.EXE`: every handler, `find_affect` caller and chain walker that
+#: dereferences a node's byte 3 or byte 4 (`#621`'s plan, Stage 2a,
+#: `docs/230-who-reads-a-dos-effect-node.md` (a)).  102 ids for Pool of
+#: Radiance, 117 for Curse, 92 for Silver Blades.  An id above a title's
+#: table (127, 146, 113) is never written here: it would dispatch into an
+#: item-power handler or the hook rather than an effect handler.
+#:
 #: SILAS's own `CHRDATA6.SPC` (`#621`, A C64 character carrying an effect in
 #: a trait slot cannot be saved as a DOS or Amiga save) is `05 00 00 FF 00 ...`
 #: and `2D 00 00 FF 00 ...`, exactly this shape, and the DOS engine itself
-#: kept both nodes unchanged across three clock minutes.  Widened only by
-#: that issue's Stage 2's further reads; nothing else adds a row.
+#: kept both nodes unchanged across three clock minutes.
 C64_TRAIT_PERMANENT_IDS: dict[str, frozenset[int]] = {
-    POOL_OF_RADIANCE.key: frozenset({5, 45}),
+    POOL_OF_RADIANCE.key: frozenset(range(1, 128)) - {
+        11, 12, 14, 15, 28, 32, 34, 38, 39, 40, 43, 44, 49, 50, 57,
+        62, 74, 75, 78, 88, 89, 95, 99, 102, 103},
+    CURSE_OF_THE_AZURE_BONDS.key: frozenset(range(1, 147)) - {
+        3, 11, 12, 13, 14, 15, 28, 32, 34, 38, 39, 40, 43, 44, 49,
+        62, 78, 88, 89, 90, 91, 95, 99, 102, 128, 137, 139, 144, 146},
+    SECRET_OF_THE_SILVER_BLADES.key: frozenset(range(1, 114)) - {
+        3, 11, 12, 14, 15, 28, 34, 38, 39, 40, 43, 44, 49,
+        62, 64, 83, 89, 91, 100, 104, 107},
 }
 
 
@@ -700,9 +736,24 @@ def c64_trait_nodes(deltas: "DosDeltas", race: int, ids: Iterable[int],
        combat ids (`_race_combat_effects`) -- `id + INNATE_PAYLOAD`, since
        nothing past the duration is read for either;
     2. on Pool of Radiance, a readied item in `inventory` granting this id
-       (`item[6] & 0x80`, `item[15] == 0x80`, `item[14] == id`) --
-       `id + ITEM_GRANT_PAYLOAD`;
-    3. in :data:`C64_TRAIT_PERMANENT_IDS` for this title -- `id + INNATE_PAYLOAD`;
+       (`item[6] & 0x80`, `item[15]` in `POOL_ITEM_GRANT_POWERS`,
+       `item[14] == id`) -- `id + ITEM_GRANT_PAYLOAD`; on Curse or Silver
+       Blades, a readied item granting this id with `item[15] == 0x80` --
+       `id + LATER_ITEM_GRANT_PAYLOAD`;
+    2.5. an id that equals `item[14]` of a readied item (`item[6] & 0x80`)
+       whose `item[15]` has bit 7 set, and that rule 2 did not take -- a drop
+       line by name rather than silently falling through to rule 3's
+       `INNATE_PAYLOAD`, which would lose the remove path byte 4 selects.
+       This is Pool's `0x83`/`0x84`/`0x87`/`0x89` and every Curse or Silver
+       Blades item grant whose power is not `0x80` -- the C64 item bytes for
+       those powers have not been read on either later title (`#621`'s plan,
+       Stage 3a and Stage 3b);
+    3. in :data:`C64_TRAIT_PERMANENT_IDS` for this title -- `id + INNATE_PAYLOAD`.
+       On Secret of the Silver Blades, writing 92 this way also logs one
+       warning line: DOS Silver Blades' 92 cancels only Fear (111), where the
+       C64's also cancels 29 and 68 (Donald's decision on `#621`,
+       2026-09-22 23:33, `docs/230-who-reads-a-dos-effect-node.md` (f)).  It
+       is debug-log accounting rather than a refusal;
     4. otherwise, a drop line: the id is a permanent effect whose other four
        bytes on this title have not been read, so no record is written.
 
@@ -713,10 +764,20 @@ def c64_trait_nodes(deltas: "DosDeltas", race: int, ids: Iterable[int],
     """
     innate_ids = _innate_effects(deltas.key)
     race_ids = _race_combat_effects(None, race, deltas)
-    granting = {
+    pool = deltas.key == POOL_OF_RADIANCE.key
+    later = deltas.key in (CURSE_OF_THE_AZURE_BONDS.key,
+                            SECRET_OF_THE_SILVER_BLADES.key)
+    granting_pool = {
         int(item[14]) for item in inventory
-        if deltas.key == POOL_OF_RADIANCE.key
-        and item[6] & 0x80 and item[15] == 0x80}
+        if pool and item[6] & 0x80 and item[15] in POOL_ITEM_GRANT_POWERS}
+    granting_later = {
+        int(item[14]) for item in inventory
+        if later and item[6] & 0x80 and item[15] == 0x80}
+    item_unread = {
+        int(item[14]) for item in inventory
+        if item[6] & 0x80 and item[15] & 0x80
+        and int(item[14]) not in granting_pool
+        and int(item[14]) not in granting_later}
     permanent = C64_TRAIT_PERMANENT_IDS.get(deltas.key, frozenset())
 
     front: list[tuple[bytes, str]] = []
@@ -725,9 +786,22 @@ def c64_trait_nodes(deltas: "DosDeltas", race: int, ids: Iterable[int],
     for e in ids:
         if e in innate_ids or e in race_ids:
             front.append((bytes((e,)) + INNATE_PAYLOAD, "innate"))
-        elif e in granting:
+        elif e in granting_pool:
             back.append((bytes((e,)) + ITEM_GRANT_PAYLOAD, "item_grant"))
+        elif e in granting_later:
+            back.append((bytes((e,)) + LATER_ITEM_GRANT_PAYLOAD, "item_grant"))
+        elif e in item_unread:
+            dropped.append(
+                f"innate_effects {e} ({traits.describe(e)}): a readied "
+                f"item's own grant, whose C64 item bytes for this title "
+                f"have not been read, so no {deltas.effect_suffix} record "
+                f"is written for it")
         elif e in permanent:
+            if deltas.key == SECRET_OF_THE_SILVER_BLADES.key and e == 92:
+                _log.warning(
+                    "innate_effects 92: DOS Secret of the Silver Blades' 92 "
+                    "cancels only Fear (111), where the C64's also cancels "
+                    "29 and 68 (docs/230-who-reads-a-dos-effect-node.md (f))")
             back.append((bytes((e,)) + INNATE_PAYLOAD, "permanent"))
         else:
             dropped.append(
