@@ -1930,3 +1930,21 @@ def test_a_dos_curse_party_not_yet_set_out_asks_for_no_amiga_game_disk(tmp_path)
     source = convert.Source.detect(folder)
     assert source.port == "dos"
     assert saveplan.requirements(source, "amiga") == ()
+
+
+def test_an_unreadable_dos_curse_save_still_asks_for_the_amiga_game_disk(
+        tmp_path, monkeypatch):
+    """The requirement question does not read the save's error: the
+    conversion reports it, as it did before the question looked inside."""
+    shape = dos_port.CURSE_OF_THE_AZURE_BONDS
+    container = convert.dos_savegame.container_for(shape.key)
+    (tmp_path / f"SAVGAMA{container.suffix}").write_bytes(b"\0" * 16)
+
+    def refuse(*_args, **_kwargs):
+        raise convert.dos_codec.DosRecordError("unreadable")
+
+    monkeypatch.setattr(convert.world_state, "from_dos", refuse)
+    source = convert.Source(port="dos", title=shape, path=tmp_path, slot="A")
+
+    assert convert.amiga_needs_game_disk(shape, source) is True
+    assert saveplan.requirements(source, "amiga") == (saveplan.AMIGA_GAME_DISK,)

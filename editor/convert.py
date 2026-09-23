@@ -1077,11 +1077,16 @@ def amiga_needs_game_disk(shape: dos_port.DosDeltas,
             and source is not None and source.port == "dos"
             and source.slot):
         container = dos_savegame.container_for(shape.key)
-        with source.folder() as folder:
-            savgam = (pathlib.Path(folder)
-                      / f"SAVGAM{source.slot}{container.suffix}").read_bytes()
-        state = world_state.from_dos(savgam, container,
-                                     source=str(source.path))
+        try:
+            with source.folder() as folder:
+                savgam = (pathlib.Path(folder) / f"SAVGAM{source.slot}"
+                          f"{container.suffix}").read_bytes()
+            state = world_state.from_dos(savgam, container,
+                                         source=str(source.path))
+        except (OSError, dos_codec.DosRecordError):
+            # A save that cannot be read is reported by the conversion itself,
+            # where the error is handled; asking for the disk is the safe answer.
+            return True
         return not world_state.has_not_set_out(state)
     return True
 

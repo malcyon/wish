@@ -241,6 +241,8 @@ def is_pre_adventure_area(title: str, area: int) -> bool:
 
     Raw area 0 there, where no row of the title's area table names it.  Pool
     of Radiance's area 0 is New Phlan, so it is never this.
+
+    Only `from_c64` uses it; `has_not_set_out` decides for the writers.
     """
     return (area == 0
             and title in (areas.CURSE_OF_THE_AZURE_BONDS,
