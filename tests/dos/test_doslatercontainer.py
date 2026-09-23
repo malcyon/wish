@@ -125,7 +125,8 @@ def test_the_party_size_and_names_land_at_the_containers_own_offsets(shape):
     assert sg.party_size(save) == 4
     assert sg.word(save, sg.PARTY_SIZE) == 4
     assert save[shape.party_size_byte] == 4
-    assert sg.character_files(save) == [f"CHRDATJ{n}" for n in range(1, 7)]
+    assert sg.character_files(save) == [
+        f"CHRDATJ{n}" for n in range(1, sg.PARTY_ENTRIES + 1)]
     # The size byte is the byte before the table, whatever the title.
     assert shape.party_size_byte == shape.party_table - 1
 
@@ -276,7 +277,8 @@ def test_the_written_container_reads_back_as_the_party_we_put_in(
     from goldbox import c64_save
     game, save0, _report, savgam = _built(shape, tmp_path)
     c = c64_save.container_for(game)
-    assert sg.character_files(savgam) == [f"CHRDATD{n}" for n in range(1, 7)]
+    assert sg.character_files(savgam) == [
+        f"CHRDATD{n}" for n in range(1, sg.PARTY_ENTRIES + 1)]
     assert sg.party_size(savgam) == 6
     assert sg.current_area(savgam) == save0[c.current_script]
     assert sg.geo_block(savgam) == save0[c.current_geo]

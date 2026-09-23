@@ -1334,10 +1334,10 @@ def slots_available(folder: str | pathlib.Path) -> list[str]:
 
 
 def read_party(folder: str | pathlib.Path, slot: str) -> list[DosCharacter]:
-    """The six characters of one save slot, in file order."""
+    """The characters present in one save slot, in file order."""
     folder = pathlib.Path(folder)
     out = []
-    for n in range(1, 7):
+    for n in range(1, dos_savegame.PARTY_ENTRIES + 1):
         path = folder / f"CHRDAT{slot}{n}.SAV"
         if path.exists():
             out.append(read_character(path))
@@ -3329,8 +3329,8 @@ def _deduplicate_party_identities(
                 if identity not in identities:
                     break
             else:
-                # A DOS party has at most six members, so one of these bytes
-                # always remains even if every digest probe collides.
+                # A DOS party has at most eight members, so one of these
+                # bytes always remains even if every digest probe collides.
                 identity = next(value for value in range(256)
                                 if value not in identities)
         record[field.offset] = identity
@@ -5324,11 +5324,12 @@ ITEM_AREA = 0x5900
 ICON_TABLE = 0x4BE0
 ICON_SIZE = 36
 ROSTER_STRIDE = 0x20
-#: The two icon-table slots no DOS party can ever fill.  DOS keeps at most
-#: six characters (`len(party) > 6`, below) against the C64's eight, so
-#: slots 6 and 7 back only a character recruited in the running game
-#: (`ADDNPC`), never a DOS import.  Character creation seeds every one of
-#: the eight slots with the same figure, 8 of 8
+#: The two icon-table slots a smaller-than-full DOS party never fills.  DOS's
+#: own table now holds up to eight characters (`PARTY_ENTRIES`), same as the
+#: C64's eight, so a party of six or fewer leaves slots 6 and 7 backing only
+#: a character recruited in the running game (`ADDNPC`), never a DOS import.
+#: Character creation seeds every one of the eight slots with the same
+#: figure, 8 of 8
 #: (`goldbox.iconparts.IconParts.default_icon`), so a conversion writes that
 #: default there rather than zero (#363).
 NPC_ICON_SLOTS = (6, 7)
@@ -6226,8 +6227,8 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     if len(party) < container.party_slots:
         report.warnings.append(
             f"Slots {len(party)}-{container.party_slots - 1} emptied: a DOS "
-            f"save holds six characters and a C64 save "
-            f"{container.party_slots}")
+            f"save holds {dos_savegame.PARTY_ENTRIES} characters and a C64 "
+            f"save {container.party_slots}")
 
     for base, size in EFFECT_ARRAYS:
         at = base - SAVE0_BASE
@@ -6638,19 +6639,12 @@ SAVGAM_UNSOURCED: tuple[tuple[int, int, str], ...] = (
      "word -- a converted party is not being shouted at"),
 )
 
-#: The 274 bytes of the character table and the UI scratch after it that are
-#: not the six filenames: 32 heap bytes inside each 41-byte entry, then 82
-#: bytes of menu text.  Written zero.
+#: The 256 heap bytes after the eight filenames: 32 bytes inside each
+#: 41-byte entry. Written zero.
 #:
-#: They are display scratch, and the evidence is what is in them: readable
-#: fragments of the game's own menu words -- `Camp: ` in a Pool of Radiance
-#: save, `Choose a FUNCTION` in a Silver Blades one -- and the engine rewrote
-#: 55 of them on its own resave with nothing visible changing.  What made
-#: that a measurement rather than a reading is the run: a save with all 274
-#: zero loads and plays (`docs/117-save-conversion.md`, "A DOS save from
-#: nothing").
-PARTY_TABLE_SCRATCH = ("display scratch: 32 heap bytes after each filename "
-                       "and 82 bytes of menu text, zeroed")
+#: The filename rows themselves are all eight slots the loader can address;
+#: older six-member saves left the final two rows holding stack text.
+PARTY_TABLE_SCRATCH = "32 heap bytes after each of the eight filenames, zeroed"
 
 #: Saved-game words written to a value **measured in the running game**, as
 #: `(address, value, why)`.  Distinct from `dos_savegame.SAVGAM_CONSTANTS`,
@@ -7266,9 +7260,9 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
     in which "not written" and "written zero" are the same thing.  Three
     groups: the words no C64 save can source, named one at a time in
     :data:`SAVGAM_UNSOURCED` (:data:`SAVGAM_UNSOURCED_LATER` for Curse and
-    Silver Blades); the character table's heap scratch; and the remainder of
-    the variable space, which reads zero in every genuine specimen of the
-    title.
+    Silver Blades); the 32-byte heap tail in each of the eight character
+    slots; and the remainder of the variable space, which reads zero in every
+    genuine specimen of the title.
     """
     container = dos_savegame.container_for(
         len(savgam) if container is None else container)
@@ -7279,8 +7273,9 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
               + dos_savegame.PARTY_NAME_LEN)
         report.note(at, dos_savegame.PARTY_ENTRY - dos_savegame.PARTY_NAME_LEN,
                     PARTY_TABLE_SCRATCH)
-    report.note(container.size - dos_savegame.UI_SCRATCH,
-                dos_savegame.UI_SCRATCH, PARTY_TABLE_SCRATCH)
+    if dos_savegame.UI_SCRATCH:
+        report.note(container.size - dos_savegame.UI_SCRATCH,
+                    dos_savegame.UI_SCRATCH, PARTY_TABLE_SCRATCH)
     # The sweep, and the one claim here that rests on a census rather than on
     # a run: these words read zero in all four engine-written containers on
     # this machine, which is 2407 of the 2560 and the same count #59 got from
@@ -7325,9 +7320,9 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     file order for nothing, rather than building records in slot order and
     reversing the built list afterwards the way `write_dos_save` used to.
 
-    `game` is the C64 title, `c64_save.container_for`'s own shape.  A
-    payload over six characters is refused, the refusal `write_dos_save`
-    has always made.
+    `game` is the C64 title, `c64_save.container_for`'s own shape. The
+    payload holds at most eight occupied character slots, matching the DOS
+    party table.
 
     **`icon_parts` is the character-creation disk's own option tables**,
     `goldbox.iconparts.IconParts.load` -- read once here rather than once a
@@ -7371,9 +7366,6 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     else:
         sg1 = SaveGame1(bytes(save1), c64) if save1 is not None else None
     party = sg.characters
-    if len(party) > 6:
-        raise DosRecordError(
-            f"a DOS save holds six characters; this save has {len(party)}")
     reverse_tables = (c64_icon_tables(title=c64.key)
                       if icon_parts is not None else None)
     stale_icon_note = c64_codec.READ_DROPPED_PLAYER_TEXT.get("region_220")
@@ -7481,9 +7473,9 @@ def write_dos_save_from(state: "world_state.WorldState",
 
     shape = dos_savegame.container_for(c64.key)
     characters = list(characters)
-    if len(characters) > 6:
+    if len(characters) > dos_savegame.PARTY_ENTRIES:
         raise DosRecordError(
-            f"a DOS save holds six characters; this save has "
+            f"a DOS save holds eight characters; this save has "
             f"{len(characters)}")
 
     # Read the template's save, and the area's script, before anything in
@@ -7543,7 +7535,7 @@ def write_dos_save_from(state: "world_state.WorldState",
     # party happens to fill.  Converting one character into a directory that
     # held six left `CHRDAT<slot>2`-`6` behind, and the engine loads the party
     # from the six filenames in `SAVGAM<slot>.DAT` (#59), so it read five
-    # strangers back (#68).  Only the engine's own six names are removed, by
+    # strangers back (#68). Only the engine's own eight names are removed, by
     # enumeration rather than by glob: nothing else in `out` is ours to touch.
     cleared = _clear_slot(out, slot, suffixes)
     if cleared:
@@ -7716,9 +7708,9 @@ def write_dos_save(save0: bytes, save1: bytes | None,
 
 def _clear_slot(out: pathlib.Path, slot: str,
                 suffixes: Sequence[str]) -> int:
-    """Remove `CHRDAT<slot>1`-`6` and their siblings; return how many.
+    """Remove `CHRDAT<slot>1`-`8` and their siblings; return how many.
 
-    Only the engine's own six names in the title's own suffixes, by
+    Only the engine's own eight names in the title's own suffixes, by
     enumeration rather than by glob: nothing else in `out` is ours to touch
     (#68).
     """

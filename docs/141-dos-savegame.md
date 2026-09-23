@@ -56,7 +56,7 @@ in different places and Pools of Darkness writes a `SAVGAM<slot>.PTY` instead.
 | 1-5120 | 5120 | 2560 `u16le` **VM variables**, indexed by ECL address: `offset = 1 + 2*(addr − $4900)`. Sparse: **2407 of 2560 words are zero in all 11 engine-written indoor specimens, and 2402 across all 21**. The five words in the difference are exactly `$49C3`, `$49C4`, `$507A`, `$507B` and `$507C` — the travel square and the three overland-only words below, nothing else. Re-take it with `tools/dos/dossavcensus.py` | CONFIRMED |
 | 5121-12800 | 7680 | the **ECL text buffer**: the current area's script, byte-identical to its `ECL<n>.DAX` block from byte 2 on — every block opens `88 13`, `u16le` 5000, and the save carries everything after it. Bytes past the script's end are **all zeros** in every specimen held (6 of 6 checked, remnants of 209/1972/3/1113 bytes; an earlier claim of stale remnants was wrong). **Live on load**: a save built for a new area that still carries the old area's script dies in `Load3DMap` however many other variables it writes, so writing the target area's own script is one of the writes of the recipe below | CONFIRMED — #60 (Put a converted party where it actually stood, not where the template stood), `p60/run2` (scratch, deleted) variant X1; zero-fill measured in #59 (Map the DOS saved game, not just the character record)'s outdoor pass |
 | 12801-12808 | 8 | the square and the party size — see below | CONFIRMED |
-| 12809-13136 | 328 | **eight** 41-byte character slots, of which six are filled. Each is a length-prefixed `CHRDAT<letter><n>` filename followed by 32 bytes of heap junk. **The filenames are live**: the engine loads the party from the files named here, not from the slot letter chosen at the LOAD menu — slot J's file staged as slot C loaded J's characters — and its own resave rewrites the letters. This page said "six entries, then 82 bytes of UI scratch" until #175 (Decode the first 1024 bytes of the Pools of Darkness saved game); the 82 are slots 6 and 7 holding the stack, which is why they read `lter Exit` and `Camp: ` at exactly the 41-byte stride | CONFIRMED as 328 bytes of `CHRDAT` slots; the count of **eight** is CONFIRMED for Pools of Darkness and Silver Blades from the code and PROBABLE here — see the settling experiment below |
+| 12809-13136 | 328 | **Eight** 41-byte `CHRDAT<letter><n>` slots; the party-size byte bounds how many names the loader uses. The DOS writer emits all eight, and the loader and writer both support a seven-member Pool of Radiance party (#641 (A C64 Pool of Radiance party with a companion as its seventh member cannot be converted to DOS)). **The filenames are live**: the engine loads the party from the files named here, not from the slot letter chosen at the LOAD menu — slot J's file staged as slot C loaded J's characters — and its own resave rewrites the letters. Earlier six-member saves left stack text in the last two rows, including `lter Exit` and `Camp: ` at the 41-byte stride; those bytes are slots, not UI scratch | CONFIRMED for Pool of Radiance, Pools of Darkness and Silver Blades; PROBABLE for Curse — see the settling experiment below |
 
 ## The square and the party size
 
@@ -249,11 +249,11 @@ most save directories twice and for three titles the copies are identical.
 | square and engine state | 7 | 7 | 7 | **11** | CONFIRMED from each writer — five bytes from one data-segment address, then two single bytes (#253 (A Curse or Silver Blades party's square is read twelve bytes past where the engine writes it, since #220 moved the offset the wrong way), and #175 (Decode the first 1024 bytes of the Pools of Darkness saved game) for Pools of Darkness) |
 | two interleaved `u16[1..3]` arrays, **inside** the square block | — | 12 | 12 | — | the *shape* CONFIRMED from the writer — three passes of two `u16` each, `DS:0x722A`/`DS:0x722C` in Curse and `DS:0x89D8`/`DS:0x89DA` in Silver Blades, stepping by 4; PROBABLE that they are `WALLSET` and `WALLMAP`, see below (#253 (A Curse or Silver Blades party's square is read twelve bytes past where the engine writes it, since #220 moved the offset the wrong way)). This table called them "unnamed, before the square block" until then, and reading the square through that put it twelve bytes late. **Pools of Darkness has none**: the four this table gave it were the last four bytes of its own square block (#175 (Decode the first 1024 bytes of the Pools of Darkness saved game)) |
 | the party size, one byte | 1 | 1 | 1 | 1 | CONFIRMED — it reads 6 in all thirteen, and every writer emits it immediately before the `CHRDAT` slots |
-| 41-byte `CHRDAT` slots | 8 × 41 | 8 × 41 | 8 × 41 | 8 × 41 | CONFIRMED as 328 bytes in all thirteen; **eight** slots CONFIRMED for Pools of Darkness and Silver Blades from the code, PROBABLE for the other two |
+| 41-byte `CHRDAT` slots | 8 × 41 | 8 × 41 | 8 × 41 | 8 × 41 | CONFIRMED as 328 bytes in all thirteen; eight loader slots CONFIRMED for Pool of Radiance, Pools of Darkness and Silver Blades; PROBABLE for Curse |
 
-**The last two slots are the 82 bytes this page called UI scratch.** Pools of
-Darkness' save routine copies each character's filename to `[bp + 41*i −
-0x171]` for `i` up to 8 and then writes `0x148` = 328 bytes in one
+**For a six-member party, the last two slots are the 82 bytes this page called
+UI scratch.** Pools of Darkness' save routine copies each character's filename
+to `[bp + 41*i − 0x171]` for `i` up to 8 and then writes `0x148` = 328 bytes in one
 `BlockWrite` (`GAME.OVR:0x13595` and `0x13647`), so the region is eight slots
 and the party fills six of them; the rest is the stack under the buffer, which
 is why it reads `Camp: ` and `Choose a FUNCTION`. Its *loader* reads the same
@@ -678,7 +678,7 @@ running game says what the load path reads.
 
 | group | bytes | how it is written |
 |---|---|---|
-| written from the C64 party | 593 | the quest flags, the script scratch, the clock, the square, the party size, the six filenames -- and the place, which is byte 0, `$49C5`, `$49F2`, `$5012`, the wallset triple, the wall map and `$49E6` |
+| written from the C64 party | 593 | the quest flags, the script scratch, the clock, the square, the party size, the eight filenames -- and the place, which is byte 0, `$49C5`, `$49F2`, `$5012`, the wallset triple, the wall map and `$49E6` |
 | the area's own script | 7680 | `ECL<n>.DAX` from byte 2 on, then zero to the end of the buffer -- 6 of 6 specimens hold zeros past the script's end |
 | documented constants | 10 | `$4FE1` = 255, `$506D` = 16, `$50F6` = 1, and the four tail bytes 12804-12807 from `put_tail_state` |
 | zeroed with a reason | 784 | `SAVGAM_UNSOURCED`'s 510 bytes of variables, and the 274 of character-table heap and menu text |
@@ -867,9 +867,9 @@ importer, not fitted to make the widths add up.
   container here has run past nine minutes, so the hour, day, month and year
   positions rest on the radix table. Experiment: drive past an hour and read
   offsets 6 and 7.
-* **Whether Pool of Radiance and Curse write eight name slots too.** Pools of
-  Darkness and Silver Blades do, from the code. Experiment: the same
-  `BlockWrite` census on `POOLRAD/GAME/POOLRAD/GAME.OVR`.
+* **Whether Curse's loader uses all eight name slots.** Pool of Radiance,
+  Pools of Darkness and Silver Blades do. Experiment: trace the party-size
+  loop in `CURSE/GAME/CURSE/GAME.OVR`.
 * `#57 (Convert the character portrait across ports)` asks what the game does
   with `icon_choice` on load. Its four bytes have since been decoded on that
   issue -- `portrait_head`, `portrait_body`, `icon_head`, `icon_body` -- and

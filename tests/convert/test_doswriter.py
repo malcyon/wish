@@ -19,7 +19,13 @@ The other half of `tests/convert/test_dosconvert.py`.  That module proves the DO
 
 
 import pytest
-from gamedata import game_file, have_specimen, needs_specimens, specimen
+from gamedata import (
+    game_file,
+    have_specimen,
+    needs_specimens,
+    npc_party_disk,
+    specimen,
+)
 from support.dossave import (
     CLEAN_PARTY,
     CLEAN_ROLLS,
@@ -37,11 +43,13 @@ from goldbox import (
     c64_save,
     dos_codec,
     dos_port,
+    items,
     neutral,
     world_state,
 )
 from goldbox import dos_savegame as sg
 from goldbox import levels as level_tables
+from goldbox.d64 import D64
 from goldbox.encoding import combat_value
 from goldbox.iconparts import (
     DEFAULT_BACKGROUND,
@@ -53,7 +61,12 @@ from goldbox.iconparts import (
     dos_icon_tables,
 )
 from goldbox.layout import Confidence
-from goldbox.savegame import HEADER_SIZE, SLOT_STRIDE
+from goldbox.savegame import (
+    HEADER_SIZE,
+    ROSTER_STRIDE,
+    SLOT_STRIDE,
+    load_save,
+)
 
 # --- the tables, which need no save -----------------------------------------
 
@@ -2069,7 +2082,7 @@ def test_write_dos_save_writes_a_readable_party(tmp_path):
     assert any("party size" in c for c in report.converted)
     # #59: the engine loads the party from these names, so they name this
     # save's own files rather than the template's.
-    assert sg.character_files(savgam) == [f"CHRDATA{n}" for n in range(1, 7)]
+    assert sg.character_files(savgam) == [f"CHRDATA{n}" for n in range(1, 9)]
 
 
 @needs_dos_saves
@@ -2102,7 +2115,7 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     assert [c.get("combat_figure") for c in party] == [0, 1, 2, 3, 4, 5]
     assert (tmp_path / "SAVGAMB.DAT").exists()
     savgam = (tmp_path / "SAVGAMB.DAT").read_bytes()
-    assert sg.character_files(savgam) == [f"CHRDATB{n}" for n in range(1, 7)]
+    assert sg.character_files(savgam) == [f"CHRDATB{n}" for n in range(1, 9)]
     assert sg.party_size(savgam) == 6
     # This C64 party stands in New Phlan and the template's slot B in Sokol
     # Keep, so the save is retargeted -- with the empty wallset triple the
@@ -2113,6 +2126,109 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
                                    save0[0x49C1 - 0x4900],
                                    save0[0x49C2 - 0x4900])
     assert any(c.startswith("the place: area") for c in report.converted)
+
+
+@needs_dos_saves
+def test_a_c64_party_with_dirten_in_slot_seven_converts_with_its_siblings(
+        tmp_path):
+    """A seventh companion reaches the DOS party table and keeps its files.
+
+    `npc_party.d64` is the registered Pool of Radiance save with DIRTEN. The
+    source has eight occupied slots, so this builds a seven-member party in
+    memory from six of its other records and DIRTEN, placing DIRTEN in C64
+    slot 0. The conversion reverses C64 slot order, which makes DIRTEN
+    `CHRDATB7.SAV` without copying any game bytes into the repository.
+    """
+    source_disk = npc_party_disk()
+    if source_disk is None:
+        pytest.skip("needs npc_party.d64; add npc-party-save to gamedisks.yaml")
+
+    game, original0, original1 = load_save(D64.open(source_disk))
+    assert game.key == "pool-of-radiance"
+    assert original1 is not None
+    slots = {slot.record.name: slot for slot in original0.characters}
+    assert len(slots) == 8
+    assert "DIRTEN" in slots
+
+    # The target C64 slots run low to high; the DOS files run high to low.
+    selected_names = ["DIRTEN", "GENHEERIS", "XAVIER", "MAD MAN",
+                      "PRINCESS FATIMA", "SIMON", "SKULLCRUSHER"]
+    source_indices = [slots[name].index for name in selected_names]
+    assert len(set(source_indices)) == 7
+    raw0, raw1 = original0.to_bytes(), original1.to_bytes()
+    save0, save1 = bytearray(raw0), bytearray(raw1)
+    slot_base = game.slot_area_base - game.save_load_address
+    item_base = items.ITEM_AREA_BASE - game.save_load_address
+
+    for target in range(game.slot_count):
+        record_at = slot_base + target * SLOT_STRIDE
+        item_at = item_base + target * items.ITEM_BLOCK_STRIDE
+        icon_at = game.icon(target)
+        roster_at = target * ROSTER_STRIDE
+        if target < len(source_indices):
+            source = source_indices[target]
+            source_record_at = slot_base + source * SLOT_STRIDE
+            source_item_at = item_base + source * items.ITEM_BLOCK_STRIDE
+            source_icon_at = game.icon(source)
+            save0[record_at:record_at + SLOT_STRIDE] = \
+                raw0[source_record_at:source_record_at + SLOT_STRIDE]
+            save0[item_at:item_at + items.ITEM_BLOCK_STRIDE] = \
+                raw0[source_item_at:source_item_at + items.ITEM_BLOCK_STRIDE]
+            save0[icon_at:icon_at + game.icon_size] = \
+                raw0[source_icon_at:source_icon_at + game.icon_size]
+            save1[roster_at:roster_at + ROSTER_STRIDE] = \
+                raw1[source * ROSTER_STRIDE:(source + 1) * ROSTER_STRIDE]
+        else:
+            save0[record_at:record_at + SLOT_STRIDE] = bytes(SLOT_STRIDE)
+            save0[item_at:item_at + items.ITEM_BLOCK_STRIDE] = \
+                bytes(items.ITEM_BLOCK_STRIDE)
+            save0[icon_at:icon_at + game.icon_size] = bytes(game.icon_size)
+            save1[roster_at:roster_at + ROSTER_STRIDE] = bytes(ROSTER_STRIDE)
+
+    source_party, _icons = dos_codec.c64_party(bytes(save0), bytes(save1), game)
+    assert [char.get("name") for char in source_party] == [
+        "SKULLCRUSHER", "SIMON", "PRINCESS FATIMA", "MAD MAN", "XAVIER",
+        "GENHEERIS", "DIRTEN",
+    ]
+
+    slot = "B"
+    stale = tmp_path / f"CHRDAT{slot}8.SAV"
+    stale.write_bytes(b"a former eighth character")
+    stale_itm = tmp_path / f"CHRDAT{slot}8.ITM"
+    stale_itm.write_bytes(b"a former eighth character's items")
+    stale_spc = tmp_path / f"CHRDAT{slot}8.SPC"
+    stale_spc.write_bytes(b"a former eighth character's effects")
+
+    dos_codec.write_dos_save(bytes(save0), bytes(save1), _save_dir(),
+                             tmp_path, slot)
+
+    savgam = (tmp_path / f"SAVGAM{slot}.DAT").read_bytes()
+    assert sg.party_size(savgam) == 7
+    assert sg.word(savgam, sg.PARTY_SIZE) == 7
+    assert sg.character_files(savgam) == [
+        f"CHRDAT{slot}{n}" for n in range(1, 9)]
+    assert not stale.exists()
+    assert not stale_itm.exists()
+    assert not stale_spc.exists()
+
+    landed = dos_codec.read_party(tmp_path, slot)
+    assert [char.name for char in landed] == [
+        char.get("name") for char in source_party]
+    assert landed[6].name == "DIRTEN"
+    assert (tmp_path / f"CHRDAT{slot}7.SAV").is_file()
+
+    expected_files = {f"SAVGAM{slot}.DAT"}
+    for n, char in enumerate(source_party, start=1):
+        stem = tmp_path / f"CHRDAT{slot}{n}"
+        expected_files.add(f"{stem.name}.SAV")
+        _record, itm, spc, _report = dos_codec.write(char)
+        for suffix, body in ((".ITM", itm), (".SPC", spc)):
+            path = stem.with_suffix(suffix)
+            assert path.exists() is bool(body), path.name
+            if body:
+                assert path.read_bytes() == body
+                expected_files.add(path.name)
+    assert {path.name for path in tmp_path.iterdir()} == expected_files
 
 
 @needs_dos_saves
@@ -2168,11 +2284,11 @@ def test_the_racial_bonuses_arrive_as_a_spc_file(tmp_path):
 @needs_dos_saves
 def test_a_second_conversion_replaces_the_slot_rather_than_overlaying_it(
         tmp_path):
-    """#68: a party of one into a folder that held six is a party of one.
+    """#68: a party of one into a folder that held eight is a party of one.
 
-    The engine loads the party from the six `CHRDAT<slot><n>` filenames in
-    `SAVGAM<slot>.DAT` (#59), so a leftover `CHRDATB2`-`6` is not inert: it is
-    five strangers marching with the converted character.
+    The engine loads the party from the eight `CHRDAT<slot><n>` filenames in
+    `SAVGAM<slot>.DAT` (#59), so leftover `CHRDATB2`-`8` files are not inert:
+    they are seven strangers marching with the converted character.
     """
     import pathlib
 
@@ -2186,7 +2302,7 @@ def test_a_second_conversion_replaces_the_slot_rather_than_overlaying_it(
     save0, save1 = _fixture_payloads()
     report = dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path, "B")
     assert [c.name for c in dos_codec.read_party(tmp_path, "B")] == ["BRUTUS"]
-    for n in range(2, 7):
+    for n in range(2, 9):
         for suffix in (".SAV", ".ITM", ".SPC"):
             assert not (tmp_path / f"CHRDATB{n}{suffix}").exists()
     assert any("removed" in c for c in report.converted)
@@ -2194,12 +2310,12 @@ def test_a_second_conversion_replaces_the_slot_rather_than_overlaying_it(
 
 @needs_dos_saves
 def test_clearing_a_slot_leaves_the_other_slots_and_the_user_s_files(tmp_path):
-    """Only the eighteen names the engine reads for this slot are removed."""
+    """Only the twenty-four names the engine reads for this slot are removed."""
     save0, save1 = _fixture_payloads()
     keep = {
         tmp_path / "CHRDATA1.SAV": b"another slot",
         tmp_path / "SAVGAMA.DAT": b"another slot's save",
-        tmp_path / "CHRDATB7.SAV": b"not a name the engine reads",
+        tmp_path / "CHRDATB9.SAV": b"not a name the engine reads",
         tmp_path / "notes.txt": b"the user's own file",
     }
     for path, body in keep.items():
@@ -2512,7 +2628,7 @@ def test_a_saved_game_built_from_nothing_accounts_for_every_byte(tmp_path):
     assert len(report.sources) == report.total == sg.SAVGAM_SIZE
     savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
     # And it is the party's own save rather than a plausible-looking one.
-    assert sg.character_files(savgam) == [f"CHRDATA{n}" for n in range(1, 7)]
+    assert sg.character_files(savgam) == [f"CHRDATA{n}" for n in range(1, 9)]
     assert sg.party_size(savgam) == 1
     assert sg.area_id(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE]
     for i in range(sg.CLOCK_DIGITS):
@@ -2651,8 +2767,8 @@ def test_the_unsourced_words_are_addresses_and_do_not_overlap():
             assert sg.VAR_BASE <= a <= sg.VAR_LAST, hex(a)
             assert a not in seen, hex(a)
             seen.add(a)
-    # 508 bytes of variables carry a stated reason for their zero, and 274
-    # more are the character table's heap scratch and the menu text after it.
+    # 508 bytes of variables carry a stated reason for their zero, and 256
+    # more are the eight character slots' heap scratch.
     # Only 178 of the 508 have ever been seen holding anything in a container
     # on this machine -- the rest is the message buffer's own tail, declared
     # whole because it is one buffer and not 217 findings, and $507A-$507C,
@@ -2664,7 +2780,7 @@ def test_the_unsourced_words_are_addresses_and_do_not_overlap():
     # source.
     assert 2 * len(seen) == 508
     assert (sg.PARTY_ENTRIES * (sg.PARTY_ENTRY - sg.PARTY_NAME_LEN)
-            + sg.UI_SCRATCH) == 274
+            + sg.UI_SCRATCH) == 256
 
 
 # --- #307 (The DOS writer's drop list has no way to silence a field the DOS

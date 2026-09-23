@@ -38,9 +38,8 @@ The file, in five regions
                       ``CHRDAT<letter><n>`` filename the engine *actually
                       loads the party from* (proven: a slot-J file staged as
                       slot C loaded J's characters), each followed by 32
-                      bytes of heap scratch.  Six are filled and the last two
-                      hold the stack, which is the 82 bytes this page called
-                      UI scratch until #175 -- see ``NAME_SLOTS``.
+                      bytes of heap scratch. The party-size byte bounds the
+                      names the loader uses; all eight slots fit the block.
 ====================  =========================================================
 
 Pools of Darkness is the other shape
@@ -135,35 +134,14 @@ TAIL_CONSTANT = 2
 VIEW_MODE_INDOORS, VIEW_MODE_OUTDOORS = 1, 3
 PARTY_SIZE_BYTE = 12808      # the same count the word at $503E carries
 
-PARTY_TABLE = 12809          # six entries of 41 bytes
+PARTY_TABLE = 12809          # eight entries of 41 bytes
 PARTY_ENTRY = 41
-PARTY_ENTRIES = 6
 PARTY_NAME_LEN = 9           # length byte + up to 8 of "CHRDAT<letter><n>"
-#: The trailing menu-text and heap scratch after the six character entries.
-#: The same 82 bytes in all four titles, and it really is text scratch: it
-#: holds `Camp: ` in a Pool of Radiance save and `Choose a FUNCTION` in a
-#: Silver Blades one.
-UI_SCRATCH = 82
-#: The character-file table is **eight** 41-byte slots, not six and then 82
-#: bytes of scratch.  Pools of Darkness' save routine copies names into
-#: `[bp + 41*i - 0x171]` for `i` up to 8 and then writes `0x148` = 328 bytes in
-#: one `BlockWrite` (`GAME.OVR:0x13595` and `0x13647`), and its *loader* reads
-#: the same 328 for a Silver Blades container after seeking to 5140 -- which is
-#: `SAVE_SECRET_OF_THE_SILVER_BLADES.party_table - 1` exactly (#175).
-#:
-#: So the 82 bytes are slots 6 and 7 left holding whatever was on the stack,
-#: which is why they read `Camp: ` and `Choose a FUNCTION`.  8 x 41 = 328 =
-#: `PARTY_ENTRIES * PARTY_ENTRY + UI_SCRATCH`, so no offset moves and both
-#: constants keep their values; what changes is what the last 82 bytes *are*.
-#: CONFIRMED for Pools of Darkness and Silver Blades from the code above;
-#: PROBABLE for Pool of Radiance and Curse, where the evidence is that slots 6
-#: and 7 land on the junk at exactly the 41-byte stride -- 13055 reads
-#: `lter Exit` and 13096 a heap word in Donald's A, B and J.
-#:
-#: `character_files` still reads `PARTY_ENTRIES` of them, because no container
-#: on this machine holds a seventh name and a junk slot with a plausible
-#: length byte would be read as a filename the engine loads the party from.
 NAME_SLOTS = 8
+PARTY_ENTRIES = NAME_SLOTS
+#: No bytes follow the eight 41-byte slots. Older six-member saves left the
+#: unused final rows holding stack text, which made them look like scratch.
+UI_SCRATCH = 0
 
 # ---------------------------------------------------------------------------
 # Pools of Darkness: the byte-wide variable array (#175)
@@ -556,8 +534,8 @@ def container_for(what: "int | str | DosContainer") -> DosContainer:
     **The size names the container, not the title.**  Treasures of the
     Savage Frontier writes a 1364-byte `SAVGAM<slot>.PTY` and a 12-byte
     `VAULT<slot>.DAT` beside it, exactly as Pools of Darkness does, and its
-    two shipped containers carry the same tail -- six `CHRDAT` entries 41
-    bytes apart, a party size of 6, 82 bytes of UI scratch.  So a 1364-byte
+    two shipped containers carry the same tail -- eight `CHRDAT` entries 41
+    bytes apart, a party size of 6, 0 bytes of UI scratch.  So a 1364-byte
     file is answered with the Pools of Darkness row and a caller that needs
     to know *which game* has to look at where the file came from (#53).
     """
@@ -927,10 +905,8 @@ def put_character_files(save: bytearray, slot: str,
     The engine loads the party from these names and not from the slot letter
     chosen at the LOAD menu -- slot J's file staged as slot C loaded J's
     characters (#59) -- so a save that does not name its own files loads
-    somebody else's party.  The engine's own resave rewrites the letters; so
-    does this.  All six entries are written, not `count` of them: no specimen
-    shows what a blanked entry does, and the party size says how many are
-    read.
+    somebody else's party. The engine accepts eight entries in this block;
+    the party-size byte says how many names it loads.
     """
     container = _container_for_save(save, container)
     for n in range(PARTY_ENTRIES):
@@ -964,10 +940,9 @@ def swap_party_entries(save: bytearray, i: int, j: int,
 
 def character_files(save: bytes,
                     container: "DosContainer | None" = None) -> list[str]:
-    """The CHRDAT filenames the engine will load the party from.
+    """The CHRDAT filenames in the eight-slot table.
 
-    Six of six in all nine shipped containers of all four titles, which is
-    the anchor the per-title region map was measured from.
+    The party-size byte determines how many the engine loads.
     """
     container = _container_for_save(save, container)
     out = []
@@ -979,7 +954,12 @@ def character_files(save: bytes,
         # `CHRDATA1`. A looser bound reads the scratch as filename characters
         # and returns a wrong-but-plausible name instead of nothing.
         if 0 < length < PARTY_NAME_LEN:
-            out.append(save[at + 1:at + 1 + length].decode("ascii", "replace"))
+            name = save[at + 1:at + 1 + length].decode("ascii", "replace")
+            # `put_character_files` always writes this exact prefix, so an
+            # unused slot's leftover heap scratch passing the length check
+            # by chance is still excluded on content.
+            if name.startswith("CHRDAT"):
+                out.append(name)
     return out
 
 

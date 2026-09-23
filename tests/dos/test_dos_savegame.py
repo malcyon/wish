@@ -232,7 +232,7 @@ def test_the_party_filenames_are_rewritten_for_the_slot():
     save = blank()
     sg.put_character_files(save, "C")
     assert sg.character_files(bytes(save)) == [
-        f"CHRDATC{n}" for n in range(1, 7)]
+        f"CHRDATC{n}" for n in range(1, sg.PARTY_ENTRIES + 1)]
 
 
 def test_swap_party_entries_reorders_two_slots_and_touches_nothing_else():
@@ -248,7 +248,7 @@ def test_swap_party_entries_reorders_two_slots_and_touches_nothing_else():
     after = bytes(save)
     assert sg.character_files(after) == [
         "CHRDATA5", "CHRDATA2", "CHRDATA3", "CHRDATA4",
-        "CHRDATA1", "CHRDATA6"]
+        "CHRDATA1", "CHRDATA6", "CHRDATA7", "CHRDATA8"]
     at = sg.PARTY_TABLE
     changed = slice(at, at + 5 * sg.PARTY_ENTRY)
     assert before[:at] == after[:at]
@@ -679,10 +679,9 @@ def test_every_container_names_six_character_files(key):
     region is one byte out finds five names, or none."""
     for path, data in _of(key):
         names = sg.character_files(data, sg.container_for(key))
-        assert len(names) == sg.PARTY_ENTRIES, path
+        assert len(names) == 6, path
         slot = path.name[len("SAVGAM")]
-        assert names == [f"CHRDAT{slot}{n + 1}" for n in
-                         range(sg.PARTY_ENTRIES)], path
+        assert names == [f"CHRDAT{slot}{n + 1}" for n in range(6)], path
 
 
 @_ALL_SHAPES
@@ -981,7 +980,7 @@ def test_every_played_container_reads_as_a_six_strong_party_in_a_dungeon():
         assert sg.pod_var(data, sg.POD_PARTY_COUNT) == 6, path
         assert sg.party_size(data) == 6, path
         assert sg.pod_in_dungeon(data), path
-        assert len(sg.character_files(data)) == sg.PARTY_ENTRIES, path
+        assert len(sg.character_files(data)) == 6, path
     assert len(played) >= 1
 
 
