@@ -530,7 +530,8 @@ class CurseSession(por.Session):
         Four screens stand between the drive door and that menu, and only the
         first is one Pool of Radiance also has:
 
-        1. `DISABLE FASTLOADER (Y/N) ?`, answered with `self.fastloader`;
+        1. `DISABLE FASTLOADER (Y/N) ?`, answered with `self.fastloader`,
+           resent through `_answer_fastloader` until the game echoes it back;
         2. the title picture -- a bitmap, so `screen()` reads None through it;
         3. a credits screen, dismissed with Return;
         4. the release's own start-up check, which names the character it
@@ -549,6 +550,8 @@ class CurseSession(por.Session):
             self.log("no fastloader prompt")
             return False
         if not self._answer_fastloader():
+            if not self.boot_failure:
+                self.log("the fastloader prompt took no answer")
             return False
         deadline = time.time() + 420
         last = ""
