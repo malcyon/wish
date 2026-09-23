@@ -497,6 +497,60 @@ def test_a_dual_classed_former_paladin_below_his_full_count_still_reports():
     assert [x for x in rep.losses if "paladin_cures" in x]
 
 
+@pytest.mark.parametrize("game", [dos_port.CURSE_OF_THE_AZURE_BONDS,
+                                  dos_port.SECRET_OF_THE_SILVER_BLADES])
+def test_a_regained_dos_paladin_writes_his_cure_count_to_the_c64(game):
+    """Fighter 7 who left paladin at 6 is a paladin again: 0x012 holds 2."""
+    from goldbox import c64_codec
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(
+        bytes(game.record_size), deltas=game))
+    char.set("levels", {"fighter": 7}, "test")
+    char.set("level", 7, "test")
+    char.set("former_levels", {"paladin": 6}, "test")
+    char.set("paladin_cures", 2, "test")
+    rec, rep = c64_codec.write(char)
+    assert rec.to_bytes()[0x012] == 2
+    assert not [x for x in rep.losses if "paladin_cures" in x]
+
+
+def test_a_regained_paladin_specimen_goes_c64_to_dos_and_back(app, tmp_path):
+    """MATHEW and MARK hold 2 and 1 uses on the C64 disk; the DOS folder made
+    from it, saved as a C64 disk again, keeps both."""
+    disk = _c64_specimen("curse-409-regained-paladin")
+    if disk is None:
+        pytest.skip("needs ~/wish-specimens/*-c64/"
+                    "WISH-SPEC-curse-409-regained-paladin.d64")
+    try:
+        game_dir = dosbox.find_game("CURSE")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Curse of the Azure Bonds archives "
+                    "($FR_ARCHIVES)")
+    party = roster.Party(str(disk))
+    source = party.source or convert.Source.detect(disk)
+    try:
+        assets = saveplan.resolve_assets(source, "dos",
+                                         game_files=convertdrops.game_files,
+                                         dos_folder=game_dir)
+    except saveplan.MissingAssets:
+        pytest.skip("needs the C64 Curse disks, found through "
+                    "automap/gamedisks.py")
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "dos", assets)
+    folder = tmp_path / "dos"
+    folder.mkdir()
+    for name, data in plan.files.items():
+        (folder / name).write_bytes(data)
+
+    back = roster.Party(str(folder))
+    try:
+        assets = saveplan.resolve_assets(back.source, "c64",
+                                         game_files=convertdrops.game_files)
+    except saveplan.MissingAssets:
+        pytest.skip("needs the C64 Curse disks, found through "
+                    "automap/gamedisks.py")
+    again = saveplan.prepare_save_as(back, "c64", tmp_path / "out.d64", assets)
+    assert isinstance(again, saveplan.SavePlan)
+
+
 def _mathew_in(chars):
     (mathew,) = [c for c in chars if c.get("name") == "MATHEW"]
     return mathew

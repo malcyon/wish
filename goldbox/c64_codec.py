@@ -649,6 +649,11 @@ def _wrapped_byte(rep: "Report", name: str, value: int) -> None:
                  f"field; wrapped to {int(value) & 0xFF}")
 
 
+def _has_regained(current_level: "int | None", left_at: int) -> bool:
+    """Whether the new class has passed the level the old one was left at."""
+    return (current_level or 0) > left_at
+
+
 def _field(name: str) -> Field:
     from . import layout as _l
     return _l.FIELDS_BY_NAME[name]
@@ -1061,6 +1066,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # rebuilds, so nothing is lost by writing zero.
     former_paladin = ((former.value.get("paladin") or 0)
                       if former is not None else 0)
+    # A former paladin who has since passed his old level is written back
+    # with that level (the restore below), so he is a current paladin here.
+    if (level_paladin == 0 and former_paladin > 0 and deltas.dual_class
+            and {n for n, lv in former.value.items() if lv} == {"paladin"}
+            and _has_regained(w.get("level"), former_paladin)):
+        level_paladin = former_paladin
     regained_by_engine = (
         cure_entry is not None and level_paladin == 0 and former_paladin > 0
         and cure_node is None and cure_value
@@ -1268,7 +1279,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 # the editor and convert as another, and no specimen exists to
                 # tell)`).
                 current_level = w.get("level") or 0
-                regained = current_level > level
+                regained = _has_regained(current_level, level)
                 rec.set(field, level if regained else 0)
                 rep.note(_field(field).offset, 1,
                          f"{field}: {level if regained else 0} -- "
