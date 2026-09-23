@@ -278,6 +278,57 @@ def ordinary_level_ids(pairs: tuple[SpellPair, ...]) -> tuple[int, ...]:
                          and p.c64_camp_handler in (0xA858, 0xA85E)}))
 
 
+#: Where each later title's seven-byte spell rows start in `ECL65` and how many
+#: rows the table holds (the bytes after row 56 are other data).
+LATER_SPELL_TABLE = {"curse-of-the-azure-bonds": 0x97CB,
+                     "secret-of-the-silver-blades": 0x9307}
+LATER_SPELL_ROWS = 56
+#: The two cast handlers that end in the caster-level slot writer: one row for
+#: the target, and one row per party slot present (Bless).
+LATER_CAST_HANDLERS = (0x819C, 0x81A2)
+#: The DOS spell row's class byte for a magic-user, which differs by title.
+_DOS_MAGIC_USER = {"curse-of-the-azure-bonds": 2, "secret-of-the-silver-blades": 3}
+
+
+def later_caster_level_ids(title: str, ecl65: bytes, engine) -> tuple[int, ...]:
+    """Ids of a later title whose ordinary cast writes the caster's level.
+
+    An id is in when every C64 spell row naming it goes to a caster-level
+    handler, the DOS spell rows naming it agree with those rows on class,
+    spell level and duration formula, and no DOS handler reads its data byte.
+    Which DOS spells pass a level override of zero is confirmed by reading,
+    and is recorded in `docs/226-the-c64-running-effect-crosswalk.md`.
+    """
+    from goldbox import dos_codec
+
+    start = LATER_SPELL_TABLE[title] - 0x8000
+    if len(ecl65) < start + LATER_SPELL_ROWS * 7:
+        raise ValueError("Truncated spell table")
+    c64: dict[int, list[bytes]] = {}
+    for n in range(LATER_SPELL_ROWS):
+        row = ecl65[start + n * 7:start + n * 7 + 7]
+        c64.setdefault(row[3] & 0x7F, []).append(row)
+    from tools.dos import dosaffectreads
+
+    dos_rows = dosaffectreads.spell_rows(engine)
+    magic_user = _DOS_MAGIC_USER[title]
+    to_c64_class = {0: 1, 1: 2, magic_user: 0}
+    unread = dos_codec.C64_TRAIT_PERMANENT_IDS[title]
+    ids = []
+    for eid, rows in sorted(c64.items()):
+        dos = [row for row in dos_rows.values() if row[10] == eid]
+        if not eid or not dos or eid not in unread:
+            continue
+        if any(int.from_bytes(row[5:7], "little") not in LATER_CAST_HANDLERS
+               for row in rows):
+            continue
+        theirs = {(row[2] >> 2 & 3, row[2] >> 4, row[0], row[1]) for row in rows}
+        ours = {(to_c64_class.get(row[0], -1), row[1], row[4], row[5]) for row in dos}
+        if theirs == ours:
+            ids.append(eid)
+    return tuple(ids)
+
+
 def confirm_pool_state(files: dict[str, bytes], dos_ovr: bytes) -> tuple[str, ...]:
     """Check overlapping-strength transitions and Prayer's owner predicate."""
     spells, library = files["SPELLE04"], files["LIBRARY"]

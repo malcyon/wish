@@ -1029,8 +1029,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     other_nodes.append(row)
 
     for node in other_nodes:
-        which = (f"running_effects: effect {node.id} "
-                 f"({traits.describe(node.id, char.game)}), "
+        named = traits.for_game(char.game).get(node.id)
+        name = f" ({named[0]})" if named else ""
+        which = (f"running_effects: effect {node.id}{name}, "
                  f"{node.minutes} minutes left")
         row_for = effects.c64_row(title_key, node)
         if isinstance(row_for, effects.Unconverted):

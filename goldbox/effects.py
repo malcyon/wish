@@ -317,6 +317,17 @@ class RunningEffect:
 POOL_CASTER_LEVEL_IDS = frozenset(
     {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 25, 37, 41, 45, 46})
 
+#: The same, for the later titles: the C64 writes the caster's level for each
+#: of these ids and the DOS cast stores it, and nothing but Dispel Magic reads
+#: it (`docs/226-the-c64-running-effect-crosswalk.md`). Prayer (49), the
+#: ability ids and ids with no C64 spell row stay out.
+LATER_CASTER_LEVEL_IDS = {
+    "curse-of-the-azure-bonds": frozenset(
+        {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 63, 69}),
+    "secret-of-the-silver-blades": frozenset(
+        {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 57, 63, 69}),
+}
+
 
 @dataclass(frozen=True)
 class Unconverted:
@@ -328,10 +339,13 @@ class Unconverted:
 def c64_row(title_key: str, node: RunningEffect) -> tuple[int, int] | Unconverted:
     """The C64 id and magnitude for a DOS running effect, or why there is none.
 
-    Only Pool of Radiance's caster-level ids are converted: an id in
-    `POOL_CASTER_LEVEL_IDS`, flag 0, whose data byte is a caster level.
+    Only a title's caster-level ids are converted: an id in
+    `POOL_CASTER_LEVEL_IDS` or `LATER_CASTER_LEVEL_IDS`, flag 0, whose data
+    byte is a caster level.
     """
-    if title_key != "pool-of-radiance" or node.id not in POOL_CASTER_LEVEL_IDS:
+    ids = (POOL_CASTER_LEVEL_IDS if title_key == "pool-of-radiance"
+           else LATER_CASTER_LEVEL_IDS.get(title_key, frozenset()))
+    if node.id not in ids:
         return Unconverted("no rule yet for this id in this title")
     if node.flag != 0:
         return Unconverted("a flag byte other than 0 on a caster-level effect")

@@ -634,11 +634,20 @@ query is itself a result. Stop at those three observations or after
 one combat round, with a five-minute wall-clock cap. Until that driver is
 specified and built, preserve individual ownership and leave merging unknown.
 
-**What a C64 writer still waits on, after the slot, the owner, the duration
-and the later titles' four ability ids:** a timeline conversion for Pool's
-overlapping strength nodes, which the destination does hold; what a spent
-Mirror Image converts to; Pool's party-wide Prayer row; the effect ids nobody
-has read; and the two ageing routes the camp formula does not describe.
+**What the C64 writer converts, and what it still waits on.** The writer is
+built: `goldbox.effects.c64_row` turns a running node into a row of the save's
+shared arrays for Pool of Radiance's caster-level ids
+(`POOL_CASTER_LEVEL_IDS`) and for each later title's
+(`LATER_CASTER_LEVEL_IDS`), and reports any other id by number as unconverted.
+`tools/c64/effectcrosswalk.py`'s `later_caster_level_ids` re-reads the later
+titles' tuples from the C64 spell rows, the DOS spell rows and the DOS
+handlers that read a data byte, and `tests/records/test_effectcrosswalk.py`
+pins the constants to it. Still waiting: a timeline conversion for Pool's
+overlapping strength nodes, which the destination does hold; the later
+titles' Strength, Enlarge and Friends; what a spent Mirror Image converts to;
+Prayer, including Pool's party-wide row; Curse's and Silver Blades' id 25,
+which has its own row and handler; the ids with no C64 spell row; and the two
+ageing routes the camp formula does not describe.
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; select either later title with `--title`.

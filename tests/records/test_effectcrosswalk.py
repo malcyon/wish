@@ -136,6 +136,8 @@ def test_the_spell_tables_agree_except_for_camp_prayer(pool):
             if p.dos_effect != p.c64_camp_effect] == [(42, 49, 35)]
     assert cross.ordinary_level_ids(pairs) == (
         1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 25, 37, 41, 45, 46)
+    assert cross.ordinary_level_ids(pairs) == tuple(
+        sorted(effects.POOL_CASTER_LEVEL_IDS))
 
 
 @pytest.mark.parametrize("data, flag, magnitude", [
@@ -446,3 +448,42 @@ def test_the_cli_rejects_negative_clock_minutes_before_resolving_disks(monkeypat
         cross.main(["--clock-minutes", "-1"])
     assert stopped.value.code == 2
     assert "Clock minutes must be zero or greater" in capsys.readouterr().err
+
+
+@pytest.fixture(scope="module")
+def later_ids(later):
+    title, _combat, _table, ovr, _image = later
+    from tools.dos import dosaffectreads, dosbox
+
+    engine = dosaffectreads.load(
+        dosbox.find_game("CURSE" if title.startswith("curse") else "SECRET"), title)
+    ecl65 = coldread.overlay(c64_port.by_key(title), b"ECL65", _root(title))
+    return title, ecl65, engine
+
+
+def test_the_later_caster_level_ids_are_the_paired_rows(later_ids):
+    title, ecl65, engine = later_ids
+    got = cross.later_caster_level_ids(title, ecl65, engine)
+    assert got == {
+        "curse-of-the-azure-bonds":
+            (1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 63, 69),
+        "secret-of-the-silver-blades":
+            (1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 57, 63, 69),
+    }[title]
+    assert got == tuple(sorted(effects.LATER_CASTER_LEVEL_IDS[title]))
+
+
+@pytest.mark.parametrize("eid", [25, 49, 12, 14, 28, 38])
+def test_the_later_caster_level_ids_leave_out_what_has_its_own_rule(later_ids, eid):
+    title, ecl65, engine = later_ids
+    assert eid not in cross.later_caster_level_ids(title, ecl65, engine)
+
+
+def test_a_changed_spell_row_leaves_its_id_out(later_ids):
+    """Shield's C64 row with a different per-level count no longer pairs with
+    DOS spell 19, so id 17 is not a caster-level id."""
+    title, ecl65, engine = later_ids
+    start = cross.LATER_SPELL_TABLE[title] - 0x8000
+    changed = bytearray(ecl65)
+    changed[start + 13 * 7 + 1] ^= 1
+    assert 17 not in cross.later_caster_level_ids(title, bytes(changed), engine)

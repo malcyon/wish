@@ -1086,9 +1086,32 @@ def test_a_pool_caster_level_bless_becomes_id_and_level():
     ("pool-of-radiance", effects.RunningEffect(1, 2, 0x80, 0)),
     ("pool-of-radiance", effects.RunningEffect(13, 2, 1, 0)),
     ("pool-of-radiance", effects.RunningEffect(49, 2, 1, 0)),
-    ("curse-of-the-azure-bonds", effects.RunningEffect(1, 2, 1, 0)),
+    ("curse-of-the-azure-bonds", effects.RunningEffect(25, 2, 1, 0)),
+    ("curse-of-the-azure-bonds", effects.RunningEffect(49, 2, 1, 0)),
+    ("curse-of-the-azure-bonds", effects.RunningEffect(1, 2, 1, 1)),
+    ("curse-of-the-azure-bonds", effects.RunningEffect(1, 2, 0x80, 0)),
+    ("curse-of-the-azure-bonds", effects.RunningEffect(57, 2, 1, 0)),
+    ("secret-of-the-silver-blades", effects.RunningEffect(25, 2, 1, 0)),
+    ("secret-of-the-silver-blades", effects.RunningEffect(49, 2, 1, 0)),
+    ("secret-of-the-silver-blades", effects.RunningEffect(1, 2, 0, 0)),
 ])
 def test_a_node_the_table_has_no_rule_for_is_unconverted(title, node):
     got = effects.c64_row(title, node)
     assert isinstance(got, effects.Unconverted)
     assert got.reason
+
+
+@pytest.mark.parametrize("title, eid", [
+    ("curse-of-the-azure-bonds", 1), ("curse-of-the-azure-bonds", 17),
+    ("curse-of-the-azure-bonds", 45), ("secret-of-the-silver-blades", 17),
+    ("secret-of-the-silver-blades", 45), ("secret-of-the-silver-blades", 57),
+])
+def test_a_later_title_caster_level_effect_becomes_id_and_level(title, eid):
+    node = effects.RunningEffect(eid, 47, 10, 0)
+    assert effects.c64_row(title, node) == (eid, 10)
+
+
+def test_silver_blades_has_one_caster_level_id_curse_lacks():
+    curse = effects.LATER_CASTER_LEVEL_IDS["curse-of-the-azure-bonds"]
+    blades = effects.LATER_CASTER_LEVEL_IDS["secret-of-the-silver-blades"]
+    assert blades - curse == {57} and curse < blades

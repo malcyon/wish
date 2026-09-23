@@ -276,3 +276,47 @@ def test_save_as_c64_keeps_a_blessed_dos_party_blessed(tmp_path, where):
     assert {(i, d, m) for i, _o, d, m in blessed} == {(1, 0x02, 0x01)}
     owners = sorted(o for _i, o, _d, _m in blessed)
     assert owners == sorted(set(owners))
+
+
+def test_save_as_c64_keeps_a_curse_party_shielded_and_protected(tmp_path):
+    """The Curse specimen made by driving the game holds FLORENTZ under
+    Protection from Evil 10' Radius (47 minutes) and Shield (2 minutes) and
+    BRYTWYN under Shield: each arrives as a row owned by that character's
+    slot, with the caster level as its magnitude (`$0A` and `$0B`) and the
+    time through `closest_duration` (`$2F` and `$02`)."""
+    from gamedata import specimen
+
+    from editor import roster, saveplan
+
+    party = roster.Party(str(
+        specimen("curse-234-party-dualclassed") / "SAVGAMD.DAT"))
+    try:
+        plan = _blessed_row_plan(party, tmp_path)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Curse of the Azure Bonds' own C64 disks")
+    assert isinstance(plan, saveplan.SavePlan)
+    out = tmp_path / "written.d64"
+    (_name, data), = plan.files.items()
+    out.write_bytes(data)
+    back = roster.Party(str(out))
+    names = {m.index: m.name for m in back.members}
+    rows = sorted((names[e.owner], e.id, e.duration, e.magnitude)
+                  for e in effects.active_effects(back.save0.to_bytes()))
+    assert rows == sorted([("FLORENTZ", 45, 0x2F, 0x0A),
+                           ("FLORENTZ", 17, 0x02, 0x0B),
+                           ("BRYTWYN", 17, 0x02, 0x0B)])
+
+
+@pytest.mark.parametrize("eid, named", [(134, False), (45, True)])
+def test_a_refused_effect_line_names_the_effect_only_when_it_has_a_name(eid, named):
+    """An unnamed id reads `effect 134`, not `effect 134 (trait 134)`: a running
+    effect is not a trait."""
+    char = neutral.NeutralCharacter(
+        "DOS", source="built here", game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    char.set("name", "SHIELDED", "built here")
+    char.set("running_effects", [bytes((eid, 2, 0, 1, 1)) + NULL], "built here")
+    _rec, rep = c64_codec.write(char, payload=bytearray(0x1C00),
+                                party_slot=0, clock_minutes=0)
+    line, = [d for d in rep.dropped if d.startswith("running_effects:")]
+    assert ("(" in line) is named, line
+    assert "trait" not in line, line

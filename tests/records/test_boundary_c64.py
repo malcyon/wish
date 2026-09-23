@@ -44,19 +44,11 @@ POOL = "pool-of-radiance"
 #: own converts to the C64's character-set icon.  Anything else is a loss.
 _ICON = "Combat icon:"
 
-#: The drop line for a running effect a later title has no rule for.
-_RUNNING = "running_effects:"
 
 def _write(char):
     """`(record, report, back)`: the character written and read straight back."""
     rec, rep = c64_codec.write(char, payload=bytearray(0x1C00), party_slot=0,
                                clock_minutes=0)
-    if getattr(char.game, "key", char.game) != POOL:
-        # Curse and Silver Blades have no `effects.c64_row` rule yet, so each
-        # running effect is an accounted drop. Step 3 of the running-effect
-        # work adds their ids and removes this exemption; Pool of Radiance has
-        # none.
-        rep.dropped = [d for d in rep.dropped if not d.startswith(_RUNNING)]
     return rec, rep, c64_codec.read(rec, game=char.game)
 
 
