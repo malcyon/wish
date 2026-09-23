@@ -79,8 +79,10 @@ ROWS = 36
 GRID_SIZE = STRIDE * ROWS                        # 648
 
 #: 120 glyph entries, nine screen codes then nine colour attributes -- a
-#: 3 x 3 block of characters. CONFIRMED: the game's own travel pane shows
-#: these screen codes on 225 of 225 cells checked.
+#: 3 x 3 block of characters. PROBABLE: one live reading at one square of
+#: the middle window matched 225 of 225 screen cells and 225 of 225 colour
+#: cells to this split; it cannot be repeated from the disks alone
+#: (`docs/217-drawing-the-wilderness.md`, "What measurement B read").
 TILE_COUNT = 120
 TILE_SIZE = 18
 TILE_TABLE_SIZE = TILE_COUNT * TILE_SIZE          # 2160
@@ -294,7 +296,9 @@ class World:
         its file wins, the way `tests/gamedata.py`'s `game_file` does.
 
         Raises `WorldError` naming whichever window no disk in `disks`
-        carried.
+        carried, and for a `SECSET` that is present but shorter than
+        192 glyphs. A `SECSET` no disk carries is not an error: `charsets`
+        is None.
         """
         images = [D64.open(d) if isinstance(d, (str, os.PathLike)) else d
                   for d in disks]

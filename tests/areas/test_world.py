@@ -270,3 +270,37 @@ def test_identify_names_the_window_a_block_is_or_nearly_is():
     for at in range(SITE_PAINT_TOLERANCE + 1):
         far[at] = (far[at] + 1) % TILE_COUNT
     assert world.identify(bytes(far)) is None
+
+
+@needs_disks
+def test_identify_accepts_exactly_the_tolerance_and_no_more():
+    world = World.from_disks(_pool_disks())
+    grid = bytearray(world.windows[0].to_bytes()[:GRID_SIZE])
+    for at in range(SITE_PAINT_TOLERANCE):
+        grid[at] = (grid[at] + 1) % TILE_COUNT
+    assert world.identify(bytes(grid)) == (0, SITE_PAINT_TOLERANCE)
+    grid[SITE_PAINT_TOLERANCE] = (grid[SITE_PAINT_TOLERANCE] + 1) % TILE_COUNT
+    assert world.identify(bytes(grid)) is None
+
+
+@needs_disks
+def test_identify_refuses_a_block_of_the_wrong_length():
+    world = World.from_disks(_pool_disks())
+    grid = world.windows[1].to_bytes()[:GRID_SIZE]
+    assert world.identify(grid[:-1]) is None
+    assert world.identify(grid + b"\x00") is None
+    assert world.identify(b"") is None
+
+
+def test_identify_breaks_a_tie_towards_the_lowest_window():
+    # Real windows are at least 532 bytes apart and the tolerance is 128, so
+    # no block can be equidistant from two of them; the tie-break is
+    # checked on windows built to be identical.
+    same = synthetic_window()
+    other = bytearray(same)
+    other[0] = (other[0] + 1) % TILE_COUNT
+    other = bytes(other)
+    tied = World((Window(same), Window(same), Window(other)))
+    assert tied.identify(same[:GRID_SIZE]) == (0, 0)
+    later = World((Window(other), Window(same), Window(same)))
+    assert later.identify(same[:GRID_SIZE]) == (1, 0)

@@ -118,6 +118,25 @@ painted it**, hidden sites and all, so a mapper that records what was resident
 when the party saw a square shows exactly what the game showed and consults
 no flag.
 
+### What measurement B read, and what it cannot be re-taken from
+
+One live reading on `C64OUT1.D64` at (8,27) on the middle window, taken by
+`tools/pool_of_radiance/worldregisters.py`. Each of the 25 tiles of the 5 x 5
+pane is 9 cells, so 225 cells:
+
+| checked | result |
+|---|---|
+| screen RAM over the pane against the nine screen codes of the matching entry in `SQRDATA05` | 225 of 225 equal, and 25 of 25 3 x 3 blocks matched a tile |
+| colour RAM low nibble against the entry's nine attributes | 225 of 225 equal |
+| colour RAM high nibble | 0 of 225 set |
+| `$8C00` grid against `SQRDATA05` | 0 of 648 differ |
+
+It needs a running game, and the save it used is scratch that is gone, so
+the disks alone cannot repeat it and nothing in the tree re-takes it. It is
+one reading at one square of one window, recorded only on the issue, so the
+tile-entry split is graded PROBABLE in `goldbox/world.py` until a second
+reading on another window is taken.
+
 ## 3. What is a decision, and whose
 
 **Donald's**, because a player reads it:
@@ -170,8 +189,13 @@ cannot be fixtures.
 the three windows; answer `(index, distance)` or None. Two clauses, both
 measured: every byte below 120 (the grid's own invariant, 0 of 1944 violate
 it) and distance at most `SITE_PAINT_TOLERANCE`, set from the measurements
-above -- 16 leaves a factor of thirty under the 532-byte spread between
-windows and the 554-byte closest impostor. Add `tools/records/geoplausible.py`-style
+above. Distance is the count of differing bytes out of 648. Two windows are at
+least 532 apart, so a tolerance under 266 can never match two of them, and the
+nearest block that is not a window is 554 away. The largest difference the
+game paints over a grid is 3. How many squares one site entry can paint is not
+known, so the constant is 128, deliberately wide, rather than the 46 squares
+a full pane could cover. An earlier draft of this plan set 16; it was widened
+because that figure assumed the paint count was known. Add `tools/records/geoplausible.py`-style
 `worldplausible` reporting to `worldtiles.py` or its own tool so the numbers
 are re-takeable. *Test:* each disk window identifies itself at 0; each with
 its `PAINTED` squares altered still identifies; a page of zeroes and a real
