@@ -384,6 +384,13 @@ WINDOW_GRACE = 20
 #: Seconds between the grabs that decide whether the picker has stopped
 #: changing after a key.
 SETTLE_POLL = 2
+#: Seconds to wait after an `a` before the first comparison, and the number of
+#: identical grabs in a row that count as settled.  Two identical grabs 2 s
+#: apart do occur in the middle of an add (the screen has no blink or clock and
+#: a disk read leaves it static), so two are not enough; how long a real add
+#: takes is not known, and a timed boot would show it.
+SETTLE_MIN = 10
+SETTLE_STILL = 3
 #: Longest to wait for the screen to stop changing after an `a`; a busy game
 #: drops the key that follows, so the driver stops instead of sending on.
 SETTLE_MAX = 60
@@ -519,19 +526,26 @@ def pod_panel(args) -> int:
 
 
 def _wait_until_still(display: str, label: str, take) -> None:
-    """Grab every `SETTLE_POLL` s until two in a row match; stop past `SETTLE_MAX`."""
+    """Wait `SETTLE_MIN` s, then grab every `SETTLE_POLL` s until `SETTLE_STILL`
+    in a row match; stop past `SETTLE_MAX`."""
     start = _now()
+    _wait(SETTLE_MIN)
     previous = grab(display).tobytes()
+    same = 1
     while True:
         _wait(SETTLE_POLL)
         current = grab(display).tobytes()
         if current == previous:
-            return
-        previous = current
-        if _now() - start >= SETTLE_MAX:
-            take(label)
-            raise SystemExit(f"the screen was still changing after "
-                             f"{SETTLE_MAX:g} s ({label}); no more keys sent")
+            same += 1
+            if same >= SETTLE_STILL:
+                return
+        else:
+            same = 1
+            previous = current
+            if _now() - start >= SETTLE_MAX:
+                take(label)
+                raise SystemExit(f"the screen was still changing after "
+                                 f"{SETTLE_MAX:g} s ({label}); no more keys sent")
 
 
 def _wait_for_bar(display: str, limit: float, take):

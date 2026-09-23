@@ -423,6 +423,22 @@ def test_no_down_is_sent_until_the_screen_stops_changing_after_an_a(
     assert events[picker_a:next_down].count("wait") >= 6
 
 
+def test_two_identical_grabs_mid_add_are_not_settled(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(fsuaepor, "_wait", lambda s: clock.__setitem__(0, clock[0] + s))
+    monkeypatch.setattr(fsuaepor, "_now", lambda: clock[0])
+
+    def grab(display):
+        # One change, two static grabs (a disk read), then the add carries on.
+        t = clock[0]
+        return _distinct(1 if t < 11 else 2 if t < 15 else 3 if t < 17 else 4)
+
+    monkeypatch.setattr(fsuaepor, "grab", grab)
+    fsuaepor._wait_until_still(":9", "still-adding-x", lambda label: None)
+    assert clock[0] >= 10
+    assert clock[0] >= 21, "returned on two identical grabs, before the last change"
+
+
 def test_a_screen_that_never_settles_stops_the_run_with_a_shot(
         tmp_path, monkeypatch):
     counter = iter(range(10**6))

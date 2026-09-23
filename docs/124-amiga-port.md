@@ -2603,9 +2603,9 @@ read from the wrong place. §6 phase 6 still has to write a PoD-legal record;
 what changed is that finding out what "legal" means no longer needs
 differential saves.
 
-Practical notes for the next session, all learned the hard way: FS-UAE's arrow
-keys never reach the Amiga, so the picker's cursor cannot be moved — **put the
-payload in the first row's file**. The `*` in that list marks a name matching a
+Practical notes for the next session, all learned the hard way: FS-UAE's `Down`
+reaches the Amiga and moves the picker's cursor (§2.4), so the payload can be in
+any row's file. The `*` in that list marks a name matching a
 party member, not the cursor. The `INSERT INTO DF0` submenu opens with the
 image currently in the drive highlighted; `amiga/pod/swap.sh` (scratch, deleted) assumes that.
 `PLEASE INSERT DISK 3.` is answered with `o` then Return.
@@ -2757,7 +2757,7 @@ Notes for whoever runs the next one:
   next `Down` never moved the highlight, so the driver waits for the screen
   to stop changing before it sends another key. Under WinUAE the cursor keys
   are sent with `KEYEVENTF_EXTENDEDKEY` — one `DOWN` went from `TROND` to
-  `PAINE` on 2026-09-07 (`docs/206-three-amiga-questions.md` §3). The `*` in
+  `PAINE` (`docs/206-three-amiga-questions.md` §3). The `*` in
   that list marks a name matching a party member. **The highlighted name is
   white, not red**: in `run4` the highlighted row measures `(238,238,238)` on
   the picker and the panel, the other names cyan `(85,238,238)`, and no
