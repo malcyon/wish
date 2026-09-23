@@ -1,5 +1,5 @@
 {
-  "description": "The two issue guards and the push guard, shared with Claude Code. One script each, no Codex-specific version: Codex sends the same `tool_name` and `tool_input` fields and honours exit code 2 with the reason on stderr. The context-size notice hook is not wired here: it reads Claude Code's `transcript_path`, which Codex does not send, and the notice it prints is one Claude Code shows.",
+  "description": "The two issue guards, shared with Claude Code. One script each, no Codex-specific version: Codex sends the same `tool_name` and `tool_input` fields and honours exit code 2 with the reason on stderr. The context-size notice hook is not wired here: it reads Claude Code's `transcript_path`, which Codex does not send, and the notice it prints is one Claude Code shows.",
   "hooks": {
     "PreToolUse": [
       {
@@ -16,12 +16,6 @@
             "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/check-issue-writes.py\"",
             "timeout": 30,
             "statusMessage": "Checking the issue write"
-          },
-          {
-            "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/check-push-tested.py\"",
-            "timeout": 30,
-            "statusMessage": "Checking the push has a green suite"
           }
         ]
       }

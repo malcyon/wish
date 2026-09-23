@@ -3,13 +3,13 @@
 
     tools/suite/suiterun.py <sha> [--keep]
 
-This is the one run that gates a push (`.claude/rules/commits.md`), made
-into a single command so that the green marker is written by the command
-that saw the checks pass, and never by an agent concluding that it did.
-`.claude/hooks/check-push-tested.py` refuses a `git push` with no marker for
-the tip, so `~/.cache/wish/testrun/<tree>.green` is what lets a push through.
-`<tree>` is the hash of the tested commit's tree, so a reworded or rebased
-commit over the same files still matches and a changed file does not.
+A diagnostic, run only when somebody asks for a whole-suite run on this
+machine. It is not a step before a push: CI runs the full suite on every
+pushed commit and is the gate (`.claude/rules/commits.md`). The run writes
+`~/.cache/wish/testrun/<tree>.green` as a record of what passed; nothing
+requires or reads that file. `<tree>` is the hash of the tested commit's tree,
+so a reworded or rebased commit over the same files still matches and a
+changed file does not.
 
 What it does, in order, and all of it against the same checkout:
 
@@ -80,9 +80,8 @@ RUFF = REPO / ".venv" / "bin" / "ruff"
 
 
 def marker_dir() -> pathlib.Path:
-    """Outside the temp directory on purpose: the push hook reads it, and it has
-    to survive a reboot. `.claude/hooks/check-push-tested.py` computes the same
-    path, and a test fails if the two disagree."""
+    """Where the record of a green run goes: outside the temp directory, so it
+    survives a reboot."""
     return scratch.cache_dir("testrun")
 
 
@@ -252,8 +251,8 @@ def rebase_onto_origin(repo: pathlib.Path, sha: str) -> tuple[str, str]:
     """Fetch origin and rebase the checked-out branch onto `origin/main`.
 
     Returns the sha to test and a line saying what happened. Only a `sha` that
-    is the branch's tip is rebased, because the marker is named for the tree of
-    the tip that gets pushed. Anything that would leave the tree half-done stops the
+    is the branch's tip is rebased, because the record is named for the tree of
+    the tip that would be pushed. Anything that would leave the tree half-done stops the
     run instead: a failed fetch, a tree with uncommitted changes, or a conflict
     (the rebase is aborted first, so the branch is as it was).
     """

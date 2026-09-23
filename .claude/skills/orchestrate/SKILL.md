@@ -15,7 +15,7 @@ You are the orchestrator for this session. You never run anything yourself: no t
 - emulator-runner: a bounded emulator experiment where the harness, actions, captures and stop condition are specified. It preserves evidence and interprets nothing.
 - qt-ui-specialist: a Qt repair where the behaviour, wording, target widget and acceptance criteria are already approved.
 - code-reviewer: after every subagent that wrote code, on the local commit, scoped to its files, before the push.
-- test-runner: the whole suite in a detached worktree before a push, or a scoped run. The only agent that may run everything. Never two at once.
+- test-runner: a focused run on named tests, or the CI result for an exact pushed SHA. A whole-suite run only as a diagnostic Donald asks for. Never two at once.
 - docs-reviewer: when documentation may have drifted from the code.
 - backlog-auditor, changelog-writer: audits and the changelog, on request.
 
@@ -31,9 +31,9 @@ You are the orchestrator for this session. You never run anything yourself: no t
 - emulator-runner runs a driver that already exists. If the brief needs a driver written or extended first, that is building, and it goes to a custom agent before the runner: junior-dev when the plan names the driver to extend and the sequence it must run, reverse-engineering when the sequence itself has to be worked out from the game's screens or bytes. The runner's slot rules go in that brief, and the runner gets the finished driver afterwards. A brief that says "one boot settles four sub-questions" about a driver that cannot yet do one of them is a build brief. Never general-purpose.
 - A message to a working subagent is not delivered until it hands back, so silence is not evidence of a hang. Judge a subagent by the last write time of its transcript under ~/.claude/projects/<project>/<session>/subagents/ and by tools/registry/instance.py status. An agent past its budget with no report is stopped with TaskStop and relaunched with a tighter brief, and the pool is checked afterwards, because a nohup run it started keeps its slot after the agent dies.
 - You never edit a repository file yourself, and `.claude/hooks/check-orchestrator-edits.py` refuses it if you try. A reviewer's finding goes back to the junior-dev that made the change, or to a new one, with the finding as the brief.
-- At most two review passes per change. After that, if the whole suite is green at the tip, commit the change and file the reviewer's remaining findings on the issue; if the suite is red, the change is not done, and it does not get pushed.
-
-- The order before every push is: commit the work, send the whole suite to test-runner at the tip, push. `.claude/hooks/check-push-tested.py` refuses a push that carries a .py, .ui or tests/ change with no green marker for the tip or for a tested ancestor with only documentation on top of it, so a push that skipped the run stops here rather than on CI.
+- At most two review passes per change. After that, if its focused tests pass, commit the change and file the reviewer's remaining findings on the issue; if they fail, the change is not done, and it does not get pushed.
+- The order for a batch is: focused tests for what it affects, including the relevant tests that read game data, plus ruff and genui --check; review; commit; push; then check CI for the exact pushed SHA before taking more tickets. CI is the full-suite gate; nobody runs the whole suite locally to push. A CI failure is fixed with focused tests and a corrected push.
+- Wind-down: stop new work, finish the changes in progress with focused validation and review, commit, push, check CI, and stop cleanly. Leave uncommitted or unpushed work only when Donald explicitly asks to stop immediately and leave it.
 
 ## On start
 
@@ -41,7 +41,7 @@ You are the orchestrator for this session. You never run anything yourself: no t
 2. For every row, check the issue's state with tools/github/issueread.py N --json. Drop rows whose issue is closed into the "Closed" list at the bottom of the file.
 3. List every open issue that is in neither the table nor the "Do not schedule" list, and place each by the ranking rule. If you cannot tell where one goes, send a senior-analyst to read it and say what it needs and which agent fits, then place it.
 4. Print the table as your first status. The file is not committed.
-5. Then run: /loop Keep four subagents working the prioritized queue. In addition, up to two subagents may be used concurrently for review or other supporting work. When one reports: commit its work locally with a one-sentence message, run a code-reviewer scoped to only its files, verify each finding before acting, close the issue with a comment saying what was done and what was left, and launch a replacement from the ranked queue immediately rather than batching. Push in the batches the reviews land in and check CI against that sha. Never end a turn with nothing running, until the queue is empty or everything left is waiting on Donald: then end the loop. Do not make a decision that is Donald's -- wording, priorities, or anything a player reads -- leave it and say so.
+5. Then run: /loop Keep four subagents working the prioritized queue. In addition, up to two subagents may be used concurrently for review or other supporting work. When one reports: commit its work locally with a one-sentence message, run a code-reviewer scoped to only its files, verify each finding before acting, close the issue with a comment saying what was done and what was left, and launch a replacement from the ranked queue immediately rather than batching. Push in the batches the reviews land in and check CI against that sha before launching more work. Never end a turn with nothing running, until the queue is empty or everything left is waiting on Donald: then end the loop. Do not make a decision that is Donald's -- wording, priorities, or anything a player reads -- leave it and say so.
 
 ## Keeping the queue file current
 

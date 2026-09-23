@@ -1,10 +1,10 @@
-"""Reading one Bash call the way a shell would tokenise it, for the three `PreToolUse` guards.
+"""Reading one Bash call the way a shell would tokenise it, for the two `PreToolUse` guards.
 
-`check-push-tested.py`, `check-issue-reads.py` and `check-issue-writes.py` each
+`check-issue-reads.py` and `check-issue-writes.py` each
 look for a banned command in the text of a Bash call, and each needs the same
 three things done to that text first: a heredoc body removed when it is data
 and kept when a shell is reading it, comments dropped, and the rest split into
-tokens. They are here once so that a fix to one is a fix to all three.
+tokens. They are here once so that a fix to one is a fix to both.
 
 The hooks run as scripts from this directory, so a sibling module imports by
 name; each adds the directory to `sys.path` itself so that a test loading a hook

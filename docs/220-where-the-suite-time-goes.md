@@ -326,13 +326,15 @@ stays reachable in it, as it was before.
 
 ### 5. The local run before a push stays the whole suite
 
-**Rejected, by Donald's answer to the issue's candidate 3.** Nothing in this
-measurement argued for it either way: it is a choice about where a
-regression is caught rather than about where the seconds go. Items 1 to 3
-take the derived pre-push run from about 8:15 to about 4:20 (item 1's 4:50,
-less item 2's 18 s and item 3's 7 s) without changing what is checked. An
-earlier figure of about 7:45 to under 4:00 was taken against the old selected
-pass two and is superseded by this one.
+**Superseded: there is no local whole-suite run before a push any more.**
+Donald rejected the issue's candidate 3 when this was measured, and later made
+CI the full-suite gate, because the local gate blocked pushes of tested work
+and duplicated the full suite CI already runs on every pushed commit
+(`docs/160-why-these-rules.md`, "Commits and CI"). Local checks are now
+focused tests, including the relevant tests that read game data, which CI
+cannot run. The timings in items 1 to 3 still describe a whole-suite run with
+`tools/suite/suiterun.py`, which remains as a diagnostic: about 8:15 down to
+about 4:20 (item 1's 4:50, less item 2's 18 s and item 3's 7 s).
 
 ### 6. Group balance under `--dist loadgroup`
 

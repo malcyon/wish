@@ -207,11 +207,25 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python your_script.py
 An emulator takes a slot from the instance pool, which gives each one its own
 ports, from 6520 up, and its own X display: `.claude/rules/emulator.md`.
 
-## The advisor and orchestrator
+## The orchestrator, advisor and senior advisor
 
-Donald calls the Codex session the **advisor** and the Claude Code session the
-**orchestrator**. When asked to inspect or communicate with the other session
-through Herdr, read [the connection guide](docs/233-herdr-advisor-and-orchestrator.md).
+Donald assigns each session a role, independently of its model or application:
+
+| Role | Responsibility |
+|---|---|
+| Orchestrator | Owns implementation, workers, testing, commits, pushes and CI. |
+| Advisor | Explains decisions, checks evidence, watches for mistakes and relays Donald's authorized instructions. |
+| Senior Advisor | Provides difficult second opinions, reviews disputed findings and performs occasional audits when consulted. |
+
+**The orchestrator is the single owner of execution.** Advisors coordinate
+implementation changes through it rather than assigning competing work.
+Senior review is optional; routine work does not wait for another approval
+layer. Messages distinguish Donald's instructions from an advisor's
+recommendations. The senior advisor role grants no authority to override
+Donald's decisions.
+
+When asked to inspect or communicate with another session through Herdr, read
+[the connection guide](docs/233-herdr-advisor-and-orchestrator.md).
 Discover the live target before sending; the guide's recorded pane IDs are
 evidence from a test, not permanent addresses.
 
@@ -253,24 +267,26 @@ issue in the same session**; the bar is low.
 
 ## Before you commit
 
-Run all three from the repository root. A green suite proves nothing broke.
-It is not what you set out to learn.
+Work goes out in reviewed, coherent batches, and **CI is the full-suite
+gate**. A green run proves nothing broke; it is not what you set out to learn.
 
-1. `pytest` **on the files you touched**
+1. `pytest` **on the tests the change affects**, including the relevant tests
+   that read private game data, which CI cannot run because it has no specimens
 2. `.venv/bin/ruff check .`
 3. `.venv/bin/python3 tools/generate/genui.py --check`
 
-**Aim for one reviewed, tested push per hour during active work.** At 12–16
-unpushed commits, assess readiness rather than automatically rerunning the
-suite. Test a fixed batch with four local pytest workers to reduce fan noise;
-longer runs are acceptable. `.claude/rules/commits.md` defines the batch and
-blocker handling, and the test-runner profiles give the command.
+Then the required code review, commit, push, and **check CI for the exact
+pushed SHA before taking more tickets**. A concrete CI failure is fixed with
+focused tests and a corrected push. **Nobody runs the whole suite locally in
+order to push**; `tools/suite/suiterun.py` is a diagnostic for when somebody
+asks for one.
 
-**The whole suite runs once, in a detached worktree, before the push.** Six
-agents each running the whole suite is six copies of Qt on one machine.
-**One run, not six -- that is the rule, and who starts it is not.** Whoever is about to push either makes that
-run itself or sends it to a `test-runner` subagent, whose whole job it is;
-never both, and never two at once. Claude Code's is
-`.claude/agents/test-runner.md`; Codex's is
-`.codex/agents/test-runner.toml`. The message, the push, the CI check,
-and where to run it: `.claude/rules/commits.md`.
+**Wind-down means finishing, not abandoning:** stop new work, finish the
+changes in progress with focused validation and review, commit, push, check
+CI, and stop cleanly. Uncommitted or unpushed work is left behind only when
+Donald explicitly asks to stop immediately and leave it.
+
+A `test-runner` subagent can take a focused run or a CI check off the main
+window: Claude Code's is `.claude/agents/test-runner.md`; Codex's is
+`.codex/agents/test-runner.toml`. The message, the push, the CI check and the
+batch: `.claude/rules/commits.md`.

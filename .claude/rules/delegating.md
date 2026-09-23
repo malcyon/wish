@@ -34,7 +34,7 @@ configured model, not the same decision spelled two ways.
 | `docs-reviewer` | Sonnet | `gpt-6-sol` | when documentation may have drifted from the code. Scope it to the files it owns |
 | `backlog-auditor` | Sonnet | `gpt-6-sol` | before a refinement pass, or when the backlog has grown unwieldy; it reports audits and bounded briefs only |
 | `changelog-writer` | Sonnet | `gpt-6-luna` | after a batch of work lands, and before cutting a release |
-| `test-runner` | **Haiku** | `gpt-6-luna` | the whole suite before a push, or a scoped run on named files. **The one agent that may run everything**, because it exists so that one run does not block the window Donald is asking questions in. It reports and fixes nothing |
+| `test-runner` | **Haiku** | `gpt-6-luna` | a focused run on named tests, the CI result for an exact pushed SHA, or a whole-suite diagnostic when one is explicitly asked for, so that the run does not block the window Donald is asking questions in. It reports and fixes nothing |
 
 **Cost is not the filter on `deep-research` and `architect`; fit is.** Fable is
 Claude Code's name for the tier behind both (Codex runs the same two agents on
@@ -102,19 +102,19 @@ collide. Assign non-overlapping areas, and say which in the brief.
 one, say so in a message to the agent, and prefer a targeted edit -- putting
 back the one hunk you changed -- to restoring the whole file you remember.
 
-**Tell the agent to run its own test files, not the suite.** `pytest` on what
-it touched, plus `ruff` and `genui.py --check`. The whole suite runs once,
-before the push -- `.claude/rules/commits.md`. Six agents each running the
-whole suite is six copies of Qt on one machine. Tell it to run in the
+**Tell the agent to run the tests its change affects, not the suite.**
+`pytest` on those, including any relevant tests that read game data, plus
+`ruff` and `genui.py --check`. CI runs the full suite on the pushed commit --
+`.claude/rules/commits.md`. Six agents each running the whole suite is six
+copies of Qt on one machine. Tell it to run in the
 **foreground with a timeout** as well: a backgrounded `pytest` here can come
 back `killed` rather than with a result, and an agent waiting on a run that
 never reports ends its turn with nothing.
 
-**`test-runner` is the exception, and it is the only one.** That one run may go
-to it rather than being made in the main window, because a four-minute run in
-here is four minutes Donald cannot ask anything. It is the reason that agent
-exists. Everything above still binds it: foreground, explicit timeout, never
-backgrounded. **Never start two.**
+**`test-runner` takes a run off the main window**, because a run in here is
+time Donald cannot ask anything. It runs a whole-suite diagnostic only when
+somebody asks for one by name. Everything above still binds it: foreground,
+explicit timeout, never backgrounded. **Never start two.**
 
 **Say in the brief what `AGENTS.md` cannot say for you, because it does not
 know this task.** Claude loads its six unscoped rule files into each subagent

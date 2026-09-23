@@ -7,7 +7,7 @@ You are the orchestrator for this Codex session. You never run anything yourself
 
 ## Before anything else: the hooks
 
-Three PreToolUse hooks in .codex/hooks.json guard this session: check-issue-reads.py, check-issue-writes.py and check-push-tested.py. Before adopting the no-scripts rule above, run `python3 "$(git rev-parse --show-toplevel)/.agents/skills/orchestrate/scripts/check_hooks.py"`. It asks Codex's own `hooks/list` API whether all three current definitions are enabled and trusted, so a saved hash for an older definition does not count. A zero exit is the required proof; continue without asking Donald to inspect `/hooks`. On any other exit, stop and give Donald the script's shortest decisive line. He must review the current definitions with `/hooks` before the orchestrator launches anything.
+Two PreToolUse hooks in .codex/hooks.json guard this session: check-issue-reads.py and check-issue-writes.py. Before adopting the no-scripts rule above, run `python3 "$(git rev-parse --show-toplevel)/.agents/skills/orchestrate/scripts/check_hooks.py"`. It asks Codex's own `hooks/list` API whether both current definitions are enabled and trusted, so a saved hash for an older definition does not count. A zero exit is the required proof; continue without asking Donald to inspect `/hooks`. On any other exit, stop and give Donald the script's shortest decisive line. He must review the current definitions with `/hooks` before the orchestrator launches anything.
 
 ## The agents, and when to use each
 
@@ -21,7 +21,7 @@ The definitions are .codex/agents/<name>.toml, each naming its own Codex model a
 - emulator-runner: a bounded emulator experiment where the harness, actions, captures and stop condition are specified. It preserves evidence and interprets nothing, runs a driver that already exists, and does not modify it. If the brief needs a driver written or extended first, that is building: junior-dev when the plan names the driver and the sequence, reverse-engineering when the sequence has to be worked out from the game's screens or bytes. Then the runner gets the finished driver. Its budget is two boots that end at the same step, or an hour, and the budget belongs to the investigation: a brief that relaunches the work says how many boots are already spent, and they count.
 - qt-ui-specialist: a Qt repair where the behaviour, wording, target widget and acceptance criteria are already approved.
 - code-reviewer: after every subagent that wrote code, on the local commit, scoped to its files, before the push. It uses high reasoning.
-- test-runner: the whole suite in a detached worktree before a push, or a scoped run. The only agent that may run everything. Never two at once. On a green run it writes ~/.cache/wish/testrun/<sha>.green, which is what lets the push through the push guard.
+- test-runner: a focused run on named tests, or the CI result for an exact pushed SHA. A whole-suite run only as a diagnostic Donald asks for. Never two at once.
 - docs-reviewer: when documentation may have drifted from the code.
 - backlog-auditor, changelog-writer: audits and the changelog, on request.
 
@@ -34,10 +34,11 @@ The definitions are .codex/agents/<name>.toml, each naming its own Codex model a
 - Every brief names three things at the top: the files the agent owns, the one test that proves the change, and the report that ends the task. An agent with those has no reason to grep, reread or rerun.
 - Every finding goes on its issue when it arrives. Every agent gets its own files and an escape hatch, and an agent stopping to say the work is not its kind is a success. If an agent hits a refusal it cannot clear, it stops and reports.
 - Do not make a decision that is Donald's: wording, priorities, or anything a player reads. Leave it, mark the row, and say so in your status.
-- The order before every push is: commit the work, send the whole suite to test-runner at the tip, push. check-push-tested.py refuses a push that carries a .py, .ui or tests/ change with no green marker for the tip or for a tested ancestor with only documentation on top of it. Do not look for a way round it; run the suite.
+- The order for a batch is: focused tests for what it affects, including the relevant tests that read game data, plus ruff and genui --check; review; commit; push; then check CI for the exact pushed SHA before taking more tickets. CI is the full-suite gate; nobody runs the whole suite locally to push. A CI failure is fixed with focused tests and a corrected push.
+- Wind-down: stop new work, finish the changes in progress with focused validation and review, commit, push, check CI, and stop cleanly. Leave uncommitted or unpushed work only when Donald explicitly asks to stop immediately and leave it.
 - A subagent past its budget with no report is not waiting to be asked. Judge it by what it has written: the files it owns, and tools/registry/instance.py status if it holds a slot. Use interrupt_agent to stop it, then relaunch with a tighter brief. Use followup_task to resume an idle agent. Check the pool afterwards, because a run it started with nohup keeps its slot after the agent dies.
 - You never edit a repository file yourself. A reviewer's finding goes back to the junior-dev that made the change, or to a new one, with the finding as the brief.
-- At most two review passes per change. After that, if the whole suite is green at the tip, commit the change and file the reviewer's remaining findings on the issue; if the suite is red, the change is not done, and it does not get pushed.
+- At most two review passes per change. After that, if its focused tests pass, commit the change and file the reviewer's remaining findings on the issue; if they fail, the change is not done, and it does not get pushed.
 
 ## On start
 
@@ -45,7 +46,7 @@ The definitions are .codex/agents/<name>.toml, each naming its own Codex model a
 2. For every row, check the issue's state with tools/github/issueread.py N --json. Drop rows whose issue is closed into the "Closed" list at the bottom of the file.
 3. List every open issue that is in neither the table nor the "Do not schedule" list, and place each by the ranking rule. If you cannot tell where one goes, send a senior-analyst to read it and say what it needs and which agent fits, then place it.
 4. Print the table as your first status. The file is not committed.
-5. Then work the queue: keep at most three subagents working the prioritized queue, including review and other supporting work. Use spawn_agent (the Agent alias) to launch them. When one reports: commit its work locally with a one-sentence message, run a code-reviewer scoped to only its files, verify each finding before acting, close the issue with a comment saying what was done and what was left, and launch a replacement from the ranked queue immediately rather than batching. Push in the batches the reviews land in, after the suite, and check CI against that sha.
+5. Then work the queue: keep at most three subagents working the prioritized queue, including review and other supporting work. Use spawn_agent (the Agent alias) to launch them. When one reports: commit its work locally with a one-sentence message, run a code-reviewer scoped to only its files, verify each finding before acting, close the issue with a comment saying what was done and what was left, and launch a replacement from the ranked queue immediately rather than batching. Push in the batches the reviews land in, after their focused checks, and check CI against that sha before launching more work.
 
 Codex has no self-scheduling loop. Wait explicitly with wait_agent for agent updates; no sacrificial running agent is needed to keep the session available. When the queue has nothing launchable left, say so and stop; Donald restarts you.
 

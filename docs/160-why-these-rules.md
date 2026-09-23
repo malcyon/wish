@@ -943,6 +943,24 @@ not make a directory unwritable there, `fcntl` does not exist, paths are not
 split on `/`), and something that is not byte-identical on another machine (a
 rendered image, anything with a font or a timestamp in it).
 
+**CI became the full-suite gate, by Donald's decision.** The scoped run that
+turned `main` red above led to a local whole-suite run before every push,
+enforced by a `PreToolUse` hook, `.claude/hooks/check-push-tested.py`, that
+refused a `git push` with no green marker from `tools/suite/suiterun.py` for
+the tip's tree. It was later dropped for two reasons. The gate blocked pushes
+of work that had been tested and reviewed: a marker named for one tree did not
+cover a rebase that changed a file or a later fix, so ready batches waited on
+repeated whole-suite runs, and the rules grew an hourly push aim, a commit-count
+checkpoint, fixed target SHAs and a one-attempt wind-down to manage the waiting.
+And the run duplicated CI, which runs the full suite on every pushed commit
+on both platforms. The workflow is now focused tests for the affected
+behaviour, including the relevant tests that read private game data (the one
+thing CI cannot run), `ruff` and `genui.py --check`, review, commit, push, and
+a check of CI for the exact pushed SHA before more tickets are taken.
+`suiterun.py` stays as a diagnostic for when somebody asks for a whole-suite
+run. The hook's file stays as a retired entry point that checks nothing, so a
+session with the old wiring cached does not fail on every command.
+
 ### What the rule files said before they dropped their history
 
 The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.

@@ -1,11 +1,17 @@
-# The advisor and orchestrator in Herdr
+# The orchestrator, advisor and senior advisor in Herdr
 
-Donald uses the **advisor** (Codex) to review work and explain decisions, and
-the **orchestrator** (Claude Code) to run the issue queue and coordinate its
-workers. Herdr lets the advisor read the active orchestrator and send Donald's
-authorized instructions into the same conversation, without copying prompts
-between windows or starting another Claude session. These are role names;
-they are not automatically registered Herdr agent aliases.
+Donald assigns three session roles: the **orchestrator** owns execution, the
+**advisor** reviews everyday work and explains decisions, and the **senior
+advisor** provides second opinions and audits when consulted. The role
+boundaries are defined in [AGENTS.md](../AGENTS.md#the-orchestrator-advisor-and-senior-advisor).
+Roles are independent of the model or application because two advisor
+sessions can use the same application. They are not automatically registered
+Herdr agent aliases.
+
+Herdr lets either advisor read the active orchestrator and relay Donald's
+authorized instructions into its existing conversation, without copying
+prompts between windows or starting another session. Senior review adds no
+required approval step.
 
 ## Connect to the existing conversation
 
@@ -22,8 +28,12 @@ herdr agent list
 ```
 
 Stop if the environment check fails. Within Herdr, commands use the inherited
-session/socket context. Match the returned agent kind, working directory and
-conversation ID to the intended session; `HERDR_PANE_ID` identifies the caller.
+session/socket context. Map each role Donald assigned to its live conversation
+ID and pane ID using `herdr agent list` and the session's visible content.
+Agent kind and working directory help identify a session, but cannot
+distinguish two Codex advisors in the same repository. Do not infer a role
+from its model or pane order. If the assignment remains unclear, confirm it
+with Donald before sending. `HERDR_PANE_ID` identifies the caller.
 Pane IDs and agent names belong to one server. Discover them again after a
 restart or move rather than assuming the IDs below still apply.
 
@@ -37,8 +47,10 @@ herdr agent read w1:p1 --source visible
 
 Read before sending. Use `--source visible` for a passive view of an active
 agent; a larger recent-history read can scroll an idle agent's application.
-Submit a prompt only when Donald has authorized that communication. Include
-that it comes from the advisor and distinguish his instructions from advice.
+Submit a prompt only when Donald has authorized that communication. Identify
+the sender as advisor or senior advisor and distinguish his instructions from
+advice. Either advisor can relay his instructions; the senior title does not
+make a recommendation an instruction from Donald.
 
 `agent_prompted` proves submission, not a reply or completed work. Read the
 response and verify the requested result. The optional `--wait --timeout 30000`
@@ -51,6 +63,9 @@ not authorize answering unrelated approvals or overriding a denial. Use
 the server, replace the orchestrator, or close its pane to establish access.
 
 ## Verified connection
+
+This two-session test predates the senior advisor role. It does not establish
+a current three-session mapping; discover the live sessions before use.
 
 On 2026-09-22, both the client and server were Herdr 0.9.1, protocol 22, with
 compatible endpoints and no restart required. The test used the `wish` session.

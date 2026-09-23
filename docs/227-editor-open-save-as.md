@@ -212,8 +212,9 @@ report an ordinary save failure; do not claim that nothing was written.
 * Reuse `tests/convert/test_convert.py`, `test_convertmatrix.py`, the native
   rewrite tests, `tests/editor/test_editor.py`, `tests/wish/test_preferences.py`
   and `test_mapscale.py`; add focused service tests rather than a second matrix.
-  Run touched tests, Ruff and generated-UI checks per stage. Run the whole suite
-  once in a detached worktree before push, then check CI including Windows.
+  Run the affected tests, including the conversion tests that read game data,
+  Ruff and generated-UI checks per stage. Push, then check CI, which runs the
+  whole suite, for the pushed SHA, including Windows.
 * Byte-level checks are not proof that a game loads the output. Reuse applicable
   existing emulator evidence and obtain fresh load, walk and character-sheet
   evidence for changed conversion behavior under the emulator rules. Report

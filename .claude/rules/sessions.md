@@ -1,5 +1,26 @@
 # Working unattended, and ending a session
 
+## Donald's stopping instruction takes precedence
+
+**Wind-down means finishing, not abandoning.** Stop taking new tickets. Finish
+the changes in progress with focused validation and review, commit, push, check
+CI for the pushed SHA, and stop cleanly. A concrete CI failure is fixed with
+focused tests and a corrected push, as in `.claude/rules/commits.md`; nobody
+runs the whole suite locally to finish a batch.
+
+**Only an explicit request to stop immediately defers the rest.** When Donald
+asks to stop now and leave the work, stop new work, settle workers safely
+without discarding their edits, clean up owned emulator runs, cancel scheduled
+wakeups and the queue loop, and leave a brief handoff. Uncommitted and unpushed
+work may then remain. Do not start checks just to make a commit before
+stopping; an active test may be cancelled safely and reported incomplete.
+Record pending CI by SHA and run ID for the next session.
+
+These instructions override the keep-alive rules below. After the requested
+stop or completed wind-down, leave no agents, monitors or wakeups deliberately
+running to restart work. The handoff records the branch and commit, unfinished
+files, test results or unrun checks, blockers and next action.
+
 ## A turn that ends with nothing running is the end of the night
 
 This session works by being re-invoked: a subagent finishing, a background
@@ -7,7 +28,7 @@ command exiting, a scheduled wake-up. When a turn ends with **no agent working
 and no background command pending**, nothing ever calls back, and the session
 sits idle until a human types something.
 
-**The discipline, and it is the whole rule:** before ending a turn, check that
+**While an unattended run remains authorized:** before ending a turn, check that
 at least one of these is true.
 
 * a subagent is running;
@@ -15,8 +36,8 @@ at least one of these is true.
 * a wake-up is scheduled.
 
 **"I will do X next" is not one of them.** An intention is not an event. If the
-next thing is a suite run, *start* it before the turn ends rather than
-promising it -- the promise is what breaks the chain.
+next thing is a test run or a CI check, *start* it before the turn ends rather
+than promising it -- the promise is what breaks the chain.
 
 **The mechanism for an overnight run is `/loop`.** Invoked with no interval it
 self-paces, scheduling its own next wake-up, so the chain does not depend on an
@@ -25,11 +46,10 @@ long as its longest-running subagent. Ask Donald to start the night that way.
 
 **A killed background command is not a finished one.** A backgrounded `pytest`
 can come back `killed` rather than with a result. A long run belongs
-in the foreground with an explicit timeout -- the suite takes about four
-minutes and the tool allows ten -- or it has to be checked for a real result
-rather than assumed to have passed.
+in the foreground with an explicit timeout -- the tool allows ten minutes --
+or it has to be checked for a real result rather than assumed to have passed.
 
-**Sending the suite to `test-runner` is the better way to have both.** The run
+**Sending the run to `test-runner` is the better way to have both.** The run
 is in that agent's foreground with its own timeout, so it is a real result;
 this window is free meanwhile, and a working subagent is one of the three
 things that keeps the chain alive. What it is not is a way to background a

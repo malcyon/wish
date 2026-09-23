@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove that Wish's three Codex guards are enabled and trusted."""
+"""Prove that Wish's two Codex guards are enabled and trusted."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from typing import Any, TextIO
 EXPECTED = {
     "check-issue-reads.py",
     "check-issue-writes.py",
-    "check-push-tested.py",
 }
 TIMEOUT_SECONDS = 10
 

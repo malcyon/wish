@@ -12,9 +12,9 @@ cleaner, somebody's `rm -rf` -- and a tool must work again from nothing when it
 does. Anything worth keeping is committed, or is game data and lives where
 `gamedisks.yaml` says.
 
-The cache is for the few things that have to survive a reboot: the marker a
-green suite run leaves for the push hook, and nothing that a person would want
-to read later.  The emulator instance pool is there too, for a different reason:
+The cache is for the few things that have to survive a reboot: the record an
+on-request `tools/suite/suiterun.py` diagnostic leaves, which nothing requires
+or reads, and nothing that a person would want to read later.  The emulator instance pool is there too, for a different reason:
 the flatpak VICE sees `$HOME` and has a private `/tmp`, so a disk staged under
 the temp directory is one it cannot open.
 

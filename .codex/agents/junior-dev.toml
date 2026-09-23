@@ -91,9 +91,10 @@ tests skipped has told you nothing. Around thirty here need the player's own
 game disks and skip without them; that is correct behaviour, and the count
 still belongs in your report.
 
-**Run `pytest` on the files you touched, plus `ruff`, before you report.** The
-whole suite runs once, in a detached worktree, before the push — not from
-inside this task. `.claude/rules/commits.md` has the detail.
+**Run `pytest` on the tests your change affects, plus `ruff`, before you
+report**, including any relevant tests that read game data, which CI cannot
+run. Do not run the whole suite: CI runs it on the pushed commit.
+`.claude/rules/commits.md` has the detail.
 
 **You do not commit.** Leave your work in the tree; the main window commits it
 after you report, so nothing races the index.
