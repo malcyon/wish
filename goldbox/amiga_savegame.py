@@ -795,8 +795,10 @@ def read_por_characters(disk: AmigaDisk, slot: str,
 
     Reads as many as the slot's saved game counts, as the engine's loader does:
     the save routine deletes no character file above a smaller later count, so
-    a stale `CHRDAT<slot>7.sav` is not a seventh member.  A slot with no saved
-    game, or one whose count is 0, reads until the first missing `.sav`.
+    a stale `CHRDAT<slot>7.sav` is not a seventh member.  A positive count with
+    a `.sav` missing inside it raises `AmigaSaveError`.  A slot with no saved
+    game, a saved game of the wrong size, or a count of 0 reads until the
+    first missing `.sav`.
 
     Returned as a list rather than yielded, so a bad slot letter or a disk
     with no save drawer is refused here and not at the first step of a loop.
@@ -805,18 +807,28 @@ def read_por_characters(disk: AmigaDisk, slot: str,
     letter = _por_slot(slot)
     drawer = por_save_drawer(disk) if drawer is None else drawer
     limit = PARTY_MAX
+    counted = False
     try:
         save = disk.read_file(por_save_path(por_savegame_filename(letter), drawer))
     except AmigaDiskError:
         save = None
     if save is not None:
+        try:
+            count = parse(save, POOL_OF_RADIANCE, validate=False).count
+        except AmigaSaveError:
+            count = 0
         # A count of 0 is not a party the engine writes; read such a file by presence.
-        limit = min(parse(save, POOL_OF_RADIANCE, validate=False).count or limit, PARTY_MAX)
+        if count:
+            limit, counted = min(count, PARTY_MAX), True
     characters = []
     for index in range(1, limit + 1):
         raw, items, effects = (_por_file(disk, letter, index, suffix, drawer)
                                for suffix in (".sav", ".itm", ".spc"))
         if raw is None:
+            if counted:
+                raise AmigaSaveError(
+                    f"slot {letter} counts {limit} characters but "
+                    f"{amiga_por.por_filename(letter, index, '.sav')} is missing")
             break
         characters.append(amiga_por.por_character(
             raw, items or b"", effects or b"",

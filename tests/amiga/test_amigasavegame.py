@@ -425,3 +425,35 @@ def test_with_square_refuses_a_field_the_container_has_not_got():
     save = parse(synthetic_silver_blades())
     with pytest.raises(AmigaSaveError):
         with_square(save, wallset_entry_0=1)
+
+
+def _por_slot_disk(names, savgam):
+    from support.neutralrecords import _filled
+
+    from goldbox import c64_codec, c64_port
+    from goldbox.neutral import Confidence
+    pool = c64_port.by_key("pool-of-radiance")
+    characters = []
+    for name in names:
+        char = _filled(pool)
+        char.set("name", name, "made up", Confidence.CONFIRMED,
+                 c64_codec.Provenance.RESHAPED)
+        characters.append(char)
+    seed = synthetic_pool_of_radiance("A", len(names))
+    disk = amiga_savegame.make_por_save_disk("A", characters, seed)
+    drawer = amiga_savegame.por_save_drawer(disk)
+    disk.write_file(amiga_savegame.por_save_path(
+        amiga_savegame.por_savegame_filename("A"), drawer), savgam)
+    return disk
+
+
+def test_a_saved_game_of_the_wrong_size_reads_the_characters_by_presence():
+    disk = _por_slot_disk(["ALPHA", "BETA"], b"\0" * 100)
+    found = amiga_savegame.read_por_characters(disk, "A")
+    assert len(found) == 2
+
+
+def test_a_saved_count_above_the_character_files_present_is_refused():
+    disk = _por_slot_disk(["ALPHA", "BETA", "GAMMA"], synthetic_pool_of_radiance("A", 5))
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="slot A counts 5.*CHRDATA4"):
+        amiga_savegame.read_por_characters(disk, "A")

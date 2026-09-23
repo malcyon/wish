@@ -103,23 +103,28 @@ class _PoolSlotDisk:
         self.save = save
 
     def read_file(self, path: str) -> bytes:
-        if path.endswith("CHRDATA1.sav"):
-            return b"character"
-        if path.endswith(("CHRDATA1.itm", "CHRDATA1.spc")):
-            return b""
+        # One file per member up to the party limit, so a count above it is read to the limit.
+        for n in range(1, amiga_savegame.PARTY_MAX + 1):
+            if path.endswith(f"CHRDATA{n}.sav"):
+                return b"character"
+            if path.endswith((f"CHRDATA{n}.itm", f"CHRDATA{n}.spc")):
+                return b""
         if path.endswith("savgamA.dat"):
             return self.save
         raise amiga_savegame.AmigaDiskError(path)
 
 
-@pytest.mark.parametrize(("count", "word_count", "name"), [
-    (1, 2, b"CHRDATA1"),
-    (7, 7, b"CHRDATA1"),
-    (1, 1, b"NOTANAME"),
-], ids=("count-word-disagreement", "party-count-outside-one-to-six",
+# The party limit is `PARTY_MAX`; the middle case pins the count just above it,
+# which the slot reader clamps to the limit.
+@pytest.mark.parametrize(("count", "word_count", "name", "members"), [
+    (1, 2, b"CHRDATA1", 1),
+    (amiga_savegame.PARTY_MAX + 1, amiga_savegame.PARTY_MAX + 1, b"CHRDATA1",
+     amiga_savegame.PARTY_MAX),
+    (1, 1, b"NOTANAME", 1),
+], ids=("count-word-disagreement", "party-count-outside-one-to-eight",
         "non-chrdat-name"))
 def test_pool_conversion_readers_keep_their_pre_consolidation_acceptance(
-        count, word_count, name, monkeypatch):
+        count, word_count, name, members, monkeypatch):
     """Pool conversion only used fixed-size validation before consolidation."""
     from goldbox import amiga_por
 
@@ -131,7 +136,7 @@ def test_pool_conversion_readers_keep_their_pre_consolidation_acceptance(
     party, returned = amiga_savegame.read_por_slot(_PoolSlotDisk(save), "A", "SAVE")
 
     assert state.source == "synthetic save"
-    assert len(party) == 1
+    assert len(party) == members
     assert returned == save
 
 
