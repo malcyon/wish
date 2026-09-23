@@ -2269,3 +2269,117 @@ def test_a_c64_party_saved_as_amiga_writes_slot_a_and_a_readable_disk(
     out = tmp_path / "written.adf"
     out.write_bytes(plan.files[convert.POOLSAVE_FILENAME])
     assert AmigaDisk.open(str(out)).read_file("/save") is not None
+
+
+# ---------------------------------------------------------------------------
+# What opening reads and refuses, and what the editor adopts
+# ---------------------------------------------------------------------------
+
+def test_an_amiga_pool_of_radiance_disk_opens_at_its_first_slot_and_offers_c64_and_dos(
+        tmp_path):
+    """An Amiga Pool of Radiance disk is its own port, at the first slot it
+    holds files for, and Save As offers its own port and then the two
+    registered conversions of the same title, the C64 before DOS."""
+    from test_saveplan import amiga_por_disk
+
+    source = convert.Source.detect(amiga_por_disk(tmp_path))
+
+    assert source.port == "amiga"
+    assert source.key == dos_port.POOL_OF_RADIANCE.key
+    assert source.slot == "A"
+    assert source.save0 is None and source.disk is None
+    assert saveplan.destination_ports(source) == ["amiga", "c64", "dos"]
+    assert type(saveplan.route(source, "c64")) is convert.AmigaToC64
+    assert type(saveplan.route(source, "dos")) is convert.AmigaToDos
+    assert saveplan.route(source, "amiga") is None
+
+
+def test_an_amiga_disk_holding_no_saved_game_is_refused_not_guessed_at(
+        tmp_path):
+    """A blank floppy is refused with a `ConvertError` by detection and by
+    opening it as a party, never read as an empty save."""
+    path = tmp_path / "blank.adf"
+    path.write_bytes(AmigaDisk.blank("EMPTY").to_bytes())
+
+    with pytest.raises(convert.ConvertError):
+        convert.Source.detect(path)
+    with pytest.raises(convert.ConvertError):
+        Party(str(path))
+
+
+def test_a_d64_that_cannot_be_read_is_refused_by_the_c64_reader(tmp_path):
+    """The `.adf` branch is chosen by suffix and must not take a `.d64`: a
+    file of the wrong size is refused as a C64 disk, by both routes in."""
+    from goldbox.d64 import D64Error
+
+    path = tmp_path / "notadisk.d64"
+    path.write_bytes(b"\x00" * 64)
+
+    with pytest.raises(convert.ConvertError):
+        convert.Source.detect(path)
+    with pytest.raises(D64Error):
+        Party(str(path))
+
+
+@pytest.mark.parametrize("game_key", [
+    dos_port.POOL_OF_RADIANCE.key, CURSE_KEY, "secret-of-the-silver-blades"])
+def test_every_title_the_amiga_writer_covers_is_offered_an_amiga_destination(
+        tmp_path, game_key):
+    """`amiga_shared.WRITES` names the three titles a Save As can write to an
+    Amiga disk, and a C64 save of each offers `amiga` and routes it to
+    `C64ToAmiga`."""
+    from goldbox import amiga_shared
+
+    assert {shape.key for shape in amiga_shared.WRITES} == {
+        dos_port.POOL_OF_RADIANCE.key, CURSE_KEY,
+        "secret-of-the-silver-blades"}
+    source = _pool_c64_source(tmp_path,
+                              game=convert.c64_port.by_key(game_key))
+
+    assert "amiga" in saveplan.destination_ports(source)
+    assert type(saveplan.route(source, "amiga")) is convert.C64ToAmiga
+
+
+def test_a_dos_party_saved_as_c64_is_the_party_the_editor_adopts(app, tmp_path):
+    """After a DOS to C64 Save As the editor has the written disk open, a
+    Pool of Radiance C64 save, and points its next Save at it."""
+    folder = dos_folder(tmp_path / "save", deltas=dos_port.POOL_OF_RADIANCE)
+    party = Party(str(folder))
+    out = tmp_path / "out.d64"
+    from editor.dosimport import GameFiles
+    assets = saveplan.Assets(game_files=GameFiles(icon=bytes(36),
+                                                  animate=bytes(852)))
+    published = saveplan.publish(
+        saveplan.prepare_save_as(party, "c64", out, assets), party,
+        backups=tmp_path / "backups", assets=assets)
+
+    editor = EditorBinding(make_root())
+    editor._adopt(published.party, str(published.destination.path))
+
+    assert editor.path == out
+    assert editor.party.is_save
+    assert editor.party.port == "c64"
+    assert editor.party.game is convert.c64_port.POOL_OF_RADIANCE
+
+
+def test_an_edit_typed_on_the_sheet_and_never_saved_reaches_the_save_as_copy(
+        app, tmp_path, monkeypatch):
+    """Gold typed into the open sheet and never saved is in the file the Save
+    As button writes: the widget's own value, flushed by `confirm_save_as`,
+    not a field set on the party."""
+    from test_saveasui import _confirm
+
+    path = synthetic_save(tmp_path, "open.d64")
+    editor = EditorBinding(make_root(), str(path))
+    editor.roster.selectRow(0)
+    editor._widgets["gold"].setValue(9999)
+    editor.begin_save_as("c64")
+    out = tmp_path / "copy.d64"
+
+    said = _confirm(editor, monkeypatch, out)
+
+    assert said == []
+    assert editor.path == out
+    assert editor.party.members[0].record.get("gold") == 9999
+    reopened = Party(str(out))
+    assert reopened.members[0].record.get("gold") == 9999

@@ -708,6 +708,9 @@ def test_a_seven_member_dos_party_saves_as_c64_with_all_seven(app, tmp_path):
     # The C64 marches in the reverse of the DOS order, so the seven are
     # compared as a set: what this pins is that none is lost.
     assert sorted(written) == sorted(expected)
+    # DIRTEN is the seventh member, the one a six-file reader drops.
+    assert expected[SEVEN_MEMBERS - 1] == b"DIRTEN"
+    assert b"DIRTEN" in written
 
 
 def test_a_seven_member_c64_party_saves_as_dos_with_all_seven(app, tmp_path):
@@ -738,3 +741,10 @@ def test_a_seven_member_c64_party_saves_as_dos_with_all_seven(app, tmp_path):
                   if name.upper().startswith("CHRDAT")
                   and name.upper().endswith(".SAV")]
     assert len(characters) == SEVEN_MEMBERS, sorted(plan.files)
+    # The seventh member arrives in the seventh file, under his own name,
+    # rather than any seven files being present.
+    for number, member in enumerate(party.members, start=1):
+        record = tmp_path / f"CHRDATA{number}.SAV"
+        record.write_bytes(plan.files[f"CHRDATA{number}.SAV"])
+        assert dos_codec.read_character(record).name == member.record.get(
+            "name")
