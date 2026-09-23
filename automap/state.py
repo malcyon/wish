@@ -318,10 +318,16 @@ class AutomapState:
         """
         return data_dir() / title_dir(self.title) / "wilderness.json"
 
-    def save_wilderness(self) -> None:
-        path = self.wilderness_path()
-        if not self.wilderness and not path.exists():
+    def save_wilderness(self, clear: bool = False) -> None:
+        """Write the squares; an empty dict writes only when `clear` is set.
+
+        A state that never loaded the file (the disks moved, the world did not
+        load) holds nothing, and writing that would wipe what the file has.
+        `clear` is the deliberate blanking.
+        """
+        if not self.wilderness and not clear:
             return
+        path = self.wilderness_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"seen": [[wx, wy, window, code] for (wx, wy), (window, code)
                             in sorted(self.wilderness.items())]}
@@ -332,10 +338,17 @@ class AutomapState:
         try:
             payload = json.loads(self.wilderness_path().read_text(
                 encoding="utf-8"))
-            for wx, wy, window, code in payload.get("seen", []):
-                self.wilderness[(int(wx), int(wy))] = (int(window), int(code))
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError):
             return
+        rows = payload.get("seen") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            return
+        for row in rows:
+            try:
+                wx, wy, window, code = row
+                self.wilderness[(int(wx), int(wy))] = (int(window), int(code))
+            except (ValueError, TypeError):
+                continue
 
     def load_notes(self) -> None:
         migrate_flat_notes()
@@ -676,6 +689,10 @@ class Automapper:
         """
         moved = not self.state.outdoors or (fix.x, fix.y) != (self.state.x, self.state.y)
         recorded = False
+        if not moved:
+            # Back on the square the hold was waiting to leave: a later jump
+            # to the held coordinates is a new jump and is held again.
+            self._outdoor_pending = None
         if moved:
             read = self._read_window()
             if read is not None:
@@ -688,6 +705,11 @@ class Automapper:
                             and self._outdoor_pending != (fix.x, fix.y)):
                         # The fix moved ahead of a block that has not been
                         # redrawn, or was garbled: wait for a second poll.
+                        # Two identical memory fixes in a row are accepted, so
+                        # a pane at the wrong position in the right window, or
+                        # a stale block from an earlier visit on the first
+                        # outdoor tick, is not ruled out; only an emulator run
+                        # shows whether either happens.
                         self._outdoor_pending = (fix.x, fix.y)
                         return False
                     self._outdoor_pending = None

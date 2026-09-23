@@ -246,3 +246,61 @@ def test_load_world_is_none_without_disks(tmp_path):
     assert load_world(str(tmp_path), c64_port.POOL_OF_RADIANCE) is None
     assert load_world(None, c64_port.POOL_OF_RADIANCE) is None
     assert load_world(str(tmp_path), None) is None
+
+
+# -- the file is not lost -----------------------------------------------------
+
+def _write_file(state, payload):
+    path = state.wilderness_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload))
+    return path
+
+
+def test_a_state_that_never_loaded_the_file_does_not_overwrite_it(on):
+    state = AutomapState()
+    path = _write_file(state, {"seen": [[1, 2, 0, 5]]})
+    state.save_wilderness()
+    assert json.loads(path.read_text()) == {"seen": [[1, 2, 0, 5]]}
+
+
+def test_recorded_squares_are_written(on):
+    state = AutomapState()
+    state.wilderness[(3, 4)] = (0, 7)
+    state.save_wilderness()
+    assert json.loads(state.wilderness_path().read_text())["seen"] == [[3, 4, 0, 7]]
+
+
+def test_an_explicit_clear_writes_the_file_empty(on):
+    state = AutomapState()
+    path = _write_file(state, {"seen": [[1, 2, 0, 5]]})
+    state.save_wilderness(clear=True)
+    assert json.loads(path.read_text()) == {"seen": []}
+
+
+@pytest.mark.parametrize("payload", [[], "x", {"seen": 3}, {"seen": [[1, 2]]},
+                                     {"seen": [[1, 2, "a", 4]]}, 5])
+def test_a_corrupt_file_loads_as_empty(on, payload):
+    state = AutomapState()
+    _write_file(state, payload)
+    state.load_wilderness()
+    assert state.wilderness == {}
+
+
+def test_a_bad_row_is_skipped_and_the_good_ones_kept(on):
+    state = AutomapState()
+    _write_file(state, {"seen": [[1, 2], [3, 4, 1, 9]]})
+    state.load_wilderness()
+    assert state.wilderness == {(3, 4): (1, 9)}
+
+
+def test_returning_to_the_old_square_drops_the_hold(on):
+    mapper, _ = mapper_for(
+        [out(8, 20), out(3, 20), out(8, 20), out(3, 20)], _window(1))
+    mapper.poll()
+    mapper.poll()
+    assert mapper._outdoor_pending == (3, 20)
+    mapper.poll()
+    assert mapper._outdoor_pending is None
+    mapper.poll()
+    assert (mapper.state.x, mapper.state.y) == (8, 20)
