@@ -17,9 +17,11 @@ import pathlib
 
 import gamedata
 import pytest
+from support.amigarecords import sample
 
 from goldbox import amiga_dax, amiga_por, amiga_savegame
 from goldbox.amiga_adf import AmigaDisk
+from goldbox.amiga_por import AmigaPorCharacter
 from goldbox.amiga_port import AmigaRecordError
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -154,6 +156,22 @@ def test_the_shipped_saved_game_carries_its_own_areas_ecl_block(
     start, end = amiga_savegame.POR_ECL_BUFFER
     assert shipped[start:start + len(body)] == body
     assert shipped[start + len(body):end] == bytes(end - start - len(body))
+
+
+def test_a_fifteen_letter_amiga_por_name_gets_no_truncation_warning():
+    """`#615 (The Amiga Pool of Radiance reader says a fifteen-character name
+    has no terminator and was truncated, when it has one and was not)`.
+
+    Fifteen is the most a real name can be -- DOS's field is a count byte plus
+    fifteen bytes -- and it still leaves a NUL in the Amiga's sixteen-byte
+    field.  The old `line >= size` test fired here anyway, because `line == 15
+    >= 15` is always true.
+    """
+    record, _, _, _ = amiga_por.write_por(sample(name="ABCDEFGHIJKLMNO"))
+    char = AmigaPorCharacter.from_bytes(record)
+    out = amiga_por.to_neutral(char)
+    assert not any("no terminator" in w or "truncated" in w for w in out.warnings), \
+        out.warnings
 
 
 def test_a_dos_dax_is_refused_rather_than_read_as_an_amiga_one():

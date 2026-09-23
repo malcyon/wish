@@ -512,8 +512,7 @@ def to_neutral(char) -> NeutralCharacter:
         "285-byte DOS one by goldbox.amiga_por.to_dos_record; the provenance lines "
         "name the DOS field table, which is the table both ports share")
 
-    line, _ = _amiga_por_name(char.raw)
-    if line >= dos_port.FIELDS_BY_NAME["name_text"].size:
+    if b"\0" not in char.raw[:AMIGA_POR_NAME_SIZE]:
         out.warnings.append(
             f"The Amiga name fills all {AMIGA_POR_NAME_SIZE} bytes with no "
             f"terminator; DOS holds fifteen, so it was truncated")
