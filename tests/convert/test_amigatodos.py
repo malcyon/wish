@@ -195,10 +195,11 @@ def test_the_dos_slot_written_is_not_the_amiga_slot_read(one_character_adf,
 def test_a_party_of_one_writes_one_record_and_no_others(one_character_adf,
                                                         tmp_path):
     """The empty case `.claude/rules/conversions.md` asks for: a
-    one-character party must leave `CHRDATA2`-`6` off the disk entirely, and
-    the saved game's own name table must name one file rather than six --
-    `#68 (A converted party smaller than the last one arrives with the
-    remainder of that party still in it)` is what happens when it does not.
+    one-character party must leave `CHRDATA2`-`8` off the disk entirely,
+    though the saved game's own name table still names all eight files --
+    the party size is what says how many are read -- and `#68 (A converted
+    party smaller than the last one arrives with the remainder of that party
+    still in it)` is what happens when the party size does not bound them.
     """
     source = convert.Source.detect(one_character_adf)
     source.slot = "E"
@@ -213,14 +214,14 @@ def test_a_party_of_one_writes_one_record_and_no_others(one_character_adf,
                      "SAVGAMA.DAT"]
     savgam = (tmp_path / "out" / "SAVGAMA.DAT").read_bytes()
     assert dos_savegame.party_size(savgam) == 1
-    # **All six names, and the party size is what says how many are read.**
-    # The two ports part company here: `goldbox.amiga_savegame.retarget_savegame`
-    # fills the Amiga table only as far as the party goes, and
-    # `goldbox.dos_savegame.put_character_files` writes six because no DOS
-    # specimen shows what a blanked entry does. So converting a party of one
-    # is not converting a table of one.
+    # All `PARTY_ENTRIES` names, and the party size is what says how many
+    # are read. The two ports part company here:
+    # `goldbox.amiga_savegame.retarget_savegame` fills the Amiga table only
+    # as far as the party goes, and `goldbox.dos_savegame.put_character_files`
+    # writes every table entry regardless. So converting a party of one is
+    # not converting a table of one.
     assert dos_savegame.character_files(savgam) == [
-        f"CHRDATA{n}" for n in range(1, 7)]
+        f"CHRDATA{n}" for n in range(1, dos_savegame.PARTY_ENTRIES + 1)]
 
 
 @needs_dos_saves
