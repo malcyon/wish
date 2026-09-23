@@ -29,12 +29,16 @@ from __future__ import annotations
 import gamedata
 import pytest
 
-from goldbox import c64_codec, dos_codec, dos_port
+from goldbox import amiga_later, amiga_port, c64_codec, dos_codec, dos_port
 from goldbox.record import CharacterRecord
 
 F83 = dos_port.FIELDS_BY_NAME["field_83_87"]
 CONTROL = F83.offset + 1
 SHARE = F83.offset + 2
+
+_LATER_AMIGA_DELTAS = {"curse-of-the-azure-bonds": amiga_port.CURSE_DELTAS,
+                       "secret-of-the-silver-blades":
+                           amiga_port.SILVER_BLADES_DELTAS}
 
 
 def _c64_record(flags: int, share: int = 0,
@@ -142,6 +146,47 @@ def test_a_dos_window_returns_byte_for_byte_through_the_c64(window):
     rec, _rep = c64_codec.write(dos_codec.to_neutral(_dos_character(window)))
 
     assert bytes(_to_dos(rec)[F83.offset:F83.end]) == window
+
+
+# --- Curse and Silver Blades have no such crossover (#639) ------------------
+
+@pytest.mark.parametrize("game", ["curse-of-the-azure-bonds",
+                                  "secret-of-the-silver-blades"])
+def test_a_curse_or_silver_blades_players_share_is_never_the_flag(game):
+    """A C64 Curse or Silver Blades player character with `flags_0b8 = 0` and
+    `treasure_share = 1` -- most characters on the shipped disks -- must
+    reach DOS and the Amiga with the share intact and read back as itself,
+    rather than being crossed with Pool of Radiance's ability-altered flag.
+
+    Before the fix this read back as `(0, 0)`, `(1, 0)`: `flags_0b8`
+    contracted to 1 and `treasure_share` fell to 0 on both destinations.
+    """
+    rec = _c64_record(0x00, share=0x01)
+    neutral = c64_codec.read(rec, game=game)
+
+    field = dos_port.FIELDS_BY_NAME_FOR[game]["field_83_87"]
+    control_index = 1 if field.size == 5 else 0
+    share_index = control_index + 1
+
+    # -- DOS --
+    raw, _itm, _spc, _rep = dos_codec.write(neutral)
+    assert raw[field.offset + control_index] == 0x00
+    assert raw[field.offset + share_index] == 0x01
+
+    back, _rep = dos_codec.to_c64_record(dos_codec.DosCharacter(raw))
+    assert (back.get("flags_0b8"), back.get("treasure_share")) == (0, 1)
+
+    # -- Amiga --
+    shape = _LATER_AMIGA_DELTAS[game]
+    ac, _rep = amiga_later.write_later(neutral, deltas=game)
+    a_field = shape.dos_field("field_83_87")
+    a_control = shape.offset(a_field.offset) + control_index
+    a_share = shape.offset(a_field.offset) + share_index
+    assert ac.raw[a_control] == 0x00
+    assert ac.raw[a_share] == 0x01
+
+    back = dos_codec.neutral_to_c64_record(amiga_later.to_neutral_later(ac))[0]
+    assert (back.get("flags_0b8"), back.get("treasure_share")) == (0, 1)
 
 
 # --- the player's own save disks --------------------------------------------

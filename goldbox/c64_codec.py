@@ -805,21 +805,31 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
 
     # -- the share byte, and the flag that shares it ------------------------
     # A companion's share goes to 0x0FA, which is where the C64's own split
-    # reads it.  A **player character** has no share anybody reads: the C64's
-    # one reference to 0x0FA (`POST.COM $194F`) and all three DOS references
-    # to its own 0x085 (`GAME.OVR 0x0068A7`, `0x0068B4`, `0x0069B6`) sit
-    # behind the control byte's "engine drives this character" test, and no
-    # file of C64 Pool of Radiance stores 0x0FA at all.  What DOS and the
-    # Amiga keep in that byte for a player character is the ability-altered
-    # flag -- their 1, written by MODIFY CHARACTER's KEEP -- and the C64 keeps
-    # the same fact in bit 0 of 0x0B8.  So 0 and 1 on a player character are
-    # that flag and go to 0x0B8 below, leaving 0x0FA the zero every C64
-    # record holds; 2 to 7 are a share no engine writes for a player
-    # character and cross as the raw byte they always did.
+    # reads it.  A **Pool of Radiance player character** has no share anybody
+    # reads: the C64's one reference to 0x0FA (`POST.COM $194F`) and all
+    # three DOS references to its own 0x085 (`GAME.OVR 0x0068A7`, `0x0068B4`,
+    # `0x0069B6`) sit behind the control byte's "engine drives this
+    # character" test, and no file of C64 Pool of Radiance stores 0x0FA at
+    # all.  What DOS and the Amiga keep in that byte for a Pool of Radiance
+    # player character is the ability-altered flag -- their 1, written by
+    # MODIFY CHARACTER's KEEP -- and the C64 keeps the same fact in bit 0 of
+    # 0x0B8.  So 0 and 1 on a Pool of Radiance player character are that flag
+    # and go to 0x0B8 below, leaving 0x0FA the zero every C64 record holds;
+    # 2 to 7 are a share no engine writes for a player character and cross as
+    # the raw byte they always did.
+    #
+    # Curse of the Azure Bonds and Secret of the Silver Blades have no such
+    # crossover (#639).  `POST.COM $1918` and `$199E` mask a player
+    # character's own 0x0FA with 3 the same as a companion's, and their
+    # 0x0B8 has no player-character bit-0 reader or writer at all -- measured
+    # at 0x0B8 == 0 in 85 of 85 Curse and 66 of 66 Silver Blades player
+    # records.  So a player character's share in these two titles is always
+    # the raw byte, whatever its value.
     is_npc = bool(w.get("npc"))
     share = use("treasure_share")
     modify_flag = None
-    if share is not None and not is_npc and int(share.value) in (0, 1):
+    if (share is not None and not is_npc and int(share.value) in (0, 1)
+            and deltas is POOL_OF_RADIANCE_RECORD):
         modify_flag = share
         rec.set("treasure_share", 0x00)
         rep.note(0x0FA, 1,
@@ -1619,20 +1629,26 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                   "rest are warned about"),
     ("roster_tail", "copied as a block into the C64's roster tail"),
     ("npc", "bit 7 of 0x0B8, the byte the game itself counts player "
-            "characters with; a player character gets bit 7 clear and bit 0 "
-            "from the share byte's own ability-altered flag (#303)"),
+            "characters with; a Pool of Radiance player character gets bit 7 "
+            "clear and bit 0 from the share byte's own ability-altered flag "
+            "(#303); a Curse or Silver Blades player character gets bit 7 "
+            "clear and bit 0 zero, since neither title stores that flag "
+            "there (#639)"),
     ("npc_control_byte", "written unchanged to 0x0B8 when npc is true -- "
                          "bit 7 plus the low seven bits of morale, stored "
                          "halved; nothing to write when npc is false (#303)"),
     ("treasure_share", "written unchanged to 0x0FA for a companion, whose "
                        "share the C64's own split reads there; a DOS or "
                        "Amiga raw value with bit 2 set refuses because C64 "
-                       "masks with 3. For a player character, whose share "
-                       "no engine reads, 0 and 1 are the ability-altered "
-                       "flag the other ports keep in that byte and go to "
-                       "bit 0 of 0x0B8 with 0x0FA left at the zero every "
-                       "C64 record holds; a larger raw value is written to "
-                       "0x0FA as a companion's would be"),
+                       "masks with 3. For a Pool of Radiance player "
+                       "character, whose share no engine reads, 0 and 1 are "
+                       "the ability-altered flag the other ports keep in "
+                       "that byte and go to bit 0 of 0x0B8 with 0x0FA left "
+                       "at the zero every C64 record holds; a larger raw "
+                       "value is written to 0x0FA as a companion's would be. "
+                       "A Curse or Silver Blades player character has no "
+                       "such crossover: its share is always written raw to "
+                       "0x0FA (#639)"),
     ("status", "the name indexed into the C64's own seven-value table, into "
                "the low three bits of record 0x100; a state the C64 does not "
                "have is reported and the character arrives OK"),
@@ -1938,14 +1954,20 @@ READ_TARGETS: dict[str, str] = (
        "item_effects": "zeroes stripped into neutral innate_effects",
        "flags_0b8": "bit 7 read as neutral npc, and the whole byte read "
                     "again as neutral npc_control_byte when it is set; for "
-                    "a player character bit 0, the ability-altered flag, "
-                    "is read as neutral treasure_share, which is the byte "
-                    "the other two ports keep that same flag in (#303)",
+                    "a Pool of Radiance player character bit 0, the "
+                    "ability-altered flag, is read as neutral "
+                    "treasure_share, which is the byte the other two ports "
+                    "keep that same flag in (#303); for a Curse or Silver "
+                    "Blades player character bit 0 has no such meaning and "
+                    "is reported as a loss if it is ever set (#639)",
        "treasure_share": "read unchanged as neutral treasure_share for a "
                          "companion, and for a player character whose byte "
-                         "is not zero; for the ordinary player character, "
-                         "whose 0x0FA nothing in the title writes, "
-                         "flags_0b8 bit 0 is read in its place",
+                         "is not zero; for the ordinary Pool of Radiance "
+                         "player character, whose 0x0FA nothing in the "
+                         "title writes, flags_0b8 bit 0 is read in its "
+                         "place. A Curse or Silver Blades player character "
+                         "has no such crossover: its share is always the "
+                         "raw 0x0FA byte (#639)",
        "attack_forms": "read as neutral attack_forms",
        "infravision": "read as neutral infravision",
        "turn_power": "read as neutral turn_power",
@@ -2109,15 +2131,16 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # -- the share byte, whose meaning depends on who the character is ------
     # For a character the engine drives it is the treasure share, and the
     # three ports keep it at aligned bytes: C64 0x0FA, DOS 0x085, Amiga Pool
-    # of Radiance 0x086.  For a **player character** no engine reads it --
-    # the C64's one reference to 0x0FA (`POST.COM $194F`) and DOS's three to
-    # 0x085 (`GAME.OVR 0x0068A7`, `0x0068B4`, `0x0069B6`) all sit behind the
-    # control byte's "engine drives this character" test -- and what DOS and
-    # the Amiga keep there instead is the ability-altered flag, the 1 that
-    # MODIFY CHARACTER's KEEP writes (`GAME.OVR 0x01C263`).  The C64 keeps
-    # that same fact in bit 0 of 0x0B8, set by `GEN $155D` when a score
-    # changes at the trainer.  So a player character's neutral share is that
-    # flag, in the form the other two ports store it.
+    # of Radiance 0x086.  For a **Pool of Radiance player character** no
+    # engine reads it -- the C64's one reference to 0x0FA (`POST.COM $194F`)
+    # and DOS's three to 0x085 (`GAME.OVR 0x0068A7`, `0x0068B4`, `0x0069B6`)
+    # all sit behind the control byte's "engine drives this character" test
+    # -- and what DOS and the Amiga keep there instead is the ability-altered
+    # flag, the 1 that MODIFY CHARACTER's KEEP writes (`GAME.OVR
+    # 0x01C263`).  The C64 keeps that same fact in bit 0 of 0x0B8, set by
+    # `GEN $155D` when a score changes at the trainer.  So a Pool of Radiance
+    # player character's neutral share is that flag, in the form the other
+    # two ports store it.
     #
     # A player character whose own 0x0FA is not zero hands the raw byte on
     # instead, which is what it has always done: nothing in C64 Pool of
@@ -2125,8 +2148,18 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # and a share it may have been given is a value with somewhere to go
     # where the flag would not be.  The flag is then the loss and is
     # reported.
+    #
+    # Curse of the Azure Bonds and Secret of the Silver Blades have no such
+    # crossover (#639): neither title's engine reads or writes flags_0b8
+    # bit 0 for a player character, and `POST.COM $1918`/`$199E` mask a
+    # player character's own 0x0FA the same as a companion's.  So a player
+    # character's share in these two titles is always the raw 0x0FA byte,
+    # whatever its value.  If such a record still has flags_0b8 bit 0 set --
+    # measured 0 in 85 of 85 Curse and 66 of 66 Silver Blades player records
+    # -- that bit is a loss with nowhere to go, and it is reported rather
+    # than silently dropped.
     own_share = int(rec.get("treasure_share"))
-    if is_npc or own_share != 0:
+    if is_npc or own_share != 0 or deltas is not POOL_OF_RADIANCE_RECORD:
         out.set("treasure_share", own_share,
                 "the C64's raw treasure-share byte at 0x0FA",
                 grade("treasure_share"),

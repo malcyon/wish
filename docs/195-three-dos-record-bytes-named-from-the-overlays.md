@@ -298,7 +298,7 @@ through `npc` and `npc_control_byte`, and a player character's DOS control byte
 is written **exactly** `0x00`, which is what `0x0251B7`'s equality test
 demands.
 
-### For a player character the two ports' live bytes are crossed over
+### For a Pool of Radiance player character the two ports' live bytes are crossed over
 
 This is the correction `#620 (A C64 party that used the trainer cannot be
 saved as a DOS save, because the DOS writer zeroes the byte recording it)`
@@ -314,10 +314,21 @@ field in two places:
 
 So the neutral `treasure_share` field is the byte DOS and the Amiga keep after
 their control byte, and `goldbox/c64_codec.py` converts both ways: for a
-player character it reads `flags_0b8` bit 0 in place of `0x0FA`, and writes
-the value back to `flags_0b8` bit 0 with `0x0FA` left at zero. A companion is
-untouched, and no Amiga writer needed a change, because it already writes that
-neutral field into its own aligned byte.
+**Pool of Radiance** player character it reads `flags_0b8` bit 0 in place of
+`0x0FA`, and writes the value back to `flags_0b8` bit 0 with `0x0FA` left at
+zero. A companion is untouched, and no Amiga writer needed a change, because it
+already writes that neutral field into its own aligned byte.
+
+**Curse of the Azure Bonds and Secret of the Silver Blades have no such
+crossover** (`#639 (A C64 Curse or Silver Blades character converted to DOS or
+the Amiga loses his treasure share)`). Neither title's own `0x0B8` has a
+player-character bit-0 reader or writer at all -- `docs/232-the-c64-control-
+byte-per-title.md` reads every reference to the byte per title and finds none
+-- so a player character's share in these two titles is always the raw byte at
+`0x0FA`, converted unchanged like a companion's. Treating it as the Pool of
+Radiance flag crossed the DOS and Amiga writers' correct output back into the
+C64's ability-altered flag on the read-back check alone, so a Save As from
+either of these two titles refused a character actually holding a share.
 
 What every record on this machine holds in the share byte,
 `tools/dos/dostailcensus.py --field field_83_87 --per-title` and a sweep of
@@ -343,9 +354,15 @@ two-bit family and the DOS/Amiga three-bit family: masking, clamping or
 defaulting would lose the raw-zero condition or change the engine-effective
 share.
 
-One record reports a loss and no engine writes it: a C64 **player character**
-holding both bit 0 of `0x0B8` and a non-zero `0x0FA`. The other ports have one
-byte for the two, so the raw share crosses as it always did and the flag is
-reported dropped, which refuses the conversion rather than losing it in
-silence. Nothing in C64 Pool of Radiance writes `0x0FA` and 90 of 90 records
-hold zero, so no save here can reach it.
+One record reports a loss and no engine writes it: a C64 **Pool of Radiance
+player character** holding both bit 0 of `0x0B8` and a non-zero `0x0FA`. The
+other ports have one byte for the two, so the raw share crosses as it always
+did and the flag is reported dropped, which refuses the conversion rather than
+losing it in silence. Nothing in C64 Pool of Radiance writes `0x0FA` and 90 of
+90 records hold zero, so no save here can reach it.
+
+The same check applies to a Curse or Silver Blades player character holding
+both bit 0 of `0x0B8` and a non-zero `0x0FA`, even though the crossover itself
+does not apply to these two titles: measured `0x0B8 == 0` in 85 of 85 Curse and
+66 of 66 Silver Blades player records, so no save here can reach it either, but
+the check stays in case one ever does.
