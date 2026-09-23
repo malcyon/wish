@@ -224,6 +224,93 @@ def test_the_picker_rows_are_the_pc_files_in_directory_order():
     assert "VaultA.DAT" not in expected
 
 
+def _bar(y=428, colour=(85, 238, 238)):
+    from PIL import Image
+
+    image = Image.new("RGB", (800, 600))
+    image.paste(colour, (100, y, 300, y + 14))
+    return image
+
+
+def _screens(monkeypatch, calls, before, after=None):
+    """`grab` gives `before` in turn, then repeats the last; after a key, `after`."""
+    from PIL import Image
+
+    queue = list(before)
+    changed = after or Image.new("RGB", (800, 600), (9, 9, 9))
+
+    def grab(display):
+        if any(c[0] == "key" for c in calls):
+            return changed
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+    ticks = iter(range(0, 10**6, 2))
+    monkeypatch.setattr(fsuaepor, "grab", grab)
+    monkeypatch.setattr(fsuaepor, "_now", lambda: next(ticks))
+
+
+def _run(tmp_path, monkeypatch, before, after=None, limit=300):
+    disk = _disk3(["ONE.pc"])
+    adf = tmp_path / "pod3.adf"
+    disk.save(adf)
+    calls: list[tuple] = []
+    monkeypatch.setattr(fsuaepor, "keys",
+                        lambda a: calls.append(("key", tuple(a.key))))
+    monkeypatch.setattr(fsuaepor, "shot",
+                        lambda a: calls.append(("shot", a.path.name)))
+    monkeypatch.setattr(fsuaepor, "_wait", lambda s: None)
+    _screens(monkeypatch, calls, before, after)
+    args = type("A", (), dict(display=":9", adf=str(adf), out=str(tmp_path / "s"),
+                              boot=limit, payload=["ONE.pc"]))
+    return calls, args
+
+
+def test_the_title_bar_is_cyan_ink_in_the_bottom_band():
+    from PIL import Image
+
+    assert not fsuaepor.title_bar_up(Image.new("RGB", (800, 600)))
+    assert fsuaepor.title_bar_up(_bar())
+    assert not fsuaepor.title_bar_up(_bar(y=120))
+    assert not fsuaepor.title_bar_up(_bar(colour=(136, 136, 136)))
+
+
+def test_no_key_is_sent_before_the_title_bar_is_up(tmp_path, monkeypatch):
+    black = _bar(colour=(0, 0, 0))
+    calls, args = _run(tmp_path, monkeypatch, [black, black, _bar(), _bar()])
+    seen = []
+    real = fsuaepor.grab
+
+    def counting(display):
+        image = real(display)
+        seen.append(fsuaepor.title_bar_up(image))
+        return image
+
+    monkeypatch.setattr(fsuaepor, "grab", counting)
+    assert fsuaepor.pod_panel(args) == 0
+    first_key = next(i for i, c in enumerate(calls) if c[0] == "key")
+    assert calls[first_key] == ("key", ("p",))
+    assert seen[:4] == [False, False, True, True]
+    assert first_key > 0
+    assert calls[first_key - 1][0] == "shot"      # the title shot, then `p`
+
+
+def test_the_script_stops_with_no_key_when_the_bar_never_comes(tmp_path, monkeypatch):
+    calls, args = _run(tmp_path, monkeypatch, [_bar(colour=(0, 0, 0))], limit=10)
+    with pytest.raises(SystemExit) as exc:
+        fsuaepor.pod_panel(args)
+    assert "no key sent" in str(exc.value)
+    assert [c for c in calls if c[0] == "key"] == []
+    assert any("no-title-bar" in c[1] for c in calls if c[0] == "shot")
+
+
+def test_the_script_stops_when_p_changes_nothing(tmp_path, monkeypatch):
+    calls, args = _run(tmp_path, monkeypatch, [_bar()], after=_bar())
+    with pytest.raises(SystemExit):
+        fsuaepor.pod_panel(args)
+    assert [c for c in calls if c[0] == "key"] == [("key", ("p",))]
+    assert any("play-ignored" in c[1] for c in calls if c[0] == "shot")
+
+
 def test_the_panel_script_reaches_each_row_and_never_ends_the_session(
         tmp_path, monkeypatch):
     disk = AmigaDisk.blank("POD 3")
@@ -239,8 +326,9 @@ def test_the_panel_script_reaches_each_row_and_never_ends_the_session(
     monkeypatch.setattr(fsuaepor, "shot",
                         lambda a: calls.append(("shot", a.path.name)))
     monkeypatch.setattr(fsuaepor, "_wait", lambda s: None)
+    _screens(monkeypatch, calls, [_bar(), _bar()])
     args = type("A", (), dict(display=":9", adf=str(adf), out=str(tmp_path / "s"),
-                              boot=0, payload=[names[4], names[11], names[13]]))
+                              boot=300, payload=[names[4], names[11], names[13]]))
     assert fsuaepor.pod_panel(args) == 0
     pressed = [c[1][0] for c in calls if c[0] == "key"]
     assert "Up" not in pressed and "y" not in pressed

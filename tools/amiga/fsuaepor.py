@@ -362,18 +362,56 @@ def _wait(seconds: float) -> None:
     time.sleep(seconds)
 
 
-def panel_script(rows: list[tuple[int, str]], members: int, boot: float
+def _now() -> float:
+    return time.monotonic()
+
+
+#: Where the title bar's letters are, measured on `serve`'s 800x600 `Xvfb` root
+#: with the default `--window 720x568` and the window at the origin (there is
+#: no window manager).  A different `--window` moves them.
+BAR_ROWS = (415, 460)
+#: The bar's letters are 971 cyan pixels in that band and the intro, credits
+#: and version screens have none; 200 sits far from both.
+BAR_INK_MIN = 200
+#: Seconds between screenshots while waiting for the bar.
+BAR_POLL = 2
+
+
+def grab(display: str):
+    """The display's root window as a Pillow image, with no file written."""
+    import io
+
+    from PIL import Image
+
+    png = subprocess.run(["import", "-display", display, "-window", "root", "png:-"],
+                         env=_xenv(display), check=True, capture_output=True).stdout
+    return Image.open(io.BytesIO(png)).convert("RGB")
+
+
+def title_bar_up(image) -> bool:
+    """True when the `PLAY DEMO QUIT` bar's cyan letters are in the bar's band."""
+    top, bottom = BAR_ROWS
+    band = image.crop((0, top, image.width, min(bottom, image.height)))
+    raw = band.tobytes()
+    ink = sum(1 for r, g, b in zip(raw[0::3], raw[1::3], raw[2::3])
+              if r < 120 and g > 180 and b > 180)
+    return ink >= BAR_INK_MIN
+
+
+def panel_script(rows: list[tuple[int, str]], members: int, limit: float
                  ) -> list[tuple]:
     """The fixed Pools of Darkness key script, as `(kind, ...)` steps.
 
-    `("wait", seconds)`, `("key", name, settle)` and `("shot", label)`.
+    `("title", limit)` waits for the title bar for at most `limit` seconds,
+    `("key", name, settle)`, `("shot", label)` and `("played",)`, which stops
+    the run when the screen did not change after the first `p`.
     `rows` are `(picker row, file name)` in ascending order.  The script never
     sends `Up`, never `y`, and never two `e` in a row: `Up` at the top of an
     FS-UAE menu then Return quits the emulator, and `e` on the party menu is
     EXIT FROM GAME.
     """
-    steps: list[tuple] = [("wait", boot), ("shot", "title"),
-                          ("key", "p", 4), ("shot", "play"),
+    steps: list[tuple] = [("title", limit),
+                          ("key", "p", 4), ("played",), ("shot", "play"),
                           ("key", "a", 3), ("shot", "add-character"),
                           ("key", "p", 10), ("shot", "picker")]
     current = 1
@@ -409,17 +447,45 @@ def pod_panel(args) -> int:
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     count = 0
+
+    def take(label: str) -> None:
+        nonlocal count
+        count += 1
+        shot(argparse.Namespace(display=args.display,
+                                path=out / f"{count:02d}-{label}.png"))
+
+    bar = None
     for step in panel_script(rows, len(rows), args.boot):
-        if step[0] == "wait":
-            _wait(step[1])
+        if step[0] == "title":
+            bar = _wait_for_bar(args.display, step[1], take)
+        elif step[0] == "played":
+            if grab(args.display).tobytes() == bar.tobytes():
+                take("play-ignored")
+                raise SystemExit("the title bar did not take p; no more keys sent")
         elif step[0] == "key":
             keys(argparse.Namespace(display=args.display, key=[step[1]],
                                     hold=0.12, settle=step[2]))
         else:
-            count += 1
-            path = out / f"{count:02d}-{step[1]}.png"
-            shot(argparse.Namespace(display=args.display, path=path))
+            take(step[1])
     return 0
+
+
+def _wait_for_bar(display: str, limit: float, take):
+    """Grab until two in a row show the title bar; stop with no key past `limit`."""
+    start = _now()
+    seen = False
+    while True:
+        image = grab(display)
+        up = title_bar_up(image)
+        if up and seen:
+            print(f"title bar after {_now() - start:.0f} s")
+            take("title")
+            return image
+        seen = up
+        if _now() - start >= limit:
+            take("no-title-bar")
+            raise SystemExit(f"no title bar in {limit:g} s; no key sent")
+        _wait(BAR_POLL)
 
 
 def wheel(args) -> int:
@@ -631,7 +697,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--display", required=True)
     p.add_argument("--adf", required=True, help="the staged pod3.adf")
     p.add_argument("--out", required=True, help="directory for the shots")
-    p.add_argument("--boot", type=float, default=90)
+    p.add_argument("--boot", type=float, default=300,
+                   help="longest to wait for the title bar, in seconds")
     p.add_argument("--payload", action="append",
                    help="a .pc name to add; default the three payload names")
     p.set_defaults(func=pod_panel)
