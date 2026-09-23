@@ -168,6 +168,75 @@ game added row 110, `$C7`/`$C7`, owner 5 (checkpoint on the add: one hit);
 the sheet then read `HEAL EXIT`; his 3 came back at 00:00 on day 7, 10079
 minutes after the 00:01 cure, and the sheet read `CURE HEAL EXIT` again. **CONFIRMED**, one run.
 
+## A former paladin
+
+A human paladin who changes class (HUMAN CHANGE CLASSES) keeps his DOS uses
+byte, and cannot CURE again until he regains the paladin. MATHEW in
+`WISH-SPEC-curse-131-dualclassed-in-area-1` (magic-user 1, former paladin 5)
+and DEMELTINA in `WISH-SPEC-curse-234-party-dualclassed` (cleric 1, former
+paladin 5) both hold 1 at `0x191`, and MATHEW still holds 1 after regaining in
+`WISH-SPEC-curse-408-regained-paladin`.
+
+**DOS, CONFIRMED from `GAME.OVR`.** The gate at `0x2A6B2` passes the class test
+when `char_class` (`0x075`) is 3, or when the former paladin level (`0x114`,
+`former_class_levels[3]`) is above 0 **and** `0xFE:0x52` (`0x3C031`) is true:
+a human whose current class level is above `former_level` (`0x0E6`), which
+means he has regained. The refresh at `0x127D6` uses level = (regained ? former
+paladin level : 0) + `class_levels[3]` (`0x10C`). Class change and regain never
+write `0x191` (it has five writers, listed above). Silver Blades' gate at
+`0x2AEA0` is the same test on `0x06C`, `0x11B` and `former_level` `0x0EF`.
+
+**C64, CONFIRMED from the overlays, both titles.** A former paladin has no
+cure count of his own. `0x012` is the only home the count has, and the engine
+does not keep it across the class change:
+
+* `GEN` seeds `0x012`/`0x013` from `level_paladin` (`0x0CF`) at the change
+  (Curse `$23DE`, Silver Blades `$1FC6`). The level array has already been
+  rewritten from the new mask by then, so the seed writes 0 and 0. The code
+  is CONFIRMED. The value is PROBABLE, because no paladin record has been
+  read between a change and a training.
+* The regain (Curse `$20A3`-`$20BF`, Silver Blades `$154F`-`$156B`) puts
+  `0x0CF` back and calls the same seed, so `0x012` becomes the full count
+  for the old level, whatever it held before. This was observed:
+  `WISH-SPEC-curse-409-regained-paladin` took MATHEW (paladin 6) and MARK
+  (paladin 5) in with `0x012` = 0 and wrote 2 and 1.
+* Nothing checks a class before CURE. The camp sheet's mask (`LIBRARY
+  $4695`-`$46C0`) reads `$7CB8`, `$7E58`, `$7EF9`, `$7C12`, `$7C13` and
+  `$7D00`, and no class byte. The cure (`ECL65 $86E6`) and its expiry reset
+  (`JSR $87EF / STY $7C12`) take the full count from `0x0CF`, and that count
+  is 1 when `0x0CF` is 0.
+
+Only six instructions in Curse and five in Silver Blades name `$7C12`
+(`tools/c64/absrefsweep.py`): seed, gate, cure and reset. Silver Blades has
+no full-count compare, because its cure guard is the row. Nothing reads it
+at load.
+
+So `0x012` = 1 on a C64 character with no paladin level puts CURE on his camp
+sheet. His first cure starts a cure row, because 1 equals the full count at
+level 0, and the row's expiry writes 1 again. **A magic-user would cure disease
+once a week for good.** This is read from the code and was not driven.
+
+What each engine lets MATHEW do:
+
+| | DOS | C64, `0x012` = 0 written |
+|---|---|---|
+| before regaining | no CURE: the gate's class test fails | no CURE: the sheet mask hides it at 0 |
+| at the regain | `0x191` untouched: 1 | GEN seeds full for paladin 5: 1 |
+| after that | cure once, then full again when the node ends | cure once from full, row 141, full at the seventh midnight |
+
+**For MATHEW and DEMELTINA, writing 0 is DOS parity.** The regain gives him
+the count DOS keeps for him, and that count equals the full count for the
+level he left paladin at. **It is not parity** when the DOS count is below
+that full count, for example a paladin trained to 6 without curing (1 of 2)
+who then changed class, or when he carries a cure node. The C64 regain gives
+him the full count whatever was written, and no state the C64 can hold before
+the regain survives it. A cure row written for such a node would also end
+before the regain and set `0x012` to 1 on a non-paladin.
+
+A DOS character who was never a paladin holds 0 at `0x191`, and the C64 seed
+gives him 0 at a class change and at a regain. The two cases differ only at
+the regain.
+
 ## Evidence
 
 Everything a run wrote -- the staged saves, one JSON line per reading with
