@@ -37,9 +37,10 @@ from test_saveplan import (
 )
 
 from editor import convert, files, saveplan
+from editor import window as ew
 from editor.roster import Party
 from editor.window import EditorBinding
-from goldbox import amiga_savegame, dos_port
+from goldbox import amiga_pod, amiga_port, amiga_savegame, dos_codec, dos_port
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.d64 import D64
 from goldbox.layout import LAYOUT, NAME_SIZE
@@ -2383,3 +2384,37 @@ def test_an_edit_typed_on_the_sheet_and_never_saved_reaches_the_save_as_copy(
     assert editor.party.members[0].record.get("gold") == 9999
     reopened = Party(str(out))
     assert reopened.members[0].record.get("gold") == 9999
+
+
+@pytest.mark.parametrize("error", [
+    dos_codec.DosRecordError("writer refuses this party"),
+    dos_codec.WrongTitleError("wrong title", "a title"),
+    amiga_port.AmigaRecordError("amiga writer refuses this party"),
+    amiga_pod.ConversionError("pod writer refuses this party"),
+])
+def test_a_writer_refusing_a_party_is_refused_by_save_as_and_writes_nothing(
+        app, tmp_path, monkeypatch, error):
+    """The exception used to leave the button's slot uncaught, which aborts
+    the process with the edits on screen unsaved."""
+    from test_saveasui import _confirm
+
+    path = synthetic_save(tmp_path, "open.d64")
+    editor = EditorBinding(make_root(), str(path))
+    editor.roster.selectRow(0)
+    editor._widgets["gold"].setValue(9999)
+    monkeypatch.setattr(editor, "game_files_for", lambda _game: object())
+    editor.begin_save_as("dos")
+    out = tmp_path / "folder"
+    editor._child("destination_dos_folder").setText(str(tmp_path))
+
+    def refuses(*_a, **_k):
+        raise error
+
+    monkeypatch.setattr(saveplan, "rehearse", refuses)
+    said = _confirm(editor, monkeypatch, out)
+
+    assert said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_REFUSED)]
+    assert not out.exists() or not any(out.iterdir())
+    assert editor.path == path
+    assert editor._widgets["gold"].value() == 9999
+    assert not editor._child("destination_section").isHidden()

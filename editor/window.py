@@ -33,7 +33,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import backstab, c64_codec, classcode
+from goldbox import amiga_pod, amiga_port, backstab, c64_codec, classcode, dos_codec
 from goldbox import c64_port as por_games
 from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
@@ -2597,6 +2597,13 @@ class EditorBinding(QObject):
         except saveplan.SaveAsError as exc:
             _log.debug("Save As to %s refused: %s", path, exc)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
+        except (dos_codec.DosRecordError, amiga_port.AmigaRecordError,
+                amiga_pod.ConversionError) as exc:
+            # A writer refusing this particular party. Uncaught, PyQt6 aborts
+            # the process from the button's slot; it is the same refusal
+            # `DroppedFields` is, so it reads the same sentence.
+            _log.debug("Save As to %s refused: %s", path, exc)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
         return None
 
     def _publish_plan(self, plan, assets, _retried: bool = False) -> None:
