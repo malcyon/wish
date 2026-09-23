@@ -673,7 +673,7 @@ def _por_special(f) -> bool:
 #: names inside it: `CHRDAT<slot><n>.sav` with `.itm` and `.spc` beside it,
 #: read off disk 1 and confirmed by the game's own save to slot B (#28).
 POR_SAVE_DRAWER = "save"
-POR_PARTY_MAX = 6
+POR_PARTY_MAX = 8
 
 
 def por_filename(slot: str, index: int, suffix: str = ".sav") -> str:

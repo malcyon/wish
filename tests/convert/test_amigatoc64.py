@@ -149,7 +149,7 @@ def test_the_shipped_slot_reads_six_characters_and_its_saved_game(
     because what is under test is that the disk's blocks were read at all.
     """
     party, savgam = amiga_savegame.read_por_slot(shipped_disk, "A")
-    assert len(party) == amiga_savegame.POR_PARTY_MAX
+    assert len(party) == 6
     assert all(isinstance(c, dos_codec.DosCharacter) for c in party)
     assert all(c.deltas.key == c64_port.POOL_OF_RADIANCE.key for c in party)
     assert all(c.name for c in party)
@@ -166,7 +166,7 @@ def test_reading_off_the_disk_gives_what_reading_off_a_path_gives(
     because `read_amiga_por` wanted a path.  `read_por_slot` reads the blocks
     directly, and this is the check that the two ways in agree -- otherwise
     a second reader has quietly appeared to drift from the first."""
-    for index in range(1, amiga_savegame.POR_PARTY_MAX + 1):
+    for index in range(1, 7):
         stem = f"/save/{amiga_por.por_filename('A', index, '')}"
         here = tmp_path / f"A{index}.sav"
         here.write_bytes(shipped_disk.read_file(stem + ".sav"))
@@ -200,7 +200,7 @@ def test_a_one_character_slot_reads_one_character(engine_disk):
     -- `read_por_slot` stops at the first missing `.sav` instead of
     demanding six."""
     party, _ = amiga_savegame.read_por_slot(engine_disk, ENGINE_SLOT)
-    assert 1 <= len(party) <= amiga_savegame.POR_PARTY_MAX
+    assert 1 <= len(party) <= 6
 
 
 def test_the_three_amiga_record_sizes_name_their_own_titles():

@@ -418,11 +418,22 @@ def test_an_area_the_amiga_has_no_script_for_is_refused(ecl_dax):
         amiga_savegame.new_por_savegame(state, "B", 6, ecl_dax)
 
 
-def test_a_party_of_nobody_or_of_seven_is_refused(ecl_dax):
+def test_a_party_of_nobody_or_of_nine_is_refused(ecl_dax):
     state = _c64_state("por-party-twin-pair")
-    for count in (0, 7):
+    for count in (0, 9):
         with pytest.raises(AmigaRecordError):
             amiga_savegame.new_por_savegame(state, "B", count, ecl_dax)
+
+
+def test_a_party_of_seven_names_seven_files_in_the_table(ecl_dax):
+    state = _c64_state("por-party-twin-pair")
+    save, _report = amiga_savegame.new_por_savegame(state, "B", 7, ecl_dax)
+    assert save[amiga_savegame.POR_PARTY_SIZE_BYTE] == 7
+    assert amiga_savegame.por_word(save, 0x503E) == 7
+    for n in range(amiga_savegame.POR_NAME_SLOTS):
+        at = amiga_savegame.POR_CHARACTER_TABLE + n * amiga_savegame.POR_CHARACTER_TABLE_STRIDE
+        want = f"CHRDATB{n + 1}".encode("ascii") if n < 7 else bytes(8)
+        assert save[at:at + 8] == want, n
 
 
 # ---------------------------------------------------------------------------

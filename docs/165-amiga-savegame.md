@@ -56,6 +56,22 @@ is what says how many characters follow. Pool of Radiance's loader reads its
 count byte and then the 328-byte name table, and opens the first `count`
 names.
 
+**The engines take eight characters, not six** (CONFIRMED from the code;
+the running game is PROBABLE until a seven-member disk is driven). Pool of
+Radiance's loader (`/program`, `0x27228`-`0x272c0`) reads the count byte, then
+all `0x148` = 328 = 8 x 41 bytes of name table, and loops `1..count` with no
+upper bound tested; its save routine (`0x27750`) walks the party with no cap
+into the same table, and add-character (`0x26c8c`) refuses only when `$503E`
+is above 7. Curse (`/Curse` `0x2678e`, `0x267f4`-`0x26842`, add-character
+`0x2656e`) and Silver Blades (`/Secret` `0x27924`-`0x27972`, add-character
+`0x276a0`) loop on the word count the same way. No Amiga saved game the engines
+wrote here has more than six members, and no Curse or Silver Blades companion is
+measured, so those two titles' seven and eight are PROBABLE.
+
+The save routine deletes no `CHRDAT<slot><n>` file above a smaller later
+count (PROBABLE, not observed), so a reader takes the count as the party size
+and not the number of files present.
+
 ## The square region
 
 ### Curse, 24 bytes at `0x3201`

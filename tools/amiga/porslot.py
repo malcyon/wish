@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Copy an Amiga Pool of Radiance save slot into another slot on the disk.
 
-`goldbox.amiga_savegame.write_por_slot` writes a whole slot -- six characters, their
+`goldbox.amiga_savegame.write_por_slot` writes a whole slot -- up to eight characters, their
 items and effects, the saved game pointed at those files, and `save/save`, the
 ten-byte array the picker reads -- and until this there was no way to run it
 outside the test suite.  It is what the emulator proof for

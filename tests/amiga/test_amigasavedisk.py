@@ -136,7 +136,7 @@ def test_the_saved_game_on_a_save_disk_names_this_slots_own_files():
                    + n * amiga_savegame.POR_CHARACTER_TABLE_STRIDE
                    for n in range(amiga_savegame.POR_PARTY_MAX))
     ]
-    assert names == [f"CHRDATB{n}".encode("ascii") for n in range(1, 7)]
+    assert names == [f"CHRDATB{n}".encode("ascii") for n in range(1, 9)]
 
 
 def test_a_saved_game_of_the_wrong_size_is_refused_before_anything_is_written():
@@ -147,3 +147,50 @@ def test_a_saved_game_of_the_wrong_size_is_refused_before_anything_is_written():
     """
     with pytest.raises(amiga_port.AmigaRecordError):
         amiga_savegame.make_por_save_disk("B", party(), b"\0" * 13000)
+
+
+# -- parties of seven and eight, and the saved count as the party size -------
+
+
+def counted_savegame(slot: str, count: int) -> bytes:
+    """`synthetic_savegame` with the party-size byte set, as the engine writes it."""
+    data = bytearray(synthetic_savegame(slot))
+    data[amiga_savegame.POR_PARTY_SIZE_BYTE] = count
+    return bytes(data)
+
+
+def names_of(disk: AmigaDisk, slot: str = "B") -> list[str]:
+    return [c.name for c in amiga_savegame.read_por_characters(disk, slot, "")]
+
+
+@pytest.mark.parametrize("count", [7, 8])
+def test_a_slot_of_seven_or_eight_is_written_and_read_back_in_order(count):
+    chars = [sample(name=f"HERO{n}") for n in range(1, count + 1)]
+    disk = amiga_savegame.make_por_save_disk("B", chars, counted_savegame("B", count))
+    for n in range(1, count + 1):
+        disk.lookup(f"/CHRDATB{n}.sav")
+    assert names_of(disk) == [f"HERO{n}" for n in range(1, count + 1)]
+
+
+def test_a_smaller_party_saved_over_a_larger_one_leaves_no_stale_files():
+    disk = save_disk()
+    amiga_savegame.write_por_slot(
+        disk, "B", [sample(name=f"HERO{n}") for n in range(1, 8)],
+        counted_savegame("B", 7), drawer="")
+    amiga_savegame.write_por_slot(
+        disk, "B", [sample(name=f"HERO{n}") for n in range(1, 6)],
+        counted_savegame("B", 5), drawer="")
+    for n in (6, 7, 8):
+        with pytest.raises(AmigaDiskError):
+            disk.lookup(f"/CHRDATB{n}.sav")
+    assert len(names_of(disk)) == 5
+
+
+def test_the_saved_count_bounds_the_read_when_a_stale_character_file_remains():
+    """The engine deletes no character file above a smaller later count, so a
+    seventh file left behind is not a seventh member."""
+    chars = [sample(name=f"HERO{n}") for n in range(1, 8)]
+    disk = amiga_savegame.make_por_save_disk("B", chars, counted_savegame("B", 7))
+    disk.write_file("/savgamB.dat", counted_savegame("B", 6))
+    disk.lookup("/CHRDATB7.sav")
+    assert names_of(disk) == [f"HERO{n}" for n in range(1, 7)]

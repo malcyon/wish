@@ -20,7 +20,7 @@ already measures.  What cannot be converted is printed rather than dropped
 quietly.
 
 **The saved game around the party is built from the source save, not copied**
-(#316).  A slot is one to six character files plus a `savgam<letter>.dat`, and
+(#316).  A slot is one to eight character files plus a `savgam<letter>.dat`, and
 that container carries the map, the party's square, the clock and the quest
 flags -- so a copied one would stand a converted party where SSI's party
 stood.  All 13,141 bytes are written from the C64 or DOS save being converted,

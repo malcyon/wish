@@ -53,7 +53,7 @@ def test_read_slot_gives_what_read_por_slot_and_to_neutral_give(
     got, got_savegame = porslot.read_slot(shipped_disk, "A")
 
     assert got_savegame == savegame
-    assert len(got) == len(want) == amiga_savegame.POR_PARTY_MAX
+    assert len(got) == len(want) == 6
     for w, g in zip(want, got):
         assert g.get("name") == w.get("name")
         assert g.fields.keys() == w.fields.keys()
@@ -81,7 +81,7 @@ def test_read_slot_creates_no_temporary_directory(shipped_disk, monkeypatch):
     monkeypatch.setattr(tempfile, "mkdtemp", _boom)
 
     characters, savegame = porslot.read_slot(shipped_disk, "A")
-    assert len(characters) == amiga_savegame.POR_PARTY_MAX
+    assert len(characters) == 6
     assert len(savegame) == amiga_savegame.POR_SAVEGAME_SIZE
 
 

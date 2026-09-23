@@ -1722,7 +1722,7 @@ def test_a_dos_effect_of_the_wrong_length_is_refused_by_name(length):
 
 
 @pytest.mark.parametrize("slot,index", [("AB", 1), ("1", 1), ("A", 0),
-                                        ("A", 7), ("", 1)])
+                                        ("A", 9), ("", 1)])
 def test_a_save_file_name_outside_the_scheme_is_refused(slot, index):
     with pytest.raises(AmigaRecordError):
         amiga_por.por_filename(slot, index)
@@ -1989,8 +1989,8 @@ def test_the_slot_list_ignores_the_padding_and_keeps_the_letters():
     assert amiga_savegame.read_slot_list(disk) == ["A", "B", "D"]
 
 
-@pytest.mark.parametrize("party", [[], [1] * 7])
-def test_a_party_that_is_not_one_to_six_is_refused(party):
+@pytest.mark.parametrize("party", [[], [1] * 9])
+def test_a_party_that_is_not_one_to_eight_is_refused(party):
     disk = save_disk_with("A")
     with pytest.raises(AmigaRecordError):
         amiga_savegame.write_por_slot(disk, "B", [sample()] * len(party),

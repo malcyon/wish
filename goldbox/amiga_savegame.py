@@ -39,7 +39,11 @@ VM_BASE = 0x4900
 ECL_BYTES = 7680
 SAVE_DRAWER = "SAVE"
 SLOT_LETTERS = "ABCDEFGHIJ"
-PARTY_MAX = 6
+# The Amiga engines load and save up to eight characters: Pool of Radiance's
+# loader (/program 0x272a6), Curse's (/Curse 0x2683e) and Silver Blades'
+# (/Secret 0x2796e) loop on the count with no cap, and add-character refuses
+# only above seven.
+PARTY_MAX = 8
 GAME_MODE_CAMP = 2
 GAME_MODE_OVERLAND = 3
 GAME_MODE_ADVENTURING = 4
@@ -787,7 +791,12 @@ def _por_file(disk: AmigaDisk, letter: str, index: int, suffix: str,
 def read_por_characters(disk: AmigaDisk, slot: str,
                         drawer: str | None = None) -> list:
     """The `AmigaPorCharacter` of each Pool character file in one disk slot, in
-    file order, stopping at the first missing `.sav`.
+    file order.
+
+    Reads as many as the slot's saved game counts, as the engine's loader does:
+    the save routine deletes no character file above a smaller later count, so
+    a stale `CHRDAT<slot>7.sav` is not a seventh member.  A slot with no saved
+    game, or one whose count is 0, reads until the first missing `.sav`.
 
     Returned as a list rather than yielded, so a bad slot letter or a disk
     with no save drawer is refused here and not at the first step of a loop.
@@ -795,8 +804,16 @@ def read_por_characters(disk: AmigaDisk, slot: str,
     from . import amiga_por
     letter = _por_slot(slot)
     drawer = por_save_drawer(disk) if drawer is None else drawer
+    limit = PARTY_MAX
+    try:
+        save = disk.read_file(por_save_path(por_savegame_filename(letter), drawer))
+    except AmigaDiskError:
+        save = None
+    if save is not None:
+        # A count of 0 is not a party the engine writes; read such a file by presence.
+        limit = min(parse(save, POOL_OF_RADIANCE, validate=False).count or limit, PARTY_MAX)
     characters = []
-    for index in range(1, PARTY_MAX + 1):
+    for index in range(1, limit + 1):
         raw, items, effects = (_por_file(disk, letter, index, suffix, drawer)
                                for suffix in (".sav", ".itm", ".spc"))
         if raw is None:

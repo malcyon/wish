@@ -109,7 +109,7 @@ def check(save: amiga_savegame.AmigaSavegame) -> list[tuple[str, bool, str]]:
             out.append(("the party rebuilds to the bytes it was read from",
                         rebuilt == save.data,
                         f"{len(rebuilt)} bytes against {len(save.data)}"))
-    out.append(("the party count is 1 to 6",
+    out.append((f"the party count is 1 to {amiga_savegame.PARTY_MAX}",
                 1 <= save.count <= amiga_savegame.PARTY_MAX, str(save.count)))
     out.append(("facing is doubled: 0, 2, 4 or 6",
                 save.square["facing"] in (0, 2, 4, 6),

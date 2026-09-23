@@ -116,7 +116,7 @@ def test_a_synthetic_pool_of_radiance_save_reads_back_through_the_map():
     assert all(ok for _, ok, _ in check(save)), check(save)
 
 
-@pytest.mark.parametrize("count", [0, 7, 8, 9])
+@pytest.mark.parametrize("count", [0, 9])
 def test_strict_pool_parsing_rejects_party_sizes_outside_the_writer_limit(count):
     data = synthetic_pool_of_radiance(count=count)
 
@@ -124,8 +124,28 @@ def test_strict_pool_parsing_rejects_party_sizes_outside_the_writer_limit(count)
     assert save.count == count
     assert save.names[:min(count, amiga_savegame.POR_NAME_SLOTS)] == tuple(
         f"CHRDATA{i}" for i in range(1, min(count, amiga_savegame.POR_NAME_SLOTS) + 1))
-    with pytest.raises(AmigaSaveError, match="party is 1 to 6"):
+    with pytest.raises(AmigaSaveError, match="party is 1 to 8"):
         parse(data, POOL_OF_RADIANCE)
+
+
+@pytest.mark.parametrize("count", [1, 7, 8])
+def test_strict_pool_parsing_accepts_up_to_eight(count):
+    data = synthetic_pool_of_radiance(count=count)
+    assert parse(data, POOL_OF_RADIANCE).count == count
+
+
+def test_the_two_pool_party_limits_agree_at_eight():
+    from goldbox import amiga_por
+    assert amiga_por.POR_PARTY_MAX == amiga_savegame.PARTY_MAX == 8
+    assert amiga_savegame.POR_PARTY_MAX == 8
+
+
+@pytest.mark.parametrize("size", [7, 8])
+def test_a_curse_party_of_seven_or_eight_round_trips(size):
+    data = synthetic_curse(tuple(f"CHARACTER{i}" for i in range(size)))
+    save = parse(data, CURSE)
+    assert save.count == size
+    assert rebuild(save) == data
 
 
 def test_the_count_word_is_the_table_of_contents_not_the_scan():
@@ -142,15 +162,15 @@ def test_the_count_word_is_the_table_of_contents_not_the_scan():
     assert "the last block ends at the end of the file" in failed
 
 
-@pytest.mark.parametrize("names", [(), tuple(f"CHARACTER{i}" for i in range(7))])
+@pytest.mark.parametrize("names", [(), tuple(f"CHARACTER{i}" for i in range(9))])
 def test_diagnostic_parsing_reports_party_sizes_the_writer_rejects(names):
     data = synthetic_curse(names)
     save = parse(data, CURSE, validate=False)
 
     assert save.count == len(names)
-    assert any(claim == "the party count is 1 to 6" and not ok
+    assert any(claim == "the party count is 1 to 8" and not ok
                for claim, ok, _ in check(save))
-    assert "[FAIL] the party count is 1 to 6" in report(save)
+    assert "[FAIL] the party count is 1 to 8" in report(save)
     with pytest.raises(AmigaSaveError):
         parse(data, CURSE)
     with pytest.raises(AmigaSaveError):
@@ -159,10 +179,10 @@ def test_diagnostic_parsing_reports_party_sizes_the_writer_rejects(names):
 
 def test_diagnostic_cli_reports_an_oversized_party(tmp_path, capsys):
     path = tmp_path / "oversized.dat"
-    path.write_bytes(synthetic_curse(tuple(f"CHARACTER{i}" for i in range(7))))
+    path.write_bytes(synthetic_curse(tuple(f"CHARACTER{i}" for i in range(9))))
 
     assert main([str(path)]) == 1
-    assert "[FAIL] the party count is 1 to 6" in capsys.readouterr().out
+    assert "[FAIL] the party count is 1 to 8" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("mutate", [
@@ -336,7 +356,7 @@ def test_an_empty_or_oversized_party_is_refused():
     with pytest.raises(AmigaSaveError):
         rebuild(save, [])
     with pytest.raises(AmigaSaveError):
-        rebuild(save, save.characters * 4)
+        rebuild(save, save.characters * 5)
 
 
 def test_pool_of_radiance_is_refused_because_its_party_is_not_in_the_file():
