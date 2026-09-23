@@ -2227,6 +2227,7 @@ graph LR
   dos_codec --> layout
   dos_codec --> levels
   dos_codec --> neutral
+  dos_codec --> paladin
   dos_codec --> portraits
   dos_codec --> record
   dos_codec -.->|deferred| savegame
