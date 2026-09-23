@@ -434,3 +434,62 @@ def test_every_nonzero_word_a_later_titles_container_holds_is_written_or_declare
                 raise AssertionError(
                     f"{name} holds {v} at ${addr:04X}, which the conversion "
                     f"neither writes nor declares")
+
+
+# --- a party saved before BEGIN ADVENTURING ----------------------------------
+
+#: The player's own shipped pre-adventure C64 save of each title, as
+#: `(registry entry, disk, file)`, and the DOS archive directory whose
+#: shipped `SAVGAMA.DAT` is the same state.
+PRE_ADVENTURE = {
+    CURSE: ("curse-of-the-azure-bonds", "CURSE_C.D64", "SAVEAZURE", "CURSE"),
+    SSB: ("secret-of-the-silver-blades", "SILVER-6.D64", "SAVEDBASH",
+          "SECRET"),
+}
+
+
+def _pre_adventure_payload(shape):
+    from automap import gamedisks
+    from goldbox import c64_port
+    from goldbox.d64 import split_load_address
+    key, disk, name, _stem = PRE_ADVENTURE[shape]
+    for root in gamedisks.candidates(key):
+        path = root / disk
+        if path.is_file():
+            payload = split_load_address(D64.open(path).read_file(name))[1]
+            return c64_port.by_key(shape.key), payload
+    pytest.skip(f"needs {disk} from the {key} registry entry")
+
+
+def _shipped_pre_adventure_save(shape) -> bytes:
+    from support.dossave import _game_dirs
+    folder = _game_dirs().get(PRE_ADVENTURE[shape][3])
+    if folder is None or not (folder / "SAVGAMA.DAT").is_file():
+        pytest.skip("needs the archives' shipped saves")
+    return (folder / "SAVGAMA.DAT").read_bytes()
+
+
+@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+def test_a_party_saved_before_begin_adventuring_converts_to_the_shipped_form(
+        shape, tmp_path):
+    """Area 0 is no area of either title, so the party is written as the
+    initialiser leaves it: every byte through the party-file table equals
+    the archives' own pre-adventure save, with no script staged."""
+    from goldbox import world_state
+    game, save0 = _pre_adventure_payload(shape)
+    shipped = _shipped_pre_adventure_save(shape)
+    state = world_state.from_c64(save0, game=game)
+    assert state.set_out is False
+    assert (state.area, state.geo) == (0, 0)
+
+    report = dos_codec.new_dos_save(
+        save0, None, tmp_path, "A", _game_dir(PRE_ADVENTURE[shape][3]),
+        title=game)
+    assert report.unwritten == []
+    written = (tmp_path / "SAVGAMA.DAT").read_bytes()
+    assert len(written) == shape.size
+    assert written[:shape.party_table] == shipped[:shape.party_table]
+    assert not (shape.script_buffer and any(
+        written[shape.script_buffer[0]:shape.script_buffer[1]]))
+    assert sg.party_size(written) == 6
+    assert len(dos_codec.read_party(tmp_path, "A")) == 6

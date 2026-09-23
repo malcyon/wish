@@ -235,6 +235,19 @@ def _resolve_dos_place(savgam: bytes, shape: "dos_savegame.DosContainer"):
     return where.id, geo, x, y, facing, where.outdoors, fresh
 
 
+def is_pre_adventure_area(title: str, area: int) -> bool:
+    """Whether `area` is the placeless state a Curse or Silver Blades party
+    is in before `BEGIN ADVENTURING`.
+
+    Raw area 0 there, where no row of the title's area table names it.  Pool
+    of Radiance's area 0 is New Phlan, so it is never this.
+    """
+    return (area == 0
+            and title in (areas.CURSE_OF_THE_AZURE_BONDS,
+                          areas.SECRET_OF_THE_SILVER_BLADES)
+            and areas.area_in(0, title) is None)
+
+
 def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
     """A C64 `SAVEDGAME0` payload, as a place and a clock.
 
@@ -250,18 +263,23 @@ def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
     the travel grid, because no outdoor Amiga saved game has ever been
     read)` closed.
 
-    There is no "has this party set out" question on the C64 side: every
-    C64 save this project has read represents a party already in the
-    world, so `set_out` is always true.
+    `set_out` is false only for a Curse or Silver Blades save whose area is
+    the raw 0 no row of either title's area table names -- the party menu's
+    own SAVE CURRENT GAME, made before `BEGIN ADVENTURING`.  `area`, `geo`
+    and the square stay as the payload holds them, because that state has
+    no place: a writer that needs the first real area takes it from
+    `goldbox.areas.STARTS`.  Pool of Radiance's area 0 is New Phlan, a real
+    place, so its `set_out` is always true.
     """
     from . import dos_codec as _dos
 
     container = c64_save.container_for(game)
     base = _dos.SAVE0_BASE
     first, width = container.quest_flags
+    area = save0[container.current_script]
     return WorldState(
         title=container.game.title,
-        area=save0[container.current_script],
+        area=area,
         geo=save0[container.current_geo],
         x=save0[container.position],
         y=save0[container.position + 1],
@@ -274,7 +292,7 @@ def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
         outdoors=not save0[container.indoors],
         travel=(save0[container.travel_position],
                 save0[container.travel_position + 1]),
-        set_out=True,
+        set_out=not is_pre_adventure_area(container.game.title, area),
         header={a: save0[a - base] for a in HEADER_ADDRESSES},
         source=source)
 

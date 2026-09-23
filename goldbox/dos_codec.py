@@ -6976,6 +6976,23 @@ SAVGAM_CONSTANTS_LATER: dict[str, tuple[tuple[int, int, str], ...]] = {
     ),
 }
 
+#: The disk number a Curse or Silver Blades party that has not set out
+#: holds in byte 0 and in `$5012`: the disk the C64 party menu sits on, 2
+#: for Curse and 1 for Silver Blades, in both shipped DOS parties of each
+#: title and in the C64 save's own disk hint.
+PRE_ADVENTURE_DISK = {
+    "curse-of-the-azure-bonds": 2,
+    "secret-of-the-silver-blades": 1,
+}
+
+#: The square the initialiser writes into the square block, facing north
+#: (`GAME.OVR:0xF95E` in Curse).  The C64 save's own square there is `0,0`.
+PRE_ADVENTURE_SQUARE = (7, 13, 0)
+
+#: Words the engine writes only once a party is in the world, which a party
+#: that has not set out holds at zero.
+PRE_ADVENTURE_ZERO = frozenset({LATER_BEGUN_WORD, 0x506D, 0x50F6})
+
 #: Words of the later titles' variable arrays that some engine-written
 #: container holds live and this conversion writes **zero**, with the
 #: reason each is nobody's -- the later-title `SAVGAM_UNSOURCED`.  The
@@ -7234,6 +7251,12 @@ def c64_title(save0: bytes, title=None) -> c64_port.C64Container:
         f"titles; say which with `title=`")
 
 
+def _has_not_set_out(state: "world_state.WorldState") -> bool:
+    """A Curse or Silver Blades state made before `BEGIN ADVENTURING`."""
+    return (not state.set_out
+            and world_state.is_pre_adventure_area(state.title, state.area))
+
+
 def savgam_writes(savgam: bytearray, report: "SaveReport",
                   state: "world_state.WorldState",
                   slot: str, count: int, script: "bytes | None", *,
@@ -7298,40 +7321,67 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
             f"is {len(savgam)}")
     area = state.area
     geo = state.geo
-    where = areas.area_in(area, game.title)
-    if dax is None:
-        dax = where.disk
-    x, y, facing = state.x, state.y, state.facing
-    indoors = not where.outdoors
+    fresh = _has_not_set_out(state)
+    if fresh:
+        # No area and no script: the initialiser's own world state.
+        where = None
+        dax = PRE_ADVENTURE_DISK[game.key]
+        geo = 0
+        x, y, facing = PRE_ADVENTURE_SQUARE
+        indoors = True
+        script = bytes(dos_savegame.ECL_HEADER) if shape.script_buffer else None
+    else:
+        where = areas.area_in(area, game.title)
+        if dax is None:
+            dax = where.disk
+        x, y, facing = state.x, state.y, state.facing
+        indoors = not where.outdoors
 
     # Outdoors the C64's own cache slots 15-17 read `$FF` -- the travel grid
     # loads no `WALLSET` on either port -- which would make the triple
     # `($FFFF, $FFFF, $FFFF)` where every engine-written outdoor DOS save
     # holds `(0, $FFFF, $FFFF)`.  So the measured overland value is written
     # instead of the empty read, and `OUTDOOR_WALLSET` carries the evidence.
-    wallset = (state.wallset if indoors else dos_savegame.OUTDOOR_WALLSET)
+    # A party that has not set out holds the same triple, written by the
+    # initialiser.
+    wallset = (state.wallset if indoors and not fresh
+               else dos_savegame.OUTDOOR_WALLSET)
     dos_savegame.retarget(savgam, area=area, dax=dax,
                           wallset=wallset, script=script,
-                          outdoors=not indoors, geo=geo, container=shape)
-    report.note(shape.head, shape.dax_bytes,
-                f"the DAX container number, {dax}, for area "
-                f"{area} ({where.name or where.ecl})"
-                + ("" if dax == where.disk else
-                   f" -- the DOS ECL{dax}.DAX that holds the block, not "
-                   f"the C64 side {where.disk} (#299)"))
+                          outdoors=not indoors and not fresh, geo=geo,
+                          container=shape)
+    if fresh:
+        report.note(shape.head, shape.dax_bytes,
+                    f"the disk number, {dax}, the party menu's own: no "
+                    f"area has been entered")
+    else:
+        report.note(shape.head, shape.dax_bytes,
+                    f"the DAX container number, {dax}, for area "
+                    f"{area} ({where.name or where.ecl})"
+                    + ("" if dax == where.disk else
+                       f" -- the DOS ECL{dax}.DAX that holds the block, not "
+                       f"the C64 side {where.disk} (#299)"))
     _note_word(report, dos_savegame.AREA, 1,
+               "zero: no map is resident before the party sets out"
+               if fresh else
                "the resident GEO, the C64's own $49C5" if indoors else
                "zero: the overland names no GEO, which is what an outdoor "
                "DOS save holds here in 10 of 10 -- and it is not the C64's "
                "own $49C5, which outdoors holds the SQRDATA number (#59)",
                shape)
-    _note_word(report, dos_savegame.SCRIPT, 1, "the area's script id", shape)
+    _note_word(report, dos_savegame.SCRIPT, 1,
+               "zero: no area has been entered" if fresh
+               else "the area's script id", shape)
     _note_word(report, dos_savegame.DISK, 1,
+               "the disk number again" if fresh else
                "the DAX container number again -- the geo load reads "
                "this word and not the header byte (#59)", shape)
     wallset_why = (
         "the wallset triple, from the C64 loaded-files cache "
         "slots 15-17, which carry the same three numbers" if indoors
+        and not fresh
+        else "the initialiser's wallset triple (0,$FFFF,$FFFF), which "
+        "every shipped party that has not set out holds" if fresh
         else "the overland wallset triple (0,$FFFF,$FFFF), which the "
         "engine writes for itself out there -- it replaced a seeded "
         "(1,5,9) three times of three, and no outdoor load reads it "
@@ -7347,11 +7397,17 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
                    "the wall-index map that goes with the triple", shape)
     if shape.script_buffer is not None:
         start, end = shape.script_buffer
-        report.note(start, end - start,
-                    f"the area's own ECL{dax}.DAX block from byte "
-                    f"{dos_savegame.ECL_HEADER} on, then zero to the end of "
-                    f"the buffer -- which is what an engine-written save "
-                    f"holds past its script's end, 6 of 6 (#59)")
+        if fresh:
+            report.note(start, end - start,
+                        "zero: no area's script is staged before the party "
+                        "sets out")
+        else:
+            report.note(start, end - start,
+                        f"the area's own ECL{dax}.DAX block from byte "
+                        f"{dos_savegame.ECL_HEADER} on, then zero to the "
+                        f"end of the buffer -- which is what an "
+                        f"engine-written save holds past its script's end, "
+                        f"6 of 6 (#59)")
     dos_savegame.put_word(savgam, dos_savegame.INDOORS, 1 if indoors else 0,
                           shape)
     _note_word(report, dos_savegame.INDOORS, 1,
@@ -7361,6 +7417,8 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     if indoors:
         dos_savegame.put_position(savgam, x, y, facing, shape)
         report.note(shape.pos_x, 3,
+                    f"the initialiser's square ({x},{y}) facing north, "
+                    f"which is not the C64 save's own" if fresh else
                     f"the square ({x},{y}) facing {facing}, the C64's own "
                     f"facing doubled")
     else:
@@ -7447,9 +7505,14 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
                "a clock digit, the C64's own byte at the same address", shape)
 
     for address, value, why in savgam_constants(shape):
+        if fresh and address in PRE_ADVENTURE_ZERO:
+            _note_word(report, address, 1,
+                       "zero: the engine writes this word only once the "
+                       "party has set out, and every shipped party that "
+                       "has not holds it at zero", shape)
+            continue
         dos_savegame.put_word(savgam, address, value, shape)
         _note_word(report, address, 1, f"a documented constant: {why}", shape)
-
     if later:
         # `$49FF` is in the title's own constants above -- the later
         # titles draw no sheet portrait (`draws_sheet_portrait`), so the
@@ -7777,11 +7840,19 @@ def write_dos_save_from(state: "world_state.WorldState",
         raise DosRecordError(
             f"the template's SAVGAM{slot}{shape.suffix} is {len(savgam)} "
             f"bytes, not the {shape.size} a {shape.title} save is")
-    where, dax = _area_dax(state.area, template, game, c64.title)
-    # Silver Blades stages no script (`script_bytes` = 0) and reloads the
-    # area's from `ECL<dax>.DAX` on load; the number is all it needs.
-    script = (_area_script(state.area, template, game, c64.title, dax)
-              if shape.script_buffer is not None else None)
+    fresh = _has_not_set_out(state)
+    if fresh:
+        if template is not None:
+            raise DosRecordError(
+                "a party that has not set out is written from nothing, "
+                "not on top of a template's save")
+        where, dax, script = None, PRE_ADVENTURE_DISK[c64.key], None
+    else:
+        where, dax = _area_dax(state.area, template, game, c64.title)
+        # Silver Blades stages no script (`script_bytes` = 0) and reloads
+        # the area's from `ECL<dax>.DAX` on load; the number is all it needs.
+        script = (_area_script(state.area, template, game, c64.title, dax)
+                  if shape.script_buffer is not None else None)
 
     report = SaveReport(total=shape.size)
     # The sheet portrait crosses through the creation menu's own tables, and
@@ -7833,20 +7904,25 @@ def write_dos_save_from(state: "world_state.WorldState",
     # Outdoors `$49C0`/`$49C1` are the frozen square it left the grid on, so
     # a report that printed them would name a place the party is not, and the
     # world coordinate is what the game's own status line shows.
-    if where.outdoors:
-        tx, ty = dos_savegame.travel_square(bytes(savgam))
-        world = tx + dos_savegame.WINDOW_X_OFFSET.get(state.area, 0)
-        stood = (f"on the travel grid at ({tx},{ty}), window-local -- world "
-                 f"({world},{ty}) on the status line")
-    else:
-        stood = f"at ({state.x},{state.y}) facing {state.facing}"
-    script_line = (f", including the area's own script out of "
-                   f"{ECL_DAX.format(dax=dax)}" if script is not None else
-                   f"; the script is not staged, {shape.title} reloads it "
-                   f"from {ECL_DAX.format(dax=dax)}")
+    place = []
+    if not fresh:
+        if where.outdoors:
+            tx, ty = dos_savegame.travel_square(bytes(savgam))
+            world = tx + dos_savegame.WINDOW_X_OFFSET.get(state.area, 0)
+            stood = (f"on the travel grid at ({tx},{ty}), window-local -- "
+                     f"world ({world},{ty}) on the status line")
+        else:
+            stood = f"at ({state.x},{state.y}) facing {state.facing}"
+        script_line = (f", including the area's own script out of "
+                       f"{ECL_DAX.format(dax=dax)}" if script is not None
+                       else f"; the script is not staged, {shape.title} "
+                       f"reloads it from {ECL_DAX.format(dax=dax)}")
+        place.append(
+            f"the place: area {state.area}, {where.name or where.ecl}, "
+            f"{stood} -- every write dos_savegame.RETARGET_WRITES "
+            f"names{script_line}")
     report.converted.extend((
-        f"the place: area {state.area}, {where.name or where.ecl}, {stood} "
-        f"-- every write dos_savegame.RETARGET_WRITES names{script_line}",
+        *place,
         f"the party's filenames: CHRDAT{slot.upper()}1-"
         f"{dos_savegame.PARTY_ENTRIES}, which is what the engine loads from",
         f"quest flags: {len(state.flags)} C64 bytes widened to "
