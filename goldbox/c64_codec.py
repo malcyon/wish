@@ -746,6 +746,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     cures = use("paladin_cures")
     heal = use("lay_on_hands_minutes")
     running = use("running_effects")
+    former = use("former_levels")
 
     for field, c64_name in DIRECT:
         # Recomputed below rather than copied (#366, #405): `DIRECT` still
@@ -1053,11 +1054,24 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             f"{label}: row {slot}, id {effect_id}, duration ${duration:02X}")
         return True
 
+    # A dual-classed former paladin: the C64 keeps no count for a class he
+    # has left, zeroes 0x012 at the class change, and refills it to the full
+    # count for his old level when he regains the class. A DOS count that is
+    # already that full count, with no timer running, is what the regain
+    # rebuilds, so nothing is lost by writing zero.
+    former_paladin = ((former.value.get("paladin") or 0)
+                      if former is not None else 0)
+    regained_by_engine = (
+        cure_entry is not None and level_paladin == 0 and former_paladin > 0
+        and cure_node is None and cure_value
+        and cure_value == paladin.full_count(former_paladin)
+        == paladin.dos_full_count(former_paladin))
+
     if cure_entry is None or level_paladin == 0:
         # Pool of Radiance has no paladin at all, and a character with no
         # paladin level in a title that does gets 0/0, which is what GEN
         # writes -- both byte and any value it held are a loss, not a copy.
-        if cure_value:
+        if cure_value and not regained_by_engine:
             _row_lost("paladin_cures",
                       "Pool of Radiance keeps no cure-disease byte" if
                       cure_entry is None else
@@ -1216,7 +1230,6 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # array: `dual_class_level` is the pair's sentinel, so zero there means
     # "not dual-classed" whatever `dual_class_slot` holds, and a character
     # who left two classes cannot be spelled at all.
-    former = use("former_levels")
     if former is not None:
         held = {n: lv for n, lv in former.value.items() if lv}
         if not held:

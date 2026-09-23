@@ -330,26 +330,8 @@ def test_c64_to_dos_matches_the_library_for_every_title(
 # something for this test to work around.
 # ---------------------------------------------------------------------------
 
-#: `DOS_TO_C64_CASES`, with a mark added for the one case that refuses
-#: today. `DOS_TO_C64_CASES` itself stays unmarked -- the byte-comparison
-#: test above passes for this specimen, because it never checks
-#: `report.losses` -- so the mark is only ever applied to the Save As
-#: proof, which does check it.
-_SAVE_AS_DOS_TO_C64_CASES = [
-    pytest.param(*case.values, id=case.id, marks=(
-        pytest.mark.xfail(
-            strict=True,
-            reason="#649 (Converting a dual-classed DOS Curse of the "
-                  "Azure Bonds character to C64 loses his leftover "
-                  "paladin cure-disease use): MATHEW's own confirmed "
-                  "paladin_cures byte is refused rather than converted")
-        if case.id == "curse-of-the-azure-bonds" else ()))
-    for case in DOS_TO_C64_CASES
-]
-
-
 @pytest.mark.parametrize("specimen_name, file_name, game",
-                         _SAVE_AS_DOS_TO_C64_CASES)
+                         DOS_TO_C64_CASES)
 def test_save_as_prepares_what_convert_writes_dos_to_c64(
         app, tmp_path, specimen_name, file_name, game):
     """`saveplan.prepare_save_as` returns a `SavePlan` for the same DOS
@@ -479,3 +461,58 @@ def test_save_as_prepares_what_convert_writes_amiga_directions(
     plan = saveplan.prepare_save_as(
         party, direction.destination_port, tmp_path / f"out{suffix}", assets)
     assert isinstance(plan, saveplan.SavePlan)
+
+
+# ---------------------------------------------------------------------------
+# A dual-classed former paladin's cure-disease count. The C64 zeroes 0x012 for
+# a class he has left and refills it to the full count for his old level when
+# he regains the class, so a DOS count equal to that full count loses nothing.
+# ---------------------------------------------------------------------------
+
+def _former_paladin_write(former_level, cures):
+    """A blank Curse DOS record made a magic-user 1 who left paladin at
+    `former_level` holding `cures` uses, written to a C64 record."""
+    from goldbox import c64_codec
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(
+        bytes(dos_port.CURSE_OF_THE_AZURE_BONDS.record_size),
+        deltas=dos_port.CURSE_OF_THE_AZURE_BONDS))
+    char.set("levels", {"magic-user": 1}, "test")
+    char.set("former_levels", {"paladin": former_level}, "test")
+    char.set("paladin_cures", cures, "test")
+    return c64_codec.write(char)
+
+
+def test_a_dual_classed_former_paladin_at_his_full_count_loses_nothing():
+    """MATHEW's state, synthetically: paladin 5 held 1 use, the full count."""
+    rec, rep = _former_paladin_write(5, 1)
+    assert rec.get("paladin_cures") == 0 and rec.get("lay_on_hands_uses") == 0
+    assert not [x for x in rep.losses if "paladin_cures" in x]
+
+
+def test_a_dual_classed_former_paladin_below_his_full_count_still_reports():
+    """Paladin 6 holds 1 of his 2; the regain would give him 2, so the DOS
+    state is not reproduced and the loss is kept."""
+    rec, rep = _former_paladin_write(6, 1)
+    assert rec.get("paladin_cures") == 0
+    assert [x for x in rep.losses if "paladin_cures" in x]
+
+
+def test_mathew_dual_classed_writes_zero_cure_bytes_and_no_loss():
+    """`WISH-SPEC-curse-131-dualclassed-in-area-1`'s MATHEW (CHRDATJ1.SAV, a
+    save found in the specimen tree): 0x012 and 0x013 zero, no cure row."""
+    from goldbox import c64_codec
+    folder = _dos_specimen("curse-131-dualclassed-in-area-1")
+    if folder is None:
+        pytest.skip("needs ~/wish-specimens/*-dos/WISH-SPEC-"
+                    "curse-131-dualclassed-in-area-1")
+    char = dos_codec.to_neutral(dos_codec.read_character(
+        folder / "CHRDATJ1.SAV"))
+    assert char.get("paladin_cures") == 1 and not char.get("levels").get("paladin")
+    payload = bytearray(0x4000)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=0)
+    raw = rec.to_bytes()
+    assert rec.get("paladin_cures") == 0
+    assert rec.get("lay_on_hands_uses") == 0
+    assert raw[0x012] == 0 and raw[0x013] == 0
+    assert not [x for x in rep.losses if "paladin_cures" in x]
+    assert not [x for x in rep.warnings if "paladin_cures" in x]
