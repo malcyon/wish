@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from . import classcode, derive, effects, neutral, paladin, spells, titles
+from . import classcode, derive, effects, neutral, paladin, spells, titles, traits
 from . import levels as level_tables
 from .encoding import COMBAT_BIAS
 from .layout import RECORD_SIZE, Confidence, Field
@@ -1007,21 +1007,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     clock = clock_minutes if clock_minutes is not None else 0
 
     # Split `running_effects` into the node whose id is this title's own
-    # cure timer, and the rest -- which is `Writer.use`'s job normally, but
-    # a used field no longer reaches `Writer.finish`'s own sweep, so the
-    # remainder is reported here in its place, exactly as `DROPPED` would
-    # have (Stage 2 of #600 is what converts the rest).
+    # cure timer, which the paladin block below writes, and the rest, which
+    # become rows of their own through `effects.c64_row`.
     cure_node = None
+    other_nodes: list[effects.RunningEffect] = []
     if running is not None:
         rows = running.value if isinstance(running.value, (list, tuple)) else None
         if rows is None:
-            # Not a list of nine-byte records at all -- a value this writer
-            # cannot make sense of, same as `Writer.finish`'s own generic
-            # sweep would report for a field never `use()`d.
+            # Not a list of nine-byte records at all: a value this writer
+            # cannot make sense of.
             rep.dropped.append(
-                "running_effects: " + dict(DROPPED)["running_effects"])
+                "running_effects: not a list of nine-byte effect records")
         else:
-            remaining = []
             for raw in rows:
                 row = effects.RunningEffect.from_record(
                     bytes(raw)[:effects.RUNNING_EFFECT_SIZE])
@@ -1029,10 +1026,29 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                         and cure_node is None):
                     cure_node = row
                 else:
-                    remaining.append(raw)
-            if remaining:
-                rep.dropped.append(
-                    "running_effects: " + dict(DROPPED)["running_effects"])
+                    other_nodes.append(row)
+
+    for node in other_nodes:
+        which = (f"running_effects: effect {node.id} "
+                 f"({traits.describe(node.id, char.game)}), "
+                 f"{node.minutes} minutes left")
+        row_for = effects.c64_row(title_key, node)
+        if isinstance(row_for, effects.Unconverted):
+            rep.dropped.append(f"{which}: {row_for.reason}")
+        elif payload is None:
+            rep.lost(f"{which}: no payload was given to write a row into "
+                     "the save's shared effect arrays")
+        else:
+            slot = effects.free_slot(payload)
+            if slot is None:
+                rep.lost(f"{which}: no free slot in the save's shared "
+                         "effect arrays")
+            else:
+                c64_id, magnitude = row_for
+                effects.write_effect(
+                    payload, slot, c64_id,
+                    party_slot if party_slot is not None else 0,
+                    effects.closest_duration(node.minutes, clock), magnitude)
 
     cure_value = int(cures.value) if cures is not None else 0
     heal_value = int(heal.value) if heal is not None else 0
@@ -1724,6 +1740,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
 # ---------------------------------------------------------------------------
 #: Neutral fields the writer takes by a rule rather than by a copy.
 TRANSFORMED: tuple[tuple[str, str], ...] = (
+    ("running_effects", "each node is written as a row in the save's shared "
+                        "active-effect arrays through `goldbox.effects.c64_row`, "
+                        "owned by the character's save slot, its time through "
+                        "`goldbox.effects.closest_duration`; a node with no "
+                        "rule is reported by id and refused; the paladin's cure "
+                        "node goes through the `paladin_cures` row "
+                        "(`docs/226-the-c64-running-effect-crosswalk.md`)"),
     ("name", "re-padded into the C64's 18 NUL-padded bytes at 0x000"),
     ("levels", "permuted onto the C64's eight slots, which are indexed by the "
                "class bit; a class with no bit is reported"),
@@ -1861,35 +1884,7 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
 
 #: Neutral fields the C64 writer takes nothing from, and why.  Reported by
 #: `Writer.finish` for any character that carries one, never silent.
-DROPPED: tuple[tuple[str, str], ...] = (
-    ("running_effects", "the C64 keeps a running effect in the save's own "
-                        "64-slot active-effect arrays (`goldbox/effects.py`) "
-                        "and not in the character record, and `write_c64_save` "
-                        "zeroes those arrays. Converting into them is not "
-                        "built. Settled for all three titles: the camp-clock "
-                        "time, through `goldbox.effects.closest_duration`; and "
-                        "the slot, the owner and which of two casts keeps a "
-                        "slot, through `free_slot`, `slot_for` and "
-                        "`replaces_slot`, which are the engines' own "
-                        "allocator. Settled for Curse of the Azure Bonds and "
-                        "Secret of the Silver Blades: the value for Mirror "
-                        "Image, Strength, Enlarge and Friends, whose "
-                        "magnitudes hold a modifier rather than the score they "
-                        "replaced. Unconverted: Pool of Radiance's overlapping "
-                        "Strength nodes, which the destination holds but which "
-                        "need a value recomputed from the DOS chain's timeline "
-                        "rather than each node translated on its own; a spent "
-                        "Curse Mirror Image, whose count of zero is not a "
-                        "magnitude the C64 writes; a boosted strength of "
-                        "18/100, where the DOS clamp leaves no base to rebuild "
-                        "from; Pool's party-wide Prayer row; the ids nobody "
-                        "has read; and two ageing routes -- combat ages only "
-                        "unit 00, and Silver Blades' walking rule differs from "
-                        "Pool's and Curse's, and every id but the paladin's "
-                        "own cure timer, which is converted -- see "
-                        "`TRANSFORMED`'s `paladin_cures` row "
-                        "(`docs/226-the-c64-running-effect-crosswalk.md`)"),
-)
+DROPPED: tuple[tuple[str, str], ...] = ()
 
 #: Neutral fields the C64 **recomputes for itself**, so writing them would be
 #: pointless rather than impossible.  Reported by `field_disposition` as

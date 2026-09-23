@@ -311,6 +311,35 @@ class RunningEffect:
                        self.data, self.flag)) + _RUNNING_EFFECT_NEXT)
 
 
+#: The Pool of Radiance effect ids whose ordinary cast stores the caster's level
+#: as the DOS data byte and as the C64 magnitude
+#: (`docs/226-the-c64-running-effect-crosswalk.md`).
+POOL_CASTER_LEVEL_IDS = frozenset(
+    {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 25, 37, 41, 45, 46})
+
+
+@dataclass(frozen=True)
+class Unconverted:
+    """A running effect `c64_row` has no rule for, and the reason in a clause."""
+
+    reason: str
+
+
+def c64_row(title_key: str, node: RunningEffect) -> tuple[int, int] | Unconverted:
+    """The C64 id and magnitude for a DOS running effect, or why there is none.
+
+    Only Pool of Radiance's caster-level ids are converted: an id in
+    `POOL_CASTER_LEVEL_IDS`, flag 0, whose data byte is a caster level.
+    """
+    if title_key != "pool-of-radiance" or node.id not in POOL_CASTER_LEVEL_IDS:
+        return Unconverted("no rule yet for this id in this title")
+    if node.flag != 0:
+        return Unconverted("a flag byte other than 0 on a caster-level effect")
+    if not 1 <= node.data <= 0x7F:
+        return Unconverted("a data byte that is not a caster level")
+    return node.id, node.data
+
+
 @dataclass(frozen=True)
 class Effect:
     """One slot of the effect table.

@@ -11,6 +11,8 @@ without them.
 """
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 from support.dossave import _save_dir
 
@@ -19,9 +21,11 @@ from goldbox import (
     amiga_pod,
     amiga_por,
     amiga_port,
+    c64_codec,
     c64_port,
     dos_codec,
     dos_port,
+    effects,
     neutral,
 )
 from goldbox.layout import Confidence
@@ -169,3 +173,106 @@ def test_the_six_running_bless_records_in_the_players_saves_come_back_whole():
                 if int.from_bytes(again[i + 1:i + 3], "little")] == held, n
     if not seen:
         pytest.skip("no running effect in the DOS saves found here")
+
+
+# --- DOS running effects into the C64 save's shared arrays ---------------------
+
+
+def _pool_character(*nodes: bytes) -> neutral.NeutralCharacter:
+    char = neutral.NeutralCharacter("DOS", source="built here",
+                                    game=c64_port.POOL_OF_RADIANCE)
+    char.set("name", "BLESSED", "built here")
+    char.set("running_effects", [n + NULL for n in nodes], "built here")
+    return char
+
+
+def _rows(payload: bytearray) -> dict[int, tuple[int, int, int, int]]:
+    return {i: (payload[effects.EFFECT_ID_OFFSET + i],
+                payload[effects.EFFECT_OWNER_OFFSET + i],
+                payload[effects.EFFECT_DURATION_OFFSET + i],
+                payload[effects.EFFECT_MAGNITUDE_OFFSET + i])
+            for i in range(effects.EFFECT_SLOTS)}
+
+
+@pytest.mark.parametrize("clock", [0, 725])
+def test_a_pool_bless_is_written_as_a_row_owned_by_the_save_slot(clock):
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(_pool_character(BLESS), payload=payload,
+                                party_slot=2, clock_minutes=clock)
+    rows = _rows(payload)
+    assert rows.pop(63) == (1, 2, 0x02, 0x01)
+    assert set(rows.values()) == {(0, 0, 0, 0)}
+    assert not [d for d in rep.dropped + rep.losses + rep.warnings
+                if "running_effects" in d]
+
+
+def test_two_characters_take_slots_63_and_62():
+    payload = bytearray(0x1C00)
+    for slot in (2, 3):
+        c64_codec.write(_pool_character(BLESS), payload=payload,
+                        party_slot=slot, clock_minutes=0)
+    rows = _rows(payload)
+    assert (rows[63], rows[62]) == ((1, 2, 0x02, 0x01), (1, 3, 0x02, 0x01))
+
+
+def test_a_running_effect_with_no_payload_is_one_loss_line():
+    _rec, rep = c64_codec.write(_pool_character(BLESS))
+    assert [d for d in rep.losses if d.startswith("running_effects:")] \
+        == [d for d in rep.losses]
+    assert len(rep.losses) == 1
+
+
+def test_a_node_with_no_rule_is_one_dropped_line_and_no_row():
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(
+        _pool_character(bytes((13, 2, 0, 1, 0))), payload=payload,
+        party_slot=2, clock_minutes=0)
+    lines = [d for d in rep.dropped if d.startswith("running_effects:")]
+    assert len(lines) == 1 and "effect 13" in lines[0], rep.dropped
+    assert payload == bytearray(0x1C00)
+
+
+def _blessed_row_plan(party, tmp_path):
+    from editor import saveplan
+    from tools.convert import convertdrops
+
+    assets = saveplan.resolve_assets(party.source, "c64",
+                                     game_files=convertdrops.game_files)
+    return saveplan.prepare_save_as(party, "c64", tmp_path / "out.d64", assets)
+
+
+@pytest.mark.parametrize("where", ["specimen", "play"])
+def test_save_as_c64_keeps_a_blessed_dos_party_blessed(tmp_path, where):
+    """`prepare_save_as` returns a plan instead of refusing, and each blessed
+    character has one row in the written save: id 1, owned by that
+    character's slot, `$02`, magnitude `$01`."""
+    from gamedata import specimen
+
+    from automap import gamedisks
+    from editor import roster, saveplan
+
+    if where == "specimen":
+        source = specimen("por-item-granted") / "SAVGAMD.DAT"
+    else:
+        folder = gamedisks.find("por-dos-play")
+        if folder is None:
+            pytest.skip("needs por-dos-play in gamedisks.yaml")
+        source = next(iter(sorted(
+            pathlib.Path(folder).rglob("SAVGAMJ.DAT"))), None)
+        if source is None:
+            pytest.skip("no SAVGAMJ.DAT under por-dos-play")
+    party = roster.Party(str(source))
+    try:
+        plan = _blessed_row_plan(party, tmp_path)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+    assert isinstance(plan, saveplan.SavePlan)
+    out = tmp_path / "written.d64"
+    (name, data), = plan.files.items()
+    out.write_bytes(data)
+    rows = effects.active_effects(roster.Party(str(out)).save0.to_bytes())
+    blessed = [(e.id, e.owner, e.duration, e.magnitude) for e in rows]
+    assert blessed, "no row was written"
+    assert {(i, d, m) for i, _o, d, m in blessed} == {(1, 0x02, 0x01)}
+    owners = sorted(o for _i, o, _d, _m in blessed)
+    assert owners == sorted(set(owners))

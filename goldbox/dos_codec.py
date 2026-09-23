@@ -6386,6 +6386,21 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         report.warnings.extend(f"{name}: {w}" for w in one.warnings)
         report.losses.extend(f"{name}: {w}" for w in one.losses)
 
+    # Rows the character loop wrote from running effects (and a paladin's
+    # timers) replace the "zeroed" note above for their own four bytes.
+    arrays_at = EFFECT_ARRAYS[0][0] - SAVE0_BASE
+    for slot in range(effects.EFFECT_SLOTS):
+        if not save0[arrays_at + effects.EFFECT_ID_OFFSET + slot]:
+            continue
+        who = (f"active effect slot {slot}: id "
+               f"{save0[arrays_at + effects.EFFECT_ID_OFFSET + slot]}, owner "
+               f"{save0[arrays_at + effects.EFFECT_OWNER_OFFSET + slot]} -- "
+               "written from that character's running effects")
+        for off in (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
+                    effects.EFFECT_DURATION_OFFSET,
+                    effects.EFFECT_MAGNITUDE_OFFSET):
+            report.note(arrays_at + off + slot, 1, who)
+
     at = container.portrait_switch
     faces = bool(party) and all_faced
     if container.game.key == c64_port.POOL_OF_RADIANCE.key:

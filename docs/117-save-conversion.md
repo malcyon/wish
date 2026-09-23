@@ -2204,6 +2204,7 @@ graph LR
   c64_codec --> record
   c64_codec --> spells
   c64_codec --> titles
+  c64_codec --> traits
   c64_port --> c64_save
   c64_port --> titles
   c64_save --> titles

@@ -1070,3 +1070,25 @@ def test_a_running_effect_refuses_a_value_that_does_not_fit_its_bytes():
                  (1, 65536, 1, 0), (-1, 2, 1, 0)):
         with pytest.raises(ValueError):
             effects.RunningEffect(*args)
+
+
+# --- the DOS -> C64 rule for a running effect --------------------------------
+
+
+def test_a_pool_caster_level_bless_becomes_id_and_level():
+    node = effects.RunningEffect(1, 2, 1, 0)
+    assert effects.c64_row("pool-of-radiance", node) == (1, 1)
+
+
+@pytest.mark.parametrize("title, node", [
+    ("pool-of-radiance", effects.RunningEffect(1, 2, 1, 1)),
+    ("pool-of-radiance", effects.RunningEffect(1, 2, 0, 0)),
+    ("pool-of-radiance", effects.RunningEffect(1, 2, 0x80, 0)),
+    ("pool-of-radiance", effects.RunningEffect(13, 2, 1, 0)),
+    ("pool-of-radiance", effects.RunningEffect(49, 2, 1, 0)),
+    ("curse-of-the-azure-bonds", effects.RunningEffect(1, 2, 1, 0)),
+])
+def test_a_node_the_table_has_no_rule_for_is_unconverted(title, node):
+    got = effects.c64_row(title, node)
+    assert isinstance(got, effects.Unconverted)
+    assert got.reason

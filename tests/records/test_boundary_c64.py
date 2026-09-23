@@ -23,7 +23,16 @@ import logging
 
 import pytest
 
-from goldbox import c64_codec, classcode, dos_codec, dos_port, layout, spells, traits
+from goldbox import (
+    c64_codec,
+    classcode,
+    dos_codec,
+    dos_port,
+    effects,
+    layout,
+    spells,
+    traits,
+)
 from goldbox import items as items_mod
 from goldbox import levels as level_tables
 from tools.records import boundarychars, boundarywidths, laterchars, laterlegality
@@ -35,22 +44,24 @@ POOL = "pool-of-radiance"
 #: own converts to the C64's character-set icon.  Anything else is a loss.
 _ICON = "Combat icon:"
 
-#: The drop line for a running effect (`_base()` in `boundarychars` carries
-#: two): a reported, accounted drop, because the C64's active-effect arrays are
-#: not written to yet.  It is exempt here so the sweeps still see any other
-#: loss, and `test_a_running_effect_is_reported_as_dropped_not_converted`
-#: fails when the writer stops reporting it, so the exemption gets removed.
+#: The drop line for a running effect a later title has no rule for.
 _RUNNING = "running_effects:"
-
 
 def _write(char):
     """`(record, report, back)`: the character written and read straight back."""
-    rec, rep = c64_codec.write(char)
+    rec, rep = c64_codec.write(char, payload=bytearray(0x1C00), party_slot=0,
+                               clock_minutes=0)
+    if getattr(char.game, "key", char.game) != POOL:
+        # Curse and Silver Blades have no `effects.c64_row` rule yet, so each
+        # running effect is an accounted drop. Step 3 of the running-effect
+        # work adds their ids and removes this exemption; Pool of Radiance has
+        # none.
+        rep.dropped = [d for d in rep.dropped if not d.startswith(_RUNNING)]
     return rec, rep, c64_codec.read(rec, game=char.game)
 
 
 def _losses(rep):
-    return [d for d in rep.dropped if not d.startswith((_ICON, _RUNNING))]
+    return [d for d in rep.dropped if not d.startswith(_ICON)]
 
 
 def _changed(a, b):
@@ -76,8 +87,8 @@ _THIEF_COLUMNS = tuple(n for n, _ in c64_codec._THIEF_SKILL_COLUMNS)
 #: A case field the reader has no neutral name for on the way back:
 #: `granted_effects` shares its trait slots with the racial ids, so `read`
 #: hands both back as `innate_effects` (`goldbox/c64_codec.py`, the trait-slot
-#: block of `write`).  `running_effects` is the accounted drop `_RUNNING`
-#: names, so it is not in the record to read back.  `icon_head`, `icon_body`
+#: block of `write`).  `running_effects` lives in the save's shared arrays,
+#: which `read` is not given a payload for here.  `icon_head`, `icon_body`
 #: and `icon_colours` have no C64 byte of their own at all -- the C64's own
 #: combat figure is eighteen screen codes and eighteen colours in the save's
 #: own table, not a field of the character record, so `read` has nothing to
@@ -123,17 +134,23 @@ def test_a_reachable_character_writes_to_the_c64_and_reads_back_whole(
         assert got == want, (name, field, want, got)
 
 
-def test_a_running_effect_is_reported_as_dropped_not_converted():
-    """The exemption in `_losses` is exactly this one line: it goes when the
-    C64 writer converts a running effect or stops reporting the drop."""
+def test_a_running_effect_is_written_as_a_row_and_reported_nowhere():
+    """The caster's two Blesses become rows 63 and 62 of the shared arrays,
+    with no line on any list."""
     char = boundarywidths.case("caster")
     assert char.get("running_effects"), "the boundary caster carries none"
-    _, rep, _ = _write(char)
-    lines = [d for d in rep.dropped if d.startswith(_RUNNING)]
-    assert len(lines) == 1, rep.dropped
+    payload = bytearray(0x1C00)
+    _, rep = c64_codec.write(char, payload=payload, party_slot=0,
+                             clock_minutes=0)
+    assert rep.dropped == [d for d in rep.dropped if d.startswith(_ICON)]
     assert rep.warnings == []
-    assert {d.split(":")[0] for d in rep.dropped} - {"Combat icon"} \
-        == {"running_effects"}, rep.dropped
+    assert rep.losses == []
+    rows = [(payload[effects.EFFECT_ID_OFFSET + i],
+             payload[effects.EFFECT_OWNER_OFFSET + i],
+             payload[effects.EFFECT_DURATION_OFFSET + i],
+             payload[effects.EFFECT_MAGNITUDE_OFFSET + i])
+            for i in (63, 62)]
+    assert rows == [(1, 0, 0xEE, 0x01), (1, 0, 0x01, 0x01)]
 
 
 def test_a_bare_write_reports_the_combat_icon_fields_by_name():
