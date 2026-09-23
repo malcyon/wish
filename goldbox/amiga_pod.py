@@ -1761,15 +1761,22 @@ CLASS_CODE_FROM_C64: dict[frozenset[str], str] = {
 #: fact about them and not a rule.
 ALIGNMENT_NAMES: tuple[str, ...] = ALIGNMENTS
 
-#: What an unarmoured, unarmed character is, and what all twelve genuine
-#: records hold: armour class 10 and 1d2. **Not** converted from the source. A
-#: Gold Box armour class is a cache that already includes worn armour and a
-#: dexterity bonus, so copying it would count the armour twice. The stored
-#: base is a constant of the format, and the bonus a worn item gives is
-#: recomputed by the game from the item nodes the writer emits. **That last
-#: half is argued, not run**: probe P3 built its record with no items, so
-#: nothing has shown the sheet's armour class moving for a readied piece of
-#: armour.
+#: What an unarmed character's damage is, and the fallback armour-class base
+#: a source with none of its own gets: what all twelve genuine DOS records and
+#: every genuine `.pc` hold. **Damage is not converted from the source**: a
+#: Gold Box damage triple already reflects the readied weapon, and the game
+#: recomputes it from the item nodes the writer emits.
+#:
+#: **The armour-class base is now converted, not replaced with this
+#: constant** (#635): both the DOS and the Amiga engine seed the current
+#: armour-class calculation from the stored base, at creation and on every
+#: rebuild, so copying it preserves the character and replacing it would
+#: silently change him. This value is only what a source carrying no
+#: `armour_class_base` of its own falls back to -- the bonus a worn item
+#: gives is recomputed by the game from the item nodes the writer emits.
+#: **That last half is argued, not run**: probe P3 built its record with no
+#: items, so nothing has shown the sheet's armour class moving for a readied
+#: piece of armour.
 UNARMOURED_AC = 10
 UNARMED_DAMAGE = (1, 2, 0)
 
@@ -1831,6 +1838,13 @@ POD_WRITE_DIRECT: tuple[tuple[str, str], ...] = (
                   "bonus"),
     ("unnamed_0ab", "the identity draw, at 0x0B5"),
     ("experience_award", "the word at 0x054"),
+    ("armour_class_base", "the byte at 0x0B3, stored 60 - value: both the "
+                          "DOS and the Amiga engine seed the current "
+                          "armour-class calculation from this stored byte, "
+                          "at creation and on every rebuild (#635), so it is "
+                          "copied through rather than replaced with the "
+                          "unarmoured 50 every record measured so far "
+                          "happens to hold"),
     ("attack_forms", "the eight bytes at 0x0AB as a block, which carry the "
                      "damage triple this record keeps unarmed"),
 )
@@ -2021,13 +2035,8 @@ POD_WRITE_DERIVED: tuple[tuple[str, str], ...] = (
 )
 
 #: Neutral fields written as a value every record measured holds, rather than
-#: from the source.  A Gold Box armour class is a cache that already includes
-#: worn armour and a dexterity bonus, and this byte is the one before any of
-#: that: 60 - 10 in 19 of 19 `.pc` files -- whose characters all carry items --
-#: and in 12 of 12 DOS records.
+#: from the source.
 POD_WRITE_CONSTANTS: tuple[tuple[str, str], ...] = (
-    ("armour_class_base", "the unarmoured 60 - 10 at 0x0B3, which is what "
-                          "every record on either port holds"),
     ("portrait_head", "Pools of Darkness draws no sheet face on either port "
                       "(#194), but the byte itself is a constant of the "
                       "format rather than a field it has none of: "
@@ -2809,24 +2818,14 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
             f"behind: only platinum, gems and jewelry have a located home in "
             f"the .pc")
 
-    # Armour class needs no line of its own here: `armour_class_base` is a
-    # row of :data:`POD_WRITE_CONSTANTS` and `armour_class` one of
-    # :data:`POD_WRITE_DERIVED`, and `neutral.Writer.finish` quotes both --
-    # both are now reported as derived rather than dropped.
-    #
-    # **The guard that keeps the constant honest.** Every source measured --
-    # an Amiga source and a DOS Pools of Darkness record alike -- holds
-    # `COMBAT_BIAS - UNARMOURED_AC` (50) here, which is what this writer
-    # emits regardless of the source. If a source ever holds something else,
-    # writing the constant would silently replace the player's own value, so
-    # that case is reported as a loss rather than folded into "derived".
-    base = w.get("armour_class_base")
-    if base is not None and int(base) != COMBAT_BIAS - UNARMOURED_AC:
-        rep.lost(
-            f"armour_class_base {int(base)} is not the "
-            f"{COMBAT_BIAS - UNARMOURED_AC} every record measured holds; "
-            f"the .pc's unarmoured base at {ARMOUR_CLASS:#05x} is written "
-            f"{COMBAT_BIAS - UNARMOURED_AC} regardless")
+    # **The armour-class base is real state, not padding to refuse on**
+    # (#635): both the DOS and the Amiga engine seed the current armour-class
+    # calculation from this stored byte, at creation and on every rebuild, so
+    # it is copied through to 0x0B3 rather than replaced with the unarmoured
+    # 50 every record measured so far happens to hold. `armour_class` itself
+    # stays one of :data:`POD_WRITE_DERIVED`: the engine rebuilds it from the
+    # base and whatever is readied, at 0x187, on every load.
+    stored_base = num("armour_class_base", COMBAT_BIAS - UNARMOURED_AC)
 
     # **The same guard for the portrait pair.** Zero in 19 of 19 `.pc` files
     # on disk 3, and this writer emits zero at both offsets; a source
@@ -3031,7 +3030,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         movement=num("movement"),
         class_levels=tuple(slots),
         damage=UNARMED_DAMAGE,
-        armour_class=UNARMOURED_AC,
+        armour_class=COMBAT_BIAS - stored_base,
         level=num("level") or max(slots),
         saving_throws=tuple(num(k) for k in SAVE_KEYS),
         thief_skills=tuple(num(k) for k in THIEF_KEYS),
@@ -3197,8 +3196,7 @@ _SOURCE_OF: dict[str, str] = {
     "movement": "movement",
     "class_levels": "levels",
     "damage": "nothing -- unarmed 1d2 where the source has no attack forms",
-    "armour_class": "nothing -- the unarmoured 10 every record on either "
-                    "port holds",
+    "armour_class": "armour_class_base",
     "level": "level",
     "saving_throws": "save_paralysis..save_spell",
     "thief_skills": "thief_pick_pockets..thief_read_languages",

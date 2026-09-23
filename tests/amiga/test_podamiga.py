@@ -40,7 +40,10 @@ from goldbox import amiga_pod, dos_codec, dos_port, neutral
 
 POD = dos_port.POOLS_OF_DARKNESS
 
-#: The names the reader fills and the two the writer drops but it does not.
+#: The names the reader fills that the writer's own report does not treat as
+#: an ordinary copy: `armour_class` is derived, recomputed by the engine on
+#: load, and `armour_class_base` is copied through (#635) but from a source
+#: field the writer's own guard once refused rather than trusted.
 READ_ONLY = ("armour_class", "armour_class_base")
 
 
@@ -204,7 +207,14 @@ def test_the_pod_window_carries_its_third_and_fourth_bytes(third, fourth):
 def test_write_pod_reports_the_derived_and_constant_fields_as_derived():
     """`write_pod` itself, not just `pod_write_field_disposition`, routes
     :data:`amiga_pod.POD_WRITE_DERIVED` and :data:`amiga_pod.POD_WRITE_CONSTANTS`
-    to `report.derived` rather than `report.dropped`."""
+    to `report.derived` rather than `report.dropped`.
+
+    `armour_class_base` is not one of these any more (#635): both engines
+    seed the current armour-class calculation from the stored base, so it is
+    real state the writer copies through, and it is asserted **not** derived
+    here -- `test_an_unusual_armour_class_base_converts_instead_of_being_
+    refused` in `tests/amiga/test_podderived.py` is where its conversion is
+    proved."""
     raw = bytearray(amiga_pod.PodWriter(
         name="TEST",
         character_class=amiga_pod.CLASSES.index("FIGHTER"),
@@ -215,13 +225,14 @@ def test_write_pod_reports_the_derived_and_constant_fields_as_derived():
 
     _writer, report = amiga_pod.write_pod(character)
 
-    names = {"armour_class_base", "armour_class", "encumbrance",
+    names = {"armour_class", "encumbrance",
              "thac0_current", "movement_current", "combat_figure",
              "roster_tail"}
     derived_names = {line.split(":", 1)[0] for line in report.derived}
     dropped_names = {line.split(":", 1)[0] for line in report.dropped}
     assert names <= derived_names
     assert names.isdisjoint(dropped_names)
+    assert "armour_class_base" not in derived_names
 
 
 def test_the_writers_drops_are_a_strict_subset_of_the_readers():
@@ -357,10 +368,10 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         "movement": (amiga_pod.MOVEMENT, 1),
         "class_levels": (amiga_pod.CLASS_LEVELS, amiga_pod.CLASS_LEVEL_COUNT),
         "treasure_share": (amiga_pod.FIELD_83_87_SECOND, 1),
-        # `0x0B3` is `armour_class_base`, which the writer emits as the
-        # unarmoured constant every record on either port holds; the neutral
-        # `armour_class` is the byte at `0x187`, which the game recomputes on
-        # load and this writer leaves alone, so it has no span here.
+        # `0x0B3` is `armour_class_base`, which the writer now copies through
+        # from the source (#635); the neutral `armour_class` is the byte at
+        # `0x187`, which the game recomputes on load and this writer leaves
+        # alone, so it has no span here.
         "armour_class_base": (amiga_pod.ARMOUR_CLASS, 1),
         "hp_current": (amiga_pod.HP_CURRENT, 1),
         "saving_throws": (amiga_pod.SAVING_THROWS, amiga_pod.SAVING_THROW_COUNT),
