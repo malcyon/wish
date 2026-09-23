@@ -830,11 +830,22 @@ def _rewrite_port_and_title(port) -> tuple[str, str]:
     return "amiga", deltas.dos.key
 
 
-def _fuzz_byte(rec, name: str, at: int):
-    """A copy of the record with one added to byte `at` of field `name`."""
+def _fuzz_byte(rec, name: str, at: int, flip_top: bool = False):
+    """A copy of the record with byte `at` of field `name` perturbed.
+
+    `flip_top` flips bit 7 instead of adding one, because a field can be
+    unwritable to the `+1` probe alone -- which only ever touches the low
+    bit -- while still being writable overall: on a Curse/Silver Blades
+    player character `flags_0b8` refuses to persist bit 0 (Pool of
+    Radiance's ability-altered flag, meaningless here) but keeps bit 7 (the
+    NPC flag) and the morale bits, so only the top-bit probe finds it.
+    """
     out = c64_codec.CharacterRecord(rec.to_bytes(), rec.stored_size)
     raw = bytearray(out.get_raw(name))
-    raw[at] = (raw[at] + 1) & 0xFF
+    if flip_top:
+        raw[at] ^= 0x80
+    else:
+        raw[at] = (raw[at] + 1) & 0xFF
     out.set_raw(name, bytes(raw))
     return out
 
@@ -860,15 +871,18 @@ def test_the_fields_a_native_save_cannot_take_an_edit_to_match_the_hand_written_
             continue
         moved = False
         for at in sorted({0, f.size - 1}):
-            after = _fuzz_byte(before, f.name, at)
-            if after.to_bytes() == before.to_bytes():
-                continue
-            try:
-                _rewrite(port, char, before, after)
-            except rewrite.RewriteError:
-                continue
-            moved = True
-            break
+            for flip_top in (False, True):
+                after = _fuzz_byte(before, f.name, at, flip_top)
+                if after.to_bytes() == before.to_bytes():
+                    continue
+                try:
+                    _rewrite(port, char, before, after)
+                except rewrite.RewriteError:
+                    continue
+                moved = True
+                break
+            if moved:
+                break
         if not moved:
             unwritable.add(f.name)
 
