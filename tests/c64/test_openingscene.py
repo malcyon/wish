@@ -136,3 +136,83 @@ def test_the_game_s_own_silver_blades_party_reads_by_name():
     got = openingscene.experience_map(disk)
     assert len(got) == 6
     assert got["GUY DE VALOIS"] == 200000 and got["MALACHITE"] == 100000
+
+
+class Bar:
+    def __init__(self, row24="TAKE EXIT"):
+        self.row24, self.pressed = row24, []
+
+    def row(self, r):
+        return self.row24
+
+
+class Sess:
+    def __init__(self, again):
+        self.again, self.pressed = again, []
+
+    def select_bar(self, word, timeout):
+        pass
+
+    def screen(self):
+        return self.again
+
+    def press_kernal(self, code):
+        self.pressed.append(code)
+
+
+@pytest.mark.parametrize("before,after", [(None, Bar()), (Bar(), None),
+                                          (None, None)])
+def test_a_bitmap_at_a_bar_is_waited_out_not_fatal(before, after):
+    sess = Sess(after)
+    openingscene.answer_bar(sess, "exit", before, sleep=lambda s: None)
+    assert sess.pressed == []
+
+
+def test_an_unchanged_bar_gets_return_and_a_changed_one_does_not():
+    same, moved = Sess(Bar("TAKE EXIT")), Sess(Bar("MOVE ENCAMP"))
+    openingscene.answer_bar(same, "no", Bar("TAKE EXIT"), sleep=lambda s: None)
+    openingscene.answer_bar(moved, "no", Bar("TAKE EXIT"), sleep=lambda s: None)
+    assert same.pressed == [0x0D] and moved.pressed == []
+
+
+class Closer:
+    def __init__(self, log, name, fail=False):
+        self.log, self.name, self.fail = log, name, fail
+
+    def _do(self, what):
+        self.log.append(what)
+        if self.fail:
+            raise RuntimeError(what)
+
+    def close(self):
+        self._do("close")
+
+    def teardown(self):
+        self._do("teardown")
+
+    def release(self):
+        self.log.append("release")
+
+
+@pytest.mark.parametrize("failing", ["close", "teardown"])
+def test_the_summary_and_release_run_when_closing_raises(failing):
+    log = []
+
+    class S(Closer):
+        def close(self):
+            self._do("close") if failing == "close" else self.log.append("close")
+
+    class Sl(Closer):
+        def teardown(self):
+            self._do("teardown") if failing == "teardown" \
+                else self.log.append("teardown")
+
+    sess, slot = S(log, "s", fail=True), Sl(log, "l", fail=True)
+    with pytest.raises(RuntimeError):
+        openingscene.shut_down(sess, slot, lambda: log.append("summary"))
+    assert "summary" in log and log[-1] == "release"
+
+
+def test_two_characters_with_one_name_keep_both_rows():
+    got = openingscene.keyed_by_name([("AL", 1), ("BO", 2), ("AL", 3)])
+    assert got == {"AL": 1, "BO": 2, "AL (2)": 3}

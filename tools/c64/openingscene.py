@@ -40,16 +40,16 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from tools.curse_of_the_azure_bonds.curseareazero import (  # noqa: E402
+    HEADER_BYTES,
+    PAYLOAD_AT,
+)
 from tools.registry import scratch  # noqa: E402
 
 #: How long a screen is left alone after an action before the action is
 #: repeated, and how many repeats are made before the run stops as stuck.
 REPEAT_AFTER = 10.0
 MAX_REPEATS = 3
-
-#: Where the payload loads and how much of it is read for the header.
-PAYLOAD_AT = 0x4B00
-HEADER_BYTES = 0x2E0
 
 #: The live party square.
 LIVE_SQUARE = 0xC04B
@@ -144,15 +144,57 @@ def first_opening_text(texts: list[str]) -> str | None:
     return None
 
 
+def keyed_by_name(pairs) -> dict[str, int]:
+    """`{name: experience}` from (name, experience) pairs in slot order.
+
+    A second character with the same name is keyed `NAME (2)`, and so on, so
+    that no row is lost and the two sides still match slot for slot.
+    """
+    out: dict[str, int] = {}
+    for name, xp in pairs:
+        key, k = name, 1
+        while key in out:
+            k += 1
+            key = f"{name} ({k})"
+        out[key] = xp
+    return out
+
+
 def experience_map(path: pathlib.Path) -> dict[str, int]:
     """`{name: experience}` for every character on a C64 save disk."""
     from goldbox import savegame  # noqa: PLC0415
     from goldbox.d64 import D64  # noqa: PLC0415
     sg0 = savegame.load_save(D64.from_bytes(pathlib.Path(path).read_bytes()))[1]
-    out: dict[str, int] = {}
-    for slot in sg0.characters:
-        out[slot.record.name.strip()] = slot.record.experience
-    return out
+    return keyed_by_name((slot.record.name.strip(), slot.record.experience)
+                         for slot in sg0.characters)
+
+
+def answer_bar(sess, step: str, s, *, sleep=time.sleep) -> None:
+    """Select EXIT or NO, and press Return if row 24 has not changed.
+
+    `s` is the screen the bar was read from.  A bitmap (None) on either side
+    is waited out rather than compared.
+    """
+    sess.select_bar("EXIT" if step == "exit" else "NO", timeout=10)
+    sleep(3)
+    again = sess.screen()
+    if s is not None and again is not None and again.row(24) == s.row(24):
+        sess.press_kernal(0x0D)
+
+
+def shut_down(sess, slot, write_summary) -> None:
+    """Close the session and slot, then write the summary, whatever raises."""
+    try:
+        try:
+            if sess is not None:
+                sess.close()
+        finally:
+            slot.teardown()
+    finally:
+        try:
+            write_summary()
+        finally:
+            slot.release()
 
 
 def run(args) -> int:
@@ -172,7 +214,7 @@ def run(args) -> int:
         raise SystemExit(f"no {args.title} disks; pass --disks")
     save = pathlib.Path(args.save).resolve()
     out = scratch.ensure(pathlib.Path(args.out))
-    log = (out / "run.jsonl").open("a")
+    log = None
 
     def note(**kw):
         kw["t"] = round(time.time(), 2)
@@ -186,6 +228,7 @@ def run(args) -> int:
                      "saved": False, "experience": []}
     texts: list[str] = []
     slot = por.claim_slot(args.pool, note=os.environ.get("POR_AGENT", "i653"))
+    log = (out / "run.jsonl").open("a")
     sess = None
     try:
         note(event="slot", n=slot.n, dir=str(slot.dir), out=str(out))
@@ -253,13 +296,15 @@ def run(args) -> int:
 
         seen_side = []
 
+        current = [None]
+
         def read():
-            s = sess.screen()
+            s = current[0] = sess.screen()
             return None if s is None else "\n".join(s.row(r) for r in range(25))
 
         def wanted(text):
-            s = sess.screen()
-            return s is not None and sess.wanted_disk(s) is not None
+            return current[0] is not None and \
+                sess.wanted_disk(current[0]) is not None
 
         def save_screen(n, text):
             tag = f"{n:02d}"
@@ -270,7 +315,7 @@ def run(args) -> int:
 
         def act(step, text):
             note(event="action", step=step)
-            s = sess.screen()
+            s = current[0]
             if step == "disk":
                 if curse and "INSERT SIDE" in text and not seen_side:
                     seen_side.append(1)
@@ -278,12 +323,7 @@ def run(args) -> int:
                     sess.patch_disk_prompt()
                 sess.handle_prompt(s)
             elif step in ("exit", "no"):
-                word = "EXIT" if step == "exit" else "NO"
-                sess.select_bar(word, timeout=10)
-                time.sleep(3)
-                again = sess.screen()
-                if again is not None and again.row(24) == s.row(24):
-                    sess.press_kernal(0x0D)
+                answer_bar(sess, step, s)
             elif step == "return":
                 sess.press_kernal(0x0D)
 
@@ -319,15 +359,16 @@ def run(args) -> int:
         summary["outcome"] = f"failed: {exc}"
         raise
     finally:
-        if sess is not None:
-            sess.close()
-        slot.teardown()
-        slot.release()
-        summary["first_opening_text"] = summary["first_opening_text"] or \
-            first_opening_text(texts)
-        (out / "summary.json").write_text(json.dumps(summary, indent=2))
-        note(event="done")
-        log.close()
+        def write_summary():
+            summary["first_opening_text"] = summary["first_opening_text"] or \
+                first_opening_text(texts)
+            (out / "summary.json").write_text(json.dumps(summary, indent=2))
+            note(event="done")
+
+        try:
+            shut_down(sess, slot, write_summary)
+        finally:
+            log.close()
 
 
 def main(argv=None) -> int:
