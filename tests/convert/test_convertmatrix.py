@@ -56,7 +56,7 @@ from automap import gamedisks
 from editor import convert, dosimport, roster, saveplan
 from goldbox import c64_port, dos_codec, dos_port
 from goldbox.d64 import D64, load_payload
-from goldbox.iconparts import IconParts
+from goldbox.iconparts import IconParts, c64_icon_tables
 from goldbox.layout import NAME_SIZE
 from goldbox.portraits import PortraitError, tables_from_disks
 from goldbox.savegame import SaveGame0, SaveGame1, load_save
@@ -622,10 +622,14 @@ def test_mathew_dual_classed_writes_zero_cure_bytes_and_no_loss():
 
 
 @pytest.mark.parametrize("disk_name", ["TEST_DOS_IMPORT9.D64",
-                                       "TEST_DOS_IMPORT8_FIXED.D64"])
+                                       "TEST_DOS_IMPORT8_FIXED.D64",
+                                       "TEST_DOS_IMPORT6.D64",
+                                       "TEST_DOS_IMPORT7.D64",
+                                       "TEST_DOS_IMPORT8.D64"])
 def test_a_c64_party_with_a_companion_saves_as_dos(app, tmp_path, disk_name):
     """The companion's template fill converts: the drain pair reaches DOS as
-    the stored 0xFF and the dual-class pair as the writer's 0."""
+    the stored 0xFF and the dual-class pair as the writer's 0, and his combat
+    figure is the seeded default's whether the disk holds it or holds zeros."""
     try:
         game_dir = dosbox.find_game("POOLRAD")
     except FileNotFoundError:
@@ -658,6 +662,12 @@ def test_a_c64_party_with_a_companion_saves_as_dos(app, tmp_path, disk_name):
     for data in companions:
         assert data[offset("hp_lost_to_drain")] == 0xFF
         assert data[0x086:0x088] == b"\x00\x00"
+        icon = assets.source_files.icon
+        want = icon.dos_icon_from_c64(icon.default_icon(),
+                                      c64_icon_tables(title=c64_port.POOL_OF_RADIANCE.key))
+        assert (data[offset("icon_head")], data[offset("icon_body")],
+                data[offset("icon_colours"):offset("icon_colours") + 6]) == (
+                    want.head, want.body, bytes(want.colours))
 
 
 # ---------------------------------------------------------------------------

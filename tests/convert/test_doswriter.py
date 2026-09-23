@@ -58,6 +58,7 @@ from goldbox.iconparts import (
     DosIcon,
     IconChoice,
     IconParts,
+    c64_icon_tables,
     dos_icon_tables,
 )
 from goldbox.layout import Confidence
@@ -1070,6 +1071,30 @@ def test_a_hand_authored_icon_does_not_fail_the_whole_party(tmp_path):
     assert any("figure is not set" in d for d in report.dropped), \
         report.dropped
     assert any("combat icon" in w for w in report.warnings), report.warnings
+
+
+def test_an_all_zero_icon_entry_converts_as_the_seeded_default(tmp_path):
+    """The engine seeds every icon slot with `default_icon()` before any
+    character exists, so an all-zero entry (left by an old writer) converts as
+    that default instead of keeping the drop line."""
+    parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
+    save0, save1 = _fixture_payloads()
+    container = c64_save.container_for(None)
+    poked = bytearray(save0)
+    poked[container.icon(0):container.icon(0) + container.icon_size] = (
+        bytes(container.icon_size))
+
+    report = dos_codec.write_dos_save(bytes(poked), save1, _save_dir(), tmp_path,
+                                "A", icon_parts=parts)
+    party = dos_codec.read_party(tmp_path, "A")
+    want = parts.dos_icon_from_c64(
+        parts.default_icon(), c64_icon_tables(title="pool-of-radiance"))
+    assert (party[0].get("icon_head"), party[0].get("icon_body"),
+            bytes(party[0].get("icon_colours"))) == (
+                want.head, want.body, bytes(want.colours))
+    assert not any("figure is not set" in d for d in report.dropped), \
+        report.dropped
+    assert not any("combat icon" in w for w in report.warnings), report.warnings
 
 
 def test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures(

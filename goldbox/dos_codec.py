@@ -7699,11 +7699,30 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
             # reads and writes at exactly this same offset the other way.
             at = container.icon(char_slot.index)
             raw = bytes(save0[at:at + container.icon_size])
+            # The engine seeds every icon slot with the creation default
+            # before any character exists and never writes zeros, so an
+            # all-zero entry is a save an older writer left unset.
+            zero_entry = not any(raw)
+            if zero_entry:
+                raw = icon_parts.default_icon()
             try:
                 icon = icon_parts.dos_icon_from_c64(raw, reverse_tables)
             except ValueError as exc:
                 character.warnings.append(f"combat icon: {exc}")
             else:
+                if zero_entry:
+                    icon = dataclasses.replace(
+                        icon,
+                        figure_source=(
+                            "the C64 entry was all zero, which the engine "
+                            "never writes; converted as the default the "
+                            "engine seeds into every slot: "
+                            + icon.figure_source),
+                        colours_source=(
+                            "the C64 entry was all zero, which the engine "
+                            "never writes; converted as the default the "
+                            "engine seeds into every slot: "
+                            + icon.colours_source))
                 # The drop line is unconditional in `c64_codec.read`, which
                 # has no way to know the icon would be recognised here --
                 # so it is taken back out where it turned out not to be
