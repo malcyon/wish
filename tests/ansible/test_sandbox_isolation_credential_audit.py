@@ -15,6 +15,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import time
 
 import pytest
@@ -139,7 +140,20 @@ def _synthetic_globs(tmp_path: pathlib.Path) -> list[str]:
 pytestmark = pytest.mark.skipif(
     shutil.which("bash") is None, reason="no bash to run the audit script with")
 
+#: `_run_audit` feeds the rendered script to `bash -s` and reads its stdout
+#: as POSIX text. On Windows that `bash` is not the guest shell the task
+#: template is written for, and the audit's own POSIX tools (`find`, `grep`)
+#: are not there either, so the "output" a test reads back is a Windows
+#: shell's own UTF-16 error text rather than anything the script wrote. The
+#: script audits a Linux sandbox guest and was never meant to run as the
+#: runner's own OS.
+posix_only = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="exercises a Linux sandbox-guest audit script through a real "
+           "POSIX shell, which Windows does not provide")
 
+
+@posix_only
 def test_a_token_under_flatpak_repo_objects_is_pruned(home, tmp_path):
     """The token that started this: reachable only through the pruned tree."""
     flatpak = home / ".local" / "share" / "flatpak" / "repo" / "objects" / "ab"
@@ -154,6 +168,7 @@ def test_a_token_under_flatpak_repo_objects_is_pruned(home, tmp_path):
     assert _counts(stdout)["scanned"] == "0"
 
 
+@posix_only
 def test_a_token_hard_linked_into_the_flatpak_runtime_tree_is_pruned(home, tmp_path):
     """The correction on #644: pruning only `repo/objects` was not enough,
     because Flatpak hard-links the same content into `runtime/` and `app/`."""
@@ -174,6 +189,7 @@ def test_a_token_hard_linked_into_the_flatpak_runtime_tree_is_pruned(home, tmp_p
     assert _counts(stdout)["scanned"] == "0"
 
 
+@posix_only
 def test_a_token_outside_the_flatpak_directory_is_still_found(home, tmp_path):
     """The prune must not reach past `.local/share/flatpak` itself: a
     similarly-named sibling, and Flatpak's own per-app state under
@@ -194,6 +210,7 @@ def test_a_token_outside_the_flatpak_directory_is_still_found(home, tmp_path):
     assert _counts(stdout)["scanned"] == "2"
 
 
+@posix_only
 def test_a_clean_tree_of_ordinary_files_passes_quickly(home, tmp_path):
     for n in range(50):
         (home / f"file{n}.txt").write_text(f"nothing interesting here #{n}")
@@ -209,6 +226,7 @@ def test_a_clean_tree_of_ordinary_files_passes_quickly(home, tmp_path):
     assert counts["errors"] == "0"
 
 
+@posix_only
 def test_an_unreadable_file_is_incomplete_not_clean(home, tmp_path):
     """A file the scan cannot open must never read as a pass."""
     blocked = home / "blocked.txt"
@@ -224,6 +242,7 @@ def test_an_unreadable_file_is_incomplete_not_clean(home, tmp_path):
     assert int(_counts(stdout)["errors"]) >= 1
 
 
+@posix_only
 def test_a_token_under_roots_own_flatpak_state_is_pruned(tmp_path):
     """`audit_dirs` scans `/root` as well as `/home/*`, but the original
     prune glob only matched `/home/*/.local/share/flatpak`. Flatpak state
@@ -256,6 +275,7 @@ def test_the_default_prune_glob_covers_the_whole_of_flatpak():
     ]
 
 
+@posix_only
 def test_a_hanging_scan_is_killed_by_its_own_remote_timeout(tmp_path, home):
     """#644's own evidence was a `grep` stuck in D state, which cannot act on
     any signal -- including the controller's `timeout` around `ssh`, which
