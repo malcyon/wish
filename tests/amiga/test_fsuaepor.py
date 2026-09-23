@@ -157,22 +157,46 @@ def test_a_pools_of_darkness_run_puts_disk_3_in_df1(tmp_path):
     assert not any(a.startswith("--floppy_drive_2") for a in argv)
 
 
-def test_every_image_is_offered_in_the_swap_list(tmp_path):
-    _touch(tmp_path, "pod1.adf", "pod2.adf", "pod3.adf")
-    argv, _, _ = _argv(tmp_path)
+def test_only_pools_of_darkness_and_an_explicit_swap_get_a_swap_list(tmp_path):
+    pod = tmp_path / "pod"
+    pod.mkdir()
+    _touch(pod, "pod1.adf", "pod2.adf", "pod3.adf")
+    argv, _, _ = _argv(pod)
     assert [a for a in argv if a.startswith("--floppy_image_")] == [
-        f"--floppy_image_{i}={tmp_path / name}"
+        f"--floppy_image_{i}={pod / name}"
         for i, name in enumerate(("pod1.adf", "pod3.adf", "pod2.adf"))]
     por = tmp_path / "por"
     por.mkdir()
     _touch(por, "por1.adf", "por2.adf", "poolsave.adf")
-    argv, drives, swaps = _argv(por)
-    assert [d.name for d in drives] == ["por1.adf", "por2.adf", "poolsave.adf"]
-    assert swaps == []
-    assert [a.split("=")[0] for a in argv if a.startswith("--floppy_")] == [
-        "--floppy_drive_0", "--floppy_drive_1", "--floppy_drive_2",
-        "--floppy_image_0", "--floppy_image_1", "--floppy_image_2",
-        "--floppy_drive_speed"]
+    argv, _, _ = _argv(por)
+    assert argv == ["fs-uae", f"--base_dir={por / 'base'}", "--amiga_model=A500",
+                    f"--kickstart_file={por / 'kick.rom'}",
+                    f"--floppy_drive_0={por / 'por1.adf'}",
+                    f"--floppy_drive_1={por / 'por2.adf'}",
+                    f"--floppy_drive_2={por / 'poolsave.adf'}",
+                    "--writable_floppy_images=1", "--floppy_drive_speed=0",
+                    "--fullscreen=0", "--window_width=720", "--window_height=568",
+                    "--automatic_input_grab=0", "--initial_input_grab=0",
+                    "--volume=0", "--joystick_port_1=none"]
+    argv, _, _ = _argv(por, floppy=["por1.adf"], swap=["por2.adf"])
+    assert [a for a in argv if a.startswith("--floppy_image_")] == [
+        f"--floppy_image_0={por / 'por1.adf'}", f"--floppy_image_1={por / 'por2.adf'}"]
+
+
+def test_serve_hands_swap_to_default_images(tmp_path, monkeypatch):
+    seen = {}
+
+    def stop(run, floppy, swap):
+        seen.update(run=run, floppy=floppy, swap=swap)
+        raise SystemExit("stop before any process starts")
+    monkeypatch.setattr(fsuaepor, "default_images", stop)
+    monkeypatch.setattr(fsuaepor.subprocess, "Popen",
+                        lambda *a, **k: type("P", (), dict(pid=0))())
+    monkeypatch.setattr(fsuaepor.time, "sleep", lambda s: None)
+    with pytest.raises(SystemExit):
+        fsuaepor.main(["serve", "--run", str(tmp_path), "--display", ":9",
+                       "--floppy", "a.adf", "--swap", "b.adf"])
+    assert (seen["floppy"], seen["swap"]) == (["a.adf"], ["b.adf"])
 
 
 def _pc(name: str, status=(0, 0), active=1) -> bytes:
@@ -261,3 +285,14 @@ def test_pod_disks_come_out_of_the_registry_in_drive_order():
     assert [d.volume_name for d in (first, second, third)] == ["POD 1", "POD 2", "POD 3"]
     assert fsuaepor.picker_rows(third)
     assert first.read_file("Pools of Darkness")
+
+
+def test_pod_panel_names_the_picker_rows_for_a_payload_not_on_the_disk(tmp_path):
+    disk = _disk3(["ONE.pc"])
+    adf = tmp_path / "pod3.adf"
+    disk.save(adf)
+    args = type("A", (), dict(display=":9", adf=str(adf), out=str(tmp_path / "s"),
+                              boot=0, payload=["MISSING.pc"]))
+    with pytest.raises(SystemExit) as exc:
+        fsuaepor.pod_panel(args)
+    assert "MISSING.pc" in str(exc.value) and "ONE.pc" in str(exc.value)

@@ -14,7 +14,8 @@ what the game does with a record can be answered in either:
 
 Pools of Darkness looks for its disks in DF0 and DF1 only, so `serve` puts disk 1
 there and disk 3 beside it when the run holds `pod1.adf`, and lists all three
-in the swap list:
+in the swap list with `floppy_image_N`, an option name read from the fs-uae
+3.1.66 binary's strings and untested until a boot proves it:
 
     fsuaepor.py pod-stage --out DIR --pc normal.pc --pc unconscious.pc
     tools/registry/instance.py claim --game amiga-pod --note NOTE -- \\
@@ -400,6 +401,10 @@ def pod_panel(args) -> int:
     disk = AmigaDisk(pathlib.Path(args.adf).read_bytes())
     names = picker_rows(disk)
     wanted = args.payload or [n for n in POD_PAYLOADS if n in names] or names
+    missing = [n for n in wanted if n not in names]
+    if missing:
+        raise SystemExit(f"{', '.join(missing)} not in {args.adf}; the picker's "
+                         f"rows are {', '.join(names) or 'none'}")
     rows = sorted((names.index(n) + 1, n) for n in wanted)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -493,10 +498,12 @@ def fsuae_argv(run: pathlib.Path, drives: list[pathlib.Path],
     """The `fs-uae` command line: no process is started here."""
     width, height = (int(n) for n in window.split("x"))
     floppies = [f"--floppy_drive_{i}={image}" for i, image in enumerate(drives)]
-    # The F12 menu can only insert what `floppy_image_N` lists; a comma on a
-    # `floppy_drive_N` is read as one path.
-    floppies += [f"--floppy_image_{i}={image}"
-                 for i, image in enumerate([*drives, *swaps])]
+    # A swap list is only written when there is something to swap.  The option
+    # name `floppy_image_N` is read from the fs-uae binary's strings and no boot
+    # has confirmed it, so a run with no swap images keeps its old command line.
+    if swaps:
+        floppies += [f"--floppy_image_{i}={image}"
+                     for i, image in enumerate([*drives, *swaps])]
     return ["fs-uae", f"--base_dir={run / 'base'}", "--amiga_model=A500",
             f"--kickstart_file={kickstart_file}",
             *floppies,
