@@ -550,9 +550,10 @@ def new_savegame(state: world_state.WorldState,
     # A party that has not set out is written as the initialiser leaves it:
     # no area, no script, the initialiser's square and wallset, mode 0.
     # Measured on the shipped Silver Blades pre-adventure saves (header equal
-    # byte for byte, 4 of 4 files).  Not measured: no shipped Amiga Curse
+    # byte for byte; the test checks the shipped file, and other specimens
+    # agreed when measured).  Not measured: no shipped Amiga Curse
     # save is in this state, so its zero script region and the container
-    # number 2 in byte 0 and `$5012` are carried over from DOS Curse.  The
+    # number 2 in byte 0 and `$5012` are taken from DOS Curse.  The
     # Amiga loader overwrites the mode-before byte with the mode byte, so
     # its 4 is only there to match the shipped file.  The disk number is
     # taken from DOS's `PRE_ADVENTURE_DISK`, which agrees with the Amiga
@@ -603,14 +604,12 @@ def new_savegame(state: world_state.WorldState,
         square_x, square_y, square_facing = dos_codec.PRE_ADVENTURE_SQUARE
         modes = (GAME_MODE_ADVENTURING, 0)
         wallset = dos_savegame.OUTDOOR_WALLSET
-        source = "the initialiser's"
     else:
         square_x, square_y, square_facing = state.x, state.y, state.facing
         modes = (GAME_MODE_OVERLAND if state.outdoors else
                  GAME_MODE_ADVENTURING, GAME_MODE_CAMP)
         wallset = (dos_savegame.OUTDOOR_WALLSET if state.outdoors
                    else state.wallset)
-        source = "copied from the source save:"
     out += square_x.to_bytes(container.x_bytes, "big")
     out += square_y.to_bytes(container.x_bytes, "big")
     out += bytes((square_facing * dos_savegame.FACING_SCALE, 0, 0, 0))
@@ -620,9 +619,11 @@ def new_savegame(state: world_state.WorldState,
         out += int(EMPTY if block == EMPTY else index + 1).to_bytes(2, "big")
     out += len(built).to_bytes(2, "big")
     report.note(tail_at, container.x_bytes,
-                f"x square {source if fresh else 'copied from the source save'}")
+                "x square the initialiser's" if fresh
+                else "x square copied from the source save")
     report.note(tail_at + container.x_bytes, container.x_bytes,
-                f"y square {source if fresh else 'copied from the source save'}")
+                "y square the initialiser's" if fresh
+                else "y square copied from the source save")
     report.note(tail_at + 2 * container.x_bytes, 1,
                 "facing in the Amiga's doubled encoding, "
                 + ("north as the initialiser writes it" if fresh
