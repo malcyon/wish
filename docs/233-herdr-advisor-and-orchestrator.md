@@ -62,6 +62,54 @@ not authorize answering unrelated approvals or overriding a denial. Use
 `agent send-keys` only for a specifically authorized interaction. Do not restart
 the server, replace the orchestrator, or close its pane to establish access.
 
+## Resume later: host advisor and VM orchestrator
+
+**Plan saved 2026-09-23; not applied or verified end to end.** Keep the
+orchestrator in the VM's existing `wish` session and run the advisor on the
+desktop, with both visible in one Herdr window. Separate servers remain;
+the host advisor reaches the VM through `herdr --machine agent-vm`.
+
+The attempted `machine add` failed because strict SSH checking found no
+trusted ED25519 host key. The project's
+`ansible/roles/agent-vm/templates/agent-vm-ssh-config.j2` disables checking and
+sets `UserKnownHostsFile /dev/null`, so ordinary connections do not retain a
+key. Saving a key alone will not fix that configuration.
+
+1. **Fix host-key storage on the desktop.** Inspect `ssh -G agent-vm`.
+   Add a `Host agent-vm` block at the beginning of the desktop user's
+   `~/.ssh/config` with `UserKnownHostsFile ~/.ssh/known_hosts` and
+   `StrictHostKeyChecking yes`. Preserve the existing host, user and identity
+   settings supplied by the system configuration. Confirm the effective
+   settings with `ssh -G agent-vm` again.
+2. **Verify and enroll the VM's key.** In the VM console or existing trusted
+   session, run `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. On the
+   desktop, run `ssh -o StrictHostKeyChecking=ask agent-vm true`; accept only
+   if the fingerprint matches. Then confirm `ssh agent-vm true` succeeds.
+   Do not bypass checking or blindly accept a changed key.
+3. **Connect both machines in one interface.** From a desktop terminal:
+
+   ```sh
+   herdr machine add agent-vm --label agent-vm --remote-session wish
+   herdr
+   ```
+
+   Keep the existing remote session running. If setup proposes replacing its
+   server and stopping panes, decline and resolve compatibility separately.
+4. **Start the advisor under Local.** Use a host checkout with the current
+   `AGENTS.md`. Verify cross-machine access with
+   `herdr --machine agent-vm agent list`, discover the orchestrator's live
+   pane, then read it with `herdr --machine agent-vm agent read <pane-id>
+   --source visible`. No test message is needed.
+5. **Define the host operator role before applying Ansible.** The advisor
+   still answers questions without forwarding them. Document an explicit
+   exception allowing host Ansible runs when Donald requests them; routine
+   application implementation remains with the VM orchestrator. Use the
+   desktop's inventory and credentials, with scoped execution permissions.
+
+For a durable project fix, update the Ansible SSH template to retain verified
+host keys and specify how a rebuilt VM's replacement key is verified. That
+implementation is deferred; saving this plan authorizes no deployment.
+
 ## Verified connection
 
 This two-session test predates the senior advisor role. It does not establish
