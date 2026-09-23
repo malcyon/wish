@@ -539,22 +539,26 @@ def test_the_c64_ranger_stops_one_short_of_the_dos_table_at_eleven():
 #: count, which is what this pins.
 COUNTS = {
     CURSE: {"cleric": (16, 2), "magic-user": (29, 2)},
-    POOL: {"cleric": (72, 2), "magic-user": (87, 0)},
+    POOL: {"cleric": (72, 2), "magic-user": (90, 1)},
 }
 
-#: The four known misses, all this project's own pre-fix output sitting in
+#: The five known misses, all this project's own pre-fix output sitting in
 #: the specimen tree -- `WISH-SPEC-curse-234-converted-party` and
 #: `WISH-SPEC-curse-299-built-from-nothing`, each holding zeros where the
 #: table gives LEDERA (magic-user 5, wisdom 15) `4 2 1 0 0` and SHARA
-#: (cleric 6, wisdom 17) `5 5 3 0 0` -- and two Pool of Radiance
-#: creation-time clerics, HALFE8 and HUMAN7, one point under the table at
-#: wisdom 13 and 12 (#547's own "what I could not confirm": looks like the
-#: wisdom bonus applied by the trainer and not at creation; not chased here).
+#: (cleric 6, wisdom 17) `5 5 3 0 0` -- two Pool of Radiance creation-time
+#: clerics, HALFE8 and HUMAN7, one point under the table at wisdom 13 and 12
+#: (#547's own "what I could not confirm": looks like the wisdom bonus
+#: applied by the trainer and not at creation; not chased here) -- and
+#: GENHEERIS, a C64 companion (magic-user 7) whose authored 4/2/2 the writer
+#: copies rather than recomputes for a Pool of Radiance source, and which
+#: DOS Pool of Radiance keeps unchanged through a load and resave
+#: (`WISH-SPEC-issue641-dirten-seven-resave`, added for #641).
 KNOWN_MISSES = {
     (CURSE, "magic-user"): {"LEDERA"},
     (CURSE, "cleric"): {"SHARA"},
     (POOL, "cleric"): {"HALFE8", "HUMAN7"},
-    (POOL, "magic-user"): set(),
+    (POOL, "magic-user"): {"GENHEERIS"},
 }
 
 
@@ -591,8 +595,9 @@ def test_every_engine_written_record_reproduces_except_the_known_misses(
         title, school):
     """The finding itself: `capacity_by_class` gives what the engine's own
     resave holds, on every DOS record this machine has, except the four
-    this project wrote before the fix and two Pool of Radiance oddities
-    `#547` could not chase further.
+    this project wrote before the fix, two Pool of Radiance oddities
+    `#547` could not chase further, and GENHEERIS, whose C64-authored
+    slots the writer copies rather than recomputes and DOS never rebuilds.
     """
     if not dosbox.ARCHIVES.is_dir():
         # The counts below were measured over the specimen tree and the
