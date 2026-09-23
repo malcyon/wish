@@ -868,8 +868,9 @@ def unbundle(items: Sequence[PodItem],
     ended first. DOS Pools of Darkness has no case: its 63-byte item has no
     chain pointer, its `.THG` loader and writer test no type, and nothing in
     its `GAME.OVR` stores type `0x49` into an item, so separate scrolls are how
-    it holds the same spells (docs/215-the-dos-experience-award-and-the-scroll-
-    bundle.md, section 3). A case of 0 holds nothing and becomes nothing.
+    it holds the same spells
+    (docs/215-the-dos-experience-award-and-the-scroll-bundle.md, section 3).
+    A case of 0 holds nothing and becomes nothing.
     """
     out: list[PodItem] = []
     at = 0
@@ -2574,7 +2575,7 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
                           for it in unbundle(items, scrolls)],
             f"the {ITEM_FILE_SIZE}-byte item records from {RECORD_BYTES}, "
             f"read as the later Amiga titles' own item node and re-cut to the "
-            f"{dos_port.ITEM_SIZE} DOS holds, projected onto sixteen; a "
+            f"{dos_port.ITEM_SIZE} DOS holds; a "
             f"scroll case replaced by the scrolls chained off it",
             Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
 
@@ -3024,6 +3025,8 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
             _dos.item_from_c64(bytes(entry), dos_port.ITEM_SIZE)).raw)
     scrolls = sum(PodItem.from_bytes(node).quantity for node in carried
                   if PodItem.from_bytes(node).is_scroll)
+    # The reader unbundles cases, so only a hand-built neutral record can
+    # still carry a scroll node here.
     if scrolls:
         rep.dropped.append(
             f"the spell ids on {scrolls} scroll nodes: the neutral record has "
