@@ -805,7 +805,7 @@ def test_a_trained_c64_curse_character_saves_as_dos_with_its_current_class(
     record it was about to write held the right class for a fighter/thief.
 
     Skips where this machine has no DOS Curse archive
-    (`tools/registry/registry.md`, `$FR_ARCHIVES`) or no Curse C64 disks
+    (`tools/registry/README.md`, `$FR_ARCHIVES`) or no Curse C64 disks
     (`automap/gamedisks.py`) -- the source's own combat-icon table, needed so
     this conversion reports no *other*, unrelated loss.
     """
