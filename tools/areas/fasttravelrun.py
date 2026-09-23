@@ -169,7 +169,8 @@ def walk_verdict(steps: list[dict], sheet_opened: bool) -> tuple[bool, str]:
     `walk_afterwards` recorded and with no monitor in it.
 
     A step that a wall stops is a fact about the map and is not a failure;
-    what fails is a party that moved on none of its steps, a driver that
+    what fails is a party whose square changed on none of its steps (a turn is
+    not a move), a driver that
     pressed nothing, or a roster sheet that never came up -- each of which is
     what a wedged party looks like.
     """
@@ -178,13 +179,15 @@ def walk_verdict(steps: list[dict], sheet_opened: bool) -> tuple[bool, str]:
     refused = [s for s in steps if s.get("refused")]
     if refused:
         return False, f"the driver refused a step: {refused[0]['refused']}"
-    moved = sum(1 for s in steps if s.get("ok"))
+    walked = [s for s in steps if "move" in s]
+    moved = sum(1 for s in walked if s.get("after") != s.get("before"))
     if not moved:
-        return False, f"the party did not move on any of {len(steps)} steps"
+        return False, (f"the party did not move: its square did not change on "
+                       f"any of {len(walked)} steps")
     if not sheet_opened:
         return False, "the character sheet did not open after the walk"
-    return True, (f"the party moved on {moved} of {len(steps)} steps and the "
-                  "character sheet opened and closed")
+    return True, (f"the party changed square on {moved} of {len(walked)} "
+                  "steps and the character sheet opened and closed")
 
 
 def enable_debug_logging() -> None:
@@ -313,22 +316,66 @@ def shoot(sess, out: pathlib.Path, key: str, shots: dict) -> None:
         shots[key] = None
 
 
+def row24(sess) -> str:
+    """Row 24 of the screen, stripped; empty when there is no screen to read."""
+    s = sess.screen()
+    return s.row(24).strip() if s is not None else ""
+
+
+def settle_world(sess, out: pathlib.Path, shots: dict) -> tuple[bool, str]:
+    """Wait for the world's command bar before the walk, so the walk never
+    starts on a disk prompt or a menu. On failure row 24 is recorded verbatim
+    in the message and a screenshot is taken."""
+    if sess.wait_for_world(timeout=60):
+        print(f"  settled: row 24 {row24(sess)!r}", flush=True)
+        return True, ""
+    row = row24(sess)
+    print(f"  not settled: row 24 {row!r}", flush=True)
+    shoot(sess, out, "after_walk", shots)
+    return False, f"the world's command bar never came up; row 24 reads {row!r}"
+
+
 def walk_afterwards(sess) -> tuple[list[dict], bool]:
     """A few steps in each direction, then the first character's sheet opened
     and closed -- the one action that is not a move. Returns every step's
     result and whether the sheet came up.
+
+    Row 24 is read before every step and stored in it. A fight is handed to
+    `Session.fight` with `melee_turn` (the default tactic only passes, which
+    never ends one) and recorded as `{"fight": ...}`. Any row that is neither
+    the world bar nor the move sub-bar stops the walk with a refused step,
+    because `walk_one` would press Return at it and pick a menu's first
+    option.
 
     Called before teardown, because the session is gone once `run` returns.
     """
     indoors = sess.indoors()
     if indoors is None:
         return [], False
-    steps = []
+    steps: list[dict] = []
     for move in (WALK_INDOORS if indoors else WALK_OUTDOORS):
+        row = row24(sess)
+        if sess.in_combat():
+            result = sess.fight(budget=300, tactic=S.Session.melee_turn)
+            back = bool(sess.wait_for_world())
+            steps.append({"fight": getattr(result, "outcome", str(result)),
+                          "row": row, "world": back})
+            print(f"  fight: {steps[-1]['fight']} world={back}", flush=True)
+            if not back:
+                steps[-1]["refused"] = "the world did not come back after a fight"
+                return steps, False
+            row = row24(sess)
+        if "ENCAMP" not in row and S.MOVE_SUBBAR not in row:
+            steps.append({"move": move, "ok": False, "row": row,
+                          "before": sess.square(), "after": sess.square(),
+                          "refused": f"row 24 is neither the world bar nor "
+                                     f"the move sub-bar: {row!r}"})
+            print(f"  walk {move}: stopped on row 24 {row!r}", flush=True)
+            return steps, False
         before = sess.square()
         ok = sess.walk_one(move)
-        steps.append({"move": move, "ok": bool(ok), "before": before,
-                      "after": sess.square(),
+        steps.append({"move": move, "ok": bool(ok), "row": row,
+                      "before": before, "after": sess.square(),
                       "refused": getattr(sess, "walk_refused", None)})
         print(f"  walk {move}: ok={ok} {before} -> {steps[-1]['after']}",
               flush=True)
@@ -451,12 +498,17 @@ def run(args) -> int:
         # The walk is judged on its own: the trip's verdict above is already
         # final, and a party that cannot walk afterwards is a second finding.
         try:
-            steps, sheet = walk_afterwards(sess)
-            walk_ok, walk_message = walk_verdict(steps, sheet)
+            settled, why = settle_world(sess, out, shots)
+            if settled:
+                steps, sheet = walk_afterwards(sess)
+                walk_ok, walk_message = walk_verdict(steps, sheet)
+            else:
+                steps, sheet, walk_ok, walk_message = [], False, False, why
         except Exception as e:                             # noqa: BLE001
             steps, sheet = [], False
             walk_ok, walk_message = False, f"the walk raised {e!r}"
-        shoot(sess, out, "after_walk", shots)
+        if "after_walk" not in shots:
+            shoot(sess, out, "after_walk", shots)
         result.update({"walk_ok": walk_ok, "walk_message": walk_message,
                        "walk": steps, "sheet_opened": sheet,
                        "screenshots": shots})
@@ -492,7 +544,7 @@ def main(argv=None) -> int:
                     help="the game disk directory ($POR_DISKS if unset)")
     p.add_argument("--save", default=str(S.npc_party_save()),
                     help="the save disk to load, staged in as SIDE0.D64")
-    p.add_argument("--out", default=str(scratch.scratch_dir("fasttravelrun", "live")))
+    p.add_argument("--out", default=str(scratch.cache_dir("fasttravelrun", "live")))
     p.add_argument("--slot", type=int, default=None)
     p.add_argument("--from-area", type=int, default=CAVES)
     p.add_argument("--to-area", type=int, default=EAST)

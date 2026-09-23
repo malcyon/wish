@@ -229,8 +229,9 @@ def test_elapsed_is_none_unless_both_moments_happened():
 
 
 def step(ok=True, refused=None):
-    return {"move": "1", "ok": ok, "before": (1, 1), "after": (1, 0),
-            "refused": refused}
+    """A step that moved changes square; one that did not stays put."""
+    return {"move": "1", "ok": ok, "before": (1, 1),
+            "after": (1, 0) if ok else (1, 1), "refused": refused}
 
 
 def test_walk_verdict_passes_a_party_that_moved_and_opened_the_sheet():
@@ -252,6 +253,21 @@ def test_walk_verdict_fails_when_the_sheet_never_opens():
 def test_walk_verdict_fails_a_step_the_driver_refused_to_press():
     ok, message = FT.walk_verdict([step(refused="not a compass digit")], True)
     assert not ok and "refused" in message
+
+
+def test_walk_verdict_fails_a_walk_whose_steps_never_change_square():
+    """A turn changes the status line and `walk_one` calls that ok; the square
+    is what says the party walked."""
+    turned = step()
+    turned["after"] = turned["before"]
+    ok, message = FT.walk_verdict([turned, turned], True)
+    assert not ok and "square" in message
+
+
+def test_walk_verdict_ignores_fight_steps_when_counting_moves():
+    ok, _ = FT.walk_verdict([{"fight": "won", "row": "", "world": True},
+                             step()], True)
+    assert ok
 
 
 def test_walk_verdict_fails_with_no_steps():
@@ -288,6 +304,24 @@ class WalkSession(FakeSession):
         self.walk_refused = None
         self.kbd = FakeKbd()
         self.sheets = []
+        self.row = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
+        self.combat = False
+        self.fights = []
+        self.settled = True
+
+    def screen(self):
+        return FakeScreen(self.row)
+
+    def in_combat(self):
+        return self.combat
+
+    def fight(self, budget, tactic):
+        self.fights.append((budget, tactic))
+        self.combat = False
+        return types.SimpleNamespace(outcome="won")
+
+    def wait_for_world(self, timeout=240.0):
+        return self.settled
 
     def indoors(self):
         return self._indoors
@@ -315,7 +349,8 @@ def test_the_walk_goes_each_way_then_opens_the_sheet_and_records_each_step():
     assert set(FT.WALK_OUTDOORS) == {"1", "3", "5", "7"}   # N, E, S, W
     assert sheet and sess.sheets == [0]
     assert steps[0] == {"move": "1", "ok": True, "before": (5, 5),
-                        "after": (6, 5), "refused": None}
+                        "after": (6, 5), "refused": None,
+                        "row": sess.row}
     assert len(steps) == len(FT.WALK_OUTDOORS)
 
 
@@ -654,3 +689,54 @@ def test_run_reports_second_hop_seconds_from_the_through_mark(monkeypatch,
     FT.run(args)
     result = json.loads((tmp_path / "out" / "result.json").read_text())
     assert result["second_hop_seconds"] == 7.5
+
+
+def test_a_fight_before_a_step_is_fought_with_melee_and_recorded():
+    sess, m = make()
+    sess = WalkSession(m)
+    sess.combat = True
+    steps, sheet = FT.walk_afterwards(sess)
+    assert sess.fights == [(300, FT.S.Session.melee_turn)]
+    assert steps[0]["fight"] == "won" and steps[0]["world"] is True
+    assert "".join(sess.pressed) == FT.WALK_OUTDOORS   # walking carried on
+    assert sheet
+
+
+def test_an_unknown_row_stops_the_walk_before_any_key_is_pressed():
+    sess, m = make()
+    sess = WalkSession(m)
+    sess.row = "LARGE SMALL LEAVE"
+    steps, sheet = FT.walk_afterwards(sess)
+    assert sess.pressed == [] and sess.sheets == [] and not sheet
+    assert "LARGE SMALL LEAVE" in steps[0]["refused"]
+    assert steps[0]["row"] == "LARGE SMALL LEAVE"
+    assert not FT.walk_verdict(steps, sheet)[0]
+
+
+def test_the_move_sub_bar_is_a_row_the_walk_may_press_into():
+    sess, m = make()
+    sess = WalkSession(m)
+    sess.row = FT.S.MOVE_SUBBAR + ", RETURN OR BUTTON"
+    FT.walk_afterwards(sess)
+    assert "".join(sess.pressed) == FT.WALK_OUTDOORS
+
+
+def test_settle_world_fails_with_the_row_text_and_a_screenshot(tmp_path):
+    sess, m = make()
+    sess = WalkSession(m)
+    sess.settled, sess.row = False, "PRESS RETURN"
+    shots = {}
+    ok, message = FT.settle_world(sess, tmp_path, shots)
+    assert not ok and "PRESS RETURN" in message
+    assert sess.kbd.paths == [str(tmp_path / "4-after-walk.png")]
+    sess.settled = True
+    assert FT.settle_world(sess, tmp_path, shots) == (True, "")
+
+
+def test_the_default_out_is_under_the_cache_not_the_temp_directory(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(FT, "run", lambda args: seen.update(out=args.out) or 0)
+    monkeypatch.setattr(FT, "disks_of", lambda args: pathlib.Path("."))
+    FT.main([])
+    assert pathlib.Path(seen["out"]).is_relative_to(
+        pathlib.Path.home() / ".cache")
