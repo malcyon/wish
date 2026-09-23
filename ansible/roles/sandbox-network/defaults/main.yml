@@ -102,15 +102,28 @@ sandbox_net_token_pattern: '(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{
 sandbox_net_probe_timeout_seconds: 30
 sandbox_net_credential_root_timeout_seconds: 60
 
+# The scan script's own deadline on the guest, enforced by a `timeout` the
+# script wraps around itself before `find`/`grep` ever run. A process stuck in
+# uninterruptible disk-wait (D state) -- the failure #644 was filed for --
+# cannot act on any signal, including the controller's, until the I/O it is
+# blocked on returns; a signal issued by the guest's own kernel is what
+# actually lands once it does. Kept below sandbox_net_credential_root_timeout_seconds
+# so the remote deadline fires first and the controller's timeout is only ever
+# a backstop for the ssh connection itself, not the scan.
+sandbox_net_credential_root_remote_timeout_seconds: 45
+
 # Glob patterns (matched against the whole path, `find -path`) pruned from the
 # credential scan before anything under them is opened. Flatpak hard-links the
 # same object content into `repo/objects`, `runtime/…/files` and `app/…/files`
 # once a package is deployed, so pruning only `repo/objects` still leaves that
 # content reachable through `runtime/`; the whole of `.local/share/flatpak`
 # must be skipped. Per-app state under `.var/app` is not a Flatpak payload and
-# is not pruned.
+# is not pruned. Listed once per audited root's home -- `/home/*` for the
+# guest's own users and `/root` for root's, since `audit_dirs` scans both and
+# root can just as easily have Flatpak state under its own home.
 sandbox_net_credential_prune_globs:
   - "/home/*/.local/share/flatpak"
+  - "/root/.local/share/flatpak"
 
 # The guests the test looks in. `domain` is the libvirt name -- a guest that
 # is not running is skipped, not failed -- and `key` is the private key the
