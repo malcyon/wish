@@ -39,6 +39,8 @@ does with it is not settled here.
     tools/pool_of_radiance/worldtiles.py codes 5 7 29
     tools/pool_of_radiance/worldtiles.py census
     tools/pool_of_radiance/worldtiles.py sample
+
+`sample` alone needs PyQt6, for the automapper's colours and party marker.
 """
 
 from __future__ import annotations
@@ -252,10 +254,15 @@ def sample_image(world: W.World, explored, party: tuple[int, int], cell: int,
                                                        Image.NEAREST)
                 im.paste(tile, ((x - left) * cell, (y - top) * cell))
     draw = ImageDraw.Draw(im)
+    # The dungeon map draws a line on every edge of the grid; the last one is
+    # a pixel inside the image here, since a line at `across * cell` is off it.
+    right, bottom = across * cell - 1, down * cell - 1
     for i in range(across + 1):
-        draw.line([(i * cell, 0), (i * cell, down * cell)], fill=lattice)
+        at = min(i * cell, right)
+        draw.line([(at, 0), (at, bottom)], fill=lattice)
     for j in range(down + 1):
-        draw.line([(0, j * cell), (across * cell, j * cell)], fill=lattice)
+        at = min(j * cell, bottom)
+        draw.line([(0, at), (right, at)], fill=lattice)
     marker = party_marker(party[0] - left, party[1] - top, EAST, cell, 0)
     draw.polygon(list(marker.points), fill=PARTY.getRgb()[:3])
     return im
@@ -428,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sample = sub.add_parser(
         "sample", help="the whole wilderness and a 16 x 16 piece, each at "
-                       "two sizes, for choosing between them")
+                       "two sizes, for choosing between them (needs PyQt6)")
     sample.set_defaults(func=cmd_sample)
 
     args = p.parse_args(argv)

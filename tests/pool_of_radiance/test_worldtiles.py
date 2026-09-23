@@ -21,6 +21,8 @@ from __future__ import annotations
 import pathlib
 import sys
 
+import pytest
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from support.worldwindow import synthetic_window  # noqa: E402
@@ -117,6 +119,11 @@ def _solid_world():
     return World(tuple(windows), (glyphs, glyphs, glyphs))
 
 
+def _party_rgb():
+    from automap.window import PARTY
+    return PARTY.getRgb()[:3]
+
+
 def _hex(colour: str) -> tuple[int, int, int]:
     return tuple(int(colour[i:i + 2], 16) for i in (1, 3, 5))
 
@@ -135,6 +142,7 @@ def test_explored_squares_are_the_five_by_five_pane_around_every_route_square():
 
 
 def test_the_four_pictures_have_the_sizes_the_plan_states(tmp_path):
+    pytest.importorskip("PyQt6")
     from tools.pool_of_radiance.worldtiles import write_samples
     paths = write_samples(_solid_world(), tmp_path)
     from PIL import Image
@@ -146,6 +154,7 @@ def test_the_four_pictures_have_the_sizes_the_plan_states(tmp_path):
 
 
 def test_a_sample_draws_tiles_only_where_explored_over_paper_with_the_lattice_and_marker():
+    pytest.importorskip("PyQt6")
     from automap.window import LATTICE, PAPER, PARTY
     from goldbox.icons import C64_PALETTE
     from tools.pool_of_radiance.worldtiles import (
@@ -176,14 +185,44 @@ def test_a_sample_draws_tiles_only_where_explored_over_paper_with_the_lattice_an
 
 
 def test_a_piece_is_centred_on_the_party_and_kept_inside_the_wilderness():
+    pytest.importorskip("PyQt6")
     from goldbox.icons import C64_PALETTE
-    from tools.pool_of_radiance.worldtiles import explored_squares, sample_image
-    seen = explored_squares([(x, 27) for x in range(4, 40)])
-    picture = sample_image(_solid_world(), seen, (28, 27), 34, piece=16)
-    # The party is the ninth column of a piece spanning x 20-35.
-    assert picture.getpixel((8 * 34 + 17, 8 * 34 + 17))[:3] != (255, 255, 255)
-    # Against the west edge the piece stops at x 0 instead of running off.
-    near = sample_image(_solid_world(), explored_squares([(3, 27)]), (3, 27),
-                        34, piece=16)
-    assert near.getpixel((1 * 34 + 4, 27 * 34 - 19 * 34 + 8))[:3] == \
-        _hex(C64_PALETTE[1])
+    from tools.pool_of_radiance.worldtiles import (
+        WORLD_ACROSS,
+        WORLD_DOWN,
+        sample_image,
+    )
+    cell, piece = 34, 16
+    everywhere = {(x, y) for x in range(WORLD_ACROSS) for y in range(WORLD_DOWN)}
+    # (party, left, top): centred, then against each of the four edges.
+    cases = [((28, 27), 20, 19),
+             ((3, 27), 0, 19),
+             ((40, 27), WORLD_ACROSS - piece, 19),
+             ((28, 2), 20, 0),
+             ((28, 34), 20, WORLD_DOWN - piece)]
+    for party, left, top in cases:
+        picture = sample_image(_solid_world(), everywhere, party, cell,
+                               piece=piece)
+        col, row = party[0] - left, party[1] - top
+        # The marker sits in the party's own cell of the piece.
+        assert picture.getpixel((col * cell + cell // 2, row * cell + cell // 2)) \
+            == _party_rgb(), party
+        # The first column of the piece is world x `left`, so its tile
+        # colour names the window and proves where the piece starts.
+        window = 0 if left < 15 else 1 if left < 28 else 2
+        assert picture.getpixel((4, cell * 3 + 8)) == _hex(C64_PALETTE[window + 1]), party
+        # The last column of the piece is world x `left + 15`.
+        edge = left + piece - 1
+        window = 0 if edge < 15 else 1 if edge < 28 else 2
+        assert picture.getpixel((piece * cell - 6, cell * 3 + 8)) \
+            == _hex(C64_PALETTE[window + 1]), party
+
+
+def test_the_lattice_has_a_line_on_the_right_and_bottom_edges():
+    pytest.importorskip("PyQt6")
+    from automap.window import LATTICE
+    from tools.pool_of_radiance.worldtiles import sample_image
+    picture = sample_image(_solid_world(), set(), (28, 27), 12, piece=16)
+    width, height = picture.size
+    assert picture.getpixel((width - 1, 40)) == LATTICE.getRgb()[:3]
+    assert picture.getpixel((40, height - 1)) == LATTICE.getRgb()[:3]
