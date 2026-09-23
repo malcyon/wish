@@ -34,6 +34,7 @@ import argparse
 import json
 import os
 import pathlib
+import shutil
 import sys
 import time
 
@@ -211,13 +212,17 @@ def save_at_world(sess, shot, note, *, settle_s: float = 4) -> bool:
     return saved
 
 
-def copy_resave(copy, detach, src, dest, note, *, clock=time.time,
-                attempts: int = 120, backoff: float = 0.5):
-    """Copy the save disk once its directory is closed, detaching it if it stays open.
+def copy_resave(copy, repair, verify, src, dest, note, *, clock=time.time,
+                attempts: int = 120, backoff: float = 0.5,
+                raw_copy=shutil.copy):
+    """Copy the save disk once its directory is closed, repairing the copy if it stays open.
 
     The first copy polls for `attempts * backoff` seconds.  If the entry is
-    still open the image is detached, which makes VICE write it back, and one
-    more copy is made; a second refusal propagates.
+    still open, the raw image is copied to `dest`, `repair(dest)` closes the
+    entry on that copy and returns the entries it changed, and `verify(dest)`
+    must read the party back from it.  The emulator's own disk is never
+    detached or written.  A repair that changed nothing, or a copy that does
+    not verify, is removed and raises.
     """
     t0 = clock()
     try:
@@ -225,11 +230,20 @@ def copy_resave(copy, detach, src, dest, note, *, clock=time.time,
     except RuntimeError as exc:
         note(event="copy", stage="polled", ok=False, error=str(exc),
              seconds=round(clock() - t0, 1))
-        detach()
-        out = copy(src, dest)
-        note(event="copy", stage="after-detach", ok=True,
+        raw_copy(src, dest)
+        try:
+            changed = repair(dest)
+            if not changed:
+                raise RuntimeError(
+                    f"the copy of {src} has no unclosed entry to repair "
+                    f"after: {exc}")
+            verify(dest)
+        except BaseException:
+            pathlib.Path(dest).unlink(missing_ok=True)
+            raise
+        note(event="copy", stage="repaired", ok=True, entries=changed,
              seconds=round(clock() - t0, 1))
-        return out
+        return str(dest)
     note(event="copy", stage="polled", ok=True, seconds=round(clock() - t0, 1))
     return out
 
@@ -259,6 +273,8 @@ def run(args) -> int:
     savecheck.catch_signals()
     os.environ.setdefault("POR_HEADLESS", "1")
 
+    # Only `close_splat` (a file operation) is used from here, for both
+    # titles; the module is Curse's by location, not by what these use.
     from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
 
     curse = args.title == "curse"
@@ -396,11 +412,9 @@ def run(args) -> int:
         sess.kbd.screenshot(str(out / "world.png"))
 
         saved = save_at_world(sess, shot, note)
-        sess.settle(4)
         if saved:
-            copy_resave(por.copy_closed_disk,
-                        lambda: curseload.detach(sess),
-                        side0, out / "resave.D64", note)
+            copy_resave(por.copy_closed_disk, curseload.close_splat,
+                        experience_map, side0, out / "resave.D64", note)
             summary["saved"] = True
             summary["experience"] = experience_delta(
                 experience_map(save), experience_map(out / "resave.D64"))

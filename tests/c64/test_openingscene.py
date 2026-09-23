@@ -258,9 +258,11 @@ def test_the_world_bar_settles_before_camping_and_a_shot_follows(saved):
     assert notes == [{"event": "save", "ok": saved, "row24": "--SAVE ERROR--"}]
 
 
-def resave(outcomes):
+def resave(outcomes, tmp_path, *, changed=("SAVE",), verify=None):
     """Run `copy_resave` with a copy that returns or raises each outcome in turn."""
     calls, notes, seen = [], [], []
+    src, dest = tmp_path / "src.d64", tmp_path / "dest.d64"
+    src.write_bytes(b"live")
 
     def copy(src, dest, **kw):
         calls.append(kw)
@@ -270,30 +272,60 @@ def resave(outcomes):
             raise out
         return out
 
-    def detach():
-        calls.append("detach")
+    def repair(path):
+        calls.append(("repair", pathlib.Path(path).read_bytes()))
+        return list(changed)
 
-    return calls, notes, lambda: openingscene.copy_resave(
-        copy, detach, "s", "d", lambda **kw: notes.append(kw))
+    def check(path):
+        calls.append("verify")
+        if verify:
+            raise verify
+
+    return calls, notes, src, dest, lambda: openingscene.copy_resave(
+        copy, repair, check, src, dest, lambda **kw: notes.append(kw))
 
 
-def test_a_disk_that_closes_while_polled_is_copied_without_a_detach():
-    calls, notes, go = resave(["d"])
+def test_a_disk_that_closes_while_polled_is_copied_untouched(tmp_path):
+    calls, notes, src, dest, go = resave(["d"], tmp_path)
     assert go() == "d"
     assert calls == [{"attempts": 120, "backoff": 0.5}]
     assert [n["ok"] for n in notes] == [True]
 
 
-def test_a_disk_still_open_after_polling_is_detached_and_copied_again():
-    calls, notes, go = resave([RuntimeError("open"), "d"])
-    assert go() == "d"
-    assert calls == [{"attempts": 120, "backoff": 0.5}, "detach", {}]
+def test_a_disk_still_open_is_repaired_on_a_copy_and_never_detached(tmp_path):
+    calls, notes, src, dest, go = resave([RuntimeError("open directory entry")],
+                                         tmp_path)
+    assert go() == str(dest)
+    assert calls == [{"attempts": 120, "backoff": 0.5},
+                     ("repair", b"live"), "verify"]
+    assert src.read_bytes() == b"live"
     assert [(n["stage"], n["ok"]) for n in notes] == [
-        ("polled", False), ("after-detach", True)]
+        ("polled", False), ("repaired", True)]
+    assert not hasattr(openingscene, "detach")
 
 
-def test_a_disk_open_even_after_the_detach_is_refused():
-    calls, notes, go = resave([RuntimeError("a"), RuntimeError("b")])
-    with pytest.raises(RuntimeError, match="b"):
+def test_a_repair_that_changes_nothing_is_refused_and_leaves_no_copy(tmp_path):
+    calls, notes, src, dest, go = resave([RuntimeError("a")], tmp_path,
+                                         changed=())
+    with pytest.raises(RuntimeError, match="no unclosed entry"):
         go()
-    assert calls.count("detach") == 1
+    assert not dest.exists()
+
+
+def test_a_repaired_copy_that_does_not_load_is_refused(tmp_path):
+    calls, notes, src, dest, go = resave([RuntimeError("a")], tmp_path,
+                                         verify=ValueError("unreadable"))
+    with pytest.raises(ValueError, match="unreadable"):
+        go()
+    assert not dest.exists()
+    assert src.read_bytes() == b"live"
+
+
+def test_the_run_saves_then_copies_and_marks_saved_only_after_the_copy():
+    from tools.c64 import openingscene as o
+    src = open(o.__file__).read()
+    run = src[src.index("def run("):]
+    assert run.index("save_at_world(") < run.index("copy_resave(") < \
+        run.index('summary["saved"] = True')
+    assert "sess.settle(4)" not in run
+    assert "detach" not in run
