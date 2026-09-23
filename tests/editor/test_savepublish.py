@@ -1948,3 +1948,324 @@ def test_an_unreadable_dos_curse_save_still_asks_for_the_amiga_game_disk(
 
     assert convert.amiga_needs_game_disk(shape, source) is True
     assert saveplan.requirements(source, "amiga") == (saveplan.AMIGA_GAME_DISK,)
+
+
+# ---------------------------------------------------------------------------
+# What a conversion reads, writes or refuses, asserted through Save As
+# ---------------------------------------------------------------------------
+
+def _amiga_pod_disk(tmp_path):
+    """A registry Amiga disk holding a Pools of Darkness saved game, copied
+    under `tmp_path`; skips when this machine has none."""
+    from goldbox.amiga_adf import AmigaDiskError
+    from tools.amiga import amigasaves
+
+    for _label, data in amigasaves.images():
+        try:
+            if not amiga_savegame.pod_slots_present(AmigaDisk(data)):
+                continue
+        except (AmigaDiskError, ValueError, amiga_savegame.AmigaSaveError):
+            continue
+        path = tmp_path / "pod.adf"
+        path.write_bytes(data)
+        return path
+    pytest.skip("no Amiga disk with a Pools of Darkness saved game; "
+                "set $AMIGA_DISKS")
+
+
+def _outdoor_amiga_disk(tmp_path):
+    """`WISH-SPEC-por-amiga-outdoor`'s disk, which holds saved games A, B and C,
+    copied so the path stays writable; skips without the specimen."""
+    from gamedata import have_specimen, specimen
+
+    if not have_specimen("por-amiga-outdoor", "amiga"):
+        pytest.skip("needs specimen WISH-SPEC-por-amiga-outdoor")
+    path = tmp_path / "por1-outdoor.adf"
+    path.write_bytes(
+        (specimen("por-amiga-outdoor", "amiga") / "por1-outdoor.adf")
+        .read_bytes())
+    return path
+
+
+def _pool_c64_source(tmp_path, game=None):
+    """A `Source` for a zero-filled C64 save of `game` (Pool of Radiance when
+    `None`)."""
+    return convert.Source.detect(synthetic_save(tmp_path, game=game))
+
+
+def test_save_as_to_dos_writes_the_c64_partys_own_combat_figures(tmp_path):
+    """A C64 party of six different combat figures saved as a DOS folder
+    arrives with six different figures, read off the source title's own disks
+    in `assets.source_files`, and the conversion does not report the figure
+    as unset."""
+    from support.convertparty import _six_icon_party
+
+    from goldbox import dos_codec
+
+    game_folder = _dos_game_folder()
+    files_for = _registry_game_files(POOL_OF_RADIANCE)
+    if game_folder is None or files_for is None:
+        pytest.skip("needs the Pool of Radiance C64 disks and DOS game folder")
+    save0, save1, _parts = _six_icon_party()
+    disk = tmp_path / "SIX.D64"
+    disk.write_bytes(dos_codec.save_disk(save0, save1).to_bytes())
+    party = Party(str(disk))
+    assets = saveplan.Assets(dos_folder=game_folder, source_files=files_for)
+
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "out", assets)
+
+    assert not any("figure is not set" in line
+                   for line in plan.report.dropped), plan.report.dropped
+    folder = tmp_path / "written"
+    folder.mkdir()
+    for name, data in plan.files.items():
+        (folder / name).write_bytes(data)
+    written = dos_codec.read_party(folder, plan.destination.slot)
+    assert len(written) == 6
+    figures = [(c.get("icon_head"), c.get("icon_body")) for c in written]
+    assert len(set(figures)) == 6, figures
+
+
+@pytest.mark.parametrize("port", ["amiga", "dos"])
+def test_a_c64_party_with_no_source_disks_is_refused_for_a_conversion(
+        tmp_path, port):
+    """The disks the source's own combat figures come from are asked for on
+    their own: with the destination's data supplied and no disks found for the
+    source title, resolving the assets and preparing the save both refuse,
+    naming `SOURCE_DISKS` and nothing else, so a party never arrives with
+    every figure silently the game's default."""
+    source = _pool_c64_source(tmp_path)
+    named = ({"amiga_disk": tmp_path / "disk2.adf"} if port == "amiga"
+             else {"dos_folder": tmp_path})
+
+    with pytest.raises(saveplan.MissingAssets) as caught:
+        saveplan.resolve_assets(source, port, game_files=lambda title: None,
+                                **named)
+    assert caught.value.missing == (saveplan.SOURCE_DISKS,)
+
+    party = Party(str(tmp_path / "SYNTHETIC.D64"))
+    suffix = saveplan.DESTINATION_SUFFIX.get(port, "")
+    with pytest.raises(saveplan.MissingAssets) as caught:
+        saveplan.prepare_save_as(party, port, tmp_path / f"out{suffix}",
+                                 saveplan.Assets(**named))
+    assert caught.value.missing == (saveplan.SOURCE_DISKS,)
+
+
+def test_a_dual_classed_c64_curse_character_saves_as_dos_with_his_former_class(
+        tmp_path):
+    """`WISH-SPEC-curse-dual-classed`: PHILIPPE, a human magic-user 6 who used
+    `HUMAN CHANGE CLASS` at Curse's training hall to become a fighter 1. Saved
+    as a DOS folder he is a fighter 1 with no experience, carrying the
+    magic-user 6 he left in the two places the DOS engine keeps it."""
+    from gamedata import specimen_root
+
+    from goldbox import dos_codec
+
+    root = specimen_root()
+    found = ([] if root is None else
+             list((root / "por-c64").glob(
+                 "WISH-SPEC-curse-dual-classed.[dD]64")))
+    game_dir = _curse_game_dir()
+    files_for = _registry_game_files(CURSE_KEY)
+    if not found or game_dir is None or files_for is None:
+        pytest.skip("needs ~/wish-specimens/por-c64/WISH-SPEC-curse-dual-"
+                    "classed, the DOS Curse archive ($FR_ARCHIVES) and the "
+                    "Curse C64 disks")
+    party = Party(str(found[0]))
+    assets = saveplan.Assets(dos_folder=game_dir, source_files=files_for)
+
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "out", assets)
+
+    folder = tmp_path / "written"
+    folder.mkdir()
+    for name, data in plan.files.items():
+        (folder / name).write_bytes(data)
+    written = dos_codec.read_party(folder, plan.destination.slot)
+    philippe = next(c for c in written if c.name == "PHILIPPE")
+    assert philippe.class_levels == {"fighter": 1}
+    assert philippe.get("experience") == 0
+    # Magic-user is slot 5 of `dos_codec.CLASS_LEVEL_SLOTS`, the class he left.
+    assert philippe.raw("former_class_levels")[5] == 6
+    assert philippe.raw("former_level")[0] == 6
+
+
+def test_a_pool_of_radiance_c64_save_offers_its_own_port_then_dos_then_amiga(
+        tmp_path):
+    source = _pool_c64_source(tmp_path)
+
+    assert source.port == "c64"
+    assert saveplan.destination_ports(source) == ["c64", "dos", "amiga"]
+
+
+@pytest.mark.parametrize("game_key", [CURSE_KEY, "secret-of-the-silver-blades"])
+def test_a_curse_or_silver_blades_c64_save_offers_dos_and_amiga(
+        tmp_path, game_key):
+    source = _pool_c64_source(tmp_path,
+                              game=convert.c64_port.by_key(game_key))
+
+    assert source.key == game_key
+    assert saveplan.destination_ports(source) == ["c64", "dos", "amiga"]
+
+
+def test_a_pool_of_radiance_dos_save_offers_c64_and_amiga_and_records_its_slot(
+        tmp_path):
+    """Opening `SAVGAMB.DAT` names slot B, and the party opened from it offers
+    the same destinations."""
+    folder = dos_folder(tmp_path, deltas=dos_port.POOL_OF_RADIANCE, slot="B")
+
+    source = convert.Source.detect(folder / "SAVGAMB.DAT")
+
+    assert source.port == "dos" and source.slot == "B"
+    assert saveplan.destination_ports(source) == ["dos", "c64", "amiga"]
+
+
+@pytest.mark.parametrize("shape", [dos_port.CURSE_OF_THE_AZURE_BONDS,
+                                   dos_port.SECRET_OF_THE_SILVER_BLADES],
+                         ids=lambda shape: shape.key)
+def test_a_curse_or_silver_blades_dos_save_offers_c64_and_amiga(
+        tmp_path, shape):
+    folder = dos_folder(tmp_path, deltas=shape)
+
+    source = convert.Source.detect(folder)
+
+    assert saveplan.destination_ports(source) == ["dos", "c64", "amiga"]
+
+
+def test_a_pools_of_darkness_dos_save_offers_only_a_copy_of_itself(tmp_path):
+    shape = dos_port.POOLS_OF_DARKNESS
+    (tmp_path / "SAVGAMA.PTY").write_bytes(b"\x00")
+    (tmp_path / "CHRDATA1.SAV").write_bytes(b"\x00" * shape.record_size)
+
+    source = convert.Source.detect(tmp_path / "SAVGAMA.PTY")
+
+    assert source.key == dos_port.POOLS_OF_DARKNESS.key
+    assert saveplan.destination_ports(source) == ["dos"]
+
+
+@pytest.mark.parametrize("value", [None, "", "0", "off"])
+def test_an_amiga_pools_of_darkness_disk_offers_only_a_copy_with_the_flag_off(
+        tmp_path, monkeypatch, value):
+    """Detecting a Pools of Darkness saved game is not behind
+    `WISH_EXPERIMENTAL_POD_CONVERT`; only offering a conversion is."""
+    if value is None:
+        monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
+    else:
+        monkeypatch.setenv(convert.POD_CONVERT_ENV, value)
+    source = convert.Source.detect(_amiga_pod_disk(tmp_path))
+
+    assert source.key == dos_port.POOLS_OF_DARKNESS.key
+    assert saveplan.destination_ports(source) == ["amiga"]
+
+
+def test_the_c64_disks_are_asked_for_by_the_destination_title(tmp_path):
+    """A Curse DOS save saved as a C64 disk asks the lookup for Curse's own
+    title, never Pool of Radiance's, and refuses naming the destination's
+    disks when nothing answers."""
+    folder = dos_folder(tmp_path, deltas=dos_port.CURSE_OF_THE_AZURE_BONDS)
+    source = convert.Source.detect(folder)
+    seen = []
+
+    def lookup(game):
+        seen.append(game.key)
+        return None
+
+    with pytest.raises(saveplan.MissingAssets) as caught:
+        saveplan.resolve_assets(source, "c64", game_files=lookup)
+
+    assert seen == [convert.c64_port.CURSE_OF_THE_AZURE_BONDS.key]
+    assert caught.value.missing == (saveplan.DESTINATION_DISKS,)
+
+
+def test_save_as_of_an_amiga_disks_slot_c_converts_that_saved_games_own_place(
+        tmp_path):
+    """A three-slot Amiga disk opened at slot C and saved as a C64 disk writes
+    C's own party and position, read back through `world_state.from_c64`, a
+    different reader over a different container from the one that wrote it."""
+    from editor.dosimport import GameFiles
+    from goldbox import dos_codec, world_state
+    from goldbox.dos_codec import new_save_from
+
+    path = _outdoor_amiga_disk(tmp_path)
+    party = Party(convert.Source.detect(path, slot="C"))
+    assert party.source.slot == "C"
+    icon, animate = bytes(36), bytes(852)
+    assets = saveplan.Assets(game_files=GameFiles(icon=icon, animate=animate))
+
+    plan = saveplan.prepare_save_as(party, "c64", tmp_path / "out.d64", assets)
+
+    disk = AmigaDisk.open(str(path))
+    chosen, savgam = amiga_savegame.read_por_slot(disk, "C")
+    state = amiga_savegame.read_por_state(savgam, str(path))
+    ref0, ref1, _report = new_save_from(state, chosen, icon, animate)
+    reference = dos_codec.save_disk(bytes(ref0), bytes(ref1))
+    (image,) = plan.files.values()
+    assert image == reference.to_bytes()
+    landed = world_state.from_c64(bytes(ref0))
+    assert landed.outdoors is True
+    assert landed.travel == (7, 28)
+    assert landed.area == 26
+
+
+def test_save_as_of_an_amiga_disks_slot_c_to_dos_holds_that_partys_place(
+        tmp_path):
+    """The same slot chosen for a DOS destination: the characters written are
+    slot C's, and so is the place, which is all that tells the three saved
+    games of this disk apart -- read back through `world_state.from_dos`."""
+    from goldbox import dos_codec, world_state
+
+    game_folder = _dos_game_folder()
+    if game_folder is None:
+        pytest.skip("needs the DOS Pool of Radiance game folder")
+    path = _outdoor_amiga_disk(tmp_path)
+    party = Party(convert.Source.detect(path, slot="C"))
+    assets = saveplan.Assets(dos_folder=game_folder)
+
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "out", assets)
+
+    disk = AmigaDisk.open(str(path))
+    chosen, _savgam = amiga_savegame.read_por_slot(disk, "C")
+    folder = tmp_path / "written"
+    folder.mkdir()
+    for name, data in plan.files.items():
+        (folder / name).write_bytes(data)
+    written = dos_codec.read_party(folder, plan.destination.slot)
+    assert [c.name for c in written] == [c.name for c in chosen]
+    savgam = plan.files[f"SAVGAM{plan.destination.slot}.DAT"]
+    landed = world_state.from_dos(savgam, dos_port.POOL_OF_RADIANCE.key)
+    assert landed.outdoors is True
+    assert landed.travel == (7, 28)
+    assert landed.area == 26
+
+
+def test_a_dos_party_saved_as_amiga_keeps_the_slot_letter_it_was_opened_at(
+        tmp_path):
+    folder = dos_folder(tmp_path / "save", slot="B")
+    party = Party(str(folder))
+    assert party.source.slot == "B"
+
+    plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "out.adf")
+
+    assert plan.destination.slot == "B"
+
+
+def test_a_c64_party_saved_as_amiga_writes_slot_a_and_a_readable_disk(
+        tmp_path):
+    """A C64 save names no slot of its own: the Amiga disk it becomes holds
+    the party as saved game A, under the codec's own filename, and opens."""
+    from support.toamigapor import _c64_specimen, _por_disk_2
+
+    files_for = _registry_game_files(POOL_OF_RADIANCE)
+    if files_for is None:
+        pytest.skip("needs the Pool of Radiance C64 disks")
+    disk2 = _por_disk_2(tmp_path)
+    party = Party(str(_c64_specimen("por-party-twin-pair")))
+    assets = saveplan.Assets(amiga_disk=disk2, source_files=files_for)
+
+    plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "out.adf",
+                                    assets)
+
+    assert plan.destination.slot == "A"
+    assert list(plan.files) == [convert.POOLSAVE_FILENAME]
+    out = tmp_path / "written.adf"
+    out.write_bytes(plan.files[convert.POOLSAVE_FILENAME])
+    assert AmigaDisk.open(str(out)).read_file("/save") is not None

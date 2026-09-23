@@ -55,10 +55,11 @@ from PyQt6.QtWidgets import QApplication
 from automap import gamedisks
 from editor import convert, dosimport, roster, saveplan
 from goldbox import c64_port, dos_codec, dos_port
-from goldbox.d64 import load_payload
+from goldbox.d64 import D64, load_payload
 from goldbox.iconparts import IconParts
+from goldbox.layout import NAME_SIZE
 from goldbox.portraits import PortraitError, tables_from_disks
-from goldbox.savegame import SaveGame0, SaveGame1
+from goldbox.savegame import SaveGame0, SaveGame1, load_save
 from tools.convert import convertdrops
 from tools.dos import dosbox
 
@@ -657,3 +658,73 @@ def test_a_c64_party_with_a_companion_saves_as_dos(app, tmp_path, disk_name):
     for data in companions:
         assert data[offset("hp_lost_to_drain")] == 0xFF
         assert data[0x086:0x088] == b"\x00\x00"
+
+
+# ---------------------------------------------------------------------------
+# A party of seven: the roster the C64 save holds and the DOS save carries.
+# ---------------------------------------------------------------------------
+
+SEVEN_MEMBERS = 7
+
+
+def test_a_seven_member_dos_party_saves_as_c64_with_all_seven(app, tmp_path):
+    """`WISH-SPEC-issue641-dirten-seven-resave` (a seven-character DOS
+    Pool of Radiance save the engine re-saved, slot B): Save As to a C64
+    disk prepares a plan and the disk it writes holds all seven."""
+    folder = _dos_specimen("issue641-dirten-seven-resave")
+    if folder is None:
+        pytest.skip("needs ~/wish-specimens/*-dos/"
+                    "WISH-SPEC-issue641-dirten-seven-resave "
+                    "(tools/registry/specimens.py)")
+    party = roster.Party(str(folder))
+    assert len(party.members) == SEVEN_MEMBERS
+    try:
+        assets = saveplan.resolve_assets(party.source, "c64",
+                                         game_files=convertdrops.game_files)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks, found through "
+                    "automap/gamedisks.py")
+
+    plan = saveplan.prepare_save_as(party, "c64", tmp_path / "out.d64", assets)
+
+    (image,) = plan.files
+    disk = tmp_path / "read-back.d64"
+    disk.write_bytes(plan.files[image])
+    _game, save0, _save1 = load_save(D64.open(str(disk)))
+    written = [bytes(slot.window[:NAME_SIZE]).split(b"\0")[0]
+               for slot in save0.slots if slot.window[0]]
+    expected = [member.record.get("name").encode("ascii")
+                for member in party.members]
+    # The C64 marches in the reverse of the DOS order, so the seven are
+    # compared as a set: what this pins is that none is lost.
+    assert sorted(written) == sorted(expected)
+
+
+def test_a_seven_member_c64_party_saves_as_dos_with_all_seven(app, tmp_path):
+    """`TEST_DOS_IMPORT9.D64` (a seven-character Pool of Radiance C64
+    save): Save As to a DOS folder prepares a plan and the
+    folder it writes holds seven character files."""
+    try:
+        game_dir = dosbox.find_game("POOLRAD")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Pool of Radiance archives ($FR_ARCHIVES)")
+    where = gamedisks.find(c64_port.POOL_OF_RADIANCE.key)
+    disk_path = pathlib.Path(where) / "TEST_DOS_IMPORT9.D64" if where else None
+    if disk_path is None or not disk_path.exists():
+        pytest.skip("needs TEST_DOS_IMPORT9.D64 in the Pool of Radiance folder")
+
+    party = roster.Party(str(disk_path))
+    source = party.source or convert.Source.detect(disk_path)
+    try:
+        assets = saveplan.resolve_assets(source, "dos",
+                                         game_files=convertdrops.game_files,
+                                         dos_folder=game_dir)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "out", assets)
+
+    characters = [name for name in plan.files
+                  if name.upper().startswith("CHRDAT")
+                  and name.upper().endswith(".SAV")]
+    assert len(characters) == SEVEN_MEMBERS, sorted(plan.files)
