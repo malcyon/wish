@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT))
 
 from support.amigarecords import sample  # noqa: E402
 
-from goldbox import amiga_por  # noqa: E402
+from goldbox import amiga_por, dos_codec  # noqa: E402
 
 WARNING = "WARNING: Spaces in names are dropped on the Amiga. "
 
@@ -47,3 +47,29 @@ def test_a_name_with_no_space_gets_no_warning():
     unchanged in `#308`'s own run -- the control the ruling is about."""
     _, _, _, rep = amiga_por.write_por(sample(name="MAGNUS"))
     assert not any("dropped on the Amiga" in w for w in rep.warnings)
+
+
+def test_a_typed_ff_space_reads_as_a_space_and_converts_to_dos_as_one():
+    """`#631 (A Pool of Radiance character created in the Amiga game with a
+    space in his name converts as MARY?SUE, because the reader decodes the
+    game's $FF as a replacement character)`: Amiga Pool of Radiance's own
+    Create New Character writes `$FF`, not `$20`, for a typed space
+    (`docs/206-three-amiga-questions.md`), and draws that byte as a blank
+    cell rather than as a replacement character.
+
+    `goldbox.dos_codec.DosCharacter.name` maps `$FF` to a space before
+    decoding, gated on `is_pool_of_radiance`. A record built with a genuine
+    `$FF` in the name comes back as `MARY SUE` rather than `MARY�SUE`,
+    and the DOS bytes it converts to hold the space (`0x20`), not the `?`
+    (`0x3F`) a replacement character would encode to.
+    """
+    record, _, _, _ = amiga_por.write_por(sample(name="MARY SUE"))
+    record = bytearray(record)
+    record[4] = 0xFF
+    ch = amiga_por.AmigaPorCharacter.from_bytes(bytes(record))
+
+    assert amiga_por.to_dos_character(ch).name == "MARY SUE"
+
+    dos_record, _, _, _ = dos_codec.write(amiga_por.to_neutral(ch))
+    assert dos_record[:9] == bytes((0x08, 0x4D, 0x41, 0x52, 0x59, 0x20,
+                                     0x53, 0x55, 0x45))

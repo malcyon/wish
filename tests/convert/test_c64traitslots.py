@@ -179,6 +179,7 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
     checked = carriers = 0
     lost: list[str] = []
     overhealed: list[str] = []
+    ff_in_name: list[str] = []
     for folder in sorted(p for p in root.rglob("*") if p.is_dir()):
         records = sorted(folder.glob("CHRDAT*.SAV")) + \
             sorted(folder.glob("*.CHA"))
@@ -199,6 +200,10 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
                 f"check")
         for path in records:
             char = dos_codec.read_character(path)
+            if char.is_pool_of_radiance:
+                name_len = char.get("name_length")
+                if 0xFF in char.raw("name_text")[:name_len]:
+                    ff_in_name.append(f"{folder.name}/{path.name}")
             neutral_char = dos_codec.to_neutral(char)
             rec, _ = c64_codec.write(neutral_char)
             slots = _slots(rec)
@@ -218,6 +223,16 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
     assert not overhealed, (
         f"{len(overhealed)} records hold more current hit points than their "
         f"maximum: {overhealed}")
+    assert not ff_in_name, (
+        f"{len(ff_in_name)} DOS Pool of Radiance records hold $FF in their "
+        f"name: {ff_in_name}.  `DosCharacter.name` (goldbox/dos_codec.py) "
+        f"reads $FF as a space for every Pool of Radiance record, DOS and "
+        f"Amiga alike, on the strength of this census -- no DOS-sourced "
+        f"record has ever been observed to hold $FF in its name, only "
+        f"Amiga-sourced ones do (#631, A Pool of Radiance character created "
+        f"in the Amiga game with a space in his name converts as MARY?SUE, "
+        f"because the reader decodes the game's $FF as a replacement "
+        f"character)")
 
 
 @needs_specimens
