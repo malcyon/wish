@@ -1094,6 +1094,48 @@ def test_a_pools_of_darkness_folder_lists_nothing(tmp_path):
         dialog.close()
 
 
+def _amiga_disk_with_pod_slot(tmp_path) -> pathlib.Path:
+    """A registry Amiga disk holding a Pools of Darkness saved game, copied
+    under `tmp_path`; skips when none is present."""
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
+    from tools.amiga import amigasaves
+
+    for label, data in amigasaves.images():
+        try:
+            if not amiga_savegame.pod_slots_present(AmigaDisk(data)):
+                continue
+        except (AmigaDiskError, ValueError, amiga_savegame.AmigaSaveError):
+            continue
+        path = tmp_path / "pod.adf"
+        path.write_bytes(data)
+        return path
+    pytest.skip("no Amiga disk with a Pools of Darkness saved game; "
+                "set $AMIGA_DISKS")
+
+
+@pytest.mark.parametrize("value", [None, "", "0", "off"])
+def test_an_amiga_pod_disk_reads_unsupported_when_the_flag_is_off(
+        tmp_path, monkeypatch, value):
+    """Detection of a Pools of Darkness slot is not behind
+    `WISH_EXPERIMENTAL_POD_CONVERT`; only offering the destination is. So
+    with the flag unset, empty, `0` or `off`, the dialog gives the
+    unsupported-title refusal and never the generic one."""
+    if value is None:
+        monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
+    else:
+        monkeypatch.setenv(convert.POD_CONVERT_ENV, value)
+    path = _amiga_disk_with_pod_slot(tmp_path)
+    dialog = convert.ConvertDialog(str(path), None, _no_disks)
+    try:
+        assert dialog.ui.convert_destination.count() == 0
+        assert dialog._blocked == (
+            convert.DIALOG_TITLE, convert.POOLS_OF_DARKNESS_UNSUPPORTED)
+        assert dialog._blocked[1] != convert.CANNOT_CONVERT
+    finally:
+        dialog.close()
+
+
 def test_the_game_files_row_is_shown_for_every_destination_with_its_own_label(
         tmp_path):
     """The row that used to appear and vanish is one row now, always shown,
