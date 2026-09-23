@@ -185,6 +185,28 @@ reached with `divs.w #$8` and a bit index. Both cover the same ids -- the Amiga
 candidate loop also stops at `cmpi.b #$7e` -- so a conversion between the ports
 has to translate the encoding rather than copy the field.
 
+**A value that is not 0 or 1** turns up in one shipped record: PAINE's spell
+118 holds 8, where all 4,016 other set spellbook bytes in 476 records hold 1
+(`#461 (One Pools of Darkness spellbook byte holds 8 where every other
+spellbook byte in 476 records holds 1)`). PROBABLE, from the engine's own
+Silver Blades importer: `GAME.OVR:0x011AE6` copies that title's record bytes
+`0x069`-`0x0E6` onto Pools bytes `0x0AB`-`0x128`, a 126-byte block whose last
+byte is Silver Blades' `attack_level` landing on Pools' spell-118 slot --
+Silver Blades' own spell list stops at id 117, so no legitimate import can
+put a real spellbook value there. Every DOS read of a spellbook byte tests
+zero against non-zero rather than the value itself (`tools/dos/dosbyteimm.py`
+over `GAME.OVR` and `GAME.EXE`, all 41 accesses at these displacements), so
+an imported character with an 8 there plays identically to one with a 1.
+DOMINIC, a pure cleric who holds magic-user spell 118 and no other
+magic-user spell, corroborates the mechanism -- no engine grant path gives a
+cleric a magic-user id, so his 1 there is the same importer artefact with a
+Silver Blades `attack_level` of 1 rather than 8. Five of the eight
+same-named Silver Blades/Pools pairs checked hold 0 where the mechanism
+predicts their Silver Blades value, unexplained; those saves have no chain
+of custody, so PROBABLE stands rather than CONFIRMED pending a driven import
+of a staged Silver Blades record. `goldbox.dos_codec.write` writing 1 for
+every spellbook entry loses nothing a player can see either way.
+
 ## The creation menus
 
 `GAME.OVR:0x0147D8` asks race, sex, class, alignment, rolls the six abilities,

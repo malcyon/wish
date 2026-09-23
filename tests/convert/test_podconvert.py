@@ -187,8 +187,14 @@ def test_every_shipped_record_round_trips_outside_the_declared_mask():
       45 of the 54 records this project rolled itself (`FIELD_83_87`).
     * **PAINE differs in `spellbook`**, at the one byte in the whole DOS
       corpus that is neither 0 nor 1: spell 118 holds 8, where all 4,016 set
-      spellbook bytes in 476 records hold 1. The neutral `spells_known` is a
-      list of ids and has nowhere to keep an 8.
+      spellbook bytes in 476 records hold 1. PROBABLE cause
+      (`docs/228-pools-of-darkness-spells-and-creation.md`): PAINE was
+      imported from Silver Blades, whose importer copies that record's
+      `attack_level` byte onto this slot by accident, and every DOS read of
+      a spellbook byte tests zero against non-zero rather than the value
+      itself -- so the 8 plays identically to the writer's own 1. The
+      neutral `spells_known` is a list of ids and has nowhere to keep an 8
+      regardless.
     """
     seen = clean = share = book = 0
     for path in _records():
