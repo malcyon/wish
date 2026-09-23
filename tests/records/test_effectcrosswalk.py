@@ -487,3 +487,14 @@ def test_a_changed_spell_row_leaves_its_id_out(later_ids):
     changed = bytearray(ecl65)
     changed[start + 13 * 7 + 1] ^= 1
     assert 17 not in cross.later_caster_level_ids(title, bytes(changed), engine)
+
+
+def test_the_later_title_command_prints_the_derived_ids(later_ids, capsys):
+    title, ecl65, engine = later_ids
+    from tools.dos import dosbox
+
+    folder = dosbox.find_game("CURSE" if title.startswith("curse") else "SECRET")
+    assert cross.main(["--title", title, "--disks", _root(title),
+                       "--dos-dir", str(folder)]) == 0
+    want = f"CONFIRMED Later caster-level ids: {cross.later_caster_level_ids(title, ecl65, engine)}"
+    assert want in capsys.readouterr().out.splitlines()

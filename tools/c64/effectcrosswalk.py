@@ -296,8 +296,10 @@ def later_caster_level_ids(title: str, ecl65: bytes, engine) -> tuple[int, ...]:
     An id is in when every C64 spell row naming it goes to a caster-level
     handler, the DOS spell rows naming it agree with those rows on class,
     spell level and duration formula, and no DOS handler reads its data byte.
-    Which DOS spells pass a level override of zero is confirmed by reading,
-    and is recorded in `docs/226-the-c64-running-effect-crosswalk.md`.
+    Two further readings are not re-derived here and are recorded, graded
+    CONFIRMED by hand, in `docs/226-the-c64-running-effect-crosswalk.md`: which
+    DOS spells pass a level override of zero, and that the C64 reads of the
+    `$4D80` magnitude array are all Dispel's or writers and sweeps.
     """
     from goldbox import dos_codec
 
@@ -1193,6 +1195,11 @@ def main(argv: list[str] | None = None) -> int:
         print("CONFIRMED Value checks: " + ", ".join(checks))
         abilities = confirm_later_ability_values(args.title, read("ECL65"), dos_ovr)
         print("CONFIRMED Ability checks: " + ", ".join(abilities))
+        from tools.dos import dosaffectreads
+
+        engine = dosaffectreads.load(game_dir, args.title)
+        print("CONFIRMED Later caster-level ids: "
+              f"{later_caster_level_ids(args.title, read('ECL65'), engine)}")
         pair = confirm_later_ability_pair(args.title, dos_ovr)
         print("CONFIRMED DOS ability pair: " + ", ".join(pair))
         roll = mirror_zero_roll(args.title, read("COMBAT"), library)

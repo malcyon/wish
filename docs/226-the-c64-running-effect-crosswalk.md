@@ -650,7 +650,10 @@ which has its own row and handler; the ids with no C64 spell row; and the two
 ageing routes the camp formula does not describe.
 
 Reproduce the static readings with `.venv/bin/python
-tools/c64/effectcrosswalk.py`; select either later title with `--title`.
+tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.
+Two of that derivation's four conditions, the DOS override of zero and the
+`$4D80` read census, are read by hand and recorded above rather than re-read by
+the tool. Select either later title with `--title`.
 Use `--clock-minutes` for the duration census at a particular phase. The tool
 finds each title's C64 disks through the registry/path helper and its DOS
 engine through the archives registry. It reports missing files; the tests
