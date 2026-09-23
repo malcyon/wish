@@ -29,6 +29,7 @@ from goldbox import (
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.icons import ICON_SIZE, Icon
 from goldbox.layout import Confidence
+from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0
 
 SILVER_BLADES = dos_port.SECRET_OF_THE_SILVER_BLADES
@@ -527,3 +528,32 @@ def test_an_edit_that_reaches_no_byte_of_the_save_is_refused(tmp_path):
         saveplan.prepare(party)
     with pytest.raises(rewrite.RewriteError):
         convert.Source.detect(folder, party)
+
+
+def _destination(port, title, native=False):
+    return saveplan.Destination(port=port, path=pathlib.Path("out"),
+                                slot=None if port == "c64" else "A",
+                                title=title, native=native)
+
+
+def test_a_dual_class_pair_no_pool_title_reads_is_expected_back_as_zero():
+    """A companion's template fill in the pair reaches DOS Pool of Radiance
+    as the writer's constant 0; a title that reads the pair, and a native
+    copy, still compare it literally."""
+    filled = CharacterRecord.blank()
+    filled.set("dual_class_slot", 255)
+    filled.set("dual_class_level", 255)
+    zeroed = CharacterRecord.blank()
+    zeroed.set("strength_bonus_flag", 1)
+
+    pool = _destination("dos", c64_port.POOL_OF_RADIANCE)
+    assert saveplan.compare([filled], [zeroed], pool) == []
+
+    curse = _destination("dos", c64_port.CURSE_OF_THE_AZURE_BONDS)
+    lines = saveplan.compare([filled], [zeroed], curse)
+    assert any("dual_class_slot" in line for line in lines)
+    assert any("dual_class_level" in line for line in lines)
+
+    native = _destination("dos", c64_port.POOL_OF_RADIANCE, native=True)
+    assert any("dual_class_slot" in line
+               for line in saveplan.compare([filled], [zeroed], native))

@@ -2238,11 +2238,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             grade("lay_on_hands_uses"))
 
     for neutral_name, c64_name in DIRECT:
-        if is_npc and neutral_name in {"levels_drained", "hp_lost_to_drain"}:
-            out.set(neutral_name, 0,
-                    "zero: the NPC template's drain bytes are fill residue",
-                    grade(c64_name), Provenance.COMPUTED)
-            continue
+        # A companion's drain pair holds his template's 0xFF fill, on both
+        # ports; both games' energy drain, Restoration and level gain read
+        # the byte the same way, so a destination must hold what is stored.
         copy(neutral_name, c64_name)
 
     # -- what a save slot stops short of, from the roster block --------------

@@ -618,3 +618,42 @@ def test_mathew_dual_classed_writes_zero_cure_bytes_and_no_loss():
     assert raw[0x012] == 0 and raw[0x013] == 0
     assert not [x for x in rep.losses if "paladin_cures" in x]
     assert not [x for x in rep.warnings if "paladin_cures" in x]
+
+
+@pytest.mark.parametrize("disk_name", ["TEST_DOS_IMPORT9.D64",
+                                       "TEST_DOS_IMPORT8_FIXED.D64"])
+def test_a_c64_party_with_a_companion_saves_as_dos(app, tmp_path, disk_name):
+    """The companion's template fill converts: the drain pair reaches DOS as
+    the stored 0xFF and the dual-class pair as the writer's 0."""
+    try:
+        game_dir = dosbox.find_game("POOLRAD")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Pool of Radiance archives ($FR_ARCHIVES)")
+    where = gamedisks.find(c64_port.POOL_OF_RADIANCE.key)
+    disk_path = pathlib.Path(where) / disk_name if where else None
+    if disk_path is None or not disk_path.exists():
+        pytest.skip(f"needs {disk_name} in the Pool of Radiance folder")
+
+    party = roster.Party(str(disk_path))
+    source = party.source or convert.Source.detect(disk_path)
+    try:
+        assets = saveplan.resolve_assets(source, "dos",
+                                         game_files=convertdrops.game_files,
+                                         dos_folder=game_dir)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "out", assets)
+    assert isinstance(plan, saveplan.SavePlan)
+
+    def offset(name):
+        return dos_port.FIELDS_BY_NAME[name].offset
+
+    companions = [
+        data for name, data in plan.files.items()
+        if name.upper().startswith("CHRDAT") and name.upper().endswith(".SAV")
+        and data[offset("levels_drained")] == 0xFF]
+    assert companions, "no character file holds the companion's drain fill"
+    for data in companions:
+        assert data[offset("hp_lost_to_drain")] == 0xFF
+        assert data[0x086:0x088] == b"\x00\x00"

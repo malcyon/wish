@@ -803,7 +803,11 @@ KEPT_FIELDS = (
 #:   than the dead-end 0 with no row, which reads as "may heal now" either
 #:   way -- and `write` is not always given the arrays (`editor/roster.py`'s
 #:   own callers, for one), so a Save As through those routes still cannot be
-#:   held to the byte.
+#:   held to the byte;
+#: * `dual_class_slot` and `dual_class_level` -- neither Pool of Radiance
+#:   reads the pair (no C64 file and no DOS `GAME.OVR` site refers to it), and
+#:   the DOS writer holds its constant 0, so `_expected_dual_class` expects 0
+#:   there for a companion's stored 0xFF.
 #:
 #: Measured over 36 runs: the fifteen Pool of Radiance C64 saves this
 #: machine's registry holds, each to a C64 and a DOS destination, plus DOS
@@ -997,6 +1001,23 @@ def _expected_strength_bonus_flag(destination: "Destination") -> "int | None":
     return 1
 
 
+def _expected_dual_class(destination: "Destination") -> "int | None":
+    """The `dual_class_slot` and `dual_class_level` a non-native DOS or Amiga
+    destination should hold.
+
+    A title whose C64 record has no dual-class reader
+    (`goldbox.c64_codec.deltas_for(...).dual_class` is False, Pool of Radiance)
+    never reads the pair, and its DOS writer holds the constant 0, so a
+    companion's stored 0xFF is expected back as 0. `None` for a native or C64
+    destination, or a title where the pair is real and compared literally.
+    """
+    if destination.native or destination.port not in ("dos", "amiga"):
+        return None
+    if c64_codec.deltas_for(destination.title).dual_class:
+        return None
+    return 0
+
+
 def _signature(record: CharacterRecord,
                destination: "Destination | None" = None,
                name: "str | None" = None) -> tuple[str, ...]:
@@ -1024,6 +1045,8 @@ def _signature(record: CharacterRecord,
                 override = _expected_turn_power(record, destination)
             elif field == "strength_bonus_flag":
                 override = _expected_strength_bonus_flag(destination)
+            elif field in ("dual_class_slot", "dual_class_level"):
+                override = _expected_dual_class(destination)
             else:
                 override = None
             if override is not None:
