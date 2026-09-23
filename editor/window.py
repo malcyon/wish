@@ -2725,7 +2725,7 @@ class EditorBinding(QObject):
                 former = char.get("former_levels") or {}
                 levels = dict(char.get("levels") or {})
                 for cname, lv in former.items():
-                    if lv:
+                    if lv and levels.get(cname):
                         levels[cname] = 0
                 char = {"levels": levels, "former_levels": former,
                         "race": char.get("race"), "game": char.game}
