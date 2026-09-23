@@ -451,6 +451,97 @@ must leave strength 18/98 with slot 61 still present and still counting; a
 second camp must leave 15. A restore from the wrong slot, or one expiry
 clearing the other, refutes it.
 
+## The later titles' caster-level ids
+
+**CONFIRMED from both ports' code, for Curse and Silver Blades alike:** for
+the ids below, a running DOS node's data byte converts to the C64 magnitude
+unchanged, a node per row, owned by that character's party slot.
+
+| Title | Ids |
+|---|---|
+| Curse of the Azure Bonds | 1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 63, 69 |
+| Secret of the Silver Blades | 1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 57, 63, 69 |
+
+An id is in the table when all four of these hold:
+
+* **The C64 writes the caster's level.** Every C64 spell row naming the id
+  (`ECL65 $97CB` in Curse, `$9307` in Silver Blades, seven bytes a row) goes
+  to `$819C`, the single-target writer, or `$81A2`, which writes one row for
+  each party slot present, 7 down to 0. Both end in `$80EE`. That code is the
+  same in both titles, with only the globals moved. The id is row byte 3, the
+  owner is the target's party index (`$2C61`; `$2AD4` in Silver Blades), and
+  the magnitude is the override byte `$2BFC` (`$2A6F`), or the level `$2BFB`
+  (`$2A6E`) when the override is zero (`$8171`). `CAMP $1566` zeroes the
+  override before each camp cast. `CAMP $16E2` sets the level from row byte
+  2, bits 2-3: 0 selects the magic-user level, max(MU, ranger − 8); 1 the
+  cleric level, max(cleric, paladin − 8); 2 the druid level, ranger − 7
+  (`CAMP $1660`; the record's levels run MU, cleric, … paladin `0x0CF`,
+  ranger `0x0D0`).
+* **DOS writes the caster's level.** Every DOS spell naming the id is a
+  wrapper that pushes a level override of zero into the shared routine
+  (Curse `GAME.OVR:0x2EF34`, Silver Blades `0x2D691`). Bless filters its
+  target list first (`0x2FC55`, `0x2E4A3`) and then does the same. With no
+  override, the level comes from the **caster's** record (Curse `0x39F14`,
+  Silver Blades `0x3AFD7`). By the spell row's class byte: cleric is
+  max(cleric, paladin − 8), druid is ranger − 7, and magic-user (2 in Curse,
+  3 in Silver Blades) is max(MU, ranger − 8). A dual-classed caster adds his
+  former levels in that class when `0x3C031` allows it. A caster with no
+  spell class gets 6, as does any cast while the flag at `0x757D` (`0x8D99`)
+  is set. Class 3 (Silver Blades 4) gets 12. `add_affect` (`0x36412`) stores
+  the level at node byte 3 unchanged.
+* **The two rows match.** DOS and C64 rows paired by id agree on class, spell
+  level and duration formula: per-level count DOS row byte 5 against C64 row
+  byte 1, fixed count byte 4 against byte 0. So Shield is DOS spell 19 and
+  C64 row 14, both magic-user level 1 at 5 minutes a level. Protection from
+  Evil 10' Radius is DOS spells 52 and 69 and C64 rows 33 and 43: magic-user
+  level 3 at 2 minutes a level, and cleric level 4 at 10.
+* **Only Dispel Magic reads the value, on either port.** DOS `VALUE_READ`
+  (`tests/dos/test_dosaffectreads.py`) holds none of these ids. On the C64,
+  all 21 absolute-mode reads of the magnitude array `$4D80` in Curse, and all
+  20 in Silver Blades, are either Dispel's own read (Curse `COMBAT $18E0`,
+  Silver Blades `$1CA4`) or one of three kinds:
+  * writers: the cast, the combat writer, `COM.PREP`'s monster rows and a
+    Silver Blades `DUNGEON` Enlarge;
+  * the camp and combat expiry sweeps, which call a handler only when bit 7
+    is set (Curse `CAMP $14D8`, `COMBAT $132F`);
+  * code for ids outside the table: the Enlarge read and the bonus-nibble
+    helper, whose callers pass 12, 14, 38, 146 and 113, and the combat
+    handlers of 28, 32, 35, 39 and 49. Three Curse reads sit after the
+    handler entries of 139 and 144, which is how they were attributed.
+
+  A read through a pointer rather than an absolute operand would not show
+  in that count.
+
+  Dispel reads the low nibble as the effect's level on both ports, skips
+  `$FF`, and uses the same odds: 50%, plus 5% for each level the dispeller
+  is above it, minus 2% for each level below (DOS Curse `0x31215`-`0x31270`;
+  C64 per `tools/c64/dispelread.py`).
+
+Pool of Radiance's list has 25 and lacks 63 and 69. In the later titles, id
+25 also has a row with its own handler (Curse row 55 `$84BA`, Silver Blades
+`$851D`) and a DOS spell with its own routine (Silver Blades 116), so it is
+not in the table. Prayer, 49, uses the generic writer on the C64 but is in
+both ports' read lists.
+
+**PROBABLE, why the only later-title nodes on this machine hold `0A` and
+`0B` on level-5 characters: somebody else cast them.** The Archives'
+shipped Curse `Default files/Saves` slot B, and the specimen party made
+from it, hold these nodes:
+
+* FLORENTZ: Protection from Evil 10' Radius (45) with 47 minutes left and
+  data `0A`, and Shield (17) with 2 minutes left and data `0B`;
+* BRYTWYN: Shield with 2 minutes left and data `0B`.
+
+The level routine gives no member of that party 10 or 11. FLORENTZ is cleric
+5, BRYTWYN magic-user 5 and ORATISI magic-user 3; nobody has a paladin or
+ranger level of 9 or more, and every former-level array is zero. At levels 10
+and 11 the two spells last 100 and 55 minutes, so both were cast 53 minutes
+before the save. At the party's own level 5 they would have been cast 3 and 23
+minutes before. That both arrive at 53 is the evidence that the byte is the
+casting level and that the duration was computed from it. It rests on one
+party. Nothing in a DOS node records who cast it, and the conversion does not
+need to know.
+
 ## Negative results and remaining work
 
 | Finding or gap | Grade and next bounded check |
@@ -464,7 +555,7 @@ clearing the other, refutes it.
 | Id 13 is not a proven strength mapping | **CONFIRMED negative:** the C64 combat dispatch shares id 14's charisma handler; DOS points it at the empty handler `0x11DF6`. Do not infer its value rule from the name Reduce. |
 | Later Strength, Enlarge and Friends data | **CONFIRMED, and this row used to read UNKNOWN:** the C64 magnitude is a modifier for Strength and Friends and a caster level for Enlarge, and the two ports encode it differently, so Pool's restore rule must not be copied there. The table above has each id's rule and the code behind it; what changed is reading the three casts and the recompute rather than only the combat handlers, which return immediately (DOS Curse `0x1024E`, `0x1029C`; Silver Blades `0x1126E`, `0x11297`) because nothing in a fight has to do the work twice. |
 | A later DOS record has to be walked back down to its base | **CONFIRMED negative:** it holds the base already, at `0x010`, and no cast writes either half of the pair -- 0 record stores in six cast routines across the two engines, and the recompute writes only the in-force bytes. `lower_strength` was written for the mechanism this refutes and is gone. |
-| All ids not listed as a measured mapping | **UNKNOWN:** neither a shared number nor a shared spell name proves the data encoding. |
+| All ids not listed as a measured mapping | **UNKNOWN:** neither a shared number nor a shared spell name proves the data encoding. The later titles' caster-level ids are now measured (section above), which is why this row no longer covers Curse's 17 and 45. |
 
 ## Later-title value rules
 
