@@ -26,7 +26,7 @@ import string
 import sys
 
 import pytest
-from gamedata import synthetic_save
+from gamedata import specimen_root, synthetic_save
 from support.editorwindow import make_root
 from test_saveplan import (
     SILVER_BLADES,
@@ -761,6 +761,115 @@ def test_a_trained_c64_curse_character_saves_as_dos_with_its_current_class(
     lost = saveplan.compare(
         [saveplan.edited_record(party.members[0])], [wrong], destination)
     assert any(line.startswith("char_class:") for line in lost)
+
+
+def test_c64_cached_values_follow_the_dos_rules_without_weakening_the_guard(
+        tmp_path, monkeypatch):
+    """You use Save As on a C64 Curse of the Azure Bonds party carrying
+    MATHEW and MARK, two paladins trained to level 5, and SHARA, a cleric
+    trained to level 5. The DOS record it is about to write turns undead
+    correctly -- DOS derives the power to turn from the stored class level
+    every time the player presses TURN, rather than keeping a cached byte for
+    it -- but Save As refuses the whole party anyway, because its read-back
+    guard compares the C64's own stale cached bytes literally: `WISH-SPEC-
+    curse-h-engine-resave`'s clerics and paladins still hold 0 at
+    `turn_power` and `strength_bonus_flag`, the C64 engine's own values from
+    before this specimen's last training, which DOS does not store at all.
+
+    Before the fix this refuses with exactly `strength_bonus_flag: 0 arrived
+    as 1`, `turn_power: 0 arrived as 3` (a paladin 5, who turns as a cleric
+    two levels weaker) and `turn_power: 0 arrived as 6` (a cleric 5) --
+    `goldbox.derive.turn_power`'s own table. After it, the save publishes and
+    the DOS party reads back with the classes intact and both derived values
+    matching what DOS itself would compute.
+
+    Needs this machine's own DOS Curse archive (`tools.dos.dosbox.find_game`,
+    `$FR_ARCHIVES`), the specimen tree (`$WISH_SPECIMENS`,
+    `tools/registry/specimens.py`) holding this engine-written C64 specimen,
+    and the Curse C64 disks for the source's own combat icon
+    (`automap/gamedisks.py`) -- skips without any of the three.
+    """
+    from goldbox import c64_port, derive
+    from tools.dos import dosbox
+
+    try:
+        game_dir = dosbox.find_game("CURSE")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Curse archive ($FR_ARCHIVES)")
+    root = specimen_root()
+    disk_path = (None if root is None else next(
+        iter(root.glob("*-c64/WISH-SPEC-curse-h-engine-resave.[dD]64")), None))
+    if disk_path is None:
+        pytest.skip("needs ~/wish-specimens/*-c64/WISH-SPEC-curse-h-engine-"
+                    "resave.D64 (tools/registry/specimens.py)")
+    files_for = _registry_game_files("curse-of-the-azure-bonds")
+    if files_for is None:
+        pytest.skip("needs the Curse C64 disks (automap/gamedisks.py)")
+
+    party = Party(str(disk_path))
+    stored = {member.record.get("name"): member.record
+             for member in party.members}
+    # The specimen's own engine-written levels: pinned so a future edit to
+    # the specimen or a misreading of it fails loudly here rather than
+    # silently changing what this test proves.
+    assert stored["MATHEW"].get("level_paladin") == 5
+    assert stored["MARK"].get("level_paladin") == 5
+    assert stored["SHARA"].get("level_cleric") == 5
+    for record in stored.values():
+        assert record.get("turn_power") == 0
+        assert record.get("strength_bonus_flag") == 0
+
+    assets = saveplan.Assets(dos_folder=game_dir, source_files=files_for)
+    out = tmp_path / "copy"
+
+    plan = saveplan.prepare_save_as(party, "dos", out, assets)
+    published = saveplan.publish(plan, party, assets=assets,
+                                 backups=tmp_path / "backups")
+
+    written = Party(convert.Source.detect(out, slot=published.destination.slot))
+    by_name = {member.record.get("name"): member.record
+              for member in written.members}
+    assert by_name["MATHEW"].get("level_paladin") == 5
+    assert by_name["MARK"].get("level_paladin") == 5
+    assert by_name["SHARA"].get("level_cleric") == 5
+
+    for member in written.members:
+        record = member.record
+        neutral = {"cleric": record.get("level_cleric") or 0,
+                  "paladin": record.get("level_paladin") or 0}
+        want = derive.turn_power(c64_port.CURSE_OF_THE_AZURE_BONDS, neutral)
+        assert record.get("turn_power") == want, record.get("name")
+        assert record.get("strength_bonus_flag") == 1, record.get("name")
+    assert by_name["MATHEW"].get("turn_power") == 3
+    assert by_name["SHARA"].get("turn_power") == 6
+
+    # The written DOS records themselves store `strength_bonus`, unlike the
+    # C64's own cache of it -- read raw off the folder Save As actually
+    # wrote, not through the C64-shaped sheet the assertion above already
+    # covers.
+    bonus_at = dos_port.FIELDS_BY_NAME_FOR[
+        plan.destination.title.key]["strength_bonus"].offset
+    chrdats = sorted(out.glob("CHRDAT*.SAV"))
+    assert len(chrdats) == 6
+    for path in chrdats:
+        assert path.read_bytes()[bonus_at] == 1, path.name
+
+    # The guard was narrowed to these two fields, not weakened: forcing the
+    # read-back to report a genuinely different `gold` still refuses.
+    real_written_records = saveplan.written_records
+
+    def tampered(port, at, slot):
+        records = real_written_records(port, at, slot)
+        if records:
+            record = type(records[0])(records[0].to_bytes())
+            record.set("gold", (record.get("gold") or 0) + 12345)
+            records[0] = record
+        return records
+
+    monkeypatch.setattr(saveplan, "written_records", tampered)
+    with pytest.raises(saveplan.DroppedFields) as caught:
+        saveplan.prepare_save_as(party, "dos", tmp_path / "copy2", assets)
+    assert any(line.startswith("gold:") for line in caught.value.lost)
 
 
 def test_a_dropped_field_stops_a_save_as_before_any_destination_write(

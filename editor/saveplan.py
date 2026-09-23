@@ -47,6 +47,7 @@ from goldbox import (
     amiga_savegame,
     c64_codec,
     classcode,
+    derive,
     dos_port,
     layout,
     rewrite,
@@ -899,20 +900,67 @@ def _expected_char_class(record: CharacterRecord,
     return classcode.code_for(bits, levels, former, game=destination.title)
 
 
+def _expected_turn_power(record: CharacterRecord,
+                         destination: "Destination") -> "int | None":
+    """The `turn_power` a non-native DOS or Amiga destination should hold.
+
+    Neither port keeps the C64's own caster-turning byte: DOS derives it from
+    the stored cleric (and paladin) level whenever the player presses TURN
+    (`GAME.OVR:0x139CD`, `goldbox.derive.turn_power`), and the Amiga's
+    later-title record is the DOS record repacked, with no caster byte of its
+    own (`goldbox.amiga_later.LATER_ACCOUNTED`). Comparing the C64's own
+    cached byte therefore refuses a cleric or paladin whose caster level has
+    moved since that byte was last written by the C64 game (#637). `None`
+    when the sheet's own class levels cannot be read, so the raw sheet value
+    is compared instead and an unexplained change is still refused.
+    """
+    if destination.native or destination.port not in ("dos", "amiga"):
+        return None
+    try:
+        neutral = c64_codec.read(record, game=destination.title)
+        levels = neutral.get("levels") or {}
+    except Exception:
+        return None
+    return derive.turn_power(destination.title, levels)
+
+
+def _expected_strength_bonus_flag(destination: "Destination") -> "int | None":
+    """The `strength_bonus_flag` a non-native DOS or Amiga destination should
+    hold.
+
+    Neither port keeps the C64's own cached flag: DOS writes the measured
+    constant 1 into every player record regardless of what the source held
+    (`goldbox.dos_codec.WRITE_CONSTANTS`), and the Amiga keeps the DOS-shaped
+    field. `None` for a native or a C64 destination, where the byte is the
+    C64's own and is compared literally.
+    """
+    if destination.native or destination.port not in ("dos", "amiga"):
+        return None
+    return 1
+
+
 def _signature(record: CharacterRecord,
                destination: "Destination | None" = None) -> tuple[str, ...]:
     """One character as the comparison sees him: every kept field, in order.
 
-    `destination` makes `char_class` destination-aware -- see
-    `_expected_char_class` -- and is only ever passed for the *expected*
-    side of `compare()`; the written side stays literal so a genuinely wrong
-    class byte still shows.
+    `destination` makes `char_class`, `turn_power` and `strength_bonus_flag`
+    destination-aware -- see `_expected_char_class`, `_expected_turn_power`
+    and `_expected_strength_bonus_flag` -- and is only ever passed for the
+    *expected* side of `compare()`; the written side stays literal so a
+    genuinely wrong value still shows.
     """
     values = []
     for name in KEPT_FIELDS:
         value = record.get(name)
-        if name == "char_class" and destination is not None:
-            override = _expected_char_class(record, destination)
+        if destination is not None:
+            if name == "char_class":
+                override = _expected_char_class(record, destination)
+            elif name == "turn_power":
+                override = _expected_turn_power(record, destination)
+            elif name == "strength_bonus_flag":
+                override = _expected_strength_bonus_flag(destination)
+            else:
+                override = None
             if override is not None:
                 value = override
         values.append(repr(value))
@@ -938,8 +986,9 @@ def compare(expected: "list[CharacterRecord]",
     each difference is.
 
     `destination`, when given, makes the *expected* side's `char_class`
-    destination-aware (#636): the written side is always compared literally,
-    so a converter that genuinely gets the class byte wrong still shows.
+    (#636), `turn_power` and `strength_bonus_flag` (#637) destination-aware:
+    the written side is always compared literally, so a converter that
+    genuinely gets one of these values wrong still shows.
     """
     if len(expected) != len(written):
         return [f"{len(expected)} character(s) went in and {len(written)} "
