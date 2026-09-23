@@ -913,6 +913,28 @@ def written_names(port: str, at: pathlib.Path,
             for member in Party(Source.detect(at, slot=slot)).members]
 
 
+def _regained_class_zeroed_levels(neutral: "Mapping[str, Any]"
+                                  ) -> "dict[str, int]":
+    """`neutral`'s own `levels`, with any regained former class zeroed.
+
+    Curse of the Azure Bonds' own trainer (`GEN $1939`) leaves a dual-classed
+    character's *old* class level in place even after the player trains the
+    new class past it -- the DOS representation
+    (`docs/209-the-regained-dual-class-on-dos.md`) keeps only the current
+    class, zeroing the one regained. Both `_expected_char_class` and
+    `_expected_turn_power` read the sheet through this same class-code table,
+    so both need the same zeroing or a regained caster's `turn_power` is
+    derived from the stale level `_expected_char_class` already discards
+    (#637).
+    """
+    levels = dict(neutral.get("levels") or {})
+    former = neutral.get("former_levels") or {}
+    for name, level in former.items():
+        if level and levels.get(name):
+            levels[name] = 0
+    return levels
+
+
 def _expected_char_class(record: CharacterRecord,
                           destination: "Destination") -> "int | None":
     """The `char_class` a non-native DOS or Amiga destination should hold.
@@ -921,22 +943,18 @@ def _expected_char_class(record: CharacterRecord,
     record's `char_class` byte stale, so comparing it literally against a
     destination that a converter got right calls the correct value a loss
     (#636). This reads the sheet the same way `goldbox.c64_codec.read` would,
-    zeroes any former class the character has since trained past (matching
-    the DOS representation `docs/209-the-regained-dual-class-on-dos.md`
-    establishes: a dual-classed record keeps only the current class), and
-    asks the destination's own class-code table what that character's code
-    is. `None` when the table cannot name the state, so the raw sheet value
-    is compared instead and an unexplained change is still refused.
+    zeroes any former class the character has since trained past
+    (`_regained_class_zeroed_levels`), and asks the destination's own
+    class-code table what that character's code is. `None` when the table
+    cannot name the state, so the raw sheet value is compared instead and an
+    unexplained change is still refused.
     """
     if destination.native or destination.port not in ("dos", "amiga"):
         return None
     neutral = c64_codec.read(record, game=destination.title)
     bits = neutral.get("class_bits") or 0
-    levels = dict(neutral.get("levels") or {})
+    levels = _regained_class_zeroed_levels(neutral)
     former = neutral.get("former_levels") or {}
-    for name, level in former.items():
-        if level and levels.get(name):
-            levels[name] = 0
     return classcode.code_for(bits, levels, former, game=destination.title)
 
 
@@ -950,17 +968,16 @@ def _expected_turn_power(record: CharacterRecord,
     later-title record is the DOS record repacked, with no caster byte of its
     own (`goldbox.amiga_later.LATER_ACCOUNTED`). Comparing the C64's own
     cached byte therefore refuses a cleric or paladin whose caster level has
-    moved since that byte was last written by the C64 game (#637). `None`
-    when the sheet's own class levels cannot be read, so the raw sheet value
-    is compared instead and an unexplained change is still refused.
+    moved since that byte was last written by the C64 game (#637) -- and the
+    same trainer that leaves `char_class` stale (#636) leaves a regained
+    former class's level in place too, so the levels are zeroed the same way
+    `_expected_char_class` zeroes them (`_regained_class_zeroed_levels`)
+    before deriving what DOS would turn as.
     """
     if destination.native or destination.port not in ("dos", "amiga"):
         return None
-    try:
-        neutral = c64_codec.read(record, game=destination.title)
-        levels = neutral.get("levels") or {}
-    except Exception:
-        return None
+    neutral = c64_codec.read(record, game=destination.title)
+    levels = _regained_class_zeroed_levels(neutral)
     return derive.turn_power(destination.title, levels)
 
 
@@ -1018,7 +1035,7 @@ def compare(expected: "list[CharacterRecord]",
             written: "list[CharacterRecord]",
             destination: "Destination | None" = None,
             expected_names: "list[str] | None" = None,
-            written_names: "list[str] | None" = None) -> list[str]:
+            written_name_list: "list[str] | None" = None) -> list[str]:
     """What the sheet holds and the written destination does not.
 
     **Whole characters are compared, as a multiset of characters.** A
@@ -1039,7 +1056,7 @@ def compare(expected: "list[CharacterRecord]",
     the written side is always compared literally, so a converter that
     genuinely gets one of these values wrong still shows.
 
-    `expected_names` and `written_names`, when both given, replace each
+    `expected_names` and `written_name_list`, when both given, replace each
     record's `name` field with its own list's entry, paired by index --
     `written_records` and `written_names` build their lists from the same
     iteration, and so does a caller's `expected` and `expected_names`. The
@@ -1056,9 +1073,9 @@ def compare(expected: "list[CharacterRecord]",
                       for record, name in zip(expected, expected_names))
     else:
         want = sorted(_signature(record, destination) for record in expected)
-    if written_names is not None:
+    if written_name_list is not None:
         got = sorted(_signature(record, name=name)
-                    for record, name in zip(written, written_names))
+                    for record, name in zip(written, written_name_list))
     else:
         got = sorted(_signature(record) for record in written)
     if want == got:
@@ -1543,7 +1560,7 @@ def validate(destination: Destination, files: dict[str, bytes],
             *(compare(expected, written, destination,
                       expected_names=(expected_names
                                       if destination.port != "c64" else None),
-                      written_names=got_names)
+                      written_name_list=got_names)
               if expected is not None else [])]
     if lost:
         # The accounting is the evidence for the defect each of these is, so

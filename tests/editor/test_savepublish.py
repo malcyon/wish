@@ -739,9 +739,49 @@ def test_a_lower_case_c64_name_saves_as_dos_and_amiga_with_its_spelling(
         [m.record for m in written.members],
         published.destination,
         expected_names=[saveplan.stored_name(m) for m in party.members],
-        written_names=[saveplan.stored_name(m).upper()
-                       for m in written.members])
+        written_name_list=[saveplan.stored_name(m).upper()
+                          for m in written.members])
     assert any(line.startswith("name:") for line in lost)
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_dos_or_amiga_character_renamed_on_the_sheet_saves_under_its_own_name(
+        tmp_path, port):
+    """You open a DOS or Amiga save, rename a character straight on the
+    sheet -- `HERO1` becomes `Mixed Case` -- and use `File ▸ Save As…` to
+    write a copy, never touching the name-fit chooser at all. This is the one
+    case `#638 (Compare a converted character's name as the DOS or Amiga
+    destination actually stores it, not through the C64 sheet's
+    capitals-only field, so Save As keeps the player's own spelling)`'s own
+    read-back guard cannot lean on `stored_name`'s port-native reading alone:
+    the character being renamed is the *source* member, whose `native` is
+    still the disk's original, unedited bytes, so a guard that read
+    `stored_name(member)` here instead of the sheet's own new value would
+    expect the save to still hold the character's old name and refuse a
+    Save As that wrote the rename correctly.
+
+    Needs no game data: this is a native DOS-to-DOS or Amiga-to-Amiga copy,
+    built from the format rather than read off a disk.
+    """
+    if port == "dos":
+        folder = dos_folder(tmp_path / "save")
+        party = Party(str(folder))
+        out = tmp_path / "copy"
+    else:
+        disk = amiga_disk(tmp_path)
+        party = Party(str(disk))
+        out = tmp_path / "copy.adf"
+
+    original_name = party.members[0].record.get("name")
+    party.members[0].record.set("name", "Mixed Case")
+
+    plan = saveplan.prepare_save_as(party, port, out)
+    published = saveplan.publish(plan, party, backups=tmp_path / "backups")
+
+    written = Party(convert.Source.detect(out, slot=published.destination.slot))
+    renamed = written.members[0]
+    assert saveplan.stored_name(renamed) == "MIXED CASE"
+    assert saveplan.stored_name(renamed) != original_name
 
 
 def _curse_game_dir():
@@ -838,6 +878,53 @@ def test_a_trained_c64_curse_character_saves_as_dos_with_its_current_class(
     lost = saveplan.compare(
         [saveplan.edited_record(party.members[0])], [wrong], destination)
     assert any(line.startswith("char_class:") for line in lost)
+
+
+def test_a_regained_c64_curse_caster_derives_turn_power_from_the_zeroed_level(
+        tmp_path):
+    """You have a Curse of the Azure Bonds character who dual-classed out of
+    cleric into fighter and has since trained fighter far enough to regain
+    the cleric class. The C64's own regain rule (`GEN $20A3`,
+    `docs/209-the-regained-dual-class-on-dos.md`) stores the old cleric
+    level back into the current level array, so the C64 record reads fighter
+    8 / cleric 5 -- but a DOS record built the same way `#209` establishes
+    keeps the regained class's level at zero in the current array and only
+    in the former one, so DOS itself would turn undead as a non-caster
+    (`turn_power` 0), not as a cleric 5.
+
+    `_expected_char_class` already zeroes a regained former class's level
+    before asking the destination's class-code table what the character's
+    code is (#636); before this fix `_expected_turn_power` did not, and
+    derived the DOS destination's expected `turn_power` from the stale,
+    unzeroed cleric 5 instead -- the same wrong number a correct DOS write
+    would never produce.
+
+    Needs no game data: built from the format, and `_expected_turn_power` is
+    asked directly rather than through a real Save As, since only the one
+    derivation is under test here.
+    """
+    from gamedata import synthetic_party
+
+    from goldbox import c64_port, derive
+
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    disk = tmp_path / "curse.d64"
+    disk.write_bytes(synthetic_party(game=game))
+    party = Party(str(disk))
+    record = party.members[0].record
+    record.set("class_bits", 8)     # fighter alone: the current class
+    record.set("level_fighter", 8)
+    record.set("level_cleric", 5)   # the C64's own regain rule stores the
+                                     # old level back into the current array
+    record.set("dual_class_slot", 1)     # cleric's slot
+    record.set("dual_class_level", 5)    # the level he left cleric at
+
+    destination = saveplan.Destination(port="dos", path=tmp_path / "out",
+                                       slot="A", title=game, native=False)
+
+    stale = derive.turn_power(game, {"cleric": 5})
+    assert stale != 0    # the C64's own stale cached byte would still turn
+    assert saveplan._expected_turn_power(record, destination) == 0
 
 
 def test_c64_cached_values_follow_the_dos_rules_without_weakening_the_guard(
