@@ -129,21 +129,19 @@ Everything else, the internet through libvirt's own NAT, keeps working, because 
 
 ### Prove it, every time the filter changes
 
-A wrong filter fails silently: the guest works and nobody notices it can reach a machine on the LAN. So the test is a task in `sandbox-network`, not somebody's memory (`ansible/sandbox-isolation-test.yml`). From inside every running guest it checks that:
+A wrong filter fails silently: the guest works and nobody notices it can reach a machine on the LAN. So the test is a task in `sandbox-network`, not somebody's memory (`ansible/sandbox-isolation-test.yml`). It runs in two phases: every guest's network and mount checks first, and only once every one of those has reported does a second phase audit for credentials. From inside every running guest the first phase checks that:
 
 * the internet answers, and the other guest does if it is running;
 * none of `sandbox_net_lan_targets` answers, by ping and by a TCP connect;
 * `ssh` to `10.77.0.1` is refused while DNS through it works;
 * the Windows guest's ssh port answers from the Ubuntu guest, the one endpoint the agents drive it through (`sandbox_net_peer_tcp`);
+* inside the Ubuntu guest, whose entry in `sandbox_net_probe_guests` lists the mounts to look in: the writable share can be written, the read-only disks cannot, as `agent` or as `root`, and the disks' device is itself write-protected.
 
-Inside the Ubuntu guest, whose entry in `sandbox_net_probe_guests` lists the mounts and directories to look in, it also checks that:
+`ssh`'s own `ConnectTimeout` bounds connection setup only, not a command that has already connected, so every check above also runs under GNU `timeout` (`sandbox_net_probe_timeout_seconds`); a probe that hits that deadline prints no verdict and is never counted as a pass.
 
-* the writable share can be written, the read-only disks cannot, as `agent` or as `root`, and the disks' device is itself write-protected;
-* no GitHub token (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`) sits in any file, the game disks included, or in any process environment.
+Once every running guest's first-phase checks have reported, the second phase audits every guest whose entry names `audit_dirs` -- the Ubuntu guest, not the Windows one -- for a GitHub token (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`) in any process environment, then in any file under `/home /root /etc /opt /tmp /var/tmp`, one directory at a time, each under its own longer deadline (`sandbox_net_credential_root_timeout_seconds`). Kept out of the first phase's probe list on purpose: a scan across a whole filesystem does not finish in the second or two the network checks do, and mixing the two let a slow or stuck scan hold up the network assertions behind it (#644 (The sandbox isolation playbook hangs on an unbounded credential scan of home directories, Flatpak payloads and disk images)). The game disks are not rescanned here: the `agent-vm` role already refuses to build the image if a token or private key is in its source, and the read-only-mount check above proves the guest cannot have written to it since. Before opening anything, the scan skips `sandbox_net_credential_prune_globs` -- by default the whole of `~/.local/share/flatpak` -- because Flatpak hard-links the same object content into `repo/objects`, `runtime/…/files` and `app/…/files` once a package is deployed, so skipping `repo/objects` alone still leaves that content reachable through `runtime/`. Per-app state under `~/.var/app` is not a Flatpak payload and stays in scope.
 
-The Windows guest's entry lists none of those, so the mount and token checks do not run there.
-
-It passes for the right reasons only. Every LAN target must answer the host first, or a blocked probe means nothing; every probe prints a verdict of its own, so an ssh that never connected is told from one that was blocked; and a guest that is not running, or a read-only mount that is not mounted, is reported as **not tested**, never as passing. It changes nothing that persists (its probes touch and remove a temporary file), so it runs under `--check`, and it never contacts a pinhole's address.
+It passes for the right reasons only. Every LAN target must answer the host first, or a blocked probe means nothing; every probe prints a verdict of its own, so an ssh that never connected is told from one that was blocked; and a guest that is not running, a read-only mount that is not mounted, or a credential scan that timed out or hit a file it could not read, is reported as **not tested**, never as passing. It changes nothing that persists (its probes touch and remove a temporary file), so it runs under `--check`, and it never contacts a pinhole's address.
 
 ## The Ubuntu guest
 

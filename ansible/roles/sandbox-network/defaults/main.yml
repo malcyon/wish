@@ -93,6 +93,25 @@ sandbox_net_lan_targets: []
 # either, since the App's are minted per call and stored nowhere.
 sandbox_net_token_pattern: '(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'
 
+# ssh's ConnectTimeout only bounds connection setup, not a command that has
+# already connected, so every remote probe is also wrapped in GNU `timeout` on
+# the controller. The network and mount probes finish in seconds; the
+# per-root credential scan does not, so it gets a longer deadline of its own.
+# A probe that hits either deadline prints no verdict and is never counted as
+# a pass (#644).
+sandbox_net_probe_timeout_seconds: 30
+sandbox_net_credential_root_timeout_seconds: 60
+
+# Glob patterns (matched against the whole path, `find -path`) pruned from the
+# credential scan before anything under them is opened. Flatpak hard-links the
+# same object content into `repo/objects`, `runtime/…/files` and `app/…/files`
+# once a package is deployed, so pruning only `repo/objects` still leaves that
+# content reachable through `runtime/`; the whole of `.local/share/flatpak`
+# must be skipped. Per-app state under `.var/app` is not a Flatpak payload and
+# is not pruned.
+sandbox_net_credential_prune_globs:
+  - "/home/*/.local/share/flatpak"
+
 # The guests the test looks in. `domain` is the libvirt name -- a guest that
 # is not running is skipped, not failed -- and `key` is the private key the
 # host logs in with ("" means the host user's own default). Windows' sshd
@@ -112,6 +131,11 @@ sandbox_net_probe_guests:
     os: linux
     user: agent           # must equal agent_vm_user
     key: "{{ agent_vm_keypair_path }}"
+    # /mnt/disks is not scanned here: `agent-vm`'s "Look for a token or a
+    # private key" task already refuses to build the image if one is in the
+    # source, and the read-only-mount probes below prove the guest cannot have
+    # written to it since, so rescanning it on every run bought nothing but
+    # time.
     audit_dirs:
       - /home
       - /root
@@ -119,7 +143,6 @@ sandbox_net_probe_guests:
       - /opt
       - /tmp
       - /var/tmp
-      - /mnt/disks
     writable_mounts:
       - /mnt/specimens
     readonly_mounts:

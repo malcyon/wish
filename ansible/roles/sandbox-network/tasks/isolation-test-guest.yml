@@ -7,6 +7,14 @@
 # Each command is wrapped to print a verdict of its own, so a probe that could
 # not run at all (ssh failed, the shell was not what was expected) is told
 # apart from one that ran and was blocked.
+#
+# ssh's own ConnectTimeout only bounds connection setup, not a command that has
+# already connected, so the whole `ssh` invocation is wrapped in GNU `timeout`
+# as well (sandbox_net_probe_timeout_seconds). A probe that hits that deadline
+# prints no verdict, so it falls into "did not run at all" below rather than
+# ever counting as a pass. The credential audit is not one of these probes: it
+# runs afterwards, from isolation-test.yml, so a slow or stuck scan never
+# delays the network assertions.
 
 # The peer is probed only when it is running: a peer that is off does not
 # answer, and that says nothing about the filter.
@@ -51,15 +59,6 @@
       {% endfor %}
       {% set dns = 'powershell -NoProfile -Command "Resolve-DnsName example.com -ErrorAction Stop | Out-Null"' if win else 'getent hosts example.com' %}
       {% set _ = probes.append({'name': 'DNS through the gateway', 'want': 0, 'cmd': dns ~ tail}) %}
-      {% if guest.audit_dirs is defined %}
-      {% set pat = sandbox_net_token_pattern %}
-      {# grep exits 0 on a match, 1 on none and 2 on an error; only 1 is a pass, so
-         a directory that could not be read fails the audit and does not pass it. #}
-      {% set _ = probes.append({'name': 'no GitHub token in any file under ' ~ guest.audit_dirs | join(' '), 'want': 0,
-           'cmd': 'sudo grep -rIlsE \'' ~ pat ~ '\' ' ~ guest.audit_dirs | join(' ') ~ ' >/dev/null; [ $? -eq 1 ]' ~ tail}) %}
-      {% set _ = probes.append({'name': 'no GitHub token in any process environment', 'want': 0,
-           'cmd': 'sudo sh -c \'cat /proc/[0-9]*/environ\' 2>/dev/null | tr \'\\0\' \'\\n\' | grep -qE \'' ~ pat ~ '\'; [ $? -eq 1 ]' ~ tail}) %}
-      {% endif %}
       {% for m in guest.writable_mounts | default([]) %}
       {% set _ = probes.append({'name': 'write ' ~ m, 'want': 0,
            'cmd': 'if mountpoint -q ' ~ m ~ '; then ( touch ' ~ m ~ '/.write-test && rm ' ~ m ~ '/.write-test ) >/dev/null 2>&1 && echo RC=0 || echo RC=1; else echo RC=1; fi'}) %}
@@ -78,7 +77,8 @@
 - name: Run the probes in {{ guest.domain }}
   ansible.builtin.command:
     argv: >-
-      {{ ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
+      {{ ['timeout', '--signal=TERM', '--kill-after=5s', sandbox_net_probe_timeout_seconds | string,
+          'ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
           '-o', 'UserKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR', '-o', 'ConnectTimeout=10']
          + (['-i', guest.key, '-o', 'IdentitiesOnly=yes'] if guest.key | length else [])
          + [guest.user ~ '@' ~ sandbox_net_leases[guest.domain].ip, item.cmd] }}

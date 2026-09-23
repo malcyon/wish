@@ -164,7 +164,7 @@ The App needs Issues, Contents and Workflows, all read and write, on the install
 
 The `no-lan` libvirt network filter is attached to each guest's NIC. Evaluated as a packet leaves the guest, it accepts the guest's own subnet and drops every private range, so a LAN renumber does not open it; anything else, the internet through libvirt's NAT, is allowed. `100.64.0.0/10` is dropped as well: that is Tailscale's range.
 
-A wrong filter fails silently, so the test is a task, not a memory. `ansible-playbook -i ansible/inventory.yml ansible/sandbox-isolation-test.yml` runs these checks. The first three run inside every running guest; the last two run only in a guest whose entry in `sandbox_net_probe_guests` names mounts and directories to look in, which is the Ubuntu guest and not the Windows one:
+A wrong filter fails silently, so the test is a task, not a memory. `ansible-playbook -i ansible/inventory.yml ansible/sandbox-isolation-test.yml` runs these checks, in two phases: every guest's network and mount checks first, then, only once every one of those has reported, the credential audit. The first phase's checks run inside every running guest; the mount checks run only in a guest whose entry in `sandbox_net_probe_guests` names mounts to look in, which is the Ubuntu guest and not the Windows one:
 
 | check | how |
 |---|---|
@@ -173,9 +173,14 @@ A wrong filter fails silently, so the test is a task, not a memory. `ansible-pla
 | `ssh` to `10.77.0.1` is refused while DNS through it works | a connect and a lookup |
 | the Windows guest's ssh port answers from the Ubuntu guest (`sandbox_net_peer_tcp`) | a TCP connect |
 | the writable mount can be written and the read-only one cannot | a write as `agent` and as `root`, and the device's write protection |
-| no GitHub token (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`) is in a file or a process environment | a search of `/home /root /etc /opt /tmp /var/tmp` and the game disks, and every process's environment |
 
-Two things stop it passing for the wrong reason: every LAN target must answer the *host* first, or a blocked probe means nothing; and every probe prints a verdict of its own, so an ssh that never connected is told from a probe that was blocked. A guest that is not running is reported as **not tested**, never as passing, and so is a read-only mount that is not mounted yet. It changes nothing that persists (its probes touch and remove a temporary file), so it runs under `--check`, and it never contacts a pinhole's address. Run it every time the filter changes; editing the rules and re-running `sandbox-network.yml` updates running guests in place.
+`ssh`'s own `ConnectTimeout` bounds connection setup only, not a command that has already connected, so every one of the checks above is wrapped in GNU `timeout` as well (`sandbox_net_probe_timeout_seconds`, 30s by default); a probe that hits that deadline prints no verdict and is never counted as a pass.
+
+Once every running guest's network and mount checks have reported, a second phase audits each guest whose entry names `audit_dirs` for a GitHub token (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`): first in every process's environment, then a search of `/home /root /etc /opt /tmp /var/tmp`, one root directory at a time, each under its own deadline (`sandbox_net_credential_root_timeout_seconds`, 60s by default). Kept as a second phase and out of the first loop on purpose: a scan across a whole filesystem does not finish in the second or two the network checks do, so mixing them into one probe list let a slow or stuck scan hold up the network assertions behind it. The game disks are not rescanned here -- the `agent-vm` role already refuses to build the image if a token or private key is in its source, and the read-only-mount check above proves the guest cannot have written to it since.
+
+The per-root scan skips `sandbox_net_credential_prune_globs` (by default the whole of `~/.local/share/flatpak`) before opening anything under it: Flatpak hard-links the same object content into `repo/objects`, `runtime/…/files` and `app/…/files` once a package is deployed, so skipping `repo/objects` alone still leaves that content reachable through `runtime/`. Per-app state under `~/.var/app` is not a Flatpak payload and stays in scope.
+
+Two things stop it passing for the wrong reason: every LAN target must answer the *host* first, or a blocked probe means nothing; and every probe prints a verdict of its own, so an ssh that never connected is told from a probe that was blocked. A guest that is not running is reported as **not tested**, never as passing, and so is a read-only mount that is not mounted yet, and so is a credential scan that timed out or could not read a file. It changes nothing that persists (its probes touch and remove a temporary file), so it runs under `--check`, and it never contacts a pinhole's address. Run it every time the filter changes; editing the rules and re-running `sandbox-network.yml` updates running guests in place.
 
 ### The one hole
 
