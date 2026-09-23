@@ -494,15 +494,17 @@ def test_f_the_two_sides_exhaust_the_scalars(game):
     assert _THIEF_COLUMNS <= names
 
 
-def test_f_a_clamped_thief_column_is_unreachable_from_any_source():
-    """The `I8` clamp needs a source that can hold 128 in a thief column, and
-    every reader hands the column back as a signed byte too: the C64 record's
-    and every DOS title's are `I8`, so the value cannot exist."""
+def test_f_pools_of_darknesss_thief_columns_are_unsigned_and_the_rest_signed():
+    """The Amiga Pools of Darkness reader hands the columns back 0..255 (a
+    played party holds 135 and 209), so that title's DOS columns are `U8`;
+    the other three DOS titles and the C64 record stay `I8`."""
     assert {layout.FIELDS_BY_NAME[n].kind
             for n in _THIEF_COLUMNS} == {layout.Kind.I8}
     for game in doswidths.GAMES:
         table = dos_port.FIELDS_BY_NAME_FOR[game]
-        assert {table[n].kind for n in _THIEF_COLUMNS} == {layout.Kind.I8}, game
+        want = (layout.Kind.U8 if game == dos_port.POOLS_OF_DARKNESS.key
+                else layout.Kind.I8)
+        assert {table[n].kind for n in _THIEF_COLUMNS} == {want}, game
 
 
 # --- G: the only field wider in the C64 than in DOS is hit points ------------

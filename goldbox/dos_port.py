@@ -981,6 +981,9 @@ class DosDeltas:
     #: claim about an engine no one has read.
     attack_level_classes: "Sequence[str] | None" = None
     sizes: Mapping[str, int] = dataclasses.field(default_factory=dict)
+    #: A field whose kind this title reads differently from the base table.
+    #: A width change in `sizes` still wins over this in `layout_for`.
+    kinds: Mapping[str, Kind] = dataclasses.field(default_factory=dict)
     #: A count of undecoded bytes, or a sequence that may mix `Field`s with
     #: counts -- `(paladin_cures, 3)` is one named byte and three nobody has
     #: attributed.
@@ -1296,6 +1299,13 @@ POOLS_OF_DARKNESS = DosDeltas(
     item_suffix=".THG", effect_suffix=".EFX", spellbook_spells=125,
     race_numbers=POOLS_OF_DARKNESS_RACE_NUMBERS,
     attack_level_classes=None,
+    # The Amiga port of this title reads and writes the eight thief columns
+    # unsigned, and its engine stored 135 (125 for the class plus 10 for
+    # dexterity 18) itself, so a byte over 127 is a value and not a negative.
+    kinds={n: Kind.U8 for n in (
+        "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
+        "thief_move_silently", "thief_hide_in_shadows", "thief_hear_noise",
+        "thief_climb_walls", "thief_read_languages")},
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "spells_memorised": 141, "spellbook": 125,
@@ -1409,7 +1419,7 @@ def layout_for(what: "int | str | DosDeltas") -> tuple[Field, ...]:
                 f"{deltas.key}: field {f.name!r} cannot be {size} bytes")
         if size:
             if not f.name.startswith("gap_"):
-                kind = f.kind
+                kind = deltas.kinds.get(f.name, f.kind)
                 if size != f.size and kind in (Kind.U8, Kind.I8):
                     # A byte that became a pair is no longer a byte: read it
                     # raw rather than silently handing back half of it.

@@ -474,3 +474,31 @@ def test_no_sheet_portrait_is_reported_for_a_title_that_has_none():
         out = dos_codec.to_neutral(dos_codec.read_character(path))
         assert not any("portrait" in line.lower() for line in out.dropped), \
             path.name
+
+
+# --- thief columns over 127 -------------------------------------------------
+
+_THIEF = (135, 119, 109, 109, 109, 60, 105, 75)
+
+
+def test_a_thief_column_over_127_crosses_to_dos_and_back_unchanged():
+    """The Amiga port holds the eight thief columns unsigned and the engine
+    itself wrote 135; Pools of Darkness' DOS table reads them the same way,
+    so nothing is clamped going out and nothing is negative coming back."""
+    raw = amiga_pod.PodWriter(
+        name="THIEF", hit_points_max=30, thief_skills=_THIEF,
+        character_class=amiga_pod.CLASSES.index("THIEF"),
+        class_levels=(0, 0, 0, 0, 0, 0, 20),
+        class_bits=amiga_pod.CLASS_BIT["thief"]).to_bytes()
+    char = amiga_pod.pod_to_neutral(raw)
+    rec, _itm, _spc, rep = dos_codec.write(char)
+    assert rep.losses == []
+    at = dos_port.FIELDS_BY_NAME_FOR[POD.key]["thief_pick_pockets"].offset
+    assert at == 0x13B
+    assert rec[at] == 0x87
+
+    back = dos_codec.to_neutral(dos_codec.DosCharacter(rec, [], []))
+    assert back.get("thief_pick_pockets") == 135
+    writer, _report = amiga_pod.write_pod(back)
+    out = writer.to_bytes()
+    assert out[amiga_pod.THIEF_SKILLS] == 0x87

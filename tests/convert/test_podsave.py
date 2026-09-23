@@ -178,8 +178,6 @@ def _pod_amiga_slots():
 _POD_DROP_PATTERN = re.compile(
     r"twenty-byte nodes chained off a scroll: each holds three more spell "
     r"ids and the neutral record has nowhere to put them")
-_POD_LOSS_PATTERN = re.compile(
-    r"thief_pick_pockets: \d+ does not fit the DOS one-byte field; clamped$")
 
 
 def test_new_pod_save_from_writes_every_played_amiga_slot(tmp_path):
@@ -205,8 +203,7 @@ def test_new_pod_save_from_writes_every_played_amiga_slot(tmp_path):
 
         for line in report.dropped:
             assert _POD_DROP_PATTERN.search(line), (name, line)
-        for line in report.losses:
-            assert _POD_LOSS_PATTERN.search(line), (name, line)
+        assert report.losses == [], name
     assert seen >= 8
 
 
