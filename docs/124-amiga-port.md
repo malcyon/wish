@@ -2745,15 +2745,23 @@ CHARACTER` → `POOLS` → `ADD`, `VIEW CHARACTER`, screenshot, `REMOVE CHARACTE
 Notes for whoever runs the next one:
 
 * **PoD is driven by first letters and Return** — `a`, `p`, `v`, `r`, `y`, `e`.
-  FS-UAE's arrow keys reach its own menu and not the Amiga, so under FS-UAE the
-  picker's cursor cannot be moved and **the payload goes in the file the picker
-  lists first**, which on this disk is `Save/TROND.pc`. **Under WinUAE the
-  cursor keys do move it**, sent with `KEYEVENTF_EXTENDEDKEY` — one `DOWN` went
-  from `TROND` to `PAINE` on 2026-09-07, so any row can be reached now and a
-  payload no longer has to go in the first file
-  (`docs/206-three-amiga-questions.md` §3). The `*` in that list marks a name
-  matching a party member, and the red name in the party roster is the cursor
-  there.
+  **`Down` reaches the Amiga under FS-UAE too** when it is sent with `xdotool`
+  to the focused window: in the `pod-panel` run `run4` it moved the picker's
+  highlight (shots `08-added-normal` to `09-on-outofparty`) and, on the party
+  panel, moved it twice and wrapped from the last member to the first
+  (`12-panel-1` to `14-panel-2` to `16-panel-3`). This section
+  said the arrow keys never reach the Amiga, and `run4` shows they do. **`Home` does
+  nothing on the panel** (`18-panel-home` is identical to `16-panel-3`).
+  A `Down` sent while the game is still adding a character is lost: in `run4`
+  the add was still running 4 s after `a` (`06-added-unconscious.pc`) and the
+  next `Down` never moved the highlight, so the driver waits for the screen
+  to stop changing before it sends another key. Under WinUAE the cursor keys
+  are sent with `KEYEVENTF_EXTENDEDKEY` — one `DOWN` went from `TROND` to
+  `PAINE` on 2026-09-07 (`docs/206-three-amiga-questions.md` §3). The `*` in
+  that list marks a name matching a party member. **The highlighted name is
+  white, not red**: in `run4` the highlighted row measures `(238,238,238)` on
+  the picker and the panel, the other names cyan `(85,238,238)`, and no
+  name is red, so a red name would not be the cursor.
 * **Never press Up at the top of an FS-UAE menu list.** The cursor leaves the
   list and lands on the window's `X`, and Return there quits the emulator. That
   is what killed one session; it looked like a crash and was not.

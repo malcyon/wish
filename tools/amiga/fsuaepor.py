@@ -381,6 +381,12 @@ GRAB_TIMEOUT = 30
 #: Seconds after the start before a missing FS-UAE window counts as a dead
 #: emulator; the window is not there in the first seconds of a boot.
 WINDOW_GRACE = 20
+#: Seconds between the grabs that decide whether the picker has stopped
+#: changing after a key.
+SETTLE_POLL = 2
+#: Longest to wait for the screen to stop changing after an `a`; a busy game
+#: drops the key that follows, so the driver stops instead of sending on.
+SETTLE_MAX = 60
 
 
 def grab(display: str):
@@ -429,7 +435,10 @@ def panel_script(rows: list[tuple[int, str]], members: int, limit: float
 
     `("title", limit)` waits for the title bar for at most `limit` seconds,
     `("key", name, settle)`, `("shot", label)` and `("played",)`, which stops
-    the run when the screen did not change after the first `p`.
+    the run when the screen did not change after the first `p`.  In the picker
+    `("mark",)` keeps a grab, `("stable", label)` waits until two grabs in a row
+    match, and `("moved", label)` stops the run unless the screen now differs
+    from the mark: an `a` or a `Down` sent while the game is busy is lost.
     `rows` are `(picker row, file name)` in ascending order.  The script never
     sends `Up`, never `y`, and never two `e` in a row: `Up` at the top of an
     FS-UAE menu then Return quits the emulator, and `e` on the party menu is
@@ -441,9 +450,11 @@ def panel_script(rows: list[tuple[int, str]], members: int, limit: float
                           ("key", "p", 10), ("shot", "picker")]
     current = 1
     for row, name in rows:
-        steps += [("key", "Down", 0.6)] * (row - current)
+        for _ in range(row - current):
+            steps += [("mark",), ("key", "Down", 0.6), ("moved", "down-ignored")]
         current = row
-        steps += [("shot", f"on-{name}"), ("key", "a", 4),
+        steps += [("shot", f"on-{name}"), ("mark",), ("key", "a", 0.6),
+                  ("stable", f"still-adding-{name}"), ("moved", "add-ignored"),
                   ("shot", f"added-{name}")]
     steps += [("key", "e", 3), ("shot", "panel")]
     for k in range(1, members + 1):
@@ -480,6 +491,7 @@ def pod_panel(args) -> int:
                                 path=out / f"{count:02d}-{label}.png"))
 
     bar = None
+    marked = None
     for step in panel_script(rows, len(rows), args.boot):
         if step[0] == "title":
             bar = _wait_for_bar(args.display, step[1], take)
@@ -489,12 +501,37 @@ def pod_panel(args) -> int:
             if grab(args.display).tobytes() == bar.tobytes():
                 take("play-ignored")
                 raise SystemExit("the title bar did not take p; no more keys sent")
+        elif step[0] == "mark":
+            marked = grab(args.display).tobytes()
+        elif step[0] == "stable":
+            _wait_until_still(args.display, step[1], take)
+        elif step[0] == "moved":
+            if grab(args.display).tobytes() == marked:
+                take(step[1])
+                raise SystemExit(f"the screen did not change after the key "
+                                 f"({step[1]}); no more keys sent")
         elif step[0] == "key":
             keys(argparse.Namespace(display=args.display, key=[step[1]],
                                     hold=0.12, settle=step[2]))
         else:
             take(step[1])
     return 0
+
+
+def _wait_until_still(display: str, label: str, take) -> None:
+    """Grab every `SETTLE_POLL` s until two in a row match; stop past `SETTLE_MAX`."""
+    start = _now()
+    previous = grab(display).tobytes()
+    while True:
+        _wait(SETTLE_POLL)
+        current = grab(display).tobytes()
+        if current == previous:
+            return
+        previous = current
+        if _now() - start >= SETTLE_MAX:
+            take(label)
+            raise SystemExit(f"the screen was still changing after "
+                             f"{SETTLE_MAX:g} s ({label}); no more keys sent")
 
 
 def _wait_for_bar(display: str, limit: float, take):
@@ -505,6 +542,7 @@ def _wait_for_bar(display: str, limit: float, take):
     """
     start = _now()
     seen = False
+    misses = 0
     while True:
         image = grab(display)
         up = title_bar_up(image)
@@ -514,10 +552,15 @@ def _wait_for_bar(display: str, limit: float, take):
             return image
         seen = up
         elapsed = _now() - start
-        if not up and elapsed >= WINDOW_GRACE and not window_up(display):
-            take("no-title-bar")
-            raise SystemExit(f"fs-uae has no window on {display} after "
-                             f"{elapsed:.0f} s (did it exit?); no key sent")
+        if up or elapsed < WINDOW_GRACE or window_up(display):
+            misses = 0
+        else:
+            # One missed search is not a dead emulator on a loaded machine.
+            misses += 1
+            if misses >= 2:
+                take("no-title-bar")
+                raise SystemExit(f"fs-uae has no window on {display} after "
+                                 f"{elapsed:.0f} s (did it exit?); no key sent")
         # A first sighting is always confirmed by one more grab, so a small
         # `limit` cannot expire between the two.
         if not seen and elapsed >= limit:

@@ -237,11 +237,12 @@ def _screens(monkeypatch, calls, before, after=None):
     from PIL import Image
 
     queue = list(before)
-    changed = after or Image.new("RGB", (800, 600), (9, 9, 9))
 
     def grab(display):
-        if any(c[0] == "key" for c in calls):
-            return changed
+        keys_sent = sum(c[0] == "key" for c in calls)
+        if keys_sent:
+            # Each key leaves a new screen, so a key that "took" is visible.
+            return after or Image.new("RGB", (800, 600), (9, 9, keys_sent))
         return queue.pop(0) if len(queue) > 1 else queue[0]
 
     ticks = iter(range(0, 10**6, 2))
@@ -329,6 +330,123 @@ def test_window_up_reads_xdotool_search(monkeypatch):
     assert fsuaepor.window_up(":9")
     out["v"] = ""
     assert not fsuaepor.window_up(":9")
+
+
+def test_window_up_is_false_when_the_search_times_out(monkeypatch):
+    def hung(*a, **k):
+        raise fsuaepor.subprocess.TimeoutExpired("xdotool", k["timeout"])
+
+    monkeypatch.setattr(fsuaepor.subprocess, "run", hung)
+    assert fsuaepor.window_up(":9") is False
+
+
+def test_one_missed_window_search_does_not_end_the_wait(tmp_path, monkeypatch):
+    calls, args = _run(tmp_path, monkeypatch,
+                       [_bar(colour=(0, 0, 0))] * 12 + [_bar()], limit=300)
+    answers = iter([False, True] + [True] * 50)
+    monkeypatch.setattr(fsuaepor, "window_up", lambda display: next(answers))
+    assert fsuaepor.pod_panel(args) == 0
+
+
+def test_two_missed_window_searches_in_a_row_stop_the_wait(tmp_path, monkeypatch):
+    calls, args = _run(tmp_path, monkeypatch,
+                       [_bar(colour=(0, 0, 0))] * 40 + [_bar()], limit=300)
+    answers = iter([False, False] + [True] * 50)
+    monkeypatch.setattr(fsuaepor, "window_up", lambda display: next(answers))
+    with pytest.raises(SystemExit, match="no window"):
+        fsuaepor.pod_panel(args)
+    assert [c for c in calls if c[0] == "key"] == []
+
+
+def test_a_miss_then_a_hit_then_a_miss_does_not_add_up(tmp_path, monkeypatch):
+    calls, args = _run(tmp_path, monkeypatch,
+                       [_bar(colour=(0, 0, 0))] * 16 + [_bar()], limit=300)
+    answers = iter([False, True, False, True] + [True] * 50)
+    monkeypatch.setattr(fsuaepor, "window_up", lambda display: next(answers))
+    assert fsuaepor.pod_panel(args) == 0
+
+
+def _picker_run(tmp_path, monkeypatch, screen, payloads):
+    """Run `pod_panel` on a two-row picker; `screen(keys, polls)` is each grab.
+
+    `keys` are the keys sent so far, `polls` the waits since the last key.
+    """
+    disk = _disk3(["ONE.pc", "TWO.pc"])
+    adf = tmp_path / "pod3.adf"
+    disk.save(adf)
+    events: list[str] = []
+    state = {"keys": [], "polls": 0}
+
+    def send(a):
+        events.append(a.key[0])
+        state["keys"].append(a.key[0])
+        state["polls"] = 0
+
+    def wait(seconds):
+        events.append("wait")
+        state["polls"] += 1
+
+    monkeypatch.setattr(fsuaepor, "keys", send)
+    monkeypatch.setattr(fsuaepor, "shot", lambda a: events.append("shot:" + a.path.name))
+    monkeypatch.setattr(fsuaepor, "_wait", wait)
+    monkeypatch.setattr(fsuaepor, "window_up", lambda display: True)
+    ticks = iter(range(0, 10**6, 2))
+    monkeypatch.setattr(fsuaepor, "_now", lambda: next(ticks))
+    monkeypatch.setattr(fsuaepor, "grab", lambda display: _bar() if not state["keys"]
+                        else screen(state["keys"], state["polls"]))
+    args = type("A", (), dict(display=":9", adf=str(adf), out=str(tmp_path / "s"),
+                              boot=300, payload=payloads))
+    return events, args
+
+
+def _distinct(n):
+    from PIL import Image
+    return Image.new("RGB", (800, 600), (9, 9, n % 250))
+
+
+def _payload_a(keys):
+    """True once the picker's `a` for a payload (the second `a`) was the last key."""
+    return keys[-1] == "a" and keys.count("a") >= 2
+
+
+def test_no_down_is_sent_until_the_screen_stops_changing_after_an_a(
+        tmp_path, monkeypatch):
+    def screen(keys, polls):
+        if _payload_a(keys):
+            return _distinct(polls) if polls < 5 else _distinct(200)
+        return _distinct(len(keys) * 10)
+
+    events, args = _picker_run(tmp_path, monkeypatch, screen, ["ONE.pc", "TWO.pc"])
+    assert fsuaepor.pod_panel(args) == 0
+    picker_a = [i for i, e in enumerate(events) if e == "a"][1]
+    next_down = next(i for i, e in enumerate(events) if e == "Down" and i > picker_a)
+    assert events[picker_a:next_down].count("wait") >= 6
+
+
+def test_a_screen_that_never_settles_stops_the_run_with_a_shot(
+        tmp_path, monkeypatch):
+    counter = iter(range(10**6))
+
+    def screen(keys, polls):
+        return _distinct(next(counter)) if _payload_a(keys) else _distinct(len(keys) * 10)
+
+    events, args = _picker_run(tmp_path, monkeypatch, screen, ["ONE.pc", "TWO.pc"])
+    with pytest.raises(SystemExit, match="still changing"):
+        fsuaepor.pod_panel(args)
+    assert "Down" not in events
+    assert events[-1].startswith("shot:") and "still-adding" in events[-1]
+
+
+def test_a_down_that_changes_nothing_stops_before_the_next_a(tmp_path, monkeypatch):
+    def screen(keys, polls):
+        return _distinct(len([k for k in keys if k != "Down"]) * 10)
+
+    events, args = _picker_run(tmp_path, monkeypatch, screen, ["ONE.pc"])
+    args.payload = [fsuaepor.picker_rows(AmigaDisk(open(args.adf, "rb").read()))[1]]
+    with pytest.raises(SystemExit, match="did not change"):
+        fsuaepor.pod_panel(args)
+    assert any("down-ignored" in e for e in events)
+    assert events.count("a") == 1      # ADD CHARACTER's own, never the payload's
 
 
 def test_grab_gives_a_readable_stop_for_a_hung_or_dead_display(monkeypatch):
