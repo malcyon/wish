@@ -2194,10 +2194,12 @@ graph LR
   backstab --> titles
   c64_codec --> classcode
   c64_codec --> derive
+  c64_codec --> effects
   c64_codec --> encoding
   c64_codec --> layout
   c64_codec --> levels
   c64_codec --> neutral
+  c64_codec --> paladin
   c64_codec --> portraits
   c64_codec --> record
   c64_codec --> spells
@@ -2214,8 +2216,10 @@ graph LR
   dos_codec --> c64_save
   dos_codec --> classcode
   dos_codec -.->|deferred| d64
+  dos_codec --> derive
   dos_codec --> dos_port
   dos_codec --> dos_savegame
+  dos_codec --> effects
   dos_codec --> encoding
   dos_codec --> iconparts
   dos_codec -.->|deferred| icons
