@@ -56,6 +56,9 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
+CURSE_KEY = "curse-of-the-azure-bonds"
+
+
 def edited_dos_party(tmp_path, **kwargs):
     """A DOS Silver Blades party with a changed gold and item quantity, and
     nothing saved."""
@@ -380,6 +383,43 @@ def test_a_silver_blades_amiga_destination_asks_for_no_game_disk(tmp_path):
 
     assert saveplan.requirements(party.source, "amiga") == ()
     assert saveplan.resolve_assets(party.source, "amiga") == saveplan.Assets()
+
+
+def test_a_curse_party_not_yet_set_out_asks_for_no_amiga_game_disk(
+        tmp_path, monkeypatch):
+    """The pre-adventure Amiga save stages no `ECL.GLB`, so the route needs
+    no disk 2 and neither requirements, assets nor the rehearsal ask for one;
+    a Curse party already in the world still does."""
+    import dataclasses
+
+    from goldbox import world_state
+
+    source = convert.Source.detect(
+        synthetic_save(tmp_path, game=convert.c64_port.by_key(CURSE_KEY)))
+    assert source.key == CURSE_KEY
+    assert saveplan.requirements(source, "amiga") == (saveplan.SOURCE_DISKS,)
+    assets = saveplan.resolve_assets(source, "amiga",
+                                     game_files=lambda title: object())
+    assert assets.amiga_disk is None
+    shape = dos_port.CURSE_OF_THE_AZURE_BONDS
+    assert convert._amiga_destination_data(
+        shape, tmp_path / "no-such-disk.adf", source) is None
+
+    real = world_state.from_c64
+
+    def in_the_world(*args, **kwargs):
+        return dataclasses.replace(real(*args, **kwargs), set_out=True)
+
+    monkeypatch.setattr(world_state, "from_c64", in_the_world)
+    assert saveplan.requirements(source, "amiga") == (
+        saveplan.AMIGA_GAME_DISK, saveplan.SOURCE_DISKS)
+    with pytest.raises(saveplan.MissingAssets) as caught:
+        saveplan.resolve_assets(source, "amiga",
+                                game_files=lambda title: object())
+    assert caught.value.missing == (saveplan.AMIGA_GAME_DISK,)
+    with pytest.raises(Exception):
+        convert._amiga_destination_data(
+            shape, tmp_path / "no-such-disk.adf", source)
 
 
 def test_a_pool_of_radiance_amiga_destination_asks_for_disk_two(tmp_path):

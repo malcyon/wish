@@ -1053,16 +1053,35 @@ def _rehearse_later_savegame(state: Any, shape: dos_port.DosDeltas,
         savegame)
 
 
-def amiga_needs_game_disk(shape: dos_port.DosDeltas) -> bool:
+def has_not_set_out(state: Any) -> bool:
+    """Whether a Curse or Silver Blades party is still in the placeless state
+    before BEGIN ADVENTURING -- the condition
+    `goldbox.amiga_savegame.new_savegame` builds its initialiser form on."""
+    return (not state.set_out
+            and world_state.is_pre_adventure_area(state.title, state.area))
+
+
+def amiga_needs_game_disk(shape: dos_port.DosDeltas,
+                          source: "Source | None" = None) -> bool:
     """Whether an Amiga destination of this title reads anything off the
     player's own disk 2.
 
     Pool of Radiance stages the area's own `ecl.dax` and Curse of the Azure
     Bonds its `ECL.GLB`; Secret of the Silver Blades stages neither and needs
-    no disk at all. `editor.saveplan.requirements` asks this rather than
-    demanding a disk for every Amiga destination alike.
+    no disk at all. A Curse party from a C64 `source` that has not set out
+    stages no script either. `editor.saveplan.requirements` asks this rather
+    than demanding a disk for every Amiga destination alike.
     """
-    return shape is not dos_port.SECRET_OF_THE_SILVER_BLADES
+    if shape is dos_port.SECRET_OF_THE_SILVER_BLADES:
+        return False
+    if (shape is dos_port.CURSE_OF_THE_AZURE_BONDS
+            and source is not None and source.port == "c64"
+            and source.save0 is not None):
+        state = world_state.from_c64(
+            source.save0, game=c64_port.by_key(shape.key),
+            source=str(source.path))
+        return not has_not_set_out(state)
+    return True
 
 
 def dos_needs_game_folder(shape: dos_port.DosDeltas) -> bool:
@@ -1079,9 +1098,10 @@ def dos_needs_game_folder(shape: dos_port.DosDeltas) -> bool:
 
 
 def _amiga_destination_data(shape: dos_port.DosDeltas,
-                            options: "str | pathlib.Path") -> bytes | None:
+                            options: "str | pathlib.Path",
+                            source: "Source | None" = None) -> bytes | None:
     """The one game-data file a fresh save needs, when it needs one."""
-    if not amiga_needs_game_disk(shape):
+    if not amiga_needs_game_disk(shape, source):
         return None
     from goldbox.amiga_adf import AmigaDisk
 
@@ -1143,7 +1163,7 @@ class C64ToAmiga(Direction):
                 options: "str | pathlib.Path",
                 icon_parts: "Any | None" = None,
                 names: "Mapping[str, str] | None" = None) -> AmigaWriteRehearsal:
-        game_data = _amiga_destination_data(self.shape, options)
+        game_data = _amiga_destination_data(self.shape, options, source)
         party, icons = dos_codec.c64_party(source.save0, source.save1,
                                      game=self.title, icon_parts=icon_parts)
         party = saveplan.fit_names(

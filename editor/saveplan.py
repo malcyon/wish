@@ -465,7 +465,7 @@ def requirements(source: Any, port: str) -> tuple[str, ...]:
     elif port == "dos":
         if dos_needs_game_folder(direction.shape):
             needs.append(DOS_GAME_FOLDER)
-    elif amiga_needs_game_disk(direction.shape):
+    elif amiga_needs_game_disk(direction.shape, source):
         needs.append(AMIGA_GAME_DISK)
     if source.port == "c64" and port in ("dos", "amiga"):
         needs.append(SOURCE_DISKS)
