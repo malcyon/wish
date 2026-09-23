@@ -97,12 +97,18 @@ def _is_human(char: Any, title_key: str) -> bool:
 def _regained(char: Any, title_key: str, former_thief: int) -> bool:
     """Whether a human's new class has passed the level he left thief at.
 
-    The engine's active class level is the first positive entry of the level
-    array, and the rule accepts only a strictly greater one.
+    The engine's active class is the first positive entry of the level
+    array whose class the character has not left -- a DOS record never
+    holds a current level in a class named in `former_levels`, so a class
+    that appears in both is the stale, about-to-be-zeroed one and never the
+    active one. The rule accepts only a strictly greater level than the one
+    he left thief at.
     """
     if not former_thief or not _is_human(char, title_key):
         return False
-    active = next((v for v in (char.get("levels") or {}).values() if v), 0)
+    former = char.get("former_levels") or {}
+    active = next((v for k, v in (char.get("levels") or {}).items()
+                   if v and k not in former), 0)
     return active > former_thief
 
 

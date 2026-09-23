@@ -170,6 +170,24 @@ def test_a_current_thief_beside_a_regained_former_one_takes_the_larger(
 
 
 @pytest.mark.parametrize("key,port", SUMMING + LARGEST)
+def test_a_current_thief_beside_a_regained_former_one_sums_whatever_the_dict_order(
+        key: str, port: str) -> None:
+    """A DOS record never holds a current level in a class it left, so the
+    active class is the one not named in `former_levels` -- not whichever
+    entry of `levels` a reader happened to store first. `dict` preserves
+    insertion order, and a reader that walked the record's own class-level
+    array in a different order from this test's other cases (thief before
+    fighter here, fighter before thief there) must not change the answer:
+    a thief entry that is also in `former_levels` is the stale one, however
+    it sorts."""
+    char = character(key, port, {"thief": 5, "fighter": 9}, {"thief": 8})
+    assert backstab.effective_thief_level(char) == (13 if (key, port) in SUMMING
+                                                      else 8)
+    assert backstab.backstab_multiplier(char) == (5 if (key, port) in SUMMING
+                                                    else 3)
+
+
+@pytest.mark.parametrize("key,port", SUMMING + LARGEST)
 def test_a_non_human_current_thief_ignores_a_former_one(
         key: str, port: str) -> None:
     char = character(key, port, {"fighter": 9, "thief": 4}, {"thief": 8},

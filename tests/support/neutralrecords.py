@@ -14,6 +14,9 @@ def _filled(game=None) -> NeutralCharacter:
              Provenance.RESHAPED)
     for n, (field, _) in enumerate(c64_codec.DIRECT):
         char.set(field, n + 1, f"made up, value {n + 1}")
+    # `level`, the aggregate field, lands at 20 from this loop (index 19) --
+    # made up like every other field here and free to disagree with whatever
+    # `levels` or `former_levels` a caller sets afterwards.
     # `race` chooses the infravision the writer computes; keep it in range.
     char.set("race", 1, "made up: elf")
     char.set("spells_known", [1, 5, 55], "made up")

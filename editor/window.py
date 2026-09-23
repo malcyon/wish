@@ -2695,6 +2695,15 @@ class EditorBinding(QObject):
         `former_levels` and `race` from `member.record`'s own dual-class
         pair, which is what Curse's and Silver Blades' rules need on every
         port, and needs no roster or inventory block to do it.
+
+        On DOS and Amiga, `former_levels`' classes are zeroed back out of
+        `levels` before the rule runs, matching what `dos_codec.write` -- the
+        writer both those ports go through -- does to a regained class's
+        slot on every save. `member.record`'s C64-shaped copy can carry a
+        regained level there once the character's new class has passed the
+        one he left, the way the C64's own `GEN` regains it, and neither DOS
+        engine ever holds it that way, so this row must not read it that way
+        either.
         """
         value = self._child("value_thief_backstab")
         if value is None:
@@ -2704,6 +2713,22 @@ class EditorBinding(QObject):
         try:
             port = self._BACKSTAB_PORTS[self.party.port]
             char = c64_codec.read(member.record, game=self.party.game)
+            if port != "C64":
+                # `member.record` is a C64-shaped copy on every port, so a
+                # dual-classed character whose new class has passed the
+                # level he left the old one at carries the old class's
+                # level in its own slot the way the C64's own `GEN` regains
+                # it. DOS and Amiga never hold it there -- `dos_codec.write`
+                # zeroes a regained class's slot on every save (#408) -- so
+                # the rule for those ports has to see the same zero, or it
+                # answers as if the regain had already happened.
+                former = char.get("former_levels") or {}
+                levels = dict(char.get("levels") or {})
+                for cname, lv in former.items():
+                    if lv:
+                        levels[cname] = 0
+                char = {"levels": levels, "former_levels": former,
+                        "race": char.get("race"), "game": char.game}
             multiplier = backstab.backstab_multiplier(
                 char, title=self.party.game, port=port)
         except Exception:

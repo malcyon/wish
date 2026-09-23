@@ -2808,36 +2808,50 @@ def test_backstab_reads_a_dual_classed_humans_regained_former_level(tmp_path):
     C64 keeps no separate former-class array).
 
     HERO1 is human, dual-classed out of thief at level 25, and now a
-    level-30 fighter -- past the level he left thief at, so DOS regains it.
-    (The levels are chosen clear of `c64_codec.write`'s own dual-class
-    fold-in, which pokes the C64's thief slot directly once its *unrelated*
-    aggregate `level` field passes the former level -- `_filled`'s made-up
-    `level` is 20, so a former level above that never triggers it, and the
-    thief slot this test's own record carries stays the 0 a trained-out DOS
-    character's main array actually holds.)"""
+    level-30 fighter -- past the level he left thief at, so DOS regains it,
+    and the row reads ×8. `level=30` (not `_filled`'s made-up 20) so the
+    aggregate `level` field agrees with the class levels the way a real
+    save's does; the earlier version of this test picked levels that stayed
+    clear of `c64_codec.write`'s own dual-class fold-in instead of matching
+    what a real save looks like, and so never exercised it. That fold-in
+    means `member.record` -- the sheet's C64-shaped copy -- already carries
+    HERO1's regained thief level in the current-class slot the way the C64
+    itself would, which is what makes ×8 the expected answer computed the
+    honest way: DOS never holds it there, so the true DOS shape is
+    `levels={"fighter": 30}`, `former_levels={"thief": 25}`, with no thief
+    entry in `levels` at all.
+
+    Then the player lowers the fighter level to 20 on the open sheet --
+    below the 25 he left thief at -- and leaves the row for another
+    character and back. DOS would no longer regain the former thief level,
+    so the row must read "None", the way `dos_codec.write` would show it: it
+    always zeroes a regained class's slot on save, so once the fighter level
+    no longer passes 25 there is no class left holding a thief level at all.
+    """
     from editor.window import EditorBinding
-    from goldbox import backstab, c64_codec, dos_port
+    from goldbox import backstab, dos_port
 
     _synthetic_dos_folder(
-        tmp_path, dos_port.CURSE_OF_THE_AZURE_BONDS, numbers=(1,),
+        tmp_path, dos_port.CURSE_OF_THE_AZURE_BONDS, numbers=(1, 2),
         class_bits=0x08,                          # fighter
         levels={"fighter": 30}, race=7,            # 7 is human in Curse
-        former_levels={"thief": 25})
+        former_levels={"thief": 25}, level=30)
     w = EditorBinding(make_root(), str(tmp_path / "SAVGAMA.DAT"))
     assert w.party.port == "dos"
     w.roster.selectRow(0)
     value = w._child("value_thief_backstab")
 
-    char = c64_codec.read(w.party.member(0).record, game=w.party.game)
-    assert char.get("former_levels")               # the dual-class pair travelled
-    assert char.get("race") == 7                    # and the race, for the regain test
-    dos_multiplier = backstab.backstab_multiplier(
-        char, title=dos_port.CURSE_OF_THE_AZURE_BONDS.key, port="DOS")
-    c64_multiplier = backstab.backstab_multiplier(
-        char, title=dos_port.CURSE_OF_THE_AZURE_BONDS.key, port="C64")
-    assert dos_multiplier is not None
-    assert dos_multiplier != c64_multiplier   # DOS sums the former slot; C64 does not
-    assert value.text() == f"×{dos_multiplier}"
+    before = backstab.backstab_multiplier(
+        {"levels": {"fighter": 30}, "former_levels": {"thief": 25},
+         "race": 7},
+        title=dos_port.CURSE_OF_THE_AZURE_BONDS.key, port="DOS")
+    assert before == 8
+    assert value.text() == f"×{before}"
+
+    w._widgets["level_fighter"].setValue(20)
+    w.roster.selectRow(1)                         # flushes row 0's edit
+    w.roster.selectRow(0)                         # repopulates row 0
+    assert value.text() == "None"
 
 
 def _silver_blades_save(tmp_path):
@@ -4553,7 +4567,8 @@ def _converted_dos_disk(folder, slot, key):
 
 
 def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
-                          levels=None, race=None, former_levels=None):
+                          levels=None, race=None, former_levels=None,
+                          level=None):
     """A DOS save folder written from filled neutral characters, no game data.
     `numbers` are the `CHRDAT<slot><n>` file numbers that exist.  `class_bits`
     overrides `_filled`'s own arbitrary byte -- needed wherever the writer
@@ -4562,7 +4577,9 @@ def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
     `levels` overrides `_filled`'s own class-level dict the same way, for a
     test that needs a particular thief level. `race` and `former_levels`
     override `_filled`'s own race and (unset) dual-class pair, for a test of
-    a dual-classed human's regain rule."""
+    a dual-classed human's regain rule. `level` overrides `_filled`'s own
+    made-up aggregate `level` of 20, for a test whose class levels need to
+    look like a real save's rather than avoid `_filled`'s default."""
     from support.neutralrecords import _filled
 
     from goldbox import c64_port, dos_codec
@@ -4579,6 +4596,8 @@ def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
             char.set("race", race, "made up, chosen for the test")
         if former_levels is not None:
             char.set("former_levels", former_levels, "made up, chosen for the test")
+        if level is not None:
+            char.set("level", level, "made up, chosen for the test")
         record, itm, spc, _rep = dos_codec.write(char, deltas=deltas)
         (tmp_path / f"CHRDATA{n}.SAV").write_bytes(record)
         (tmp_path / f"CHRDATA{n}.ITM").write_bytes(itm)
