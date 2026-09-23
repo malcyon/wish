@@ -1009,11 +1009,11 @@ class PreferencesDialog(QDialog):
     def _clear_automap(self):
         import json
 
-        from automap.paths import data_dir
-        from automap.state import title_dir
-        
+        from automap.state import data_dir, migrate_flat_notes, title_dir
+
         # Clear 'seen' for the current game from all JSON files
         if self.win.mapper.state and self.win.mapper.state.title:
+            migrate_flat_notes()
             maps_dir = data_dir() / title_dir(self.win.mapper.state.title)
             if maps_dir.exists():
                 for json_file in maps_dir.glob("*.json"):

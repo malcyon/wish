@@ -1969,3 +1969,45 @@ def test_a_stored_host_does_not_reach_the_environment_with_the_flag_off(
     monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     window(app, settings=saved)
     assert os.environ.get("POR_ULTIMATE") == "ultimate64.local"
+
+
+def _clear_automap_from(state):
+    from wish.preferences import PreferencesDialog
+
+    class Fake:
+        pass
+    fake = Fake()
+    fake.win = Fake()
+    fake.win.mapper = Fake()
+    fake.win.mapper.state = state
+    fake.win.map = None
+    PreferencesDialog._clear_automap(fake)
+
+
+def test_clear_automap_forgets_another_areas_squares_and_keeps_its_notes():
+    from automap.state import AutomapState
+
+    other = AutomapState(area="GEO15")
+    other.exploration.seen |= {(1, 2), (3, 4)}
+    other.save_notes()
+    before = json.loads(other.notes_path().read_text(encoding="utf-8"))
+
+    _clear_automap_from(AutomapState(area="GEO16"))
+
+    after = json.loads(other.notes_path().read_text(encoding="utf-8"))
+    assert after["seen"] == []
+    assert after["notes"] == before["notes"]
+
+
+def test_clear_automap_also_clears_a_notes_file_saved_before_title_folders():
+    from automap.state import AutomapState, data_dir
+
+    flat = data_dir() / "GEO15.json"
+    flat.parent.mkdir(parents=True, exist_ok=True)
+    flat.write_text(json.dumps({"notes": [], "seen": ["1,2"]}), encoding="utf-8")
+    moved = AutomapState(area="GEO15").notes_path()
+    assert not moved.exists()
+
+    _clear_automap_from(AutomapState(area="GEO16"))
+
+    assert json.loads(moved.read_text(encoding="utf-8"))["seen"] == []
