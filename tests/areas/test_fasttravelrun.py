@@ -377,6 +377,41 @@ def test_a_walked_party_that_never_moves_is_a_failed_walk():
     assert not ok
 
 
+class RedrawSession(WalkSession):
+    """Row 24 reads from `rows` one read at a time, then holds the last."""
+
+    def __init__(self, monitor, rows):
+        super().__init__(monitor)
+        self.rows = list(rows)
+        self.reads = 0
+
+    def screen(self):
+        self.reads += 1
+        row = self.rows.pop(0) if len(self.rows) > 1 else self.rows[0]
+        return FakeScreen(row)
+
+
+def test_an_empty_row_after_a_disk_prompt_is_waited_out_then_walked():
+    sess, m = make()
+    sess = RedrawSession(m, ["", "", FT.S.OUTDOOR_PROMPT])
+    steps, sheet = FT.walk_afterwards(sess)
+    ok, _ = FT.walk_verdict(steps, sheet)
+    assert ok and steps[0]["before"] != steps[0]["after"]
+    assert steps[0]["row"] == FT.S.OUTDOOR_PROMPT
+
+
+def test_a_row_that_stays_empty_is_refused_with_the_row_recorded(monkeypatch):
+    sess, m = make()
+    sess = RedrawSession(m, [""])
+    now = [0.0]
+    monkeypatch.setattr(FT.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(FT.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
+    steps, sheet = FT.walk_afterwards(sess, timeout=5.0)
+    assert sess.pressed == [] and not sheet
+    assert steps[0]["row"] == "" and "refused" in steps[0]
+    assert now[0] >= 5.0
+
+
 def test_shoot_saves_under_the_fixed_name_and_survives_a_failed_capture(tmp_path):
     sess, m = make()
     sess = WalkSession(m)

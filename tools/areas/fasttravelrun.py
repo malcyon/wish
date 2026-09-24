@@ -343,7 +343,34 @@ def settle_world(sess, out: pathlib.Path, shots: dict) -> tuple[bool, str]:
     return False, f"the world's command bar never came up; row 24 reads {row!r}"
 
 
-def walk_afterwards(sess) -> tuple[list[dict], bool]:
+def recognised(row: str) -> bool:
+    """Whether *row* is a bar the walk can drive from."""
+    return ("ENCAMP" in row or S.MOVE_SUBBAR in row
+            or S.OUTDOOR_PROMPT in row)
+
+
+def settle_row(sess, timeout: float = 60.0, interval: float = 0.5) -> str:
+    """Row 24 once it reads as a bar the walk can drive from, or its last
+    reading when *timeout* runs out.
+
+    An empty row is a screen still being redrawn, as after a disk-side prompt
+    is answered, so it is waited out without pressing anything. A row that
+    says something else is handed to `Session.wait_for_world`, which answers
+    disk and continue prompts.
+    """
+    clock, sleep = time.monotonic, time.sleep
+    end = clock() + timeout
+    row = row24(sess)
+    while not recognised(row) and clock() < end:
+        if row:
+            sess.wait_for_world(timeout=min(10.0, max(1.0, end - clock())))
+        else:
+            sleep(interval)
+        row = row24(sess)
+    return row
+
+
+def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
     """A few steps in each direction, then the first character's sheet opened
     and closed -- the one action that is not a move. Returns every step's
     result and whether the sheet came up.
@@ -363,7 +390,7 @@ def walk_afterwards(sess) -> tuple[list[dict], bool]:
         return [], False
     steps: list[dict] = []
     for move in (WALK_INDOORS if indoors else WALK_OUTDOORS):
-        row = row24(sess)
+        row = settle_row(sess, timeout)
         if sess.in_combat():
             result = sess.fight(budget=300, tactic=S.Session.melee_turn)
             back = bool(sess.wait_for_world())
@@ -373,9 +400,8 @@ def walk_afterwards(sess) -> tuple[list[dict], bool]:
             if not back:
                 steps[-1]["refused"] = "the world did not come back after a fight"
                 return steps, False
-            row = row24(sess)
-        if ("ENCAMP" not in row and S.MOVE_SUBBAR not in row
-                and S.OUTDOOR_PROMPT not in row):
+            row = settle_row(sess, timeout)
+        if not recognised(row):
             steps.append({"move": move, "ok": False, "row": row,
                           "before": sess.square(), "after": sess.square(),
                           "refused": f"row 24 is not the world bar, the move "
