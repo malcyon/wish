@@ -531,7 +531,8 @@ Pool of Radiance's list has 25 and lacks 63 and 69. In the later titles, id
 25 also has a row with its own handler (Curse row 55 `$84BA`, Silver Blades
 `$851D`) and a DOS spell with its own routine (Silver Blades 116), so it is
 not in the camp-derived table; `effects.LATER_INVISIBLE_ID` adds it, because
-that row's handler only sets a duration and then jumps to the level writer. Prayer, 49, uses the generic writer on the C64 but is in
+that row's handler only sets a duration and then jumps to the level writer. Prayer, 49,
+uses the generic writer on the C64 but is in
 both ports' read lists.
 
 **PROBABLE, why the only later-title nodes on this machine hold `0A` and

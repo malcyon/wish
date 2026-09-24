@@ -1186,7 +1186,7 @@ def test_an_id_113_node_other_than_spell_59s_stays_unconverted(node):
 @pytest.mark.parametrize("magnitude", [0xDB, 0x80, 0x00])
 def test_an_id_113_magnitude_other_than_the_c64s_own_stays_unconverted(
         magnitude):
-    """A magnitude with upper nibble 5 (strength 23) waits on Donald's choice."""
+    """A magnitude with upper nibble 5 (strength 23) is a C64 magnitude that is not converted."""
     row = effects.Effect(63, 113, 0, 0x0A, magnitude)
     assert isinstance(effects.dos_record(_BLADES, row, 0), effects.Unconverted)
 

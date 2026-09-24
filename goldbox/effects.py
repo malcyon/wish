@@ -352,11 +352,14 @@ LATER_INVISIBLE_ID = 25
 #: is copied both ways.
 HASTE_ID = 39
 
+#: The largest Haste data byte: the level in the low nibble and the aged mark in
+#: bit 4.
+HASTE_MAX_DATA = 0x1F
+
 #: Id 13: DOS spell 13 (Reduce) removes an id-12 node and writes none, and no
 #: other DOS routine adds a running id-13 node, so `c64_row` never meets one in
 #: a save a game wrote (`docs/226`).
 _REDUCE_ID = 13
-HASTE_MAX_DATA = 0x1F
 
 #: Silver Blades' id 113, the effect of DOS spell 59 and C64 combat spell 59 and
 #: camp row 39: DOS writes `(113, minutes, 0x79, 1)` and the C64 writes
@@ -528,7 +531,8 @@ def _own_rule_row(title_key: str,
     """`c64_row` for id 13, Haste and Silver Blades' id 113, or `None`."""
     if node.id == _REDUCE_ID:
         return Unconverted("no DOS engine writes a running id-13 node")
-    if node.id == HASTE_ID and title_key in PARTY_ROW_IDS:
+    if node.id == HASTE_ID and (title_key in LATER_CAST_FLAGS
+                                or title_key == "pool-of-radiance"):
         if node.flag != 0:
             return Unconverted("a flag byte other than 0 on Haste")
         if not 1 <= node.data <= HASTE_MAX_DATA:
@@ -546,7 +550,8 @@ def _own_rule_node(title_key: str, effect_id: int,
                    m: int) -> tuple[int, int] | Unconverted | None:
     """`dos_record`'s `(data, flag)` for Haste and Silver Blades' id 113, the
     inverse of `_own_rule_row`, or `None` for another id."""
-    if effect_id == HASTE_ID and title_key in PARTY_ROW_IDS:
+    if effect_id == HASTE_ID and (title_key in LATER_CAST_FLAGS
+                                  or title_key == "pool-of-radiance"):
         if not 1 <= m <= HASTE_MAX_DATA:
             return Unconverted("a Haste magnitude no C64 cast writes")
         return m, 0
