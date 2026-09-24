@@ -5211,10 +5211,15 @@ def test_a_dos_gold_edit_writes_only_its_record_bytes_and_keeps_a_backup(
 
     fields = (dos_port.FIELDS_BY_NAME["gold"],
               dos_port.FIELDS_BY_NAME["encumbrance"])
+    # The writer rebuilds the movement the game's loader recomputes, and the
+    # coin purses' weight can carry it across a step, so that byte may move.
+    movement = dos_port.FIELDS_BY_NAME["movement_current"]
     changed = save.read_bytes()
-    assert [at for at, (was, now) in enumerate(zip(before[save], changed))
-            if was != now] == [at for field in fields
-                                for at in range(field.offset, field.end)]
+    moved = [at for at, (was, now) in enumerate(zip(before[save], changed))
+             if was != now]
+    assert [at for at in moved
+            if not movement.offset <= at < movement.end] == [
+        at for field in fields for at in range(field.offset, field.end)]
     gold = fields[0]
     assert int.from_bytes(changed[gold.offset:gold.end], "little") == 1234
     assert {path: path.read_bytes() for path in before if path != save} == {
