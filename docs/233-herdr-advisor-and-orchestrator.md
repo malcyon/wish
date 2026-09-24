@@ -48,6 +48,16 @@ with Donald before sending. `HERDR_PANE_ID` identifies the caller.
 Pane IDs and agent names belong to one server. Discover them again after a
 restart or move rather than assuming the IDs below still apply.
 
+Codex's default command sandbox can show root-owned host SSH files as owned by
+`nobody:nogroup`. If `herdr --machine agent-vm agent list` fails with
+`Bad owner or permissions on /etc/ssh/ssh_config.d/agent-vm.conf`, verify the
+host view before changing SSH configuration. Run a read-only `stat` of that
+file and repeat the Herdr read through approved `require_escalated` execution.
+On 2026-09-24, the sandbox showed `nobody:nogroup`, while the host view showed
+`root:root` and the Herdr read succeeded. This error occurs before SSH
+authentication; if it persists outside the sandbox, investigate actual host
+file ownership.
+
 The bare commands below ran on the same server in the connection test. The
 historical pane ID is an example; discover the live target before use:
 
