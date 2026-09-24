@@ -1670,6 +1670,12 @@ class EditorBinding(QObject):
                     return
                 source = Source.detect(path, slot=picker.slot)
             party = Party(source if source is not None else path)
+        except dos_codec.WrongTitleError as exc:
+            from .convert import POOLS_OF_DARKNESS_UNSUPPORTED
+            _log.debug("could not open %s: %s", path, exc)
+            QMessageBox.critical(self.root, "Cannot open",
+                                 POOLS_OF_DARKNESS_UNSUPPORTED)
+            return
         except Exception as exc:
             _log.exception("could not open %s", path)
             QMessageBox.critical(self.root, "Cannot open", str(exc))

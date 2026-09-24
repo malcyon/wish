@@ -5490,6 +5490,22 @@ def test_pools_of_darkness_cannot_be_opened_and_the_refusal_is_catchable(tmp_pat
     assert refused.value.title == dos_port.POOLS_OF_DARKNESS.title
 
 
+def test_opening_a_pools_of_darkness_folder_shows_the_convert_sentence(
+        app, tmp_path, monkeypatch):
+    import editor.window as ew
+    from editor.convert import POOLS_OF_DARKNESS_UNSUPPORTED
+    from goldbox import dos_port
+    (tmp_path / "CHRDATA1.SAV").write_bytes(
+        bytes(dos_port.POOLS_OF_DARKNESS.record_size))
+    (tmp_path / "SAVGAMA.PTY").write_bytes(b"")
+    said = []
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda *a, **k: said.append((a[1], a[2])))
+    ew.EditorBinding(make_root()).load(str(tmp_path))
+    assert said == [("Cannot open", POOLS_OF_DARKNESS_UNSUPPORTED)]
+    assert "goldbox/" not in said[0][1] and "c64_port" not in said[0][1]
+
+
 def test_an_amiga_curse_party_opens_from_its_adf(tmp_path):
     from support.amigasavegame import synthetic_curse
 
