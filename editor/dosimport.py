@@ -43,8 +43,9 @@ be correct."*
 **`goldbox.dos_codec.NOT_SET_OUT` and `C64SaveReport.messages` stay,
 unshortened, in `goldbox/dos_codec.py`.** Removing this dialog does not make
 either dead: `dos_codec.convert_save`'s own contract -- a never-set-out
-party is converted to the start of the story and `report.messages` says so --
-is pinned directly against real specimens in `tests/convert/test_dosconvert.py` and
+Pool of Radiance party is converted to the start of the story and
+`report.messages` says so, while a Curse or Silver Blades one is written as
+the C64's own pre-adventure save and adds no message -- is pinned directly against real specimens in `tests/convert/test_dosconvert.py` and
 `tests/convert/test_curseconvert.py`, independent of any window, and `report.summary()`
 still puts the sentence in front of whoever runs a driven tool with
 `--report`. Only the display of it is gone, the way `editor/convert.py`'s

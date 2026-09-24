@@ -11,8 +11,9 @@ This is what `#301 (A DOS Curse save standing in area 0 is refused by the
 import, because no row of the area table names area 0)` and
 `#326 (A Pool of Radiance save made before the party began adventuring is
 refused, because the initialiser left $49E6 at 0 and New Phlan is indoors)`
-turned out to be, and since 2026-09-06 `goldbox/dos_codec.py` converts such a
-save to the start of the story on the two titles whose start is measured.
+turned out to be, and `goldbox/dos_codec.py` converts such a save: to New Phlan
+for Pool of Radiance, and to the C64 game's own pre-adventure save for Curse
+and Silver Blades.
 `docs/179-loading-a-curse-save.md` is the neighbouring document: how to get
 a Curse save disk into the running game at all.
 
@@ -188,13 +189,18 @@ somebody builds a cache by hand.
 
 Donald decided on 2026-09-05, on `#301 (A DOS Curse save standing in area 0
 is refused by the import, because no row of the area table names area 0)`:
-**a party that has not set out is converted to the start of the first area**,
-which is what the DOS engine itself does with the same save on
-`BEGIN ADVENTURING`. The arriving script runs its own entry on the C64 the
-same way, so the player gets the awakening rather than skipping it. He chose
-it over refusing, on the reading that the player loses nothing -- there was
-nothing to lose yet -- and that refusing would leave somebody who saved
-straight after making their characters unable to move them at all.
+**a party that has not set out is converted rather than refused**, on the
+reading that the player loses nothing -- there was nothing to lose yet -- and
+that refusing would leave somebody who saved straight after making their
+characters unable to move them at all.
+
+The first form of that decision placed the party at the start of the first
+area. On the C64 that skipped the opening: the party was already adventuring,
+so the opening experience award never happened. The C64 conversion of a Curse
+or Silver Blades party that has not set out now writes the C64 game's own
+party-menu save instead, and `BEGIN ADVENTURING` plays the opening as it does
+for a party made on the C64. Pool of Radiance is unchanged, because its start
+is New Phlan and the save already holds it.
 
 `goldbox/areas.py`'s `STARTS` says where each title's story begins, and
 `goldbox/dos_codec.py` applies it:
@@ -202,8 +208,12 @@ straight after making their characters unable to move them at all.
 | title | `STARTS` | what a never-adventured save converts to |
 |---|---|---|
 | Pool of Radiance | `Start(0x00, Arrival(15, 1, 3))`, CONFIRMED from the seven containers, agreeing with `AREAS`' driven arrival for New Phlan | area 0, `GEO00`, side 3, `15,1` facing west, `$49E6` = 1 -- what the save already holds, except that `$49E6` is now written from the row instead of compared against the initialiser's 0 |
-| Curse of the Azure Bonds | `Start(0x01, Arrival(7, 13, 1))`, CONFIRMED in the running DOS game above | area 1, `GEO01`, side 2, `7,13` facing east, clock 00:00 |
-| Secret of the Silver Blades | **no row**, deliberately | refused with `goldbox.dos_codec.NotSetOutError`, whose sentence is Donald's of 2026-09-06: *"This save has never been played yet. Wish does not yet support converting these saves."* |
+| Curse of the Azure Bonds | `Start(0x01, Arrival(7, 13, 1))`, CONFIRMED in the running DOS game above; the DOS place `world_state.from_dos` reads | on a C64 destination, the C64's own pre-adventure save: area and map 0, disk hint 2, indoors, `dos_codec.C64_PRE_ADVENTURE_CACHE`, square `0,0`, `+$FC` = 2 |
+| Secret of the Silver Blades | the row `world_state.from_dos` reads | the same form, with `ECL11`'s prologue as the opening script; the party then arrives in area `$10` |
+
+Slot 2 of the cache stays empty in the pre-adventure form, because there is no
+`GEO00` on either title and naming one is what leaves the loader asking for a
+side for ever.
 
 The mechanics, in `goldbox/dos_codec.py`:
 
@@ -211,16 +221,16 @@ The mechanics, in `goldbox/dos_codec.py`:
   off the area word;
 * `_where_the_party_is` hands `apply_file_cache` and `convert_save` the start
   row when it is true and the save's own `$49F2` row otherwise;
-* `apply_file_cache` writes the start row's own map into slot 2 and `$49C5`
-  -- the save's `$49C5` is the initialiser's 0, which is `GEO00`, New Phlan's
-  map on one title and a file on none of the sides on the other -- and writes
-  `$49E6` from the row rather than comparing it;
-* `apply_position` writes the `Start`'s arrival square rather than the
-  square the save holds, because the engine's own answer one keypress later
-  differs from it on Curse (`7,13` N in the save, `7,13` E in the world);
-* `convert_save` puts `NOT_SET_OUT` -- Donald's approved sentence, *"Your
-  party had not set out yet, so it starts at the beginning of the story."*
-  -- on `C64SaveReport.messages`, and `summary()` prints it.
+* `apply_file_cache` writes the pre-adventure form for Curse and Silver Blades
+  and, for Pool of Radiance, the start row's own map into slot 2 and `$49C5`
+  and `$49E6` from the row rather than comparing it;
+* `apply_position` writes `C64_PRE_ADVENTURE_SQUARE` for Curse and Silver
+  Blades and the `Start`'s arrival square for Pool of Radiance;
+* `write_c64_save` writes `C64_PRE_ADVENTURE_FC` and does not add `NOT_SET_OUT`
+  for the two titles, since their opening plays; for Pool of Radiance it puts
+  `NOT_SET_OUT` -- Donald's approved sentence, *"Your party had not set out
+  yet, so it starts at the beginning of the story."* -- on
+  `C64SaveReport.messages`, and `summary()` prints it.
   `editor/convert.py`'s dialog does not draw `messages` any more -- its
   report pane went on 2026-09-10, and `editor/dosimport.py`'s own dialog,
   which had shown `messages` and nothing else since 2026-09-06, was deleted
