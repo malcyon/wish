@@ -55,6 +55,7 @@ import logging
 import os
 import pathlib
 import sys
+import threading
 import time
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
@@ -383,11 +384,14 @@ def walk_afterwards(sess) -> tuple[list[dict], bool]:
     return steps, bool(sheet)
 
 
-def capture_failure(sess, out: pathlib.Path) -> str:
+def capture_failure(sess, out: pathlib.Path,
+                    screenshot_timeout: float = 20.0) -> str:
     """Write every screen row to `failure-screen.txt` and a screenshot to
     `failure.png` under *out*, before teardown destroys the evidence. Returns
     a sentence saying where they went; never raises, because it runs while
-    another failure is already in flight."""
+    another failure is already in flight. The screenshot is a subprocess with
+    no timeout of its own, so it runs in a thread and is abandoned after
+    *screenshot_timeout* seconds."""
     said = []
     if sess is None:
         return "no session had started, so no screen was captured"
@@ -404,8 +408,17 @@ def capture_failure(sess, out: pathlib.Path) -> str:
         said.append(f"screen text unavailable ({e!r})")
     try:
         shot = out / "failure.png"
-        said.append(f"screenshot in {shot}" if sess.kbd.screenshot(str(shot))
-                    else "no screenshot taken")
+        taken: list = []
+        worker = threading.Thread(
+            target=lambda: taken.append(sess.kbd.screenshot(str(shot))),
+            daemon=True)
+        worker.start()
+        worker.join(screenshot_timeout)
+        if worker.is_alive():
+            said.append(f"screenshot timed out after {screenshot_timeout}s")
+        else:
+            said.append(f"screenshot in {shot}" if taken and taken[0]
+                        else "no screenshot taken")
     except Exception as e:                                # noqa: BLE001
         said.append(f"screenshot unavailable ({e!r})")
     return "; ".join(said)
@@ -425,6 +438,7 @@ def run(args) -> int:
     sess = None
     target = None
     result = {"ok": False, "message": "did not reach a verdict"}
+    before = area_before = None
     shots: dict = {}
     marks: dict = {}
     started = time.monotonic()
@@ -543,9 +557,12 @@ def run(args) -> int:
         print(("PASS: walk: " if walk_ok else "FAIL: walk: ") + walk_message,
               flush=True)
         return 0 if walk_ok else 1
-    except RuntimeError as e:
-        result = {"ok": False,
-                  "message": f"{e}; {capture_failure(sess, out)}"}
+    except Exception as e:                                # noqa: BLE001
+        result.update({"ok": False,
+                       "message": f"{e}; {capture_failure(sess, out)}",
+                       "screenshots": shots})
+        if before is not None:
+            result.update({"before": before, "area_before": area_before})
         raise
     finally:
         # A result that cannot be written must not stop the teardown below, or

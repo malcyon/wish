@@ -779,3 +779,91 @@ def test_a_failing_load_writes_the_screen_and_names_it_in_result_json(
     message = json.loads((out / "result.json").read_text())["message"]
     assert str(out / "failure-screen.txt") in message
     assert Failing.kbd.paths == [str(out / "failure.png")]
+
+
+def _late_failure_run(monkeypatch, tmp_path, error):
+    """Run to the trip with a party read, then have the trip raise *error*."""
+    slot = types.SimpleNamespace(
+        n=1, display=":1", dir=str(tmp_path),
+        teardown=lambda: None, release=lambda: None)
+
+    class Session(_RunSession):
+        kbd = FakeKbd()
+
+        def screen(self):
+            return FakeScreen("LATE")
+
+    class Target:
+        def __init__(self, host=None, port=None):
+            pass
+
+        def close(self):
+            pass
+
+    class Trip:
+        pending = None
+
+        def run(self, target, area):
+            raise error
+
+    sess = Session()
+    monkeypatch.setattr(FT.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(FT.S, "stage_disks", lambda *a, **k: "boot")
+    monkeypatch.setattr(FT.S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(FT.S, "Session", lambda *a, **k: sess)
+    monkeypatch.setattr(FT, "party", lambda s: [{"name": "FATIMA"}])
+    monkeypatch.setattr(FT, "area_of", lambda s: 13)
+    monkeypatch.setattr(FT, "shoot", lambda *a, **k: None)
+    monkeypatch.setattr(FT, "ViceTarget", Target)
+    monkeypatch.setattr(FT, "A", types.SimpleNamespace(
+        FastTravel=Trip, area_by_id=lambda n: n))
+    out = tmp_path / "out"
+    args = types.SimpleNamespace(
+        out=str(out), slot=None, disks=str(tmp_path),
+        save=str(tmp_path / "save.d64"), from_area=13, to_area=27,
+        member="FATIMA", arrive=1.0, answer_timeout=1.0)
+    try:
+        FT.run(args)
+    except type(error):
+        pass
+    else:
+        raise AssertionError("run should still raise")
+    return out
+
+
+def test_a_non_runtime_error_mid_run_still_writes_the_failure_screen(
+        monkeypatch, tmp_path):
+    out = _late_failure_run(monkeypatch, tmp_path, OSError("monitor gone"))
+    assert "LATE" in (out / "failure-screen.txt").read_text()
+
+
+def test_result_json_keeps_the_party_read_before_a_late_failure(
+        monkeypatch, tmp_path):
+    import json
+    out = _late_failure_run(monkeypatch, tmp_path, TimeoutError("slow"))
+    saved = json.loads((out / "result.json").read_text())
+    assert saved["ok"] is False
+    assert saved["before"] == [{"name": "FATIMA"}]
+    assert saved["area_before"] == 13
+
+
+def test_capture_failure_gives_up_on_a_screenshot_that_hangs(tmp_path):
+    import threading
+    release = threading.Event()
+
+    class Hung(FakeSession):
+        class kbd:                                       # noqa: N801
+            @staticmethod
+            def screenshot(path):
+                release.wait(30)
+                return True
+
+        def screen(self):
+            return None
+
+    try:
+        said = FT.capture_failure(Hung(FakeMonitor()), tmp_path,
+                                  screenshot_timeout=0.2)
+    finally:
+        release.set()
+    assert "timed out" in said
