@@ -509,6 +509,109 @@ def test_curse_quit_control_uses_only_done_and_quit():
     assert sent == ["DONE", "QUIT"]
 
 
+def test_curse_plain_fight_keeps_plain_route_and_tactic(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from tools.c64 import laterbattle
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    calls = []
+
+    class Route:
+        last_goto_steps = 3
+
+        def __init__(self, out, quiet):
+            self.file = SimpleNamespace(close=lambda: None)
+            calls.append("plain-route")
+
+        def goto(self, target, steps, geo):
+            return True
+
+    class Session:
+        def in_combat(self):
+            return True
+
+        def await_bar(self, kinds, timeout, interval):
+            calls.append("optional-command-wait")
+            return None
+
+        def fight(self, *, budget, tactic):
+            calls.append(("fight", tactic))
+            return A.S.FightResult("ended", 1, 1.0, [], [])
+
+    monkeypatch.setattr(laterbattle, "Battle", Route)
+    monkeypatch.setattr(cursethac0, "area_geo", lambda *a: ("GEO01", object()))
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.attack_by = ""
+    run.attack_owner = None
+    run.attack_evidence = None
+    run.quit_evidence = None
+    run.sess = Session()
+    run.out = tmp_path
+    run.staged_disk = tmp_path / "staged.D64"
+    run.disks = "unused"
+    run.to_world = lambda: True
+    run.await_combat = lambda: True
+    run.capture = lambda tag: calls.append(tag)
+    run.observe_curse = lambda *a, **k: pytest.fail("diagnostic observation")
+    got = run.fight("10", "I", 5)
+    assert got["walked"] == 3
+    assert calls[0] == "plain-route"
+    assert calls[-3] == "optional-command-wait"
+    assert calls[-2] == ("fight", A.S.Session.melee_turn)
+
+
+@pytest.mark.parametrize("advance", ["rejected", "actor", "combat-ended"])
+def test_curse_quit_requires_turn_advancement(advance):
+    from types import SimpleNamespace
+
+    philippe = SimpleNamespace(name="PHILIPPE", index=0, x=5, y=5, hp=33)
+    shara = SimpleNamespace(name="SHARA", index=1, x=6, y=5, hp=20)
+    events = []
+
+    class Session:
+        calls = 0
+
+        def battle(self):
+            return object()
+
+        def acting(self, battle):
+            self.calls += 1
+            return shara if advance == "actor" and self.calls > 1 else philippe
+
+        def mode(self):
+            return 1 if advance == "combat-ended" and self.calls > 0 else 2
+
+        def combat_state(self):
+            return SimpleNamespace(text="MOVE VIEW AIM QUICK DONE")
+
+        def settle(self, seconds):
+            pass
+
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess = Session()
+    run.attack_by = "PHILIPPE"
+    run.attack_owner = 0
+    run.attack_evidence = None
+    run.quit_evidence = None
+    run.quit_nonattacking = True
+    run.first_effect_loss = None
+    run._quit_turn = lambda sess: "QUIT"
+    run.capture = lambda tag: []
+    run.observe_curse = lambda phase, **kw: (
+        events.append((phase, kw)) or {"row": [62, 25, 0, 0, 5]})
+    run.log = SimpleNamespace(emit=lambda *a, **k: None)
+    assert run._named_melee(run.sess, SimpleNamespace(text="MOVE VIEW AIM")) == "QUIT"
+    if advance != "rejected":
+        assert run.quit_evidence["advanced_to"] == (
+            "SHARA" if advance == "actor" else "combat-ended")
+        assert run.quit_evidence["persisted"] is True
+        assert any(phase == "quit-confirmed" for phase, _ in events)
+    else:
+        assert run.quit_evidence is None
+        assert sum(phase == "quit-await" for phase, _ in events) == 8
+
+
 def test_curse_one_step_skips_wall_edge_and_occupant_and_checks_landing():
     from types import SimpleNamespace
 
@@ -647,10 +750,12 @@ def test_curse_observes_done_branch_outside_tactic_and_restores_end_turn():
 def test_curse_quit_control_validates_persistence_without_an_attack():
     row = [62, 25, 0, 0, 5]
     quit_evidence = {"actor": "PHILIPPE", "chosen": "QUIT",
-                     "before": row, "after": row}
+                     "before": row, "after": row, "advanced_to": "SHARA"}
     A.validate_curse_quit(quit_evidence, "PHILIPPE")
     with pytest.raises(A.StepFailed, match="no confirmed QUIT"):
         A.validate_curse_quit(None, "PHILIPPE")
+    with pytest.raises(A.StepFailed, match="no confirmed QUIT"):
+        A.validate_curse_quit({**quit_evidence, "advanced_to": None}, "PHILIPPE")
     with pytest.raises(A.StepFailed, match="absent after"):
         A.validate_curse_quit({**quit_evidence, "after": None}, "PHILIPPE")
 
@@ -687,7 +792,8 @@ def test_curse_quit_control_completes_without_named_attack(tmp_path, monkeypatch
         attack_evidence = None
         quit_evidence = {"actor": "PHILIPPE", "chosen": "QUIT",
                          "before": [62, 25, 0, 0, 5],
-                         "after": [62, 25, 0, 0, 5], "persisted": True}
+                         "after": [62, 25, 0, 0, 5], "persisted": True,
+                         "advanced_to": "SHARA"}
         first_effect_loss = None
 
         def __init__(self, *args):

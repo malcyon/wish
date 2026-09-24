@@ -803,7 +803,10 @@ class CurseRun(PoolRun):
             for name, point in self.points.items():
                 self.armed[name] = m.checkpoint_set(point, exec_=True, stop=False)
             m.resume()
-        self.observe_curse("world")
+        if self.attack_by:
+            self.observe_curse("world")
+        else:
+            self.capture("world")
         return {"position": list(self.sess.position()),
                 "attack_by": self.attack_by, "attack_owner": self.attack_owner,
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
@@ -990,14 +993,40 @@ class CurseRun(PoolRun):
                 self.attack_evidence = candidate
         elif (chosen == "QUIT" and getattr(self, "quit_nonattacking", False)
               and self.quit_evidence is None):
-            self.quit_evidence = {"actor": name, "index": actor.index,
-                                  "owner": self.attack_owner,
-                                  "chosen": chosen, "before": before,
-                                  "after": after,
-                                  "persisted": before is not None
-                                  and after is not None}
-            self.log.emit("named-quit", **self.quit_evidence)
+            advanced = self._confirm_quit_advanced(actor)
+            if advanced is None:
+                self.log.emit("named-quit-unconfirmed", actor=name,
+                              before=before, after_send=after)
+            else:
+                self.quit_evidence = {"actor": name, "index": actor.index,
+                                      "owner": self.attack_owner,
+                                      "chosen": chosen, "before": before,
+                                      "after": advanced["row"],
+                                      "advanced_to": advanced["advanced_to"],
+                                      "persisted": before is not None
+                                      and advanced["row"] is not None}
+                self.log.emit("named-quit", **self.quit_evidence)
         return chosen
+
+    def _confirm_quit_advanced(self, previous):
+        """A sent QUIT counts only after another actor or the world appears."""
+        for _ in range(8):
+            mode = self.sess.mode()
+            battle = self.sess.battle() if mode == 2 else None
+            actor = self.sess.acting(battle) if battle is not None else None
+            bar = self.sess.combat_state().text
+            self.observe_curse("quit-await", actor=actor, bar=bar)
+            advanced_to = None
+            if mode == S.DUNGEON:
+                advanced_to = "combat-ended"
+            elif actor is not None and actor.index != previous.index:
+                advanced_to = actor.name.strip()
+            if advanced_to is not None:
+                return {**self.observe_curse("quit-confirmed", actor=actor,
+                                             bar=bar, advanced_to=advanced_to),
+                        "advanced_to": advanced_to}
+            self.sess.settle(0.5)
+        return None
 
     @staticmethod
     def _quit_turn(sess) -> str:
@@ -1041,48 +1070,62 @@ class CurseRun(PoolRun):
             raise self.fail("fighter", f"{self.attack_by} is absent from save slots")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
-        self.stop_at_first_loss()
+        diagnostic = bool(self.attack_by)
+        if diagnostic:
+            self.stop_at_first_loss()
         area, geo = cursethac0.area_geo(str(self.staged_disk), self.disks)
         if geo is None:
             raise self.fail("geo", f"{area} was absent from the Curse disks")
-        owner = self
+        route_type = laterbattle.Battle
+        if diagnostic:
+            owner = self
 
-        class ObservedRoute(laterbattle.Battle):
-            def log(self, kind, **kw):
-                super().log(kind, **kw)
-                if kind in ("step", "dismissed"):
-                    owner.observe_curse(f"route-{kind}", route=kw)
-                    owner.stop_at_first_loss()
+            class ObservedRoute(laterbattle.Battle):
+                def log(self, kind, **kw):
+                    super().log(kind, **kw)
+                    if kind in ("step", "dismissed"):
+                        owner.observe_curse(f"route-{kind}", route=kw)
+                        owner.stop_at_first_loss()
 
-        self.observe_curse("route-before")
-        self.stop_at_first_loss()
-        route = ObservedRoute(self.out, True)
+            route_type = ObservedRoute
+            self.observe_curse("route-before")
+            self.stop_at_first_loss()
+        route = route_type(self.out, True)
         try:
             route.sess = self.sess
             arrived = route.goto(laterbattle.TAVERN, steps, geo=geo)
             walked = route.last_goto_steps
         finally:
             route.file.close()
-        self.observe_curse("route-after")
-        self.stop_at_first_loss()
+        if diagnostic:
+            self.observe_curse("route-after")
+            self.stop_at_first_loss()
         self.capture("tavern")
         if not arrived:
             raise self.fail("fight", f"TAVERN was not reached in {walked} steps")
-        self.observe_curse("before-punch")
-        self.stop_at_first_loss()
+        if diagnostic:
+            self.observe_curse("before-punch")
+            self.stop_at_first_loss()
         if not self.sess.in_combat():
             pressed = self.sess.press_bar(laterbattle.PUNCH, timeout=20)
-            self.observe_curse("after-punch", chosen=laterbattle.PUNCH,
-                               pressed=pressed)
-            self.stop_at_first_loss()
+            if diagnostic:
+                self.observe_curse("after-punch", chosen=laterbattle.PUNCH,
+                                   pressed=pressed)
+                self.stop_at_first_loss()
             if not pressed:
                 raise self.fail("fight", "PUNCH BARKEEP was not selectable")
         if not self.await_combat():
             raise self.fail("fight", "Curse never entered combat mode")
-        self.stop_at_first_loss()
+        if diagnostic:
+            self.stop_at_first_loss()
         self.capture("fight-start")
-        self.first_command_bar()
-        result = self.observed_fight(float(arg or 120))
+        if diagnostic:
+            self.first_command_bar()
+            result = self.observed_fight(float(arg or 120))
+        else:
+            self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0)
+            result = self.sess.fight(budget=float(arg or 120),
+                                     tactic=S.Session.melee_turn)
         self.capture("fight-end")
         return {"walked": walked, "area": str(area), "acted": result.acted,
                 "named_attack": self.attack_evidence,
@@ -1147,7 +1190,8 @@ def validate_curse_attack(results: list[dict], attack: dict | None,
 
 def validate_curse_quit(control: dict | None, who: str) -> None:
     """Require a named QUIT that leaves the effect row present."""
-    if control is None or control["chosen"] != "QUIT":
+    if (control is None or control["chosen"] != "QUIT"
+            or not control.get("advanced_to")):
         raise StepFailed(f"no confirmed QUIT by {who}")
     if control["before"] is None:
         raise StepFailed(f"id 25 was absent before {who} quit")
