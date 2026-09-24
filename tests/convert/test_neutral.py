@@ -769,6 +769,11 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     reads the three off `char` directly -- a caller composes `write`'s own
     `icon` argument from them first, through `goldbox/iconparts.py` -- and
     `read` has nothing in the record to decompose them back out of (#612).
+
+    And `scroll_bundles` never comes back: the C64 has no joined scroll, so
+    the writer puts a joined scroll's scrolls one to a slot and the reader
+    hands them back in `inventory` with nothing to say they were joined
+    (#432).
     """
     char = _filled(game=game)
     char.set("npc", True, "test fixture: exercise npc_control_byte")
@@ -788,6 +793,7 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     taken.discard("icon_head")
     taken.discard("icon_body")
     taken.discard("icon_colours")
+    taken.discard("scroll_bundles")
     assert taken - set(back.keys()) == set()
 
 

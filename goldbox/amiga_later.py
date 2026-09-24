@@ -155,6 +155,36 @@ AMIGA_LATER_CHAIN_PRESENT = 1
 AMIGA_LATER_ITEM_NEXT = 0x02A
 AMIGA_LATER_EFFECT_NEXT = 0x006
 
+#: A Silver Blades joined scroll's type, the same `0x49` as DOS's, and where
+#: its node keeps the type and the count of scrolls chained after it:
+#: `/Secret`'s loader tests `$2e` and reads `$3a` more 70-byte nodes
+#: (`0x269A0`-`0x26A98`), and its writer writes them after the head
+#: (`0x271A2`, `0x2722E`).
+AMIGA_SSB_JOINED_SCROLL = 0x49
+AMIGA_LATER_ITEM_TYPE = 0x02E
+AMIGA_LATER_ITEM_QUANTITY = 0x03A
+
+#: The most scrolls, across every joined scroll, that `/Secret`'s loader
+#: keeps.  It adds the scroll counts of every joined scroll already loaded
+#: (`0x23AC8`, walking a list linked at record `$13A`) to this one's and,
+#: over 120 (`cmpi.w #$78` at `0x269C2`), reads the scrolls into a scratch
+#: buffer and frees the head.  PROBABLE that the list is the party: which
+#: list `$13A` links has not been read.
+AMIGA_SSB_JOINED_SCROLL_LIMIT = 120
+
+
+def joined_scroll_count(characters: "Sequence[AmigaCharacter]") -> int:
+    """How many scrolls a party's joined scrolls hold between them, which is
+    what :data:`AMIGA_SSB_JOINED_SCROLL_LIMIT` bounds."""
+    return sum(len(it.subnodes) for c in characters for it in c.items)
+
+
+def is_joined_scroll(node: bytes, deltas: AmigaDeltas) -> bool:
+    """A node the JOIN command made, in a title whose node has the chain."""
+    return (deltas.item_size is not None
+            and deltas.item_size > AMIGA_SSB_SCROLL_CHAIN
+            and node[AMIGA_LATER_ITEM_TYPE] == AMIGA_SSB_JOINED_SCROLL)
+
 
 def _chain_bytes(present: bool, current: int) -> bytes:
     """Four big-endian bytes for a chain field, keeping what is there.
@@ -183,19 +213,35 @@ class AmigaItem:
     `SAVE/savgamA.dat` read 52 at `0x03B` and 47 at `0x03E` in 9 of 9, which
     looked like a field; the constructor writes neither, and both are
     uninitialised stack copied out of the `ITEM<n>` template loader.
+
+    `subnodes` is a Silver Blades joined scroll's scrolls, each a whole node
+    as the saved game holds it straight after the head; empty for every
+    other item (:func:`is_joined_scroll`).
     """
 
     raw: bytes
     deltas: AmigaDeltas
+    subnodes: tuple["AmigaItem", ...] = ()
 
     @classmethod
     def from_bytes(cls, data: bytes | bytearray,
-                   deltas: AmigaDeltas = CURSE_DELTAS) -> "AmigaItem":
+                   deltas: AmigaDeltas = CURSE_DELTAS,
+                   subnodes: Sequence["AmigaItem"] = ()) -> "AmigaItem":
         if deltas.item_size is None or len(data) != deltas.item_size:
             raise AmigaRecordError(
                 f"an Amiga {deltas.title} item node is {deltas.item_size} "
                 f"bytes, got {len(data)}")
-        return cls(bytes(data), deltas)
+        return cls(bytes(data), deltas, tuple(subnodes))
+
+    @property
+    def is_joined_scroll(self) -> bool:
+        """A Silver Blades node the JOIN command made: type `0x49` in a node
+        that has the scroll chain at :data:`AMIGA_SSB_SCROLL_CHAIN`."""
+        return is_joined_scroll(self.raw, self.deltas)
+
+    def block_bytes(self) -> bytes:
+        """The node, then a joined scroll's scrolls straight after it."""
+        return self.raw + b"".join(s.raw for s in self.subnodes)
 
     @property
     def text(self) -> str:
@@ -243,10 +289,9 @@ class AmigaItem:
         written NULL because it is a live Amiga heap address.
 
         **Silver Blades' node is 70 bytes and the last four are not converted.**
-        `AMIGA_SSB_SCROLL_CHAIN` heads a scroll's extra spell nodes, and the
-        63 bytes DOS's shared item table describes have no room for it; DOS
-        Silver Blades' own item is 67 bytes and `#254` is where its last four
-        are being read.
+        They are :data:`AMIGA_SSB_SCROLL_CHAIN`, a live heap pointer that
+        heads a joined scroll's scrolls and that the loader overwrites; the
+        scrolls themselves are :attr:`subnodes`, converted one by one.
         """
         out = bytearray(dos_port.ITEM_SIZE)
         text = self.raw[:self.deltas.item_text]
@@ -430,7 +475,8 @@ class AmigaCharacter:
 
         The three chain fields the loader tests are made to match what
         actually follows (`_chain_bytes`), and `item_count` is set to the
-        number of nodes there really are; everything else is the bytes this
+        number of head items there really are, a joined scroll's scrolls
+        following their head uncounted; everything else is the bytes this
         object was read from.  A block read out of a saved game and written
         back through here is byte for byte the block that came in, because
         `_amiga_block` read the nodes by that same count and a chain field
@@ -450,7 +496,9 @@ class AmigaCharacter:
             here = AMIGA_LATER_ITEM_NEXT
             raw[here:here + 4] = _chain_bytes(n + 1 < len(self.items),
                                               item.next)
-            items.append(bytes(raw))
+            # A joined scroll's scrolls go straight after it; the loader
+            # reads `quantity` of them whatever their own pointers hold.
+            items.append(bytes(raw) + b"".join(s.raw for s in item.subnodes))
         effects = []
         for n, node in enumerate(self.effects):
             raw = bytearray(node)
@@ -483,6 +531,11 @@ def _amiga_block(data: bytes, at: int, deltas: AmigaDeltas,
     570, 590, 636 and 600 bytes: `428 + 66 x items + 10 x effects` is exact
     in 4 of 4, and the effect count is what the chain's own NULL terminator
     says it is.
+
+    **A Silver Blades joined scroll is followed by its scrolls**, `quantity`
+    more nodes, which `item_count` does not count: `/Secret`'s loader reads
+    them after a head of type `0x49` (`0x269A0`) and its writer puts them
+    there (`0x2713C`).  They become the head's :attr:`AmigaItem.subnodes`.
     """
     end = at + deltas.record_size
     if end > len(data):
@@ -497,9 +550,20 @@ def _amiga_block(data: bytes, at: int, deltas: AmigaDeltas,
             raise AmigaRecordError(
                 f"{deltas.title} carries {count} items and no Amiga item node "
                 f"of that title has ever been measured")
-        items.append(AmigaItem.from_bytes(data[end:end + deltas.item_size],
-                                          deltas))
+        head = data[end:end + deltas.item_size]
         end += deltas.item_size
+        scrolls = []
+        if len(head) == deltas.item_size and is_joined_scroll(head, deltas):
+            for _ in range(head[AMIGA_LATER_ITEM_QUANTITY]):
+                if end + deltas.item_size > len(data):
+                    raise AmigaRecordError(
+                        f"a joined scroll of the {deltas.title} record at "
+                        f"{at:#x} holds {head[AMIGA_LATER_ITEM_QUANTITY]} "
+                        f"scrolls and the data ends first")
+                scrolls.append(AmigaItem.from_bytes(
+                    data[end:end + deltas.item_size], deltas))
+                end += deltas.item_size
+        items.append(AmigaItem.from_bytes(head, deltas, scrolls))
     effects = []
     if int.from_bytes(record[deltas.offset(deltas.dos_field(
             "effect_chain").offset):][:4], "big"):
@@ -1128,11 +1192,23 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
                 Confidence.PROBABLE)
         out.warnings.append(LATER_EFFECT_SPLIT_UNKNOWN)
 
-    out.set("inventory", [_dos.item_to_c64(it.to_dos_bytes())
-                          for it in char.items],
+    inventory, bundles = _dos.unbundled_inventory(
+        (it.to_dos_bytes(),
+         [sub.to_dos_bytes() for sub in it.subnodes]
+         if it.is_joined_scroll else None)
+        for it in char.items)
+    out.set("inventory", inventory,
             f"the {deltas.item_size}-byte Amiga item nodes, each re-cut to the "
-            f"63 DOS holds and projected onto sixteen",
+            f"63 DOS holds and projected onto sixteen"
+            + ("; a joined scroll as the scrolls chained after it"
+               if bundles else ""),
             Confidence.CONFIRMED)
+    if bundles:
+        out.set("scroll_bundles", bundles,
+                f"the {len(bundles)} joined scroll(s) of the block: each head "
+                f"node and the `quantity` nodes /Secret writes after it "
+                f"(0x2713C)",
+                Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
 
     # -- the NPC control byte: bit 7 says the engine drives this character --
     # The second byte of `field_83_87`'s five-byte run in Curse, the first of
@@ -1494,15 +1570,12 @@ def amiga_later_item_from_dos(item: bytes, deltas: AmigaDeltas) -> bytes:
     what the loader's `tst.l` reads.
 
     **Silver Blades' last four bytes go through the same shift map as the
-    rest.**  They are DOS's `ITEM_TAIL` at `0x03F`, zero in 48 of 48 records
-    driven out of the DOS game, and they land on the Amiga's
-    :data:`AMIGA_SSB_SCROLL_CHAIN` -- which is a chain head the vault writer
-    at `/Secret` `0x3D6D2` follows, so NULL is not merely the value that was
-    there but the only value that can be right while no further nodes are
-    written.  A Silver Blades scroll carrying more than three spell ids is
-    the case that would need them, and DOS's own 67-byte item has room for
-    exactly three, so nothing crosses this way that the DOS record could
-    hold (#254).
+    rest.**  They are DOS's `ITEM_TAIL` at `0x03F`, the joined scroll's chain
+    pointer, and they land on the Amiga's :data:`AMIGA_SSB_SCROLL_CHAIN`.
+    `goldbox.dos_codec.write` leaves them NULL, and NULL is what the Amiga
+    loader expects too: it allocates and links a joined scroll's scrolls
+    itself (`/Secret` `0x26A2A`).  Those scrolls are nodes of their own,
+    which the caller puts after the head (:attr:`AmigaItem.subnodes`).
     """
     if deltas.item_size is None:
         raise AmigaRecordError(
@@ -1693,9 +1766,14 @@ def write_later(char: NeutralCharacter,
     out = from_dos_record_later(record, deltas)
 
     stride = deltas.dos.item_size
+    # The DOS item file is read the way DOS's own loader reads it, so a
+    # Silver Blades joined scroll comes back as one head with its scrolls.
     items = [AmigaItem.from_bytes(
-        amiga_later_item_from_dos(itm[n * stride:(n + 1) * stride], deltas),
-        deltas) for n in range(len(itm) // stride)]
+        amiga_later_item_from_dos(it.to_bytes(), deltas), deltas,
+        [AmigaItem.from_bytes(amiga_later_item_from_dos(sub.to_bytes(),
+                                                        deltas), deltas)
+         for sub in it.subnodes])
+        for it in _dos.item_nodes(itm, stride)]
     effects = _later_effect_nodes(char, deltas.dos)
     built = AmigaCharacter.from_bytes(out, deltas, char.source or "converted",
                                       items, effects)
@@ -1758,15 +1836,23 @@ def write_later(char: NeutralCharacter,
                  f"node follows")
 
     base = deltas.record_size
-    for n in range(len(items)):
+    # Every node in the order the block holds them: each head item, then a
+    # joined scroll's scrolls, which is also the order of the DOS records.
+    roles = [role for it in items
+             for role in (("joined" if it.is_joined_scroll else "item",)
+                          + ("scroll",) * len(it.subnodes))]
+    for n, role in enumerate(roles):
         at = base + n * deltas.item_size
         dos_base = deltas.dos.record_size + n * stride
         rep.note(at, deltas.item_text,
                  f"item {n}: the rendered-line cache, left NUL -- the game "
                  f"rewrites it whenever it draws the list")
         rep.note(at + AMIGA_LATER_ITEM_NEXT, 4,
+                 f"item {n}: next pointer of a joined scroll's scroll, NULL "
+                 f"-- the loader clears it (/Secret 0x26A64)"
+                 if role == "scroll" else
                  f"item {n}: next pointer, non-zero exactly when another "
-                 f"node follows -- the loader's own tst.l")
+                 f"head item follows -- the loader's own tst.l")
         for f in dos_port.ITEM_LAYOUT:
             if f.name in ("text_length", "text", "next"):
                 continue
@@ -1781,10 +1867,14 @@ def write_later(char: NeutralCharacter,
         for i in range(dos_port.ITEM_SIZE, stride):
             rep.note(at + deltas.item_offset(i), 1,
                      f"item {n}: Silver Blades' scroll chain at "
-                     f"{AMIGA_SSB_SCROLL_CHAIN:#05x}, NULL because no "
-                     f"further spell node follows (#254)")
+                     f"{AMIGA_SSB_SCROLL_CHAIN:#05x}, NULL -- the loader "
+                     f"allocates and links a joined scroll's scrolls itself "
+                     f"(/Secret 0x26A2A)" if role == "joined" else
+                     f"item {n}: Silver Blades' scroll chain at "
+                     f"{AMIGA_SSB_SCROLL_CHAIN:#05x}, NULL because no scroll "
+                     f"hangs off this node")
 
-    base += len(items) * (deltas.item_size or 0)
+    base += len(roles) * (deltas.item_size or 0)
     for n in range(len(effects)):
         at = base + n * deltas.effect_size
         rep.note(at, 1, f"effect {n}: the id, from the neutral record")

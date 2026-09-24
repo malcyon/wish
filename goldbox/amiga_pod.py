@@ -1955,6 +1955,10 @@ POD_WRITE_WHEN_PRESENT: tuple[tuple[str, str], ...] = (
                       "dual-class routine writes there"),
     ("npc_control_byte", "the byte at 0x093 unchanged: bit 7 plus the low "
                          "seven bits of morale, stored halved"),
+    ("scroll_bundles", "set by no reader of this title -- DOS Pools of "
+                       "Darkness keeps no scroll case -- and, where a source "
+                       "has one, its scrolls are already in inventory and "
+                       "are written as items of their own"),
     ("abilities_second", "the *first* byte of each pair at 0x070, the "
                          "permanent score behind the one in force -- and byte "
                          "1 of the exceptional-strength pair, which stores "
@@ -2309,6 +2313,13 @@ POD_READ_DROPPED: tuple[tuple[str, str], ...] = (
                      "holds 0 in 52 of 52 of its own, which is the same "
                      "engine keeping no fighting level rather than a field "
                      "nobody has found (#527)"),
+    ("scroll_bundles", "not set: a scroll case is converted as the scrolls "
+                       "chained off it, in its place in inventory "
+                       "(`unbundle`), because DOS Pools of Darkness, the one "
+                       "port this title converts to, holds those scrolls as "
+                       "items of their own and has no case "
+                       "(docs/215-the-dos-experience-award-and-the-scroll-"
+                       "bundle.md, section 3)"),
     ("innate_effects", "the effect chain is read (#462) and every node that "
                        "never expires goes into `granted_effects` whole, "
                        "because which node is an innate property of the race "
@@ -2333,13 +2344,15 @@ def pod_field_disposition() -> dict[str, str]:
     and the test that keeps this half honest: a field `goldbox/neutral.py` declares
     and this names nowhere would be one dropped in silence.
 
-    This reader fills 64 of the 78 neutral fields, and 65 for a character
-    with something at duration zero in his chain.  The eleven names it takes nothing from:
-    **nine** are fields this *title* stores on neither port, **one** is
-    `attack_level`, which its engine works out from the class level rather
-    than keeping anywhere, and **one** is `innate_effects`, a label rather
-    than a byte, since every effect that never expires is converted as a
-    grant.  `docs/124-amiga-port.md` §1 is the map.
+    This reader fills 68 of the 83 neutral fields, and 69 for a character
+    with something at duration zero in his chain.  The twelve names
+    :func:`pod_read_dropped` gives: **nine** are fields this *title* stores
+    on neither port, **one** is `attack_level`, which its engine works out
+    from the class level rather than keeping anywhere, **one** is
+    `innate_effects`, a label rather than a byte, since every effect that
+    never expires is converted as a grant, and **one** is `scroll_bundles`,
+    since a scroll case is converted as the scrolls chained off it.
+    `docs/124-amiga-port.md` §1 is the map.
     """
     return neutral.disposition(POD_READ_DIRECT, POD_READ_TRANSFORMED,
                                pod_read_dropped(), "the neutral")

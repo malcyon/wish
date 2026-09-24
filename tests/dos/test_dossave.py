@@ -980,19 +980,23 @@ def _synthetic_joined_scroll_bundle() -> bytearray:
     return out
 
 
-def test_a_joined_scroll_bundle_is_refused_by_name(tmp_path):
+def test_a_joined_scroll_is_one_item_and_the_plate_mail_after_it_is_read(
+        tmp_path):
     """Reading the first `item_count` records would hand back the bundle's
-    own spell nodes as items and drop the plate mail off the end -- refused
-    instead, naming the file (#432)."""
+    own spell nodes as items and drop the plate mail off the end; read the
+    way the engine reads it, the pack is the bundle and the plate mail, and
+    the bundle holds its two scrolls (#432)."""
     from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_silver_blades_character(2))
     (tmp_path / "CHRDATC1.STF").write_bytes(_synthetic_joined_scroll_bundle())
 
-    with pytest.raises(dos_codec.DosRecordError,
-                        match=r"CHRDATC1\.STF.*joined scroll bundle"):
-        dos_codec.read_character(record)
+    character = dos_codec.read_character(record)
+    assert [it.get("type_index") for it in character.items] == [0x49, 5]
+    bundle, plate = character.items
+    assert [s.get("charges") for s in bundle.subnodes] == [1, 4]
+    assert plate.display_line == "Plate Mail +1 "
 
 
 # --- an item file present and the wrong shape is a defect, not a gap (#221) ----

@@ -361,6 +361,100 @@ def _rewrite_items(edits: "list[_ItemEdit] | None",
     return out, moved
 
 
+class _Pack(NamedTuple):
+    """A port's item list as the sheet's slots see it.
+
+    `nodes` and `items` are each head item in order, except that a Silver
+    Blades joined scroll is its scrolls in its place -- the neutral
+    `inventory` and so the C64 record's slots hold them that way.  `heads`
+    maps the index of a joined scroll's first scroll to the head's own node
+    and how many scrolls it holds; `scrolls` is every index that is one.
+    """
+
+    nodes: list[bytes]
+    items: list[Any]
+    heads: dict[int, tuple[bytes, int]]
+    scrolls: frozenset[int]
+
+
+def _pack(items: Sequence[Any], joined) -> _Pack:
+    """`items` flattened for the sheet; `joined(item)` says which of them is
+    a joined scroll."""
+    nodes: list[bytes] = []
+    flat: list[Any] = []
+    heads: dict[int, tuple[bytes, int]] = {}
+    scrolls: set[int] = set()
+    for item in items:
+        if not joined(item):
+            nodes.append(node_bytes(item))
+            flat.append(item)
+            continue
+        heads[len(nodes)] = (node_bytes(item), len(item.subnodes))
+        for sub in item.subnodes:
+            scrolls.add(len(nodes))
+            nodes.append(node_bytes(sub))
+            flat.append(sub)
+    return _Pack(nodes, flat, heads, frozenset(scrolls))
+
+
+def _origins(edits: "list[_ItemEdit] | None", total: int) -> list[int | None]:
+    """Which of the flattened originals each node `_rewrite_items` returns
+    came from, in its order, `None` for an item the sheet added."""
+    if edits is None:
+        return list(range(total))
+    return ([e.index for e in edits]
+            + list(range(c64_codec.ITEM_SLOTS, total)))
+
+
+#: Where every item node of every port keeps its type, the same `0x02E` in
+#: DOS and in both later Amiga titles.
+_ITEM_TYPE_AT = 0x02E
+
+
+def _regroup(nodes: Sequence[bytes], origins: Sequence[int | None],
+             pack: _Pack, standalone) -> list[list[bytes]]:
+    """The nodes as head items again, each a list: the head, then a joined
+    scroll's scrolls.
+
+    A joined scroll comes back whole when every one of its scrolls is still
+    there, in order and still a scroll, whatever else the edit changed about
+    them; its head is the node the engine wrote.  When the edit took one of
+    them away or made it something else, the ones left are written as
+    scrolls of their own -- `standalone` clears the chain pointers a scroll
+    in a joined scroll holds -- which is a form the game holds too.
+    """
+    empty = sorted(i for i, (_head, count) in pack.heads.items() if not count)
+    units: list[list[bytes]] = []
+    k = 0
+    while k < len(nodes):
+        origin = origins[k]
+        while empty and origin is not None and empty[0] <= origin:
+            units.append([pack.heads[empty.pop(0)][0]])
+        if origin in pack.heads and pack.heads[origin][1]:
+            head, count = pack.heads[origin]
+            run = list(nodes[k:k + count])
+            if (list(origins[k:k + count]) == list(range(origin, origin + count))
+                    and all(n[_ITEM_TYPE_AT] in dos_codec.SCROLL_TYPES
+                            for n in run)):
+                units.append([head] + run)
+                k += count
+                continue
+        node = nodes[k]
+        units.append([standalone(node) if origin in pack.scrolls else node])
+        k += 1
+    units.extend([pack.heads[i][0]] for i in empty)
+    return units
+
+
+def _cleared(node: bytes, spans: Sequence[tuple[int, int]]) -> bytes:
+    """`node` with each `(offset, size)` it has room for zeroed."""
+    out = bytearray(node)
+    for at, size in spans:
+        if at + size <= len(out):
+            out[at:at + size] = bytes(size)
+    return bytes(out)
+
+
 def hidden_weight(items: Sequence[Any]) -> int:
     """The weight of the items past the sixteenth, which the sheet never saw.
 
@@ -373,8 +467,10 @@ def hidden_weight(items: Sequence[Any]) -> int:
 
 
 def _settle_pack(record: bytes, spans: Sequence[Span], moved: list[str],
-                 nodes: Sequence[bytes], items: Sequence[Any],
-                 byteorder: str) -> tuple[bytes, list[str]]:
+                 nodes: Sequence[Any], items: Sequence[Any],
+                 byteorder: str,
+                 hidden: Sequence[Any] | None = None
+                 ) -> tuple[bytes, list[str]]:
     """`item_count` and `encumbrance` made true of the whole item list.
 
     Both are counts of what the character carries, and both are rendered from
@@ -387,13 +483,16 @@ def _settle_pack(record: bytes, spans: Sequence[Span], moved: list[str],
     The count is written only when the number of nodes changed, so a record
     whose stored count already disagrees with its own item file keeps the
     engine's byte through a save with no edit in it.
+
+    `nodes` and `items` are counted as head items; `hidden` is the list the
+    sheet's slots index, when a joined scroll makes it a different one.
     """
     if len(nodes) != len(items):
         span = _span_named(spans, "item_count")
         record = _put(record, span, len(nodes), byteorder)
         if "item_count" not in moved:
             moved = moved + ["item_count"]
-    extra = hidden_weight(items)
+    extra = hidden_weight(items if hidden is None else hidden)
     if extra and "encumbrance" in moved:
         span = _span_named(spans, "encumbrance")
         was = int.from_bytes(record[span.at:span.at + span.size], byteorder)
@@ -445,19 +544,24 @@ def rewrite_dos(original: "dos_codec.DosCharacter",
     rendered_before, _ = render(before)
     rendered_after, _ = render(after)
 
-    edits = _item_edits(before, after, len(original.items))
+    pack = _pack(original.items,
+                 lambda item: dos_codec.is_joined_scroll(item.to_bytes()))
+    edits = _item_edits(before, after, len(pack.nodes))
     nodes, item_moved = _rewrite_items(
-        edits, [node_bytes(i) for i in original.items],
+        edits, pack.nodes,
         lambda block: dos_codec.item_from_c64(block, stride),
         dos_item_spans())
+    units = _regroup(nodes, _origins(edits, len(pack.nodes)), pack,
+                     lambda node: _cleared(node, (
+                         (0x02A, 4), dos_codec.ITEM_TAIL)))
 
     record, moved = patch(
         original.to_bytes(), rendered_before, rendered_after, spans,
         edited=before.to_bytes() != after.to_bytes() and not item_moved)
-    record, moved = _settle_pack(record, spans, moved, nodes, original.items,
-                                 "little")
+    record, moved = _settle_pack(record, spans, moved, units, original.items,
+                                 "little", hidden=pack.items)
     effects = b"".join(bytes(e) for e in original.effects)
-    return RewrittenDos(record, b"".join(nodes), effects,
+    return RewrittenDos(record, b"".join(b"".join(u) for u in units), effects,
                         tuple(moved + item_moved), tuple(unplaced))
 
 
@@ -549,19 +653,27 @@ def rewrite_amiga_later(original: "amiga_later.AmigaCharacter",
         item_spans: list[Span] = []
     else:
         item_spans, _item_unplaced = amiga_item_spans(deltas.item_offset)
-    edits = _item_edits(before, after, len(original.items))
+    pack = _pack(original.items, lambda item: item.is_joined_scroll)
+    edits = _item_edits(before, after, len(pack.nodes))
     nodes, item_moved = _rewrite_items(
-        edits, [node_bytes(i) for i in original.items],
+        edits, pack.nodes,
         lambda block: amiga_later.amiga_later_item_from_dos(
             dos_codec.item_from_c64(block, deltas.dos.item_size), deltas),
         item_spans)
+    units = _regroup(nodes, _origins(edits, len(pack.nodes)), pack,
+                     lambda node: _cleared(node, (
+                         (amiga_later.AMIGA_LATER_ITEM_NEXT, 4),
+                         (amiga_later.AMIGA_SSB_SCROLL_CHAIN, 4))))
 
     record, moved = patch(
         original.raw, render(before), render(after), spans,
         edited=before.to_bytes() != after.to_bytes() and not item_moved)
-    record, moved = _settle_pack(record, spans, moved, nodes, original.items,
-                                 "big")
-    items = [amiga_later.AmigaItem.from_bytes(node, deltas) for node in nodes]
+    record, moved = _settle_pack(record, spans, moved, units, original.items,
+                                 "big", hidden=pack.items)
+    items = [amiga_later.AmigaItem.from_bytes(
+        unit[0], deltas,
+        [amiga_later.AmigaItem.from_bytes(node, deltas) for node in unit[1:]])
+        for unit in units]
     return RewrittenAmigaLater(
         amiga_later.AmigaCharacter.from_bytes(
             record, deltas, original.source, items, original.effects),

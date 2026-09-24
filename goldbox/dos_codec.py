@@ -106,7 +106,7 @@ from .iconparts import (
     dos_size,
 )
 from .layout import Confidence, Field, Kind
-from .neutral import NeutralCharacter, Provenance
+from .neutral import NeutralCharacter, Provenance, ScrollBundle
 from .portraits import (
     PortraitError,
     PortraitTables,
@@ -321,15 +321,26 @@ class _Fielded:
 class DosItem(_Fielded):
     """One item record, 63 bytes in three titles and 67 in Silver Blades.
 
-    The four extra bytes are at the **end** and are zero in every specimen, so
-    every field below `0x03E` is at the same offset whichever title wrote it
-    (#113).  `size` is the title's, from `DosDeltas.item_size`.
+    The four extra bytes are at the **end**, so every field below `0x03E` is
+    at the same offset whichever title wrote it (#113).  `size` is the
+    title's, from `DosDeltas.item_size`.
+
+    `subnodes` is a joined scroll's scrolls (:data:`SCROLL_BUNDLE_TYPE`),
+    each a whole item record as the `.STF` file holds it after the head;
+    empty for every other item.
     """
 
     _TABLE = ITEM_FIELDS_BY_NAME
 
-    def __init__(self, data: bytes, size: int = ITEM_SIZE) -> None:
+    def __init__(self, data: bytes, size: int = ITEM_SIZE,
+                 subnodes: Sequence["DosItem"] = ()) -> None:
         super().__init__(data, size, "item")
+        self.subnodes = tuple(subnodes)
+
+    def file_bytes(self) -> bytes:
+        """This item as the item file holds it: the record, then a joined
+        scroll's scrolls straight after it."""
+        return self._data + b"".join(s.to_bytes() for s in self.subnodes)
 
     @property
     def display_line(self) -> str:
@@ -352,30 +363,39 @@ class DosItem(_Fielded):
 #: divisible by 63 -- and established that every field below `0x03E` is at the
 #: same offset as in the other titles, because the weights are the published
 #: AD&D figures and a `MAGE SCROLL 3 SPELLS` carries three ids inside this
-#: title's own 1..117 spell space.  So the four extra bytes are `0x03F`-`0x042`
-#: and nothing has ever been attributed to them.
+#: title's own 1..117 spell space.  So the four extra bytes are `0x03F`-`0x042`:
+#: the far pointer a joined scroll hangs its scrolls off
+#: (:data:`SCROLL_BUNDLE_TYPE`), which the engine's loader overwrites on every
+#: node it links and NULLs on the last
+#: (docs/215-the-dos-experience-award-and-the-scroll-bundle.md).
 #:
 #: **They read `00 00 00 00` in 48 of 48 item records**, 24 of them distinct,
 #: across every `.STF` this project made by driving DOS Silver Blades and
 #: excluding the three folders whose records were edited by hand for
 #: `#222 (Silver Blades' fourth spell-slot array is zero in every state
 #: anybody can create)`.  Including those three the count is 18 files and the
-#: answer does not change.  So a conversion writes nothing from them; a
-#: **non-zero** one is a byte nobody has decoded and is refused rather than
-#: quietly dropped (`.claude/rules/conversions.md`).
+#: answer does not change.  So a conversion writes nothing from them.  On a
+#: joined scroll and its scrolls they are a live pointer and are cleared
+#: before the item is projected (`_chain_cleared`); a **non-zero** one on any
+#: other item is a state nobody has seen the engine leave, and `item_to_c64`
+#: refuses it rather than guess (`.claude/rules/conversions.md`).
 ITEM_TAIL = (0x3F, 4)
 
 #: The item type Silver Blades' `ITEMS > JOIN` command writes on the scroll it
-#: makes.  Its sub-scrolls are written as extra 67-byte records straight after
-#: it in the `.STF` file, and `item_count` counts head items only (#432,
-#: `#254 (Two DOS gaps the Amiga port gives a shape to: a 16-bit field in
-#: gap_13c, and a pointer at the end of the Silver Blades item)`).  A reader
-#: that takes the first `item_count` records reads a bundle's spell nodes as
-#: items and loses that many real ones off the end of the pack, so
-#: `read_character` refuses a file holding one by name instead.  Confirmed the
-#: only title that ever writes it: zero stores of `0x49` into an item in the
-#: other five titles' overlays (`tests/dos/test_dosscrollbundle.py`).
+#: makes.  Its scrolls are written as extra 67-byte records straight after it
+#: in the `.STF` file, `quantity` of them, and `item_count` counts head items
+#: only, so :func:`item_nodes` reads the file the way the engine's own loader
+#: does (`SECRET GAME.OVR` `0x258D5`).  Every one of those records is a whole
+#: scroll item: JOIN copies each scroll into its node byte for byte
+#: (`0x294C6`, `0x29641`, `0x296A5`).  The only title that ever writes the
+#: type: zero stores of `0x49` into an item in the other five titles'
+#: overlays (`tests/dos/test_dosscrollbundle.py`).
 SCROLL_BUNDLE_TYPE = 0x49
+
+#: The two plain scroll types, mage and cleric: what every `ITEM<n>.DAX`
+#: `Mage Scroll` and `Cler Scroll` template carries, and the only types JOIN
+#: accepts beside a joined scroll itself (`0x293A6`-`0x293BA`).
+SCROLL_TYPES = (0x27, 0x28)
 
 
 def item_to_c64(record: bytes) -> bytes:
@@ -404,10 +424,10 @@ def item_to_c64(record: bytes) -> bytes:
     tail = record[tail_at:tail_at + tail_size]
     if any(tail):
         raise DosRecordError(
-            f"this item holds {tail.hex(' ')} at 0x{tail_at:03X}, and those "
+            f"this item holds {tail.hex(' ')} at 0x{tail_at:03X}, the chain "
+            f"pointer only a joined scroll uses, and it is not one; those "
             f"four bytes read zero in all 48 Silver Blades item records this "
-            f"project has driven the game into writing -- nothing has been "
-            f"attributed to them, so there is nowhere to convert them to")
+            f"project has driven the game into writing")
     at = {n: ITEM_FIELDS_BY_NAME[n].offset for n in
           ("type_index", "name1", "name2", "name3", "plus", "plus_save",
            "readied", "hidden", "cursed", "weight", "quantity", "value",
@@ -423,6 +443,178 @@ def item_to_c64(record: bytes) -> bytes:
         r[at["value"]], r[at["value"] + 1],
         r[at["charges"]], r[at["effect"]], r[at["power"]],
     ))
+
+
+# ---------------------------------------------------------------------------
+# Silver Blades' joined scroll: a head item and the scrolls chained off it
+# ---------------------------------------------------------------------------
+def item_nodes(itm: bytes, stride: int,
+               heads: int | None = None) -> list[DosItem]:
+    """The item file as the engine's own loader reads it, one `DosItem` a head.
+
+    `SECRET GAME.OVR` `0x258D5` reads a record, and when its type is
+    :data:`SCROLL_BUNDLE_TYPE` reads `quantity` more straight after it as
+    that item's scrolls; it stops at the end of the file and never reads
+    `item_count`.  A 63-byte title has no chain, so every record is a head.
+    `heads` stops after that many head items; `None` reads to the end.
+
+    A joined scroll whose scrolls run past the end of the file raises
+    `DosRecordError`: the engine would read short records into those nodes.
+    """
+    type_at = ITEM_FIELDS_BY_NAME["type_index"].offset
+    quantity_at = ITEM_FIELDS_BY_NAME["quantity"].offset
+    total = len(itm) // stride
+    out: list[DosItem] = []
+    i = 0
+    while i < total and (heads is None or len(out) < heads):
+        head = itm[i * stride:(i + 1) * stride]
+        i += 1
+        scrolls: list[DosItem] = []
+        if stride > ITEM_SIZE and head[type_at] == SCROLL_BUNDLE_TYPE:
+            want = head[quantity_at]
+            if i + want > total:
+                raise DosRecordError(
+                    f"item {len(out)} is a joined scroll of {want} and the "
+                    f"file holds {total - i} more {stride}-byte records")
+            scrolls = [DosItem(itm[j * stride:(j + 1) * stride], stride)
+                       for j in range(i, i + want)]
+            i += want
+        out.append(DosItem(head, stride, scrolls))
+    return out
+
+
+def is_joined_scroll(record: bytes) -> bool:
+    """A DOS Silver Blades item record the JOIN command made: 67 bytes, type
+    :data:`SCROLL_BUNDLE_TYPE`.  A 63-byte title has no joined scroll."""
+    return (len(record) > ITEM_SIZE and record[
+        ITEM_FIELDS_BY_NAME["type_index"].offset] == SCROLL_BUNDLE_TYPE)
+
+
+def _chain_cleared(record: bytes) -> bytes:
+    """A 67-byte record with its chain pointer at :data:`ITEM_TAIL` zeroed.
+
+    On a joined scroll and on each of its scrolls those four bytes are the
+    live far pointer the engine hangs the next scroll off, and its loader
+    overwrites every one of them (`0x259C4`, `0x25A09`), so they carry
+    nothing a conversion could keep.
+    """
+    if len(record) <= ITEM_SIZE:
+        return bytes(record)
+    at, size = ITEM_TAIL
+    return bytes(record[:at]) + bytes(size) + bytes(record[at + size:])
+
+
+def unbundled_inventory(
+        items: Iterable[tuple[bytes, "Sequence[bytes] | None"]]
+) -> tuple[list[bytes], tuple[ScrollBundle, ...]]:
+    """The neutral `inventory` and `scroll_bundles` for a pack.
+
+    `items` is each head item's DOS-layout record with, for a joined scroll,
+    the records of its scrolls, and `None` for any other item.  A joined
+    scroll becomes its scrolls in its own place in the pack, each projected
+    onto sixteen bytes as any item is, and a `ScrollBundle` says which run
+    of the inventory they are and carries the head's own sixteen bytes.
+    """
+    inventory: list[bytes] = []
+    bundles: list[ScrollBundle] = []
+    for head, scrolls in items:
+        if scrolls is None:
+            inventory.append(item_to_c64(head))
+            continue
+        bundles.append(ScrollBundle(len(inventory), len(scrolls),
+                                    item_to_c64(_chain_cleared(head))))
+        inventory.extend(item_to_c64(_chain_cleared(s)) for s in scrolls)
+    return inventory, tuple(bundles)
+
+
+def bundled_item_units(inventory: Sequence[bytes],
+                       bundles: Sequence[ScrollBundle],
+                       item_size: int) -> list[tuple[bytes, list[bytes]]]:
+    """Each head item a DOS item file holds, as `(sixteen bytes, records)`.
+
+    The mirror of :func:`unbundled_inventory`: a joined scroll's head is
+    written with its `quantity` set to the scrolls it holds, and its scrolls
+    follow it, which is the order the engine's writer puts them in
+    (`0x24B29`) and its loader reads them back in.  The sixteen bytes are
+    the head's own, which is what `item_count` and the encumbrance count:
+    the engine's recount walks the head items and never a joined scroll's
+    chain (`0x3A2C7`).
+
+    A title whose item is 63 bytes has no chain to hang the scrolls off, so
+    there every scroll is written as an item of its own.  A bundle that does
+    not describe a run of scrolls in `inventory` raises `DosRecordError`.
+    """
+    order = sorted(bundles, key=lambda b: (b.first, b.count))
+    if item_size <= ITEM_SIZE:
+        order = []
+    end = 0
+    for b in order:
+        if (b.first < end or b.count < 0 or b.count > 0xFF
+                or b.first + b.count > len(inventory)
+                or len(b.head) != 16 or b.head[0] != SCROLL_BUNDLE_TYPE
+                or any(s[0] not in SCROLL_TYPES
+                       for s in inventory[b.first:b.first + b.count])):
+            raise DosRecordError(
+                f"a joined scroll of {b.count} from inventory item {b.first} "
+                f"is not a run of scrolls of the {len(inventory)} carried")
+        end = b.first + b.count
+    units: list[tuple[bytes, list[bytes]]] = []
+    n = k = 0
+    while n < len(inventory) or k < len(order):
+        if k < len(order) and order[k].first == n:
+            b = order[k]
+            k += 1
+            head = bytes(b.head[:10]) + bytes((b.count,)) + bytes(b.head[11:])
+            units.append((head, [item_from_c64(head, item_size)]
+                          + [item_from_c64(bytes(s), item_size)
+                             for s in inventory[n:n + b.count]]))
+            n += b.count
+            continue
+        record = item_from_c64(bytes(inventory[n]), item_size)
+        if is_joined_scroll(record):
+            # The loader would read the next `quantity` records as this
+            # item's scrolls and lose them from the pack.
+            raise DosRecordError(
+                f"inventory item {n} is a joined scroll and no scroll_bundles "
+                f"entry says which scrolls it holds")
+        units.append((bytes(inventory[n]), [record]))
+        n += 1
+    return units
+
+
+def c64_slots_needed(char: "DosCharacter | NeutralCharacter") -> int:
+    """How many C64 item slots a character's pack takes, a joined scroll
+    taking one for each scroll it holds.
+
+    The C64 has no joined scroll: its JOIN merges only items identical in
+    all sixteen bytes but readied and quantity, and only those with a
+    quantity (Silver Blades `CAMP` at `$2202`), so the scrolls go one to a
+    slot.
+    """
+    if isinstance(char, NeutralCharacter):
+        return len(char.get("inventory") or ())
+    return sum(len(it.subnodes) if is_joined_scroll(it.to_bytes()) else 1
+               for it in char.items)
+
+
+class JoinedScrollsDoNotFit(DosRecordError):
+    """A character whose joined scrolls, one C64 slot a scroll, need more
+    slots than the C64 record's sixteen.
+
+    The limit is the C64's own: sixteen slots and no joined scroll, where
+    DOS Silver Blades allows sixteen head items holding up to ten scrolls
+    each (`docs/173-carrying-limits.md`, `SECRET GAME.OVR` `0x293C7`).  The
+    player has to choose which items stay behind, and until that choice can
+    be asked for this stops the write rather than dropping any of them.
+    """
+
+    def __init__(self, name: str, needed: int, slots: int) -> None:
+        self.name = name
+        self.needed = needed
+        self.slots = slots
+        super().__init__(
+            f"{name} carries joined scrolls that need {needed} C64 item "
+            f"slots, one a scroll, and the record has {slots} (#432)")
 
 
 #: Effect ids that are innate rather than temporary, and so belong in the
@@ -1355,6 +1547,11 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     the count, raises `DosRecordError` naming the file, the stride and both
     counts (#221) rather than silently handing back fewer items than the
     record says it has.
+
+    **`items` is the head items, `item_count` of them.**  A Silver Blades
+    joined scroll is one of them, with its scrolls in its `subnodes`: the
+    file holds them straight after it and the count does not include them
+    (:func:`item_nodes`, #432).
     """
     path = pathlib.Path(path)
     data = path.read_bytes()
@@ -1377,31 +1574,19 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     # *present* and the wrong shape is not: `min()` used to paper over a
     # truncated or short `.ITM`/`.SWG`/`.STF`/`.THG`, which is exactly what a
     # 63-byte `.ITM` did to every Curse and Silver Blades character (#113).
-    if item_file_present and (len(itm) % stride != 0
-                               or len(itm) // stride < count):
+    # `item_count` counts head items, and a Silver Blades joined scroll's
+    # scrolls are extra records straight after its head, so the file is read
+    # the way the engine's loader reads it rather than sliced by the count.
+    try:
+        items = item_nodes(itm, stride, heads=count)
+    except DosRecordError as e:
+        raise DosRecordError(f"{item_path.name}: {e}") from None
+    if item_file_present and (len(itm) % stride != 0 or len(items) < count):
         raise DosRecordError(
             f"{item_path.name}: {len(itm)} bytes at a {stride}-byte stride "
-            f"is {len(itm) // stride} items, but {path.name}'s item_count "
+            f"is {len(items)} items, but {path.name}'s item_count "
             f"says {count}"
         )
-    # A joined scroll (#432) writes its sub-scrolls as extra records the
-    # count above does not know about, so the file holds *more* whole items
-    # than item_count -- the shape check above only catches *fewer*. Refuse
-    # by name rather than reading the sub-scrolls as items and losing that
-    # many real ones off the end of the pack; stride > 63 restricts this to
-    # Silver Blades, the only title with the field a bundle needs.
-    if item_file_present and stride > ITEM_SIZE:
-        type_at = ITEM_FIELDS_BY_NAME["type_index"].offset
-        for i in range(len(itm) // stride):
-            if itm[i * stride + type_at] == SCROLL_BUNDLE_TYPE:
-                raise DosRecordError(
-                    f"{item_path.name}: item {i} is a joined scroll bundle "
-                    f"(type {SCROLL_BUNDLE_TYPE:#04x}) -- its sub-scrolls are "
-                    f"extra {stride}-byte records item_count does not count, "
-                    f"and nothing here yet reads that chain (#432)"
-                )
-    items = [DosItem(itm[i * stride:(i + 1) * stride], stride)
-             for i in range(min(count, len(itm) // stride))]
     effects = [spc[i:i + EFFECT_SIZE] for i in range(0, len(spc), EFFECT_SIZE)
                if len(spc[i:i + EFFECT_SIZE]) == EFFECT_SIZE]
     return DosCharacter(data, items, effects, source=str(path), deltas=shape)
@@ -2365,9 +2550,23 @@ def to_neutral(dos: DosCharacter,
                 Confidence.CONFIRMED)
 
     # -- the .ITM file, projected -------------------------------------------
-    out.set("inventory", [it.to_c64() for it in dos.items],
-            "the .ITM file, each 63-byte record projected onto sixteen bytes",
+    inventory, bundles = unbundled_inventory(
+        (it.to_bytes(),
+         [s.to_bytes() for s in it.subnodes]
+         if is_joined_scroll(it.to_bytes()) else None)
+        for it in dos.items)
+    out.set("inventory", inventory,
+            "the .ITM file, each 63-byte record projected onto sixteen bytes"
+            + ("; a joined scroll as the scrolls chained after it"
+               if bundles else ""),
             Confidence.CONFIRMED)
+    if bundles:
+        out.set("scroll_bundles", bundles,
+                f"the {len(bundles)} joined scroll(s) of the "
+                f"{dos.deltas.item_suffix} file: each head record and the "
+                f"`quantity` scroll records the engine writes after it "
+                f"(GAME.OVR 0x24B29)",
+                Confidence.CONFIRMED, Provenance.RESHAPED)
 
     # -- the sheet portrait: a menu position becomes the art's own id --------
     # The two ports choose from one menu of fourteen heads and twelve bodies,
@@ -2822,6 +3021,13 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                   "record; the count and the encumbrance are computed from "
                   "it, and an empty inventory writes no .ITM file at all "
                   "rather than an empty one -- ITM_OMITTED_WHEN_EMPTY"),
+    ("scroll_bundles", "Secret of the Silver Blades: each joined scroll's "
+                       "head record, its quantity the scrolls it holds, and "
+                       "then those scrolls' own records straight after it, "
+                       "as the engine writes the .STF file; item_count and "
+                       "the encumbrance count the head -- bundled_item_units. "
+                       "A title with a 63-byte item has no joined scroll, so "
+                       "there the scrolls are written as items of their own"),
     ("innate_effects", "one nine-byte .SPC record each, id + INNATE_PAYLOAD "
                        "+ a NULL next pointer the engine rebuilds; a C64 "
                        "source's class-seeded ids become this port's first "
@@ -3723,7 +3929,8 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
        "size": "from neutral size_small, plus one",
        "attack_forms": "from neutral attack_forms, as a block",
        "roster_tail": "from neutral roster_tail, as a block",
-       "item_count": "computed: the number of .ITM records written",
+       "item_count": "computed: the number of head .ITM records written, "
+                     "a joined scroll's scrolls not counted",
        "encumbrance": "computed: money plus item weight x quantity"}
     | {name: f"constant: {why}" for name, _, why in WRITE_CONSTANTS}
     | {name: f"default: {why}" for name, _, why, _ in WRITE_DEFAULTS}
@@ -4673,27 +4880,51 @@ def write(char: NeutralCharacter,
     # `DosDeltas.item_suffix`; nothing here assumes either.
     itm = b""
     projected: list[bytes] = []
+    # One entry per head item: its sixteen bytes, and the records it writes
+    # -- itself, then a Silver Blades joined scroll's scrolls (#432).
+    units: list[tuple[bytes, list[bytes]]] = []
     inventory = use("inventory")
+    joined = use("scroll_bundles")
     if inventory is not None:
         projected = [bytes(i) for i in inventory.value]
-        itm = b"".join(item_from_c64(i, item_size) for i in projected)
-        if projected:
+        units = bundled_item_units(
+            projected, joined.value if joined is not None else (), item_size)
+        records = [r for _head, written in units for r in written]
+        itm = b"".join(records)
+        if records:
             emit(inventory, f"the {deltas.item_suffix} file", size, len(itm),
                  f", each sixteen-byte record unpacked onto the DOS "
                  f"{item_size}")
-            for n in range(len(projected)):
-                base = size + n * item_size
-                rep.note(base, 0x02A,
-                         f"item {n}: the rendered-line cache, left empty -- "
-                         f"the game rewrites it whenever it draws the list")
-                rep.note(base + 0x02A, 4,
-                         f"item {n}: next pointer left NULL -- the loader "
-                         f"rebuilds the chain, measured by its own resave")
-                if item_size > ITEM_SIZE:
-                    rep.note(base + ITEM_TAIL[0], ITEM_TAIL[1],
-                             f"item {n}: the four bytes Silver Blades' item "
-                             f"record has and the others do not, zero in 48 "
-                             f"of 48 records driven out of the game (#113)")
+            n = 0
+            for _head, written in units:
+                bundle = len(written) > 1 or is_joined_scroll(written[0])
+                for k in range(len(written)):
+                    base = size + n * item_size
+                    rep.note(base, 0x02A,
+                             f"item {n}: the rendered-line cache, left empty "
+                             f"-- the game rewrites it whenever it draws the "
+                             f"list")
+                    rep.note(base + 0x02A, 4,
+                             f"item {n}: next pointer left NULL -- the loader "
+                             f"rebuilds the chain, measured by its own resave")
+                    if bundle and k == 0 and joined is not None:
+                        at = ITEM_FIELDS_BY_NAME["type_index"].offset
+                        emit(joined, f"item {n}, a joined scroll's head",
+                             base + at, ITEM_SIZE - at,
+                             f", its quantity the {len(written) - 1} scroll "
+                             f"record(s) written straight after it")
+                    if item_size > ITEM_SIZE:
+                        rep.note(base + ITEM_TAIL[0], ITEM_TAIL[1],
+                                 f"item {n}: a joined scroll's chain pointer, "
+                                 f"NULL -- the loader allocates and links a "
+                                 f"joined scroll's scrolls itself and NULLs "
+                                 f"the last (GAME.OVR 0x258D5), and no other "
+                                 f"item has one" if bundle else
+                                 f"item {n}: the chain pointer only a joined "
+                                 f"scroll has, NULL, as the engine leaves it "
+                                 f"on every other item and in 48 of 48 records "
+                                 f"driven out of the game (#113)")
+                    n += 1
 
     # -- the innate effects become the effect file ---------------------------
     # Running spells are not written, which is what the game's own C64
@@ -4871,14 +5102,16 @@ def write(char: NeutralCharacter,
                  f"the count comes from the file's length")
 
     # -- computed, not copied ------------------------------------------------
-    count = min(len(projected), 0xFF)
+    # The head items only: the engine's recount walks the item chain and
+    # never a joined scroll's own (`SECRET GAME.OVR` `0x3A2C7`, #432).
+    count = min(len(units), 0xFF)
     rec[table["item_count"].offset] = count
     rep.note(table["item_count"].offset, 1,
-             f"item_count: computed -- the {count} records of the "
+             f"item_count: computed -- the {count} head records of the "
              f"{deltas.item_suffix} file")
     money = sum(int(w.get(k, 0)) for k in _COINS if k in table)
-    weight = sum(int.from_bytes(i[8:10], "little") * (i[10] or 1)
-                 for i in projected)
+    weight = sum(int.from_bytes(head[8:10], "little") * (head[10] or 1)
+                 for head, _written in units)
     # `use`, not `get`, so a source that supplies its own `encumbrance` --
     # today only an Amiga Curse or Silver Blades reader -- counts as consumed
     # rather than reaching `Writer.finish` as unwritten: the value computed
@@ -6302,6 +6535,20 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     `SAVEDGAME0` offset and one at or above it is `SAVEDGAME1`'s (#120).
     `Report.unwritten` is empty when nothing was left to the payload.
     """
+    # A joined scroll takes a C64 slot for every scroll it holds (#432).  A
+    # pack that then needs more than sixteen is the C64's own limit, and
+    # which items stay behind is the player's to choose; nothing asks yet,
+    # so the write stops here rather than dropping the ones past sixteen.
+    for char in party:
+        joins = (char.get("scroll_bundles")
+                 if isinstance(char, NeutralCharacter) else
+                 [it for it in char.items if is_joined_scroll(it.to_bytes())])
+        needed = c64_slots_needed(char)
+        if joins and needed > c64_codec.ITEM_SLOTS:
+            raise JoinedScrollsDoNotFit(
+                str(char.get("name", "")) if isinstance(char, NeutralCharacter)
+                else char.name, needed, c64_codec.ITEM_SLOTS)
+
     container = c64_save.container_for(game)
     save1_at = len(save0)
     report = C64SaveReport(

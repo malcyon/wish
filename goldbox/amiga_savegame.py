@@ -550,6 +550,15 @@ def new_savegame(state: world_state.WorldState,
         report.dropped.extend(char_report.dropped)
         report.warnings.extend(char_report.warnings)
         report.losses.extend(char_report.losses)
+    # Past this many scrolls in joined scrolls the loader discards a joined
+    # scroll whole, so the save is not written rather than written to lose
+    # one; which scrolls stay behind is the player's to choose (#432).
+    held = amiga_later.joined_scroll_count(built)
+    if held > amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT:
+        raise AmigaSaveError(
+            f"the party's joined scrolls hold {held} scrolls and the "
+            f"{container.title} loader keeps "
+            f"{amiga_later.AMIGA_SSB_JOINED_SCROLL_LIMIT}")
 
     # A party that has not set out is written as the initialiser leaves it:
     # no area, no script, the initialiser's square and wallset, mode 0.

@@ -257,8 +257,13 @@ def test_the_writers_drops_are_a_strict_subset_of_the_readers():
     `derived` rather than `dropped`, because the destination rebuilds it
     from class and level on load. Both statements are true at once: a name
     can be on `POD_READ_DROPPED` for want of a byte and off
-    `POD_WRITE_DROPPED` because the destination needs no byte either. 2 of 2,
-    named here so a third cannot appear without this going red.
+    `POD_WRITE_DROPPED` because the destination needs no byte either.
+
+    `scroll_bundles` is the third. The reader converts a scroll case as the
+    scrolls chained off it, because DOS, the one port this title converts
+    to, has no case to put them back in; the writer, given a joined scroll
+    by some other reader, writes those same scrolls as items of their own.
+    3 of 3, named here so a fourth cannot appear without this going red.
 
     `portrait_head` and `portrait_body` moving to `POD_WRITE_CONSTANTS`
     (`#617`) took the writer's last member the reader does not also drop, so
@@ -268,7 +273,8 @@ def test_the_writers_drops_are_a_strict_subset_of_the_readers():
     """
     writer = {n for n, _ in amiga_pod.POD_WRITE_DROPPED}
     reader = {n for n, _ in amiga_pod.pod_read_dropped()}
-    assert reader - writer == {"attack_level", "innate_effects"}
+    assert reader - writer == {"attack_level", "innate_effects",
+                               "scroll_bundles"}
     assert not writer - reader
     assert amiga_pod.pod_write_field_disposition()["innate_effects"].startswith(
         "an id each")
@@ -1023,14 +1029,15 @@ def test_the_reader_has_nothing_left_to_say_to_a_player():
     place of the thing it describes is what `.claude/rules/conversions.md`
     forbids in the first place.
 
-    What it reports instead is eleven names on `pod_read_dropped()`, which
+    What it reports instead is twelve names on `pod_read_dropped()`, which
     goes to `wish/debuglog.py`: nine fields this title has on neither port,
     `innate_effects` -- a label rather than a byte, since everything that
-    never expires is converted as a grant -- and `attack_level`, which this
-    title's engine works out from the class level and keeps nowhere.
+    never expires is converted as a grant -- `attack_level`, which this
+    title's engine works out from the class level and keeps nowhere, and
+    `scroll_bundles`, since a scroll case is converted as its scrolls.
     """
     dropped = dict(amiga_pod.pod_read_dropped())
-    assert len(dropped) == 11, sorted(dropped)
+    assert len(dropped) == 12, sorted(dropped)
     assert "inventory" not in dropped
     assert "granted_effects" not in dropped
     assert {"innate_effects", "attack_level"} <= set(dropped)

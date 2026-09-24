@@ -28,6 +28,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_dosregainedclass.py` | Checks that a regained dual-classed C64 character crosses to DOS with its old class bit and level slot right. |
 | `test_doswriter.py` | Checks that the DOS writer is the reader's inverse: a neutral character becomes a 285-byte record and reads back. |
 | `test_droptext_platform_neutral.py` | Checks that a drop line written while reading the source names no destination it does not yet know. |
+| `test_joinedscroll.py` | Checks a Silver Blades joined scroll read off DOS and the Amiga and converted to each port: the join kept where the port holds one, its scrolls one to a slot on the C64, the pack after it intact, and the two capacity limits refused rather than cut. |
 | `test_namefit.py` | Checks `editor.saveplan.fit_names` and `name_width`: a name over the destination's width is named rather than cut, a chosen replacement is written with nothing left to clamp, and every title's width per port. |
 | `test_neutral.py` | Checks the neutral character record and the codecs around it: what is written unchanged, what is reported and what is refused. |
 | `test_podconvert.py` | Checks converting a DOS Pools of Darkness character to the Amiga and back. |

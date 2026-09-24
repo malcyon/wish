@@ -1543,6 +1543,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         # above is not a sentence: it is on `losses` alone.
 
     # -- the inventory: sixteen fixed slots ----------------------------------
+    # A joined scroll's scrolls are already in `inventory` one to an item,
+    # the only form the C64 holds them in, so the bundle adds nothing here.
+    use("scroll_bundles")
     inventory = use("inventory")
     if inventory is not None:
         converted = list(inventory.value)
@@ -1849,6 +1852,11 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "byte to the engine's own compare"),
     ("inventory", "the first sixteen items, into the C64's fixed slots; the "
                   "rest are warned about"),
+    ("scroll_bundles", "a joined scroll's scrolls are already in inventory, "
+                       "one to a slot, which is how the C64 holds them: its "
+                       "JOIN merges only identical items with a quantity "
+                       "(Silver Blades CAMP $2202) and it has no joined "
+                       "scroll to write"),
     ("roster_tail", "copied as a block into the C64's roster tail"),
     ("npc", "bit 7 of 0x0B8, the byte the game itself counts player "
             "characters with; a Pool of Radiance player character gets bit 7 "

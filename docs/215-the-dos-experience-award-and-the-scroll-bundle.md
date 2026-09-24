@@ -152,12 +152,14 @@ the routine that recomputes it (`SECRET 0x3A2C7`) walks `next` at `0x02A` and
 never `0x03F`.
 
 So a file holding a bundle has more 67-byte records than `item_count` says,
-and `goldbox.dos_codec.read_character`, which takes the first `item_count` of them,
-would read the bundle's spell pages as items and lose that many real items off
-the end of the pack. That is
+and a reader that takes the first `item_count` of them reads the bundle's
+spell pages as items and loses that many real items off the end of the pack.
+`goldbox.dos_codec.read_character` did that, and then refused the file, until
 `#432 (A joined scroll in a DOS Silver Blades save shifts everything after it
-out of the character's pack)`; `tools/dos/dosscrollbundle.py`'s `walk()` is the
-engine's loop and `slice_naively()` is the other one.
+out of the character's pack)`; it now reads the file with
+`goldbox.dos_codec.item_nodes`, the engine's loop, and section 4 says how
+each port converts what it reads. `tools/dos/dosscrollbundle.py`'s `walk()` is
+the same loop and `slice_naively()` is the other one.
 
 **Nothing anybody holds is misread today.**
 `tools/dos/dosscrollbundle.py census` walked **140 item files** across the
@@ -166,6 +168,13 @@ count disagrees with `item_count`, and 18 with an `item_count` of zero, which
 is an export beside a stale item file and is what `goldbox.dos_codec` documents. The
 defect is reachable in the game and unexercised by the corpus, which is why
 `#432 (A joined scroll in a DOS Silver Blades save shifts everything after it out of the character's pack)` carries a recipe rather than a specimen.
+
+**The reader ignores every stored pointer, CONFIRMED.** `0x258D5` reads a
+record, allocates its node and NULLs its `next`; for type `0x49` it reads the
+`quantity` records after it straight into freshly allocated nodes, linking
+each through `0x03F`, and NULLs the last one's `0x03F` (`0x25A03`). So the
+pointers the writer leaves in the file are heap addresses nothing reads back,
+and a writer may put zero in all of them.
 
 ## 3. Pools of Darkness: a case on the Amiga, separate scrolls on DOS
 
@@ -227,6 +236,62 @@ HILDE (13) and INA (12) are under the limit. **The experiment that confirms
 it:** load the converted `SavGamA` in DOS, count CLERIC's 21 scrolls on
 `ITEMS`, save, and check `CHRDATA<n>.THG` is 1323 bytes.
 
+## 4. What JOIN makes, and what each port holds
+
+**Every scroll in a joined scroll is a whole scroll item, CONFIRMED** from the
+JOIN routine at `SECRET GAME.OVR` `0x29391`. Joining a plain scroll copies it
+whole into a new node (`Move(T^, N^, 0x43)` at `0x294C6`) and turns the
+original into the head: type `0x49`, names `0x27`, 1, `0x4D`, readied and
+hidden zero, spell bytes zero, `quantity` 1. Each further scroll is copied
+whole onto the end of the chain (`0x296A5`), a joined scroll's own chain is
+spliced on whole (`0x29641`), and after every merge `quantity` and `value`
+grow, and `name2` and `weight` are set to the new `quantity` (`0x296CC`).
+JOIN refuses past ten (`0x293C7`). So a joined scroll is its scrolls plus a
+head derived from them, and taking it apart loses no spell.
+
+| port | holds a joined scroll | read from |
+|---|---|---|
+| DOS | head, then `quantity` whole scroll records in the `.STF`; `item_count` counts the head | writer `0x24B29`, loader `0x258D5`, recount `0x3A2C7` |
+| Amiga | head, then `quantity` whole 70-byte nodes in the saved game's character block; the loader tests `$2e` and reads `$3a` | loader `/Secret` `0x269A0`-`0x26A98`, writer `0x2713C` |
+| C64 | **no joined scroll**: the same scrolls, one to a slot | `CAMP`'s JOIN at `$2202` merges only items identical but for `+6` and `+10`, and only one with a quantity |
+
+The C64 row, CONFIRMED: `LIBRARY` (running at `$2DC8`) patches its item
+menu's handlers from a table `CAMP` installs at `$44E9`/`$44F1` out of its own
+`$0F78`, and entry five, `JOIN`, is `$2202`; no C64 Silver Blades file compares
+an item type with `#$49` near a scroll compare.
+
+**How Wish converts it.** The neutral `inventory` holds a joined scroll as its
+scrolls, in its place in the pack, and `scroll_bundles` says which run of the
+inventory each joined scroll is and carries the head's own sixteen bytes
+(`goldbox.neutral.ScrollBundle`). The DOS and Amiga readers set it; the DOS
+writer (`goldbox.dos_codec.bundled_item_units`) and the Amiga writer put the
+head and its scrolls back; the C64 writer writes the scrolls one to a slot,
+which is how the C64 holds them. So DOS to Amiga and back keeps the join and
+the file, and DOS to the C64 and back gives the same scrolls as items of
+their own. `tests/convert/test_joinedscroll.py` holds each direction on
+composed bytes, and on the archives' shipped Silver Blades party for the
+whole Amiga saved game.
+
+**Two limits, and neither is ours.**
+
+* **The C64's sixteen slots.** DOS Silver Blades allows sixteen head items
+  (`173-carrying-limits.md`) holding up to ten scrolls each, so a character
+  with sixteen items one of which is a joined pair already needs seventeen C64
+  slots. That is the player's choice of what stays behind; until something
+  asks, `goldbox.dos_codec.write_c64_save` raises `JoinedScrollsDoNotFit`
+  rather than dropping any.
+* **The Amiga loader's 120, PROBABLE.** It adds the scroll counts of every
+  joined scroll already loaded (`0x23AC8`, a list linked at record `$13A`) to
+  this one's, and over 120 (`0x269C2`) reads the scrolls into a scratch buffer
+  and frees the head. PROBABLE only because which list `$13A` links has not
+  been read; `goldbox.amiga_savegame.new_savegame` refuses a party over it.
+  **To settle it:** load an Amiga Silver Blades save whose party holds 121
+  scrolls in joined scrolls and count them on `ITEMS`.
+
+**Not yet proven in any running game.** Every byte above is the engines' own
+code read statically; no joined scroll converted by Wish has been loaded in
+DOSBox, WinUAE or VICE.
+
 ## What a following agent needs
 
 * **Name the fields in `goldbox/dos_port.py`**: `experience_award` (`u16le`)
@@ -239,9 +304,8 @@ it:** load the converted `SavGamA` in DOS, count CLERIC's 21 scrolls on
 * **They convert as themselves, not as a drop.** Both ports hold both fields,
   so the conversion copies them; every record either side has zero in them,
   and a player is told nothing because there is nothing to tell.
-* **The Silver Blades item chain is `#432 (A joined scroll in a DOS Silver Blades save shifts everything after it out of the character's pack)`'s**, and its hard part is not the
-  reading — `walk()` is done — but the destination: the C64's sixteen 16-byte
-  slots have three spell bytes per item and no chain, so a bundle of four
-  scrolls is a thing that does not fit, and
-  `.claude/rules/conversions.md` makes that the player's choice rather than a
-  silent drop.
+* **The Silver Blades item chain is read and converted** (section 4). What
+  is left on `#432 (A joined scroll in a DOS Silver Blades save shifts
+  everything after it out of the character's pack)` is the player's choice
+  when a pack does not fit the C64's sixteen slots, and a joined scroll
+  converted by Wish loaded in each destination game.

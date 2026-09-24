@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-from typing import Any, Iterable, Iterator, Sequence
+from typing import Any, Iterable, Iterator, NamedTuple, Sequence
 
 from .layout import Confidence
 
@@ -60,6 +60,7 @@ __all__ = [
     "Report",
     "Writer",
     "disposition",
+    "ScrollBundle",
     "undeclared",
 ]
 
@@ -109,6 +110,20 @@ class Value:
         which the reader cannot know.
         """
         return f"{destination}{self.how.value}{self.origin}{extra}"
+
+
+class ScrollBundle(NamedTuple):
+    """One joined scroll: `count` scrolls of `inventory` from index `first`.
+
+    `head` is the sixteen-byte item the JOIN command made: type `0x49`,
+    `quantity` and `weight` the number of scrolls, `value` their sum, and
+    no spells of its own (`SECRET GAME.OVR` routine at `0x29391`,
+    docs/215-the-dos-experience-award-and-the-scroll-bundle.md).
+    """
+
+    first: int
+    count: int
+    head: bytes
 
 
 #: The neutral vocabulary: every field a codec may set, and what it means.
@@ -221,7 +236,17 @@ FIELDS: dict[str, str] = {
     "gems": "gems, counted not valued",
     "jewelry": "pieces of jewelry, counted not valued",
     "inventory": "the items carried, each in the shared sixteen-byte item "
-                 "shape `goldbox/items.py` reads",
+                 "shape `goldbox/items.py` reads. A joined scroll is here as "
+                 "the scrolls it holds, one item each, in its place in the "
+                 "pack",
+    "scroll_bundles": "Secret of the Silver Blades' joined scrolls, each a "
+                      "ScrollBundle naming the run of `inventory` it holds "
+                      "-- `count` scrolls from index `first` -- and `head`, "
+                      "the sixteen-byte item the game's JOIN command made "
+                      "for them. Set only by a reader whose port keeps the "
+                      "join; a writer whose port keeps it writes the head "
+                      "and then its scrolls, and one whose port has none "
+                      "writes the scrolls as items of their own",
     # -- magic --------------------------------------------------------------
     "spells_known": "spell ids in the spellbook, ascending",
     "spells_memorised": "spell ids memorised, highest first",
