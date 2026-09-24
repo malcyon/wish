@@ -1672,3 +1672,27 @@ def test_a_slowed_variant_no_ordinary_cast_writes_stays_unconverted(title):
                  effects.RunningEffect(42, 6, 16, 0),
                  effects.RunningEffect(42, 64, 3, 0)):
         assert isinstance(effects.c64_row(title, node), effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", _ALL)
+def test_a_slowed_node_of_one_minute_converts_and_zero_cannot_be_built(title):
+    # RunningEffect refuses minutes 0, so the lower boundary is 1.
+    assert effects.c64_row(title, effects.RunningEffect(42, 1, 3, 0)) == (42, 3)
+    with pytest.raises(ValueError):
+        effects.RunningEffect(42, 0, 3, 0)
+
+
+@pytest.mark.parametrize("title", _ALL)
+@pytest.mark.parametrize("magnitude", [0, 16])
+def test_a_c64_slowed_row_with_a_magnitude_no_cast_writes_is_refused(
+        title, magnitude):
+    row = effects.Effect(63, 42, 0, 6, magnitude)
+    assert isinstance(effects.dos_record(title, row, 0), effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", _ALL)
+def test_a_c64_slowed_row_of_64_minutes_or_more_becomes_a_dos_node(title):
+    # The directions differ on purpose: the C64 game writes 3 + caster level
+    # minutes, so a longer row is passed through rather than refused.
+    row = effects.Effect(63, 42, 0, 70, 3)
+    assert isinstance(effects.dos_record(title, row, 0), effects.RunningEffect)

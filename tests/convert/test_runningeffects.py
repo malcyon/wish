@@ -1385,10 +1385,11 @@ def test_a_silver_blades_enlarge_at_23_is_written_as_the_c64s_enlarge_at_22():
     assert any("strength 23" in w for w in rep.warnings)
 
 
-def test_a_slowed_node_is_written_as_a_row_and_not_dropped():
+@pytest.mark.parametrize("game", _PARTY_TITLES, ids=lambda g: g.key)
+def test_a_slowed_node_is_written_as_a_row_and_not_dropped(game):
     payload = bytearray(0x1C00)
     _rec, rep = c64_codec.write(
-        _pool_character(bytes((42, 8, 0, 5, 0))), payload=payload,
+        _title_character(game, bytes((42, 8, 0, 5, 0))), payload=payload,
         party_slot=2, clock_minutes=0)
     assert not [d for d in rep.dropped if d.startswith("running_effects:")]
     assert 42 in [v[0] for v in _rows(payload).values()]
