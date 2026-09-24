@@ -556,6 +556,60 @@ def test_camp_list_reads_every_name_page_by_page_and_goes_back_to_the_world(tmp_
     assert len(list(tmp_path.glob("*-camp-list-*.txt"))) == 3
 
 
+@pytest.mark.parametrize("exit_reaches_magic", [True, False])
+def test_curse_camp_list_exits_whom_and_reaches_world_or_fails(
+        tmp_path, exit_reaches_magic):
+    whom = _whom_screen(("PHILIPPE",))
+    screens = {
+        "world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
+        "magic": _window({}, MAGIC), "whom": whom, "on-p": whom,
+        "on-x": whom,
+        "p": _window({1: "PHILIPPE IS AFFECTED BY:", 3: "INVISIBILITY"},
+                     A.CONTINUE),
+    }
+    moves = {
+        ("world", ("bar", "ENCAMP")): "camp",
+        ("camp", ("bar", "MAGIC")): "magic",
+        ("magic", ("bar", "DISPLAY")): "whom",
+        ("whom", ("party", 0)): "on-p",
+        ("on-p", ("key", "Return")): "p",
+        ("p", ("key", 0x0D)): "whom",
+        ("whom", ("party", 2)): "on-x",
+        ("on-x", ("key", "Return")): "magic" if exit_reaches_magic else "whom",
+        ("magic", ("bar", "EXIT")): "camp",
+        ("camp", ("bar", "EXIT")): "world",
+    }
+
+    class CurseSession(FakeSession):
+        def press_bar(self, label, row=24, timeout=0):
+            return self._go(("bar", label))
+
+        def to_world_bar(self, timeout=0):
+            return self.state == "world"
+
+    sess = CurseSession(screens, moves, "world")
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess = sess
+    run.out = tmp_path
+    run.log = A.Log(tmp_path)
+    run.shots = 0
+    try:
+        if exit_reaches_magic:
+            got = run.camp_list("PHILIPPE")
+            assert got["lists"] == {"PHILIPPE": ["INVISIBILITY"]}
+            assert sess.state == "world"
+            assert sess.sent[-4:] == [
+                ("party", 2), ("key", "Return"),
+                ("bar", "EXIT"), ("bar", "EXIT"),
+            ]
+        else:
+            with pytest.raises(A.StepFailed, match="world bar never came back"):
+                run.camp_list("PHILIPPE")
+            assert sess.state == "whom"
+    finally:
+        run.log.close()
+
+
 def test_items_reads_the_list_of_the_member_asked_for_and_leaves_it(tmp_path):
     screens = {
         "world": _window({}, WORLD_BAR),

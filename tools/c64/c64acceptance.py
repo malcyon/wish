@@ -624,7 +624,8 @@ class PoolRun:
             if not self.pick(target):
                 raise self.fail("whom", f"{target} could not be chosen")
             lists[target] = self._pages(target)
-        self.to_world()
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back after the camp list")
         return {"offered": offered, "lists": lists}
 
     def pick(self, target: str) -> bool:
@@ -804,10 +805,17 @@ class CurseRun(PoolRun):
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
 
     def to_world(self, tries: int = 10) -> bool:
-        ok = self.sess.to_world_bar(timeout=tries * 9)
-        if not ok:
-            self.capture("lost-world-route")
-        return ok
+        for _ in range(tries):
+            bar = self.bar()
+            if self.at_world(bar):
+                return True
+            if WHOM in bar or "EXIT" in bar:
+                if super().to_world(tries=1):
+                    return True
+            elif self.sess.to_world_bar(timeout=9):
+                return True
+        self.capture("lost-world-route")
+        return False
 
     def choose_bar(self, word: str, timeout: float) -> bool:
         return self.sess.press_bar(word, timeout=timeout)
