@@ -5640,6 +5640,25 @@ def test_preview_calls_a_filled_zero_type_slot_an_addition():
     assert inventory.original[0] == stale
 
 
+def test_preview_ignores_retired_bytes_cleared_by_deleting_a_live_item():
+    from types import SimpleNamespace
+
+    from editor.changes import item_changes
+    from editor.inventory import Inventory
+
+    stale = bytes([0, 0, 0, 9, 0, 0, 0, 0, 4, 0, 30, 50, 0, 0, 0, 0])
+    dart = bytes([1, 0, 0, 9, 0, 0, 0, 0, 4, 0, 30, 50, 0, 0, 0, 0])
+    blocks = [stale] + [bytes(16)] * 5 + [dart] + [bytes(16)] * 9
+    inventory = Inventory.from_blocks(blocks, names={9: "DART"})
+    inventory.delete(6)
+
+    assert item_changes(SimpleNamespace(inventory=inventory)) == [
+        "item 6 removed: DART"
+    ]
+    assert inventory.original[0] == stale
+    assert inventory.raws[0] == bytes(16)
+
+
 def test_an_unwritable_field_is_read_only_whatever_the_layout_allows():
     gold = next(f for f in editable_fields() if f.name == "gold")
     assert not binding_for(gold, in_save=False).read_only

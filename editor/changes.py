@@ -72,6 +72,8 @@ def item_changes(member) -> list[str]:
         if old == new:
             continue
         was, is_ = inv.original_item(n), inv.item(n)
+        if was.is_empty and is_.is_empty:
+            continue
         if was.is_empty and not is_.is_empty:
             out.append(f"item {n} added: {describe_item(is_, inv.names)}")
         elif not was.is_empty and is_.is_empty:
