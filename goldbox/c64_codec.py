@@ -1089,9 +1089,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
 
     # A dual-classed former paladin: the C64 keeps no count for a class he
     # has left, zeroes 0x012 at the class change, and refills it to the full
-    # count for his old level when he regains the class. A DOS count that is
-    # already that full count, with no timer running, is what the regain
-    # rebuilds, so nothing is lost by writing zero.
+    # count for his old level when he regains the class, whatever it held;
+    # the change also clears every effect row he owns. DOS cannot CURE before
+    # the regain either, and gives him his stored count then. Where that is
+    # at most the full count and no running node would refill him, writing
+    # zero with no row lets him do on the C64 everything he could in DOS;
+    # the other states are reported below. See
+    # `docs/234-a-paladins-cure-disease-across-dos-and-the-c64.md`.
     former_paladin = ((former.value.get("paladin") or 0)
                       if former is not None else 0)
     # A former paladin who has since passed his old level is written back
@@ -1100,17 +1104,42 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             and {n for n, lv in former.value.items() if lv} == {"paladin"}
             and _has_regained(w.get("level"), former_paladin)):
         level_paladin = former_paladin
-    regained_by_engine = (
-        cure_entry is not None and level_paladin == 0 and former_paladin > 0
-        and cure_node is None and cure_value
-        and cure_value == paladin.full_count(former_paladin)
-        == paladin.dos_full_count(former_paladin))
+    former_lost = ""
+    if cure_entry is not None and level_paladin == 0 and former_paladin > 0:
+        full_old = paladin.full_count(former_paladin)
+        if (paladin.dos_full_count(former_paladin) != full_old
+                and (cure_value or cure_node is not None)):
+            former_lost = (f"former paladin level {former_paladin}: DOS "
+                           f"refreshes to {paladin.dos_full_count(former_paladin)}"
+                           f", the C64 regain to {full_old}")
+        elif cure_value > full_old:
+            former_lost = (f"{cure_value} uses is more than the {full_old} "
+                           f"the C64 regain gives a former paladin "
+                           f"{former_paladin}")
+        elif cure_node is not None and cure_value:
+            # DOS refills him when this node ends; if he regains first, the
+            # C64 has already refilled him at the regain and refills again
+            # only seven days after his next cure. A row cannot stand in for
+            # the node: one that ends before the regain writes 1 into 0x012
+            # and gives a non-paladin CURE.
+            former_lost = (f"{cure_value} uses with a cure timer running "
+                           f"({cure_node.minutes} minutes): no C64 state "
+                           "refills a former paladin when the timer ends")
+        elif cure_value or cure_node is not None:
+            rep.note(cure_off, cure_size,
+                     f"paladin_cures: 0 -- former paladin {former_paladin} "
+                     f"with {cure_value} uses"
+                     + (f" and a cure timer ({cure_node.minutes} minutes)"
+                        if cure_node is not None else "")
+                     + f"; the C64 regain gives him {full_old}")
 
     if cure_entry is None or level_paladin == 0:
         # Pool of Radiance has no paladin at all, and a character with no
         # paladin level in a title that does gets 0/0, which is what GEN
         # writes -- both byte and any value it held are a loss, not a copy.
-        if cure_value and not regained_by_engine:
+        if former_lost:
+            _row_lost("paladin_cures", former_lost)
+        elif cure_value and (cure_entry is None or not former_paladin):
             _row_lost("paladin_cures",
                       "Pool of Radiance keeps no cure-disease byte" if
                       cure_entry is None else
@@ -1884,9 +1913,12 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "c64_cure_write` (#600) -- a paladin whose count and "
                       "recovery no C64 state reproduces exactly still gets "
                       "the byte, reported as a loss rather than refused. "
-                      "Zero, and any value lost rather than converted, for "
-                      "a title with no paladin or a character with no "
-                      "paladin level"),
+                      "Zero for a former paladin, whose count and timer the "
+                      "C64 regain rebuilds at the full count for his old "
+                      "level -- lost only when DOS would refill him from a "
+                      "running timer, or holds more than that count. Zero, "
+                      "and any value lost rather than converted, for a title "
+                      "with no paladin or a character who was never one"),
     ("lay_on_hands_minutes", "record 0x013: 1 when the source holds no "
                              "spent use, 0 with a row in the save's shared "
                              "effect arrays (id 140 Curse, 109 Silver "

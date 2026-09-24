@@ -470,17 +470,25 @@ def test_save_as_prepares_what_convert_writes_amiga_directions(
 # he regains the class, so a DOS count equal to that full count loses nothing.
 # ---------------------------------------------------------------------------
 
-def _former_paladin_write(former_level, cures):
-    """A blank Curse DOS record made a magic-user 1 who left paladin at
-    `former_level` holding `cures` uses, written to a C64 record."""
-    from goldbox import c64_codec
+def _former_paladin_write(former_level, cures, node_minutes=None,
+                          game=dos_port.CURSE_OF_THE_AZURE_BONDS,
+                          payload=None):
+    """A blank DOS record made a magic-user 1 who left paladin at
+    `former_level` holding `cures` uses, and a cure node with `node_minutes`
+    left if given, written to a C64 record in save slot 0."""
+    from goldbox import c64_codec, effects, paladin
     char = dos_codec.to_neutral(dos_codec.DosCharacter(
-        bytes(dos_port.CURSE_OF_THE_AZURE_BONDS.record_size),
-        deltas=dos_port.CURSE_OF_THE_AZURE_BONDS))
+        bytes(game.record_size), deltas=game))
     char.set("levels", {"magic-user": 1}, "test")
     char.set("former_levels", {"paladin": former_level}, "test")
     char.set("paladin_cures", cures, "test")
-    return c64_codec.write(char)
+    if node_minutes is not None:
+        (eid, _magnitude), = [v for k, v in paladin.CURE_TIMER.items()
+                              if k == game.key]
+        char.set("running_effects", [effects.RunningEffect(
+            eid, node_minutes, 0, 1).to_record()], "test")
+    return c64_codec.write(char, payload=payload,
+                           party_slot=0 if payload is not None else None)
 
 
 def test_a_dual_classed_former_paladin_at_his_full_count_loses_nothing():
@@ -490,12 +498,84 @@ def test_a_dual_classed_former_paladin_at_his_full_count_loses_nothing():
     assert not [x for x in rep.losses if "paladin_cures" in x]
 
 
-def test_a_dual_classed_former_paladin_below_his_full_count_still_reports():
-    """Paladin 6 holds 1 of his 2; the regain would give him 2, so the DOS
-    state is not reproduced and the loss is kept."""
-    rec, rep = _former_paladin_write(6, 1)
-    assert rec.get("paladin_cures") == 0
-    assert [x for x in rep.losses if "paladin_cures" in x]
+_TITLES = [pytest.param(dos_port.CURSE_OF_THE_AZURE_BONDS, id="curse"),
+           pytest.param(dos_port.SECRET_OF_THE_SILVER_BLADES,
+                        id="silver-blades")]
+
+
+@pytest.mark.parametrize("game", _TITLES)
+@pytest.mark.parametrize("former_level, cures, node_minutes", [
+    pytest.param(6, 1, None, id="paladin-6-one-of-two"),
+    pytest.param(11, 1, None, id="paladin-11-one-of-three"),
+    pytest.param(11, 2, None, id="paladin-11-two-of-three"),
+    pytest.param(6, 0, None, id="paladin-6-none"),
+    pytest.param(5, 0, 4000, id="paladin-5-spent-timer-running"),
+    pytest.param(11, 0, 9000, id="paladin-11-spent-timer-running"),
+])
+def test_a_former_paladin_the_c64_regain_refills_converts_with_no_loss(
+        game, former_level, cures, node_minutes):
+    """A former paladin below his old level's full count, or with none left
+    and a cure timer running, converts with no loss.
+
+    Neither engine lets him CURE before he regains the class, and at the
+    regain DOS gives him his stored count (at most the full count for the
+    level he left at) while the C64 gives him that full count whatever was
+    written. So the C64 must show neither CURE nor HEAL until then (0x012 and
+    0x013 zero) and must hold no cure row of his: a row that ended before
+    the regain would write 1 into 0x012 and give a magic-user CURE.
+    """
+    from goldbox import effects, paladin
+    payload = bytearray(0x4000)
+    rec, rep = _former_paladin_write(former_level, cures, node_minutes,
+                                     game=game, payload=payload)
+    raw = rec.to_bytes()
+    assert raw[0x012] == 0 and raw[0x013] == 0
+    cure_id = paladin.CURE_TIMER[game.key][0]
+    assert not [r for r in effects.active_effects(bytes(payload))
+                if r.id == cure_id]
+    assert not [x for x in rep.losses if "paladin_cures" in x]
+    assert paladin.full_count(former_level) >= cures
+
+
+@pytest.mark.parametrize("game", _TITLES)
+def test_a_former_paladin_below_his_full_count_comes_back_to_dos_at_it(game):
+    """DOS paladin 6 who left with 1 of his 2 uses, converted to the C64 and
+    back: the C64 holds 0 for every former paladin before the regain, so the
+    way back writes the full count the C64 regain would give him, 2. He can
+    cure at least as often as before, and neither leg reports a loss."""
+    from goldbox import c64_codec
+    rec, rep = _former_paladin_write(6, 1, game=game)
+    assert not [x for x in rep.losses if "paladin_cures" in x]
+    again = c64_codec.read(rec, game=game.key)
+    assert again.get("former_levels") == {"paladin": 6}
+    back, _itm, _spc, rep_back = dos_codec.write(again)
+    at = dos_port.FIELDS_BY_NAME_FOR[game.key]["paladin_cures"].offset
+    assert back[at] == 2
+    assert not [x for x in rep_back.dropped if "paladin_cures" in x]
+
+
+@pytest.mark.parametrize("game", _TITLES)
+@pytest.mark.parametrize("former_level, cures, node_minutes, why", [
+    pytest.param(6, 1, 4000, "cure timer running", id="uses-and-a-timer"),
+    pytest.param(10, 3, None, "more than the 2", id="above-the-full-count"),
+    pytest.param(16, 1, None, "DOS refreshes to 4", id="level-16"),
+])
+def test_a_former_paladin_the_c64_regain_cannot_reproduce_still_reports(
+        game, former_level, cures, node_minutes, why):
+    """The states the C64 regain does not cover keep their loss line:
+    uses left with a timer running (DOS refills him when it ends, even after
+    a regain, and the C64 does not), more uses than the regain gives, and a
+    level where the two engines' full counts differ."""
+    from goldbox import effects, paladin
+    payload = bytearray(0x4000)
+    rec, rep = _former_paladin_write(former_level, cures, node_minutes,
+                                     game=game, payload=payload)
+    raw = rec.to_bytes()
+    assert raw[0x012] == 0 and raw[0x013] == 0
+    cure_id = paladin.CURE_TIMER[game.key][0]
+    assert not [r for r in effects.active_effects(bytes(payload))
+                if r.id == cure_id]
+    assert [x for x in rep.losses if "paladin_cures" in x and why in x]
 
 
 @pytest.mark.parametrize("game", [dos_port.CURSE_OF_THE_AZURE_BONDS,

@@ -179,6 +179,30 @@ def test_dos_spends_a_use_and_starts_a_node_only_when_he_has_none(title):
     assert all(where == "GAME.OVR" for where, _, _ in finding["uses"])
 
 
+@pytest.mark.parametrize("title, divide, command", [
+    ("curse", "div", 0x3BB4D),
+    ("silver-blades", "idiv", 0x3CD94),
+])
+def test_dos_leaves_a_former_paladins_node_running_and_refreshes_it_at_level_0(
+        title, divide, command):
+    """HUMAN CHANGE CLASSES removes no effect and touches neither the effect
+    chain nor the uses byte, so a cure node running at the change runs on.
+    When it ends before the regain, the refresh's level is 0: Curse's
+    unsigned `div` overflows (0xFFFFFFFF / 5), Silver Blades' `idiv` writes
+    1. Either way the byte is inert until the regain, which is what lets the
+    C64 writer give a former paladin zero and no row."""
+    finding = _dos_finding(title)
+    assert finding["refresh_divide"] == divide
+    try:
+        change = curedisease.dos_class_change(title)
+    except (FileNotFoundError, SystemExit) as exc:
+        pytest.skip(str(exc))
+    assert change["routine"] == command
+    assert change["remove_affect"] == ()
+    assert change["chain"] == ()
+    assert change["uses"] == ()
+
+
 def test_dos_and_the_c64_refill_to_the_same_count_through_level_15():
     assert [curedisease.dos_full_count(level) for level in range(1, 16)] == \
         [curedisease.full_count(level) for level in range(1, 16)]

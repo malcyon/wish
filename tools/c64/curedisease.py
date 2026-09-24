@@ -419,12 +419,83 @@ def dos_inspect(title: str, game: pathlib.Path | None = None) -> dict:
                    for t in handler))
     seeds = tuple(u for u in uses if u[2].startswith("mov")
                   and u[2].endswith(", 1"))
+    # `cwd` then `div cx` is unsigned: at level 0, a former paladin who has
+    # not regained, (0 - 1) is 0xFFFFFFFF / 5, which overflows the quotient
+    # and raises the CPU's divide error; `idiv cx` gives 0 and writes 1.
+    divide = next((t.split()[0] for t in handler
+                   if t in ("div cx", "idiv cx")), None)
     return {"title": title, "counter": counter, "effect_id": cure.effect_id,
             "minutes": cure.minutes, "value": cure.value, "flag": cure.flag,
             "cure_routine": cure.routine, "decrement_guarded": guarded,
             "node_only_if_absent": only_if_absent,
             "handler": (where, at), "handler_refreshes": refresh,
+            "refresh_divide": divide,
             "uses": tuple(uses), "seeds": seeds}
+
+
+#: `former_class_levels` in each DOS record: the array HUMAN CHANGE CLASSES
+#: writes the old class's level into, and nothing else writes.
+FORMER_CLASS_LEVELS = {"curse": 0x111, "silver-blades": 0x118}
+
+
+def dos_class_change(title: str, game: pathlib.Path | None = None) -> dict:
+    """What DOS HUMAN CHANGE CLASSES does to a paladin's cure state.
+
+    The command is the routine holding the one write to
+    `former_class_levels`. Its body and every routine it reaches by a near
+    call are swept for a call to `remove_affect`, a use of the record's
+    effect-chain head and a use of the cure-uses byte. Its far calls go to
+    other units and are listed, not followed.
+    """
+    import re
+    import struct
+
+    import capstone
+
+    from tools.dos import layonhands
+
+    game = game or layonhands.find_game(title)
+    eng = layonhands.engine(game, title)
+    counter = dos_inspect(title, game)["counter"]
+    store = b"\x26\x88\x85" + struct.pack("<H", FORMER_CLASS_LEVELS[title])
+    sites = [m.start() for m in re.finditer(re.escape(store), eng.ovr)]
+    if len(sites) != 1:
+        raise SystemExit(f"{title}: {len(sites)} writes to former_class_levels")
+    routine = eng.ovr.rfind(b"\x55\x89\xe5", 0, sites[0])
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    remove = "0x%x, 0x%x" % eng.remove_affect
+    chain = re.compile(r"\+ " + hex(eng.chain) + r"\]")
+    uses = re.compile(r"\+ " + hex(counter) + r"\]")
+    seen: set[int] = set()
+    far: set[str] = set()
+    found = {"remove_affect": [], "chain": [], "uses": []}
+    todo = [routine]
+    while todo:
+        at = todo.pop()
+        if at in seen:
+            continue
+        seen.add(at)
+        for insn in md.disasm(eng.ovr[at:at + 0x3000], at):
+            if insn.mnemonic == "call":
+                try:
+                    todo.append(int(insn.op_str, 0))
+                except ValueError:
+                    raise SystemExit(f"{title}: indirect call at "
+                                     f"{insn.address:#x}") from None
+            elif insn.mnemonic == "lcall":
+                far.add(insn.op_str)
+                if insn.op_str == remove:
+                    found["remove_affect"].append(insn.address)
+            if chain.search(insn.op_str):
+                found["chain"].append(insn.address)
+            if uses.search(insn.op_str):
+                found["uses"].append(insn.address)
+            if insn.mnemonic == "retf":
+                break
+    return {"title": title, "former_write": sites[0], "routine": routine,
+            "routines": tuple(sorted(seen)), "far_calls": tuple(sorted(far)),
+            "remove_affect": tuple(found["remove_affect"]),
+            "chain": tuple(found["chain"]), "uses": tuple(found["uses"])}
 
 
 #: Moved to `goldbox/paladin.py` (#626): `goldbox/c64_codec.py` needs
