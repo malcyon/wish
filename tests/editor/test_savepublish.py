@@ -2418,3 +2418,41 @@ def test_a_writer_refusing_a_party_is_refused_by_save_as_and_writes_nothing(
     assert editor.path == path
     assert editor._widgets["gold"].value() == 9999
     assert not editor._child("destination_section").isHidden()
+
+
+@pytest.mark.parametrize("error", [
+    OSError("rehearsal read failed"),
+    ValueError("unexpected writer value"),
+])
+def test_a_rehearsal_failure_keeps_the_editor_open_and_writes_nothing(
+        app, tmp_path, monkeypatch, caplog, error):
+    from test_saveasui import _confirm
+
+    path = synthetic_save(tmp_path, "open.d64")
+    before = path.read_bytes()
+    editor = EditorBinding(make_root(), str(path))
+    editor.roster.selectRow(0)
+    editor._widgets["gold"].setValue(9999)
+    monkeypatch.setattr(editor, "game_files_for", lambda _game: object())
+    editor.begin_save_as("dos")
+    out = tmp_path / "folder"
+    editor._child("destination_dos_folder").setText(str(tmp_path))
+
+    def fails(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(saveplan, "rehearse", fails)
+    with caplog.at_level("ERROR", logger="wish.editor.window"):
+        said = _confirm(editor, monkeypatch, out)
+
+    assert said == [(ew.CANNOT_SAVE_TITLE, ew.SAVE_AS_FAILED)]
+    assert editor.root is not None
+    assert editor.party is not None
+    assert editor.path == path
+    assert editor._widgets["gold"].value() == 9999
+    assert not editor._child("destination_section").isHidden()
+    assert not out.exists()
+    assert path.read_bytes() == before
+    assert any(record.exc_info and record.exc_info[1] is error
+               and str(out) in record.getMessage()
+               for record in caplog.records)

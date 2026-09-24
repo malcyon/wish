@@ -2616,6 +2616,9 @@ class EditorBinding(QObject):
             # `DroppedFields` is, so it reads the same sentence.
             _log.debug("Save As to %s refused: %s", path, exc)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+        except Exception:
+            _log.exception("could not prepare a Save As to %s", path)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
         return None
 
     def _publish_plan(self, plan, assets, _retried: bool = False) -> None:
