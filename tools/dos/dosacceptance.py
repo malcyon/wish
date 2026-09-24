@@ -52,6 +52,7 @@ Evidence goes to `~/.cache/wish/acceptance/<issue>/<sha>-<run>/`: `run.jsonl`,
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -163,6 +164,16 @@ def parse_step(text: str) -> Step:
         return Step(kind, text, name=words[1])
     raise ValueError(
         f"not a step: {text!r} (load, camp, 'rest 5m', 'save D', 'shot NAME', read)")
+
+
+def validate_steps(steps: list[Step]) -> None:
+    """Refuse an order the driver would only find out after booting DOSBox."""
+    camped = False
+    for step in steps:
+        if step.kind == "camp":
+            camped = True
+        elif step.kind in ("rest", "save") and not camped:
+            raise ValueError(f"{step.kind} needs camp first: {step.text!r}")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -607,62 +618,80 @@ def run(args) -> int:
 
     letter = args.slot.upper()
     saved: list[str] = []
-    slot = dosbox.claim(args.note)
-    session = dosbox.Session(slot, dosbox.find_game(TITLES[args.title]))
-    try:
-        session.stage(fresh=True)
-        shots = session.dir / "shots"
-        shutil.rmtree(shots, ignore_errors=True)
-        shots.mkdir(parents=True)
-        took = install(save, session.save_dir, letter)
-        installed = out / "installed"
-        shutil.rmtree(installed, ignore_errors=True)
-        shutil.copytree(session.save_dir, installed)
-        summary["installed"] = took
-        note(event="staged", **took)
-        session.boot(fresh=False)
-        d = Driver(session, note, letter)
-        results = []
-        for step in steps:
-            note(event="step", step=step.text)
-            if step.kind == "load":
-                r = d.load()
-            elif step.kind == "camp":
-                r = d.camp()
-            elif step.kind == "rest":
-                r = d.rest(step.minutes)
-            elif step.kind == "save":
-                r = d.save(step.letter)
-                saved.append(step.letter)
-            elif step.kind == "shot":
-                r = {"shot": d.shot(step.name)}
-            else:
-                r = read_step(session.save_dir, out, letter, saved, steps, expects)
-                summary["read"] = r
-            results.append({"step": step.text, **r})
-            note(event="done", step=step.text, **{k: v for k, v in r.items()
-                                                  if k != "slots"})
-        summary["results"] = results
-        summary["completed"] = True
-    except StepFailed as e:
-        summary["lost"] = str(e)
-        note(event="lost", why=str(e))
-    finally:
+    with contextlib.ExitStack() as stack:
+        # Registered first so it runs last, and every callback runs even when an
+        # earlier one raises: a failed close must not leave a slot leased.
+        stack.callback(log.close)
+        game = dosbox.find_game(TITLES[args.title])
+        slot = dosbox.claim(args.note)
+        stack.callback(slot.release)
+        session = dosbox.Session(slot, game)
+        stack.callback(session.close)
+
+        def keep_evidence():
+            write_summary()
+            try:
+                kept = out / "shots"
+                kept.mkdir(exist_ok=True)
+                for png in sorted((session.dir / "shots").glob("*.png")):
+                    shutil.copy(png, kept / png.name)
+                if saved and "read" not in summary:
+                    resave = out / "resave"
+                    shutil.rmtree(resave, ignore_errors=True)
+                    shutil.copytree(session.save_dir, resave)
+            except OSError as e:
+                print(f"could not keep the evidence: {e}", file=sys.stderr)
+            write_summary()
+
+        stack.callback(keep_evidence)
+        d: Driver | None = None
         try:
-            kept = out / "shots"
-            kept.mkdir(exist_ok=True)
-            for png in sorted((session.dir / "shots").glob("*.png")):
-                shutil.copy(png, kept / png.name)
-            if saved and "read" not in summary:
-                resave = out / "resave"
-                shutil.rmtree(resave, ignore_errors=True)
-                shutil.copytree(session.save_dir, resave)
-        except OSError as e:
-            print(f"could not keep the evidence: {e}", file=sys.stderr)
-        write_summary()
-        session.close()
-        slot.release()
-        log.close()
+            session.stage(fresh=True)
+            shots = session.dir / "shots"
+            shutil.rmtree(shots, ignore_errors=True)
+            shots.mkdir(parents=True)
+            took = install(save, session.save_dir, letter)
+            installed = out / "installed"
+            shutil.rmtree(installed, ignore_errors=True)
+            shutil.copytree(session.save_dir, installed)
+            summary["installed"] = took
+            note(event="staged", **took)
+            session.boot(fresh=False)
+            d = Driver(session, note, letter)
+            results = []
+            for step in steps:
+                note(event="step", step=step.text)
+                if step.kind == "load":
+                    r = d.load()
+                elif step.kind == "camp":
+                    r = d.camp()
+                elif step.kind == "rest":
+                    r = d.rest(step.minutes)
+                elif step.kind == "save":
+                    r = d.save(step.letter)
+                    saved.append(step.letter)
+                elif step.kind == "shot":
+                    r = {"shot": d.shot(step.name)}
+                else:
+                    r = read_step(session.save_dir, out, letter, saved, steps, expects)
+                    summary["read"] = r
+                results.append({"step": step.text, **r})
+                note(event="done", step=step.text,
+                     **{k: v for k, v in r.items() if k != "slots"})
+            summary["results"] = results
+            summary["completed"] = True
+        except StepFailed as e:
+            summary["lost"] = str(e)
+            note(event="lost", why=str(e))
+        except (TimeoutError, dosbox.DosboxUnavailable, dosbox.BlankCapture) as e:
+            why = f"{type(e).__name__}: {e}"
+            if d is not None:
+                try:
+                    why = str(d.fail("timeout", why))
+                except Exception:  # noqa: BLE001 -- the capture may be what failed
+                    pass
+            summary["lost"] = why
+            note(event="lost", why=why)
     return 0 if summary["completed"] else 1
 
 
@@ -743,12 +772,13 @@ def main(argv: list[str] | None = None) -> int:
             parse_expect(e)
         for r in args.fixture_row:
             parse_row(r)
+        validate_steps([parse_step(s) for s in args.steps])
     except ValueError as e:
         ap.error(str(e))
     if not re.fullmatch(r"[A-Ja-j]", args.slot):
         ap.error("--slot is one letter, A to J")
     if not re.fullmatch(r"[\w-]+", args.run) or not re.fullmatch(r"[\w-]+", args.issue):
-        ap.error("--issue and --run are plain names")
+        ap.error("--issue and --run are simple names")
     return run(args)
 
 

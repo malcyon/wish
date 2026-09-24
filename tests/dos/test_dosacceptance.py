@@ -353,3 +353,114 @@ def test_the_fixture_party_converts_with_its_bless_and_reads_back(tmp_path):
     assert [n["raw"] for n in built["nodes"]["CHRDATA1.SPC"]] == ["012f000100"]
     slot = da.read_slot(tmp_path / "source", "A")
     assert da.judge(da.Expect("BRUTUS", 1, 47, 1), slot)["verdict"] == "accepts"
+
+
+class _Slot:
+    def __init__(self, log):
+        self.log = log
+
+    def release(self):
+        self.log.append("release")
+
+
+class _Session:
+    """Stands in for dosbox.Session; `fail_on` names the method that raises."""
+
+    def __init__(self, tmp_path, log, fail_on=None):
+        self.dir = tmp_path / "session"
+        self.save_dir = self.dir / "SAVE"
+        self.log, self.fail_on = log, fail_on
+
+    def stage(self, fresh=True):
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+
+    def boot(self, fresh=False):
+        pass
+
+    def close(self):
+        self.log.append("close")
+        if self.fail_on == "close":
+            raise RuntimeError("close broke")
+
+
+def _run_args(tmp_path, steps):
+    import argparse
+    return argparse.Namespace(
+        title="pool", slot="A", steps=steps, expect=[], fixture_row=[], save=None,
+        out=str(tmp_path / "out"), issue="661", run="t", note="t")
+
+
+def _fake_run(monkeypatch, tmp_path, *, find_game=None, session_fail=None,
+              menu_error=None):
+    log: list[str] = []
+    monkeypatch.setattr(da, "git_state", lambda: {"sha": "0" * 40, "dirty": False})
+    monkeypatch.setattr(da, "install", lambda *a: {})
+
+    def find(stem):
+        if find_game:
+            raise find_game
+        return tmp_path / "game"
+
+    def claim(note=""):
+        log.append("claim")
+        return _Slot(log)
+
+    monkeypatch.setattr(dosbox, "find_game", find)
+    monkeypatch.setattr(dosbox, "claim", claim)
+    monkeypatch.setattr(dosbox, "Session",
+                        lambda slot, game: _Session(tmp_path, log, session_fail))
+
+    class Game:
+        def to_main_menu(self):
+            raise menu_error
+
+    class D:
+        def __init__(self, session, note, letter):
+            self.game = Game()
+
+        def shot(self, name):
+            (tmp_path / "session" / "shots").mkdir(parents=True, exist_ok=True)
+            (tmp_path / "session" / "shots" / f"{name}.png").write_bytes(b"x")
+            return name
+
+        def fail(self, label, why):
+            return da.StepFailed(f"{why}; see {self.shot('lost-' + label)}.png")
+
+        def load(self):
+            self.game.to_main_menu()
+
+    monkeypatch.setattr(da, "Driver", D)
+    return log
+
+
+def test_a_missing_game_is_found_before_a_slot_is_claimed(monkeypatch, tmp_path):
+    log = _fake_run(monkeypatch, tmp_path, find_game=FileNotFoundError("no game"))
+    with pytest.raises(FileNotFoundError):
+        da.run(_run_args(tmp_path, ["load"]))
+    assert "claim" not in log
+
+
+def test_a_timeout_before_the_load_writes_the_lost_shot_and_reason(monkeypatch, tmp_path):
+    import json
+    _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("no menu"))
+    assert da.run(_run_args(tmp_path, ["load"])) == 1
+    out = tmp_path / "out"
+    assert (out / "shots" / "lost-timeout.png").is_file()
+    assert "no menu" in json.loads((out / "summary.json").read_text())["lost"]
+
+
+def test_a_failed_close_still_releases_the_slot_and_the_log(monkeypatch, tmp_path):
+    log = _fake_run(monkeypatch, tmp_path, session_fail="close",
+                    menu_error=TimeoutError("x"))
+    with pytest.raises(RuntimeError, match="close broke"):
+        da.run(_run_args(tmp_path, ["load"]))
+    assert log == ["claim", "close", "release"]
+    assert (tmp_path / "out" / "summary.json").is_file()
+
+
+def test_a_bad_step_order_is_refused_before_a_slot_is_claimed(monkeypatch, tmp_path, capsys):
+    log = _fake_run(monkeypatch, tmp_path)
+    with pytest.raises(SystemExit):
+        da.main(["--save", str(tmp_path), "--steps", "load", "rest 5m"])
+    assert log == []
+    assert "needs camp first" in capsys.readouterr().err
