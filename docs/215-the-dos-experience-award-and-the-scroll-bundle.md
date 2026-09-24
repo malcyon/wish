@@ -288,6 +288,18 @@ whole Amiga saved game.
   **To settle it:** load an Amiga Silver Blades save whose party holds 121
   scrolls in joined scrolls and count them on `ITEMS`.
 
+**Refusals that remain.** DOS allows sixteen heads of up to ten scrolls; the
+C64 has sixteen slots and the Amiga a probable 120-scroll limit.
+`JoinedScrollsDoNotFit` is a stop, not a completed conversion, until a
+chooser exists, and it carries no text a player reads yet.
+
+**UNVERIFIED: the head's weight.** The writer stores `weight x quantity` for
+a joined-scroll head, and JOIN makes both the scroll count, so the head counts
+as that number squared. The recount (`0x3A2C7`) is known only to walk head
+items; how it weighs a head has not been read. **To settle it:** load a
+joined-scroll save in DOSBox and compare the stored `encumbrance` with the
+engine's own recount.
+
 **Not yet proven in any running game.** Every byte above is the engines' own
 code read statically; no joined scroll converted by Wish has been loaded in
 DOSBox, WinUAE or VICE.

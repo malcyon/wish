@@ -96,8 +96,8 @@ def _record(item_count: int) -> bytes:
 
 
 def _pack_file() -> bytes:
-    """A sword, a joined scroll of two, and plate mail after it: four heads'
-    worth of records would be five, and `item_count` is three."""
+    """A sword, a joined scroll of two, and plate mail after it: the file holds
+    five records for three heads, and `item_count` is three."""
     return bytes(SWORD) + _joined(SCROLL_A, SCROLL_B) + bytes(PLATE)
 
 
@@ -132,8 +132,10 @@ def test_the_plate_mail_after_a_joined_scroll_is_still_in_the_pack(tmp_path):
 
 def test_the_engines_own_encumbrance_counts_the_head_and_not_its_scrolls(
         tmp_path):
-    """The DOS recount walks the head items only (`0x3A2C7`), so the joined
-    scroll weighs its head's `weight x quantity`: 2 x 2 here."""
+    """The DOS recount walks the head items only (`0x3A2C7`), so the scrolls
+    behind the head add nothing of their own.  That the head itself weighs
+    `weight x quantity`, 2 x 2 here, is UNVERIFIED: the routine has not been
+    read for it, so this pins the project's own formula and not the engine's."""
     char = _read(tmp_path, _pack_file(), 3)
     assert char.expected_encumbrance() == \
         sum(char.money.values()) + 60 + 2 * 2 + 450
@@ -354,6 +356,80 @@ def test_deleting_a_scroll_on_the_sheet_leaves_the_other_one_whole(tmp_path):
     assert not any(kept[0x2A:0x2E]) and not any(kept[0x3F:0x43])
     count = dos_port.FIELDS_BY_NAME_FOR[SSB.key]["item_count"].offset
     assert out.record[count] == 3
+
+
+def test_a_joined_scroll_across_slot_sixteen_is_written_back_whole(tmp_path):
+    """Fifteen items and a joined pair: the second scroll is the seventeenth
+    node, past the sheet's sixteen, and an edit elsewhere must still write
+    the head and both scrolls."""
+    original = _crowded(15, 2)
+    char = _read(tmp_path, original, 16)
+    rec, _ = dos_codec.to_c64_record(char)
+    assert len(_slots(rec)) == 16
+    after = c64_codec.CharacterRecord(rec.to_bytes(), rec.stored_size)
+    after.gold = 1234
+    out = rewrite.rewrite_dos(char, rec, after, GAME)
+    assert out.items == original
+    assert len(dos_codec.item_nodes(out.items, STRIDE)) == 16
+
+
+def _amiga_char(tmp_path, live_in_scrolls: bool = False):
+    """The Amiga character, optionally with a live `next` and chain pointer
+    in each scroll, as a running game leaves them."""
+    _neutral, built, _report = _amiga(tmp_path)
+    block = bytearray(built.block_bytes())
+    if live_in_scrolls:
+        size = SILVER_BLADES_DELTAS.item_size
+        for node in (2, 3):
+            at = SILVER_BLADES_DELTAS.record_size + node * size
+            for off in (amiga_later.AMIGA_LATER_ITEM_NEXT,
+                        amiga_later.AMIGA_SSB_SCROLL_CHAIN):
+                block[at + off:at + off + 4] = LIVE
+    char, _end = amiga_later._amiga_block(bytes(block), 0,
+                                          SILVER_BLADES_DELTAS)
+    rec, _ = dos_codec.neutral_to_c64_record(amiga_later.to_neutral_later(char))
+    return char, rec
+
+
+def test_deleting_a_scroll_of_an_amiga_joined_scroll_leaves_the_other_alone(
+        tmp_path):
+    """The Amiga pack is a sword, a joined pair and plate mail; deleting the
+    first scroll on the sheet leaves a scroll with no next and no chain."""
+    char, rec = _amiga_char(tmp_path, live_in_scrolls=True)
+    raw = bytearray(rec.get_raw("inventory"))
+    raw[16:32] = bytes(16)
+    after = c64_codec.CharacterRecord(rec.to_bytes(), rec.stored_size)
+    after.set_raw("inventory", bytes(raw))
+    out = rewrite.rewrite_amiga_later(char, rec, after, GAME)
+    items = out.character.items
+    assert [it.get("type_index") for it in items] == [18, 0x27, 5]
+    kept = items[1].raw
+    assert items[1].get("charges") == 4
+    nxt = amiga_later.AMIGA_LATER_ITEM_NEXT
+    chain = amiga_later.AMIGA_SSB_SCROLL_CHAIN
+    assert kept[nxt:nxt + 4] == bytes(4) and kept[chain:chain + 4] == bytes(4)
+
+
+def test_an_amiga_edit_elsewhere_leaves_the_joined_scroll_bytes_alone(
+        tmp_path):
+    char, rec = _amiga_char(tmp_path)
+    after = c64_codec.CharacterRecord(rec.to_bytes(), rec.stored_size)
+    after.gold = 1234
+    out = rewrite.rewrite_amiga_later(char, rec, after, GAME)
+    size = SILVER_BLADES_DELTAS.item_size
+    start = SILVER_BLADES_DELTAS.record_size
+    assert out.character.block_bytes()[start:start + 5 * size] == \
+        char.block_bytes()[start:start + 5 * size]
+
+
+def test_an_amiga_to_c64_pack_over_sixteen_stops_the_write(tmp_path):
+    """The neutral record's branch of the guard: fifteen items and a joined
+    pair are seventeen scrolls and items for sixteen slots."""
+    neutral = dos_codec.to_neutral(_read(tmp_path, _crowded(15, 2), 16))
+    assert dos_codec.c64_slots_needed(neutral) == 17
+    with pytest.raises(dos_codec.JoinedScrollsDoNotFit) as caught:
+        dos_codec.write_c64_save(bytearray(0x1D00), None, None, [neutral])
+    assert (caught.value.needed, caught.value.slots) == (17, 16)
 
 
 def test_an_amiga_save_with_nothing_edited_is_written_back_byte_for_byte(

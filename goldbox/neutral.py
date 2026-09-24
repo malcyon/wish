@@ -236,7 +236,7 @@ FIELDS: dict[str, str] = {
     "gems": "gems, counted not valued",
     "jewelry": "pieces of jewelry, counted not valued",
     "inventory": "the items carried, each in the shared sixteen-byte item "
-                 "shape `goldbox/items.py` reads. A joined scroll is here as "
+                 "format `goldbox/items.py` reads. A joined scroll is here as "
                  "the scrolls it holds, one item each, in its place in the "
                  "pack",
     "scroll_bundles": "Secret of the Silver Blades' joined scrolls, each a "

@@ -5110,6 +5110,10 @@ def write(char: NeutralCharacter,
              f"item_count: computed -- the {count} head records of the "
              f"{deltas.item_suffix} file")
     money = sum(int(w.get(k, 0)) for k in _COINS if k in table)
+    # UNVERIFIED for a joined-scroll head: its weight and quantity are both
+    # the scroll count, so this counts it squared, and the recount routine
+    # has not been read for how it weighs a head.  A driven save with a
+    # joined scroll must show the engine's own encumbrance to settle it.
     weight = sum(int.from_bytes(head[8:10], "little") * (head[10] or 1)
                  for head, _written in units)
     # `use`, not `get`, so a source that supplies its own `encumbrance` --
@@ -6535,10 +6539,13 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     `SAVEDGAME0` offset and one at or above it is `SAVEDGAME1`'s (#120).
     `Report.unwritten` is empty when nothing was left to the payload.
     """
-    # A joined scroll takes a C64 slot for every scroll it holds (#432).  A
-    # pack that then needs more than sixteen is the C64's own limit, and
-    # which items stay behind is the player's to choose; nothing asks yet,
-    # so the write stops here rather than dropping the ones past sixteen.
+    # A joined scroll takes a C64 slot for every scroll it holds (#432).  DOS
+    # allows sixteen heads of up to ten scrolls each, the C64 has sixteen
+    # slots, and the Amiga's limit is a probable 120 scrolls
+    # (`amiga_savegame.new_savegame` refuses over it).  Which items stay
+    # behind is the player's to choose and nothing asks yet, so this raises
+    # `JoinedScrollsDoNotFit`: a stop, not a completed conversion, until a
+    # chooser exists.
     for char in party:
         joins = (char.get("scroll_bundles")
                  if isinstance(char, NeutralCharacter) else
