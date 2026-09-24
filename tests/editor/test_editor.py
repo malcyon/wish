@@ -5356,6 +5356,20 @@ def test_a_dos_curse_saves_saving_throw_boxes_are_disabled_with_no_tooltip(
         assert widget.toolTip() == "", name
 
 
+def test_a_dos_silver_blades_saves_saving_throw_boxes_are_disabled_with_no_tooltip(
+        app, tmp_path):
+    """The same as DOS Curse's, for the same reason: DOS Silver
+    Blades' loader rebuilds the five saves every time the party loads
+    (`GAME.OVR:0x3C644`), so an edit to them would be discarded."""
+    w = _dos_silver_blades_editor(tmp_path)
+    w.roster.selectRow(0)
+    for name in ("save_paralysis", "save_petrification", "save_wands",
+                "save_breath", "save_spell"):
+        widget = w._widgets[name]
+        assert not widget.isEnabled(), name
+        assert widget.toolTip() == "", name
+
+
 def test_an_amiga_gold_edit_reaches_its_save_disk(app, tmp_path):
     from support.amigasavegame import synthetic_curse
 

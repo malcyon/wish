@@ -5,6 +5,7 @@ Tests for Secret of the Silver Blades: its C64 disks, saves, tables and level-up
 | file | purpose |
 |---|---|
 | `test_silverblades.py` | Checks the Silver Blades sides, maps, spell tables, items, icons and spellbook layout, and the trainer's grant routines, against the player's disks and shipped party. |
+| `test_ssbdossaves.py` | Checks that a C64 party converted to DOS gets the saving throws DOS Silver Blades' own load-time rebuild leaves, against the rule, the table in `START.EXE`, every engine-written record and the engine's own resave. |
 | `test_ssbeditorpath.py` | Checks that the editor opens, edits and writes back a Silver Blades save the game wrote, and that a party will not cross into the wrong title's disk. |
 | `test_ssblevels.py` | Checks Silver Blades' ceilings, experience bar, THAC0 and racial rows, and that the six shipped saves reproduce without disks. |
 | `test_ssblive.py` | Checks the maps and walked route a live Silver Blades session recorded, and how an import rewrites the race byte and where the shipped casters' spellbooks end. |

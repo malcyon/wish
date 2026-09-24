@@ -712,11 +712,11 @@ _THIEF_UNWRITABLE_FOR = frozenset({
     ("amiga", "pool-of-radiance"),
 })
 
-#: The five saving-throw fields, unwritable on a DOS Curse save: the writer
-#: recomputes them from the class levels through DOS Curse's own load-time
-#: rebuild for a C64 source (`dos_codec.write`'s `_DOS_LOAD_REBUILD_FROM_PORTS`),
-#: and the game itself replaces whatever an edit asked for the next time the
-#: party loads (#632).
+#: The five saving-throw fields, unwritable on a DOS Curse or Silver Blades
+#: save: the writer recomputes them from the class levels through the DOS
+#: engine's own load-time rebuild for a C64 source (`dos_codec.write`'s
+#: `_DOS_LOAD_REBUILD_FROM_PORTS`), and the game itself replaces whatever an
+#: edit asked for the next time the party loads.
 _SAVE_FIELDS = frozenset({
     "save_paralysis", "save_petrification", "save_wands", "save_breath",
     "save_spell",
@@ -724,6 +724,7 @@ _SAVE_FIELDS = frozenset({
 
 _SAVES_UNWRITABLE_FOR = frozenset({
     ("dos", "curse-of-the-azure-bonds"),
+    ("dos", "secret-of-the-silver-blades"),
 })
 
 
@@ -733,8 +734,9 @@ def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
     (`infravision`, `turn_class`), the writer rebuilds it from other fields
     regardless of what is asked (`char_class`, the eight thief skills on a
     thief of these three port and title pairs, and the five saving throws on
-    a DOS Curse save), or the file is returned exactly as read (`item_effects`,
-    until Stage 5 wires the trait table to the DOS effect nodes).
+    a DOS Curse or Silver Blades save), or the file is returned exactly as
+    read (`item_effects`, until Stage 5 wires the trait table to the DOS
+    effect nodes).
     """
     if port not in ("dos", "amiga"):
         return frozenset()

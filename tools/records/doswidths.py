@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from goldbox import dos_codec, dos_port
+from goldbox import dos_codec, dos_port, levels
 from goldbox.neutral import NeutralCharacter
 from tools.records import boundarychars, boundarywidths
 
@@ -90,12 +90,11 @@ ALWAYS_RECOMPUTED: dict[str, str] = {
                        "never stores one",
 }
 
-#: The five saves and current THAC0, always recomputed for a C64 source **on
-#: the one title whose DOS load-time rebuild has been read** -- Curse of the
-#: Azure Bonds (#632). Every other title still copies the source's own byte.
-_CURSE_SAVES_ALWAYS_RECOMPUTED: dict[str, str] = {
-    "thac0_current": "recomputed through DOS Curse's own unarmed combat "
-                     "rebuild for a C64 source, the same as thac0_base",
+#: The five saves, always recomputed for a C64 source on the titles whose DOS
+#: load-time save rebuild has been read -- `levels.LevelTables.
+#: dos_save_rule_read`: Curse of the Azure Bonds and Secret of the Silver
+#: Blades. Every other title still copies the source's own byte.
+_LOAD_REBUILT_SAVES: dict[str, str] = {
     "save_paralysis": "the DOS engine recomputes all five saves on load "
                       "from class, level and the class rebuild's own table, "
                       "for a C64 source",
@@ -105,16 +104,25 @@ _CURSE_SAVES_ALWAYS_RECOMPUTED: dict[str, str] = {
     "save_spell": "see save_paralysis",
 }
 
+#: Current THAC0, always recomputed for a C64 source on the titles in
+#: `dos_codec._UNARMED_THAC0_REBUILD_TITLES` -- Curse alone.
+_LOAD_REBUILT_THAC0: dict[str, str] = {
+    "thac0_current": "recomputed through DOS Curse's own unarmed combat "
+                     "rebuild for a C64 source, the same as thac0_base",
+}
+
 #: Everything the writer may recompute for some character, which is a longer
 #: list than the one above: the eight thief percentages when the character has
-#: a thief level, and the five saves and current THAC0 on titles other than
-#: Curse, where nothing forces the recompute but a C64 source's own class or
-#: race could still make one land there some day. `tests/records/
+#: a thief level, and the five saves and current THAC0 on the titles
+#: `always_recomputed` leaves them out for, where nothing forces the
+#: recompute but a C64 source's own class or race could still make one land
+#: there some day. `tests/records/
 #: test_boundary.py` part A's four cases include all of those, so it leaves
 #: the whole set out of the round trip by name.
 RECOMPUTED: dict[str, str] = {
     **ALWAYS_RECOMPUTED,
-    **_CURSE_SAVES_ALWAYS_RECOMPUTED,
+    **_LOAD_REBUILT_SAVES,
+    **_LOAD_REBUILT_THAC0,
     **{name: "recomputed from the title's own thief table for race, level "
              "and dexterity, for a character with a thief level"
        for name, _ in dos_codec.WRITE_DIRECT if name.startswith("thief_")},
@@ -122,12 +130,14 @@ RECOMPUTED: dict[str, str] = {
 
 
 def always_recomputed(game: str) -> dict[str, str]:
-    """`ALWAYS_RECOMPUTED` as it holds in `game`: the five saves and current
-    THAC0 join it only on Curse of the Azure Bonds, the one title whose DOS
-    load-time rebuild has been read (#632)."""
+    """`ALWAYS_RECOMPUTED` as it holds in `game`: the five saves join it on
+    every title whose DOS load-time save rebuild has been read, and current
+    THAC0 on the titles whose unarmed combat rebuild has."""
     out = dict(ALWAYS_RECOMPUTED)
-    if game == "curse-of-the-azure-bonds":
-        out |= _CURSE_SAVES_ALWAYS_RECOMPUTED
+    if levels.for_game(game).dos_save_rule_read:
+        out |= _LOAD_REBUILT_SAVES
+    if game in dos_codec._UNARMED_THAC0_REBUILD_TITLES:
+        out |= _LOAD_REBUILT_THAC0
     return out
 
 

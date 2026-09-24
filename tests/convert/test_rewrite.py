@@ -790,15 +790,24 @@ def test_every_amiga_later_specimen_rewrites_to_the_bytes_it_came_from():
 def test_an_edit_lands_on_every_dos_specimen_and_moves_nothing_else():
     """Gold, on every DOS character on this machine: the field the sheet set
     is the only one whose bytes changed, whatever else the writer would have
-    rendered differently."""
+    rendered differently.
+
+    The spans the rewrite copied are exactly `_gold_moves`; the bytes that
+    changed are those spans or fewer, because the identity digest the
+    rewrite copies can land on the byte the engine drew, the one chance in
+    256 `_gold_moves` names. MALACHITE in `ssb-234-party-pair` slot C does:
+    his edited rendering's digest is 13, his stored byte."""
     for label, party, game in _dos_parties():
         for char in party:
             before, _ = dos_codec.to_c64_record(char)
             after = _edited(before, gold=char.get("gold") ^ 0x1234)
             out = rewrite.rewrite_dos(char, before, after, game)
             spans, _unplaced = rewrite.dos_spans(char.deltas)
-            assert _moved(char.to_bytes(), out.record, spans) == \
-                _gold_moves(char.deltas), f"{label} {char.name}"
+            expected = _gold_moves(char.deltas)
+            assert set(out.moved) == expected, f"{label} {char.name}"
+            changed = _moved(char.to_bytes(), out.record, spans)
+            assert expected - {"unnamed_0ab"} <= changed <= expected, \
+                f"{label} {char.name}"
 
 
 @needs_specimens

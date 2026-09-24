@@ -4086,20 +4086,13 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
                      "levels through this title's own DOS table where it "
                      "is known -- Pool of Radiance only (#366)",
        "save_paralysis": "from neutral save_paralysis, recomputed through "
-                         "DOS Curse's own load-time save rebuild, for a C64 "
-                         "source (#632)",
-       "save_petrification": "from neutral save_petrification, recomputed "
-                             "through DOS Curse's own load-time save "
-                             "rebuild, for a C64 source (#632)",
-       "save_wands": "from neutral save_wands, recomputed through DOS "
-                     "Curse's own load-time save rebuild, for a C64 source "
-                     "(#632)",
-       "save_breath": "from neutral save_breath, recomputed through DOS "
-                      "Curse's own load-time save rebuild, for a C64 source "
-                      "(#632)",
-       "save_spell": "from neutral save_spell, recomputed through DOS "
-                     "Curse's own load-time save rebuild, for a C64 source "
-                     "(#632)",
+                         "the DOS engine's own load-time save rebuild, for "
+                         "a C64 source, on Curse and Silver Blades (#632)",
+       "save_petrification": "from neutral save_petrification, as "
+                             "save_paralysis",
+       "save_wands": "from neutral save_wands, as save_paralysis",
+       "save_breath": "from neutral save_breath, as save_paralysis",
+       "save_spell": "from neutral save_spell, as save_paralysis",
        "thac0_current": "from neutral thac0_current, recomputed through DOS "
                         "Curse's own unarmed combat rebuild for a C64 "
                         "source with no item readied (#632)",
@@ -4434,9 +4427,9 @@ def write(char: NeutralCharacter,
         # names these eight too, and the two tables are mirrors.
         if neutral_name in _THIEF_SKILL_NAMES:
             continue
-        # Written below, recomputed through DOS Curse's own load-time rebuild
-        # for a C64 source (#632).  Stays in `WRITE_DIRECT` for the same
-        # reason: the reader's `DIRECT` names these six too, and the two
+        # Written below, recomputed through the DOS engine's own load-time
+        # rebuild for a C64 source (#632).  Stays in `WRITE_DIRECT` for the
+        # same reason: the reader's `DIRECT` names these six too, and the two
         # tables are mirrors.
         if neutral_name in _DOS_LOAD_REBUILD_NAMES:
             continue
@@ -5532,18 +5525,21 @@ def write(char: NeutralCharacter,
                       if n == "paladin_cures")
             rep.dropped.append(f"paladin_cures: {why}")
 
-    # -- the saves and unarmed thac0_current DOS Curse's own loader rebuilds -
-    # `WRITE_DIRECT`'s copy is skipped above for these six, the same shape as
+    # -- the saves and unarmed thac0_current the DOS loader rebuilds ---------
+    # `WRITE_DIRECT`'s copy is skipped above for these six, as for
     # `thac0_base`: a straight copy hands back the source's own numbers,
-    # which DOS Curse's character loader replaces the first time it loads the
-    # party (`GAME.OVR:0x1D9D1`), before the party ever appears on screen
-    # (#632). Recomputing is gated to `_DOS_LOAD_REBUILD_FROM_PORTS` for the
-    # reason given beside it, and to `into == "DOS"` so
-    # `goldbox.amiga_later.write_later` and `goldbox.amiga_por.write_por`,
-    # which build an Amiga record out of this function and pass
-    # `into="Amiga"`, keep the source's own bytes -- nobody has measured what
-    # the Amiga engine stores. Every other source, and every other title,
-    # falls back to the plain copy `WRITE_DIRECT` would have made.
+    # which the DOS character loader replaces the first time it loads the
+    # party, before the party ever appears on screen -- Curse's
+    # `GAME.OVR:0x1D9D1`, and Silver Blades' save rebuild `0x3C644`. The
+    # saves are recomputed for every title whose
+    # `LevelTables.dos_save_rule_read` is set. Recomputing is gated to
+    # `_DOS_LOAD_REBUILD_FROM_PORTS` for the reason given beside it, and to
+    # `into == "DOS"` so `goldbox.amiga_later.write_later` and
+    # `goldbox.amiga_por.write_por`, which build an Amiga record out of this
+    # function and pass `into="Amiga"`, keep the source's own bytes -- nobody
+    # has measured what the Amiga engine stores. Every other source, and every
+    # other title, falls back to the plain copy `WRITE_DIRECT` would have
+    # made.
     rebuild = char.port in _DOS_LOAD_REBUILD_FROM_PORTS and into == "DOS"
     computed_saves = None
     if rebuild:
@@ -5560,7 +5556,7 @@ def write(char: NeutralCharacter,
                 break
         computed_saves = level_tables.dos_engine_saving_throws(
             _dos_levels, race_byte, constitution_byte, bonus_item,
-            deltas.key)
+            deltas.key, former_levels=_former_for_regain)
     for column, name in enumerate(
             ("save_paralysis", "save_petrification", "save_wands",
              "save_breath", "save_spell")):
@@ -5571,7 +5567,7 @@ def write(char: NeutralCharacter,
             put(v, name)
         else:
             put(v, name,
-                ", recomputed through DOS Curse's own load-time save "
+                ", recomputed through the DOS engine's own load-time save "
                 "rebuild (#632)", value=computed_saves[column])
 
     thac0_current_v = use("thac0_current")
