@@ -97,7 +97,7 @@ TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
           "ssb": "secret-of-the-silver-blades"}
 
 #: The titles this driver boots.  The others stage only.
-DRIVEN = frozenset({"pool"})
+DRIVEN = frozenset({"pool", "curse"})
 
 #: Ten trait slots per record; eight party slots in a save.
 TRAIT_SLOTS = 10
@@ -529,6 +529,9 @@ class PoolRun:
         self.capture(f"lost-{tag}")
         return StepFailed(why)
 
+    def choose_bar(self, word: str, timeout: float) -> bool:
+        return self.sess.select_bar(word, timeout=timeout)
+
     # -- where the party is ------------------------------------------------------
     @staticmethod
     def at_world(bar: str) -> bool:
@@ -550,14 +553,14 @@ class PoolRun:
             elif S.MOVE_SUBBAR in bar:
                 self.sess.leave_move()
             elif "EXIT" in bar:
-                self.sess.select_bar("EXIT", timeout=10)
+                self.choose_bar("EXIT", timeout=10)
             self.sess.settle(1.5)
         return self.at_world(self.bar())
 
     def to_camp(self) -> bool:
         if CAMP_BAR in self.bar():
             return True
-        if not self.to_world() or not self.sess.select_bar("ENCAMP", timeout=20):
+        if not self.to_world() or not self.choose_bar("ENCAMP", timeout=20):
             return False
         return self.wait_rows(lambda r: CAMP_BAR in r[24], 60) is not None
 
@@ -607,10 +610,10 @@ class PoolRun:
     def camp_list(self, who: str) -> dict:
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
-        if not self.sess.select_bar("MAGIC", timeout=20) or self.wait_rows(
+        if not self.choose_bar("MAGIC", timeout=20) or self.wait_rows(
                 lambda r: MAGIC_BAR in r[24], 30) is None:
             raise self.fail("magic", "MAGIC never put up its bar")
-        if not self.sess.select_bar("DISPLAY", timeout=20) or self.wait_rows(
+        if not self.choose_bar("DISPLAY", timeout=20) or self.wait_rows(
                 lambda r: WHOM in r[24], 30) is None:
             raise self.fail("display", "DISPLAY never asked on whom")
         self.sess.settle(1)
@@ -670,7 +673,7 @@ class PoolRun:
             raise self.fail("world", "the world bar never came back")
         if not self.sess.select_party(self.panel_index(who)):
             raise self.fail("panel", f"the panel highlight would not go onto {who}")
-        if not self.sess.select_bar("VIEW", timeout=20):
+        if not self.choose_bar("VIEW", timeout=20):
             raise self.fail("view", "VIEW could not be chosen")
         rows = self.wait_rows(lambda r: S.SHEET_BAR in r[24] and r[1].strip(), 30)
         if rows is None:
@@ -685,7 +688,7 @@ class PoolRun:
 
     def items(self, who: str) -> dict:
         sheet = self.open_sheet(who)
-        if not self.sess.select_bar("ITEMS", timeout=15) or self.wait_rows(
+        if not self.choose_bar("ITEMS", timeout=15) or self.wait_rows(
                 lambda r: ITEM_BAR in r[24] and S.SHEET_BAR not in r[24], 20) is None:
             raise self.fail("items", "ITEMS never put up the item list")
         self.sess.settle(1)
@@ -759,6 +762,120 @@ class PoolRun:
         return {"kept": str(kept), **decode_save(kept, staged)}
 
 
+class CurseRun(PoolRun):
+    """Read Curse's effects with the shared reader and drive its measured fight route."""
+
+    def __init__(self, sess, log, out, game, points, disks, staged_disk,
+                 attack_by=""):
+        super().__init__(sess, log, out, game, points)
+        from tools.curse_of_the_azure_bonds import cursethac0
+
+        _, payload = _payload(D64.open(str(staged_disk)), game)
+        names = cursethac0.slot_names(payload)
+        self.attack_by = attack_by.upper()
+        self.attack_owner = next((i for i, name in enumerate(names)
+                                  if name.upper() == self.attack_by), None)
+        self.attack_evidence = None
+        self.disks = disks
+        self.staged_disk = staged_disk
+
+    def load(self) -> dict:
+        from tools.curse_of_the_azure_bonds import curseload, cursewarp
+
+        if not self.sess.boot():
+            raise StepFailed(self.sess.boot_failure or "boot failed")
+        outcome = curseload.load_saved_game(
+            self.sess, note=lambda **kw: self.log.emit("curse-load", **kw),
+            shot=lambda tag: self.capture(f"load-{tag}"))
+        if outcome != "loaded":
+            raise self.fail("load", f"Curse load ended at {outcome}")
+        self.sess.patch_disk_prompt()
+        addr = cursewarp.Addresses(self.game, self.disks)
+        if not cursewarp.enter_world(self.sess, addr, timeout=240):
+            raise self.fail("world", "Curse never reached the world bar")
+        cursewarp.clear_messages(self.sess)
+        with self.sess.mon(10) as m:
+            for name, point in self.points.items():
+                self.armed[name] = m.checkpoint_set(point, exec_=True, stop=False)
+            m.resume()
+        self.capture("world")
+        return {"position": list(self.sess.position()),
+                "attack_by": self.attack_by, "attack_owner": self.attack_owner,
+                "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
+
+    def to_world(self, tries: int = 10) -> bool:
+        ok = self.sess.to_world_bar(timeout=tries * 9)
+        if not ok:
+            self.capture("lost-world-route")
+        return ok
+
+    def choose_bar(self, word: str, timeout: float) -> bool:
+        return self.sess.press_bar(word, timeout=timeout)
+
+    def _id25_row(self) -> list[int] | None:
+        return next((row for row in self.reading()["effects"]
+                     if row[1] == 25 and row[2] == self.attack_owner), None)
+
+    def _named_melee(self, sess, state):
+        actor = sess.acting(sess.battle())
+        name = "" if actor is None else actor.name.strip()
+        if self.attack_evidence is not None or name.upper() != self.attack_by:
+            return S.Session.melee_turn(sess, state)
+        before = self._id25_row()
+        self.capture(f"attack-before-{name}")
+        chosen = S.Session.melee_turn(sess, state)
+        if chosen == S.ATTACK:
+            after = self._id25_row()
+            self.capture(f"attack-after-{name}")
+            self.attack_evidence = {"actor": name, "index": actor.index,
+                                    "owner": self.attack_owner,
+                                    "bar": state.text, "chosen": chosen,
+                                    "before": before, "after": after}
+            self.log.emit("named-attack", **self.attack_evidence)
+        return chosen
+
+    def fight(self, arg: str, walk: str, steps: int) -> dict:
+        from tools.c64 import laterbattle
+        from tools.curse_of_the_azure_bonds import cursethac0
+
+        if self.attack_by and self.attack_owner is None:
+            raise self.fail("fighter", f"{self.attack_by} is absent from save slots")
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        area, geo = cursethac0.area_geo(str(self.staged_disk), self.disks)
+        if geo is None:
+            raise self.fail("geo", f"{area} was absent from the Curse disks")
+        route = laterbattle.Battle(self.out, True)
+        try:
+            route.sess = self.sess
+            arrived = route.goto(laterbattle.TAVERN, steps, geo=geo)
+            walked = route.last_goto_steps
+        finally:
+            route.file.close()
+        self.capture("tavern")
+        if not arrived:
+            raise self.fail("fight", f"TAVERN was not reached in {walked} steps")
+        if not self.sess.in_combat() and not self.sess.press_bar(
+                laterbattle.PUNCH, timeout=20):
+            raise self.fail("fight", "PUNCH BARKEEP was not selectable")
+        for _ in range(30):
+            if self.sess.in_combat():
+                break
+            screen = self.sess.screen()
+            state = self.sess.combat_state(screen)
+            if state.kind == S.BAR_PRESS:
+                self.sess.press_kernal(0x0D)
+            self.sess.settle(4)
+        if not self.sess.in_combat():
+            raise self.fail("fight", "Curse never entered combat mode")
+        self.capture("fight-start")
+        result = self.sess.fight(budget=float(arg or 120), tactic=self._named_melee)
+        self.capture("fight-end")
+        return {"walked": walked, "area": str(area), "acted": result.acted,
+                "named_attack": self.attack_evidence,
+                **dataclasses.asdict(result)}
+
+
 # --- the run ---------------------------------------------------------------------
 
 def git_state() -> dict:
@@ -823,11 +940,20 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
     sess = pool = None
     stack = contextlib.ExitStack()
     try:
-        first = S.stage_disks(slot, args.disks)
-        S.stage_writable(staged_disk, pathlib.Path(slot.dir) / "SIDE0.D64")
-        sess = S.Session(first, slot=slot)
+        if args.title == "curse":
+            from tools.curse_of_the_azure_bonds import curserun
+
+            first = curserun.stage(slot, args.disks, str(staged_disk))
+            sess = curserun.CurseSession(first, slot=slot)
+            sess.save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
+        else:
+            first = S.stage_disks(slot, args.disks)
+            S.stage_writable(staged_disk, pathlib.Path(slot.dir) / "SIDE0.D64")
+            sess = S.Session(first, slot=slot)
         stack.enter_context(sess.watching_dialogs())
-        pool = PoolRun(sess, log, out, game, points)
+        pool = (CurseRun(sess, log, out, game, points, args.disks, staged_disk,
+                         getattr(args, "attack_by", "")) if args.title == "curse"
+                else PoolRun(sess, log, out, game, points))
         for step in steps:
             if clock() >= deadline:
                 raise StepFailed(f"the run's {args.max_seconds:g} seconds were "
@@ -855,6 +981,15 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             summary["results"].append(got)
             log.emit("done", **got)
             write_summary()
+        if args.title == "curse" and getattr(args, "attack_by", ""):
+            attack = pool.attack_evidence
+            summary["named_attack"] = attack
+            if attack is None:
+                raise StepFailed(f"{args.attack_by} never made a confirmed melee attack")
+            if attack["before"] is None:
+                raise StepFailed(f"id 25 was already absent before {args.attack_by} attacked")
+            if attack["after"] is not None:
+                raise StepFailed(f"id 25 remained after {args.attack_by} attacked")
         summary["completed"] = True
     except StepFailed as e:
         summary["lost"] = str(e)
@@ -901,6 +1036,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="hex; a non-stopping exec checkpoint armed after the "
                          "load and counted after every step")
     ap.add_argument("--walk", default="I", help="the move `fight` repeats")
+    ap.add_argument("--attack-by", default="",
+                    help="record the named fighter's first confirmed melee attack")
     ap.add_argument("--walk-steps", type=int, default=40,
                     help="how far `fight` walks looking for one")
     ap.add_argument("--pool", type=int, default=None, help="demand this pool slot")
@@ -931,7 +1068,9 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(str(e))
     if args.title not in DRIVEN and not args.stage_only:
         ap.error(f"--title {args.title} stages but does not boot yet; "
-                 f"pass --stage-only, or drive Pool of Radiance")
+                 f"pass --stage-only, or drive Pool of Radiance or Curse")
+    if args.attack_by and args.title != "curse":
+        ap.error("--attack-by requires --title curse")
     if not re.fullmatch(r"[\w-]+", args.run) or not re.fullmatch(r"[\w-]+", args.issue):
         ap.error("--issue and --run are simple names")
     if args.disks is None and args.title == "pool":

@@ -110,7 +110,7 @@ def test_a_title_the_driver_does_not_boot_is_refused_before_a_slot_is_claimed(
         raise AssertionError("a slot was claimed")
     monkeypatch.setattr(A.S, "claim_slot", no_slot)
     with pytest.raises(SystemExit) as info:
-        A.main(["--title", "curse", "--save", str(_fixture_disk(tmp_path)),
+        A.main(["--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
                 "--steps", "load", "camp-list", "--out", str(tmp_path / "out")])
     assert info.value.code == 2
 
@@ -372,6 +372,47 @@ class FakeSession:
 
     def leave_sheet(self):
         return self._go(("leave",))
+
+
+def test_curse_attack_records_the_named_fighters_row_transition(monkeypatch):
+    from types import SimpleNamespace
+
+    row = [[62, 25, 0, 0, 5]]
+    actors = [SimpleNamespace(name="SHARA", index=1),
+              SimpleNamespace(name="PHILIPPE", index=0)]
+
+    class FightSession:
+        def battle(self):
+            return object()
+
+        def acting(self, battle):
+            return actors.pop(0)
+
+    def strike(sess, state):
+        if not actors:
+            row.clear()
+        return A.S.ATTACK
+
+    monkeypatch.setattr(A.S.Session, "melee_turn", strike)
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.attack_by = "PHILIPPE"
+    run.attack_owner = 0
+    run.attack_evidence = None
+    run.reading = lambda: {"effects": row.copy()}
+    captures = []
+    run.capture = lambda tag: captures.append(tag)
+    run.log = SimpleNamespace(emit=lambda *a, **k: None)
+    sess = FightSession()
+    bar = SimpleNamespace(text="MOVE VIEW AIM USE QUICK DONE")
+
+    assert run._named_melee(sess, bar) == A.S.ATTACK
+    assert run.attack_evidence is None
+    assert run._named_melee(sess, bar) == A.S.ATTACK
+    assert run.attack_evidence == {
+        "actor": "PHILIPPE", "index": 0, "owner": 0,
+        "bar": bar.text, "chosen": A.S.ATTACK,
+        "before": [62, 25, 0, 0, 5], "after": None}
+    assert captures == ["attack-before-PHILIPPE", "attack-after-PHILIPPE"]
 
 
 def _pool_run(tmp_path, sess):
