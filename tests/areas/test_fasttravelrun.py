@@ -377,6 +377,31 @@ def test_a_walked_party_that_never_moves_is_a_failed_walk():
     assert not ok
 
 
+def test_a_blocked_step_tries_the_other_three_directions_and_records_each():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True, blocked={"I", "K", "M"})
+    steps, sheet = FT.walk_afterwards(sess)
+    ok, _ = FT.walk_verdict(steps, sheet)
+    assert ok
+    assert sess.pressed[:2] == ["I", "J"]
+    blocked = WalkSession(m, indoors=True, blocked={"I", "K"})
+    steps, _ = FT.walk_afterwards(blocked)
+    assert [a["move"] for a in steps[0]["attempts"]] == ["I", "J"]
+    assert steps[0]["before"] != steps[0]["after"]
+
+
+def test_a_step_blocked_on_every_side_records_four_attempts_and_fails():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True, blocked=set("IJKM"))
+    steps, sheet = FT.walk_afterwards(sess)
+    assert [a["move"] for a in steps[0]["attempts"]] == ["I", "J", "M", "K"]
+    assert all(set(a) == {"move", "ok", "row", "before", "after"}
+               and a["before"] == a["after"] for a in steps[0]["attempts"])
+    assert len(sess.pressed) == FT.WALK_ATTEMPTS
+    ok, _ = FT.walk_verdict(steps, sheet)
+    assert not ok
+
+
 class RedrawSession(WalkSession):
     """Row 24 reads from `rows` one read at a time, then holds the last."""
 

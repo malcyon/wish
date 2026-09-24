@@ -373,6 +373,16 @@ def settle_row(sess, timeout: float = 60.0, interval: float = 0.5) -> str:
     return row
 
 
+WALK_ATTEMPTS = 12    # moves sent in all, retries after a blocked step included
+
+
+def _other_directions(indoors: bool, move: str) -> list[str]:
+    """The directions to try when *move* leaves the square unchanged, in the
+    order J, M, then the rest of I and K (outdoors, the other compass digits)."""
+    order = "JMIK" if indoors else "1357"
+    return [d for d in order if d != move]
+
+
 def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
     """A few steps in each direction, then the first character's sheet opened
     and closed -- the one action that is not a move. Returns every step's
@@ -392,6 +402,7 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
     if indoors is None:
         return [], False
     steps: list[dict] = []
+    moves = 0
     for move in (WALK_INDOORS if indoors else WALK_OUTDOORS):
         row = settle_row(sess, timeout)
         if sess.in_combat():
@@ -412,12 +423,36 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
             print(f"  walk {move}: stopped on row 24 {row!r}", flush=True)
             return steps, False
         before = sess.square()
-        ok = sess.walk_one(move)
-        steps.append({"move": move, "ok": bool(ok), "row": row,
-                      "before": before, "after": sess.square(),
-                      "refused": getattr(sess, "walk_refused", None)})
-        print(f"  walk {move}: ok={ok} {before} -> {steps[-1]['after']}",
-              flush=True)
+        attempts: list[dict] = []
+        tried = move
+        while True:
+            start = sess.square()
+            ok = sess.walk_one(tried)
+            attempts.append({"move": tried, "ok": bool(ok), "row": row24(sess),
+                             "before": start, "after": sess.square()})
+            moves += 1
+            refused = getattr(sess, "walk_refused", None)
+            if (attempts[-1]["after"] != start or refused
+                    or moves >= WALK_ATTEMPTS):
+                break
+            # A wall on this square says nothing about the other three sides.
+            untried = [d for d in _other_directions(indoors, move)
+                       if d not in {a["move"] for a in attempts}]
+            if not untried:
+                break
+            tried = untried[0]
+            row = settle_row(sess, timeout)
+            if not recognised(row):
+                break
+        step = {"move": move, "ok": bool(ok), "row": row,
+                "before": before, "after": sess.square(), "refused": refused}
+        if len(attempts) > 1:
+            step["attempts"] = attempts
+        steps.append(step)
+        print(f"  walk {move}: ok={ok} {before} -> {step['after']}"
+              f" ({len(attempts)} attempt(s))", flush=True)
+        if moves >= WALK_ATTEMPTS:
+            break
     sheet = sess.character_sheet(0)
     return steps, bool(sheet)
 
