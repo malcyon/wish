@@ -5872,7 +5872,12 @@ ANIMATE_RESIDENT = 0x00
 #: either title, and naming one leaves the loader asking for a side for ever
 #: (`docs/185-a-party-that-has-not-set-out.md`).  The opening script differs
 #: from `areas.STARTS`' first area on Silver Blades: `BEGIN ADVENTURING` on
-#: this save runs `ECL11`'s prologue, and the party then arrives in `$10`.
+#: this save runs `ECL11`'s prologue, and the party then arrives in `$10`
+#: at 3,3 facing south.  Curse arrives at 7,13 facing east.  Measured on the
+#: C64: the game's own opening plays and, for Silver Blades, awards experience
+#: (each character +2,750 on the game's own save) and none for Curse.  The DOS
+#: and Amiga amounts are what an acceptance run reads, and Amiga Curse as a
+#: source has only been tried on a Wish-written save.
 C64_PRE_ADVENTURE_CACHE = {
     "curse-of-the-azure-bonds": ((3, 0x02), (7, 0x20), (8, 0x01),
                                  (CACHE_ANIMATE, ANIMATE_RESIDENT)),
@@ -6107,8 +6112,9 @@ UNSUPPORTED_LOCATION = "Saves from this location are not supported."
 NOT_SET_OUT = ("Your party had not set out yet, so it starts at the "
                "beginning of the story.")
 
-#: The refusal for a never-adventured save of a title whose start nobody has
-#: measured -- Secret of the Silver Blades today, `areas.STARTS`.  Donald's
+#: The refusal for a never-adventured save of a title with no `STARTS` row.
+#: Pool of Radiance, Curse and Silver Blades all have one, so none of them
+#: raises it; it stays for a title added without a measured start.  Donald's
 #: wording, 2026-09-06.  It names no title on purpose, so it reads the same
 #: whichever title is refused, and nothing is interpolated into it.
 NOT_SET_OUT_UNPLACED = ("This save has never been played yet. Wish does not "
@@ -6118,10 +6124,11 @@ NOT_SET_OUT_UNPLACED = ("This save has never been played yet. Wish does not "
 class NotSetOutError(DosRecordError):
     """A save made before the party set out, of a title with no `STARTS` row.
 
-    Raised rather than guessed: a `Start` invented for Silver Blades would
-    read as a row, and a save converted to the wrong first area is a party
-    the game places somewhere the story never sent it.  The experiment that
-    settles the title is on `goldbox.areas.STARTS`.
+    None of the three titles raises it, since each has a measured row.  It is
+    raised rather than guessed for any other: an invented `Start` would read
+    as a row, and a save converted to the wrong first area is a party the
+    game places somewhere the story never sent it.  The experiment that
+    settles a title is on `goldbox.areas.STARTS`.
     """
 
     def __init__(self, message: str, title: str) -> None:

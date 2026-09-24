@@ -269,26 +269,21 @@ the message window was clear by the time it read it.
 
 ## What is not settled
 
-**Where Secret of the Silver Blades begins.** Its two never-adventured
-containers hold the same area 0 and `7,13` facing north that Curse's do, its
-table's lowest id is `$04`, and all five of its played containers stand in
-area `$10` (`GEO10`, side 1, arrival 15,8 W) -- which is suggestive and is not
-the measurement. The experiment is the one that settled Curse: boot DOS
-Silver Blades, create one character, add it to the party, `SAVE CURRENT
-GAME` to a free slot, then `BEGIN ADVENTURING` and save again with the party
-standing still. Area `$10` in the second save confirms `$10`; `$04` confirms
-`$04`. Until then `STARTS` has no row and the import refuses.
+**The DOS and Amiga experience amounts.** The C64 plays the game's own
+opening from the converted save. Silver Blades arrives at 3,3 facing south
+and awards each character 2,750 (GUY DE VALOIS 200,000 to 202,750 on the
+game's own save); Curse arrives at 7,13 facing east with no experience change.
+What DOS and Amiga award, and whether DOS Curse awards any, is what an
+acceptance run against a control save reads; the conversion writes the
+destination's own party-menu save and computes no award. Amiga Curse as a
+source has only been tried on a Wish-written save, and an engine-written one
+would be the first.
 
-**Whether the C64's own `SAVE CURRENT GAME` at the party menu produces a save
-that can be loaded and begun.** The C64 holds area 0 in RAM there, so a save
-taken at that moment would name area 0, and an area-0 save is what the
-measurement above says cannot be entered. Either the C64 discriminates on
-something outside the payload -- a flag in `GEN`'s own variables saying a
-game has been loaded -- or the game has the same defect. The experiment is to
-create a character on the C64, `SAVE CURRENT GAME`, reboot,
-`LOAD SAVED GAME`, `BEGIN ADVENTURING`, and see whether the party wakes in the
-small room or sits in front of `INSERT SIDE # 2`. Nobody has driven C64
-character creation here.
+Two questions this section used to hold are answered and were deleted: they
+were open only until the live runs. Silver Blades' start is measured (area
+`$10`, 3,3 facing south) and `STARTS` holds it, so the import no longer
+refuses. The C64 runs began the game's own party-menu saves, so the C64 does
+play its own opening from one.
 
 **`dos_savegame.SAVGAM_CONSTANTS` still calls `$4FE1` "255 in every
 specimen".** The census reads 255 in 57 played containers, 16 in 41 and 8 in
