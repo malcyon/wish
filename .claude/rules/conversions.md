@@ -17,7 +17,7 @@ A regression test for a conversion fix must demonstrate successful conversion
 of the formerly failing save or condition and the preserved player behavior.
 A test proving that Wish refuses the save can document an outstanding defect;
 it cannot serve as the acceptance test for fixing that defect. Renaming an
-error, hiding a route, or passing only the current specimen corpus does not
+error, hiding a route, or passing only the specimens we have does not
 prove completion either.
 
 No available specimen is not proof that a player cannot reach a condition.

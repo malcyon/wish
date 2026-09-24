@@ -330,7 +330,7 @@ when no `goldbox/` file changed.** Closing a conversion defect as fixed requires
 evidence of the formerly failing save or condition converting successfully
 between ports of the same title, preserving the affected player behavior,
 with the runtime proof that rule requires. Refusing the save, renaming its error, hiding the route, or
-passing the current specimen corpus cannot substitute for that evidence.
+passing the specimens we have cannot substitute for that evidence.
 
 **A separately scoped crash or error-handling fix may finish while conversion
 work remains open.** Its closing comment must distinguish what was fixed from
