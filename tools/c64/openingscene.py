@@ -189,10 +189,8 @@ def experience_map(path: pathlib.Path) -> dict[str, int]:
 def answer_bar(sess, step: str, s, *, sleep=time.sleep) -> None:
     """Select EXIT, NO or LEAVE TREASURE, and press Return if row 24 has not changed.
 
-    `leave` answers Silver Blades' `GO BACK LEAVE TREASURE`, as `ssbwarp`'s
-    `enter_world` does: the party forgoes the starting equipment a player
-    would take.  The experience comparison is unaffected, since it compares
-    experience and not equipment.
+    `leave` answers Silver Blades' `GO BACK LEAVE TREASURE`, the way out to the
+    world that `curedrive`, `ohlowatch` and `session.BAR_LEAVE` also use.
 
     `s` is the screen the bar was read from.  A bitmap (None) on either side
     is waited out rather than compared.
