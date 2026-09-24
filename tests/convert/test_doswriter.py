@@ -407,6 +407,9 @@ def test_a_filled_character_lands_field_for_field():
     Radiance: `write` stores what DOS Pool of Radiance's own load-time
     rebuild (`GAME.OVR:0x2ACDC`) leaves there, the best DOS table row across
     the class levels, since the engine discards whatever the save held (#634).
+
+    THAC0, armour class and movement are the fourth: Pool of Radiance's
+    rebuild at VIEW replaces them, so `write` stores its result (#634).
     """
     char = _filled()
     char.port = "C64"
@@ -420,7 +423,15 @@ def test_a_filled_character_lands_field_for_field():
             continue
         if neutral_name in _SAVE_THROW_NAMES:
             continue
+        if neutral_name in ("thac0_current", "armour_class",
+                            "movement_current"):
+            continue
         assert back.get(dos_name) == char.get(neutral_name), dos_name
+    rebuilt = dos_codec.dos_combat_rebuild(rec, itm, None,
+                                          dos_port.POOL_OF_RADIANCE)
+    assert back.get("thac0_current") == rebuilt.thac0_current
+    assert back.get("armour_class") == rebuilt.armour_class
+    assert back.get("movement_current") == rebuilt.movement_current
     expected_saves = level_tables.dos_engine_saving_throws(
         char.get("levels"), char.get("race"), char.get("constitution"), False,
         char.game)
@@ -458,7 +469,11 @@ def test_a_filled_character_lands_field_for_field():
     assert back.raw("spells_castable_magic_user") == bytes((4, 3, 2))
     assert back.get("size") == 2
     assert back.raw("attack_forms") == bytes(range(1, 9))
-    assert back.raw("roster_tail") == bytes(range(9))
+    # Bytes 1 and 2 are copied; 0 and 3-8 are the rebuild's (#634).
+    tail = back.raw("roster_tail")
+    assert tail[1:3] == bytes((1, 2))
+    assert tail[0] == rebuilt.armour_bonus
+    assert tail[3:9] == rebuilt.attack_forms
     assert back.get("item_count") == 1
     # `_filled`'s item is bytes(range(16)), which is not a *legal* C64 item:
     # +7 is cursed in bit 7 and nothing else, so its value 0x07 has no DOS
@@ -1875,18 +1890,23 @@ _SAVE_THROW_NAMES = ("save_paralysis", "save_petrification", "save_wands",
                      "save_breath", "save_spell")
 
 
-#: `thac0_current` at DOS `0x110` is the other deliberate exception, since
-#: `#405 (A converted character's THAC0 on the C64 sheet is the source
-#: save's stored byte, and the engine only corrects it at his first fight)`:
-#: `goldbox.c64_codec.write` now recomputes it from `thac0_base` and the
-#: strength bonus rather than copying the neutral value, so a round trip
-#: through the C64 leg carries the C64's own recomputed number back into
-#: DOS rather than the original DOS byte.  Pinned below against the C64
-#: record's own recomputed byte, which `tests/convert/test_c64thac0.py` covers on
-#: its own.
-_THAC0_CURRENT_OFFSETS = frozenset(
-    range(dos_port.FIELDS_BY_NAME["thac0_current"].offset,
-          dos_port.FIELDS_BY_NAME["thac0_current"].end))
+def _pool_item_types() -> bytes:
+    from tools.dos import dosbox
+
+    try:
+        game = dosbox.find_game("POOLRAD")
+    except FileNotFoundError as exc:
+        pytest.skip(f"needs the player's DOS Pool of Radiance: {exc}")
+    types = dos_codec.item_type_table(game)
+    if types is None:
+        pytest.skip("the player's DOS Pool of Radiance has no readable ITEMS")
+    return types
+
+
+#: GILES's stored encumbrance is not the sum of what he carries (the record
+#: `docs/125` calls PROBABLY edited), so the rebuild's movement differs from
+#: his stored byte at `0x11C`.
+_MOVEMENT_EXCEPTION = ("GILES", dos_port.FIELDS_BY_NAME["movement_current"].offset)
 
 
 @needs_dos_saves
@@ -1900,20 +1920,23 @@ def test_a_record_round_trips_through_the_c64_record():
     C64's own rule and the DOS writer recomputes the DOS engine's, so all
     five come back byte for byte, and each is also checked against
     `goldbox.levels.dos_engine_saving_throws` (#634).  `thac0_current` is
-    one deliberate exception (`_THAC0_CURRENT_OFFSETS`, #405), pinned
-    against the C64 record's own recomputed byte instead.  `attack_level`
-    is the other (#527, `_attack_level_allowance`), pinned against the
-    destination title's own engine rule."""
+    THAC0, armour class, attack forms and movement come back byte for byte
+    too, through the game's own `ITEMS` (#634), bar GILES's movement
+    (`_MOVEMENT_EXCEPTION`).  `attack_level` is the one allowance (#527,
+    `_attack_level_allowance`), pinned against the destination title's own
+    engine rule."""
     total = 0
-    mask = set(_THAC0_CURRENT_OFFSETS)
+    types = _pool_item_types()
     for char in _records():
         neutral_char = dos_codec.to_neutral(char)
         c64_rec, _ = c64_codec.write(neutral_char)
         back = c64_codec.read(c64_rec, source="round trip")
-        rec, _, _, _ = dos_codec.write(back)
+        rec, _, _, _ = dos_codec.write(back, item_types=types)
         outside, _ = _diff_against(char, rec)
         outside -= _attack_level_allowance(char, rec)
-        assert outside - mask == set(), \
+        if char.name == _MOVEMENT_EXCEPTION[0]:
+            outside.discard(_MOVEMENT_EXCEPTION[1])
+        assert outside == set(), \
             (char.name, sorted(hex(i) for i in outside))
         expected = level_tables.dos_engine_saving_throws(
             char.class_levels, char.get("race"), char.get("constitution"),
@@ -1922,8 +1945,6 @@ def test_a_record_round_trips_through_the_c64_record():
         for value, name in zip(expected, _SAVE_THROW_NAMES):
             f = dos_port.FIELDS_BY_NAME[name]
             assert rec[f.offset] == value, (char.name, name)
-        thac0 = dos_port.FIELDS_BY_NAME["thac0_current"]
-        assert rec[thac0.offset] == c64_rec.get("thac0"), char.name
         total += 1
     assert total >= 24
 
@@ -1962,8 +1983,12 @@ def test_the_roster_path_speaks_the_stored_encoding():
     assert char.get("roster_tail") == block.raw[0x10:0x19]
     # And through the DOS writer, the stored byte lands verbatim.
     rec, _, _, _ = dos_codec.write(char)
+    # Pool's rebuild stores the armour class itself (#634); the fixture's
+    # BRUTUS holds nothing readied, so it is dexterity's adjustment alone.
+    rebuilt = dos_codec.dos_combat_rebuild(rec, bytes(), None,
+                                          dos_port.POOL_OF_RADIANCE)
     assert rec[dos_port.FIELDS_BY_NAME["armour_class"].offset] == \
-        COMBAT_BIAS - block.armour_class
+        rebuilt.armour_class
 
 
 def test_the_roster_spell_counts_are_derived_not_dropped():

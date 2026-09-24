@@ -155,9 +155,9 @@ def _gold_moves(deltas, dos_only: bool = False) -> set[str]:
     arguing it is right -- `docs/223-the-differential-rewrite.md`.
     """
     later = deltas is not dos_port.POOL_OF_RADIANCE
-    # DOS Curse rebuilds current movement from weight carried, so a gold
+    # DOS Curse and Pool rebuild current movement from weight carried, so a gold
     # edit that crosses a movement step moves that byte.
-    curse = deltas.key == "curse-of-the-azure-bonds" and dos_only
+    curse = deltas.key in dos_codec._COMBAT_REBUILD_TITLES and dos_only
     return ({"gold", "encumbrance"} | ({"unnamed_0ab"} if later else set())
             | ({"movement_current"} if curse else set()))
 
@@ -810,7 +810,7 @@ def test_an_edit_lands_on_every_dos_specimen_and_moves_nothing_else():
             expected = _gold_moves(char.deltas, dos_only=True)
             # Only some Curse characters cross a movement step (72 of 325).
             optional = ({"movement_current"}
-                        if char.deltas.key == "curse-of-the-azure-bonds"
+                        if char.deltas.key in dos_codec._COMBAT_REBUILD_TITLES
                         else set())
             assert set(out.moved) - optional == expected - optional, \
                 f"{label} {char.name}"
