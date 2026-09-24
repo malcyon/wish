@@ -920,3 +920,73 @@ def test_capture_failure_gives_up_on_a_screenshot_that_hangs(tmp_path):
     finally:
         release.set()
     assert "timed out" in said
+
+
+class _Clocked(RedrawSession):
+    """Counts `wait_for_world` calls and raises past a cap, so a loop that no
+    longer ends fails the test instead of hanging it."""
+
+    def __init__(self, monitor, rows, answers=None):
+        super().__init__(monitor, rows)
+        self.waits = 0
+        self.answers = answers
+
+    def wait_for_world(self, timeout=240.0):
+        self.waits += 1
+        assert self.waits < 1000, "settle_row is busy-looping"
+        if self.answers:
+            self.answers(self)
+        return True
+
+
+def _fake_clock(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(FT.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(FT.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
+    return now
+
+
+def test_a_fight_bar_goes_to_the_fight_without_waiting_for_the_world(monkeypatch):
+    now = _fake_clock(monkeypatch)
+    sess, m = make()
+    sess = _Clocked(m, ["ENEMY DONE  CONTINUE BATTLE"])
+    sess.combat = True
+    fight = sess.fight
+
+    def won(budget, tactic):
+        sess.rows = ["MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"]
+        return fight(budget, tactic)
+    sess.fight = won
+    steps, _ = FT.walk_afterwards(sess)
+    assert sess.fights and sess.waits == 1          # only the one after the fight
+    assert steps[0]["fight"] == "won"
+    assert now[0] < 5.0
+
+
+def test_an_unrecognised_row_is_handed_to_wait_for_world():
+    sess, m = make()
+    sess = _Clocked(m, ["INSERT DISK", FT.S.OUTDOOR_PROMPT])
+    steps, sheet = FT.walk_afterwards(sess)
+    assert sess.waits >= 1 and FT.walk_verdict(steps, sheet)[0]
+
+
+def test_a_disk_prompt_answered_by_the_wait_is_then_walked():
+    sess, m = make()
+    sess = _Clocked(m, ["INSERT DISK", "INSERT DISK"])
+
+    def answer(s):
+        s.rows = [FT.S.OUTDOOR_PROMPT]
+    sess.answers = answer
+    steps, sheet = FT.walk_afterwards(sess)
+    assert steps[0]["row"] == FT.S.OUTDOOR_PROMPT
+    assert "".join(sess.pressed) == FT.WALK_OUTDOORS and sheet
+
+
+def test_a_non_empty_row_that_never_settles_is_refused_and_recorded(monkeypatch):
+    now = _fake_clock(monkeypatch)
+    sess, m = make()
+    sess = _Clocked(m, ["PRESS RETURN"])
+    steps, sheet = FT.walk_afterwards(sess, timeout=5.0)
+    assert sess.pressed == [] and not sheet
+    assert steps[0]["row"] == "PRESS RETURN" and "refused" in steps[0]
+    assert now[0] >= 5.0

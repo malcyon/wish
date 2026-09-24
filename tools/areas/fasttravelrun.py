@@ -356,16 +356,19 @@ def settle_row(sess, timeout: float = 60.0, interval: float = 0.5) -> str:
     An empty row is a screen still being redrawn, as after a disk-side prompt
     is answered, so it is waited out without pressing anything. A row that
     says something else is handed to `Session.wait_for_world`, which answers
-    disk and continue prompts.
+    disk and continue prompts. A fight bar is returned at once, because
+    `wait_for_world` waits for a bar a fight never shows and would press Return
+    at a prompt in the middle of one.
     """
     clock, sleep = time.monotonic, time.sleep
     end = clock() + timeout
     row = row24(sess)
-    while not recognised(row) and clock() < end:
+    while not recognised(row) and clock() < end and not sess.in_combat():
         if row:
             sess.wait_for_world(timeout=min(10.0, max(1.0, end - clock())))
-        else:
-            sleep(interval)
+        # Also after the wait: it returns at once when ENCAMP is elsewhere on
+        # the screen while row 24 still says something else.
+        sleep(interval)
         row = row24(sess)
     return row
 
