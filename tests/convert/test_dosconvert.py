@@ -367,14 +367,9 @@ def test_each_titles_dos_engine_keeps_its_own_fighting_level(
 
 
 def test_pools_of_darkness_is_left_exactly_as_it_was():
-    """Nobody has measured that title's rule, and the corpus reads like our
-    own offset rather than like the engine: all 52 records hold 0 at
-    `0x130`, a ranger 13 and a paladin 12 among them, where every earlier
-    engine stores at least 1 for everybody.  `goldbox/amiga_pod.py` already
-    calls `attack_level` the one field of that record still unlocated.
-
-    So the conversion copies the byte, and this test is what goes red if
-    somebody gives the title a rule without taking the measurement.
+    """Byte 0x130 of that title is spell 126, not a fighting level, so the
+    title has no rule for `attack_level` and the layout has no such field.
+    This goes red if somebody gives the title a rule for a byte it lacks.
     """
     deltas = dos_port.deltas_for("pools-of-darkness")
     assert deltas.attack_level_classes is None

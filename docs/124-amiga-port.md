@@ -1969,6 +1969,130 @@ listing and are measured by nothing.
 executable and runs the check.
 
 So the record's last UNKNOWN is not a field nobody has found: **Pools of
+Darkness keeps no `attack_level`**, on either port. The DOS record's byte at
+`0x130` is spell 126, the last id of the 126-byte spellbook, and the layout
+drops the field (`sizes["attack_level"] = 0`); it holds 0 in 52 of 52 records
+because none of those characters knows spell 126. The DOS `GAME.OVR` never
+addresses `0x130`, and every id loop of the spellbook runs to 126
+(`docs/228-pools-of-darkness-spells-and-creation.md`). It bears on
+`#527 (A DOS import combines saving throws from classes the character does not have)`
+only in that this title has no fighting-level byte to copy or recompute.
+
+#### What it leaves
+
+`goldbox.amiga_pod.pod_to_neutral` filled **61 of the 75 neutral fields** after
+this run, where it filled 38, and §1.18 takes it to 63. Of the fourteen it did
+not fill then: nine are fields *this title* has on neither port (four coins,
+`levels_drained`, `hp_lost_to_drain`, `experience_per_hit_point`,
+`infravision`, `turn_power`), three were the item and effect regions the
+reader had not been taught to walk, one was `attack_level`, and one is
+`npc_control_byte`, which a player character does not have.
+
+**What the writer does with all of this is §1.19**, which is
+`#475 (The Amiga Pools of Darkness writer leaves 27 decoded fields zero, and
+one of them may mark a converted character as out of the party)`.
+
+### 1.18 The tail, walked, and the attack table that has no field (#462 (Decode the rest of the Amiga Pools of Darkness .pc: 37 of 75 neutral fields have no home in it, so a converted character loses his spells and possessions))
+
+§1.16 read the loader and §1.17 the record; this is the reader catching up
+with both. `goldbox.amiga_pod.pod_to_neutral` walks the item region and the
+effect chain, so a character read off an Amiga disk arrives in DOS with his
+own possessions and his running magic instead of nothing:
+`goldbox.dos_codec.write` builds him a `.THG` of four, five or six items and
+an `.EFX` where the file had one.
+
+#### What the reader is checked against
+
+Every row is a test in `tests/amiga/test_podamiga_regions.py`, over every
+`Save/*.pc` on the player's own disks — 19 files, 93 items and 11 effect
+nodes on this machine.
+
+| claim | sample |
+|---|---|
+| `money + Σ(weight × max(quantity, 1))` is the stored encumbrance word at `0x056` | **19 of 19**, at three distinct totals: 601, 960, 371 |
+| every item decodes in range — `readied` a flag, `hidden` and `cursed` 0, `plus` 1-6, the three insertion pads zero | **93 of 93** |
+| `404 + 20 × items + 20 × scroll nodes + 10 × effects` is the file's own length, walking the effect chain rather than dividing the remainder | **19 of 19** |
+| an effect node re-cuts to DOS's `<id> 00 00 FF 00` and a NULL next | **11 of 11** |
+
+#### Two things in the region nothing had noted
+
+* **A scroll's chained nodes have nowhere to go.** §1.16 row 3: an item whose
+  `type_index` is `0x49` is followed by its own `quantity` further twenty-byte
+  nodes, each carrying three more spell ids. No item in the nineteen files is
+  a scroll — `type_index` reads 5, 8, 15, 18, 22, 28, 29, 30, 36, 37, 40, 50
+  and 59 across the 93 — so nothing has ever been lost here, and a reader
+  that walked twenty bytes an item regardless would have read the first
+  chained node as the next item. The reader follows the chain and counts the
+  nodes onto the drop list rather than converting them.
+* **An effect still counting down is `running_effects`.** The vocabulary
+  keeps `innate_effects` and `granted_effects`, both of which are what never
+  expires, and now a third, `running_effects`, holds the nodes with time
+  left as whole nine-byte records whose duration is game-clock minutes
+  (`docs/162-spc-permanence.md`). Before that the reader counted them onto the
+  drop list and the two later titles' reader dropped them with no line. The
+  duration word is zero in 11 of 11 nodes here, so no record on any disk has
+  one, and **the big-endian byte order of the word at `0x002` has never been
+  read against a value**: it stays PROBABLE, and `tests/convert/
+  test_runningeffects.py` pins both orders with a synthetic 0x0102 so a wrong
+  swap fails. One `.pc` written with a known duration and loaded in the
+  running game settles it.
+
+#### `attack_level`: the engine works it out and stores nothing
+
+**The two routines that derive `thac0_base` at `0x07F` both index one attack
+table with a class level**, and `tools/amiga/podimportmap.py --thac0` finds
+no third: it searches the code hunk for every `d16(a4)` that lands anywhere in
+the table and finds four references, two in each of those routines (`0x03C274`
+and `0x03C290`, `0x00EFAC` and `0x00EFD4`) and none outside them. That search
+sees one addressing mode only, so a pointer to the table kept in a global, or
+an absolute address the loader relocates, would not show; the claim is that
+no other routine reaches the table through the small-data register, which is
+how the engine reaches it in both. The derived-fields rebuild at `0x03C238` walks the seven
+class slots, asks `0x03D046` for each one's level, caps it at 21 and keeps
+the best entry of `data + 0x1DE0`, a table of seven rows of 22 bytes in the
+family's stored `60 - THAC0` form. Character creation does the same at
+`0x00EF82`, on its own global, with no cap. **Neither reads any other byte
+of the record.**
+
+```
+03c26a: muls.w #$16, d0           ; 22 bytes a class row
+03c274: lea.l  -$621e(a4), a0     ; the attack table, data+0x1DE0
+03c278: move.b (a0, d0.l), d0     ; row[level]
+03c27c: cmp.b  $7f(a2), d0        ; keep the best
+03c294: move.b (a0, d0.l), $7f(a2)
+```
+
+**`0x03D046` is not `max(class_levels[i], former_class_levels[i])`, and this
+page said it was.** It reads the former array only when `0x03D020` returns 1,
+and that is two tests rather than one:
+
+* `0x03CFB2` returns 0 unless the record's race byte at `0x058` is **5, the
+  human** (`cmpi.b #$5, $58(a2)`), which is the only race AD&D lets
+  dual-class. For a human it returns the level in the first non-zero class
+  slot, scanning slots 0 to 5 and falling through to slot 6.
+* `0x03D020` compares that level with the byte at `0x08A`, `former_level`,
+  and returns 1 only when it is **greater** — which is AD&D's rule that a
+  dual-classed character uses his old class again only once his new level
+  passes the level he left at.
+
+With the gate shut the former array contributes nothing at all. Corrected
+here because a bare `max` would give a converted character the wrong
+THAC0 the moment his new class was the lower of the two, and because
+`tools/amiga/podimportmap.py`'s own arithmetic was written from it.
+
+**What the nineteen files corroborate, and what they do not.** The
+arithmetic reproduces the stored `thac0_base` byte of **19 of 19** `.pc`
+files, which fixes the table's address, its stride and the rule that the
+best of the seven class slots wins — three of the nineteen are multi-classed
+(BOHLO BART AB a fighter 9/thief 13, SILBERMO and TRIPEL TURBO
+fighter/magic-user/thieves), so that last part is not a single-class claim.
+**None of the nineteen is dual-classed**: `former_class_levels` is zero in
+all of them, so the gate above and the cap at level 21 are read off the
+listing and are measured by nothing.
+`tools/amiga/podimportmap.py --thac0` prints the table off the player's own
+executable and runs the check.
+
+So the record's last UNKNOWN is not a field nobody has found: **Pools of
 Darkness keeps no `attack_level`**, and the reader names it as a field the
 title has on neither port rather than as one still unlocated. It bears on
 `#527 (A DOS import combines saving throws from classes the character does not have)` from the other side: DOS Pools of

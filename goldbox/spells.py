@@ -160,8 +160,8 @@ class SpellTable:
         short of its own spell list -- seven bytes is 56 bits, ids 0-55, and id
         56 is RESTORATION, which the game can memorise and cannot record
         knowing. The two later titles have bits to spare instead, and Pools of
-        Darkness stops at 125 the same way Pool of Radiance stops at 55: its
-        spellbook is a byte an id and its spell list runs to 126.
+        Darkness is limited only by its spell list: its spellbook is a byte an
+        id, so the ceiling is 126.
         """
         if self.spellbook_ids:
             return min(self.spellbook_ids, self.last_spell)

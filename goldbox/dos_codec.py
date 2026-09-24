@@ -2411,11 +2411,9 @@ def to_neutral(dos: DosCharacter,
     # -- so copying that byte handed a converted fighter 8 one attack where
     # the C64 engine would give him eight (#527).  Curse of the Azure Bonds
     # and Secret of the Silver Blades keep a real fighting level there and
-    # their byte is copied; Pools of Darkness has no such field.
-    # `DosDeltas.attack_level_classes` carries
-    # each title's evidence.
-    # Pools of Darkness keeps no such byte: its record holds spell 126 where
-    # the other titles hold this one, so there is nothing to read.
+    # their byte is copied.  Pools of Darkness keeps no such byte: its
+    # record holds spell 126 where the other titles hold this one.
+    # `DosDeltas.attack_level_classes` carries each title's evidence.
     f = dos.fields.get("attack_level")
     if f is None:
         pass
@@ -4696,17 +4694,15 @@ def write(char: NeutralCharacter,
     # Silver Blades' PAINE is a magic-user 1 with a former ranger 8 and
     # still reads 8 in the two specimens that watched the change happen.
     #
-    # Pools of Darkness has no measured rule and `attack_level_stored`
-    # answers None for it, so its byte is copied exactly as before (#527).
+    # Pools of Darkness has no `attack_level` field, so it never reaches
+    # this block.
     level_byte = use("attack_level")
     if "attack_level" in table:
         written = attack_level_written(deltas, _dos_levels,
                                        _former_for_regain, into)
         classes = _ATTACK_LEVEL_CLASSES_BY_PORT.get(into, {}).get(
             deltas.key, deltas.attack_level_classes)
-        if written is None:
-            why = ""
-        elif classes:
+        if classes:
             why = (f", the value {into} {deltas.title} keeps there: the best "
                    f"of {', '.join(classes)}, current or former, floored "
                    f"at 1 (#527)")
@@ -4714,9 +4710,8 @@ def write(char: NeutralCharacter,
             why = (f", the constant {into} {deltas.title} stores for every "
                    f"character, whatever his fighting level (#527)")
         if level_byte is not None:
-            put(level_byte, "attack_level", why,
-                value=level_byte.value if written is None else written)
-        elif written is not None:
+            put(level_byte, "attack_level", why, value=written)
+        else:
             # No source value at all -- a partial neutral record.  The byte
             # is still this title's own constant or its own rule, so it is
             # written and accounted for rather than left a zero the engine

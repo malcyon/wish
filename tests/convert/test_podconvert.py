@@ -537,3 +537,17 @@ def test_a_dos_record_holding_0x130_reads_as_knowing_spell_126():
     back = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(rec), itm, spc))
     assert 126 in back.get("spells_known")
     assert back.get("attack_level") is None
+
+
+def test_a_dos_record_holding_0x130_as_one_goes_to_amiga_as_spell_126():
+    src = _amiga_pod_mage_knowing([1])
+    rec, itm, spc, _rep = dos_codec.write(src)
+    rec = bytearray(rec)
+    rec[0x130] = 1
+    neutral = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(rec), itm, spc))
+    neutral.set("class_bits", 4, "test: a class the Amiga writer can name")
+    writer, rep = amiga_pod.write_pod(neutral)
+    raw = writer.to_bytes()
+    mask = raw[amiga_pod.SPELLBOOK:amiga_pod.SPELLBOOK + amiga_pod.SPELLBOOK_BYTES]
+    assert mask[125 // 8] & (1 << (125 % 8))
+    assert rep.dropped == []

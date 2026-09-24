@@ -1286,7 +1286,7 @@ SECRET_OF_THE_SILVER_BLADES = DosDeltas(
 #: **This title has no `attack_level`**: its `GAME.OVR` never addresses
 #: `0x130`, and every id loop of the spellbook runs to 126, so the byte is
 #: spell 126 and the layout drops the field (`sizes["attack_level"] = 0`).
-#: `attack_level_classes=None` follows.
+#: `attack_level_classes=None` is what that leaves it.
 POOLS_OF_DARKNESS = DosDeltas(
     key="pools-of-darkness", title="Pools of Darkness", record_size=510,
     item_suffix=".THG", effect_suffix=".EFX", spellbook_spells=126,

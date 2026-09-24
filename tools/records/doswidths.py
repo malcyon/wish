@@ -84,8 +84,7 @@ ALWAYS_RECOMPUTED: dict[str, str] = {
     "attack_level": "the destination's own rule from the class levels: the "
                     "constant 1 in DOS Pool of Radiance, the best fighting "
                     "level floored at 1 in Curse and Silver Blades; Pools of "
-                    "Darkness has no rule and copies the byte, so "
-                    "`recomputed(game)` leaves it out there",
+                    "Darkness has no such field",
     "spells_castable": "recomputed from the class levels and wisdom through "
                        "DOS's own table for a C64 source, whose engine "
                        "never stores one",
@@ -93,10 +92,7 @@ ALWAYS_RECOMPUTED: dict[str, str] = {
 
 #: The five saves and current THAC0, always recomputed for a C64 source **on
 #: the one title whose DOS load-time rebuild has been read** -- Curse of the
-#: Azure Bonds (#632). Every other title still copies the source's own byte,
-#: so these join `ALWAYS_RECOMPUTED` only for that one game, the way
-#: `attack_level_copied` keeps `attack_level` out of it for the one game
-#: that copies rather than computes.
+#: Azure Bonds (#632). Every other title still copies the source's own byte.
 _CURSE_SAVES_ALWAYS_RECOMPUTED: dict[str, str] = {
     "thac0_current": "recomputed through DOS Curse's own unarmed combat "
                      "rebuild for a C64 source, the same as thac0_base",
@@ -123,19 +119,6 @@ RECOMPUTED: dict[str, str] = {
              "and dexterity, for a character with a thief level"
        for name, _ in dos_codec.WRITE_DIRECT if name.startswith("thief_")},
 }
-
-
-def attack_level_copied(game: str) -> bool:
-    """Whether `game`'s writer copies the source's `attack_level` byte rather
-    than working it out, which it does where no rule has been measured."""
-    return dos_codec.attack_level_written(dos_port.deltas_for(game), {}) is None
-
-
-def recomputed(game: str) -> dict[str, str]:
-    """`RECOMPUTED` as it holds in `game`: `attack_level` is left out where the
-    writer copies it."""
-    return {name: why for name, why in RECOMPUTED.items()
-            if name != "attack_level" or not attack_level_copied(game)}
 
 
 def always_recomputed(game: str) -> dict[str, str]:
@@ -206,7 +189,7 @@ def base(game: str) -> NeutralCharacter:
 def main(argv=None) -> int:
     for game in GAMES:
         print(game)
-        skipped = recomputed(game)
+        skipped = RECOMPUTED
         for s in scalars(game):
             note = f"  ({skipped[s.neutral]})" if s.neutral in skipped else ""
             print(f"  {s.neutral:26} {s.low:>7} .. {s.high:<10}{note}")

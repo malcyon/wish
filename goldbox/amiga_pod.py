@@ -361,7 +361,7 @@ def is_memorised_byte(value: int) -> bool:
             and value & ~SPELLS_MEMORISED_PENDING != 0)
 #: The spellbook, as a bitmask rather than DOS's byte per spell: bit `i` of
 #: byte `i >> 3` is DOS array index `i`, which is spell id `i + 1`. Sixteen
-#: bytes for 125 ids, bounded above by the cleric's slot array at 0x169.
+#: bytes for 126 ids, bounded above by the cleric's slot array at 0x169.
 #:
 #: CONFIRMED twice. The importer plants Silver Blades' fifteen packed bytes
 #: here (`lea.l $159(a2), a0` at `0x02622C`), and nine of the ten `.pc` files

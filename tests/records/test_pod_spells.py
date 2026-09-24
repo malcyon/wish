@@ -133,13 +133,13 @@ def test_the_three_probable_silver_blades_groups_are_confirmed_here():
         assert spells.spell_group(spell_id, POD) == ("magic-user", 7)
 
 
-def test_the_spellbook_records_ids_1_to_125_and_not_126():
-    """125 bytes at record `0x0B3`, one an id, against a 126-spell list."""
+def test_the_spellbook_records_ids_1_to_126():
+    """126 bytes from record `0x0B3`, one an id, against a 126-spell list."""
     table = spells.for_game(POD)
-    assert table.spellbook_ids == 125
-    assert table.last_spellbook_spell == 125
-    assert table.in_spellbook(125)
-    assert not table.in_spellbook(126)
+    assert table.spellbook_ids == 126
+    assert table.last_spellbook_spell == 126
+    assert table.in_spellbook(126)
+    assert not table.in_spellbook(127)
     assert spells.spell_group(126, POD) == ("magic-user", 9)
 
 
