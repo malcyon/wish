@@ -647,8 +647,10 @@ Party-wide Detect Magic (id 5) converts both ways in all three titles: the
 writer gives every running id-5 node one C64 row owned by the whole party
 (`effects.PARTY_WIDE`) that lasts as long as the longest node, and the reader
 turns a party-wide id-5 row into one DOS node on the lowest occupied slot (with
-several such rows, the longest; a row that never expires becomes a node of
-65535 minutes, the most one holds). Each title's DOS engine asks every party
+several such rows, the longest; a row that never expires becomes the
+never-expiring record `05 00 00 mm 00` on that slot, which the writer turns
+back into a duration-0 row that replaces any finite one; a Detect Magic node
+with any flag byte converts, because no engine reads the flag for id 5). Each title's DOS engine asks every party
 member for id 5, so the two forms give the player the same thing. Prayer
 converts both ways in all three titles: Pool's 35 is copied unchanged, Pool's
 49 has its side bit inverted, and Curse's and Silver Blades' 49 keeps it.

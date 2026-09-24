@@ -608,6 +608,69 @@ def test_detect_magic_of_two_characters_leaves_one_row_of_the_longest():
                     if "effect 5" in d]
 
 
+GRANTED_DETECT = bytes((5, 0, 0, 3, 0))
+
+
+@pytest.mark.parametrize("game", _PARTY_TITLES, ids=lambda g: g.key)
+def test_a_never_expiring_dos_detect_magic_is_a_party_row_not_a_trait_slot(game):
+    payload = bytearray(0x1C00)
+    char = _title_character(game)
+    char.set("granted_effects", [GRANTED_DETECT + NULL], "built here")
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    rows = _rows(payload)
+    assert rows.pop(63) == (5, 0xFF, 0x00, 0x03)
+    assert set(rows.values()) == {(0, 0, 0, 0)}
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    assert not [d for d in rep.dropped + rep.losses + rep.warnings
+                if "effect 5" in d or "granted" in d]
+
+
+@pytest.mark.parametrize("order", ["finite first", "granted first"])
+def test_a_finite_and_a_never_expiring_detect_magic_make_one_permanent_row(
+        order):
+    payload = bytearray(0x1C00)
+    finite = _pool_character(bytes((5, 0x04, 0, 3, 0)))
+    forever = _pool_character()
+    forever.set("granted_effects", [GRANTED_DETECT + NULL], "built here")
+    pair = [(finite, 2), (forever, 3)]
+    if order == "granted first":
+        pair.reverse()
+    for char, slot in pair:
+        c64_codec.write(char, payload=payload, party_slot=slot,
+                        clock_minutes=0)
+    rows = _rows(payload)
+    assert rows[63] == (5, 0xFF, 0x00, 0x03)
+    assert rows[62] == (0, 0, 0, 0)
+
+
+def test_a_never_expiring_party_wide_detect_magic_row_round_trips():
+    party = _staged_party((63, (5, 0xFF, 0x00, 0x03)))
+    brutus = next(c for c in party if c.get("name") == "BRUTUS")
+    assert [bytes(r) for r in brutus.get("granted_effects")
+            if bytes(r)[0] == 5] == [GRANTED_DETECT + NULL]
+    assert not [r for r in brutus.get("running_effects") or ()
+                if bytes(r)[0] == 5]
+    assert not [d for c in party for d in c.dropped if "effect 5" in d]
+    _rec, _itm, spc, _rep = dos_codec.write(brutus)
+    assert spc.count(GRANTED_DETECT) == 1
+    payload = bytearray(0x1C00)
+    for char in party:
+        c64_codec.write(char, payload=payload, party_slot=0, clock_minutes=1)
+    assert [(e.id, e.owner, e.duration, e.magnitude)
+            for e in effects.active_effects(bytes(payload))] == \
+        [(5, 0xFF, 0x00, 0x03)]
+
+
+def test_a_flagged_detect_magic_node_becomes_the_same_row_as_flag_zero():
+    payload = bytearray(0x1C00)
+    c64_codec.write(_pool_character(bytes((5, 10, 0, 3, 1))), payload=payload,
+                    party_slot=2, clock_minutes=0)
+    rows = _rows(payload)
+    assert rows[63] == (5, 0xFF, 0x0A, 0x03)
+    assert rows[62] == (0, 0, 0, 0)
+
+
 def test_a_party_wide_detect_magic_row_makes_a_round_trip():
     party = _staged_party((63, (5, 0xFF, 0x0A, 0x03)))
     payload = bytearray(0x1C00)

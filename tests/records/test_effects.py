@@ -1213,17 +1213,49 @@ def test_party_row_record_leaves_the_rest_unconverted(title, row):
                       effects.Unconverted)
 
 
-def test_a_never_expiring_party_row_becomes_the_longest_node():
-    row = effects.Effect(63, 5, 0xFF, 0x00, 0x03)
+def test_a_never_expiring_prayer_row_still_becomes_the_longest_node():
+    row = effects.Effect(63, 49, 0xFF, 0x00, 0x03)
     assert effects.party_row_record("pool-of-radiance", row, 0) == \
-        effects.RunningEffect(5, effects.DOS_MINUTES_MAX, 3, 0)
+        effects.RunningEffect(49, effects.DOS_MINUTES_MAX, 0x13, 0)
+
+
+@pytest.mark.parametrize("title", _TITLES)
+def test_a_never_expiring_detect_magic_row_is_a_granted_record(title):
+    row = effects.Effect(63, 5, 0xFF, 0x00, 0x03)
+    assert effects.party_row_granted(title, row) == \
+        bytes((5, 0, 0, 3, 0)) + bytes(4)
+    with pytest.raises(ValueError):
+        effects.party_row_record(title, row, 0)
+    assert effects.party_row_granted(
+        title, effects.Effect(63, 5, 0xFF, 0x0A, 0x03)) is None
+    assert effects.party_row_granted(
+        title, effects.Effect(63, 49, 0xFF, 0x00, 0x03)) is None
+
+
+@pytest.mark.parametrize("title", _TITLES)
+@pytest.mark.parametrize("flag", [0, 1, 0xFF])
+def test_c64_party_row_ignores_detect_magics_flag_byte(title, flag):
+    assert effects.c64_party_row(
+        title, effects.RunningEffect(5, 10, 3, flag)) == (5, 3)
+
+
+@pytest.mark.parametrize("first, second, kept", [(0x04, 0x00, 2),
+                                                 (0x00, 0x04, 1)])
+def test_write_party_row_lets_a_never_expiring_row_win_in_either_order(
+        first, second, kept):
+    p = bytearray(0x1C00)
+    assert effects.write_party_row(p, 5, first, 1, 0)
+    assert effects.write_party_row(p, 5, second, 2, 0)
+    rows = _party_slots(p)
+    assert rows[63] == (5, 0xFF, 0x00, kept)
+    assert rows[62] == (0, 0, 0, 0)
 
 
 def test_c64_party_row_keeps_the_data_byte():
     node = effects.RunningEffect(5, 10, 0x85, 0)
     assert effects.c64_party_row("pool-of-radiance", node) == (5, 0x85)
     assert isinstance(effects.c64_party_row(
-        "pool-of-radiance", effects.RunningEffect(5, 10, 3, 1)),
+        "pool-of-radiance", effects.RunningEffect(35, 10, 3, 1)),
         effects.Unconverted)
     assert isinstance(effects.c64_party_row(
         "curse-of-the-azure-bonds", effects.RunningEffect(35, 10, 3, 0)),

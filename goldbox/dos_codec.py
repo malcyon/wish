@@ -8061,10 +8061,15 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
         # every other such row is reported on the first character.
         occupied = {s.index for s in party}
         party_nodes: dict[int, effects.RunningEffect] = {}
+        party_granted: dict[int, bytes] = {}
         for row in effects.active_effects(bytes(save0)):
             if row.owner in occupied:
                 continue
             if row.owner & 0x80:
+                record = effects.party_row_granted(c64.key, row)
+                if record is not None:
+                    party_granted[row.id] = record
+                    continue
                 node = effects.party_row_record(c64.key, row, clock_mins)
                 if isinstance(node, effects.RunningEffect):
                     kept = party_nodes.get(node.id)
@@ -8087,6 +8092,8 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
                 f"{label} "
                 f"in slot {row.slot}, owned by {who}: no party member owns "
                 "it, and no rule yet converts such a row")
+        for record in party_granted.values():
+            _add_party_granted(out[0], record)
         # One node per id, the longest: the C64 writer keeps one row per id.
         for node_id in sorted(party_nodes):
             targets = (out if node_id in effects.PARTY_ROW_ON_EVERY_MEMBER
@@ -8096,6 +8103,21 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     out.reverse()
     icons.reverse()
     return out, icons
+
+
+def _add_party_granted(char: "NeutralCharacter", record: bytes) -> None:
+    """Append a never-expiring party-wide row's record to `char`'s
+    granted effects."""
+    origin = ("the save's shared effect arrays: a row owned by the whole "
+              "party that never expires, converted through "
+              "effects.party_row_granted")
+    old = char.fields.get("granted_effects")
+    if old is None:
+        char.set("granted_effects", [record], origin)
+    else:
+        char.set("granted_effects", [*old.value, record],
+                 f"{old.origin}; {origin}",
+                 old.confidence, old.how, old.dropped)
 
 
 def _add_party_node(char: "NeutralCharacter",

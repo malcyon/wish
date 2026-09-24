@@ -1499,8 +1499,21 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         innate_ids = list(innate.value) if innate is not None else []
         for i, e in enumerate(innate_ids[:10]):
             slots[i] = e
-        granted_ids = ([int(node[0]) for node in granted.value]
-                       if granted is not None else [])
+        granted_ids = []
+        for node in (granted.value if granted is not None else ()):
+            if (int(node[0]) == effects.DETECT_MAGIC_ID
+                    and int(node[0]) in effects.party_row_ids(title_key)
+                    and payload is not None):
+                # DOS's permanent Detect Magic is party-wide; the C64 asks
+                # only for an owner-`$FF` row, never a trait slot. With no
+                # payload there is no row to write, and the id keeps the
+                # trait slot it always had.
+                if not effects.write_party_row(
+                        payload, int(node[0]), 0, int(node[3]), clock):
+                    rep.lost(f"effect {node[0]}, which never expires: no "
+                             "free slot in the save's shared effect arrays")
+                continue
+            granted_ids.append(int(node[0]))
         free = [i for i in range(9, -1, -1) if slots[i] == 0]
         if len(innate_ids) > 10 or len(granted_ids) > len(free):
             rep.losses.append(

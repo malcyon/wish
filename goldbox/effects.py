@@ -360,6 +360,7 @@ PARTY_ROW_IDS: dict[str, frozenset[int]] = {
 PARTY_ROW_ON_EVERY_MEMBER = frozenset({35, 49})
 
 _PRAYER_ID = 49
+DETECT_MAGIC_ID = 5
 
 
 def prayer_dos_data(title_key: str, magnitude: int) -> int:
@@ -449,23 +450,45 @@ def party_row_record(title_key: str, row: "Effect",
     """
     if row.id not in party_row_ids(title_key):
         return Unconverted("no rule yet for a party-wide row of this id")
+    if row.duration == 0 and row.id == DETECT_MAGIC_ID:
+        raise ValueError("a never-expiring Detect Magic row has no "
+                         "running-effect node; see `party_row_granted`")
     data = row.magnitude
     if row.id == _PRAYER_ID:
         data = prayer_dos_data(title_key, row.magnitude)
     if row.duration == 0:
-        # A node has no never-expires form; the longest it can last is nearest.
+        # Only Detect Magic's never-expiring form is settled (a duration-0
+        # record, `party_row_granted`); the other ids keep the longest node
+        # a running record can hold until theirs is read.
         return RunningEffect(row.id, DOS_MINUTES_MAX, data, 0)
     minutes = min(remaining_minutes(row.duration, clock_minutes),
                   DOS_MINUTES_MAX)
     return RunningEffect(row.id, minutes, data, 0)
 
 
+def party_row_granted(title_key: str, row: "Effect") -> bytes | None:
+    """The DOS granted record for a never-expiring party-wide row, or `None`.
+
+    Detect Magic only: DOS keeps duration 0 for good and its one id-5 query
+    matches by id, so the record `05 00 00 mm 00` (mm the row's magnitude)
+    on one member is the exact form. It is `granted_effects`, not a running
+    effect, because a running effect cannot have zero minutes.
+    """
+    if (row.id != DETECT_MAGIC_ID or row.duration != 0
+            or row.id not in party_row_ids(title_key)):
+        return None
+    return bytes((row.id, 0, 0, row.magnitude, 0)) + _RUNNING_EFFECT_NEXT
+
+
 def c64_party_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted:
-    """The C64 id and magnitude for a DOS node that becomes a party-wide row."""
+    """The C64 id and magnitude for a DOS node that becomes a party-wide row.
+
+    Detect Magic's flag byte is not read: no DOS engine reads it for id 5.
+    """
     if node.id not in party_row_ids(title_key):
         return Unconverted("no rule yet for this id in this title")
-    if node.flag != 0:
+    if node.flag != 0 and node.id != DETECT_MAGIC_ID:
         return Unconverted("a flag byte other than 0 on a party-wide effect")
     if node.id == _PRAYER_ID:
         return node.id, prayer_c64_magnitude(title_key, node.data)
@@ -689,14 +712,16 @@ def write_party_row(payload: bytearray, id: int, duration: int,
                     magnitude: int, clock_minutes: int) -> bool:
     """Write one party-wide row, keeping the longest-lasting one per id.
 
-    An existing party row is overwritten only when the new one lasts longer;
-    an existing duration byte of 0 never expires and is left alone. Returns
+    An existing party row is overwritten only when the new one lasts longer,
+    or is a duration byte of 0, which never expires (`replaces_slot`'s rule);
+    an existing duration byte of 0 is left alone. Returns
     `False` when there is no row and no free slot.
     """
     held = slot_for(payload, id, PARTY_WIDE)
     if held is not None:
         old = payload[EFFECT_DURATION_OFFSET + held]
-        if old != 0 and (remaining_minutes(duration, clock_minutes)
+        if old != 0 and (duration == 0
+                         or remaining_minutes(duration, clock_minutes)
                          > remaining_minutes(old, clock_minutes)):
             write_effect(payload, held, id, PARTY_WIDE, duration, magnitude)
         return True
