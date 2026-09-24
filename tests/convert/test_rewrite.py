@@ -888,3 +888,55 @@ def test_the_fields_a_native_save_cannot_take_an_edit_to_match_the_hand_written_
 
     expected = rewrite.unwritable_fields(*_rewrite_port_and_title(port))
     assert unwritable == expected
+
+
+# --- a former paladin's cure byte through an edit to his paladin level ------
+_LATER_PORTS = [p for p in PORTS
+                if p[1] is not dos_port.POOL_OF_RADIANCE]
+
+
+def _former_paladin_neutral(game, items: int = 1):
+    from goldbox.classcode import CLASS_BIT_FOR_NAME
+    neutral = _neutral(game, items)
+    neutral.set("levels", {"magic-user": 1}, "made up")
+    neutral.set("former_levels", {"paladin": 5}, "made up")
+    neutral.set("class_bits", CLASS_BIT_FOR_NAME["magic-user"], "made up")
+    neutral.set("paladin_cures", 1, "made up")
+    # Without a level the C64 writer counts him as having regained the class.
+    neutral.set("level", 1, "made up")
+    return neutral
+
+
+@pytest.mark.parametrize("port", _LATER_PORTS, ids=_port_id)
+def test_a_former_paladins_cure_byte_survives_a_paladin_level_edit(port):
+    kind, deltas = port
+    if kind == "dos":
+        char, before = _synthetic_dos(deltas, 1, _former_paladin_neutral)
+    else:
+        char, before = _synthetic_amiga_later(deltas, 1,
+                                              _former_paladin_neutral)
+    assert before.get("paladin_cures") == 0
+    assert before.get("level_paladin") == 0
+    out = _rewrite(port, char, before, _edited(before, level_paladin=3))
+    if kind == "dos":
+        at = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["paladin_cures"].offset
+        assert out.record[at] == 1
+    else:
+        at = deltas.offset(deltas.dos_field("paladin_cures").offset)
+        assert out.character.raw[at] == 1
+
+
+@needs_specimens
+def test_mathews_cure_byte_survives_a_paladin_level_edit():
+    folders = sorted(specimen_root().glob(
+        "*-dos/WISH-SPEC-curse-131-dualclassed-in-area-1"))
+    if not folders:
+        pytest.skip("needs the curse-131-dualclassed-in-area-1 specimen")
+    char = dos_codec.read_character(folders[0] / "CHRDATJ1.SAV")
+    game = c64_port.by_key(char.deltas.key)
+    before, _ = dos_codec.to_c64_record(char)
+    out = rewrite.rewrite_dos(char, before, _edited(before, level_paladin=3),
+                              game)
+    at = dos_port.FIELDS_BY_NAME_FOR[char.deltas.key]["paladin_cures"].offset
+    assert out.record[at] == 1
+    assert "paladin_cures" not in out.moved

@@ -3994,6 +3994,22 @@ def set_window_source(char: NeutralCharacter, raw: bytes) -> None:
     """Hand :func:`write` the source's own `field_83_87` run."""
     setattr(char, _FIELD_83_87_SOURCE, bytes(raw))
 
+
+#: Marks a neutral read back from the sheet's C64 record during an in-place
+#: rewrite, where both renders must copy the source's byte and never
+#: recompute it.
+_REWRITE_RENDER = "_rewrite_render"
+
+
+def set_rewrite_render(char: NeutralCharacter) -> None:
+    """Mark `char` as a render made for an in-place rewrite."""
+    setattr(char, _REWRITE_RENDER, True)
+
+
+def rewrite_render(char: NeutralCharacter) -> bool:
+    """Whether `char` was marked by :func:`set_rewrite_render`."""
+    return getattr(char, _REWRITE_RENDER, False)
+
 #: DOS bytes with no source that only the **later titles** declare.  Zeroed
 #: and reported, exactly as :data:`WRITE_UNSOURCED` is, and the round trip
 #: masks this list beside that one.
@@ -5479,13 +5495,13 @@ def write(char: NeutralCharacter,
     # gets the class rule: 1 for a class the character holds *or* one a
     # dual-classed character left, which is what the DOS engine's own
     # character creation writes and how it leaves the byte after HUMAN CHANGE
-    # CLASSES.
+    # CLASSES.  An in-place rewrite copies, so the engine's own byte stands.
     if "paladin_cures" in table:
         (_pal_name, _pal_why), = WRITE_DERIVED_LATER
         f = table[_pal_name]
         held = use(_pal_name)
         _left = int((w.get("former_levels") or {}).get("paladin") or 0)
-        if (port == "C64" and _left > 0
+        if (port == "C64" and _left > 0 and not rewrite_render(char)
                 and not (w.get("levels") or {}).get("paladin")):
             rec[f.offset] = paladin.full_count(_left)
             rep.note(f.offset, f.size,

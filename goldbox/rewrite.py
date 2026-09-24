@@ -536,6 +536,7 @@ def rewrite_dos(original: "dos_codec.DosCharacter",
 
     def render(rec: CharacterRecord) -> tuple[bytes, bytes]:
         neutral = c64_codec.read(rec, game=game)
+        dos_codec.set_rewrite_render(neutral)
         _carry_window(neutral, original.to_bytes(), spans)
         record, itm, _spc, _rep = dos_codec.write(neutral, deltas=deltas,
                                                   icon=icon)
@@ -592,6 +593,7 @@ def rewrite_amiga_por(original: "amiga_por.AmigaPorCharacter",
 
     def render(rec: CharacterRecord) -> bytes:
         neutral = c64_codec.read(rec, game=game)
+        dos_codec.set_rewrite_render(neutral)
         _carry_window(neutral, original.raw, spans)
         record, _itm, _spc, _rep = amiga_por.write_por(neutral, icon=icon)
         return record
@@ -645,6 +647,7 @@ def rewrite_amiga_later(original: "amiga_later.AmigaCharacter",
 
     def render(rec: CharacterRecord) -> bytes:
         neutral = c64_codec.read(rec, game=game)
+        dos_codec.set_rewrite_render(neutral)
         _carry_window(neutral, original.raw, spans)
         written, _rep = amiga_later.write_later(neutral, deltas=deltas,
                                                 icon=icon)
