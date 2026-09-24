@@ -2233,7 +2233,7 @@ class EditorBinding(QObject):
     def preview_text(self) -> str:
         """What a save would write, in the form `wish --dry-run` prints it."""
         if self.party is None:
-            return "nothing open"
+            return "Nothing open"
         self._flush()
         return changes.preview(self.party, self.path.name if self.path else "?")
 

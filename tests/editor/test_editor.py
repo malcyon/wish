@@ -2146,7 +2146,7 @@ def test_choosing_an_alignment_reaches_the_disk(editor, save):
 def test_preview_of_an_untouched_save_reports_no_changes(editor):
     for row in range(6):
         editor.roster.selectRow(row)
-    assert editor.preview_text().endswith("no changes")
+    assert editor.preview_text().endswith("No changes to write")
 
 
 @game_disks
@@ -2158,12 +2158,12 @@ def test_preview_lists_fields_items_and_the_icon(editor):
     editor.add_item("POTION OF HEALING")
     editor._widgets["icon"].set_cell_colour(0, 7)
     text = editor.preview_text()
-    assert "slot 0 MALCYON: gold 2 -> 999" in text
-    assert "slot 0 MALCYON: item 6 DART quantity 13 -> 9" in text
-    assert "slot 0 MALCYON: item 1 added: POTION OF HEALING" in text
+    assert "Slot 0 MALCYON: gold 2 -> 999" in text
+    assert "Slot 0 MALCYON: item 6 DART quantity 13 -> 9" in text
+    assert "Slot 0 MALCYON: item 1 added: POTION OF HEALING" in text
     assert "item 1 DART -> POTION OF HEALING" not in text
     assert "combat icon: 1 of 36 bytes changed" in text
-    assert "4 change(s) (nothing written yet)" in text
+    assert "Pending changes: 4 (nothing written yet)" in text
 
 
 @game_disks
@@ -2195,7 +2195,7 @@ def test_a_roster_disk_still_opens_and_has_no_items(app, tmp_path):
     assert w.items.rowCount() == 0
     assert "roster disk" in w.root.findChild(QLabel, "label_inventory").text()
     assert w.add_item("POTION OF HEALING") == "no inventory here"
-    assert w.preview_text().endswith("no changes")
+    assert w.preview_text().endswith("No changes to write")
 
 
 # --- the sheet is three tabs under the roster -------------------------------
@@ -4628,7 +4628,7 @@ def test_a_no_op_save_writes_nothing_with_the_effects_panel_built(app, save):
     w = EditorBinding(make_root(), str(save))
     for row in range(len(w.party)):
         w.roster.selectRow(row)
-    assert w.preview_text().endswith("no changes")
+    assert w.preview_text().endswith("No changes to write")
     w.save()
     assert save.read_bytes() == before
 

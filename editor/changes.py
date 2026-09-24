@@ -4,11 +4,11 @@ Everything is compared against the bytes as they were read, never against a
 dirty flag: the question a preview answers is "what will reach the disk", and
 an edit typed and typed back has changed nothing.
 
-    based on PORSAVE11.D64
-      slot 0 MALCYON: gold 100 -> 1234
-      slot 0 MALCYON: item 6 DART quantity 13 -> 9
+    Preview for PORSAVE11.D64
+    Slot 0 MALCYON: gold 100 -> 1234
+    Slot 0 MALCYON: item 6 DART quantity 13 -> 9
 
-    2 change(s) (nothing written yet)
+    Pending changes: 2 (nothing written yet)
 """
 
 from __future__ import annotations
@@ -108,7 +108,7 @@ def changes(party) -> list[str]:
     """Every change the whole file would take, one line each."""
     out = []
     for member in party.members:
-        who = f"slot {member.index} {member.record.name}"
+        who = f"Slot {member.index} {member.record.name}"
         for line in (record_changes(member, in_save=party.in_save)
                      + item_changes(member) + icon_changes(member)):
             out.append(f"{who}: {line}")
@@ -116,11 +116,11 @@ def changes(party) -> list[str]:
 
 
 def preview(party, path) -> str:
-    """The whole report, in the shape `--dry-run` prints."""
+    """The whole report; every line opens with a capital letter."""
     lines = changes(party)
-    head = f"based on {path}"
+    head = f"Preview for {path}"
     if not lines:
-        return f"{head}\nno changes"
-    body = "\n".join(f"  {line}" for line in lines)
-    return (f"{head}\n{body}\n\n{len(lines)} change(s) "
+        return f"{head}\nNo changes to write"
+    body = "\n".join(lines)
+    return (f"{head}\n{body}\n\nPending changes: {len(lines)} "
             f"(nothing written yet)")
