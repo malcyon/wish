@@ -66,3 +66,26 @@ def test_b_the_real_seven_coin_purses_come_back_as_seven_not_fourteen():
     assert entries == 7
     span = result["bound"] * result["stride"]
     assert span == 12  # 0x088 to 0x094, i.e. 7 words minus the last word's width
+
+
+def test_c_a_loop_with_no_init_move_still_prints_its_line(tmp_path, capsys):
+    """A compare and a backjump on the index slot but no `mov byte [bp-n], imm`
+    before the access: the per-site line used to format a missing init address
+    with `#08x` and raise `TypeError`."""
+    data = (b"\xeb\x03"                # jmp bottom
+            + b"\xfe\x46\xfb"          # top: inc byte [bp-5]
+            + b"\x8a\x46\xfb"          # bottom: mov al, [bp-5]
+            + b"\x98"                  # cwde
+            + b"\xc4\x7e\xfc"          # les di, [bp-4]
+            + b"\x03\xf8"              # add di, ax
+            + b"\x26\x8a\x85\x88\x00"  # mov al, es:[di+0x88]
+            + b"\x80\x7e\xfb\x06"      # cmp byte [bp-5], 6
+            + b"\x75\xf3")             # jne top
+    overlay = tmp_path / "GAME.OVR"
+    overlay.write_bytes(data)
+    assert dosrecordloops.analyse(
+        data, dosarraywidth.accesses(data, 0x88)[0][0])["initat"] is None
+    assert dosrecordloops.main(["t", "88", "--overlay", str(overlay)]) == 0
+    out = capsys.readouterr().out
+    assert "init ? @?" in out
+    assert "cmp 0x06" in out

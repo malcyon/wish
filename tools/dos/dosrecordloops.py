@@ -175,7 +175,10 @@ def main(argv=None) -> int:
                 n = (b + 1 - i) if i is not None else None
                 lo_addr = disp + (i or 0) * stride
                 hi_addr = disp + b * stride
-                say = (f"indexed by {a['slot']}, init {i} @{a['initat']:#08x}, "
+                init_at = (f"{a['initat']:#08x}" if a["initat"] is not None
+                           else "?")
+                say = (f"indexed by {a['slot']}, init {'?' if i is None else i} "
+                       f"@{init_at}, "
                        f"cmp {b:#04x} @{a['boundat']:#08x} "
                        f"{mn} {tgt:#08x}{' back' if back else ' FORWARD'}"
                        + (f" -> {n} entries"
