@@ -102,6 +102,39 @@ def to_main_menu(session: dosbox.Session, tries: int = 30) -> str:
     raise TimeoutError("never reached a screen Escape does not change")
 
 
+#: The key pressed at the screen `to_main_menu` stops at, to tell the
+#: copy-protection question from the party menu.  A digit: the question takes
+#: any keys, so a typed one is drawn there, and none of the party menu's
+#: thirteen entries (`GAME.EXE` 0xAB4E-0xAC90) begins with one.
+PROTECTION_PROBE = "1"
+
+
+def to_party_menu(session: dosbox.Session, presses: int = 30,
+                  questions: int = 2) -> list[str]:
+    """`to_main_menu`, answering the copy-protection question on the way.
+
+    The question waits for typing, so Escape stops changing the screen there
+    as well as at the party menu.  `PROTECTION_PROBE` is pressed at each still
+    screen: if the screen answers, it was the question, and `Return` sends
+    the typed key; if it does not, this is the party menu and `Return`, which
+    would pick `Create New Character`, is never pressed.  Returns the digest
+    of each question answered.  PROBABLE: the question accepting any answer
+    is this module's own account, not a capture.
+    """
+    answered: list[str] = []
+    while True:
+        still = to_main_menu(session, presses)
+        session.key(PROTECTION_PROBE)
+        if not session.wait_for(lambda sc: sc.digest() != still, 3.0):
+            return answered
+        if len(answered) >= questions:
+            raise TimeoutError(f"still answering a question after {questions}; "
+                               "the answer is being refused or this is not "
+                               "the copy-protection question")
+        session.key("Return")
+        answered.append(still)
+
+
 def double_click(session: dosbox.Session, x: int, y: int) -> None:
     """Point at (x, y) in the emulated 320x200 screen and double-click.
 

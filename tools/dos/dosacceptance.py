@@ -2,8 +2,8 @@
 """Load a Wish-written DOS save in the running game, act, and read the engine's resave.
 
 The DOS driver of `docs/235-destination-game-acceptance-runs.md` (D1), for
-DOS Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver
-Blades.  It stages a whole save this project wrote the way
+DOS Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades
+and Pools of Darkness.  It stages a whole save this project wrote the way
 `dossheetread.install_whole` does, boots DOSBox headless and silent on a
 pooled slot, runs a step list, and decodes what the engine wrote back:
 
@@ -24,18 +24,44 @@ Pool of Radiance and the title's engine-written specimen under
 `$WISH_SPECIMENS/por-c64/` for the other two (`C64_BASES`), or `--c64-save`.
 With no `--steps` only that conversion runs.
 
+    tools/dos/dosacceptance.py --title darkness \\
+        --amiga-disk 'Pools Of Darkness.zip!Pools of Darkness3.adf' \\
+        --amiga-slot SavGamA.pty \\
+        --steps load begin camp 'sheet 4' 'items 4' 'save D' read \\
+        --issue 650 --run scrolls
+
+`--amiga-slot` (with `--amiga-disk`, a path to an `.adf` or the end of a
+`tools/amiga/amigasaves.py` label) replaces `--save` for Pools of Darkness:
+the Amiga saved game is converted by the Convert window's own route,
+`editor.convert.PodAmigaToDos` with `WISH_EXPERIMENTAL_POD_CONVERT` set for
+this process, into `<out>/source/` as DOS slot A, with the disk's label and
+SHA-256, the report's `dropped` and `losses` and every warning the
+conversion logged.
+
 | step | what it does |
 |---|---|
-| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, Curse and Silver Blades on the party menu |
-| `begin` | Curse and Silver Blades: `BEGIN ADVENTURING`, through Silver Blades' intro bars, to the map |
+| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu |
+| `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars, to the map |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
+| `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1), `VIEW`, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below) |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
-| `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one |
+| `walk MI`, `walk 1` | Pool: turn around and step one square.  Pools of Darkness: step one square, turning right past a wall |
+| `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement and items |
+
+**Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
+capture.**  Its party menu holds Silver Blades' thirteen entries in the same
+order (`GAME.EXE` 0xAB4E-0xAC90 against Silver Blades' `START.EXE`
+0xE207-0xE349), so it is driven as Silver Blades' highlight list at
+`ssbimport`'s rows; the map bar is `Move Area Cast View Encamp Search Look`
+(0xBC79), the camp bar `Save View Magic Rest Alter Fix Exit` (0xBEBE), the
+rest menu Curse's (0xBB26), the sheet's bar `Items Spells Trade Deposit Drop
+Lay Cure Exit` (0xBB4F).  Each is PROBABLE until a run has reached it; a
+screen that does not answer its key stops the run with a `lost-*.png`.
 
 Staging, written into the installed copy before the boot and logged in
 bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
@@ -91,6 +117,7 @@ import contextlib
 import dataclasses
 import hashlib
 import json
+import logging
 import os
 import pathlib
 import re
@@ -103,7 +130,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec, world_state  # noqa: E402
-from tools.dos import dosbox, ssbimport  # noqa: E402
+from tools.dos import dosbox, dospod, ssbimport  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 # The camp bar is `Save View Magic Rest Alter Exit` in Pool of Radiance and
@@ -172,6 +199,24 @@ AFTER_TRAIN = ("l", "l", "Return", "Escape")
 #: PROBABLE and unread on a capture.
 SSB_LOAD_ROW = 2
 
+#: Pools of Darkness' party menu, driven as Silver Blades' highlight list
+#: because `GAME.EXE` holds the same entries in the same order.  The rows are
+#: Silver Blades' and PROBABLE here until a capture of this title reads them.
+POD_MENU_RECT = ssbimport.MENU_RECT
+POD_LOAD_ROW = SSB_LOAD_ROW
+POD_MENU_AFTER = ssbimport.MENU_AFTER
+#: `View` on the map and camp bars; `Items` and `Exit` on the sheet's bar
+#: `Items Spells Trade Deposit Drop Lay Cure Exit` (`GAME.EXE` 0xBB4F).  The
+#: `ITEMS` list turns its page with `Next` (0xA6AF), the list protocol's `n`.
+VIEW = "v"
+SHEET_ITEMS = "i"
+LEAVE = "e"
+ITEMS_NEXT = dosbox.LIST_PAGE_DOWN
+#: Pages of `ITEMS` captured before the run gives up on reaching the last.
+ITEMS_PAGES = 6
+#: The walk each title drives: Pool's turn-around, Pools of Darkness' step.
+WALKS = {"pool": "MI", "darkness": "1"}
+
 
 @dataclasses.dataclass(frozen=True)
 class RestKeys:
@@ -205,6 +250,11 @@ class Title:
     same_letter: bool
     #: `train N` is driven; Silver Blades' training keys are unread.
     trains: bool
+    #: What the DOSBox autoexec runs.
+    exe: str = "START.EXE"
+    #: The saved game's suffix: `SAVGAM<slot>.DAT`, or Pools of Darkness'
+    #: `SAVGAM<slot>.PTY` with a `VAULT<slot>.DAT` beside it.
+    suffix: str = ".DAT"
 
     def rest_keys(self) -> RestKeys:
         if self.key == "pool":
@@ -212,11 +262,25 @@ class Title:
                             REST_DEC, REST_GO)
         return LATER_REST
 
+    def find_game(self) -> pathlib.Path:
+        """The title's directory in the archives, found by its launcher."""
+        if self.exe == "START.BAT":
+            return dospod.find_game(self.stem)
+        return dosbox.find_game(self.stem)
+
 
 TITLES = {
     "pool": Title("pool", "POOLRAD", "map", True, False, False),
     "curse": Title("curse", "CURSE", "party", False, False, True),
     "ssb": Title("ssb", "SECRET", "party", False, True, False),
+    # `Load Saved Game` is a party-menu entry here as in Curse and Silver
+    # Blades, and both leave the party at that menu after a load, so this
+    # title's `loads_to` is `party`: PROBABLE, not yet captured.  The
+    # container names its own `CHRDAT` files and the engine loads those, not
+    # the letter picked (`docs/141-dos-savegame.md`, 12809-13136), so a
+    # renamed slot would load nothing.
+    "darkness": Title("darkness", "DARKNESS", "party", False, True, False,
+                      exe="START.BAT", suffix=".PTY"),
 }
 
 #: The C64 party `--fixture-row` stages into for each later title: an
@@ -284,8 +348,8 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
     return days, hours, mins // REST_STEP
 
 
-STEP_HELP = ("load, begin, 'walk MI', camp, display, 'rest 5m', 'save D', 'train 1', 'shot NAME', "
-             "'press KEY', read")
+STEP_HELP = ("load, begin, 'walk MI', 'walk 1', camp, display, 'rest 5m', 'save D', "
+             "'train 1', 'sheet 1', 'items 1', 'shot NAME', 'press KEY', read")
 
 
 def parse_step(text: str) -> Step:
@@ -301,10 +365,11 @@ def parse_step(text: str) -> Step:
         return Step(kind, text, minutes=minutes)
     if kind == "save" and len(words) == 2 and re.fullmatch(r"[A-Ja-j]", words[1]):
         return Step(kind, text, letter=words[1].upper())
-    if kind == "train" and len(words) == 2 and re.fullmatch(r"[1-8]", words[1]):
+    if kind in ("train", "sheet", "items") and len(words) == 2 and re.fullmatch(
+            r"[1-8]", words[1]):
         return Step(kind, text, line=int(words[1]))
-    if kind == "walk" and len(words) == 2 and words[1].upper() == "MI":
-        return Step(kind, text, key="MI")
+    if kind == "walk" and len(words) == 2 and words[1].upper() in WALKS.values():
+        return Step(kind, text, key=words[1].upper())
     if kind == "shot" and len(words) == 2 and re.fullmatch(r"[\w-]+", words[1]):
         return Step(kind, text, name=words[1])
     if kind == "press" and len(words) == 2 and re.fullmatch(r"\w+", words[1]):
@@ -344,7 +409,8 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "begin":
             if t.loads_to == "map":
                 raise ValueError(f"{title}'s load puts the party on the map; "
-                                 "begin is for curse and ssb")
+                                 "begin is for the titles that load to the "
+                                 "party menu")
             if where != "party":
                 raise ValueError(f"begin needs the party menu: {step.text!r}")
             where = "map"
@@ -355,10 +421,19 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                 raise ValueError(f"already camped: {step.text!r}")
             where = "camp"
         elif k == "walk":
-            if title != "pool":
-                raise ValueError(f"walk MI is driven in pool only, not {title}")
+            if title not in WALKS:
+                raise ValueError(f"walk MI is driven in pool only and walk 1 in "
+                                 f"darkness only, not {title}")
+            if step.key != WALKS[title]:
+                raise ValueError(f"{title}'s walk is 'walk {WALKS[title]}', not "
+                                 f"{step.text!r}")
             if where != "map":
                 raise ValueError(f"walk needs the map: {step.text!r}")
+        elif k in ("sheet", "items"):
+            if title != "darkness":
+                raise ValueError(f"{k} is driven in darkness only, not {title}")
+            if where != "camp":
+                raise ValueError(f"{k} needs camp first: {step.text!r}")
         elif k == "rest":
             if where != "camp":
                 raise ValueError(f"rest needs camp first: {step.text!r}")
@@ -474,8 +549,56 @@ def read_place(savgam: bytes) -> dict:
             "set_out": s.set_out}
 
 
+#: The eight thief skills in the order the record holds them.
+THIEF_FIELDS = ("thief_pick_pockets", "thief_open_locks", "thief_find_traps",
+                "thief_move_silently", "thief_hide_in_shadows",
+                "thief_hear_noise", "thief_climb_walls", "thief_read_languages")
+
+
+def item_dict(item) -> dict:
+    """One item as `read` reports it; a scroll's three spell ids are in
+    `charges`, `effect` and `power` (`amiga_pod.unbundle`)."""
+    return {"type_index": item.get("type_index"),
+            "spells": [item.get("charges"), item.get("effect"), item.get("power")],
+            "readied": item.get("readied"), "quantity": item.get("quantity"),
+            "weight": item.get("weight")}
+
+
+def read_pod_slot(folder: pathlib.Path, letter: str) -> dict:
+    """A Pools of Darkness slot: the clock, the square, and every character's
+    nodes, experience, thief skills, item count, encumbrance, movement and
+    items, read through `world_state.pod_from_dos` and `dos_codec.read_party`."""
+    savgam = (folder / f"SAVGAM{letter}.PTY").read_bytes()
+    state = world_state.pod_from_dos(savgam, source=str(folder))
+    out = {"slot": letter, "clock": list(state.clock),
+           "clock_minutes": clock_total(state.clock),
+           "place": {"x": state.x, "y": state.y, "facing": state.facing,
+                     "in_dungeon": state.in_dungeon,
+                     "dungeon_map": state.dungeon_map, "mode": state.mode},
+           "vault_bytes": ((folder / f"VAULT{letter}.DAT").stat().st_size
+                           if (folder / f"VAULT{letter}.DAT").is_file() else None),
+           "characters": []}
+    for c in dos_codec.read_party(folder, letter):
+        out["characters"].append({
+            "name": c.name, "file": pathlib.Path(c.source).name,
+            "experience": c.get("experience"),
+            "nodes": [node_dict(e) for e in c.effects],
+            "thief": {f: c.get(f) for f in THIEF_FIELDS},
+            "item_count": c.get("item_count"),
+            "encumbrance": c.get("encumbrance"),
+            "movement": c.get("movement"),
+            "items": [item_dict(i) for i in c.items]})
+    return out
+
+
 def read_slot(folder: pathlib.Path, letter: str) -> dict:
-    """The clock, the place and every character's nodes and experience in one slot."""
+    """The clock, the place and every character's nodes and experience in one slot.
+
+    A folder holding `SAVGAM<letter>.PTY` is Pools of Darkness and is read by
+    `read_pod_slot`.
+    """
+    if (folder / f"SAVGAM{letter}.PTY").is_file():
+        return read_pod_slot(folder, letter)
     savgam = (folder / f"SAVGAM{letter}.DAT").read_bytes()
     digits = world_state.from_dos(savgam).clock
     out = {"slot": letter, "clock": list(digits),
@@ -538,6 +661,29 @@ def compare_experience(before: dict, after: dict) -> list[dict]:
     return rows
 
 
+#: What `compare_members` sets side by side for each Pools of Darkness character.
+MEMBER_FIELDS = ("thief", "item_count", "encumbrance", "movement", "items")
+
+
+def compare_members(before: dict, after: dict) -> list[dict]:
+    """Each character's `MEMBER_FIELDS` in `before` and `after`, matched by name,
+    with the names of the fields that differ.  Empty for a title whose
+    reading has none of them."""
+    after_by = {c["name"]: c for c in after["characters"]}
+    rows = []
+    for c in before["characters"]:
+        if "thief" not in c:
+            continue
+        now = after_by.get(c["name"])
+        row = {"name": c["name"], "present": now is not None, "changed": []}
+        for f in MEMBER_FIELDS:
+            row[f] = {"before": c[f], "after": None if now is None else now.get(f)}
+            if now is not None and now.get(f) != c[f]:
+                row["changed"].append(f)
+        rows.append(row)
+    return rows
+
+
 def judge(expect: Expect, after: dict) -> dict:
     """Whether `after` holds the node `expect` names, with its minutes and data."""
     who = [c for c in after["characters"] if c["name"].upper() == expect.name]
@@ -558,10 +704,23 @@ def judge(expect: Expect, after: dict) -> dict:
                                for n in nodes)}
 
 
+_SAVGAM = re.compile(r"SAVGAM([A-J])(\.DAT|\.PTY)")
+
+
+def containers_in(save: pathlib.Path) -> dict[str, str]:
+    """Slot letter -> saved-game suffix, `.DAT` or Pools of Darkness' `.PTY`,
+    for every `SAVGAM?` file in `save`, whatever the case."""
+    out: dict[str, str] = {}
+    for p in save.iterdir():
+        m = _SAVGAM.fullmatch(p.name.upper())
+        if m:
+            out[m.group(1)] = m.group(2)
+    return out
+
+
 def slots_in(save: pathlib.Path) -> list[str]:
-    """The slot letters `save` holds a `SAVGAM?.DAT` for, whatever the case."""
-    return sorted(p.name.upper()[6] for p in save.iterdir()
-                  if re.fullmatch(r"SAVGAM[A-J]\.DAT", p.name.upper()))
+    """The slot letters `save` holds a `SAVGAM?.DAT` or `.PTY` for."""
+    return sorted(containers_in(save))
 
 
 def source_slot(save: pathlib.Path, wanted: str | None = None) -> str:
@@ -569,12 +728,12 @@ def source_slot(save: pathlib.Path, wanted: str | None = None) -> str:
     slots = slots_in(save)
     if wanted:
         if wanted.upper() not in slots:
-            raise FileNotFoundError(f"{save} holds no SAVGAM{wanted.upper()}.DAT "
-                                    f"(it holds {', '.join(slots) or 'none'})")
+            raise FileNotFoundError(f"{save} holds no SAVGAM{wanted.upper()} saved "
+                                    f"game (it holds {', '.join(slots) or 'none'})")
         return wanted.upper()
     if len(slots) != 1:
         raise FileNotFoundError(
-            f"{save} holds {len(slots)} SAVGAM?.DAT files; one is wanted "
+            f"{save} holds {len(slots)} SAVGAM?.DAT or .PTY files; one is wanted "
             "(name it with --from-slot)")
     return slots[0]
 
@@ -585,9 +744,12 @@ def install(save: pathlib.Path, save_dir: pathlib.Path, letter: str,
 
     The staged tree's own `SAVE` is the archives' copy, which is the edited
     play directory (`.claude/rules/testing.md`), so none of it is kept.
-    `same_letter` refuses a rename, which Silver Blades will not load.
+    `same_letter` refuses a rename, which Silver Blades will not load.  A
+    Pools of Darkness slot is its `SAVGAM<slot>.PTY`, its `VAULT<slot>.DAT`
+    and its `CHRDAT` files, which is what `dos_codec.new_pod_save_from` writes.
     """
     source = source_slot(save, source)
+    suffix = containers_in(save)[source]
     letter = letter.upper()
     if same_letter and source != letter:
         raise ValueError(f"this title loads a slot only under the letter it was "
@@ -598,8 +760,10 @@ def install(save: pathlib.Path, save_dir: pathlib.Path, letter: str,
     took = {"from_slot": source, "as_slot": letter, "files": []}
     for p in sorted(save.iterdir()):
         name = p.name.upper()
-        if name == f"SAVGAM{source}.DAT":
-            dest = f"SAVGAM{letter}.DAT"
+        if name == f"SAVGAM{source}{suffix}":
+            dest = f"SAVGAM{letter}{suffix}"
+        elif suffix == ".PTY" and name == f"VAULT{source}.DAT":
+            dest = f"VAULT{letter}.DAT"
         elif name.startswith(f"CHRDAT{source}"):
             dest = f"CHRDAT{letter}{name[7:]}"
         else:
@@ -764,6 +928,119 @@ def build_source(rows: list[tuple[int, int, int, int, int]], out: pathlib.Path,
 
 
 # --------------------------------------------------------------------------
+# The conversion: an Amiga Pools of Darkness saved game, through Convert
+# --------------------------------------------------------------------------
+
+
+def parse_amiga_slot(text: str) -> str:
+    """`SavGamA.pty`, `savgama.pty` or `A`: the Amiga slot letter."""
+    m = re.fullmatch(r"(?:savgam)?([a-j])(?:\.pty)?", text.strip(), re.IGNORECASE)
+    if m is None:
+        raise ValueError(f"not an Amiga Pools of Darkness slot: {text!r} "
+                         "(say SavGamA.pty or A)")
+    return m.group(1).upper()
+
+
+def amiga_image(disk: str) -> tuple[str, bytes]:
+    """`disk` as `(label, bytes)`: a path to an `.adf`, or the end of exactly
+    one `tools/amiga/amigasaves.py` label, such as
+    `Pools Of Darkness.zip!Pools of Darkness3.adf`.  Read only."""
+    path = pathlib.Path(disk)
+    if path.is_file():
+        return str(path), path.read_bytes()
+    from tools.amiga import amigasaves
+    hits = [(label, data) for label, data in amigasaves.images()
+            if label.endswith(disk)]
+    if len(hits) != 1:
+        raise FileNotFoundError(
+            f"{len(hits)} Amiga disk images end with {disk!r}; one is wanted"
+            + (": " + ", ".join(label for label, _ in hits) if hits else
+               " (set $AMIGA_DISKS or pass a path)"))
+    return hits[0]
+
+
+@contextlib.contextmanager
+def flag_on(name: str):
+    """`name` set to `1` for the block, and put back as it was afterwards."""
+    was = os.environ.get(name)
+    os.environ[name] = "1"
+    try:
+        yield
+    finally:
+        if was is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = was
+
+
+class _Collect(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__(logging.WARNING)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.lines.append(f"{record.name}: {record.getMessage()}")
+
+
+def build_amiga_source(disk: str, slot: str, out: pathlib.Path) -> dict:
+    """Convert Amiga slot `slot` of `disk` to a DOS save folder in `out/source`.
+
+    The route is the Convert window's: `Source.detect` on the disk, the one
+    DOS direction `destinations_for` offers with `WISH_EXPERIMENTAL_POD_CONVERT`
+    set, `saveplan.rehearse`, then the direction's `write` into the folder.
+    The disk is copied to `out/source.adf` and never written.  A warning the
+    conversion logs (a spell id the DOS book does not hold, say) is listed in
+    `warnings`, since it reaches neither `dropped` nor `losses`.  A conversion
+    that raises is reported as `refused`.
+    """
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from editor import convert, saveplan
+
+    letter = parse_amiga_slot(slot)
+    label, data = amiga_image(disk)
+    adf = out / "source.adf"
+    adf.write_bytes(data)
+    report: dict = {"disk": label, "adf_sha256": hashlib.sha256(data).hexdigest(),
+                    "amiga_slot": f"SavGam{letter}.pty",
+                    "flag": f"{convert.POD_CONVERT_ENV}=1"}
+    collect = _Collect()
+    wish_log = logging.getLogger("wish")
+    wish_log.addHandler(collect)
+    try:
+        with flag_on(convert.POD_CONVERT_ENV):
+            source = convert.Source.detect(adf, slot=letter)
+            if source.key != "pools-of-darkness" or letter not in (
+                    source.available_slots or [source.slot]):
+                return {**report, "refused": f"{label} holds no Pools of Darkness "
+                        f"slot {letter} (it holds {source.available_slots})"}
+            directions = [d for d in convert.destinations_for(source)
+                          if d.destination_port == "dos"]
+            if len(directions) != 1:
+                return {**report, "refused": f"{len(directions)} DOS directions "
+                        "are offered for this disk; one is wanted"}
+            rehearsal, wrote = saveplan.rehearse(directions[0], source,
+                                                 saveplan.Assets())
+            dest = out / "source"
+            dest.mkdir(parents=True, exist_ok=True)
+            directions[0].write(rehearsal, dest)
+    except Exception as e:  # noqa: BLE001 -- recorded, and the run stops before a boot
+        return {**report, "refused": f"{type(e).__name__}: {e}",
+                "warnings": collect.lines}
+    finally:
+        wish_log.removeHandler(collect)
+    report["direction"] = type(directions[0]).__name__
+    report["dos_slot"] = wrote
+    report["dropped"] = list(rehearsal.report.dropped)
+    report["losses"] = list(rehearsal.report.losses)
+    # The writer runs twice, rehearsing and then writing, so each line is
+    # listed once.
+    report["warnings"] = list(dict.fromkeys(collect.lines))
+    report["files"] = sorted(p.name for p in dest.iterdir())
+    report["read"] = {wrote: read_slot(dest, wrote)}
+    return report
+
+
+# --------------------------------------------------------------------------
 # The driven part
 # --------------------------------------------------------------------------
 
@@ -859,6 +1136,25 @@ class Driver:
             if self.s.wait_for(lambda sc: sc.digest() != before, wait):
                 return True
         return False
+
+    def save_path(self, letter: str) -> pathlib.Path:
+        """The saved game a `save` step is believed by, in this title's suffix."""
+        if self.title.suffix == ".DAT":
+            return self.s.save_file(letter)
+        return self.s.save_dir / f"SAVGAM{letter.upper()}{self.title.suffix}"
+
+    def pod_menu(self, row: int, label: str) -> None:
+        """Pools of Darkness' party menu: highlight `row`, pick it, and see
+        the screen change."""
+        before = self.s.capture().digest()
+        got = self.s.walk_highlight(POD_MENU_RECT, row, key="Down")
+        if got != row:
+            raise self.fail(f"menu-{label}", f"the party menu's highlight reached "
+                            f"row {got}, not {row}")
+        self.s.key("Return")
+        if not self.s.wait_for(lambda sc: sc.digest() != before, 20.0):
+            raise self.fail(f"menu-{label}", f"row {row} of the party menu "
+                            "changed nothing")
 
     def on_party_menu(self, screen=None) -> bool:
         screen = screen if screen is not None else self.s.capture()
@@ -961,6 +1257,8 @@ class Driver:
     def load(self) -> dict:
         if self.title.key == "ssb":
             return self._load_ssb()
+        if self.title.key == "darkness":
+            return self._load_pod()
         self.game.to_main_menu()
         self.shot("menu")
         if self.title.key == "pool":
@@ -1002,12 +1300,31 @@ class Driver:
         self.where = "party"
         return {"slot": self.slot, "party_menu": self.party_sig}
 
+    def _load_pod(self) -> dict:
+        """Past the titles and the copy-protection question to the party
+        menu, `Load Saved Game`, and the slot letter pressed once."""
+        answered = dospod.to_party_menu(self.s)
+        self.shot("menu")
+        self.pod_menu(POD_LOAD_ROW, "load")
+        self.s.settle(quiet=0.6, timeout=20.0)
+        self.shot("load-which")
+        if not self.press_screen_changes(self.slot.lower(), tries=1, wait=30.0):
+            raise self.fail("load", f"slot {self.slot} never loaded")
+        screen = self.s.settle(quiet=1.0, timeout=90.0)
+        self.party_sig = bar_signature(screen)
+        self.shot("loaded")
+        self.where = "party"
+        return {"slot": self.slot, "party_menu": self.party_sig,
+                "questions_answered": len(answered)}
+
     def begin(self) -> dict:
         if self.where != "party":
             raise StepFailed("begin needs the party menu")
         if self.title.key == "ssb":
             self.ssb.menu(ssbimport.MENU_AFTER["begin"], "begin")
             self.ssb.intro()
+        elif self.title.key == "darkness":
+            self.pod_menu(POD_MENU_AFTER["begin"], "begin")
         elif not self.press_screen_changes(PARTY_BEGIN, tries=1, wait=30.0):
             raise self.fail("begin", "BEGIN ADVENTURING did not leave the party menu")
         screen = self.s.settle(quiet=1.0, timeout=60.0)
@@ -1039,22 +1356,29 @@ class Driver:
         self.shot("camp")
         return {"camp_bar": self.camp_sig}
 
+    def map_status(self, label: str, screens: list[dict]) -> str:
+        """The settled map's status line, with a shot, appended to `screens`;
+        a screen that is not the map stops the run."""
+        screen = self.s.settle(quiet=0.6, timeout=30.0)
+        if not self.on_world(screen):
+            raise self.fail(label, "the map bar did not return (combat or "
+                            "an unknown screen)")
+        status = self.game.status()
+        screens.append({"shot": self.shot(label), "bar": bar_signature(screen),
+                        "status": status})
+        return status
+
     def walk(self, route: str) -> dict:
         """From the loaded Pool map, turn around and step one square."""
+        if self.title.key == "darkness" and self.where == "map" and route == "1":
+            return self._walk_one()
         if self.title.key != "pool" or self.where != "map" or route != "MI":
             raise StepFailed("walk MI needs Pool's loaded map")
 
         screens: list[dict] = []
 
         def record(label: str) -> str:
-            screen = self.s.settle(quiet=0.6, timeout=30.0)
-            if not self.on_world(screen):
-                raise self.fail(label, "the map bar did not return (combat or "
-                                "an unknown screen)")
-            status = self.game.status()
-            screens.append({"shot": self.shot(label), "bar": bar_signature(screen),
-                            "status": status})
-            return status
+            return self.map_status(label, screens)
 
         before = record("walk-before")
         for n in (1, 2):
@@ -1072,6 +1396,101 @@ class Driver:
         return {"route": route, "map_bar": self.world_sig,
                 "status_before": before, "status_after": after,
                 "screens": screens}
+
+    def _walk_one(self) -> dict:
+        """One square forward; past a wall, turn right and try again, at most
+        once per facing.  The step is believed when the settled status line
+        changes, which the square and facing on it make it do."""
+        screens: list[dict] = []
+        before = first = self.map_status("walk-before", screens)
+        for turns in range(4):
+            if not self.game.step():
+                raise self.fail(f"walk-step-{turns + 1}", "the map bar did not "
+                                "return after the step (combat or an unknown "
+                                "screen)")
+            after = self.map_status(f"walk-step-{turns + 1}", screens)
+            if after != before:
+                return {"route": "1", "map_bar": self.world_sig, "turns": turns,
+                        "status_before": first, "status_after": after,
+                        "screens": screens}
+            if not self.game.turn_right():
+                raise self.fail(f"walk-turn-{turns + 1}", "the map bar did not "
+                                "return after turning")
+            before = self.map_status(f"walk-turn-{turns + 1}", screens)
+        raise self.fail("walk-blocked", "no facing let the party step (the "
+                        "settled status never changed after Up)")
+
+    def select(self, line: int) -> None:
+        """Move the roster highlight to line `line`, counted from 1.
+
+        `End` moves it a line and wraps, and it stays where the last command
+        left it, as at Curse's party menu; each press must change the screen.
+        """
+        for _ in range((line - self.line) % self.party_size):
+            if not self.s.press_until_change(ROSTER_NEXT):
+                raise self.fail(f"select-{line}", "End did not move the roster "
+                                "highlight")
+        self.line = line
+
+    def open_sheet(self, line: int) -> dict:
+        if self.title.key != "darkness" or self.camp_sig is None:
+            raise StepFailed("sheet and items need Pools of Darkness' camp first")
+        self.ensure_camp()
+        self.select(line)
+        self.shot(f"line-{line}")
+        if not self.press_screen_changes(VIEW, tries=1, wait=15.0):
+            raise self.fail(f"sheet-{line}", "VIEW changed nothing")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        if self.in_camp(screen):
+            raise self.fail(f"sheet-{line}", "the camp bar is still showing "
+                            "after VIEW")
+        return {"line": line, "sheet": self.shot(f"sheet-{line}"),
+                "sheet_bar": bar_signature(screen), "digest": screen.digest()}
+
+    def back_to_camp(self, label: str, tries: int = 3) -> None:
+        """`Exit` until the camp bar is back, looking before every press:
+        `Exit` on the camp bar itself breaks camp."""
+        for _ in range(tries):
+            if self.in_camp(self.s.settle(quiet=0.6, timeout=20.0)):
+                return
+            self.s.key(LEAVE)
+        if not self.wait_camp(timeout=15.0):
+            raise self.fail(label, f"the camp bar never came back after "
+                            f"{tries} presses of Exit")
+
+    def sheet(self, line: int) -> dict:
+        """Roster line `line`'s sheet from camp, shot, and back to camp."""
+        got = self.open_sheet(line)
+        self.back_to_camp(f"sheet-{line}-back")
+        return got
+
+    def items(self, line: int) -> dict:
+        """Roster line `line`'s `ITEMS` from its sheet, every page shot.
+
+        `Next` is pressed until it changes nothing or brings back the first
+        page; `ITEMS_PAGES` pages that are all different stop the run.
+        """
+        got = self.open_sheet(line)
+        if not self.press_screen_changes(SHEET_ITEMS, tries=1, wait=15.0):
+            raise self.fail(f"items-{line}", "ITEMS changed nothing on the sheet")
+        pages: list[dict] = []
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        first = screen.digest()
+        while True:
+            pages.append({"shot": self.shot(f"items-{line}-{len(pages) + 1}"),
+                          "bar": bar_signature(screen), "digest": screen.digest()})
+            if len(pages) >= ITEMS_PAGES:
+                raise self.fail(f"items-{line}-pages", f"{ITEMS_PAGES} pages and "
+                                "Next still turns another")
+            before = screen.digest()
+            self.s.key(ITEMS_NEXT)
+            if not self.s.wait_for(lambda sc: sc.digest() != before, 5.0):
+                break
+            screen = self.s.settle(quiet=0.8, timeout=30.0)
+            if screen.digest() == first:
+                break
+        self.back_to_camp(f"items-{line}-back")
+        return {**got, "pages": pages}
 
     def zero_rest_time(self, limit: int = 120) -> int:
         """Select days and press subtract until three presses change nothing.
@@ -1166,7 +1585,7 @@ class Driver:
         if self.camp_sig is None:
             raise StepFailed("save needs camp first")
         self.ensure_camp()
-        path = self.s.save_file(letter)
+        path = self.save_path(letter)
         was = path.read_bytes() if path.is_file() else None
         camp_ink = self.s.capture().ink(dosbox.BAR)
         self.s.key(CAMP_SAVE)
@@ -1190,11 +1609,13 @@ class Driver:
         A `QUIT TO DOS` question after it, if Curse asks one, is declined:
         `n` is none of Curse's party-menu letters.
         """
-        path = self.s.save_file(letter)
+        path = self.save_path(letter)
         was = path.read_bytes() if path.is_file() else None
         if self.title.key == "ssb":
             self.ssb.menu(ssbimport.MENU_AFTER["save"], "save")
             self.ssb.wait_bar("save_which")
+        elif self.title.key == "darkness":
+            self.pod_menu(POD_MENU_AFTER["save"], "save")
         elif not self.press_screen_changes(PARTY_SAVE):
             raise self.fail("save-which", "SAVE CURRENT GAME did not open the slot list")
         self.s.settle(quiet=0.6, timeout=20.0)
@@ -1301,6 +1722,16 @@ def _run(args, outer: contextlib.ExitStack) -> int:
             write_summary()
             return 1
         save = out / "source"
+    elif getattr(args, "amiga_slot", None):
+        shutil.rmtree(out / "source", ignore_errors=True)
+        built = build_amiga_source(args.amiga_disk, args.amiga_slot, out)
+        summary["source"] = built
+        note(event="converted", **{k: v for k, v in built.items() if k != "read"})
+        if "refused" in built or built["dropped"] or built["losses"]:
+            summary["lost"] = "the conversion refused, dropped or lost something"
+            write_summary()
+            return 1
+        save = out / "source"
     if not steps:
         summary["completed"] = True
         write_summary()
@@ -1312,16 +1743,23 @@ def _run(args, outer: contextlib.ExitStack) -> int:
     if title.same_letter and from_slot not in (None, letter):
         raise ValueError(f"{args.title} loads a slot only under the letter it was "
                          f"written as: pass --slot {from_slot}")
+    if save is not None and containers_in(save)[from_slot] != title.suffix:
+        raise ValueError(f"{save} holds SAVGAM{from_slot}"
+                         f"{containers_in(save)[from_slot]}, not the "
+                         f"SAVGAM{from_slot}{title.suffix} {args.title} loads")
     if save is not None:
         check_staging(args, save, from_slot)
     saved: list[str] = []
     with contextlib.ExitStack() as stack:
         # Every callback runs even when an earlier one raises: a failed close
         # must not leave a slot leased.
-        game = dosbox.find_game(title.stem)
+        game = title.find_game()
         slot = dosbox.claim(args.note)
         stack.callback(slot.release)
-        session = dosbox.Session(slot, game)
+        # `START.EXE` is `Session`'s own default, so only another launcher
+        # is named.
+        session = (dosbox.Session(slot, game) if title.exe == "START.EXE"
+                   else dosbox.Session(slot, game, exe=title.exe))
         stack.callback(session.close)
 
         def keep_evidence():
@@ -1379,6 +1817,10 @@ def _run(args, outer: contextlib.ExitStack) -> int:
                     saved.append(step.letter)
                 elif step.kind == "train":
                     r = d.train(step.line)
+                elif step.kind == "sheet":
+                    r = d.sheet(step.line)
+                elif step.kind == "items":
+                    r = d.items(step.line)
                 elif step.kind == "shot":
                     r = {"shot": d.shot(step.name)}
                 elif step.kind == "press":
@@ -1460,6 +1902,7 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
             "clock_since_previous": after["clock_minutes"] - previous["clock_minutes"],
             "compare": compare_nodes(before, after),
             "experience": compare_experience(before, after),
+            "members": compare_members(before, after),
         }
         previous = after
     if saved and expects:
@@ -1481,6 +1924,20 @@ def describe(result: dict) -> list[str]:
         if "area" in place:
             lines.append(f"  area {place['area']} at {place['x']},{place['y']} "
                          f"facing {place['facing']}, set out {place['set_out']}")
+        elif "dungeon_map" in place:
+            lines.append(f"  map {place['dungeon_map']} at {place['x']},{place['y']} "
+                         f"facing {place['facing']}, in a dungeon {place['in_dungeon']}")
+        for row in s.get("members", []):
+            if not row["present"]:
+                lines.append(f"  {row['name']}: not in the resave")
+                continue
+            lines.append(
+                f"  {row['name']}: pick pockets {row['thief']['after']['thief_pick_pockets']}"
+                f", {row['item_count']['after']} items ({len(row['items']['after'])} "
+                f"read), encumbrance {row['encumbrance']['after']}, movement "
+                f"{row['movement']['after']}; "
+                + ("unchanged" if not row["changed"] else
+                   "changed: " + ", ".join(row["changed"])))
         for row in s["compare"]:
             if row["before"] is None:
                 lines.append(f"  {row['name']} id {row['id']}: new node, "
@@ -1508,11 +1965,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--title", choices=sorted(TITLES), default="pool")
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--save", help="a DOS save folder Wish wrote, a SAVGAM?.DAT "
-                                    "and its CHRDAT files")
+                                    "(or .PTY and VAULT?.DAT) and its CHRDAT files")
     src.add_argument("--fixture-row", action="append", default=[],
                      metavar="SLOT=ID:OWNER:DURATION:MAGNITUDE",
                      help="hex; stage this effect row into a C64 party and "
                           "convert it with Save As DOS first (repeatable)")
+    src.add_argument("--amiga-slot", default=None, metavar="SavGamA.pty",
+                     help="darkness: convert this slot of --amiga-disk to DOS "
+                          "through the Convert window's route first")
+    ap.add_argument("--amiga-disk", default=None,
+                    help="with --amiga-slot: an .adf path, or the end of one "
+                         "Amiga disk label ('Pools Of Darkness.zip!Pools of "
+                         "Darkness3.adf')")
     ap.add_argument("--c64-save", default=None,
                     help="with --fixture-row: the C64 disk to stage into, "
                          "instead of the title's own (C64_BASES)")
@@ -1553,6 +2017,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.hall and args.title not in HALL_TITLES:
             raise ValueError(f"--hall is measured for {', '.join(sorted(HALL_TITLES))} "
                              f"only, not {args.title}")
+        if args.fixture_row and args.title == "darkness":
+            raise ValueError("--fixture-row converts a C64 party, and Pools of "
+                             "Darkness has no C64 port: use --amiga-slot")
+        if args.amiga_slot:
+            if args.title != "darkness":
+                raise ValueError("--amiga-slot converts a Pools of Darkness save: "
+                                 "pass --title darkness")
+            if not args.amiga_disk:
+                raise ValueError("--amiga-slot needs --amiga-disk")
+            parse_amiga_slot(args.amiga_slot)
     except ValueError as e:
         ap.error(str(e))
     if not re.fullmatch(r"[A-Ja-j]", args.slot):

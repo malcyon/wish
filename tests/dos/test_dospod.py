@@ -88,3 +88,70 @@ def test_a_tree_without_the_batch_file_is_not_mistaken_for_the_game(monkeypatch,
     monkeypatch.setattr(dospod.dosbox, "ARCHIVES", tmp_path)
     with pytest.raises(FileNotFoundError):
         dospod.find_game()
+
+
+# --- the copy-protection question ------------------------------------------
+
+
+class _Screen:
+    def __init__(self, text: str):
+        self.text = text
+
+    def digest(self, rect=None) -> str:
+        return self.text
+
+
+class _Boot:
+    """Title screens that Escape dismisses, then either the question -- which
+    draws each typed key and takes Return -- or the party menu, where a digit
+    does nothing and Return would pick `Create New Character`."""
+
+    def __init__(self, question: bool, refuses: bool = False):
+        self.titles, self.question, self.refuses = 2, question, refuses
+        self.typed, self.keys, self.created = "", [], False
+
+    def screen(self) -> str:
+        if self.titles:
+            return f"title{self.titles}"
+        return f"question:{self.typed}" if self.question else "menu"
+
+    def key(self, k: str) -> None:
+        self.keys.append(k)
+        if self.titles:
+            self.titles -= k == "Escape"
+        elif self.question and k == "Return":
+            self.question, self.typed = self.refuses, ""
+        elif self.question and k != "Escape":
+            self.typed += k
+        elif k == "Return":
+            self.created = True
+
+    def settle(self, quiet=0.5, timeout=8.0):
+        return _Screen(self.screen())
+
+    def wait_for(self, pred, timeout=30.0) -> bool:
+        return bool(pred(_Screen(self.screen())))
+
+
+@pytest.fixture
+def _no_sleep(monkeypatch):
+    monkeypatch.setattr(dospod.time, "sleep", lambda s: None)
+
+
+@pytest.mark.parametrize("question", [False, True])
+def test_the_party_menu_is_reached_and_return_is_never_pressed_on_it(
+        _no_sleep, question):
+    boot = _Boot(question)
+    answered = dospod.to_party_menu(boot)
+    assert boot.screen() == "menu" and not boot.created
+    assert len(answered) == int(question)
+    assert [k for k in boot.keys if k != "Escape"] == (
+        [dospod.PROTECTION_PROBE, "Return"] if question else []) + [
+        dospod.PROTECTION_PROBE]
+
+
+def test_a_question_that_keeps_coming_back_stops_the_boot(_no_sleep):
+    boot = _Boot(True, refuses=True)
+    with pytest.raises(TimeoutError, match="still answering"):
+        dospod.to_party_menu(boot, questions=2)
+    assert boot.keys.count("Return") == 2

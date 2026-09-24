@@ -26,7 +26,9 @@ BAR_Y = dosbox.BAR[1]
 #: letters fails: days, hours, minutes, add, subtract, rest.
 _POOL_REST = da.RestKeys("y", "h", "m", "i", "d", "r")      # 0x244ED
 _LATER_REST = da.RestKeys("d", "h", "m", "a", "s", "r")     # 0x2B4A7, 0x2BD63
-TITLE_KEYS = {"pool": _POOL_REST, "curse": _LATER_REST, "ssb": _LATER_REST}
+# Pools of Darkness: `Rest Days Hours Mins Add Subtract Exit`, `GAME.EXE` 0xBB26.
+TITLE_KEYS = {"pool": _POOL_REST, "curse": _LATER_REST, "ssb": _LATER_REST,
+              "darkness": _LATER_REST}
 
 
 def _screen(bar: bytes, text: bytes, block: tuple[int, int] | None = None) -> dosbox.Screen:
@@ -1110,3 +1112,484 @@ def test_begin_presses_b_once_so_a_slow_boot_cannot_press_it_on_the_map(tmp_path
     d.press_screen_changes = lambda key, **kw: (seen.append((key, kw)), real(key, **kw))[1]
     d.begin()
     assert seen == [(da.PARTY_BEGIN, {"tries": 1, "wait": 30.0})]
+
+
+# -- Pools of Darkness: an Amiga slot converted, installed, read and driven -------------
+
+
+def _pod_node(**fields) -> bytes:
+    """One twenty-byte Amiga item node, big-endian, from `amiga_pod`'s own map."""
+    from goldbox import amiga_pod
+    raw = bytearray(amiga_pod.ITEM_FILE_SIZE)
+    for name, value in fields.items():
+        f, at = amiga_pod.ITEM_FIELDS[name], amiga_pod.ITEM_FIELD_AT[name]
+        raw[at:at + f.size] = value.to_bytes(f.size, "big")
+    return bytes(raw)
+
+
+def _pod_block(name: str, thief: tuple[int, ...], nodes: list[bytes],
+               heads: int) -> bytes:
+    """A character block of an Amiga saved game: `amiga_pod.PodWriter`'s
+    404-byte record, its head-item count, then the nodes after it."""
+    import struct
+
+    from goldbox import amiga_pod, amiga_savegame
+    record = bytearray(amiga_pod.PodWriter(
+        name=name, hit_points_max=30, thief_skills=thief,
+        character_class=amiga_pod.CLASSES.index("THIEF"),
+        class_levels=(0, 0, 0, 0, 0, 0, 20),
+        class_bits=amiga_pod.CLASS_BIT["thief"]).to_bytes()[
+            :amiga_savegame.POD_RECORD_BYTES])
+    struct.pack_into(">I", record, amiga_savegame.POD_ITEM_COUNT_AT, heads)
+    struct.pack_into(">I", record, amiga_savegame.POD_EFFECT_HEAD_AT, 0)
+    return bytes(record) + b"".join(nodes)
+
+
+#: INA's pick pockets as the Amiga engine wrote it for a level 29 thief
+#: (#650), and TRIPEL's under 128, which both readings agree on.
+INA_THIEF = (135, 90, 80, 70, 60, 50, 40, 30)
+TRIPEL_THIEF = (120, 1, 2, 3, 4, 5, 6, 7)
+
+
+def _pod_disk(tmp_path: pathlib.Path, slot: str = "C") -> pathlib.Path:
+    """A blank Amiga save disk holding one Pools of Darkness saved game,
+    built from the documented format: INA with a readied scroll case of two
+    scrolls and a sword, and TRIPEL with nothing.  No game file is read."""
+    import struct
+
+    from goldbox import amiga_savegame, dos_savegame
+    from goldbox.amiga_adf import AmigaDisk
+    case = _pod_node(type_index=0x49, quantity=2, readied=1, weight=2)
+    mage = _pod_node(type_index=39, charges=5, effect=6, power=7, weight=1, quantity=1)
+    cleric = _pod_node(type_index=40, charges=8, effect=9, power=10, weight=1, quantity=1)
+    sword = _pod_node(type_index=1, weight=60, quantity=1, readied=1)
+    blocks = [_pod_block("INA", INA_THIEF, [case, mage, cleric, sword], 2),
+              _pod_block("TRIPEL", TRIPEL_THIEF, [], 0)]
+    data = bytearray(amiga_savegame.POD_VAR_BYTES)
+    data[dos_savegame.POD_PARTY_COUNT - 1] = len(blocks)
+    data += bytes((3, 4, 2, 5, 137, 0))
+    data += bytes((dos_savegame.POD_MODE_DUNGEON, dos_savegame.POD_MODE_DUNGEON))
+    data += struct.pack(">HHH", 6, 0, len(blocks))
+    for block in blocks:
+        data += block
+    data += bytes(amiga_savegame.POD_SAVEGAME_SIZE - len(data))
+    disk = AmigaDisk.blank("PDARKSAVE")
+    disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
+    disk.write_file(amiga_savegame.pod_slot_path(slot), bytes(data))
+    path = tmp_path / "pod-save.adf"
+    path.write_bytes(disk.to_bytes())
+    return path
+
+
+@pytest.fixture
+def pod_source(tmp_path, monkeypatch):
+    """The synthetic disk converted by `build_amiga_source`, with the flag
+    unset beforehand so the test sees the driver set it and put it back."""
+    import os
+
+    from editor import convert
+    monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
+    out = tmp_path / "out"
+    out.mkdir()
+    built = da.build_amiga_source(str(_pod_disk(tmp_path)), "SavGamC.pty", out)
+    assert convert.POD_CONVERT_ENV not in os.environ
+    return out, built
+
+
+def test_an_amiga_slot_converts_by_the_convert_route_and_reads_back(pod_source):
+    """The product route with the flag set for the conversion only: nothing
+    dropped or lost, INA's pick pockets 135 and TRIPEL's 120, and the case
+    replaced by its two scrolls with their spell ids, all as `read` reports
+    them."""
+    out, built = pod_source
+    assert "refused" not in built, built.get("refused")
+    assert built["direction"] == "PodAmigaToDos"
+    assert built["dropped"] == [] and built["losses"] == []
+    assert built["amiga_slot"] == "SavGamC.pty" and built["dos_slot"] == "A"
+    assert len(built["adf_sha256"]) == 64
+    assert built["files"] == ["CHRDATA1.SAV", "CHRDATA1.THG", "CHRDATA2.SAV",
+                              "SAVGAMA.PTY", "VAULTA.DAT"]
+    slot = da.read_slot(out / "source", "A")
+    assert slot == built["read"]["A"]
+    who = {c["name"]: c for c in slot["characters"]}
+    assert who["INA"]["thief"] == dict(zip(da.THIEF_FIELDS, INA_THIEF))
+    assert who["TRIPEL"]["thief"]["thief_pick_pockets"] == 120
+    assert who["INA"]["item_count"] == 3
+    assert [(i["type_index"], i["spells"]) for i in who["INA"]["items"]] == [
+        (39, [5, 6, 7]), (40, [8, 9, 10]), (1, [0, 0, 0])]
+    assert slot["vault_bytes"] == 12 and slot["place"]["x"] == 3
+
+
+def test_a_loss_only_the_debug_log_hears_of_is_listed_among_the_warnings(
+        tmp_path, monkeypatch):
+    """The DOS writer sends some losses to `wish.goldbox.dos_codec`'s log and
+    to neither `dropped` nor `losses` (a spell id past the book, #509), so the
+    run's report lists every warning the conversion logged.  The warning is
+    raised here by a wrapper, so the test does not rest on which losses the
+    writer logs today."""
+    from goldbox import dos_codec
+    real = dos_codec.new_pod_save_from
+
+    def logging_one(*a, **k):
+        dos_codec._log.warning("spells_known: id %s is outside the book", 126)
+        return real(*a, **k)
+
+    monkeypatch.setattr(dos_codec, "new_pod_save_from", logging_one)
+    out = tmp_path / "out"
+    out.mkdir()
+    built = da.build_amiga_source(str(_pod_disk(tmp_path)), "C", out)
+    assert built["dropped"] == [] and built["losses"] == []
+    assert built["warnings"] == [
+        "wish.goldbox.dos_codec: spells_known: id 126 is outside the book"]
+
+
+def test_a_slot_the_disk_does_not_hold_is_refused_before_anything_is_written(
+        tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    built = da.build_amiga_source(str(_pod_disk(tmp_path)), "D", out)
+    assert "slot D" in built["refused"]
+    assert not (out / "source").exists()
+
+
+def test_a_pools_of_darkness_slot_installs_its_container_vault_and_records(
+        pod_source, tmp_path):
+    """`SAVGAMA.PTY`, `VAULTA.DAT` and every `CHRDATA*`, which is what
+    `new_pod_save_from` writes.  Before this title, `source_slot` refused the
+    folder: it holds 0 SAVGAM?.DAT files."""
+    out, _ = pod_source
+    dest = tmp_path / "play"
+    dest.mkdir()
+    (dest / "SAVGAMB.PTY").write_bytes(b"the archives' own")
+    took = da.install(out / "source", dest, "A", same_letter=True)
+    assert sorted(took["files"]) == sorted(p.name for p in dest.iterdir()) == [
+        "CHRDATA1.SAV", "CHRDATA1.THG", "CHRDATA2.SAV", "SAVGAMA.PTY", "VAULTA.DAT"]
+    with pytest.raises(ValueError, match="install A as A"):
+        da.install(out / "source", dest, "D", same_letter=da.TITLES["darkness"].same_letter)
+
+
+def test_the_read_step_sets_each_members_skills_and_items_side_by_side(
+        pod_source, tmp_path):
+    import shutil
+    out, _ = pod_source
+    shutil.copytree(out / "source", out / "installed")
+    result = da.read_step(out / "source", out, "A", ["A"], [], [])
+    rows = {r["name"]: r for r in result["slots"]["A"]["members"]}
+    assert rows["INA"]["changed"] == [] and rows["TRIPEL"]["present"]
+    assert rows["INA"]["thief"]["after"]["thief_pick_pockets"] == 135
+    lines = da.describe(result)
+    assert any(line.startswith("  INA: pick pockets 135, 3 items (3 read)")
+               for line in lines)
+
+
+def test_the_title_reads_the_archives_own_container_and_records():
+    """A control on a container the engine wrote: the archives' shipped slot
+    A, read in place and never written.  Its provenance is unknown
+    (`.claude/rules/testing.md`), so only the reading's own invariants are
+    asserted: six characters, eight thief skills each, and an item count
+    that matches the items read."""
+    from tools.dos import dospod
+    try:
+        save = dospod.find_game() / "SAVE"
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Pools of Darkness archives ($FR_ARCHIVES)")
+    slot = da.read_slot(save, "A")
+    assert len(slot["characters"]) == 6
+    for c in slot["characters"]:
+        assert len(c["thief"]) == 8
+        assert c["item_count"] == len(c["items"])
+
+
+@pytest.mark.parametrize("steps", [
+    ("load", "begin", "camp", "sheet 4", "items 4", "sheet 6", "save D", "read"),
+    ("load", "begin", "walk 1", "shot walked", "camp", "save D", "read"),
+    ("load", "save B", "begin", "camp", "rest 5m", "save D", "read"),
+])
+def test_orders_pools_of_darkness_allows(steps):
+    da.validate_steps(_steps(*steps), "darkness")
+
+
+@pytest.mark.parametrize("title,steps,why", [
+    ("darkness", ("load", "train 1"), "curse only"),
+    ("darkness", ("load", "camp"), "needs begin first"),
+    ("darkness", ("load", "begin", "walk MI"), "walk 1"),
+    ("darkness", ("load", "begin", "sheet 1"), "sheet needs camp first"),
+    ("darkness", ("load", "items 1"), "items needs camp first"),
+    ("darkness", ("load", "begin", "camp", "display"), "pool only"),
+    ("pool", ("load", "walk 1"), "walk MI"),
+    ("pool", ("load", "camp", "sheet 1"), "darkness only"),
+    ("curse", ("load", "begin", "camp", "items 2"), "darkness only"),
+])
+def test_orders_pools_of_darkness_does_not_allow(title, steps, why):
+    with pytest.raises(ValueError, match=why):
+        da.validate_steps(_steps(*steps), title)
+
+
+def test_the_new_steps_parse_and_bad_ones_are_refused():
+    assert da.parse_step("sheet 4").line == 4
+    assert (da.parse_step("items 8").kind, da.parse_step("items 8").line) == ("items", 8)
+    assert da.parse_step("walk 1").key == "1"
+    for bad in ("sheet", "sheet 9", "items 0", "walk 3"):
+        with pytest.raises(ValueError):
+            da.parse_step(bad)
+    assert [da.parse_amiga_slot(s) for s in ("SavGamA.pty", "savgamh.PTY", "c")] \
+        == ["A", "H", "C"]
+    for bad in ("SavGamK.pty", "savgam.dat", "AB"):
+        with pytest.raises(ValueError):
+            da.parse_amiga_slot(bad)
+
+
+@pytest.mark.parametrize("argv,why", [
+    (["--title", "darkness", "--fixture-row", "3F=01:00:2F:01"], "no C64 port"),
+    (["--title", "curse", "--amiga-slot", "A", "--amiga-disk", "x.adf"],
+     "--title darkness"),
+    (["--title", "darkness", "--amiga-slot", "A"], "needs --amiga-disk"),
+    (["--title", "darkness", "--amiga-slot", "K", "--amiga-disk", "x.adf"],
+     "not an Amiga"),
+])
+def test_the_command_line_refuses_a_bad_source_before_any_boot(argv, why, capsys):
+    with pytest.raises(SystemExit):
+        da.main(argv)
+    assert why in capsys.readouterr().err
+
+
+class FakePod(FakePool):
+    """DOS Pools of Darkness from its title screens to camp, as `GAME.EXE`'s
+    strings describe it: an optional copy-protection question that echoes a
+    typed key and takes `Return`; Silver Blades' party-menu rows (`Down`
+    moves, `Return` picks; row 0 is `Create New Character` before a load,
+    row 2 `Load Saved Game`, and after one row 6 saves and row 7 begins);
+    the roster highlight moved by `End`; the sheet's `ITEMS` with `Next`."""
+
+    BARS = {**FakePool.BARS, "title": b"\x21", "question": b"\x22", "menu": b"\x23\x24",
+            "which": b"\x25", "party": b"\x26\x27", "create": b"\x28",
+            "sheet": b"\x29\x2a", "items": b"\x2b\x2c", "psave": b"\x2d"}
+
+    def __init__(self, tmp, question=True, pages=3, size=6):
+        super().__init__(tmp, keys=TITLE_KEYS["darkness"])
+        self.mode = "title"
+        self.titles, self.question, self.typed = 2, question, 0
+        self.row, self.line, self.size = 0, 1, size
+        self.page, self.pages = 1, pages
+        self.loaded = False
+
+    def key(self, k, gap=0.0):
+        self.keys.append(k)
+        m = self.mode
+        if m == "title":
+            if k == "Escape":
+                self.titles -= 1
+                if self.titles == 0:
+                    self.mode = "question" if self.question else "menu"
+        elif m == "question" and k == "Return" and self.typed:
+            self.mode, self.question = "menu", False
+        elif m == "question" and k not in ("Escape", "Return"):
+            self.typed += 1
+        elif m in ("menu", "party") and k == "Down":
+            self.row = (self.row + 1) % 9
+        elif m in ("menu", "party") and k == "Return":
+            picked = {("menu", 0): "create", ("menu", 2): "which",
+                      ("party", 6): "psave", ("party", 7): "map"}
+            self.mode = picked.get((m, self.row), m)
+        elif m == "which" and k.upper() in "ABCDEFGHIJ":
+            self.mode, self.row, self.loaded = "party", 0, True
+        elif m == "psave" and k.upper() in "ABCDEFGHIJ":
+            (self.save_dir / f"SAVGAM{k.upper()}.PTY").write_bytes(b"p")
+            self.mode = "party"
+        elif m == "camp" and k == "End":
+            self.line = self.line % self.size + 1
+        elif m == "camp" and k == "v":
+            self.mode = "sheet"
+        elif m == "sheet" and k == "i":
+            self.mode, self.page = "items", 1
+        elif m == "sheet" and k == "e":
+            self.mode = "camp"
+        elif m == "items" and k == "n" and self.page < self.pages:
+            self.page += 1
+        elif m == "items" and k == "e":
+            self.mode = "sheet"
+        elif m == "save" and k.upper() in "ABCDEFGHIJ":
+            (self.save_dir / f"SAVGAM{k.upper()}.PTY").write_bytes(b"c")
+            self.mode = "quit"
+        elif m in FakePool.BARS:
+            self.keys.pop()     # `FakePool.key` records it again
+            super().key(k, gap)
+
+    def capture(self):
+        if self.mode in FakePool.BARS and self.mode not in ("camp",):
+            return super().capture()
+        text = {"title": (self.titles,), "question": (1, self.typed),
+                "menu": (self.row,), "party": (self.row,),
+                "camp": (self.line,), "sheet": (self.line,),
+                "items": (self.line, self.page)}.get(self.mode, ())
+        bar = FakePool.BARS["camp"] if self.mode == "camp" else self.BARS[self.mode]
+        return _screen(bar, bytes(t + 1 for t in text))
+
+    def walk_highlight(self, rect, want, key="End", timeout=20.0):
+        assert rect == da.POD_MENU_RECT
+        for _ in range(9):
+            if self.row == want:
+                return want
+            self.key(key)
+        return None
+
+    def press_until_change(self, key, tries=5, gap=0.8):
+        before = self.capture().digest()
+        for _ in range(tries):
+            self.key(key)
+            if self.capture().digest() != before:
+                return True
+        return False
+
+
+def _pod_driver(tmp_path, **kw):
+    game = FakePod(tmp_path, **kw)
+    d = da.Driver(game, lambda **k: None, "A", "darkness", party_size=game.size)
+    return game, d
+
+
+@pytest.mark.parametrize("question", [True, False])
+def test_pools_of_darkness_loads_through_its_party_menu(tmp_path, question):
+    """The question, when there is one, gets the probe key and `Return`; the
+    party menu gets the probe key and no `Return` at `Create New Character`;
+    then row 2, `Return`, and the slot letter once."""
+    game, d = _pod_driver(tmp_path, question=question)
+    got = d.load()
+    assert game.mode == "party" and game.loaded and d.where == "party"
+    assert got["questions_answered"] == int(question)
+    assert [k for k in game.keys if k != "Escape"] == (
+        ["1", "Return"] if question else []) + ["1", "Down", "Down", "Return", "a"]
+
+
+def test_pools_of_darkness_begins_camps_views_and_saves(tmp_path):
+    game, d = _pod_driver(tmp_path, question=False, pages=3)
+    d.load()
+    d.begin()
+    assert game.mode == "map" and d.where == "map"
+    assert game.keys[-8:] == ["Down"] * 7 + ["Return"]
+    d.camp()
+    game.keys.clear()
+    sheet = d.sheet(4)
+    assert game.keys == ["End"] * 3 + ["v", "e"] and game.mode == "camp"
+    assert sheet["line"] == 4 and game.line == 4
+    game.keys.clear()
+    items = d.items(4)
+    assert game.keys == ["v", "i", "n", "n", "n", "e", "e"]
+    assert len(items["pages"]) == 3 and game.mode == "camp"
+    game.keys.clear()
+    d.sheet(2)
+    assert game.keys.count("End") == 4
+    saved = d.save("D")
+    assert saved["file"] == "SAVGAMD.PTY" and (game.save_dir / "SAVGAMD.PTY").is_file()
+    assert game.mode == "camp"
+
+
+def test_exit_is_never_pressed_on_the_camp_bar_itself(tmp_path):
+    """`Exit` on the camp bar breaks camp: leaving a sheet looks first."""
+    game, d = _pod_driver(tmp_path, question=False)
+    d.load()
+    d.begin()
+    d.camp()
+    game.keys.clear()
+    d.back_to_camp("x")
+    assert game.keys == [] and game.mode == "camp"
+
+
+def test_an_items_list_that_never_ends_stops_the_run(tmp_path):
+    game, d = _pod_driver(tmp_path, question=False, pages=da.ITEMS_PAGES + 2)
+    d.load()
+    d.begin()
+    d.camp()
+    with pytest.raises(da.StepFailed, match="Next still turns"):
+        d.items(1)
+
+
+def test_the_party_menu_save_writes_the_pty(tmp_path):
+    game, d = _pod_driver(tmp_path, question=False)
+    d.load()
+    got = d.save("B")
+    assert got["file"] == "SAVGAMB.PTY" and game.mode == "party"
+    assert game.keys[-8:] == ["Down"] * 6 + ["Return", "b"]
+
+
+@pytest.mark.parametrize("walls", [0, 2])
+def test_pools_of_darkness_walks_one_square_turning_past_walls(tmp_path, walls):
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "darkness")
+    d.where = "map"
+    d.world_ink = game.capture().ink(dosbox.BAR)
+
+    class Movement:
+        def __init__(self):
+            self.facing, self.x, self.keys, self.walls = 0, 0, [], walls
+
+        def status(self):
+            return f"{self.x},{self.facing}"
+
+        def turn_right(self):
+            self.keys.append("Right")
+            self.facing = (self.facing + 1) % 4
+            return True
+
+        def step(self):
+            self.keys.append("Up")
+            if self.walls:
+                self.walls -= 1
+            else:
+                self.x += 1
+            return True
+
+    d.game = Movement()
+    got = d.walk("1")
+    assert d.game.keys == ["Up", "Right"] * walls + ["Up"]
+    assert got["turns"] == walls and got["status_after"] == f"1,{walls}"
+
+
+def test_pools_of_darkness_stops_when_every_facing_is_a_wall(tmp_path):
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "darkness")
+    d.where = "map"
+    d.world_ink = game.capture().ink(dosbox.BAR)
+
+    class Walls:
+        facing = 0
+
+        def status(self):
+            return f"0,{self.facing}"
+
+        def turn_right(self):
+            self.facing = (self.facing + 1) % 4
+            return True
+
+        def step(self):
+            return True
+
+    d.game = Walls()
+    with pytest.raises(da.StepFailed, match="no facing"):
+        d.walk("1")
+
+
+def test_the_run_boots_start_bat_from_the_title_own_directory(monkeypatch, pod_source):
+    """`dospod.find_game`, not the `START.EXE` search, and `START.BAT` as
+    the launcher; a container of the wrong title is refused before a claim."""
+    from tools.dos import dospod
+    out, _ = pod_source
+    tmp_path = out.parent
+    log = _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("stopped here"))
+    booted = {}
+
+    def session(slot, game, exe="START.EXE"):
+        booted.update(game=game, exe=exe)
+        return _Session(tmp_path, log)
+
+    monkeypatch.setattr(dosbox, "Session", session)
+    monkeypatch.setattr(dospod, "find_game", lambda stem="DARKNESS": tmp_path / stem)
+    args = _run_args(tmp_path, ["load"])
+    args.title, args.save = "darkness", str(out / "source")
+    da.run(args)
+    assert booted == {"game": tmp_path / "DARKNESS", "exe": "START.BAT"}
+    args.title = "pool"
+    log.clear()
+    with pytest.raises(ValueError, match="SAVGAMA.PTY, not the SAVGAMA.DAT pool"):
+        da.run(args)
+    assert "claim" not in log
