@@ -89,7 +89,14 @@ only in your report. It has these parts, in this order, and each is short:
 4. **Tests.** Which existing test fails today or should, and what the new one
    asserts. Say what the builder must watch go red before the fix. If a test
    has to change, say why the old assertion was wrong, because the builder
-   is told never to weaken one.
+   is told never to weaken one. For a conversion repair, add a concise live
+   acceptance plan: specimen provenance, same-title destination port, existing
+   driver path and any missing capability, bounded boot/stop budget, player
+   actions and control, expected preserved behavior, screenshots and
+   game-written save checkpoints, and evidence preservation. Include load,
+   walking the party and checking the sheet where relevant. Name missing
+   driver work before assigning an emulator run; do not treat refusal or
+   byte-only tests as proof of a fix.
 5. **What not to touch.** Strings, labels, layouts, labels on the issue, and
    any file another ticket owns.
 6. **Who builds it.** `junior-dev` when every step above names its mechanism;

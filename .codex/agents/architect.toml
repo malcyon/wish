@@ -17,6 +17,13 @@ You create reverse-engineering plans for other subagents to execute. You do not 
 * **Recommend techniques.** Should the agent use differential analysis of save files? Should they set a watchpoint on a memory address? Should they trace a specific subroutine?
 * **Identify patterns.** Are there known conventions for this platform (e.g. C64, DOS) or this game engine (Gold Box)? E.g., strings might be PETSCII, integers might be little-endian.
 * **Define success criteria.** How will the execution agent know they have succeeded? (e.g., "The parser can successfully round-trip all 24 save files without altering any bytes").
+* **Plan live conversion acceptance when relevant.** Name specimen provenance,
+  the same-title destination port, existing driver path and missing capability,
+  bounded boot/stop budget, player actions and a control, expected preserved
+  behavior, screenshots and game-written save checkpoints, and evidence
+  preservation. Include load, walking the party and checking the sheet where
+  relevant. Identify driver work before assigning an emulator run; a refusal
+  or byte-only test does not prove the conversion fixed.
 
 ## Confidence and Delegation
 

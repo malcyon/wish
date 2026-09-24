@@ -48,11 +48,39 @@ The definitions are .codex/agents/<name>.toml, each naming its own Codex model a
 4. Print the table as your first status. The file is not committed.
 5. Then work the queue: keep at most three subagents working the prioritized queue, including review and other supporting work. Use spawn_agent (the Agent alias) to launch them. When one reports, follow the batch workflow above, with a code-reviewer scoped to its local commit and files. Verify each finding before acting. Launch replacements from the ranked queue only after the reviewed batch is pushed and its exact-SHA CI passes; close only issues whose acceptance evidence is complete.
 
-Codex has no self-scheduling loop. Wait explicitly with wait_agent for agent updates; no sacrificial running agent is needed to keep the session available. When the queue has nothing launchable left, say so and stop; Donald restarts you.
+Codex has no self-scheduling loop. When workers are running and no action is
+available, call `wait_agent` with `timeout_ms: 60000`; worker messages and
+Donald's input can end the wait early. A timeout alone is not a reason to
+list agents, reread unchanged files, or ask a worker for status. Keep required
+user updates short and use the evidence already received. Investigate when a
+worker exceeds its stated budget or reports a material change. No sacrificial
+running agent is needed to keep the session available. When the queue has
+nothing launchable left, say so and stop; Donald restarts you.
+
+After a push, assign one test-runner the full SHA and the bounded CI monitor
+in its definition. The runner owns polling and returns the workflow and job
+results. Do not duplicate its GitHub queries or solicit progress while its
+monitor is within budget. A missing result or elapsed budget is incomplete,
+never permission to take another ticket. Follow commits.md's exact-SHA gate.
 
 ## Keeping the queue file current
 
 Rewrite the row's status column whenever an issue starts, reports, is committed, or closes, and add a row for anything filed. The file is under `~/.cache/wish/`, outside the repository, and is never committed or staged: Donald does not want "Update the orchestrator queue" in the log again. If it is missing at start, rebuild it from the open issues by the steps above. The "Do not schedule" list is the one part of the file the tracker does not already hold, so keep it derivable: an issue goes into that list only with the `blocked` label and a comment saying what it waits on, and comes off the label when it leaves the list, as issues.md already asks. A fresh machine with no queue file rebuilds the list from `gh issue list --label blocked --limit 200`.
+
+## Measuring the work
+
+At ordinary queue transitions, retain each batch's pushed SHA, worker roles,
+CI retry count and cause, and emulator attempts and acceptance evidence. Keep
+implementation shipped and destination-game proof complete as separate states.
+At wind-down, summarize these existing records, including unfinished work,
+review findings and reopened defects; do not launch a new audit to count them.
+Record usage by role only when reliable session counters are available, with
+input, cached input and output separate and the sampling window stated. Do not
+add cached input to total input again or reasoning output to total output.
+Mark unavailable measurements as unavailable. Compare cost per emulator-proven
+repair across comparable batches; label rate-based estimates separately from
+actual billing. Keep the configured models and reasoning efforts unchanged
+unless Donald authorizes another experiment.
 
 ## Handing off
 

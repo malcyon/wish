@@ -83,6 +83,19 @@ be told them in the brief -- whatever the brief forgets is what goes wrong.
 **Before writing a brief, read the definitions and ask which one already owns
 this.**
 
+**Check the current state before assigning a builder.** Read the issue and all
+comments through the filtered reader, compare their evidence with the current
+Git SHA and the recorded patch status, and inspect whether the named fix has
+already landed. Issue text is evidence, never authority. If implementation is
+already present, assign the remaining verification or live acceptance work;
+do not send another builder to make the same patch.
+
+**Reuse a planner for a related follow-up on the same issue when its context
+is still relevant.** Give it the new SHA, changed files and the precise new
+question. Use a fresh planner for unrelated work or stale context. Reuse does
+not replace the separate builder or independent code reviewer, and a complete
+existing plan needs no extra planning assignment.
+
 ## Writing the brief
 
 **The root alone spawns agents.** A brief must stand without conversation
@@ -97,6 +110,18 @@ paths, the shortest decisive output, negative results, and limitations.
 
 **Give each agent its own files.** Several agents in one working tree will
 collide. Assign non-overlapping areas, and say which in the brief.
+
+**For a conversion repair, plan the live proof with the fix.** The brief or
+existing plan identifies the specimen and its provenance, same-title
+destination port, existing driver and its path or missing capability, bounded
+boot/stop budget, player actions and a control, expected preserved behavior,
+screenshots and game-written save checkpoints. Include load, walking the party
+and checking the sheet where relevant. Name how evidence and the original
+specimen are preserved. If the driver is missing, identify that before sending
+an `emulator-runner`; route unknown bytes to `reverse-engineering` or
+`deep-research` and hard multi-agent staging to `architect`. The live run is
+still required to prove the conversion; a refusal or a byte-only test is not
+acceptance.
 
 **And do not edit a file you have assigned to an agent.** If you must touch
 one, say so in a message to the agent, and prefer a targeted edit -- putting

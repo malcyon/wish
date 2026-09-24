@@ -139,9 +139,26 @@ push, rerun jobs, or diagnose or fix failures. Require matching runs and jobs
 with nonempty conclusions; report missing or pending jobs as such. Do not let a
 fixed `--limit 5` silently exclude the target.
 
-A run whose `conclusion` is empty has not finished, however `completed` the
-list looks. `gh run view <id> --log-failed` says why one failed; report the
-failing job's name and the shortest decisive lines, and do not fix it.
+Use one bounded monitor command for Wish's push workflows:
+
+```sh
+.venv/bin/python tools/github/ciwatch.py FULL_SHA --timeout 1200 --interval 30
+```
+
+It checks the exact SHA, both required workflows and their expected jobs,
+using the latest push runs. It emits a compact final result rather than
+repeated job tables. Exit 0 is complete success; exit 1 reports failure or
+an API error; exit 2 is incomplete at the deadline. Missing jobs, skipped or
+cancelled runs, and empty conclusions never satisfy the gate. Use its run
+IDs for `gh run view <id> --log-failed` only when failure evidence is needed;
+report the shortest decisive lines without diagnosing or fixing the failure.
+Do not restart a timed-out monitor automatically. Report its pending state
+and hand control back to the root. A CI-only assignment runs no local tests.
+
+Keep monitoring inside that command, not a model-driven loop of GitHub
+queries. Send the start record, material failures or blockers, and the final
+result; do not repeat unchanged pending-job lists. If the command yields a
+session handle, resume that same command rather than starting another one.
 
 ## The escape hatch, and using it is a success
 
@@ -156,6 +173,6 @@ Claude Code applies only the `## Claude Code` section below; Codex applies only 
 ## Codex
 
 For a long command, `exec_command` may return a `session_id`. Poll it with an
-empty `write_stdin` until it exits. Do not end the turn while the run is still
-active.
+empty `write_stdin` using `yield_time_ms: 60000` until it exits. Do not end
+the turn while the run is still active.
 '''

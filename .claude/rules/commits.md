@@ -37,6 +37,8 @@ Work goes out in reviewed, coherent batches, and CI is the full-suite gate:
 1. **Focused local tests** for the behaviour the change affects: the test
    files it touched, the tests of what it changed, and the relevant tests that
    read private game data, which CI cannot run because it has no specimens.
+   When Python import changes can affect the documented dependency graph,
+   include `tests/generate/test_genimports.py`.
 2. **`.venv/bin/ruff check .`** and
    **`.venv/bin/python3 tools/generate/genui.py --check`**.
 3. **Commit locally**, then run the required code review
