@@ -916,10 +916,10 @@ def test_both_ports_enlarge_to_the_same_score_by_caster_level(title):
 
 
 @pytest.mark.parametrize("title", sorted(effectcrosswalk.ABILITIES))
-def test_a_later_mirror_image_slot_cannot_hold_a_zero_count(title):
-    """A DOS Curse node whose count nibble has run down to zero has no C64
-    magnitude: the cast substitutes the caster's level for a zero value byte,
-    and a slot that did hold zero would absorb nothing and never expire.
+def test_a_zero_mirror_image_count_absorbs_nothing_on_both_ports(title):
+    """A DOS Curse node whose count nibble has run down to zero converts to
+    C64 magnitude 0: neither port's roll absorbs a hit with it, and the C64
+    row still expires on its duration.
     """
     combat, library = _overlay(title, "COMBAT"), _overlay(title, "LIBRARY")
     roll = effectcrosswalk.mirror_zero_roll(title, combat, library)
@@ -1335,3 +1335,142 @@ def test_c64_party_row_converts_prayer():
         _POOL, effects.RunningEffect(35, 10, 3, 0)) == (35, 3)
     assert isinstance(effects.c64_party_row(
         _POOL, effects.RunningEffect(49, 10, 3, 1)), effects.Unconverted)
+
+
+# --- Enlarge, Friends, Mirror Image and Strength ------------------------------
+
+_P = "pool-of-radiance"
+_C = "curse-of-the-azure-bonds"
+_S = "secret-of-the-silver-blades"
+_RE = effects.RunningEffect
+_VALUE_ROWS = [
+    (_P, _RE(12, 10, 0x63, 1), (12, 0xE2)),
+    (_P, _RE(38, 10, 0x73, 1), (38, 0xF3)),
+    (_P, _RE(38, 10, 0x65, 1), (38, 0xE4)),
+    (_P, _RE(38, 10, 0x66, 1), (38, 0xE6)),
+    (_P, _RE(38, 10, 0x73, 0), (38, 0x73)),
+    (_P, _RE(14, 10, 0x0C, 1), (14, 0x8C)),
+    (_P, _RE(14, 10, 0x0C, 0), (14, 0x0C)),
+    (_P, _RE(28, 10, 0x03, 0), (28, 0x03)),
+    (_C, _RE(38, 10, 0x68, 1), (38, 0xB8)),
+    (_C, _RE(38, 10, 0x66, 1), (38, 0x96)),
+    (_S, _RE(14, 10, 0x05, 1), (14, 0xC5)),
+    (_S, _RE(14, 10, 0x05, 0), (14, 0xC5)),
+    (_C, _RE(12, 10, 0x34, 1), (12, 0x83)),
+    (_S, _RE(12, 10, 0x7A, 0), (12, 0x8A)),
+    (_C, _RE(12, 10, 0x01, 1), (12, 0x81)),
+    (_C, _RE(28, 10, 0x4F, 0), (28, 4)),
+    (_C, _RE(28, 10, 0x1A, 0), (28, 1)),
+    (_C, _RE(28, 10, 0x0F, 0), (28, 0)),
+]
+
+
+@pytest.mark.parametrize("title, node, want", _VALUE_ROWS)
+def test_c64_row_converts_enlarge_friends_mirror_image_and_strength(
+        title, node, want):
+    assert effects.c64_row(title, node) == want
+
+
+@pytest.mark.parametrize("title, node, kwargs", [
+    (_P, _RE(28, 10, 3, 1), {}),
+    (_P, _RE(38, 10, 0x73, 1), {"strength_nodes": 2}),
+    (_P, _RE(12, 10, 0xE3, 1), {}),
+    (_C, _RE(38, 10, 0x65, 1), {}),
+    (_S, _RE(12, 10, 0x7B, 0), {}),
+    (_C, _RE(12, 10, 0x70, 1), {}),
+])
+def test_c64_row_leaves_only_states_no_engine_writes_or_waiting_on_a_run(
+        title, node, kwargs):
+    got = effects.c64_row(title, node, **kwargs)
+    assert isinstance(got, effects.Unconverted) and got.reason
+
+
+_VALUE_NODES = [
+    (_P, 12, 0xE2, (0x63, 1)),
+    (_P, 38, 0xF3, (0x73, 1)),
+    (_P, 38, 0xE4, (0x65, 1)),
+    (_P, 38, 0xE5, (0x65, 1)),
+    (_P, 38, 0x73, (0x73, 0)),
+    (_P, 14, 0x8C, (0x0C, 1)),
+    (_P, 28, 0x03, (0x03, 0)),
+    (_C, 38, 0xB8, (0x68, 1)),
+    (_S, 14, 0xC5, (0x05, 1)),
+    (_C, 12, 0x83, (0x34, 1)),
+    (_S, 12, 0x83, (0x34, 0)),
+    (_S, 12, 0x8C, (0x7A, 0)),
+    (_C, 28, 0x04, (0x44, 0)),
+    (_C, 28, 0x00, (0x00, 0)),
+]
+
+
+@pytest.mark.parametrize("title, eid, m, want", _VALUE_NODES)
+def test_dos_record_converts_enlarge_friends_mirror_image_and_strength(
+        title, eid, m, want):
+    got = effects.dos_record(title, effects.Effect(63, eid, 2, 0x0A, m), 0)
+    assert got == _RE(eid, 10, *want)
+
+
+@pytest.mark.parametrize("title, eid, m", [
+    (_P, 28, 0x83), (_C, 38, 0x85), (_C, 38, 0x38), (_C, 12, 0x80),
+    (_C, 28, 0x05),
+])
+def test_dos_record_leaves_only_what_waits_on_a_read_or_a_run(title, eid, m):
+    got = effects.dos_record(title, effects.Effect(63, eid, 2, 0x0A, m), 0)
+    assert isinstance(got, effects.Unconverted) and got.reason
+
+
+def _round_trip(title, node):
+    for clock in (0, 725):
+        for minutes in (1, 47, 63):
+            n = _RE(node.id, minutes, node.data, node.flag)
+            byte = effects.closest_duration(minutes, clock)
+            got = effects.c64_row(title, n)
+            assert not isinstance(got, effects.Unconverted), (node, got)
+            row = effects.Effect(63, n.id, 2, byte, got[1])
+            assert effects.dos_record(title, row, clock) == n
+
+
+def test_pool_enlarge_strength_and_friends_survive_every_data_byte():
+    for eid in (12, 38, 14):
+        for data in range(1, 0x80):
+            for flag in (0, 1):
+                # 101 is DOS's own collision (a strength of 1 and 18/100 both
+                # encode to it), and the row holds 100 for both.
+                _round_trip(_P, _RE(eid, 1, data, flag))
+    for data in range(0, 0x80):
+        _round_trip(_P, _RE(28, 1, data, 0))
+
+
+def test_later_strength_and_friends_survive_every_bonus():
+    for title in (_C, _S):
+        for data in range(102, 109):
+            _round_trip(title, _RE(38, 1, data, 1))
+        for data in range(1, 9):
+            _round_trip(title, _RE(14, 1, data, 1))
+
+
+@pytest.mark.parametrize("title", [_C, _S])
+def test_later_enlarge_survives_each_of_its_ten_scores(title):
+    flag = effects.LATER_CAST_FLAGS[title][12]
+    for score in effects.ENLARGE_STRENGTHS:
+        _round_trip(title, _RE(12, 1, effects.later_node_data(*score), flag))
+
+
+@pytest.mark.parametrize("title", [_C, _S])
+def test_a_later_mirror_image_count_survives_and_its_level_becomes_the_count(
+        title):
+    for count in range(5):
+        _round_trip(title, _RE(28, 1, count << 4 | count, 0))
+    # The C64 row holds no caster level, so the level nibble comes back as the
+    # count.
+    for data, back in ((0x4F, 0x44), (0x0F, 0x00)):
+        _, m = effects.c64_row(title, _RE(28, 5, data, 0))
+        row = effects.Effect(63, 28, 2, effects.closest_duration(5, 0), m)
+        assert effects.dos_record(title, row, 0).data == back
+
+
+def test_the_two_node_score_helpers_live_in_goldbox_and_the_crosswalk_uses_them():
+    assert effectcrosswalk.later_node_score is effects.later_node_score
+    assert effectcrosswalk.later_node_data is effects.later_node_data
+    assert effects.later_node_score(0x7B) == (23, 0)
+    assert effects.later_node_data(23, 0) == 0x7B

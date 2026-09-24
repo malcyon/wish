@@ -751,6 +751,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     cures = use("paladin_cures")
     heal = use("lay_on_hands_minutes")
     running = use("running_effects")
+    granted = use("granted_effects")
     former = use("former_levels")
 
     for field, c64_name in DIRECT:
@@ -1028,6 +1029,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 else:
                     other_nodes.append(row)
 
+    # C64 Pool restores one old strength per character, so a second strength
+    # node, running or granted, has no row to take it.
+    strength_nodes = sum(
+        1 for n in other_nodes if n.id in effects.STRENGTH_IDS) + sum(
+        1 for n in (granted.value if granted is not None else ())
+        if bytes(n)[0] in effects.STRENGTH_IDS)
+
     for node in other_nodes:
         which = running_effect_label(node.id, node.minutes, char.game)
         if node.id in effects.party_row_ids(title_key):
@@ -1044,7 +1052,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 rep.lost(f"{which}: no free slot in the save's shared "
                          "effect arrays")
             continue
-        row_for = effects.c64_row(title_key, node)
+        row_for = effects.c64_row(title_key, node,
+                                  strength_nodes=strength_nodes)
         if isinstance(row_for, effects.Unconverted):
             rep.dropped.append(f"{which}: {row_for.reason}")
         elif payload is None:
@@ -1493,7 +1502,6 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # else, and for every item power that uses a trait slot the id is the
     # whole effect -- the handler holds the magnitude, not the record.
     innate = use("innate_effects")
-    granted = use("granted_effects")
     if innate is not None or granted is not None:
         slots = [0] * 10
         innate_ids = list(innate.value) if innate is not None else []
@@ -1809,7 +1817,9 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("running_effects", "each node is written as a row in the save's shared "
                         "active-effect arrays through `goldbox.effects.c64_row`, "
                         "owned by the character's save slot, its time through "
-                        "`goldbox.effects.closest_duration`; a node with no "
+                        "`goldbox.effects.closest_duration`; ids 12, 14, 28 and "
+                        "38 (Enlarge, Friends, Mirror Image, Strength) take "
+                        "each title's value rule in `goldbox.effects`; a node with no "
                         "rule is reported by id and refused; the paladin's cure "
                         "node goes through the `paladin_cures` row; an id in "
                         "`effects.PARTY_ROW_IDS` becomes one row owned by the "

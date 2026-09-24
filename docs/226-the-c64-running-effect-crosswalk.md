@@ -193,6 +193,17 @@ Enlarge measurement. The boundary matters: DOS data 101 means 18/100,
 while C64 low bits 101 mean ordinary strength 1. Ordinary strength 15 uses
 115 on both ports, then `$F3` with the restore flag.
 
+**The flag byte each DOS cast writes, by static read of the push order into
+the generic cast.** Enlarge 12: Pool 1 (`0x282BD`), Curse 1 (`0x2FFBA`), Silver
+Blades 0 (`0x2E8C9`, into the apply routine `0x37EB0`). Friends 14: 1 in all
+three (`0x28430`, `0x301A5`, `0x2E9EB`). Mirror Image 28: 0 in all three
+(`0x28AB8`, `0x3072F`, `0x2EF94`). Strength 38: 1 in all three (`0x28F59` and
+`0x29EFD`, `0x30C10`, `0x2F477`). The later titles do not read the flag of 12,
+14 or 38: their handlers are empty (Curse `0x1024E` and `0x1029C`, Silver Blades
+`0x1126E` and `0x11297`), and Curse's `remove_affect` tests it at `0x3518D` only
+to skip the handler call before it recomputes by id at `0x35244`-`0x35273`. Pool
+item power `0x83` writes a granted 38 (`26 00 00 xx 01`), not a running one.
+
 ## The later titles' ability effects, and which byte of the DOS pair they touch
 
 **CONFIRMED, and it replaces this page's "the complete modifier crosswalk is
@@ -215,8 +226,8 @@ more step than it finds.
 
 **CONFIRMED: both ports enlarge to the same ten scores.** The C64 table at
 Curse `ECL65 $9223`/`$922F` and Silver Blades `$96E9`/`$96F5` reads `18/00,
-18/01, 18/51, 18/76, 18/91, 18/100, 19, 20, 21, 22` (and two more, 23 and 24, a
-cast cannot reach), and the DOS ladder of `cmp al, <level>` tests at Curse
+18/01, 18/51, 18/76, 18/91, 18/100, 19, 20, 21, 22` (and two more, 23 and 24;
+the DOS cast reaches 23 in Silver Blades only), and the DOS ladder of `cmp al, <level>` tests at Curse
 `0x2FFCD`-`0x3004B` writes the same ten. So the level a converted Enlarge needs
 reads off its own node's score, decoded: a DOS node exists only where the spell
 actually raised the score (`0x30068` skips `add_affect` when it did not).
@@ -317,23 +328,17 @@ recompute is what a player then sees.
 
 **CONFIRMED, a difference between the ports at high caster level: the DOS
 Enlarge ladder's last test is `cmp al, 0xb`, so levels 10 and 11 share the 22
-entry and a level of 12 or more matches none of the ten tests, where the C64
-clamps the level at 10 and gives 22 (`$91D6`: `CMP #$0A`).** What that fall-out
-case actually stores or shows is **NOT ESTABLISHED**, and this page used to
-read it as "the 18/00 the cast started with" -- `docs/50-experiments.md` and
-commit dc6e1de6 (Show the DOS ability cast writes the in-force byte only, so
-the capped 18/100 case is not a conversion loss, #600 (The neutral record has
-no field for an effect's remaining duration or a paladin's cure-disease uses,
-so a converted character loses both)) since found, in a
-separate part of this same ability system, that the DOS ability record keeps a
-**permanent** score and an **in-force** one as distinct bytes, and that at
-least one cast writes only the in-force half. Enlarge's own recompute has not
-been re-read in light of that split: whether the level-12-or-more case reads
-the permanent score, the in-force one, writes neither and leaves the prior
-in-force value standing, or does something else, is unread. It changes nothing
-about a conversion, because the level a converted Enlarge needs is read back
-off its own node's score rather than from the caster, and both ports then
-agree on what that score is once written.
+entry; the C64 clamps the level at 10 and gives 22 (`$91D6`: `CMP #$0A`).**
+Past level 11 the two DOS titles differ. Curse's ladder has no arm after its
+last test (`0x3004B`, then `0x30050`), so the 18/00 the cast started with
+stands, and no Curse caster reaches level 12. Silver Blades' default arm at
+`0x2E892` writes 23, which this page had not read and so called NOT
+ESTABLISHED. The C64's most is 22, so Silver Blades' 23 has no C64 row and
+`effects.c64_row` leaves that node unconverted until a read finds a C64 route
+to an absolute strength of 23 (the recompute at `ECL65 $9637`, the Enlarge
+read at `$969D`, and id 113 are where to start). The other ten scores convert
+in both directions, because the level a converted Enlarge needs is read back
+off its own node's score rather than from the caster.
 
 **Which title a player can meet it in: Silver Blades only, and the ladder's top
 rung says why.** This reachability question was resolved by reading each
@@ -348,30 +353,25 @@ it -- a run of `u32` thresholds ended by `0xFFFFFFFF`:
 
 So the ladder's last test, level 11, is exactly Curse's magic-user ceiling: the
 cast was written to cover every level a Curse caster can hold, and no Curse
-party can fall out the bottom of it. Silver Blades raised the class to 15 and
-shipped the ladder unchanged, which is where the fall-through becomes something
-a player can reach. A human magic-user has no racial limit below the class
-ceiling in either title (`goldbox/levels.py`, `racial_limits`), so nothing
-else stands in the way. **CONFIRMED** from the two ports' own tables that a
-Silver Blades party can reach a caster level the ladder does not cover; what
-is not measured is whether a Silver Blades playthrough accumulates the 750,001
-experience level 12 asks for, and the highest magic-user among the 86 DOS
-Silver Blades records on this machine is level 8 -- all of them ours or the
-archives' early-game shipped party, so that is a statement about our records
-rather than about the game.
+party can fall out the bottom of it. Silver Blades raised the class to 15, and
+its ladder ends with a default arm (`0x2E887 cmp al, 0xb / jne 0x2E892`, then
+`0x2E892 mov byte ptr [0x64d8], 0x17`), so a caster of level 12 or more
+enlarges to **23** and the node's data is `0x7B`. A human magic-user has no
+racial limit below the class ceiling in either title (`goldbox/levels.py`,
+`racial_limits`), so nothing else stands in the way. **CONFIRMED** from code
+that a Silver Blades party can reach it; what is not measured is whether a
+Silver Blades playthrough accumulates the 750,001 experience level 12 asks for,
+and the highest magic-user among the 86 DOS Silver Blades records on this
+machine is level 8 -- all of them ours or the archives' early-game shipped
+party, so that is a statement about our records rather than about the game.
 
 **This finding used to sit in `goldbox-bugs.md` as entry 18, "A DOS
 magic-user of level 12 or higher who casts Enlarge gives the target the
 weakest Strength the spell can give, not the strongest", marked CONFIRMED.**
-It moved out this session: the reachability half above still holds, but the
-entry's claim about the actual displayed outcome does not meet
-`goldbox-bugs.md`'s bar of a confirmed, player-visible result, given the
-permanent/in-force split above. **Next step, not yet taken:** read Enlarge's
-own recompute call at DOS Silver Blades `0x2E80D`-`0x2E88B` and its caller,
-asking specifically which half of the ability pair it reads and writes for a
-caster past level 11 -- the permanent byte, the in-force byte, both, or
-neither -- before restating any claim about what a player would see on the
-character sheet.
+It moved out because its claim about the displayed outcome did not meet
+`goldbox-bugs.md`'s bar, given the permanent/in-force split above. The read of
+Silver Blades' ladder settles it: the ladder ends in a default arm, so a caster
+of level 12 or more enlarges to 23, not to the weakest score.
 
 ## Which slot a converted effect takes, and who owns it
 
@@ -390,7 +390,7 @@ write, then with id 0 and owner `$FF` for a free slot.
 | owner | the party slot for a per-character effect, `$FF` for one the party carries; **any** owner with bit 7 set answers every query, because the test is a `BMI` (`$3FFB`, `$40B6`, `$386B`) |
 | duplicates | a **cast** writes at most one slot per (id, owner) pair -- Pool expires the old slot through `CAMP $131F` and takes a fresh one, the later titles overwrite it in place. The arrays themselves hold as many rows of one id as a writer puts in them |
 | which of two | the four tests below |
-| a zero value | never reaches a magnitude: the writer substitutes the caster's level for a value byte of zero (Pool `$A825`, the later titles `$8171`) |
+| a zero value | never reaches a magnitude: the writer substitutes the caster's level for a value byte of zero (Pool `$A825`, the later titles `$8171`). C64 Pool's camp writer takes `$2879` when it is not 0 and no code clears it within one camp visit, so a camp spell cast after Enlarge, Friends, 26, Mirror Image, 48 or 56 is PROBABLY written with that spell's value; the run that settles it is on https://github.com/malcyon/wish/issues/667#issuecomment-5805825694 |
 
 **CONFIRMED, and it replaces this page's "the numerically larger duration byte
 wins":** that is the rule for two nonzero bytes, and the two zero cases go
@@ -587,19 +587,22 @@ For example, Silver Blades data `$4F` means four images, so its C64 magnitude
 is `$04`, not `$4F`. The lower nibble is the caster's level and is not part of
 the image count.
 
-**CONFIRMED, and it is the one Mirror Image node with no C64 magnitude:** a
+**CONFIRMED from code: a spent Mirror Image converts to C64 magnitude 0.** A
 DOS Curse node whose count nibble has run down to zero -- `$0F` is a
 fifteenth-level caster's spent spell, which its own raw decrement produces --
-converts to a count of zero, and zero is not a magnitude the C64 can hold. The
-cast substitutes the caster's level for a value byte of zero on its way into
-the array, and a slot that did hold zero would absorb nothing and never
-expire: the handler asks `random(0..count)` for the image that takes the hit
-(`COMBAT $20DF`-`$20E5` through `LIBRARY $2F46`, Silver Blades `$25FB`
-through `$2E05`), a zero answer costs no image, and only the decrement that a
-nonzero answer triggers ever removes the slot. What a spent Mirror Image
-should convert to is a writer's decision nobody has taken;
-`goldbox.effects.mirror_image_count` reports the zero and does not invent a
-count.
+absorbs nothing on either port. DOS Curse's handler rolls `dice(1, (data >> 4)
++ 1)` (`0x10638`-`0x1063E`) and absorbs only on a result above 1 (`0x10643`), so
+a count of zero always rolls 1. The C64's handler asks `random(0..count)` for
+the image that takes the hit (`COMBAT $20DF`-`$20E5` through `LIBRARY $2F46`,
+Silver Blades `$25FB` through `$2E05`), and a zero answer costs no image. The
+C64's camp sweep and combat round skip a slot only when its id or its duration
+is 0, so a magnitude-0 row still expires on its duration, as the DOS node does,
+and only a Dispel Magic removes either early. This page used to say the row
+would "never expire"; that was wrong about the second half, because ageing
+never reads the magnitude. Pool (`0xF670`-`0xF68D`) and Silver Blades
+(`0x117DF`-`0x117FB`) remove the node when the count reaches 0, so only a Curse
+player reaches the state. `goldbox.effects.mirror_image_count` returns the zero
+and the writer stores it.
 
 **Curse's raw decrement is a defect in its own handler, not a second meaning
 for the byte, and this page used to call the mapping UNKNOWN for that reason.**
@@ -655,15 +658,24 @@ member for id 5, so the two forms give the player the same thing. Prayer
 converts both ways in all three titles: Pool's 35 is copied unchanged, Pool's
 49 has its side bit inverted, and Curse's and Silver Blades' 49 keeps it.
 Going to DOS the row becomes one node on every member; coming back the nodes
-become one `$FF` row with the longest time left. Still
+become one `$FF` row with the longest time left. Enlarge (12), Friends (14),
+Mirror Image (28) and Strength (38) convert both ways in all three titles
+through `effects.c64_row` and `effects.dos_record`, each title's value rule as
+tabled above: Pool's restore-flag encoding, the later titles' bonus and level
+nibbles, the later Enlarge score read back off its own node, and a Mirror Image
+count in both. The flag byte each DOS cast writes is fixed by title and id
+(`effects.LATER_CAST_FLAGS`), which the later engines do not read. Still
 waiting: rows no party member owns (party-wide, monster and orphaned rows, now
 reported by name; converting them is #666 (A C64 party under a camp Prayer
 loses it on the way to DOS or the Amiga, because nothing converts the save's
 party-wide effect rows)); a timeline conversion for Pool's overlapping strength
-nodes, which the destination does hold; the later titles' Strength, Enlarge and
-Friends; what a spent Mirror Image converts to; Curse's and Silver Blades' id 25, which has its own row and
-handler; the ids with no C64 spell row; and the two ageing routes the camp
-formula does not describe.
+nodes, which the destination does hold (a second strength node on one
+character, running or granted, is refused by `strength_nodes`); the later
+titles' Strength at data 101, which may decode as 18/100; Silver Blades'
+Enlarge at 23 (caster level 12 or more), which the C64's level cap of 10 cannot
+reach; Haste (39); id 13; Curse's and Silver Blades' id 25, which has its own
+row and handler; the ids with no C64 spell row; and the two ageing routes the
+camp formula does not describe.
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.

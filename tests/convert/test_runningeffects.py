@@ -1041,3 +1041,107 @@ def test_two_party_wide_never_expiring_rows_keep_the_higher_magnitude():
     granted = [bytes(r)[:5] for c in party
                for r in c.get("granted_effects") or () if bytes(r)[0] == 5]
     assert granted == [bytes((5, 0, 0, 7, 0))]
+
+
+# --- Enlarge, Friends, Mirror Image and Strength -------------------------------
+
+_POOL_G = c64_port.POOL_OF_RADIANCE
+_CURSE_G = c64_port.CURSE_OF_THE_AZURE_BONDS
+_SILVER_G = c64_port.SECRET_OF_THE_SILVER_BLADES
+# (game, DOS node, the C64 row it becomes for party slot 2)
+_VALUE_WRITES = [
+    (_POOL_G, "0C 0A 00 63 01", (12, 2, 0x0A, 0xE2)),
+    (_POOL_G, "26 0A 00 73 01", (38, 2, 0x0A, 0xF3)),
+    (_POOL_G, "0E 0A 00 0C 01", (14, 2, 0x0A, 0x8C)),
+    (_POOL_G, "1C 0A 00 03 00", (28, 2, 0x0A, 0x03)),
+    (_CURSE_G, "26 0A 00 68 01", (38, 2, 0x0A, 0xB8)),
+    (_SILVER_G, "0C 0A 00 7A 00", (12, 2, 0x0A, 0x8A)),
+    (_CURSE_G, "0E 0A 00 05 01", (14, 2, 0x0A, 0xC5)),
+    (_CURSE_G, "1C 0A 00 4F 00", (28, 2, 0x0A, 0x04)),
+    (_CURSE_G, "1C 0A 00 0F 00", (28, 2, 0x0A, 0x00)),
+]
+_VALUE_IDS = [f"{g.key}-{n[:2]}-{n[9:11]}" for g, n, _ in _VALUE_WRITES]
+
+
+@pytest.mark.parametrize("game, node, row", _VALUE_WRITES, ids=_VALUE_IDS)
+def test_an_enlarge_friends_mirror_image_or_strength_node_is_written_as_a_row(
+        game, node, row):
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(
+        _title_character(game, bytes.fromhex(node.replace(" ", ""))),
+        payload=payload, party_slot=2, clock_minutes=0)
+    rows = _rows(payload)
+    assert rows.pop(63) == row
+    assert set(rows.values()) == {(0, 0, 0, 0)}
+    assert not [d for d in rep.dropped + rep.losses + rep.warnings
+                if "running_effects" in d]
+
+
+@pytest.mark.parametrize("game, node, row", _VALUE_WRITES, ids=_VALUE_IDS)
+def test_such_a_row_reads_back_as_the_node_DOS_holds(game, node, row):
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, row[0], row[1], row[2], row[3])
+    got = _read(p, 2, game=game)
+    want = bytes.fromhex(node.replace(" ", ""))
+    if game is not _POOL_G and row[0] == 28:
+        want = bytes((want[0], want[1], want[2], (row[3] << 4) | row[3],
+                      want[4]))
+    assert [bytes(r) for r in got.get("running_effects")] == [want + NULL]
+    assert not _lines(got)
+
+
+@pytest.mark.parametrize("game, node, row", _VALUE_WRITES, ids=_VALUE_IDS)
+def test_a_written_node_reads_back_through_the_writer_and_the_reader(
+        game, node, row):
+    p = bytearray(0x1C00)
+    c64_codec.write(_title_character(game, bytes.fromhex(node.replace(" ", ""))),
+                    payload=p, party_slot=2, clock_minutes=0)
+    got = _read(p, 2, game=game)
+    want = bytes.fromhex(node.replace(" ", ""))
+    if row[0] == 28 and game is not _POOL_G:
+        # The C64 row holds no caster level, so the count fills both nibbles.
+        want = want[:3] + bytes((row[3] << 4 | row[3],)) + want[4:]
+    assert [bytes(r) for r in got.get("running_effects")] == [want + NULL]
+
+
+def test_two_pool_strength_nodes_on_one_character_write_no_row_and_say_so():
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(
+        _pool_character(bytes.fromhex("260A007301"),
+                        bytes.fromhex("0C0A006301")),
+        payload=payload, party_slot=2, clock_minutes=0)
+    assert payload == bytearray(0x1C00)
+    lines = _lines(rep)
+    assert len(lines) == 2
+    assert any("effect 38" in d for d in lines)
+    assert any("effect 12" in d for d in lines)
+
+
+def test_a_running_and_a_granted_pool_strength_node_write_no_row():
+    payload = bytearray(0x1C00)
+    char = _pool_character(bytes.fromhex("260A007301"))
+    char.set("granted_effects", [bytes.fromhex("260000" "5C01") + NULL],
+             "built here")
+    _rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                                clock_minutes=0)
+    assert _rows(payload)[63] == (0, 0, 0, 0)
+    assert len(_lines(rep)) == 1 and "effect 38" in _lines(rep)[0]
+
+
+def test_a_pool_strength_row_reads_back_and_a_bad_node_is_one_line():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 38, 2, 0x0A, 0xF3)
+    got = _read(p, 2)
+    assert [bytes(r) for r in got.get("running_effects")] \
+        == [bytes((38, 10, 0, 0x73, 1)) + NULL]
+    assert not _lines(got)
+
+
+def test_save_as_dos_converts_a_pool_strength_row(tmp_path):
+    from editor import saveplan
+
+    payload, save1 = _fixture_payload()
+    effects.write_effect(payload, 63, 38, 0, 0x0A, 0xF3)
+    plan = _dos_plan(tmp_path, payload, save1)
+    assert isinstance(plan, saveplan.SavePlan)
+    assert plan.files["CHRDATA1.SPC"].count(bytes.fromhex("260A007301")) == 1

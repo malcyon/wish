@@ -17,7 +17,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import c64_port  # noqa: E402
-from goldbox.effects import EFFECT_SLOTS, ENLARGE_STRENGTHS, PARTY_WIDE  # noqa: E402
+from goldbox.effects import (  # noqa: E402
+    EFFECT_SLOTS,
+    ENLARGE_STRENGTHS,
+    PARTY_WIDE,
+    later_node_data,  # noqa: F401 -- re-exported: the moved helpers keep their old home for callers
+    later_node_score,  # noqa: F401
+)
 from tools.c64 import coldread, d6502  # noqa: E402
 
 
@@ -801,9 +807,10 @@ def dos_enlarge_ladder(title: str, dos_ovr: bytes) -> tuple[tuple[int, int], ...
     """The scores the DOS Enlarge cast writes, by caster level 1 to 10.
 
     The cast writes 18/00 into its two scratch bytes and then a ladder of
-    `cmp al, <level>` tests overwrites one of them. A level past the ladder's
-    last test leaves the 18/00 it started with; levels 10 and 11 share the
-    last entry.
+    `cmp al, <level>` tests overwrites one of them. Curse's ladder has no arm
+    past its last test, so a level of 12 or more leaves the 18/00 it started
+    with (no Curse caster reaches it); Silver Blades' default arm writes 23.
+    Levels 10 and 11 share the last entry.
     """
     import capstone
 
@@ -957,34 +964,6 @@ def record_stores(dos_ovr: bytes, bounds: tuple[int, int]) -> tuple[tuple[int, s
     return tuple(out)
 
 
-def later_node_score(data: int) -> tuple[int, int]:
-    """The score a later title's DOS engine reads out of an ability node.
-
-    One byte carries a whole `(strength, percentile)`: the engine's own decoder
-    reads `data & 0x7F` of 101 or less as `18/(data - 1)` and anything larger
-    as an ordinary score of `data - 100`. Curse `GAME.OVR:0x366FB`, Silver
-    Blades `0x372AB`.
-    """
-    if not 0 <= data <= 0xFF:
-        raise ValueError("DOS data must be a byte")
-    value = data & 0x7F
-    return (18, value - 1) if value <= 101 else (value - 100, 0)
-
-
-def later_node_data(strength: int, percentile: int) -> int:
-    """What the engine's encoder writes for one score, the inverse above.
-
-    Curse `GAME.OVR:0x366D2`, Silver Blades `0x37282`: `strength + 100`, or the
-    percentile plus one at strength 18. Both engines' ability setters call it
-    with the score the spell is about to produce, so an Enlarge node holds the
-    enlarged score itself. A strength of 1 encodes to the same 101 as 18/100
-    and the decoder answers 18/100, which is the one collision in the byte.
-    """
-    if not 1 <= strength <= 155 or not 0 <= percentile <= 100:
-        raise ValueError("A later-title score is 1 to 155 with a percentile")
-    return percentile + 1 if strength == 18 else strength + 100
-
-
 def confirm_later_ability_pair(title: str, dos_ovr: bytes) -> tuple[str, ...]:
     """Check which byte of the DOS ability pair a later title's casts write.
 
@@ -1069,10 +1048,10 @@ def mirror_zero_roll(title: str, combat: bytes, library: bytes) -> int:
     The handler puts the magnitude in Y and asks the shared `random(0..Y)`
     helper for the image that absorbs the hit; only a nonzero answer costs an
     image and only that decrement removes the slot. With Y zero the helper
-    returns zero, so a zero magnitude absorbs nothing and never expires. The
-    engines' own casts cannot write one (`confirm_slot_rule`), which is why
-    `goldbox.effects.mirror_image_count` of a spent DOS Curse node has no C64
-    magnitude to be.
+    returns zero, so a zero magnitude absorbs nothing. The C64's sweeps age a
+    row by its id and duration, so the row still expires on its time. The
+    engines' own casts cannot write one (`confirm_slot_rule`); a spent DOS
+    Curse node converts to it (`goldbox.effects.mirror_image_count`).
     """
     load = {"curse-of-the-azure-bonds": 0x20DF,
             "secret-of-the-silver-blades": 0x25FB}[title]
@@ -1204,7 +1183,7 @@ def main(argv: list[str] | None = None) -> int:
         print("CONFIRMED DOS ability pair: " + ", ".join(pair))
         roll = mirror_zero_roll(args.title, read("COMBAT"), library)
         print(f"CONFIRMED Mirror Image rolls through ${roll:04X}; "
-              "a zero magnitude absorbs nothing and never expires")
+              "a zero magnitude absorbs nothing")
         print("UNKNOWN Prayer global merging and all unlisted ids")
         return 0
     files = {"SPELLE04": code, "LIBRARY": library}

@@ -329,6 +329,28 @@ LATER_CASTER_LEVEL_IDS = {
         {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 57, 63, 69}),
 }
 
+#: The ids whose value the C64 stores in the magnitude and DOS in the data byte
+#: by a rule of its own: Enlarge (12), Friends (14), Mirror Image (28) and
+#: Strength (38). Each title's rule is in `c64_row` and `dos_record`.
+POOL_VALUE_IDS = frozenset({12, 14, 28, 38})
+LATER_VALUE_IDS = frozenset({12, 14, 28, 38})
+
+#: The ids that set strength. C64 Pool restores one old score per character,
+#: so a second such node on one character has no row to take it.
+STRENGTH_IDS = frozenset({12, 38})
+
+#: The flag byte each later title's DOS cast writes into these nodes, from the
+#: push order into the generic cast and the apply routine: Curse Enlarge
+#: `GAME.OVR:0x2FFBA`, Friends `0x301A5`, Mirror Image `0x3072F`, Strength
+#: `0x30C10`; Silver Blades `0x2E8C9` (the apply routine `0x37EB0`), `0x2E9EB`,
+#: `0x2EF94`, `0x2F477`. The flag is inert in both titles (their handlers for
+#: 12, 14 and 38 are empty, and removal recomputes by id whatever the flag), so
+#: it is only written back as the game wrote it.
+LATER_CAST_FLAGS: dict[str, dict[int, int]] = {
+    "curse-of-the-azure-bonds": {12: 1, 14: 1, 28: 0, 38: 1},
+    "secret-of-the-silver-blades": {12: 0, 14: 1, 28: 0, 38: 1},
+}
+
 
 #: The most minutes a DOS or Amiga running-effect node holds (its `u16`).
 DOS_MINUTES_MAX = 0xFFFF
@@ -400,25 +422,121 @@ def _caster_level_ids(title_key: str) -> frozenset[int]:
 
 @dataclass(frozen=True)
 class Unconverted:
-    """A running effect `c64_row` has no rule for, and the reason in a clause."""
+    """A running effect `c64_row` or `dos_record` has no rule for, and the
+    reason in a clause."""
 
     reason: str
 
 
-def c64_row(title_key: str, node: RunningEffect) -> tuple[int, int] | Unconverted:
+def _value_row(title_key: str, node: RunningEffect,
+               strength_nodes: int) -> tuple[int, int] | Unconverted:
+    """`c64_row` for Enlarge, Friends, Mirror Image and Strength."""
+    data, flag = node.data, node.flag
+    if title_key == "pool-of-radiance" and node.id in POOL_VALUE_IDS:
+        if node.id in STRENGTH_IDS:
+            if data == 0 or data & 0x80:
+                return Unconverted("a data byte no DOS engine writes for a "
+                                   "strength or Enlarge node")
+            if strength_nodes > 1:
+                return Unconverted("more than one strength node on one "
+                                   "character, and C64 Pool restores one "
+                                   "old score")
+            value = data - 1 if data <= 101 else data
+        elif node.id == 14:
+            if data > 0x7F:
+                return Unconverted("a data byte no DOS engine writes for "
+                                   "Friends")
+            value = data
+        else:
+            if flag != 0 or data > 0x7F:
+                return Unconverted("a Mirror Image node no DOS engine writes")
+            return node.id, data
+        return node.id, value | MAGNITUDE_RESTORE_FLAG if flag else value
+    if title_key in LATER_CAST_FLAGS and node.id in LATER_VALUE_IDS:
+        if node.id == 38:
+            if data == 101:
+                return Unconverted("a Strength data byte of 101, which DOS "
+                                   "may read as 18/100 and not one step")
+            if not 102 <= data <= 108:
+                return Unconverted("a data byte no DOS engine writes for "
+                                   "Strength")
+            return node.id, later_ability_magnitude(data - 100, data & 0x0F)
+        if node.id == 14:
+            if not 1 <= data <= 8:
+                return Unconverted("a data byte no DOS engine writes for "
+                                   "Friends")
+            return node.id, later_ability_magnitude(data, data & 0x0F)
+        if node.id == 12:
+            level = enlarge_level(*later_node_score(data))
+            if level is not None:
+                return node.id, MAGNITUDE_RESTORE_FLAG | level
+            if data == 0x7B:
+                return Unconverted("Enlarge at caster level 12 or more sets "
+                                   "strength 23, above the C64's 22")
+            return Unconverted("an Enlarge score no DOS engine writes")
+        if flag != 0:
+            return Unconverted("a Mirror Image node no DOS engine writes")
+        return node.id, mirror_image_count(data, later=True)
+    return Unconverted("no rule yet for this id in this title")
+
+
+def c64_row(title_key: str, node: RunningEffect, *,
+            strength_nodes: int = 1) -> tuple[int, int] | Unconverted:
     """The C64 id and magnitude for a DOS running effect, or why there is none.
 
-    Only a title's caster-level ids are converted: an id in
-    `POOL_CASTER_LEVEL_IDS` or `LATER_CASTER_LEVEL_IDS`, flag 0, whose data
-    byte is a caster level.
+    A title's caster-level ids (`POOL_CASTER_LEVEL_IDS`,
+    `LATER_CASTER_LEVEL_IDS`) convert with flag 0 and a caster level as the
+    data byte. Enlarge, Friends, Mirror Image and Strength (12, 14, 28, 38)
+    take their title's rule from `docs/226`; `strength_nodes` counts the
+    nodes on this character that set strength. A state refused as one "no DOS
+    engine writes" is unreachable in play.
     """
     if node.id not in _caster_level_ids(title_key):
-        return Unconverted("no rule yet for this id in this title")
+        return _value_row(title_key, node, strength_nodes)
     if node.flag != 0:
         return Unconverted("a flag byte other than 0 on a caster-level effect")
     if not 1 <= node.data <= 0x7F:
         return Unconverted("a data byte that is not a caster level")
     return node.id, node.data
+
+
+def _value_node(title_key: str, effect_id: int,
+                m: int) -> tuple[int, int] | Unconverted:
+    """`dos_record`'s `(data, flag)` for Enlarge, Friends, Mirror Image and
+    Strength, the inverse of `_value_row`."""
+    if title_key == "pool-of-radiance" and effect_id in POOL_VALUE_IDS:
+        if effect_id in STRENGTH_IDS:
+            value = m & 0x7F
+            # DOS's own encoder writes 101 for a strength of 1 and for 18/100.
+            return (value + 1 if value <= 100 else value), m >> 7
+        if effect_id == 14:
+            return m & 0x7F, m >> 7
+        if m & 0x80:
+            return Unconverted("a Mirror Image magnitude with bit 7 set, "
+                               "which waits on the C64 combat-writer read")
+        return m, 0
+    if title_key in LATER_CAST_FLAGS and effect_id in LATER_VALUE_IDS:
+        if effect_id == 28:
+            if m > 4:
+                return Unconverted("a Mirror Image count above 4, which "
+                                   "waits on the C64 combat-writer read")
+            return m << 4 | m, 0
+        if not m & MAGNITUDE_RESTORE_FLAG:
+            return Unconverted("a magnitude without bit 7, which waits on "
+                               "the C64 combat-writer read")
+        if effect_id == 12:
+            if m & 0x0F == 0:
+                return Unconverted("an Enlarge magnitude with no level")
+            return (later_node_data(*ENLARGE_STRENGTHS[min(m & 0x0F, 10) - 1]),
+                    LATER_CAST_FLAGS[title_key][12])
+        bonus = later_ability_bonus(m)
+        if effect_id == 38:
+            if bonus == 1:
+                return Unconverted("a Strength bonus of 1, which waits on "
+                                   "the run that reads DOS data 101")
+            return 100 + bonus, 1
+        return bonus, 1
+    return Unconverted("no rule yet for this id in this title")
 
 
 def dos_record(title_key: str, row: "Effect",
@@ -431,12 +549,15 @@ def dos_record(title_key: str, row: "Effect",
     """
     if row.duration == 0:
         raise ValueError("a never-expiring row has no running-effect node")
-    if row.id not in _caster_level_ids(title_key):
-        return Unconverted("no rule yet for this id in this title")
-    if not 1 <= row.magnitude <= 0x7F:
-        return Unconverted("a magnitude that is not a caster level")
     minutes = min(remaining_minutes(row.duration, clock_minutes),
                   DOS_MINUTES_MAX)
+    if row.id not in _caster_level_ids(title_key):
+        made = _value_node(title_key, row.id, row.magnitude)
+        if isinstance(made, Unconverted):
+            return made
+        return RunningEffect(row.id, minutes, *made)
+    if not 1 <= row.magnitude <= 0x7F:
+        return Unconverted("a magnitude that is not a caster level")
     return RunningEffect(row.id, minutes, row.magnitude, 0)
 
 
@@ -796,7 +917,9 @@ LATER_ABILITY_BONUS_SHIFT = 4
 #: table is Curse `ECL65 $9223`/`$922F` and Silver Blades `$96E9`/`$96F5`; DOS
 #: writes the same ten values from its own ladder of `cmp al, <level>` tests at
 #: Curse `GAME.OVR:0x2FFCD`-`0x3004B`. Both ports hold two more entries, 23 and
-#: 24, that a cast cannot reach.
+#: 24. DOS Silver Blades reaches 23 at caster level 12 or more, through the
+#: default arm at `0x2E892` (`mov byte ptr [0x64d8], 0x17`); the C64 caps the
+#: level at 10 in both titles, so its most is 22. DOS Curse keeps 18/00 there.
 ENLARGE_STRENGTHS: tuple[tuple[int, int], ...] = (
     (18, 0), (18, 1), (18, 51), (18, 76), (18, 91), (18, 100),
     (19, 0), (20, 0), (21, 0), (22, 0),
@@ -844,15 +967,16 @@ def mirror_image_count(dos_data: int, *, later: bool) -> int:
     is what both engines' casts write (Curse `GAME.OVR:0x30700`, Silver Blades
     `0x2EF6E`) and what both selection rolls read back.
 
-    **A count of zero is not a C64 magnitude.** DOS Curse decrements the whole
-    byte, so a node can reach an upper nibble of zero with its low nibble still
-    holding the caster's level -- `0x0F` is a fifteenth-level caster's spent
-    Mirror Image -- and the C64 has nowhere to put that: the slot writer
-    substitutes the caster's level for a value byte of zero (`ECL65 $8171`), and
-    a slot that did hold zero would absorb nothing and never expire, because the
-    handler's roll is `random(0..count)` and only a nonzero roll decrements
-    (`COMBAT $20DF`-`$20F7` with `LIBRARY $2F46`). A writer has to decide what a
-    spent Mirror Image converts to; it must not write the zero.
+    **A spent count of zero converts to C64 magnitude 0.** DOS Curse decrements
+    the whole byte, so a node can reach an upper nibble of zero with its low
+    nibble still holding the caster's level -- `0x0F` is a fifteenth-level
+    caster's spent Mirror Image. Neither port's handler absorbs a hit with a
+    count of zero: DOS Curse rolls `dice(1, count + 1)` and absorbs only above
+    1, and the C64's roll is `random(0..count)` with only a nonzero roll
+    decrementing (`COMBAT $20DF`-`$20F7` with `LIBRARY $2F46`). The C64's sweeps
+    age a row by its id and duration alone, so the zero row still expires on its
+    time, as the DOS node does. Pool and Silver Blades remove the node at zero,
+    so only a Curse player reaches the state.
     """
     _check_byte("data", dos_data)
     return dos_data >> 4 if later else dos_data
@@ -890,6 +1014,34 @@ def enlarge_level(strength: int, percentile: int) -> int | None:
         if entry == (strength, percentile):
             return index + 1
     return None
+
+
+def later_node_score(data: int) -> tuple[int, int]:
+    """The score a later title's DOS engine reads out of an ability node.
+
+    One byte carries a whole `(strength, percentile)`: the engine's own decoder
+    reads `data & 0x7F` of 101 or less as `18/(data - 1)` and anything larger
+    as an ordinary score of `data - 100`. Curse `GAME.OVR:0x366FB`, Silver
+    Blades `0x372AB`.
+    """
+    if not 0 <= data <= 0xFF:
+        raise ValueError("DOS data must be a byte")
+    value = data & 0x7F
+    return (18, value - 1) if value <= 101 else (value - 100, 0)
+
+
+def later_node_data(strength: int, percentile: int) -> int:
+    """What the engine's encoder writes for one score, the inverse above.
+
+    Curse `GAME.OVR:0x366D2`, Silver Blades `0x37282`: `strength + 100`, or the
+    percentile plus one at strength 18. Both engines' ability setters call it
+    with the score the spell is about to produce, so an Enlarge node holds the
+    enlarged score itself. A strength of 1 encodes to the same 101 as 18/100
+    and the decoder answers 18/100, which is the one collision in the byte.
+    """
+    if not 1 <= strength <= 155 or not 0 <= percentile <= 100:
+        raise ValueError("A later-title score is 1 to 155 with a percentile")
+    return percentile + 1 if strength == 18 else strength + 100
 
 
 # --- the spell-effect table, ECL65 relocated to $9900 -----------------------
