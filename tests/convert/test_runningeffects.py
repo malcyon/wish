@@ -1298,3 +1298,76 @@ def test_save_as_dos_keeps_the_caster_level_of_an_invisible_c64_character(
     spc = plan.files["CHRDATA1.SPC"]
     assert spc.count(bytes((25, 0, 0, 5, 0))) == 1
     assert bytes((25, 0, 0, 0xFF, 0)) not in spc
+
+
+def _write_nodes(nodes, game, payload, party_slot=2):
+    char = _title_character(game)
+    char.set("granted_effects", [n + NULL for n in nodes], "built here")
+    return c64_codec.write(char, payload=payload, party_slot=party_slot,
+                           clock_minutes=0)
+
+
+def test_a_spell_with_all_64_rows_taken_is_dropped_with_a_line():
+    payload = bytearray(0x1C00)
+    for i in range(effects.EFFECT_SLOTS):
+        effects.write_effect(payload, i, 1, 3, 0x02, 0x01)
+    before = bytes(payload)
+    rec, rep = _write_nodes([bytes((25, 0, 0, 5, 0))],
+                            c64_port.CURSE_OF_THE_AZURE_BONDS, payload)
+    assert bytes(payload) == before
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    lines = [d for d in rep.losses if "effect 25, which never expires" in d
+             and "no free slot" in d]
+    assert len(lines) == 1
+
+
+def test_several_spells_on_one_character_round_trip_as_rows():
+    payload = bytearray(0x1C00)
+    nodes = [bytes((25, 0, 0, 5, 0)), bytes((34, 0, 0, 6, 1)),
+             bytes((51, 0, 0, 7, 0))]
+    rec, rep = _write_nodes(nodes, c64_port.POOL_OF_RADIANCE, payload)
+    rows = _rows(payload)
+    assert [rows[i] for i in (63, 62, 61)] == [
+        (25, 2, 0x00, 0x05), (34, 2, 0x00, 0x86), (51, 2, 0x00, 0x07)]
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    back = _read(payload, 2, c64_port.POOL_OF_RADIANCE)
+    assert sorted(bytes(r) for r in back.get("granted_effects")) == sorted(
+        n + NULL for n in nodes)
+    assert not (back.get("innate_effects") or ())
+
+
+def test_a_curse_set_on_one_character_round_trips_as_rows():
+    payload = bytearray(0x1C00)
+    nodes = [bytes((25, 0, 0, 5, 0)), bytes((33, 0, 0, 7, 0)),
+             bytes((73, 0, 0, 9, 0))]
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    _write_nodes(nodes, game, payload)
+    rows = _rows(payload)
+    assert [rows[i] for i in (63, 62, 61)] == [
+        (25, 2, 0x00, 0x05), (33, 2, 0x00, 0x07), (73, 2, 0x00, 0x09)]
+    back = _read(payload, 2, game)
+    assert sorted(bytes(r) for r in back.get("granted_effects")) == sorted(
+        n + NULL for n in nodes)
+
+
+def test_two_nodes_of_one_spell_id_take_two_rows():
+    payload = bytearray(0x1C00)
+    nodes = [bytes((25, 0, 0, 5, 0)), bytes((25, 0, 0, 9, 0))]
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    _write_nodes(nodes, game, payload)
+    rows = _rows(payload)
+    assert [rows[63], rows[62]] == [(25, 2, 0x00, 0x05),
+                                    (25, 2, 0x00, 0x09)]
+    back = _read(payload, 2, game)
+    assert sorted(bytes(r) for r in back.get("granted_effects")) == sorted(
+        n + NULL for n in nodes)
+
+
+def test_a_spell_written_with_a_payload_and_no_party_slot_goes_to_slot_0():
+    # No caller does this: every `write` with a payload also passes the
+    # character's party slot. This pins the fallback.
+    payload = bytearray(0x1C00)
+    char = _title_character(c64_port.CURSE_OF_THE_AZURE_BONDS)
+    char.set("granted_effects", [bytes((25, 0, 0, 5, 0)) + NULL], "built here")
+    c64_codec.write(char, payload=payload, clock_minutes=0)
+    assert _rows(payload)[63] == (25, 0, 0x00, 0x05)

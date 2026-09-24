@@ -1530,6 +1530,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     rep.lost(f"effect {node[0]}, which never expires: no "
                              "free slot in the save's shared effect arrays")
                 else:
+                    # Every caller that passes a payload also passes the
+                    # character's party slot; the 0 is only a fallback for a
+                    # hand-built call, and a test pins it.
                     effects.write_effect(
                         payload, row_slot, spell_row[0],
                         party_slot if party_slot is not None else 0,
