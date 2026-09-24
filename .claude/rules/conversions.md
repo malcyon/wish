@@ -14,9 +14,17 @@ conversion support, or call them fixed because Wish now detects the problem and
 refuses the save.
 
 A regression test for a conversion fix must demonstrate successful conversion
-and the preserved player behavior. A test proving that Wish refuses the save
-can document an outstanding defect; it cannot serve as the acceptance test for
-fixing that defect.
+of the formerly failing save or condition and the preserved player behavior.
+A test proving that Wish refuses the save can document an outstanding defect;
+it cannot serve as the acceptance test for fixing that defect. Renaming an
+error, hiding a route, or passing only the current specimen corpus does not
+prove completion either.
+
+No available specimen is not proof that a player cannot reach a condition.
+Establish unreachability from the game's behavior or code; otherwise keep the
+investigation open and name the experiment that would settle it. Closing work
+and retaining ownership of unfinished defects follow
+`.claude/rules/issues.md`.
 
 A verified destination capacity limit requires a way to complete the
 conversion. Let the player resolve what fits. One name needing shortening must

@@ -102,6 +102,23 @@ machine is a red main waiting to happen. Run the test with the disks
 unreachable, for instance with POR_DISKS pointed at an empty directory, and
 report what it does.
 
+## Conversion completion
+
+When a change claims to fix a conversion, read `.claude/rules/conversions.md`
+and `.claude/rules/issues.md`, even if its files are outside `goldbox/`.
+Check for a regression test that successfully converts the formerly failing
+save or condition between ports of the same title and preserves the affected
+player behavior, plus the runtime evidence those rules require. A refusal
+assertion, renamed error, hidden route, or green specimen corpus alone does
+not establish completion; lacking a specimen does not prove unreachability.
+
+Report an unsupported conversion-completion claim as **Critical**. A separately
+scoped crash or error-handling fix can be valid, but check that its completion
+claim names the remaining conversion defect and a verified open issue owning
+it. If the residual work belongs to the original issue's scope, that original
+must stay open. The reviewer checks these claims and evidence; the root owns
+closure after push and exact-SHA CI.
+
 ## Reporting
 
 Organise by severity:
