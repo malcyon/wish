@@ -1030,6 +1030,20 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
 
     for node in other_nodes:
         which = running_effect_label(node.id, node.minutes, char.game)
+        if node.id in effects.party_row_ids(title_key):
+            party_row = effects.c64_party_row(title_key, node)
+            if isinstance(party_row, effects.Unconverted):
+                rep.dropped.append(f"{which}: {party_row.reason}")
+            elif payload is None:
+                rep.lost(f"{which}: no payload was given to write a row "
+                         "into the save's shared effect arrays")
+            elif not effects.write_party_row(
+                    payload, party_row[0],
+                    effects.closest_duration(node.minutes, clock),
+                    party_row[1], clock):
+                rep.lost(f"{which}: no free slot in the save's shared "
+                         "effect arrays")
+            continue
         row_for = effects.c64_row(title_key, node)
         if isinstance(row_for, effects.Unconverted):
             rep.dropped.append(f"{which}: {row_for.reason}")
@@ -1743,7 +1757,10 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "owned by the character's save slot, its time through "
                         "`goldbox.effects.closest_duration`; a node with no "
                         "rule is reported by id and refused; the paladin's cure "
-                        "node goes through the `paladin_cures` row "
+                        "node goes through the `paladin_cures` row; an id in "
+                        "`effects.PARTY_ROW_IDS` becomes one row owned by the "
+                        "whole party, lasting as long as the longest such "
+                        "node in the party "
                         "(`docs/226-the-c64-running-effect-crosswalk.md`)"),
     ("name", "re-padded into the C64's 18 NUL-padded bytes at 0x000"),
     ("levels", "permuted onto the C64's eight slots, which are indexed by the "

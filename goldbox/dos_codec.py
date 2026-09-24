@@ -6445,10 +6445,13 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     for slot in range(effects.EFFECT_SLOTS):
         if not save0[arrays_at + effects.EFFECT_ID_OFFSET + slot]:
             continue
+        owner = save0[arrays_at + effects.EFFECT_OWNER_OFFSET + slot]
+        whose = ("the party's running effects of this id, the longest kept"
+                 if owner == effects.PARTY_WIDE
+                 else "that character's running effects")
         who = (f"active effect slot {slot}: id "
                f"{save0[arrays_at + effects.EFFECT_ID_OFFSET + slot]}, owner "
-               f"{save0[arrays_at + effects.EFFECT_OWNER_OFFSET + slot]} -- "
-               "written from that character's running effects")
+               f"{owner} -- written from {whose}")
         for off in (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
                     effects.EFFECT_DURATION_OFFSET,
                     effects.EFFECT_MAGNITUDE_OFFSET):
@@ -7797,12 +7800,31 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
         icons.append(icon)
     if out:
         # `c64_codec.read` is per character, so a row no party member owns
-        # is reported here, on the first character; converting them is
-        # a separate piece of work.
+        # is handled here. A party-wide row whose id the title converts
+        # (`effects.PARTY_ROW_IDS`) becomes one node on the lowest occupied
+        # slot, which is what DOS's ask-every-member query treats the same;
+        # every other such row is reported on the first character.
         occupied = {s.index for s in party}
         for row in effects.active_effects(bytes(save0)):
             if row.owner in occupied:
                 continue
+            if row.owner & 0x80:
+                node = effects.party_row_record(c64.key, row, clock_mins)
+                if isinstance(node, effects.RunningEffect):
+                    field = "running_effects"
+                    origin = ("the save's shared effect arrays: a row owned "
+                              "by the whole party, converted through "
+                              "effects.party_row_record")
+                    old = out[0].fields.get(field)
+                    if old is None:
+                        out[0].set(field, [node.to_record()], origin)
+                    else:
+                        out[0].set(
+                            field, [*old.value, node.to_record()],
+                            f"{old.origin}; a row owned by the whole party, "
+                            "converted through effects.party_row_record",
+                            old.confidence, old.how, old.dropped)
+                    continue
             if row.owner & 0x80:
                 who = "the whole party"
             elif row.owner >= 8:

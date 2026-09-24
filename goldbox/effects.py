@@ -261,8 +261,8 @@ def closest_duration(minutes: int, clock_minutes: int) -> int | None:
 # spell still counting down. **The DOS encoding is the neutral encoding**: DOS
 # and Amiga hold it literally, and a C64 slot's magnitude is a per-title,
 # per-id function of it rather than a copy. The owner is implicit -- the
-# record's own character -- so a party-wide effect has no home in a
-# per-character record.
+# record's own character. An id in `PARTY_ROW_IDS` converts a party-wide
+# row to a node on one member; no other party-wide row converts yet.
 RUNNING_EFFECT_SIZE = 9
 _RUNNING_EFFECT_NEXT = bytes(4)
 
@@ -333,6 +333,24 @@ LATER_CASTER_LEVEL_IDS = {
 DOS_MINUTES_MAX = 0xFFFF
 
 
+#: The ids each title's C64 game asks for with owner `PARTY_WIDE` and its DOS
+#: game asks every party member for, so one C64 row and one node on any member
+#: say the same thing. Id 5 is Detect Magic. C64 queries: Pool `LIBRARY
+#: $4086`, Curse `$4141`, Silver Blades `$3899`, each `LDA #$05 / LDX #$FF`.
+#: DOS loops over the party list: Pool `START.EXE` image `0x1039`-`0x1074`,
+#: Curse `GAME.OVR:0x37B62`-`0x37B9D`, Silver Blades `0x385DF`-`0x38617`.
+PARTY_ROW_IDS: dict[str, frozenset[int]] = {
+    "pool-of-radiance": frozenset({5}),
+    "curse-of-the-azure-bonds": frozenset({5}),
+    "secret-of-the-silver-blades": frozenset({5}),
+}
+
+
+def party_row_ids(title_key: str) -> frozenset[int]:
+    """The ids a title converts as one party-wide C64 row."""
+    return PARTY_ROW_IDS.get(title_key, frozenset())
+
+
 def _caster_level_ids(title_key: str) -> frozenset[int]:
     """The ids a title converts, the same set in both directions."""
     if title_key == "pool-of-radiance":
@@ -380,6 +398,32 @@ def dos_record(title_key: str, row: "Effect",
     minutes = min(remaining_minutes(row.duration, clock_minutes),
                   DOS_MINUTES_MAX)
     return RunningEffect(row.id, minutes, row.magnitude, 0)
+
+
+def party_row_record(title_key: str, row: "Effect",
+                     clock_minutes: int) -> RunningEffect | Unconverted:
+    """The DOS node for a party-wide C64 row, or why there is none.
+
+    The owner is not looked at. The magnitude is copied to the data byte
+    unchanged: only Dispel Magic reads it, the same way on both ports.
+    """
+    if row.id not in party_row_ids(title_key):
+        return Unconverted("no rule yet for a party-wide row of this id")
+    if row.duration == 0:
+        return Unconverted("a never-expiring party-wide row")
+    minutes = min(remaining_minutes(row.duration, clock_minutes),
+                  DOS_MINUTES_MAX)
+    return RunningEffect(row.id, minutes, row.magnitude, 0)
+
+
+def c64_party_row(title_key: str,
+                  node: RunningEffect) -> tuple[int, int] | Unconverted:
+    """The C64 id and magnitude for a DOS node that becomes a party-wide row."""
+    if node.id not in party_row_ids(title_key):
+        return Unconverted("no rule yet for this id in this title")
+    if node.flag != 0:
+        return Unconverted("a flag byte other than 0 on a party-wide effect")
+    return node.id, node.data
 
 
 @dataclass(frozen=True)
@@ -593,6 +637,28 @@ def slot_for(payload: bytes, id: int, owner: int) -> int | None:
 def free_slot(payload: bytes) -> int | None:
     """The slot a cast would put a new effect in, or `None` when all 64 are taken."""
     return slot_for(payload, 0, PARTY_WIDE)
+
+
+def write_party_row(payload: bytearray, id: int, duration: int,
+                    magnitude: int, clock_minutes: int) -> bool:
+    """Write one party-wide row, keeping the longest-lasting one per id.
+
+    An existing party row is overwritten only when the new one lasts longer;
+    an existing duration byte of 0 never expires and is left alone. Returns
+    `False` when there is no row and no free slot.
+    """
+    held = slot_for(payload, id, PARTY_WIDE)
+    if held is not None:
+        old = payload[EFFECT_DURATION_OFFSET + held]
+        if old != 0 and (remaining_minutes(duration, clock_minutes)
+                         > remaining_minutes(old, clock_minutes)):
+            write_effect(payload, held, id, PARTY_WIDE, duration, magnitude)
+        return True
+    free = free_slot(payload)
+    if free is None:
+        return False
+    write_effect(payload, free, id, PARTY_WIDE, duration, magnitude)
+    return True
 
 
 def replaces_slot(old_duration: int, new_duration: int) -> bool:

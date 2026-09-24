@@ -1175,3 +1175,70 @@ def test_dos_record_inverts_c64_row(title):
                     _, magnitude = effects.c64_row(title, node)
                     row = effects.Effect(63, eid, 0, byte, magnitude)
                     assert effects.dos_record(title, row, clock) == node
+
+
+# --- party-wide Detect Magic rows ---------------------------------------------
+
+_TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
+           "secret-of-the-silver-blades")
+
+
+@pytest.mark.parametrize("title", _TITLES)
+@pytest.mark.parametrize("owner", [0xFF, 0x80])
+def test_party_row_record_converts_detect_magic(title, owner):
+    row = effects.Effect(63, 5, owner, 0x0A, 0x03)
+    assert effects.party_row_record(title, row, 0) == \
+        effects.RunningEffect(5, 10, 3, 0)
+
+
+def test_party_row_record_counts_the_clock():
+    row = effects.Effect(63, 5, 0xFF, 0x41, 0x03)
+    got = effects.party_row_record("pool-of-radiance", row, 6)
+    assert got.minutes == 4
+
+
+@pytest.mark.parametrize("magnitude", [0x00, 0x85, 0xFF])
+def test_party_row_record_copies_any_magnitude(magnitude):
+    row = effects.Effect(63, 5, 0xFF, 0x0A, magnitude)
+    got = effects.party_row_record("pool-of-radiance", row, 0)
+    assert got.data == magnitude
+
+
+@pytest.mark.parametrize("title, row", [
+    ("pool-of-radiance", effects.Effect(63, 35, 0xFF, 0x41, 0x01)),
+    ("curse-of-the-azure-bonds", effects.Effect(63, 49, 0xFF, 0x0A, 0x03)),
+    ("pool-of-radiance", effects.Effect(63, 5, 0xFF, 0x00, 0x03)),
+])
+def test_party_row_record_leaves_the_rest_unconverted(title, row):
+    assert isinstance(effects.party_row_record(title, row, 0),
+                      effects.Unconverted)
+
+
+def test_c64_party_row_keeps_the_data_byte():
+    node = effects.RunningEffect(5, 10, 0x85, 0)
+    assert effects.c64_party_row("pool-of-radiance", node) == (5, 0x85)
+    assert isinstance(effects.c64_party_row(
+        "pool-of-radiance", effects.RunningEffect(5, 10, 3, 1)),
+        effects.Unconverted)
+    assert isinstance(effects.c64_party_row(
+        "curse-of-the-azure-bonds", effects.RunningEffect(49, 10, 3, 0)),
+        effects.Unconverted)
+
+
+def _party_slots(payload):
+    return {s: (payload[effects.EFFECT_ID_OFFSET + s],
+                payload[effects.EFFECT_OWNER_OFFSET + s],
+                payload[effects.EFFECT_DURATION_OFFSET + s],
+                payload[effects.EFFECT_MAGNITUDE_OFFSET + s])
+            for s in range(effects.EFFECT_SLOTS)}
+
+
+@pytest.mark.parametrize("first, second, kept", [(0x04, 0x0A, 2),
+                                                 (0x0A, 0x04, 1)])
+def test_write_party_row_keeps_the_longer_row(first, second, kept):
+    p = bytearray(0x1C00)
+    assert effects.write_party_row(p, 5, first, 1, 0)
+    assert effects.write_party_row(p, 5, second, 2, 0)
+    rows = _party_slots(p)
+    assert rows[63] == (5, 0xFF, 0x0A, kept)
+    assert rows[62] == (0, 0, 0, 0)

@@ -653,8 +653,13 @@ shared arrays for Pool of Radiance's caster-level ids
 titles' tuples from the C64 spell rows, the DOS spell rows and the DOS
 handlers that read a data byte, and `tests/records/test_effectcrosswalk.py`
 pins the constants to it. The C64 reader converts the same ids back through
-`goldbox.effects.dos_record`, with the time left from `remaining_minutes`. Still
-waiting: rows no party member owns (party-wide, monster and orphaned rows, now
+`goldbox.effects.dos_record`, with the time left from `remaining_minutes`.
+Party-wide Detect Magic (id 5) converts both ways in all three titles: the
+writer gives every running id-5 node one C64 row owned by the whole party
+(`effects.PARTY_WIDE`) that lasts as long as the longest node, and the reader
+turns a party-wide id-5 row into one DOS node on the lowest occupied slot.
+Each title's DOS engine asks every party member for id 5, so the two forms give
+the player the same thing. Still waiting: rows no party member owns (party-wide, monster and orphaned rows, now
 reported by name; converting them is #666 (A C64 party under a camp Prayer loses it on the way
 to DOS or the Amiga, because nothing converts the save's party-wide effect
 rows)); a timeline conversion for Pool's

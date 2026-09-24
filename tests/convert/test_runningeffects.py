@@ -484,3 +484,144 @@ def test_save_as_dos_keeps_a_blessed_c64_character_blessed(tmp_path):
     with pytest.raises(saveplan.DroppedFields) as err:
         _dos_plan(tmp_path, payload, save1)
     assert "effect 13" in str(err.value)
+
+
+# --- Detect Magic, the party-wide row -----------------------------------------
+
+DETECT = bytes((5, 0x0A, 0, 3, 0))
+_PARTY_TITLES = [c64_port.POOL_OF_RADIANCE, c64_port.CURSE_OF_THE_AZURE_BONDS,
+                 c64_port.SECRET_OF_THE_SILVER_BLADES]
+
+
+def _title_character(game, *nodes: bytes) -> neutral.NeutralCharacter:
+    char = _pool_character(*nodes)
+    char.game = game
+    return char
+
+
+@pytest.mark.parametrize("game", _PARTY_TITLES, ids=lambda g: g.key)
+def test_detect_magic_is_written_as_one_row_owned_by_the_whole_party(game):
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(_title_character(game, DETECT),
+                                payload=payload, party_slot=2,
+                                clock_minutes=0)
+    rows = _rows(payload)
+    assert rows.pop(63) == (5, 0xFF, 0x0A, 0x03)
+    assert set(rows.values()) == {(0, 0, 0, 0)}
+    assert not [d for d in rep.dropped + rep.losses + rep.warnings
+                if "running_effects" in d]
+
+
+@pytest.mark.parametrize("order", [(2, 3), (3, 2)])
+def test_two_detect_magic_nodes_make_one_row_of_the_longest(order):
+    payload = bytearray(0x1C00)
+    nodes = {2: bytes((5, 0x04, 0, 3, 0)), 3: bytes((5, 0x0A, 0, 7, 0))}
+    for slot in order:
+        c64_codec.write(_pool_character(nodes[slot]), payload=payload,
+                        party_slot=slot, clock_minutes=0)
+    rows = _rows(payload)
+    assert rows[63] == (5, 0xFF, 0x0A, 0x07)
+    assert rows[62] == (0, 0, 0, 0)
+
+
+def _staged_party(*rows):
+    """The fixture's party with `rows` staged, as `c64_party` reads it."""
+    payload, save1 = _fixture_payload()
+    for slot, args in rows:
+        effects.write_effect(payload, slot, *args)
+    party, _ = dos_codec.c64_party(bytes(payload), save1,
+                                   game=POOL_OF_RADIANCE)
+    return party
+
+
+def test_a_party_wide_detect_magic_row_reaches_dos_and_the_amiga():
+    party = _staged_party((63, (5, 0xFF, 0x0A, 0x03)))
+    brutus = next(c for c in party if c.get("name") == "BRUTUS")
+    assert [bytes(r) for r in brutus.get("running_effects")] == \
+        [DETECT + NULL]
+    assert not [d for c in party for d in c.dropped if "effect 5" in d]
+    _rec, _itm, spc, _rep = dos_codec.write(brutus)
+    assert spc[:5] == DETECT
+    record, _itm, amiga_spc, _rep = amiga_por.write_por(brutus)
+    back = amiga_por.to_neutral(amiga_por.por_character(record, b"", amiga_spc))
+    assert [bytes(r)[:5] for r in back.get("running_effects")] == [DETECT]
+
+
+def test_detect_magic_goes_after_the_owned_rows_on_the_lowest_slot():
+    party = _staged_party((63, (5, 0xFF, 0x0A, 0x03)),
+                          (62, (1, 0, 0x02, 0x01)))
+    brutus = next(c for c in party if c.get("name") == "BRUTUS")
+    assert [bytes(r)[:5] for r in brutus.get("running_effects")] == \
+        [BLESS, DETECT]
+
+
+def test_detect_magic_of_two_characters_leaves_one_row_of_the_longest():
+    from goldbox import world_state
+    payload, save1 = _fixture_payload()
+    party, _ = dos_codec.c64_party(bytes(payload), save1,
+                                   game=POOL_OF_RADIANCE)
+    import copy
+    first = party[0]
+    second = copy.deepcopy(first)
+    second.set("name", "CASTER", "built here")
+    first.set("running_effects", [bytes((5, 4, 0, 3, 0)) + NULL], "built here")
+    second.set("running_effects", [bytes((5, 10, 0, 7, 0)) + NULL],
+               "built here")
+    for order in ((first, second), (second, first)):
+        save0 = bytearray(payload)
+        for slot in range(effects.EFFECT_SLOTS):
+            effects.clear_effect(save0, slot)
+        state = world_state.from_c64(bytes(payload), game=POOL_OF_RADIANCE)
+        report = dos_codec.write_c64_save(save0, bytearray(save1), state,
+                                          list(order), game=POOL_OF_RADIANCE)
+        rows = [(e.id, e.owner, e.duration, e.magnitude)
+                for e in effects.active_effects(bytes(save0))]
+        assert rows == [(5, 0xFF, 0x0A, 0x07)]
+        assert not [d for d in report.dropped + report.losses
+                    if "effect 5" in d]
+
+
+def test_a_party_wide_detect_magic_row_makes_a_round_trip():
+    party = _staged_party((63, (5, 0xFF, 0x0A, 0x03)))
+    payload = bytearray(0x1C00)
+    for char in party:
+        c64_codec.write(char, payload=payload, party_slot=0, clock_minutes=1)
+    assert [(e.id, e.owner, e.duration, e.magnitude)
+            for e in effects.active_effects(bytes(payload))] == \
+        [(5, 0xFF, 0x0A, 0x03)]
+
+
+def test_save_as_dos_converts_a_party_wide_detect_magic_row(tmp_path):
+    """Provenance: the row is staged here into the committed fixture; no
+    game save is read."""
+    payload, save1 = _fixture_payload()
+    effects.write_effect(payload, 63, 5, 0xFF, 0x0A, 0x03)
+    plan = _dos_plan(tmp_path, payload, save1)
+    from editor import saveplan
+    assert isinstance(plan, saveplan.SavePlan)
+    assert plan.files["CHRDATA1.SPC"].count(DETECT) == 1
+
+
+@pytest.mark.parametrize("name, game", [
+    ("curse-h-engine-resave", c64_port.CURSE_OF_THE_AZURE_BONDS),
+    ("ssb-d-engine-resave", c64_port.SECRET_OF_THE_SILVER_BLADES)])
+def test_a_later_title_party_wide_detect_magic_row_reaches_the_lowest_slot(
+        name, game):
+    """Specimens made by driving the engine (`tools/registry/specimens.py`);
+    the row is staged here into a copy of the payload."""
+    from test_convertmatrix import _c64_specimen
+
+    from editor import convert
+    disk = _c64_specimen(name)
+    if disk is None:
+        pytest.skip(f"needs the {name} specimen")
+    source = convert.Source.detect(disk)
+    payload = bytearray(source.save0)
+    slot = effects.free_slot(payload)
+    effects.write_effect(payload, slot, 5, 0xFF, 0x0A, 0x03)
+    party, _ = dos_codec.c64_party(bytes(payload), source.save1, game=game)
+    nodes = [(i, [bytes(r)[:5] for r in c.get("running_effects") or ()
+                  if bytes(r)[0] == 5]) for i, c in enumerate(party)]
+    assert [n for _i, n in nodes if n] == [[DETECT]]
+    assert nodes[-1][1] == [DETECT]
+    assert not [d for c in party for d in c.dropped if "effect 5" in d]
