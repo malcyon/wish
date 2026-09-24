@@ -6,9 +6,9 @@ export has none and a roster disk has none either.
 
 Two things decide the shape of this module.
 
-**The list is a dense prefix.** Every save we hold fills slots from 0 upwards
-and leaves the tail zero, so deleting compacts rather than leaving a hole --
-the game's own scan almost certainly stops at the first empty record.
+**The list may have holes.** The game can empty a slot by zeroing its type byte
+while leaving the other bytes intact, with live items in later slots. Deleting
+an item compacts the remaining live items.
 
 **A template beats a hand-built record.** `goldbox.items.load_item_templates`
 gives 163 real records off the game disks, and copying one keeps whatever the
@@ -115,7 +115,7 @@ class Inventory:
         return Item(self.raws[n], self.names)
 
     def is_empty(self, n: int) -> bool:
-        return not any(self.raws[n])
+        return self.item(n).is_empty
 
     @property
     def used(self) -> int:
@@ -182,7 +182,8 @@ class Inventory:
 
     def delete(self, n: int) -> None:
         """Remove one item and close the gap, keeping the list a dense prefix."""
-        kept = [r for i, r in enumerate(self.raws) if i != n and any(r)]
+        kept = [r for i, r in enumerate(self.raws)
+                if i != n and not Item(r).is_empty]
         self.raws = kept + [EMPTY] * (len(self) - len(kept))
 
     # -- writing back -----------------------------------------------------

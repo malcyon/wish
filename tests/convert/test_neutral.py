@@ -20,10 +20,12 @@ from support.neutralrecords import _filled
 from goldbox import amiga_pod, c64_codec, c64_port, derive, dos_codec, dos_port, neutral
 from goldbox import levels as level_tables
 from goldbox.encoding import combat_value
+from goldbox.items import ITEM_AREA_BASE, ITEM_SIZE, Item, items_for_slot
 from goldbox.layout import FIELDS_BY_NAME as C64_FIELDS
 from goldbox.layout import Confidence
 from goldbox.neutral import NeutralCharacter, Provenance
 from goldbox.record import CharacterRecord
+from goldbox.savegame import SAVE0_LOAD_ADDRESS
 
 # --- the vocabulary ----------------------------------------------------------
 
@@ -342,6 +344,27 @@ def test_more_items_than_slots_is_silent():
     assert not any("carry only sixteen" in w for w in rep.warnings)
     raw = rec.get_raw("inventory")
     assert [raw[n * 16] for n in range(16)] == list(range(1, 17))
+
+
+def test_zero_type_stale_slot_is_not_converted():
+    """A retired slot can keep its old name and quantity before a live slot."""
+    stale = bytes([0, 0, 0, 0x6F, 0, 0, 0, 0, 4, 0, 30, 50, 0, 0, 0, 0])
+    live = bytes([0x1E, 0, 0, 0x6F, 0, 0, 0, 0, 4, 0, 35, 50, 0, 0, 0, 0])
+    blocks = [stale, live] + [bytes(ITEM_SIZE)] * 14
+    raw = b"".join(blocks)
+    payload = bytearray(ITEM_AREA_BASE - SAVE0_LOAD_ADDRESS + len(raw))
+    payload[-len(raw):] = raw
+
+    assert Item(stale).is_empty
+    assert [item.raw for item in items_for_slot(payload, 0)] == [live]
+
+    rec, _ = c64_codec.write(_filled())
+    rec.set_raw("inventory", raw)
+    for char in (c64_codec.read(rec), c64_codec.read(rec, inventory=blocks)):
+        assert char.get("inventory") == [live]
+        _record, dos_items, _effects, _report = dos_codec.write(char)
+        assert len(dos_items) == dos_port.ITEM_SIZE
+        assert dos_codec.item_to_c64(dos_items) == live
 
 
 def test_more_innate_effects_than_slots_is_silent():

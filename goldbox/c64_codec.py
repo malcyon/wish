@@ -23,6 +23,7 @@ import dataclasses
 from . import classcode, derive, effects, neutral, paladin, spells, titles, traits
 from . import levels as level_tables
 from .encoding import COMBAT_BIAS
+from .items import Item
 from .layout import RECORD_SIZE, Confidence, Field
 from .neutral import NeutralCharacter, Provenance
 from .portraits import draws_sheet_portrait
@@ -2742,7 +2743,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             "do not say which is which", grade("item_effects"))
 
     if inventory is not None:
-        out.set("inventory", [bytes(i) for i in inventory],
+        out.set("inventory", [bytes(i) for i in inventory
+                              if not Item(i).is_empty],
                 "the save's item page, one sixteen-byte record each",
                 grade("inventory"))
     elif rec.is_stored("inventory"):
@@ -2750,7 +2752,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         out.set("inventory",
                 [raw[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]
                  for n in range(ITEM_SLOTS)
-                 if any(raw[n * ITEM_SIZE:(n + 1) * ITEM_SIZE])],
+                 if not Item(raw[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]).is_empty],
                 "the C64's sixteen fixed slots @0x120, the empty ones "
                 "stripped", grade("inventory"))
 

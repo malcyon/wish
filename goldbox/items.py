@@ -418,7 +418,7 @@ class Item:
 
     @property
     def is_empty(self) -> bool:
-        return not any(self.raw)
+        return self.raw[0] == 0
 
     @property
     def name(self) -> str:

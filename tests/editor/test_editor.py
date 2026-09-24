@@ -2153,13 +2153,15 @@ def test_preview_of_an_untouched_save_reports_no_changes(editor):
 def test_preview_lists_fields_items_and_the_icon(editor):
     editor.roster.selectRow(5)                    # MALCYON -- row 5, #160; slot 0
     editor._widgets["gold"].setValue(999)
-    editor.items.setData(editor.items.index(1, 2), 9)
+    # The engine treats slots 1-5 as retired; slot 6 holds the live DART.
+    editor.items.setData(editor.items.index(6, 2), 9)
     editor.add_item("POTION OF HEALING")
     editor._widgets["icon"].set_cell_colour(0, 7)
     text = editor.preview_text()
     assert "slot 0 MALCYON: gold 2 -> 999" in text
-    assert "slot 0 MALCYON: item 1 DART quantity 4 -> 9" in text
-    assert "item 7 added: POTION OF HEALING" in text
+    assert "slot 0 MALCYON: item 6 DART quantity 13 -> 9" in text
+    # Preview compares raw blocks, so replacing retired bytes names the old DART.
+    assert "item 1 DART -> POTION OF HEALING" in text
     assert "combat icon: 1 of 36 bytes changed" in text
     assert "4 change(s) (nothing written yet)" in text
 
@@ -5591,6 +5593,34 @@ def test_an_inventory_built_from_blocks_holds_sixteen_slots_and_writes_nowhere()
         Inventory.from_blocks(blocks[:15])
     with pytest.raises(ValueError):
         Inventory.from_blocks([bytes(15)] * 16)
+
+
+def test_zero_type_stale_slot_is_empty_and_untouched_bytes_survive():
+    from editor.inventory import NAME, QTY, Inventory, InventoryModel
+    from goldbox.items import ITEM_AREA_BASE, ITEM_SIZE
+    from goldbox.savegame import SAVE0_LOAD_ADDRESS
+
+    stale = bytes([0, 0, 0, 0x6F, 0, 0, 0, 0, 4, 0, 30, 50, 0, 0, 0, 0])
+    live = bytes([0x1E, 0, 0, 0x6F, 0, 0, 0, 0, 4, 0, 35, 50, 0, 0, 0, 0])
+    raw = b"".join([stale, live] + [bytes(ITEM_SIZE)] * 14)
+    payload = bytearray(ITEM_AREA_BASE - SAVE0_LOAD_ADDRESS + len(raw))
+    payload[-len(raw):] = raw
+    original = bytes(payload)
+
+    inventory = Inventory(payload, 0)
+    model = InventoryModel(inventory)
+    assert inventory.used == 1
+    assert inventory.is_empty(0)
+    assert model.data(model.index(0, NAME)) != model.data(model.index(1, NAME))
+    assert not model.flags(model.index(0, QTY)) & Qt.ItemFlag.ItemIsEditable
+    assert not model.setData(model.index(0, QTY), 7)
+    assert not inventory.changed
+    inventory.write_into(payload)
+    assert bytes(payload) == original
+
+    inventory.delete(1)
+    assert inventory.used == 0
+    assert inventory.is_empty(0)
 
 
 def test_an_unwritable_field_is_read_only_whatever_the_layout_allows():
