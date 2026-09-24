@@ -18,6 +18,8 @@ from gamedata import disk_dir
 from support.worldwindow import synthetic_window
 
 from goldbox.world import (
+    CHARSET_GLYPHS,
+    GLYPH_BYTES,
     GRID_SIZE,
     MIN_FILE_SIZE,
     PLAYABLE_X,
@@ -27,15 +29,20 @@ from goldbox.world import (
     SITE_PAINT_TOLERANCE,
     STRIDE,
     TILE_COUNT,
+    TILE_PIXELS,
     TILE_TABLE_SIZE,
     WINDOW_NAMES,
     WINDOW_STEP,
+    WORLD_ACROSS,
+    WORLD_DOWN,
     WORLD_WIDTH,
     Window,
     World,
     WorldError,
     passable,
     site_at,
+    window_for_world_x,
+    world_indices,
 )
 
 needs_disks = pytest.mark.skipif(disk_dir() is None, reason="needs the game disks")
@@ -304,3 +311,41 @@ def test_identify_breaks_a_tie_towards_the_lowest_window():
     assert tied.identify(same[:GRID_SIZE]) == (0, 0)
     later = World((Window(other), Window(same), Window(same)))
     assert later.identify(same[:GRID_SIZE]) == (1, 0)
+
+
+# -- the whole-wilderness picture ---------------------------------------------
+
+
+def _solid_world(with_charsets: bool = True) -> World:
+    """Three windows whose every square is tile 0, solid in colour 2, 3 or 4."""
+    windows = []
+    for k in range(3):
+        tiles = bytearray(TILE_TABLE_SIZE)
+        tiles[0:9] = bytes([0x40]) * 9          # glyph 0
+        tiles[9:18] = bytes([2 + k]) * 9        # hi-res, colour 2 + k
+        windows.append(Window(bytes(GRID_SIZE) + bytes(tiles)))
+    glyphs = bytes([0xFF]) * (CHARSET_GLYPHS * GLYPH_BYTES)
+    return World(tuple(windows), (glyphs,) * 3 if with_charsets else None)
+
+
+def test_the_window_drawn_at_a_world_x_follows_the_seams():
+    assert [window_for_world_x(x) for x in (0, 14, 15, 27, 28, 43)] == [
+        0, 0, 1, 1, 2, 2]
+
+
+def test_the_world_picture_has_the_documented_size_and_each_windows_colour():
+    picture = world_indices(_solid_world())
+    width = WORLD_ACROSS * TILE_PIXELS
+    assert (WORLD_ACROSS, WORLD_DOWN) == (44, 36)
+    assert len(picture) == width * WORLD_DOWN * TILE_PIXELS == 1056 * 864
+
+    def at(square_x, square_y):
+        return picture[square_y * TILE_PIXELS * width + square_x * TILE_PIXELS]
+    assert at(14, 5) == 2 and at(15, 5) == 3
+    assert at(27, 5) == 3 and at(28, 5) == 4
+    assert at(0, 0) == 2 and at(43, 35) == 4
+
+
+def test_a_world_without_charsets_cannot_be_drawn():
+    with pytest.raises(WorldError):
+        world_indices(_solid_world(with_charsets=False))

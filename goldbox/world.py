@@ -396,6 +396,45 @@ class World:
         return window.tile_at(local_x, y)
 
 
+#: The whole wilderness in squares, each window's two-square border included:
+#: three 18-wide windows 13 apart, by the 36 rows every window shares.
+WORLD_ACROSS = WINDOW_STEP * 2 + STRIDE
+WORLD_DOWN = ROWS
+
+
+def window_for_world_x(world_x: int) -> int:
+    """Which window (0 west, 1 middle, 2 east) is drawn at `world_x`.
+
+    Unlike `World.locate` it answers the border columns too, which the game's
+    own pane still draws. At a seam the eastern window answers; the two
+    windows agree on 359 of the 360 seam squares.
+    """
+    if world_x < SEAM_WEST_MIDDLE:
+        return 0
+    return 1 if world_x < SEAM_MIDDLE_EAST else 2
+
+
+def world_indices(world: World) -> bytes:
+    """The whole wilderness as one picture of C64 colour indices, row-major,
+    `WORLD_ACROSS * TILE_PIXELS` wide and `WORLD_DOWN * TILE_PIXELS` high.
+
+    Raises `WorldError` when the disks carried no `SECSET` to draw with.
+    """
+    if world.charsets is None:
+        raise WorldError("no disk here carries the SECSET glyphs")
+    width = WORLD_ACROSS * TILE_PIXELS
+    out = bytearray(width * WORLD_DOWN * TILE_PIXELS)
+    for y in range(WORLD_DOWN):
+        for x in range(WORLD_ACROSS):
+            index = window_for_world_x(x)
+            tile = world.windows[index].tile_at(x - WINDOW_STEP * index, y)
+            rows = tile_pixels(tile, world.charsets[index])
+            for py, row in enumerate(rows):
+                at = (y * TILE_PIXELS + py) * width + x * TILE_PIXELS
+                out[at:at + TILE_PIXELS] = bytes(row)
+    return bytes(out)
+
+
 # -- blocked: see the module docstring ---------------------------------------
 
 _BLOCKED = (

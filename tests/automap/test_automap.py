@@ -24,6 +24,7 @@ from automap.notes import Note
 from automap.render import (
     CELL,
     MARGIN,
+    TRAVEL_MARKER_MIN,
     Glyph,
     Label,
     Line,
@@ -35,6 +36,7 @@ from automap.render import (
     note_primitives,
     party_marker,
     to_svg,
+    travel_marker,
 )
 from automap.state import Automapper, AutomapState, Exploration, title_dir
 from automap.state import data_dir as state_data_dir
@@ -179,6 +181,38 @@ def test_the_party_marker_points_where_it_faces():
     south = party_marker(5, 5, 2)
     assert isinstance(north, Poly)
     assert min(p[1] for p in north.points) < min(p[1] for p in south.points)
+
+
+def test_the_travel_marker_at_four_headings_is_the_party_marker_at_four_facings():
+    for heading, facing in ((0, NORTH), (2, EAST), (4, 2), (6, WEST)):
+        turned = travel_marker(5, 5, heading)
+        assert turned.kind == "travel"
+        # The same triangle; `party_marker` lists the two back corners in a
+        # different order per facing, so compare the corners sorted.
+        got = sorted(turned.points)
+        want = sorted(party_marker(5, 5, facing).points)
+        assert got == pytest.approx(want)
+
+
+def test_the_eight_travel_headings_are_eight_different_triangles():
+    shapes = {tuple((round(x, 3), round(y, 3)) for x, y in
+                    travel_marker(5, 5, h).points) for h in range(8)}
+    assert len(shapes) == 8
+
+
+def test_a_heading_outside_zero_to_seven_is_refused():
+    with pytest.raises(ValueError):
+        travel_marker(5, 5, 8)
+
+
+def test_the_minimum_radius_lifts_a_small_square_and_leaves_a_large_one():
+    def radius(cell, minimum):
+        pts = travel_marker(0, 0, 0, cell, 0, minimum).points
+        return -(pts[0][1] - cell / 2)          # the nose is due north
+    assert radius(7, 4) == pytest.approx(4)
+    assert radius(7, 0) == pytest.approx(7 * 0.28)
+    assert radius(34, 4) == pytest.approx(34 * 0.28)
+    assert TRAVEL_MARKER_MIN >= 0
 
 
 @game_disks

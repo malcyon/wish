@@ -290,6 +290,41 @@ def party_marker(x: int, y: int, facing: int, cell: int = CELL,
     return Poly(pts, "party")
 
 
+#: The eight compass headings the travel grid's heading byte is thought to
+#: hold, clockwise from north: 0 N, 1 NE, 2 E, 3 SE, 4 S, 5 SW, 6 W, 7 NW.
+#: PROBABLE, 2 of 8 measured: compass digit 1 (north) left 0 and digit 3 (east)
+#: set 2, so heading = digit - 1. Stage E of the wilderness plan confirms or
+#: changes this one constant.
+TRAVEL_HEADINGS = 8
+
+#: The smallest radius, in pixels, `travel_marker` draws. NOT APPROVED: the
+#: size is Donald's to choose from a contact sheet.
+TRAVEL_MARKER_MIN = 0.0
+
+
+def travel_marker(x: int, y: int, heading: int, cell: int = CELL,
+                  margin: int = MARGIN,
+                  min_radius: float = TRAVEL_MARKER_MIN) -> Poly:
+    """The `party_marker` triangle turned to one of eight headings.
+
+    `heading` 0-7 is clockwise from north in 45 degree steps; the radius is
+    `cell * 0.28`, kept at `min_radius` or more so a small square still shows it.
+    """
+    if not 0 <= heading < TRAVEL_HEADINGS:
+        raise ValueError(f"heading {heading} is not 0-{TRAVEL_HEADINGS - 1}")
+    cx = margin + x * cell + cell / 2
+    cy = margin + y * cell + cell / 2
+    r = max(cell * 0.28, min_radius)
+    angle = math.radians(heading * 45)
+    sin, cos = math.sin(angle), math.cos(angle)
+    # The north-facing triangle, as `party_marker` has it, turned clockwise
+    # (y grows downward on screen).
+    base = ((0, -r), (-r * .8, r * .6), (r * .8, r * .6))
+    pts = tuple((cx + px * cos - py * sin, cy + px * sin + py * cos)
+                for px, py in base)
+    return Poly(pts, "travel")
+
+
 # `NOTE_INSET` is measured against the 3px wall stroke: half of that stroke
 # lies inside the cell, so anything at 2 or more never touches one. See
 # `test_a_note_never_lands_on_a_wall`.

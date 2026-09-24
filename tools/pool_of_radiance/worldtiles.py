@@ -181,9 +181,8 @@ def pane_codes(window: W.Window, left: int, top: int,
 #: and x 28.
 DEFAULT_ROUTE = [(x, 27) for x in range(4, 40)]
 
-#: The whole wilderness in squares: three 18-wide windows 13 apart.
-WORLD_ACROSS = W.WINDOW_STEP * 2 + W.STRIDE
-WORLD_DOWN = W.ROWS
+WORLD_ACROSS = W.WORLD_ACROSS
+WORLD_DOWN = W.WORLD_DOWN
 
 PANE = 5
 
@@ -207,7 +206,7 @@ def _tile_image(world: W.World, x: int, y: int):
     from PIL import Image
 
     from goldbox.icons import C64_PALETTE
-    index = 0 if x < W.SEAM_WEST_MIDDLE else 1 if x < W.SEAM_MIDDLE_EAST else 2
+    index = W.window_for_world_x(x)
     tile = world.windows[index].tile_at(x - W.WINDOW_STEP * index, y)
     pixels = tile_pixels(tile, world.charsets[index])
     im = Image.new("RGB", (TILE_PIXELS, TILE_PIXELS))

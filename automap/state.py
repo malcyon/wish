@@ -49,6 +49,10 @@ AREA_NAMES = areas.GEO_NAMES
 OUTDOORS_WHERE = "Outdoors"
 OUTDOORS_AREA = "Wilderness"
 
+#: The three wilderness windows' names, indexed by `AutomapState.window`
+#: (west, middle, east). Donald's names, approved 2026-09-24, and fixed.
+OUTDOORS_REGIONS = ("West of Phlan", "Stojanow Valley", "East of Phlan")
+
 #: `WISH_EXPERIMENTAL_WILDERNESS_MAP`: recording where the party has been on the
 #: travel grid, and saving it. The truthiness rule is `wish/debugmode.py`'s: an
 #: empty string, `0` and `off` are off, so a variable somebody exported once and

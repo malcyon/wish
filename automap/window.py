@@ -74,6 +74,7 @@ from .render import (
     note_primitives,
     party_marker,
 )
+from .state import OUTDOORS_REGIONS, OUTDOORS_WHERE
 
 PAPER = QColor("#fbfcfd")
 LATTICE = QColor("#dbe3ec")
@@ -1127,7 +1128,14 @@ class AutomapBinding(QObject):
         # Cheap: the panel compares the notes to what it drew and returns.
         self.notes_panel.show_notes(st.notes)
         if st.outdoors:
-            self._say(OUTDOORS_STATUS + (f"   [{st.source}]" if st.source else ""))
+            # `window` is only ever set behind the wilderness flag, so this
+            # branch needs no second check of it.
+            if st.window is not None:
+                where = (f"{OUTDOORS_WHERE}  ({st.x}, {st.y})  "
+                         f"{OUTDOORS_REGIONS[st.window]}")
+            else:
+                where = OUTDOORS_STATUS
+            self._say(where + (f"   [{st.source}]" if st.source else ""))
             self.canvas.update()
             return
         seen = len(st.exploration)
