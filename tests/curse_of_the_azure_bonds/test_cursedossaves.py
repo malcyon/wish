@@ -53,11 +53,11 @@ def test_dos_engine_saving_throws_matches_the_read_rule(
 
 
 def test_dos_engine_saving_throws_answers_none_for_an_unread_title():
-    """Pool of Radiance's `dos_save_rule_read` is False -- nobody has read
+    """Pools of Darkness' `dos_save_rule_read` is False -- nobody has read
     its DOS load-time rebuild, so the method says "cannot answer" rather than
     guessing the C64's rows apply unchanged."""
     assert levels.dos_engine_saving_throws(
-        {"fighter": 5}, 0, 0, False, "pool-of-radiance") is None
+        {"fighter": 5}, 0, 0, False, "pools-of-darkness") is None
 
 
 def test_dos_engine_saving_throws_answers_none_with_no_class():

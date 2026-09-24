@@ -5370,6 +5370,19 @@ def test_a_dos_silver_blades_saves_saving_throw_boxes_are_disabled_with_no_toolt
         assert widget.toolTip() == "", name
 
 
+def test_a_dos_pool_saves_saving_throw_boxes_are_disabled_with_no_tooltip(
+        app, tmp_path):
+    """The same as DOS Curse's: DOS Pool of Radiance's loader rebuilds the
+    five saves every time the party loads, so an edit would be discarded."""
+    w = _dos_pool_editor(tmp_path)
+    w.roster.selectRow(0)
+    for name in ("save_paralysis", "save_petrification", "save_wands",
+                "save_breath", "save_spell"):
+        widget = w._widgets[name]
+        assert not widget.isEnabled(), name
+        assert widget.toolTip() == "", name
+
+
 def test_an_amiga_gold_edit_reaches_its_save_disk(app, tmp_path):
     from support.amigasavegame import synthetic_curse
 

@@ -712,8 +712,8 @@ _THIEF_UNWRITABLE_FOR = frozenset({
     ("amiga", "pool-of-radiance"),
 })
 
-#: The five saving-throw fields, unwritable on a DOS Curse or Silver Blades
-#: save: the writer recomputes them from the class levels through the DOS
+#: The five saving-throw fields, unwritable on a DOS Curse, Silver Blades or Pool
+#: of Radiance save: the writer recomputes them from the class levels through the DOS
 #: engine's own load-time rebuild for a C64 source (`dos_codec.write`'s
 #: `_DOS_LOAD_REBUILD_FROM_PORTS`), and the game itself replaces whatever an
 #: edit asked for the next time the party loads.
@@ -725,6 +725,7 @@ _SAVE_FIELDS = frozenset({
 _SAVES_UNWRITABLE_FOR = frozenset({
     ("dos", "curse-of-the-azure-bonds"),
     ("dos", "secret-of-the-silver-blades"),
+    ("dos", "pool-of-radiance"),
 })
 
 
