@@ -157,7 +157,7 @@ are read. The builder owns `tools/dos/dosacceptance.py`,
 `tests/dos/test_dosacceptance.py` and one row in `tools/dos/README.md`, and
 changes nothing in the modules it imports.
 
-### D2. `tools/c64/c64acceptance.py`: stage, boot, read the screen and the machine (`reverse-engineering` builds, `junior-dev` extends)
+### D2. `c64acceptance.py`, a planned driver in the C64 subdirectory of the tools directory: stage, boot, read the screen and the machine (`reverse-engineering` builds, `junior-dev` extends)
 
     c64acceptance.py --title pool|curse|ssb --save X.D64 \
         --stage-row 63=05:FF:0A:03 --stage-trait 0:9=38 \
@@ -187,10 +187,10 @@ The first build is the Pool of Radiance half with `load`, `camp-list`,
 with checkpoints is the Prayer runs' Curse run and comes second, on
 `laterbattle.py`. `reverse-engineering` builds it for the same reason as D1
 (the camp list and the later titles' camp bars are unread screens); it owns
-`tools/c64/c64acceptance.py`, `tests/c64/test_c64acceptance.py` and a
+`c64acceptance.py` (planned, not yet built, in the C64 subdirectory of the tools directory), `tests/c64/test_c64acceptance.py` and a
 README row.
 
-### D3. `tools/amiga/amigaacceptance.py`: WinUAE, from the converted `.adf` to the engine's resave (`reverse-engineering` builds)
+### D3. `amigaacceptance.py`, a planned driver in the Amiga subdirectory of the tools directory: WinUAE, from the converted `.adf` to the engine's resave (`reverse-engineering` builds)
 
     amigaacceptance.py --holder wish661 --title pool|curse|ssb --adf X.adf \
         --slot B --steps load 'view 1' 'items 1' display 'save D' fetch read
@@ -206,7 +206,7 @@ the chain head for the title. The lane is claimed by the run and released in
 `finally`; the VM's own audio is muted rather than the emulator's
 (`.claude/rules/emulator.md`). Two screen reads come before any run needs
 them: how Pool of Radiance reaches a second member's sheet, and the Magic >
-Display keys per title. Owns `tools/amiga/amigaacceptance.py`, its test file
+Display keys per title. Owns `amigaacceptance.py` (planned, not yet built, in the Amiga subdirectory of the tools directory), its test file
 and a README row.
 
 ## 4. The runs, per ticket
