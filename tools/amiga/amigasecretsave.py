@@ -291,14 +291,15 @@ def _input(manifest: dict, name: str) -> pathlib.Path:
 
 
 def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any,
-              holder: str, mute_verified: bool, attempt: str = "recon1",
+              holder: str, audio_proof: pathlib.Path, attempt: str = "recon1",
               deadline_seconds: float = 1800) -> dict[str, Any]:
     """Stop at the first unrecognised state and fetch both disks after any write."""
     if not HOLDER.fullmatch(holder) or not HOLDER.fullmatch(attempt):
         raise RouteError("holder and attempt must use plain lane-safe names")
     if deadline_seconds <= 0:
         raise RouteError("reconnaissance deadline must be positive")
-    if not mute_verified:
+    audio_proof = pathlib.Path(audio_proof)
+    if not _mute_proof(audio_proof):
         raise RouteError("the Windows VM audio mute has not been verified")
     manifest_path = pathlib.Path(manifest_path)
     manifest = json.loads(manifest_path.read_text())
@@ -365,6 +366,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any,
         guest.put(df0, remote0, timeout=route_limit(90))
         guest.put(working, remote1, timeout=route_limit(90))
         copied = True
+        if not _mute_proof(audio_proof):
+            raise RouteError("the Windows VM audio mute proof expired before WinUAE start")
         start_attempted = True
         result["start"] = guest.start(holder, remote0, remote1,
                                       timeout=route_limit(60))
@@ -453,7 +456,7 @@ def _mute_proof(path: pathlib.Path) -> bool:
         proof = json.loads(path.read_text())
         observed = datetime.fromisoformat(proof["observed_utc"].replace("Z", "+00:00"))
         age = datetime.now(timezone.utc) - observed
-    except (AttributeError, KeyError, TypeError, ValueError):
+    except (AttributeError, KeyError, OSError, TypeError, ValueError):
         return False
     return (proof.get("vm") == "WIN11-DEV" and proof.get("muted") is True
             and proof.get("readback") is True
@@ -488,7 +491,7 @@ def main(argv: list[str] | None = None) -> int:
             holder = args.holder or f"wish672-{uuid.uuid4().hex[:12]}"
             result = run_recon(args.manifest, guest=WinGuest(), guard=guards,
                                holder=holder,
-                               mute_verified=_mute_proof(args.audio_proof),
+                               audio_proof=args.audio_proof,
                                attempt=args.attempt)
             print(json.dumps({"success": result["success"],
                               "error": result["error"],

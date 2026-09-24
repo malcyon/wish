@@ -83,6 +83,17 @@ def _prepared(tmp_path):
     return manifest
 
 
+def _audio_proof(tmp_path):
+    proof = tmp_path / "mute.json"
+    proof.write_text(json.dumps({
+        "vm": "WIN11-DEV", "muted": True,
+        "method": "Windows Core Audio endpoint mute readback",
+        "endpoint_id": "synthetic-endpoint", "readback": True,
+        "observed_utc": datetime.now(timezone.utc).isoformat(),
+    }))
+    return proof
+
+
 def test_exact_df1_is_preserved_and_failed_save_is_fetched(tmp_path):
     df0 = tmp_path / "boot.adf"
     published = tmp_path / "SECRETSAVE-published.adf"
@@ -102,7 +113,7 @@ def test_exact_df1_is_preserved_and_failed_save_is_fetched(tmp_path):
 
     result = amigasecretsave.run_recon(
         manifest, guest=guest, guard=lambda state, shot: True,
-        holder="wish672-test", mute_verified=True,
+        holder="wish672-test", audio_proof=_audio_proof(tmp_path),
     )
 
     assert result["success"] is False
@@ -135,7 +146,7 @@ def test_unverified_mute_refuses_before_claim_or_boot(tmp_path):
         amigasecretsave.run_recon(
             tmp_path / "missing-manifest.json", guest=guest,
             guard=lambda state, shot: True, holder="wish672-test",
-            mute_verified=False,
+            audio_proof=tmp_path / "missing-mute.json",
         )
 
     assert guest.calls == []
@@ -151,7 +162,7 @@ def test_existing_same_holder_claim_never_touches_the_prior_lane(tmp_path):
     guest = ExistingClaimGuest()
     result = amigasecretsave.run_recon(
         _prepared(tmp_path), guest=guest, guard=lambda state, shot: True,
-        holder="wish672-test", mute_verified=True,
+        holder="wish672-test", audio_proof=_audio_proof(tmp_path),
     )
 
     assert result["success"] is False
@@ -186,6 +197,54 @@ def test_stale_or_unmeasured_audio_mute_proof_is_refused(tmp_path):
     assert amigasecretsave._mute_proof(proof)
 
 
+def test_mute_proof_expiring_during_transfer_refuses_before_start(
+        tmp_path, monkeypatch):
+    class ClockedDateTime:
+        now_utc = datetime(2026, 9, 24, 18, 0, tzinfo=timezone.utc)
+
+        @classmethod
+        def now(cls, tz):
+            return cls.now_utc.astimezone(tz)
+
+        @staticmethod
+        def fromisoformat(value):
+            return datetime.fromisoformat(value)
+
+    proof = tmp_path / "mute.json"
+    proof.write_text(json.dumps({
+        "vm": "WIN11-DEV", "muted": True,
+        "method": "Windows Core Audio endpoint mute readback",
+        "endpoint_id": "synthetic-endpoint", "readback": True,
+        "observed_utc": (ClockedDateTime.now_utc
+                         - timedelta(minutes=4, seconds=59)).isoformat(),
+    }))
+    monkeypatch.setattr(amigasecretsave, "datetime", ClockedDateTime)
+
+    class TransferOutlivesProof(FailedPostWriteGuest):
+        def put(self, local, remote, timeout=None):
+            super().put(local, remote, timeout=timeout)
+            if len([call for call in self.calls if call[0] == "put"]) == 1:
+                ClockedDateTime.now_utc += timedelta(seconds=2)
+
+    guest = TransferOutlivesProof()
+    monkeypatch.setattr(amigasecretsave, "WinGuest", lambda: guest)
+    monkeypatch.setattr(amigasecretsave, "PixelGuards", lambda path: lambda state, shot: True)
+    manifest = _prepared(tmp_path)
+
+    assert amigasecretsave.main([
+        "recon", "--manifest", str(manifest), "--guards", str(tmp_path / "guards.json"),
+        "--audio-proof", str(proof), "--holder", "wish672-test",
+    ]) == 1
+
+    summary = json.loads((tmp_path / "recon1" / "summary.json").read_text())
+    assert summary["success"] is False
+    assert "audio mute proof expired" in summary["error"]
+    assert [call[0] for call in guest.calls] == [
+        "claim", "put", "put", "get", "get", "release",
+    ]
+    assert set(summary["fetched"]) == {"df0", "df1"}
+
+
 def test_deadline_stops_before_boot_when_transfer_exhausts_route_time(
         tmp_path, monkeypatch):
     class Clock:
@@ -205,7 +264,8 @@ def test_deadline_stops_before_boot_when_transfer_exhausts_route_time(
     guest = SlowTransfer()
     result = amigasecretsave.run_recon(
         _prepared(tmp_path), guest=guest, guard=lambda state, shot: True,
-        holder="wish672-test", mute_verified=True, deadline_seconds=60,
+        holder="wish672-test", audio_proof=_audio_proof(tmp_path),
+        deadline_seconds=60,
     )
 
     assert result["success"] is False
@@ -251,7 +311,8 @@ def test_deadline_bounds_capture_and_cleanup_calls(tmp_path, monkeypatch):
     guest = TimedGuest()
     result = amigasecretsave.run_recon(
         _prepared(tmp_path), guest=guest, guard=lambda state, shot: True,
-        holder="wish672-test", mute_verified=True, deadline_seconds=300,
+        holder="wish672-test", audio_proof=_audio_proof(tmp_path),
+        deadline_seconds=300,
     )
 
     assert result["success"] is False
