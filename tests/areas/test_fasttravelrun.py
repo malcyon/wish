@@ -721,6 +721,24 @@ def test_the_move_sub_bar_is_a_row_the_walk_may_press_into():
     assert "".join(sess.pressed) == FT.WALK_OUTDOORS
 
 
+def test_settle_accepts_the_travel_grid_direction_prompt(tmp_path):
+    sess, m = make()
+    sess = WalkSession(m)
+    sess.settled, sess.row = False, "1-8, RETURN OR BUTTON"
+    assert FT.settle_world(sess, tmp_path, {}) == (True, "")
+    assert sess.kbd.paths == []
+
+
+def test_a_walk_on_the_direction_prompt_changes_square_and_passes():
+    sess, m = make()
+    sess = WalkSession(m)
+    sess.row = "1-8, RETURN OR BUTTON"
+    steps, sheet = FT.walk_afterwards(sess)
+    assert "".join(sess.pressed) == FT.WALK_OUTDOORS
+    assert steps[0]["before"] != steps[0]["after"]
+    assert FT.walk_verdict(steps, sheet)[0]
+
+
 def test_settle_world_fails_with_the_row_text_and_a_screenshot(tmp_path):
     sess, m = make()
     sess = WalkSession(m)

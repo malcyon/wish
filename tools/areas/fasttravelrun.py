@@ -327,10 +327,17 @@ def settle_world(sess, out: pathlib.Path, shots: dict) -> tuple[bool, str]:
     """Wait for the world's command bar before the walk, so the walk never
     starts on a disk prompt or a menu. On failure row 24 is recorded verbatim
     in the message and a screenshot is taken."""
-    if sess.wait_for_world(timeout=60):
+    # A walked exit onto the travel grid lands on the direction prompt, which
+    # `wait_for_world` never counts as the world and might press Return at;
+    # `Session.outdoor_key` drives a step from it, so it is checked first and
+    # again after the wait, in case the arrival settled there.
+    if S.OUTDOOR_PROMPT in row24(sess) or sess.wait_for_world(timeout=60):
         print(f"  settled: row 24 {row24(sess)!r}", flush=True)
         return True, ""
     row = row24(sess)
+    if S.OUTDOOR_PROMPT in row:
+        print(f"  settled: row 24 {row!r}", flush=True)
+        return True, ""
     print(f"  not settled: row 24 {row!r}", flush=True)
     shoot(sess, out, "after_walk", shots)
     return False, f"the world's command bar never came up; row 24 reads {row!r}"
@@ -344,8 +351,9 @@ def walk_afterwards(sess) -> tuple[list[dict], bool]:
     Row 24 is read before every step and stored in it. A fight is handed to
     `Session.fight` with `melee_turn` (the default tactic only passes, which
     never ends one) and recorded as `{"fight": ...}`. Any row that is neither
-    the world bar nor the move sub-bar stops the walk with a refused step,
-    because `walk_one` would press Return at it and pick a menu's first
+    the world bar, the move sub-bar nor the travel grid's direction prompt
+    (walked with `Session.outdoor_key`, which sends the digit itself)
+    stops the walk with a refused step, because `walk_one` would press Return at it and pick a menu's first
     option.
 
     Called before teardown, because the session is gone once `run` returns.
@@ -366,11 +374,12 @@ def walk_afterwards(sess) -> tuple[list[dict], bool]:
                 steps[-1]["refused"] = "the world did not come back after a fight"
                 return steps, False
             row = row24(sess)
-        if "ENCAMP" not in row and S.MOVE_SUBBAR not in row:
+        if ("ENCAMP" not in row and S.MOVE_SUBBAR not in row
+                and S.OUTDOOR_PROMPT not in row):
             steps.append({"move": move, "ok": False, "row": row,
                           "before": sess.square(), "after": sess.square(),
-                          "refused": f"row 24 is neither the world bar nor "
-                                     f"the move sub-bar: {row!r}"})
+                          "refused": f"row 24 is not the world bar, the move "
+                                     f"sub-bar or the direction prompt: {row!r}"})
             print(f"  walk {move}: stopped on row 24 {row!r}", flush=True)
             return steps, False
         before = sess.square()
