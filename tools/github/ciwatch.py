@@ -148,13 +148,6 @@ def inspect(sha: str, repo: str, transport, deadline: float,
         missing = [name for name in expected if name not in matched]
         if missing:
             report["missing_jobs"][path] = missing
-        if run.get("status") == "completed" and missing:
-            failed = True
-        if run.get("status") == "completed" and run.get("conclusion") == "success":
-            if any(job.get("status") != "completed" or
-                   job.get("conclusion") not in (None, "", "success")
-                   for job in matched.values()):
-                failed = True
 
     if failed:
         report["verdict"] = "failure"

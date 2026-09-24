@@ -77,13 +77,13 @@ def test_complete_exact_push_passes():
                if "/actions/runs?" in endpoint)
 
 
-def test_missing_workflow_waits_and_completed_missing_job_fails():
+def test_missing_workflow_and_completed_missing_job_wait():
     transport = Transport(runs=[run(".github/workflows/lint.yml", 10)])
     assert check(transport)["verdict"] == "pending"
     transport = Transport()
     transport.jobs[20].pop()
     report = check(transport)
-    assert report["verdict"] == "failure"
+    assert report["verdict"] == "pending"
     assert report["missing_jobs"][".github/workflows/test.yml"] == [
         "pytest (windows-latest, py3.13)"]
 
@@ -143,13 +143,34 @@ def test_empty_conclusions_wait_for_a_definitive_result():
 def test_empty_jobs_cannot_pass_and_pending_jobs_wait():
     transport = Transport()
     transport.jobs[20] = []
-    assert check(transport)["verdict"] == "failure"
+    assert check(transport)["verdict"] == "pending"
     transport = Transport()
-    transport.runs[1]["status"] = "in_progress"
-    transport.runs[1]["conclusion"] = None
     transport.jobs[20][0]["status"] = "in_progress"
     transport.jobs[20][0]["conclusion"] = None
     assert check(transport)["verdict"] == "pending"
+
+
+def test_completed_success_run_waits_for_late_job_then_passes():
+    transport = Transport()
+    delayed = transport.jobs[20].pop()
+    assert check(transport)["verdict"] == "pending"
+    transport.jobs[20].append(delayed)
+    assert check(transport)["verdict"] == "success"
+
+
+def test_missing_job_times_out_without_claiming_success():
+    now = [0]
+    transport = Transport()
+    transport.jobs[20].pop()
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    report = ciwatch.watch(SHA, timeout=3, interval=1, transport=transport,
+                          clock=lambda: now[0], sleep=sleep)
+    assert report["verdict"] == "timeout"
+    assert report["missing_jobs"][".github/workflows/test.yml"] == [
+        "pytest (windows-latest, py3.13)"]
 
 
 def test_timeout_and_api_error_are_bounded():
