@@ -19,6 +19,8 @@ import pathlib
 import sys
 import types
 
+import pytest
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.areas import fasttravelrun as FT  # noqa: E402
@@ -301,6 +303,8 @@ class WalkSession(FakeSession):
         self._indoors, self._blocked, self._sheet = indoors, blocked, sheet
         self.x = 5
         self.walled = set()      # facings an I cannot leave by
+        self.turn_fails = set()  # turn keys that do not take
+        self.facing = 0
         self.pressed = []
         self.walk_refused = None
         self.kbd = FakeKbd()
@@ -332,10 +336,13 @@ class WalkSession(FakeSession):
 
     def walk_one(self, move):
         self.pressed.append(move)
-        if move in "JKM" and self._indoors:
+        if move == "M" and self._indoors:
+            raise AssertionError("M is unmodelled: docs/70 and session.py "
+                                 "disagree about what it does")
+        if move in "JK" and self._indoors:
             self.facing = (getattr(self, "facing", 0)
-                           + {"J": -1, "K": 1, "M": 2}[move]) % 4
-            return True
+                           + {"J": -1, "K": 1}[move]) % 4
+            return move not in self.turn_fails
         if move in self._blocked or (
                 move == "I" and getattr(self, "facing", 0) in self.walled):
             return False
@@ -383,35 +390,77 @@ def test_a_walked_party_that_never_moves_is_a_failed_walk():
     assert not ok
 
 
-def test_a_blocked_step_tries_the_other_three_directions_and_records_each():
+def test_a_blocked_step_turns_left_and_steps_and_records_it_off_route():
     sess, m = make()
     sess = WalkSession(m, indoors=True)
-    sess.walled = {0, 3}     # ahead and to the left; only right or behind is open
+    sess.walled = {0}
     steps, sheet = FT.walk_afterwards(sess)
     ok, _ = FT.walk_verdict(steps, sheet)
     assert ok
-    assert sess.pressed[:5] == list("IJIMI")
-    blocked = WalkSession(m, indoors=True)
-    blocked.walled = {0}
-    steps, _ = FT.walk_afterwards(blocked)
+    assert sess.pressed[:3] == list("IJI")
     assert steps[0]["planned"] == "I"
     assert [a["move"] for a in steps[0]["attempts"]] == ["I", "J", "I"]
+    assert steps[0]["off_route"] is True and steps[0]["ok"] is True
+    assert steps[0]["facing_restored"] is False
     last = steps[0]["attempts"][-1]
     assert (steps[0]["move"], steps[0]["ok"], steps[0]["row"], steps[0]["after"]) \
         == (last["move"], last["ok"], last["row"], last["after"])
     assert steps[0]["before"] != steps[0]["after"]
 
 
-def test_a_step_blocked_on_every_side_records_four_attempts_and_fails():
+def test_a_blocked_left_turns_back_then_tries_right():
     sess, m = make()
-    sess = WalkSession(m, indoors=True, blocked=set("IJKM"))
+    sess = WalkSession(m, indoors=True)
+    sess.walled = {0, 3}     # ahead and to the left; only right or behind is open
+    steps, _ = FT.walk_afterwards(sess)
+    assert sess.pressed[:6] == list("IJIKKI")
+    assert steps[0]["off_route"] is True
+    assert "M" not in sess.pressed
+
+
+def test_a_step_blocked_on_every_side_restores_the_facing_and_fails():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True, blocked={"I"})
     steps, sheet = FT.walk_afterwards(sess)
-    assert [a["move"] for a in steps[0]["attempts"]] == list("IJIMIKI")
+    assert [a["move"] for a in steps[0]["attempts"]] == list("IJIKKIJKKIKK")
     assert all(set(a) == {"move", "ok", "row", "before", "after"}
-               and a["before"] == a["after"] for a in steps[0]["attempts"])
-    assert len(sess.pressed) == FT.WALK_ATTEMPTS
+               and a["before"] == a["after"] for a in steps[0]["attempts"]
+               if a["move"] == "I")
+    assert steps[0]["ok"] is False and steps[0]["off_route"] is False
+    assert steps[0]["facing_restored"] is True and sess.facing == 0
+    assert "capped" not in steps[0]
     ok, _ = FT.walk_verdict(steps, sheet)
     assert not ok
+
+
+def test_the_retry_budget_ends_the_walk_and_says_so():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True, blocked={"I"})
+    steps, _ = FT.walk_afterwards(sess)
+    assert len(steps) == 2 and steps[1]["capped"] is True
+    assert "attempts" not in steps[1]
+    retries = len(sess.pressed) - 2      # the two planned I keys
+    assert retries <= FT.RETRY_BUDGET
+    assert sess.facing == 0              # no try was cut short
+
+
+def test_a_turn_that_does_not_take_ends_the_retries():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True, blocked={"I"})
+    sess.turn_fails = {"J"}
+    steps, _ = FT.walk_afterwards(sess)
+    assert sess.pressed[:2] == ["I", "J"] and len(steps[0]["attempts"]) == 2
+    assert steps[0]["ok"] is False
+
+
+def test_m_is_never_pressed_in_a_retry():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    with pytest.raises(AssertionError):
+        sess.walk_one("M")
+    sess = WalkSession(m, indoors=True, blocked={"I"})
+    FT.walk_afterwards(sess)
+    assert "M" not in sess.pressed
 
 
 def test_a_turn_that_worked_is_never_retried():

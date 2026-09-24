@@ -373,22 +373,30 @@ def settle_row(sess, timeout: float = 60.0, interval: float = 0.5) -> str:
     return row
 
 
-WALK_ATTEMPTS = 12    # moves sent in all, retries after a blocked step included
+RETRY_BUDGET = 12     # keys a walk may spend on retries, apart from its planned moves
+
+TURN = {"J": -1, "K": 1}   # facing change of a turn key, in quarter turns
 
 
-def _retry_plan(indoors: bool, move: str) -> list[str]:
-    """The keys to send after a forward *move* that a wall stopped, or [] for a
-    turn, which is never retried.
+def _retry_groups(indoors: bool, move: str) -> list[list[tuple[str, str]]]:
+    """The tries to make after a forward *move* that a wall stopped, each a list
+    of `(key, kind)` with kind "turn", "step" or "undo"; [] for a turn, which
+    is never retried.
 
-    Indoors a turn changes the facing and not the square, so the plan tracks
-    the facing: J faces left, I steps; M then faces the original right, I
-    steps; K then faces the original back, I steps.  Each I is a forward step
-    from a new facing.  Outdoors every compass digit is a step, so the plan is
-    the other three digits.
+    Indoors a try turns, steps once, and turns back if that step failed, so
+    every failed try leaves the facing as it found it: left is J I (K); right
+    is K I (J); behind is K K I (K K).  M is not used: docs/70 and session.py
+    disagree about what it does.  Outdoors every compass digit is a step, so
+    the tries are the other three digits.
     """
     if not indoors:
-        return [d for d in "1357" if d != move]
-    return list("JIMIKI") if move == "I" else []
+        return [[(d, "step")] for d in "1357" if d != move]
+    if move != "I":
+        return []
+    return [[("J", "turn"), ("I", "step"), ("K", "undo")],
+            [("K", "turn"), ("I", "step"), ("J", "undo")],
+            [("K", "turn"), ("K", "turn"), ("I", "step"),
+             ("K", "undo"), ("K", "undo")]]
 
 
 def _is_step(indoors: bool, key: str) -> bool:
@@ -403,9 +411,11 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
     result and whether the sheet came up.
 
     A step that a wall stopped is retried from other directions
-    (`_retry_plan`).  Its record describes the last attempt -- `move`, `ok`,
+    (`_retry_groups`).  Its record describes the last attempt -- `move`, `ok`,
     `row` and `after` all come from it -- and a retried step also carries
-    `planned`, the move the walk asked for, and `attempts`, every key sent.
+    `planned`, the move the walk asked for, `attempts`, every key sent,
+    `off_route` (a retry moved the party off the planned route, which ends the
+    retries), `facing_restored`, and `capped` when the retry budget ended the walk.
 
     Row 24 is read before every step and stored in it. A fight is handed to
     `Session.fight` with `melee_turn` (the default tactic only passes, which
@@ -421,7 +431,7 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
     if indoors is None:
         return [], False
     steps: list[dict] = []
-    moves = 0
+    retry_used = 0
     for move in (WALK_INDOORS if indoors else WALK_OUTDOORS):
         row = settle_row(sess, timeout)
         if sess.in_combat():
@@ -443,39 +453,62 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
             return steps, False
         before = sess.square()
         attempts: list[dict] = []
-        plan = [move] + _retry_plan(indoors, move)
-        for tried in plan:
-            if attempts:
-                row = settle_row(sess, timeout)
-                if sess.in_combat() or not recognised(row):
-                    break   # the outer loop answers a fight; a prompt ends the walk
-            start = sess.square()
-            ok = sess.walk_one(tried)
-            attempts.append({"move": tried, "ok": bool(ok), "row": row,
-                             "before": start, "after": sess.square()})
-            moves += 1
-            refused = getattr(sess, "walk_refused", None)
-            if refused or moves >= WALK_ATTEMPTS:
+        facing = 0          # quarter turns away from the facing the step began with
+        off_route = capped = False
+        refused = None
+        first = [(move, "step" if _is_step(indoors, move) else "turn")]
+        groups = [first] + _retry_groups(indoors, move)
+        done = False
+        for gi, group in enumerate(groups):
+            if gi and retry_used + len(group) > RETRY_BUDGET:
+                capped = True     # a try cut short would leave the facing turned
                 break
-            # A turn that worked changed the facing and not the square, so it
-            # is never a reason to retry: the plan's next key is its step.  A
-            # step that returned ok is done; only a stopped step, or a turn
-            # that did not take, decides what happens next.
-            if _is_step(indoors, tried):
-                if ok:
+            for key, kind in group:
+                if attempts:
+                    row = settle_row(sess, timeout)
+                    if sess.in_combat() or not recognised(row):
+                        done = True   # the outer loop answers a fight; a prompt ends the walk
+                        break
+                start = sess.square()
+                ok = bool(sess.walk_one(key))
+                attempts.append({"move": key, "ok": ok, "row": row,
+                                 "before": start, "after": sess.square()})
+                if gi:
+                    retry_used += 1
+                refused = getattr(sess, "walk_refused", None)
+                if refused:
+                    done = True
                     break
-            elif not ok:
+                if kind == "step":
+                    if ok:
+                        off_route = gi > 0
+                        done = True
+                        break
+                elif not ok:
+                    done = True    # a turn that did not take ends the retries
+                    break
+                else:
+                    facing += TURN.get(key, 0)
+            if done:
                 break
         last = attempts[-1]
         step = {"move": last["move"], "ok": last["ok"], "row": last["row"],
                 "before": before, "after": last["after"], "refused": refused}
         if len(attempts) > 1:
+            # The last key may be a turn that worked, which must not read as a
+            # step that moved the party.
+            step["ok"] = any(a["ok"] for a in attempts
+                             if _is_step(indoors, a["move"]))
             step["planned"] = move
             step["attempts"] = attempts
+            step["off_route"] = off_route
+            step["facing_restored"] = facing % 4 == 0
+        if capped:
+            step["capped"] = True
         steps.append(step)
-        print(f"  walk {last['move']}: ok={last['ok']} {before} -> {step['after']}"
+        print(f"  walk {last['move']}: ok={step['ok']} {before} -> {step['after']}"
               f" ({len(attempts)} attempt(s))", flush=True)
-        if moves >= WALK_ATTEMPTS:
+        if capped:
             break
     sheet = sess.character_sheet(0)
     return steps, bool(sheet)
