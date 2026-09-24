@@ -178,7 +178,7 @@ verdict and not the instruction, so the reason is not recorded.
 | 4 | `$ACCE` | discarded |
 | 7 | `$ACD7` | discarded; constitution goes back up by one instead |
 | 15 | `$AD71` | discarded |
-| 22 | `$AD2F` | discarded; adds effect 15 and expires this slot |
+| 22 | `$AD2F` | discarded; on expiry, removes effect 15 and then poison effect 55 if present. The earlier reading mistook the removal of 15 for an addition. |
 | 34, 43 | `$AD49`, `$AD4F` | discarded; strength comes down by one instead, and never goes below 4 |
 | 44 | `$AD6B` | discarded |
 | 50 | `$AD97` | discarded |
