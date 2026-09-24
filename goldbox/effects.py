@@ -410,7 +410,8 @@ def party_row_record(title_key: str, row: "Effect",
     if row.id not in party_row_ids(title_key):
         return Unconverted("no rule yet for a party-wide row of this id")
     if row.duration == 0:
-        return Unconverted("a never-expiring party-wide row")
+        # A node has no never-expires form; the longest it can last is nearest.
+        return RunningEffect(row.id, DOS_MINUTES_MAX, row.magnitude, 0)
     minutes = min(remaining_minutes(row.duration, clock_minutes),
                   DOS_MINUTES_MAX)
     return RunningEffect(row.id, minutes, row.magnitude, 0)

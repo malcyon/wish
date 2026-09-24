@@ -524,6 +524,16 @@ def test_two_detect_magic_nodes_make_one_row_of_the_longest(order):
     assert rows[62] == (0, 0, 0, 0)
 
 
+def test_a_zero_minute_node_cannot_reach_the_writer():
+    # `closest_duration` returns None below a minute, so this is what keeps
+    # write_party_row from ever seeing it: a node at zero never expires and
+    # is a granted effect, and the record refuses to be built.
+    with pytest.raises(ValueError):
+        c64_codec.write(_pool_character(bytes((5, 0, 0, 3, 0))),
+                        payload=bytearray(0x1C00), party_slot=2,
+                        clock_minutes=0)
+
+
 def _staged_party(*rows):
     """The fixture's party with `rows` staged, as `c64_party` reads it."""
     payload, save1 = _fixture_payload()
@@ -553,6 +563,15 @@ def test_detect_magic_goes_after_the_owned_rows_on_the_lowest_slot():
     brutus = next(c for c in party if c.get("name") == "BRUTUS")
     assert [bytes(r)[:5] for r in brutus.get("running_effects")] == \
         [BLESS, DETECT]
+
+
+@pytest.mark.parametrize("slots", [(63, 62), (62, 63)])
+def test_two_party_wide_rows_in_one_save_make_one_node_of_the_longest(slots):
+    party = _staged_party((slots[0], (5, 0xFF, 0x04, 0x03)),
+                          (slots[1], (5, 0xFF, 0x0A, 0x07)))
+    brutus = next(c for c in party if c.get("name") == "BRUTUS")
+    assert [bytes(r)[:5] for r in brutus.get("running_effects")] == \
+        [bytes((5, 10, 0, 7, 0))]
 
 
 def test_detect_magic_of_two_characters_leaves_one_row_of_the_longest():

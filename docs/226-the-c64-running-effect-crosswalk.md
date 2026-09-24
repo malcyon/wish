@@ -657,17 +657,19 @@ pins the constants to it. The C64 reader converts the same ids back through
 Party-wide Detect Magic (id 5) converts both ways in all three titles: the
 writer gives every running id-5 node one C64 row owned by the whole party
 (`effects.PARTY_WIDE`) that lasts as long as the longest node, and the reader
-turns a party-wide id-5 row into one DOS node on the lowest occupied slot.
-Each title's DOS engine asks every party member for id 5, so the two forms give
-the player the same thing. Still waiting: rows no party member owns (party-wide, monster and orphaned rows, now
-reported by name; converting them is #666 (A C64 party under a camp Prayer loses it on the way
-to DOS or the Amiga, because nothing converts the save's party-wide effect
-rows)); a timeline conversion for Pool's
-overlapping strength nodes, which the destination does hold; the later
-titles' Strength, Enlarge and Friends; what a spent Mirror Image converts to;
-Prayer, including Pool's party-wide row; Curse's and Silver Blades' id 25,
-which has its own row and handler; the ids with no C64 spell row; and the two
-ageing routes the camp formula does not describe.
+turns a party-wide id-5 row into one DOS node on the lowest occupied slot (with
+several such rows, the longest; a row that never expires becomes a node of
+65535 minutes, the most one holds). Each title's DOS engine asks every party
+member for id 5, so the two forms give the player the same thing. Still
+waiting: rows no party member owns (party-wide, monster and orphaned rows, now
+reported by name; converting them is #666 (A C64 party under a camp Prayer
+loses it on the way to DOS or the Amiga, because nothing converts the save's
+party-wide effect rows)); a timeline conversion for Pool's overlapping strength
+nodes, which the destination does hold; the later titles' Strength, Enlarge and
+Friends; what a spent Mirror Image converts to; Prayer, including Pool's
+party-wide row; Curse's and Silver Blades' id 25, which has its own row and
+handler; the ids with no C64 spell row; and the two ageing routes the camp
+formula does not describe.
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.
