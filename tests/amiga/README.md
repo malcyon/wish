@@ -30,6 +30,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigaporspacewarning.py` | Checks that `write_por` warns a player when a character's name will lose its space on the Amiga's first save. |
 | `test_amigasavedisk.py` | Checks a `POOLSAVE` save disk formatted from nothing and the filename the game builds on it. |
 | `test_amigasavegame.py` | Checks the Amiga saved-game map in `goldbox.amiga_savegame`, on synthetic saves and on the player's own. |
+| `test_amigasecretsave.py` | Checks that a failed WinUAE save probe leaves the published disk unchanged and keeps both fetched ADFs and its last screen. |
 | `test_amigashots.py` | Checks that `tools/amiga/amigashots.py` finds the emulator's screen inside a grab of the whole guest desktop, on desktops built here. |
 | `test_amigasplit.py` | Checks that the Amiga codec is one module per title and that no title module reaches another at import time. |
 | `test_amigatarget.py` | Checks `automap/amiga.py`'s WinUAE-backed `Target`, driven through a fake guest. |
