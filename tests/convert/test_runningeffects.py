@@ -665,6 +665,35 @@ def _prayer_m(game) -> int:
     return 0x43 if game.key == "pool-of-radiance" else 0x03
 
 
+def _synthetic_c64_party_payload(game, members: int, *rows) -> bytearray:
+    """A title's save payload with `members` occupied slots and `rows`
+    staged, built from zeroed bytes: a capital letter and six ability scores
+    are what `looks_occupied` asks of a slot, so no game file is read."""
+    from goldbox import c64_save, savegame
+    payload = bytearray(c64_save.container_for(game).game.save_size)
+    for slot in range(members):
+        at = savegame.HEADER_SIZE + slot * savegame.SLOT_STRIDE
+        payload[at:at + 2] = b"AB"
+        payload[at + 0x14:at + 0x1A] = bytes([10] * 6)
+    for args in rows:
+        effects.write_effect(payload, effects.free_slot(payload), *args)
+    return payload
+
+
+@pytest.mark.parametrize("members", [1, 3])
+@pytest.mark.parametrize("game", _PARTY_TITLES, ids=lambda g: g.key)
+def test_a_party_wide_prayer_row_gives_each_member_one_node_and_no_one_else(
+        game, members):
+    payload = _synthetic_c64_party_payload(
+        game, members, (49, 0xFF, 0x0A, _prayer_m(game)))
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
+    assert len(party) == members
+    for char in party:
+        assert [bytes(r) for r in char.get("running_effects")] == \
+            [bytes((49, 10, 0, 3, 0)) + NULL]
+        assert not [d for d in char.dropped if "effect 49" in d]
+
+
 @pytest.mark.parametrize("game", _PARTY_TITLES, ids=lambda g: g.key)
 def test_prayer_is_written_as_one_row_owned_by_the_whole_party(game):
     payload = bytearray(0x1C00)
@@ -730,6 +759,12 @@ def test_a_pool_camp_prayer_row_reaches_dos_and_the_amiga():
     node = bytes((35, 10, 0, 3, 0))
     assert [bytes(r) for r in _brutus(party).get("running_effects")] == \
         [node + NULL]
+    three, _ = dos_codec.c64_party(
+        bytes(_synthetic_c64_party_payload(
+            POOL_OF_RADIANCE, 3, (35, 0xFF, 0x0A, 0x03))),
+        None, game=POOL_OF_RADIANCE)
+    assert [[bytes(r) for r in c.get("running_effects")] for c in three] == \
+        [[node + NULL]] * 3
     assert not [d for c in party for d in c.dropped if "effect 35" in d]
     _rec, _itm, spc, _rep = dos_codec.write(_brutus(party))
     assert spc[:5] == node
@@ -744,6 +779,12 @@ def test_a_pool_combat_prayer_row_becomes_a_node_with_the_side_inverted(
     party = _staged_party((63, (49, 0xFF, 0x0A, magnitude)))
     assert [bytes(r) for r in _brutus(party).get("running_effects")] == \
         [bytes((49, 10, 0, data, 0)) + NULL]
+    three, _ = dos_codec.c64_party(
+        bytes(_synthetic_c64_party_payload(
+            POOL_OF_RADIANCE, 3, (49, 0xFF, 0x0A, magnitude))),
+        None, game=POOL_OF_RADIANCE)
+    assert [[bytes(r) for r in c.get("running_effects")] for c in three] == \
+        [[bytes((49, 10, 0, data, 0)) + NULL]] * 3
     assert not [d for c in party for d in c.dropped if "effect 49" in d]
 
 
@@ -760,44 +801,54 @@ def test_two_ids_at_once_keep_each_ids_own_node():
         [DETECT, bytes((49, 10, 0, 3, 0))]
 
 
-@pytest.mark.parametrize("row", [(35, 0xFF, 0x0A, 0x03),
-                                 (49, 0xFF, 0x0A, 0x43),
-                                 (49, 0xFF, 0x0A, 0x03)])
-def test_a_prayer_row_makes_a_c64_dos_c64_round_trip(row):
-    party = _staged_party((63, row))
-    payload = bytearray(0x1C00)
+_PRAYER_ROUND_TRIPS = [
+    (c64_port.POOL_OF_RADIANCE, (35, 0xFF, 0x0A, 0x03)),
+    (c64_port.POOL_OF_RADIANCE, (49, 0xFF, 0x0A, 0x43)),
+    (c64_port.POOL_OF_RADIANCE, (49, 0xFF, 0x0A, 0x03)),
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, (49, 0xFF, 0x0A, 0x03)),
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, (49, 0xFF, 0x0A, 0x43)),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, (49, 0xFF, 0x0A, 0x03)),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, (49, 0xFF, 0x0A, 0x43)),
+]
+
+
+@pytest.mark.parametrize("game, row", _PRAYER_ROUND_TRIPS,
+                         ids=lambda v: v.key if hasattr(v, "key") else str(v))
+def test_a_prayer_row_makes_a_c64_dos_c64_round_trip(game, row):
+    payload = _synthetic_c64_party_payload(game, 2, row)
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
+    fresh = bytearray(len(payload))
     for char in party:
-        c64_codec.write(char, payload=payload, party_slot=0, clock_minutes=1)
+        c64_codec.write(char, payload=fresh, party_slot=0, clock_minutes=1)
     assert [(e.id, e.owner, e.duration, e.magnitude)
-            for e in effects.active_effects(bytes(payload))] == [row]
+            for e in effects.active_effects(bytes(fresh))] == [row]
 
 
-def test_prayer_makes_a_dos_c64_dos_round_trip():
-    from goldbox import world_state
-    payload, save1 = _fixture_payload()
-    party, _ = dos_codec.c64_party(bytes(payload), save1,
-                                   game=POOL_OF_RADIANCE)
+@pytest.mark.parametrize("game", _PARTY_TITLES, ids=lambda g: g.key)
+def test_prayer_makes_a_dos_c64_dos_round_trip(game):
     import copy
-    first = party[0]
-    second = copy.deepcopy(first)
+
+    from goldbox import world_state
+    payload = _synthetic_c64_party_payload(game, 2)
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
+    first, second = party[0], copy.deepcopy(party[0])
     second.set("name", "CASTER", "built here")
     first.set("running_effects", [PRAYER + NULL], "built here")
     second.set("running_effects", [], "built here")
     save0 = bytearray(payload)
-    for slot in range(effects.EFFECT_SLOTS):
-        effects.clear_effect(save0, slot)
-    state = world_state.from_c64(bytes(payload), game=POOL_OF_RADIANCE)
-    report = dos_codec.write_c64_save(save0, bytearray(save1), state,
-                                      [first, second], game=POOL_OF_RADIANCE)
+    state = world_state.from_c64(bytes(payload), game=game)
+    report = dos_codec.write_c64_save(save0, None, state, [first, second],
+                                      game=game)
+    # Literal: side 1 is bit 6 on Pool alone, where DOS keeps it inverted.
+    magnitude = 0x43 if game.key == "pool-of-radiance" else 0x03
     assert [(e.id, e.owner, e.duration, e.magnitude)
             for e in effects.active_effects(bytes(save0))] == \
-        [(49, 0xFF, 0x0A, 0x43)]
+        [(49, 0xFF, 0x0A, magnitude)]
     assert not [d for d in report.dropped + report.losses
                 if "effect 49" in d]
-    back, _ = dos_codec.c64_party(bytes(save0), bytes(save1),
-                                  game=POOL_OF_RADIANCE)
-    for name in ("BRUTUS", "CASTER"):
-        char = next(c for c in back if c.get("name") == name)
+    back, _ = dos_codec.c64_party(bytes(save0), None, game=game)
+    assert len(back) == 2
+    for char in back:
         assert [bytes(r) for r in char.get("running_effects")] == \
             [PRAYER + NULL]
 
