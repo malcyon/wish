@@ -11,6 +11,9 @@ import threading
 
 from conftest import load_tools_module
 
+from automap.screen import Screen
+from automap.vice import CMD_REGISTERS_GET
+
 session = load_tools_module("session")
 
 FASTLOADER_DOC = pathlib.Path(__file__).resolve().parents[2] / "docs" / "131-fastloader.md"
@@ -430,3 +433,120 @@ def test_a_failed_code_word_patch_is_a_boot_failure_with_a_reason(tmp_path,
     assert sess.boot() is False
 
     assert "$12D9" in sess.boot_failure
+
+
+# -- a party menu that never comes: where the machine was ---------------------
+
+def _codes(rows):
+    """Screen codes for `{row: text}`, the rest of the screen blank.
+
+    `£` is screen code `$1C`, the glyph the game's line editor draws as its
+    cursor, which is how `automap.screen` prints it back.
+    """
+    codes = bytearray(b"\x20" * 1000)
+    for r, text in rows.items():
+        for c, ch in enumerate(text):
+            if ch == "£":
+                code = 0x1C
+            elif "A" <= ch <= "Z":
+                code = ord(ch) - ord("A") + 1
+            else:
+                code = ord(ch)
+            codes[r * 40 + c] = code
+    return bytes(codes)
+
+
+class StallMonitor:
+    """A stopped C64 and its drive, answering what `stall_capture` asks.
+
+    `pcs` and `drive_pcs` are handed out one per connection, as a machine
+    that runs between connections would.
+    """
+
+    def __init__(self, ram, pcs, drive_pcs, fail=False):
+        self.ram = ram
+        self.pcs = list(pcs)
+        self.drive_pcs = list(drive_pcs)
+        self.fail = fail
+
+    def __call__(self, timeout=5.0):
+        if self.fail:
+            raise ConnectionRefusedError("monitor gone")
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, start, length, bank=0, side_effects=0):
+        return bytes(self.ram.get(start + i, 0) for i in range(length))
+
+    def command(self, cmd, body=b""):
+        assert cmd == CMD_REGISTERS_GET
+        pc = (self.drive_pcs if body[0] == 1 else self.pcs).pop(0)
+        # two registers, A then PC, each `size id value-lo value-hi`
+        return (b"\x02\x00" + bytes([3, 0, 0x41, 0x00])
+                + bytes([3, 3, pc & 0xFF, pc >> 8]))
+
+
+def _stalled(tmp_path, monkeypatch, code_word_row, monitor):
+    sess = session.Session()
+    sess.here = str(tmp_path)
+    said = []
+    monkeypatch.setattr(sess, "log", lambda *a: said.append(" ".join(map(str, a))))
+    monkeypatch.setattr(sess, "wait_text", lambda *a, **k: (None, None))
+    screen = Screen(_codes({19: code_word_row}), bytes(1000), 0x0400)
+    monkeypatch.setattr(sess, "screen", lambda: screen)
+    monkeypatch.setattr(sess, "mon", monitor)
+    monkeypatch.setattr(session.time, "sleep", lambda s: None)
+    return sess, said
+
+
+def _ram_after_a_patched_check_loading_gen():
+    ram = {0x90: 0x00, 0xB7: 3, 0xB8: 2, 0xB9: 0, 0xBA: 8, 0xBB: 0x00, 0xBC: 0x70,
+           0xC6: 0, 0x0277: 0x0D, 0x12D9: 0xEA, 0x12DA: 0xEA, 0x137A: 0}
+    ram.update({0x7000 + i: b for i, b in enumerate(b"GEN")})
+    return ram
+
+
+def test_a_party_menu_that_never_comes_logs_where_the_machine_was(tmp_path,
+                                                                  monkeypatch):
+    mon = StallMonitor(_ram_after_a_patched_check_loading_gen(),
+                       pcs=[0xEE13, 0xEE16, 0xEE13, 0xEE16, 0xEE13, 0xEE16],
+                       drive_pcs=[0xE9C9] * 6)
+    sess, said = _stalled(tmp_path, monkeypatch,
+                          "$INPUT THE CODE WORD: AAAAAA           $", mon)
+
+    assert sess.load_save() is False
+
+    where = next(line for line in said if "C64 PC" in line)
+    assert "C64 PC EE13 EE16 EE13 EE16 EE13 EE16" in where
+    assert "drive 8 PC E9C9" in where
+    assert "$12D9 ea ea" in where
+    assert "file name 'GEN'" in where
+    assert "the game took the Return" in where
+
+
+def test_a_code_word_prompt_still_waiting_is_told_apart(tmp_path, monkeypatch):
+    mon = StallMonitor(_ram_after_a_patched_check_loading_gen(),
+                       pcs=[0x2E60] * 6, drive_pcs=[0xEC2D] * 6)
+    sess, said = _stalled(tmp_path, monkeypatch,
+                          "$INPUT THE CODE WORD: AAAAAA£          $", mon)
+
+    assert sess.load_save() is False
+
+    where = next(line for line in said if "C64 PC" in line)
+    assert "cursor is still up" in where
+
+
+def test_a_stall_capture_with_no_monitor_says_so_instead_of_raising(tmp_path,
+                                                                    monkeypatch):
+    mon = StallMonitor({}, pcs=[], drive_pcs=[], fail=True)
+    sess, said = _stalled(tmp_path, monkeypatch,
+                          "$INPUT THE CODE WORD: AAAAAA           $", mon)
+
+    assert sess.load_save() is False
+
+    assert any("monitor did not answer" in line for line in said)

@@ -30,6 +30,7 @@ import re
 import shutil
 import socket
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -48,6 +49,7 @@ TOOLS = str(pathlib.Path(__file__).resolve().parent.parent)
 sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 from automap import c64 as machines  # noqa: E402
 from automap import gamedisks  # noqa: E402
+from automap.vice import CMD_REGISTERS_GET  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64, D64Error  # noqa: E402
 from tools.c64.drive import (  # noqa: E402
@@ -632,6 +634,44 @@ FASTLOADER_PETSCII = {"y": 0x59, "n": 0x4E}
 #: through `_require_alive`, so a long wait costs time only when the emulator
 #: is alive and the menu never comes.
 PLAY_GAME_WAIT = 500.0
+
+#: VICE's register id for the program counter, on the drive's CPU as on the
+#: C64's.  `automap.actions.pc_register` asks the build rather than assuming;
+#: this module does not import that one for a diagnostic.
+PC_ID = 3
+
+#: What `Session.stall_capture` reads out of the C64: the KERNAL's status
+#: byte, the open file's name length, logical file, secondary address,
+#: device and name pointer, the key buffer's count and first bytes, the
+#: code-word `BNE` (`EA EA` once patched) and the wrong-answer count.
+STALL_READS = (
+    (0x0090, 1, "ST"),
+    (0x00B7, 6, "$B7-$BC"),
+    (0x00C6, 1, "$C6"),
+    (0x0277, 4, "$0277"),
+    (0x12D9, 2, "$12D9"),
+    (0x137A, 1, "$137A"),
+)
+
+#: The code-word prompt's label, and the screen code of the cursor the
+#: game's line editor (`LIBRARY $2E81`) draws after the last letter before
+#: every wait for a key.  Return overwrites it with a space (`$2EE1`), so a
+#: cursor still on the screen means the Return never reached the editor.
+CODE_WORD_LABEL = "INPUT THE CODE WORD:"
+CODE_WORD_CURSOR = 0x1C
+
+
+def _pc_of(mon, memspace: int) -> int | None:
+    """The program counter of one CPU: memspace 0 is the C64, 1 is drive 8."""
+    resp = mon.command(CMD_REGISTERS_GET, struct.pack("<B", memspace))
+    count = struct.unpack("<H", resp[:2])[0]
+    off = 2
+    for _ in range(count):
+        size, rid = resp[off], resp[off + 1]
+        if rid == PC_ID:
+            return struct.unpack("<H", resp[off + 2:off + 4])[0]
+        off += size + 1
+    return None
 
 
 def _xdo(display: str, *args: str) -> str:
@@ -1673,6 +1713,7 @@ class Session:
         """
         if self.wait_text("LOAD SAVED GAME", 240)[0] is None:
             self.log("  the party menu never offered LOAD SAVED GAME")
+            self.log(f"  where the machine was: {self.stall_capture()}")
             return False
         if not self.select_row("LOAD SAVED GAME"):
             self.log("  the highlight would not go onto LOAD SAVED GAME")
@@ -1690,6 +1731,59 @@ class Session:
         if hit is None:
             self.log("  the party menu never came back after the load")
         return hit is not None
+
+    def stall_capture(self, samples: int = 6, gap: float = 0.2) -> str:
+        """Where the C64 and its drive are when a wait has run out, as one line.
+
+        The two CPUs' program counters, sampled `samples` times with the
+        machine running between samples, say which loop each is in; the
+        bytes in `STALL_READS` and the name of the file the KERNAL has open
+        say what it was doing; and the code-word row says whether the game's
+        line editor took the Return.  Never raises: it runs on a path that is
+        already failing, and a monitor that will not answer is said instead.
+        """
+        said = []
+        try:
+            pcs, drive = [], []
+            for i in range(samples):
+                if i:
+                    time.sleep(gap)
+                with self.mon(3) as m:
+                    pcs.append(_pc_of(m, 0))
+                    drive.append(_pc_of(m, 1))
+            said.append("C64 PC " + " ".join(
+                "?" if p is None else f"{p:04X}" for p in pcs))
+            said.append("drive 8 PC " + " ".join(
+                "?" if p is None else f"{p:04X}" for p in drive))
+            with self.mon(3) as m:
+                for addr, length, name in STALL_READS:
+                    said.append(f"{name} {m.read(addr, length).hex(' ')}")
+                length = m.read(0x00B7, 1)[0]
+                lo, hi = m.read(0x00BB, 2)
+                name = m.read(lo | hi << 8, length) if 0 < length <= 16 else b""
+                said.append(f"file name {name.decode('latin-1')!r}")
+        except (OSError, MonitorError, IndexError, struct.error) as e:
+            said.append(f"the monitor did not answer: {e}")
+        said.append(self._code_word_state())
+        return "; ".join(said)
+
+    def _code_word_state(self) -> str:
+        """Whether the code-word prompt is up and its cursor still drawn."""
+        s = self.screen()
+        if s is None:
+            return "no text screen"
+        hit = s.find(CODE_WORD_LABEL)
+        if hit is None:
+            return "no code-word prompt on the screen"
+        r, c = hit
+        start = r * 40 + c + len(CODE_WORD_LABEL)
+        cells = s.codes[start:(r + 1) * 40]
+        shown = " ".join(f"{b:02X}" for b in cells[:8])
+        if CODE_WORD_CURSOR in cells:
+            return (f"code-word cells {shown}: the cursor is still up, so the "
+                    f"Return never reached the game's line editor")
+        return (f"code-word cells {shown}: no cursor, so the game took the "
+                f"Return and the prompt is left over from before")
 
     def begin_adventuring(self) -> bool:
         if not self.select_row("BEGIN ADVENTURING"):
