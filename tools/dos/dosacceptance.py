@@ -1005,6 +1005,11 @@ def build_amiga_source(disk: str, slot: str, out: pathlib.Path) -> dict:
                     "flag": f"{convert.POD_CONVERT_ENV}=1"}
     collect = _Collect()
     wish_log = logging.getLogger("wish")
+    # The GUI's debug log parks this logger above CRITICAL while it is off,
+    # and a level filters before any handler, so lower it for the run.
+    was_level = wish_log.level
+    if not was_level or was_level > logging.WARNING:
+        wish_log.setLevel(logging.WARNING)
     wish_log.addHandler(collect)
     try:
         with flag_on(convert.POD_CONVERT_ENV):
@@ -1028,6 +1033,7 @@ def build_amiga_source(disk: str, slot: str, out: pathlib.Path) -> dict:
                 "warnings": collect.lines}
     finally:
         wish_log.removeHandler(collect)
+        wish_log.setLevel(was_level)
     report["direction"] = type(directions[0]).__name__
     report["dos_slot"] = wrote
     report["dropped"] = list(rehearsal.report.dropped)
