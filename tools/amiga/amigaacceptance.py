@@ -9,21 +9,37 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import pathlib
 import struct
 
 from goldbox import amiga_adf as adf
+from tools.registry import scratch
 
 SOURCE_SHA256 = "2f9ae86494561231dd1d70b350ae07b959c9f62642b64e9d4b57ffd23686ace4"
 SECRET_SHA256 = "ba6c8b5ed94b9003d61f727968e040d55a37d79ba109d46fb013163a698a158d"
 SAVE_DIR_BLOCK = 919
 OLD_NAME = "SAVE"
 HIDDEN_NAME = "SAVE_OFF_40"
-_REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 class StageError(ValueError):
     """The image or destination is not the bounded staging case."""
+
+
+def _posix_output_supported() -> bool:
+    """Whether this host can create inside a directory without following links."""
+    supported = getattr(os, "supports_dir_fd", ())
+    return (
+        os.name == "posix"
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in supported
+        and os.mkdir in supported
+    )
+
+
+_POSIX_OUTPUT_SUPPORTED = _posix_output_supported()
 
 
 def _sha(data: bytes) -> str:
@@ -62,6 +78,75 @@ def _in_root_bucket(disk: adf.AmigaDisk, bucket: int, block: int) -> bool:
     return False
 
 
+def _output_location(out: pathlib.Path) -> tuple[pathlib.Path, tuple[str, ...]]:
+    """Resolve an output inside the tool's scratch or cache root."""
+    requested = out.absolute()
+    if ".." in requested.parts:
+        raise StageError("output must stay inside Wish scratch or cache")
+    roots = (
+        (scratch.scratch_dir("amigaacceptance").absolute(), 1),
+        (scratch.cache_dir("amigaacceptance").absolute(), 2),
+    )
+    for root, base_depth in roots:
+        try:
+            relative = requested.relative_to(root)
+        except ValueError:
+            continue
+        if not relative.parts:
+            break
+        base = root.parents[base_depth].resolve()
+        root_parts = root.relative_to(root.parents[base_depth]).parts
+        canonical_root = base.joinpath(*root_parts)
+        if not requested.resolve().is_relative_to(canonical_root):
+            break
+        return base, root_parts + relative.parts
+    raise StageError("output must stay inside Wish scratch or cache")
+
+
+def _write_exclusive(
+    out: pathlib.Path, base: pathlib.Path, parts: tuple[str, ...], data: bytes,
+) -> None:
+    """Walk from a trusted base without following symlinks and create once."""
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    directory = os.open("/", directory_flags)
+    try:
+        for name in base.parts[1:]:
+            try:
+                child = os.open(name, directory_flags, dir_fd=directory)
+            except OSError as exc:
+                raise StageError(
+                    "output path contains a symlink or non-directory") from exc
+            os.close(directory)
+            directory = child
+        for name in parts[:-1]:
+            try:
+                os.mkdir(name, dir_fd=directory)
+            except FileExistsError:
+                pass
+            try:
+                child = os.open(name, directory_flags, dir_fd=directory)
+            except OSError as exc:
+                raise StageError(
+                    "output path contains a symlink or non-directory") from exc
+            os.close(directory)
+            directory = child
+        try:
+            file = os.open(
+                parts[-1],
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o644,
+                dir_fd=directory,
+            )
+        except FileExistsError as exc:
+            raise StageError(f"output already exists: {out}") from exc
+        with os.fdopen(file, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+    finally:
+        os.close(directory)
+
+
 def stage_boot_disk(
     source: str | pathlib.Path,
     out: str | pathlib.Path,
@@ -74,12 +159,13 @@ def stage_boot_disk(
     The default hashes pin registered side A and its executable.  Overrides
     exist for generated, game-data-free tests.
     """
+    if not _POSIX_OUTPUT_SUPPORTED:
+        raise StageError("staging requires POSIX no-follow directory operations")
     source = pathlib.Path(source)
     out = pathlib.Path(out)
     if source.resolve() == out.resolve():
         raise StageError("source and output resolve to the same file")
-    if out.resolve().is_relative_to(_REPO_ROOT):
-        raise StageError("output must be outside the repository")
+    base, parts = _output_location(out)
     if out.exists() or out.is_symlink():
         raise StageError(f"output already exists: {out}")
 
@@ -173,10 +259,7 @@ def stage_boot_disk(
     except adf.AmigaDiskError as exc:
         raise StageError(f"source or staged ADF is unreadable: {exc}") from exc
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    if out.exists() or out.is_symlink():
-        raise StageError(f"output already exists: {out}")
-    staged.save(out)
+    _write_exclusive(out, base, parts, staged_bytes)
     written = out.read_bytes()
     staged_sha = _sha(staged_bytes)
     if _sha(written) != staged_sha:
