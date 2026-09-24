@@ -869,3 +869,84 @@ def test_encamp_is_never_pressed_at_the_party_menu(tmp_path):
     with pytest.raises(da.StepFailed, match="lost-camp"):
         d.camp()
     assert "e" not in game.keys
+
+
+# -- review findings: refusals before a slot is claimed, and the log handle -----------
+
+
+def test_hall_is_refused_for_a_title_whose_hall_word_is_not_documented(capsys):
+    with pytest.raises(SystemExit):
+        da.main(["--title", "ssb", "--save", ".", "--hall", "--steps", "load"])
+    assert "--hall" in capsys.readouterr().err
+
+
+def test_hall_refuses_a_save_too_short_to_hold_the_word(tmp_path):
+    (tmp_path / "SAVGAMA.DAT").write_bytes(bytes(0x100))
+    with pytest.raises(ValueError, match="too short"):
+        da.stage_hall(tmp_path, "A")
+    assert (tmp_path / "SAVGAMA.DAT").stat().st_size == 0x100
+
+
+def _staged_run(monkeypatch, tmp_path, **extra):
+    log = _fake_run(monkeypatch, tmp_path)
+    saves = tmp_path / "saves"
+    saves.mkdir()
+    (saves / "SAVGAMA.DAT").write_bytes(bytes(0xE00))
+    (saves / "CHRDATA1.SAV").write_bytes(b"x")
+    args = _run_args(tmp_path, ["load"])
+    args.save = str(saves)
+    for k, v in extra.items():
+        setattr(args, k, v)
+    return log, args
+
+
+@pytest.mark.parametrize("extra", [{"xp": ["3=100"]}, {"add_node": ["3=1:2:3:4"]}])
+def test_a_line_with_no_record_is_refused_before_a_slot_is_claimed(
+        monkeypatch, tmp_path, extra):
+    log, args = _staged_run(monkeypatch, tmp_path, **extra)
+    with pytest.raises(ValueError, match="CHRDATA3.SAV"):
+        da.run(args)
+    assert "claim" not in log
+
+
+def test_a_short_save_is_refused_for_hall_before_a_slot_is_claimed(monkeypatch, tmp_path):
+    log, args = _staged_run(monkeypatch, tmp_path, hall=True)
+    (tmp_path / "saves" / "SAVGAMA.DAT").write_bytes(bytes(0x100))
+    with pytest.raises(ValueError, match="too short"):
+        da.run(args)
+    assert "claim" not in log
+
+
+@pytest.mark.parametrize("key", ["e", "E", "Escape", "escape"])
+def test_press_refuses_exit_to_dos_and_escape(key):
+    with pytest.raises(ValueError):
+        da.parse_step(f"press {key}")
+
+
+def test_the_log_is_closed_when_the_save_has_no_such_slot(monkeypatch, tmp_path):
+    _fake_run(monkeypatch, tmp_path)
+    opened = []
+    real = pathlib.Path.open
+
+    def spy(self, *a, **k):
+        h = real(self, *a, **k)
+        opened.append(h)
+        return h
+
+    monkeypatch.setattr(pathlib.Path, "open", spy)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    args = _run_args(tmp_path, ["load"])
+    args.save = str(empty)
+    with pytest.raises(FileNotFoundError):
+        da.run(args)
+    assert opened and all(h.closed for h in opened)
+
+
+def test_begin_presses_b_once_so_a_slow_boot_cannot_press_it_on_the_map(tmp_path):
+    game, d = _curse_loaded(tmp_path)
+    seen = []
+    real = d.press_screen_changes
+    d.press_screen_changes = lambda key, **kw: (seen.append((key, kw)), real(key, **kw))[1]
+    d.begin()
+    assert seen == [(da.PARTY_BEGIN, {"tries": 1, "wait": 30.0})]

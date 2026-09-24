@@ -225,6 +225,8 @@ C64_BASES = {
 #: (`tools/curse_of_the_azure_bonds/curseregain.py`, `EVERY_CLASS`).
 HALL_WORD = 0xD51
 HALL_OPEN = 0x00FF
+#: The titles whose training hall word is documented at `HALL_WORD`.
+HALL_TITLES = frozenset({"pool", "curse"})
 
 #: The effect files of the three titles (`dos_codec.read_character`).
 EFFECT_SUFFIXES = (".SPC", ".FX", ".SFX")
@@ -297,6 +299,9 @@ def parse_step(text: str) -> Step:
     if kind == "shot" and len(words) == 2 and re.fullmatch(r"[\w-]+", words[1]):
         return Step(kind, text, name=words[1])
     if kind == "press" and len(words) == 2 and re.fullmatch(r"\w+", words[1]):
+        if words[1].lower() in ("e", "escape"):
+            raise ValueError(f"press {words[1]} is refused: E is exit to DOS at "
+                             "Curse's party menu and Escape backs out of a prompt")
         return Step(kind, text, key=words[1])
     raise ValueError(f"not a step: {text!r} ({STEP_HELP})")
 
@@ -589,6 +594,10 @@ def stage_hall(save_dir: pathlib.Path, letter: str) -> dict:
     """Open every school: the word at `SAVGAM+0xD51` becomes `0x00FF`."""
     path = save_dir / f"SAVGAM{letter.upper()}.DAT"
     data = bytearray(path.read_bytes())
+    if len(data) < HALL_WORD + 2:
+        # A slice assignment past the end of a bytearray appends.
+        raise ValueError(f"{path.name} is {len(data)} bytes, too short for the "
+                         f"hall word at {HALL_WORD:#x}")
     before = bytes(data[HALL_WORD:HALL_WORD + 2])
     data[HALL_WORD:HALL_WORD + 2] = HALL_OPEN.to_bytes(2, "little")
     path.write_bytes(bytes(data))
@@ -977,7 +986,7 @@ class Driver:
         if self.title.key == "ssb":
             self.ssb.menu(ssbimport.MENU_AFTER["begin"], "begin")
             self.ssb.intro()
-        elif not self.press_screen_changes(PARTY_BEGIN):
+        elif not self.press_screen_changes(PARTY_BEGIN, tries=1, wait=30.0):
             raise self.fail("begin", "BEGIN ADVENTURING did not leave the party menu")
         screen = self.s.settle(quiet=1.0, timeout=60.0)
         if self.on_party_menu(screen):
@@ -1166,12 +1175,18 @@ class Driver:
 
 
 def run(args) -> int:
+    """`_run`, with the evidence log closed on every way out, including an early raise."""
+    with contextlib.ExitStack() as outer:
+        return _run(args, outer)
+
+
+def _run(args, outer: contextlib.ExitStack) -> int:
     git = git_state()
     title = TITLES[args.title]
     out = pathlib.Path(args.out) if args.out else default_out(args.issue, args.run,
                                                               git["sha"])
     scratch.ensure(out)
-    log = (out / "run.jsonl").open("a")
+    log = outer.enter_context((out / "run.jsonl").open("a"))
 
     def note(**kw):
         kw["t"] = round(time.time(), 2)
@@ -1209,14 +1224,14 @@ def run(args) -> int:
     from_slot = (source_slot(save, getattr(args, "from_slot", None))
                  if save is not None else None)
     if title.same_letter and from_slot not in (None, letter):
-        log.close()
         raise ValueError(f"{args.title} loads a slot only under the letter it was "
                          f"written as: pass --slot {from_slot}")
+    if save is not None:
+        check_staging(args, save, from_slot)
     saved: list[str] = []
     with contextlib.ExitStack() as stack:
-        # Registered first so it runs last, and every callback runs even when an
-        # earlier one raises: a failed close must not leave a slot leased.
-        stack.callback(log.close)
+        # Every callback runs even when an earlier one raises: a failed close
+        # must not leave a slot leased.
         game = dosbox.find_game(title.stem)
         slot = dosbox.claim(args.note)
         stack.callback(slot.release)
@@ -1299,6 +1314,30 @@ def run(args) -> int:
             summary["lost"] = why
             note(event="lost", why=why)
     return 0 if summary["completed"] else 1
+
+
+def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
+    """Refuse a stage the installed save cannot take, before a slot is claimed.
+
+    `--hall` is a Pool and Curse field (`docs/194-the-dos-training-ladder.md`);
+    another title's `SAVGAM` is not known to hold the hall word at that
+    offset.  `--xp` and `--add-node` need the line's own `CHRDAT` file.
+    """
+    if getattr(args, "hall", False) and args.title not in HALL_TITLES:
+        raise ValueError(f"--hall is measured for {', '.join(sorted(HALL_TITLES))} "
+                         f"only, not {args.title}")
+    if getattr(args, "hall", False):
+        word = save / f"SAVGAM{from_slot}.DAT"
+        if word.is_file() and word.stat().st_size < HALL_WORD + 2:
+            raise ValueError(f"{word.name} is {word.stat().st_size} bytes, too "
+                             f"short for the hall word at {HALL_WORD:#x}")
+    names = {p.name.upper() for p in save.iterdir()}
+    lines = ([parse_xp(t)[0] for t in getattr(args, "xp", []) or []]
+             + [parse_node(t)[0] for t in getattr(args, "add_node", []) or []])
+    for line in lines:
+        want = f"CHRDAT{from_slot}{line}.SAV"
+        if want not in names:
+            raise ValueError(f"line {line} has no {want} in {save}")
 
 
 def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
@@ -1421,6 +1460,9 @@ def main(argv: list[str] | None = None) -> int:
         for n in args.add_node:
             parse_node(n)
         validate_steps([parse_step(s) for s in args.steps], args.title)
+        if args.hall and args.title not in HALL_TITLES:
+            raise ValueError(f"--hall is measured for {', '.join(sorted(HALL_TITLES))} "
+                             f"only, not {args.title}")
     except ValueError as e:
         ap.error(str(e))
     if not re.fullmatch(r"[A-Ja-j]", args.slot):
