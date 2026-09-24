@@ -533,6 +533,10 @@ class Report:
     #: every record, reported so the accounting is complete and kept off
     #: `dropped` so no caller counts them as a loss.
     derived: list[str] = dataclasses.field(default_factory=list)
+    #: Items the player chose to leave behind because the destination holds
+    #: fewer.  Kept off `losses` and `dropped`: a choice is not a loss the
+    #: platform forced, and a save with a loss is refused by Save As.
+    left_behind: list[str] = dataclasses.field(default_factory=list)
 
     def lost(self, line: str) -> None:
         """Record a value the conversion narrowed, on `losses` and `warnings`.

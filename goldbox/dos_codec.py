@@ -57,7 +57,7 @@ import pathlib
 import shutil
 import struct
 import tempfile
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Collection, Iterable, Mapping, NamedTuple, Sequence
 
 from . import (
     areas,
@@ -597,24 +597,196 @@ def c64_slots_needed(char: "DosCharacter | NeutralCharacter") -> int:
                for it in char.items)
 
 
+def pack_of(char: "DosCharacter | NeutralCharacter"
+            ) -> tuple[list[bytes], tuple[ScrollBundle, ...]]:
+    """The neutral `inventory` and `scroll_bundles` of a character's pack.
+
+    For a `DosCharacter` a joined scroll becomes its scrolls in its own place
+    (:func:`unbundled_inventory`); for a `NeutralCharacter` they are the two
+    fields as they stand.
+    """
+    if isinstance(char, NeutralCharacter):
+        return (list(char.get("inventory") or ()),
+                tuple(char.get("scroll_bundles") or ()))
+    return unbundled_inventory(
+        (it.to_bytes(),
+         [s.to_bytes() for s in it.subnodes]
+         if is_joined_scroll(it.to_bytes()) else None)
+        for it in char.items)
+
+
+class PackUnit(NamedTuple):
+    """One thing a pack holds that the player can leave behind."""
+
+    #: Index in the party list the writer was handed.
+    member: int
+    #: `"item"`, `"joined"` (a whole joined scroll) or `"scroll"` (one scroll
+    #: inside a joined scroll).
+    kind: str
+    #: Into that member's neutral inventory; for `"joined"`, its whole run.
+    indices: tuple[int, ...]
+    #: Index into the member's `scroll_bundles`, for `"joined"` and `"scroll"`.
+    bundle: int | None
+
+
+class PackOverflow(NamedTuple):
+    """One member whose pack does not fit the destination.
+
+    `units` and `items` describe the pack **as it was handed in**, so an index
+    in either is the index `leave` takes; `needed` is after any choice the
+    caller already made.
+    """
+
+    port: str
+    #: `"character"` for the C64, `"party"` for a limit shared by the party.
+    scope: str
+    #: `(i,)` for a character's overflow.
+    members: tuple[int, ...]
+    names: tuple[str, ...]
+    limit: int
+    needed: int
+    #: Each member's neutral inventory, sixteen bytes an item.
+    items: tuple[tuple[bytes, ...], ...]
+    #: Every unit in pack order: each item, and for a joined scroll the
+    #: `"joined"` unit and then one `"scroll"` unit per scroll.
+    units: tuple[PackUnit, ...]
+
+    @property
+    def over(self) -> int:
+        return self.needed - self.limit
+
+
+def leave_behind(inventory: Sequence[bytes],
+                 bundles: Sequence[ScrollBundle],
+                 indices: Collection[int]
+                 ) -> tuple[list[bytes], tuple[ScrollBundle, ...]]:
+    """`inventory` and `bundles` without the items at `indices`.
+
+    A joined scroll that loses any of its scrolls goes from `bundles` and the
+    scrolls it still holds become items of their own, the rule
+    `goldbox.rewrite._regroup` applies when a scroll is deleted on the sheet.
+    The `first` of every bundle that stays moves down by the items removed
+    before it.  An index outside the inventory raises `DosRecordError`.
+    """
+    gone = set(indices)
+    for n in gone:
+        if not 0 <= n < len(inventory):
+            raise DosRecordError(
+                f"cannot leave inventory item {n} behind: the pack holds "
+                f"{len(inventory)}")
+    kept = []
+    for b in bundles:
+        if any(n in gone for n in range(b.first, b.first + b.count)):
+            continue
+        kept.append(b._replace(
+            first=b.first - sum(1 for n in gone if n < b.first)))
+    return ([it for n, it in enumerate(inventory) if n not in gone],
+            tuple(kept))
+
+
+def _pack_units(member: int, inventory: Sequence[bytes],
+                bundles: Sequence[ScrollBundle]) -> list[PackUnit]:
+    at = {b.first: k for k, b in enumerate(bundles)}
+    units: list[PackUnit] = []
+    n = 0
+    while n < len(inventory):
+        k = at.get(n)
+        if k is None:
+            units.append(PackUnit(member, "item", (n,), None))
+            n += 1
+            continue
+        run = tuple(range(n, n + bundles[k].count))
+        units.append(PackUnit(member, "joined", run, k))
+        units.extend(PackUnit(member, "scroll", (i,), k) for i in run)
+        n += max(len(run), 1)
+    return units
+
+
+def _member_name(char: "DosCharacter | NeutralCharacter") -> str:
+    return (str(char.get("name", "")) if isinstance(char, NeutralCharacter)
+            else char.name)
+
+
+def pack_overflow(party: "Sequence[DosCharacter] | Sequence[NeutralCharacter]",
+                  port: str = "c64",
+                  leave: "Mapping[int, Collection[int]] | None" = None,
+                  ) -> tuple[PackOverflow, ...]:
+    """Each member whose pack still needs more slots than the destination has
+    after `leave`, and who held a joined scroll before it.
+
+    Pure: nothing is written.  The second condition is the trigger the writer
+    has always had; without a joined scroll a DOS pack never exceeds sixteen
+    (#399).  `leave` maps a member's index to the inventory indices left
+    behind.  Only `port="c64"` is built; any other raises `ValueError`.
+    """
+    if port != "c64":
+        raise ValueError(f"no pack limit is built for port {port!r}")
+    leave = leave or {}
+    for member in leave:
+        if not 0 <= member < len(party):
+            raise DosRecordError(
+                f"cannot leave items behind for member {member}: the party "
+                f"has {len(party)}")
+    out: list[PackOverflow] = []
+    for index, char in enumerate(party):
+        inventory, bundles = pack_of(char)
+        if not bundles:
+            continue
+        after, _kept = leave_behind(inventory, bundles, leave.get(index, ()))
+        if len(after) <= c64_codec.ITEM_SLOTS:
+            continue
+        out.append(PackOverflow(
+            port, "character", (index,), (_member_name(char),),
+            c64_codec.ITEM_SLOTS, len(after), (tuple(inventory),),
+            tuple(_pack_units(index, inventory, bundles))))
+    return tuple(out)
+
+
 class JoinedScrollsDoNotFit(DosRecordError):
-    """A character whose joined scrolls, one C64 slot a scroll, need more
-    slots than the C64 record's sixteen.
+    """Members whose joined scrolls, one C64 slot a scroll, need more slots
+    than the C64 record's sixteen.
 
     The limit is the C64's own: sixteen slots and no joined scroll, where
     DOS Silver Blades allows sixteen head items holding up to ten scrolls
     each (`docs/173-carrying-limits.md`, `SECRET GAME.OVR` `0x293C7`).  The
-    player has to choose which items stay behind, and until that choice can
-    be asked for this stops the write rather than dropping any of them.
+    player chooses which items stay behind; `overflow` names every member
+    who still does not fit, so one question can ask about all of them, and
+    `name`, `needed` and `slots` are the first member's.
     """
 
-    def __init__(self, name: str, needed: int, slots: int) -> None:
-        self.name = name
-        self.needed = needed
-        self.slots = slots
-        super().__init__(
-            f"{name} carries joined scrolls that need {needed} C64 item "
-            f"slots, one a scroll, and the record has {slots} (#432)")
+    def __init__(self, overflow: tuple[PackOverflow, ...]) -> None:
+        first = overflow[0]
+        self.overflow = overflow
+        self.name = first.names[0]
+        self.needed = first.needed
+        self.slots = first.limit
+        super().__init__("; ".join(
+            f"{o.names[0]} carries joined scrolls that need {o.needed} C64 "
+            f"item slots, one a scroll, and the record has {o.limit}"
+            for o in overflow) + " (#432)")
+
+
+def _without_left_behind(char: NeutralCharacter,
+                         indices: Collection[int]) -> NeutralCharacter:
+    """A copy of `char` with the inventory items at `indices` removed."""
+    inventory, bundles = leave_behind(
+        char.get("inventory") or (), char.get("scroll_bundles") or (),
+        indices)
+    out = NeutralCharacter(char.port, source=char.source, game=char.game)
+    out.fields = dict(char.fields)
+    out.dropped = list(char.dropped)
+    out.warnings = list(char.warnings)
+    field = char.fields["inventory"]
+    out.set("inventory", inventory,
+            field.origin + ", less the items the player left behind",
+            field.confidence, Provenance.RESHAPED)
+    if bundles:
+        field = char.fields["scroll_bundles"]
+        out.set("scroll_bundles", bundles, field.origin, field.confidence,
+                field.how)
+    else:
+        out.fields.pop("scroll_bundles", None)
+    return out
 
 
 #: Effect ids that are innate rather than temporary, and so belong in the
@@ -2550,11 +2722,7 @@ def to_neutral(dos: DosCharacter,
                 Confidence.CONFIRMED)
 
     # -- the .ITM file, projected -------------------------------------------
-    inventory, bundles = unbundled_inventory(
-        (it.to_bytes(),
-         [s.to_bytes() for s in it.subnodes]
-         if is_joined_scroll(it.to_bytes()) else None)
-        for it in dos.items)
+    inventory, bundles = pack_of(dos)
     out.set("inventory", inventory,
             "the .ITM file, each 63-byte record projected onto sixteen bytes"
             + ("; a joined scroll as the scrolls chained after it"
@@ -2703,6 +2871,7 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
                   payload: bytearray | None = None,
                   party_slot: int | None = None,
                   clock_minutes: int | None = None,
+                  leave: Collection[int] = (),
                   ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
@@ -2718,6 +2887,9 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     `goldbox.c64_codec.write`, which is what a paladin's cure-disease and
     lay-on-hands rows need; see that function's own docstring.
 
+    `leave` is the neutral inventory indices the player chose to leave
+    behind, applied by :func:`leave_behind` before the C64 record is built.
+
     The report names no character: it is one character's provenance, and which
     character that is belongs to the caller, which is the only thing that
     knows the slot and the marching position.  `convert_save` prefixes each of
@@ -2728,6 +2900,8 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     :func:`c64_name`.
     """
     out = to_neutral(dos, portraits=portraits)
+    if leave:
+        out = _without_left_behind(out, leave)
     return neutral_to_c64_record(out, icon=icon, payload=payload,
                                  party_slot=party_slot,
                                  clock_minutes=clock_minutes)
@@ -6500,7 +6674,9 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                    animate: bytes | None = None,
                    portraits: PortraitTables | None = None,
                    neutral_icons: "Sequence[DosIcon | None] | None" = None,
-                   game=None) -> C64SaveReport:
+                   game=None,
+                   leave: "Mapping[int, Collection[int]] | None" = None,
+                   ) -> C64SaveReport:
     """Write a DOS party into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
     The engine `convert_save` and `new_save_from` share.  `state` is the
@@ -6545,23 +6721,30 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     The report covers both files: an offset below `len(save0)` is a
     `SAVEDGAME0` offset and one at or above it is `SAVEDGAME1`'s (#120).
     `Report.unwritten` is empty when nothing was left to the payload.
+
+    `leave` maps a party member's index to the neutral inventory indices the
+    player chose to leave behind, for a member whose joined scrolls do not fit
+    the C64's sixteen slots (:func:`pack_overflow`).  Each is reported on
+    `Report.left_behind`, not on `losses`.
     """
     # A joined scroll takes a C64 slot for every scroll it holds (#432).  DOS
     # allows sixteen heads of up to ten scrolls each, the C64 has sixteen
     # slots, and the Amiga's limit is a probable 120 scrolls
-    # (`amiga_savegame.new_savegame` refuses over it).  Which items stay
-    # behind is the player's to choose and nothing asks yet, so this raises
-    # `JoinedScrollsDoNotFit`: a stop, not a completed conversion, until a
-    # chooser exists.
-    for char in party:
-        joins = (char.get("scroll_bundles")
-                 if isinstance(char, NeutralCharacter) else
-                 [it for it in char.items if is_joined_scroll(it.to_bytes())])
-        needed = c64_slots_needed(char)
-        if joins and needed > c64_codec.ITEM_SLOTS:
-            raise JoinedScrollsDoNotFit(
-                str(char.get("name", "")) if isinstance(char, NeutralCharacter)
-                else char.name, needed, c64_codec.ITEM_SLOTS)
+    # (`amiga_savegame.new_savegame` refuses over it).  The player chooses
+    # what stays behind and `leave` carries it; a pack still over the limit
+    # after that raises `JoinedScrollsDoNotFit` naming every such member, so
+    # nothing is dropped that the player did not choose.
+    leave = {m: frozenset(v) for m, v in (leave or {}).items() if v}
+    before = pack_overflow(party)
+    forced = {m for o in before for m in o.members}
+    for member in leave:
+        if member not in forced:
+            raise DosRecordError(
+                f"member {member} fits the C64's {c64_codec.ITEM_SLOTS} item "
+                f"slots, so nothing may be left behind for him")
+    after = pack_overflow(party, leave=leave)
+    if after:
+        raise JoinedScrollsDoNotFit(after)
 
     container = c64_save.container_for(game)
     save1_at = len(save0)
@@ -6627,12 +6810,14 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     all_faced = True
     for index, char in enumerate(party):
         place = marching_slot(index, len(party))
+        left = leave.get(index, ())
         if isinstance(char, NeutralCharacter):
             source_icon = (neutral_icons[index]
                            if neutral_icons is not None else None)
             size = "large" if char.get("size_small") else "small"
             rec, one = neutral_to_c64_record(
-                char, icon=_neutral_icon_for(
+                _without_left_behind(char, left) if left else char,
+                icon=_neutral_icon_for(
                     char, source_icon, icon, icon_tables.get(size)),
                 payload=save0, party_slot=place, clock_minutes=clock_mins)
             name = str(char.get("name", ""))
@@ -6642,7 +6827,8 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                 icon=_icon_for(char, icon,
                                icon_tables.get(dos_size(char.get("size")))),
                 portraits=portraits,
-                payload=save0, party_slot=place, clock_minutes=clock_mins)
+                payload=save0, party_slot=place, clock_minutes=clock_mins,
+                leave=left)
             name = char.name
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
@@ -6651,6 +6837,20 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         rec.set("party_order", place)
         raw = rec.to_bytes()
         who = f"slot {place}: {name}, {index + 1} in the source marching order"
+        if left:
+            held = pack_of(char)[0]
+            needed = next(o.needed for o in before if o.members == (index,))
+            for n in sorted(left):
+                block = held[n]
+                spells = (f", spells {block[13]} {block[14]} {block[15]}"
+                          if block[0] in SCROLL_TYPES else "")
+                report.left_behind.append(
+                    f"{who} -- inventory item {n}, type {block[0]}{spells}, "
+                    f"left behind by the player's choice: the C64 record "
+                    f"holds {c64_codec.ITEM_SLOTS} item slots and the pack "
+                    f"needed {needed}")
+                _log.info("Left behind by the player's choice: %s",
+                          report.left_behind[-1])
         at = container.slot(place)
         save0[at:at + SLOT_STRIDE] = raw[:SLOT_STRIDE]
         report.note(at, SLOT_STRIDE, f"{who} -- the converted record")
@@ -6922,7 +7122,9 @@ def new_save_from(state: "world_state.WorldState",
                   party: "list[DosCharacter]",
                   icon: "bytes | IconParts",
                   animate: bytes, portraits: PortraitTables | None = None,
-                  game=None) -> tuple[bytearray, bytearray, C64SaveReport]:
+                  game=None, *,
+                  leave: "Mapping[int, Collection[int]] | None" = None,
+                  ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a place and a party, owing nothing to another
     save (#118).  The engine `new_save` and #353's Amiga reader share; see
     :func:`write_c64_save` for `icon`, `animate` and `portraits`.
@@ -6935,7 +7137,7 @@ def new_save_from(state: "world_state.WorldState",
              else bytearray(container.game.roster_size))
     report = write_c64_save(save0, save1 or None, state, party,
                             icon=icon, animate=animate, portraits=portraits,
-                            game=container)
+                            game=container, leave=leave)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -6947,7 +7149,8 @@ def new_save_from(state: "world_state.WorldState",
 def new_save_from_neutral(
         state: "world_state.WorldState", party: "list[NeutralCharacter]",
         party_icons: "Sequence[DosIcon | None]", icon: "bytes | IconParts",
-        animate: bytes, game=None,
+        animate: bytes, game=None, *,
+        leave: "Mapping[int, Collection[int]] | None" = None,
         ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a neutral party and its source combat icons."""
     if len(party_icons) != len(party):
@@ -6960,7 +7163,7 @@ def new_save_from_neutral(
              else bytearray(container.game.roster_size))
     report = write_c64_save(
         save0, save1 or None, state, party, icon=icon, animate=animate,
-        neutral_icons=party_icons, game=container)
+        neutral_icons=party_icons, game=container, leave=leave)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -6972,7 +7175,9 @@ def new_save_from_neutral(
 def new_save(folder: str | pathlib.Path, slot: str,
              icon: "bytes | IconParts",
              animate: bytes, portraits: PortraitTables | None = None,
-             game=None) -> tuple[bytearray, bytearray, C64SaveReport]:
+             game=None, *,
+             leave: "Mapping[int, Collection[int]] | None" = None,
+             ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a DOS one, owing nothing to another save (#118).
 
     `icon` is either the 36-byte combat icon every character gets, or the
@@ -7003,7 +7208,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
     state = world_state.from_dos(savgam_path.read_bytes(), shape,
                                   source=str(savgam_path))
     return new_save_from(state, party, icon, animate, portraits=portraits,
-                         game=container)
+                         game=container, leave=leave)
 
 
 def save_disk(save0: bytes, save1: bytes, game=None):

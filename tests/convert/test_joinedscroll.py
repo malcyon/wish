@@ -487,3 +487,167 @@ def test_a_party_the_amiga_loader_would_cut_short_is_not_written(tmp_path):
     state, party = _with_joined_scrolls(_shipped_party(), tmp_path, 13, 10)
     with pytest.raises(amiga_savegame.AmigaSaveError, match="130 scrolls"):
         amiga_savegame.new_savegame(state, party, "A")
+
+
+# --- the player chooses what stays behind (#432) -----------------------------
+A_SLOT = bytes.fromhex("27000000000000000100002c01010203")
+B_SLOT = bytes.fromhex("27000000000000000100006400040000")
+C_SLOT = bytes.fromhex("28000000000000000100 00c8008506 00".replace(" ", ""))
+
+
+def _plain(n: int) -> bytes:
+    return dos_codec.item_to_c64(bytes(_item(10 + n, weight=10)))
+
+
+def _party_file(plain: int, *scrolls: bytearray) -> bytes:
+    return (b"".join(bytes(_item(10 + n, weight=10)) for n in range(plain))
+            + _joined(*scrolls))
+
+
+def _named(tmp_path, name: str, plain: int, *scrolls: bytearray):
+    """A neutral character holding `plain` items and one joined scroll."""
+    char = dos_codec.to_neutral(
+        _read(tmp_path, _party_file(plain, *scrolls), plain + 1))
+    char.set("name", name, "made up")
+    return char
+
+
+def _write_save(party, leave=None):
+    from goldbox import c64_save, world_state
+    from goldbox import dos_savegame as sg
+    shape = sg.SAVE_SECRET_OF_THE_SILVER_BLADES
+    savgam = bytearray(shape.size)
+    sg.put_word(savgam, sg.INDOORS, 1, shape)
+    sg.put_position(savgam, 7, 13, 0, shape)
+    state = world_state.from_dos(bytes(savgam), shape)
+    cont = c64_save.container_for(GAME)
+    save0 = bytearray(cont.payload_size)
+    report = dos_codec.write_c64_save(save0, None, state, party, game=GAME,
+                                      leave=leave)
+    return save0, cont, report
+
+
+def _slots_by_name(save0, cont, name: str) -> list[bytes]:
+    for place in range(8):
+        at = cont.slot(place)
+        if bytes(save0[at:at + len(name)]) == name.encode():
+            at = cont.items(place)
+            return [bytes(save0[at + n * 16:at + n * 16 + 16])
+                    for n in range(16)]
+    raise AssertionError(f"no slot holds {name}")
+
+
+def _over_by_one(tmp_path):
+    return _read(tmp_path, _party_file(15, SCROLL_A, SCROLL_B), 16)
+
+
+def test_pack_overflow_lists_every_unit_of_the_member_who_does_not_fit(
+        tmp_path):
+    (over,) = dos_codec.pack_overflow([_over_by_one(tmp_path)])
+    assert (over.members, over.needed, over.limit, over.over) == \
+        ((0,), 17, 16, 1)
+    assert [(u.kind, u.indices) for u in over.units] == \
+        [("item", (n,)) for n in range(15)] + [
+            ("joined", (15, 16)), ("scroll", (15,)), ("scroll", (16,))]
+    assert over.units[-1].bundle == 0 and over.units[0].bundle is None
+    assert len(over.items[0]) == 17
+
+
+def test_pack_overflow_ignores_a_pack_without_a_joined_scroll_and_one_that_fits(
+        tmp_path):
+    assert dos_codec.pack_overflow(
+        [_read(tmp_path, _crowded(14, 2), 15)]) == ()
+    assert dos_codec.pack_overflow([_read(tmp_path, _pack_file(), 3)]) == ()
+
+
+def test_pack_overflow_takes_only_the_c64_now(tmp_path):
+    with pytest.raises(ValueError):
+        dos_codec.pack_overflow([_over_by_one(tmp_path)], port="amiga")
+
+
+def test_leave_behind_dissolves_a_joined_scroll_that_loses_a_scroll():
+    a, b, c, plain = (bytes([n]) * 16 for n in (0x27, 0x28, 0x27, 9))
+    head = bytes((0x49,)) + bytes(15)
+    inventory = [plain, a, b, c, plain, a, b]
+    bundles = (ScrollBundle(1, 3, head), ScrollBundle(5, 2, head))
+    left, kept = dos_codec.leave_behind(inventory, bundles, {2})
+    assert left == [plain, a, c, plain, a, b]
+    assert kept == (ScrollBundle(4, 2, head),)
+    left, kept = dos_codec.leave_behind(inventory, bundles, {0})
+    assert kept == (ScrollBundle(0, 3, head), ScrollBundle(4, 2, head))
+    with pytest.raises(dos_codec.DosRecordError):
+        dos_codec.leave_behind(inventory, bundles, {7})
+
+
+def test_no_choice_raises_and_names_every_member_who_does_not_fit(tmp_path):
+    a = _named(tmp_path, "AAA", 15, SCROLL_A, SCROLL_B)
+    b = _named(tmp_path, "BBB", 14, SCROLL_A, SCROLL_A)
+    c = _named(tmp_path, "CCC", 14, SCROLL_A, SCROLL_B, SCROLL_C, SCROLL_A)
+    with pytest.raises(dos_codec.JoinedScrollsDoNotFit) as caught:
+        _write_save([a, b, c])
+    exc = caught.value
+    assert [o.members for o in exc.overflow] == [(0,), (2,)]
+    assert [o.needed for o in exc.overflow] == [17, 18]
+    assert (exc.name, exc.needed, exc.slots) == ("AAA", 17, 16)
+    with pytest.raises(dos_codec.JoinedScrollsDoNotFit) as caught:
+        _write_save([a, b, c], leave={0: {3}})
+    assert [o.members for o in caught.value.overflow] == [(2,)]
+
+
+@pytest.mark.parametrize("neutral", [False, True])
+def test_leaving_one_item_writes_the_other_sixteen_slots(tmp_path, neutral):
+    char = _over_by_one(tmp_path)
+    party = [dos_codec.to_neutral(char)] if neutral else [char]
+    save0, cont, report = _write_save(party, leave={0: {3}})
+    name = "ROUNDTRIP"
+    assert _slots_by_name(save0, cont, name) == \
+        [_plain(n) for n in range(15) if n != 3] + [A_SLOT, B_SLOT]
+    assert len(report.left_behind) == 1
+    assert "inventory item 3" in report.left_behind[0]
+
+
+@pytest.mark.parametrize("neutral", [False, True])
+def test_leaving_one_scroll_of_the_pair_leaves_the_other_a_plain_scroll(
+        tmp_path, neutral):
+    char = _over_by_one(tmp_path)
+    party = [dos_codec.to_neutral(char)] if neutral else [char]
+    save0, cont, report = _write_save(party, leave={0: {15}})
+    assert _slots_by_name(save0, cont, "ROUNDTRIP") == \
+        [_plain(n) for n in range(15)] + [B_SLOT]
+    assert report.left_behind[0].count("spells 1 2 3") == 1
+
+
+def test_leaving_the_whole_pair_leaves_the_sixteenth_slot_empty(tmp_path):
+    save0, cont, report = _write_save([_over_by_one(tmp_path)],
+                                      leave={0: {15, 16}})
+    assert _slots_by_name(save0, cont, "ROUNDTRIP") == \
+        [_plain(n) for n in range(15)] + [bytes(16)]
+    assert len(report.left_behind) == 2
+
+
+def test_two_members_overflowing_are_each_cut_and_the_third_is_untouched(
+        tmp_path):
+    a = _named(tmp_path, "AAA", 15, SCROLL_A, SCROLL_B)
+    b = _named(tmp_path, "BBB", 14, SCROLL_A, SCROLL_A)
+    c = _named(tmp_path, "CCC", 14, SCROLL_A, SCROLL_B, SCROLL_C, SCROLL_A)
+    save0, cont, report = _write_save([a, b, c],
+                                      leave={0: {3}, 2: {14, 15}})
+    assert _slots_by_name(save0, cont, "AAA") == \
+        [_plain(n) for n in range(15) if n != 3] + [A_SLOT, B_SLOT]
+    assert _slots_by_name(save0, cont, "BBB") == \
+        [_plain(n) for n in range(14)] + [A_SLOT, A_SLOT]
+    assert _slots_by_name(save0, cont, "CCC") == \
+        [_plain(n) for n in range(14)] + [C_SLOT, A_SLOT]
+    assert len(report.left_behind) == 3
+    assert not any("inventory" in line
+                   for line in report.losses + report.dropped)
+    assert not any("left behind" in w for w in report.warnings)
+
+
+def test_a_choice_for_a_member_who_fits_or_out_of_range_is_refused(tmp_path):
+    a = _named(tmp_path, "AAA", 15, SCROLL_A, SCROLL_B)
+    b = _named(tmp_path, "BBB", 14, SCROLL_A, SCROLL_A)
+    with pytest.raises(dos_codec.DosRecordError, match="fits"):
+        _write_save([a, b], leave={1: {0}, 0: {3}})
+    with pytest.raises(dos_codec.DosRecordError):
+        _write_save([a, b], leave={0: {17}})
