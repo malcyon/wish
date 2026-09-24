@@ -470,12 +470,15 @@ def _value_row(title_key: str, node: RunningEffect,
             level = enlarge_level(*later_node_score(data))
             if level is not None:
                 return node.id, MAGNITUDE_RESTORE_FLAG | level
-            if data == 0x7B:
+            if data == 0x7B and title_key == "secret-of-the-silver-blades":
                 return Unconverted("Enlarge at caster level 12 or more sets "
                                    "strength 23, above the C64's 22")
             return Unconverted("an Enlarge score no DOS engine writes")
         if flag != 0:
             return Unconverted("a Mirror Image node no DOS engine writes")
+        if data >> 4 > 4:
+            return Unconverted("a Mirror Image count above 4, which "
+                               "waits on the C64 combat-writer read")
         return node.id, mirror_image_count(data, later=True)
     return Unconverted("no rule yet for this id in this title")
 

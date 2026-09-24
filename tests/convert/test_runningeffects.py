@@ -1128,6 +1128,15 @@ def test_a_running_and_a_granted_pool_strength_node_write_no_row():
     assert len(_lines(rep)) == 1 and "effect 38" in _lines(rep)[0]
 
 
+def test_two_pool_strength_rows_of_one_owner_read_back_as_two_lines():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 12, 2, 0x0A, 0xE2)
+    effects.write_effect(p, 62, 38, 2, 0x0A, 0xF3)
+    got = _read(p, 2)
+    assert got.get("running_effects") is None
+    assert len(_lines(got)) == 2
+
+
 def test_a_pool_strength_row_reads_back_and_a_bad_node_is_one_line():
     p = bytearray(0x1C00)
     effects.write_effect(p, 63, 38, 2, 0x0A, 0xF3)

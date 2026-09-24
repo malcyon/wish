@@ -2322,6 +2322,12 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 minutes = effects.remaining_minutes(row.duration, clock)
                 running.append(effects.RunningEffect(
                     cure_id, minutes, 0, 1).to_record())
+        # C64 Pool restores one old strength per character, so a second
+        # strength row cannot come back as one node.
+        strength_rows = sum(
+            1 for r in rows if r.owner == party_slot and r.duration != 0
+            and r.id in effects.STRENGTH_IDS
+            and title_key == "pool-of-radiance")
         # Highest slot first, the order the writer allocates in, so a round
         # trip keeps each character's node order.
         for row in sorted(rows, key=lambda r: -r.slot):
@@ -2330,7 +2336,12 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             if row.duration == 0:
                 permanent.append(row.id)
                 continue
-            node = effects.dos_record(title_key or "", row, clock)
+            if strength_rows > 1 and row.id in effects.STRENGTH_IDS:
+                node = effects.Unconverted(
+                    "more than one strength row on one character, and "
+                    "DOS Pool holds one strength score")
+            else:
+                node = effects.dos_record(title_key or "", row, clock)
             if isinstance(node, effects.Unconverted):
                 remaining = effects.remaining_minutes(row.duration, clock)
                 out.drop(f"{running_effect_label(row.id, remaining, game)}: "

@@ -1378,6 +1378,8 @@ def test_c64_row_converts_enlarge_friends_mirror_image_and_strength(
     (_C, _RE(38, 10, 0x65, 1), {}),
     (_S, _RE(12, 10, 0x7B, 0), {}),
     (_C, _RE(12, 10, 0x70, 1), {}),
+    (_C, _RE(28, 10, 0x50, 0), {}),
+    (_S, _RE(28, 10, 0xFF, 0), {}),
 ])
 def test_c64_row_leaves_only_states_no_engine_writes_or_waiting_on_a_run(
         title, node, kwargs):
@@ -1412,7 +1414,7 @@ def test_dos_record_converts_enlarge_friends_mirror_image_and_strength(
 
 @pytest.mark.parametrize("title, eid, m", [
     (_P, 28, 0x83), (_C, 38, 0x85), (_C, 38, 0x38), (_C, 12, 0x80),
-    (_C, 28, 0x05),
+    (_C, 28, 0x05), (_S, 28, 0x0F),
 ])
 def test_dos_record_leaves_only_what_waits_on_a_read_or_a_run(title, eid, m):
     got = effects.dos_record(title, effects.Effect(63, eid, 2, 0x0A, m), 0)
@@ -1474,3 +1476,17 @@ def test_the_two_node_score_helpers_live_in_goldbox_and_the_crosswalk_uses_them(
     assert effectcrosswalk.later_node_data is effects.later_node_data
     assert effects.later_node_score(0x7B) == (23, 0)
     assert effects.later_node_data(23, 0) == 0x7B
+
+
+def test_the_enlarge_23_reason_names_only_silver_blades():
+    node = _RE(12, 10, 0x7B, 1)
+    assert "23" not in effects.c64_row(_C, node).reason
+    assert "23" in effects.c64_row(_S, _RE(12, 10, 0x7B, 0)).reason
+
+
+@pytest.mark.parametrize("title", [_C, _S])
+def test_a_mirror_image_count_above_4_is_refused_in_both_directions(title):
+    assert effects.c64_row(title, _RE(28, 10, 0x4F, 0)) == (28, 4)
+    for count in (5, 15):
+        assert isinstance(effects.c64_row(title, _RE(28, 10, count << 4, 0)),
+                          effects.Unconverted)
