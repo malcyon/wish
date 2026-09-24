@@ -1154,3 +1154,52 @@ def test_save_as_dos_converts_a_pool_strength_row(tmp_path):
     plan = _dos_plan(tmp_path, payload, save1)
     assert isinstance(plan, saveplan.SavePlan)
     assert plan.files["CHRDATA1.SPC"].count(bytes.fromhex("260A007301")) == 1
+
+
+# --- Haste, invisible, the combat spells, id 113 and id 13 ----------------------
+
+# (game, DOS node, the C64 row it becomes for party slot 2)
+_OWN_WRITES = (
+    [(g, "27 0A 00 0C 00", (39, 2, 0x0A, 0x0C)) for g in (_POOL_G, _CURSE_G, _SILVER_G)]
+    + [(g, "27 0A 00 1C 00", (39, 2, 0x0A, 0x1C)) for g in (_POOL_G, _CURSE_G, _SILVER_G)]
+    + [(g, f"{eid:02X} 0A 00 05 00", (eid, 2, 0x0A, 0x05))
+       for g in (_POOL_G, _CURSE_G, _SILVER_G) for eid in (21, 29, 36)]
+    + [(g, "19 0A 00 0C 00", (25, 2, 0x0A, 0x0C))
+       for g in (_CURSE_G, _SILVER_G)]
+    + [(_SILVER_G, "71 0A 00 79 01", (113, 2, 0x0A, 0xBC))]
+)
+_OWN_IDS = [f"{g.key}-{n[:2]}-{n[9:11]}" for g, n, _ in _OWN_WRITES]
+
+
+@pytest.mark.parametrize("game, node, row", _OWN_WRITES, ids=_OWN_IDS)
+def test_haste_invisible_and_the_combat_spells_are_written_as_rows(
+        game, node, row):
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(
+        _title_character(game, bytes.fromhex(node.replace(" ", ""))),
+        payload=payload, party_slot=2, clock_minutes=0)
+    rows = _rows(payload)
+    assert rows.pop(63) == row
+    assert set(rows.values()) == {(0, 0, 0, 0)}
+    assert not [d for d in rep.dropped + rep.losses + rep.warnings
+                if "running_effects" in d]
+
+
+@pytest.mark.parametrize("game, node, row", _OWN_WRITES, ids=_OWN_IDS)
+def test_such_a_row_reads_back_as_the_node_DOS_wrote(game, node, row):
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, row[0], row[1], row[2], row[3])
+    got = _read(p, 2, game=game)
+    want = bytes.fromhex(node.replace(" ", ""))
+    assert [bytes(r) for r in got.get("running_effects")] == [want + NULL]
+    assert not _lines(got)
+
+
+def test_id_13_is_still_refused_with_a_line_and_writes_no_row():
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(
+        _title_character(_SILVER_G, bytes((13, 10, 0, 5, 0))),
+        payload=payload, party_slot=2, clock_minutes=0)
+    assert set(_rows(payload).values()) == {(0, 0, 0, 0)}
+    lines = [d for d in rep.dropped if "effect 13" in d]
+    assert len(lines) == 1 and "no DOS engine writes" in lines[0]

@@ -329,6 +329,43 @@ LATER_CASTER_LEVEL_IDS = {
         {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 57, 63, 69}),
 }
 
+#: The ids whose ordinary cast is a combat spell in every title: Silence 15'
+#: Radius (21), Ray of Enfeeblement (29) and Bestow Curse (36). DOS stores the
+#: caster's level with flag 0 and the C64's generic combat writer stores
+#: `level & $0F` after clearing its override, and nothing but Dispel Magic
+#: reads either. They have no C64 camp row, which is why the camp-row
+#: derivations behind `POOL_CASTER_LEVEL_IDS` and `LATER_CASTER_LEVEL_IDS` do
+#: not list them.
+COMBAT_CASTER_LEVEL_IDS = frozenset({21, 29, 36})
+
+#: Invisible (25) in the later titles. Every C64 row for it writes the caster's
+#: level (camp rows 19, 32, 36 and 55 reach `ECL65 $819C`; combat goes through
+#: the generic writer) and DOS's handler reads no node byte. Pool's list has
+#: it already. Data `0xFF` (Curse id 138, Silver Blades id 108) is a different
+#: node and stays refused.
+LATER_INVISIBLE_ID = 25
+
+#: Haste. Both ports keep the caster's level in the low nibble and the "has
+#: already aged" mark in bit 4, and nothing else: the C64 camp cast writes
+#: `level | $10`, its combat cast `level & $0F`, and DOS writes the level with
+#: flag 0 and sets bit 4 the first time a fight asks for the attacks. The byte
+#: is copied both ways.
+HASTE_ID = 39
+
+#: Id 13: DOS spell 13 (Reduce) removes an id-12 node and writes none, and no
+#: other DOS routine adds a running id-13 node, so `c64_row` never meets one in
+#: a save a game wrote (`docs/226`).
+_REDUCE_ID = 13
+HASTE_MAX_DATA = 0x1F
+
+#: Silver Blades' id 113, the effect of DOS spell 59 and C64 combat spell 59 and
+#: camp row 39: DOS writes `(113, minutes, 0x79, 1)` and the C64 writes
+#: magnitude `$BC` (upper nibble 3, strength 21) in every row it stores.
+GIANT_STRENGTH_ID = 113
+GIANT_STRENGTH_DOS = (0x79, 1)
+GIANT_STRENGTH_C64 = 0xBC
+_BLADES = "secret-of-the-silver-blades"
+
 #: The ids whose value the C64 stores in the magnitude and DOS in the data byte
 #: by a rule of its own: Enlarge (12), Friends (14), Mirror Image (28) and
 #: Strength (38). Each title's rule is in `c64_row` and `dos_record`.
@@ -416,8 +453,11 @@ def party_row_ids(title_key: str) -> frozenset[int]:
 def _caster_level_ids(title_key: str) -> frozenset[int]:
     """The ids a title converts, the same set in both directions."""
     if title_key == "pool-of-radiance":
-        return POOL_CASTER_LEVEL_IDS
-    return LATER_CASTER_LEVEL_IDS.get(title_key, frozenset())
+        return POOL_CASTER_LEVEL_IDS | COMBAT_CASTER_LEVEL_IDS
+    later = LATER_CASTER_LEVEL_IDS.get(title_key)
+    if later is None:
+        return frozenset()
+    return later | COMBAT_CASTER_LEVEL_IDS | {LATER_INVISIBLE_ID}
 
 
 @dataclass(frozen=True)
@@ -483,6 +523,41 @@ def _value_row(title_key: str, node: RunningEffect,
     return Unconverted("no rule yet for this id in this title")
 
 
+def _own_rule_row(title_key: str,
+                  node: RunningEffect) -> tuple[int, int] | Unconverted | None:
+    """`c64_row` for id 13, Haste and Silver Blades' id 113, or `None`."""
+    if node.id == _REDUCE_ID:
+        return Unconverted("no DOS engine writes a running id-13 node")
+    if node.id == HASTE_ID and title_key in PARTY_ROW_IDS:
+        if node.flag != 0:
+            return Unconverted("a flag byte other than 0 on Haste")
+        if not 1 <= node.data <= HASTE_MAX_DATA:
+            return Unconverted("a Haste data byte no DOS engine writes")
+        return node.id, node.data
+    if node.id == GIANT_STRENGTH_ID and title_key == _BLADES:
+        if (node.data, node.flag) != GIANT_STRENGTH_DOS:
+            return Unconverted("an id-113 node other than the one DOS "
+                               "spell 59 writes")
+        return node.id, GIANT_STRENGTH_C64
+    return None
+
+
+def _own_rule_node(title_key: str, effect_id: int,
+                   m: int) -> tuple[int, int] | Unconverted | None:
+    """`dos_record`'s `(data, flag)` for Haste and Silver Blades' id 113, the
+    inverse of `_own_rule_row`, or `None` for another id."""
+    if effect_id == HASTE_ID and title_key in PARTY_ROW_IDS:
+        if not 1 <= m <= HASTE_MAX_DATA:
+            return Unconverted("a Haste magnitude no C64 cast writes")
+        return m, 0
+    if effect_id == GIANT_STRENGTH_ID and title_key == _BLADES:
+        if m != GIANT_STRENGTH_C64:
+            return Unconverted("an id-113 magnitude other than the C64's "
+                               "own, which waits on strength 23")
+        return GIANT_STRENGTH_DOS
+    return None
+
+
 def c64_row(title_key: str, node: RunningEffect, *,
             strength_nodes: int = 1) -> tuple[int, int] | Unconverted:
     """The C64 id and magnitude for a DOS running effect, or why there is none.
@@ -494,6 +569,9 @@ def c64_row(title_key: str, node: RunningEffect, *,
     nodes on this character that set strength. A state refused as one "no DOS
     engine writes" is unreachable in play.
     """
+    own = _own_rule_row(title_key, node)
+    if own is not None:
+        return own
     if node.id not in _caster_level_ids(title_key):
         return _value_row(title_key, node, strength_nodes)
     if node.flag != 0:
@@ -554,8 +632,10 @@ def dos_record(title_key: str, row: "Effect",
         raise ValueError("a never-expiring row has no running-effect node")
     minutes = min(remaining_minutes(row.duration, clock_minutes),
                   DOS_MINUTES_MAX)
-    if row.id not in _caster_level_ids(title_key):
+    made = _own_rule_node(title_key, row.id, row.magnitude)
+    if made is None and row.id not in _caster_level_ids(title_key):
         made = _value_node(title_key, row.id, row.magnitude)
+    if made is not None:
         if isinstance(made, Unconverted):
             return made
         return RunningEffect(row.id, minutes, *made)

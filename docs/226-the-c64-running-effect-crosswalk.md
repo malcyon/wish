@@ -530,7 +530,8 @@ An id is in the table when all four of these hold:
 Pool of Radiance's list has 25 and lacks 63 and 69. In the later titles, id
 25 also has a row with its own handler (Curse row 55 `$84BA`, Silver Blades
 `$851D`) and a DOS spell with its own routine (Silver Blades 116), so it is
-not in the table. Prayer, 49, uses the generic writer on the C64 but is in
+not in the camp-derived table; `effects.LATER_INVISIBLE_ID` adds it, because
+that row's handler only sets a duration and then jumps to the level writer. Prayer, 49, uses the generic writer on the C64 but is in
 both ports' read lists.
 
 **PROBABLE, why the only later-title nodes on this machine hold `0A` and
@@ -673,9 +674,23 @@ nodes, which the destination does hold (a second strength node on one
 character, running or granted, is refused by `strength_nodes`); the later
 titles' Strength at data 101, which may decode as 18/100; Silver Blades'
 Enlarge at 23 (caster level 12 or more), which the C64's level cap of 10 cannot
-reach; Haste (39); id 13; Curse's and Silver Blades' id 25, which has its own
-row and handler; the ids with no C64 spell row; and the two ageing routes the
-camp formula does not describe.
+reach; a Curse or Silver Blades id-25 node of data `0xFF` (ids 138 and 108),
+which needs its own read; a Silver Blades id-113 magnitude other than `$BC`
+(strength 23); the ids with no C64 spell row that still need a read; and the
+two ageing routes the camp formula does not describe.
+
+Haste (39) converts both ways in all three titles by copying the byte for data
+`0x01`-`0x1F` with flag 0: both ports keep the level in the low nibble and the
+already-aged mark in bit 4 and set nothing else. Curse's and
+Silver Blades' id 25 converts by the caster-level rule for data `0x01`-`0x7F`.
+Silence 15' Radius (21), Ray of Enfeeblement (29) and Bestow Curse (36) convert
+by the caster-level rule in all three titles; the camp-row derivations above
+missed them because their C64 casts are combat-only
+(`effects.COMBAT_CASTER_LEVEL_IDS`). Silver Blades' id 113 converts as DOS
+`(113, minutes, 0x79, 1)` and C64 magnitude `$BC`, the pair each engine writes
+for its own cast of spell 59 (read 1). Id 13 stays refused with a reason of
+its own, and no save a game wrote reaches it: DOS Reduce (spell 13) removes an
+id-12 node and writes no id-13 node in any title (read 3c).
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.

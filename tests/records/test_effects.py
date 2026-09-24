@@ -1086,12 +1086,12 @@ def test_a_pool_caster_level_bless_becomes_id_and_level():
     ("pool-of-radiance", effects.RunningEffect(1, 2, 0x80, 0)),
     ("pool-of-radiance", effects.RunningEffect(13, 2, 1, 0)),
     ("pool-of-radiance", effects.RunningEffect(49, 2, 1, 0)),
-    ("curse-of-the-azure-bonds", effects.RunningEffect(25, 2, 1, 0)),
+    ("curse-of-the-azure-bonds", effects.RunningEffect(25, 2, 0xFF, 0)),
     ("curse-of-the-azure-bonds", effects.RunningEffect(49, 2, 1, 0)),
     ("curse-of-the-azure-bonds", effects.RunningEffect(1, 2, 1, 1)),
     ("curse-of-the-azure-bonds", effects.RunningEffect(1, 2, 0x80, 0)),
     ("curse-of-the-azure-bonds", effects.RunningEffect(57, 2, 1, 0)),
-    ("secret-of-the-silver-blades", effects.RunningEffect(25, 2, 1, 0)),
+    ("secret-of-the-silver-blades", effects.RunningEffect(25, 2, 0xFF, 0)),
     ("secret-of-the-silver-blades", effects.RunningEffect(49, 2, 1, 0)),
     ("secret-of-the-silver-blades", effects.RunningEffect(1, 2, 0, 0)),
 ])
@@ -1115,6 +1115,96 @@ def test_silver_blades_has_one_caster_level_id_curse_lacks():
     curse = effects.LATER_CASTER_LEVEL_IDS["curse-of-the-azure-bonds"]
     blades = effects.LATER_CASTER_LEVEL_IDS["secret-of-the-silver-blades"]
     assert blades - curse == {57} and curse < blades
+
+
+_ALL = ("pool-of-radiance", "curse-of-the-azure-bonds",
+        "secret-of-the-silver-blades")
+_LATER = _ALL[1:]
+_BLADES = "secret-of-the-silver-blades"
+
+
+@pytest.mark.parametrize("title", _ALL)
+@pytest.mark.parametrize("eid", [21, 29, 36])
+def test_silence_enfeeblement_and_bestow_curse_become_id_and_level(title, eid):
+    for level in (1, 9, 0x7F):
+        assert effects.c64_row(title, effects.RunningEffect(eid, 47, level, 0)) \
+            == (eid, level)
+    for node in (effects.RunningEffect(eid, 47, 5, 1),
+                 effects.RunningEffect(eid, 47, 0, 0),
+                 effects.RunningEffect(eid, 47, 0x80, 0)):
+        assert isinstance(effects.c64_row(title, node), effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", _LATER)
+def test_a_later_title_invisible_node_becomes_id_and_level(title):
+    assert effects.c64_row(title, effects.RunningEffect(25, 1, 0x0C, 0)) \
+        == (25, 0x0C)
+    assert effects.c64_row(title, effects.RunningEffect(25, 1, 0x7F, 0)) \
+        == (25, 0x7F)
+    for node in (effects.RunningEffect(25, 1, 0xFF, 0),
+                 effects.RunningEffect(25, 1, 0, 0),
+                 effects.RunningEffect(25, 1, 0x0C, 1)):
+        assert isinstance(effects.c64_row(title, node), effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", _ALL)
+@pytest.mark.parametrize("data", [0x01, 0x0C, 0x10, 0x1C, 0x1F])
+def test_a_haste_node_is_copied_to_the_magnitude_and_back(title, data):
+    assert effects.c64_row(title, effects.RunningEffect(39, 6, data, 0)) \
+        == (39, data)
+    row = effects.Effect(63, 39, 0, 0x06, data)
+    assert effects.dos_record(title, row, 0) == effects.RunningEffect(
+        39, 6, data, 0)
+
+
+@pytest.mark.parametrize("title", _ALL)
+def test_a_haste_byte_no_engine_writes_stays_unconverted(title):
+    for node in (effects.RunningEffect(39, 6, 0x20, 0),
+                 effects.RunningEffect(39, 6, 0x0C, 1),
+                 effects.RunningEffect(39, 6, 0x80, 0),
+                 effects.RunningEffect(39, 6, 0, 0)):
+        assert isinstance(effects.c64_row(title, node), effects.Unconverted)
+    for magnitude in (0, 0x20, 0x90):
+        row = effects.Effect(63, 39, 0, 0x06, magnitude)
+        assert isinstance(effects.dos_record(title, row, 0),
+                          effects.Unconverted)
+
+
+def test_silver_blades_id_113_is_the_dos_node_and_the_c64s_own_magnitude():
+    node = effects.RunningEffect(113, 10, 0x79, 1)
+    assert effects.c64_row(_BLADES, node) == (113, 0xBC)
+    row = effects.Effect(63, 113, 0, 0x0A, 0xBC)
+    assert effects.dos_record(_BLADES, row, 0) == node
+
+
+@pytest.mark.parametrize("node", [effects.RunningEffect(113, 10, 0x79, 0),
+                                  effects.RunningEffect(113, 10, 0x7B, 1)])
+def test_an_id_113_node_other_than_spell_59s_stays_unconverted(node):
+    assert isinstance(effects.c64_row(_BLADES, node), effects.Unconverted)
+
+
+@pytest.mark.parametrize("magnitude", [0xDB, 0x80, 0x00])
+def test_an_id_113_magnitude_other_than_the_c64s_own_stays_unconverted(
+        magnitude):
+    """A magnitude with upper nibble 5 (strength 23) waits on Donald's choice."""
+    row = effects.Effect(63, 113, 0, 0x0A, magnitude)
+    assert isinstance(effects.dos_record(_BLADES, row, 0), effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", ["pool-of-radiance",
+                                   "curse-of-the-azure-bonds"])
+def test_id_113_is_a_silver_blades_id_only(title):
+    assert isinstance(effects.c64_row(title, effects.RunningEffect(
+        113, 10, 0x79, 1)), effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", _ALL)
+def test_id_13_stays_refused_and_the_reason_says_no_dos_engine_writes_it(title):
+    """DOS Reduce removes id 12 and writes no id-13 node, in any title, so no
+    save a game wrote reaches this refusal (`docs/226`)."""
+    got = effects.c64_row(title, effects.RunningEffect(13, 2, 1, 0))
+    assert isinstance(got, effects.Unconverted)
+    assert got.reason == "no DOS engine writes a running id-13 node"
 
 
 # --- dos_record, the inverse of c64_row --------------------------------------
