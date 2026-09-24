@@ -21,6 +21,12 @@ from tools.dos import dosbox
 
 W, H = 320, 200
 BAR_Y = dosbox.BAR[1]
+#: The rest menu's letters as each title's `GAME.OVR` reads them, written out
+#: here rather than taken from the driver, so a fake driven with the wrong
+#: letters fails: days, hours, minutes, add, subtract, rest.
+_POOL_REST = da.RestKeys("y", "h", "m", "i", "d", "r")      # 0x244ED
+_LATER_REST = da.RestKeys("d", "h", "m", "a", "s", "r")     # 0x2B4A7, 0x2BD63
+TITLE_KEYS = {"pool": _POOL_REST, "curse": _LATER_REST, "ssb": _LATER_REST}
 
 
 def _screen(bar: bytes, text: bytes, block: tuple[int, int] | None = None) -> dosbox.Screen:
@@ -80,8 +86,12 @@ class FakePool:
             "watch": b"\xaa\x0f\x33", "fight": b"\x5a\xa5"}
 
     def __init__(self, tmp: pathlib.Path, preset: int = 0, swallow: bool = False,
-                 dead: str = "", watches: int = 0, fight: bool = False):
+                 dead: str = "", watches: int = 0, fight: bool = False,
+                 keys: da.RestKeys | None = None):
         self.fight = fight
+        #: The rest menu's letters: Pool's by default, `da.LATER_REST` for
+        #: Curse and Silver Blades.
+        self.rk = keys or TITLE_KEYS["pool"]
         self.mode = "map"
         #: Random events the next rest ends in, one after another.
         self.watches = watches
@@ -139,13 +149,14 @@ class FakePool:
         elif self.mode == "camp" and k == "s":
             self.mode = "save"
         elif self.mode == "rest":
-            if k in "yhm":
-                self.field = {"y": 4, "h": 3, "m": 2}[k]
-            elif k == "i":
+            rk = self.rk
+            if k in (rk.days, rk.hours, rk.mins):
+                self.field = {rk.days: 4, rk.hours: 3, rk.mins: 2}[k]
+            elif k == rk.inc:
                 self.inc()
-            elif k == "d":
+            elif k == rk.dec:
                 self.dec()
-            elif k == "r":
+            elif k == rk.go:
                 self.rested.append(self.total)
                 self.clock += self.total
                 self.total, self.mode = 0, "camp"
@@ -196,19 +207,21 @@ def _no_waiting(monkeypatch):
     monkeypatch.setattr(dosbox, "settle_files", lambda *a, **k: True)
 
 
-def _camped(tmp_path, **kw) -> tuple[FakePool, da.Driver]:
-    game = FakePool(tmp_path, **kw)
-    d = da.Driver(game, lambda **k: None, "A")
+def _camped(tmp_path, title="pool", **kw) -> tuple[FakePool, da.Driver]:
+    game = FakePool(tmp_path, keys=TITLE_KEYS[title], **kw)
+    d = da.Driver(game, lambda **k: None, "A", title)
     d.logged = []
     d.note = lambda **k: d.logged.append(k)
     d.camp()
     return game, d
 
 
+@pytest.mark.parametrize("title", sorted(da.TITLES))
 @pytest.mark.parametrize("preset", [0, 7, 4 * 60 + 30, 1440 + 65, 3 * 1440])
 @pytest.mark.parametrize("asked", [5, 90, 1445])
-def test_the_rest_keys_set_the_asked_time_from_any_preset(tmp_path, preset, asked):
-    game, d = _camped(tmp_path, preset=preset)
+def test_the_rest_keys_set_the_asked_time_from_any_preset(tmp_path, title, preset,
+                                                          asked):
+    game, d = _camped(tmp_path, title, preset=preset)
     got = d.rest(asked)
     assert game.rested == [asked]
     assert got["asked"] == asked
@@ -341,8 +354,12 @@ def test_rest_presses_split_the_time_the_way_the_menu_holds_it():
 def test_steps_parse_and_a_bad_one_is_refused():
     assert da.parse_step("save d").letter == "D"
     assert da.parse_step("rest 5m").minutes == 5
+    assert da.parse_step("rest 8d").minutes == 8 * 1440
+    assert da.parse_step("train 3").line == 3
     assert da.parse_step("shot rest-screen").name == "rest-screen"
-    for bad in ("walk 2", "save", "save K", "rest 7m", "load now"):
+    assert da.parse_step("press Return").key == "Return"
+    for bad in ("walk 2", "save", "save K", "rest 7m", "load now", "train",
+                "train 9", "begin now", "press", "press a;b"):
         with pytest.raises(ValueError):
             da.parse_step(bad)
 
@@ -494,7 +511,7 @@ def _fake_run(monkeypatch, tmp_path, *, find_game=None, session_fail=None,
             raise menu_error
 
     class D:
-        def __init__(self, session, note, letter):
+        def __init__(self, session, note, letter, *rest, **kw):
             self.game = Game()
 
         def shot(self, name):
@@ -543,3 +560,312 @@ def test_a_bad_step_order_is_refused_before_a_slot_is_claimed(monkeypatch, tmp_p
         da.main(["--save", str(tmp_path), "--steps", "load", "rest 5m"])
     assert log == []
     assert "needs camp first" in capsys.readouterr().err
+
+
+# -- the later titles: keys, order, staging ----------------------------------------
+
+
+def test_the_later_titles_rest_on_their_own_letters():
+    """`Rest Days Hours Mins Add Subtract Exit` (Curse `GAME.OVR` 0x2B4A7,
+    Silver Blades 0x2BD63): Pool's `Y`, `I` and `D` are not its keys, and
+    `D` selects the days field there rather than subtracting."""
+    for title in ("curse", "ssb"):
+        keys = da.TITLES[title].rest_keys()
+        assert (keys.days, keys.inc, keys.dec) == ("d", "a", "s")
+    assert TITLE_KEYS["pool"] == da.RestKeys("y", "h", "m", "i", "d", "r")
+
+
+def test_pool_keys_do_not_rest_a_later_title(tmp_path):
+    # The Curse menu driven with Pool's letters: `y` selects nothing, so the
+    # first key of the zeroing changes nothing and the run stops there.
+    game = FakePool(tmp_path, keys=TITLE_KEYS["curse"], preset=90)
+    d = da.Driver(game, lambda **k: None, "A", "pool")
+    d.camp()
+    with pytest.raises(da.StepFailed, match="days field"):
+        d.rest(5)
+    assert game.rested == []
+
+
+def test_a_rest_that_ends_on_a_still_screen_stops_the_run(tmp_path, _watch_and_clock,
+                                                           monkeypatch):
+    # Eight days is 2,304 passes, so the bar's own deadline is over an hour
+    # away; a screen that has stopped changing ends the run long before it.
+    monkeypatch.setattr(da, "REST_STALL", 20.0)
+    game, d = _camped(tmp_path, "curse", fight=True)
+    calls = []
+    real = game.capture
+    game.capture = lambda: calls.append(1) or real()
+    with pytest.raises(da.StepFailed, match="nothing under the viewport"):
+        d.rest(8 * 1440)
+    assert game.rested == [8 * 1440]
+    assert len(calls) < 100
+
+
+def _steps(*texts):
+    return [da.parse_step(t) for t in texts]
+
+
+@pytest.mark.parametrize("title,steps", [
+    ("pool", ("load", "camp", "rest 5m", "save D", "read")),
+    ("curse", ("load", "save B", "train 1", "save C", "read")),
+    ("curse", ("load", "begin", "camp", "rest 8d")),
+    ("ssb", ("load", "begin", "camp", "rest 5m", "save D", "read")),
+    ("ssb", ("load", "shot party", "begin", "camp", "save B", "read")),
+    ("ssb", ("load", "press Down", "press Return", "shot menu", "press t", "read")),
+])
+def test_orders_the_game_allows(title, steps):
+    da.validate_steps(_steps(*steps), title)
+
+
+@pytest.mark.parametrize("title,steps,why", [
+    ("pool", ("load", "rest 5m"), "needs camp first"),
+    ("pool", ("load", "begin"), "puts the party on the map"),
+    ("pool", ("load", "save D"), "needs camp first"),
+    ("curse", ("load", "camp"), "needs begin first"),
+    ("curse", ("load", "begin", "train 1"), "party menu"),
+    ("curse", ("camp",), "needs load first"),
+    ("curse", ("load", "begin", "camp", "camp"), "already camped"),
+    ("ssb", ("load", "train 1"), "curse only"),
+    ("ssb", ("load", "load"), "the first"),
+    ("ssb", ("press Return",), "needs load first"),
+    ("curse", ("load", "press Return", "begin"), "only press, shot and read"),
+])
+def test_orders_the_game_does_not_allow(title, steps, why):
+    with pytest.raises(ValueError, match=why):
+        da.validate_steps(_steps(*steps), title)
+
+
+def test_silver_blades_is_installed_under_its_own_letter(tmp_path):
+    save, dest = tmp_path / "staged", tmp_path / "play"
+    save.mkdir()
+    dest.mkdir()
+    for name in ("SAVGAMA.DAT", "CHRDATA1.SAV"):
+        (save / name).write_bytes(b"x")
+    with pytest.raises(ValueError, match="install A as A"):
+        da.install(save, dest, "D", same_letter=True)
+    assert list(dest.iterdir()) == []
+    assert da.install(save, dest, "a", same_letter=True)["as_slot"] == "A"
+
+
+def test_a_folder_of_two_slots_needs_the_one_named(tmp_path):
+    for name in ("SAVGAMA.DAT", "savgamb.dat", "CHRDATA1.SAV", "CHRDATB1.SAV"):
+        (tmp_path / name).write_bytes(name.encode())
+    with pytest.raises(FileNotFoundError, match="--from-slot"):
+        da.source_slot(tmp_path)
+    assert da.source_slot(tmp_path, "b") == "B"
+    with pytest.raises(FileNotFoundError, match="holds no SAVGAMC"):
+        da.source_slot(tmp_path, "C")
+    dest = tmp_path / "play"
+    dest.mkdir()
+    took = da.install(tmp_path, dest, "J", "B")
+    assert sorted(p.name for p in dest.iterdir()) == ["CHRDATJ1.SAV", "SAVGAMJ.DAT"]
+    assert (dest / "CHRDATJ1.SAV").read_bytes() == b"CHRDATB1.SAV"
+    assert took["from_slot"] == "B"
+
+
+def _curse_record(name: bytes = b"MATHEW") -> bytes:
+    from goldbox import dos_port
+    size = dos_port.deltas_for("curse-of-the-azure-bonds").record_size
+    data = bytearray(size)
+    data[0] = len(name)
+    data[1:1 + len(name)] = name
+    return bytes(data)
+
+
+def test_the_stages_write_what_they_log(tmp_path):
+    from goldbox import dos_codec
+    (tmp_path / "SAVGAMJ.DAT").write_bytes(bytes(0xE00))
+    (tmp_path / "CHRDATJ1.SAV").write_bytes(_curse_record())
+    (tmp_path / "CHRDATJ1.FX").write_bytes(bytes.fromhex("080000ff00") + bytes(4))
+    hall = da.stage_hall(tmp_path, "j")
+    assert (tmp_path / "SAVGAMJ.DAT").read_bytes()[0xD51:0xD53] == b"\xff\x00"
+    assert (hall["before"], hall["after"]) == ("0000", "ff00")
+    xp = da.stage_xp(tmp_path, "J", 1, 5000)
+    assert dos_codec.read_character(tmp_path / "CHRDATJ1.SAV").get("experience") == 5000
+    assert xp["name"] == "MATHEW"
+    line, node = da.parse_node("1=141:10080:1:1")
+    got = da.stage_node(tmp_path, "J", line, node)
+    fx = (tmp_path / "CHRDATJ1.FX").read_bytes()
+    assert len(fx) == 18 and fx[9:14] == bytes((141, 0x60, 0x27, 1, 1))
+    assert got["file"] == "CHRDATJ1.FX" and got["node"]["minutes"] == 10080
+    assert [n.hex()[:10] for n in dos_codec.read_character(
+        tmp_path / "CHRDATJ1.SAV").effects] == ["080000ff00", "8d60270101"]
+
+
+@pytest.mark.parametrize("bad", ["0=1:2:3:4", "1=1:2:3", "1=256:0:0:0",
+                                 "1=1:65536:0:0", "x"])
+def test_a_bad_node_is_refused(bad):
+    with pytest.raises(ValueError):
+        da.parse_node(bad)
+
+
+def test_experience_is_compared_by_name():
+    before = {"characters": [{"name": "GUY", "experience": 200000},
+                             {"name": "PAINE", "experience": None}]}
+    after = {"characters": [{"name": "GUY", "experience": 202750}]}
+    rows = {r["name"]: r for r in da.compare_experience(before, after)}
+    assert rows["GUY"]["gained"] == 2750
+    assert rows["PAINE"]["gained"] is None
+
+
+# -- Curse's party menu: load, save, train -------------------------------------------
+
+
+class FakeCurseMenu(FakePool):
+    """Curse from the title menu to the party menu, its save and its training.
+
+    `trainable` names the roster lines the school takes; `learns` is how many
+    `LEARN` screens a training leaves; `asks_quit` puts a `QUIT TO DOS`
+    question after a party-menu save.
+    """
+
+    BARS = {**FakePool.BARS, "title": b"\x01", "which": b"\x02\x03",
+            "party": b"\x04\x05\x06", "offer": b"\x07", "learn": b"\x08\x09",
+            "psave": b"\x0a", "pquit": b"\x0b\x0c"}
+
+    def __init__(self, tmp, trainable=(1,), learns=1, asks_quit=False, size=6):
+        super().__init__(tmp, keys=TITLE_KEYS["curse"])
+        self.mode, self.line, self.size = "title", 1, size
+        self.trainable, self.learns, self.asks_quit = set(trainable), learns, asks_quit
+        self.trained: list[int] = []
+        self.left = 0
+
+    def key(self, k, gap=0.0):
+        self.keys.append(k)
+        m = self.mode
+        if m == "title" and k == "l":
+            self.mode = "which"
+        elif m == "which" and k.upper() in "ABCDEFGHIJ":
+            self.mode = "party"
+        elif m == "party" and k == "End":
+            self.line = self.line % self.size + 1
+        elif m == "party" and k == "t" and self.line in self.trainable:
+            self.mode = "offer"
+        elif m == "offer" and k == "y":
+            self.trained.append(self.line)
+            self.left = self.learns
+            self.mode = "learn" if self.left else "party"
+        elif m == "learn" and k == "l":
+            self.left -= 1
+            self.mode = "learn" if self.left else "party"
+        elif m == "party" and k == "s":
+            self.mode = "psave"
+        elif m == "psave" and k.upper() in "ABCDEFGHIJ":
+            (self.save_dir / f"SAVGAM{k.upper()}.DAT").write_bytes(
+                bytes((len(self.trained),)))
+            self.mode = "pquit" if self.asks_quit else "party"
+        elif m == "pquit" and k == "n":
+            self.mode = "party"
+        elif m == "party" and k == "b":
+            self.mode = "map"
+        else:
+            super().key(k, gap)
+
+    def capture(self):
+        if self.mode in FakePool.BARS:
+            return super().capture()
+        text = bytes((self.line,)) if self.mode == "party" else b""
+        return _screen(self.BARS[self.mode], text)
+
+    def press_until_change(self, key, tries=5, gap=0.8):
+        before = self.capture().digest()
+        for _ in range(tries):
+            self.key(key)
+            if self.capture().digest() != before:
+                return True
+        return False
+
+
+def _curse_loaded(tmp_path, **kw):
+    game = FakeCurseMenu(tmp_path, **kw)
+    d = da.Driver(game, lambda **k: None, "J", "curse", party_size=game.size)
+    d.game.to_main_menu = lambda timeout=120.0: None
+    got = d.load()
+    assert game.mode == "party" and d.where == "party" and got["slot"] == "J"
+    return game, d
+
+
+def test_curse_loads_to_the_party_menu_pressing_the_letter_once(tmp_path):
+    game, d = _curse_loaded(tmp_path)
+    assert game.keys == ["l", "j"]
+
+
+def test_curse_trains_the_line_asked_for_and_learns_its_spell(tmp_path):
+    game, d = _curse_loaded(tmp_path, trainable=(3,), learns=2)
+    got = d.train(3)
+    assert game.trained == [3] and game.mode == "party"
+    assert game.keys.count("End") == 2 and got["after"] == ["l", "l"]
+    # The highlight stays where the last command left it, and End wraps.
+    game.trainable = {2}
+    d.train(2)
+    assert game.trained == [3, 2] and game.keys.count("End") == 2 + 5
+
+
+def test_a_school_that_refuses_stops_the_run(tmp_path):
+    game, d = _curse_loaded(tmp_path, trainable=())
+    with pytest.raises(da.StepFailed, match="train-refused"):
+        d.train(1)
+    assert game.trained == []
+
+
+@pytest.mark.parametrize("asks_quit", [False, True])
+def test_the_party_menu_save_is_believed_by_the_file(tmp_path, asks_quit):
+    game, d = _curse_loaded(tmp_path, asks_quit=asks_quit)
+    got = d.save("B")
+    assert (game.save_dir / "SAVGAMB.DAT").is_file() and game.mode == "party"
+    assert got["at"] == "party menu"
+    assert (da.QUIT_NO in game.keys) is asks_quit
+
+
+def test_curse_begins_and_camps(tmp_path):
+    game, d = _curse_loaded(tmp_path)
+    d.begin()
+    assert game.mode == "map" and d.where == "map"
+    d.camp()
+    assert game.mode == "camp"
+    d.rest(5)
+    assert game.rested == [5]
+
+
+# -- the later titles' conversion, off the player's disks ---------------------------
+
+
+@pytest.mark.parametrize("title,name,effect_file", [
+    ("curse", "PHILIPPE", "CHRDATA6.FX"),
+    ("ssb", "MORGAINE", "CHRDATA6.SFX"),
+])
+def test_a_later_title_party_converts_with_its_bless_and_reads_back(
+        tmp_path, title, name, effect_file):
+    """Save As DOS of the title's engine-written C64 specimen with a Bless
+    row for party slot 0 whose duration byte leaves 47 minutes at the
+    save's own clock: nothing dropped, `01 2F 00 05 00` in the first
+    character's effect file, and the reading the run's `read` step makes of
+    it accepts him at 47."""
+    from editor import saveplan
+    base = da.c64_base(title)
+    if not base.is_file():
+        pytest.skip(f"needs {base.name} in $WISH_SPECIMENS/por-c64")
+    try:
+        built = da.build_source([(63, 1, 0, 0x2F, 5)], tmp_path, title)
+    except FileNotFoundError:
+        pytest.skip("needs the DOS archives ($FR_ARCHIVES)")
+    except saveplan.MissingAssets:
+        pytest.skip("needs the title's own C64 disks")
+    assert built["dropped"] == [] and built["losses"] == []
+    assert built["minutes_left"] == [47]
+    assert [n["raw"] for n in built["nodes"][effect_file]] == ["012f000500"]
+    slot = built["read"]["A"]
+    assert da.judge(da.Expect(name, 1, 47, 5), slot)["verdict"] == "accepts"
+    assert slot["place"]["set_out"] is True
+
+
+def test_encamp_is_never_pressed_at_the_party_menu(tmp_path):
+    # `E` is exit to DOS at Curse's party menu: a BEGIN that did not take
+    # leaves the run stopped there, not pressing on into camp.
+    game, d = _curse_loaded(tmp_path)
+    game.key = lambda k, gap=0.0: game.keys.append(k)
+    with pytest.raises(da.StepFailed):
+        d.begin()
+    with pytest.raises(da.StepFailed, match="lost-camp"):
+        d.camp()
+    assert "e" not in game.keys
