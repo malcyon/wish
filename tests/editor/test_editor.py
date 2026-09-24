@@ -5506,6 +5506,27 @@ def test_opening_a_pools_of_darkness_folder_shows_the_convert_sentence(
     assert "goldbox/" not in said[0][1] and "c64_port" not in said[0][1]
 
 
+def test_another_title_refused_on_open_shows_the_general_message(
+        app, tmp_path, monkeypatch):
+    import editor.window as ew
+    from editor.convert import POOLS_OF_DARKNESS_UNSUPPORTED
+    from goldbox import dos_codec, dos_port
+
+    def refuse(*a, **k):
+        raise dos_codec.WrongTitleError(
+            "developer reason", dos_port.CURSE_OF_THE_AZURE_BONDS.title)
+
+    from editor.convert import Source
+    monkeypatch.setattr(Source, "looks_like_a_save", staticmethod(lambda p: False))
+    monkeypatch.setattr(ew, "Party", refuse)
+    said = []
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda *a, **k: said.append((a[1], a[2])))
+    ew.EditorBinding(make_root()).load(str(tmp_path))
+    assert said == [("Cannot open", "developer reason")]
+    assert said[0][1] != POOLS_OF_DARKNESS_UNSUPPORTED
+
+
 def test_an_amiga_curse_party_opens_from_its_adf(tmp_path):
     from support.amigasavegame import synthetic_curse
 
