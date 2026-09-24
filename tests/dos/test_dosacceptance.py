@@ -265,6 +265,60 @@ def test_the_camp_save_is_believed_by_the_file_and_declines_the_quit(tmp_path):
     assert game.keys[-2:] == ["d", da.QUIT_NO]
 
 
+@pytest.mark.parametrize("failure", ("", "magic", "display", "five", "back_magic",
+                                          "back_camp"))
+def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
+        tmp_path, monkeypatch, failure):
+    class DisplayPool(FakePool):
+        BARS = {**FakePool.BARS, "magic": b"\x12\x45\x78",
+                "display": b"\x13\x46\x79", "wrong": b"\x14\x47\x7a"}
+
+        def key(self, k, gap=0.0):
+            if self.mode == "camp" and k == "m":
+                self.keys.append(k)
+                self.mode = "wrong" if failure == "magic" else "magic"
+            elif self.mode == "magic" and k == "d":
+                self.keys.append(k)
+                self.mode = "wrong" if failure == "display" else "display"
+            elif self.mode == "display" and k == "Return":
+                self.keys.append(k)
+                self.mode = "wrong" if failure == "back_magic" else "magic"
+            elif self.mode == "magic" and k == "e":
+                self.keys.append(k)
+                self.mode = "wrong" if failure == "back_camp" else "camp"
+            else:
+                super().key(k, gap)
+
+        def capture(self):
+            frame = super().capture()
+            if self.mode != "display":
+                return frame
+            px = bytearray(frame.px)
+            for y in (40, 64, 88, 112, 136, 160)[:5 if failure == "five" else 6]:
+                at = (y * W + 8) * 3
+                px[at:at + 3] = b"\xff\xff\xff"
+            return dosbox.Screen(W, H, bytes(px))
+
+    monkeypatch.setattr(da, "POOL_MAGIC_BAR", da.bar_signature(
+        _screen(DisplayPool.BARS["magic"], b"")))
+    monkeypatch.setattr(da, "POOL_DISPLAY_BAR", da.bar_signature(
+        _screen(DisplayPool.BARS["display"], b"")))
+    game = DisplayPool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A")
+    d.camp()
+    if failure:
+        with pytest.raises(da.StepFailed):
+            d.display()
+        assert not game.save_file("D").exists()
+        return
+    got = d.display()
+    assert got["visible_members"] == 6
+    assert got["back_in_camp"] and game.mode == "camp"
+    assert game.keys[-4:] == ["m", "d", "Return", "e"]
+    d.save("D")
+    assert game.save_file("D").is_file()
+
+
 # -- a random event ends the rest ------------------------------------------------
 
 
@@ -359,6 +413,7 @@ def test_steps_parse_and_a_bad_one_is_refused():
     assert da.parse_step("shot rest-screen").name == "rest-screen"
     assert da.parse_step("press Return").key == "Return"
     assert da.parse_step("walk MI").key == "MI"
+    assert da.parse_step("display").kind == "display"
     for bad in ("walk 2", "walk N", "save", "save K", "rest 7m", "load now", "train",
                 "train 9", "begin now", "press", "press a;b"):
         with pytest.raises(ValueError):
@@ -608,6 +663,7 @@ def _steps(*texts):
 
 @pytest.mark.parametrize("title,steps", [
     ("pool", ("load", "walk MI", "camp", "rest 5m", "save D", "read")),
+    ("pool", ("load", "camp", "display", "save D", "read")),
     ("curse", ("load", "save B", "train 1", "save C", "read")),
     ("curse", ("load", "begin", "camp", "rest 8d")),
     ("ssb", ("load", "begin", "camp", "rest 5m", "save D", "read")),
@@ -722,6 +778,8 @@ def test_pool_walk_mi_stops_before_camp_when_step_hits_a_wall(tmp_path):
     ("pool", ("load", "begin"), "puts the party on the map"),
     ("pool", ("load", "save D"), "needs camp first"),
     ("pool", ("load", "camp", "walk MI"), "walk needs the map"),
+    ("pool", ("load", "display"), "display needs camp first"),
+    ("curse", ("load", "display"), "pool only"),
     ("curse", ("load", "begin", "walk MI"), "pool only"),
     ("curse", ("load", "camp"), "needs begin first"),
     ("curse", ("load", "begin", "train 1"), "party menu"),

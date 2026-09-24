@@ -29,6 +29,7 @@ With no `--steps` only that conversion runs.
 | `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, Curse and Silver Blades on the party menu |
 | `begin` | Curse and Silver Blades: `BEGIN ADVENTURING`, through Silver Blades' intro bars, to the map |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
+| `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below) |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
@@ -112,6 +113,12 @@ ENCAMP = "e"
 CAMP_SAVE = "s"
 CAMP_REST = "r"
 QUIT_NO = "n"
+# Pool's measured camp Magic and Display bars.
+POOL_MAGIC_BAR = "062aa229ea7afd11"
+POOL_DISPLAY_BAR = "98286ceaa33edc12"
+# Names start at x=8; effect lines are indented to x=17. Count the left
+# character cell across the page, allowing row spacing to change by effect.
+POOL_DISPLAY_NAME_ROWS = range(32, 184, 8)
 
 # Pool's rest menu is `Rest daYs Hours Mins Inc Dec Exit` (`GAME.OVR` 0x244A5).
 REST_DAYS = "y"
@@ -277,7 +284,7 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
     return days, hours, mins // REST_STEP
 
 
-STEP_HELP = ("load, begin, 'walk MI', camp, 'rest 5m', 'save D', 'train 1', 'shot NAME', "
+STEP_HELP = ("load, begin, 'walk MI', camp, display, 'rest 5m', 'save D', 'train 1', 'shot NAME', "
              "'press KEY', read")
 
 
@@ -286,7 +293,7 @@ def parse_step(text: str) -> Step:
     if not words:
         raise ValueError("an empty step")
     kind = words[0].lower()
-    if kind in ("load", "begin", "camp", "read") and len(words) == 1:
+    if kind in ("load", "begin", "camp", "display", "read") and len(words) == 1:
         return Step(kind, text)
     if kind == "rest" and len(words) == 2:
         minutes = parse_duration(words[1])
@@ -355,6 +362,11 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "rest":
             if where != "camp":
                 raise ValueError(f"rest needs camp first: {step.text!r}")
+        elif k == "display":
+            if title != "pool":
+                raise ValueError(f"display is driven in pool only, not {title}")
+            if where != "camp":
+                raise ValueError(f"display needs camp first: {step.text!r}")
         elif k == "save":
             if where not in ("camp", "party"):
                 raise ValueError(f"save needs camp first: {step.text!r}")
@@ -1118,6 +1130,36 @@ class Driver:
         return {"asked": minutes, "zero_presses": zeroed, **presses,
                 "left_camp": self.left_camp}
 
+    def display(self) -> dict:
+        """Capture Pool's single six-member Magic display page and return to camp."""
+        if self.title.key != "pool" or self.camp_sig is None:
+            raise StepFailed("display needs Pool camp first")
+        self.ensure_camp()
+        self.s.key("m")
+        if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAGIC_BAR, 15.0):
+            raise self.fail("display-magic", "MAGIC bar did not open")
+        magic = self.shot("display-magic")
+        self.s.key("d")
+        if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_DISPLAY_BAR, 15.0):
+            raise self.fail("display-page", "DISPLAY page did not open")
+        screen = self.s.settle(quiet=0.6, timeout=20.0)
+        if bar_signature(screen) != POOL_DISPLAY_BAR:
+            raise self.fail("display-page", "DISPLAY page changed unexpectedly")
+        visible = sum(not screen.flat((8, y, 8, 8)) for y in POOL_DISPLAY_NAME_ROWS)
+        if visible != 6:
+            raise self.fail("display-members", f"DISPLAY showed {visible} member rows, not six")
+        page = self.shot("display-page")
+        self.s.key("Return")
+        if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAGIC_BAR, 15.0):
+            raise self.fail("display-back-magic", "Magic bar did not return after DISPLAY")
+        self.shot("display-back-magic")
+        self.s.key("e")
+        if not self.wait_camp(timeout=15.0):
+            raise self.fail("display-back-camp", "camp bar did not return after Magic")
+        camp = self.shot("display-back-camp")
+        return {"magic_shot": magic, "display_shot": page, "camp_shot": camp,
+                "visible_members": visible, "back_in_camp": True}
+
     def save(self, letter: str) -> dict:
         if self.where == "party":
             return self.party_save(letter)
@@ -1330,6 +1372,8 @@ def _run(args, outer: contextlib.ExitStack) -> int:
                     r = d.walk(step.key)
                 elif step.kind == "rest":
                     r = d.rest(step.minutes)
+                elif step.kind == "display":
+                    r = d.display()
                 elif step.kind == "save":
                     r = d.save(step.letter)
                     saved.append(step.letter)
