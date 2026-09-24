@@ -358,7 +358,8 @@ def test_steps_parse_and_a_bad_one_is_refused():
     assert da.parse_step("train 3").line == 3
     assert da.parse_step("shot rest-screen").name == "rest-screen"
     assert da.parse_step("press Return").key == "Return"
-    for bad in ("walk 2", "save", "save K", "rest 7m", "load now", "train",
+    assert da.parse_step("walk MI").key == "MI"
+    for bad in ("walk 2", "walk N", "save", "save K", "rest 7m", "load now", "train",
                 "train 9", "begin now", "press", "press a;b"):
         with pytest.raises(ValueError):
             da.parse_step(bad)
@@ -606,7 +607,7 @@ def _steps(*texts):
 
 
 @pytest.mark.parametrize("title,steps", [
-    ("pool", ("load", "camp", "rest 5m", "save D", "read")),
+    ("pool", ("load", "walk MI", "camp", "rest 5m", "save D", "read")),
     ("curse", ("load", "save B", "train 1", "save C", "read")),
     ("curse", ("load", "begin", "camp", "rest 8d")),
     ("ssb", ("load", "begin", "camp", "rest 5m", "save D", "read")),
@@ -617,10 +618,80 @@ def test_orders_the_game_allows(title, steps):
     da.validate_steps(_steps(*steps), title)
 
 
+def test_pool_walk_mi_turns_twice_then_steps_and_records_each_map_state(tmp_path):
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A")
+    d.where = "map"
+    d.world_ink = game.capture().ink(dosbox.BAR)
+    d.world_sig = da.bar_signature(game.capture())
+
+    class Movement:
+        world_bar = d.world_ink
+
+        def __init__(self):
+            self.facing = 3
+            self.x = 0
+            self.keys = []
+
+        def status(self):
+            return f"{self.x},{self.facing}"
+
+        def turn_right(self):
+            self.keys.append("Right")
+            self.facing = (self.facing + 1) % 4
+            return True
+
+        def step(self):
+            self.keys.append("Up")
+            self.x += 1
+            return True
+
+    move = Movement()
+    d.game = move
+    got = d.walk("MI")
+    assert move.keys == ["Right", "Right", "Up"]
+    assert got["status_before"] == "0,3"
+    assert got["status_after"] == "1,1"
+    assert len(got["screens"]) == 4
+    assert d.where == "map"
+
+
+def test_pool_walk_mi_stops_before_camp_when_step_enters_combat(tmp_path):
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A")
+    d.where = "map"
+    d.world_ink = game.capture().ink(dosbox.BAR)
+
+    class Movement:
+        def __init__(self):
+            self.keys = []
+
+        def status(self):
+            return "map-status"
+
+        def turn_right(self):
+            self.keys.append("Right")
+            return True
+
+        def step(self):
+            self.keys.append("Up")
+            game.mode = "fight"
+            return False
+
+    move = Movement()
+    d.game = move
+    with pytest.raises(da.StepFailed, match="map bar did not return"):
+        d.walk("MI")
+    assert move.keys == ["Right", "Right", "Up"]
+    assert d.where == "map"
+
+
 @pytest.mark.parametrize("title,steps,why", [
     ("pool", ("load", "rest 5m"), "needs camp first"),
     ("pool", ("load", "begin"), "puts the party on the map"),
     ("pool", ("load", "save D"), "needs camp first"),
+    ("pool", ("load", "camp", "walk MI"), "walk needs the map"),
+    ("curse", ("load", "begin", "walk MI"), "pool only"),
     ("curse", ("load", "camp"), "needs begin first"),
     ("curse", ("load", "begin", "train 1"), "party menu"),
     ("curse", ("camp",), "needs load first"),

@@ -277,7 +277,7 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
     return days, hours, mins // REST_STEP
 
 
-STEP_HELP = ("load, begin, camp, 'rest 5m', 'save D', 'train 1', 'shot NAME', "
+STEP_HELP = ("load, begin, 'walk MI', camp, 'rest 5m', 'save D', 'train 1', 'shot NAME', "
              "'press KEY', read")
 
 
@@ -296,6 +296,8 @@ def parse_step(text: str) -> Step:
         return Step(kind, text, letter=words[1].upper())
     if kind == "train" and len(words) == 2 and re.fullmatch(r"[1-8]", words[1]):
         return Step(kind, text, line=int(words[1]))
+    if kind == "walk" and len(words) == 2 and words[1].upper() == "MI":
+        return Step(kind, text, key="MI")
     if kind == "shot" and len(words) == 2 and re.fullmatch(r"[\w-]+", words[1]):
         return Step(kind, text, name=words[1])
     if kind == "press" and len(words) == 2 and re.fullmatch(r"\w+", words[1]):
@@ -345,6 +347,11 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             if where == "camp":
                 raise ValueError(f"already camped: {step.text!r}")
             where = "camp"
+        elif k == "walk":
+            if title != "pool":
+                raise ValueError(f"walk MI is driven in pool only, not {title}")
+            if where != "map":
+                raise ValueError(f"walk needs the map: {step.text!r}")
         elif k == "rest":
             if where != "camp":
                 raise ValueError(f"rest needs camp first: {step.text!r}")
@@ -935,6 +942,7 @@ class Driver:
     def record_world(self, screen) -> None:
         self.game.record_map(screen)
         self.world_sig = bar_signature(screen)
+        self.world_ink = screen.ink(dosbox.BAR)
 
     # -- the steps ---------------------------------------------------------
 
@@ -948,9 +956,11 @@ class Driver:
                 self.game.load_game(self.slot)
             except TimeoutError as e:
                 raise self.fail("load", str(e)) from None
+            self.record_world(self.s.capture())
             self.shot("loaded")
             self.where = "map"
-            return {"slot": self.slot, "status": self.game.status()}
+            return {"slot": self.slot, "status": self.game.status(),
+                    "map_bar": self.world_sig}
         self.s.settle(quiet=0.6, timeout=20.0)
         if not self.press_screen_changes(PARTY_LOAD):
             raise self.fail("load", "LOAD SAVED GAME did not open the slot list")
@@ -1016,6 +1026,37 @@ class Driver:
         self.where = "camp"
         self.shot("camp")
         return {"camp_bar": self.camp_sig}
+
+    def walk(self, route: str) -> dict:
+        """From the loaded Pool map, turn around and step one square."""
+        if self.title.key != "pool" or self.where != "map" or route != "MI":
+            raise StepFailed("walk MI needs Pool's loaded map")
+
+        screens: list[dict] = []
+
+        def record(label: str) -> str:
+            screen = self.s.settle(quiet=0.6, timeout=30.0)
+            if not self.on_world(screen):
+                raise self.fail(label, "the map bar did not return (combat or "
+                                "an unknown screen)")
+            status = self.game.status()
+            screens.append({"shot": self.shot(label), "bar": bar_signature(screen),
+                            "status": status})
+            return status
+
+        before = record("walk-before")
+        for n in (1, 2):
+            if not self.game.turn_right():
+                raise self.fail(f"walk-turn-{n}", "the map bar did not return "
+                                "after turning (combat or an unknown screen)")
+            record(f"walk-turn-{n}")
+        if not self.game.step():
+            raise self.fail("walk-step", "the map bar did not return after the "
+                            "step (combat or an unknown screen)")
+        after = record("walk-step")
+        return {"route": route, "map_bar": self.world_sig,
+                "status_before": before, "status_after": after,
+                "screens": screens}
 
     def zero_rest_time(self, limit: int = 120) -> int:
         """Select days and press subtract until three presses change nothing.
@@ -1282,6 +1323,8 @@ def _run(args, outer: contextlib.ExitStack) -> int:
                     r = d.begin()
                 elif step.kind == "camp":
                     r = d.camp()
+                elif step.kind == "walk":
+                    r = d.walk(step.key)
                 elif step.kind == "rest":
                     r = d.rest(step.minutes)
                 elif step.kind == "save":
