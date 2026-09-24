@@ -7748,9 +7748,14 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
                 who = f"monster {row.owner}"
             else:
                 who = f"party slot {row.owner}, which holds no character"
-            remaining = effects.remaining_minutes(row.duration, clock_mins)
+            if row.duration == 0:
+                label = f"effect {row.id}, which never expires"
+            else:
+                remaining = effects.remaining_minutes(row.duration,
+                                                      clock_mins)
+                label = c64_codec.running_effect_label(row.id, remaining, c64)
             out[0].dropped.append(
-                f"{c64_codec.running_effect_label(row.id, remaining, c64)} "
+                f"{label} "
                 f"in slot {row.slot}, owned by {who}: no party member owns "
                 "it, and no rule yet converts such a row")
     out.reverse()

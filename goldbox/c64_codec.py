@@ -2592,8 +2592,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
 
     out.set("attack_forms", rec.get_raw("attack_forms"),
             origin("attack_forms"), grade("attack_forms"))
+    slot_ids = [b for b in rec.get_raw("item_effects") if b]
     out.set("innate_effects",
-            [b for b in rec.get_raw("item_effects") if b] + permanent,
+            slot_ids + [i for i in permanent if i not in slot_ids],
             "the C64's ten trait slots @0x0AD, zeroes stripped, then the "
             "shared effect-array rows at duration zero; racial "
             "abilities and item powers share one id namespace and the slots "

@@ -406,3 +406,81 @@ def test_c64_party_carries_a_staged_bless_and_reports_a_row_no_one_owns():
                                    game=POOL_OF_RADIANCE)
     lines = [d for c in party for d in c.dropped if "effect 35" in d]
     assert len(lines) == 1 and "the whole party" in lines[0]
+
+
+def test_a_permanent_row_already_in_a_trait_slot_is_not_listed_twice():
+    rec = CharacterRecord.blank()
+    rec.set_raw("item_effects", bytes((45,)) + bytes(9))
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 45, 2, 0x00, 0x01)
+    got = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=bytes(p),
+                         party_slot=2, clock_minutes=0)
+    assert list(got.get("innate_effects")).count(45) == 1
+
+
+def test_an_unowned_never_expiring_row_is_not_reported_as_zero_minutes():
+    from goldbox.savegame import SaveGame0, SaveGame1
+    fx = pathlib.Path(__file__).resolve().parents[1] / "fixtures"
+    payload = bytearray(SaveGame0.from_prg(
+        (fx / "savedgame0.bin").read_bytes()).to_bytes())
+    save1 = SaveGame1.from_prg(
+        (fx / "savedgame1.bin").read_bytes()).to_bytes()
+    effects.write_effect(payload, 62, 35, 0xFF, 0x00, 0x01)
+    party, _ = dos_codec.c64_party(bytes(payload), save1,
+                                   game=POOL_OF_RADIANCE)
+    lines = [d for c in party for d in c.dropped if "effect 35" in d]
+    assert len(lines) == 1
+    assert "0 minutes" not in lines[0] and "never expires" in lines[0]
+
+
+def _dos_plan(tmp_path, payload, save1):
+    from editor import roster, saveplan
+    from tools.convert import convertdrops
+
+    disk = tmp_path / "in.d64"
+    disk.write_bytes(dos_codec.save_disk(
+        bytes(payload), save1, POOL_OF_RADIANCE).to_bytes())
+    party = roster.Party(str(disk))
+    from editor.convert import Source
+    from tools.dos import dosbox
+    try:
+        game_dir = dosbox.find_game("POOLRAD")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Pool of Radiance archives ($FR_ARCHIVES)")
+    source = Source.of_snapshot(saveplan.prepare(party))
+    try:
+        assets = saveplan.resolve_assets(source, "dos",
+                                         game_files=convertdrops.game_files,
+                                         dos_folder=game_dir)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+    return saveplan.prepare_save_as(party, "dos", tmp_path / "out", assets)
+
+
+def _fixture_payload():
+    from goldbox.savegame import SaveGame0, SaveGame1
+    fx = pathlib.Path(__file__).resolve().parents[1] / "fixtures"
+    payload = bytearray(SaveGame0.from_prg(
+        (fx / "savedgame0.bin").read_bytes()).to_bytes())
+    save1 = SaveGame1.from_prg(
+        (fx / "savedgame1.bin").read_bytes()).to_bytes()
+    return payload, save1
+
+
+def test_save_as_dos_keeps_a_blessed_c64_character_blessed(tmp_path):
+    """The proving test: Bless on slot 0 reaches BRUTUS's `.SPC`; a row with
+    no rule makes Save As refuse, naming the effect."""
+    from editor import saveplan
+
+    payload, save1 = _fixture_payload()
+    effects.write_effect(payload, 63, 1, 0, 0x02, 0x01)
+    plan = _dos_plan(tmp_path, payload, save1)
+    assert isinstance(plan, saveplan.SavePlan)
+    # One `.SPC` per save; only BRUTUS was blessed, so exactly one node.
+    spc = plan.files["CHRDATA1.SPC"]
+    assert spc.count(BLESS) == 1
+
+    effects.write_effect(payload, 62, 13, 0, 0x02, 0x01)
+    with pytest.raises(saveplan.DroppedFields) as err:
+        _dos_plan(tmp_path, payload, save1)
+    assert "effect 13" in str(err.value)
