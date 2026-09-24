@@ -66,6 +66,8 @@ def opening_step(row24: str, text: str, disk_wanted: bool) -> str:
         return "disk"
     if "MOVE" in row24 and "ENCAMP" in row24:
         return "world"
+    if "GO BACK" in row24 and "LEAVE TREASURE" in row24:
+        return "leave"
     if "TAKE" in row24 and "EXIT" in row24:
         return "exit"
     if row24.strip() == "EXIT":
@@ -185,12 +187,18 @@ def experience_map(path: pathlib.Path) -> dict[str, int]:
 
 
 def answer_bar(sess, step: str, s, *, sleep=time.sleep) -> None:
-    """Select EXIT or NO, and press Return if row 24 has not changed.
+    """Select EXIT, NO or LEAVE TREASURE, and press Return if row 24 has not changed.
+
+    `leave` answers Silver Blades' `GO BACK LEAVE TREASURE`, as `ssbwarp`'s
+    `enter_world` does: the party forgoes the starting equipment a player
+    would take.  The experience comparison is unaffected, since it compares
+    experience and not equipment.
 
     `s` is the screen the bar was read from.  A bitmap (None) on either side
     is waited out rather than compared.
     """
-    sess.select_bar("EXIT" if step == "exit" else "NO", timeout=10)
+    label = {"exit": "EXIT", "leave": "LEAVE TREASURE"}.get(step, "NO")
+    sess.select_bar(label, timeout=10)
     sleep(3)
     again = sess.screen()
     if s is not None and again is not None and again.row(24) == s.row(24):
@@ -389,7 +397,7 @@ def run(args) -> int:
                     note(event="wanted", **curseareazero.wanted_file(sess))
                     sess.patch_disk_prompt()
                 sess.handle_prompt(s)
-            elif step in ("exit", "no"):
+            elif step in ("exit", "no", "leave"):
                 answer_bar(sess, step, s)
             elif step == "return":
                 sess.press_kernal(0x0D)

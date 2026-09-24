@@ -29,6 +29,7 @@ def test_a_side_prompt_is_a_disk_prompt_not_a_press_prompt():
     ("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK", "world"),
     ("PRESS BUTTON OR RETURN TO CONTINUE.", "return"),
     ("VIEW TAKE POOL SHARE EXIT", "exit"),
+    ("GO BACK LEAVE TREASURE", "leave"),
     ("YES NO", "no"),
     ("EXIT" + " " * 36, "exit"),
     ("", "wait"),
@@ -162,10 +163,10 @@ class Bar:
 
 class Sess:
     def __init__(self, again):
-        self.again, self.pressed = again, []
+        self.again, self.pressed, self.selected = again, [], []
 
     def select_bar(self, word, timeout):
-        pass
+        self.selected.append(word)
 
     def screen(self):
         return self.again
@@ -329,3 +330,10 @@ def test_the_run_saves_then_copies_and_marks_saved_only_after_the_copy():
         run.index('summary["saved"] = True')
     assert "sess.settle(4)" not in run
     assert "detach" not in run
+
+
+def test_the_go_back_treasure_bar_selects_leave_treasure():
+    sess = Sess(Bar("MOVE ENCAMP"))
+    openingscene.answer_bar(sess, "leave", Bar("GO BACK LEAVE TREASURE"),
+                            sleep=lambda s: None)
+    assert sess.selected == ["LEAVE TREASURE"] and sess.pressed == []
