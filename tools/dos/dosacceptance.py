@@ -1049,11 +1049,14 @@ class Driver:
             if not self.game.turn_right():
                 raise self.fail(f"walk-turn-{n}", "the map bar did not return "
                                 "after turning (combat or an unknown screen)")
-            record(f"walk-turn-{n}")
+            turned = record(f"walk-turn-{n}")
         if not self.game.step():
             raise self.fail("walk-step", "the map bar did not return after the "
                             "step (combat or an unknown screen)")
         after = record("walk-step")
+        if after == turned:
+            raise self.fail("walk-blocked", "the settled status did not change "
+                            "after Up (a blocked step)")
         return {"route": route, "map_bar": self.world_sig,
                 "status_before": before, "status_after": after,
                 "screens": screens}

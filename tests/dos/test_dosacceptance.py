@@ -676,11 +676,42 @@ def test_pool_walk_mi_stops_before_camp_when_step_enters_combat(tmp_path):
         def step(self):
             self.keys.append("Up")
             game.mode = "fight"
-            return False
+            return True
 
     move = Movement()
     d.game = move
     with pytest.raises(da.StepFailed, match="map bar did not return"):
+        d.walk("MI")
+    assert move.keys == ["Right", "Right", "Up"]
+    assert d.where == "map"
+
+
+def test_pool_walk_mi_stops_before_camp_when_step_hits_a_wall(tmp_path):
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A")
+    d.where = "map"
+    d.world_ink = game.capture().ink(dosbox.BAR)
+
+    class Movement:
+        def __init__(self):
+            self.facing = 3
+            self.keys = []
+
+        def status(self):
+            return f"0,{self.facing}"
+
+        def turn_right(self):
+            self.keys.append("Right")
+            self.facing = (self.facing + 1) % 4
+            return True
+
+        def step(self):
+            self.keys.append("Up")
+            return True
+
+    move = Movement()
+    d.game = move
+    with pytest.raises(da.StepFailed, match="status did not change"):
         d.walk("MI")
     assert move.keys == ["Right", "Right", "Up"]
     assert d.where == "map"
