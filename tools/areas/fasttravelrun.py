@@ -383,6 +383,34 @@ def walk_afterwards(sess) -> tuple[list[dict], bool]:
     return steps, bool(sheet)
 
 
+def capture_failure(sess, out: pathlib.Path) -> str:
+    """Write every screen row to `failure-screen.txt` and a screenshot to
+    `failure.png` under *out*, before teardown destroys the evidence. Returns
+    a sentence saying where they went; never raises, because it runs while
+    another failure is already in flight."""
+    said = []
+    if sess is None:
+        return "no session had started, so no screen was captured"
+    try:
+        screen = sess.screen()
+        if screen is None:
+            text = "(no readable text screen: a bitmap, or the monitor did not answer)\n"
+        else:
+            text = "\n".join(f"{r:2d} |{screen.row(r)}|" for r in range(25)) + "\n"
+        path = out / "failure-screen.txt"
+        path.write_text(text)
+        said.append(f"screen text in {path}")
+    except Exception as e:                                # noqa: BLE001
+        said.append(f"screen text unavailable ({e!r})")
+    try:
+        shot = out / "failure.png"
+        said.append(f"screenshot in {shot}" if sess.kbd.screenshot(str(shot))
+                    else "no screenshot taken")
+    except Exception as e:                                # noqa: BLE001
+        said.append(f"screenshot unavailable ({e!r})")
+    return "; ".join(said)
+
+
 def disks_of(args) -> pathlib.Path | None:
     """The disk folder to stage from: `--disks` when given, else the default."""
     return pathlib.Path(args.disks) if args.disks else DISKS
@@ -515,6 +543,10 @@ def run(args) -> int:
         print(("PASS: walk: " if walk_ok else "FAIL: walk: ") + walk_message,
               flush=True)
         return 0 if walk_ok else 1
+    except RuntimeError as e:
+        result = {"ok": False,
+                  "message": f"{e}; {capture_failure(sess, out)}"}
+        raise
     finally:
         # A result that cannot be written must not stop the teardown below, or
         # the emulator slot leaks.

@@ -740,3 +740,42 @@ def test_the_default_out_is_under_the_cache_not_the_temp_directory(monkeypatch):
     FT.main([])
     assert pathlib.Path(seen["out"]).is_relative_to(
         pathlib.Path.home() / ".cache")
+
+
+def test_a_failing_load_writes_the_screen_and_names_it_in_result_json(
+        monkeypatch, tmp_path):
+    import json
+    slot = types.SimpleNamespace(
+        n=1, display=":1", dir=str(tmp_path),
+        teardown=lambda: None, release=lambda: None)
+
+    class Failing(_RunSession):
+        kbd = FakeKbd()
+
+        def load_save(self):
+            return False
+
+        def screen(self):
+            return FakeScreen("NOT THE PARTY MENU")
+
+    sess = Failing()
+    monkeypatch.setattr(FT.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(FT.S, "stage_disks", lambda *a, **k: "boot")
+    monkeypatch.setattr(FT.S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(FT.S, "Session", lambda *a, **k: sess)
+    out = tmp_path / "out"
+    args = types.SimpleNamespace(
+        out=str(out), slot=None, disks=str(tmp_path),
+        save=str(tmp_path / "save.d64"), from_area=13, to_area=27,
+        member="FATIMA", arrive=1.0, answer_timeout=1.0)
+    try:
+        FT.run(args)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("run should still raise")
+    text = (out / "failure-screen.txt").read_text()
+    assert "NOT THE PARTY MENU" in text and text.count("\n") == 25
+    message = json.loads((out / "result.json").read_text())["message"]
+    assert str(out / "failure-screen.txt") in message
+    assert Failing.kbd.paths == [str(out / "failure.png")]
