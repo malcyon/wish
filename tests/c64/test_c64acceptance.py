@@ -509,6 +509,216 @@ def test_curse_quit_control_uses_only_done_and_quit():
     assert sent == ["DONE", "QUIT"]
 
 
+def test_curse_one_step_skips_wall_edge_and_occupant_and_checks_landing():
+    from types import SimpleNamespace
+
+    actor = SimpleNamespace(name="PHILIPPE", index=0, x=5, y=5, hp=33)
+    other = SimpleNamespace(name="SHARA", index=1, x=5, y=6, hp=20)
+    picked = []
+
+    class Battle:
+        shape = SimpleNamespace(holds=lambda x, y: x >= 5 and y >= 5)
+        combatants = (actor, other)
+
+        @staticmethod
+        def square(x, y):
+            return 1 if (x, y) == (6, 5) else 0
+
+        @staticmethod
+        def at(x, y):
+            return other if (x, y) == (5, 6) else None
+
+    class Session:
+        kbd = SimpleNamespace(key=lambda key, *args: picked.append(key))
+
+        def battle(self):
+            return Battle()
+
+        def acting(self, battle):
+            return actor
+
+        def combat_bar(self, word, timeout):
+            return True
+
+        def await_bar(self, kinds, timeout):
+            return object()
+
+        def settle(self, seconds):
+            pass
+
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess = Session()
+    run.observe_curse = lambda phase, **kw: {}
+    with pytest.raises(A.StepFailed, match="did not reach"):
+        run.probe_one_step()
+    assert picked == ["KP_3"]  # The only open, unoccupied in-bounds square.
+
+
+def test_curse_missing_first_command_bar_keeps_screen_and_fails():
+    class Session:
+        def await_bar(self, kinds, timeout, interval):
+            return None
+
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess = Session()
+    captures = []
+    run.capture = lambda tag: captures.append(tag)
+    with pytest.raises(A.StepFailed, match="first command bar"):
+        run.first_command_bar()
+    assert captures == ["lost-first-command-bar"]
+
+
+def test_curse_observes_done_branch_outside_tactic_and_restores_end_turn():
+    from types import SimpleNamespace
+
+    row = [[62, 25, 0, 0, 5]]
+    events = []
+
+    class Session(A.S.Session):
+        done = False
+
+        def in_combat(self):
+            return True
+
+        def mode(self):
+            return 2
+
+        def screen(self):
+            return SimpleNamespace(text=lambda: "GUARD DELAY QUIT",
+                                   row=lambda n: "GUARD DELAY QUIT",
+                                   colours=bytes(1000), codes=bytes(1000))
+
+        def combat_state(self, screen=None):
+            return A.S.CombatBar(A.S.BAR_DONE if not self.done else "idle",
+                                 "GUARD DELAY QUIT")
+
+        def handle_prompt(self, screen=None):
+            pass
+
+        def idle(self, seconds):
+            import time
+            time.sleep(0.03)
+
+        def battle(self):
+            return object()
+
+        def mon(self, timeout):
+            class Monitor:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    pass
+
+                def read(self, address, length):
+                    return bytes(length)
+
+                def resume(self):
+                    pass
+
+            return Monitor()
+
+        def acting(self, battle):
+            return SimpleNamespace(name="PHILIPPE", index=0, x=5, y=5, hp=33)
+
+        def end_turn(self):
+            row.clear()
+            self.done = True
+            return "GUARD"
+
+    sess = Session.__new__(Session)
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess = sess
+    run.attack_owner = 0
+    run.first_effect_loss = None
+    run.last_effect_row = None
+    run.reading = lambda: {"effects": [r.copy() for r in row], "clock": [0] * 6}
+    run.capture = lambda tag: [tag]
+    run.log = SimpleNamespace(emit=lambda kind, **kw: events.append((kind, kw)))
+    result = run.observed_fight(0.02)
+    assert result.blows == 0
+    assert "end_turn" not in vars(sess)
+    observed = [kw for kind, kw in events if kind == "curse-observation"]
+    assert [kw["phase"] for kw in observed] == ["done-before", "done-after"]
+    assert observed[-1]["chosen"] == "GUARD"
+    assert run.first_effect_loss["phase"] == "done-after"
+
+
+def test_curse_quit_control_validates_persistence_without_an_attack():
+    row = [62, 25, 0, 0, 5]
+    quit_evidence = {"actor": "PHILIPPE", "chosen": "QUIT",
+                     "before": row, "after": row}
+    A.validate_curse_quit(quit_evidence, "PHILIPPE")
+    with pytest.raises(A.StepFailed, match="no confirmed QUIT"):
+        A.validate_curse_quit(None, "PHILIPPE")
+    with pytest.raises(A.StepFailed, match="absent after"):
+        A.validate_curse_quit({**quit_evidence, "after": None}, "PHILIPPE")
+
+
+def test_curse_quit_control_completes_without_named_attack(tmp_path, monkeypatch):
+    import contextlib
+    from types import SimpleNamespace
+
+    from tools.curse_of_the_azure_bonds import curserun
+
+    source = _fixture_disk(tmp_path)
+    slot = _Slot(tmp_path)
+    monkeypatch.setattr(A.SC, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [],
+                                                    "magic_items": []})
+    monkeypatch.setattr(curserun, "stage", lambda *a, **k: "first")
+
+    class Session:
+        save_disk = "disk"
+
+        def __init__(self, *a, **k):
+            pass
+
+        def watching_dialogs(self):
+            return contextlib.nullcontext()
+
+        def terminate(self):
+            pass
+
+    monkeypatch.setattr(curserun, "CurseSession", Session)
+
+    class Run:
+        attack_evidence = None
+        quit_evidence = {"actor": "PHILIPPE", "chosen": "QUIT",
+                         "before": [62, 25, 0, 0, 5],
+                         "after": [62, 25, 0, 0, 5], "persisted": True}
+        first_effect_loss = None
+
+        def __init__(self, *args):
+            pass
+
+        def load(self):
+            return {}
+
+        def fight(self, *args):
+            return {"named_attack": None, "named_quit": self.quit_evidence}
+
+        def reading(self):
+            return {"effects": [[62, 25, 0, 0, 5]]}
+
+        def capture(self, tag):
+            pass
+
+    monkeypatch.setattr(A, "CurseRun", Run)
+    args = SimpleNamespace(title="curse", max_seconds=120, stage_row=[],
+                           stage_trait=[], stage_item=[], stage_only=False,
+                           checkpoint=[], pool=None, issue="671", run="fake-quit",
+                           disks="unused", attack_by="PHILIPPE", walk="I",
+                           walk_steps=60, quit_nonattacking=True, probe_step=False)
+    out = tmp_path / "evidence"
+    assert A.run(args, A.parse_steps(["load", "fight 30"]), out, source) == 0
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert summary["completed"] is True
+    assert summary["named_attack"] is None
+    assert summary["named_quit"]["persisted"] is True
+
+
 @pytest.mark.parametrize("before,after,saved,expected", [
     ([], [], [], 1),
     (["INVISIBILITY"], ["INVISIBILITY"], [], 1),
