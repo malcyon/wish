@@ -13,7 +13,7 @@ Scripts that may drive a live emulator, an X server or the player's own disks, o
 | [curse_of_the_azure_bonds](curse_of_the_azure_bonds/README.md) | Scripts for Curse of the Azure Bonds: loading, driving and checking its saves. |
 | [dos](dos/README.md) | Scripts for the DOS ports: DOSBox and the drivers built on it, overlay and record readers, and the save and party tools. |
 | [generate](generate/README.md) | Scripts that generate files from the code and the game's data: the compiled Qt forms, the generated docs, tables and licence file, the icon set, the Codex agent profiles, the fast-travel exit table and the class diagrams. |
-| [github](github/README.md) | Scripts that read GitHub issues so that a stranger's text is withheld: the trust check and the issue reader. |
+| [github](github/README.md) | Scripts for trusted issue reads and exact-commit CI checks. |
 | [gui](gui/README.md) | Scripts that draw or measure Wish's own windows, and the Windows guest scripts that run them. |
 | [icons](icons/README.md) | Scripts for combat icons and portraits: the correspondence tables between the DOS and C64 art, and the tools that build, check and draw them. |
 | [pool_of_radiance](pool_of_radiance/README.md) | Scripts for Pool of Radiance: driving fights and outdoor walks, and replaying a load failure. |
