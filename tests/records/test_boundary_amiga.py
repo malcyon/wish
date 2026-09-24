@@ -44,7 +44,6 @@ _LATER_PROVENANCE = "Written as a "
 _LATER_EFFECTS = amiga_later.LATER_EFFECTS_FROM_NEUTRAL
 #: `goldbox.dos_codec.write`'s own line for a name past DOS's fifteen.
 _NAME_TRUNCATED = "Name '"
-_SPACE_IN_NAME = "WARNING: Spaces in names are dropped on the Amiga."
 
 _NAME_LENGTHS = [0, 1, 15, 16, 20, 21]
 
@@ -213,11 +212,13 @@ def test_por_the_name_is_sixteen_bytes_built_from_dos_fifteen(length):
         [True] if length > 15 else []), rep.losses
 
 
-def test_por_a_space_in_the_name_is_reported_once():
+def test_por_a_space_in_the_name_is_written_as_ff_and_not_reported():
     char = boundarychars._base()
     char.set("name", "A B", "boundary")
-    _, _, _, rep, _ = _por_readback(char)
-    _only(rep.warnings, [_POR_PROVENANCE, _SPACE_IN_NAME])
+    rec, _, _, rep, back = _por_readback(char)
+    assert rec[:4] == b"A\xffB\0"
+    assert back.get("name") == "A B"
+    _only(rep.warnings, [_POR_PROVENANCE])
 
 
 @pytest.mark.parametrize("value", [0, 1, 0x01020304, 0xFFFFFFFF])

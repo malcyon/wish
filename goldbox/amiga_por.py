@@ -128,7 +128,7 @@ class AmigaPorCharacter:
     @property
     def name(self) -> str:
         raw = self.raw[:AMIGA_POR_NAME_SIZE]
-        return raw.split(b"\0")[0].decode("latin1")
+        return raw.split(b"\0")[0].replace(b"\xff", b" ").decode("latin1")
 
     def get(self, field_name: str):
         """One field, by its `goldbox/dos_port.py` name.
@@ -718,10 +718,14 @@ class PorWriteReport(neutral.Report):
 
 
 def _por_name_bytes(record: bytes) -> bytes:
-    """DOS's count byte and fifteen as the Amiga's sixteen NUL-padded."""
+    """DOS's count byte and fifteen as the Amiga's sixteen NUL-padded.
+
+    A space becomes `$FF`, the byte the game's own name entry writes and keeps
+    through every save; a real `$20` is stripped at its first save.
+    """
     size = dos_port.FIELDS_BY_NAME["name_text"].size
     count = min(record[0], size)
-    return record[1:1 + count].ljust(AMIGA_POR_NAME_SIZE, b"\0")
+    return record[1:1 + count].replace(b" ", b"\xff").ljust(AMIGA_POR_NAME_SIZE, b"\0")
 
 
 def from_dos_record(record: bytes) -> bytes:
@@ -891,18 +895,6 @@ def write_por(char: NeutralCharacter,
         "the 285-byte DOS one built by goldbox.dos_codec.write; the provenance lines "
         "name the DOS field each byte was transposed from, which is the "
         "field table both ports share")
-    # `#308 (Does Amiga Pool of Radiance drop the space out of a character's
-    # name when it saves?)`: the engine strips every space out of every name
-    # on its own first save, including a name typed into its own name-entry
-    # box thirty seconds earlier -- nothing on our side causes it and
-    # nothing on our side can prevent it, so the record keeps the player's
-    # name with its space and this warns him what the game will do to it.
-    # Silent for a name with no space, which the engine leaves alone.
-    name_value = str(char.get("name", ""))
-    if " " in name_value:
-        rep.warnings.append(
-            f"WARNING: Spaces in names are dropped on the Amiga. "
-            f"{name_value} will become {name_value.replace(' ', '')}.")
     rep.total = AMIGA_POR_RECORD_SIZE + len(amiga_itm) + len(amiga_spc)
 
     def converted(name: str) -> str:

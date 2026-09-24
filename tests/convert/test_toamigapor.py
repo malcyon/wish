@@ -159,16 +159,15 @@ def test_the_slot_letter_lands_in_its_own_byte_of_the_picker_list(tmp_path):
 
 
 def test_a_space_in_a_name_is_written_through_to_the_amiga_record(tmp_path):
-    """LADY KATHERINE keeps her space, and this test is here because the
-    engine does not.
+    """LADY KATHERINE keeps her space, written as the `$FF` the game itself
+    writes for a typed space, which it keeps through every save.
 
     Loaded in Amiga Pool of Radiance the panel reads `LADY KATHERINE`; camp,
     save, and the engine writes the record back as `LADYKATHERINE`, which the
     panel then draws -- `#308 (Does Amiga Pool of Radiance drop the space out of
     a character's name when it saves?)`.  The tempting
-    repair is to strip the space on our side so the two agree.  That would
-    lose it immediately instead of on the first save, and this fails if
-    anybody does it.
+    repair was to strip the space on our side; this fails if anybody does
+    that, or writes `$20`, which the engine strips at its first save.
 
     She is `CHRDATB3`, not `CHRDATB4`: the party is written in the C64's own
     marching order, BRUTUS first
@@ -186,7 +185,7 @@ def test_a_space_in_a_name_is_written_through_to_the_amiga_record(tmp_path):
 
     from goldbox.amiga_adf import AmigaDisk
     record = AmigaDisk.open(out).read_file("/save/CHRDATB3.sav")
-    assert bytes(record[:16]) == b"LADY KATHERINE\x00\x00"
+    assert bytes(record[:16]) == b"LADY\xffKATHERINE\x00\x00"
 
 
 def test_the_input_disk_is_not_written(tmp_path):
