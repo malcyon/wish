@@ -480,6 +480,20 @@ def party_row_granted(title_key: str, row: "Effect") -> bytes | None:
     return bytes((row.id, 0, 0, row.magnitude, 0)) + _RUNNING_EFFECT_NEXT
 
 
+def is_party_granted_record(title_key: str, node: bytes) -> bool:
+    """Whether a DOS granted record is `party_row_granted`'s `05 00 00 mm 00`.
+
+    Flag 1 is an item's grant (removed when the item comes off) and data
+    `0xFF` is a racial or trait-slot seed; neither is a party-wide row, and
+    both stay in a C64 trait slot. Pool's own item grant of id 5 is
+    `05 00 00 0C 00`, which no byte separates from a magnitude-12 row.
+    """
+    return (node[0] == DETECT_MAGIC_ID
+            and node[0] in party_row_ids(title_key)
+            and node[1] == 0 and node[2] == 0
+            and node[3] != 0xFF and node[4] == 0)
+
+
 def c64_party_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted:
     """The C64 id and magnitude for a DOS node that becomes a party-wide row.

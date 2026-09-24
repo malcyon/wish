@@ -957,3 +957,53 @@ def test_a_later_title_prayer_row_reaches_every_member(name, game):
     assert [(e.id, e.owner, e.duration, e.magnitude)
             for e in effects.active_effects(bytes(fresh))] == \
         [(49, 0xFF, 0x0A, 0x03)]
+
+
+@pytest.mark.parametrize("record, party_row", [
+    (bytes((5, 0, 0, 0x03, 0)), True),    # permanent Detect Magic, level 3
+    (bytes((5, 0, 0, 0xFF, 1)), False),   # an item's grant, removed on un-ready
+    (bytes((5, 0, 0, 0xFF, 0)), False),   # a C64 trait-slot id 5 written by DOS
+    (bytes((5, 0, 0, 0x0C, 1)), False),   # flag 1 keeps its trait slot
+], ids=["permanent-03-00", "item-grant-FF-01", "trait-FF-00", "flag-one-0C-01"])
+def test_only_a_flag_zero_non_ff_id_5_record_becomes_a_party_row(
+        record, party_row):
+    payload = bytearray(0x1C00)
+    char = _title_character(c64_port.POOL_OF_RADIANCE)
+    char.set("granted_effects", [record + NULL], "built here")
+    rec, _rep = c64_codec.write(char, payload=payload, party_slot=2,
+                                clock_minutes=0)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    slots = bytes(rec.get_raw("item_effects"))
+    if party_row:
+        assert rows == [(5, 0xFF, 0x00, record[3])]
+        assert slots == bytes(10)
+    else:
+        assert rows == []
+        assert slots == bytes(9) + b"\x05"
+
+
+def test_a_c64_trait_slot_id_5_stays_in_its_slot_through_dos():
+    trait = bytes((5, 0, 0, 0xFF, 0))
+    payload = bytearray(0x1C00)
+    char = _title_character(c64_port.POOL_OF_RADIANCE)
+    char.set("granted_effects", [trait + NULL], "built here")
+    rec, _rep = c64_codec.write(char, payload=payload, party_slot=0,
+                                clock_minutes=0)
+    assert 5 in bytes(rec.get_raw("item_effects"))
+    assert [r for r in _rows(payload).values() if r != (0, 0, 0, 0)] == []
+
+
+def test_a_granted_id_5_without_a_payload_takes_a_trait_slot_and_says_so():
+    char = _title_character(c64_port.POOL_OF_RADIANCE)
+    char.set("granted_effects", [GRANTED_DETECT + NULL], "built here")
+    rec, rep = c64_codec.write(char)
+    assert bytes(rec.get_raw("item_effects")) == bytes(9) + b"\x05"
+    assert [d for d in rep.losses if "effect 5" in d and "never expires" in d]
+
+
+def test_two_party_wide_never_expiring_rows_keep_the_higher_magnitude():
+    party = _staged_party((62, (5, 0xFF, 0x00, 0x07)),
+                          (63, (5, 0xFF, 0x00, 0x03)))
+    granted = [bytes(r)[:5] for c in party
+               for r in c.get("granted_effects") or () if bytes(r)[0] == 5]
+    assert granted == [bytes((5, 0, 0, 7, 0))]

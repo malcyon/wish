@@ -8068,7 +8068,12 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
             if row.owner & 0x80:
                 record = effects.party_row_granted(c64.key, row)
                 if record is not None:
-                    party_granted[row.id] = record
+                    # One party-wide record per id: two rows of one id keep
+                    # the higher magnitude (byte 3), as the finite path
+                    # keeps the longest.
+                    kept_record = party_granted.get(row.id)
+                    if kept_record is None or record[3] > kept_record[3]:
+                        party_granted[row.id] = record
                     continue
                 node = effects.party_row_record(c64.key, row, clock_mins)
                 if isinstance(node, effects.RunningEffect):
