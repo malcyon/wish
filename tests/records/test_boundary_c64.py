@@ -35,6 +35,7 @@ from goldbox import (
 )
 from goldbox import items as items_mod
 from goldbox import levels as level_tables
+from goldbox.neutral import ScrollBundle
 from tools.records import boundarychars, boundarywidths, laterchars, laterlegality
 
 GAMES = boundarywidths.GAMES
@@ -181,6 +182,38 @@ def test_b_every_field_the_c64_writer_takes_has_a_boundary():
     covered = {s.neutral for s in boundarywidths.scalars()} \
         | set(boundarywidths.STRUCTURED)
     assert _copied_or_transformed() - covered == set()
+
+
+def test_b_a_joined_scroll_is_written_as_separate_scrolls_in_separate_slots():
+    """`scroll_bundles` is what the DOS and Amiga writers use and the C64
+    writer ignores on purpose: its `inventory` already holds each scroll of a
+    joined scroll in a slot of its own, so the bundle must add no byte, no
+    slot and no report line."""
+    def scroll(*spells):
+        block = bytearray(16)
+        block[0] = 0x27
+        block[13:16] = bytes(spells)
+        return bytes(block)
+
+    scrolls = [scroll(1, 2, 3), scroll(4, 0, 0)]
+    char = boundarywidths.case("warrior")
+    char.set("inventory", scrolls, "composed")
+    char.set("scroll_bundles",
+             (ScrollBundle(0, 2, bytes((0x49, 0x27, 2, 0x4D)) + bytes(12)),),
+             "composed")
+    rec, rep, back = _write(char)
+    raw = rec.get_raw("inventory")
+    slots = [raw[n * 16:(n + 1) * 16] for n in range(16)
+             if any(raw[n * 16:(n + 1) * 16])]
+    assert [(s[0], tuple(s[13:16])) for s in slots] == \
+        [(0x27, (1, 2, 3)), (0x27, (4, 0, 0))]
+    assert back.get("scroll_bundles") is None
+    assert _losses(rep) == [] and rep.warnings == [] and rep.losses == []
+    assert not [d for d in rep.dropped if "scroll_bundles" in d]
+
+    bare = boundarywidths.case("warrior")
+    bare.set("inventory", scrolls, "composed")
+    assert rec.to_bytes() == _write(bare)[0].to_bytes()
 
 
 def test_b_no_boundary_row_names_a_field_the_writer_has_lost():

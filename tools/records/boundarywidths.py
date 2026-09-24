@@ -209,6 +209,9 @@ STRUCTURED: dict[str, str] = {
     "innate_effects": "ten trait slots, and one past",
     "granted_effects": "the trait slots the racial ids leave, and one past",
     "inventory": "sixteen item slots, and one past",
+    "scroll_bundles": "no width: the C64 has no joined scroll and writes each "
+                      "scroll of one to a slot of its own from `inventory`, "
+                      "so the field is taken and adds no byte",
     "roster_tail": "exactly nine bytes, and eight or ten refused",
     "treasure_share": "0 to 3 as the C64 masks it; bit 2 refused (#303)",
     "npc": "a flag, no width",
