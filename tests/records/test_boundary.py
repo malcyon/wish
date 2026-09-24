@@ -111,13 +111,21 @@ def test_a_boundary_character_writes_and_reads_back_whole(name, caplog):
 
 # --- B: every active field has a value in the generator's own base ----------
 
+#: A joined scroll's bundle is a second view of scrolls `inventory` already
+#: holds, and only the DOS and Amiga writers use it: the C64 reader hands none
+#: back, so a base value would break every read-back comparison in the Amiga and
+#: C64 boundary files.  `tests/convert/test_joinedscroll.py` pins its DOS and
+#: Amiga round trips and `test_boundary_c64.py` pins the C64 write.
+_NO_BASE_VALUE = {"scroll_bundles"}
+
+
 def test_b_every_active_field_has_a_boundary_value():
     """The hook into `field_disposition()`: a field added to
     `goldbox/neutral.py` and wired into the writer has no value in
     `tools.records.boundarychars._base()` until somebody says what its extreme is,
     and this fails until they do."""
     base = boundarychars._base()
-    missing = set(_active_fields()) - set(base.keys())
+    missing = set(_active_fields()) - set(base.keys()) - _NO_BASE_VALUE
     assert missing == set()
 
 
