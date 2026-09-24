@@ -728,6 +728,13 @@ _SAVES_UNWRITABLE_FOR = frozenset({
     ("dos", "pool-of-radiance"),
 })
 
+#: The roster movement box, unwritable on a DOS Curse save: the DOS loader
+#: recomputes current movement from weight carried on every party load, so an
+#: edit would revert.
+_MOVEMENT_UNWRITABLE_FOR = frozenset({
+    ("dos", "curse-of-the-azure-bonds"),
+})
+
 
 def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
     """Fields the sheet must grey because this port's writer cannot take an
@@ -746,4 +753,6 @@ def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
         fields = fields | _THIEF_FIELDS
     if (port, title_key) in _SAVES_UNWRITABLE_FOR:
         fields = fields | _SAVE_FIELDS
+    if (port, title_key) in _MOVEMENT_UNWRITABLE_FOR:
+        fields = fields | {"roster_movement"}
     return fields

@@ -136,7 +136,7 @@ def _moved(original: bytes, written: bytes, spans) -> set[str]:
             if original[s.at:s.at + s.size] != written[s.at:s.at + s.size]}
 
 
-def _gold_moves(deltas) -> set[str]:
+def _gold_moves(deltas, dos_only: bool = False) -> set[str]:
     """What a gold edit is expected to move, and why each one.
 
     `encumbrance` is money plus item weight times quantity, which the DOS
@@ -155,7 +155,11 @@ def _gold_moves(deltas) -> set[str]:
     arguing it is right -- `docs/223-the-differential-rewrite.md`.
     """
     later = deltas is not dos_port.POOL_OF_RADIANCE
-    return {"gold", "encumbrance"} | ({"unnamed_0ab"} if later else set())
+    # DOS Curse rebuilds current movement from weight carried, so a gold
+    # edit that crosses a movement step moves that byte.
+    curse = deltas.key == "curse-of-the-azure-bonds" and dos_only
+    return ({"gold", "encumbrance"} | ({"unnamed_0ab"} if later else set())
+            | ({"movement_current"} if curse else set()))
 
 
 # --- the span maps ----------------------------------------------------------
@@ -305,7 +309,7 @@ def test_an_edited_field_reaches_the_dos_record_and_nothing_else(deltas):
     assert dos_codec.to_neutral(written).get("gold") == 4321
 
     spans, _unplaced = rewrite.dos_spans(deltas)
-    assert _moved(char.to_bytes(), out.record, spans) == _gold_moves(deltas)
+    assert _moved(char.to_bytes(), out.record, spans) == _gold_moves(deltas, dos_only=True)
 
 
 def test_an_edited_field_reaches_an_amiga_pool_record_and_nothing_else():
@@ -803,10 +807,16 @@ def test_an_edit_lands_on_every_dos_specimen_and_moves_nothing_else():
             after = _edited(before, gold=char.get("gold") ^ 0x1234)
             out = rewrite.rewrite_dos(char, before, after, game)
             spans, _unplaced = rewrite.dos_spans(char.deltas)
-            expected = _gold_moves(char.deltas)
-            assert set(out.moved) == expected, f"{label} {char.name}"
+            expected = _gold_moves(char.deltas, dos_only=True)
+            # Only some Curse characters cross a movement step (72 of 325).
+            optional = ({"movement_current"}
+                        if char.deltas.key == "curse-of-the-azure-bonds"
+                        else set())
+            assert set(out.moved) - optional == expected - optional, \
+                f"{label} {char.name}"
             changed = _moved(char.to_bytes(), out.record, spans)
-            assert expected - {"unnamed_0ab"} <= changed <= expected, \
+            assert expected - {"unnamed_0ab"} - optional <= changed \
+                <= expected, \
                 f"{label} {char.name}"
 
 

@@ -5356,6 +5356,17 @@ def test_a_dos_curse_saves_saving_throw_boxes_are_disabled_with_no_tooltip(
         assert widget.toolTip() == "", name
 
 
+def test_a_dos_curse_saves_roster_movement_box_is_disabled_with_no_tooltip(
+        app, tmp_path):
+    """DOS Curse's loader recomputes movement on every party load, so an
+    edit to the Roster movement box would revert."""
+    w = _dos_curse_editor(tmp_path)
+    w.roster.selectRow(0)
+    widget = w._widgets["roster_movement"]
+    assert not widget.isEnabled()
+    assert widget.toolTip() == ""
+
+
 def test_a_dos_silver_blades_saves_saving_throw_boxes_are_disabled_with_no_tooltip(
         app, tmp_path):
     """The same as DOS Curse's, for the same reason: DOS Silver

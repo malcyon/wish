@@ -2614,7 +2614,7 @@ def test_a_character_that_cannot_be_written_leaves_the_slot_alone(
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
     assert before, "the first conversion must have written something"
 
-    def boom(char, portraits=None, icon=None):
+    def boom(char, portraits=None, icon=None, **kwargs):
         raise dos_codec.DosRecordError("this character will not encode")
 
     # The codec rather than the `goldbox/dos_codec.py` shim: since `#470`'s

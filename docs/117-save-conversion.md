@@ -2225,7 +2225,7 @@ graph LR
   dos_codec --> encoding
   dos_codec --> iconparts
   dos_codec -.->|deferred| icons
-  dos_codec -.->|deferred| items
+  dos_codec --> items
   dos_codec --> layout
   dos_codec --> levels
   dos_codec --> neutral
