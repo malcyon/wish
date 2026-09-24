@@ -4087,7 +4087,8 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
                      "is known -- Pool of Radiance only (#366)",
        "save_paralysis": "from neutral save_paralysis, recomputed through "
                          "the DOS engine's own load-time save rebuild, for "
-                         "a C64 source, on Curse and Silver Blades (#632)",
+                         "a C64 source, on Pool of Radiance, Curse and "
+                         "Silver Blades (#632, #634)",
        "save_petrification": "from neutral save_petrification, as "
                              "save_paralysis",
        "save_wands": "from neutral save_wands, as save_paralysis",
@@ -5530,7 +5531,10 @@ def write(char: NeutralCharacter,
     # `thac0_base`: a straight copy hands back the source's own numbers,
     # which the DOS character loader replaces the first time it loads the
     # party, before the party ever appears on screen -- Curse's
-    # `GAME.OVR:0x1D9D1`, and Silver Blades' save rebuild `0x3C644`. The
+    # `GAME.OVR:0x1D9D1`, Silver Blades' save rebuild `0x3C644`, and Pool of
+    # Radiance's `0x2ACDC`, which its party loader reaches through `AC:25`
+    # for every character it reads (the saves only; Pool of Radiance
+    # rebuilds current THAC0 before a fight or VIEW, not on load). The
     # saves are recomputed for every title whose
     # `LevelTables.dos_save_rule_read` is set. Recomputing is gated to
     # `_DOS_LOAD_REBUILD_FROM_PORTS` for the reason given beside it, and to

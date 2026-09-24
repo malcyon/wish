@@ -1147,6 +1147,12 @@ class LevelTables:
     #: this title's DOS load-time save rebuild has not been read, so the
     #: method returns None rather than guessing the C64's rows apply unchanged.
     dos_save_rule_read: bool = False
+    #: Whether the DOS save rebuild adds anything from constitution to column
+    #: 0 at all. Curse's `0x3B45B` and Silver Blades' `0x3C644` do (the two
+    #: steps in :meth:`dos_engine_saving_throws`); Pool of Radiance's
+    #: `GAME.OVR:0x2ACDC` is the best table row and nothing else, and keeps a
+    #: dwarf's or halfling's bonus in `.SPC` effects 90 and 97 instead.
+    dos_save_constitution_steps: bool = False
     #: DOS race bytes whose column 0 takes the racial constitution step in
     #: :meth:`dos_engine_saving_throws`, as a readied constitution booster
     #: always does. Curse's `0x3B45B` tests race 1 and 5, its dwarf and
@@ -1547,14 +1553,16 @@ class LevelTables:
         """The five saves the DOS engine's own load-time rebuild leaves in the
         record.
 
-        Curse's `GAME.OVR:0x3B45B` and Silver Blades' `0x3C644`: each column
-        starts at 20, then for every class slot with a level in
-        `class_levels` the column is lowered to that class's row in the DOS
-        table (Curse `DS:0x45BE`, Silver Blades `DS:0x5592`), with
+        Pool of Radiance's `GAME.OVR:0x2ACDC`, Curse's `0x3B45B` and Silver
+        Blades' `0x3C644`: each column starts at 20, then for every class slot
+        with a level in `class_levels` the column is lowered to that class's
+        row in the DOS table (Pool of Radiance `DS:0x426E`, Curse
+        `DS:0x45BE`, Silver Blades `DS:0x5592`), with
         :attr:`dos_save_overrides` standing in for the cells the DOS table
-        holds differently from the C64's. A regained class contributes
-        nothing -- the caller is expected to have zeroed its current slot. A
-        class this title's table has no row for contributes nothing either.
+        holds differently from the C64's, or holds where the C64's rows stop.
+        A regained class contributes nothing -- the caller is expected to
+        have zeroed its current slot. A class this title's table has no row
+        for contributes nothing either.
 
         After the loop, :attr:`dos_save_trailing_slot` names the one slot
         compared again: if its level in `class_levels` is above its level in
@@ -1562,8 +1570,10 @@ class LevelTables:
         level. That is how a Silver Blades thief who never left the class
         gets the thief "level 0" cell, magic-user level 18's `10 7 5 9 6`.
 
-        Column 0 alone then takes two more additions, both from the
-        constitution score at the in-force byte `0x019`:
+        Where :attr:`dos_save_constitution_steps` is set -- Curse and Silver
+        Blades, not Pool of Radiance -- column 0 alone then takes two more
+        additions, both from the constitution score at the in-force byte
+        `0x019`:
 
         * a race in :attr:`dos_save_constitution_races`, or a character
           wearing an item whose readied power counts as a constitution
@@ -1607,6 +1617,8 @@ class LevelTables:
             row = row_at(trailing, was) if now > was else None
             if row is not None:
                 best = [min(best[i], row[i]) for i in range(5)]
+        if not self.dos_save_constitution_steps:
+            return tuple(best)
         con = int(constitution or 0)
         if race in self.dos_save_constitution_races or bonus_item:
             best[0] += _dos_con_save_racial_step(con)
@@ -1641,6 +1653,24 @@ POOL_OF_RADIANCE = LevelTables(
     dos_thac0=_DOS_THAC0_POOL,
     dos_thac0_level0=_DOS_THAC0_LEVEL0_POOL,
     dos_wisdom_bonus_from=13,
+    #: `GAME.OVR:0x2ACDC` (`AC:2F`, called at the end of `AC:25`, which the
+    #: party loader reaches for every character it reads) sets each column
+    #: to 20 and lowers it to `DS:0x426E + slot * 45 + level * 5` for every
+    #: class slot whose level is above zero -- nine five-byte cells to a
+    #: class, and no constitution step (`dos_save_constitution_steps` stays
+    #: False). Its cells are the C64's rows except fighter 4, which holds the
+    #: fighter 3 row (breath 16 where the C64 has 15), and the cleric and
+    #: magic-user cells at 7 and 8, where the C64's rows stop.
+    #: `tests/pool_of_radiance/test_pordossaves.py` re-reads every cell off
+    #: `START.EXE`.
+    dos_save_overrides=(
+        (("fighter", 4), (13, 14, 15, 16, 16)),
+        (("cleric", 7), (7, 10, 11, 13, 12)),
+        (("cleric", 8), (7, 10, 11, 13, 12)),
+        (("magic-user", 7), (13, 11, 9, 13, 10)),
+        (("magic-user", 8), (13, 11, 9, 13, 10)),
+    ),
+    dos_save_rule_read=True,
 )
 
 #: `DS:0x3E3A`, 8 rows of 13, transcribed from `tools/c64/laterthac0.py table
@@ -1714,6 +1744,7 @@ CURSE_OF_THE_AZURE_BONDS = LevelTables(
         (("paladin", 8), (9, 9, 10, 10, 11)),
     ),
     dos_save_rule_read=True,
+    dos_save_constitution_steps=True,
     dos_save_constitution_races=(1, 5),     # `0x3B63A`: dwarf, halfling
 )
 
@@ -1807,6 +1838,7 @@ SECRET_OF_THE_SILVER_BLADES = LevelTables(
         (("thief", 0), (10, 7, 5, 9, 6)),
     ),
     dos_save_rule_read=True,
+    dos_save_constitution_steps=True,
     dos_save_trailing_slot="thief",     # `0x3C768`
 )
 

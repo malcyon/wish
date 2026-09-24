@@ -402,6 +402,11 @@ def test_a_filled_character_lands_field_for_field():
     other port's skill percentages, because the two ports ship different
     halfling rows)` measured a disagreement for -- the C64 alone
     (`goldbox.dos_codec._THIEF_SKILL_RECOMPUTE_FROM_PORTS`).
+
+    The five saving throws are the third, for a C64 source on Pool of
+    Radiance: `write` stores what DOS Pool of Radiance's own load-time
+    rebuild (`GAME.OVR:0x2ACDC`) leaves there, the best DOS table row across
+    the class levels, since the engine discards whatever the save held (#634).
     """
     char = _filled()
     char.port = "C64"
@@ -413,7 +418,15 @@ def test_a_filled_character_lands_field_for_field():
     for neutral_name, dos_name in dos_codec.WRITE_DIRECT:
         if neutral_name == "thac0_base" or neutral_name in dos_codec._THIEF_SKILL_NAMES:
             continue
+        if neutral_name in _SAVE_THROW_NAMES:
+            continue
         assert back.get(dos_name) == char.get(neutral_name), dos_name
+    expected_saves = level_tables.dos_engine_saving_throws(
+        char.get("levels"), char.get("race"), char.get("constitution"), False,
+        char.game)
+    assert tuple(back.get(n) for n in _SAVE_THROW_NAMES) == expected_saves
+    # `_filled`'s saves are made-up values, so this checks the rebuild ran.
+    assert expected_saves != tuple(char.get(n) for n in _SAVE_THROW_NAMES)
     expected_thac0 = level_tables.dos_base_thac0(char.get("levels"))
     assert combat_value(back.get("thac0_base")) == expected_thac0
     # Not a round trip: `char`'s made-up `thac0_base` is 8 (a value plucked
@@ -1848,26 +1861,18 @@ def test_a_record_round_trips_through_the_neutral_middle():
     assert granted, "no record here carries a permanent non-innate effect"
 
 
-#: The five DOS saving-throw bytes -- masked from the C64 round trip below,
-#: and only from it.  `c64_codec.write` recomputes them from level, race and
-#: constitution the way the C64's own trainer stores them, for a title whose
-#: racial bonus is measured (`#311 (A DOS dwarf, gnome or halfling converted
-#: to the C64 loses his constitution bonus to saving throws, because the C64
-#: keeps it inside the five stored bytes)`), rather than copying DOS's own
-#: plain class row through -- so a dwarf, gnome or halfling that gets the
-#: bonus cannot come back byte-identical, on purpose.  Checked separately
-#: below against `goldbox.levels.saving_throws` itself, so a value that
-#: stopped matching *that* would still fail.
+#: The five DOS saving-throw bytes.  The C64 leg stores them by the C64's own
+#: rule -- `c64_codec.write` puts a dwarf's, gnome's or halfling's
+#: constitution bonus inside the five bytes (`#311 (A DOS dwarf, gnome or
+#: halfling converted to the C64 loses his constitution bonus to saving
+#: throws, because the C64 keeps it inside the five stored bytes)`) -- and the
+#: DOS leg recomputes them through DOS Pool of Radiance's own load-time
+#: rebuild (`goldbox.levels.LevelTables.dos_engine_saving_throws`,
+#: `GAME.OVR:0x2ACDC`), which stores the plain table row and discards
+#: whatever a save held.  So they come back byte for byte and are not masked
+#: (#634).
 _SAVE_THROW_NAMES = ("save_paralysis", "save_petrification", "save_wands",
                      "save_breath", "save_spell")
-
-
-def _save_throw_offsets() -> set[int]:
-    out: set[int] = set()
-    for name in _SAVE_THROW_NAMES:
-        f = dos_port.FIELDS_BY_NAME[name]
-        out.update(range(f.offset, f.end))
-    return out
 
 
 #: `thac0_current` at DOS `0x110` is the other deliberate exception, since
@@ -1891,15 +1896,16 @@ def test_a_record_round_trips_through_the_c64_record():
     record is a sufficient interchange for everything the DOS writer can
     source.
 
-    The five saving-throw bytes are one deliberate exception (#311, see
-    `_save_throw_offsets`), pinned against `goldbox.levels.saving_throws`
-    instead of against DOS's own bytes.  `thac0_current` is the other
-    (`_THAC0_CURRENT_OFFSETS`, #405), pinned against the C64 record's own
-    recomputed byte instead.  `attack_level` is the third (#527,
-    `_attack_level_allowance`), pinned against the destination title's own
-    engine rule."""
+    The five saving-throw bytes are not an exception: the C64 leg holds the
+    C64's own rule and the DOS writer recomputes the DOS engine's, so all
+    five come back byte for byte, and each is also checked against
+    `goldbox.levels.dos_engine_saving_throws` (#634).  `thac0_current` is
+    one deliberate exception (`_THAC0_CURRENT_OFFSETS`, #405), pinned
+    against the C64 record's own recomputed byte instead.  `attack_level`
+    is the other (#527, `_attack_level_allowance`), pinned against the
+    destination title's own engine rule."""
     total = 0
-    mask = _save_throw_offsets() | _THAC0_CURRENT_OFFSETS
+    mask = set(_THAC0_CURRENT_OFFSETS)
     for char in _records():
         neutral_char = dos_codec.to_neutral(char)
         c64_rec, _ = c64_codec.write(neutral_char)
@@ -1909,10 +1915,10 @@ def test_a_record_round_trips_through_the_c64_record():
         outside -= _attack_level_allowance(char, rec)
         assert outside - mask == set(), \
             (char.name, sorted(hex(i) for i in outside))
-        assert level_tables.racial_save_bonus_measured(neutral_char.game)
-        expected = level_tables.saving_throws(
-            neutral_char.get("levels"), neutral_char.get("race"),
-            neutral_char.get("constitution"), neutral_char.game)
+        expected = level_tables.dos_engine_saving_throws(
+            char.class_levels, char.get("race"), char.get("constitution"),
+            False, neutral_char.game)
+        assert expected is not None, char.name
         for value, name in zip(expected, _SAVE_THROW_NAMES):
             f = dos_port.FIELDS_BY_NAME[name]
             assert rec[f.offset] == value, (char.name, name)

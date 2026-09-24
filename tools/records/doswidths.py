@@ -92,8 +92,8 @@ ALWAYS_RECOMPUTED: dict[str, str] = {
 
 #: The five saves, always recomputed for a C64 source on the titles whose DOS
 #: load-time save rebuild has been read -- `levels.LevelTables.
-#: dos_save_rule_read`: Curse of the Azure Bonds and Secret of the Silver
-#: Blades. Every other title still copies the source's own byte.
+#: dos_save_rule_read`: Pool of Radiance, Curse of the Azure Bonds and Secret
+#: of the Silver Blades. Pools of Darkness still copies the source's own byte.
 _LOAD_REBUILT_SAVES: dict[str, str] = {
     "save_paralysis": "the DOS engine recomputes all five saves on load "
                       "from class, level and the class rebuild's own table, "
