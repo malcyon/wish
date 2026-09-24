@@ -356,6 +356,15 @@ HASTE_ID = 39
 #: bit 4.
 HASTE_MAX_DATA = 0x1F
 
+#: Slowed. DOS spell 55 writes `(42, 3 + caster level minutes, level, 0)`; the
+#: C64 combat cast writes the same minutes and magnitude `level & $0F`. No
+#: id-42 handler reads the magnitude, and Dispel Magic reads its low nibble.
+#: Silver Blades' `(42, 3, 0xFF, 0)` from its id-79 handler is a different
+#: node and stays refused.
+SLOWED_ID = 42
+SLOWED_MAX_LEVEL = 15
+SLOWED_MAX_MINUTES = 63
+
 #: Id 13: DOS spell 13 (Reduce) removes an id-12 node and writes none, and no
 #: other DOS routine adds a running id-13 node, so `c64_row` never meets one in
 #: a save a game wrote (`docs/226`).
@@ -526,6 +535,10 @@ def _value_row(title_key: str, node: RunningEffect,
     return Unconverted("no rule yet for this id in this title")
 
 
+def _slowed_title(title_key: str) -> bool:
+    return title_key == "pool-of-radiance" or title_key in LATER_CAST_FLAGS
+
+
 def _own_rule_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted | None:
     """`c64_row` for id 13, Haste and Silver Blades' id 113, or `None`."""
@@ -537,6 +550,16 @@ def _own_rule_row(title_key: str,
             return Unconverted("a flag byte other than 0 on Haste")
         if not 1 <= node.data <= HASTE_MAX_DATA:
             return Unconverted("a Haste data byte no DOS engine writes")
+        return node.id, node.data
+    if node.id == SLOWED_ID and _slowed_title(title_key):
+        if node.flag != 0:
+            return Unconverted("a flag byte other than 0 on Slowed")
+        if not 1 <= node.data <= SLOWED_MAX_LEVEL:
+            return Unconverted("a Slowed data byte that is not a caster "
+                               "level of 1 to 15")
+        if not 1 <= node.minutes <= SLOWED_MAX_MINUTES:
+            return Unconverted("a Slowed duration DOS spell 55 does not "
+                               "write")
         return node.id, node.data
     if node.id == GIANT_STRENGTH_ID and title_key == _BLADES:
         if (node.data, node.flag) != GIANT_STRENGTH_DOS:
@@ -554,6 +577,10 @@ def _own_rule_node(title_key: str, effect_id: int,
                                   or title_key == "pool-of-radiance"):
         if not 1 <= m <= HASTE_MAX_DATA:
             return Unconverted("a Haste magnitude no C64 cast writes")
+        return m, 0
+    if effect_id == SLOWED_ID and _slowed_title(title_key):
+        if not 1 <= m <= SLOWED_MAX_LEVEL:
+            return Unconverted("a Slowed magnitude no C64 cast writes")
         return m, 0
     if effect_id == GIANT_STRENGTH_ID and title_key == _BLADES:
         if m != GIANT_STRENGTH_C64:

@@ -1652,3 +1652,23 @@ def test_every_spell_id_round_trips_at_every_level(title):
             back = effects.never_expiring_spell_record(
                 title, effects.Effect(63, id_, 2, 0, magnitude))
             assert back == node + effects._RUNNING_EFFECT_NEXT
+
+
+@pytest.mark.parametrize("title", _ALL)
+@pytest.mark.parametrize("level", [1, 15])
+def test_a_slowed_node_round_trips_through_the_c64_row(title, level):
+    node = effects.RunningEffect(42, 3 + level, level, 0)
+    assert effects.c64_row(title, node) == (42, level)
+    row = effects.Effect(63, 42, 0, 0x06, level)
+    assert effects.dos_record(title, row, 0) == effects.RunningEffect(
+        42, 6, level, 0)
+
+
+@pytest.mark.parametrize("title", _ALL)
+def test_a_slowed_variant_no_ordinary_cast_writes_stays_unconverted(title):
+    for node in (effects.RunningEffect(42, 3, 0xFF, 0),
+                 effects.RunningEffect(42, 6, 3, 1),
+                 effects.RunningEffect(42, 6, 0, 0),
+                 effects.RunningEffect(42, 6, 16, 0),
+                 effects.RunningEffect(42, 64, 3, 0)):
+        assert isinstance(effects.c64_row(title, node), effects.Unconverted)
