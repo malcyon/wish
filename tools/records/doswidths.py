@@ -104,16 +104,19 @@ _LOAD_REBUILT_SAVES: dict[str, str] = {
     "save_spell": "see save_paralysis",
 }
 
-#: Current THAC0, always recomputed for a C64 source on the titles in
-#: `dos_codec._UNARMED_THAC0_REBUILD_TITLES` -- Curse alone.
-_LOAD_REBUILT_THAC0: dict[str, str] = {
-    "thac0_current": "recomputed through DOS Curse's own unarmed combat "
+#: Current THAC0 and movement, always recomputed for a C64 source on the
+#: titles in `dos_codec._COMBAT_REBUILD_TITLES` -- Curse alone.
+_LOAD_REBUILT_COMBAT: dict[str, str] = {
+    "thac0_current": "recomputed through DOS Curse's own load-time combat "
                      "rebuild for a C64 source, the same as thac0_base",
+    "movement_current": "recomputed through DOS Curse's own load-time combat "
+                        "rebuild for a C64 source, from armour and what the "
+                        "character carries",
 }
 
 #: Everything the writer may recompute for some character, which is a longer
 #: list than the one above: the eight thief percentages when the character has
-#: a thief level, and the five saves and current THAC0 on the titles
+#: a thief level, and the five saves, current THAC0 and movement on the titles
 #: `always_recomputed` leaves them out for, where nothing forces the
 #: recompute but a C64 source's own class or race could still make one land
 #: there some day. `tests/records/
@@ -122,7 +125,7 @@ _LOAD_REBUILT_THAC0: dict[str, str] = {
 RECOMPUTED: dict[str, str] = {
     **ALWAYS_RECOMPUTED,
     **_LOAD_REBUILT_SAVES,
-    **_LOAD_REBUILT_THAC0,
+    **_LOAD_REBUILT_COMBAT,
     **{name: "recomputed from the title's own thief table for race, level "
              "and dexterity, for a character with a thief level"
        for name, _ in dos_codec.WRITE_DIRECT if name.startswith("thief_")},
@@ -132,12 +135,12 @@ RECOMPUTED: dict[str, str] = {
 def always_recomputed(game: str) -> dict[str, str]:
     """`ALWAYS_RECOMPUTED` as it holds in `game`: the five saves join it on
     every title whose DOS load-time save rebuild has been read, and current
-    THAC0 on the titles whose unarmed combat rebuild has."""
+    THAC0 and movement on the titles whose combat rebuild has."""
     out = dict(ALWAYS_RECOMPUTED)
     if levels.for_game(game).dos_save_rule_read:
         out |= _LOAD_REBUILT_SAVES
-    if game in dos_codec._UNARMED_THAC0_REBUILD_TITLES:
-        out |= _LOAD_REBUILT_THAC0
+    if game in dos_codec._COMBAT_REBUILD_TITLES:
+        out |= _LOAD_REBUILT_COMBAT
     return out
 
 

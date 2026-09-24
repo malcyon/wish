@@ -253,6 +253,12 @@ def test_a_regained_paladins_party_converts_to_dos_curses_own_resave():
     Compared against DOS Curse's own resave rather than typed-in numbers, so
     a change to the game's own table would be caught here too. Before the
     fix this fails on MATHEW: `8` where slot B holds `10`.
+
+    The roster tail and current movement come from the same load: the
+    combat rebuild (`GAME.OVR:0x382C5`, #634) adds the strength damage step
+    to the first damage byte, which the C64 party arrived with at 0 (MATHEW's
+    18/00 is 6), and MARK's 1,800 platinum is 550 over what his 18/53
+    carries, which takes his movement from 12 to 9.
     """
     party = _regained_paladin_party()
     resave = _engine_resave_slot_b()
@@ -273,4 +279,7 @@ def test_a_regained_paladins_party_converts_to_dos_curses_own_resave():
                            "save_wands", "save_breath", "save_spell"))
         assert got == want_saves, char.name
         assert char.get("thac0_current") == want.get("thac0_current"), char.name
+        assert char.raw("roster_tail") == want.raw("roster_tail"), char.name
+        assert char.get("movement_current") == want.get("movement_current"), \
+            char.name
     assert checked == 6

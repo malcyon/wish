@@ -105,6 +105,17 @@ from .iconparts import (
     dos_icon_tables,
     dos_size,
 )
+from .items import (
+    ITEM_TYPE_COUNT,
+    ITEM_TYPE_SIZE,
+    TYPE_DAMAGE_MEDIUM,
+    TYPE_LOCATION,
+    TYPE_WEAPON_FLAGS,
+    WEAPON_ADDS_STRENGTH,
+    WEAPON_NEEDS_ARROWS,
+    WEAPON_NEEDS_BOLTS,
+    WEAPON_RANGED,
+)
 from .layout import Confidence, Field, Kind
 from .neutral import NeutralCharacter, Provenance, ScrollBundle
 from .portraits import (
@@ -172,6 +183,12 @@ __all__ = [
     "save_disk",
     "WriteReport",
     "write",
+    "CombatRebuild",
+    "dos_combat_rebuild",
+    "dos_strength_damage_bonus",
+    "dos_missile_adjustment",
+    "dos_weight_allowance",
+    "item_type_table",
     "WRITE_NO_SUCH_FIELD",
     "write_field_disposition",
     "c64_party",
@@ -3184,7 +3201,9 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("size_small", "plus one -- DOS stores 1 small / 2 medium"),
     ("attack_forms", "copied as a block to 0x0A1"),
     ("roster_tail", "copied as a block to 0x112, the combat tail the C64 "
-                    "roster keeps at -2"),
+                    "roster keeps at -2; on DOS Curse bytes 3-8 are "
+                    "recomputed for a C64 source through the engine's own "
+                    "load-time combat rebuild (#634)"),
     ("icon_head", "composed, with icon_body and icon_colours, into a "
                   "`DosIcon` and copied to 0x0BB unchanged, 0-13 in DOS's "
                   "own numbering -- unless the caller supplied `icon` "
@@ -3661,19 +3680,286 @@ _THAC0_RECOMPUTE_FROM_PORTS = ("C64",)
 #: Amiga round trip too (#632).
 _DOS_LOAD_REBUILD_FROM_PORTS = ("C64",)
 
-#: The five saving throws and `thac0_current`, neutral names -- what
-#: `_DOS_LOAD_REBUILD_FROM_PORTS` gates the recompute of.  `WRITE_DIRECT`
-#: skips these six in `write`'s main loop; the block below writes them
-#: instead.
+#: The five saving throws, `thac0_current` and `movement_current`, neutral
+#: names -- what `_DOS_LOAD_REBUILD_FROM_PORTS` gates the recompute of.
+#: `WRITE_DIRECT` skips these seven in `write`'s main loop; the block below
+#: writes them instead.
 _DOS_LOAD_REBUILD_NAMES: frozenset[str] = frozenset({
     "save_paralysis", "save_petrification", "save_wands", "save_breath",
-    "save_spell", "thac0_current"})
+    "save_spell", "thac0_current", "movement_current"})
 
-#: Titles whose DOS engine rebuilds unarmed `thac0_current` at load, from
-#: `thac0_base` and the strength to-hit step -- `GAME.OVR:0x382C5`. Only Curse
-#: is measured; a title added here needs its own reading of the equivalent
-#: routine first (#632).
-_UNARMED_THAC0_REBUILD_TITLES = frozenset({"curse-of-the-azure-bonds"})
+#: Titles whose DOS combat rebuild has been read, and which `write` therefore
+#: recomputes `thac0_current`, the attack's dice, sides and damage bytes in
+#: `roster_tail` and `movement_current` for -- `dos_combat_rebuild`, which is
+#: Curse's `GAME.OVR:0x382C5`. A title added here needs its own reading of
+#: the equivalent routine first (#632, #634).
+_COMBAT_REBUILD_TITLES = frozenset({"curse-of-the-azure-bonds"})
+
+#: The item types `dos_combat_rebuild` names by number, read off DOS Curse's
+#: `GAME.OVR`: a readied arrow (`0x3840D`) and quarrel (`0x3842A`), whose plus
+#: a weapon with type flag 1 or 128 adds, and the six types an elf gets 1
+#: more to hit with (`0x37840`-`0x37872`).
+_ARROW_TYPE = 0x49
+_QUARREL_TYPE = 0x1C
+_ELF_TO_HIT_TYPES = frozenset({0x24, 0x25, 0x29, 0x2A, 0x2B, 0x2C})
+_ELF_RACE = 2
+_WEAPON_LOCATION = 0
+_BODY_LOCATION = 2
+
+
+def item_type_table(game: str | pathlib.Path | None) -> bytes | None:
+    """The item type table a DOS game loads, out of its own `ITEMS` file.
+
+    `GAME.OVR:0xFBC7` in Curse opens `ITEMS`, seeks past a two-byte header
+    and block-reads it to `DS:0x5D10`: 128 types of 16 bytes, the same
+    columns the C64's `ITEMS` has (`goldbox.items.ItemType`). `None` when
+    there is no game directory or no file of that length in it, and then the
+    rebuild cannot tell a weapon from a suit of armour.
+    """
+    if game is None:
+        return None
+    path = pathlib.Path(game) / "ITEMS"
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    want = ITEM_TYPE_COUNT * ITEM_TYPE_SIZE
+    if len(data) != want + 2:
+        return None
+    return data[2:]
+
+
+def _dos_strength_index(strength: int, percentile: int) -> int:
+    """`GAME.OVR:0x38924`: strength up to 17 is its own index, 18 splits by
+    the percentile into 18-23, and 19-25 become 24-30. The routine leaves
+    the index unset past 25 or past a percentile of 100, which no character
+    reaches in play; here a percentile past 100 counts as 100, the way
+    `goldbox.derive.dos_strength_hit_bonus` counts it, and a strength past
+    25 is 0, which every table below answers with nothing."""
+    if 0 <= strength <= 17:
+        return strength
+    if strength == 18:
+        for top, index in ((0, 18), (50, 19), (75, 20), (90, 21), (99, 22)):
+            if percentile <= top:
+                return index
+        return 23
+    if 19 <= strength <= 25:
+        return strength + 5
+    return 0
+
+
+def dos_strength_damage_bonus(strength: int, percentile: int = 0,
+                              bonus_flag: bool = True) -> int:
+    """The strength damage step DOS Curse's combat rebuild adds.
+
+    `GAME.OVR:0x38A5F`: nothing unless `strength_bonus` (record `0x125`) is
+    set; then, by `_dos_strength_index`, 1-2 is -2, 3-5 -1, 16 +1, 17-19 the
+    index less 16, 20-29 the index less 17 and 30 +14. The AD&D table: 17 is
+    +1, 18 +2, 18/01-50 and 18/51-75 +3, 18/00 +6, 25 +14.
+    """
+    if not bonus_flag:
+        return 0
+    index = _dos_strength_index(int(strength), int(percentile))
+    if 1 <= index <= 2:
+        return -2
+    if 3 <= index <= 5:
+        return -1
+    if index == 16:
+        return 1
+    if 17 <= index <= 19:
+        return index - 16
+    if 20 <= index <= 29:
+        return index - 17
+    return 14 if index == 30 else 0
+
+
+def dos_missile_adjustment(dexterity: int) -> int:
+    """`GAME.OVR:0x388A2`, the to-hit step a ranged weapon takes from the
+    dexterity in force: 0-2 is -4, 3-5 the score less 6, 16-18 the score
+    less 15, 19-20 +3, 21-23 +4, 24-25 +5, and nothing else."""
+    d = int(dexterity)
+    if 0 <= d <= 2:
+        return -4
+    if 3 <= d <= 5:
+        return d - 6
+    if 16 <= d <= 18:
+        return d - 15
+    if 19 <= d <= 20:
+        return 3
+    if 21 <= d <= 23:
+        return 4
+    if 24 <= d <= 25:
+        return 5
+    return 0
+
+
+def dos_weight_allowance(strength: int, percentile: int = 0) -> int:
+    """`GAME.OVR:0x38AE5`, the weight strength carries before it slows a
+    character, by `_dos_strength_index`: 1-3 is -350, 4-5 -250, 6-7 -150,
+    12-13 +100, 14-15 +200, 16 +350, 17-21 500 up in steps of 250, 22-26
+    2000 up in steps of 1000, 27 7500, 28-30 9000 up in steps of 3000."""
+    index = _dos_strength_index(int(strength), int(percentile))
+    if 1 <= index <= 3:
+        return -350
+    if 4 <= index <= 5:
+        return -250
+    if 6 <= index <= 7:
+        return -150
+    if 12 <= index <= 13:
+        return 100
+    if 14 <= index <= 15:
+        return 200
+    if index == 16:
+        return 350
+    if 17 <= index <= 21:
+        return (index - 17) * 250 + 500
+    if 22 <= index <= 26:
+        return (index - 22) * 1000 + 2000
+    if index == 27:
+        return 7500
+    if 28 <= index <= 30:
+        return (index - 28) * 3000 + 9000
+    return 0
+
+
+class CombatRebuild(NamedTuple):
+    """What `dos_combat_rebuild` computes: `thac0_current`, `roster_tail`'s
+    bytes 3-8 (two dice counts, two die sizes, two damage bonuses) and
+    `movement_current`."""
+
+    thac0_current: int
+    attack_forms: bytes
+    movement_current: int
+
+
+def dos_combat_rebuild(record: bytes, items: bytes,
+                       item_types: bytes | None,
+                       deltas: "int | str | DosDeltas" = "curse-of-the-azure-bonds"
+                       ) -> CombatRebuild | None:
+    """What DOS Curse's combat rebuild stores for this record and item file.
+
+    `GAME.OVR:0x382C5` (`ED:43`), which the character loader runs before
+    the party appears and before `FE:25` (`0x3B026`) recomputes
+    `thac0_base` -- so the THAC0 here is built on the `thac0_base` in
+    `record`, as the engine's is on the one in the file it loads:
+
+    * the attack forms' dice, sides and damage bytes (`0x11E`-`0x123`) are
+      copied into `roster_tail` bytes 3-8, and the base movement into
+      `movement_current`;
+    * with no weapon readied, `thac0_base` plus the strength to-hit step
+      (`goldbox.derive.dos_strength_hit_bonus`) and the first damage byte
+      plus `dos_strength_damage_bonus`, both only when `strength_bonus` is
+      set;
+    * with one readied (`0x376C8`), the last readied item whose type sits in
+      the weapon hand: the first attack's dice, sides and damage bonus from
+      the type's damage against man-sized; `dos_missile_adjustment` for type
+      flag 2; both strength steps for flag 4; the weapon's own plus, and a
+      readied quarrel's for flag 128 or arrow's for flag 1, to the damage and
+      to THAC0; and to THAC0 alone 1 more for an elf with one of
+      `_ELF_TO_HIT_TYPES`;
+    * readied body armour (`0x378C3`): over 150 in weight makes movement 9
+      and over 399 makes it 6, otherwise it is the base; any plus then adds
+      3 to a movement of 9 or less;
+    * everything carried less `dos_weight_allowance` (`0x37A69`, the weight
+      sum `0x3832B`-`0x384B0`): over 512 caps movement at 9, over 768 at 6,
+      over 1024 at 3. The sum and the difference are 16-bit the way the
+      engine's are, and a negative difference counts as nothing.
+
+    `None` when an item is readied and there is no `item_types`: without the
+    table nothing says whether it is a weapon or armour.
+    """
+    deltas = deltas_for(deltas)
+    table = FIELDS_BY_NAME_FOR[deltas.key]
+    size = deltas.item_size
+    f_type = ITEM_FIELDS_BY_NAME["type_index"].offset
+    f_plus = ITEM_FIELDS_BY_NAME["plus"].offset
+    f_ready = ITEM_FIELDS_BY_NAME["readied"].offset
+    f_weight = ITEM_FIELDS_BY_NAME["weight"]
+    f_qty = ITEM_FIELDS_BY_NAME["quantity"].offset
+    pieces = [bytes(items[i:i + size]) for i in range(0, len(items), size)]
+    readied = [p for p in pieces if p[f_ready]]
+    if readied and item_types is None:
+        return None
+    if any(p[f_type] >= ITEM_TYPE_COUNT for p in readied):
+        return None
+
+    def row(piece: bytes) -> bytes:
+        at = piece[f_type] * ITEM_TYPE_SIZE
+        return item_types[at:at + ITEM_TYPE_SIZE]
+
+    def signed(b: int) -> int:
+        return b - 0x100 if b > 0x7F else b
+
+    def weight_of(piece: bytes) -> int:
+        return int.from_bytes(piece[f_weight.offset:f_weight.end], "little")
+
+    def in_force(name: str) -> int:
+        f = table[name]
+        return record[f.offset + f.size - 1]
+
+    strength = in_force("strength")
+    percentile = record[table["exceptional_strength"].offset]
+    flag = bool(record[table["strength_bonus"].offset])
+    base = record[table["thac0_base"].offset]
+    forms = table["attack_forms"]
+    forms = bytearray(record[forms.offset + 2:forms.end])
+
+    weapon = arrows = quarrels = None
+    for piece in readied:
+        if row(piece)[TYPE_LOCATION] == _WEAPON_LOCATION:
+            weapon = piece
+        if piece[f_type] == _ARROW_TYPE:
+            arrows = piece
+        if piece[f_type] == _QUARREL_TYPE:
+            quarrels = piece
+
+    if weapon is None:
+        thac0 = base + (derive.dos_strength_hit_bonus(strength, percentile)
+                        if flag else 0)
+        forms[4] = (forms[4] + dos_strength_damage_bonus(
+            strength, percentile, flag)) & 0xFF
+    else:
+        kind = row(weapon)
+        flags = kind[TYPE_WEAPON_FLAGS]
+        thac0 = base
+        if flags & WEAPON_RANGED:
+            thac0 += dos_missile_adjustment(in_force("dexterity"))
+        damage = kind[TYPE_DAMAGE_MEDIUM + 2]
+        if flags & WEAPON_ADDS_STRENGTH:
+            if flag:
+                thac0 += derive.dos_strength_hit_bonus(strength, percentile)
+            damage += dos_strength_damage_bonus(strength, percentile, flag)
+        plus = signed(weapon[f_plus])
+        if flags & WEAPON_NEEDS_BOLTS and quarrels is not None:
+            plus += signed(quarrels[f_plus])
+        if flags & WEAPON_NEEDS_ARROWS and arrows is not None:
+            plus += signed(arrows[f_plus])
+        damage += plus
+        if (record[table["race"].offset] == _ELF_RACE
+                and weapon[f_type] in _ELF_TO_HIT_TYPES):
+            plus += 1
+        thac0 += plus
+        forms[0] = kind[TYPE_DAMAGE_MEDIUM]
+        forms[2] = kind[TYPE_DAMAGE_MEDIUM + 1]
+        forms[4] = damage & 0xFF
+
+    movement = record[table["movement"].offset]
+    for piece in readied:
+        if row(piece)[TYPE_LOCATION] != _BODY_LOCATION:
+            continue
+        w = weight_of(piece)
+        movement = (record[table["movement"].offset] if w <= 150
+                    else 9 if w <= 399 else 6)
+        if piece[f_plus] and movement <= 9:
+            movement += 3
+    carried = sum(weight_of(p) * (p[f_qty] or 1) for p in pieces)
+    carried += sum(int.from_bytes(record[table[c].offset:table[c].end],
+                                  "little") for c in _COINS)
+    over = (carried - dos_weight_allowance(strength, percentile)) & 0xFFFF
+    over = 0 if over >= 0x8000 else over
+    cap = (movement if over <= 0x200 else 9 if over <= 0x300
+           else 6 if over <= 0x400 else 3)
+    return CombatRebuild(thac0 & 0xFF, bytes(forms), min(movement, cap) & 0xFF)
 
 #: The eight thief-skill columns, neutral name to DOS name -- identical on
 #: both sides, and in `goldbox.levels.LevelTables.dos_thief_skill_row`'s own
@@ -4095,8 +4381,14 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
        "save_breath": "from neutral save_breath, as save_paralysis",
        "save_spell": "from neutral save_spell, as save_paralysis",
        "thac0_current": "from neutral thac0_current, recomputed through DOS "
-                        "Curse's own unarmed combat rebuild for a C64 "
-                        "source with no item readied (#632)",
+                        "Curse's own load-time combat rebuild for a C64 "
+                        "source, armed or not; with an item readied only "
+                        "when the game's own item types are given "
+                        "(#632, #634)",
+       "movement_current": "from neutral movement_current, recomputed "
+                           "through DOS Curse's own load-time combat "
+                           "rebuild for a C64 source, from armour and "
+                           "encumbrance, as thac0_current (#634)",
        "spells_memorised": "from neutral spells_memorised, reversed",
        "spellbook": "from neutral spells_known, one byte per id",
        "class_levels": "from neutral levels, permuted to class numbers",
@@ -4113,7 +4405,9 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
            "from a ranger's level 9 and above (#547, #548)",
        "size": "from neutral size_small, plus one",
        "attack_forms": "from neutral attack_forms, as a block",
-       "roster_tail": "from neutral roster_tail, as a block",
+       "roster_tail": "from neutral roster_tail, as a block -- with bytes "
+                      "3-8, the attack's dice, sides and damage, recomputed "
+                      "on DOS Curse as thac0_current (#634)",
        "item_count": "computed: the number of head .ITM records written, "
                      "a joined scroll's scrolls not counted",
        "encumbrance": "computed: money plus item weight x quantity"}
@@ -4254,7 +4548,8 @@ def write(char: NeutralCharacter,
           icon: "DosIcon | None" = None,
           recompute_thief_skills: bool = True,
           into: str = "DOS",
-          thac0_floor: bool = True
+          thac0_floor: bool = True,
+          item_types: bytes | None = None
           ) -> tuple[bytes, bytes, bytes, WriteReport]:
     """Build a DOS record and its item and effect payloads from a neutral
     character.
@@ -4274,6 +4569,12 @@ def write(char: NeutralCharacter,
     or the best of the classes the character has.  A caller that writes this
     record on the way to another port turns it off: nobody has read what that
     port's engine stores for a low-level magic-user.
+
+    `item_types` is the destination game's own item type table, from
+    :func:`item_type_table`. The combat rebuild needs it to tell a readied
+    weapon or suit of armour from anything else; without it a character with
+    an item readied keeps the source's `thac0_current`, attack bytes and
+    movement, and one with nothing readied is rebuilt all the same.
 
     The reverse of :func:`to_neutral`, and the writer #26 asked for: with it,
     C64 to DOS is `c64_codec.read` plus this, and nothing else.  Returns
@@ -4429,9 +4730,9 @@ def write(char: NeutralCharacter,
         if neutral_name in _THIEF_SKILL_NAMES:
             continue
         # Written below, recomputed through the DOS engine's own load-time
-        # rebuild for a C64 source (#632).  Stays in `WRITE_DIRECT` for the
-        # same reason: the reader's `DIRECT` names these six too, and the two
-        # tables are mirrors.
+        # rebuild for a C64 source (#632, #634).  Stays in `WRITE_DIRECT` for
+        # the same reason: the reader's `DIRECT` names these seven too, and
+        # the two tables are mirrors.
         if neutral_name in _DOS_LOAD_REBUILD_NAMES:
             continue
         v = use(neutral_name)
@@ -4933,9 +5234,9 @@ def write(char: NeutralCharacter,
     forms = use("attack_forms")
     if forms is not None:
         put(forms, "attack_forms", " copied as a block")
+    # `roster_tail` is written in the load-rebuild block below, once the item
+    # file it is rebuilt from exists.
     tail = use("roster_tail")
-    if tail is not None:
-        put(tail, "roster_tail", " copied as a block")
 
     # -- the sheet portrait: the art's own id becomes a menu position --------
     # Both ports offer one menu of fourteen heads and twelve bodies and both
@@ -5526,8 +5827,8 @@ def write(char: NeutralCharacter,
                       if n == "paladin_cures")
             rep.dropped.append(f"paladin_cures: {why}")
 
-    # -- the saves and unarmed thac0_current the DOS loader rebuilds ---------
-    # `WRITE_DIRECT`'s copy is skipped above for these six, as for
+    # -- the saves, thac0_current and movement the DOS loader rebuilds -------
+    # `WRITE_DIRECT`'s copy is skipped above for these seven, as for
     # `thac0_base`: a straight copy hands back the source's own numbers,
     # which the DOS character loader replaces the first time it loads the
     # party, before the party ever appears on screen -- Curse's
@@ -5574,27 +5875,40 @@ def write(char: NeutralCharacter,
                 ", recomputed through the DOS engine's own load-time save "
                 "rebuild (#632)", value=computed_saves[column])
 
+    # -- thac0_current, the attack bytes and movement: the combat rebuild ----
+    # DOS Curse's loader runs `GAME.OVR:0x382C5` on every character before
+    # the party appears (`dos_combat_rebuild` has the read), so for a title in
+    # `_COMBAT_REBUILD_TITLES` the three are written as the engine will store
+    # them -- on the same gate as the saves above. A character with an item
+    # readied and no `item_types` to say what it is keeps the source's bytes,
+    # as does every other source and title.
+    combat = None
+    if rebuild and deltas.key in _COMBAT_REBUILD_TITLES:
+        combat = dos_combat_rebuild(bytes(rec), itm, item_types, deltas)
+    why = ", recomputed through DOS Curse's own load-time combat rebuild (#634)"
     thac0_current_v = use("thac0_current")
     if thac0_current_v is not None:
-        no_item_readied = rebuild and not any(
-            itm[i + ITEM_FIELDS_BY_NAME["readied"].offset]
-            for i in range(0, len(itm), item_size))
-        if (rebuild and deltas.key in _UNARMED_THAC0_REBUILD_TITLES
-                and no_item_readied):
-            str_f = table["strength"]
-            strength_byte = rec[str_f.offset + str_f.size - 1]
-            exceptional_byte = rec[table["exceptional_strength"].offset]
-            strength_bonus_flag = bool(rec[table["strength_bonus"].offset])
-            current = c64_codec.thac0_current_byte(
-                rec[table["thac0_base"].offset],
-                derive.dos_strength_hit_bonus(strength_byte,
-                                              exceptional_byte),
-                strength_bonus_flag)
-            put(thac0_current_v, "thac0_current",
-                ", recomputed through DOS Curse's own unarmed combat "
-                "rebuild (#632)", value=current)
-        else:
+        if combat is None:
             put(thac0_current_v, "thac0_current")
+        else:
+            put(thac0_current_v, "thac0_current", why,
+                value=combat.thac0_current)
+    if tail is not None:
+        if combat is None:
+            put(tail, "roster_tail", " copied as a block")
+        else:
+            rebuilt = bytearray(tail.value)
+            rebuilt[3:9] = combat.attack_forms
+            put(tail, "roster_tail",
+                ", bytes 3-8 (the attack's dice, sides and damage)" + why,
+                value=bytes(rebuilt))
+    movement_v = use("movement_current")
+    if movement_v is not None:
+        if combat is None:
+            put(movement_v, "movement_current")
+        else:
+            put(movement_v, "movement_current", why,
+                value=combat.movement_current)
 
     # -- derived from the record, once everything else in it is written ------
     # Last, so the digest covers the finished record: a field written after
@@ -8386,7 +8700,8 @@ def _c64_game_of(state: "world_state.WorldState") -> "c64_port.Game":
 def _build_character_files(characters: "Sequence[NeutralCharacter]",
                            portraits: "PortraitTables | None",
                            icons: "Sequence[DosIcon | None] | None", *,
-                           empty_shape: "DosDeltas | None" = None
+                           empty_shape: "DosDeltas | None" = None,
+                           item_types: bytes | None = None
                            ) -> "tuple[DosDeltas, list]":
     """Each character's DOS record and side files, in file order.
 
@@ -8396,6 +8711,8 @@ def _build_character_files(characters: "Sequence[NeutralCharacter]",
     icon list of its own.  `empty_shape` is the record shape to report when
     `characters` is empty; `write_dos_save_from` is the only caller that
     ever passes one, because every other caller's party is 1 or more.
+    `item_types` is `write`'s own argument, the same table for every
+    character.
     """
     record_shape = (write_deltas(characters[0]) if characters
                     else empty_shape)
@@ -8408,7 +8725,8 @@ def _build_character_files(characters: "Sequence[NeutralCharacter]",
     built = []
     for position, char in enumerate(characters):
         icon = icons[position] if icons is not None and position < len(icons) else None
-        rec, itm, spc, one = write(char, portraits=portraits, icon=icon)
+        rec, itm, spc, one = write(char, portraits=portraits, icon=icon,
+                                   item_types=item_types)
         record = bytearray(rec)
         record[order] = position
         built.append((char, bytes(record), itm, spc, one))
@@ -8551,8 +8869,16 @@ def write_dos_save_from(state: "world_state.WorldState",
     # 0-5 in file order in every DOS specimen (#101, #305) -- is
     # `_build_character_files`'s own loop position and needs no second pass
     # to renumber it after the fact.
+    # The item type table the combat rebuild reads to tell a readied weapon
+    # or suit of armour from anything else, out of the same directory, and
+    # only for a title whose rebuild has been read (#634). A directory
+    # without it costs the rebuild of an armed or armoured character, which
+    # then keeps the source's own bytes; the game rebuilds them on load.
+    types = (item_type_table(game) if c64.key in _COMBAT_REBUILD_TITLES
+             else None)
     record_shape, built = _build_character_files(
-        characters, faces, icons, empty_shape=deltas_for(c64.key))
+        characters, faces, icons, empty_shape=deltas_for(c64.key),
+        item_types=types)
     suffixes = (".SAV", record_shape.item_suffix, record_shape.effect_suffix)
 
     # The unit a conversion overwrites is the *slot*, not the characters this
