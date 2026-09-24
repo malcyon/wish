@@ -556,14 +556,14 @@ def test_camp_list_reads_every_name_page_by_page_and_goes_back_to_the_world(tmp_
     assert len(list(tmp_path.glob("*-camp-list-*.txt"))) == 3
 
 
-@pytest.mark.parametrize("exit_reaches_magic", [True, False])
+@pytest.mark.parametrize("exit_result", ["magic", "whom", "unknown"])
 def test_curse_camp_list_exits_whom_and_reaches_world_or_fails(
-        tmp_path, exit_reaches_magic):
+        tmp_path, exit_result):
     whom = _whom_screen(("PHILIPPE",))
     screens = {
         "world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
         "magic": _window({}, MAGIC), "whom": whom, "on-p": whom,
-        "on-x": whom,
+        "on-x": whom, "unknown": _window({}, "UNKNOWN EXIT MENU"),
         "p": _window({1: "PHILIPPE IS AFFECTED BY:", 3: "INVISIBILITY"},
                      A.CONTINUE),
     }
@@ -575,7 +575,7 @@ def test_curse_camp_list_exits_whom_and_reaches_world_or_fails(
         ("on-p", ("key", "Return")): "p",
         ("p", ("key", 0x0D)): "whom",
         ("whom", ("party", 2)): "on-x",
-        ("on-x", ("key", "Return")): "magic" if exit_reaches_magic else "whom",
+        ("on-x", ("key", "Return")): exit_result,
         ("magic", ("bar", "EXIT")): "camp",
         ("camp", ("bar", "EXIT")): "world",
     }
@@ -594,7 +594,7 @@ def test_curse_camp_list_exits_whom_and_reaches_world_or_fails(
     run.log = A.Log(tmp_path)
     run.shots = 0
     try:
-        if exit_reaches_magic:
+        if exit_result == "magic":
             got = run.camp_list("PHILIPPE")
             assert got["lists"] == {"PHILIPPE": ["INVISIBILITY"]}
             assert sess.state == "world"
@@ -602,10 +602,19 @@ def test_curse_camp_list_exits_whom_and_reaches_world_or_fails(
                 ("party", 2), ("key", "Return"),
                 ("bar", "EXIT"), ("bar", "EXIT"),
             ]
+            route = sorted(tmp_path.glob("*-exit-*.txt"))
+            assert [p.name.split("-", 1)[1] for p in route] == [
+                "exit-whom.txt", "exit-magic.txt", "exit-camp.txt"]
+            assert [p.read_text(encoding="utf-8").splitlines()[-1].strip()
+                    for p in route] == [MAGIC, CAMP, WORLD_BAR]
         else:
             with pytest.raises(A.StepFailed, match="world bar never came back"):
                 run.camp_list("PHILIPPE")
-            assert sess.state == "whom"
+            assert sess.state == exit_result
+            if exit_result == "unknown":
+                assert sess.sent[-2:] == [("party", 2), ("key", "Return")]
+                assert any("UNKNOWN EXIT MENU" in p.read_text(encoding="utf-8")
+                           for p in tmp_path.glob("*lost-world-route.txt"))
     finally:
         run.log.close()
 

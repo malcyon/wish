@@ -809,8 +809,21 @@ class CurseRun(PoolRun):
             bar = self.bar()
             if self.at_world(bar):
                 return True
-            if WHOM in bar or "EXIT" in bar:
-                if super().to_world(tries=1):
+            if WHOM in bar:
+                route = "whom"
+            elif MAGIC_BAR in bar and "EXIT" in bar:
+                route = "magic"
+            elif CAMP_BAR in bar and "EXIT" in bar:
+                route = "camp"
+            elif "EXIT" in bar:
+                self.capture("lost-world-route")
+                return False
+            else:
+                route = None
+            if route is not None:
+                reached = super().to_world(tries=1)
+                self.capture(f"exit-{route}")
+                if reached:
                     return True
             elif self.sess.to_world_bar(timeout=9):
                 return True
