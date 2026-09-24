@@ -95,9 +95,9 @@ class SpellTable:
     #: refuse it rather than reading sixteen unrelated bytes.
     spellbook_size: int = 7
     #: How many spell ids the record records when it keeps **one byte per id**
-    #: instead of a bitmask. Pools of Darkness' DOS record has 125 such bytes
-    #: at `0x0B3`, so its last recordable id is 125 whatever any mask would
-    #: reach; zero means the title uses the mask and `spellbook_size` answers.
+    #: instead of a bitmask. Pools of Darkness' DOS record has 126 such bytes
+    #: at `0x0B3`-`0x130`, so it records every id 1-126;
+    #: zero means the title uses the mask and `spellbook_size` answers.
     spellbook_ids: int = 0
     #: Ids that fall in one of the groups above and that the title's **trainer**
     #: never hands out, so a level-up must not either. Pool of Radiance has
@@ -490,13 +490,13 @@ POOLS_OF_DARKNESS = SpellTable(
     groups=_GROUPS_POOLS_OF_DARKNESS,
     not_a_spell=_NOT_A_SPELL_POOLS_OF_DARKNESS,
     spellbook_size=0,
-    # The DOS record's own 125 bytes at `0x0B3`, one an id, which the builder
-    # writes with `mov byte ptr es:[di + 0xb2], 1`, `di` the spell id. So id
-    # 126 is a spell the record cannot record, exactly as Pool of Radiance
-    # cannot record 56. The Amiga record keeps the same set as a sixteen-byte
+    # The DOS record's own 126 bytes at `0x0B3`-`0x130`, one an id, which the
+    # engine writes with `mov byte ptr es:[di + 0xb2], 1`, `di` the spell id,
+    # so id 126 lands on `0x130`; every id loop in `GAME.OVR` runs to 126. The
+    # Amiga record keeps the same set as a sixteen-byte
     # mask at `0x159` instead, and a conversion has to translate between the
     # two encodings rather than copy either.
-    spellbook_ids=125,
+    spellbook_ids=126,
 )
 
 TITLES: tuple[SpellTable, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,

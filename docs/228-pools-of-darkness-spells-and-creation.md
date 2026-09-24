@@ -9,7 +9,7 @@ executable. `goldbox.spells.POOLS_OF_DARKNESS` carries the numbers and
 Before this, `goldbox.spells.BY_KEY` held three keys and `for_game` fell back
 to Pool of Radiance, so `capacity_by_class(..., "pools-of-darkness")` answered
 three spell levels and ids 1-55 for a record with nine slots a class and a
-125-byte spellbook.
+126-byte spellbook.
 
 ## Where the engine keeps it
 
@@ -163,22 +163,24 @@ outright, so Curse's group for 90 is wrong by one id. Harmless today -- Curse's
 `not_granted` carries 90, so no trainer hands it out -- and correcting Curse's
 rows was not part of this reading.
 
-### The spellbook, and an id the record cannot hold
+### The spellbook, and where id 126 lives
 
-DOS keeps **one byte per spell id**, 125 of them at record `0x0B3`, written by
-`mov byte ptr es:[di + 0xb2], 1` with `di` the spell id. Creation writing
-`es:[di+0x131] = 1` in the same routine pins `icon_dimension` at `0x131`
-independently, so the field really does stop at `0x12F` and the last id it can
-record is 125. Id 126 is a spell the record cannot record, exactly as Pool of
-Radiance cannot record `RESTORATION` at 56.
+DOS keeps **one byte per spell id**, 126 of them at record `0x0B3`-`0x130`,
+written by `mov byte ptr es:[di + 0xb2], 1` with `di` the spell id. Creation
+writing `es:[di+0x131] = 1` in the same routine pins `icon_dimension` at
+`0x131`, so id 126 lands on `0x130`, which the layout once called
+`attack_level`. No instruction in either image addresses displacement `0x130`
+except through these id loops, so the byte is spell 126 and Pools of Darkness
+has no `attack_level`.
 
-The candidate loop runs to 126, which would write `0x130` (`attack_level`).
-**It cannot fire, and this is the engine being right rather than our stride
-being wrong.** The loop appears in two branches: the cleric's, which tests
-class byte 0, and the ranger's, which tests class 1 or 2 with a slot at that
-spell level. Id 126 is magic-user 9, so the cleric branch never matches it, and
-the ranger branch reads the magic-user array's ninth level, which a ranger's
-table never fills and which no class before slot 4 fills either.
+The cleric and ranger loops in creation and in the slot builder run to 126 but
+never match it, since 126 is magic-user 9. A magic-user reaches it by another
+route: the routine at `GAME.OVR:0x162CE` sets every magic-user id 1-126 when
+the ninth-level slot byte `0x197` is non-zero, the training choice and the
+learn-a-spell list offer it while `0x130` is 0, MEMORIZE lists it when `0x130`
+is non-zero, and SCRIBE answers "You already know that spell". No specimen
+holds it, because none of the 14 distinct DOS records has ninth-level
+magic-user slots.
 
 **The Amiga stores the same set differently**: a sixteen-byte mask at `0x159`,
 reached with `divs.w #$8` and a bit index. Both cover the same ids -- the Amiga

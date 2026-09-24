@@ -502,3 +502,38 @@ def test_a_thief_column_over_127_crosses_to_dos_and_back_unchanged():
     writer, _report = amiga_pod.write_pod(back)
     out = writer.to_bytes()
     assert out[amiga_pod.THIEF_SKILLS] == 0x87
+
+
+def _amiga_pod_mage_knowing(ids):
+    """An Amiga record with a name, a human's race and the given mask."""
+    raw = bytearray(524)
+    raw[amiga_pod.NAME:amiga_pod.NAME + 4] = b"MAGE"
+    for spell in ids:
+        raw[amiga_pod.SPELLBOOK + (spell - 1) // 8] |= 1 << ((spell - 1) % 8)
+    return amiga_pod.pod_to_neutral(bytes(raw))
+
+
+def test_every_spell_id_goes_amiga_to_dos_and_back_without_a_drop():
+    """Both ports are the same game, so every id 1-126 has a DOS byte: the
+    book is 126 bytes and id 126 sits at `0x130`, which is not a fighting
+    level in this title."""
+    src = _amiga_pod_mage_knowing(range(1, 127))
+    assert sorted(src.get("spells_known")) == list(range(1, 127))
+    rec, itm, spc, rep = dos_codec.write(src)
+    assert rep.dropped == [] and rep.losses == [] and rep.warnings == []
+    assert rec[0x130] == 1
+    back = dos_codec.to_neutral(dos_codec.DosCharacter(rec, itm, spc))
+    assert sorted(back.get("spells_known")) == list(range(1, 127))
+    assert "attack_level" not in {f.name for f in dos_port.layout_for(POD)}
+    again = _amiga_pod_mage_knowing(back.get("spells_known"))
+    assert sorted(again.get("spells_known")) == list(range(1, 127))
+
+
+def test_a_dos_record_holding_0x130_reads_as_knowing_spell_126():
+    src = _amiga_pod_mage_knowing([1])
+    rec, itm, spc, _rep = dos_codec.write(src)
+    rec = bytearray(rec)
+    rec[0x130] = 1
+    back = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(rec), itm, spc))
+    assert 126 in back.get("spells_known")
+    assert back.get("attack_level") is None

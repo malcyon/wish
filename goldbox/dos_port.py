@@ -1283,20 +1283,13 @@ SECRET_OF_THE_SILVER_BLADES = DosDeltas(
 #: than left as gaps a writer would silently zero: :data:`_UNNAMED_1A4_NOTE`
 #: at `0x1A4` and :data:`_UNNAMED_1E0_NOTE` at `0x1E0`.
 #:
-#: **`attack_level_classes=None`: nobody has measured this title's rule, and
-#: the likeliest reading of the corpus is that the field is not where this
-#: table puts it** (#527).  All 52 records read 0 at `0x130`, a ranger 13 and
-#: a paladin 12 among them, where every earlier engine stores at least 1 for
-#: everybody; `goldbox/amiga_pod.py` already calls `attack_level` the one
-#: field of this title's record still unlocated (#462).  So the conversion
-#: copies the byte across untouched, exactly as it did before #527, rather
-#: than writing a number derived from a rule invented for it.  The
-#: experiment that would settle it is `tools/dos/dosfieldrefs.py` over this
-#: title's own `GAME.OVR` for each candidate displacement: the offset the
-#: engine's own combat code reads is the field.
+#: **This title has no `attack_level`**: its `GAME.OVR` never addresses
+#: `0x130`, and every id loop of the spellbook runs to 126, so the byte is
+#: spell 126 and the layout drops the field (`sizes["attack_level"] = 0`).
+#: `attack_level_classes=None` follows.
 POOLS_OF_DARKNESS = DosDeltas(
     key="pools-of-darkness", title="Pools of Darkness", record_size=510,
-    item_suffix=".THG", effect_suffix=".EFX", spellbook_spells=125,
+    item_suffix=".THG", effect_suffix=".EFX", spellbook_spells=126,
     race_numbers=POOLS_OF_DARKNESS_RACE_NUMBERS,
     attack_level_classes=None,
     # The Amiga port of this title reads and writes the eight thief columns
@@ -1308,7 +1301,8 @@ POOLS_OF_DARKNESS = DosDeltas(
         "thief_climb_walls", "thief_read_languages")},
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
-           "spells_memorised": 141, "spellbook": 125,
+           "spells_memorised": 141, "spellbook": 126,
+           "attack_level": 0,
            "levels_drained": 0, "hp_lost_to_drain": 0, "field_83_87": 4,
            "copper": 0, "silver": 0, "electrum": 0, "gold": 0,
            "class_levels": 7, "gap_09f": 0, "strength_bonus": 0,

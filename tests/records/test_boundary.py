@@ -388,14 +388,15 @@ def test_e_a_source_with_no_cure_count_gets_the_class_rule(game):
         assert dos_codec.write(char)[0][f.offset] == want, (game, levels)
 
 
-def test_e_only_pools_of_darkness_copies_attack_level():
-    """The writer works `attack_level` out from the class levels in the three
-    titles with a measured rule and copies the source's byte in the one
-    without, so a value set on the character reaches its byte in Pools of
-    Darkness alone."""
-    assert {g for g in doswidths.GAMES
-            if doswidths.attack_level_copied(g)} == {POOLS_OF_DARKNESS}
+def test_e_pools_of_darkness_has_no_attack_level_and_the_others_work_it_out():
+    """`0x130` is spell 126 in Pools of Darkness, so the title has no such
+    field; in the other three titles a value set on the character never
+    reaches the byte, because the writer works it out from the class
+    levels."""
+    assert "attack_level" not in dos_port.FIELDS_BY_NAME_FOR[POOLS_OF_DARKNESS]
     for game in doswidths.GAMES:
+        if game == POOLS_OF_DARKNESS:
+            continue
         f = dos_port.FIELDS_BY_NAME_FOR[game]["attack_level"]
         assert f.size == 1 and f.kind is layout.Kind.U8, game
         bytes_ = []
@@ -403,30 +404,7 @@ def test_e_only_pools_of_darkness_copies_attack_level():
             char = doswidths.base(game)
             char.set("attack_level", value, "boundary")
             bytes_.append(dos_codec.write(char)[0][f.offset])
-        assert (bytes_[0] != bytes_[1]) == (game == POOLS_OF_DARKNESS), \
-            (game, bytes_)
-
-
-@pytest.mark.parametrize("value", [0, 1, 255])
-def test_e_a_copied_attack_level_holds_a_byte(value, caplog):
-    char = doswidths.base(POOLS_OF_DARKNESS)
-    char.set("attack_level", value, "boundary")
-    with caplog.at_level(logging.WARNING, logger="wish.goldbox.dos_codec"):
-        back, rep = _round_trip(char)
-    assert back.get("attack_level") == value
-    assert rep.warnings == [] and _warnings(caplog) == []
-
-
-@pytest.mark.parametrize("past,kept", [(256, 255), (-1, 0)])
-def test_e_a_copied_attack_level_is_clamped_one_past_a_byte(past, kept):
-    char = doswidths.base(POOLS_OF_DARKNESS)
-    char.set("attack_level", past, "boundary: one past")
-    back, rep = _round_trip(char)
-    assert back.get("attack_level") == kept
-    line = (f"attack_level: {past} does not fit the DOS one-byte field; "
-            f"clamped")
-    assert line in rep.warnings
-    assert line in rep.losses
+        assert bytes_[0] == bytes_[1], (game, bytes_)
 
 
 # --- F: one past a width is clamped or refused, by name ---------------------

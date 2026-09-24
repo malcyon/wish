@@ -1971,8 +1971,7 @@ executable and runs the check.
 So the record's last UNKNOWN is not a field nobody has found: **Pools of
 Darkness keeps no `attack_level`**, and the reader names it as a field the
 title has on neither port rather than as one still unlocated. It bears on
-`#527 (Every Gold Box engine keeps a fighting level in attack_level and our
-Pools of Darkness conversion writes 0)` from the other side: DOS Pools of
+`#527 (A DOS import combines saving throws from classes the character does not have)` from the other side: DOS Pools of
 Darkness holds 0 at `0x130` in 52 of 52 records, and the **prediction** is
 that its `GAME.OVR` derives the fighting level the same way this binary
 does. That is inference from the Amiga executable and nothing has read the

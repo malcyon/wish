@@ -2411,12 +2411,15 @@ def to_neutral(dos: DosCharacter,
     # -- so copying that byte handed a converted fighter 8 one attack where
     # the C64 engine would give him eight (#527).  Curse of the Azure Bonds
     # and Secret of the Silver Blades keep a real fighting level there and
-    # their byte is copied; Pools of Darkness reads 0 for a ranger 13, which
-    # is likelier this table's offset than the engine, so it is copied too
-    # and left exactly as it was.  `DosDeltas.attack_level_classes` carries
+    # their byte is copied; Pools of Darkness has no such field.
+    # `DosDeltas.attack_level_classes` carries
     # each title's evidence.
-    f = dos.fields["attack_level"]
-    if dos.deltas.attack_level_classes == ():
+    # Pools of Darkness keeps no such byte: its record holds spell 126 where
+    # the other titles hold this one, so there is nothing to read.
+    f = dos.fields.get("attack_level")
+    if f is None:
+        pass
+    elif dos.deltas.attack_level_classes == ():
         out.set("attack_level", fighting_level(dos.class_levels),
                 f"derived from the class levels: DOS {dos.deltas.title} "
                 f"stores the constant 1 at attack_level @{f.offset:#05x} "
