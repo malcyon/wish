@@ -982,15 +982,49 @@ def test_only_a_flag_zero_non_ff_id_5_record_becomes_a_party_row(
         assert slots == bytes(9) + b"\x05"
 
 
-def test_a_c64_trait_slot_id_5_stays_in_its_slot_through_dos():
+def test_a_c64_trait_slot_id_5_stays_in_its_slot_through_dos(tmp_path):
+    """A real C64 trait slot holding 5, read as the DOS record `05 00 00 FF 00`
+    and written back, lands in a trait slot again and not in a party row."""
+    from goldbox.savegame import SaveGame0
+    payload, save1 = _fixture_payload()
+    sg = SaveGame0(bytes(payload))
+    slot = sg.characters[0]
+    rec = slot.record
+    rec.set_raw("item_effects", bytes(9) + b"\x05")
+    sg.write_record(slot.index, rec)
+    party, _ = dos_codec.c64_party(sg.to_bytes(), save1,
+                                   game=POOL_OF_RADIANCE)
+    char = next(c for c in party if c.get("name") == slot.record.name)
     trait = bytes((5, 0, 0, 0xFF, 0))
+    assert 5 in char.get("innate_effects")
+    dos_rec, itm, spc, _rep = dos_codec.write(char)
+    assert [spc[i:i + 5] for i in range(0, len(spc), 9)
+            if spc[i] == 5] == [trait]
+    (tmp_path / "TESTER.SAV").write_bytes(bytes(dos_rec))
+    (tmp_path / "TESTER.ITM").write_bytes(bytes(itm))
+    (tmp_path / "TESTER.SPC").write_bytes(bytes(spc))
+    from_dos = dos_codec.to_neutral(
+        dos_codec.read_character(tmp_path / "TESTER.SAV"))
+    fresh = bytearray(0x1C00)
+    back, _rep = c64_codec.write(from_dos, payload=fresh, party_slot=0,
+                                 clock_minutes=0)
+    assert 5 in bytes(back.get_raw("item_effects"))
+    assert [r for r in _rows(fresh).values() if r != (0, 0, 0, 0)] == []
+
+
+def test_pools_item_grant_of_detect_magic_takes_a_party_row_and_no_byte_says_otherwise():
+    """The known collision: `05 00 00 0C 00`, Pool's item-grant form for id 5,
+    is byte-identical to a magnitude-12 permanent row, so it becomes a party
+    row. No Pool item template grants effect 5 (#666's collision finding), so
+    no save a game wrote holds this form from an item."""
     payload = bytearray(0x1C00)
     char = _title_character(c64_port.POOL_OF_RADIANCE)
-    char.set("granted_effects", [trait + NULL], "built here")
-    rec, _rep = c64_codec.write(char, payload=payload, party_slot=0,
+    char.set("granted_effects", [bytes((5, 0, 0, 0x0C, 0)) + NULL], "built here")
+    rec, _rep = c64_codec.write(char, payload=payload, party_slot=2,
                                 clock_minutes=0)
-    assert 5 in bytes(rec.get_raw("item_effects"))
-    assert [r for r in _rows(payload).values() if r != (0, 0, 0, 0)] == []
+    assert [r for r in _rows(payload).values() if r != (0, 0, 0, 0)] == \
+        [(5, 0xFF, 0x00, 0x0C)]
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
 
 
 def test_a_granted_id_5_without_a_payload_takes_a_trait_slot_and_says_so():

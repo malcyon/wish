@@ -650,7 +650,7 @@ turns a party-wide id-5 row into one DOS node on the lowest occupied slot (with
 several such rows, the longest; a row that never expires becomes the
 never-expiring record `05 00 00 mm 00` on that slot, which the writer turns
 back into a duration-0 row that replaces any finite one; a Detect Magic node
-with any flag byte converts, because no engine reads the flag for id 5). Each title's DOS engine asks every party
+with any flag byte converts, because no engine reads the flag for id 5). Pool's item grant of id 5 would be `05 00 00 0C 00`, the same bytes as a magnitude-12 row, and takes the party row; no Pool item grants id 5, so no save a game wrote holds it, and the conversion that keeps both (one `05 00 00 0C 00` per readied item with byte `0x3D` = 5, to a trait slot) is not built. Each title's DOS engine asks every party
 member for id 5, so the two forms give the player the same thing. Prayer
 converts both ways in all three titles: Pool's 35 is copied unchanged, Pool's
 49 has its side bit inverted, and Curse's and Silver Blades' 49 keeps it.

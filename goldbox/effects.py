@@ -486,7 +486,10 @@ def is_party_granted_record(title_key: str, node: bytes) -> bool:
     Flag 1 is an item's grant (removed when the item comes off) and data
     `0xFF` is a racial or trait-slot seed; neither is a party-wide row, and
     both stay in a C64 trait slot. Pool's own item grant of id 5 is
-    `05 00 00 0C 00`, which no byte separates from a magnitude-12 row.
+    `05 00 00 0C 00`, which no byte separates from a magnitude-12 row; it
+    becomes a party row, because no Pool item grants id 5 and so no save a
+    game wrote holds it, and keeping both forms (one `05 00 00 0C 00` per
+    readied item with `0x3D` = 5, to a trait slot) is not built.
     """
     return (node[0] == DETECT_MAGIC_ID
             and node[0] in party_row_ids(title_key)
