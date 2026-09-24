@@ -74,11 +74,13 @@ show him a picture of it.** A claim about **what something looks like**, argued
 in hex colours, file paths and line numbers, is argued entirely in things
 nobody can look at, and it can be wrong.
 
-**Deliver the picture in the reply.** Put one-off screenshots and mockups under
-the producing machine's `/tmp/wish/screens/<issue-or-topic>/`, then attach or
-embed them. A path alone is not delivery: the host and `agent-vm` have separate
-filesystems, so a picture from another machine needs an attachment or an
-accessible link. Emulator artifacts kept as run evidence stay under
+**Show the picture in Donald's client.** Put one-off screenshots and mockups
+under the producing machine's `/tmp/wish/screens/<issue-or-topic>/`. For Codex
+CLI on the host, open review PNGs with `feh` on the host, and give Donald the
+host path and `feh` command as a fallback; the CLI does not display embedded
+image blocks or local Markdown images. A VM screenshot needs a host-accessible
+mount or copy before it can open on the host. In clients that display images,
+attach or embed the picture. Emulator artifacts kept as run evidence stay under
 `~/.cache/wish`, as specified in `scratch.md`.
 
 The rule has two halves and the second is the one that costs:
