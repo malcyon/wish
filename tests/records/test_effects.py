@@ -1466,7 +1466,6 @@ def test_c64_row_converts_enlarge_friends_mirror_image_and_strength(
     (_P, _RE(38, 10, 0x73, 1), {"strength_nodes": 2}),
     (_P, _RE(12, 10, 0xE3, 1), {}),
     (_C, _RE(38, 10, 0x65, 1), {}),
-    (_S, _RE(12, 10, 0x7B, 0), {}),
     (_C, _RE(12, 10, 0x70, 1), {}),
     (_C, _RE(28, 10, 0x50, 0), {}),
     (_S, _RE(28, 10, 0xFF, 0), {}),
@@ -1568,10 +1567,21 @@ def test_the_two_node_score_helpers_live_in_goldbox_and_the_crosswalk_uses_them(
     assert effects.later_node_data(23, 0) == 0x7B
 
 
-def test_the_enlarge_23_reason_names_only_silver_blades():
-    node = _RE(12, 10, 0x7B, 1)
-    assert "23" not in effects.c64_row(_C, node).reason
-    assert "23" in effects.c64_row(_S, _RE(12, 10, 0x7B, 0)).reason
+def test_silver_blades_enlarge_23_converts_to_the_c64s_enlarge_at_22():
+    node = _RE(12, 10, 0x7B, 0)
+    assert effects.c64_row(_S, node) == effects.c64_row(
+        _S, _RE(12, 10, effects.later_node_data(22, 0), 0)) == (12, 0x8A)
+    assert effects.enlarge_capped(_S, node)
+    assert not effects.enlarge_capped(_S, _RE(12, 10, 0x7A, 0))
+    # The way back is the DOS node for 22: the fighter returns with 22.
+    back = effects.dos_record(_S, effects.Effect(63, 12, 0, 0x0A, 0x8A), 0)
+    assert (back.data, back.flag) == (effects.later_node_data(22, 0), 0)
+
+
+def test_curse_never_writes_enlarge_23_and_refuses_it():
+    assert isinstance(effects.c64_row(_C, _RE(12, 10, 0x7B, 1)),
+                      effects.Unconverted)
+    assert not effects.enlarge_capped(_C, _RE(12, 10, 0x7B, 1))
 
 
 @pytest.mark.parametrize("title", [_C, _S])

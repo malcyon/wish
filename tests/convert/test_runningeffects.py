@@ -1371,3 +1371,15 @@ def test_a_spell_written_with_a_payload_and_no_party_slot_goes_to_slot_0():
     char.set("granted_effects", [bytes((25, 0, 0, 5, 0)) + NULL], "built here")
     c64_codec.write(char, payload=payload, clock_minutes=0)
     assert _rows(payload)[63] == (25, 0, 0x00, 0x05)
+
+
+def test_a_silver_blades_enlarge_at_23_is_written_as_the_c64s_enlarge_at_22():
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(
+        _title_character(_SILVER_G, bytes.fromhex("0C0A007B00")),
+        payload=payload, party_slot=2, clock_minutes=0)
+    rows = _rows(payload)
+    assert rows.pop(63) == (12, 2, 0x0A, 0x8A)
+    assert set(rows.values()) == {(0, 0, 0, 0)}
+    assert not [d for d in rep.dropped + rep.losses if "running_effects" in d]
+    assert any("strength 23" in w for w in rep.warnings)

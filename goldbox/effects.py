@@ -513,9 +513,9 @@ def _value_row(title_key: str, node: RunningEffect,
             level = enlarge_level(*later_node_score(data))
             if level is not None:
                 return node.id, MAGNITUDE_RESTORE_FLAG | level
-            if data == 0x7B and title_key == "secret-of-the-silver-blades":
-                return Unconverted("Enlarge at caster level 12 or more sets "
-                                   "strength 23, above the C64's 22")
+            if enlarge_capped(title_key, node):
+                # The C64's level cap of 10 is strength 22, its most.
+                return node.id, MAGNITUDE_RESTORE_FLAG | len(ENLARGE_STRENGTHS)
             return Unconverted("an Enlarge score no DOS engine writes")
         if flag != 0:
             return Unconverted("a Mirror Image node no DOS engine writes")
@@ -561,6 +561,16 @@ def _own_rule_node(title_key: str, effect_id: int,
                                "own, which waits on strength 23")
         return GIANT_STRENGTH_DOS
     return None
+
+
+def enlarge_capped(title_key: str, node: RunningEffect) -> bool:
+    """Whether `c64_row` gives this node the C64's Enlarge at 22, not its 23.
+
+    DOS Silver Blades writes data `0x7B` (strength 23) at caster level 12 or
+    more; the C64 caps Enlarge at level 10, strength 22.
+    """
+    return (title_key == _BLADES and node.id == 12 and node.data == 0x7B
+            and node.flag == LATER_CAST_FLAGS[_BLADES][12])
 
 
 def c64_row(title_key: str, node: RunningEffect, *,

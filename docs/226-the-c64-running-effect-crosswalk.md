@@ -333,10 +333,9 @@ Past level 11 the two DOS titles differ. Curse's ladder has no arm after its
 last test (`0x3004B`, then `0x30050`), so the 18/00 the cast started with
 stands, and no Curse caster reaches level 12. Silver Blades' default arm at
 `0x2E892` writes 23, which this page had not read and so called NOT
-ESTABLISHED. The C64's most is 22, so Silver Blades' 23 has no C64 row and
-`effects.c64_row` leaves that node unconverted until a read finds a C64 route
-to an absolute strength of 23 (the recompute at `ECL65 $9637`, the Enlarge
-read at `$969D`, and id 113 are where to start). The other ten scores convert
+ESTABLISHED. The C64's most is 22, so `effects.c64_row` converts Silver Blades' 23
+(data `0x7B`) to the ordinary Enlarge row at 22: the fighter is one point
+weaker on the C64 and returns as 22. The other ten scores convert
 in both directions, because the level a converted Enlarge needs is read back
 off its own node's score rather than from the caster.
 
@@ -673,9 +672,7 @@ loses it on the way to DOS or the Amiga, because nothing converts the save's
 party-wide effect rows)); a timeline conversion for Pool's overlapping strength
 nodes, which the destination does hold (a second strength node on one
 character, running or granted, is refused by `strength_nodes`); the later
-titles' Strength at data 101, which may decode as 18/100; Silver Blades'
-Enlarge at 23 (caster level 12 or more), which the C64's level cap of 10 cannot
-reach; a Curse or Silver Blades id-25 node of data `0xFF` (ids 138 and 108),
+titles' Strength at data 101, which may decode as 18/100; a Curse or Silver Blades id-25 node of data `0xFF` (ids 138 and 108),
 which needs its own read; a Silver Blades id-113 magnitude other than `$BC`
 (strength 23); the ids with no C64 spell row that still need a read; and the
 two ageing routes the camp formula does not describe.

@@ -1070,6 +1070,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     payload, slot, c64_id,
                     party_slot if party_slot is not None else 0,
                     effects.closest_duration(node.minutes, clock), magnitude)
+                if effects.enlarge_capped(title_key, node):
+                    rep.warnings.append(
+                        f"{which}: strength 23 written as the C64's most, 22")
 
     cure_value = int(cures.value) if cures is not None else 0
     heal_value = int(heal.value) if heal is not None else 0
