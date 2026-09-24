@@ -463,8 +463,11 @@ class StallMonitor:
     that runs between connections would.
     """
 
-    def __init__(self, ram, pcs, drive_pcs, fail=False):
+    def __init__(self, ram, pcs, drive_pcs, fail=False, drive_pc_id=3,
+                 drive_get_fails=False):
         self.ram = ram
+        self.drive_pc_id = drive_pc_id
+        self.drive_get_fails = drive_get_fails
         self.pcs = list(pcs)
         self.drive_pcs = list(drive_pcs)
         self.fail = fail
@@ -484,11 +487,19 @@ class StallMonitor:
         return bytes(self.ram.get(start + i, 0) for i in range(length))
 
     def command(self, cmd, body=b""):
+        drive = body[0] == 1
+        pc_id = self.drive_pc_id if drive else 3
+        if cmd == 0x83:
+            # `size id bits name-length name`
+            return (b"\x02\x00" + bytes([4, 0, 8, 1]) + b"A"
+                    + bytes([5, pc_id, 16, 2]) + b"PC")
         assert cmd == CMD_REGISTERS_GET
-        pc = (self.drive_pcs if body[0] == 1 else self.pcs).pop(0)
+        if drive and self.drive_get_fails:
+            raise OSError("drive register read failed")
+        pc = (self.drive_pcs if drive else self.pcs).pop(0)
         # two registers, A then PC, each `size id value-lo value-hi`
         return (b"\x02\x00" + bytes([3, 0, 0x41, 0x00])
-                + bytes([3, 3, pc & 0xFF, pc >> 8]))
+                + bytes([3, pc_id, pc & 0xFF, pc >> 8]))
 
 
 def _stalled(tmp_path, monkeypatch, code_word_row, monitor):
@@ -550,3 +561,32 @@ def test_a_stall_capture_with_no_monitor_says_so_instead_of_raising(tmp_path,
     assert sess.load_save() is False
 
     assert any("monitor did not answer" in line for line in said)
+
+
+def test_a_failing_drive_read_leaves_the_c64_counters_and_the_memory(tmp_path,
+                                                                     monkeypatch):
+    mon = StallMonitor(_ram_after_a_patched_check_loading_gen(),
+                       pcs=[0xEE13] * 6, drive_pcs=[], drive_get_fails=True)
+    sess, said = _stalled(tmp_path, monkeypatch,
+                          "$INPUT THE CODE WORD: AAAAAA           $", mon)
+
+    assert sess.load_save() is False
+
+    where = next(line for line in said if "C64 PC" in line)
+    assert "C64 PC EE13 EE13 EE13 EE13 EE13 EE13" in where
+    assert "$12D9 ea ea" in where
+    assert "file name 'GEN'" in where
+    assert "monitor did not answer" in where
+
+
+def test_the_drive_program_counter_is_found_by_name_in_its_own_memspace(
+        tmp_path, monkeypatch):
+    mon = StallMonitor(_ram_after_a_patched_check_loading_gen(),
+                       pcs=[0x2E60] * 6, drive_pcs=[0xE9C9] * 6, drive_pc_id=7)
+    sess, said = _stalled(tmp_path, monkeypatch,
+                          "$INPUT THE CODE WORD: AAAAAA           $", mon)
+
+    assert sess.load_save() is False
+
+    where = next(line for line in said if "C64 PC" in line)
+    assert "drive 8 PC E9C9 E9C9" in where

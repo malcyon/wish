@@ -49,6 +49,7 @@ TOOLS = str(pathlib.Path(__file__).resolve().parent.parent)
 sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 from automap import c64 as machines  # noqa: E402
 from automap import gamedisks  # noqa: E402
+from automap.actions import CMD_REGISTERS_AVAILABLE, PC_REGISTER  # noqa: E402
 from automap.vice import CMD_REGISTERS_GET  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64, D64Error  # noqa: E402
@@ -635,11 +636,6 @@ FASTLOADER_PETSCII = {"y": 0x59, "n": 0x4E}
 #: is alive and the menu never comes.
 PLAY_GAME_WAIT = 500.0
 
-#: VICE's register id for the program counter, on the drive's CPU as on the
-#: C64's.  `automap.actions.pc_register` asks the build rather than assuming;
-#: this module does not import that one for a diagnostic.
-PC_ID = 3
-
 #: What `Session.stall_capture` reads out of the C64: the KERNAL's status
 #: byte, the open file's name length, logical file, secondary address,
 #: device and name pointer, the key buffer's count and first bytes, the
@@ -661,14 +657,37 @@ CODE_WORD_LABEL = "INPUT THE CODE WORD:"
 CODE_WORD_CURSOR = 0x1C
 
 
-def _pc_of(mon, memspace: int) -> int | None:
+def _pc_id_of(mon, memspace: int) -> int | None:
+    """The register id `PC` has in one memspace, asked of the monitor.
+
+    Each memspace lists its own registers, so the C64's id is not assumed to
+    be the drive's.  A monitor that will not list them leaves the C64 at
+    `PC_REGISTER` (established for memspace 0 only) and the drive at None.
+    """
+    try:
+        resp = mon.command(CMD_REGISTERS_AVAILABLE, struct.pack("<B", memspace))
+        count = struct.unpack("<H", resp[:2])[0]
+        off = 2
+        for _ in range(count):
+            size, rid, _bits, length = resp[off:off + 4]
+            if resp[off + 4:off + 4 + length] == b"PC":
+                return rid
+            off += size + 1
+    except (OSError, MonitorError, IndexError, ValueError, struct.error):
+        pass
+    return PC_REGISTER if memspace == 0 else None
+
+
+def _pc_of(mon, memspace: int, pc_id: int | None) -> int | None:
     """The program counter of one CPU: memspace 0 is the C64, 1 is drive 8."""
+    if pc_id is None:
+        return None
     resp = mon.command(CMD_REGISTERS_GET, struct.pack("<B", memspace))
     count = struct.unpack("<H", resp[:2])[0]
     off = 2
     for _ in range(count):
         size, rid = resp[off], resp[off + 1]
-        if rid == PC_ID:
+        if rid == pc_id:
             return struct.unpack("<H", resp[off + 2:off + 4])[0]
         off += size + 1
     return None
@@ -1743,27 +1762,45 @@ class Session:
         already failing, and a monitor that will not answer is said instead.
         """
         said = []
+        errors = []
+        pcs, drive = [], []
+        ids = {}
         try:
-            pcs, drive = [], []
-            for i in range(samples):
-                if i:
-                    time.sleep(gap)
-                with self.mon(3) as m:
-                    pcs.append(_pc_of(m, 0))
-                    drive.append(_pc_of(m, 1))
-            said.append("C64 PC " + " ".join(
-                "?" if p is None else f"{p:04X}" for p in pcs))
-            said.append("drive 8 PC " + " ".join(
-                "?" if p is None else f"{p:04X}" for p in drive))
+            with self.mon(3) as m:
+                ids = {0: _pc_id_of(m, 0), 1: _pc_id_of(m, 1)}
+        except (OSError, MonitorError, IndexError, struct.error) as e:
+            errors.append(e)
+        for i in range(samples):
+            if i:
+                time.sleep(gap)
+            for space, into in ((0, pcs), (1, drive)):
+                # Each read on its own, so one that fails leaves the rest.
+                try:
+                    with self.mon(3) as m:
+                        into.append(_pc_of(m, space, ids.get(space)))
+                except (OSError, MonitorError, IndexError, struct.error) as e:
+                    errors.append(e)
+                    into.append(None)
+        said.append("C64 PC " + " ".join(
+            "?" if p is None else f"{p:04X}" for p in pcs))
+        said.append("drive 8 PC " + " ".join(
+            "?" if p is None else f"{p:04X}" for p in drive))
+        try:
             with self.mon(3) as m:
                 for addr, length, name in STALL_READS:
                     said.append(f"{name} {m.read(addr, length).hex(' ')}")
+        except (OSError, MonitorError, IndexError, struct.error) as e:
+            errors.append(e)
+        try:
+            with self.mon(3) as m:
                 length = m.read(0x00B7, 1)[0]
                 lo, hi = m.read(0x00BB, 2)
                 name = m.read(lo | hi << 8, length) if 0 < length <= 16 else b""
                 said.append(f"file name {name.decode('latin-1')!r}")
         except (OSError, MonitorError, IndexError, struct.error) as e:
-            said.append(f"the monitor did not answer: {e}")
+            errors.append(e)
+        if errors:
+            said.append(f"the monitor did not answer: {errors[0]}")
         said.append(self._code_word_state())
         return "; ".join(said)
 
