@@ -2160,8 +2160,8 @@ def test_preview_lists_fields_items_and_the_icon(editor):
     text = editor.preview_text()
     assert "slot 0 MALCYON: gold 2 -> 999" in text
     assert "slot 0 MALCYON: item 6 DART quantity 13 -> 9" in text
-    # Preview compares raw blocks, so replacing retired bytes names the old DART.
-    assert "item 1 DART -> POTION OF HEALING" in text
+    assert "slot 0 MALCYON: item 1 added: POTION OF HEALING" in text
+    assert "item 1 DART -> POTION OF HEALING" not in text
     assert "combat icon: 1 of 36 bytes changed" in text
     assert "4 change(s) (nothing written yet)" in text
 
@@ -5621,6 +5621,23 @@ def test_zero_type_stale_slot_is_empty_and_untouched_bytes_survive():
     inventory.delete(1)
     assert inventory.used == 0
     assert inventory.is_empty(0)
+
+
+def test_preview_calls_a_filled_zero_type_slot_an_addition():
+    from types import SimpleNamespace
+
+    from editor.changes import item_changes
+    from editor.inventory import Inventory
+
+    stale = bytes([0, 0, 0, 9, 0, 0, 0, 0, 4, 0, 30, 50, 0, 0, 0, 0])
+    potion = bytes([1, 0, 0, 10, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0])
+    inventory = Inventory.from_blocks([stale] + [bytes(16)] * 15,
+                                      names={9: "DART", 10: "POTION OF HEALING"})
+    assert inventory.add(potion) == 0
+
+    lines = item_changes(SimpleNamespace(inventory=inventory))
+    assert lines == ["item 0 added: POTION OF HEALING"]
+    assert inventory.original[0] == stale
 
 
 def test_an_unwritable_field_is_read_only_whatever_the_layout_allows():
