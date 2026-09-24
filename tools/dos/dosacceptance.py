@@ -21,8 +21,8 @@ conversion runs.
 |---|---|
 | `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; waits for the map |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
-| `rest 5m`, `rest 1h30m`, `rest 2d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives |
-| `save X` | camp `SAVE` to slot X, believed when `SAVGAMX.DAT` changes; declines the quit |
+| `rest 5m`, `rest 1h30m`, `rest 2d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; a `GO STAY` random event at the end is answered `GO` (see below) |
+| `save X` | camp `SAVE` to slot X, believed when `SAVGAMX.DAT` changes; declines the quit; camps again first if a rest left the party on the map |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `read` | copies `SAVE/` out and decodes every node and the clock of the installed slot and each saved one |
 
@@ -39,6 +39,16 @@ rest takes five minutes off the time and adds five to the clock per pass
 (`0x24A66`), so the clock in the resave is the check that the time was set
 right.  **Any key pressed while resting asks `Stop Resting?`**, so nothing
 is pressed until the camp bar is back.
+
+**A rest can end in a random event instead of the camp bar**: the city watch
+rousts the party and asks `GO STAY`.  The clock has already moved on and the
+effects have aged by then.  The driver presses `G` (bars are answered by
+first letter, as every other bar here is) and waits for the map bar; the
+party is then out of camp, so the next `rest` or `save` presses `ENCAMP`
+again.  `S` is never pressed, since STAY would start a fight.  At most two
+such events are answered in one rest; a third, a fight or any other screen
+stops the run with a `lost-*.png`.  Each event is logged as `event: random`
+in `run.jsonl` and listed in the summary's `events`.
 
 Each key in the rest menu is believed only when the text window under the
 viewport changes, and is pressed a second time at most; a key that changes
@@ -94,6 +104,13 @@ REST_GO = "r"
 REST_STEP = 5
 #: The days field's ceiling (`GAME.OVR` 0x24192).
 REST_DAYS_MAX = 99
+
+#: The `GO STAY` command bar of the city watch's random event, by
+#: `bar_signature`, measured off the screen of a live Bless run.
+WATCH_BAR = "4aaded0229f46861"
+WATCH_GO = "g"
+#: Random events answered in one rest before the run gives up.
+MAX_EVENTS = 2
 
 #: The text window under the viewport and the command bar below it, where
 #: the rest time is drawn (text row 17) and every rest-menu key shows.  The
@@ -421,6 +438,11 @@ class Driver:
         self.slot = slot
         self.game = dosbox.PoolOfRadiance(session)
         self.camp_sig: str | None = None
+        self.world_ink: str | None = None
+        #: True after a random event's `GO`: the party is on the map, not in camp.
+        self.left_camp = False
+        #: Every random event answered, in order; the summary lists them.
+        self.events: list[dict] = []
         self.n = 0
 
     # -- evidence ----------------------------------------------------------
@@ -472,6 +494,57 @@ class Driver:
             time.sleep(0.3)
         return False
 
+    def on_world(self, screen=None) -> bool:
+        screen = screen if screen is not None else self.s.capture()
+        return self.world_ink is not None and screen.ink(dosbox.BAR) == self.world_ink
+
+    def after_rest(self, timeout: float, in_step: str) -> None:
+        """Wait out a rest: the camp bar, or a `GO STAY` event answered with GO.
+
+        Nothing but `GO` is ever pressed at the event.  A third event, or any
+        screen that is neither the camp bar, the event nor (after an event)
+        the map, ends the run.
+        """
+        answered = 0
+        while True:
+            deadline = time.time() + timeout
+            screen = None
+            while time.time() < deadline:
+                screen = self.s.capture()
+                if answered == 0 and self.in_camp(screen):
+                    time.sleep(1.0)
+                    if self.in_camp():
+                        return
+                elif answered and self.on_world(screen):
+                    time.sleep(1.0)
+                    if self.on_world():
+                        self.left_camp = True
+                        return
+                if bar_signature(screen) == WATCH_BAR:
+                    break
+                time.sleep(0.3)
+            else:
+                raise self.fail(
+                    "rest-end", "the camp bar never came back after resting "
+                    "(interrupted, or a screen this driver does not know)")
+            if answered >= MAX_EVENTS:
+                raise self.fail("rest-events", f"another random event after "
+                                f"{MAX_EVENTS} were answered")
+            shot = self.shot(f"event-{answered + 1}")
+            event = {"kind": "go_stay", "step": in_step, "shot": f"{shot}.png",
+                     "bar": WATCH_BAR, "text": screen.digest(TEXT_WINDOW),
+                     "answered": WATCH_GO.upper()}
+            self.events.append(event)
+            self.note(event="random", **event)
+            self.s.key(WATCH_GO)
+            answered += 1
+            timeout = 60.0
+
+    def ensure_camp(self) -> None:
+        """Camp again when a random event's GO left the party on the map."""
+        if self.left_camp:
+            self.camp()
+
     # -- the steps ---------------------------------------------------------
 
     def load(self) -> dict:
@@ -491,6 +564,8 @@ class Driver:
             raise self.fail("camp", "ENCAMP did not change the command bar")
         screen = self.s.settle(quiet=1.5, timeout=30.0)
         self.camp_sig = bar_signature(screen)
+        self.world_ink = world
+        self.left_camp = False
         self.shot("camp")
         return {"camp_bar": self.camp_sig}
 
@@ -536,6 +611,7 @@ class Driver:
     def rest(self, minutes: int) -> dict:
         if self.camp_sig is None:
             raise StepFailed("rest needs camp first")
+        self.ensure_camp()
         if not self.press_changes(CAMP_REST, wait=10.0):
             raise self.fail("rest-menu", "REST did not open the rest menu")
         self.shot("rest-menu")
@@ -545,15 +621,15 @@ class Driver:
         self.shot("rest-set")
         self.s.key(REST_GO)
         passes = minutes // REST_STEP
-        if not self.wait_camp(timeout=60.0 + 2.0 * passes):
-            raise self.fail("rest-end", "the camp bar never came back after resting "
-                            "(interrupted, or a screen this driver does not know)")
+        self.after_rest(60.0 + 2.0 * passes, f"rest {minutes}m")
         self.shot("rested")
-        return {"asked": minutes, "zero_presses": zeroed, **presses}
+        return {"asked": minutes, "zero_presses": zeroed, **presses,
+                "left_camp": self.left_camp}
 
     def save(self, letter: str) -> dict:
         if self.camp_sig is None:
             raise StepFailed("save needs camp first")
+        self.ensure_camp()
         path = self.s.save_file(letter)
         was = path.read_bytes() if path.is_file() else None
         camp_ink = self.s.capture().ink(dosbox.BAR)
@@ -658,6 +734,7 @@ def run(args) -> int:
             note(event="staged", **took)
             session.boot(fresh=False)
             d = Driver(session, note, letter)
+            summary["events"] = getattr(d, "events", [])
             results = []
             for step in steps:
                 note(event="step", step=step.text)

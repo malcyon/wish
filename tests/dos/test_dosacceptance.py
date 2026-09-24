@@ -76,11 +76,16 @@ class FakePool:
     """
 
     BARS = {"map": b"\x11\x22", "camp": b"\x33\x44\x55", "rest": b"\x66\x77",
-            "save": b"\x88", "quit": b"\x99\x0f"}
+            "save": b"\x88", "quit": b"\x99\x0f",
+            "watch": b"\xaa\x0f\x33", "fight": b"\x5a\xa5"}
 
     def __init__(self, tmp: pathlib.Path, preset: int = 0, swallow: bool = False,
-                 dead: str = ""):
+                 dead: str = "", watches: int = 0, fight: bool = False):
+        self.fight = fight
         self.mode = "map"
+        #: Random events the next rest ends in, one after another.
+        self.watches = watches
+        self.answers: list[str] = []
         self.preset = preset
         self.total = 0
         self.field = 2
@@ -144,8 +149,16 @@ class FakePool:
                 self.rested.append(self.total)
                 self.clock += self.total
                 self.total, self.mode = 0, "camp"
+                if self.watches:
+                    self.mode = "watch"
+                if self.fight:
+                    self.mode = "fight"
             elif k == "e":
                 self.mode = "camp"
+        elif self.mode == "watch" and k in "gs":
+            self.answers.append(k)
+            self.watches -= 1
+            self.mode = "fight" if k == "s" else "watch" if self.watches else "map"
         elif self.mode == "save" and k.upper() in "ABCDEFGHIJ":
             (self.save_dir / f"SAVGAM{k.upper()}.DAT").write_bytes(
                 bytes((self.clock % 256,)))
@@ -186,6 +199,8 @@ def _no_waiting(monkeypatch):
 def _camped(tmp_path, **kw) -> tuple[FakePool, da.Driver]:
     game = FakePool(tmp_path, **kw)
     d = da.Driver(game, lambda **k: None, "A")
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
     d.camp()
     return game, d
 
@@ -235,6 +250,68 @@ def test_the_camp_save_is_believed_by_the_file_and_declines_the_quit(tmp_path):
     assert (game.save_dir / "SAVGAMD.DAT").is_file()
     assert got["back_in_camp"] and game.mode == "camp"
     assert game.keys[-2:] == ["d", da.QUIT_NO]
+
+
+# -- a random event ends the rest ------------------------------------------------
+
+
+@pytest.fixture
+def _watch_and_clock(monkeypatch):
+    """The fake's watch bar stands in for the real one, and time moves per call."""
+    monkeypatch.setattr(da, "WATCH_BAR", da.bar_signature(
+        _screen(FakePool.BARS["watch"], b"")))
+    now = [0.0]
+
+    def tick():
+        now[0] += 1.0
+        return now[0]
+
+    monkeypatch.setattr(da, "time", type("T", (), {"time": staticmethod(tick),
+                                                   "sleep": staticmethod(lambda s: None)}))
+
+
+def test_the_watch_bar_is_answered_go_and_logged(tmp_path, _watch_and_clock):
+    game, d = _camped(tmp_path, watches=1)
+    got = d.rest(5)
+    assert game.answers == ["g"] and game.mode == "map"
+    assert got["left_camp"] is True
+    assert [e["kind"] for e in d.events] == ["go_stay"]
+    assert [k["event"] for k in d.logged if k["event"] == "random"] == ["random"]
+
+
+def test_a_second_watch_is_answered_too(tmp_path, _watch_and_clock):
+    game, d = _camped(tmp_path, watches=2)
+    d.rest(5)
+    assert game.answers == ["g", "g"] and len(d.events) == 2
+
+
+def test_a_third_watch_stops_the_run_without_pressing(tmp_path, _watch_and_clock):
+    game, d = _camped(tmp_path, watches=3)
+    with pytest.raises(da.StepFailed, match="lost-rest-events"):
+        d.rest(5)
+    assert game.answers == ["g", "g"]
+
+
+def test_stay_is_never_pressed(tmp_path, _watch_and_clock):
+    game, d = _camped(tmp_path, watches=2)
+    d.rest(5)
+    assert "s" not in game.keys[game.keys.index("g"):]
+
+
+def test_a_fight_after_the_rest_stops_the_run(tmp_path, _watch_and_clock):
+    game, d = _camped(tmp_path, fight=True)
+    with pytest.raises(da.StepFailed, match="lost-rest-end"):
+        d.rest(5)
+    assert game.answers == []
+
+
+def test_save_camps_again_after_the_party_was_moved_along(tmp_path, _watch_and_clock):
+    game, d = _camped(tmp_path, watches=1)
+    d.rest(5)
+    got = d.save("D")
+    assert got["back_in_camp"] and game.keys[-2:] == ["d", da.QUIT_NO]
+    assert game.keys.count("e") == 2
+    assert (game.save_dir / "SAVGAMD.DAT").is_file()
 
 
 # -- the step list and its arguments --------------------------------------------
