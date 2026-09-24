@@ -660,7 +660,7 @@ def test_every_figure_a_curse_player_can_choose_composes(
                 assert icon[:18] in curse_reachable, (head, body, size)
 
 
-# --- #301: a party that has not set out --------------------------------------
+# --- #301, #653: a party that has not set out ------------------------------
 
 def _never_adventured_curse() -> bytes:
     """What Curse's initialiser leaves and `SAVE CURRENT GAME` at the party
@@ -673,47 +673,54 @@ def _never_adventured_curse() -> bytes:
     return bytes(savgam)
 
 
-def _expect_the_start_of_area_1(save0: bytearray) -> None:
-    """Area 1, `GEO01`, side 2, the square `7,13` facing east: what the DOS
-    engine itself does with the same save on `BEGIN ADVENTURING`, and what
-    `areas.STARTS` holds for this title."""
+def _expect_the_c64_party_menu_form(save0: bytearray) -> None:
+    """What the C64 game's own party-menu save holds before `BEGIN
+    ADVENTURING` -- `CURSE_C.D64`'s `SAVEAZURE` and a second area-0 Curse
+    save on the player's disks agree: area and map 0, side 2, indoors, the
+    square `0,0` facing north, `+$FC` = 2, and a cache of `$FF` but for
+    `SECSET02`, `SPELLE20`, `ECL01` and `ANIMATE00`, each with bit 7 set.
+    Loaded in VICE, that save plays the two awakening pages on `BEGIN
+    ADVENTURING`; a party converted to area 1 skips them (#653)."""
     cont = c64_save.container_for(CURSE_GAME)
-    at = cont.cache[0]
-    assert save0[at + dos_codec.CACHE_ECL] == 0x01 | dos_codec.FILE_CACHE_RELOAD
-    assert save0[at + dos_codec.CACHE_GEO] == 0x01 | dos_codec.FILE_CACHE_RELOAD
-    assert save0[cont.current_script] == 1
-    assert save0[cont.current_geo] == 1
+    at, slots = cont.cache
+    expected = bytearray([0xFF]) * slots
+    expected[3], expected[7], expected[8], expected[11] = 0x82, 0xA0, 0x81, 0x80
+    assert save0[at:at + slots] == expected
+    assert save0[cont.current_script] == 0
+    assert save0[cont.current_geo] == 0
     assert save0[cont.disk_hint] == 2
     assert save0[cont.indoors] == 1
-    assert tuple(save0[cont.position:cont.position + 3]) == (7, 13, 1)
+    assert tuple(save0[cont.position:cont.position + 3]) == (0, 0, 0)
+    assert save0[0x0FC] == 2
 
 
-def test_a_curse_party_that_has_not_set_out_converts_to_the_start_of_area_1():
-    """Curse has no area 0 and no `GEO00`, so a save converted with the word
-    unchanged sits in front of `INSERT SIDE # 2` for ever while the C64
-    loader hunts for a map on none of the sides.  The container says the
-    party has not set out, and the title says where that party goes
-    (#301)."""
+def test_a_curse_party_that_has_not_set_out_converts_to_the_c64_party_menu_form():
+    """A DOS party saved before `BEGIN ADVENTURING` becomes the C64's own
+    pre-adventure save, so the C64 game plays its opening, and reading the
+    result back says the party still has not set out.  Nothing is said to
+    the player: nothing moved."""
     savgam = _never_adventured_curse()
     assert sg.current_area(savgam) == 0
     assert dos_codec.never_adventured(savgam)
     state = world_state.from_dos(savgam, sg.SAVE_CURSE_OF_THE_AZURE_BONDS)
     cont = c64_save.container_for(CURSE_GAME)
     save0 = bytearray(cont.payload_size)
-    line = dos_codec.apply_file_cache(save0, state, cont)
-    assert "had not set out" in line
-    dos_codec.apply_position(save0, state)
-    _expect_the_start_of_area_1(save0)
+    report = dos_codec.write_c64_save(save0, None, state, [], game=CURSE_GAME)
+    _expect_the_c64_party_menu_form(save0)
+    assert report.messages == []
+    back = world_state.from_c64(bytes(save0), game=CURSE_GAME)
+    assert back.set_out is False
+    assert world_state.has_not_set_out(back)
 
 
 @pytest.mark.skipif(
     not gamedata.have_specimen("curse-234-party-dualclassed"),
     reason="needs the never-adventured Curse specimen")
-def test_a_real_curse_party_saved_at_the_menu_converts_and_the_player_is_told():
+def test_a_real_curse_party_saved_at_the_menu_converts_to_the_c64_party_menu_form():
     """`WISH-SPEC-curse-234-party-dualclassed` slot D: the DOS engine's own
     `SAVE CURRENT GAME` from the party-formation menu, six characters, area
-    0.  Refused as `NOT_AN_AREA` until #301; converts to the start of area
-    1 now, with Donald's sentence on the report for the messages pane."""
+    0.  It converts to the C64's own pre-adventure form, with every byte
+    accounted for and no message."""
     folder = gamedata.specimen("curse-234-party-dualclassed")
     savgam = (folder / "SAVGAMD.DAT").read_bytes()
     assert sg.current_area(savgam) == 0
@@ -722,8 +729,8 @@ def test_a_real_curse_party_saved_at_the_menu_converts_and_the_player_is_told():
     cont = c64_save.container_for(CURSE_GAME)
     save0 = bytearray(cont.payload_size)
     report = dos_codec.convert_save(folder, "D", save0, game=CURSE_GAME)
-    _expect_the_start_of_area_1(save0)
-    assert report.messages == [dos_codec.NOT_SET_OUT]
+    _expect_the_c64_party_menu_form(save0)
+    assert report.messages == []
     assert report.unaccounted == []
 
 

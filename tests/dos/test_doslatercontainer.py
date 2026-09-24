@@ -493,3 +493,38 @@ def test_a_party_saved_before_begin_adventuring_converts_to_the_shipped_form(
         written[shape.script_buffer[0]:shape.script_buffer[1]]))
     assert sg.party_size(written) == 6
     assert len(dos_codec.read_party(tmp_path, "A")) == 6
+
+
+@pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
+def test_a_dos_party_saved_before_begin_adventuring_converts_to_the_c64_s_own_form(
+        shape, tmp_path):
+    """The archives' pre-adventure `SAVGAMA.DAT` converts to a C64 save whose
+    header, every byte before the combat icons, equals the C64 game's own
+    pre-adventure save on the player's disk -- the form VICE was seen to
+    play the opening from -- and converting that back to DOS gives the
+    archives' own container again.  The icons are the party's, and the two
+    ports' shipped parties are not the same six on Curse."""
+    from support.dossave import _game_dirs
+
+    from goldbox import c64_save, world_state
+    game, shipped_c64 = _pre_adventure_payload(shape)
+    stem = PRE_ADVENTURE[shape][3]
+    folder = _game_dirs().get(stem)
+    if folder is None or not (folder / "SAVGAMA.DAT").is_file():
+        pytest.skip("needs the archives' shipped saves")
+    cont = c64_save.container_for(game)
+
+    save0, _save1, report = dos_codec.new_save(
+        folder, "A", bytes(36), animate=bytes(852), game=game)
+    assert report.unwritten == []
+    assert report.messages == []
+    assert save0[:cont.icon_table] == shipped_c64[:cont.icon_table]
+
+    state = world_state.from_c64(bytes(save0), game=game)
+    assert state.set_out is False
+    back = dos_codec.new_dos_save(bytes(save0), None, tmp_path, "A",
+                                  _game_dir(stem), title=game)
+    assert back.unwritten == []
+    written = (tmp_path / "SAVGAMA.DAT").read_bytes()
+    shipped_dos = (folder / "SAVGAMA.DAT").read_bytes()
+    assert written[:shape.party_table] == shipped_dos[:shape.party_table]

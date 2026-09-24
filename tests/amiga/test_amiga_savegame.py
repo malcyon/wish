@@ -402,3 +402,37 @@ def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_dos_pre_a
     assert report.unwritten == []
     assert written[:container.party_table] == shipped[:container.party_table]
     assert len(dos_codec.read_party(tmp_path, "A")) == len(party) == 6
+
+
+@pytest.mark.parametrize("key", sorted(PRE_ADVENTURE))
+def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_c64_s_own_form(key):
+    """An Amiga party that has not set out converts to a C64 save whose
+    header, every byte before the combat icons, equals the C64 game's own
+    pre-adventure save -- so `BEGIN ADVENTURING` plays the opening there,
+    where a party placed at the arrival square skips it.  Silver Blades'
+    source is the shipped `savgamA.sav`; Curse has no Amiga pre-adventure
+    save, so its source is the Amiga writer's output from `SAVEAZURE`."""
+    from goldbox import c64_port, c64_save, dos_codec, world_state
+    from goldbox.iconparts import amiga_combat_icon
+    game = c64_port.by_key(key)
+    shipped_c64 = _c64_pre_adventure(key)
+    shape = amiga_savegame.container_for(key)
+    if shape is amiga_savegame.CURSE:
+        characters, _icons = dos_codec.c64_party(shipped_c64, None, game)
+        data, _report = amiga_savegame.new_savegame(
+            world_state.from_c64(shipped_c64, game=game), characters, "A")
+    else:
+        data = _shipped_amiga_silver_blades()
+    save = amiga_savegame.parse(data, shape)
+    state = amiga_savegame.state_from_savegame(save)
+    party = list(save.characters)
+
+    save0, _save1, report = dos_codec.new_save_from_neutral(
+        state, [amiga_later.to_neutral_later(c) for c in party],
+        [amiga_combat_icon(c) for c in party], bytes(36), bytes(852),
+        game=game)
+
+    cont = c64_save.container_for(game)
+    assert report.messages == []
+    assert save0[:cont.icon_table] == shipped_c64[:cont.icon_table]
+    assert world_state.from_c64(bytes(save0), game=game).set_out is False

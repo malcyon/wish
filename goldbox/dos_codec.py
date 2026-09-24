@@ -5478,17 +5478,27 @@ def apply_position(save0: bytearray, state: "world_state.WorldState"
     Returns the `(address, what)` notes for the report, because which pair
     was written is exactly what its reader wants to know.
 
-    **A party that has not set out lands on its title's start square**
-    (`areas.STARTS`), not on the square the save holds: that square is the
-    initialiser's, and the engine's own answer one keypress later differs
-    from it -- Curse's save holds `7,13` facing north and `BEGIN
-    ADVENTURING` leaves the party at `7,13` facing east (#301).  Pool of
-    Radiance's two readings agree, `15,1` facing west, so nothing moves
-    there.  `state.set_out` is `world_state.from_dos`'s own reading of that
-    same question, off the container rather than the area word (#326), so
-    this no longer asks it a second time -- and `state.x`/`.y`/`.facing`
-    already hold the start row's own square when it is false.
+    **A Curse or Silver Blades party that has not set out** gets the square
+    the C64's own party-menu save holds, :data:`C64_PRE_ADVENTURE_SQUARE`,
+    because the save is written in that game's pre-adventure form and
+    `BEGIN ADVENTURING` places the party itself.
+
+    **A Pool of Radiance party that has not set out lands on its title's
+    start square** (`areas.STARTS`): New Phlan's `15,1` facing west, which
+    is also what its save holds.  `state.set_out` is `world_state.from_dos`'s
+    own reading of that question, off the container rather than the area
+    word, and `state.x`/`.y`/`.facing` already hold the start row's square
+    when it is false.
     """
+    if world_state.has_not_set_out(state):
+        x, y, facing = C64_PRE_ADVENTURE_SQUARE
+        save0[PARTY_X - SAVE0_BASE] = x
+        save0[PARTY_Y - SAVE0_BASE] = y
+        save0[PARTY_FACING - SAVE0_BASE] = facing
+        why = ("the C64 party menu's own square, since the party had not "
+               "set out and BEGIN ADVENTURING places it")
+        return ((PARTY_X, f"party x, {why}"), (PARTY_Y, f"party y, {why}"),
+                (PARTY_FACING, f"facing, {why}"))
     if not state.set_out:
         save0[PARTY_X - SAVE0_BASE] = state.x
         save0[PARTY_Y - SAVE0_BASE] = state.y
@@ -5613,6 +5623,31 @@ CACHE_UNSET = 0x7F
 #: never has to reach it.
 CACHE_ANIMATE = 11
 ANIMATE_RESIDENT = 0x00
+
+#: The file cache a Curse or Silver Blades party that has not set out holds
+#: on the C64, as `(slot, file number)` with every other slot `$FF`:
+#: `SECSET02`, `SPELLE20`, the title's opening script and `ANIMATE00`.  It is
+#: the shipped `SAVEAZURE`'s and `SAVEDBASH`'s cache exactly, and two engine
+#: resaves of `SAVEDBASH` watched being written at the party menu hold the
+#: same; a second Curse area-0 save on the player's disks holds these four
+#: and three more (`GDRIVE03`, `SPELLN64`, `CHARPIC00`).  VICE plays the
+#: opening from the shipped two.  Slot 2 stays empty: there is no `GEO00` on
+#: either title, and naming one leaves the loader asking for a side for ever
+#: (`docs/185-a-party-that-has-not-set-out.md`).  The opening script differs
+#: from `areas.STARTS`' first area on Silver Blades: `BEGIN ADVENTURING` on
+#: this save runs `ECL11`'s prologue, and the party then arrives in `$10`.
+C64_PRE_ADVENTURE_CACHE = {
+    "curse-of-the-azure-bonds": ((3, 0x02), (7, 0x20), (8, 0x01),
+                                 (CACHE_ANIMATE, ANIMATE_RESIDENT)),
+    "secret-of-the-silver-blades": ((3, 0x02), (7, 0x20), (8, 0x11),
+                                    (CACHE_ANIMATE, ANIMATE_RESIDENT)),
+}
+#: The square and facing all five of those area-0 saves hold: `0,0` facing
+#: north, which `BEGIN ADVENTURING` replaces.
+C64_PRE_ADVENTURE_SQUARE = (0, 0, 0)
+#: `+$FC`, which a party in the world is converted with as zero: 2 in all five
+#: area-0 saves, so the pre-adventure form writes 2.
+C64_PRE_ADVENTURE_FC = (0x0FC, 2)
 
 #: The disk hint.  `GEN $08BD` is `LDA $49EA / STA $6E12`, and `$6E12` is the
 #: `POOL` side the loader asks for by number.  It is not part of the cache but
@@ -5907,11 +5942,11 @@ def _start_of_the_story(title: str) -> "tuple[areas.Start, areas.Area]":
     area 0 is refused by the import, because no row of the area table names
     area 0)`: such a party is converted to the start of the first area, which
     is what the DOS engine itself does with the same save on
-    `BEGIN ADVENTURING` -- and the arriving script runs its own entry on the
-    C64 exactly as it does on DOS, so the player gets the awakening rather
-    than skipping it.  Converting the word through unchanged is measured to
-    produce a save the player cannot start: the C64 loader hunts for `GEO00`
-    for ever.
+    `BEGIN ADVENTURING`.  That is the place `world_state.from_dos` reads for
+    every title; a C64 destination writes it for Pool of Radiance only, and
+    writes Curse and Silver Blades in the C64's own pre-adventure form
+    instead, because a party placed at the start skips the opening there
+    (`apply_file_cache`).
 
     A title with no `areas.STARTS` row is refused rather than guessed.
     """
@@ -6039,15 +6074,18 @@ def apply_file_cache(save0: bytearray, state: "world_state.WorldState",
     `state.geo` is already whichever of the two `world_state.from_dos`
     resolved, so this reads it once rather than re-deriving it.
 
-    **A save made before the party set out is placed at the start of the
-    story** (#301, #326), read off the container by :func:`never_adventured`
-    and never off the area word: both words are the initialiser's 0 there,
-    `$49E6` is whatever that title's initialiser left, and the row comes
-    from `areas.STARTS` -- New Phlan for Pool of Radiance, area 1 for Curse,
-    and area `0x10` for Secret of the Silver Blades (#535). `state.set_out`
-    is that same reading, and the $49E6/area-table contradiction this used
-    to check for itself is `_resolve_dos_place`'s now, raised while `state`
-    was being built -- so a `state` reaching here has already survived it.
+    **A Curse or Silver Blades party that has not set out is written in the
+    C64 game's own pre-adventure form** (`world_state.has_not_set_out`):
+    area and map 0, the title's party-menu disk, indoors, and
+    :data:`C64_PRE_ADVENTURE_CACHE` -- so `BEGIN ADVENTURING` plays the
+    opening exactly as it does for a party made on the C64.  The start row
+    `world_state.from_dos` substituted for the place is not used.
+
+    **A Pool of Radiance save made before the party set out is placed at
+    the start of the story**, New Phlan, read off the container by
+    :func:`never_adventured` and never off the area word.  The
+    `$49E6`/area-table contradiction is `_resolve_dos_place`'s, raised while
+    `state` was being built, so a `state` reaching here has survived it.
 
     **It applies to a template standing in the area too** (#121).  That case
     used to return early and keep the template's own cache, on the reasoning
@@ -6061,6 +6099,21 @@ def apply_file_cache(save0: bytearray, state: "world_state.WorldState",
     container = c64_save.container_for(container)
     at, slots = container.cache
     on = FILE_CACHE_RELOAD if container.cache_bit7 else 0
+    if world_state.has_not_set_out(state):
+        resident = C64_PRE_ADVENTURE_CACHE[container.key]
+        save0[at:at + slots] = bytes([FILE_CACHE_EMPTY]) * slots
+        for slot, number in resident:
+            save0[at + slot] = number | on
+        save0[container.disk_hint] = PRE_ADVENTURE_DISK[container.key]
+        save0[container.current_script] = 0
+        save0[container.current_geo] = 0
+        save0[container.indoors] = 1
+        return ("loaded-files cache: the C64 party menu's own, since the "
+                "party had not set out -- $FF in all twenty-five, then "
+                + ", ".join(f"slot {slot} = {number:02X}"
+                            for slot, number in resident)
+                + (", each with bit 7 set" if on else "")
+                + "; no GEO, because area 0 has none")
     where = areas.area_in(state.area, state.title)
     if where is None:
         raise DosRecordError(NOT_AN_AREA.format(area=state.area,
@@ -6486,10 +6539,18 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         report.note(at, SCRIPT_SCRATCH[1],
                     "per-script scratch: zeroed, as DUNGEON $202A does on "
                     "every area change")
+    fresh = world_state.has_not_set_out(state)
     at, slots = container.cache
     report.note(at, slots, apply_file_cache(save0, state, container))
-    origin = ("the start of the story, since the DOS party had not set out "
+    origin = ("the C64 party menu's own pre-adventure save, since the party "
+              "had not set out" if fresh else
+              "the start of the story, since the DOS party had not set out "
               "(#301)" if not state.set_out else "the area the DOS party is in")
+    if fresh:
+        at, value = C64_PRE_ADVENTURE_FC
+        save0[at] = value
+        report.note(at, 1, f"{value}: what the C64 party menu's own save "
+                           f"holds here before the party sets out")
     for at, what in (
             (container.disk_hint, "the disk side the loader will ask for"),
             (container.current_geo, "the SQRDATA number LOADFILES reloads" if
@@ -6498,7 +6559,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
             (container.indoors, "outdoors -- 0 boots into travel mode" if
              state.outdoors else "indoors")):
         report.note(at, 1, f"{what}, from {origin}")
-    if not state.set_out:
+    if not state.set_out and not fresh:
         report.messages.append(NOT_SET_OUT)
     if container.picture_buffer is not None:
         at, size = container.picture_buffer

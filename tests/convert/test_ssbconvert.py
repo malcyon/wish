@@ -758,31 +758,36 @@ def test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion(
         assert icon[:18] == expected, which
 
 
-# --- #535: a party that has not set out converts to the start of area $10 ----
+# --- #535, #653: a party that has not set out -------------------------------
 
-def _expect_the_start_of_area_0x10(save0: bytearray) -> None:
-    """Area `$10`, `GEO10`, side 1, the square `3,3` facing south: what the
-    DOS engine itself does with the same save on `BEGIN ADVENTURING`, and
-    what `areas.STARTS` holds for this title (#535)."""
+def _expect_the_c64_party_menu_form(save0: bytearray) -> None:
+    """What the C64 game's own party-menu save holds before `BEGIN
+    ADVENTURING` -- `SILVER-6.D64`'s `SAVEDBASH`, and two engine resaves of
+    it watched being written at the party menu: area and map 0, side 1,
+    indoors, the square `0,0` facing north, `+$FC` = 2, and a cache of `$FF`
+    but for `SECSET02`, `SPELLE20`, `ECL11` and `ANIMATE00`, each with bit
+    7 set.  Loaded in VICE, that save plays the prologue, Priam's welcome
+    and the 2,500 share on `BEGIN ADVENTURING`; a party converted to area
+    `$10` skips all of it (#653)."""
     cont = c64_save.container_for(SSB_GAME)
-    at = cont.cache[0]
-    assert save0[at + dos_codec.CACHE_ECL] == 0x10 | dos_codec.FILE_CACHE_RELOAD
-    assert save0[at + dos_codec.CACHE_GEO] == 0x10 | dos_codec.FILE_CACHE_RELOAD
-    assert save0[cont.current_script] == 0x10
-    assert save0[cont.current_geo] == 0x10
+    at, slots = cont.cache
+    expected = bytearray([0xFF]) * slots
+    expected[3], expected[7], expected[8], expected[11] = 0x82, 0xA0, 0x91, 0x80
+    assert save0[at:at + slots] == expected
+    assert save0[cont.current_script] == 0
+    assert save0[cont.current_geo] == 0
     assert save0[cont.disk_hint] == 1
     assert save0[cont.indoors] == 1
-    assert tuple(save0[cont.position:cont.position + 3]) == (3, 3, 2)
+    assert tuple(save0[cont.position:cont.position + 3]) == (0, 0, 0)
+    assert save0[0x0FC] == 2
 
 
-def test_a_silver_blades_party_that_has_not_set_out_converts_to_the_start_of_area_0x10():
+def test_a_silver_blades_party_that_has_not_set_out_converts_to_the_c64_party_menu_form():
     """Silver Blades' container stages no script, so `$4FE1` is the reading
     -- 0 in both never-adventured containers here and 255 in all five
-    played ones.  `areas.STARTS` now carries this title's row, measured on
-    #535 by driving DOS Silver Blades from the party menu through
-    `BEGIN ADVENTURING` with the party standing still, so a save made
-    before the party set out converts to that arrival rather than being
-    refused."""
+    played ones.  Such a party becomes the C64's own pre-adventure save, so
+    the C64 game plays its opening, and reading the result back says the
+    party still has not set out."""
     shape = sg.SAVE_SECRET_OF_THE_SILVER_BLADES
     assert shape.script_buffer is None
     savgam = bytearray(shape.size)
@@ -792,10 +797,12 @@ def test_a_silver_blades_party_that_has_not_set_out_converts_to_the_start_of_are
     state = world_state.from_dos(bytes(savgam), shape)
     cont = c64_save.container_for(SSB_GAME)
     save0 = bytearray(cont.payload_size)
-    line = dos_codec.apply_file_cache(save0, state, cont)
-    assert "had not set out" in line
-    dos_codec.apply_position(save0, state)
-    _expect_the_start_of_area_0x10(save0)
+    report = dos_codec.write_c64_save(save0, None, state, [], game=SSB_GAME)
+    _expect_the_c64_party_menu_form(save0)
+    assert report.messages == []
+    back = world_state.from_c64(bytes(save0), game=SSB_GAME)
+    assert back.set_out is False
+    assert world_state.has_not_set_out(back)
 
     # The same container one keypress later -- `$4FE1` written, a real area
     # -- is a party in the world and is placed where it stands, not
@@ -822,13 +829,14 @@ def _shipped_silver_blades_save():
 
 @pytest.mark.skipif(_shipped_silver_blades_save() is None,
                     reason="needs the archives' Silver Blades saves")
-def test_the_archives_shipped_silver_blades_party_converts_to_the_start_of_area_0x10():
+def test_the_archives_shipped_silver_blades_party_reads_at_the_start_of_area_0x10():
     """The two saved games the archives ship for this title are both in this
     state -- area 0, `7,13` facing north, `$4FE1` = 0 -- so the first Silver
     Blades save a player reaches for used to be refused until the title's
-    start was measured (#535); it now converts to the arrival `areas.STARTS`
-    names.  A found save with no chain of custody, read here only to show
-    what the conversion does with it -- not as a measurement of the game."""
+    start was measured (#535); the DOS reader now places it at the arrival
+    `areas.STARTS` names, with `set_out` false for the writers to act on.  A
+    found save with no chain of custody, read here only to show what the
+    reader does with it -- not as a measurement of the game."""
     savgam = _shipped_silver_blades_save().read_bytes()
     assert sg.current_area(savgam) == 0
     assert dos_codec.never_adventured(savgam)
