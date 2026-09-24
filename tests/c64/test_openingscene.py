@@ -30,6 +30,8 @@ def test_a_side_prompt_is_a_disk_prompt_not_a_press_prompt():
     ("PRESS BUTTON OR RETURN TO CONTINUE.", "return"),
     ("VIEW TAKE POOL SHARE EXIT", "exit"),
     ("GO BACK LEAVE TREASURE", "leave"),
+    ("I,J,K,M, RETURN OR BUTTON", "world"),
+    ("1-8, RETURN OR BUTTON", "world"),
     ("YES NO", "no"),
     ("EXIT" + " " * 36, "exit"),
     ("", "wait"),
@@ -337,3 +339,17 @@ def test_the_go_back_treasure_bar_selects_leave_treasure():
     openingscene.answer_bar(sess, "leave", Bar("GO BACK LEAVE TREASURE"),
                             sleep=lambda s: None)
     assert sess.selected == ["LEAVE TREASURE"] and sess.pressed == []
+
+
+def test_the_direction_prompt_ends_the_watch_as_the_world():
+    f = Fake([screen("PRESS BUTTON OR RETURN TO CONTINUE.", "ONE"),
+              screen("I,J,K,M, RETURN OR BUTTON", "S 0:00 3,3")])
+    assert f.watch(wait=60) == "world"
+
+
+def test_experience_before_is_recorded_from_the_loaded_save_at_once():
+    summary, noted = {}, []
+    openingscene.record_before(summary, lambda **kw: noted.append(kw),
+                               "SAVE.D64", lambda p: {"GUY": 1000})
+    assert summary["experience_before"] == {"GUY": 1000}
+    assert noted[0]["rows"] == {"GUY": 1000}

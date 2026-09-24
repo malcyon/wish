@@ -21,7 +21,7 @@ flatpak VICE and the disk copies live there too):
 | `NN.png`, `NN.txt` | each new screen, numbered in the order seen |
 | `world.png` | the screen at the world bar |
 | `resave.D64` | the save disk after ENCAMP > SAVE, copied only once its directory is closed |
-| `summary.json` | the title, the save, the header, the screen count, the first screen that is neither the party menu nor a disk prompt, the outcome, the area byte and square at the world bar, whether the save was written, and the experience rows |
+| `summary.json` | the title, the save, the header, the screen count, the first screen that is neither the party menu nor a disk prompt, the outcome, the area byte and square at the world bar, whether the save was written, each character's experience before, and the experience rows |
 
 Exit status 0 when the world bar was reached and the save written, 1
 otherwise; every capture is on disk either way.  The player's disks are only
@@ -55,6 +55,11 @@ MAX_REPEATS = 3
 #: The live party square.
 LIVE_SQUARE = 0xC04B
 
+#: The direction prompts the world shows once `MOVE` is selected, indoor and
+#: outdoor (`session.MOVE_SUBBAR`, `session.OUTDOOR_PROMPT`).  The Silver Blades
+#: opening ends on the indoor one, with no `ENCAMP` on the row.
+DIRECTION_PROMPTS = ("I,J,K,M", "1-8")
+
 
 def opening_step(row24: str, text: str, disk_wanted: bool) -> str:
     """What to do about a screen, from its bottom row alone.
@@ -65,6 +70,8 @@ def opening_step(row24: str, text: str, disk_wanted: bool) -> str:
     if disk_wanted:
         return "disk"
     if "MOVE" in row24 and "ENCAMP" in row24:
+        return "world"
+    if any(p in row24 for p in DIRECTION_PROMPTS):
         return "world"
     if "GO BACK" in row24 and "LEAVE TREASURE" in row24:
         return "leave"
@@ -186,6 +193,16 @@ def experience_map(path: pathlib.Path) -> dict[str, int]:
                          for slot in sg0.characters)
 
 
+def record_before(summary, note, save, reader=experience_map) -> None:
+    """Read each character's experience off the loaded save, before any play.
+
+    Done at once so a run that never reaches the world still states it.
+    """
+    before = reader(save)
+    summary["experience_before"] = before
+    note(event="experience-before", rows=before)
+
+
 def answer_bar(sess, step: str, s, *, sleep=time.sleep) -> None:
     """Select EXIT, NO or LEAVE TREASURE, and press Return if row 24 has not changed.
 
@@ -301,7 +318,8 @@ def run(args) -> int:
     summary: dict = {"title": args.title, "save": str(save), "header": None,
                      "screens": 0, "first_opening_text": None,
                      "outcome": "not started", "area": None, "square": None,
-                     "saved": False, "experience": []}
+                     "saved": False, "experience": [],
+                     "experience_before": None}
     texts: list[str] = []
     slot = por.claim_slot(args.pool, note=os.environ.get("POR_AGENT", "i653"))
     log = (out / "run.jsonl").open("a")
@@ -347,6 +365,7 @@ def run(args) -> int:
             summary["outcome"] = "load failed"
             return 1
 
+        record_before(summary, note, save)
         with sess.mon(5) as m:
             page = m.read(PAYLOAD_AT, HEADER_BYTES)
         header = curseareazero.fields(page, container)
