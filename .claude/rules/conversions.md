@@ -26,6 +26,25 @@ investigation open and name the experiment that would settle it. Closing work
 and retaining ownership of unfinished defects follow
 `.claude/rules/issues.md`.
 
+## Test a disputed port difference before asking Donald
+
+When a proposed conversion depends on one port allowing an action that another
+port cannot perform, test that action in the running games before asking Donald
+to decide how the player should handle the difference or approve interface
+text for it. Include a control that shows the command works on an item or state
+it does support, capture what the player sees, and read the game-written save
+when the result persists there. Code analysis can identify the expected branch;
+synthetic tests and saves Wish wrote do not establish what the game does.
+
+The run must exercise the disputed action itself. Loading a converted save and
+seeing two separate scrolls, for example, does not establish whether the
+destination game's JOIN command can combine them. Also establish that the
+source game can write the state that would require the proposed player choice.
+If either run cannot be made, name the missing step, keep the claim provisional,
+and continue work that does not depend on Donald's decision. Once the limit is
+verified, the capacity rule below already settles the behavior: let the player
+choose what fits. Ask Donald to approve the wording and appearance only then.
+
 A verified destination capacity limit requires a way to complete the
 conversion. Let the player resolve what fits. One name needing shortening must
 not condemn the entire party.
@@ -220,7 +239,7 @@ what is measured about reaching them:
 
 | | the ceiling | can it be reached? |
 |---|---|---|
-| C64 items | 16 slots in the record | DOS keeps a one-byte `item_count` and its items in a sibling `.ITM`, so the format allows far more -- **what the DOS game itself allows is UNMEASURED** |
+| C64 items | 16 slots in the record | DOS and Amiga refuse a seventeenth head item (`docs/173-carrying-limits.md`); Silver Blades can join scrolls under one head, but a game-written bundle that exceeds the C64 slots has not been tested in the running games |
 | C64 trait slots | 10, shared between racial effects and item grants | racial ids are 0-4 by race, CONFIRMED (human 0, elf 1, half-elf 1, halfling 2, dwarf 4, gnome 4), so it needs a dwarf or gnome with **seven or more effect-granting items readied at once** -- **UNMEASURED** |
 
 Measure per title before designing anything: Curse's items are 67 bytes where
