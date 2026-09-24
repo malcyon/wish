@@ -300,6 +300,7 @@ class WalkSession(FakeSession):
         super().__init__(monitor)
         self._indoors, self._blocked, self._sheet = indoors, blocked, sheet
         self.x = 5
+        self.walled = set()      # facings an I cannot leave by
         self.pressed = []
         self.walk_refused = None
         self.kbd = FakeKbd()
@@ -331,7 +332,12 @@ class WalkSession(FakeSession):
 
     def walk_one(self, move):
         self.pressed.append(move)
-        if move in self._blocked:
+        if move in "JKM" and self._indoors:
+            self.facing = (getattr(self, "facing", 0)
+                           + {"J": -1, "K": 1, "M": 2}[move]) % 4
+            return True
+        if move in self._blocked or (
+                move == "I" and getattr(self, "facing", 0) in self.walled):
             return False
         self.x += 1
         return True
@@ -379,14 +385,20 @@ def test_a_walked_party_that_never_moves_is_a_failed_walk():
 
 def test_a_blocked_step_tries_the_other_three_directions_and_records_each():
     sess, m = make()
-    sess = WalkSession(m, indoors=True, blocked={"I", "K", "M"})
+    sess = WalkSession(m, indoors=True)
+    sess.walled = {0, 3}     # ahead and to the left; only right or behind is open
     steps, sheet = FT.walk_afterwards(sess)
     ok, _ = FT.walk_verdict(steps, sheet)
     assert ok
-    assert sess.pressed[:2] == ["I", "J"]
-    blocked = WalkSession(m, indoors=True, blocked={"I", "K"})
+    assert sess.pressed[:5] == list("IJIMI")
+    blocked = WalkSession(m, indoors=True)
+    blocked.walled = {0}
     steps, _ = FT.walk_afterwards(blocked)
-    assert [a["move"] for a in steps[0]["attempts"]] == ["I", "J"]
+    assert steps[0]["planned"] == "I"
+    assert [a["move"] for a in steps[0]["attempts"]] == ["I", "J", "I"]
+    last = steps[0]["attempts"][-1]
+    assert (steps[0]["move"], steps[0]["ok"], steps[0]["row"], steps[0]["after"]) \
+        == (last["move"], last["ok"], last["row"], last["after"])
     assert steps[0]["before"] != steps[0]["after"]
 
 
@@ -394,12 +406,66 @@ def test_a_step_blocked_on_every_side_records_four_attempts_and_fails():
     sess, m = make()
     sess = WalkSession(m, indoors=True, blocked=set("IJKM"))
     steps, sheet = FT.walk_afterwards(sess)
-    assert [a["move"] for a in steps[0]["attempts"]] == ["I", "J", "M", "K"]
+    assert [a["move"] for a in steps[0]["attempts"]] == list("IJIMIKI")
     assert all(set(a) == {"move", "ok", "row", "before", "after"}
                and a["before"] == a["after"] for a in steps[0]["attempts"])
     assert len(sess.pressed) == FT.WALK_ATTEMPTS
     ok, _ = FT.walk_verdict(steps, sheet)
     assert not ok
+
+
+def test_a_turn_that_worked_is_never_retried():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    steps, _ = FT.walk_afterwards(sess)
+    turn = steps[FT.WALK_INDOORS.index("K")]
+    assert turn["move"] == "K" and turn["ok"] and "attempts" not in turn
+    assert "".join(sess.pressed) == FT.WALK_INDOORS
+
+
+def test_a_lone_turn_presses_only_its_key():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    FT.WALK_INDOORS, saved = "K", FT.WALK_INDOORS
+    try:
+        steps, _ = FT.walk_afterwards(sess)
+    finally:
+        FT.WALK_INDOORS = saved
+    assert sess.pressed == ["K"] and "attempts" not in steps[0]
+    assert steps[0]["before"] == steps[0]["after"]
+
+
+def test_a_retry_that_lands_in_a_fight_stops_and_the_outer_loop_fights():
+    sess, m = make()
+
+    class Ambush(WalkSession):
+        def walk_one(self, move):
+            ok = super().walk_one(move)
+            if move == "J":
+                self.combat = True
+            return ok
+
+    sess = Ambush(m, indoors=True, blocked={"I"})
+    steps, _ = FT.walk_afterwards(sess)
+    assert sess.pressed[:2] == ["I", "J"]
+    assert steps[0]["move"] == "J" and len(steps[0]["attempts"]) == 2
+    assert sess.fights and "fight" in steps[1]
+
+
+def test_a_retry_that_lands_on_a_prompt_stops_the_retries():
+    sess, m = make()
+
+    class Prompt(WalkSession):
+        def walk_one(self, move):
+            ok = super().walk_one(move)
+            if move == "J":
+                self.row = "INSERT DISK"
+            return ok
+
+    sess = Prompt(m, indoors=True, blocked={"I"})
+    steps, _ = FT.walk_afterwards(sess, timeout=0.0)
+    assert sess.pressed == ["I", "J"]
+    assert "refused" in steps[-1] and steps[-1]["refused"]
 
 
 class RedrawSession(WalkSession):

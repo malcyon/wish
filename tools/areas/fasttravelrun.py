@@ -376,17 +376,36 @@ def settle_row(sess, timeout: float = 60.0, interval: float = 0.5) -> str:
 WALK_ATTEMPTS = 12    # moves sent in all, retries after a blocked step included
 
 
-def _other_directions(indoors: bool, move: str) -> list[str]:
-    """The directions to try when *move* leaves the square unchanged, in the
-    order J, M, then the rest of I and K (outdoors, the other compass digits)."""
-    order = "JMIK" if indoors else "1357"
-    return [d for d in order if d != move]
+def _retry_plan(indoors: bool, move: str) -> list[str]:
+    """The keys to send after a forward *move* that a wall stopped, or [] for a
+    turn, which is never retried.
+
+    Indoors a turn changes the facing and not the square, so the plan tracks
+    the facing: J faces left, I steps; M then faces the original right, I
+    steps; K then faces the original back, I steps.  Each I is a forward step
+    from a new facing.  Outdoors every compass digit is a step, so the plan is
+    the other three digits.
+    """
+    if not indoors:
+        return [d for d in "1357" if d != move]
+    return list("JIMIKI") if move == "I" else []
+
+
+def _is_step(indoors: bool, key: str) -> bool:
+    """Whether *key* moves the party (a forward step or a compass digit), as
+    opposed to a turn."""
+    return key == "I" or not indoors
 
 
 def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
     """A few steps in each direction, then the first character's sheet opened
     and closed -- the one action that is not a move. Returns every step's
     result and whether the sheet came up.
+
+    A step that a wall stopped is retried from other directions
+    (`_retry_plan`).  Its record describes the last attempt -- `move`, `ok`,
+    `row` and `after` all come from it -- and a retried step also carries
+    `planned`, the move the walk asked for, and `attempts`, every key sent.
 
     Row 24 is read before every step and stored in it. A fight is handed to
     `Session.fight` with `melee_turn` (the default tactic only passes, which
@@ -424,32 +443,37 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
             return steps, False
         before = sess.square()
         attempts: list[dict] = []
-        tried = move
-        while True:
+        plan = [move] + _retry_plan(indoors, move)
+        for tried in plan:
+            if attempts:
+                row = settle_row(sess, timeout)
+                if sess.in_combat() or not recognised(row):
+                    break   # the outer loop answers a fight; a prompt ends the walk
             start = sess.square()
             ok = sess.walk_one(tried)
-            attempts.append({"move": tried, "ok": bool(ok), "row": row24(sess),
+            attempts.append({"move": tried, "ok": bool(ok), "row": row,
                              "before": start, "after": sess.square()})
             moves += 1
             refused = getattr(sess, "walk_refused", None)
-            if (attempts[-1]["after"] != start or refused
-                    or moves >= WALK_ATTEMPTS):
+            if refused or moves >= WALK_ATTEMPTS:
                 break
-            # A wall on this square says nothing about the other three sides.
-            untried = [d for d in _other_directions(indoors, move)
-                       if d not in {a["move"] for a in attempts}]
-            if not untried:
+            # A turn that worked changed the facing and not the square, so it
+            # is never a reason to retry: the plan's next key is its step.  A
+            # step that returned ok is done; only a stopped step, or a turn
+            # that did not take, decides what happens next.
+            if _is_step(indoors, tried):
+                if ok:
+                    break
+            elif not ok:
                 break
-            tried = untried[0]
-            row = settle_row(sess, timeout)
-            if not recognised(row):
-                break
-        step = {"move": move, "ok": bool(ok), "row": row,
-                "before": before, "after": sess.square(), "refused": refused}
+        last = attempts[-1]
+        step = {"move": last["move"], "ok": last["ok"], "row": last["row"],
+                "before": before, "after": last["after"], "refused": refused}
         if len(attempts) > 1:
+            step["planned"] = move
             step["attempts"] = attempts
         steps.append(step)
-        print(f"  walk {move}: ok={ok} {before} -> {step['after']}"
+        print(f"  walk {last['move']}: ok={last['ok']} {before} -> {step['after']}"
               f" ({len(attempts)} attempt(s))", flush=True)
         if moves >= WALK_ATTEMPTS:
             break
