@@ -1203,3 +1203,98 @@ def test_id_13_is_still_refused_with_a_line_and_writes_no_row():
     assert set(_rows(payload).values()) == {(0, 0, 0, 0)}
     lines = [d for d in rep.dropped if "effect 13" in d]
     assert len(lines) == 1 and "no DOS engine writes" in lines[0]
+
+
+# --- spells DOS writes at duration 0: a row, not a trait slot -----------------
+
+_SPELL_CASES = [
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, "19 00 00 05 00", (25, 2, 0x00, 0x05)),
+    (c64_port.POOL_OF_RADIANCE, "19 00 00 05 00", (25, 2, 0x00, 0x05)),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, "21 00 00 07 00",
+     (33, 2, 0x00, 0x07)),
+    (c64_port.POOL_OF_RADIANCE, "22 00 00 05 01", (34, 2, 0x00, 0x85)),
+    (c64_port.POOL_OF_RADIANCE, "47 00 00 0C 00", (71, 2, 0x00, 0x0C)),
+]
+
+
+@pytest.mark.parametrize("game,node,row", _SPELL_CASES,
+                         ids=lambda v: v if isinstance(v, str) else None)
+def test_a_never_expiring_spell_is_a_row_the_character_owns(game, node, row):
+    node = bytes.fromhex(node)
+    payload = bytearray(0x1C00)
+    char = _title_character(game)
+    char.set("granted_effects", [node + NULL], "built here")
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    rows = _rows(payload)
+    assert rows.pop(63) == row
+    assert set(rows.values()) == {(0, 0, 0, 0)}
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    assert not [d for d in rep.dropped + rep.losses + rep.warnings
+                if f"effect {node[0]}" in d]
+    back = _read(payload, 2, game)
+    assert [bytes(r) for r in back.get("granted_effects")] == [node + NULL]
+    assert node[0] not in (back.get("innate_effects") or ())
+    assert not _lines(back)
+
+
+@pytest.mark.parametrize("node", ["19 00 00 FF 00", "19 00 00 FF 01"])
+def test_the_racial_and_item_forms_of_a_spell_id_keep_their_trait_slot(node):
+    payload = bytearray(0x1C00)
+    char = _title_character(c64_port.CURSE_OF_THE_AZURE_BONDS)
+    char.set("granted_effects", [bytes.fromhex(node) + NULL], "built here")
+    rec, _rep = c64_codec.write(char, payload=payload, party_slot=2,
+                                clock_minutes=0)
+    assert bytes(rec.get_raw("item_effects"))[9] == 25
+    assert set(_rows(payload).values()) == {(0, 0, 0, 0)}
+
+
+def test_a_spell_row_goes_beside_a_running_effect():
+    payload = bytearray(0x1C00)
+    char = _title_character(c64_port.CURSE_OF_THE_AZURE_BONDS, BLESS)
+    char.set("granted_effects", [bytes((25, 0, 0, 5, 0)) + NULL], "built here")
+    c64_codec.write(char, payload=payload, party_slot=2, clock_minutes=0)
+    rows = _rows(payload)
+    assert rows[63] == (1, 2, 0x02, 0x01)
+    assert rows[62] == (25, 2, 0x00, 0x05)
+
+
+def test_a_spell_with_no_payload_takes_a_trait_slot_and_says_so():
+    char = _title_character(c64_port.CURSE_OF_THE_AZURE_BONDS)
+    char.set("granted_effects", [bytes((25, 0, 0, 5, 0)) + NULL], "built here")
+    rec, rep = c64_codec.write(char)
+    assert bytes(rec.get_raw("item_effects"))[9] == 25
+    lines = [d for d in rep.losses if "effect 25, which never expires" in d]
+    assert len(lines) == 1
+
+
+def test_a_flagged_spell_row_of_the_wrong_kind_stays_an_innate_effect():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 25, 2, 0x00, 0x85)
+    assert 25 in _read(p, 2, CURSE_OF_THE_AZURE_BONDS).get("innate_effects")
+
+
+def test_a_spell_row_reaches_dos_and_the_amiga():
+    party = _staged_party((63, (25, 0, 0x00, 0x05)))
+    brutus = next(c for c in party if c.get("name") == "BRUTUS")
+    spell = bytes((25, 0, 0, 5, 0))
+    assert [bytes(r) for r in brutus.get("granted_effects")] == [spell + NULL]
+    _rec, _itm, spc, _rep = dos_codec.write(brutus)
+    assert spc.count(spell) == 1
+    assert spell + bytes((0xFF,)) not in spc
+    record, _itm, amiga_spc, _rep = amiga_por.write_por(brutus)
+    back = amiga_por.to_neutral(amiga_por.por_character(record, b"", amiga_spc))
+    assert [bytes(r)[:5] for r in back.get("granted_effects")] == [spell]
+
+
+def test_save_as_dos_keeps_the_caster_level_of_an_invisible_c64_character(
+        tmp_path):
+    from editor import saveplan
+
+    payload, save1 = _fixture_payload()
+    effects.write_effect(payload, 63, 25, 0, 0x00, 0x05)
+    plan = _dos_plan(tmp_path, payload, save1)
+    assert isinstance(plan, saveplan.SavePlan)
+    spc = plan.files["CHRDATA1.SPC"]
+    assert spc.count(bytes((25, 0, 0, 5, 0))) == 1
+    assert bytes((25, 0, 0, 0xFF, 0)) not in spc

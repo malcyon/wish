@@ -706,6 +706,49 @@ def is_party_granted_record(title_key: str, node: bytes) -> bool:
             and node[3] != 0xFF and node[4] == 0)
 
 
+# Spells DOS writes at duration 0 (the generic cast, data 0 meaning the
+# caster's level): Pool routines 0x28A2E, 0x29275, 0x29364, 0x28927, 0x2A042;
+# Curse 0x30689, 0x30FBF, 0x310AE, 0x30582, 0x320D1, 0x33653, 0x33681; Silver
+# Blades 0x2EEEF, 0x2F84D, 0x2EDBE. The C64 writes each as a row owned by the
+# target, never in a trait slot, so a row is where the C64's removals look.
+NEVER_EXPIRING_SPELL_IDS: dict[str, frozenset[int]] = {
+    "pool-of-radiance": frozenset({25, 33, 34, 51, 71}),
+    "curse-of-the-azure-bonds": frozenset({25, 33, 34, 51, 71, 73, 109}),
+    "secret-of-the-silver-blades": frozenset({25, 33, 51}),
+}
+
+# Every cast passes flag 0 but Cause Disease's (Pool 0x2938A, Curse 0x310D4).
+NEVER_EXPIRING_SPELL_FLAGS = {34: 1}
+
+
+def never_expiring_spell_row(title_key: str,
+                             node: bytes) -> tuple[int, int] | None:
+    """The C64 `(id, magnitude)` for a DOS granted record a spell wrote, or `None`.
+
+    The magnitude is `data | flag << 7`. `FF 00` (racial, or the form a C64
+    trait slot converts to) and `FF 01` (a later title's item hook) are not
+    spell casts and stay in a trait slot.
+    """
+    if (node[0] in NEVER_EXPIRING_SPELL_IDS.get(title_key, ())
+            and node[1] == 0 and node[2] == 0
+            and 1 <= node[3] <= 0x7F
+            and node[4] == NEVER_EXPIRING_SPELL_FLAGS.get(node[0], 0)):
+        return node[0], node[3] | node[4] << 7
+    return None
+
+
+def never_expiring_spell_record(title_key: str, row: "Effect") -> bytes | None:
+    """The DOS granted record for a duration-0 row of a spell id, or `None`."""
+    if (row.duration == 0
+            and row.id in NEVER_EXPIRING_SPELL_IDS.get(title_key, ())
+            and row.magnitude & 0x7F
+            and row.magnitude >> 7
+            == NEVER_EXPIRING_SPELL_FLAGS.get(row.id, 0)):
+        return bytes((row.id, 0, 0, row.magnitude & 0x7F,
+                      row.magnitude >> 7)) + _RUNNING_EFFECT_NEXT
+    return None
+
+
 def c64_party_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted:
     """The C64 id and magnitude for a DOS node that becomes a party-wide row.

@@ -1520,6 +1520,25 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     rep.lost(f"effect {node[0]}, which never expires: no "
                              "free slot in the save's shared effect arrays")
                 continue
+            spell_row = effects.never_expiring_spell_row(
+                title_key, bytes(node))
+            if spell_row is not None and payload is not None:
+                # A spell's never-expiring effect is a row the character's
+                # slot owns on the C64, where attacks and cures look.
+                row_slot = effects.free_slot(payload)
+                if row_slot is None:
+                    rep.lost(f"effect {node[0]}, which never expires: no "
+                             "free slot in the save's shared effect arrays")
+                else:
+                    effects.write_effect(
+                        payload, row_slot, spell_row[0],
+                        party_slot if party_slot is not None else 0,
+                        0, spell_row[1])
+                continue
+            if spell_row is not None:
+                rep.lost(f"effect {node[0]}, which never expires: with no "
+                         "save payload to hold its row it takes a trait "
+                         "slot instead")
             if (payload is None
                     and effects.is_party_granted_record(title_key, node)):
                 rep.lost(f"effect {node[0]}, which never expires: with no "
@@ -1873,10 +1892,14 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "own READY would fill it (#252); the rest are warned "
                         "about. The record's duration, value and removal "
                         "flag have no C64 counterpart and need none -- see "
-                        "the write itself. Not something the C64 reader can "
+                        "the write itself. A record "
+                        "effects.never_expiring_spell_row recognises becomes "
+                        "a row owned by the character's save slot, with "
+                        "duration byte 0. Not something the C64 reader can "
                         "give back as this name, because a trait slot the "
                         "converter filled and one READY filled are the same "
-                        "byte to the engine's own compare"),
+                        "byte to the engine's own compare, except those "
+                        "rows"),
     ("inventory", "the first sixteen items, into the C64's fixed slots; the "
                   "rest are warned about"),
     ("scroll_bundles", "a joined scroll's scrolls are already in inventory, "
@@ -2328,13 +2351,19 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             1 for r in rows if r.owner == party_slot and r.duration != 0
             and r.id in effects.STRENGTH_IDS
             and title_key == "pool-of-radiance")
+        granted: list[bytes] = []
         # Highest slot first, the order the writer allocates in, so a round
         # trip keeps each character's node order.
         for row in sorted(rows, key=lambda r: -r.slot):
             if row.owner != party_slot or row.slot in consumed:
                 continue
             if row.duration == 0:
-                permanent.append(row.id)
+                spell_record = effects.never_expiring_spell_record(
+                    title_key or "", row)
+                if spell_record is not None:
+                    granted.append(spell_record)
+                else:
+                    permanent.append(row.id)
                 continue
             if strength_rows > 1 and row.id in effects.STRENGTH_IDS:
                 node = effects.Unconverted(
@@ -2353,6 +2382,12 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                     "the save's shared effect arrays: the rows this "
                     "character's own save slot owns, converted through "
                     "effects.dos_record", grade("paladin_cures"))
+        if granted:
+            out.set("granted_effects", granted,
+                    "the save's shared effect arrays: this character's own "
+                    "rows at duration zero whose id is a spell DOS writes at "
+                    "duration zero, as effects.never_expiring_spell_record",
+                    grade("paladin_cures"))
     out.set("lay_on_hands_minutes", heal_minutes,
             origin("lay_on_hands_uses") + (
                 ", and a row in the save's shared effect arrays"

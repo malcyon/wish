@@ -1580,3 +1580,65 @@ def test_a_mirror_image_count_above_4_is_refused_in_both_directions(title):
     for count in (5, 15):
         assert isinstance(effects.c64_row(title, _RE(28, 10, count << 4, 0)),
                           effects.Unconverted)
+
+
+# --- spells DOS writes at duration 0 ------------------------------------------
+
+_P, _C, _S = ("pool-of-radiance", "curse-of-the-azure-bonds",
+              "secret-of-the-silver-blades")
+
+
+def _node(hexstr):
+    return bytes.fromhex(hexstr)
+
+
+@pytest.mark.parametrize("title,node,row", [
+    (_C, "19 00 00 05 00", (25, 0x05)),
+    (_P, "19 00 00 05 00", (25, 0x05)),
+    (_S, "21 00 00 07 00", (33, 0x07)),
+    (_P, "22 00 00 05 01", (34, 0x85)),
+    (_C, "22 00 00 0A 01", (34, 0x8A)),
+    (_P, "47 00 00 0C 00", (71, 0x0C)),
+    (_C, "6D 00 00 0C 00", (109, 0x0C)),
+    (_S, "33 00 00 03 00", (51, 0x03)),
+])
+def test_a_spell_written_at_duration_zero_is_a_row(title, node, row):
+    assert effects.never_expiring_spell_row(title, _node(node)) == row
+
+
+@pytest.mark.parametrize("title,node", [
+    (_C, "19 00 00 FF 00"), (_C, "19 00 00 FF 01"), (_C, "19 00 00 05 01"),
+    (_P, "22 00 00 05 00"), (_C, "19 00 00 00 00"), (_C, "19 01 00 05 00"),
+    (_S, "22 00 00 05 01"), (_C, "44 00 00 05 00"), (_P, "49 00 00 05 00"),
+    (_P, "3D 00 00 0C 00"),
+])
+def test_other_duration_zero_forms_stay_in_a_trait_slot(title, node):
+    assert effects.never_expiring_spell_row(title, _node(node)) is None
+
+
+def test_a_spell_row_reads_back_as_the_record_it_came_from():
+    assert effects.never_expiring_spell_record(
+        _C, effects.Effect(63, 25, 2, 0x00, 0x05)) == \
+        _node("19 00 00 05 00") + effects._RUNNING_EFFECT_NEXT
+    assert effects.never_expiring_spell_record(
+        _P, effects.Effect(63, 34, 2, 0x00, 0x85)) == \
+        _node("22 00 00 05 01") + effects._RUNNING_EFFECT_NEXT
+    for title, row in [
+            (_C, effects.Effect(63, 25, 2, 0x0A, 0x05)),
+            (_C, effects.Effect(63, 25, 2, 0x00, 0x85)),
+            (_P, effects.Effect(63, 34, 2, 0x00, 0x05)),
+            (_C, effects.Effect(63, 25, 2, 0x00, 0x00)),
+            (_C, effects.Effect(63, 45, 2, 0x00, 0x01))]:
+        assert effects.never_expiring_spell_record(title, row) is None
+
+
+@pytest.mark.parametrize("title", sorted(effects.NEVER_EXPIRING_SPELL_IDS))
+def test_every_spell_id_round_trips_at_every_level(title):
+    for spell in effects.NEVER_EXPIRING_SPELL_IDS[title]:
+        flag = effects.NEVER_EXPIRING_SPELL_FLAGS.get(spell, 0)
+        for level in range(1, 0x80):
+            node = bytes((spell, 0, 0, level, flag))
+            id_, magnitude = effects.never_expiring_spell_row(title, node)
+            back = effects.never_expiring_spell_record(
+                title, effects.Effect(63, id_, 2, 0, magnitude))
+            assert back == node + effects._RUNNING_EFFECT_NEXT
