@@ -433,3 +433,99 @@ def test_items_reads_the_list_of_the_member_asked_for_and_leaves_it(tmp_path):
     assert [e["row"] for e in got["entries"]] == ["YES CLOAK", "YES 13 *DART",
                                                   "NO  DAGGER"]
     assert sess.state == "world"
+
+
+# --- the run's deadline and clean-up -------------------------------------------
+
+class _Slot:
+    n, display = 1, ":99"
+
+    def __init__(self, dir_):
+        self.dir = dir_
+        self.torn = False
+
+    def teardown(self):
+        self.torn = True
+
+
+class _Sess:
+    def __init__(self, *a, **k):
+        self.save_disk = "x"
+
+    def watching_dialogs(self):
+        import contextlib
+        return contextlib.nullcontext()
+
+    fail_terminate = False
+
+    def terminate(self):
+        if _Sess.fail_terminate:
+            raise RuntimeError("terminate failed")
+
+
+class _Pool:
+    def __init__(self, *a, **k):
+        self.ticks = k.get("ticks")
+
+    def load(self):
+        return {}
+
+    def peek(self, arg):
+        _Pool.clock[0] += 100
+        return {}
+
+    def reading(self):
+        return {}
+
+    def capture(self, *a):
+        pass
+
+
+def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=None):
+    import types
+    slot = slot or _Slot(tmp_path)
+    _Pool.clock = [0.0]
+    monkeypatch.setattr(A.SC, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.S, "claim_slot", claim or (lambda *a, **k: slot))
+    monkeypatch.setattr(A.S, "stage_disks", lambda *a, **k: "first")
+    monkeypatch.setattr(A.S, "stage_writable",
+                        lambda src, dest: __import__("shutil").copyfile(src, dest))
+    monkeypatch.setattr(A.S, "Session", _Sess)
+    monkeypatch.setattr(A, "PoolRun", _Pool)
+    args = types.SimpleNamespace(
+        title="pool", stage_row=[], stage_trait=[], stage_item=[],
+        stage_only=False, checkpoint=[], pool=None, issue="i", run="r",
+        disks=None, walk="I", walk_steps=1, max_seconds=max_seconds)
+    out = tmp_path / "out"
+    rc = A.run(args, A.parse_steps(steps), out, _fixture_disk(tmp_path),
+               clock=lambda: _Pool.clock[0])
+    return rc, slot, out
+
+
+def test_a_run_past_its_deadline_is_lost_and_releases_the_slot(tmp_path, monkeypatch):
+    rc, slot, out = _drive(tmp_path, monkeypatch,
+                           ["load", "peek 1000 1", "peek 1000 1", "peek 1000 1"], 150.0)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and not summary["completed"]
+    assert "seconds were spent" in summary["lost"]
+    assert len(summary["results"]) == 3
+    assert slot.torn
+
+
+def test_a_failing_terminate_still_releases_the_slot(tmp_path, monkeypatch):
+    slot = _Slot(tmp_path)
+    monkeypatch.setattr(_Sess, "fail_terminate", True)
+    with pytest.raises(RuntimeError, match="terminate failed"):
+        _drive(tmp_path, monkeypatch, ["load"], 1e9, slot=slot)
+    assert slot.torn
+
+
+def test_a_failing_claim_closes_the_log(tmp_path, monkeypatch):
+    closed = []
+    monkeypatch.setattr(A.Log, "close", lambda self: closed.append(True))
+
+    def boom(*a, **k):
+        raise RuntimeError("no slot")
+    with pytest.raises(RuntimeError, match="no slot"):
+        _drive(tmp_path, monkeypatch, ["load"], claim=boom)
+    assert closed

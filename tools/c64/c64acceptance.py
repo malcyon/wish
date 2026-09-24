@@ -126,6 +126,7 @@ ITEM_BAR = "READY"
 #: that can follow it: `SAVE GAME  EXIT` (`CAMP $0D94`), or the save error's
 #: `TRY AGAIN: YES NO` (`CAMP $0DA5`).
 SAVE_WAIT = 300
+MAX_SECONDS = 1500
 SAVE_BAR = "SAVE GAME"
 SAVE_ERROR = "TRY AGAIN"
 
@@ -735,10 +736,11 @@ class PoolRun:
             raise self.fail("world", "the world bar never came back")
         if not self.sess.save_game():
             raise self.fail("save", "ENCAMP > SAVE did not complete")
-        # `save_game` gives the write a fixed fourteen seconds, and a Pool
-        # save on a pooled slot was still writing `SAVEDGAME0` eighty seconds
-        # after the step began.  The write is over when a bar the driver
-        # knows is back; the disk is copied only after that.
+        # `save_game` gives the write a fixed fourteen seconds, which a slow
+        # pooled slot can overrun.  A bar coming back can precede the end of
+        # the write (the world bar shows early), so this wait does not prove
+        # the write finished: `copy_closed_disk` below is what guards the
+        # copy, by refusing a disk whose directory is still open.
         back = self.wait_rows(
             lambda r: any(w in r[24] for w in (CAMP_BAR, SAVE_BAR, SAVE_ERROR))
             or self.at_world(r[24]), SAVE_WAIT)
@@ -772,7 +774,9 @@ def default_out(issue: str, run: str, sha: str) -> pathlib.Path:
     return scratch.cache_dir("acceptance", issue, f"{sha[:10]}-{run}")
 
 
-def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path) -> int:
+def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
+        clock=time.monotonic) -> int:
+    deadline = clock() + args.max_seconds
     scratch.ensure(out)
     log = Log(out)
     git = git_state()
@@ -809,7 +813,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path) -> int
     game = c64_port.by_key(title_key)
     points = parse_checkpoints(args.checkpoint)
     SC.catch_signals()
-    slot = S.claim_slot(args.pool, f"c64acceptance/{args.issue}/{args.run}")
+    try:
+        slot = S.claim_slot(args.pool, f"c64acceptance/{args.issue}/{args.run}")
+    except BaseException:
+        log.close()
+        raise
     log.emit("slot", n=slot.n, display=slot.display, dir=str(slot.dir))
     log.say(f"pool slot {slot.n} display {slot.display}; evidence {out}")
     sess = pool = None
@@ -821,6 +829,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path) -> int
         stack.enter_context(sess.watching_dialogs())
         pool = PoolRun(sess, log, out, game, points)
         for step in steps:
+            if clock() >= deadline:
+                raise StepFailed(f"the run's {args.max_seconds:g} seconds were "
+                                 f"spent before '{step.text}'")
             log.emit("step", step=step.text)
             log.say(f"-- {step.text}")
             if step.verb == "load":
@@ -858,11 +869,15 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path) -> int
                 pool.capture("lost-error")
     finally:
         write_summary()
-        stack.close()
-        if sess is not None:
-            sess.terminate()
-        slot.teardown()
-        log.close()
+        try:
+            stack.close()
+            if sess is not None:
+                sess.terminate()
+        finally:
+            try:
+                slot.teardown()
+            finally:
+                log.close()
     return 0 if summary["completed"] else 1
 
 
@@ -889,6 +904,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--walk-steps", type=int, default=40,
                     help="how far `fight` walks looking for one")
     ap.add_argument("--pool", type=int, default=None, help="demand this pool slot")
+    ap.add_argument("--max-seconds", type=float, default=MAX_SECONDS,
+                    help="the whole run's budget; a step not begun by then is lost")
     ap.add_argument("--issue", default="none")
     ap.add_argument("--run", default="run", help="the run's name in the evidence path")
     ap.add_argument("--out", default=None,
