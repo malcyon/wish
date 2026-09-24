@@ -767,7 +767,7 @@ class CurseRun(PoolRun):
     """Read Curse's effects with the shared reader and drive its measured fight route."""
 
     def __init__(self, sess, log, out, game, points, disks, staged_disk,
-                 attack_by=""):
+                 attack_by="", quit_nonattacking=False):
         super().__init__(sess, log, out, game, points)
         from tools.curse_of_the_azure_bonds import cursethac0
 
@@ -777,6 +777,9 @@ class CurseRun(PoolRun):
         self.attack_owner = next((i for i, name in enumerate(names)
                                   if name.upper() == self.attack_by), None)
         self.attack_evidence = None
+        self.first_effect_loss = None
+        self.last_effect_row = None
+        self.quit_nonattacking = quit_nonattacking
         self.disks = disks
         self.staged_disk = staged_disk
 
@@ -799,7 +802,7 @@ class CurseRun(PoolRun):
             for name, point in self.points.items():
                 self.armed[name] = m.checkpoint_set(point, exec_=True, stop=False)
             m.resume()
-        self.capture("world")
+        self.observe_curse("world")
         return {"position": list(self.sess.position()),
                 "attack_by": self.attack_by, "attack_owner": self.attack_owner,
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
@@ -816,18 +819,27 @@ class CurseRun(PoolRun):
             elif CAMP_BAR in bar and "EXIT" in bar:
                 route = "camp"
             elif "EXIT" in bar:
-                self.capture("lost-world-route")
+                if getattr(self, "attack_by", ""):
+                    self.observe_curse("lost-world-route")
+                else:
+                    self.capture("lost-world-route")
                 return False
             else:
                 route = None
             if route is not None:
                 reached = super().to_world(tries=1)
-                self.capture(f"exit-{route}")
+                if getattr(self, "attack_by", ""):
+                    self.observe_curse(f"exit-{route}")
+                else:
+                    self.capture(f"exit-{route}")
                 if reached:
                     return True
             elif self.sess.to_world_bar(timeout=9):
                 return True
-        self.capture("lost-world-route")
+        if getattr(self, "attack_by", ""):
+            self.observe_curse("lost-world-route")
+        else:
+            self.capture("lost-world-route")
         return False
 
     def choose_bar(self, word: str, timeout: float) -> bool:
@@ -837,29 +849,118 @@ class CurseRun(PoolRun):
         return next((row for row in self.reading()["effects"]
                      if row[1] == 25 and row[2] == self.attack_owner), None)
 
+    def observe_curse(self, phase: str, *, actor=None, **extra) -> dict:
+        """Keep each screen beside its effect rows and the first row loss."""
+        reading = self.reading()
+        screen = self.capture(phase)
+        row = next((r for r in reading["effects"]
+                    if r[1] == 25 and r[2] == self.attack_owner), None)
+        if row is None and getattr(self, "last_effect_row", None) is not None \
+                and getattr(self, "first_effect_loss", None) is None:
+            self.first_effect_loss = {"phase": phase,
+                                      "last_present": self.last_effect_row}
+        if row is not None:
+            self.last_effect_row = row
+        sess = getattr(self, "sess", None)
+        mode = sess.mode() if sess is not None and hasattr(sess, "mode") else None
+        if actor is None and sess is not None and hasattr(sess, "battle"):
+            battle = sess.battle() if mode == 2 else None
+            actor = sess.acting(battle) if battle is not None else None
+        who = None if actor is None else {
+            "name": actor.name.strip(), "index": actor.index,
+            "position": [getattr(actor, "x", None), getattr(actor, "y", None)],
+            "hp": getattr(actor, "hp", None)}
+        live = {}
+        if sess is not None and hasattr(sess, "mon"):
+            with sess.mon(10) as m:
+                live = {name: m.read(addr, 1)[0] for name, addr in {
+                    "attacker": 0x945C, "target": 0x945D,
+                    "record_owner": 0x7EB4, "guard": 0x93E8}.items()}
+                m.resume()
+        event = {"phase": phase, "row": row, "reading": reading,
+                 "screen": screen, "mode": mode, "actor": who,
+                 "owner": self.attack_owner,
+                 "first_effect_loss": getattr(self, "first_effect_loss", None),
+                 **live, **extra}
+        self.log.emit("curse-observation", **event)
+        return event
+
+    def stop_at_first_loss(self) -> None:
+        if self.first_effect_loss is not None:
+            raise StepFailed("id 25 first disappeared at "
+                             + self.first_effect_loss["phase"])
+
+    def probe_one_step(self) -> None:
+        """Take one empty-square step, identified from the live battle map."""
+        battle = self.sess.battle()
+        actor = self.sess.acting(battle) if battle is not None else None
+        if actor is None:
+            raise StepFailed("no actor at the first command bar")
+        step = next(((delta, key) for delta, key in S.STEP_KEYS.items()
+                     if battle.at(actor.x + delta[0], actor.y + delta[1]) is None),
+                    None)
+        if step is None:
+            raise StepFailed("no empty adjacent square for one-step control")
+        delta, key = step
+        self.observe_curse("one-step-before", actor=actor, key=key,
+                           from_position=[actor.x, actor.y])
+        if not self.sess.combat_bar("MOVE", timeout=15):
+            raise StepFailed("MOVE was not selectable for one-step control")
+        if self.sess.await_bar((S.BAR_MOVE,), timeout=8) is None:
+            raise StepFailed("MOVE did not open its movement bar")
+        self.sess.kbd.key(key, 0.15, 0.30)
+        self.sess.settle(1.2)
+        fresh = self.sess.battle()
+        moved = next((c for c in fresh.combatants if c.index == actor.index), None)
+        self.observe_curse("one-step-after", actor=moved, key=key,
+                           expected_position=[actor.x + delta[0],
+                                              actor.y + delta[1]])
+
     def _named_melee(self, sess, state):
         actor = sess.acting(sess.battle())
         name = "" if actor is None else actor.name.strip()
+        before = self.observe_curse("tactic-before", actor=actor,
+                                    bar=state.text)["row"]
+        prior_loss = getattr(self, "first_effect_loss", None)
+        if self.attack_evidence is None and name.upper() == self.attack_by:
+            self.capture(f"attack-before-{name}")
+        if (getattr(self, "quit_nonattacking", False)
+                and name.upper() == self.attack_by
+                and self.attack_evidence is None):
+            chosen = self._quit_turn(sess)
+        else:
+            chosen = S.Session.melee_turn(sess, state)
+        after = self.observe_curse("tactic-after", actor=actor, chosen=chosen,
+                                   bar=state.text)["row"]
         if self.attack_evidence is not None or name.upper() != self.attack_by:
-            return S.Session.melee_turn(sess, state)
-        before = self._id25_row()
-        self.capture(f"attack-before-{name}")
-        chosen = S.Session.melee_turn(sess, state)
+            return chosen
         if chosen == S.ATTACK:
-            after = self._id25_row()
             self.capture(f"attack-after-{name}")
-            self.attack_evidence = {"actor": name, "index": actor.index,
-                                    "owner": self.attack_owner,
-                                    "bar": state.text, "chosen": chosen,
-                                    "before": before, "after": after}
-            self.log.emit("named-attack", **self.attack_evidence)
+            candidate = {"actor": name, "index": actor.index,
+                         "owner": self.attack_owner, "bar": state.text,
+                         "chosen": chosen, "before": before, "after": after}
+            self.log.emit("named-attack", **candidate)
+            if prior_loss is None and before is not None:
+                self.attack_evidence = candidate
         return chosen
+
+    @staticmethod
+    def _quit_turn(sess) -> str:
+        if not sess.combat_bar("DONE", timeout=12):
+            return ""
+        if sess.await_bar((S.BAR_DONE,), timeout=6) is None:
+            return "DONE"
+        if "QUIT" not in sess.combat_state().text:
+            return ""
+        return "QUIT" if sess.combat_bar("QUIT", timeout=8) else ""
 
     def await_combat(self) -> bool:
         """Answer one unreadable brawl acknowledgement while combat loads."""
         answered_blank = False
         for _ in range(30):
             if self.sess.in_combat():
+                if getattr(self, "attack_by", ""):
+                    self.observe_curse("first-combat-mode")
                 return True
             screen = self.sess.screen()
             if screen is None:
@@ -872,7 +973,10 @@ class CurseRun(PoolRun):
                 if self.sess.combat_state(screen).kind == S.BAR_PRESS:
                     self.sess.press_kernal(0x0D)
             self.sess.settle(4)
-        return self.sess.in_combat()
+        entered = self.sess.in_combat()
+        if entered and getattr(self, "attack_by", ""):
+            self.observe_curse("first-combat-mode")
+        return entered
 
     def fight(self, arg: str, walk: str, steps: int) -> dict:
         from tools.c64 import laterbattle
@@ -882,25 +986,55 @@ class CurseRun(PoolRun):
             raise self.fail("fighter", f"{self.attack_by} is absent from save slots")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
+        self.stop_at_first_loss()
         area, geo = cursethac0.area_geo(str(self.staged_disk), self.disks)
         if geo is None:
             raise self.fail("geo", f"{area} was absent from the Curse disks")
-        route = laterbattle.Battle(self.out, True)
+        owner = self
+
+        class ObservedRoute(laterbattle.Battle):
+            def log(self, kind, **kw):
+                super().log(kind, **kw)
+                if kind in ("step", "dismissed"):
+                    owner.observe_curse(f"route-{kind}", route=kw)
+                    owner.stop_at_first_loss()
+
+        self.observe_curse("route-before")
+        self.stop_at_first_loss()
+        route = ObservedRoute(self.out, True)
         try:
             route.sess = self.sess
             arrived = route.goto(laterbattle.TAVERN, steps, geo=geo)
             walked = route.last_goto_steps
         finally:
             route.file.close()
+        self.observe_curse("route-after")
+        self.stop_at_first_loss()
         self.capture("tavern")
         if not arrived:
             raise self.fail("fight", f"TAVERN was not reached in {walked} steps")
-        if not self.sess.in_combat() and not self.sess.press_bar(
-                laterbattle.PUNCH, timeout=20):
-            raise self.fail("fight", "PUNCH BARKEEP was not selectable")
+        self.observe_curse("before-punch")
+        self.stop_at_first_loss()
+        if not self.sess.in_combat():
+            pressed = self.sess.press_bar(laterbattle.PUNCH, timeout=20)
+            self.observe_curse("after-punch", chosen=laterbattle.PUNCH,
+                               pressed=pressed)
+            self.stop_at_first_loss()
+            if not pressed:
+                raise self.fail("fight", "PUNCH BARKEEP was not selectable")
         if not self.await_combat():
             raise self.fail("fight", "Curse never entered combat mode")
+        self.stop_at_first_loss()
         self.capture("fight-start")
+        if self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0):
+            self.observe_curse("first-command-bar")
+            self.stop_at_first_loss()
+            self.sess.settle(1.0)
+            self.observe_curse("first-command-no-input")
+            self.stop_at_first_loss()
+            if getattr(self, "probe_step", False):
+                self.probe_one_step()
+                self.stop_at_first_loss()
         result = self.sess.fight(budget=float(arg or 120), tactic=self._named_melee)
         self.capture("fight-end")
         return {"walked": walked, "area": str(area), "acted": result.acted,
@@ -1024,8 +1158,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             sess = S.Session(first, slot=slot)
         stack.enter_context(sess.watching_dialogs())
         pool = (CurseRun(sess, log, out, game, points, args.disks, staged_disk,
-                         getattr(args, "attack_by", "")) if args.title == "curse"
+                         getattr(args, "attack_by", ""),
+                         getattr(args, "quit_nonattacking", False)) if args.title == "curse"
                 else PoolRun(sess, log, out, game, points))
+        if args.title == "curse":
+            pool.probe_step = getattr(args, "probe_step", False)
         for step in steps:
             if clock() >= deadline:
                 raise StepFailed(f"the run's {args.max_seconds:g} seconds were "
@@ -1056,6 +1193,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         if args.title == "curse" and getattr(args, "attack_by", ""):
             attack = pool.attack_evidence
             summary["named_attack"] = attack
+            if getattr(pool, "first_effect_loss", None) is not None and attack is None:
+                raise StepFailed("id 25 first disappeared at "
+                                 + pool.first_effect_loss["phase"])
             validate_curse_attack(summary["results"], attack, args.attack_by)
         summary["completed"] = True
     except StepFailed as e:
@@ -1105,6 +1245,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--walk", default="I", help="the move `fight` repeats")
     ap.add_argument("--attack-by", default="",
                     help="record the named fighter's first confirmed melee attack")
+    ap.add_argument("--quit-nonattacking", action="store_true",
+                    help="end the named fighter's turn with DONE then QUIT")
+    ap.add_argument("--probe-step", action="store_true",
+                    help="take one empty-square step after the first command bar")
     ap.add_argument("--walk-steps", type=int, default=40,
                     help="how far `fight` walks looking for one")
     ap.add_argument("--pool", type=int, default=None, help="demand this pool slot")
@@ -1138,6 +1282,10 @@ def main(argv: list[str] | None = None) -> int:
                  f"pass --stage-only, or drive Pool of Radiance or Curse")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
+    if args.quit_nonattacking and not args.attack_by:
+        ap.error("--quit-nonattacking requires --attack-by")
+    if args.probe_step and not args.attack_by:
+        ap.error("--probe-step requires --attack-by")
     if not re.fullmatch(r"[\w-]+", args.run) or not re.fullmatch(r"[\w-]+", args.issue):
         ap.error("--issue and --run are simple names")
     if args.disks is None and args.title == "pool":

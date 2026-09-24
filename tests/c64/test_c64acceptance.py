@@ -398,6 +398,8 @@ def test_curse_attack_records_the_named_fighters_row_transition(monkeypatch):
     run.attack_by = "PHILIPPE"
     run.attack_owner = 0
     run.attack_evidence = None
+    run.first_effect_loss = None
+    run.last_effect_row = None
     run.reading = lambda: {"effects": row.copy()}
     captures = []
     run.capture = lambda tag: captures.append(tag)
@@ -412,7 +414,99 @@ def test_curse_attack_records_the_named_fighters_row_transition(monkeypatch):
         "actor": "PHILIPPE", "index": 0, "owner": 0,
         "bar": bar.text, "chosen": A.S.ATTACK,
         "before": [62, 25, 0, 0, 5], "after": None}
-    assert captures == ["attack-before-PHILIPPE", "attack-after-PHILIPPE"]
+    assert captures.index("attack-before-PHILIPPE") < captures.index(
+        "attack-after-PHILIPPE")
+    assert captures.count("tactic-before") == captures.count("tactic-after") == 2
+
+
+@pytest.mark.parametrize("loss_phase", ["route-step", "combat-setup", "tactic-after"])
+def test_curse_keeps_the_first_effect_loss_when_no_attack_was_returned(
+        monkeypatch, loss_phase):
+    from types import SimpleNamespace
+
+    row = [[62, 25, 0, 0, 5]]
+    events = []
+    actors = iter((SimpleNamespace(name="PHILIPPE", index=0, x=4, y=5, hp=33),
+                   SimpleNamespace(name="PHILIPPE", index=0, x=5, y=5, hp=33),
+                   SimpleNamespace(name="SHARA", index=1, x=6, y=5, hp=20),
+                   SimpleNamespace(name="PHILIPPE", index=0, x=5, y=5, hp=28)))
+    answers = iter(("MOVE", "GUARD", "QUIT", A.S.ATTACK))
+
+    class FightSession:
+        combat = False
+
+        def battle(self):
+            return object()
+
+        def acting(self, battle):
+            return next(actors)
+
+        def mode(self):
+            return 2 if self.combat else 1
+
+    def choose(*args):
+        answer = next(answers)
+        if answer == "QUIT" and loss_phase == "tactic-after":
+            row.clear()
+        return answer
+
+    monkeypatch.setattr(A.S.Session, "melee_turn", choose)
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess = FightSession()
+    run.attack_by = "PHILIPPE"
+    run.attack_owner = 0
+    run.attack_evidence = None
+    run.first_effect_loss = None
+    run.last_effect_row = None
+    run.reading = lambda: {"effects": [r.copy() for r in row], "clock": [0] * 6}
+    run.capture = lambda tag: [tag]
+    run.log = SimpleNamespace(emit=lambda kind, **kw: events.append((kind, kw)))
+    if loss_phase == "route-step":
+        run.observe_curse("route-before")
+        row.clear()
+        run.observe_curse("route-step")
+        row.append([62, 25, 0, 0, 5])
+    elif loss_phase == "combat-setup":
+        run.observe_curse("route-after")
+        row.clear()
+        run.observe_curse("combat-setup")
+        row.append([62, 25, 0, 0, 5])
+
+    run.sess.combat = True
+    bar = SimpleNamespace(text="MOVE VIEW AIM QUICK DONE")
+    assert run._named_melee(run.sess, bar) == "MOVE"
+    assert run._named_melee(run.sess, bar) == "GUARD"
+    assert run._named_melee(run.sess, bar) == "QUIT"
+    assert run._named_melee(run.sess, bar) == A.S.ATTACK
+    observed = [kw for kind, kw in events if kind == "curse-observation"]
+    assert [kw["chosen"] for kw in observed if "chosen" in kw] == [
+        "MOVE", "GUARD", "QUIT", A.S.ATTACK]
+    assert any((kw.get("actor") or {}).get("name") == "SHARA" for kw in observed)
+    assert run.first_effect_loss["phase"] == loss_phase
+    assert any(kw.get("first_effect_loss") == run.first_effect_loss
+               for kw in observed)
+    assert run.attack_evidence is None
+
+
+def test_curse_quit_control_uses_only_done_and_quit():
+    from types import SimpleNamespace
+
+    sent = []
+
+    class Session:
+        def combat_bar(self, word, timeout):
+            sent.append(word)
+            return True
+
+        def await_bar(self, kinds, timeout):
+            assert kinds == (A.S.BAR_DONE,)
+            return object()
+
+        def combat_state(self):
+            return SimpleNamespace(text="GUARD DELAY QUIT SPEED EXIT")
+
+    assert A.CurseRun._quit_turn(Session()) == "QUIT"
+    assert sent == ["DONE", "QUIT"]
 
 
 @pytest.mark.parametrize("before,after,saved,expected", [
