@@ -110,6 +110,7 @@ from .items import (
     ITEM_TYPE_SIZE,
     TYPE_DAMAGE_MEDIUM,
     TYPE_LOCATION,
+    TYPE_PROTECTION,
     TYPE_WEAPON_FLAGS,
     WEAPON_ADDS_STRENGTH,
     WEAPON_NEEDS_ARROWS,
@@ -3201,9 +3202,10 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("size_small", "plus one -- DOS stores 1 small / 2 medium"),
     ("attack_forms", "copied as a block to 0x0A1"),
     ("roster_tail", "copied as a block to 0x112, the combat tail the C64 "
-                    "roster keeps at -2; on DOS Curse bytes 3-8 are "
+                    "roster keeps at -2; on DOS Curse and Pool of Radiance "
+                    "bytes 3-8, and on Pool of Radiance byte 0, are "
                     "recomputed for a C64 source through the engine's own "
-                    "load-time combat rebuild (#634)"),
+                    "combat rebuild (#634)"),
     ("icon_head", "composed, with icon_body and icon_colours, into a "
                   "`DosIcon` and copied to 0x0BB unchanged, 0-13 in DOS's "
                   "own numbering -- unless the caller supplied `icon` "
@@ -3680,20 +3682,29 @@ _THAC0_RECOMPUTE_FROM_PORTS = ("C64",)
 #: Amiga round trip too (#632).
 _DOS_LOAD_REBUILD_FROM_PORTS = ("C64",)
 
-#: The five saving throws, `thac0_current` and `movement_current`, neutral
-#: names -- what `_DOS_LOAD_REBUILD_FROM_PORTS` gates the recompute of.
-#: `WRITE_DIRECT` skips these seven in `write`'s main loop; the block below
-#: writes them instead.
+#: The five saving throws, `thac0_current`, `movement_current` and
+#: `armour_class`, neutral names -- what `_DOS_LOAD_REBUILD_FROM_PORTS` gates
+#: the recompute of. `WRITE_DIRECT` skips these eight in `write`'s main loop;
+#: the block below writes them instead.
 _DOS_LOAD_REBUILD_NAMES: frozenset[str] = frozenset({
     "save_paralysis", "save_petrification", "save_wands", "save_breath",
-    "save_spell", "thac0_current", "movement_current"})
+    "save_spell", "thac0_current", "movement_current", "armour_class"})
 
 #: Titles whose DOS combat rebuild has been read, and which `write` therefore
 #: recomputes `thac0_current`, the attack's dice, sides and damage bytes in
-#: `roster_tail` and `movement_current` for -- `dos_combat_rebuild`, which is
-#: Curse's `GAME.OVR:0x382C5`. A title added here needs its own reading of
-#: the equivalent routine first (#632, #634).
-_COMBAT_REBUILD_TITLES = frozenset({"curse-of-the-azure-bonds"})
+#: `roster_tail` and `movement_current` for -- `dos_combat_rebuild`: Curse's
+#: `GAME.OVR:0x382C5`, which its loader runs on every character, and Pool of
+#: Radiance's resident `START.EXE` image `0x1758`, which VIEW, a fight and the
+#: item screens run and its loader does not. A title added here needs its own
+#: reading of the equivalent routine first (#632, #634).
+_COMBAT_REBUILD_TITLES = frozenset({"curse-of-the-azure-bonds",
+                                    POOL_OF_RADIANCE.key})
+
+#: Of `_COMBAT_REBUILD_TITLES`, the ones whose rebuild's armour-class half
+#: has been read, so `write` recomputes `armour_class` and `roster_tail`
+#: byte 0 as well -- Pool of Radiance's `0x1758` with `0x0E22` and `0x1C86`.
+#: Curse's half (`0x19A`, `0x19B`) is not read, and its bytes are copied.
+_COMBAT_REBUILD_AC_TITLES = frozenset({POOL_OF_RADIANCE.key})
 
 #: The item types `dos_combat_rebuild` names by number, read off DOS Curse's
 #: `GAME.OVR`: a readied arrow (`0x3840D`) and quarrel (`0x3842A`), whose plus
@@ -3704,7 +3715,20 @@ _QUARREL_TYPE = 0x1C
 _ELF_TO_HIT_TYPES = frozenset({0x24, 0x25, 0x29, 0x2A, 0x2B, 0x2C})
 _ELF_RACE = 2
 _WEAPON_LOCATION = 0
+_SHIELD_LOCATION = 1
 _BODY_LOCATION = 2
+
+#: The location a ring of protection sits in, whose plus Pool of Radiance's
+#: armour rule takes the best of rather than adding (`0x0E8C`), and which
+#: readied magical body armour cancels (`0x1AD9`).
+_RING_LOCATION = 9
+
+#: Pool of Radiance's encumbrance sum takes 5000 off, but never below 0 or
+#: the weight of what is readied, when a readied item's first name word is this
+#: (`START.EXE` image `0x18DA`, `0x1AE3`-`0x1B1F`) -- the bag of holding.
+#: `docs/125-bug-notes.md` N24 found no item in any title's tables carrying
+#: it; the rule is here because the routine has it.
+_BAG_OF_HOLDING_NAME = 0xBA
 
 
 def item_type_table(game: str | pathlib.Path | None) -> bytes | None:
@@ -3793,6 +3817,27 @@ def dos_missile_adjustment(dexterity: int) -> int:
     return 0
 
 
+def dos_dexterity_armour_adjustment(dexterity: int) -> int:
+    """Pool of Radiance's `START.EXE` image `0x1C86`, the step dexterity
+    gives the armour-class byte, which is stored `60 - AC` so a positive step
+    is a better armour class: 1-3 is -4, 4-6 the score less 7, 15-18 the
+    score less 14, 19-20 +4, 21-23 +5, 24-25 +6, and nothing else."""
+    d = int(dexterity)
+    if 1 <= d <= 3:
+        return -4
+    if 4 <= d <= 6:
+        return d - 7
+    if 15 <= d <= 18:
+        return d - 14
+    if 19 <= d <= 20:
+        return 4
+    if 21 <= d <= 23:
+        return 5
+    if 24 <= d <= 25:
+        return 6
+    return 0
+
+
 def dos_weight_allowance(strength: int, percentile: int = 0) -> int:
     """`GAME.OVR:0x38AE5`, the weight strength carries before it slows a
     character, by `_dos_strength_index`: 1-3 is -350, 4-5 -250, 6-7 -150,
@@ -3824,24 +3869,33 @@ def dos_weight_allowance(strength: int, percentile: int = 0) -> int:
 
 class CombatRebuild(NamedTuple):
     """What `dos_combat_rebuild` computes: `thac0_current`, `roster_tail`'s
-    bytes 3-8 (two dice counts, two die sizes, two damage bonuses) and
-    `movement_current`."""
+    bytes 3-8 (two dice counts, two die sizes, two damage bonuses),
+    `movement_current`, and on the titles in `_COMBAT_REBUILD_AC_TITLES`
+    `armour_class` and `roster_tail` byte 0 (`None` elsewhere)."""
 
     thac0_current: int
     attack_forms: bytes
     movement_current: int
+    armour_class: int | None = None
+    armour_bonus: int | None = None
 
 
 def dos_combat_rebuild(record: bytes, items: bytes,
                        item_types: bytes | None,
                        deltas: "int | str | DosDeltas" = "curse-of-the-azure-bonds"
                        ) -> CombatRebuild | None:
-    """What DOS Curse's combat rebuild stores for this record and item file.
+    """What a DOS title's combat rebuild stores for this record and item file.
 
-    `GAME.OVR:0x382C5` (`ED:43`), which the character loader runs before
-    the party appears and before `FE:25` (`0x3B026`) recomputes
+    Curse's is `GAME.OVR:0x382C5` (`ED:43`), which the character loader runs
+    before the party appears and before `FE:25` (`0x3B026`) recomputes
     `thac0_base` -- so the THAC0 here is built on the `thac0_base` in
-    `record`, as the engine's is on the one in the file it loads:
+    `record`, as the engine's is on the one in the file it loads. Pool of
+    Radiance's is the resident routine at `START.EXE` image `0x1758`, the
+    same rule with its helpers at `0x0BA0` (the weapon), `0x0D9B` (body
+    armour), `0x0F40` (the encumbrance cap), `0x1D08`, `0x1E22`, `0x1EC5` and
+    `0x1F4B`, plus the armour class (`_dos_armour_class`) and a bag of
+    holding in the weight sum. Its loader does not run it; VIEW, a fight and
+    the item screens do. For both:
 
     * the attack forms' dice, sides and damage bytes (`0x11E`-`0x123`) are
       copied into `roster_tail` bytes 3-8, and the base movement into
@@ -3955,11 +4009,80 @@ def dos_combat_rebuild(record: bytes, items: bytes,
     carried = sum(weight_of(p) * (p[f_qty] or 1) for p in pieces)
     carried += sum(int.from_bytes(record[table[c].offset:table[c].end],
                                   "little") for c in _COINS)
+    if deltas.key == POOL_OF_RADIANCE.key:
+        # `0x1AE3`-`0x1B1F`: a readied bag of holding takes 5000 off the sum,
+        # but never below 0 or the weight of what is readied. The routine's sum is
+        # 16-bit, so it is taken to 16 bits first.
+        f_name = ITEM_FIELDS_BY_NAME["name1"].offset
+        if any(p[f_name] == _BAG_OF_HOLDING_NAME for p in readied):
+            carried &= 0xFFFF
+            carried = 0 if carried < 5000 else carried - 5000
+            carried = max(carried, sum(weight_of(p) * (p[f_qty] or 1)
+                                       for p in readied) & 0xFFFF)
     over = (carried - dos_weight_allowance(strength, percentile)) & 0xFFFF
     over = 0 if over >= 0x8000 else over
     cap = (movement if over <= 0x200 else 9 if over <= 0x300
            else 6 if over <= 0x400 else 3)
-    return CombatRebuild(thac0 & 0xFF, bytes(forms), min(movement, cap) & 0xFF)
+
+    armour_class = armour_bonus = None
+    if deltas.key in _COMBAT_REBUILD_AC_TITLES:
+        armour_class, armour_bonus = _dos_armour_class(
+            record, readied, row, signed, table)
+    return CombatRebuild(thac0 & 0xFF, bytes(forms), min(movement, cap) & 0xFF,
+                         armour_class, armour_bonus)
+
+
+def _dos_armour_class(record: bytes, readied: Sequence[bytes], row, signed,
+                      table: Mapping[str, Field]) -> tuple[int, int]:
+    """Pool of Radiance's armour-class half of `START.EXE` image `0x1758`,
+    as `(armour_class, roster_tail byte 0)`.
+
+    Five signed terms, all zero to start (`0x19BC`): dexterity's step
+    (`dos_dexterity_armour_adjustment`, `0x1A17`), then for each readied item
+    in file order whose type's protection byte has bit 7 set (`0x0E22`), with
+    `p` the low seven bits and `plus` the item's own:
+
+    * a shield (location 1) sets the shield term to `p + plus`;
+    * with `p` zero, a ring of protection (location 9) raises the ring term
+      to `plus` if that is more, and any other location adds `plus` to the
+      cloak term;
+    * anything else raises the armour term to `p + plus` if that is more,
+      and a body suit (location 2) with a plus above zero that does so marks
+      the ring term to be dropped (`0x1AD9`).
+
+    The armour term is then raised to the record's base armour class if it
+    is less (`0x1B2E`), and the stored byte is the sum of the five. Roster
+    tail byte 0 (`0x1B85`) is armour + cloak + ring less 2.
+    """
+    terms = [dos_dexterity_armour_adjustment(record[table["dexterity"].offset]),
+             0, 0, 0, 0]
+    shield, cloak, ring, armour = 1, 2, 3, 4
+    magic_suit = False
+    f_plus = ITEM_FIELDS_BY_NAME["plus"].offset
+    for piece in readied:
+        kind = row(piece)
+        protection = kind[TYPE_PROTECTION]
+        if protection <= 0x7F:
+            continue
+        protection &= 0x7F
+        location = kind[TYPE_LOCATION]
+        plus = signed(piece[f_plus])
+        if location == _SHIELD_LOCATION:
+            terms[shield] = signed((protection + plus) & 0xFF)
+        elif protection == 0:
+            if location == _RING_LOCATION:
+                terms[ring] = max(terms[ring], plus)
+            else:
+                terms[cloak] = signed((terms[cloak] + plus) & 0xFF)
+        elif protection + plus > terms[armour]:
+            terms[armour] = signed((protection + plus) & 0xFF)
+            if plus > 0 and location == _BODY_LOCATION:
+                magic_suit = True
+    if magic_suit:
+        terms[ring] = 0
+    terms[armour] = max(terms[armour], record[table["armour_class_base"].offset])
+    return (sum(terms) & 0xFF,
+            (terms[armour] + terms[cloak] + terms[ring] - 2) & 0xFF)
 
 #: The eight thief-skill columns, neutral name to DOS name -- identical on
 #: both sides, and in `goldbox.levels.LevelTables.dos_thief_skill_row`'s own
@@ -4380,15 +4503,19 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
        "save_wands": "from neutral save_wands, as save_paralysis",
        "save_breath": "from neutral save_breath, as save_paralysis",
        "save_spell": "from neutral save_spell, as save_paralysis",
-       "thac0_current": "from neutral thac0_current, recomputed through DOS "
-                        "Curse's own load-time combat rebuild for a C64 "
-                        "source, armed or not; with an item readied only "
-                        "when the game's own item types are given "
-                        "(#632, #634)",
+       "thac0_current": "from neutral thac0_current, recomputed through "
+                        "the DOS engine's own combat rebuild for a C64 "
+                        "source on Curse and Pool of Radiance, armed or "
+                        "not; with an item readied only when the game's own "
+                        "item types are given (#632, #634)",
        "movement_current": "from neutral movement_current, recomputed "
-                           "through DOS Curse's own load-time combat "
-                           "rebuild for a C64 source, from armour and "
-                           "encumbrance, as thac0_current (#634)",
+                           "through the DOS engine's own combat rebuild for "
+                           "a C64 source, from armour and encumbrance, as "
+                           "thac0_current (#634)",
+       "armour_class": "from neutral armour_class, recomputed through DOS "
+                       "Pool of Radiance's own combat rebuild for a C64 "
+                       "source, from dexterity, the readied armour, shield "
+                       "and protection items, as thac0_current (#634)",
        "spells_memorised": "from neutral spells_memorised, reversed",
        "spellbook": "from neutral spells_known, one byte per id",
        "class_levels": "from neutral levels, permuted to class numbers",
@@ -4407,7 +4534,9 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
        "attack_forms": "from neutral attack_forms, as a block",
        "roster_tail": "from neutral roster_tail, as a block -- with bytes "
                       "3-8, the attack's dice, sides and damage, recomputed "
-                      "on DOS Curse as thac0_current (#634)",
+                      "on DOS Curse and Pool of Radiance as thac0_current, "
+                      "and byte 0, the armour bonus, on Pool of Radiance "
+                      "as armour_class (#634)",
        "item_count": "computed: the number of head .ITM records written, "
                      "a joined scroll's scrolls not counted",
        "encumbrance": "computed: money plus item weight x quantity"}
@@ -4729,9 +4858,9 @@ def write(char: NeutralCharacter,
         # names these eight too, and the two tables are mirrors.
         if neutral_name in _THIEF_SKILL_NAMES:
             continue
-        # Written below, recomputed through the DOS engine's own load-time
-        # rebuild for a C64 source (#632, #634).  Stays in `WRITE_DIRECT` for
-        # the same reason: the reader's `DIRECT` names these seven too, and
+        # Written below, recomputed through the DOS engine's own save and
+        # combat rebuilds for a C64 source (#632, #634).  Stays in `WRITE_DIRECT` for
+        # the same reason: the reader's `DIRECT` names these eight too, and
         # the two tables are mirrors.
         if neutral_name in _DOS_LOAD_REBUILD_NAMES:
             continue
@@ -5875,17 +6004,22 @@ def write(char: NeutralCharacter,
                 ", recomputed through the DOS engine's own load-time save "
                 "rebuild (#632)", value=computed_saves[column])
 
-    # -- thac0_current, the attack bytes and movement: the combat rebuild ----
+    # -- thac0_current, AC, the attack bytes and movement: the combat rebuild -
     # DOS Curse's loader runs `GAME.OVR:0x382C5` on every character before
-    # the party appears (`dos_combat_rebuild` has the read), so for a title in
-    # `_COMBAT_REBUILD_TITLES` the three are written as the engine will store
-    # them -- on the same gate as the saves above. A character with an item
-    # readied and no `item_types` to say what it is keeps the source's bytes,
-    # as does every other source and title.
+    # the party appears, and DOS Pool of Radiance runs `START.EXE` image
+    # `0x1758` at VIEW, a fight and the item screens -- but not at load, so
+    # until then its party panel shows the stored armour class and its
+    # PARTYSTRENGTH script command (`GAME.OVR:0x200C`) reads the stored THAC0
+    # and armour class (`dos_combat_rebuild` has the reads). For a title in
+    # `_COMBAT_REBUILD_TITLES` these are written as the engine will store
+    # them -- on the same gate as the saves above -- and the armour class and
+    # tail byte 0 too for one in `_COMBAT_REBUILD_AC_TITLES`. A character
+    # with an item readied and no `item_types` to say what it is keeps the
+    # source's bytes, as does every other source and title.
     combat = None
     if rebuild and deltas.key in _COMBAT_REBUILD_TITLES:
         combat = dos_combat_rebuild(bytes(rec), itm, item_types, deltas)
-    why = ", recomputed through DOS Curse's own load-time combat rebuild (#634)"
+    why = ", recomputed through the DOS engine's own combat rebuild (#634)"
     thac0_current_v = use("thac0_current")
     if thac0_current_v is not None:
         if combat is None:
@@ -5893,14 +6027,24 @@ def write(char: NeutralCharacter,
         else:
             put(thac0_current_v, "thac0_current", why,
                 value=combat.thac0_current)
+    armour_class_v = use("armour_class")
+    if armour_class_v is not None:
+        if combat is None or combat.armour_class is None:
+            put(armour_class_v, "armour_class")
+        else:
+            put(armour_class_v, "armour_class", why,
+                value=combat.armour_class)
     if tail is not None:
         if combat is None:
             put(tail, "roster_tail", " copied as a block")
         else:
             rebuilt = bytearray(tail.value)
             rebuilt[3:9] = combat.attack_forms
-            put(tail, "roster_tail",
-                ", bytes 3-8 (the attack's dice, sides and damage)" + why,
+            which = "3-8 (the attack's dice, sides and damage)"
+            if combat.armour_bonus is not None:
+                rebuilt[0] = combat.armour_bonus
+                which = "0 (the armour bonus) and " + which
+            put(tail, "roster_tail", ", bytes " + which + why,
                 value=bytes(rebuilt))
     movement_v = use("movement_current")
     if movement_v is not None:
@@ -8873,7 +9017,8 @@ def write_dos_save_from(state: "world_state.WorldState",
     # or suit of armour from anything else, out of the same directory, and
     # only for a title whose rebuild has been read (#634). A directory
     # without it costs the rebuild of an armed or armoured character, which
-    # then keeps the source's own bytes; the game rebuilds them on load.
+    # then keeps the source's own bytes, which the game rebuilds on load
+    # (Curse) or at the first VIEW or fight (Pool of Radiance).
     types = (item_type_table(game) if c64.key in _COMBAT_REBUILD_TITLES
              else None)
     record_shape, built = _build_character_files(

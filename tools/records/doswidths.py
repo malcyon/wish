@@ -105,13 +105,25 @@ _LOAD_REBUILT_SAVES: dict[str, str] = {
 }
 
 #: Current THAC0 and movement, always recomputed for a C64 source on the
-#: titles in `dos_codec._COMBAT_REBUILD_TITLES` -- Curse alone.
+#: titles in `dos_codec._COMBAT_REBUILD_TITLES` -- Curse and Pool of Radiance.
 _LOAD_REBUILT_COMBAT: dict[str, str] = {
-    "thac0_current": "recomputed through DOS Curse's own load-time combat "
+    "thac0_current": "recomputed through the DOS engine's own combat "
                      "rebuild for a C64 source, the same as thac0_base",
-    "movement_current": "recomputed through DOS Curse's own load-time combat "
+    "movement_current": "recomputed through the DOS engine's own combat "
                         "rebuild for a C64 source, from armour and what the "
                         "character carries",
+    "roster_tail": "bytes 3-8, the attack's dice, sides and damage, and on "
+                   "Pool of Radiance byte 0, the armour bonus, recomputed "
+                   "through the DOS engine's own combat rebuild for a C64 "
+                   "source; bytes 1-2 are copied",
+}
+
+#: Current armour class, always recomputed for a C64 source on the titles in
+#: `dos_codec._COMBAT_REBUILD_AC_TITLES` -- Pool of Radiance alone.
+_REBUILT_ARMOUR_CLASS: dict[str, str] = {
+    "armour_class": "recomputed through DOS Pool of Radiance's own combat "
+                    "rebuild for a C64 source, from dexterity and the "
+                    "readied armour, shield and protection items",
 }
 
 #: Everything the writer may recompute for some character, which is a longer
@@ -126,6 +138,7 @@ RECOMPUTED: dict[str, str] = {
     **ALWAYS_RECOMPUTED,
     **_LOAD_REBUILT_SAVES,
     **_LOAD_REBUILT_COMBAT,
+    **_REBUILT_ARMOUR_CLASS,
     **{name: "recomputed from the title's own thief table for race, level "
              "and dexterity, for a character with a thief level"
        for name, _ in dos_codec.WRITE_DIRECT if name.startswith("thief_")},
@@ -134,13 +147,16 @@ RECOMPUTED: dict[str, str] = {
 
 def always_recomputed(game: str) -> dict[str, str]:
     """`ALWAYS_RECOMPUTED` as it holds in `game`: the five saves join it on
-    every title whose DOS load-time save rebuild has been read, and current
-    THAC0 and movement on the titles whose combat rebuild has."""
+    every title whose DOS load-time save rebuild has been read, current THAC0
+    and movement on the titles whose combat rebuild has, and the armour class
+    on the ones whose rebuild's armour half has."""
     out = dict(ALWAYS_RECOMPUTED)
     if levels.for_game(game).dos_save_rule_read:
         out |= _LOAD_REBUILT_SAVES
     if game in dos_codec._COMBAT_REBUILD_TITLES:
         out |= _LOAD_REBUILT_COMBAT
+    if game in dos_codec._COMBAT_REBUILD_AC_TITLES:
+        out |= _REBUILT_ARMOUR_CLASS
     return out
 
 
