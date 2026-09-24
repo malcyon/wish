@@ -58,6 +58,7 @@ from .items import (
     ITEM_BLOCK_STRIDE,
     ITEM_SIZE,
     ITEMS_PER_CHARACTER,
+    Item,
     ItemNameError,
     build_item,
     items_for_slot,
@@ -1258,27 +1259,31 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
             raise ValueError_(
                 f"slot {slot} {who}: {len(given)} items, but a character can "
                 f"carry at most {ITEMS_PER_CHARACTER}")
-        # Every slot is written, so removing an entry deletes that item rather
-        # than leaving the old bytes behind. The game packs items from slot 0
-        # with no gaps -- checked across every specimen -- so this is exact.
-        for n in range(ITEMS_PER_CHARACTER):
-            off = base + n * ITEM_SIZE
-            old = bytes(payload[off:off + ITEM_SIZE])
-            if n < len(given):
-                item = given[n]
-                raw = _item_bytes(item, names, f"slot {slot} item {n}",
-                                  templates)
-                label = item.get("name") or item.get("template") or "?"
-            else:
-                raw, label = bytes(ITEM_SIZE), None
+        # Items go back to the slots that were live in the save, in order, so
+        # an untouched import writes every block back unchanged. An added item
+        # fills the lowest slot the game emptied. A live slot with no item
+        # left is zeroed; an emptied slot nobody fills keeps its bytes, since
+        # the game leaves some type-zero blocks with other bytes set.
+        blocks = [bytes(payload[base + n * ITEM_SIZE:base + (n + 1) * ITEM_SIZE])
+                  for n in range(ITEMS_PER_CHARACTER)]
+        live = [n for n, b in enumerate(blocks) if not Item(b).is_empty]
+        free = [n for n in range(ITEMS_PER_CHARACTER) if n not in live]
+        targets = (live + free)[:len(given)]
+        for i, n in enumerate(targets):
+            item = given[i]
+            raw = _item_bytes(item, names, f"slot {slot} item {n}", templates)
+            label = item.get("name") or item.get("template") or "?"
+            old = blocks[n]
             if raw != old:
-                if label is None:
-                    changes.append(f"slot {slot} {who}: item {n} removed")
-                elif not any(old):
+                if Item(old).is_empty:
                     changes.append(f"slot {slot} {who}: item {n} added ({label})")
                 else:
                     changes.append(f"slot {slot} {who}: item {n} ({label}) changed")
-            payload[off:off + ITEM_SIZE] = raw
+            payload[base + n * ITEM_SIZE:base + (n + 1) * ITEM_SIZE] = raw
+        for n in live:
+            if n not in targets:
+                changes.append(f"slot {slot} {who}: item {n} removed")
+                payload[base + n * ITEM_SIZE:base + (n + 1) * ITEM_SIZE] = bytes(ITEM_SIZE)
 
         # icon
         icon = entry.get("icon")
