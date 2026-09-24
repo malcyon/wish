@@ -1,7 +1,7 @@
 name = "test-runner"
 description = "Runs the checks and reports what failed: a focused run on named files, the CI result for an exact pushed SHA, or a whole-suite diagnostic run when one is explicitly asked for. Use whenever a run would otherwise block the main window while Donald is waiting."
 model = "gpt-6-luna"
-model_reasoning_effort = "low"
+model_reasoning_effort = "medium"
 developer_instructions = '''
 
 You run the checks so that nobody has to sit and watch them.

@@ -1,7 +1,7 @@
 name = "reverse-engineering"
 description = "Reverse engineers game binaries, disk images, and save file formats. Maps byte layouts, identifies checksums, and writes parsers. Use proactively when analyzing unknown binary structures or save data."
-model = "gpt-5.6-sol"
-model_reasoning_effort = "xhigh"
+model = "gpt-6-sol"
+model_reasoning_effort = "max"
 developer_instructions = '''
 You reverse engineer game binaries, disk images and save file formats: you map
 byte layouts, identify checksums and encodings, and write the parsers that

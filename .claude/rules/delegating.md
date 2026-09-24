@@ -22,19 +22,19 @@ configured model, not the same decision spelled two ways.
 
 | agent | Claude | Codex | when |
 |---|---|---|---|
-| `reverse-engineering` | Opus | `gpt-5.6-sol` | byte layouts, checksums, encodings, and the parsers that prove they were read right -- including a disassembly read. |
-| `deep-research` | **Fable** | `gpt-6-astra` | the hardest reverse engineering, where rigorous analysis is the whole job -- a question more specimens will not answer |
-| `architect` | **Fable** | `gpt-6-astra` | a plan for another agent to execute, when working out how to do the work is harder than doing it. Writes the plan, does not build it. |
-| `senior-analyst` | Opus | `gpt-5.6-sol` | an issue that names a goal and not its mechanism, when the code it touches is already in the tree: reads the issue and the code, posts a plan naming files, functions and tests, and says which agent builds it. Writes the plan, does not build it. |
-| `junior-dev` | Sonnet | `gpt-6-luna` | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
+| `reverse-engineering` | Opus | `gpt-6-sol` (max) | byte layouts, checksums, encodings, and the parsers that prove they were read right -- including a disassembly read. |
+| `deep-research` | **Fable** | `gpt-6-astra` (max) | the hardest reverse engineering, where rigorous analysis is the whole job -- a question more specimens will not answer |
+| `architect` | **Fable** | `gpt-6-astra` (max) | a plan for another agent to execute, when working out how to do the work is harder than doing it. Writes the plan, does not build it. |
+| `senior-analyst` | Opus | `gpt-6-sol` (max) | an issue that names a goal and not its mechanism, when the code it touches is already in the tree: reads the issue and the code, posts a plan naming files, functions and tests, and says which agent builds it. Writes the plan, does not build it. |
+| `junior-dev` | Sonnet | `gpt-6-sol` (medium) | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
 | `general-purpose` | inherits | unset -- inherits | everything else, including work that looks like reverse engineering and is not |
-| `code-reviewer` | Sonnet | `gpt-6-sol` | after **every** subagent that wrote code, on the local commit, before it is pushed. Scope it to the files it owns |
-| `qt-ui-specialist` | Sonnet | `gpt-6-luna` | approved Qt repairs and platform layout diagnosis, with widget/state, exact strings, and acceptance criteria already supplied |
-| `emulator-runner` | Sonnet | `gpt-6-luna` | a bounded, specified emulator experiment through the instance pool; captures and preserves evidence without interpreting unknown fields |
-| `docs-reviewer` | Sonnet | `gpt-6-sol` | when documentation may have drifted from the code. Scope it to the files it owns |
-| `backlog-auditor` | Sonnet | `gpt-6-sol` | before a refinement pass, or when the backlog has grown unwieldy; it reports audits and bounded briefs only |
-| `changelog-writer` | Sonnet | `gpt-6-luna` | after a batch of work lands, and before cutting a release |
-| `test-runner` | **Haiku** | `gpt-6-luna` | a focused run on named tests, the CI result for an exact pushed SHA, or a whole-suite diagnostic when one is explicitly asked for, so that the run does not block the window Donald is asking questions in. It reports and fixes nothing |
+| `code-reviewer` | Sonnet | `gpt-6-sol` (high) | after **every** subagent that wrote code, on the local commit, before it is pushed. Scope it to the files it owns |
+| `qt-ui-specialist` | Sonnet | `gpt-6-sol` (high) | approved Qt repairs and platform layout diagnosis, with widget/state, exact strings, and acceptance criteria already supplied |
+| `emulator-runner` | Sonnet | `gpt-6-sol` (medium) | a bounded, specified emulator experiment through the instance pool; captures and preserves evidence without interpreting unknown fields |
+| `docs-reviewer` | Sonnet | `gpt-6-sol` (high) | when documentation may have drifted from the code. Scope it to the files it owns |
+| `backlog-auditor` | Sonnet | `gpt-6-sol` (high) | before a refinement pass, or when the backlog has grown unwieldy; it reports audits and bounded briefs only |
+| `changelog-writer` | Sonnet | `gpt-6-sol` (high) | after a batch of work lands, and before cutting a release |
+| `test-runner` | **Haiku** | `gpt-6-luna` (medium) | a focused run on named tests, the CI result for an exact pushed SHA, or a whole-suite diagnostic when one is explicitly asked for, so that the run does not block the window Donald is asking questions in. It reports and fixes nothing |
 
 **Cost is not the filter on `deep-research` and `architect`; fit is.** Fable is
 Claude Code's name for the tier behind both (Codex runs the same two agents on

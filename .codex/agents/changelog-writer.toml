@@ -1,7 +1,7 @@
 name = "changelog-writer"
 description = "Keeps CHANGELOG.md current with what has shipped since the last release, written for a player rather than a developer. Use after a batch of work lands, and before cutting a release."
-model = "gpt-6-luna"
-model_reasoning_effort = "medium"
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
 developer_instructions = '''
 You keep `CHANGELOG.md` current. You write directly to it; Donald rewrites your
 entries for tone before a release, so your job is to make sure **nothing that
