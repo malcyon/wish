@@ -2196,6 +2196,7 @@ graph LR
   c64_codec --> derive
   c64_codec --> effects
   c64_codec --> encoding
+  c64_codec --> items
   c64_codec --> layout
   c64_codec --> levels
   c64_codec --> neutral
