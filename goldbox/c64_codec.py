@@ -1126,6 +1126,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                            f"({cure_node.minutes} minutes): no C64 state "
                            "refills a former paladin when the timer ends")
         elif cure_value or cure_node is not None:
+            # Not always lossless, and this is the gain side of it: a
+            # character with none left and no node is never refilled by DOS
+            # and stays at 0 after his regain, where the C64 gives him the
+            # full count; one with 1 of 2 left comes back from the C64 as 2.
+            # Neither costs him a use, so nothing is reported.
             rep.note(cure_off, cure_size,
                      f"paladin_cures: 0 -- former paladin {former_paladin} "
                      f"with {cure_value} uses"

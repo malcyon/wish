@@ -193,6 +193,7 @@ def test_dos_leaves_a_former_paladins_node_running_and_refreshes_it_at_level_0(
     C64 writer give a former paladin zero and no row."""
     finding = _dos_finding(title)
     assert finding["refresh_divide"] == divide
+    pytest.importorskip("capstone")
     try:
         change = curedisease.dos_class_change(title)
     except (FileNotFoundError, SystemExit) as exc:

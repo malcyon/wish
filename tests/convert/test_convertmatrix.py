@@ -504,6 +504,19 @@ _TITLES = [pytest.param(dos_port.CURSE_OF_THE_AZURE_BONDS, id="curse"),
 
 
 @pytest.mark.parametrize("game", _TITLES)
+def test_a_former_paladin_with_no_uses_and_no_timer_writes_zero_bytes(game):
+    """Paladin 6 holding 0 uses and no cure node: DOS never refills him, so he
+    stays at 0 after his regain, and the C64 writes 0 and 0 now and gives him
+    the full count of 2 at the regain, which is a gain. No loss line.
+    The expected bytes are literal, not derived from the writer."""
+    payload = bytearray(0x4000)
+    rec, rep = _former_paladin_write(6, 0, game=game, payload=payload)
+    assert rec.to_bytes()[0x012:0x014] == b"\x00\x00"
+    assert bytes(payload) == bytes(0x4000)
+    assert not [x for x in rep.losses if "paladin_cures" in x]
+
+
+@pytest.mark.parametrize("game", _TITLES)
 @pytest.mark.parametrize("former_level, cures, node_minutes", [
     pytest.param(6, 1, None, id="paladin-6-one-of-two"),
     pytest.param(11, 1, None, id="paladin-11-one-of-three"),
@@ -534,7 +547,9 @@ def test_a_former_paladin_the_c64_regain_refills_converts_with_no_loss(
     assert not [r for r in effects.active_effects(bytes(payload))
                 if r.id == cure_id]
     assert not [x for x in rep.losses if "paladin_cures" in x]
-    assert paladin.full_count(former_level) >= cures
+    # The full counts the C64 regain gives, read out of the game's own table
+    # (docs/234): paladin 5 gets 1, 6 gets 2, 11 gets 3.
+    assert {5: 1, 6: 2, 11: 3}[former_level] >= cures
 
 
 @pytest.mark.parametrize("game", _TITLES)

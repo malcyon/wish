@@ -266,7 +266,7 @@ paladin at and `d` the DOS uses byte:
 
 | DOS state | DOS | C64, 0 and no row written | loss |
 |---|---|---|---|
-| `d` below `full(F)`, no node (a paladin trained past 5 or 10 without curing, then changed class) | no CURE; at the regain `d`, and a cure starts a node | no CURE; at the regain `full(F)`, and a cure from full starts a row | none: every DOS cure is open to him on the C64, and `full(F) - d` more in the first week |
+| `d` below `full(F)`, no node (a paladin trained past 5 or 10 without curing, then changed class) | no CURE; at the regain `d`, and a cure starts a node | no CURE; at the regain `full(F)`, and a cure from full starts a row | none lost, and he gains uses: every DOS cure is open to him on the C64, and `full(F) - d` more in the first week. With `d` = 0 and no node DOS never refills him and he stays at 0 after his regain, where the C64 gives him `full(F)`; with `d` = 1 of 2 he comes back to DOS as 2 |
 | `d` = 0, node running | Curse: the game stops when the node ends before the regain (above). Silver Blades: 1 when it ends, then 1 at the regain. After an early regain, 0 until the node ends and then `full(F)` | no CURE; `full(F)` at the regain | none |
 | `d` above 0, node running (paladin 6 or more who cured from 2 or 3, then changed class inside the week) | the same before the regain. **After a regain inside the week, `d`, and `full(F)` again when the node ends** | `full(F)` at the regain, and full again seven midnights after his first cure | reported. If he regains before the node ends, DOS lets him cure `d` more times before seven days have passed since the C64 gave him `full(F)` |
 | `d` above `full(F)` | `d` at the regain | `full(F)` | reported. SPECULATIVE whether play reaches it: only an energy drain after a refresh would |
@@ -327,6 +327,16 @@ days). Neither touches a record byte or an effect row.
   3, and the second row ended on day 7 and wrote full again. So a cure from
   full between those two days adds a third row, and the second refills him
   before seven days are up, where DOS would have waited the whole seven.
+* Two former-paladin states still report a loss, and a reported loss makes
+  Save As refuse the party (`editor/saveplan.py` raises `DroppedFields` when
+  the writer's accounting is not empty). That is not completion. The states
+  are `d` above 0 with a cure node running, and `d` above `full(F)` or `F` of
+  16 or more. Two DOS measurements would settle them: train one level in DOS
+  Curse and in Silver Blades and read the clock before and after (a training
+  under 1680 minutes makes the first state reachable), and the eight-day rest
+  crash check in DOS Curse. #649 (Converting a dual-classed DOS Curse of the
+  Azure Bonds character to C64 loses his leftover paladin cure-disease use)
+  owns both.
 * Paladin level 16 and up: DOS counts 4, the C64 stops at 3, and
   `c64_cure_write` raises. Whether a Silver Blades party can reach 16 is not
   measured.
