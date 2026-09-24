@@ -17,7 +17,7 @@ trigger below describes a situation, including discussion before an edit.
 | Write a script, or leave a file on disk | `scratch.md` |
 | Show Donald anything about how the program looks, ask him to decide how it should look, or touch `wish/`, `editor/` or `automap/` | `gui-text.md` |
 | Add, change or propose any image, sprite or icon, or touch `ui/`, `assets/` or a `.svg` | `art.md` |
-| Say a field or a record cannot be converted, or touch `goldbox/` | `conversions.md` |
+| Say a field or a record cannot be converted, plan, implement, test, review or close conversion work, or touch `goldbox/` | `conversions.md` |
 | Write a finding anywhere, or touch `docs/`, a `README.md`, or `INDEX.md` | `documentation.md` |
 | Touch a `.ui` file, a generated `ui_*.py`, or `tools/generate/genui.py` | `qt-designer.md` |
 | Write, change or run a test, or touch `tests/` | `testing.md` |

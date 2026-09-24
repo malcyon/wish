@@ -277,6 +277,13 @@ moving when nothing has. A ticket closes because the thing it describes is
 done, or because it turned out not to be a thing -- never because its number
 changed.
 
+**Search closed issues before filing a discovered defect.** If an earlier issue
+was closed without completing the same work, reopen it with the evidence and
+remaining acceptance criteria instead of creating a replacement. Work still
+within an original issue's scope keeps that issue open; a new number does not
+make it complete. Apply the existing human-thread restrictions when reporting
+such a finding.
+
 **And keep the count honestly.** A session that files twenty-three and closes
 twenty-eight is fine; one that files twenty-three and closes ten is filing
 where a comment would do, however good each individual ticket looked. Say both
@@ -309,12 +316,27 @@ comment on it, then say in your own issue that you did.
 reference makes the next reader open the diff. Say what was actually done, what
 it now does instead, and anything deliberately left undone.
 
-**`closes #N` fires when the commit reaches `main`, and not before.** This
-project routinely carries dozens of unpushed commits, so that gap is the normal
-state. **When the finishing commit is not pushed, close the issue by hand** with
-`tools/wishagent.py close N --comment-file F`, and say in the closing note that
-the keyword will be a no-op by the time the commit lands. And **never report an
-issue as closed without checking `gh issue view N --json state`.**
+**Implementation issues stay open until their acceptance evidence is recorded,
+the required review is complete, the change is pushed, and CI passes for that
+exact pushed SHA.**
+Then close manually with `tools/wishagent.py close N --comment-file F`. A local
+commit, passing focused tests, or a push alone is not completion. Research can
+close when its question is answered with evidence; duplicate or invalid reports
+close with the evidence for that disposition, not a claim of implementation.
+Never report an issue as closed without checking `gh issue view N --json state`.
+
+**Before closing conversion work, read `.claude/rules/conversions.md`, even
+when no `goldbox/` file changed.** Closing a conversion defect as fixed requires
+evidence of the formerly failing save or condition converting successfully
+between ports of the same title, preserving the affected player behavior,
+with the runtime proof that rule requires. Refusing the save, renaming its error, hiding the route, or
+passing the current specimen corpus cannot substitute for that evidence.
+
+**A separately scoped crash or error-handling fix may finish while conversion
+work remains open.** Its closing comment must distinguish what was fixed from
+what still fails and link the verified open issue owning that conversion defect.
+If the unfinished conversion belongs to the original issue's scope, keep or
+reopen that original instead. An unnumbered promise to follow up is not an owner.
 
 ## Prioritising the work list
 

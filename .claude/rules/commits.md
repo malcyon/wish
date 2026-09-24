@@ -11,12 +11,15 @@ next reader.
 **The issue number goes at the end of that same line, in parentheses**, never
 on a line of its own. A commit message is the one place the number goes bare
 rather than with its title: a title there would break the sentence, and GitHub
-hotlinks the number anyway. Use `closes #N` on the commit that actually
-finishes the work -- that closes the issue when it reaches `main` -- and a bare
-`#N` for a commit that only moves it along.
+hotlinks the number anyway. Use a bare `#N` for implementation work, including
+conversion defects: no `closes`, `fixes` or `resolves` keyword in its commit or
+PR text. Those keywords close on reaching `main`, before exact-SHA CI and the
+closure evidence can be checked. Close manually under
+`.claude/rules/issues.md` after those gates pass. Closing keywords are only for
+nonimplementation dispositions whose required evidence is already recorded.
 
 ```
-Land in the largest open part of the map (closes #123)
+Land in the largest open part of the map (#123)
 Read the trainer out of GEN (#123)
 ```
 
@@ -40,8 +43,9 @@ Work goes out in reviewed, coherent batches, and CI is the full-suite gate:
    (`.claude/rules/delegating.md`). Fix findings in a follow-up commit or
    reject them with a reason.
 4. **Push** the reviewed batch.
-5. **Check CI for the exact pushed SHA** before taking more tickets, and fix
-   what actually failed.
+5. **Check CI for the exact pushed SHA**, and fix what actually failed.
+6. **Close only completed issues under `.claude/rules/issues.md`**, with their
+   acceptance evidence, before taking more tickets. Unfinished work stays open.
 
 **Nobody runs the whole suite locally in order to push.** CI runs it on every
 pushed commit. A concrete CI failure is fixed with focused tests and a
