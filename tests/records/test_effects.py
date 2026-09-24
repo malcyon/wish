@@ -1205,8 +1205,8 @@ def test_party_row_record_copies_any_magnitude(magnitude):
 
 
 @pytest.mark.parametrize("title, row", [
-    ("pool-of-radiance", effects.Effect(63, 35, 0xFF, 0x41, 0x01)),
-    ("curse-of-the-azure-bonds", effects.Effect(63, 49, 0xFF, 0x0A, 0x03)),
+    ("pool-of-radiance", effects.Effect(63, 1, 0xFF, 0x0A, 0x01)),
+    ("curse-of-the-azure-bonds", effects.Effect(63, 35, 0xFF, 0x0A, 0x03)),
 ])
 def test_party_row_record_leaves_the_rest_unconverted(title, row):
     assert isinstance(effects.party_row_record(title, row, 0),
@@ -1226,7 +1226,7 @@ def test_c64_party_row_keeps_the_data_byte():
         "pool-of-radiance", effects.RunningEffect(5, 10, 3, 1)),
         effects.Unconverted)
     assert isinstance(effects.c64_party_row(
-        "curse-of-the-azure-bonds", effects.RunningEffect(49, 10, 3, 0)),
+        "curse-of-the-azure-bonds", effects.RunningEffect(35, 10, 3, 0)),
         effects.Unconverted)
 
 
@@ -1247,3 +1247,59 @@ def test_write_party_row_keeps_the_longer_row(first, second, kept):
     rows = _party_slots(p)
     assert rows[63] == (5, 0xFF, 0x0A, kept)
     assert rows[62] == (0, 0, 0, 0)
+
+
+# --- party-wide Prayer rows -----------------------------------------------------
+
+_POOL = "pool-of-radiance"
+_LATER = ("curse-of-the-azure-bonds", "secret-of-the-silver-blades")
+
+
+def test_prayer_dos_data_inverts_the_side_bit_for_pool_only():
+    assert effects.prayer_dos_data(_POOL, 0x43) == 0x03
+    assert effects.prayer_dos_data(_POOL, 0x03) == 0x13
+    for title in _LATER:
+        assert effects.prayer_dos_data(title, 0x03) == 0x03
+        assert effects.prayer_dos_data(title, 0x43) == 0x13
+
+
+def test_prayer_c64_magnitude_inverts_the_side_bit_for_pool_only():
+    assert effects.prayer_c64_magnitude(_POOL, 0x03) == 0x43
+    assert effects.prayer_c64_magnitude(_POOL, 0x13) == 0x03
+    for title in _LATER:
+        assert effects.prayer_c64_magnitude(title, 0x03) == 0x03
+        assert effects.prayer_c64_magnitude(title, 0x13) == 0x43
+
+
+@pytest.mark.parametrize("title", _TITLES)
+def test_prayer_data_round_trips_and_the_side_matches_the_crosswalk(title):
+    for d in range(256):
+        m = effects.prayer_c64_magnitude(title, d)
+        assert effects.prayer_dos_data(title, m) == d & 0x1F
+        assert m & 0x40 == effectcrosswalk.prayer_allegiance(d, title=title)
+
+
+def test_party_row_record_converts_prayer():
+    assert effects.party_row_record(
+        _POOL, effects.Effect(63, 35, 0xFF, 0x0A, 0x03), 0) == \
+        effects.RunningEffect(35, 10, 3, 0)
+    assert effects.party_row_record(
+        _POOL, effects.Effect(63, 49, 0xFF, 0x0A, 0x43), 0) == \
+        effects.RunningEffect(49, 10, 0x03, 0)
+    assert effects.party_row_record(
+        _POOL, effects.Effect(63, 49, 0xFF, 0x0A, 0x03), 0).data == 0x13
+    for title in _LATER:
+        assert effects.party_row_record(
+            title, effects.Effect(63, 49, 0xFF, 0x0A, 0x03), 0) == \
+            effects.RunningEffect(49, 10, 0x03, 0)
+
+
+def test_c64_party_row_converts_prayer():
+    assert effects.c64_party_row(
+        _POOL, effects.RunningEffect(49, 10, 0x03, 0)) == (49, 0x43)
+    assert effects.c64_party_row(
+        _LATER[0], effects.RunningEffect(49, 10, 0x03, 0)) == (49, 0x03)
+    assert effects.c64_party_row(
+        _POOL, effects.RunningEffect(35, 10, 3, 0)) == (35, 3)
+    assert isinstance(effects.c64_party_row(
+        _POOL, effects.RunningEffect(49, 10, 3, 1)), effects.Unconverted)

@@ -8056,17 +8056,20 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
         # `c64_codec.read` is per character, so a row no party member owns
         # is handled here. A party-wide row whose id the title converts
         # (`effects.PARTY_ROW_IDS`) becomes one node on the lowest occupied
-        # slot, which is what DOS's ask-every-member query treats the same;
+        # slot, which is what DOS's ask-every-member query treats the same,
+        # or on every member for an id in `PARTY_ROW_ON_EVERY_MEMBER`;
         # every other such row is reported on the first character.
         occupied = {s.index for s in party}
-        party_nodes: list[effects.RunningEffect] = []
+        party_nodes: dict[int, effects.RunningEffect] = {}
         for row in effects.active_effects(bytes(save0)):
             if row.owner in occupied:
                 continue
             if row.owner & 0x80:
                 node = effects.party_row_record(c64.key, row, clock_mins)
                 if isinstance(node, effects.RunningEffect):
-                    party_nodes.append(node)
+                    kept = party_nodes.get(node.id)
+                    if kept is None or node.minutes > kept.minutes:
+                        party_nodes[node.id] = node
                     continue
             if row.owner & 0x80:
                 who = "the whole party"
@@ -8084,25 +8087,33 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
                 f"{label} "
                 f"in slot {row.slot}, owned by {who}: no party member owns "
                 "it, and no rule yet converts such a row")
-        if party_nodes:
-            # One node, the longest: the C64 writer keeps one row per id.
-            node = max(party_nodes, key=lambda n: n.minutes)
-            field = "running_effects"
-            origin = ("the save's shared effect arrays: a row owned by the "
-                      "whole party, converted through "
-                      "effects.party_row_record")
-            old = out[0].fields.get(field)
-            if old is None:
-                out[0].set(field, [node.to_record()], origin)
-            else:
-                out[0].set(
-                    field, [*old.value, node.to_record()],
-                    f"{old.origin}; a row owned by the whole party, "
-                    "converted through effects.party_row_record",
-                    old.confidence, old.how, old.dropped)
+        # One node per id, the longest: the C64 writer keeps one row per id.
+        for node_id in sorted(party_nodes):
+            targets = (out if node_id in effects.PARTY_ROW_ON_EVERY_MEMBER
+                       else out[:1])
+            for target in targets:
+                _add_party_node(target, party_nodes[node_id])
     out.reverse()
     icons.reverse()
     return out, icons
+
+
+def _add_party_node(char: "NeutralCharacter",
+                    node: effects.RunningEffect) -> None:
+    """Append a party-wide row's node to `char`'s running effects."""
+    field = "running_effects"
+    origin = ("the save's shared effect arrays: a row owned by the "
+              "whole party, converted through "
+              "effects.party_row_record")
+    old = char.fields.get(field)
+    if old is None:
+        char.set(field, [node.to_record()], origin)
+    else:
+        char.set(
+            field, [*old.value, node.to_record()],
+            f"{old.origin}; a row owned by the whole party, "
+            "converted through effects.party_row_record",
+            old.confidence, old.how, old.dropped)
 
 
 def _c64_game_of(state: "world_state.WorldState") -> "c64_port.Game":

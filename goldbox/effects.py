@@ -262,7 +262,8 @@ def closest_duration(minutes: int, clock_minutes: int) -> int | None:
 # and Amiga hold it literally, and a C64 slot's magnitude is a per-title,
 # per-id function of it rather than a copy. The owner is implicit -- the
 # record's own character. An id in `PARTY_ROW_IDS` converts a party-wide
-# row to a node on one member; no other party-wide row converts yet.
+# row to a node on one member, or to a node on every member for an id in
+# `PARTY_ROW_ON_EVERY_MEMBER`; no other party-wide row converts yet.
 RUNNING_EFFECT_SIZE = 9
 _RUNNING_EFFECT_NEXT = bytes(4)
 
@@ -339,11 +340,49 @@ DOS_MINUTES_MAX = 0xFFFF
 #: $4086`, Curse `$4141`, Silver Blades `$3899`, each `LDA #$05 / LDX #$FF`.
 #: DOS loops over the party list: Pool `START.EXE` image `0x1039`-`0x1074`,
 #: Curse `GAME.OVR:0x37B62`-`0x37B9D`, Silver Blades `0x385DF`-`0x38617`.
+#:
+#: Id 49 is Prayer, and Pool's 35 is its camp row. C64 camp Prayer: Pool
+#: `SPELLE04 $A816` (id 35, owner `$FF`); Curse and Silver Blades `ECL65` row 27
+#: through target mode 0 (`$805A`). C64 Pool combat Prayer: `SPELLE00
+#: $AC36`-`$AC56`. DOS asks for 49 for every combatant through the check-list
+#: routine (Pool `GAME.OVR:0x2B04A`, Curse `0x3529C`, Silver Blades `0x3606F`).
+#: DOS Pool names an id-35 node "Prayer" in Magic > Display (`GAME.OVR:0x189E1`)
+#: and reads it nowhere else.
 PARTY_ROW_IDS: dict[str, frozenset[int]] = {
-    "pool-of-radiance": frozenset({5}),
-    "curse-of-the-azure-bonds": frozenset({5}),
-    "secret-of-the-silver-blades": frozenset({5}),
+    "pool-of-radiance": frozenset({5, 35, 49}),
+    "curse-of-the-azure-bonds": frozenset({5, 49}),
+    "secret-of-the-silver-blades": frozenset({5, 49}),
 }
+
+#: The party-row ids that become one DOS node on every party member, not one:
+#: DOS's list of spells in effect is per member, and each member finds its own
+#: node first (Pool `GAME.OVR:0x2B075`).
+PARTY_ROW_ON_EVERY_MEMBER = frozenset({35, 49})
+
+_PRAYER_ID = 49
+
+
+def prayer_dos_data(title_key: str, magnitude: int) -> int:
+    """The DOS data byte for a C64 Prayer row's magnitude.
+
+    The side is bit 6 of the C64 magnitude, inverted for Pool: C64 Pool
+    (`SPELLE01 $A9C2`-`$A9C7`) gives the bonus when the sides differ, every
+    other handler when they are equal. Both ports use side 0 for the party.
+    DOS keeps the side in bit 4 above the low nibble.
+    """
+    side = magnitude >> 6 & 1
+    if title_key == "pool-of-radiance":
+        side ^= 1
+    return side << 4 | magnitude & 0x0F
+
+
+def prayer_c64_magnitude(title_key: str, data: int) -> int:
+    """The C64 magnitude for a DOS Prayer data byte: the inverse of
+    `prayer_dos_data` on the bits it keeps."""
+    side = data >> 4 & 1
+    if title_key == "pool-of-radiance":
+        side ^= 1
+    return side << 6 | data & 0x0F
 
 
 def party_row_ids(title_key: str) -> frozenset[int]:
@@ -405,16 +444,20 @@ def party_row_record(title_key: str, row: "Effect",
     """The DOS node for a party-wide C64 row, or why there is none.
 
     The owner is not looked at. The magnitude is copied to the data byte
-    unchanged: only Dispel Magic reads it, the same way on both ports.
+    unchanged, except for Prayer's side bit (`prayer_dos_data`): only Dispel
+    Magic reads it, the same way on both ports.
     """
     if row.id not in party_row_ids(title_key):
         return Unconverted("no rule yet for a party-wide row of this id")
+    data = row.magnitude
+    if row.id == _PRAYER_ID:
+        data = prayer_dos_data(title_key, row.magnitude)
     if row.duration == 0:
         # A node has no never-expires form; the longest it can last is nearest.
-        return RunningEffect(row.id, DOS_MINUTES_MAX, row.magnitude, 0)
+        return RunningEffect(row.id, DOS_MINUTES_MAX, data, 0)
     minutes = min(remaining_minutes(row.duration, clock_minutes),
                   DOS_MINUTES_MAX)
-    return RunningEffect(row.id, minutes, row.magnitude, 0)
+    return RunningEffect(row.id, minutes, data, 0)
 
 
 def c64_party_row(title_key: str,
@@ -424,6 +467,8 @@ def c64_party_row(title_key: str,
         return Unconverted("no rule yet for this id in this title")
     if node.flag != 0:
         return Unconverted("a flag byte other than 0 on a party-wide effect")
+    if node.id == _PRAYER_ID:
+        return node.id, prayer_c64_magnitude(title_key, node.data)
     return node.id, node.data
 
 
