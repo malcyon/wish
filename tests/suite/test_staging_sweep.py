@@ -141,6 +141,7 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     ("dosfightwatch.py", 'out / "loaded.png"'): "the load screen this run shot",
     ("dosgnome.py", "out / png.name"): "this run's own shots directory",
     ("dositemcap.py", "out / png.name"): "this run's own shots directory",
+    ("dosacceptance.py", "kept / png.name"): "this run's own shots directory",
     ("dosladder.py", "shots / png.name"): "this run's own shots directory",
     ("dosnewsave.py", 'out / "items.png"'): "the inventory screen this run shot",
     ("dosnewsave.py", 'out / "loaded.png"'): "the load screen this run shot",
@@ -188,6 +189,12 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
         "leftover of an earlier run survives",
     ("curseregain.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
+    ("dosacceptance.py", "installed"):
+        "the staged SAVE tree as booted, whose files `install` wrote with "
+        "`write_bytes`; the destination is rmtree'd first, so no leftover survives",
+    ("dosacceptance.py", "resave"):
+        "the staged SAVE tree after the game resaved it; the destination is "
+        "rmtree'd first, so no leftover survives",
     ("dosencsave.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
     ("dosladder.py", "d / p.name"):
