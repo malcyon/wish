@@ -365,16 +365,18 @@ def test_rows_and_expectations_parse():
 
 
 def test_install_keeps_only_the_one_slot_and_renames_it(tmp_path):
-    save, dest = tmp_path / "save", tmp_path / "SAVE"
+    # Distinct names: "save" and "SAVE" are one directory on Windows.
+    save, dest = tmp_path / "staged", tmp_path / "play"
     save.mkdir()
     dest.mkdir()
-    for name in ("SAVGAMA.DAT", "CHRDATA1.SAV", "CHRDATA1.SPC", "NOTES.TXT"):
+    # Lower-case archive names must count as the same slot as upper-case ones.
+    for name in ("savgama.dat", "CHRDATA1.SAV", "chrdata1.spc", "NOTES.TXT"):
         (save / name).write_bytes(name.encode())
     (dest / "SAVGAMJ.DAT").write_bytes(b"someone else's")
     took = da.install(save, dest, "d")
     assert sorted(p.name for p in dest.iterdir()) == [
         "CHRDATD1.SAV", "CHRDATD1.SPC", "SAVGAMD.DAT"]
-    assert (dest / "CHRDATD1.SPC").read_bytes() == b"CHRDATA1.SPC"
+    assert (dest / "CHRDATD1.SPC").read_bytes() == b"chrdata1.spc"
     assert took["from_slot"] == "A" and took["as_slot"] == "D"
 
 
