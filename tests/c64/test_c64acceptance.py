@@ -415,6 +415,108 @@ def test_curse_attack_records_the_named_fighters_row_transition(monkeypatch):
     assert captures == ["attack-before-PHILIPPE", "attack-after-PHILIPPE"]
 
 
+@pytest.mark.parametrize("before,after,saved,expected", [
+    ([], [], [], 1),
+    (["INVISIBILITY"], ["INVISIBILITY"], [], 1),
+    (["INVISIBILITY"], [], [[62, 25, 0, 0, 5]], 1),
+    (["INVISIBILITY"], [], [], 0),
+])
+def test_curse_attack_needs_both_status_lists_and_the_engine_save(
+        tmp_path, monkeypatch, before, after, saved, expected):
+    import contextlib
+    from types import SimpleNamespace
+
+    from tools.curse_of_the_azure_bonds import curserun
+
+    source = _fixture_disk(tmp_path)
+    slot = _Slot(tmp_path)
+    monkeypatch.setattr(A.SC, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [],
+                                                    "magic_items": []})
+    monkeypatch.setattr(curserun, "stage", lambda *a, **k: "first")
+
+    class Session:
+        save_disk = "disk"
+
+        def __init__(self, *a, **k):
+            pass
+
+        def watching_dialogs(self):
+            return contextlib.nullcontext()
+
+        def terminate(self):
+            pass
+
+    monkeypatch.setattr(curserun, "CurseSession", Session)
+
+    class Run:
+        attack_evidence = {"actor": "PHILIPPE", "index": 0, "owner": 0,
+                           "chosen": A.S.ATTACK, "before": [62, 25, 0, 0, 5],
+                           "after": None}
+
+        def __init__(self, *a, **k):
+            self.lists = iter((before, after))
+
+        def load(self):
+            return {}
+
+        def camp_list(self, who):
+            return {"lists": {who: next(self.lists)}}
+
+        def fight(self, *a):
+            return {"named_attack": self.attack_evidence}
+
+        def save(self, staged):
+            return {"effects": saved, "kept": "saved.D64"}
+
+        def reading(self):
+            return {"effects": []}
+
+        def capture(self, tag):
+            pass
+
+    monkeypatch.setattr(A, "CurseRun", Run)
+    args = SimpleNamespace(title="curse", max_seconds=120, stage_row=[],
+                           stage_trait=[], stage_item=[], stage_only=False,
+                           checkpoint=[], pool=None, issue="671", run="fake",
+                           disks="unused", attack_by="PHILIPPE", walk="I",
+                           walk_steps=60)
+    out = tmp_path / "evidence"
+    rc = A.run(args, A.parse_steps(["load", "camp-list PHILIPPE", "fight 600",
+                                    "camp-list PHILIPPE", "save"]), out, source)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == expected and summary["completed"] is (expected == 0)
+    assert ("lost" in summary) is (expected == 1)
+
+
+def test_curse_unreadable_brawl_acknowledgement_is_answered_once():
+    class Session:
+        def __init__(self):
+            self.keys = []
+            self.looks = 0
+
+        def in_combat(self):
+            return bool(self.keys)
+
+        def screen(self):
+            self.looks += 1
+            return None
+
+        def press_kernal(self, code):
+            self.keys.append(code)
+
+        def settle(self, seconds):
+            pass
+
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess = Session()
+    run.capture = lambda tag: None
+    assert run.await_combat() is True
+    assert run.sess.keys == [0x0D]
+    assert run.sess.looks == 1
+
+
 def _pool_run(tmp_path, sess):
     log = A.Log(tmp_path)
     return A.PoolRun(sess, log, tmp_path, POOL_OF_RADIANCE, {}), log

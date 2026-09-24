@@ -834,6 +834,25 @@ class CurseRun(PoolRun):
             self.log.emit("named-attack", **self.attack_evidence)
         return chosen
 
+    def await_combat(self) -> bool:
+        """Answer one unreadable brawl acknowledgement while combat loads."""
+        answered_blank = False
+        for _ in range(30):
+            if self.sess.in_combat():
+                return True
+            screen = self.sess.screen()
+            if screen is None:
+                if not answered_blank:
+                    self.capture("brawl-unreadable")
+                    self.sess.press_kernal(0x0D)
+                    answered_blank = True
+            else:
+                answered_blank = False
+                if self.sess.combat_state(screen).kind == S.BAR_PRESS:
+                    self.sess.press_kernal(0x0D)
+            self.sess.settle(4)
+        return self.sess.in_combat()
+
     def fight(self, arg: str, walk: str, steps: int) -> dict:
         from tools.c64 import laterbattle
         from tools.curse_of_the_azure_bonds import cursethac0
@@ -858,15 +877,7 @@ class CurseRun(PoolRun):
         if not self.sess.in_combat() and not self.sess.press_bar(
                 laterbattle.PUNCH, timeout=20):
             raise self.fail("fight", "PUNCH BARKEEP was not selectable")
-        for _ in range(30):
-            if self.sess.in_combat():
-                break
-            screen = self.sess.screen()
-            state = self.sess.combat_state(screen)
-            if state.kind == S.BAR_PRESS:
-                self.sess.press_kernal(0x0D)
-            self.sess.settle(4)
-        if not self.sess.in_combat():
+        if not self.await_combat():
             raise self.fail("fight", "Curse never entered combat mode")
         self.capture("fight-start")
         result = self.sess.fight(budget=float(arg or 120), tactic=self._named_melee)
@@ -889,6 +900,46 @@ def git_state() -> dict:
 
 def default_out(issue: str, run: str, sha: str) -> pathlib.Path:
     return scratch.cache_dir("acceptance", issue, f"{sha[:10]}-{run}")
+
+
+def validate_curse_attack(results: list[dict], attack: dict | None,
+                          who: str) -> None:
+    """Require the screen and engine save to corroborate the named blow."""
+    if attack is None:
+        raise StepFailed(f"{who} never made a confirmed melee attack")
+    if attack["before"] is None:
+        raise StepFailed(f"id 25 was already absent before {who} attacked")
+    if attack["after"] is not None:
+        raise StepFailed(f"id 25 remained after {who} attacked")
+
+    fights = [i for i, result in enumerate(results) if result["verb"] == "fight"]
+    if len(fights) != 1:
+        raise StepFailed("the named attack needs one recorded fight")
+    fight_at = fights[0]
+
+    def status(result: dict) -> list[str] | None:
+        if result["verb"] != "camp-list":
+            return None
+        return next((spells for name, spells in result["lists"].items()
+                     if name.upper() == who.upper()), None)
+
+    before = [status(r) for r in results[:fight_at]]
+    after = [status(r) for r in results[fight_at + 1:]]
+    before = [spells for spells in before if spells is not None]
+    after = [spells for spells in after if spells is not None]
+    if not before or "INVISIBILITY" not in before[-1]:
+        raise StepFailed(f"the camp list did not show {who} under INVISIBILITY before the fight")
+    if not after:
+        raise StepFailed(f"no camp list for {who} was recorded after the fight")
+    if "INVISIBILITY" in after[0]:
+        raise StepFailed(f"the camp list still showed {who} under INVISIBILITY after the fight")
+
+    saved = [r for r in results[fight_at + 1:] if r["verb"] == "save"]
+    if not saved:
+        raise StepFailed("no engine-written save was recorded after the fight")
+    owner = attack["owner"]
+    if any(row[1] == 25 and row[2] == owner for row in saved[-1]["effects"]):
+        raise StepFailed(f"the engine-written save still held {who}'s id-25 row")
 
 
 def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
@@ -984,12 +1035,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         if args.title == "curse" and getattr(args, "attack_by", ""):
             attack = pool.attack_evidence
             summary["named_attack"] = attack
-            if attack is None:
-                raise StepFailed(f"{args.attack_by} never made a confirmed melee attack")
-            if attack["before"] is None:
-                raise StepFailed(f"id 25 was already absent before {args.attack_by} attacked")
-            if attack["after"] is not None:
-                raise StepFailed(f"id 25 remained after {args.attack_by} attacked")
+            validate_curse_attack(summary["results"], attack, args.attack_by)
         summary["completed"] = True
     except StepFailed as e:
         summary["lost"] = str(e)
