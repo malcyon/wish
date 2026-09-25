@@ -228,7 +228,6 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
     sg1 = SaveGame1(bytes(payload1), game) if payload1 else None
     disk = dos_codec.save_disk(bytes(payload0), bytes(payload1), game)
-    log_left_behind(report)
     return Conversion(disk, game, sg0, sg1, report,
                       pathlib.Path(folder), slot)
 
@@ -253,14 +252,6 @@ def pane_text(report: dos_codec.Report) -> str:
     halves = [list(getattr(report, "messages", ())),
               list(getattr(report, "losses", ()))]
     return "\n\n".join("\n".join(half) for half in halves if half)
-
-
-def log_left_behind(report: dos_codec.Report) -> None:
-    """Every `report.left_behind` line, to the debug log and nowhere a player
-    reads; they are the player's own choice and never a loss."""
-    left = list(report.left_behind)
-    if left:
-        _log.info("Left behind by the player's choice: %s", "; ".join(left))
 
 
 def log_unshown_losses(report: dos_codec.Report) -> None:

@@ -1177,8 +1177,8 @@ class SavePlan:
     #: not asked a second time for a name already chosen.
     names: "dict[str, str]" = dataclasses.field(default_factory=dict)
     #: The pack positions the player chose to leave behind, keyed by member
-    #: index -- empty when nothing was chosen. A re-preparation passes it
-    #: back so the player is not asked twice.
+    #: index -- empty when nothing was chosen. The caller supplies it; the
+    #: writer reports each item left as a line of `Report.left_behind`.
     leave: "dict[int, frozenset[int]]" = dataclasses.field(default_factory=dict)
 
     def invalidate(self) -> None:

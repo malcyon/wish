@@ -49,7 +49,7 @@ def test_a_pack_that_needs_17_slots_converts_once_the_player_chooses(
                        match=NO_LEAVE_MESSAGE):
         dosimport.rehearse(folder, "A", _files())
 
-    with caplog.at_level(logging.INFO, logger=dosimport._log.name):
+    with caplog.at_level(logging.INFO):
         conversion = dosimport.rehearse(folder, "A", _files(),
                                         leave={0: {3}})
     report = conversion.report
@@ -57,8 +57,11 @@ def test_a_pack_that_needs_17_slots_converts_once_the_player_chooses(
     assert "left behind" in report.left_behind[0]
     for line in (*report.losses, *report.dropped):
         assert "inventory" not in line.lower(), line
-    assert any("Left behind by the player's choice" in r.getMessage()
-               for r in caplog.records)
+    # The writer logs each left item; a second logger repeating them would
+    # print every line twice.
+    logged = [r.getMessage() for r in caplog.records
+              if any(line in r.getMessage() for line in report.left_behind)]
+    assert len(logged) == len(report.left_behind) == 1, logged
 
 
 def test_saveplan_rehearse_hands_the_choice_to_the_direction(monkeypatch):

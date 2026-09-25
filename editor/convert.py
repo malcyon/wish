@@ -717,7 +717,6 @@ class AmigaToC64(DosToC64):
             save0, save1, report = dos_codec.new_save_from_neutral(
                 state, characters, party_icons, options.icon, options.animate,
                 game=self.destination_game, leave=leave)
-        dosimport.log_left_behind(report)
         image = dos_codec.save_disk(bytes(save0), bytes(save1),
                               self.destination_game)
         name = self._name.format(slot=slot)
