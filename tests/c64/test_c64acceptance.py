@@ -1145,3 +1145,323 @@ def test_a_failing_claim_closes_the_log(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="no slot"):
         _drive(tmp_path, monkeypatch, ["load"], claim=boom)
     assert closed
+
+
+# --- the camp cures (Curse: CURE BLINDNESS and the paladin's CURE) ---------------
+
+@pytest.mark.parametrize("step", [
+    "cast SHARA CURE BLINDNESS>PHILIPPE",       # no colon
+    "cast SHARA:CURE BLINDNESS PHILIPPE",       # no arrow
+    "cast SHARA:FIREBALL>PHILIPPE",             # not a camp cure
+    "cast SHARA:CURE BLINDNESS>",               # nobody
+    "cure MARK",                                # nobody
+    "cure >LEDERA",                             # no paladin
+])
+def test_cast_and_cure_steps_parse_and_bad_ones_are_refused(step):
+    with pytest.raises(ValueError):
+        A.parse_steps(["load", step])
+
+
+def test_cast_and_cure_steps_keep_their_names_and_the_pool_refuses_them(tmp_path):
+    steps = A.parse_steps(["load", "camp-list PHILIPPE,LEDERA",
+                           "cast SHARA:cure blindness>PHILIPPE", "cure MARK>LEDERA"])
+    assert A.parse_cast(steps[2].arg) == ("SHARA", "CURE BLINDNESS", "PHILIPPE")
+    assert A.parse_cure(steps[3].arg) == ("MARK", "LEDERA")
+    with pytest.raises(SystemExit) as info:
+        A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                "--stage-only", "--steps", "load", "cure MARK>LEDERA",
+                "--out", str(tmp_path / "out")])
+    assert info.value.code == 2
+
+
+def test_camp_list_reads_each_named_member(tmp_path):
+    whom = _whom_screen(("PHILIPPE", "LEDERA"))
+    screens = {
+        "world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
+        "magic": _window({}, MAGIC), "whom": whom,
+        "on-p": whom, "on-l": whom, "on-x": whom,
+        "p": _window({1: "PHILIPPE IS AFFECTED BY:", 3: "BLIND"}, A.CONTINUE),
+        "l": _window({1: "LEDERA IS AFFECTED BY:", 3: "DISEASE"}, A.CONTINUE),
+    }
+    moves = {
+        ("world", ("bar", "ENCAMP")): "camp", ("camp", ("bar", "MAGIC")): "magic",
+        ("magic", ("bar", "DISPLAY")): "whom",
+        ("whom", ("party", 0)): "on-p", ("on-p", ("key", "Return")): "p",
+        ("p", ("key", 0x0D)): "whom",
+        ("whom", ("party", 1)): "on-l", ("on-l", ("key", "Return")): "l",
+        ("l", ("key", 0x0D)): "whom",
+        ("whom", ("party", 3)): "on-x", ("on-x", ("key", "Return")): "magic",
+        ("magic", ("bar", "EXIT")): "camp", ("camp", ("bar", "EXIT")): "world",
+    }
+    sess = FakeSession(screens, moves, "world")
+    run, log = _pool_run(tmp_path, sess)
+    got = run.camp_list("PHILIPPE,LEDERA")
+    log.close()
+    assert got["lists"] == {"PHILIPPE": ["BLIND"], "LEDERA": ["DISEASE"]}
+    assert sess.state == "world"
+
+
+CAST_LIST = "CAST MEMORIZE SCRIBE NEXT PREV EXIT"
+CAST_SCREENS = {
+    "camp": _window({}, CAMP), "magic": _window({}, MAGIC),
+    "list": _window({3: "CURE BLINDNESS"}, CAST_LIST),
+    "picking": _window({1: "PICK A SPELL", 3: "CURE BLINDNESS"}, CAST_LIST),
+    "whom": [*_whom_screen(("PHILIPPE", "SHARA", "LEDERA"))[:24],
+             "CAST SPELL ON WHOM?".ljust(40)],
+    "on": _whom_screen(("PHILIPPE",)),
+    "msg": _window({2: "PHILIPPE CAN SEE AGAIN"}, A.CONTINUE),
+    "unknown": _window({}, "SOMETHING ELSE"),
+}
+
+
+def _cast_moves(pick):
+    """The moves up to the pick key, then whatever `pick` says the keys do."""
+    return {
+        ("camp", ("party", 1)): "camp", ("camp", ("bar", "MAGIC")): "magic",
+        ("magic", ("bar", "CAST")): "list", ("list", ("bar", "CAST")): "picking",
+        ("whom", ("party", 0)): "on", ("on", ("key", "Return")): "msg",
+        ("msg", ("key", 0x0D)): "magic", **pick,
+    }
+
+
+def _curse_run(tmp_path, sess, rows=(), joy=False):
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess = sess
+    run.out = tmp_path
+    run.log = A.Log(tmp_path)
+    run.shots = 0
+    run.names = ["PHILIPPE", "SHARA", "LEDERA", "TRAVIS", "MARK", "MATHEW"]
+    run.joy = joy
+    run.pick_wait = run.bar_wait = run.whom_wait = 0.3
+    run.panel_index = lambda who: {"SHARA": 1, "MARK": 4}[who]
+    readings = iter(rows)
+    run.reading = lambda: {"effects": [r.copy() for r in next(readings)]}
+    return run
+
+
+class _CurseFake(FakeSession):
+    def press_bar(self, label, row=24, timeout=0):
+        return self._go(("bar", label))
+
+
+def _cast(tmp_path, pick, joy=False, rows=None):
+    blind, disease = [62, 33, 0, 0, 5], [61, 34, 2, 0, 0x85]
+    rows = rows or [[blind, disease], [disease]]
+    sess = _CurseFake(CAST_SCREENS, _cast_moves(pick), "camp")
+    run = _curse_run(tmp_path, sess, rows, joy)
+    return run, sess
+
+
+def test_curse_cast_records_the_targets_row_transition(tmp_path):
+    run, sess = _cast(tmp_path, {("picking", ("key", "Return")): "whom"})
+    try:
+        got = run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    finally:
+        run.log.close()
+    assert got["row_before"] == [62, 33, 0, 0, 5] and got["row_after"] is None
+    assert got["effects_after"] == [[61, 34, 2, 0, 0x85]]
+    assert (got["id"], got["owner"], got["key"]) == (33, 0, "xtest-return")
+    assert got["messages"] == [["PHILIPPE CAN SEE AGAIN"]]
+    assert sess.sent == [("party", 1), ("bar", "MAGIC"), ("bar", "CAST"),
+                         ("bar", "CAST"), ("key", "Return"), ("party", 0),
+                         ("key", "Return"), ("key", 0x0D)]
+
+
+def test_curse_cast_tries_the_kernal_key_when_the_first_did_nothing(tmp_path):
+    run, sess = _cast(tmp_path, {("picking", ("key", "Return")): "picking",
+                                 ("picking", ("key", 0x0D)): "whom"})
+    try:
+        got = run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    finally:
+        run.log.close()
+    assert got["key"] == "kernal-return"
+    assert sess.sent[4:6] == [("key", "Return"), ("key", 0x0D)]
+
+
+def test_curse_cast_sends_fire_only_with_the_joystick(tmp_path):
+    both_dead = {("picking", ("key", "Return")): "picking",
+                 ("picking", ("key", 0x0D)): "picking"}
+    run, sess = _cast(tmp_path, both_dead)
+    with pytest.raises(A.StepFailed, match="none of"):
+        run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    run.log.close()
+    assert sess.sent[4:] == [("key", "Return"), ("key", 0x0D)]
+    assert list(tmp_path.glob("*lost-pick.txt"))
+
+    (tmp_path / "joy").mkdir()
+    run, sess = _cast(tmp_path / "joy",
+                      {**both_dead, ("picking", ("key", "KP_0")): "whom"}, joy=True)
+    try:
+        got = run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    finally:
+        run.log.close()
+    assert got["key"] == "joystick-fire"
+    assert sess.sent[4:7] == [("key", "Return"), ("key", 0x0D), ("key", "KP_0")]
+
+
+def test_curse_cast_stops_at_once_when_a_key_changes_the_screen_to_something_else(
+        tmp_path):
+    run, sess = _cast(tmp_path, {("picking", ("key", "Return")): "unknown"}, joy=True)
+    with pytest.raises(A.StepFailed, match="not the target question"):
+        run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    run.log.close()
+    assert sess.sent[-1] == ("key", "Return") and sess.state == "unknown"
+    assert list(tmp_path.glob("*lost-pick-changed.txt"))
+
+
+def test_curse_cure_names_its_target_and_leaves_the_sheet(tmp_path):
+    dis, timer = [61, 34, 2, 0, 0x85], [59, 141, 4, 199, 199]
+    screens = {
+        "camp": _window({}, CAMP),
+        "sheet": _window({1: "MARK"}, "VIEW:ITEMS SPELLS TRADE DROP CURE EXIT"),
+        "whom": CAST_SCREENS["whom"], "on": CAST_SCREENS["on"],
+        "sheet2": _window({1: "MARK"}, "VIEW:ITEMS SPELLS TRADE DROP EXIT"),
+    }
+    moves = {
+        ("camp", ("party", 4)): "camp", ("camp", ("bar", "VIEW")): "sheet",
+        ("sheet", ("bar", "CURE")): "whom", ("whom", ("party", 2)): "on",
+        ("on", ("key", "Return")): "sheet2", ("sheet2", ("bar", "EXIT")): "camp",
+    }
+    sess = _CurseFake(screens, moves, "camp")
+    run = _curse_run(tmp_path, sess, [[dis], [timer]])
+    try:
+        got = run.cure("MARK>LEDERA")
+    finally:
+        run.log.close()
+    assert got["row_before"] == dis and got["row_after"] is None
+    assert got["effects_after"] == [timer] and (got["id"], got["owner"]) == (34, 2)
+    assert sess.state == "camp"
+
+
+def test_curse_cure_fails_with_a_capture_when_the_sheet_offers_no_cure(tmp_path):
+    screens = {"camp": _window({}, CAMP),
+               "sheet": _window({}, "VIEW:ITEMS SPELLS TRADE DROP EXIT")}
+    sess = _CurseFake(screens, {("camp", ("party", 4)): "camp",
+                                ("camp", ("bar", "VIEW")): "sheet"}, "camp")
+    run = _curse_run(tmp_path, sess, [])
+    with pytest.raises(A.StepFailed, match="offers no CURE"):
+        run.cure("MARK>LEDERA")
+    run.log.close()
+    assert list(tmp_path.glob("*lost-cure-not-offered.txt"))
+
+
+def _evidence():
+    base = [[60, 45, 4, 0, 255], [63, 141, 5, 199, 199]]
+    blind, dis, timer = [62, 33, 0, 0, 5], [61, 34, 2, 0, 0x85], [59, 141, 4, 199, 199]
+    return [
+        {"verb": "camp-list", "lists": {"PHILIPPE": ["BLIND"], "LEDERA": ["DISEASE"]}},
+        {"verb": "cast", "caster": "SHARA", "caster_owner": 1, "spell": "CURE BLINDNESS",
+         "target": "PHILIPPE", "owner": 0, "id": 33, "word": "BLIND",
+         "row_before": blind, "row_after": None,
+         "effects_before": [*base, blind, dis], "effects_after": [*base, dis]},
+        {"verb": "cure", "paladin": "MARK", "caster_owner": 4, "target": "LEDERA",
+         "owner": 2, "id": 34, "word": "DISEASE",
+         "row_before": dis, "row_after": None,
+         "effects_before": [*base, dis], "effects_after": [*base, timer]},
+        {"verb": "camp-list", "lists": {"PHILIPPE": [], "LEDERA": []}},
+        {"verb": "save", "kept": "saved.D64", "effects": [*base, timer]},
+    ]
+
+
+def _party(memorised=(0,)):
+    return lambda path: {"SHARA": {"owner": 1, "memorised": list(memorised)}}
+
+
+def test_curse_cures_pass_on_the_complete_evidence():
+    A.validate_curse_cures(_evidence(), "saved.D64", _party())
+
+
+def _mutate(fn):
+    def change(results):
+        fn(results)
+        return results
+    return change
+
+
+@pytest.mark.parametrize("mutation,match", [
+    (lambda r: r[1].update(row_before=None), "already absent"),
+    (lambda r: r[1].update(row_after=[62, 33, 0, 0, 5]), "refuted"),
+    (lambda r: r[2].update(row_after=[61, 34, 2, 0, 0x85]), "refuted"),
+    (lambda r: r[0]["lists"].update(PHILIPPE=[]), "did not show PHILIPPE"),
+    (lambda r: r[3]["lists"].update(LEDERA=["DISEASE"]), "still showed LEDERA"),
+    (lambda r: r[4]["effects"].append([62, 33, 0, 0, 5]), "still held PHILIPPE"),
+    (lambda r: r[1]["effects_after"].pop(0), "also took away"),
+    (lambda r: r[2]["effects_after"].pop(), "add one id-141"),
+    (lambda r: r[4]["effects"].pop(), "lost MARK's id-141"),
+    (lambda r: r[1]["effects_after"].append([58, 141, 1, 9, 9]), "added"),
+])
+def test_curse_cures_need_every_piece_of_evidence(mutation, match):
+    results = _evidence()
+    mutation(results)
+    with pytest.raises(A.StepFailed, match=match):
+        A.validate_curse_cures(results, "saved.D64", _party())
+
+
+def test_curse_cures_need_the_spell_gone_from_the_saved_memorised_list():
+    with pytest.raises(A.StepFailed, match="memorised"):
+        A.validate_curse_cures(_evidence(), "saved.D64", _party((37, 0)))
+
+
+def test_saved_characters_reads_each_name_slot_and_memorised_list(tmp_path):
+    from goldbox.savegame import load_save
+    disk = _fixture_disk(tmp_path)
+    got = A.saved_characters(disk)
+    _, sg0, _ = load_save(D64.open(str(disk)))
+    assert set(got) == {s.record.name.upper() for s in sg0.characters}
+    assert all(set(v) == {"owner", "memorised"} for v in got.values())
+
+
+def test_a_curse_run_with_cures_gives_the_slot_a_joystick_and_validates_them(
+        tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from tools.curse_of_the_azure_bonds import curserun
+
+    slot = _Slot(tmp_path)
+    slot.vicerc = tmp_path / "vicerc"
+    slot.vicerc.write_text("Sound=0\n", encoding="utf-8")
+    monkeypatch.setattr(A.SC, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [], "magic_items": []})
+    monkeypatch.setattr(curserun, "stage", lambda *a, **k: "first")
+    monkeypatch.setattr(curserun, "CurseSession", _Sess)
+    evidence = _evidence()
+    seen = []
+    monkeypatch.setattr(A, "validate_curse_cures",
+                        lambda results, path: seen.append((results[-1]["verb"], path)))
+
+    class Run:
+        joy = False
+
+        def __init__(self, *a, **k):
+            seen.append("built after the vicerc: " + slot.vicerc.read_text(
+                encoding="utf-8").replace("\n", "|"))
+
+        def load(self):
+            return {}
+
+        def cast(self, arg):
+            return {k: v for k, v in evidence[1].items() if k != "verb"}
+
+        def cure(self, arg):
+            return {k: v for k, v in evidence[2].items() if k != "verb"}
+
+        def save(self, staged):
+            return {"kept": "saved.D64", "effects": []}
+
+        def reading(self):
+            return {"effects": []}
+
+        def capture(self, tag):
+            pass
+
+    monkeypatch.setattr(A, "CurseRun", Run)
+    args = SimpleNamespace(title="curse", max_seconds=120, stage_row=[],
+                           stage_trait=[], stage_item=[], stage_only=False,
+                           checkpoint=[], pool=None, issue="671", run="joy",
+                           disks="unused", joy=True)
+    steps = ["load", "cast SHARA:CURE BLINDNESS>PHILIPPE", "cure MARK>LEDERA", "save"]
+    assert A.run(args, A.parse_steps(steps), tmp_path / "evidence",
+                 _fixture_disk(tmp_path)) == 0
+    assert seen == ["built after the vicerc: Sound=0|JoyDevice2=1|",
+                    ("save", "saved.D64")]

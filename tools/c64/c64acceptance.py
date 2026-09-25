@@ -32,6 +32,8 @@ bytes with what it replaced.
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/effectdrive.py`'s rest) |
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
+| `cast CASTER:SPELL>TARGET` | Curse only: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
+| `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded |
 
@@ -112,9 +114,21 @@ MAGIC_BAR = "SCRIBE"
 #: The camp list's strings, `CAMP $2699` onward in Pool of Radiance and the
 #: same text in the later titles.
 WHOM = "DISPLAY SPELLS ON WHOM"
+CAST_WHOM = "CAST SPELL ON WHOM"
+PICK_SPELL = "PICK A SPELL"
 AFFECTED = "IS AFFECTED BY:"
 WHOLE_PARTY = "THE WHOLE PARTY"
 CONTINUE = "PRESS ANY KEY TO CONTINUE"
+
+#: The camp spells `cast` can use: the effect id each removes and the word the
+#: camp list shows the character under, and the spell's own id in the
+#: memorised list.  The paladin's `cure` removes disease, id 34.
+CAMP_CURES = {"CURE BLINDNESS": (33, "BLIND")}
+CAMP_SPELL_IDS = {"CURE BLINDNESS": 37}
+DISEASE_CURE = (34, "DISEASE")
+
+#: The paladin's cure timer that a `cure` starts, as the effect id of its row.
+CURE_TIMER_ID = 141
 
 #: What Detect Magic prints before a magic item's name, `LIBRARY $39C1`.
 DETECT_MARK = "*"
@@ -202,7 +216,8 @@ class Step:
 
 #: Each step and whether it takes an argument: never, optionally, always.
 VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
-         "rest": "must", "fight": "may", "peek": "must", "save": "never"}
+         "rest": "must", "fight": "may", "peek": "must", "save": "never",
+         "cast": "must", "cure": "must"}
 
 
 def parse_rest(arg: str) -> tuple[int, int]:
@@ -228,6 +243,25 @@ def parse_peek(arg: str) -> tuple[int, int]:
     return addr, n
 
 
+def parse_cast(arg: str) -> tuple[str, str, str]:
+    """`CASTER:SPELL>TARGET` as its three names, the spell one `CAMP_CURES` knows."""
+    m = re.fullmatch(r"([^:>]+):([^:>]+)>([^:>]+)", arg.strip())
+    if m is None:
+        raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL>TARGET")
+    caster, spell, target = (g.strip() for g in m.groups())
+    if spell.upper() not in CAMP_CURES:
+        raise ValueError(f"cast {arg!r}: the spells are " + ", ".join(CAMP_CURES))
+    return caster, spell.upper(), target
+
+
+def parse_cure(arg: str) -> tuple[str, str]:
+    """`PALADIN>TARGET` as its two names."""
+    m = re.fullmatch(r"([^:>]+)>([^:>]+)", arg.strip())
+    if m is None:
+        raise ValueError(f"cure {arg!r}: say cure PALADIN>TARGET")
+    return m.group(1).strip(), m.group(2).strip()
+
+
 def parse_steps(texts) -> list[Step]:
     """The step list, checked whole before anything is staged or booted."""
     steps = []
@@ -246,6 +280,10 @@ def parse_steps(texts) -> list[Step]:
             parse_rest(arg)
         elif verb == "peek":
             parse_peek(arg)
+        elif verb == "cast":
+            parse_cast(arg)
+        elif verb == "cure":
+            parse_cure(arg)
         elif verb == "fight" and arg and not (arg.isdigit() and int(arg) > 0):
             raise ValueError(f"fight {arg!r}: seconds, more than zero")
         steps.append(Step(verb, arg))
@@ -397,14 +435,14 @@ def camp_list_page(rows: list[str]) -> CampPage | None:
     return CampPage(who, spells, CONTINUE in rows[24])
 
 
-def whom_entries(rows: list[str]) -> list[str]:
+def whom_entries(rows: list[str], question: str = WHOM) -> list[str]:
     """The names the whom menu offers, `THE WHOLE PARTY` last, `EXIT` left off.
 
     The menu is the party panel itself: the question goes on row 24 and
     `THE WHOLE PARTY` and `EXIT` are drawn under the names, in the panel's
     name field (captured on PORSAVE13).
     """
-    if len(rows) < 25 or WHOM not in rows[24]:
+    if len(rows) < 25 or question not in rows[24]:
         return []
     head = next((i for i, r in enumerate(rows[:24])
                  if S.PARTY_HEADER in r[S.PARTY_COLUMN:]), None)
@@ -618,7 +656,8 @@ class PoolRun:
             raise self.fail("display", "DISPLAY never asked on whom")
         self.sess.settle(1)
         offered = whom_entries(self.capture("camp-whom"))
-        targets = [who] if who else offered or [WHOLE_PARTY]
+        named = [n.strip() for n in who.split(",") if n.strip()]
+        targets = named or offered or [WHOLE_PARTY]
         lists: dict[str, list[str]] = {}
         for target in targets:
             if not self.pick(target):
@@ -628,14 +667,15 @@ class PoolRun:
             raise self.fail("world", "the world bar never came back after the camp list")
         return {"offered": offered, "lists": lists}
 
-    def pick(self, target: str) -> bool:
+    def pick(self, target: str, question: str = WHOM) -> bool:
         """Choose TARGET on the whom menu, which is the party panel: the
         highlight is walked there by `Session.select_party`, since the panel's
-        heading is drawn in the highlight colour too, and Return chooses."""
-        rows = self.wait_rows(lambda r: WHOM in r[24], 30)
+        heading is drawn in the highlight colour too, and Return chooses.
+        QUESTION is the one on row 24: the camp list's or `CAST_WHOM`."""
+        rows = self.wait_rows(lambda r: question in r[24], 30)
         if rows is None:
             return False
-        entries = whom_entries(rows) + ["EXIT"]
+        entries = whom_entries(rows, question) + ["EXIT"]
         if target.isdigit():
             at = int(target) - 1
         else:
@@ -773,6 +813,7 @@ class CurseRun(PoolRun):
 
         _, payload = _payload(D64.open(str(staged_disk)), game)
         names = cursethac0.slot_names(payload)
+        self.names = [n.upper() for n in names]
         self.attack_by = attack_by.upper()
         self.attack_owner = next((i for i, name in enumerate(names)
                                   if name.upper() == self.attack_by), None)
@@ -848,6 +889,161 @@ class CurseRun(PoolRun):
 
     def choose_bar(self, word: str, timeout: float) -> bool:
         return self.sess.press_bar(word, timeout=timeout)
+
+    # -- the camp cures ------------------------------------------------------------
+    #: Whether the run gave VICE a numpad joystick, so that KP_0 is fire.
+    joy = False
+    names: list[str] = []
+    #: Seconds each wait may take: a pick key's effect, the bar a cure is
+    #: offered on, and the target question after CURE.
+    pick_wait = 15
+    bar_wait = 30
+    whom_wait = 120
+
+    def owner_of(self, name: str) -> int:
+        """The party slot NAME holds, which is the owner its effect rows carry."""
+        if name.isdigit():
+            return int(name) - 1
+        try:
+            return self.names.index(name.upper())
+        except ValueError:
+            raise self.fail("owner", f"{name} is not in the save's party: "
+                                     f"{self.names}") from None
+
+    @staticmethod
+    def _list_bar(bar: str) -> bool:
+        return "EXIT" in bar and any(w in bar for w in ("SPELL", "NEXT", "PREV"))
+
+    def _send_pick(self, key: str) -> None:
+        if key == "xtest-return":
+            self.sess.kbd.key("Return")
+        elif key == "kernal-return":
+            self.sess.press_kernal(0x0D)
+        else:
+            self.sess.kbd.key("KP_0", 0.2, 0.30)
+
+    def _pick_spell(self, listed: list[str]) -> str:
+        """Pick the spell under the cursor, trying the keys one at a time and
+        sending the next only while the screen is exactly as the list left it.
+
+        Nothing is known of which key `LIBRARY $4A9A` takes off a list with a
+        cursor: Return is what the target menu takes, and fire is what picked
+        a combat spell in Pool.  A screen that changes to anything but the
+        target question ends the step, so no further key is pressed at it.
+        """
+        keys = ["xtest-return", "kernal-return"] + (["joystick-fire"] if self.joy else [])
+        for key in keys:
+            self._send_pick(key)
+            rows = self.wait_rows(
+                lambda r: CAST_WHOM in r[24] or r != listed, self.pick_wait)
+            if rows is None:
+                continue
+            if CAST_WHOM in rows[24]:
+                return key
+            raise self.fail("pick-changed",
+                            f"{key} changed the spell list into something that is "
+                            f"not the target question: {rows[24].strip()!r}")
+        raise self.fail("pick", f"none of {', '.join(keys)} picked the spell")
+
+    def _acknowledge(self, limit: int = 4) -> list[list[str]]:
+        """Leave the question, then answer up to LIMIT `CONTINUE` pages, each
+        kept as the text it showed."""
+        rows = self.wait_rows(lambda r: CAST_WHOM not in r[24], 60)
+        if rows is None:
+            raise self.fail("whom-stuck", "the target question never went away")
+        messages: list[list[str]] = []
+        for n in range(1, limit + 1):
+            if CONTINUE not in rows[24]:
+                return messages
+            self.sess.settle(0.6)
+            shown = self.capture(f"cure-message-{n}")
+            messages.append([t for t in (_inner(r) for r in shown[:24])
+                             if t and not _is_frame(t)])
+            self.sess.press_kernal(0x0D)
+            rows = self.wait_rows(lambda r, was=shown: r != was, 30)
+            if rows is None:
+                raise self.fail("message", "the key at the end of a message did nothing")
+        if CONTINUE in rows[24]:
+            raise self.fail("message", f"more than {limit} pages after the cure")
+        return messages
+
+    def _outcome(self, kind: str, who: str, target: str, cure_id: int, word: str,
+                 first: dict, last: dict, **extra) -> dict:
+        owner = self.owner_of(target)
+
+        def row(reading):
+            return next((r for r in reading["effects"]
+                         if r[1] == cure_id and r[2] == owner), None)
+
+        return {kind: who, "caster_owner": self.owner_of(who), "target": target,
+                "owner": owner, "id": cure_id, "word": word,
+                "row_before": row(first), "row_after": row(last),
+                "effects_before": first["effects"], "effects_after": last["effects"],
+                **extra}
+
+    def cast(self, arg: str) -> dict:
+        caster, spell, target = parse_cast(arg)
+        cure_id, word = CAMP_CURES[spell]
+        self.owner_of(target)
+        if not self.to_camp():
+            raise self.fail("camp", "ENCAMP never put up the camp bar")
+        if not self.sess.select_party(self.panel_index(caster)):
+            raise self.fail("panel", f"the panel highlight would not go onto {caster}")
+        if not self.choose_bar("MAGIC", timeout=20) or self.wait_rows(
+                lambda r: MAGIC_BAR in r[24], 30) is None:
+            raise self.fail("magic", "MAGIC never put up its bar")
+        if not self.choose_bar("CAST", timeout=20):
+            raise self.fail("cast", "CAST could not be chosen")
+        if self.wait_rows(lambda r: self._list_bar(r[24]), 30) is None:
+            raise self.fail("cast-list", "the spell list never came up")
+        self.sess.settle(1)
+        self.capture("cast-list")
+        if not self.choose_bar("CAST", timeout=20):
+            raise self.fail("cast-again", "CAST could not be chosen on the spell list")
+        listed = self.wait_rows(lambda r: _has(r, PICK_SPELL), 10)
+        if listed is None:
+            raise self.fail("pick-prompt", f"{PICK_SPELL} never came up")
+        key = self._pick_spell(listed)
+        first = self.reading()
+        if not self.pick(target, CAST_WHOM):
+            raise self.fail("cast-whom", f"{target} could not be chosen")
+        messages = self._acknowledge()
+        last = self.reading()
+        if self._list_bar(self.bar()):
+            self.choose_bar("EXIT", timeout=15)
+        return self._outcome("caster", caster, target, cure_id, word, first, last,
+                             spell=spell, messages=messages, key=key)
+
+    def cure(self, arg: str) -> dict:
+        paladin, target = parse_cure(arg)
+        cure_id, word = DISEASE_CURE
+        self.owner_of(target)
+        if not self.to_camp():
+            raise self.fail("camp", "ENCAMP never put up the camp bar")
+        if not self.sess.select_party(self.panel_index(paladin)):
+            raise self.fail("panel", f"the panel highlight would not go onto {paladin}")
+        if not self.choose_bar("VIEW", timeout=20):
+            raise self.fail("view", "VIEW could not be chosen")
+        if self.wait_rows(lambda r: re.search(r"\bCURE\b", r[24]) is not None,
+                          self.bar_wait) is None:
+            raise self.fail("cure-not-offered", f"{paladin}'s sheet offers no CURE")
+        if not self.choose_bar("CURE", timeout=20) or self.wait_rows(
+                lambda r: CAST_WHOM in r[24], self.whom_wait) is None:
+            raise self.fail("cure-whom", f"CURE never asked {CAST_WHOM}")
+        first = self.reading()
+        if not self.pick(target, CAST_WHOM):
+            raise self.fail("cure-target", f"{target} could not be chosen")
+        messages = self._acknowledge()
+        last = self.reading()
+        for _ in range(3):
+            if CAMP_BAR in self.bar():
+                break
+            self.choose_bar("EXIT", timeout=15)
+            self.sess.settle(1.5)
+        if CAMP_BAR not in self.bar():
+            raise self.fail("cure-exit", "the camp bar never came back after the cure")
+        return self._outcome("paladin", paladin, target, cure_id, word, first, last,
+                             messages=messages)
 
     def _id25_row(self) -> list[int] | None:
         return next((row for row in self.reading()["effects"]
@@ -1199,6 +1395,103 @@ def validate_curse_quit(control: dict | None, who: str) -> None:
         raise StepFailed(f"id 25 was absent after {who} quit")
 
 
+def saved_characters(path: pathlib.Path) -> dict[str, dict]:
+    """Per character of a game-written save, upper-case name: the party slot
+    and the spells in its memorised list."""
+    from goldbox import c64_codec
+    from goldbox.savegame import load_save
+
+    game, sg0, _ = load_save(D64.open(str(path)))
+    out = {}
+    for slot in sg0.characters:
+        rec = slot.record
+        out[rec.name.upper()] = {
+            "owner": slot.index,
+            "memorised": [b for b in c64_codec.get_memorised(rec, game) if b]}
+    return out
+
+
+def validate_curse_cures(results: list[dict], saved_path,
+                         characters=saved_characters) -> None:
+    """Require each camp cure to have taken its row away, and nothing else,
+    on the screen, in the live rows and in the game-written save.
+
+    A row already absent before its action proves nothing; a row still there
+    after an action that reached the target question refutes the fix.
+    """
+    acts = [(i, r) for i, r in enumerate(results) if r["verb"] in ("cast", "cure")]
+    if not acts:
+        raise StepFailed("no cast or cure step was recorded")
+
+    def status(result: dict, who: str) -> list[str] | None:
+        return next((spells for name, spells in result.get("lists", {}).items()
+                     if name.upper() == who.upper()), None)
+
+    def lists(part, who):
+        return [s for s in (status(r, who) for r in part
+                            if r["verb"] == "camp-list") if s is not None]
+
+    first, last = acts[0][0], acts[-1][0]
+    for _, act in acts:
+        who, word, target = act.get("caster") or act["paladin"], act["word"], act["target"]
+        label = f"{who}'s {act['verb']} on {target}"
+        before = lists(results[:first], target)
+        if not before or not any(word in s for s in before[-1]):
+            raise StepFailed(f"the camp list did not show {target} under {word} "
+                             f"before the first cure")
+        if act["row_before"] is None:
+            raise StepFailed(f"inconclusive: id {act['id']} was already absent "
+                             f"before {label}")
+        if act["row_before"][3] != 0:
+            raise StepFailed(f"id {act['id']} on {target} had duration "
+                             f"{act['row_before'][3]} before {label}")
+        if act["row_after"] is not None:
+            raise StepFailed(f"refuted: id {act['id']} was still on {target} "
+                             f"after {label}")
+        was, now = act["effects_before"], act["effects_after"]
+        lost = [r for r in was if r not in now and r != act["row_before"]]
+        if lost:
+            raise StepFailed(f"{label} also took away {lost}")
+        new = [r for r in now if r not in was]
+        if act["verb"] == "cast" and new:
+            raise StepFailed(f"{label} added {new}")
+        if act["verb"] == "cure" and not (
+                len(new) == 1 and new[0][1] == CURE_TIMER_ID
+                and new[0][2] == act["caster_owner"]):
+            raise StepFailed(f"{label} should add one id-{CURE_TIMER_ID} row owned "
+                             f"by {who}, added {new}")
+    for _, act in acts:
+        target = act["target"]
+        after = lists(results[last + 1:], target)
+        if not after:
+            raise StepFailed(f"no camp list for {target} was recorded after the cures")
+        if any(act["word"] in s for s in after[0]):
+            raise StepFailed(f"the camp list still showed {target} under {act['word']}")
+
+    saved = [r for r in results[last + 1:] if r["verb"] == "save"]
+    if not saved:
+        raise StepFailed("no engine-written save was recorded after the cures")
+    held = saved[-1]["effects"]
+    for _, act in acts:
+        if any(r[1] == act["id"] and r[2] == act["owner"] for r in held):
+            raise StepFailed(f"the engine-written save still held {act['target']}'s "
+                             f"id-{act['id']} row")
+        if act["verb"] == "cure" and not any(
+                r[1] == CURE_TIMER_ID and r[2] == act["caster_owner"] for r in held):
+            raise StepFailed(f"the engine-written save lost {act['paladin']}'s "
+                             f"id-{CURE_TIMER_ID} row")
+    party = characters(saved_path)
+    for _, act in acts:
+        if act["verb"] != "cast":
+            continue
+        who = party.get(act["caster"].upper())
+        if who is None:
+            raise StepFailed(f"the engine-written save has no {act['caster']}")
+        if CAMP_SPELL_IDS[act["spell"]] in who["memorised"]:
+            raise StepFailed(f"{act['caster']} still had spell "
+                             f"{CAMP_SPELL_IDS[act['spell']]} memorised in the saved game")
+
+
 def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         clock=time.monotonic) -> int:
     deadline = clock() + args.max_seconds
@@ -1251,6 +1544,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         if args.title == "curse":
             from tools.curse_of_the_azure_bonds import curserun
 
+            if getattr(args, "joy", False):
+                # The slot's own vicerc, seeded from Donald's and never his:
+                # a numpad joystick in port 2, where KP_0 is fire.
+                with open(slot.vicerc, "a") as f:
+                    f.write("JoyDevice2=1\n")
             first = curserun.stage(slot, args.disks, str(staged_disk))
             sess = curserun.CurseSession(first, slot=slot)
             sess.save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
@@ -1265,6 +1563,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 else PoolRun(sess, log, out, game, points))
         if args.title == "curse":
             pool.probe_step = getattr(args, "probe_step", False)
+            pool.joy = getattr(args, "joy", False)
         for step in steps:
             if clock() >= deadline:
                 raise StepFailed(f"the run's {args.max_seconds:g} seconds were "
@@ -1285,6 +1584,10 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.fight(step.arg, args.walk, args.walk_steps)
             elif step.verb == "peek":
                 got = pool.peek(step.arg)
+            elif step.verb == "cast":
+                got = pool.cast(step.arg)
+            elif step.verb == "cure":
+                got = pool.cure(step.arg)
             else:
                 got = pool.save(staged)
             got = {"step": step.text, "verb": step.verb, **got,
@@ -1305,6 +1608,10 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                     raise StepFailed("id 25 first disappeared at "
                                      + pool.first_effect_loss["phase"])
                 validate_curse_attack(summary["results"], attack, args.attack_by)
+        if any(s.verb in ("cast", "cure") for s in steps):
+            kept = next((r["kept"] for r in reversed(summary["results"])
+                         if r["verb"] == "save"), None)
+            validate_curse_cures(summary["results"], kept)
         summary["completed"] = True
     except StepFailed as e:
         summary["lost"] = str(e)
@@ -1345,7 +1652,8 @@ def main(argv: list[str] | None = None) -> int:
                     metavar="SLOT:ITEM:OFFSET=VALUE")
     ap.add_argument("--steps", nargs="*", default=[],
                     help="load, camp-list [WHO], 'items WHO', 'view WHO', "
-                         "'rest 8h', 'fight [SECONDS]', 'peek ADDR N', save")
+                         "'rest 8h', 'fight [SECONDS]', 'peek ADDR N', "
+                         "'cast CASTER:SPELL>TARGET', 'cure PALADIN>TARGET', save")
     ap.add_argument("--checkpoint", action="append", default=[],
                     metavar="ADDR[=NAME]",
                     help="hex; a non-stopping exec checkpoint armed after the "
@@ -1355,6 +1663,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="record the named fighter's first confirmed melee attack")
     ap.add_argument("--quit-nonattacking", action="store_true",
                     help="end the named fighter's turn with DONE then QUIT")
+    ap.add_argument("--joy", action="store_true",
+                    help="give VICE a numpad joystick in port 2 (KP_0 fires), "
+                         "as one more key for `cast` to try")
     ap.add_argument("--probe-step", action="store_true",
                     help="take one empty-square step after the first command bar")
     ap.add_argument("--walk-steps", type=int, default=40,
@@ -1390,6 +1701,8 @@ def main(argv: list[str] | None = None) -> int:
                  f"pass --stage-only, or drive Pool of Radiance or Curse")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
+    if any(x.verb in ("cast", "cure") for x in steps) and args.title != "curse":
+        ap.error("the cast and cure steps require --title curse")
     if args.quit_nonattacking and not args.attack_by:
         ap.error("--quit-nonattacking requires --attack-by")
     if args.probe_step and not args.attack_by:
