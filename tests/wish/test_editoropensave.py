@@ -35,9 +35,8 @@ def test_the_file_menu_carries_the_five_approved_mnemonics_in_order(app):
     texts = [a.text() for a in _file_menu(win).actions() if a.text()]
     assert texts[:5] == ["&Open…", "Open &DOS folder…", "&Save",
                          "Save &As…", "&Preview changes…"]
-    # Convert stays for now (stage 4 retires it), Preferences and Quit
-    # follow it, unchanged.
-    assert "&Convert…" in texts
+    # Convert is on the menu only behind WISH_EXPERIMENTAL_POD_CONVERT.
+    assert "&Convert…" not in texts
     assert "&Preferences…" in texts
     assert "&Quit" in texts
 

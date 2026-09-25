@@ -970,6 +970,37 @@ def _no_disks(_game):
     return None
 
 
+def _por_source_disks(_game=None):
+    """A `game_files` lookup answering Pool of Radiance's own combat icon
+    table and `ANIMATE00` off the player's disks, or skipping.
+
+    A C64 party converted with no icon table reports a loss, and Convert
+    refuses a reported loss the way Save As does (#511), so a test of the
+    write path needs the real table where `_some_disks` was once enough.
+    """
+    from goldbox.d64 import load_payload
+    from goldbox.iconparts import IconParts
+
+    where = disk_dir()
+    if where is None:
+        pytest.skip("needs the game disks")
+    icon = animate = None
+    for disk in sorted(where.glob("POOL*.[dD]64")):
+        if icon is None:
+            try:
+                icon = IconParts.load(str(disk))
+            except Exception:
+                pass
+        if animate is None:
+            try:
+                animate = load_payload(str(disk), dos_codec.ANIMATE_FILE)
+            except Exception:
+                pass
+    if icon is None or animate is None:
+        pytest.skip("the game disks here carry neither SPELLE64 nor ANIMATE00")
+    return dosimport.GameFiles(icon=icon, animate=animate)
+
+
 def _some_disks(_game):
     """A `game_files` lookup standing in for disks that were found, carrying
     no icon table.
@@ -1297,14 +1328,16 @@ def test_the_destination_line_names_the_folder_before_the_button_is_enabled(
     seen red when the destination text still comma-joined every file in
     `rehearsal.files`, then the fix put back.
 
-    `_some_disks`, not `_no_disks`: this row's own C64 -> DOS default
-    direction now refuses with no source disks (`#482`), and this test is
-    about the destination line rather than that refusal."""
+    Real game files, not `_no_disks`: this row's own C64 -> DOS default
+    direction refuses with no source disks (`#482`), and with a lookup that
+    has no combat icon it reports a loss and is refused (#511); this test is
+    about the destination line rather than either refusal."""
     path = _por_c64_disk(tmp_path)
     destination = tmp_path / "out"
     destination.mkdir()
 
-    dialog = convert.ConvertDialog(str(path), None, _some_disks,
+    files = _por_source_disks()
+    dialog = convert.ConvertDialog(str(path), None, lambda _game: files,
                                    folder=str(destination),
                                    game=str(_game_dir()))
     try:
@@ -1601,31 +1634,20 @@ def test_no_string_reachable_in_the_pane_contains_a_hex_offset(tmp_path):
 
 
 @needs_dos_saves
-def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detail(
-        tmp_path):
-    """The one pane state `test_no_string_reachable_in_the_pane_contains_a_
-    hex_offset` could not reach with no real game disks: a C64 source with a
-    DOS game folder and a destination folder both chosen, which is what
-    actually rehearses the write and used to put the drop list on screen.
-    Every other state that module checks refuses before reaching a drop
-    line at all (#355, A C64 party converted to DOS is shown nine developer
-    notes, with memory addresses, overlay names and issue numbers in them).
-
-    Failed before the original fix, on `0x0E3`, `$1633`, `CHARPIC00`,
-    `LIBRARY`, `GEN`, `#277`, `#268` and `#202` -- back when the drop lines
-    themselves reached the pane. Donald's ruling of 2026-09-08
-    (`.claude/rules/conversions.md`) took the whole drop list out of what a
-    player reads, so this now pins the stronger guarantee: the drop list is
-    real for this conversion, none of it is in the pane at all, and it
-    reaches the debug log instead -- `WISH_DEBUG` is exactly where a
-    developer note like these belongs (`.claude/rules/gui-text.md` exempts
-    that log from the same rule by name).
+def test_no_string_in_the_refused_c64_to_dos_pane_carries_developer_detail(
+        tmp_path, monkeypatch):
+    """A C64 source with a DOS game folder and a destination folder both
+    chosen, and no combat icon table, reports a loss.  Convert refuses it
+    with `CANNOT_CONVERT` (#511), the way Save As does, so the pane holds
+    nothing and the loss lines reach the debug log instead -- `WISH_DEBUG`
+    is exactly where a developer note belongs (`.claude/rules/gui-text.md`
+    exempts that log from approval by name, `#355 (A C64 party converted to
+    DOS is shown nine developer notes, with memory addresses, overlay names
+    and issue numbers in them)`).
 
     `_some_disks`, not `_no_disks`: a C64 source converting to DOS with no
-    source disks now refuses before ever reaching a rehearsal (`#482`), and
-    this test is about the drop list a *completed* rehearsal produces --
-    `icon=None` still leaves the combat-icon field on that list, the same
-    drop `#482`'s own audit quotes.
+    source disks refuses before ever reaching a rehearsal (`#482`), and
+    `icon=None` leaves the combat-icon loss on the report.
     """
     import re
 
@@ -1638,6 +1660,10 @@ def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detai
     path = _por_c64_disk(tmp_path)
     destination = tmp_path / "out"
     destination.mkdir()
+    seen = []
+    real_log = dosimport.log_unshown_losses
+    monkeypatch.setattr(dosimport, "log_unshown_losses",
+                        lambda report: (seen.append(report), real_log(report)))
     debuglog.start()
     try:
         dialog = convert.ConvertDialog(str(path), None, _some_disks,
@@ -1645,23 +1671,25 @@ def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detai
                                        folder=str(destination))
         try:
             text = dialog.ui.convert_destination_line.text()
-            dropped = dialog.rehearsal.report.dropped
+            refused = (dialog.rehearsal, dialog._blocked)
         finally:
             dialog.close()
         log_text = debuglog.path().read_text(encoding="utf-8")
     finally:
         debuglog.stop()
 
-    #: Proof this reached the drop-list state the test is about.
-    assert dropped, "expected this conversion to have drop lines to check"
-    #: Gone from the pane entirely, not merely cleaned up.
-    assert not any(d in text for d in dropped), text
+    assert refused == (None, (convert.DIALOG_TITLE, convert.CANNOT_CONVERT))
+    #: Proof this reached the state the test is about: a report with a loss.
+    assert len(seen) == 1
+    lost = list(seen[0].dropped) + list(seen[0].losses)
+    assert lost, "expected this conversion to report a loss"
+    assert text == ""
     assert not hexish.search(text), text
     assert not bare_issue.search(text), text
     assert not any(o in text for o in overlay_names), text
-    #: And carried to the debug log instead, so a bug report can still say
-    #: what this conversion left behind.
-    assert all(d in log_text for d in dropped), log_text
+    #: And in the debug log, so a bug report can still say what this
+    #: conversion left behind.
+    assert all(d in log_text for d in lost), log_text
 
 
 def test_no_string_the_player_reads_is_unapproved():
@@ -1988,27 +2016,20 @@ def _file_menu(window):
                if a.text() == "&File")
 
 
-def test_the_file_menu_carries_convert_with_nothing_set(app, tmp_path,
-                                                        monkeypatch):
-    """The whole File menu, in order, with nothing set -- pins Convert's
-    presence and Import's absence in one assertion, so nobody has to
-    remember to separately assert a deleted constant is missing.
-
-    `WISH_EXPERIMENTAL_CONVERT` no longer exists (`#52 (File ▸ Import and
-    File ▸ Export for every direction the library supports)`, 2026-09-14).
-    This is the guard against a fourth repeat of the failure `#514
-    (Restoring File ▸ Import makes #505's silent-save data loss reachable,
-    so it must be fixed in the same change)` describes: `File ▸ Import`
-    gone while `File ▸ Convert…` is somehow still gated would leave a
-    shipping player with no route in at all.
+def test_the_file_menu_carries_no_convert_with_nothing_set(app, tmp_path,
+                                                           monkeypatch):
+    """The whole File menu, in order, with nothing set: Convert is on the
+    menu only behind `WISH_EXPERIMENTAL_POD_CONVERT` (#511, stage 4), so a
+    player's route in is Open and Save As.  The flag's own three tests are
+    in `tests/editor/test_convertrefusal.py`.
     """
     monkeypatch.delenv("WISH_EXPERIMENTAL_CONVERT", raising=False)
+    monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
     window = _wish_window(tmp_path, monkeypatch)
     assert [a.text() for a in _file_menu(window).actions()] == [
         "&Open…", "Open &DOS folder…", "&Save", "Save &As…",
-        "&Preview changes…", convert.MENU_CONVERT, "", "&Preferences…", "",
-        "&Quit"]
-    assert window.convert_action.text() == convert.MENU_CONVERT
+        "&Preview changes…", "", "&Preferences…", "", "&Quit"]
+    assert window.convert_action is None
     window.close()
 
 
@@ -2137,14 +2158,14 @@ def test_a_successful_rehearsal_still_calls_pane_text_for_its_own_logging(
         dialog.close()
 
 
-def test_a_name_too_long_for_dos_pops_no_modal_at_all(
+def test_a_name_too_long_for_dos_is_refused_and_not_written(
         tmp_path, monkeypatch):
-    """The name-truncation consent modal Donald ruled real on 2026-09-10 is
-    retired (#619, `docs/227-editor-open-save-as.md`): a loss does not
-    become acceptable by being classified outside the drop list, so a name
-    DOS's own fifteen-character field could not hold whole pops nothing any
-    more, exactly like the other two kinds his ruling named as bugs (#508,
-    #509) and like `report.messages` and `report.dropped`.
+    """A rehearsal whose report names a loss is refused with the existing
+    `CANNOT_CONVERT`, the way Save As refuses it (#511, stage 4): a name
+    DOS's own fifteen-character field could not hold whole must not be
+    written without a word.  The name-truncation consent modal stays retired
+    (#619, `docs/227-editor-open-save-as.md`), so `warned` stays empty; the
+    refusal is the one `critical` line.
 
     The dialog's own first `replan()`, inside `__init__`, is not
     `_interactive` (`ConvertDialog.__init__`'s own docstring note), so a
@@ -2152,9 +2173,8 @@ def test_a_name_too_long_for_dos_pops_no_modal_at_all(
     changing the destination combo, say -- and is what is called here to
     reach the point `_maybe_warn` would have popped anything.
 
-    Fails before the fix: with the retired `name_warnings` filter still
-    wired into `_maybe_warn`, `warned` below gains the name-truncation line
-    -- seen red by restoring that wiring, then the fix put back.
+    Fails without the refusal: `dialog.rehearsal` stays set and `critical`
+    stays empty.
     """
     folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
     destination = tmp_path / "out"
@@ -2186,7 +2206,9 @@ def test_a_name_too_long_for_dos_pops_no_modal_at_all(
         str(folder), None, lambda game: game_files,
         destination="c64", folder=str(destination))
     try:
-        assert dialog.rehearsal is not None
+        #: A rehearsal whose report names a loss is refused, as Save As
+        #: refuses it: publishing it would write the loss without a word.
+        assert dialog.rehearsal is None
         #: The dialog's own construction ran non-interactively; this is
         #: the first `replan()` a real player's own next action would
         #: trigger.
@@ -2195,7 +2217,7 @@ def test_a_name_too_long_for_dos_pops_no_modal_at_all(
         dialog.close()
 
     assert warned == [], warned
-    assert critical == [], critical
+    assert critical == [(convert.DIALOG_TITLE, convert.CANNOT_CONVERT)]
 
 
 # ---------------------------------------------------------------------------
@@ -2537,13 +2559,13 @@ def test_a_refusal_on_construction_is_shown_not_swallowed(tmp_path,
         dialog.close()
 
 
-def test_a_conversion_with_messages_a_drop_and_a_platform_loss_shows_nothing(
+def test_a_conversion_with_messages_a_drop_and_a_platform_loss_is_refused_and_shows_only_the_approved_sentence(
         tmp_path, monkeypatch):
     """`DosImportDialog` carried a pane from 2026-09-06 until it lost it on
     2026-09-10, and `ConvertDialog` never carried one at all. `_blocked` is
-    not set by a message, a drop, or any `report.losses` line, including a
-    name truncation -- `_maybe_warn` only ever shows a real refusal (#619) --
-    and Convert stays pressable throughout.
+    not set by a message alone (#619).  A drop or a `report.losses` line, a
+    name truncation included, refuses the conversion with the existing
+    `CANNOT_CONVERT` (#511), as Save As does, and Convert is not pressable.
 
     Ported from `tests/convert/test_dosimport.py` (`#52 (File ▸ Import and File ▸
     Export for every direction the library supports)`, 2026-09-14), where
@@ -2575,8 +2597,9 @@ def test_a_conversion_with_messages_a_drop_and_a_platform_loss_shows_nothing(
                                    _some_disks,
                                    folder=str(tmp_path / "out"))
     try:
-        assert dialog._blocked is None
-        assert dialog.buttons.button(
+        assert dialog.rehearsal is None
+        assert dialog._blocked == (convert.DIALOG_TITLE, convert.CANNOT_CONVERT)
+        assert not dialog.buttons.button(
             QDialogButtonBox.StandardButton.Ok).isEnabled()
     finally:
         dialog.close()
@@ -2940,9 +2963,9 @@ def test_the_dialog_writes_an_adf_when_a_disk_and_folder_are_given(tmp_path):
     below is the twin that drives the whole path including `disk=` and the
     `CONVERTED_AMIGA` status line.
 
-    `_some_disks`, not `_no_disks`: a C64 source converting to Amiga now
-    refuses with no source disks (`#482`), and this test is about the write
-    path rather than the combat icon.
+    Real source disks, not `_no_disks` or `_some_disks`: a C64 source
+    converting to Amiga refuses with no source disks (`#482`) and with no
+    combat icon table, which is a reported loss (#511).
     """
     from support.toamigapor import _c64_specimen
 
@@ -2953,7 +2976,8 @@ def test_the_dialog_writes_an_adf_when_a_disk_and_folder_are_given(tmp_path):
     destination = tmp_path / "out"
     destination.mkdir()
 
-    dialog = convert.ConvertDialog(str(c64_path), None, _some_disks,
+    files = _por_source_disks()
+    dialog = convert.ConvertDialog(str(c64_path), None, lambda _game: files,
                                    destination="amiga", disk=str(disk2),
                                    folder=str(destination))
     try:
@@ -2986,11 +3010,11 @@ def test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter(
     through to `CONVERTED_DOS` or trying to `self.load()` it as a C64
     save.
 
-    `window.game_files_for` is patched to answer something for every title:
-    with no disks folder set on this `EditorBinding`, it would otherwise
-    return `None` for the specimen's own title and the conversion would now
-    refuse (`#482`) -- this test is about `EditorBinding.convert`'s own
-    wiring, not about the combat icon."""
+    `window.game_files_for` is patched to answer the real Pool of Radiance
+    icon table for every title: with no disks folder set on this
+    `EditorBinding`, it would otherwise return `None` for the specimen's own
+    title and the conversion would refuse (`#482`), and without an icon
+    table the conversion reports a loss and is refused (#511)."""
     from support.toamigapor import _c64_specimen
 
     from goldbox.amiga_adf import AmigaDisk
@@ -3003,7 +3027,8 @@ def test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter(
 
     monkeypatch.setattr(convert.ConvertDialog, "exec",
                         lambda self: QDialog.DialogCode.Accepted)
-    monkeypatch.setattr(window, "game_files_for", _some_disks)
+    files = _por_source_disks()
+    monkeypatch.setattr(window, "game_files_for", lambda game: files)
     try:
         note = window.convert(source=str(c64_path), destination="amiga",
                               disk=str(disk2), folder=str(destination))

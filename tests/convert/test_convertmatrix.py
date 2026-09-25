@@ -46,7 +46,6 @@ defect, so it gets no issue of its own.
 from __future__ import annotations
 
 import pathlib
-from types import SimpleNamespace
 
 import pytest
 from gamedata import specimen_root
@@ -269,19 +268,14 @@ def test_c64_to_dos_matches_the_library_for_every_title(
 
     shape = dos_port.DELTAS_BY_KEY[game.key]
     out = tmp_path / "out"
-    # An `icon=None` game-files stand-in -- no C64 disks handed to the
-    # dialog for the source's own combat icon (`#383 (The live Convert
-    # dialog never wires a C64 party's own combat icon into DOS, so
-    # region_220 stays on the drop list)`'s own wiring, already proven in
-    # `test_convert.py`); both sides of this comparison then take
-    # `icon_parts=None`, the game's own default figure, so the two calls
-    # stay comparable without a fourth disk search. `lambda g: None` would
-    # answer no disks at all, which a C64 source now refuses for
-    # (`#482 (With no game disks for the source title, a C64 party converted
-    # to DOS or the Amiga silently arrives with no combat figures, though a
-    # C64 destination refuses)`).
+    # The source title's own combat icon table, off its C64 disks: without
+    # one the conversion reports a loss and the dialog refuses it, as Save As
+    # does (#511).  Both sides of this comparison take the same table.
+    files = _c64_game_files(game)
+    if files is None:
+        pytest.skip(f"needs the C64 {game.title} disks in the registry")
     dialog = convert.ConvertDialog(
-        str(disk_path), None, lambda g: SimpleNamespace(icon=None),
+        str(disk_path), None, lambda g: files,
         destination="dos", game=str(game_dir), folder=str(out))
     try:
         assert type(dialog.direction) is convert.C64ToDos
@@ -305,7 +299,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
 
     reference_dir = tmp_path / "reference"
     ref_report = dos_codec.new_dos_save(save0, save1, reference_dir, "A", game_dir,
-                                  title=game)
+                                  title=game, icon_parts=files.icon)
 
     written_names = {p.name for p in written}
     reference_names = {p.name for p in reference_dir.iterdir()}

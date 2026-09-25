@@ -235,29 +235,18 @@ class WishWindow(QMainWindow):
             self.save_as_action.setEnabled(
                 self.editor.party is not None and self.editor.path is not None)
 
-        # One entry for every direction the registry holds, rather than a
-        # submenu per port -- `#52 (File ▸ Import and File ▸ Export for
-        # every direction the library supports)`'s 2026-09-02 ruling. Never
-        # greyed: what varies is the destination list *inside* the dialog
-        # (`editor.convert.destinations_for`), so a save with nothing to
-        # convert to shows the approved refusal rather than a disabled menu
-        # item nobody can explain.
-        #
-        # Built for everyone since 2026-09-14, when `WISH_EXPERIMENTAL_CONVERT`
-        # was lifted on Donald's word and `File ▸ Import ▸ DOS Save Folder…`
-        # was removed in the same commit -- Import was the only route a
-        # player had until then, so the two could not land apart. Lifted
-        # once before, on 2026-09-07, and put back the same night: the
-        # dialog still opened behind a file picker (`#412 (File ▸ Convert
-        # demands a save in a file picker before it will show you the
-        # Convert window)`) and `File ▸ Import` still duplicated it, and
-        # neither was a property the code-side conditions tested that time.
+        # File > Convert... exists only for the flagged Pools of Darkness
+        # route: every other conversion goes through Save As. The entry, the
+        # flag and `ConvertDialog` go when Pools of Darkness has a Save As
+        # route (`editor.convert.POD_DIRECTIONS`).
         from editor import convert
-        convert_action = QAction(convert.MENU_CONVERT, self)
-        convert_action.triggered.connect(
-            lambda _checked=False: self.editor.convert())
-        menu.addAction(convert_action)
-        self.convert_action = convert_action
+        self.convert_action = None
+        if convert.pod_convert_enabled():
+            convert_action = QAction(convert.MENU_CONVERT, self)
+            convert_action.triggered.connect(
+                lambda _checked=False: self.editor.convert())
+            menu.addAction(convert_action)
+            self.convert_action = convert_action
 
         menu.addSeparator()
         prefs = QAction("&Preferences…", self)

@@ -1368,8 +1368,10 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
 #: Amiga Pools of Darkness party converted to DOS loses a master thief's
 #: pick pockets over 127 and a scroll case's extra spells) and #651
 #: (Convert a Pools of Darkness party's item vault between DOS and the
-#: Amiga along with its saved game) are closed. The flag and this tuple are
-#: deleted once the tuple is empty.
+#: Amiga along with its saved game) are closed. The flag, this tuple,
+#: File > Convert... and `ConvertDialog` are all deleted once Pools of
+#: Darkness has a route in Save As, or Donald rules that it ships another
+#: way.
 POD_DIRECTIONS: tuple[Direction, ...] = (PodAmigaToDos(),)
 
 #: The environment variable that gates `POD_DIRECTIONS`. `WISH_EXPERIMENTAL_`
@@ -2179,6 +2181,19 @@ class ConvertDialog(QDialog):
         #: loss is evidence for a bug (#508, #509 among them) rather than a
         #: sentence a player is asked to accept.
         dosimport.log_unshown_losses(self.rehearsal.report)
+
+        #: The same no-loss rule Save As applies (`saveplan.losses`): a
+        #: conversion whose own accounting names a lost field is not
+        #: published by any normal route, and the reason a player reads is
+        #: the existing `CANNOT_CONVERT`. The Pools of Darkness direction is
+        #: the one exception, because its known losses belong to #650 and
+        #: #651, which fix them behind its flag.
+        if (not isinstance(direction, PodAmigaToDos)
+                and saveplan.losses(self.rehearsal.report)):
+            self.rehearsal = None
+            self.ui.convert_destination_line.setText("")
+            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
+            return
 
     # -- what is shown, and when Convert is pressable -----------------
 
