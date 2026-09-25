@@ -88,9 +88,12 @@ routine keys each word by its first capital and returns at once (the
 constants have the offsets).  It does so inside `begin` and before every
 step, at most `POD_YES_NO_ROUNDS` in a row, and lists each in `events` as
 `yes_no`.  `begin` then calls a screen the map only when its bar is
-`POD_MAP_BAR`, measured from a capture of the real map; any other screen
-stops at once with a `lost-begin-screen.png`, and anything else after the
-answer stops the run in the same way rather than being typed into.
+one of the `POD_MAP_BARS`, each measured from a capture of a real map, and
+logs which kind it took (`map_bar` in `run.jsonl`); any other screen stops at
+once with a `lost-begin-screen.png`, and anything else after the answer stops
+the run in the same way rather than being typed into.  Journal, `YES NO` and
+continue screens are counted one screen at a time, at most `POD_INTERSTITIALS`
+in `begin`.
 
 Staging, written into the installed copy before the boot and logged in
 bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
@@ -264,13 +267,17 @@ POD_CONTINUE_BAR = "7a286012361f96ae"
 POD_CONTINUE = "Return"
 #: Continue screens answered one after another before the run gives up.
 POD_CONTINUE_ROUNDS = 5
-#: Journal, `YES NO` and continue screens `begin` answers in all before it
-#: gives up, so that no mix of them can loop.
+#: Journal, `YES NO` and continue screens `begin` answers in all, counted one
+#: screen at a time, before it gives up, so that no mix of them can loop.
 POD_INTERSTITIALS = 12
-#: The map's command bar by `bar_signature`, which `begin` requires before it
-#: calls a screen the map, measured off a capture of the real map.  None would
-#: make `begin` stop at whatever screen it reaches, with a `lost-*.png`.
-POD_MAP_BAR: str | None = "0409f26b63f9c492"
+#: The map command bars, by `bar_signature`, which `begin` accepts as the map
+#: after the arrival screens, each measured off a real screen: `dungeon` (the
+#: bar `MOVE AREA CAST VIEW ENCAMP SEARCH LOOK`) on the control run
+#: `e38a1bb514-run0-control` of #650, and `overland` (`MOVE ENCAMP`) on the
+#: Amiga cleric party's run `840311866e-run1-cleric`.  Any other bar stops
+#: `begin`; an empty mapping makes it stop at every screen.
+POD_MAP_BARS: dict[str, str] = {"dungeon": "0409f26b63f9c492",
+                                "overland": "8ce27036e9d49c83"}
 
 #: `View` on the map and camp bars; `Items` and `Exit` on the sheet's bar
 #: `Items Spells Trade Deposit Drop Lay Cure Exit` (`GAME.EXE` 0xBB4F).  The
@@ -1355,20 +1362,25 @@ class Driver:
         self.note(event="question", **event)
         return True
 
-    def yes_no(self, label: str) -> int:
+    def yes_no(self, label: str, limit: int | None = None) -> int:
         """Decline every Pools of Darkness `YES NO` bar showing, in turn.
 
         Each is shot, gets `POD_DECLINE` (pressed a second time only if the
         text window did not change), is waited out, and is listed in `events` as
-        `yes_no`.  A bar still showing after `POD_YES_NO_ROUNDS`, or one `N`
+        `yes_no`.  A bar still showing after `POD_YES_NO_ROUNDS` (or `limit`), or one `N`
         does not change, stops the run.  `Y` is never pressed.  Other titles
         get nothing pressed.  Returns how many were declined.
         """
         if self.title.key != "darkness":
             return 0
         declined = 0
+        cap = POD_YES_NO_ROUNDS if limit is None else min(POD_YES_NO_ROUNDS, limit)
         while bar_signature(self.s.capture()) == POD_YES_NO_BAR:
-            if declined >= POD_YES_NO_ROUNDS:
+            if declined >= cap:
+                if cap < POD_YES_NO_ROUNDS:
+                    raise self.fail("begin-interstitials", f"a YES NO bar is "
+                                    f"showing after {POD_INTERSTITIALS} screens "
+                                    "were answered")
                 raise self.fail(f"yes-no-{label}", f"a YES NO bar is still showing "
                                 f"after {declined} were declined")
             shot = self.shot(f"yes-no-{label}")
@@ -1391,24 +1403,38 @@ class Driver:
             declined += 1
         return declined
 
-    def press_continue(self, label: str) -> int:
+    def press_continue(self, label: str, limit: int | None = None) -> int:
         """Continue past every Pools of Darkness story dialog showing, in turn.
 
         Each is shot, gets `POD_CONTINUE`, is waited out, and is listed in
-        `events` as `press_continue`.  A sixth in a row, or one `Return` does
-        not change, stops the run.  Other titles get nothing pressed.  Returns
-        how many were answered.
+        `events` as `press_continue`.  A sixth in a row, `limit` of them, or one
+        `Return` does not change, stops the run.  A second `Return` goes out
+        only if the same screen is still showing when the first has had its 10
+        seconds; anything else is left to the caller's loop.  Other titles get
+        nothing pressed.  Returns how many were answered.
         """
         if self.title.key != "darkness":
             return 0
         answered = 0
+        cap = POD_CONTINUE_ROUNDS if limit is None else min(POD_CONTINUE_ROUNDS, limit)
         while bar_signature(self.s.capture()) == POD_CONTINUE_BAR:
-            if answered >= POD_CONTINUE_ROUNDS:
+            if answered >= cap:
+                if cap < POD_CONTINUE_ROUNDS:
+                    raise self.fail("begin-interstitials", f"a continue screen "
+                                    f"is showing after {POD_INTERSTITIALS} "
+                                    "screens were answered")
                 raise self.fail(f"continue-{label}", f"a continue screen is still "
                                 f"showing after {answered} were answered")
             shot = self.shot(f"continue-{label}")
             before = self.s.capture().digest(TEXT_WINDOW)
-            for _ in range(2):
+            for attempt in range(2):
+                if attempt:
+                    # A slow redraw, or a next screen whose text window has
+                    # the same digest, must not get a key it was not meant for.
+                    now = self.s.capture()
+                    if (bar_signature(now) != POD_CONTINUE_BAR
+                            or now.digest(TEXT_WINDOW) != before):
+                        break
                 self.s.key(POD_CONTINUE)
                 if self.s.wait_for(lambda sc: sc.digest(TEXT_WINDOW) != before, 10.0):
                     break
@@ -1517,30 +1543,36 @@ class Driver:
         # YES NO question after that.
         answered = 0
         while True:
-            got = (int(self.journal("begin")) + self.yes_no("begin")
-                   + self.press_continue("begin"))
+            # The bound is on screens, so each helper gets what is left of it.
+            if POD_INTERSTITIALS > answered:
+                got = int(self.journal("begin"))
+            else:
+                got = 0
+            got += self.yes_no("begin", POD_INTERSTITIALS - answered - got)
+            got += self.press_continue("begin", POD_INTERSTITIALS - answered - got)
             if not got:
                 break
             answered += got
             screen = self.s.settle(quiet=1.0, timeout=60.0)
-            if answered > POD_INTERSTITIALS:
-                raise self.fail("begin-interstitials", f"{answered} journal, "
-                                "YES NO and continue screens were answered, "
-                                f"more than {POD_INTERSTITIALS}")
         if self.on_party_menu(screen):
             raise self.fail("begin", "the party menu is still showing")
-        if self.title.key == "darkness" and bar_signature(screen) != POD_MAP_BAR:
-            if POD_MAP_BAR is None:
-                raise self.fail("begin-screen", "no Pools of Darkness map bar has "
-                                "been measured yet (POD_MAP_BAR), so the screen "
-                                "Begin reached is not taken for the map")
-            raise self.fail("begin-screen", "the screen Begin reached is not the "
-                            "map bar POD_MAP_BAR (a story screen or a message "
-                            "this driver does not know)")
+        kind = None
+        if self.title.key == "darkness":
+            kind = next((k for k, bar in POD_MAP_BARS.items()
+                         if bar_signature(screen) == bar), None)
+            if kind is None:
+                if not POD_MAP_BARS:
+                    raise self.fail("begin-screen", "no Pools of Darkness map bar "
+                                    "has been measured yet (POD_MAP_BARS), so the "
+                                    "screen Begin reached is not taken for the map")
+                raise self.fail("begin-screen", "the screen Begin reached is not "
+                                "a measured map bar of POD_MAP_BARS (a story "
+                                "screen or a message this driver does not know)")
+            self.note(event="map_bar", map=kind, bar=POD_MAP_BARS[kind])
         self.record_world(screen)
         self.shot("map")
         self.where = "map"
-        return {"map_bar": self.world_sig}
+        return {"map_bar": self.world_sig, "map_kind": kind}
 
     def camp(self) -> dict:
         # `E` at Curse's party menu is exit to DOS, so it is never pressed there.

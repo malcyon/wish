@@ -238,10 +238,11 @@ def _no_waiting(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _pod_map_measured(monkeypatch):
-    """The fakes' map bar stands in for the measured `POD_MAP_BAR`, whose
-    real value the test after this fixture checks against a capture."""
-    monkeypatch.setattr(da, "POD_MAP_BAR",
-                        da.bar_signature(_screen(FakePool.BARS["map"], b"")))
+    """The fakes' map bar stands in for the measured `dungeon` one of
+    `POD_MAP_BARS`, whose real values the tests at the end check against
+    captures."""
+    monkeypatch.setattr(da, "POD_MAP_BARS", {
+        "dungeon": da.bar_signature(_screen(FakePool.BARS["map"], b""))})
 
 
 def _camped(tmp_path, title="pool", **kw) -> tuple[FakePool, da.Driver]:
@@ -1421,11 +1422,11 @@ class FakePod(FakePool):
             "which": b"\x25", "party": b"\x26\x27", "create": b"\x28",
             "sheet": b"\x29\x2a", "items": b"\x2b\x2c", "psave": b"\x2d",
             "from": b"\x2e\x2f", "secret": b"\x30", "tour": b"\x31\x32",
-            "story": b"\x34", "cont": b"\x35\x36"}
+            "story": b"\x34", "cont": b"\x35\x36", "overland": b"\x37\x38"}
 
     def __init__(self, tmp, question=True, pages=3, size=6, journal=False,
                  swallow_p=False, tours=0, after_tour="map", dead_n=False,
-                 continues=0, dead_return=False):
+                 continues=0, dead_return=False, late_return=False):
         super().__init__(tmp, keys=TITLE_KEYS["darkness"])
         self.mode = "title"
         #: `YES NO` bars the arrival asks, one after another, after `Begin`
@@ -1438,6 +1439,11 @@ class FakePod(FakePool):
         #: `Return` (`into_cont` has every key typed at one) unless
         #: `dead_return`; the last leads to the map.
         self.continues, self.dead_return, self.into_cont = continues, dead_return, []
+        #: The first `Return` takes effect only after one more capture, as a
+        #: redraw that lands after the driver's wait has run out.
+        self.late_return, self.late_wait = late_return, 0
+        #: Keys typed at the map, where a stray `Return` would land.
+        self.into_map: list[str] = []
         #: `Begin` leads to the journal question, which draws every key
         #: typed into it (`into_journal`) and leaves for the map on `Return`
         #: after something was typed (`GAME.OVR` 0x3603).
@@ -1464,9 +1470,14 @@ class FakePod(FakePool):
                     self.mode = "cont"
         elif m == "cont":
             self.into_cont.append(k)
-            if k == "Return" and not self.dead_return:
-                self.continues -= 1
-                self.mode = "cont" if self.continues else "map"
+            if k == "Return" and self.late_return:
+                self.late_return, self.late_wait = False, 1
+            elif k == "Return" and not self.dead_return:
+                self._next_cont()
+        elif m == "map" and k == "Return":
+            self.into_map.append(k)
+        elif m == "overland" and k == da.ENCAMP:
+            self.mode = "camp"
         elif m == "journal":
             self.into_journal.append(k)
             if k == "Return" and self.journal_typed:
@@ -1520,11 +1531,21 @@ class FakePod(FakePool):
             self.keys.pop()     # `FakePool.key` records it again
             super().key(k, gap)
 
+    def _next_cont(self) -> None:
+        self.continues -= 1
+        self.mode = "cont" if self.continues else "map"
+
     def arrival(self) -> str:
         """Where the party is once the journal question is behind it."""
         return "tour" if self.tours else "cont" if self.continues else "map"
 
     def capture(self):
+        if self.late_wait and self.mode == "cont":
+            # This capture still shows the old screen; the next shows the new.
+            self.late_wait = 0
+            shown = _screen(self.BARS["cont"], bytes((self.continues + 1,)))
+            self._next_cont()
+            return shown
         if self.mode == "journal":
             return _journal_frame(self.journal_typed)
         if self.mode in FakePool.BARS and self.mode not in ("camp",):
@@ -1882,7 +1903,7 @@ def test_without_a_measured_map_bar_begin_stops_at_the_screen_it_reached(
         tmp_path, monkeypatch, pod_yes_no):
     """With no measured bar, whatever follows the answer, the map included,
     stops `begin` with a shot; `camp` never runs."""
-    monkeypatch.setattr(da, "POD_MAP_BAR", None)
+    monkeypatch.setattr(da, "POD_MAP_BARS", {})
     game, d = _pod_driver(tmp_path, question=False, tours=1)
     d.load()
     with pytest.raises(da.StepFailed, match="no Pools of Darkness map bar.*"
@@ -1907,7 +1928,7 @@ def test_a_screen_after_the_answer_that_is_not_the_map_stops_begin(tmp_path,
     """A story screen after the answer is shot, and nothing is typed into it."""
     game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="story")
     d.load()
-    with pytest.raises(da.StepFailed, match="not the map bar"):
+    with pytest.raises(da.StepFailed, match="not a measured map bar"):
         d.begin()
     assert game.mode == "story" and game.keys[-1] == da.POD_DECLINE
 
@@ -1999,7 +2020,7 @@ def test_a_return_that_changes_nothing_stops_the_run(tmp_path, pod_continue):
 
 def test_with_no_measured_map_the_screen_after_the_last_continue_stops_begin(
         tmp_path, monkeypatch, pod_continue):
-    monkeypatch.setattr(da, "POD_MAP_BAR", None)
+    monkeypatch.setattr(da, "POD_MAP_BARS", {})
     game, d = _pod_driver(tmp_path, question=False, tours=1, continues=2)
     d.load()
     with pytest.raises(da.StepFailed, match="lost-begin-screen"):
@@ -2009,12 +2030,53 @@ def test_with_no_measured_map_the_screen_after_the_last_continue_stops_begin(
 
 def test_begin_gives_up_after_too_many_interstitials(tmp_path, monkeypatch,
                                                      pod_continue):
+    """The bound is on screens: with 2 allowed, a third is not answered."""
     monkeypatch.setattr(da, "POD_INTERSTITIALS", 2)
     game, d = _pod_driver(tmp_path, question=False, continues=4)
     d.load()
     with pytest.raises(da.StepFailed, match="lost-begin-interstitials"):
         d.begin()
-    assert game.into_cont == ["Return"] * 4
+    assert game.into_cont == ["Return"] * 2
+
+
+def test_the_bound_counts_screens_across_the_helpers_not_passes(
+        tmp_path, monkeypatch, pod_continue):
+    """A pass can answer a bar, then continues; 4 screens in one pass must not
+    get past a bound of 3."""
+    monkeypatch.setattr(da, "POD_INTERSTITIALS", 3)
+    game, d = _pod_driver(tmp_path, question=False, tours=2, continues=3)
+    d.load()
+    with pytest.raises(da.StepFailed, match="lost-begin-interstitials"):
+        d.begin()
+    assert game.into_tour == [da.POD_DECLINE] * 2 and game.into_cont == ["Return"]
+
+
+def test_a_full_allowance_is_still_enough(tmp_path, monkeypatch, pod_continue):
+    monkeypatch.setattr(da, "POD_INTERSTITIALS", 4)
+    game, d = _pod_driver(tmp_path, question=False, tours=2, continues=2)
+    d.load()
+    d.begin()
+    assert game.mode == "map" and len(d.events) == 4
+
+
+def test_a_late_first_return_is_not_followed_by_a_blind_second(tmp_path,
+                                                               pod_continue):
+    """The screen changed just after the wait ran out: the second `Return`
+    would dismiss the next screen unseen."""
+    game, d = _pod_driver(tmp_path, question=False, continues=1, late_return=True)
+    d.load()
+    d.begin()
+    assert game.into_cont == ["Return"] and game.mode == "map"
+    assert game.into_map == []
+
+
+def test_a_late_return_onto_another_continue_screen_is_answered_by_the_loop(
+        tmp_path, pod_continue):
+    game, d = _pod_driver(tmp_path, question=False, continues=2, late_return=True)
+    d.load()
+    d.begin()
+    assert game.into_cont == ["Return"] * 2 and game.mode == "map"
+    assert [e["kind"] for e in d.events] == ["press_continue"] * 2
 
 
 def test_a_continue_screen_found_before_a_step_is_answered_first(tmp_path,
@@ -2034,11 +2096,51 @@ def test_other_titles_never_look_for_a_continue_screen(tmp_path, pod_continue):
     assert d.press_continue("camp") == 0
 
 
-def test_the_measured_pod_map_bar_is_sixteen_hex_digits(monkeypatch):
+@pytest.fixture
+def two_map_bars(monkeypatch, pod_yes_no):
+    """The fakes' dungeon map and overland bars stand in for the two
+    measured ones."""
+    monkeypatch.setattr(da, "POD_MAP_BARS", {
+        "dungeon": da.bar_signature(_screen(FakePool.BARS["map"], b"")),
+        "overland": da.bar_signature(_screen(FakePod.BARS["overland"], b""))})
+
+
+@pytest.mark.parametrize("kind, after", [("dungeon", "map"), ("overland", "overland")])
+def test_begin_takes_each_measured_map_bar_and_says_which(tmp_path, two_map_bars,
+                                                          kind, after):
+    notes = []
+    game = FakePod(tmp_path, question=False, tours=1, after_tour=after)
+    d = da.Driver(game, lambda **k: notes.append(k), "A", "darkness",
+                  party_size=game.size)
+    d.load()
+    got = d.begin()
+    assert got["map_kind"] == kind and d.where == "map"
+    assert [n["map"] for n in notes if n.get("event") == "map_bar"] == [kind]
+
+
+def test_camp_works_from_the_overland_bar(tmp_path, two_map_bars):
+    game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="overland")
+    d.load()
+    d.begin()
+    d.camp()
+    assert game.mode == "camp" and d.where == "camp"
+
+
+def test_an_unmeasured_bar_still_stops_begin(tmp_path, two_map_bars):
+    game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="story")
+    d.load()
+    with pytest.raises(da.StepFailed, match="not a measured map bar"):
+        d.begin()
+    assert da.ENCAMP not in game.keys
+
+
+def test_the_measured_pod_map_bars_are_sixteen_hex_digits(monkeypatch):
     monkeypatch.undo()
-    assert isinstance(da.POD_MAP_BAR, str)
-    assert len(da.POD_MAP_BAR) == 16
-    int(da.POD_MAP_BAR, 16)
+    assert set(da.POD_MAP_BARS) == {"dungeon", "overland"}
+    assert len(set(da.POD_MAP_BARS.values())) == 2
+    for bar in da.POD_MAP_BARS.values():
+        assert len(bar) == 16
+        int(bar, 16)
 
 
 def test_the_measured_pod_map_bar_matches_the_captured_map(monkeypatch):
@@ -2055,4 +2157,21 @@ def test_the_measured_pod_map_bar_matches_the_captured_map(monkeypatch):
     monkeypatch.undo()
     ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
                          check=True, capture_output=True).stdout
-    assert da.bar_signature(dosbox.Screen.from_ppm(ppm)) == da.POD_MAP_BAR
+    assert da.bar_signature(dosbox.Screen.from_ppm(ppm)) == da.POD_MAP_BARS["dungeon"]
+
+
+def test_the_measured_overland_bar_matches_the_captured_screen(monkeypatch):
+    """Read off the Amiga cleric run's screen; that capture is in the player's
+    cache, so this skips without it."""
+    import shutil
+    import subprocess
+
+    from tools.registry.scratch import cache_dir
+    shot = cache_dir("acceptance", "650", "840311866e-run1-cleric", "shots",
+                     "006-lost-begin-screen.png")
+    if not shot.exists() or shutil.which("convert") is None:
+        pytest.skip("the captured overland screen is not on this machine")
+    monkeypatch.undo()
+    ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
+                         check=True, capture_output=True).stdout
+    assert da.bar_signature(dosbox.Screen.from_ppm(ppm)) == da.POD_MAP_BARS["overland"]
