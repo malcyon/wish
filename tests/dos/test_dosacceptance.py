@@ -1406,6 +1406,41 @@ def test_the_command_line_refuses_a_bad_source_before_any_boot(argv, why, capsys
     assert why in capsys.readouterr().err
 
 
+#: The current character's name colour and another's, EGA 15 and 11
+#: (`GAME.OVR` 0x34825 and 0x35AC0).
+_WHITE, _CYAN = b"\xff\xff\xff", b"\x55\xff\xff"
+
+
+def _pod_name(n: int) -> bytes:
+    """Member `n`'s synthetic name: fifteen cells, the first different for
+    every member, each with fewer lit pixels than paper, as a letter has."""
+    return bytes((1 << (n - 1) % 8,)) + bytes((0x11, 0x22, 0x00, 0x44)) * 3 + b"\x81\x00"
+
+
+def _draw_name(px: bytearray, x: int, y: int, name: bytes, colour: bytes) -> None:
+    for cell, pattern in enumerate(name):
+        for dy in range(da.POD_NAME_ROWS):
+            for dx in range(da.CELL):
+                if pattern >> ((dx + dy) % 8) & 1:
+                    at = ((y + dy) * W + x + cell * da.CELL + dx) * 3
+                    px[at:at + 3] = colour
+
+
+def _with_roster(frame: dosbox.Screen, where: str, size: int, current: int,
+                 sheet: int | None = None) -> dosbox.Screen:
+    """`frame` with the roster drawn where the game draws it, the current
+    member white; or, with `sheet`, that member's name where a sheet has it."""
+    px = bytearray(frame.px)
+    if sheet is not None:
+        _draw_name(px, *da.POD_SHEET_NAME, _pod_name(sheet), _WHITE)
+    else:
+        x, y = da.POD_ROSTER[where]
+        for n in range(1, size + 1):
+            _draw_name(px, x, y + da.CELL * (n - 1), _pod_name(n),
+                       _WHITE if n == current else _CYAN)
+    return dosbox.Screen(W, H, bytes(px))
+
+
 class FakePod(FakePool):
     """DOS Pools of Darkness from its title screens to camp, as `GAME.EXE`'s
     strings and its load routine (`GAME.OVR` 0x12887) describe it: an
@@ -1414,22 +1449,36 @@ class FakePod(FakePool):
     row 0 is `Create New Character` before a load, row 2 `Load Saved Game`);
     `LOAD FROM WHERE? POOLS SECRET EXIT`, where only `P` leads on and a slot
     letter does nothing; `LOAD WHICH GAME:` listing only the letters whose
-    `SAVGAM<L>.PTY` exists; after a load row 6 saves and row 7 begins, or 8
-    and 9 when the save's byte 0x2F adds `Train` and `Human Change`; the
-    roster highlight moved by `End`; the sheet's `ITEMS` with `Next`."""
+    `SAVGAM<L>.PTY` exists; after a load row 3 views, row 6 saves and row 7
+    begins, or 5, 8 and 9 when the save's byte 0x2F adds `Train` and `Human
+    Change`; the roster with the current character in white, which `Down`
+    moves a member on and wraps and `End` does not move (the selector at
+    0x2680C), in camp and at `View`'s `PICK CHARACTER`, where `S` views;
+    the sheet's name, `ITEMS` with `Next`, and `Exit` back to where `View`
+    was pressed."""
 
     BARS = {**FakePool.BARS, "title": b"\x21", "question": b"\x22", "menu": b"\x23\x24",
             "which": b"\x25", "party": b"\x26\x27", "create": b"\x28",
             "sheet": b"\x29\x2a", "items": b"\x2b\x2c", "psave": b"\x2d",
             "from": b"\x2e\x2f", "secret": b"\x30", "tour": b"\x31\x32",
             "story": b"\x34", "cont": b"\x35\x36", "overland": b"\x37\x38",
-            "town": b"\x3a\x3b\x3c"}
+            "town": b"\x3a\x3b\x3c", "pick": b"\x3d\x3e"}
 
     def __init__(self, tmp, question=True, pages=3, size=6, journal=False,
                  swallow_p=False, tours=0, after_tour="map", dead_n=False,
                  continues=0, dead_return=False, late_return=False,
-                 late_n=False, after_town="map"):
+                 late_n=False, after_town="map", swallow_down=False,
+                 dead_down=False, same_sheet=False, pick_opens=True,
+                 animated=False):
         super().__init__(tmp, keys=TITLE_KEYS["darkness"])
+        #: The roster selector drops the first `Down` (`swallow_down`), or
+        #: every one (`dead_down`); the sheet always draws member 1
+        #: (`same_sheet`), the game not viewing whom the highlight is on;
+        #: `View` at the party menu opens nothing (`not pick_opens`); the
+        #: camp picture changes every capture (`animated`), as the fire does.
+        self.swallow_down, self.dead_down = swallow_down, dead_down
+        self.same_sheet, self.pick_opens, self.animated = same_sheet, pick_opens, animated
+        self.frame, self.view_from, self.into_pick = 0, "camp", []
         self.mode = "title"
         #: `YES NO` bars the arrival asks, one after another, after `Begin`
         #: and the journal question; each draws its own text, takes `N`
@@ -1512,7 +1561,17 @@ class FakePod(FakePool):
             begin = "journal" if self.journal else self.arrival()
             picked = {("menu", 0): "create", ("menu", 2): "from",
                       ("party", 6 + shift): "psave", ("party", 7 + shift): begin}
+            if self.pick_opens:
+                picked[("party", 3 + shift)] = "pick"
             self.mode = picked.get((m, self.row), m)
+        elif m == "pick":
+            self.into_pick.append(k)
+            if k in ("Down", "Up"):
+                self._roster(k)
+            elif k == "s":
+                self.mode, self.view_from = "sheet", "party"
+            elif k == "Escape":
+                self.mode = "party"
         elif m == "from" and k.upper() in "PSE":
             self.mode = {"P": "which", "S": "secret", "E": "menu"}[k.upper()]
         elif m == "which" and (self.save_dir / f"SAVGAM{k.upper()}.PTY").is_file():
@@ -1522,14 +1581,14 @@ class FakePod(FakePool):
         elif m == "psave" and k.upper() in "ABCDEFGHIJ":
             (self.save_dir / f"SAVGAM{k.upper()}.PTY").write_bytes(b"p")
             self.mode = "party"
-        elif m == "camp" and k == "End":
-            self.line = self.line % self.size + 1
+        elif m == "camp" and k in ("Down", "Up"):
+            self._roster(k)
         elif m == "camp" and k == "v":
-            self.mode = "sheet"
+            self.mode, self.view_from = "sheet", "camp"
         elif m == "sheet" and k == "i":
             self.mode, self.page = "items", 1
         elif m == "sheet" and k == "e":
-            self.mode = "camp"
+            self.mode = self.view_from
         elif m == "items" and k == "n" and self.page < self.pages:
             self.page += 1
         elif m == "items" and k == "e":
@@ -1540,6 +1599,16 @@ class FakePod(FakePool):
         elif m in FakePool.BARS:
             self.keys.pop()     # `FakePool.key` records it again
             super().key(k, gap)
+
+    def _roster(self, k: str) -> None:
+        """The selector: `Down` a member on, `Up` one back, both wrapping."""
+        if self.dead_down:
+            return
+        if self.swallow_down:
+            self.swallow_down = False
+            return
+        step = 1 if k == "Down" else -1
+        self.line = (self.line - 1 + step) % self.size + 1
 
     def _decline(self) -> None:
         self.tours -= 1
@@ -1574,11 +1643,25 @@ class FakePod(FakePool):
             return super().capture()
         text = {"title": (self.titles,), "question": (1, self.typed),
                 "menu": (self.row,), "party": (self.row,),
-                "camp": (self.line,), "sheet": (self.line,),
+                "camp": (self.line,),
+                "sheet": (1 if self.same_sheet else self.line,),
                 "items": (self.line, self.page),
                 "tour": (self.tours,), "cont": (self.continues,)}.get(self.mode, ())
         bar = FakePool.BARS["camp"] if self.mode == "camp" else self.BARS[self.mode]
-        return _screen(bar, bytes(t + 1 for t in text))
+        frame = _screen(bar, bytes(t + 1 for t in text))
+        if self.mode == "camp" and self.animated:
+            self.frame += 1
+            px = bytearray(frame.px)
+            px[(70 * W + 60) * 3:(70 * W + 60) * 3 + 3] = bytes((self.frame % 250 + 1,)) * 3
+            frame = dosbox.Screen(W, H, bytes(px))
+        if self.mode == "camp" or self.mode == "pick" or (self.mode == "party"
+                                                            and self.loaded):
+            where = "camp" if self.mode == "camp" else "party"
+            return _with_roster(frame, where, self.size, self.line)
+        if self.mode == "sheet":
+            return _with_roster(frame, "party", self.size, self.line,
+                                sheet=1 if self.same_sheet else self.line)
+        return frame
 
     def walk_highlight(self, rect, want, key="End", timeout=20.0):
         assert rect == da.POD_MENU_RECT
@@ -1675,15 +1758,17 @@ def test_pools_of_darkness_begins_camps_views_and_saves(tmp_path):
     d.camp()
     game.keys.clear()
     sheet = d.sheet(4)
-    assert game.keys == ["End"] * 3 + ["v", "e"] and game.mode == "camp"
+    assert game.keys == ["Down"] * 3 + ["v", "e"] and game.mode == "camp"
     assert sheet["line"] == 4 and game.line == 4
+    assert sheet["name"] == da.roster_name(
+        _with_roster(_screen(b"", b""), "camp", 6, 1), "camp", 4)
     game.keys.clear()
     items = d.items(4)
     assert game.keys == ["v", "i", "n", "n", "n", "e", "e"]
     assert len(items["pages"]) == 3 and game.mode == "camp"
     game.keys.clear()
     d.sheet(2)
-    assert game.keys.count("End") == 4
+    assert game.keys.count("Down") == 4 and "End" not in game.keys
     saved = d.save("D")
     assert saved["file"] == "SAVGAMD.PTY" and (game.save_dir / "SAVGAMD.PTY").is_file()
     assert game.mode == "camp"
@@ -1715,6 +1800,216 @@ def test_the_party_menu_save_writes_the_pty(tmp_path):
     got = d.save("B")
     assert got["file"] == "SAVGAMB.PTY" and game.mode == "party"
     assert game.keys[-8:] == ["Down"] * 6 + ["Return", "b"]
+
+
+# -- choosing the character: the roster highlight -------------------------------
+
+
+def _camped_pod(tmp_path, **kw):
+    game, d = _pod_driver(tmp_path, question=False, **kw)
+    d.load()
+    d.begin()
+    d.camp()
+    game.keys.clear()
+    return game, d
+
+
+def test_the_roster_key_is_down_and_never_end():
+    """`End` is what run `88eac43064-run1-cleric` of #650 pressed, and the
+    selector at `GAME.OVR` 0x2680C answers only 0x48 and 0x50."""
+    assert da.POD_ROSTER_NEXT == "Down"
+    assert da.POD_PICK == "s"
+
+
+@pytest.mark.parametrize("line", [1, 4, 6])
+def test_a_camp_sheet_is_the_line_asked_for_even_with_the_fire_animating(tmp_path,
+                                                                          line):
+    """Run 1's defect: `End` moved nothing and the campfire changed the frame,
+    so `sheet 4` and `sheet 6` both showed member 1."""
+    game, d = _camped_pod(tmp_path, animated=True)
+    got = d.sheet(line)
+    assert game.keys == ["Down"] * (line - 1) + ["v", "e"]
+    assert got["presses"] == line - 1 and game.line == line and game.mode == "camp"
+
+
+def test_a_swallowed_down_is_pressed_again(tmp_path):
+    game, d = _camped_pod(tmp_path, swallow_down=True)
+    d.sheet(3)
+    assert game.keys == ["Down"] * 3 + ["v", "e"] and game.line == 3
+
+
+def test_a_down_that_moves_nothing_stops_before_view(tmp_path):
+    game, d = _camped_pod(tmp_path, dead_down=True)
+    with pytest.raises(da.StepFailed, match="did not move the roster highlight.*"
+                                            "lost-select-4"):
+        d.sheet(4)
+    assert game.keys == ["Down", "Down"] and game.mode == "camp"
+
+
+def test_a_sheet_of_another_character_stops_the_run(tmp_path):
+    """The game viewing member 1 whatever the highlight says is the failure
+    the name check exists for."""
+    game, d = _camped_pod(tmp_path, same_sheet=True)
+    d.sheet(1)
+    with pytest.raises(da.StepFailed, match="not roster line 4's.*lost-sheet-4-name"):
+        d.sheet(4)
+
+
+def test_two_lines_showing_one_sheet_frame_stop_the_run(tmp_path, monkeypatch):
+    """The second guard, with the name check made to pass."""
+    game, d = _camped_pod(tmp_path, same_sheet=True)
+    monkeypatch.setattr(da, "sheet_name", lambda screen: da.roster_name(
+        _with_roster(_screen(b"", b""), "camp", 6, 1), "camp", d.line))
+    d.sheet(2)
+    with pytest.raises(da.StepFailed, match="line 5's sheet is the same frame as "
+                                            "line 2's"):
+        d.sheet(5)
+
+
+def test_a_line_past_the_party_is_refused_before_a_key(tmp_path):
+    game, d = _camped_pod(tmp_path, size=4)
+    with pytest.raises(da.StepFailed, match="not in a party of 4"):
+        d.sheet(5)
+    assert game.keys == []
+
+
+@pytest.mark.parametrize("line", [1, 4])
+def test_view_opens_the_asked_character_from_the_party_menu_and_comes_back(
+        tmp_path, line):
+    game, d = _pod_driver(tmp_path, question=False, pages=2)
+    d.load()
+    game.keys.clear()
+    got = d.view(line)
+    assert game.keys == (["Down"] * 3 + ["Return"] + ["Down"] * (line - 1)
+                         + ["s", "i", "n", "n", "e", "e"])
+    assert game.into_pick == ["Down"] * (line - 1) + ["s"]
+    assert game.mode == "party" and d.where == "party" and game.line == line
+    assert got["line"] == line and len(got["pages"]) == 2
+    assert got["name"] == da.roster_name(
+        _with_roster(_screen(b"", b""), "party", 6, 1), "party", line)
+
+
+def test_view_counts_from_where_the_last_view_left_the_highlight(tmp_path):
+    game, d = _pod_driver(tmp_path, question=False, pages=1)
+    d.load()
+    d.view(4)
+    game.keys.clear()
+    d.view(2)
+    assert game.into_pick[-5:] == ["Down"] * 4 + ["s"] and game.line == 2
+
+
+def test_view_then_the_party_menu_save(tmp_path):
+    """The runner's order for a party that starts in a town."""
+    game, d = _pod_driver(tmp_path, question=False, pages=1)
+    d.load()
+    d.view(1)
+    saved = d.save("D")
+    assert saved["file"] == "SAVGAMD.PTY" and game.mode == "party"
+    assert game.into_pick == ["s"]
+
+
+def test_view_of_another_character_stops_the_run(tmp_path):
+    game, d = _pod_driver(tmp_path, question=False, same_sheet=True)
+    d.load()
+    with pytest.raises(da.StepFailed, match="not roster line 3's.*lost-view-3-name"):
+        d.view(3)
+
+
+def test_view_stops_when_pick_character_does_not_open(tmp_path):
+    game, d = _pod_driver(tmp_path, question=False, pick_opens=False)
+    d.load()
+    with pytest.raises(da.StepFailed, match="left the party menu showing.*lost-pick-2"):
+        d.view(2)
+    assert game.keys[-4:] == ["Down"] * 3 + ["Return"] and game.into_pick == []
+
+
+def test_exit_is_never_pressed_on_the_party_menu_itself(tmp_path):
+    game, d = _pod_driver(tmp_path, question=False)
+    d.load()
+    game.keys.clear()
+    d.back_to_party("x")
+    assert game.keys == [] and game.mode == "party"
+
+
+@pytest.mark.parametrize("steps", [
+    ("load", "view 1", "save D", "read"),
+    ("load", "view 4", "view 6", "begin", "camp", "sheet 4"),
+    ("load", "save B", "view 2"),
+])
+def test_orders_with_view_allowed(steps):
+    da.validate_steps(_steps(*steps), "darkness")
+
+
+@pytest.mark.parametrize("title,steps,why", [
+    ("darkness", ("load", "begin", "view 1"), "view needs the party menu"),
+    ("darkness", ("load", "begin", "camp", "view 1"), "view needs the party menu"),
+    ("darkness", ("view 1",), "needs load first"),
+    ("curse", ("load", "view 1"), "darkness only"),
+])
+def test_orders_with_view_refused(title, steps, why):
+    with pytest.raises(ValueError, match=why):
+        da.validate_steps(_steps(*steps), title)
+
+
+def test_view_parses_and_a_bad_line_is_refused():
+    assert (da.parse_step("view 3").kind, da.parse_step("view 3").line) == ("view", 3)
+    for bad in ("view", "view 0", "view 9", "view x"):
+        with pytest.raises(ValueError):
+            da.parse_step(bad)
+
+
+def test_an_empty_line_has_the_blank_signature():
+    empty = _screen(b"", b"")
+    assert da.roster_name(empty, "party", 1) == da.BLANK_NAME
+    assert da.sheet_name(empty) == da.BLANK_NAME
+
+
+def test_the_name_signature_is_blind_to_the_highlight_colour():
+    white = _with_roster(_screen(b"", b""), "camp", 6, 2)
+    cyan = _with_roster(_screen(b"", b""), "camp", 6, 3)
+    assert da.roster_name(white, "camp", 2) == da.roster_name(cyan, "camp", 2)
+    assert da.roster_line(white, "camp", 6) == 2
+    assert da.roster_line(cyan, "camp", 6) == 3
+    assert len({da.roster_name(white, "camp", n) for n in range(1, 7)}) == 6
+
+
+def _capture(run: str, name: str) -> dosbox.Screen:
+    import shutil
+    import subprocess
+
+    from tools.registry.scratch import cache_dir
+    shot = cache_dir("acceptance", "650", run, "shots", f"{name}.png")
+    if not shot.exists() or shutil.which("convert") is None:
+        pytest.skip(f"the captured screen {run}/{name} is not on this machine")
+    ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
+                         check=True, capture_output=True).stdout
+    return dosbox.Screen.from_ppm(ppm)
+
+
+@pytest.mark.parametrize("run,roster,where,sheets", [
+    ("88eac43064-run1-cleric", "004-loaded", "party",
+     ("009-sheet-4", "011-sheet-4", "014-sheet-6")),
+    ("88eac43064-run1-cleric", "007-camp", "camp",
+     ("009-sheet-4", "011-sheet-4", "014-sheet-6")),
+    ("840311866e-run0-control", "004-loaded", "party", ("012-sheet-1", "014-sheet-1")),
+    ("840311866e-run0-control", "010-camp", "camp", ("012-sheet-1", "014-sheet-1")),
+])
+def test_the_captured_sheets_are_roster_line_one_and_no_other(run, roster, where,
+                                                             sheets):
+    """Every sheet those runs opened showed member 1, the highlighted line,
+    whatever line the step asked for."""
+    screen = _capture(run, roster)
+    assert da.roster_line(screen, where, 6) == 1
+    names = [da.roster_name(screen, where, n) for n in range(1, 7)]
+    assert len(set(names)) == 6 and da.BLANK_NAME not in names
+    for sheet in sheets:
+        assert [n for n in range(1, 7)
+                if names[n - 1] == da.sheet_name(_capture(run, sheet))] == [1]
+
+
+@pytest.mark.parametrize("shot", ["008-line-4", "010-line-4", "013-line-6"])
+def test_run_one_s_end_never_moved_the_highlight(shot):
+    assert da.roster_line(_capture("88eac43064-run1-cleric", shot), "camp", 6) == 1
 
 
 @pytest.mark.parametrize("walls", [0, 2])

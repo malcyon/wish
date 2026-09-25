@@ -43,7 +43,8 @@ conversion logged.
 | `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P` |
 | `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars (below), to the map; Pools of Darkness' map only by its measured bar |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
-| `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1), `VIEW`, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
+| `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1) highlighted with `Down`, `VIEW`, the sheet's name checked against line N's, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
+| `view N` | Pools of Darkness, at the party menu: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`, the sheet checked as above, every `ITEMS` page, and `EXIT` back to the party menu |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below) |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
@@ -96,7 +97,19 @@ continue screens are counted one screen at a time, at most `POD_INTERSTITIALS`
 in `begin`.  A party saved in a town begins at the services bar
 `POD_TOWN_BAR`; `begin` shoots it as `town-screen` and stops with
 `lost-begin-screen`, pressing nothing, because the driver does not leave a town.
-Use the party-menu save steps (`load 'save D' read`) for a town party.
+Use the party-menu steps (`load 'view 1' 'save D' read`) for a town party.
+
+**Pools of Darkness picks a character by its roster highlight, read off the
+screen.**  The current character's name is the one roster line drawn in
+white; `Down` moves it a member on and wraps (`POD_ROSTER_NEXT` has the
+code), and `End` does nothing.  The camp's `VIEW` and the party menu's
+`PICK CHARACTER` both view the highlighted character.  Each sheet is
+believed only when the name cells at its top left carry the same glyphs as
+roster line N's (`name_signature`), and a sheet frame two lines share stops
+the run.  `ITEMS` is left with `Exit` to the sheet and the sheet with `Exit`
+to where `VIEW` was pressed (`GAME.OVR` 0x2452E ends its loop on word 7,
+`Exit`, or `Escape`); the driver looks before each `Exit` and never presses
+one on the camp bar or the party menu.
 
 Staging, written into the installed copy before the boot and logged in
 bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
@@ -298,6 +311,73 @@ LEAVE = "e"
 ITEMS_NEXT = dosbox.LIST_PAGE_DOWN
 #: Pages of `ITEMS` captured before the run gives up on reaching the last.
 ITEMS_PAGES = 6
+
+#: Pools of Darkness' roster selector (`GAME.OVR` 0x2680C, far entry `AA:4D`)
+#: moves the current character to the next member on scancode 0x50 and to
+#: the one before on 0x48, wrapping at both ends, and ignores every other
+#: key, `End` (0x4F) included.  The camp loop (0x105F1) and the party menu's
+#: `PICK CHARACTER` prompt (0x26E4E) hand it each special key their menu
+#: returns; the menu routine (0x3A422) returns an arrow as its scancode, and
+#: `2` and `8` as 0x50 and 0x48 through the table at `DS:0x5364`.
+POD_ROSTER_NEXT = "Down"
+#: `Select`, the only word of the `PICK CHARACTER` prompt (`GAME.EXE` data
+#: `DS:0x2859` over `DS:0x2B8D`), keyed by its first letter.  The prompt then
+#: views the character the roster highlight is on (`AA:39`, 0x2452E).
+POD_PICK = "s"
+#: Where the roster's first name is drawn: text column 1 at the party menu
+#: and its prompts, 17 in camp, from text row 4, one row per member
+#: (0x34825).  The current character's name is drawn in colour 15, white,
+#: and every other name in 11, 12, 13 or 14 by its status (0x35AC0), so the
+#: one near-white line is the highlight.  Measured on #650's captures: 5 party
+#: menus and 7 camp screens, each read with the highlight on line 1.
+POD_ROSTER = {"party": (8, 32), "camp": (136, 32)}
+#: Where the sheet draws the character's name: text column 1, row 1.  On 5
+#: sheets of two parties (#650 runs `88eac43064-run1-cleric` and
+#: `840311866e-run0-control`) its signature equals roster line 1's and no
+#: other line's.
+POD_SHEET_NAME = (8, 8)
+#: A name's cells: 15 characters, 7 pixel rows of ink in each.
+POD_NAME_CELLS = 15
+POD_NAME_ROWS = 7
+#: Roster-highlight moves tried per member before `pick_line` gives up.
+POD_PICK_ROUNDS = 2
+
+
+def name_signature(screen: dosbox.Screen, x: int, y: int) -> str:
+    """The name drawn at `(x, y)`, one character cell at a time.
+
+    Each cell is `Screen.glyphs` against its own paper, as `bar_signature`
+    reads the bar, so the white of the current character and the cyan of
+    the others give the same bits for the same letters.
+    """
+    sha = hashlib.sha1()
+    for i in range(POD_NAME_CELLS):
+        sha.update(screen.glyphs((x + CELL * i, y, CELL, POD_NAME_ROWS)).encode())
+    return sha.hexdigest()[:16]
+
+
+def roster_name(screen: dosbox.Screen, where: str, line: int) -> str:
+    """Roster line `line`'s name (from 1), at the party menu or in camp."""
+    x, y = POD_ROSTER[where]
+    return name_signature(screen, x, y + CELL * (line - 1))
+
+
+def roster_line(screen: dosbox.Screen, where: str, size: int) -> int | None:
+    """The roster line drawn highlighted, from 1, or None if none is."""
+    x, y = POD_ROSTER[where]
+    row = screen.highlight_row((x, y, CELL * POD_NAME_CELLS, CELL * size))
+    return None if row is None else row + 1
+
+
+def sheet_name(screen: dosbox.Screen) -> str:
+    """The name on a character sheet, comparable with `roster_name`."""
+    return name_signature(screen, *POD_SHEET_NAME)
+
+
+#: The signature of fifteen empty cells: a roster line with nobody on it.
+BLANK_NAME = hashlib.sha1(
+    dosbox.Screen(CELL, POD_NAME_ROWS, bytes(CELL * POD_NAME_ROWS * 3)).glyphs().encode()
+    * POD_NAME_CELLS).hexdigest()[:16]
 #: The walk each title drives: Pool's turn-around, Pools of Darkness' step.
 WALKS = {"pool": "MI", "darkness": "1"}
 
@@ -445,7 +525,8 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 
 
 STEP_HELP = ("load, begin, 'walk MI', 'walk 1', camp, display, 'rest 5m', 'save D', "
-             "'train 1', 'sheet 1', 'items 1', 'shot NAME', 'press KEY', read")
+             "'train 1', 'sheet 1', 'items 1', 'view 1', 'shot NAME', 'press KEY', "
+             "read")
 
 
 def parse_step(text: str) -> Step:
@@ -461,7 +542,7 @@ def parse_step(text: str) -> Step:
         return Step(kind, text, minutes=minutes)
     if kind == "save" and len(words) == 2 and re.fullmatch(r"[A-Ja-j]", words[1]):
         return Step(kind, text, letter=words[1].upper())
-    if kind in ("train", "sheet", "items") and len(words) == 2 and re.fullmatch(
+    if kind in ("train", "sheet", "items", "view") and len(words) == 2 and re.fullmatch(
             r"[1-8]", words[1]):
         return Step(kind, text, line=int(words[1]))
     if kind == "walk" and len(words) == 2 and words[1].upper() in WALKS.values():
@@ -530,6 +611,12 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                 raise ValueError(f"{k} is driven in darkness only, not {title}")
             if where != "camp":
                 raise ValueError(f"{k} needs camp first: {step.text!r}")
+        elif k == "view":
+            if title != "darkness":
+                raise ValueError(f"view is driven in darkness only, not {title}")
+            if where != "party":
+                raise ValueError(f"view needs the party menu, before begin: "
+                                 f"{step.text!r}")
         elif k == "rest":
             if where != "camp":
                 raise ValueError(f"rest needs camp first: {step.text!r}")
@@ -1183,6 +1270,9 @@ class Driver:
         self._ssb = None
         #: Pools of Darkness' party-menu rows once a save is loaded.
         self.pod_rows = dict(POD_MENU_AFTER)
+        #: Each roster line's sheet digest, once shown: two lines must never
+        #: show the same sheet.
+        self.sheets: dict[int, str] = {}
 
     # -- evidence ----------------------------------------------------------
 
@@ -1585,8 +1675,8 @@ class Driver:
             self.shot("town-screen")
             raise self.fail("begin-screen", "the party starts in a town "
                             "services screen, which this driver does not "
-                            "leave; use the party-menu save steps "
-                            "(load 'save D' read) for a town party")
+                            "leave; use the party-menu steps "
+                            "(load 'view 1' 'save D' read) for a town party")
         if self.on_party_menu(screen):
             raise self.fail("begin", "the party menu is still showing")
         kind = None
@@ -1692,32 +1782,156 @@ class Driver:
         raise self.fail("walk-blocked", "no facing let the party step (the "
                         "settled status never changed after Up)")
 
-    def select(self, line: int) -> None:
-        """Move the roster highlight to line `line`, counted from 1.
+    def pick_line(self, line: int, where: str, label: str) -> dict:
+        """Move Pools of Darkness' roster highlight onto line `line`, from 1.
 
-        `End` moves it a line and wraps, and it stays where the last command
-        left it, as at Curse's party menu; each press must change the screen.
+        Read, never counted: the highlight is the white roster line
+        (`roster_line`), and `POD_ROSTER_NEXT` moves it one member on and
+        wraps.  A press is believed only when the white line moves; a
+        whole-frame digest is not enough, because the camp picture animates
+        by itself.  Two presses in a row that leave it where it was, or more
+        than `POD_PICK_ROUNDS` presses a member, stop the run.
         """
-        for _ in range((line - self.line) % self.party_size):
-            if not self.s.press_until_change(ROSTER_NEXT):
-                raise self.fail(f"select-{line}", "End did not move the roster "
-                                "highlight")
+        size = self.party_size
+        if not 1 <= line <= size:
+            raise StepFailed(f"line {line} is not in a party of {size}")
+        here = roster_line(self.s.capture(), where, size)
+        if here is None:
+            raise self.fail(label, "no roster line is drawn highlighted")
+        presses = still = 0
+        while here != line:
+            if presses >= POD_PICK_ROUNDS * size:
+                raise self.fail(label, f"{presses} presses of {POD_ROSTER_NEXT} "
+                                f"never brought the highlight to line {line}")
+            self.s.key(POD_ROSTER_NEXT)
+            presses += 1
+            was = here
+            self.s.wait_for(lambda sc, was=was: roster_line(sc, where, size) != was,
+                            5.0)
+            here = roster_line(self.s.capture(), where, size)
+            if here is None:
+                raise self.fail(label, "the roster highlight went away")
+            still = still + 1 if here == was else 0
+            if still >= 2:
+                raise self.fail(label, f"{POD_ROSTER_NEXT} did not move the "
+                                f"roster highlight off line {here}")
         self.line = line
+        return {"presses": presses}
+
+    def check_sheet(self, screen, line: int, want: str, label: str) -> dict:
+        """The sheet on `screen` is roster line `line`'s: its name cells match
+        the roster's, and no other line's sheet has had this frame."""
+        if want == BLANK_NAME:
+            raise self.fail(label, f"roster line {line} has no name drawn")
+        got = sheet_name(screen)
+        if got != want:
+            raise self.fail(label, f"the sheet's name is not roster line {line}'s "
+                            f"(sheet {got}, roster {want})")
+        digest = screen.digest()
+        other = next((n for n, d in self.sheets.items() if d == digest and n != line),
+                     None)
+        if other is not None:
+            raise self.fail(label, f"line {line}'s sheet is the same frame as "
+                            f"line {other}'s")
+        self.sheets[line] = digest
+        return {"name": want, "digest": digest, "sheet_bar": bar_signature(screen)}
 
     def open_sheet(self, line: int) -> dict:
+        """Camp: roster line `line` highlighted, `VIEW`, and the sheet checked."""
         if self.title.key != "darkness" or self.camp_sig is None:
             raise StepFailed("sheet and items need Pools of Darkness' camp first")
         self.ensure_camp()
-        self.select(line)
+        moved = self.pick_line(line, "camp", f"select-{line}")
+        want = roster_name(self.s.capture(), "camp", line)
         self.shot(f"line-{line}")
-        if not self.press_screen_changes(VIEW, tries=1, wait=15.0):
-            raise self.fail(f"sheet-{line}", "VIEW changed nothing")
-        screen = self.s.settle(quiet=0.8, timeout=30.0)
-        if self.in_camp(screen):
+        # `V` is keyed by nothing on the sheet's bar, so a second one is inert.
+        for _ in range(2):
+            self.s.key(VIEW)
+            if self.s.wait_for(lambda sc: not self.in_camp(sc), 15.0):
+                break
+        else:
             raise self.fail(f"sheet-{line}", "the camp bar is still showing "
                             "after VIEW")
-        return {"line": line, "sheet": self.shot(f"sheet-{line}"),
-                "sheet_bar": bar_signature(screen), "digest": screen.digest()}
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        checked = self.check_sheet(screen, line, want, f"sheet-{line}-name")
+        return {"line": line, **moved, "sheet": self.shot(f"sheet-{line}"),
+                **checked}
+
+    def item_pages(self, label: str) -> list[dict]:
+        """From a sheet: `ITEMS`, then every page shot, turning with `Next`
+        until it changes nothing or brings back the first page;
+        `ITEMS_PAGES` pages that are all different stop the run."""
+        if not self.press_screen_changes(SHEET_ITEMS, tries=1, wait=15.0):
+            raise self.fail(label, "ITEMS changed nothing on the sheet (the "
+                            "sheet offers ITEMS only to a character carrying "
+                            "something, GAME.OVR 0x245D6)")
+        pages: list[dict] = []
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        first = screen.digest()
+        while True:
+            pages.append({"shot": self.shot(f"{label}-{len(pages) + 1}"),
+                          "bar": bar_signature(screen), "digest": screen.digest()})
+            if len(pages) >= ITEMS_PAGES:
+                raise self.fail(f"{label}-pages", f"{ITEMS_PAGES} pages and "
+                                "Next still turns another")
+            before = screen.digest()
+            self.s.key(ITEMS_NEXT)
+            if not self.s.wait_for(lambda sc: sc.digest() != before, 5.0):
+                break
+            screen = self.s.settle(quiet=0.8, timeout=30.0)
+            if screen.digest() == first:
+                break
+        return pages
+
+    def back_to_party(self, label: str, tries: int = 3) -> None:
+        """`Exit` until the party menu is back, looking before every press,
+        so that no `E` ever lands on the party menu itself."""
+        for _ in range(tries):
+            if self.on_party_menu(self.s.settle(quiet=0.6, timeout=20.0)):
+                return
+            self.s.key(LEAVE)
+        if not self.wait_party_menu(15.0):
+            raise self.fail(label, f"the party menu never came back after "
+                            f"{tries} presses of Exit")
+
+    def view(self, line: int) -> dict:
+        """Party menu `View Character`, roster line `line`, its sheet and its
+        `ITEMS` pages, and back to the party menu.
+
+        `View` opens `PICK CHARACTER` over the roster (`GAME.OVR` 0x14536 via
+        0x26E25); `Down` moves the highlight a member on and `S` views that
+        character (0x2452E), whose `Exit` returns to the party menu.  Nothing
+        else is pressed, and nothing here writes a file.
+        """
+        if self.title.key != "darkness" or self.where != "party":
+            raise StepFailed("view is Pools of Darkness' party-menu command")
+        if self.party_sig is None:
+            raise StepFailed("view needs the party menu learnt by load")
+        self.pod_menu(self.pod_rows["view"], f"view-{line}")
+        screen = self.s.settle(quiet=0.6, timeout=20.0)
+        if self.on_party_menu(screen):
+            raise self.fail(f"pick-{line}", "View Character left the party menu "
+                            "showing")
+        if roster_line(screen, "party", self.party_size) is None:
+            raise self.fail(f"pick-{line}", "View Character did not open a roster "
+                            "with a highlighted line (PICK CHARACTER)")
+        pick = self.shot(f"pick-{line}")
+        moved = self.pick_line(line, "party", f"pick-{line}-select")
+        want = roster_name(self.s.capture(), "party", line)
+        self.shot(f"view-line-{line}")
+        # A second `S` goes out only if the first changed nothing in its 15
+        # seconds, since the first key after a redraw can be dropped; on a
+        # sheet it would open SPELLS, which the name check below stops at.
+        if not self.press_screen_changes(POD_PICK, tries=2, wait=15.0):
+            raise self.fail(f"view-{line}", "SELECT at PICK CHARACTER changed nothing")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        checked = self.check_sheet(screen, line, want, f"view-{line}-name")
+        sheet = self.shot(f"view-{line}-sheet")
+        pages = self.item_pages(f"view-{line}-items")
+        self.back_to_party(f"view-{line}-back")
+        self.shot(f"view-{line}-back")
+        return {"line": line, "pick": pick, **moved, "sheet": sheet, **checked,
+                "pages": pages}
 
     def back_to_camp(self, label: str, tries: int = 3) -> None:
         """`Exit` until the camp bar is back, looking before every press:
@@ -1747,24 +1961,7 @@ class Driver:
         page; `ITEMS_PAGES` pages that are all different stop the run.
         """
         got = self.open_sheet(line)
-        if not self.press_screen_changes(SHEET_ITEMS, tries=1, wait=15.0):
-            raise self.fail(f"items-{line}", "ITEMS changed nothing on the sheet")
-        pages: list[dict] = []
-        screen = self.s.settle(quiet=0.8, timeout=30.0)
-        first = screen.digest()
-        while True:
-            pages.append({"shot": self.shot(f"items-{line}-{len(pages) + 1}"),
-                          "bar": bar_signature(screen), "digest": screen.digest()})
-            if len(pages) >= ITEMS_PAGES:
-                raise self.fail(f"items-{line}-pages", f"{ITEMS_PAGES} pages and "
-                                "Next still turns another")
-            before = screen.digest()
-            self.s.key(ITEMS_NEXT)
-            if not self.s.wait_for(lambda sc: sc.digest() != before, 5.0):
-                break
-            screen = self.s.settle(quiet=0.8, timeout=30.0)
-            if screen.digest() == first:
-                break
+        pages = self.item_pages(f"items-{line}")
         self.back_to_camp(f"items-{line}-back")
         return {**got, "pages": pages}
 
@@ -2102,6 +2299,8 @@ def _run(args, outer: contextlib.ExitStack) -> int:
                     r = d.sheet(step.line)
                 elif step.kind == "items":
                     r = d.items(step.line)
+                elif step.kind == "view":
+                    r = d.view(step.line)
                 elif step.kind == "shot":
                     r = {"shot": d.shot(step.name)}
                 elif step.kind == "press":
