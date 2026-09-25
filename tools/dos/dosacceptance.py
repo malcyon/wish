@@ -41,7 +41,7 @@ conversion logged.
 | step | what it does |
 |---|---|
 | `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P` |
-| `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars, to the map |
+| `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question (below), to the map |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1), `VIEW`, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
@@ -72,6 +72,14 @@ whose `SAVGAM<L>.PTY` exists, and loads the one picked.  The menu routine
 slot letter.  The party menu after a load shows `Train Character` and `Human
 Change Classes` only when byte 0x2F of the save's first 1,024 bytes is not
 zero (0x14253), which moves `View`, `Save` and `Begin` down two rows.
+
+**Pools of Darkness asks a journal copy-protection question between `Begin
+Adventuring` and the map**, and the archives' build passes any answer
+(`dospod.answer_journal` has the code).  `dospod.journal_question` knows the
+screen by two glyph digests, never by its words; the driver looks for it
+before every step and inside `begin`, shoots it, types `x` and `Return`, and
+lists it in `events` as `journal`.  Nothing else is ever typed into it: a step
+that finds it where it would press `Exit` answers it and stops the run.
 
 Staging, written into the installed copy before the boot and logged in
 bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
@@ -224,17 +232,6 @@ POD_LOAD_FROM = "p"
 #: bytes the load puts at `[0x87F8]`), two rows above `View`.
 POD_TRAIN_BYTE = 0x2F
 
-
-def pod_menu_after(savgam: bytes | None) -> dict[str, int]:
-    """The party menu's `view`, `save` and `begin` rows after loading `savgam`.
-
-    With a party loaded the enabled entries are, in order, Create, Drop,
-    Modify, [Train, Human Change], View, Add, Remove, Save, Begin, Exit; the
-    bracketed two only when `POD_TRAIN_BYTE` is set.  A missing save gives
-    the rows without them.
-    """
-    shift = 2 if savgam and len(savgam) > POD_TRAIN_BYTE and savgam[POD_TRAIN_BYTE] else 0
-    return {k: v + shift for k, v in POD_MENU_AFTER.items()}
 #: `View` on the map and camp bars; `Items` and `Exit` on the sheet's bar
 #: `Items Spells Trade Deposit Drop Lay Cure Exit` (`GAME.EXE` 0xBB4F).  The
 #: `ITEMS` list turns its page with `Next` (0xA6AF), the list protocol's `n`.
@@ -246,6 +243,18 @@ ITEMS_NEXT = dosbox.LIST_PAGE_DOWN
 ITEMS_PAGES = 6
 #: The walk each title drives: Pool's turn-around, Pools of Darkness' step.
 WALKS = {"pool": "MI", "darkness": "1"}
+
+
+def pod_menu_after(savgam: bytes | None) -> dict[str, int]:
+    """The party menu's `view`, `save` and `begin` rows after loading `savgam`.
+
+    With a party loaded the enabled entries are, in order, Create, Drop,
+    Modify, [Train, Human Change], View, Add, Remove, Save, Begin, Exit; the
+    bracketed two only when `POD_TRAIN_BYTE` is set.  A missing save gives
+    the rows without them.
+    """
+    shift = 2 if savgam and len(savgam) > POD_TRAIN_BYTE and savgam[POD_TRAIN_BYTE] else 0
+    return {k: v + shift for k, v in POD_MENU_AFTER.items()}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1285,6 +1294,27 @@ class Driver:
         if self.left_camp:
             self.camp()
 
+    def journal(self, label: str) -> bool:
+        """Answer Pools of Darkness' journal question if it is showing.
+
+        Shot first, answered by `dospod.answer_journal`, and listed in the
+        summary's `events` as `journal`.  A question still showing after its
+        answers stops the run with a `lost-journal-*.png`.  Other titles, and
+        any other screen, get nothing pressed.
+        """
+        if self.title.key != "darkness" or not dospod.journal_question(self.s.capture()):
+            return False
+        shot = self.shot(f"journal-{label}")
+        try:
+            dospod.answer_journal(self.s)
+        except TimeoutError as e:
+            raise self.fail(f"journal-{label}", str(e)) from None
+        event = {"kind": "journal", "step": label, "shot": f"{shot}.png",
+                 "answered": dospod.JOURNAL_ANSWER.upper()}
+        self.events.append(event)
+        self.note(event="question", **event)
+        return True
+
     def record_world(self, screen) -> None:
         self.game.record_map(screen)
         self.world_sig = bar_signature(screen)
@@ -1339,9 +1369,9 @@ class Driver:
         return {"slot": self.slot, "party_menu": self.party_sig}
 
     def _load_pod(self) -> dict:
-        """Past the titles and the copy-protection question to the party
-        menu, `Load Saved Game`, `POOLS` at `LOAD FROM WHERE?`, and the slot
-        letter pressed once."""
+        """Past the titles to the party menu, `Load Saved Game`, then `POOLS`
+        at `LOAD FROM WHERE?` and the slot letter, each pressed once and given
+        30 seconds, so a key meant for one screen never lands on the next."""
         path = self.save_path(self.slot)
         self.pod_rows = pod_menu_after(path.read_bytes() if path.is_file() else None)
         answered = dospod.to_party_menu(self.s)
@@ -1349,7 +1379,7 @@ class Driver:
         self.pod_menu(POD_LOAD_ROW, "load")
         self.s.settle(quiet=0.6, timeout=20.0)
         self.shot("load-from")
-        if not self.press_screen_changes(POD_LOAD_FROM, wait=30.0):
+        if not self.press_screen_changes(POD_LOAD_FROM, tries=1, wait=30.0):
             raise self.fail("load-from", "POOLS at LOAD FROM WHERE? did not "
                             "open the slot list")
         self.s.settle(quiet=0.6, timeout=20.0)
@@ -1374,6 +1404,10 @@ class Driver:
         elif not self.press_screen_changes(PARTY_BEGIN, tries=1, wait=30.0):
             raise self.fail("begin", "BEGIN ADVENTURING did not leave the party menu")
         screen = self.s.settle(quiet=1.0, timeout=60.0)
+        # Pools of Darkness asks its journal question between the party menu
+        # and the map, every time the party begins.
+        if self.journal("begin"):
+            screen = self.s.settle(quiet=1.0, timeout=60.0)
         if self.on_party_menu(screen):
             raise self.fail("begin", "the party menu is still showing")
         self.record_world(screen)
@@ -1495,10 +1529,14 @@ class Driver:
 
     def back_to_camp(self, label: str, tries: int = 3) -> None:
         """`Exit` until the camp bar is back, looking before every press:
-        `Exit` on the camp bar itself breaks camp."""
+        `Exit` on the camp bar itself breaks camp, and on the journal
+        question it would be typed as an answer."""
         for _ in range(tries):
             if self.in_camp(self.s.settle(quiet=0.6, timeout=20.0)):
                 return
+            if self.journal(label):
+                raise self.fail(label, "the journal question interrupted the "
+                                "step and was answered; the party is out of camp")
             self.s.key(LEAVE)
         if not self.wait_camp(timeout=15.0):
             raise self.fail(label, f"the camp bar never came back after "
@@ -1846,6 +1884,9 @@ def _run(args, outer: contextlib.ExitStack) -> int:
             results = []
             for step in steps:
                 note(event="step", step=step.text)
+                # Before every step but a capture of what `press` left.
+                if d.where != "pressed":
+                    d.journal(re.sub(r"\W+", "-", step.text))
                 if step.kind == "load":
                     r = d.load()
                 elif step.kind == "begin":

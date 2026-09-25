@@ -9,8 +9,9 @@ harness:
   `CONTROL` before the game proper;
 * the container is `SAVGAM<slot>.PTY` and there is a `VAULT<slot>.DAT`
   beside it, so `Session.save_file` names the wrong file;
-* the archive's copy asks for a copy-protection answer, which it accepts
-  from any keys followed by Return.
+* the archive's copy asks a journal copy-protection question each time the
+  party menu's `Begin Adventuring` is picked, and accepts any answer
+  (`answer_journal`).
 
 Everything else -- the instance pool, the private X display, the settle-on-
 identical-frames discipline, the "ground truth is the file on disk" rule --
@@ -102,24 +103,26 @@ def to_main_menu(session: dosbox.Session, tries: int = 30) -> str:
     raise TimeoutError("never reached a screen Escape does not change")
 
 
-#: The key pressed at the screen `to_main_menu` stops at, to tell the
-#: copy-protection question from the party menu.  A digit: the question takes
-#: any keys, so a typed one is drawn there, and none of the party menu's
+#: The key pressed at the screen `to_main_menu` stops at, to tell a question
+#: waiting for typing from the party menu.  A digit: none of the party menu's
 #: thirteen entries (`GAME.EXE` 0xAB4E-0xAC90) begins with one.
 PROTECTION_PROBE = "1"
 
 
 def to_party_menu(session: dosbox.Session, presses: int = 30,
                   questions: int = 2) -> list[str]:
-    """`to_main_menu`, answering the copy-protection question on the way.
+    """`to_main_menu`, answering any question that waits for typing on the way.
 
-    The question waits for typing, so Escape stops changing the screen there
-    as well as at the party menu.  `PROTECTION_PROBE` is pressed at each still
-    screen: if the screen answers, it was the question, and `Return` sends
-    the typed key; if it does not, this is the party menu and `Return`, which
+    A question waits for typing, so Escape stops changing the screen there as
+    well as at the party menu.  `PROTECTION_PROBE` is pressed at each still
+    screen: if the screen answers, it was a question, and `Return` sends the
+    typed key; if it does not, this is the party menu and `Return`, which
     would pick `Create New Character`, is never pressed.  Returns the digest
-    of each question answered.  PROBABLE: the question accepting any answer
-    is this module's own account, not a capture.
+    of each question answered.
+
+    The archives' build asks nothing before the party menu: its one journal
+    question comes after `Begin Adventuring` (`answer_journal`), and run 0 of
+    #650 reached the party menu with none answered here.
     """
     answered: list[str] = []
     while True:
@@ -133,6 +136,63 @@ def to_party_menu(session: dosbox.Session, presses: int = 30,
                                "the copy-protection question")
         session.key("Return")
         answered.append(still)
+
+
+#: The journal question's two recognisers, as `Screen.glyphs` digests: the
+#: `ENTER` prompt in the first six cells of the bottom row, left of anything
+#: typed, and the question's first line from column 3 to 16, left of its page
+#: number.  Both are the same on all five captures of the question in run 0 of
+#: #650 (0, 1, 2 and 5 letters typed) and neither matches its seven other
+#: captures (title menu, party menu, `LOAD FROM WHERE?`, `LOAD WHICH GAME`).
+#: Digests, never the words: nothing the question says is kept here.
+JOURNAL_PROMPT_RECT = (0, 192, 48, 7)
+JOURNAL_PROMPT = "8ddd322388ee664b"
+JOURNAL_LINE_RECT = (24, 16, 112, 8)
+JOURNAL_LINE = "a1af8986ab2aa1e0"
+
+#: What `answer_journal` types.  Any answer passes in the archives' build
+#: (`answer_journal`); a letter because the prompt was seen drawing letters,
+#: and `x` because it is none of the map, camp or sheet bars' keys, should it
+#: ever reach one of them.
+JOURNAL_ANSWER = "x"
+
+
+def journal_question(screen: dosbox.Screen) -> bool:
+    """Whether `screen` is the journal copy-protection question."""
+    return (screen.glyphs(JOURNAL_PROMPT_RECT) == JOURNAL_PROMPT
+            and screen.glyphs(JOURNAL_LINE_RECT) == JOURNAL_LINE)
+
+
+def answer_journal(session: dosbox.Session, tries: int = 2,
+                   wait: float = 30.0) -> bool:
+    """Answer the journal question if it is showing.  True when it was.
+
+    `GAME.EXE` asks it from one place, image 0x1FD, each time the party-menu
+    routine returns to begin adventuring; the question is `GAME.OVR` 0x3603.
+    In the archives' build the routine compares the typed answer with the
+    expected one and never tests the result: at 0x37F6 an unconditional
+    `jmp` stands where the branch to a second question would be, and at
+    0x380F two `nop`s stand where the branch to failure would be, so after
+    one question it sets its four completion bytes and returns 1 (pass)
+    whatever was typed.  The caller leaves to DOS only on a 0 or on a
+    completion byte left clear.  So `JOURNAL_ANSWER` and `Return` pass.
+
+    The first key after a redraw may be swallowed, so the letter and
+    `Return` are sent up to `tries` times, each round only while the
+    question is still on screen; a question still showing after the last
+    round raises `TimeoutError`.  Nothing else is ever typed into it.
+    """
+    if not journal_question(session.capture()):
+        return False
+    for _ in range(tries):
+        before = session.capture().digest()
+        session.key(JOURNAL_ANSWER)
+        session.wait_for(lambda sc: sc.digest() != before, 5.0)
+        session.key("Return")
+        if session.wait_for(lambda sc: not journal_question(sc), wait):
+            return True
+    raise TimeoutError(f"the journal question was still showing after "
+                       f"{tries} answers")
 
 
 def double_click(session: dosbox.Session, x: int, y: int) -> None:

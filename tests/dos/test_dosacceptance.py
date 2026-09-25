@@ -17,7 +17,7 @@ import pathlib
 import pytest
 
 from tools.dos import dosacceptance as da
-from tools.dos import dosbox
+from tools.dos import dosbox, dospod
 
 W, H = 320, 200
 BAR_Y = dosbox.BAR[1]
@@ -51,6 +51,33 @@ def _screen(bar: bytes, text: bytes, block: tuple[int, int] | None = None) -> do
                 else:
                     px[at:at + 3] = b"\x55\xff\x55" if lit else b"\x00\x00\x00"
     return dosbox.Screen(W, H, bytes(px))
+
+
+#: The synthetic question's prompt: six cells of ink left of what is typed.
+_PROMPT = bytes((0x11, 0x22, 0x44, 0x88, 0x12, 0x24))
+
+
+def _journal_frame(typed: int = 0) -> dosbox.Screen:
+    """A synthetic stand-in for Pools of Darkness' journal question: `_PROMPT`
+    and one lit cell per typed key on the bar row, and sparse ink across
+    `dospod.JOURNAL_LINE_RECT`.  The `pod_journal` fixture makes the driver
+    know it by this frame's own digests."""
+    frame = _screen(_PROMPT + b"\x81" * typed, b"")
+    px = bytearray(frame.px)
+    x0, y0, w, h = dospod.JOURNAL_LINE_RECT
+    for x in range(x0, x0 + w, 3):
+        at = ((y0 + x % h) * W + x) * 3
+        px[at:at + 3] = b"\x55\xff\x55"
+    return dosbox.Screen(W, H, bytes(px))
+
+
+@pytest.fixture
+def pod_journal(monkeypatch):
+    frame = _journal_frame()
+    monkeypatch.setattr(dospod, "JOURNAL_PROMPT",
+                        frame.glyphs(dospod.JOURNAL_PROMPT_RECT))
+    monkeypatch.setattr(dospod, "JOURNAL_LINE",
+                        frame.glyphs(dospod.JOURNAL_LINE_RECT))
 
 
 # -- the bar, blind to its highlight -------------------------------------------
@@ -569,8 +596,16 @@ def _fake_run(monkeypatch, tmp_path, *, find_game=None, session_fail=None,
             raise menu_error
 
     class D:
+        where = "boot"
+        #: The labels `journal` was asked with, before each step.
+        asked: list[str] = []
+
         def __init__(self, session, note, letter, *rest, **kw):
             self.game = Game()
+
+        def journal(self, label):
+            self.asked.append(label)
+            return False
 
         def shot(self, name):
             (tmp_path / "session" / "shots").mkdir(parents=True, exist_ok=True)
@@ -1288,7 +1323,6 @@ def test_the_title_reads_the_archives_own_container_and_records():
     (`.claude/rules/testing.md`), so only the reading's own invariants are
     asserted: six characters, eight thief skills each, and an item count
     that matches the items read."""
-    from tools.dos import dospod
     try:
         save = dospod.find_game() / "SAVE"
     except FileNotFoundError:
@@ -1370,9 +1404,16 @@ class FakePod(FakePool):
             "sheet": b"\x29\x2a", "items": b"\x2b\x2c", "psave": b"\x2d",
             "from": b"\x2e\x2f", "secret": b"\x30"}
 
-    def __init__(self, tmp, question=True, pages=3, size=6):
+    def __init__(self, tmp, question=True, pages=3, size=6, journal=False,
+                 swallow_p=False):
         super().__init__(tmp, keys=TITLE_KEYS["darkness"])
         self.mode = "title"
+        #: `Begin` leads to the journal question, which draws every key
+        #: typed into it (`into_journal`) and leaves for the map on `Return`
+        #: after something was typed (`GAME.OVR` 0x3603).
+        self.journal, self.into_journal, self.journal_typed = journal, [], 0
+        #: `LOAD FROM WHERE?` drops the first `p`.
+        self.swallow_p = swallow_p
         self.titles, self.question, self.typed = 2, question, 0
         self.row, self.line, self.size = 0, 1, size
         self.page, self.pages = 1, pages
@@ -1384,7 +1425,15 @@ class FakePod(FakePool):
     def key(self, k, gap=0.0):
         self.keys.append(k)
         m = self.mode
-        if m == "title":
+        if m == "journal":
+            self.into_journal.append(k)
+            if k == "Return" and self.journal_typed:
+                self.mode, self.journal_typed = "map", 0
+            elif len(k) == 1:
+                self.journal_typed += 1
+        elif m == "from" and k == "p" and self.swallow_p:
+            self.swallow_p = False
+        elif m == "title":
             if k == "Escape":
                 self.titles -= 1
                 if self.titles == 0:
@@ -1397,8 +1446,9 @@ class FakePod(FakePool):
             self.row = (self.row + 1) % 11
         elif m in ("menu", "party") and k == "Return":
             shift = 2 * self.train
+            begin = "journal" if self.journal else "map"
             picked = {("menu", 0): "create", ("menu", 2): "from",
-                      ("party", 6 + shift): "psave", ("party", 7 + shift): "map"}
+                      ("party", 6 + shift): "psave", ("party", 7 + shift): begin}
             self.mode = picked.get((m, self.row), m)
         elif m == "from" and k.upper() in "PSE":
             self.mode = {"P": "which", "S": "secret", "E": "menu"}[k.upper()]
@@ -1429,6 +1479,8 @@ class FakePod(FakePool):
             super().key(k, gap)
 
     def capture(self):
+        if self.mode == "journal":
+            return _journal_frame(self.journal_typed)
         if self.mode in FakePool.BARS and self.mode not in ("camp",):
             return super().capture()
         text = {"title": (self.titles,), "question": (1, self.typed),
@@ -1635,7 +1687,6 @@ def test_pools_of_darkness_stops_when_every_facing_is_a_wall(tmp_path):
 def test_the_run_boots_start_bat_from_the_title_own_directory(monkeypatch, pod_source):
     """`dospod.find_game`, not the `START.EXE` search, and `START.BAT` as
     the launcher; a container of the wrong title is refused before a claim."""
-    from tools.dos import dospod
     out, _ = pod_source
     tmp_path = out.parent
     log = _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("stopped here"))
@@ -1656,3 +1707,85 @@ def test_the_run_boots_start_bat_from_the_title_own_directory(monkeypatch, pod_s
     with pytest.raises(ValueError, match="SAVGAMA.PTY, not the SAVGAMA.DAT pool"):
         da.run(args)
     assert "claim" not in log
+
+
+# -- Pools of Darkness' journal question -------------------------------------------
+
+
+def test_the_journal_question_after_begin_is_answered_and_the_steps_after_it_work(
+        tmp_path, pod_journal):
+    """Run 0's stop: `Begin` led to the question, and the driver took it for
+    the map and typed `camp`'s and `sheet`'s keys into it.  Now the question
+    gets `x` and `Return` and nothing else, and camp, a sheet, its items and
+    the camp save run as they would without it."""
+    game, d = _pod_driver(tmp_path, question=False, journal=True, pages=2)
+    d.load()
+    d.begin()
+    assert game.mode == "map" and d.where == "map"
+    assert game.into_journal == [dospod.JOURNAL_ANSWER, "Return"]
+    assert [e["kind"] for e in d.events] == ["journal"]
+    d.camp()
+    assert game.mode == "camp"
+    d.sheet(1)
+    items = d.items(1)
+    assert len(items["pages"]) == 2 and game.mode == "camp"
+    assert d.save("D")["file"] == "SAVGAMD.PTY"
+    assert game.into_journal == [dospod.JOURNAL_ANSWER, "Return"]
+
+
+def test_the_question_is_answered_before_a_step_finds_it(tmp_path, pod_journal):
+    """Wherever a step starts, the question showing is answered first, so the
+    step's own keys land on the map rather than in the answer box."""
+    game, d = _pod_driver(tmp_path, question=False)
+    d.load()
+    d.begin()
+    game.mode = "journal"
+    assert d.journal("camp")
+    assert game.mode == "map"
+    assert not d.journal("camp")
+    d.camp()
+    assert game.into_journal == [dospod.JOURNAL_ANSWER, "Return"]
+
+
+def test_exit_is_never_typed_into_the_question(tmp_path, pod_journal):
+    """Leaving a sheet presses `Exit` until the camp bar is back; on the
+    question that key would be an answer, so it is answered and the run stops."""
+    game, d = _pod_driver(tmp_path, question=False)
+    d.load()
+    d.begin()
+    d.camp()
+    game.mode = "journal"
+    with pytest.raises(da.StepFailed, match="journal question interrupted"):
+        d.back_to_camp("sheet-1-back")
+    assert game.into_journal == [dospod.JOURNAL_ANSWER, "Return"]
+    assert da.LEAVE not in game.into_journal
+
+
+def test_other_titles_never_look_for_the_question(tmp_path, pod_journal):
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "curse")
+    game.capture = lambda: pytest.fail("the question was looked for")
+    assert not d.journal("camp")
+
+
+def test_the_answer_is_no_key_the_driver_presses_on_the_map_camp_or_sheet():
+    """Should a frame ever be misread as the question, `x` is none of the map
+    bar's, the camp bar's or the sheet bar's commands."""
+    driven = {da.ENCAMP, da.CAMP_SAVE, da.CAMP_REST, da.VIEW, da.SHEET_ITEMS,
+              da.LEAVE, da.ITEMS_NEXT, *da.LATER_REST.__dict__.values()}
+    assert dospod.JOURNAL_ANSWER not in driven
+
+
+def test_the_run_looks_for_the_question_before_every_step(monkeypatch, tmp_path):
+    _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("stopped"))
+    da.run(_run_args(tmp_path, ["load"]))
+    assert da.Driver.asked == ["load"]
+
+
+def test_pools_at_load_from_where_is_pressed_once(tmp_path):
+    """A `p` the screen drops is not pressed again: the run stops at
+    `lost-load-from` rather than send a key the next screen might take."""
+    game, d = _pod_driver(tmp_path, question=False, swallow_p=True)
+    with pytest.raises(da.StepFailed, match="POOLS at LOAD FROM WHERE"):
+        d.load()
+    assert game.keys.count(da.POD_LOAD_FROM) == 1 and game.mode == "from"
