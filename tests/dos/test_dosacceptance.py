@@ -609,6 +609,7 @@ def _fake_run(monkeypatch, tmp_path, *, find_game=None, session_fail=None,
         #: The labels `journal` and `yes_no` were asked with, before each step.
         asked: list[str] = []
         declined: list[str] = []
+        continued: list[str] = []
 
         def __init__(self, session, note, letter, *rest, **kw):
             self.game = Game()
@@ -619,6 +620,10 @@ def _fake_run(monkeypatch, tmp_path, *, find_game=None, session_fail=None,
 
         def yes_no(self, label):
             self.declined.append(label)
+            return 0
+
+        def press_continue(self, label):
+            self.continued.append(label)
             return 0
 
         def shot(self, name):
@@ -1417,10 +1422,11 @@ class FakePod(FakePool):
             "which": b"\x25", "party": b"\x26\x27", "create": b"\x28",
             "sheet": b"\x29\x2a", "items": b"\x2b\x2c", "psave": b"\x2d",
             "from": b"\x2e\x2f", "secret": b"\x30", "tour": b"\x31\x32",
-            "story": b"\x34"}
+            "story": b"\x34", "cont": b"\x35\x36"}
 
     def __init__(self, tmp, question=True, pages=3, size=6, journal=False,
-                 swallow_p=False, tours=0, after_tour="map", dead_n=False):
+                 swallow_p=False, tours=0, after_tour="map", dead_n=False,
+                 continues=0, dead_return=False):
         super().__init__(tmp, keys=TITLE_KEYS["darkness"])
         self.mode = "title"
         #: `YES NO` bars the arrival asks, one after another, after `Begin`
@@ -1429,6 +1435,10 @@ class FakePod(FakePool):
         #: last leads to `after_tour`.
         self.tours, self.after_tour, self.dead_n = tours, after_tour, dead_n
         self.into_tour: list[str] = []
+        #: Story dialogs after the last bar, each drawing its own text, taking
+        #: `Return` (`into_cont` has every key typed at one) unless
+        #: `dead_return`; the last leads to the map.
+        self.continues, self.dead_return, self.into_cont = continues, dead_return, []
         #: `Begin` leads to the journal question, which draws every key
         #: typed into it (`into_journal`) and leaves for the map on `Return`
         #: after something was typed (`GAME.OVR` 0x3603).
@@ -1451,6 +1461,13 @@ class FakePod(FakePool):
             if k == "n" and not self.dead_n:
                 self.tours -= 1
                 self.mode = "tour" if self.tours else self.after_tour
+                if self.mode == "map" and self.continues:
+                    self.mode = "cont"
+        elif m == "cont":
+            self.into_cont.append(k)
+            if k == "Return" and not self.dead_return:
+                self.continues -= 1
+                self.mode = "cont" if self.continues else "map"
         elif m == "journal":
             self.into_journal.append(k)
             if k == "Return" and self.journal_typed:
@@ -1506,7 +1523,7 @@ class FakePod(FakePool):
 
     def arrival(self) -> str:
         """Where the party is once the journal question is behind it."""
-        return "tour" if self.tours else "map"
+        return "tour" if self.tours else "cont" if self.continues else "map"
 
     def capture(self):
         if self.mode == "journal":
@@ -1517,7 +1534,7 @@ class FakePod(FakePool):
                 "menu": (self.row,), "party": (self.row,),
                 "camp": (self.line,), "sheet": (self.line,),
                 "items": (self.line, self.page),
-                "tour": (self.tours,)}.get(self.mode, ())
+                "tour": (self.tours,), "cont": (self.continues,)}.get(self.mode, ())
         bar = FakePool.BARS["camp"] if self.mode == "camp" else self.BARS[self.mode]
         return _screen(bar, bytes(t + 1 for t in text))
 
@@ -1812,6 +1829,7 @@ def test_the_run_looks_for_the_question_before_every_step(monkeypatch, tmp_path)
     da.run(_run_args(tmp_path, ["load"]))
     assert da.Driver.asked == ["load"]
     assert da.Driver.declined == ["load"]
+    assert da.Driver.continued == ["load"]
 
 
 def test_pools_at_load_from_where_is_pressed_once(tmp_path):
@@ -1933,3 +1951,85 @@ def test_other_titles_never_look_for_a_yes_no_bar(tmp_path, pod_yes_no):
     game.capture = lambda: pytest.fail("the bar was looked for")
     assert d.yes_no("camp") == 0
 
+
+
+# -- Pools of Darkness' story dialogs that say to press a button or Enter -------
+
+
+@pytest.fixture
+def pod_continue(monkeypatch, pod_yes_no):
+    """The driver knows the fake's continue bar by its own signature."""
+    monkeypatch.setattr(da, "POD_CONTINUE_BAR",
+                        da.bar_signature(_screen(FakePod.BARS["cont"], b"")))
+
+
+def test_the_continue_bar_is_not_another_known_bar():
+    assert da.POD_CONTINUE_BAR != da.POD_YES_NO_BAR
+    assert da.POD_CONTINUE == "Return" and da.POD_CONTINUE_ROUNDS == 5
+
+
+@pytest.mark.parametrize("continues", [1, da.POD_CONTINUE_ROUNDS])
+def test_continue_screens_after_the_answer_get_return_and_nothing_else(
+        tmp_path, pod_continue, continues):
+    game, d = _pod_driver(tmp_path, question=False, tours=1, continues=continues)
+    d.load()
+    d.begin()
+    assert game.mode == "map" and d.where == "map"
+    assert game.into_cont == ["Return"] * continues
+    assert [e["kind"] for e in d.events] == ["yes_no"] + ["press_continue"] * continues
+    assert len({e["shot"] for e in d.events}) == continues + 1
+    assert "y" not in game.keys and "Y" not in game.keys
+
+
+def test_a_sixth_continue_screen_stops_the_run(tmp_path, pod_continue):
+    game, d = _pod_driver(tmp_path, question=False,
+                          continues=da.POD_CONTINUE_ROUNDS + 1)
+    d.load()
+    with pytest.raises(da.StepFailed, match="after 5 were answered.*lost-continue-begin"):
+        d.begin()
+    assert game.into_cont == ["Return"] * da.POD_CONTINUE_ROUNDS
+
+
+def test_a_return_that_changes_nothing_stops_the_run(tmp_path, pod_continue):
+    game, d = _pod_driver(tmp_path, question=False, continues=1, dead_return=True)
+    d.load()
+    with pytest.raises(da.StepFailed, match="Return changed nothing"):
+        d.begin()
+    assert game.into_cont == ["Return"] * 2
+
+
+def test_with_no_measured_map_the_screen_after_the_last_continue_stops_begin(
+        tmp_path, monkeypatch, pod_continue):
+    monkeypatch.setattr(da, "POD_MAP_BAR", None)
+    game, d = _pod_driver(tmp_path, question=False, tours=1, continues=2)
+    d.load()
+    with pytest.raises(da.StepFailed, match="lost-begin-screen"):
+        d.begin()
+    assert game.keys[-1] == "Return" and da.ENCAMP not in game.keys
+
+
+def test_begin_gives_up_after_too_many_interstitials(tmp_path, monkeypatch,
+                                                     pod_continue):
+    monkeypatch.setattr(da, "POD_INTERSTITIALS", 2)
+    game, d = _pod_driver(tmp_path, question=False, continues=4)
+    d.load()
+    with pytest.raises(da.StepFailed, match="lost-begin-interstitials"):
+        d.begin()
+    assert game.into_cont == ["Return"] * 4
+
+
+def test_a_continue_screen_found_before_a_step_is_answered_first(tmp_path,
+                                                                 pod_continue):
+    game, d = _pod_driver(tmp_path, question=False)
+    d.load()
+    d.begin()
+    game.mode, game.continues = "cont", 1
+    assert d.press_continue("camp") == 1 and game.mode == "map"
+    assert d.press_continue("camp") == 0
+
+
+def test_other_titles_never_look_for_a_continue_screen(tmp_path, pod_continue):
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "curse")
+    game.capture = lambda: pytest.fail("the bar was looked for")
+    assert d.press_continue("camp") == 0

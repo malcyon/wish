@@ -257,6 +257,17 @@ POD_YES_NO_BAR = "02af736347597b37"
 POD_DECLINE = "n"
 #: `YES NO` bars declined one after another before the run gives up.
 POD_YES_NO_ROUNDS = 3
+#: A story dialog whose bottom row reads `PRESS BUTTON OR ENTER TO CONTINUE`,
+#: by `bar_signature` of that row alone.  Measured on the screen after `No` on
+#: the arrival question; the words are never kept.
+POD_CONTINUE_BAR = "7a286012361f96ae"
+#: What the bar says continues it.
+POD_CONTINUE = "Return"
+#: Continue screens answered one after another before the run gives up.
+POD_CONTINUE_ROUNDS = 5
+#: Journal, `YES NO` and continue screens `begin` answers in all before it
+#: gives up, so that no mix of them can loop.
+POD_INTERSTITIALS = 12
 #: The map's command bar by `bar_signature`, which `begin` requires before it
 #: calls a screen the map.  None until a capture of the real map measures it:
 #: `begin` then stops at whatever screen it reaches, with a `lost-*.png`.
@@ -1381,6 +1392,38 @@ class Driver:
             declined += 1
         return declined
 
+    def press_continue(self, label: str) -> int:
+        """Continue past every Pools of Darkness story dialog showing, in turn.
+
+        Each is shot, gets `POD_CONTINUE`, is waited out, and is listed in
+        `events` as `press_continue`.  A sixth in a row, or one `Return` does
+        not change, stops the run.  Other titles get nothing pressed.  Returns
+        how many were answered.
+        """
+        if self.title.key != "darkness":
+            return 0
+        answered = 0
+        while bar_signature(self.s.capture()) == POD_CONTINUE_BAR:
+            if answered >= POD_CONTINUE_ROUNDS:
+                raise self.fail(f"continue-{label}", f"a continue screen is still "
+                                f"showing after {answered} were answered")
+            shot = self.shot(f"continue-{label}")
+            before = self.s.capture().digest(TEXT_WINDOW)
+            for _ in range(2):
+                self.s.key(POD_CONTINUE)
+                if self.s.wait_for(lambda sc: sc.digest(TEXT_WINDOW) != before, 10.0):
+                    break
+            else:
+                raise self.fail(f"continue-{label}", "Return changed nothing on "
+                                "the continue screen")
+            self.s.settle(quiet=1.0, timeout=60.0)
+            event = {"kind": "press_continue", "step": label, "shot": f"{shot}.png",
+                     "bar": POD_CONTINUE_BAR, "answered": POD_CONTINUE}
+            self.events.append(event)
+            self.note(event="question", **event)
+            answered += 1
+        return answered
+
     def record_world(self, screen) -> None:
         self.game.record_map(screen)
         self.world_sig = bar_signature(screen)
@@ -1473,10 +1516,18 @@ class Driver:
         # Pools of Darkness asks its journal question between the party menu
         # and the map, every time the party begins, and its arrival may ask a
         # YES NO question after that.
-        if self.journal("begin"):
+        answered = 0
+        while True:
+            got = (int(self.journal("begin")) + self.yes_no("begin")
+                   + self.press_continue("begin"))
+            if not got:
+                break
+            answered += got
             screen = self.s.settle(quiet=1.0, timeout=60.0)
-        if self.yes_no("begin"):
-            screen = self.s.settle(quiet=1.0, timeout=60.0)
+            if answered > POD_INTERSTITIALS:
+                raise self.fail("begin-interstitials", f"{answered} journal, "
+                                "YES NO and continue screens were answered, "
+                                f"more than {POD_INTERSTITIALS}")
         if self.on_party_menu(screen):
             raise self.fail("begin", "the party menu is still showing")
         if self.title.key == "darkness" and bar_signature(screen) != POD_MAP_BAR:
@@ -1965,6 +2016,7 @@ def _run(args, outer: contextlib.ExitStack) -> int:
                 if d.where != "pressed":
                     d.journal(re.sub(r"\W+", "-", step.text))
                     d.yes_no(re.sub(r"\W+", "-", step.text))
+                    d.press_continue(re.sub(r"\W+", "-", step.text))
                 if step.kind == "load":
                     r = d.load()
                 elif step.kind == "begin":
