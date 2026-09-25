@@ -49,7 +49,9 @@ def test_a_pack_that_needs_17_slots_converts_once_the_player_chooses(
                        match=NO_LEAVE_MESSAGE):
         dosimport.rehearse(folder, "A", _files())
 
-    with caplog.at_level(logging.INFO):
+    # The wish logger is silenced while the GUI debug log is off, and a
+    # logger level filters before caplog's root handler sees the record.
+    with caplog.at_level(logging.INFO, logger="wish"):
         conversion = dosimport.rehearse(folder, "A", _files(),
                                         leave={0: {3}})
     report = conversion.report
