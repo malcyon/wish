@@ -93,7 +93,10 @@ logs which kind it took (`map_bar` in `run.jsonl`); any other screen stops at
 once with a `lost-begin-screen.png`, and anything else after the answer stops
 the run in the same way rather than being typed into.  Journal, `YES NO` and
 continue screens are counted one screen at a time, at most `POD_INTERSTITIALS`
-in `begin`.
+in `begin`.  A party saved in a town begins at the services bar
+`POD_TOWN_BAR`; `begin` presses `M` (`Move On`) once, lists it as `town_leave`
+and judges the next screen like any other, never pressing another word of that
+bar.
 
 Staging, written into the installed copy before the boot and logged in
 bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
@@ -278,6 +281,14 @@ POD_INTERSTITIALS = 12
 #: `begin`; an empty mapping makes it stop at every screen.
 POD_MAP_BARS: dict[str, str] = {"dungeon": "0409f26b63f9c492",
                                 "overland": "8ce27036e9d49c83"}
+#: The town services bar `HEAL TRAIN STORAGE REST MOVE ON`, by `bar_signature`,
+#: measured on the Amiga thief party's run `88eac43064-run2-thief` of #650
+#: (`lost-begin-screen`, the party saved standing in a town); its glyph
+#: signature there was `53b2db87f794e8bb`.  It is not a map.
+POD_TOWN_BAR = "f8c32c677c85b2d4"
+#: `Move On` on that bar, keyed by its first letter as every word is (see
+#: `POD_DECLINE`).  `H`, `T`, `S` and `R` are never pressed in a town.
+POD_TOWN_LEAVE = "m"
 
 #: `View` on the map and camp bars; `Items` and `Exit` on the sheet's bar
 #: `Items Spells Trade Deposit Drop Lay Cure Exit` (`GAME.EXE` 0xBB4F).  The
@@ -1368,7 +1379,8 @@ class Driver:
         Each is shot, gets `POD_DECLINE` (pressed a second time only if the
         text window did not change), is waited out, and is listed in `events` as
         `yes_no`.  A bar still showing after `POD_YES_NO_ROUNDS` (or `limit`), or one `N`
-        does not change, stops the run.  `Y` is never pressed.  Other titles
+        does not change, stops the run; a second `N` goes out only if the same
+        bar and text are still showing when the first has had its 10 seconds.  `Y` is never pressed.  Other titles
         get nothing pressed.  Returns how many were declined.
         """
         if self.title.key != "darkness":
@@ -1388,7 +1400,15 @@ class Driver:
             # may animate.  The next question's text differs from this one's
             # even where its bar and highlight are the same.
             before = self.s.capture().digest(TEXT_WINDOW)
-            for _ in range(2):
+            for attempt in range(2):
+                if attempt:
+                    # A slow redraw must not get a second `N` it was not
+                    # meant for: it would decline the next dialog unseen, or
+                    # land on the map as a command key.
+                    now = self.s.capture()
+                    if (bar_signature(now) != POD_YES_NO_BAR
+                            or now.digest(TEXT_WINDOW) != before):
+                        break
                 self.s.key(POD_DECLINE)
                 if self.s.wait_for(lambda sc: sc.digest(TEXT_WINDOW) != before, 10.0):
                     break
@@ -1542,18 +1562,36 @@ class Driver:
         # and the map, every time the party begins, and its arrival may ask a
         # YES NO question after that.
         answered = 0
-        while True:
-            # The bound is on screens, so each helper gets what is left of it.
-            if POD_INTERSTITIALS > answered:
-                got = int(self.journal("begin"))
-            else:
-                got = 0
-            got += self.yes_no("begin", POD_INTERSTITIALS - answered - got)
-            got += self.press_continue("begin", POD_INTERSTITIALS - answered - got)
-            if not got:
-                break
-            answered += got
+
+        def interstitials(screen):
+            nonlocal answered
+            while True:
+                # The bound is on screens, so each helper gets what is left of it.
+                if POD_INTERSTITIALS > answered:
+                    got = int(self.journal("begin"))
+                else:
+                    got = 0
+                got += self.yes_no("begin", POD_INTERSTITIALS - answered - got)
+                got += self.press_continue("begin", POD_INTERSTITIALS - answered - got)
+                if not got:
+                    return screen
+                answered += got
+                screen = self.s.settle(quiet=1.0, timeout=60.0)
+
+        screen = interstitials(screen)
+        if (self.title.key == "darkness"
+                and bar_signature(screen) == POD_TOWN_BAR):
+            # A party saved standing in a town begins at its services menu.
+            # One `Move On`, and whatever follows is judged as any other
+            # screen; the other words on the bar are never pressed.
+            shot = self.shot("town-leave")
+            self.s.key(POD_TOWN_LEAVE)
             screen = self.s.settle(quiet=1.0, timeout=60.0)
+            event = {"kind": "town_leave", "step": "begin", "shot": f"{shot}.png",
+                     "bar": POD_TOWN_BAR, "answered": POD_TOWN_LEAVE.upper()}
+            self.events.append(event)
+            self.note(event="question", **event)
+            screen = interstitials(screen)
         if self.on_party_menu(screen):
             raise self.fail("begin", "the party menu is still showing")
         kind = None

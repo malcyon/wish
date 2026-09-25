@@ -1422,11 +1422,13 @@ class FakePod(FakePool):
             "which": b"\x25", "party": b"\x26\x27", "create": b"\x28",
             "sheet": b"\x29\x2a", "items": b"\x2b\x2c", "psave": b"\x2d",
             "from": b"\x2e\x2f", "secret": b"\x30", "tour": b"\x31\x32",
-            "story": b"\x34", "cont": b"\x35\x36", "overland": b"\x37\x38"}
+            "story": b"\x34", "cont": b"\x35\x36", "overland": b"\x37\x38",
+            "town": b"\x3a\x3b\x3c"}
 
     def __init__(self, tmp, question=True, pages=3, size=6, journal=False,
                  swallow_p=False, tours=0, after_tour="map", dead_n=False,
-                 continues=0, dead_return=False, late_return=False):
+                 continues=0, dead_return=False, late_return=False,
+                 late_n=False, after_town="map"):
         super().__init__(tmp, keys=TITLE_KEYS["darkness"])
         self.mode = "title"
         #: `YES NO` bars the arrival asks, one after another, after `Begin`
@@ -1442,7 +1444,12 @@ class FakePod(FakePool):
         #: The first `Return` takes effect only after one more capture, as a
         #: redraw that lands after the driver's wait has run out.
         self.late_return, self.late_wait = late_return, 0
-        #: Keys typed at the map, where a stray `Return` would land.
+        #: The first `N` takes effect only after one more capture.
+        self.late_n, self.late_n_wait = late_n, False
+        #: A town services screen: every key typed at it (`into_town`), and
+        #: where `M` leads.
+        self.after_town, self.into_town = after_town, []
+        #: Keys typed at the map, where a stray `Return` or `N` would land.
         self.into_map: list[str] = []
         #: `Begin` leads to the journal question, which draws every key
         #: typed into it (`into_journal`) and leaves for the map on `Return`
@@ -1463,18 +1470,21 @@ class FakePod(FakePool):
         m = self.mode
         if m == "tour":
             self.into_tour.append(k)
-            if k == "n" and not self.dead_n:
-                self.tours -= 1
-                self.mode = "tour" if self.tours else self.after_tour
-                if self.mode == "map" and self.continues:
-                    self.mode = "cont"
+            if k == "n" and self.late_n:
+                self.late_n, self.late_n_wait = False, True
+            elif k == "n" and not self.dead_n:
+                self._decline()
+        elif m == "town":
+            self.into_town.append(k)
+            if k == "m":
+                self.mode = self.after_town
         elif m == "cont":
             self.into_cont.append(k)
             if k == "Return" and self.late_return:
                 self.late_return, self.late_wait = False, 1
             elif k == "Return" and not self.dead_return:
                 self._next_cont()
-        elif m == "map" and k == "Return":
+        elif m == "map" and k in ("Return", "n"):
             self.into_map.append(k)
         elif m == "overland" and k == da.ENCAMP:
             self.mode = "camp"
@@ -1531,6 +1541,12 @@ class FakePod(FakePool):
             self.keys.pop()     # `FakePool.key` records it again
             super().key(k, gap)
 
+    def _decline(self) -> None:
+        self.tours -= 1
+        self.mode = "tour" if self.tours else self.after_tour
+        if self.mode == "map" and self.continues:
+            self.mode = "cont"
+
     def _next_cont(self) -> None:
         self.continues -= 1
         self.mode = "cont" if self.continues else "map"
@@ -1540,6 +1556,12 @@ class FakePod(FakePool):
         return "tour" if self.tours else "cont" if self.continues else "map"
 
     def capture(self):
+        if self.late_n_wait and self.mode == "tour":
+            # This capture still shows the old dialog; the next shows the new.
+            self.late_n_wait = False
+            shown = _screen(self.BARS["tour"], bytes((self.tours + 1,)))
+            self._decline()
+            return shown
         if self.late_wait and self.mode == "cont":
             # This capture still shows the old screen; the next shows the new.
             self.late_wait = 0
@@ -1976,6 +1998,26 @@ def test_other_titles_never_look_for_a_yes_no_bar(tmp_path, pod_yes_no):
 # -- Pools of Darkness' story dialogs that say to press a button or Enter -------
 
 
+def test_a_late_first_n_is_not_followed_by_a_blind_second(tmp_path, pod_yes_no):
+    """The screen changed just after the wait ran out: the second `N` would
+    land on the map as a command key."""
+    game, d = _pod_driver(tmp_path, question=False, tours=1, late_n=True)
+    d.load()
+    d.begin()
+    assert game.into_tour == ["n"] and game.into_map == [] and game.mode == "map"
+
+
+def test_a_late_n_onto_another_yes_no_bar_is_declined_by_the_loop(tmp_path,
+                                                                 pod_yes_no):
+    """The second dialog is shot and declined once, visibly, and counted."""
+    game, d = _pod_driver(tmp_path, question=False, tours=2, late_n=True)
+    d.load()
+    d.begin()
+    assert game.into_tour == ["n"] * 2 and game.mode == "map"
+    assert [e["kind"] for e in d.events] == ["yes_no"] * 2
+    assert len({e["shot"] for e in d.events}) == 2
+
+
 @pytest.fixture
 def pod_continue(monkeypatch, pod_yes_no):
     """The driver knows the fake's continue bar by its own signature."""
@@ -2175,3 +2217,67 @@ def test_the_measured_overland_bar_matches_the_captured_screen(monkeypatch):
     ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
                          check=True, capture_output=True).stdout
     assert da.bar_signature(dosbox.Screen.from_ppm(ppm)) == da.POD_MAP_BARS["overland"]
+
+
+# -- the town services screen ---------------------------------------------------
+
+
+@pytest.fixture
+def pod_town(monkeypatch, pod_yes_no):
+    """The driver knows the fake's town bar by its own signature."""
+    monkeypatch.setattr(da, "POD_TOWN_BAR",
+                        da.bar_signature(_screen(FakePod.BARS["town"], b"")))
+
+
+def test_the_measured_town_bar_is_sixteen_hex_digits_and_not_a_map():
+    assert len(da.POD_TOWN_BAR) == 16 and int(da.POD_TOWN_BAR, 16) >= 0
+    assert da.POD_TOWN_BAR not in da.POD_MAP_BARS.values()
+    assert da.POD_TOWN_LEAVE == "m"
+
+
+def test_a_town_bar_gets_one_move_on_and_no_other_key(tmp_path, pod_town):
+    game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="town")
+    d.load()
+    d.begin()
+    assert game.into_town == ["m"] and game.mode == "map" and d.where == "map"
+    assert not set(game.into_town) & set("hHtTsSrR")
+    assert [e["kind"] for e in d.events] == ["yes_no", "town_leave"]
+    assert d.events[1]["answered"] == "M"
+
+
+def test_the_journal_and_dialogs_are_handled_before_the_town_key(tmp_path,
+                                                                pod_town,
+                                                                pod_journal):
+    game, d = _pod_driver(tmp_path, question=False, journal=True, tours=1,
+                          after_tour="town")
+    d.load()
+    d.begin()
+    assert [e["kind"] for e in d.events] == ["journal", "yes_no", "town_leave"]
+
+
+def test_a_second_town_screen_in_a_row_stops_begin(tmp_path, pod_town):
+    game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="town",
+                          after_town="town")
+    d.load()
+    with pytest.raises(da.StepFailed, match="lost-begin-screen"):
+        d.begin()
+    assert game.into_town == ["m"] and d.where == "party"
+
+
+def test_an_unknown_screen_after_move_on_stops_begin(tmp_path, pod_town):
+    game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="town",
+                          after_town="story")
+    d.load()
+    with pytest.raises(da.StepFailed, match="lost-begin-screen"):
+        d.begin()
+    assert game.into_town == ["m"]
+
+
+def test_an_unknown_bar_is_not_taken_for_the_town(tmp_path, pod_yes_no):
+    """Without a measured town bar the fake's town screen stops `begin` with
+    nothing pressed on it."""
+    game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="town")
+    d.load()
+    with pytest.raises(da.StepFailed, match="lost-begin-screen"):
+        d.begin()
+    assert game.into_town == []
