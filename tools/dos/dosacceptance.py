@@ -40,7 +40,7 @@ conversion logged.
 
 | step | what it does |
 |---|---|
-| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu |
+| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P` |
 | `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars, to the map |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1), `VIEW`, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
@@ -62,6 +62,16 @@ order (`GAME.EXE` 0xAB4E-0xAC90 against Silver Blades' `START.EXE`
 rest menu Curse's (0xBB26), the sheet's bar `Items Spells Trade Deposit Drop
 Lay Cure Exit` (0xBB4F).  Each is PROBABLE until a run has reached it; a
 screen that does not answer its key stops the run with a `lost-*.png`.
+
+**The load route is read from the code.**  `LOAD SAVED GAME` (`GAME.OVR`
+0x12887) asks `load from where?` over `Pools Secret Exit`: `Pools` is this
+title's own `SAVGAM<L>.PTY`, `Secret` a Silver Blades save, `Exit` backs out.
+It then lists `load which game: A B C D E F G H I J`, keeping only the letters
+whose `SAVGAM<L>.PTY` exists, and loads the one picked.  The menu routine
+(0x3A422) takes a word's capital as its key through `UpCase`, so `p` then the
+slot letter.  The party menu after a load shows `Train Character` and `Human
+Change Classes` only when byte 0x2F of the save's first 1,024 bytes is not
+zero (0x14253), which moves `View`, `Save` and `Begin` down two rows.
 
 Staging, written into the installed copy before the boot and logged in
 bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
@@ -205,6 +215,26 @@ SSB_LOAD_ROW = 2
 POD_MENU_RECT = ssbimport.MENU_RECT
 POD_LOAD_ROW = SSB_LOAD_ROW
 POD_MENU_AFTER = ssbimport.MENU_AFTER
+#: `POOLS` at `LOAD FROM WHERE? POOLS SECRET EXIT` (`GAME.EXE` data 0x2E1B,
+#: asked at `GAME.OVR` 0x12901): this title's own `SAVGAM<L>.PTY`.  `S` would
+#: read a Silver Blades save instead.
+POD_LOAD_FROM = "p"
+#: The save byte whose non-zero value puts `Train Character` and `Human Change
+#: Classes` on the party menu (`GAME.OVR` 0x14253, read from the first 1,024
+#: bytes the load puts at `[0x87F8]`), two rows above `View`.
+POD_TRAIN_BYTE = 0x2F
+
+
+def pod_menu_after(savgam: bytes | None) -> dict[str, int]:
+    """The party menu's `view`, `save` and `begin` rows after loading `savgam`.
+
+    With a party loaded the enabled entries are, in order, Create, Drop,
+    Modify, [Train, Human Change], View, Add, Remove, Save, Begin, Exit; the
+    bracketed two only when `POD_TRAIN_BYTE` is set.  A missing save gives
+    the rows without them.
+    """
+    shift = 2 if savgam and len(savgam) > POD_TRAIN_BYTE and savgam[POD_TRAIN_BYTE] else 0
+    return {k: v + shift for k, v in POD_MENU_AFTER.items()}
 #: `View` on the map and camp bars; `Items` and `Exit` on the sheet's bar
 #: `Items Spells Trade Deposit Drop Lay Cure Exit` (`GAME.EXE` 0xBB4F).  The
 #: `ITEMS` list turns its page with `Next` (0xA6AF), the list protocol's `n`.
@@ -1085,6 +1115,8 @@ class Driver:
         self.events: list[dict] = []
         self.n = 0
         self._ssb = None
+        #: Pools of Darkness' party-menu rows once a save is loaded.
+        self.pod_rows = dict(POD_MENU_AFTER)
 
     # -- evidence ----------------------------------------------------------
 
@@ -1308,10 +1340,18 @@ class Driver:
 
     def _load_pod(self) -> dict:
         """Past the titles and the copy-protection question to the party
-        menu, `Load Saved Game`, and the slot letter pressed once."""
+        menu, `Load Saved Game`, `POOLS` at `LOAD FROM WHERE?`, and the slot
+        letter pressed once."""
+        path = self.save_path(self.slot)
+        self.pod_rows = pod_menu_after(path.read_bytes() if path.is_file() else None)
         answered = dospod.to_party_menu(self.s)
         self.shot("menu")
         self.pod_menu(POD_LOAD_ROW, "load")
+        self.s.settle(quiet=0.6, timeout=20.0)
+        self.shot("load-from")
+        if not self.press_screen_changes(POD_LOAD_FROM, wait=30.0):
+            raise self.fail("load-from", "POOLS at LOAD FROM WHERE? did not "
+                            "open the slot list")
         self.s.settle(quiet=0.6, timeout=20.0)
         self.shot("load-which")
         if not self.press_screen_changes(self.slot.lower(), tries=1, wait=30.0):
@@ -1321,7 +1361,7 @@ class Driver:
         self.shot("loaded")
         self.where = "party"
         return {"slot": self.slot, "party_menu": self.party_sig,
-                "questions_answered": len(answered)}
+                "questions_answered": len(answered), "menu_rows": self.pod_rows}
 
     def begin(self) -> dict:
         if self.where != "party":
@@ -1330,7 +1370,7 @@ class Driver:
             self.ssb.menu(ssbimport.MENU_AFTER["begin"], "begin")
             self.ssb.intro()
         elif self.title.key == "darkness":
-            self.pod_menu(POD_MENU_AFTER["begin"], "begin")
+            self.pod_menu(self.pod_rows["begin"], "begin")
         elif not self.press_screen_changes(PARTY_BEGIN, tries=1, wait=30.0):
             raise self.fail("begin", "BEGIN ADVENTURING did not leave the party menu")
         screen = self.s.settle(quiet=1.0, timeout=60.0)
@@ -1621,7 +1661,7 @@ class Driver:
             self.ssb.menu(ssbimport.MENU_AFTER["save"], "save")
             self.ssb.wait_bar("save_which")
         elif self.title.key == "darkness":
-            self.pod_menu(POD_MENU_AFTER["save"], "save")
+            self.pod_menu(self.pod_rows["save"], "save")
         elif not self.press_screen_changes(PARTY_SAVE):
             raise self.fail("save-which", "SAVE CURRENT GAME did not open the slot list")
         self.s.settle(quiet=0.6, timeout=20.0)

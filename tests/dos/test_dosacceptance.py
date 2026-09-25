@@ -1355,15 +1355,20 @@ def test_the_command_line_refuses_a_bad_source_before_any_boot(argv, why, capsys
 
 class FakePod(FakePool):
     """DOS Pools of Darkness from its title screens to camp, as `GAME.EXE`'s
-    strings describe it: an optional copy-protection question that echoes a
-    typed key and takes `Return`; Silver Blades' party-menu rows (`Down`
-    moves, `Return` picks; row 0 is `Create New Character` before a load,
-    row 2 `Load Saved Game`, and after one row 6 saves and row 7 begins);
-    the roster highlight moved by `End`; the sheet's `ITEMS` with `Next`."""
+    strings and its load routine (`GAME.OVR` 0x12887) describe it: an
+    optional copy-protection question that echoes a typed key and takes
+    `Return`; Silver Blades' party-menu rows (`Down` moves, `Return` picks;
+    row 0 is `Create New Character` before a load, row 2 `Load Saved Game`);
+    `LOAD FROM WHERE? POOLS SECRET EXIT`, where only `P` leads on and a slot
+    letter does nothing; `LOAD WHICH GAME:` listing only the letters whose
+    `SAVGAM<L>.PTY` exists; after a load row 6 saves and row 7 begins, or 8
+    and 9 when the save's byte 0x2F adds `Train` and `Human Change`; the
+    roster highlight moved by `End`; the sheet's `ITEMS` with `Next`."""
 
     BARS = {**FakePool.BARS, "title": b"\x21", "question": b"\x22", "menu": b"\x23\x24",
             "which": b"\x25", "party": b"\x26\x27", "create": b"\x28",
-            "sheet": b"\x29\x2a", "items": b"\x2b\x2c", "psave": b"\x2d"}
+            "sheet": b"\x29\x2a", "items": b"\x2b\x2c", "psave": b"\x2d",
+            "from": b"\x2e\x2f", "secret": b"\x30"}
 
     def __init__(self, tmp, question=True, pages=3, size=6):
         super().__init__(tmp, keys=TITLE_KEYS["darkness"])
@@ -1372,6 +1377,9 @@ class FakePod(FakePool):
         self.row, self.line, self.size = 0, 1, size
         self.page, self.pages = 1, pages
         self.loaded = False
+        self.train = False
+        #: The archives' stub is 1,364 bytes with byte 0x2F zero.
+        (self.save_dir / "SAVGAMA.PTY").write_bytes(bytes(1364))
 
     def key(self, k, gap=0.0):
         self.keys.append(k)
@@ -1386,12 +1394,17 @@ class FakePod(FakePool):
         elif m == "question" and k not in ("Escape", "Return"):
             self.typed += 1
         elif m in ("menu", "party") and k == "Down":
-            self.row = (self.row + 1) % 9
+            self.row = (self.row + 1) % 11
         elif m in ("menu", "party") and k == "Return":
-            picked = {("menu", 0): "create", ("menu", 2): "which",
-                      ("party", 6): "psave", ("party", 7): "map"}
+            shift = 2 * self.train
+            picked = {("menu", 0): "create", ("menu", 2): "from",
+                      ("party", 6 + shift): "psave", ("party", 7 + shift): "map"}
             self.mode = picked.get((m, self.row), m)
-        elif m == "which" and k.upper() in "ABCDEFGHIJ":
+        elif m == "from" and k.upper() in "PSE":
+            self.mode = {"P": "which", "S": "secret", "E": "menu"}[k.upper()]
+        elif m == "which" and (self.save_dir / f"SAVGAM{k.upper()}.PTY").is_file():
+            got = (self.save_dir / f"SAVGAM{k.upper()}.PTY").read_bytes()
+            self.train = len(got) > 0x2F and got[0x2F] != 0
             self.mode, self.row, self.loaded = "party", 0, True
         elif m == "psave" and k.upper() in "ABCDEFGHIJ":
             (self.save_dir / f"SAVGAM{k.upper()}.PTY").write_bytes(b"p")
@@ -1427,7 +1440,7 @@ class FakePod(FakePool):
 
     def walk_highlight(self, rect, want, key="End", timeout=20.0):
         assert rect == da.POD_MENU_RECT
-        for _ in range(9):
+        for _ in range(11):
             if self.row == want:
                 return want
             self.key(key)
@@ -1452,13 +1465,63 @@ def _pod_driver(tmp_path, **kw):
 def test_pools_of_darkness_loads_through_its_party_menu(tmp_path, question):
     """The question, when there is one, gets the probe key and `Return`; the
     party menu gets the probe key and no `Return` at `Create New Character`;
-    then row 2, `Return`, and the slot letter once."""
+    then row 2, `Return`, `P` for POOLS at LOAD FROM WHERE?, and the slot
+    letter once."""
     game, d = _pod_driver(tmp_path, question=question)
     got = d.load()
     assert game.mode == "party" and game.loaded and d.where == "party"
     assert got["questions_answered"] == int(question)
+    assert got["menu_rows"] == {"view": 3, "save": 6, "begin": 7}
     assert [k for k in game.keys if k != "Escape"] == (
-        ["1", "Return"] if question else []) + ["1", "Down", "Down", "Return", "a"]
+        ["1", "Return"] if question else []) + ["1", "Down", "Down", "Return",
+                                                 "p", "a"]
+
+
+def test_a_slot_letter_at_load_from_where_loads_nothing(tmp_path):
+    """Run 0's stop: the letter pressed at `LOAD FROM WHERE?` changes nothing."""
+    game, d = _pod_driver(tmp_path, question=False)
+    game.mode = "menu"
+    d.pod_menu(da.POD_LOAD_ROW, "load")
+    assert game.mode == "from"
+    assert not d.press_screen_changes("a", tries=1, wait=0.1)
+    assert d.press_screen_changes(da.POD_LOAD_FROM, tries=1, wait=0.1)
+    assert game.mode == "which"
+
+
+def test_a_slot_that_is_not_installed_is_not_listed_and_stops_the_run(tmp_path):
+    game = FakePod(tmp_path, question=False)
+    d = da.Driver(game, lambda **k: None, "C", "darkness", party_size=game.size)
+    with pytest.raises(da.StepFailed, match="slot C never loaded"):
+        d.load()
+    assert game.mode == "which" and not game.loaded
+
+
+@pytest.mark.parametrize("savgam,rows", [
+    (bytes(1364), (3, 6, 7)),
+    (bytes(0x2F) + b"\x01" + bytes(1364 - 0x30), (5, 8, 9)),
+    (bytes(0x2F) + b"\x80", (5, 8, 9)),
+    (bytes(0x2F), (3, 6, 7)),
+    (None, (3, 6, 7)),
+], ids=["stub", "set", "high-bit", "short", "missing"])
+def test_the_party_menu_rows_move_two_lower_when_the_training_byte_is_set(savgam, rows):
+    got = da.pod_menu_after(savgam)
+    assert (got["view"], got["save"], got["begin"]) == rows
+
+
+def test_a_save_with_the_training_byte_begins_and_saves_two_rows_lower(tmp_path):
+    """`Train Character` and `Human Change Classes` sit above `View`, so a save
+    with byte 0x2F set moves `Save` to row 8 and `Begin` to row 9."""
+    game, d = _pod_driver(tmp_path, question=False)
+    staged = bytearray(game.save_dir.joinpath("SAVGAMA.PTY").read_bytes())
+    staged[da.POD_TRAIN_BYTE] = 1
+    game.save_dir.joinpath("SAVGAMA.PTY").write_bytes(bytes(staged))
+    assert d.load()["menu_rows"] == {"view": 5, "save": 8, "begin": 9}
+    assert game.train
+    d.save("B")
+    assert game.keys[-10:] == ["Down"] * 8 + ["Return", "b"] and game.mode == "party"
+    game.row = 0
+    d.begin()
+    assert game.keys[-10:] == ["Down"] * 9 + ["Return"] and game.mode == "map"
 
 
 def test_pools_of_darkness_begins_camps_views_and_saves(tmp_path):
