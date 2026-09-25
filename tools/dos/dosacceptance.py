@@ -94,9 +94,9 @@ once with a `lost-begin-screen.png`, and anything else after the answer stops
 the run in the same way rather than being typed into.  Journal, `YES NO` and
 continue screens are counted one screen at a time, at most `POD_INTERSTITIALS`
 in `begin`.  A party saved in a town begins at the services bar
-`POD_TOWN_BAR`; `begin` presses `M` (`Move On`) once, lists it as `town_leave`
-and judges the next screen like any other, never pressing another word of that
-bar.
+`POD_TOWN_BAR`; `begin` shoots it as `town-screen` and stops with
+`lost-begin-screen`, pressing nothing, because the driver does not leave a town.
+Use the party-menu save steps (`load 'save D' read`) for a town party.
 
 Staging, written into the installed copy before the boot and logged in
 bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
@@ -284,11 +284,10 @@ POD_MAP_BARS: dict[str, str] = {"dungeon": "0409f26b63f9c492",
 #: The town services bar `HEAL TRAIN STORAGE REST MOVE ON`, by `bar_signature`,
 #: measured on the Amiga thief party's run `88eac43064-run2-thief` of #650
 #: (`lost-begin-screen`, the party saved standing in a town); its glyph
-#: signature there was `53b2db87f794e8bb`.  It is not a map.
+#: signature there was `53b2db87f794e8bb`.  It is not a map.  The destination
+#: menu after MOVE ON is bar `151b806b9b9fe327`, unmeasured and deliberately
+#: not entered, so no key is ever pressed on this bar.
 POD_TOWN_BAR = "f8c32c677c85b2d4"
-#: `Move On` on that bar, keyed by its first letter as every word is (see
-#: `POD_DECLINE`).  `H`, `T`, `S` and `R` are never pressed in a town.
-POD_TOWN_LEAVE = "m"
 
 #: `View` on the map and camp bars; `Items` and `Exit` on the sheet's bar
 #: `Items Spells Trade Deposit Drop Lay Cure Exit` (`GAME.EXE` 0xBB4F).  The
@@ -1378,10 +1377,10 @@ class Driver:
 
         Each is shot, gets `POD_DECLINE` (pressed a second time only if the
         text window did not change), is waited out, and is listed in `events` as
-        `yes_no`.  A bar still showing after `POD_YES_NO_ROUNDS` (or `limit`), or one `N`
-        does not change, stops the run; a second `N` goes out only if the same
-        bar and text are still showing when the first has had its 10 seconds.  `Y` is never pressed.  Other titles
-        get nothing pressed.  Returns how many were declined.
+        `yes_no`.  A bar still showing after `POD_YES_NO_ROUNDS` (or `limit`),
+        or one `N` does not change, stops the run; a second `N` goes out only if
+        the same bar and text are still showing when the first has had its 10
+        seconds.  `Y` is never pressed.  Other titles get nothing pressed.  Returns how many were declined.
         """
         if self.title.key != "darkness":
             return 0
@@ -1581,17 +1580,13 @@ class Driver:
         screen = interstitials(screen)
         if (self.title.key == "darkness"
                 and bar_signature(screen) == POD_TOWN_BAR):
-            # A party saved standing in a town begins at its services menu.
-            # One `Move On`, and whatever follows is judged as any other
-            # screen; the other words on the bar are never pressed.
-            shot = self.shot("town-leave")
-            self.s.key(POD_TOWN_LEAVE)
-            screen = self.s.settle(quiet=1.0, timeout=60.0)
-            event = {"kind": "town_leave", "step": "begin", "shot": f"{shot}.png",
-                     "bar": POD_TOWN_BAR, "answered": POD_TOWN_LEAVE.upper()}
-            self.events.append(event)
-            self.note(event="question", **event)
-            screen = interstitials(screen)
+            # The destination menu behind MOVE ON is unmeasured, so a town
+            # start is recognised and stopped at, with nothing pressed.
+            self.shot("town-screen")
+            raise self.fail("begin-screen", "the party starts in a town "
+                            "services screen, which this driver does not "
+                            "leave; use the party-menu save steps "
+                            "(load 'save D' read) for a town party")
         if self.on_party_menu(screen):
             raise self.fail("begin", "the party menu is still showing")
         kind = None

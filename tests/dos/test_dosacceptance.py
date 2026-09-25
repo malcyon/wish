@@ -2232,45 +2232,28 @@ def pod_town(monkeypatch, pod_yes_no):
 def test_the_measured_town_bar_is_sixteen_hex_digits_and_not_a_map():
     assert len(da.POD_TOWN_BAR) == 16 and int(da.POD_TOWN_BAR, 16) >= 0
     assert da.POD_TOWN_BAR not in da.POD_MAP_BARS.values()
-    assert da.POD_TOWN_LEAVE == "m"
+    assert not hasattr(da, "POD_TOWN_LEAVE")
 
 
-def test_a_town_bar_gets_one_move_on_and_no_other_key(tmp_path, pod_town):
+def test_a_town_bar_stops_begin_with_a_shot_and_presses_nothing(tmp_path,
+                                                               pod_town):
     game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="town")
     d.load()
-    d.begin()
-    assert game.into_town == ["m"] and game.mode == "map" and d.where == "map"
-    assert not set(game.into_town) & set("hHtTsSrR")
-    assert [e["kind"] for e in d.events] == ["yes_no", "town_leave"]
-    assert d.events[1]["answered"] == "M"
+    with pytest.raises(da.StepFailed, match="town services screen.*lost-begin-screen"):
+        d.begin()
+    assert game.into_town == [] and d.where == "party"
 
 
-def test_the_journal_and_dialogs_are_handled_before_the_town_key(tmp_path,
+def test_a_town_screen_after_the_journal_question_is_a_town_stop(tmp_path,
                                                                 pod_town,
                                                                 pod_journal):
     game, d = _pod_driver(tmp_path, question=False, journal=True, tours=1,
                           after_tour="town")
     d.load()
-    d.begin()
-    assert [e["kind"] for e in d.events] == ["journal", "yes_no", "town_leave"]
-
-
-def test_a_second_town_screen_in_a_row_stops_begin(tmp_path, pod_town):
-    game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="town",
-                          after_town="town")
-    d.load()
-    with pytest.raises(da.StepFailed, match="lost-begin-screen"):
+    with pytest.raises(da.StepFailed, match="town services screen.*lost-begin-screen"):
         d.begin()
-    assert game.into_town == ["m"] and d.where == "party"
-
-
-def test_an_unknown_screen_after_move_on_stops_begin(tmp_path, pod_town):
-    game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="town",
-                          after_town="story")
-    d.load()
-    with pytest.raises(da.StepFailed, match="lost-begin-screen"):
-        d.begin()
-    assert game.into_town == ["m"]
+    assert [e["kind"] for e in d.events] == ["journal", "yes_no"]
+    assert game.into_town == []
 
 
 def test_an_unknown_bar_is_not_taken_for_the_town(tmp_path, pod_yes_no):
