@@ -167,8 +167,13 @@ stores 1**: Pool of Radiance `0x01C263`, Curse `0x023463`, Silver Blades
 are preceded by the same loop exit -- not a control key, and the key is `4Bh`,
 which is `K` for KEEP. The routine is `modifyPlayer` (`ovr018`), whose prompt
 reads `Keep Exit` over `Modify:`, and which refuses outright unless the
-character's experience is 0, 8333, 12500 or 25000. Pools of Darkness has no
-site for the byte at all.
+character's experience is 0 (Pool of Radiance, on DOS and on the Amiga) or 0,
+8333, 12500 or 25000 (Curse; Silver Blades has its own four values). Pool of
+Radiance's gate is a 32-bit compare of experience with 0 at `GAME.OVR`
+`0x01BA29`-`0x01BA39`, whose refusal jumps to the byte after the store; the
+Amiga build does `move.l $ae(a0),d0 / tst.l / ble` on the same field. The four
+values were first read as Pool of Radiance's too, and that was Curse's gate
+misapplied. Pools of Darkness has no site for the byte at all.
 
 **CONFIRMED in the running game**, `tools/dos/dosmodifyprobe.py`, 2026-09-05. Two
 human fighters rolled from CREATE NEW CHARACTER and added to the party:

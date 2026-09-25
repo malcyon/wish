@@ -1,13 +1,15 @@
-"""The Roster box's Abilities altered on DOS and Amiga Curse and Silver Blades.
+"""The Roster box's Abilities altered on the DOS and Amiga ports.
 
-Those engines store 1 in the share byte (`treasure_share`) when MODIFY
-CHARACTER is left by KEEP, so the box shows it, read-only. Synthetic cases run
+Curse and Silver Blades store 1 in the share byte (`treasure_share`) when
+MODIFY CHARACTER is left by KEEP, and Pool of Radiance does the same in
+`flags_0b8` bit 0, so the box shows it, read-only. Synthetic cases run
 everywhere; the specimen cases open saves the game shipped (the Forgotten
 Realms Archives' `Default files/Saves` for DOS, the title's own disk for the
 Amiga) and skip only where those are absent.
 """
 from __future__ import annotations
 
+import gamedata
 import pytest
 from gamedata import synthetic_save
 from PyQt6.QtWidgets import QTabWidget
@@ -17,6 +19,7 @@ from support.editorwindow import make_root
 from automap import gamedisks
 from editor.window import EditorBinding
 from goldbox import c64_port
+from goldbox.amiga_adf import AmigaDisk
 
 
 @pytest.fixture
@@ -84,8 +87,22 @@ def test_the_c64_port_of_the_same_title_stays_empty(app, tmp_path, game):
     assert altered.toolTip() == UNRECORDED_TOOLTIP
 
 
-def test_dos_pool_of_radiance_keeps_its_own_field_and_wording(app, tmp_path):
-    _, altered = _synthetic(tmp_path, c64_port.POOL_OF_RADIANCE, "dos",
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+@pytest.mark.parametrize("flags,text", [(0x01, "Yes"), (0x00, "No")])
+def test_pool_of_radiance_reads_its_flag_with_the_keep_wording(
+        app, tmp_path, port, flags, text):
+    """Both later ports of Pool of Radiance store the flag on any KEEP."""
+    w, altered = _synthetic(tmp_path, c64_port.POOL_OF_RADIANCE, port,
+                            share=0, flags=flags)
+    assert altered.currentText() == text
+    assert altered.toolTip() == KEEP_TOOLTIP
+    assert not altered.isEnabled()
+    assert w._flush(0) == []
+
+
+def test_the_c64_port_of_pool_of_radiance_keeps_the_trainer_wording(
+        app, tmp_path):
+    _, altered = _synthetic(tmp_path, c64_port.POOL_OF_RADIANCE, "c64",
                             share=0, flags=0x01)
     assert altered.currentText() == "Yes"
     assert altered.toolTip() == POOL_TOOLTIP
@@ -152,3 +169,39 @@ def test_a_shipped_save_shows_what_its_share_byte_holds(
     seen = _show_each(path)
     shown, tooltip, enabled = seen[who]
     assert (shown, tooltip, enabled) == (text, KEEP_TOOLTIP, False)
+
+
+# Pool of Radiance saves that were watched being written: PROBEB is left by
+# EXIT in one and by KEEP in the other, and the record differs in the share
+# byte alone (`tools/dos/dosmodifyprobe.py`).
+@pytest.mark.parametrize("name,text", [("por-304-modify-kept", "Yes"),
+                                       ("por-304-modify-exited", "No")])
+def test_a_watched_dos_pool_of_radiance_modify_shows_keep_or_exit(
+        app, name, text):
+    seen = _show_each(gamedata.specimen(name) / "SAVGAMC.DAT")
+    assert seen["PROBEB"] == (text, KEEP_TOOLTIP, False)
+
+
+def test_the_shipped_amiga_pool_of_radiance_party_shows_the_keep_wording(
+        app, tmp_path):
+    """Shipped, not watched: disk 1's `save/savgamA.dat` party, six records
+    whose `0x086` reads 1. Only the wording and the read are asserted."""
+    from tools.amiga import amigasaves
+    if not gamedisks.candidates("amiga"):
+        pytest.skip("needs the amiga registry entry")
+    for label, data in amigasaves.images():
+        if "Radiance" not in label:
+            continue
+        try:
+            disk = AmigaDisk(bytearray(data))
+            disk.read_file("/save/savgamA.dat")
+        except Exception:
+            continue
+        image = tmp_path / "PoolOfRadiance-1.adf"
+        image.write_bytes(bytes(data))
+        break
+    else:
+        pytest.skip("no Amiga Pool of Radiance disk 1 with a saved game")
+    seen = _show_each(image)
+    assert len(seen) == 6
+    assert set(seen.values()) == {("Yes", KEEP_TOOLTIP, False)}

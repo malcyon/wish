@@ -1509,7 +1509,11 @@ class EditorBinding(QObject):
                 altered.addItem(ABILITIES_ALTERED_YES)
                 value = same and bool(stored & 0x01)
                 altered.setCurrentIndex(1 if value else 0)
-                altered.setToolTip(ABILITIES_ALTERED_TOOLTIP)
+                # Pool of Radiance's DOS and Amiga engines set this byte on
+                # any KEEP; only its C64 port sets it for a kept step.
+                on_keep = getattr(self.party, "port", "c64") in ("dos", "amiga")
+                altered.setToolTip(ABILITIES_ALTERED_KEEP_TOOLTIP if on_keep
+                                   else ABILITIES_ALTERED_TOOLTIP)
             else:
                 altered.addItem("")
                 altered.setCurrentIndex(0)
