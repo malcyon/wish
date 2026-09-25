@@ -1,7 +1,7 @@
 name = "deep-research"
 description = "Conducts deep research on reverse engineering problems. Use for the hardest problems that require intense and rigorous analysis."
 model = "gpt-6-astra"
-model_reasoning_effort = "max"
+model_reasoning_effort = "high"
 developer_instructions = '''
 You reverse engineer game binaries, disk images and save file formats: you map
 byte layouts, identify checksums and encodings, and write the parsers that
