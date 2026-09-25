@@ -236,6 +236,15 @@ def _no_waiting(monkeypatch):
     monkeypatch.setattr(dosbox, "settle_files", lambda *a, **k: True)
 
 
+@pytest.fixture(autouse=True)
+def _pod_map_measured(monkeypatch):
+    """No capture of Pools of Darkness' map exists, so the driver's
+    `POD_MAP_BAR` is None and its `begin` stops at any screen; here the fakes'
+    map bar stands in for a measured one."""
+    monkeypatch.setattr(da, "POD_MAP_BAR",
+                        da.bar_signature(_screen(FakePool.BARS["map"], b"")))
+
+
 def _camped(tmp_path, title="pool", **kw) -> tuple[FakePool, da.Driver]:
     game = FakePool(tmp_path, keys=TITLE_KEYS[title], **kw)
     d = da.Driver(game, lambda **k: None, "A", title)
@@ -597,8 +606,9 @@ def _fake_run(monkeypatch, tmp_path, *, find_game=None, session_fail=None,
 
     class D:
         where = "boot"
-        #: The labels `journal` was asked with, before each step.
+        #: The labels `journal` and `yes_no` were asked with, before each step.
         asked: list[str] = []
+        declined: list[str] = []
 
         def __init__(self, session, note, letter, *rest, **kw):
             self.game = Game()
@@ -606,6 +616,10 @@ def _fake_run(monkeypatch, tmp_path, *, find_game=None, session_fail=None,
         def journal(self, label):
             self.asked.append(label)
             return False
+
+        def yes_no(self, label):
+            self.declined.append(label)
+            return 0
 
         def shot(self, name):
             (tmp_path / "session" / "shots").mkdir(parents=True, exist_ok=True)
@@ -1402,12 +1416,19 @@ class FakePod(FakePool):
     BARS = {**FakePool.BARS, "title": b"\x21", "question": b"\x22", "menu": b"\x23\x24",
             "which": b"\x25", "party": b"\x26\x27", "create": b"\x28",
             "sheet": b"\x29\x2a", "items": b"\x2b\x2c", "psave": b"\x2d",
-            "from": b"\x2e\x2f", "secret": b"\x30"}
+            "from": b"\x2e\x2f", "secret": b"\x30", "tour": b"\x31\x32",
+            "story": b"\x34"}
 
     def __init__(self, tmp, question=True, pages=3, size=6, journal=False,
-                 swallow_p=False):
+                 swallow_p=False, tours=0, after_tour="map", dead_n=False):
         super().__init__(tmp, keys=TITLE_KEYS["darkness"])
         self.mode = "title"
+        #: `YES NO` bars the arrival asks, one after another, after `Begin`
+        #: and the journal question; each draws its own text, takes `N`
+        #: (`into_tour` has every key typed at one) unless `dead_n`, and the
+        #: last leads to `after_tour`.
+        self.tours, self.after_tour, self.dead_n = tours, after_tour, dead_n
+        self.into_tour: list[str] = []
         #: `Begin` leads to the journal question, which draws every key
         #: typed into it (`into_journal`) and leaves for the map on `Return`
         #: after something was typed (`GAME.OVR` 0x3603).
@@ -1425,10 +1446,15 @@ class FakePod(FakePool):
     def key(self, k, gap=0.0):
         self.keys.append(k)
         m = self.mode
-        if m == "journal":
+        if m == "tour":
+            self.into_tour.append(k)
+            if k == "n" and not self.dead_n:
+                self.tours -= 1
+                self.mode = "tour" if self.tours else self.after_tour
+        elif m == "journal":
             self.into_journal.append(k)
             if k == "Return" and self.journal_typed:
-                self.mode, self.journal_typed = "map", 0
+                self.mode, self.journal_typed = self.arrival(), 0
             elif len(k) == 1:
                 self.journal_typed += 1
         elif m == "from" and k == "p" and self.swallow_p:
@@ -1446,7 +1472,7 @@ class FakePod(FakePool):
             self.row = (self.row + 1) % 11
         elif m in ("menu", "party") and k == "Return":
             shift = 2 * self.train
-            begin = "journal" if self.journal else "map"
+            begin = "journal" if self.journal else self.arrival()
             picked = {("menu", 0): "create", ("menu", 2): "from",
                       ("party", 6 + shift): "psave", ("party", 7 + shift): begin}
             self.mode = picked.get((m, self.row), m)
@@ -1478,6 +1504,10 @@ class FakePod(FakePool):
             self.keys.pop()     # `FakePool.key` records it again
             super().key(k, gap)
 
+    def arrival(self) -> str:
+        """Where the party is once the journal question is behind it."""
+        return "tour" if self.tours else "map"
+
     def capture(self):
         if self.mode == "journal":
             return _journal_frame(self.journal_typed)
@@ -1486,7 +1516,8 @@ class FakePod(FakePool):
         text = {"title": (self.titles,), "question": (1, self.typed),
                 "menu": (self.row,), "party": (self.row,),
                 "camp": (self.line,), "sheet": (self.line,),
-                "items": (self.line, self.page)}.get(self.mode, ())
+                "items": (self.line, self.page),
+                "tour": (self.tours,)}.get(self.mode, ())
         bar = FakePool.BARS["camp"] if self.mode == "camp" else self.BARS[self.mode]
         return _screen(bar, bytes(t + 1 for t in text))
 
@@ -1780,6 +1811,7 @@ def test_the_run_looks_for_the_question_before_every_step(monkeypatch, tmp_path)
     _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("stopped"))
     da.run(_run_args(tmp_path, ["load"]))
     assert da.Driver.asked == ["load"]
+    assert da.Driver.declined == ["load"]
 
 
 def test_pools_at_load_from_where_is_pressed_once(tmp_path):
@@ -1789,3 +1821,115 @@ def test_pools_at_load_from_where_is_pressed_once(tmp_path):
     with pytest.raises(da.StepFailed, match="POOLS at LOAD FROM WHERE"):
         d.load()
     assert game.keys.count(da.POD_LOAD_FROM) == 1 and game.mode == "from"
+
+
+# -- Pools of Darkness' YES NO bars after Begin -----------------------------------
+
+
+@pytest.fixture
+def pod_yes_no(monkeypatch):
+    """The driver knows the fake's `YES NO` bar by its own signature, as it
+    knows the real one by `POD_YES_NO_BAR`."""
+    monkeypatch.setattr(da, "POD_YES_NO_BAR",
+                        da.bar_signature(_screen(FakePod.BARS["tour"], b"")))
+
+
+def test_the_arrival_question_after_begin_is_declined_and_the_steps_after_it_work(
+        tmp_path, pod_journal, pod_yes_no):
+    """Run 0's stop at 75e0c741: `Begin` led through the journal question to a
+    `YES NO` bar, the driver took the bar for the map, and `camp`'s `E` changed
+    nothing.  Now the bar gets `N` and nothing else, and camp, a sheet, its
+    items and the camp save run behind it."""
+    game, d = _pod_driver(tmp_path, question=False, journal=True, tours=1, pages=2)
+    d.load()
+    d.begin()
+    assert game.mode == "map" and d.where == "map"
+    assert game.into_tour == [da.POD_DECLINE]
+    assert [e["kind"] for e in d.events] == ["journal", "yes_no"]
+    assert d.events[1]["answered"] == "N" and d.events[1]["step"] == "begin"
+    d.camp()
+    d.sheet(1)
+    assert len(d.items(1)["pages"]) == 2 and game.mode == "camp"
+    assert d.save("D")["file"] == "SAVGAMD.PTY"
+    assert game.into_tour == [da.POD_DECLINE]
+    assert "y" not in game.keys and "Y" not in game.keys
+
+
+def test_the_decline_key_is_the_first_letter_of_no():
+    """The menu routine keys a word by its first capital (`GAME.OVR` 0x3A220)
+    and puts the key pressed through `UpCase` (0x3A90F)."""
+    assert da.POD_DECLINE.upper() == "NO"[0] != "YES"[0]
+
+
+def test_without_a_measured_map_bar_begin_stops_at_the_screen_it_reached(
+        tmp_path, monkeypatch, pod_yes_no):
+    """No map of this title has been captured, so whatever follows the
+    answer, the map included, stops `begin` with a shot; `camp` never runs."""
+    monkeypatch.setattr(da, "POD_MAP_BAR", None)
+    game, d = _pod_driver(tmp_path, question=False, tours=1)
+    d.load()
+    with pytest.raises(da.StepFailed, match="no Pools of Darkness map bar.*"
+                       "lost-begin-screen"):
+        d.begin()
+    assert game.mode == "map" and d.where == "party"
+    assert game.keys[-1] == da.POD_DECLINE and da.ENCAMP not in game.keys
+
+
+def test_the_yes_no_bar_is_never_taken_for_the_map(tmp_path, pod_yes_no):
+    """A bar `N` does not change is pressed twice and stops the run, rather
+    than being recorded as the map and given `camp`'s key."""
+    game, d = _pod_driver(tmp_path, question=False, tours=1, dead_n=True)
+    d.load()
+    with pytest.raises(da.StepFailed, match="NO changed nothing"):
+        d.begin()
+    assert game.into_tour == [da.POD_DECLINE] * 2 and game.mode == "tour"
+
+
+def test_a_screen_after_the_answer_that_is_not_the_map_stops_begin(tmp_path,
+                                                                  pod_yes_no):
+    """A story screen after the answer is shot, and nothing is typed into it."""
+    game, d = _pod_driver(tmp_path, question=False, tours=1, after_tour="story")
+    d.load()
+    with pytest.raises(da.StepFailed, match="not the map bar"):
+        d.begin()
+    assert game.mode == "story" and game.keys[-1] == da.POD_DECLINE
+
+
+@pytest.mark.parametrize("tours", [2, da.POD_YES_NO_ROUNDS])
+def test_bars_one_after_another_are_each_declined_and_shot(tmp_path, pod_yes_no,
+                                                           tours):
+    game, d = _pod_driver(tmp_path, question=False, tours=tours)
+    d.load()
+    d.begin()
+    assert game.mode == "map"
+    assert game.into_tour == [da.POD_DECLINE] * tours
+    assert [e["kind"] for e in d.events] == ["yes_no"] * tours
+    assert len({e["shot"] for e in d.events}) == tours
+
+
+def test_bars_that_keep_coming_stop_the_run(tmp_path, pod_yes_no):
+    game, d = _pod_driver(tmp_path, question=False, tours=da.POD_YES_NO_ROUNDS + 1)
+    d.load()
+    with pytest.raises(da.StepFailed, match=f"after {da.POD_YES_NO_ROUNDS} were"):
+        d.begin()
+    assert game.into_tour == [da.POD_DECLINE] * da.POD_YES_NO_ROUNDS
+
+
+def test_a_yes_no_bar_found_before_a_step_is_declined_first(tmp_path, pod_yes_no):
+    game, d = _pod_driver(tmp_path, question=False)
+    d.load()
+    d.begin()
+    game.mode, game.tours = "tour", 1
+    assert d.yes_no("camp") == 1
+    assert game.mode == "map"
+    assert d.yes_no("camp") == 0
+    d.camp()
+    assert game.mode == "camp" and game.into_tour == [da.POD_DECLINE]
+
+
+def test_other_titles_never_look_for_a_yes_no_bar(tmp_path, pod_yes_no):
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "curse")
+    game.capture = lambda: pytest.fail("the bar was looked for")
+    assert d.yes_no("camp") == 0
+

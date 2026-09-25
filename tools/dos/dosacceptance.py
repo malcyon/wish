@@ -41,7 +41,7 @@ conversion logged.
 | step | what it does |
 |---|---|
 | `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P` |
-| `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question (below), to the map |
+| `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars (below), to the map; Pools of Darkness' map only by its measured bar |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1), `VIEW`, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
@@ -80,6 +80,18 @@ screen by two glyph digests, never by its words; the driver looks for it
 before every step and inside `begin`, shoots it, types `x` and `Return`, and
 lists it in `events` as `journal`.  Nothing else is ever typed into it: a step
 that finds it where it would press `Exit` answers it and stops the run.
+
+**After the journal question the arrival may ask a `YES NO` question**, over
+a portrait and story text.  The driver knows the bar by `POD_YES_NO_BAR`, a
+`bar_signature` digest of the bar row only, and declines with `N`: the menu
+routine keys each word by its first capital and returns at once (the
+constants have the offsets).  It does so inside `begin` and before every
+step, at most `POD_YES_NO_ROUNDS` in a row, and lists each in `events` as
+`yes_no`.  `begin` then calls a screen the map only when its bar is
+`POD_MAP_BAR`, measured from a capture of the real map; until that exists it
+stops at the screen it reached with a `lost-begin-screen.png`, and anything
+else after the answer stops the run in the same way rather than being typed
+into.
 
 Staging, written into the installed copy before the boot and logged in
 bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
@@ -231,6 +243,24 @@ POD_LOAD_FROM = "p"
 #: Classes` on the party menu (`GAME.OVR` 0x14253, read from the first 1,024
 #: bytes the load puts at `[0x87F8]`), two rows above `View`.
 POD_TRAIN_BYTE = 0x2F
+#: A `YES NO` bar with nothing else on the bar row, by `bar_signature`.
+#: Measured on the arrival dialog `Begin` led to in run `75e0c741ac-run0-control`
+#: of #650 (shots 006 and 007, one screen); none of the 17 other shots of the
+#: three runs has it (7 other signatures).  The words are never kept.
+POD_YES_NO_BAR = "02af736347597b37"
+#: `No` on that bar.  The menu routine (`GAME.OVR` 0x3A422) keys each word by
+#: its first character in the set 0-9, A-Z (0x3A220, the set at 0x3A200),
+#: puts the key pressed through `UpCase` (0x3A90F), returns the index of the
+#: word it keys (0x3A376) and does so at once, without `Return` (0x3A954).
+#: The engine's own yes-or-no question (0x3B66D) asks it over `Yes No`
+#: (`GAME.EXE` data 0x2B64) and returns 1 for `No`.
+POD_DECLINE = "n"
+#: `YES NO` bars declined one after another before the run gives up.
+POD_YES_NO_ROUNDS = 3
+#: The map's command bar by `bar_signature`, which `begin` requires before it
+#: calls a screen the map.  None until a capture of the real map measures it:
+#: `begin` then stops at whatever screen it reaches, with a `lost-*.png`.
+POD_MAP_BAR: str | None = None
 
 #: `View` on the map and camp bars; `Items` and `Exit` on the sheet's bar
 #: `Items Spells Trade Deposit Drop Lay Cure Exit` (`GAME.EXE` 0xBB4F).  The
@@ -1315,6 +1345,42 @@ class Driver:
         self.note(event="question", **event)
         return True
 
+    def yes_no(self, label: str) -> int:
+        """Decline every Pools of Darkness `YES NO` bar showing, in turn.
+
+        Each is shot, gets `POD_DECLINE` (pressed a second time only if the
+        text window did not change), is waited out, and is listed in `events` as
+        `yes_no`.  A bar still showing after `POD_YES_NO_ROUNDS`, or one `N`
+        does not change, stops the run.  `Y` is never pressed.  Other titles
+        get nothing pressed.  Returns how many were declined.
+        """
+        if self.title.key != "darkness":
+            return 0
+        declined = 0
+        while bar_signature(self.s.capture()) == POD_YES_NO_BAR:
+            if declined >= POD_YES_NO_ROUNDS:
+                raise self.fail(f"yes-no-{label}", f"a YES NO bar is still showing "
+                                f"after {declined} were declined")
+            shot = self.shot(f"yes-no-{label}")
+            # The text window and bar, not the whole frame, which a portrait
+            # may animate.  The next question's text differs from this one's
+            # even where its bar and highlight are the same.
+            before = self.s.capture().digest(TEXT_WINDOW)
+            for _ in range(2):
+                self.s.key(POD_DECLINE)
+                if self.s.wait_for(lambda sc: sc.digest(TEXT_WINDOW) != before, 10.0):
+                    break
+            else:
+                raise self.fail(f"yes-no-{label}", "NO changed nothing on the "
+                                "YES NO bar")
+            self.s.settle(quiet=1.0, timeout=60.0)
+            event = {"kind": "yes_no", "step": label, "shot": f"{shot}.png",
+                     "bar": POD_YES_NO_BAR, "answered": POD_DECLINE.upper()}
+            self.events.append(event)
+            self.note(event="question", **event)
+            declined += 1
+        return declined
+
     def record_world(self, screen) -> None:
         self.game.record_map(screen)
         self.world_sig = bar_signature(screen)
@@ -1405,11 +1471,22 @@ class Driver:
             raise self.fail("begin", "BEGIN ADVENTURING did not leave the party menu")
         screen = self.s.settle(quiet=1.0, timeout=60.0)
         # Pools of Darkness asks its journal question between the party menu
-        # and the map, every time the party begins.
+        # and the map, every time the party begins, and its arrival may ask a
+        # YES NO question after that.
         if self.journal("begin"):
+            screen = self.s.settle(quiet=1.0, timeout=60.0)
+        if self.yes_no("begin"):
             screen = self.s.settle(quiet=1.0, timeout=60.0)
         if self.on_party_menu(screen):
             raise self.fail("begin", "the party menu is still showing")
+        if self.title.key == "darkness" and bar_signature(screen) != POD_MAP_BAR:
+            if POD_MAP_BAR is None:
+                raise self.fail("begin-screen", "no Pools of Darkness map bar has "
+                                "been measured yet (POD_MAP_BAR), so the screen "
+                                "Begin reached is not taken for the map")
+            raise self.fail("begin-screen", "the screen Begin reached is not the "
+                            "map bar POD_MAP_BAR (a story screen or a message "
+                            "this driver does not know)")
         self.record_world(screen)
         self.shot("map")
         self.where = "map"
@@ -1887,6 +1964,7 @@ def _run(args, outer: contextlib.ExitStack) -> int:
                 # Before every step but a capture of what `press` left.
                 if d.where != "pressed":
                     d.journal(re.sub(r"\W+", "-", step.text))
+                    d.yes_no(re.sub(r"\W+", "-", step.text))
                 if step.kind == "load":
                     r = d.load()
                 elif step.kind == "begin":
