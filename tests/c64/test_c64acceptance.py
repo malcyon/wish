@@ -1411,6 +1411,41 @@ def test_saved_characters_reads_each_name_slot_and_memorised_list(tmp_path):
     assert all(set(v) == {"owner", "memorised"} for v in got.values())
 
 
+def _seeding(slot, template):
+    """Give a fake slot the real `seed_vicerc`, run over `template`."""
+    from tools.registry import instance
+
+    slot.port, slot.text_port = 6510, 6511
+    slot.vicerc = pathlib.Path(slot.dir) / "vicerc"
+    slot.seed_vicerc = lambda: instance.seed_vicerc(slot, template)
+    slot.seed_vicerc()
+
+
+@pytest.mark.parametrize("template", [
+    "[C64SC]\nSound=0\nJoyDevice2=0\n[Other]\nX=1\n",
+    "[C64SC]\nSound=0\n[Other]\nX=1\n",
+    "[Other]\nX=1\n",
+    "[Other]\nX=1\n[C64SC]\nSound=0\n",
+])
+def test_the_joystick_line_lands_in_the_c64sc_section_only(tmp_path, template):
+    t = tmp_path / "template"
+    t.write_text(template, encoding="utf-8")
+    slot = _Slot(tmp_path)
+    _seeding(slot, t)
+    A.give_joystick(slot.vicerc)
+    text = slot.vicerc.read_text(encoding="utf-8")
+    sections = {}
+    name = ""
+    for line in text.splitlines():
+        if line.startswith("["):
+            name = line.strip("[]")
+        sections.setdefault(name, []).append(line)
+    assert sections["C64SC"].count("JoyDevice2=1") == 1
+    assert text.count("JoyDevice2") == 1
+    assert "X=1" in sections["Other"] and "JoyDevice2=1" not in sections["Other"]
+    assert not list(tmp_path.glob("vicerc.tmp"))
+
+
 def test_a_curse_run_with_cures_gives_the_slot_a_joystick_and_validates_them(
         tmp_path, monkeypatch):
     from types import SimpleNamespace
@@ -1418,12 +1453,13 @@ def test_a_curse_run_with_cures_gives_the_slot_a_joystick_and_validates_them(
     from tools.curse_of_the_azure_bonds import curserun
 
     slot = _Slot(tmp_path)
-    slot.vicerc = tmp_path / "vicerc"
-    slot.vicerc.write_text("Sound=0\n", encoding="utf-8")
+    template = tmp_path / "template"
+    template.write_text("[C64SC]\nSound=0\n[Other]\nX=1\n", encoding="utf-8")
+    _seeding(slot, template)
     monkeypatch.setattr(A.SC, "catch_signals", lambda: None)
     monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: slot)
     monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [], "magic_items": []})
-    monkeypatch.setattr(curserun, "stage", lambda *a, **k: "first")
+    monkeypatch.setattr(curserun, "stage", lambda *a, **k: slot.seed_vicerc() and "first")
     monkeypatch.setattr(curserun, "CurseSession", _Sess)
     evidence = _evidence()
     seen = []
@@ -1434,8 +1470,9 @@ def test_a_curse_run_with_cures_gives_the_slot_a_joystick_and_validates_them(
         joy = False
 
         def __init__(self, *a, **k):
-            seen.append("built after the vicerc: " + slot.vicerc.read_text(
-                encoding="utf-8").replace("\n", "|"))
+            text = slot.vicerc.read_text(encoding="utf-8")
+            seen.append("joystick at build: " + str(
+                text.split("[C64SC]")[1].split("[Other]")[0].count("JoyDevice2=1\n")))
 
         def load(self):
             return {}
@@ -1463,5 +1500,5 @@ def test_a_curse_run_with_cures_gives_the_slot_a_joystick_and_validates_them(
     steps = ["load", "cast SHARA:CURE BLINDNESS>PHILIPPE", "cure MARK>LEDERA", "save"]
     assert A.run(args, A.parse_steps(steps), tmp_path / "evidence",
                  _fixture_disk(tmp_path)) == 0
-    assert seen == ["built after the vicerc: Sound=0|JoyDevice2=1|",
+    assert seen == ["joystick at build: 1",
                     ("save", "saved.D64")]

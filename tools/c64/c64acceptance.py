@@ -1492,6 +1492,38 @@ def validate_curse_cures(results: list[dict], saved_path,
                              f"{CAMP_SPELL_IDS[act['spell']]} memorised in the saved game")
 
 
+def give_joystick(vicerc: pathlib.Path) -> None:
+    """Set `JoyDevice2=1` inside the `[C64SC]` section of the slot's vicerc.
+
+    Written to a neighbour and renamed over it, so a reader never sees half a file.
+    """
+    lines = vicerc.read_text(encoding="utf-8").splitlines() if vicerc.is_file() else []
+    out: list[str] = []
+    section = ""
+    done = False
+    for line in lines:
+        s = line.strip()
+        if s.startswith("["):
+            if section == "C64SC" and not done:
+                out.append("JoyDevice2=1")
+                done = True
+            section = s.strip("[]")
+            out.append(line)
+        elif section == "C64SC" and s.split("=", 1)[0].strip() == "JoyDevice2":
+            if not done:
+                out.append("JoyDevice2=1")
+                done = True
+        else:
+            out.append(line)
+    if not done:
+        if section != "C64SC":
+            out.append("[C64SC]")
+        out.append("JoyDevice2=1")
+    tmp = vicerc.with_name(vicerc.name + ".tmp")
+    tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
+    tmp.replace(vicerc)
+
+
 def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         clock=time.monotonic) -> int:
     deadline = clock() + args.max_seconds
@@ -1544,12 +1576,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         if args.title == "curse":
             from tools.curse_of_the_azure_bonds import curserun
 
-            if getattr(args, "joy", False):
-                # The slot's own vicerc, seeded from Donald's and never his:
-                # a numpad joystick in port 2, where KP_0 is fire.
-                with open(slot.vicerc, "a") as f:
-                    f.write("JoyDevice2=1\n")
             first = curserun.stage(slot, args.disks, str(staged_disk))
+            if getattr(args, "joy", False):
+                # After stage, which reseeds the file from Donald's template:
+                # a numpad joystick in port 2, where KP_0 is fire.
+                give_joystick(pathlib.Path(slot.vicerc))
             sess = curserun.CurseSession(first, slot=slot)
             sess.save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
         else:
