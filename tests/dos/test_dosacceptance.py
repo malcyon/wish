@@ -238,9 +238,8 @@ def _no_waiting(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _pod_map_measured(monkeypatch):
-    """No capture of Pools of Darkness' map exists, so the driver's
-    `POD_MAP_BAR` is None and its `begin` stops at any screen; here the fakes'
-    map bar stands in for a measured one."""
+    """The fakes' map bar stands in for the measured `POD_MAP_BAR`, whose
+    real value the test after this fixture checks against a capture."""
     monkeypatch.setattr(da, "POD_MAP_BAR",
                         da.bar_signature(_screen(FakePool.BARS["map"], b"")))
 
@@ -1881,8 +1880,8 @@ def test_the_decline_key_is_the_first_letter_of_no():
 
 def test_without_a_measured_map_bar_begin_stops_at_the_screen_it_reached(
         tmp_path, monkeypatch, pod_yes_no):
-    """No map of this title has been captured, so whatever follows the
-    answer, the map included, stops `begin` with a shot; `camp` never runs."""
+    """With no measured bar, whatever follows the answer, the map included,
+    stops `begin` with a shot; `camp` never runs."""
     monkeypatch.setattr(da, "POD_MAP_BAR", None)
     game, d = _pod_driver(tmp_path, question=False, tours=1)
     d.load()
@@ -2033,3 +2032,27 @@ def test_other_titles_never_look_for_a_continue_screen(tmp_path, pod_continue):
     d = da.Driver(game, lambda **k: None, "A", "curse")
     game.capture = lambda: pytest.fail("the bar was looked for")
     assert d.press_continue("camp") == 0
+
+
+def test_the_measured_pod_map_bar_is_sixteen_hex_digits(monkeypatch):
+    monkeypatch.undo()
+    assert isinstance(da.POD_MAP_BAR, str)
+    assert len(da.POD_MAP_BAR) == 16
+    int(da.POD_MAP_BAR, 16)
+
+
+def test_the_measured_pod_map_bar_matches_the_captured_map(monkeypatch):
+    """The value was read off a live run's map screen; that capture is in the
+    player's cache, not the repository, so this skips without it."""
+    import shutil
+    import subprocess
+
+    from tools.registry.scratch import cache_dir
+    shot = cache_dir("acceptance", "650", "e38a1bb514-run0-control", "shots",
+                     "009-lost-begin-screen.png")
+    if not shot.exists() or shutil.which("convert") is None:
+        pytest.skip("the captured Pools of Darkness map is not on this machine")
+    monkeypatch.undo()
+    ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
+                         check=True, capture_output=True).stdout
+    assert da.bar_signature(dosbox.Screen.from_ppm(ppm)) == da.POD_MAP_BAR

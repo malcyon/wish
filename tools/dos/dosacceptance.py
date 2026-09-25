@@ -88,10 +88,9 @@ routine keys each word by its first capital and returns at once (the
 constants have the offsets).  It does so inside `begin` and before every
 step, at most `POD_YES_NO_ROUNDS` in a row, and lists each in `events` as
 `yes_no`.  `begin` then calls a screen the map only when its bar is
-`POD_MAP_BAR`, measured from a capture of the real map; until that exists it
-stops at the screen it reached with a `lost-begin-screen.png`, and anything
-else after the answer stops the run in the same way rather than being typed
-into.
+`POD_MAP_BAR`, measured from a capture of the real map; any other screen
+stops at once with a `lost-begin-screen.png`, and anything else after the
+answer stops the run in the same way rather than being typed into.
 
 Staging, written into the installed copy before the boot and logged in
 bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
@@ -269,9 +268,9 @@ POD_CONTINUE_ROUNDS = 5
 #: gives up, so that no mix of them can loop.
 POD_INTERSTITIALS = 12
 #: The map's command bar by `bar_signature`, which `begin` requires before it
-#: calls a screen the map.  None until a capture of the real map measures it:
-#: `begin` then stops at whatever screen it reaches, with a `lost-*.png`.
-POD_MAP_BAR: str | None = None
+#: calls a screen the map, measured off a capture of the real map.  None would
+#: make `begin` stop at whatever screen it reaches, with a `lost-*.png`.
+POD_MAP_BAR: str | None = "0409f26b63f9c492"
 
 #: `View` on the map and camp bars; `Items` and `Exit` on the sheet's bar
 #: `Items Spells Trade Deposit Drop Lay Cure Exit` (`GAME.EXE` 0xBB4F).  The
