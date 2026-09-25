@@ -694,13 +694,13 @@ def _lost(char):
 
 @pytest.mark.parametrize("game", GAMES)
 @pytest.mark.parametrize("value", [0x1000000, 0x7FFFFFFF])
-def test_l_experience_past_three_bytes_is_a_loss_and_a_warning(game, value):
+def test_l_experience_past_three_bytes_is_a_warning_and_not_a_loss(game, value):
     char = boundarywidths.base(game)
     char.set("experience", value, "boundary: one past")
     rep = _lost(char)
     line = (f"experience: DOS holds {value}, which does not fit the C64's 3 "
             f"bytes; written as 16777215, the most they hold")
-    assert rep.losses == [line], (game, rep.losses)
+    assert rep.losses == [], (game, rep.losses)
     assert line in rep.warnings
     assert line not in rep.dropped
 

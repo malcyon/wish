@@ -179,7 +179,7 @@ def test_one_past_the_c64_width_is_clamped_and_never_wrapped(key):
     """A wrap would quietly convert a rich character into a poor one.
 
     `goldbox.c64_codec.write` writes the field's largest value instead and
-    puts a line on `report.losses`, which reaches the debug log and no
+    puts a line on `report.warnings`, which reaches the debug log and no
     player-facing text.  It used to raise here; the experience is now
     clamped so the character converts at all.
     """
@@ -223,13 +223,13 @@ def _clamped(key: str, value: int):
 def test_experience_past_three_bytes_converts_as_the_c64_maximum(key, value):
     """Refused before: `ValueError: experience: 16777216 does not fit in 3
     bytes`.  A character with that much converts at `0xFFFFFF` now, and the
-    loss line names the value that was held so the debug log can say why the
+    warning line names the value that was held so the debug log can say why the
     number changed."""
     rec, rep = _clamped(key, value)
     assert rec.get("experience") == xpceiling.C64_CEILING
-    lines = [d for d in rep.losses if d.startswith("experience:")]
-    assert len(lines) == 1, rep.losses
-    assert lines[0] in rep.warnings
+    assert not [d for d in rep.losses if d.startswith("experience:")]
+    lines = [d for d in rep.warnings if d.startswith("experience:")]
+    assert len(lines) == 1, rep.warnings
     assert not [d for d in rep.dropped if d.startswith("experience:")]
     assert str(value) in lines[0] and str(xpceiling.C64_CEILING) in lines[0]
 

@@ -2456,3 +2456,30 @@ def test_a_rehearsal_failure_keeps_the_editor_open_and_writes_nothing(
     assert any(record.exc_info and record.exc_info[1] is error
                and str(out) in record.getMessage()
                for record in caplog.records)
+
+
+def test_a_dos_party_past_the_c64_experience_ceiling_saves_as_c64_clamped(
+        tmp_path):
+    """The clamp is a conversion Donald ruled on, not a loss: Save As goes
+    ahead and the C64 record holds the three-byte maximum."""
+    import struct
+
+    from tools.records import xpceiling
+    folder = dos_folder(tmp_path / "save")
+    record = folder / "CHRDATA1.SAV"
+    buf = bytearray(record.read_bytes())
+    struct.pack_into("<I", buf, xpceiling.experience_offset(
+        "secret-of-the-silver-blades"), 0x1000000)
+    record.write_bytes(buf)
+    files_for = _registry_game_files(SILVER_BLADES.key)
+    if files_for is None:
+        pytest.skip("needs the Silver Blades C64 disks")
+    party = Party(str(folder))
+    out = tmp_path / "out" / "clamped.d64"
+
+    plan = saveplan.prepare_save_as(
+        party, "c64", out, saveplan.Assets(game_files=files_for))
+    saveplan.publish(plan, party, backups=tmp_path / "backups")
+
+    written = {r.get("name"): r for r in saveplan.c64_slot_records(out)}
+    assert written["HERO1"].get("experience") == 0xFFFFFF

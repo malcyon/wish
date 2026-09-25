@@ -772,10 +772,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             # wider than the C64's three.  It is clamped to the field's
             # largest value rather than refused, so the character converts;
             # a negative value still reaches `rec.set` and is refused there.
-            # The value is narrowed rather than homeless, so the line is a
-            # loss: `lost` puts it on `losses` for a caller that refuses on
-            # one, and on `warnings` where the debug log reads it.
-            rep.lost(EXPERIENCE_CLAMPED.format(
+            # Donald ruled the clamp a conversion and not a loss, so the line
+            # goes on `warnings` only, the debug-log channel: on `losses` a
+            # Save As would refuse the whole party.
+            rep.warnings.append(EXPERIENCE_CLAMPED.format(
                 port=port, value=int(value), size=dst.size, top=top))
             value, extra = top, f", clamped from {int(value)}"
         rec.set(c64_name, value)
