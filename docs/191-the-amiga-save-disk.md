@@ -246,7 +246,7 @@ Four things cost time on the way.
 
 ## 8. The dialog, and which disk it asks for
 
-**A player can now convert to the Amiga from `File ▸ Convert…`**, and the
+**A player can convert to the Amiga through the editor's Save As**, and the
 result loads in the game. Driven twice on 2026-09-08, once from each source,
 through `EditorBinding.convert(source=…, destination="amiga", disk=…,
 folder=…)` -- the dialog's own path with every row filled in -- and then in

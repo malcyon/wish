@@ -10,8 +10,10 @@ needs the import working for all three C64 titles)`) and removed outright on
 `#52 (File ▸ Import and File ▸ Export for every direction the library
 supports)` in the same commit. `File > Export` went the same way earlier --
 Donald ruled on 2026-09-09 that it was deleted rather than finished. `File >
-Convert…` (`editor/convert.py`) is the only route now, built for everyone,
-reaching every direction the library supports.
+Convert…` (`editor/convert.py`) is built only behind
+`WISH_EXPERIMENTAL_POD_CONVERT`, for the Amiga-to-DOS Pools of Darkness
+direction; every other direction is converted through Save As in the Character
+Editor (`editor/saveplan.py`), which refuses a party with a reported loss.
 Everything the plan said had to be found out first has been found out —
 the spell tables agree exactly, nothing DOS stores is lost that matters, and
 the clock is the one loose end.

@@ -1,7 +1,7 @@
 # Open and Save As in the Character Editor
 
-**Design selected; implementation pending.** The Character Editor will open
-C64, DOS and Amiga saves and save to any supported platform through two split
+**Built; stage 4 is complete except for the flagged File > Convert route.** The Character Editor opens
+C64, DOS and Amiga saves and saves to any supported platform through two split
 buttons. Each button has a main action and a separate menu arrow: Open opens a
 save file, while its arrow also offers a DOS folder picker; Save updates the
 current save, while its arrow offers Save As C64, Save As DOS and Save As Amiga.
@@ -154,7 +154,7 @@ the actual title's supported directions plus its native-copy operation.
 | 1. Capture current edits | Reverse-engineering agent: new `editor/saveplan.py`, native assembly in `editor/window.py::_write_back`, source/rehearsal interfaces in `editor/convert.py`, focused new `tests/editor/test_saveplan.py` | An isolated snapshot combines original native data with all pending edits, including inventory and supported traits/effects. Preparing it writes neither source files nor live editor baselines. C64, DOS and Amiga conversions consume it. |
 | 2. Prepare and publish | Reverse-engineering agent: `editor/saveplan.py`, `editor/convert.py`, `editor/files.py`, relevant conversion/editor tests | Extract asset resolution, rehearsal and output preparation from `ConvertDialog`. Add native copies, validation, loss refusal, explicit output paths, backups and publication with recovery on failure. Return a destination descriptor and a validated party for adoption. |
 | 3. Wire split Open and Save buttons | Qt UI specialist: `wish/window.ui`, generated `wish/ui_window.py`, `wish/window.py`, `editor/window.py`, editor/preferences/layout tests | Implement split buttons and the conditional destination section in Designer; connect toolbar, menus and shortcuts to one controller. Adopt the prepared destination only after successful publication. |
-| 4. Establish parity and retire Convert | Qt UI specialist after backend verification: obsolete conversion-dialog wiring/form, affected tests, `docs/97-editor.md`, `docs/117-save-conversion.md`, package inventory rows | Remove File > Convert and obsolete dialog code only when native copies and every previously available direction work from the editor. Retain the direction registry, codecs and conversion tests. |
+| 4. Establish parity and retire Convert (File > Convert is built only behind `WISH_EXPERIMENTAL_POD_CONVERT`, and its dialog refuses a reported loss except for Pools of Darkness; the dialog code goes with the flag) | Qt UI specialist after backend verification: obsolete conversion-dialog wiring/form, affected tests, `docs/97-editor.md`, `docs/117-save-conversion.md`, package inventory rows | Remove File > Convert and obsolete dialog code only when native copies and every previously available direction work from the editor. Retain the direction registry, codecs and conversion tests. |
 
 Stages are sequential; ownership transfers explicitly because they share files.
 Each implementation agent receives the approved scope and its own test files;
