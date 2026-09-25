@@ -45,9 +45,10 @@ at that desktop while agents run. `tools/c64/porlaunch.sh` adds `+sound` in that
 branch too, because he can hear a headless emulator through his speakers even
 when it draws no window.
 
-**Every emulator an agent starts is silent, and VICE is the only one this is
-already true of.** The headless branch handles VICE and nothing handles the
-others, so a brief for an emulator run says "silent" as well as "offscreen".
+**Every emulator an agent starts is silent.** A brief for an emulator run
+says "silent" as well as "offscreen". VICE's headless launcher disables
+sound; the pooled DOSBox configuration disables its mixer, Sound Blaster and
+PC speaker. Other launch paths must establish their own silence controls.
 
 * **FS-UAE**: **`--volume=0` does not silence it.** Use
   `SDL_AUDIODRIVER=dummy` for a build that links SDL audio,
@@ -59,8 +60,23 @@ others, so a brief for an emulator run says "silent" as well as "offscreen".
   `sound_output=interrupts`. Mute the VM's own audio device rather than the
   emulator's.
 
-**Check rather than assume.** `pactl list sink-inputs` names what is playing,
-and a run that leaves nothing there is the only proof that a flag worked.
+**Verify the audio path on the machine that can reach the speakers.** A host
+check of the running VM's configuration showing no virtual sound device and
+an audio backend of `none`, with no audio forwarding or passthrough, is valid
+silence evidence. Record that configuration evidence in the run brief and
+retain the emulator's sound-disabled configuration. Recheck after a VM or
+audio configuration change; a missing guest `pactl`, `wpctl` or audio socket
+does not block a run with this evidence. Do not install an audio service to
+verify a guest that has no audio path.
+
+For a machine with an audio path, verify its actual output control: for
+example, read back the Windows playback endpoint's mute state for WinUAE.
+Record the endpoint and readback, and recheck if the endpoint, session or
+mute state changes. Keep WinUAE's sound interrupts enabled. A check of
+`pactl list sink-inputs` is useful on the host audio server while a stream is
+active, but an empty list before launch alone does not prove silence.
+One emulator's missing audio verification does not block experiments on
+other machines whose silence is established.
 
 **The pool owns the lifecycle.** Allocate, launch, tear down. Do not attach to
 an emulator you did not launch, and do not launch one outside the pool -- an

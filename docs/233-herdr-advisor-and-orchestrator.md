@@ -161,6 +161,23 @@ This was a local socket access restriction, not evidence that Herdr was down.
 Request the required tool approval when socket access is denied; do not try to
 bypass the sandbox or broaden permissions silently.
 
+## Emulator audio on the two guests
+
+Host inspection on 2026-09-24 with `virsh dumpxml agent-vm` found no
+`sound` device and an `audio` backend of `none`. VICE's headless launcher
+disables sound, and the pooled DOSBox configuration disables the mixer,
+Sound Blaster and PC speaker. This configuration establishes silence for
+those guest runs; the missing guest PulseAudio tools and sockets are not a
+reason to stop them. The guidance was corrected because requiring a guest
+sink query had stopped experiments before they claimed an emulator slot,
+despite there being no virtual audio path. Recheck the live configuration
+after audio or VM changes rather than treating this observation as permanent.
+
+The separate `win11` guest has an ICH9 sound device and SPICE audio forwarding.
+Its WinUAE runs still need Windows playback mute readback; the Linux guest's
+silence evidence does not apply to it. Keep WinUAE's sound interrupts enabled
+and follow [the emulator rule](../.claude/rules/emulator.md).
+
 ## References
 
 The installed `herdr --skill` and command help govern the installed version.
