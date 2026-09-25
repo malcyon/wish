@@ -8,14 +8,13 @@ Amiga) and skip only where those are absent.
 """
 from __future__ import annotations
 
-import pathlib
-
 import pytest
 from gamedata import synthetic_save
 from PyQt6.QtWidgets import QTabWidget
 from support.dossave import _game_dirs
 from support.editorwindow import make_root
 
+from automap import gamedisks
 from editor.window import EditorBinding
 from goldbox import c64_port
 
@@ -34,7 +33,6 @@ POOL_TOOLTIP = ("Set when this character kept an ability or hit-point change "
 
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 SILVER = c64_port.SECRET_OF_THE_SILVER_BLADES
-AMIGA_DISKS = pathlib.Path("/mnt/disks/amiga")
 
 
 def _shown(path):
@@ -114,10 +112,11 @@ def _dos(folder, name):
 
 
 def _amiga(folder, name):
-    path = AMIGA_DISKS / folder / name
-    if not path.is_file():
-        pytest.skip(f"needs {path}")
-    return path
+    for root in gamedisks.candidates("amiga"):
+        path = root / folder / name
+        if path.is_file():
+            return path
+    pytest.skip(f"needs {folder}/{name} under the amiga registry entry")
 
 
 def _show_each(path):
