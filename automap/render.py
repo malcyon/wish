@@ -293,13 +293,15 @@ def party_marker(x: int, y: int, facing: int, cell: int = CELL,
 #: The eight compass headings the travel grid's heading byte is thought to
 #: hold, clockwise from north: 0 N, 1 NE, 2 E, 3 SE, 4 S, 5 SW, 6 W, 7 NW.
 #: PROBABLE, 2 of 8 measured: compass digit 1 (north) left 0 and digit 3 (east)
-#: set 2, so heading = digit - 1. Stage E of the wilderness plan confirms or
-#: changes this one constant.
+#: set 2, so heading = digit - 1. The other six are inferred.
 TRAVEL_HEADINGS = 8
 
-#: The smallest radius, in pixels, `travel_marker` draws. NOT APPROVED: the
-#: size is Donald's to choose from a contact sheet.
-TRAVEL_MARKER_MIN = 0.0
+#: The smallest radius, in pixels, `travel_marker` draws. At the whole
+#: wilderness's smallest square, 7 pixels, `cell * 0.28` is 2 pixels and the
+#: marker is lost; at 7 it is about 11 pixels across, visible on every kind of
+#: ground and a little wider than the square it marks. Chosen from offscreen
+#: screenshots over the game's own tiles; a 34 pixel square is unaffected.
+TRAVEL_MARKER_MIN = 7.0
 
 
 def travel_marker(x: int, y: int, heading: int, cell: int = CELL,

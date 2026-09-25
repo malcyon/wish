@@ -407,7 +407,8 @@ def window_for_world_x(world_x: int) -> int:
 
     Unlike `World.locate` it answers the border columns too, which the game's
     own pane still draws. At a seam the eastern window answers; the two
-    windows agree on 359 of the 360 seam squares.
+    windows agree on 359 of the 360 seam squares (179 of 180 and 180 of 180,
+    `docs/113-world-map.md`).
     """
     if world_x < SEAM_WEST_MIDDLE:
         return 0

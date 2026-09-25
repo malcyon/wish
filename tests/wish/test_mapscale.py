@@ -1103,3 +1103,14 @@ def test_a_hand_edited_row_of_heights_that_is_not_one_opens_at_the_defaults():
     assert settings.row_heights(2) == [0, 600]
     settings.editor_rows = [260.0, 300]
     assert settings.row_heights(2) == [260, 300], "a whole float is a height"
+
+
+def test_the_wilderness_page_does_not_put_the_floor_back(app):
+    """It shares the stack with the map, so it asks for no more than the map
+    does, at its minimum and at its size hint."""
+    from automap.state import AutomapState
+    from automap.window import MapCanvas, WorldCanvas
+
+    world, grid = WorldCanvas(AutomapState()), MapCanvas(AutomapState())
+    assert world.minimumSize() == grid.minimumSize()
+    assert world.sizeHint() == grid.sizeHint()

@@ -125,6 +125,10 @@ class Settings:
     # On by default -- discovering the map is the point -- but the choice is
     # remembered, so turning it off stays off.
     reveal: bool = True
+    # Which outdoor picture the map draws behind `WISH_EXPERIMENTAL_WILDERNESS_MAP`:
+    # `"full"`, the whole wilderness, or `"area"`, a piece centred on the party.
+    # Anything else in the file reads as `"full"` (`__post_init__`).
+    wilderness_view: str = "full"
     # 0 means "the backend's own" -- 200 ms for VICE's loopback monitor, 500
     # for a device on a network cable. A number here is a deliberate override
     # and is honoured for both.
@@ -244,6 +248,10 @@ class Settings:
     # `{"pool-of-radiance": [...]}`, because Pool of Radiance is the only title
     # that ever had one.
     fast_travel_targets: dict[str, list[int]] | None = None
+
+    def __post_init__(self) -> None:
+        if self.wilderness_view not in ("full", "area"):
+            self.wilderness_view = "full"
 
     def chosen_areas(self, game=None) -> tuple[int, ...]:
         """The area ids the Fast Travel dropdown may offer for this title."""

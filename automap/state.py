@@ -53,12 +53,16 @@ OUTDOORS_AREA = "Wilderness"
 #: (west, middle, east). Donald's names, approved 2026-09-24, and fixed.
 OUTDOORS_REGIONS = ("West of Phlan", "Stojanow Valley", "East of Phlan")
 
-#: `WISH_EXPERIMENTAL_WILDERNESS_MAP`: recording where the party has been on the
-#: travel grid, and saving it. The truthiness rule is `wish/debugmode.py`'s: an
-#: empty string, `0` and `off` are off, so a variable somebody exported once and
-#: forgot does not put an unfinished feature in front of them.
+#: `WISH_EXPERIMENTAL_WILDERNESS_MAP`: drawing the game's own wilderness tiles
+#: on the map while the party is on the travel grid, and recording where it has
+#: been. The truthiness rule is `wish/debugmode.py`'s: an empty string, `0` and
+#: `off` are off, so a variable somebody exported once and forgot does not put
+#: an unfinished feature in front of them.
 #:
-#: **Comes off when `#11 (Draw the wilderness on the automapper)` closes.**
+#: **Comes off when `#11 (Draw the wilderness on the automapper)` closes**,
+#: which needs Donald's approval of the page from a screenshot, the eight
+#: heading values confirmed against the running game, and a live walk across a
+#: seam.
 WILDERNESS_ENV = "WISH_EXPERIMENTAL_WILDERNESS_MAP"
 _TRUE = ("1", "true", "yes", "on")
 
@@ -243,7 +247,7 @@ class AutomapState:
     #: Which wilderness window (0 west, 1 middle, 2 east) the party is in, or
     #: None until one has been identified. Set only while `outdoors`.
     window: int | None = None
-    #: The travel grid's heading byte. Nothing reads it yet.
+    #: The travel grid's heading byte, 0-7, or None. Set only while `outdoors`.
     heading: int | None = None
     #: World square -> `(window, terrain code)` for every square the party has
     #: seen outdoors. The world x is the window-local x plus 13 per window.
@@ -621,6 +625,8 @@ class Automapper:
             # loaded before the party left it, for up to `RESIDENT_EVERY`
             # ticks.
             self.state.outdoors = False
+            self.state.window = None
+            self.state.heading = None
             if wilderness_enabled():
                 self.state.save_wilderness()
             changed_area = self._check_resident()
@@ -719,6 +725,7 @@ class Automapper:
                     self._outdoor_pending = None
                     recorded = self._record_pane(fix, found[0], block)
                     self.state.window = found[0]
+                    recorded = self._read_heading() or recorded
         self.state.outdoors = True
         self.state.x, self.state.y = fix.x, fix.y
         self.state.source = fix.source
@@ -726,6 +733,19 @@ class Automapper:
         self._last = None
         self._pending = None
         return moved or recorded
+
+    def _read_heading(self) -> bool:
+        """Read the travel grid's heading byte into `state.heading`. True if
+        it changed. A value outside 0-7 is no heading at all."""
+        from . import c64
+        base = c64.machine_for(self.game).travel_heading_base
+        if base is None:
+            return False
+        raw = bytes(self.target.read(base, 1))
+        heading = raw[0] if len(raw) == 1 and raw[0] < 8 else None
+        changed = heading != self.state.heading
+        self.state.heading = heading
+        return changed
 
     def _record_pane(self, fix: Fix, window: int, block: bytes) -> bool:
         """Record the 5 x 5 squares around the party. True if any is new."""

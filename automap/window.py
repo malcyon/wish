@@ -17,6 +17,7 @@ from PyQt6.QtCore import (
     QObject,
     QPoint,
     QPointF,
+    QRect,
     QRectF,
     QSize,
     Qt,
@@ -26,6 +27,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
     QAction,
     QColor,
+    QImage,
     QKeySequence,
     QPainter,
     QPen,
@@ -33,15 +35,26 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QWIDGETSIZE_MAX,
+    QButtonGroup,
     QCheckBox,
     QLabel,
     QMenu,
+    QRadioButton,
     QToolTip,
     QWidget,
 )
 
 from goldbox import strength as strengthmod
 from goldbox.geo import GRID
+from goldbox.icons import C64_PALETTE
+from goldbox.world import (
+    TILE_PIXELS,
+    WINDOW_STEP,
+    WORLD_ACROSS,
+    WORLD_DOWN,
+    WorldError,
+    world_indices,
+)
 from ui.iconpaint import draw_icon
 
 from . import actions, combat, live, rolls
@@ -64,6 +77,7 @@ from .render import (
     CELL,
     CELL_MIN,
     MARGIN,
+    TRAVEL_MARKER_MIN,
     Bar,
     Glyph,
     Hatch,
@@ -73,8 +87,9 @@ from .render import (
     map_primitives,
     note_primitives,
     party_marker,
+    travel_marker,
 )
-from .state import OUTDOORS_REGIONS, OUTDOORS_WHERE
+from .state import OUTDOORS_REGIONS, OUTDOORS_WHERE, wilderness_enabled
 
 PAPER = QColor("#fbfcfd")
 LATTICE = QColor("#dbe3ec")
@@ -577,6 +592,141 @@ class CombatCanvas(QWidget):
                 p.setBrush(Qt.BrushStyle.NoBrush)
 
 
+#: The party marker on the wilderness page: yellow with a black outline, so it
+#: shows on the game's own tile colours, which include yellow ground and black.
+#: The outline is what separates it from either; the fill is a saturated
+#: yellow rather than the palette's pale one, which is close to the game's
+#: pale fields.
+TRAVEL_FILL = QColor("#ffdd00")
+TRAVEL_OUTLINE_INK = QColor("#000000")
+TRAVEL_OUTLINE = 1.0
+
+#: What `Settings.wilderness_view` holds, and how many squares the second one
+#: shows across and down.
+FULL_VIEW, AREA_VIEW = "full", "area"
+AREA_SQUARES = 16
+
+
+class WorldCanvas(QWidget):
+    """Paints the game's own wilderness tiles, fitted directly together.
+
+    Two views: the whole 44 by 36 wilderness, or a 16 by 16 piece centred on
+    the party. No lattice and no fog; the party is a yellow triangle with a
+    black outline at its world square, pointing the way the heading byte says.
+
+    The tiles are read off the player's disks when the window opens
+    (`goldbox.world.world_indices`) and are never stored.
+    """
+
+    def __init__(self, state, parent=None):
+        super().__init__(parent)
+        from PyQt6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.state = state
+        self.view = FULL_VIEW
+        self._pixels = b""
+        self._image: QImage | None = None
+        # The same minimum and size hint as `MapCanvas`, so the stack is no
+        # taller when the party steps outside and no page raises the window's
+        # floor (see `CombatCanvas._resize`).
+        self.setMinimumSize(GRID * CELL_MIN + MARGIN * 2,
+                            GRID * CELL_MIN + MARGIN * 2)
+
+    def sizeHint(self):
+        return QSize(GRID * CELL + MARGIN * 2, GRID * CELL + MARGIN * 2)
+
+    @property
+    def has_picture(self) -> bool:
+        return self._image is not None
+
+    def show_world(self, world) -> bool:
+        """Build the picture from these windows. False, and no picture, when
+        there is no world or its disks carried no glyphs."""
+        self._image = None
+        if world is not None:
+            try:
+                self._pixels = world_indices(world)
+            except WorldError:
+                self._pixels = b""
+            else:
+                image = QImage(self._pixels, WORLD_ACROSS * TILE_PIXELS,
+                               WORLD_DOWN * TILE_PIXELS, WORLD_ACROSS * TILE_PIXELS,
+                               QImage.Format.Format_Indexed8)
+                image.setColorTable([QColor(c).rgb() for c in C64_PALETTE])
+                self._image = image
+        self.update()
+        return self._image is not None
+
+    def set_view(self, view: str) -> None:
+        self.view = AREA_VIEW if view == AREA_VIEW else FULL_VIEW
+        self.update()
+
+    @property
+    def party_square(self) -> tuple[int, int] | None:
+        """The party's world square, or None until a window is identified."""
+        st = self.state
+        if st.window is None:
+            return None
+        return st.x + WINDOW_STEP * st.window, st.y
+
+    @property
+    def squares(self) -> tuple[int, int, int, int]:
+        """`(left, top, across, down)`: the world squares on show."""
+        if self.view != AREA_VIEW:
+            return 0, 0, WORLD_ACROSS, WORLD_DOWN
+        wx, wy = self.party_square or (0, 0)
+        left = min(max(wx - AREA_SQUARES // 2, 0), WORLD_ACROSS - AREA_SQUARES)
+        top = min(max(wy - AREA_SQUARES // 2, 0), WORLD_DOWN - AREA_SQUARES)
+        return left, top, AREA_SQUARES, AREA_SQUARES
+
+    @property
+    def cell(self) -> int:
+        """How big a square is drawn, for the room the widget has been given.
+
+        Derived from the size, as `MapCanvas.cell` is. The area view has the
+        map's own floor; the whole wilderness has none but one pixel, because
+        it is 44 squares across where the map is 16.
+        """
+        _, _, across, down = self.squares
+        room = min((self.width() - MARGIN * 2) // across,
+                   (self.height() - MARGIN * 2) // down)
+        return max(CELL_MIN if self.view == AREA_VIEW else 1, room)
+
+    @property
+    def origin(self) -> tuple[int, int]:
+        _, _, across, down = self.squares
+        cell = self.cell
+        return ((self.width() - across * cell) // 2,
+                (self.height() - down * cell) // 2)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.fillRect(self.rect(), PAPER)
+        if self._image is None:
+            return
+        left, top, across, down = self.squares
+        cell = self.cell
+        ox, oy = self.origin
+        # Nearest neighbour: a smoothed scale would blur one tile into the
+        # next and show a seam where the game has none.
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+        p.drawImage(QRect(ox, oy, across * cell, down * cell), self._image,
+                    QRect(left * TILE_PIXELS, top * TILE_PIXELS,
+                          across * TILE_PIXELS, down * TILE_PIXELS))
+        here = self.party_square
+        if here is None or self.state.heading is None:
+            return
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.translate(ox, oy)
+        marker = travel_marker(here[0] - left, here[1] - top,
+                               self.state.heading, cell, 0, TRAVEL_MARKER_MIN)
+        pen = QPen(TRAVEL_OUTLINE_INK, TRAVEL_OUTLINE)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(TRAVEL_FILL)
+        p.drawPolygon(QPolygonF([QPointF(a, b) for a, b in marker.points]))
+
+
 class AutomapBinding(QObject):
     """The map, which opens whether or not there is a game to watch.
 
@@ -643,6 +793,16 @@ class AutomapBinding(QObject):
 
         self.canvas = MapCanvas(self.state, parent=self.root, host=self)
         self.battle_canvas = CombatCanvas(parent=self.root, host=self)
+        #: The wilderness page and its two radios exist only behind
+        #: `WISH_EXPERIMENTAL_WILDERNESS_MAP`: with it off there is no widget
+        #: to grey out or explain.
+        self.world_canvas: WorldCanvas | None = None
+        self.view_buttons: tuple[QRadioButton, ...] = ()
+        #: None until the host says, because the controls are not in a window
+        #: before it does and showing one would open it on its own.
+        self._controls_shown: bool | None = None
+        if wilderness_enabled():
+            self.world_canvas = WorldCanvas(self.state, parent=self.root)
         # One tab, two canvases, and only ever one of them true: when the game
         # enters combat the area map becomes the combat map and changes back
         # afterwards. Two tabs would mean the useful one is always the one you
@@ -651,6 +811,8 @@ class AutomapBinding(QObject):
         self.stack = getattr(self.ui, "map_stack", None) or self.root.findChild(QWidget, "map_stack")
         self.stack.addWidget(self.canvas)
         self.stack.addWidget(self.battle_canvas)
+        if self.world_canvas is not None:
+            self.stack.addWidget(self.world_canvas)
         self.battle = None
         #: The two dividers down the tab, and the widths the user drags them
         #: to. Built before the panels so that a column restored shut is shut
@@ -726,7 +888,8 @@ class AutomapBinding(QObject):
         self.fog_box.setChecked(self.settings.reveal)
         self.fog_box.toggled.connect(reveal.setChecked)
         self.fog_box.toggled.connect(self._toggle_reveal)
-
+        if self.world_canvas is not None:
+            self._build_view_buttons()
 
         # Read once: the item names come off a game disk, and a card without
         # one shows nothing rather than word indices. `disks` is the resolved
@@ -796,15 +959,66 @@ class AutomapBinding(QObject):
         self._refresh()
 
     def _use_world(self, disks) -> None:
-        """Hand the mapper the wilderness windows off these disks, if the
-        experimental recording is on."""
+        """Load the wilderness windows off these disks, if the experimental
+        drawing is on."""
         from .maps import load_world
-        from .state import wilderness_enabled
         world = None
         if wilderness_enabled():
             world = load_world(disks, game_named(self.state.title))
+        self.set_world(world)
+
+    def set_world(self, world) -> None:
+        """Hand the mapper the wilderness windows to identify the party's
+        window with, and the canvas the same windows to draw."""
         if hasattr(self.mapper, "use_world"):
             self.mapper.use_world(world)
+        if self.world_canvas is not None:
+            self.world_canvas.show_world(world)
+
+    def _build_view_buttons(self) -> None:
+        """The two radios that choose the outdoor picture, beside `fog_box`."""
+        full = QRadioButton("Full View")
+        area = QRadioButton("Area View")
+        group = QButtonGroup(self)
+        group.addButton(full)
+        group.addButton(area)
+        chosen = area if self.settings.wilderness_view == AREA_VIEW else full
+        chosen.setChecked(True)
+        self.world_canvas.set_view(AREA_VIEW if chosen is area else FULL_VIEW)
+        area.toggled.connect(self._choose_view)
+        self._view_group = group
+        self.view_buttons = (full, area)
+
+    def _choose_view(self, area_checked: bool) -> None:
+        view = AREA_VIEW if area_checked else FULL_VIEW
+        self.settings.wilderness_view = view
+        self.settings.save()
+        self.world_canvas.set_view(view)
+
+    def world_page_shown(self) -> bool:
+        """Is the party on the travel grid with a wilderness picture to show?"""
+        return (self.world_canvas is not None and self.state.outdoors
+                and self.state.window is not None
+                and self.world_canvas.has_picture)
+
+    def _page(self) -> QWidget:
+        """The canvas the tab shows when no fight is on."""
+        return self.world_canvas if self.world_page_shown() else self.canvas
+
+    def show_controls(self, shown: bool) -> None:
+        """The host says whether this tab is the visible one. The status bar's
+        controls follow it, and the page."""
+        self._controls_shown = shown
+        self._sync_controls()
+
+    def _sync_controls(self) -> None:
+        """Fog of war indoors, the two view radios on the wilderness page."""
+        if self._controls_shown is None:
+            return
+        world = self.world_page_shown()
+        self.fog_box.setVisible(self._controls_shown and not world)
+        for button in self.view_buttons:
+            button.setVisible(self._controls_shown and world)
 
     def _apply_title(self) -> None:
         """Tell the per-title controls which game this is.
@@ -936,7 +1150,7 @@ class AutomapBinding(QObject):
                 # fight to the next and reached 50 in an evening. After the
                 # flush, so that last message keeps its own round number.
                 self.combat_log.reset_fight()
-                self.stack.setCurrentWidget(self.canvas)
+                self.stack.setCurrentWidget(self._page())
                 self._refresh()
             return False
         self.battle_canvas.show_battle(self.battle)
@@ -1127,6 +1341,11 @@ class AutomapBinding(QObject):
         self.strip.show_state(st, self.snapshot)
         # Cheap: the panel compares the notes to what it drew and returns.
         self.notes_panel.show_notes(st.notes)
+        if self.battle is None:
+            self.stack.setCurrentWidget(self._page())
+        self._sync_controls()
+        if self.world_canvas is not None:
+            self.world_canvas.update()
         if st.outdoors:
             # `window` is only ever set behind the wilderness flag, so this
             # branch needs no second check of it.

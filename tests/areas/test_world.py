@@ -349,3 +349,21 @@ def test_the_world_picture_has_the_documented_size_and_each_windows_colour():
 def test_a_world_without_charsets_cannot_be_drawn():
     with pytest.raises(WorldError):
         world_indices(_solid_world(with_charsets=False))
+
+
+@needs_disks
+def test_the_world_picture_off_the_disks_is_c64_colours_and_the_tiles_it_names():
+    """The whole wilderness off the player's disks: every pixel a C64 colour
+    index, and the block for world (21, 27) is `tile_pixels` of `SQRDATA05`'s
+    tile there."""
+    from goldbox.world import tile_pixels
+    world = World.from_disks(_pool_disks())
+    if world.charsets is None:
+        pytest.skip("these disks carry no SECSET glyphs")
+    picture = world_indices(world)
+    assert max(picture) <= 15
+    width = WORLD_ACROSS * TILE_PIXELS
+    want = tile_pixels(world.windows[1].tile_at(8, 27), world.charsets[1])
+    for py, row in enumerate(want):
+        at = (27 * TILE_PIXELS + py) * width + 21 * TILE_PIXELS
+        assert list(picture[at:at + TILE_PIXELS]) == list(row)

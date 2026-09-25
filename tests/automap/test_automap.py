@@ -215,6 +215,14 @@ def test_the_minimum_radius_lifts_a_small_square_and_leaves_a_large_one():
     assert TRAVEL_MARKER_MIN >= 0
 
 
+def test_the_chosen_minimum_lifts_the_narrowest_square_and_not_the_map_page():
+    from automap.render import CELL
+    narrowest = 7           # the whole wilderness at the map page's minimum
+    lifted = travel_marker(0, 0, 0, narrowest, 0).points
+    assert -(lifted[0][1] - narrowest / 2) == pytest.approx(TRAVEL_MARKER_MIN)
+    assert CELL * 0.28 > TRAVEL_MARKER_MIN
+
+
 @game_disks
 def test_svg_renders(new_phlan):
     svg = to_svg(new_phlan, party=(3, 14, 0))

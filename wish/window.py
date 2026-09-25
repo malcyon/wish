@@ -171,6 +171,8 @@ class WishWindow(QMainWindow):
         # whole windows and are still usable alone -- but a status bar inside a
         # tab inside a window reads as clutter, so theirs are hidden here and
         # their lines forwarded to this one.
+        for button in self.map.view_buttons:
+            self.statusBar().addPermanentWidget(button)
         self.statusBar().addPermanentWidget(self.map.fog_box)
         # A log that survives a restart is one you forget is on, so while it is
         # on the window says so without being asked -- here, and in the title.
@@ -690,7 +692,7 @@ class WishWindow(QMainWindow):
         The editor is handed no reader at all, which is the promise that it
         never talks to a live machine expressed as code rather than as a rule.
         """
-        self.map.fog_box.setVisible(index == MAP_TAB)
+        self.map.show_controls(index == MAP_TAB)
         if index == MAP_TAB:
             self.session.set_reader(self._read_map)
             self.map.canvas.setFocus()
