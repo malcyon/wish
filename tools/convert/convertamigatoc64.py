@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
-"""Produce an `AmigaToC64` Pool of Radiance conversion through the dialog's own
-code path, `editor.window.EditorBinding.convert`, and hash what it wrote.
+"""Produce an `AmigaToC64` Pool of Radiance conversion through Save As and hash what it wrote.
 
-Written for `#52 (File ▸ Import and File ▸ Export for every direction the
-library supports)`. `ConvertDialog.exec` is patched to Accepted and the three
-`QMessageBox` calls are patched to do nothing, the way the Curse and Silver
-Blades walks and `tests/convert/test_convert.py`'s `_no_real_modals` fixture do:
-`EditorBinding.convert`'s own success pop-up and `ConvertDialog._maybe_warn`'s
-`.critical`/`.warning` all block on a real `exec()` loop nobody can dismiss
-under the offscreen platform. `tools/convert/convertdialogdrive.py` is the same
-driver for the Amiga-destination directions and records each popup instead of
-dropping it.
+Save As is driven with no dialog: `tools/convert/saveasdrive.py` calls
+`saveplan.prepare_save_as` and `saveplan.publish`, so the hashed bytes are the
+rehearsed output Save As publishes. `tools/convert/convertdialogdrive.py` is the
+same driver for the Amiga-destination directions.
 
 `--tree` runs the conversion from another checkout, such as a detached
 worktree pinned to the commit under test.
@@ -46,40 +40,32 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    # Imported from this checkout before `--tree` goes first on the path,
+    # so a tree that predates Save As still gets the driver; its own
+    # `editor` package is what the driver then reaches.
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+    from tools.convert import saveasdrive
+
     tree = pathlib.Path(args.tree).resolve()
     sys.path.insert(0, str(tree))
 
-    from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox, QWidget
+    from PyQt6.QtWidgets import QApplication, QWidget
 
     QApplication.instance() or QApplication([])
 
-    from editor import convert as convert_mod
     from editor.window import EditorBinding
-
-    orig_exec = convert_mod.ConvertDialog.exec
-    convert_mod.ConvertDialog.exec = lambda self: QDialog.DialogCode.Accepted
-    orig_critical = QMessageBox.critical
-    orig_warning = QMessageBox.warning
-    orig_information = QMessageBox.information
-    QMessageBox.critical = staticmethod(lambda *a, **k: None)
-    QMessageBox.warning = staticmethod(lambda *a, **k: None)
-    QMessageBox.information = staticmethod(lambda *a, **k: None)
 
     root = QWidget()
     out_dir = pathlib.Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     window = EditorBinding(root, disks=args.disks)
     try:
-        result = window.convert(source=args.specimen, destination="c64",
-                                folder=str(out_dir))
+        result = saveasdrive.save_as(window, args.specimen, "c64", out_dir,
+                                     c64_folder=args.disks)
     finally:
-        convert_mod.ConvertDialog.exec = orig_exec
-        QMessageBox.critical = orig_critical
-        QMessageBox.warning = orig_warning
-        QMessageBox.information = orig_information
         window.close()
 
-    print("convert() ->", result)
+    print("save_as() ->", result)
 
     produced = {}
     for p in sorted(out_dir.glob("wish-*/*")):
@@ -93,7 +79,7 @@ def main(argv=None):
             pathlib.Path(args.specimen).read_bytes()).hexdigest(),
         "direction": "AmigaToC64 pool-of-radiance",
         "por_c64_disks": args.disks,
-        "convert_result": result,
+        "save_as_result": result,
         "out_dir": str(out_dir),
         "produced_sha256": produced,
     }

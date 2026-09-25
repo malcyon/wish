@@ -18,7 +18,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_c64traitslots.py` | Checks which effects from both neutral effect lists reach the C64's ten trait slots. |
 | `test_convert.py` | Checks `editor.convert`'s registry: which directions the library can write whole, as round trips, and the dialog built on it. |
 | `test_convertmatrix.py` | Checks that the bytes `File ▸ Convert…` writes for each of the six DOS and C64 directions equal what the library's own entry point writes. |
-| `test_convertrun.py` | Checks that `tools/convert/convertrun.py` stubs the three message boxes a successful C64 write can reach. |
+| `test_convertrun.py` | Checks that `tools/convert/convertrun.py` writes the bytes Save As prepared and reports a refusal instead of writing. |
 | `test_curseconvert.py` | Checks a DOS Curse of the Azure Bonds save converting to a C64 one, both the record and the container. |
 | `test_dosclasscode.py` | Checks that `goldbox.dos_codec.write` repairs a class code that contradicts the record's own classes. |
 | `test_dosconversionarea.py` | Checks that a conversion writes the area a C64 party stands in, including the areas whose script loads no map. |

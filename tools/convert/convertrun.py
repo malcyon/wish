@@ -1,43 +1,26 @@
 #!/usr/bin/env python3
-"""Convert a save through `File ▸ Convert…`'s own code path, then play it.
+"""Convert a save through the editor's Save As route, then play it.
 
-Step D of `#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment -- the plan on
-`#52 (File ▸ Import and File ▸ Export for every direction the library
-supports)` -- and the one thing the flag's removal condition 5 asks for:
-*each registered direction has been loaded and walked in its emulator from a
-save the dialog's own code path wrote*.
-
-`tools/dos/dosdisk.py` and `tools/dos/dosnewsave.py` already prove `goldbox.dos_codec`.
-They are not this: they call `goldbox.dos_codec.new_save` and
-`goldbox.dos_codec.new_dos_save` directly, where a player presses Convert and the
-bytes come out of `editor.window.EditorBinding.convert` ▸
-`editor.convert.ConvertDialog` ▸ `Direction.rehearse` ▸ `Direction.write`.
-`tests/convert/test_convert.py`'s three transfer tests assert those two routes are
-byte-identical, so this run is expected to pass -- and a byte-identity test
-is not a loaded game (`.claude/rules/conversions.md`: "A conversion is not
-proven until it runs").
+Each registered direction is loaded and walked in its emulator from the bytes
+Save As publishes: `tools/convert/saveasdrive.py` opens the source as the
+editor does and calls `saveplan.prepare_save_as` and `saveplan.publish`, so
+what boots is the rehearsed output, and a conversion that would lose a field
+is refused here as it is in the editor. `tools/dos/dosdisk.py` and
+`tools/dos/dosnewsave.py` prove `goldbox.dos_codec` by calling it directly;
+this run does not. A byte-identity test is not a loaded game
+(`.claude/rules/conversions.md`: "A conversion is not proven until it runs").
 
     tools/convert/convertrun.py --source ~/wish-specimens/por-dos/WISH-SPEC-por-party-l1-intown \
                         --to c64 --out DIR --walk II
-    tools/convert/convertrun.py --source DIR/wish-2026-09-05/PORSAVEE.D64 \
+    tools/convert/convertrun.py --source DIR/wish-2026-09-05/WISHSAVE.D64 \
                         --to dos --out DIR2 --steps 2
 
 What it does, in order:
 
-1. builds a `ConvertDialog` with every row pre-filled and prints the pane
-   text a player would be reading before they press Convert;
-2. calls `EditorBinding.convert(source=…, destination=…, folder=…, game=…)`,
-   which is the method `File ▸ Convert…` calls -- given every argument no
-   picker opens, the way `tests/convert/test_convert.py` drives it. Four things are
-   replaced for the duration of that call, the way `tests/convert/test_convert.py`'s
-   own `_no_real_modals` fixture replaces them: `exec()`, the modal wait for
-   a person to press Convert; the post-write success box
-   (`QMessageBox.information`) and a stray warning (`QMessageBox.warning`),
-   both recorded into the report instead of shown; and a refusal
-   (`QMessageBox.critical`), which raises `Refused` instead of blocking, so
-   a write that fails stops the run after one attempt rather than hanging on
-   a box nobody can answer;
-3. boots what came out. A C64 destination goes to the reader that knows
+1. opens the source and Save As it to `--to` under `--out`, in a dated
+   `wish-<date>` folder, with the game data the route needs; a refusal is
+   reported as `refused` and the run stops without booting anything;
+2. boots what came out. A C64 destination goes to the reader that knows
    its title -- `tools/c64/savecheck.py` for Pool of Radiance,
    `tools/curse_of_the_azure_bonds/cursecheck.py` for Curse of the Azure Bonds -- which reads the
    party panel and the `VIEW` sheets off the C64's own
@@ -93,129 +76,36 @@ def disks_dir(named: str | None = None) -> pathlib.Path | None:
     return tool_disks()
 
 
-class Refused(RuntimeError):
-    """`QMessageBox.critical` reached inside `window.convert` (#542),
-    raised here in its place. `EditorBinding.convert` is a `while True`:
-    on a write that raises it removes the failed folder, calls
-    `dialog.refuse(...)` -- `QMessageBox.critical` -- and `continue`s, so a
-    person who cannot see the box would sit through it forever and a stub
-    that only swallowed the box would spin the loop at full CPU forever
-    instead, retrying a write that will fail the same way every time.
-    Raising here reaches `write_via_dialog` after exactly one attempt, the
-    same way it would reach a person after they dismissed the box."""
-
-    def __init__(self, title: str, text: str):
-        super().__init__(text)
-        self.title = title
-        self.text = text
-
-
 # ---------------------------------------------------------------------------
-# The dialog's own path
+# The Save As route
 # ---------------------------------------------------------------------------
 
-def write_via_dialog(source: pathlib.Path, to: str, folder: pathlib.Path,
-                     game: pathlib.Path | None,
-                     disks: pathlib.Path) -> dict:
-    """Press Convert, and say what the pane said and what landed.
+def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
+                      game: pathlib.Path | None,
+                      disks: pathlib.Path) -> dict:
+    """Save As the source to `to` and say what landed.
 
-    `to` is `"c64"` or `"dos"` -- `Direction.destination_port`, which is what
-    `ConvertDialog`'s destination combo carries as its item data.
+    `to` is `"c64"` or `"dos"`, the destination port. The report is
+    `saveasdrive.save_as`'s: `written`, `slot`, `losses` and `dropped`, or
+    `refused` and `error` when Save As would not publish it.
     """
-    from PyQt6.QtWidgets import QApplication, QDialog, QWidget
+    from PyQt6.QtWidgets import QApplication, QWidget
 
-    from editor import convert as convert_mod
     from editor.window import EditorBinding
+    from tools.convert import saveasdrive
 
     app = QApplication.instance() or QApplication([])
     _ = app
     root = QWidget()
     window = EditorBinding(root, disks=str(disks))
     folder.mkdir(parents=True, exist_ok=True)
-
-    report: dict = {"source": str(source), "to": to, "folder": str(folder)}
-
-    # What a player would be reading before they press Convert.  Built here
-    # rather than reached inside `EditorBinding.convert`, which owns its own
-    # dialog: this is the same class with the same arguments, rehearsing the
-    # same conversion, and it writes nothing.
-    preview = convert_mod.ConvertDialog(
-        str(source), window.party, window.game_files_for,
-        destination=to, game=str(game) if game else None,
-        folder=str(folder))
     try:
-        # `report["pane"]` until 2026-09-10, when the report pane it read
-        # was removed outright; the three places anything a player would
-        # see can still reach, now that it is gone.
-        report["destination_line"] = preview.ui.convert_destination_line.text()
-        report["blocked"] = preview._blocked
-        report["losses"] = list(preview.rehearsal.report.losses) \
-            if preview.rehearsal is not None else []
-        report["destinations"] = [
-            preview.ui.convert_destination.itemText(i)
-            for i in range(preview.ui.convert_destination.count())]
-        report["slot"] = preview.slot
-        ok = preview.buttons.button(
-            preview.buttons.StandardButton.Ok)
-        report["convert_enabled"] = ok.isEnabled()
-        report["dropped"] = list(
-            getattr(preview.rehearsal.report, "dropped", [])
-            if preview.rehearsal is not None else [])
+        report = saveasdrive.save_as(
+            window, source, to, folder,
+            c64_folder=disks if to == "c64" else None,
+            dos_folder=game if to == "dos" else None)
     finally:
-        preview.close()
-
-    if not report["convert_enabled"]:
-        report["error"] = "the dialog would not let a player press Convert"
         window.close()
-        return report
-
-    # The modal wait for a person, and the three `QMessageBox` calls
-    # `window.convert` can reach once `exec` is stubbed to always accept --
-    # there is nobody here to see any of them.  Everything else --
-    # `fresh_folder`, the `mkdir`, `Direction.write`, opening a C64 result in
-    # the editor -- is `EditorBinding.convert`'s own code, unpatched.
-    original_exec = convert_mod.ConvertDialog.exec
-    original_information = convert_mod.QMessageBox.information
-    original_warning = convert_mod.QMessageBox.warning
-    original_critical = convert_mod.QMessageBox.critical
-    convert_mod.ConvertDialog.exec = (
-        lambda self: QDialog.DialogCode.Accepted)
-    popups: list = []
-
-    def _record(kind: str):
-        def _popup(parent, title, text):
-            popups.append([kind, title, text])
-        return _popup
-
-    def _refuse(parent, title, text):
-        raise Refused(title, text)
-
-    convert_mod.QMessageBox.information = _record("information")
-    convert_mod.QMessageBox.warning = _record("warning")
-    convert_mod.QMessageBox.critical = _refuse
-    try:
-        note = window.convert(source=str(source), destination=to,
-                              folder=str(folder),
-                              game=str(game) if game else None)
-    except Refused as exc:
-        report["popups"] = popups
-        report["refused"] = [exc.title, exc.text]
-        report["error"] = exc.text
-        window.close()
-        return report
-    finally:
-        convert_mod.ConvertDialog.exec = original_exec
-        convert_mod.QMessageBox.information = original_information
-        convert_mod.QMessageBox.warning = original_warning
-        convert_mod.QMessageBox.critical = original_critical
-
-    report["popups"] = popups
-    report["note"] = note
-    written = sorted(p for p in folder.glob("wish-*/*") if p.is_file())
-    report["written"] = [str(p) for p in written]
-    report["opened_in_editor"] = (
-        None if window.party is None else str(window.party.path))
-    window.close()
     return report
 
 
@@ -459,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Both destinations read C64 disks: a C64 destination for its icon and
     # `ANIMATE00` tables, and a C64 source going to DOS for the source title's
-    # icon table (`ConvertDialog._rehearse_and_report`).
+    # icon table (`saveplan.resolve_assets`).
     disks = disks_dir(args.disks)
     if disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
@@ -469,7 +359,7 @@ def main(argv: list[str] | None = None) -> int:
         dosbox.find_game() if args.to == "dos" else None)
 
     report = {"direction": f"{args.source} -> {args.to}"}
-    report["write"] = write_via_dialog(
+    report["write"] = write_via_save_as(
         pathlib.Path(args.source).expanduser(), args.to, out, game, disks)
     written = [pathlib.Path(p) for p in report["write"].get("written", [])]
     if not written:

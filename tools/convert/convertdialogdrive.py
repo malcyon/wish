@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
-"""Convert a save to an Amiga save disk through `File ▸ Convert…`'s own code
-path, with the dialog's modals stubbed, and hash what came out.
+"""Convert a save to an Amiga save disk through Save As, and hash what came out.
 
-Written for `#52 (File ▸ Import and File ▸ Export for every direction the
-library supports)`, whose walks of `DosToAmiga` (Secret of the Silver Blades
-and Curse of the Azure Bonds) and `C64ToAmiga` (Silver Blades) each needed
-the same driver: `EditorBinding.convert` is called the way the window calls
-it, `ConvertDialog.exec` returns Accepted, and the post-write
-`QMessageBox.information` and the `.critical`/`.warning` pair
-(`#542 (tools/convert/convertrun.py hangs forever on any successful C64 write,
-because it never patches EditorBinding.convert's post-write
-QMessageBox.information)`) record what they were asked to show instead of
-blocking on a real `exec()` loop under the offscreen platform, the way
-`tests/convert/test_convert.py` does. Those three walks were three copies of this one
-script that differed only in the constants now passed as arguments.
+`tools/convert/saveasdrive.py` opens the specimen as the editor does and calls
+`saveplan.prepare_save_as` and `saveplan.publish`, so the hashed bytes are the
+rehearsed output Save As publishes. It serves the walks of `DosToAmiga` (Secret
+of the Silver Blades and Curse of the Azure Bonds) and `C64ToAmiga` (Silver
+Blades), which differ only in the constants passed as arguments. A conversion
+Save As refuses is reported under `refused` and writes nothing.
 
 What it writes, under `--out-dir`: the converted files in a `wish-<date>/`
 subfolder, and a JSON report (`--report`) of the specimen and its SHA-256, the
-Amiga disk 2, the note `convert` returned, every popup it would have shown and
+Amiga disk 2, the outcome Save As reported (`slot`, `losses`, `dropped` or `refused`) and
 the SHA-256 of every file written. The report is also printed.
 
 `--tree` runs the conversion from another checkout, such as a detached
@@ -76,11 +69,11 @@ def main(argv=None) -> int:
 
     sys.path.insert(0, str(args.tree.resolve()))
 
-    from PyQt6.QtWidgets import QApplication, QDialog, QWidget
+    from PyQt6.QtWidgets import QApplication, QWidget
 
     from automap import gamedisks
-    from editor import convert as convert_mod
     from editor.window import EditorBinding
+    from tools.convert import saveasdrive
     from tools.registry import scratch
 
     out = args.out_dir or scratch.scratch_dir("convertdialogdrive")
@@ -104,45 +97,20 @@ def main(argv=None) -> int:
         c64_disks = gamedisks.find(args.c64_game)
     report["c64_disks_dir"] = str(c64_disks) if c64_disks else None
 
-    # --- drive the dialog's own code path ----------------------------------
+    # --- drive Save As ----------------------------------------------------
     app = QApplication.instance() or QApplication([])  # noqa: F841
     root = QWidget()
     window = EditorBinding(root,
                            disks=str(c64_disks) if c64_disks else None)
 
-    shown: list = []
-
-    def _stub_information(parent, title, text):
-        shown.append(("information", title, text))
-
-    def _stub_critical(parent, title, text):
-        shown.append(("critical", title, text))
-
-    def _stub_warning(parent, title, text):
-        shown.append(("warning", title, text))
-
-    orig_exec = convert_mod.ConvertDialog.exec
-    orig_information = convert_mod.QMessageBox.information
-    orig_critical = convert_mod.QMessageBox.critical
-    orig_warning = convert_mod.QMessageBox.warning
-
-    convert_mod.ConvertDialog.exec = lambda self: QDialog.DialogCode.Accepted
-    convert_mod.QMessageBox.information = _stub_information
-    convert_mod.QMessageBox.critical = _stub_critical
-    convert_mod.QMessageBox.warning = _stub_warning
-
     scratch.ensure(out)
     try:
-        note = window.convert(source=str(specimen), destination="amiga",
-                              disk=str(amiga_disk2), folder=str(out))
+        result = saveasdrive.save_as(window, specimen, "amiga", out,
+                                     c64_folder=None, amiga_disk=amiga_disk2)
     finally:
-        convert_mod.ConvertDialog.exec = orig_exec
-        convert_mod.QMessageBox.information = orig_information
-        convert_mod.QMessageBox.critical = orig_critical
-        convert_mod.QMessageBox.warning = orig_warning
+        window.close()
 
-    report["note"] = note
-    report["popups"] = shown
+    report["save_as"] = result
 
     written = sorted(p for p in out.glob("wish-*/*") if p.is_file())
     report["written"] = [str(p) for p in written]
@@ -151,7 +119,7 @@ def main(argv=None) -> int:
 
     print(json.dumps(report, indent=2))
     report_path.write_text(json.dumps(report, indent=2))
-    return 0
+    return 1 if "refused" in result else 0
 
 
 if __name__ == "__main__":

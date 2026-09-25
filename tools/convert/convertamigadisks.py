@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive `File > Convert...` offscreen and write the two POOLSAVE.ADF disks
+"""Drive Save As offscreen and write the two POOLSAVE.ADF disks
 step 4 of `#36 (Write an Amiga disk image, not just the character files)`
 loads in WinUAE -- one from a C64 source, one from a DOS source.
 
@@ -13,7 +13,8 @@ specimens in `$WISH_SPECIMENS` (default `~/wish-specimens`):
 `por-dos/WISH-SPEC-por-item-granted/SAVGAMD.DAT`. Output goes to `c64/` and
 `dos/` under `--out`.
 
-No picker ever opens: `EditorBinding.convert` takes every row as an
+No picker ever opens: `tools/convert/saveasdrive.py` calls
+`saveplan.prepare_save_as` and `saveplan.publish` with every row as an
 argument. Prints each conversion's own report so the WinUAE run has something
 to check the screen against. `tools/convert/convertsourcesheet.py` prints the source
 records' own sheets for the same comparison. Offscreen.
@@ -28,10 +29,10 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from PyQt6.QtWidgets import QApplication, QDialog, QWidget  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QWidget  # noqa: E402
 
-from editor import convert as convert_mod  # noqa: E402
 from editor.window import EditorBinding  # noqa: E402
+from tools.convert import saveasdrive  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 SPECS = pathlib.Path(os.environ.get("WISH_SPECIMENS",
@@ -43,39 +44,23 @@ def run(tag: str, source: pathlib.Path, disk: pathlib.Path,
     out = here / tag
     out.mkdir(parents=True, exist_ok=True)
     window = EditorBinding(QWidget())
-    seen = {}
-
-    real_exec = convert_mod.ConvertDialog.exec
-
-    def fake_exec(self):
-        seen["dialog"] = self
-        return QDialog.DialogCode.Accepted
-
-    convert_mod.ConvertDialog.exec = fake_exec
     try:
-        note = window.convert(source=str(source), destination="amiga",
-                              disk=str(disk), folder=str(out))
+        report = saveasdrive.save_as(window, source, "amiga", out,
+                                     amiga_disk=disk)
     finally:
-        convert_mod.ConvertDialog.exec = real_exec
         window.close()
 
-    dialog = seen["dialog"]
     print(f"=== {tag}")
     print(f"source     {source}")
-    print(f"status     {note}")
-    print(f"slot       {dialog.slot!r}")
-    report = getattr(dialog.rehearsal, "report", None)
-    if report is not None:
-        for w in getattr(report, "warnings", []) or []:
-            print(f"warning    {w}")
-        for d in getattr(report, "dropped", []) or []:
-            print(f"dropped    {d}")
-    for c in dialog.rehearsal.party:
-        print("character  {:<16} {}".format(
-            c.get("name", "?"), c.get("class_name", c.get("class", ""))))
-    for p in sorted(out.rglob("*")):
-        if p.is_file():
-            print(f"wrote      {p}  {p.stat().st_size}")
+    print(f"slot       {report.get('slot')!r}")
+    if "refused" in report:
+        print(f"refused    {report['refused'][0]}: {report['refused'][1]}")
+    for line in report.get("losses", []):
+        print(f"loss       {line}")
+    for line in report.get("dropped", []):
+        print(f"dropped    {line}")
+    for path in report.get("written", []):
+        print(f"wrote      {path}  {pathlib.Path(path).stat().st_size}")
 
 
 def main(argv=None) -> int:
