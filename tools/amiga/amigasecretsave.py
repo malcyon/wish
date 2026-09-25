@@ -282,6 +282,32 @@ ROUTE = (
 )
 
 
+MIN_WAIT_OVERRIDES = {"version": 50.0, "load_picker": 20.0, "loaded_menu": 20.0}
+DEFAULT_MIN_WAIT = 15.0
+TITLE_POLL = 10.0
+TITLE_LIMIT = 180.0
+MEASURE_TITLE_SPAN = 120.0
+GUARD_POLL = 5.0
+GUARD_LIMIT = 120.0
+
+
+def default_min_waits(route=ROUTE) -> dict[str, float]:
+    """Minimum seconds to sit on each state before its screen is captured."""
+    return {state: MIN_WAIT_OVERRIDES.get(state, DEFAULT_MIN_WAIT)
+            for _, state in route}
+
+
+def parse_route(text: str) -> tuple[tuple[str, str], ...]:
+    """Read `KEY:state,KEY:state` into a route."""
+    steps = []
+    for part in text.split(","):
+        key, sep, state = part.strip().partition(":")
+        if not sep or not key or not state:
+            raise RouteError(f"route step {part!r} is not KEY:state")
+        steps.append((key.upper(), state))
+    return tuple(steps)
+
+
 def _input(manifest: dict, name: str) -> pathlib.Path:
     entry = manifest[name]
     path = pathlib.Path(entry["path"])
@@ -290,10 +316,23 @@ def _input(manifest: dict, name: str) -> pathlib.Path:
     return path
 
 
-def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any,
+def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               holder: str, audio_proof: pathlib.Path, attempt: str = "recon1",
-              deadline_seconds: float = 1800) -> dict[str, Any]:
-    """Stop at the first unrecognised state and fetch both disks after any write."""
+              deadline_seconds: float = 1800,
+              route: tuple[tuple[str, str], ...] = ROUTE,
+              write_keys: tuple[str, ...] = ("B",),
+              min_waits: dict[str, float] | None = None,
+              measure: bool = False) -> dict[str, Any]:
+    """Walk the route, stopping at the first unrecognised state, and fetch both disks.
+
+    Guarded mode presses the first write key after the route. Measure mode needs
+    no guards, presses no write key and nothing after the route, and stops at the
+    first key that leaves the settled screen unchanged.
+    """
+    if guard is None and not measure:
+        raise RouteError("a screen guard is required unless measuring")
+    min_waits = min_waits or {}
+    write_keys = tuple(k.upper() for k in write_keys)
     if not HOLDER.fullmatch(holder) or not HOLDER.fullmatch(attempt):
         raise RouteError("holder and attempt must use plain lane-safe names")
     if deadline_seconds <= 0:
@@ -326,9 +365,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any,
         "success": False, "holder": holder, "input": str(manifest_path),
         "remote_df0": remote0, "remote_df1": remote1,
         "events": [], "error": "", "fetched": {},
-        "deadline_seconds": deadline_seconds,
+        "deadline_seconds": deadline_seconds, "measure": measure,
     }
     claimed = start_attempted = copied = stopped = False
+    return_early = False
     begun = time.monotonic()
     cleanup_window = min(300.0, deadline_seconds / 2)
     route_end = begun + deadline_seconds - cleanup_window
@@ -348,14 +388,49 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any,
         return min(cap * cleanup_scale, left)
 
     def capture(state: str, *, check: bool = True,
-                cleanup: bool = False) -> None:
+                cleanup: bool = False) -> str:
         raw, cropped = shots / f"{state}.raw.png", shots / f"{state}.png"
         limit = cleanup_limit(90) if cleanup else route_limit(120)
         guest.capture(state, raw, cropped, timeout=limit)
+        digest = sha256(raw)
         result["events"].append({"state": state, "raw": str(raw),
-                                 "crop": str(cropped), "sha256": sha256(raw)})
+                                 "crop": str(cropped), "sha256": digest})
         if check and not guard(state, cropped):
             raise RouteError(f"{state} screen was not recognized; kept {raw}")
+        return digest
+
+    def wait(seconds: float) -> None:
+        if seconds > 0:
+            time.sleep(route_limit(seconds))
+
+    def until_guard(state: str, name: str, first_wait: float,
+                    poll: float, limit: float) -> None:
+        """Wait, capture, and re-capture every `poll` seconds until the guard matches."""
+        wait(first_wait)
+        started = time.monotonic()
+        while True:
+            capture(name, check=False)
+            if guard(state, shots / f"{name}.png"):
+                return
+            if time.monotonic() - started >= limit:
+                raise RouteError(f"{state} screen was not recognized within {limit:.0f}s")
+            wait(poll)
+
+    def measure_boot() -> str:
+        """Capture the boot every TITLE_POLL seconds, keeping each distinct frame."""
+        started, last, n = time.monotonic(), "", 0
+        while True:
+            name = f"00-boot-{n:02d}"
+            digest = capture(name, check=False)
+            if digest == last:
+                for path in (shots / f"{name}.raw.png", shots / f"{name}.png"):
+                    path.unlink(missing_ok=True)
+                result["events"][-1]["kept"] = False
+            else:
+                last, n = digest, n + 1
+            if time.monotonic() - started >= MEASURE_TITLE_SPAN:
+                return last
+            wait(TITLE_POLL)
 
     try:
         receipt = guest.claim(holder, timeout=route_limit(30))
@@ -371,17 +446,39 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any,
         start_attempted = True
         result["start"] = guest.start(holder, remote0, remote1,
                                       timeout=route_limit(60))
-        capture("title")
-        for n, (key, state) in enumerate(ROUTE, 1):
-            guest.press(holder, key, timeout=route_limit(30))
-            result["events"].append({"key": key, "step": n})
-            capture(f"{n:02d}-{state}", check=False)
-            if not guard(state, shots / f"{n:02d}-{state}.png"):
-                raise RouteError(f"{state} screen was not recognized after {key}")
-        guest.press(holder, "B", timeout=route_limit(30))
-        result["events"].append({"key": "B", "step": len(ROUTE) + 1})
-        capture("post-write", check=False)
-        result["error"] = "post-write screen needs measured classification"
+        if measure:
+            previous = measure_boot()
+            changed = True
+            for n, (key, state) in enumerate(route, 1):
+                if key.upper() in write_keys:
+                    result["events"].append({"skipped_write_key": key, "step": n})
+                    changed = False
+                    break
+                guest.press(holder, key, timeout=route_limit(30))
+                result["events"].append({"key": key, "step": n})
+                wait(min_waits.get(state, 0))
+                digest = capture(f"{n:02d}-{state}", check=False)
+                if digest == previous:
+                    result["events"].append({"unchanged": key, "step": n})
+                    changed = False
+                    break
+                previous = digest
+            result["route_changed"] = changed
+            return_early = True
+        else:
+            return_early = False
+            until_guard("title", "title", 0, TITLE_POLL, TITLE_LIMIT)
+            for n, (key, state) in enumerate(route, 1):
+                guest.press(holder, key, timeout=route_limit(30))
+                result["events"].append({"key": key, "step": n})
+                until_guard(state, f"{n:02d}-{state}", min_waits.get(state, 0),
+                            GUARD_POLL, GUARD_LIMIT)
+            write = write_keys[0]
+            guest.press(holder, write, timeout=route_limit(30))
+            result["events"].append({"key": write, "step": len(route) + 1})
+            capture("post-write", check=False)
+        if not return_early:
+            result["error"] = "post-write screen needs measured classification"
     except BaseException as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
         if start_attempted:
@@ -444,6 +541,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any,
                             f"{type(exc).__name__}: {exc}")
             except BaseException as exc:
                 result["fetched_df1_error"] = f"{type(exc).__name__}: {exc}"
+        if measure:
+            result["success"] = bool(
+                result.get("route_changed") and not result["error"]
+                and result.get("df0_unchanged") and result.get("slot_a_unchanged")
+                and result.get("slot_b_sha256", "absent") is None)
         result["elapsed_seconds"] = time.monotonic() - begun
         (out / "summary.json").write_text(json.dumps(result, indent=2,
                                                      sort_keys=True) + "\n")
@@ -475,7 +577,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--run-id", required=True)
     r = sub.add_parser("recon", help="guarded first load and menu-save probe")
     r.add_argument("--manifest", required=True, type=pathlib.Path)
-    r.add_argument("--guards", required=True, type=pathlib.Path)
+    r.add_argument("--guards", type=pathlib.Path,
+                   help="screen guard JSON; required unless --measure")
+    r.add_argument("--measure", action="store_true",
+                   help="capture only: no guards, never presses a write key")
+    r.add_argument("--route", default=None,
+                   help="KEY:state,KEY:state; default is the built-in route")
+    r.add_argument("--write-keys", default="B",
+                   help="comma-separated keys that write; measure never presses them")
     r.add_argument("--audio-proof", required=True, type=pathlib.Path)
     r.add_argument("--attempt", default="recon1")
     r.add_argument("--holder", default=None)
@@ -487,12 +596,18 @@ def main(argv: list[str] | None = None) -> int:
             print(prepare(args.source, args.run_id))
             return 0
         if args.command == "recon":
-            guards = PixelGuards(args.guards)
+            if args.guards is None and not args.measure:
+                raise RouteError("--guards is required unless --measure")
+            guards = PixelGuards(args.guards) if args.guards else None
+            route = parse_route(args.route) if args.route else ROUTE
+            write_keys = tuple(k.strip().upper() for k in args.write_keys.split(","))
             holder = args.holder or f"wish672-{uuid.uuid4().hex[:12]}"
             result = run_recon(args.manifest, guest=WinGuest(), guard=guards,
                                holder=holder,
                                audio_proof=args.audio_proof,
-                               attempt=args.attempt)
+                               attempt=args.attempt, route=route,
+                               write_keys=write_keys, measure=args.measure,
+                               min_waits=default_min_waits(route))
             print(json.dumps({"success": result["success"],
                               "error": result["error"],
                               "summary": str(args.manifest.parent / args.attempt
