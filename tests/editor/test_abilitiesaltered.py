@@ -19,7 +19,7 @@ from support.editorwindow import make_root
 from automap import gamedisks
 from editor.window import EditorBinding
 from goldbox import c64_port
-from goldbox.amiga_adf import AmigaDisk
+from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
 
 
 @pytest.fixture
@@ -192,11 +192,12 @@ def test_the_shipped_amiga_pool_of_radiance_party_shows_the_keep_wording(
     for label, data in amigasaves.images():
         if "Radiance" not in label:
             continue
+        disk = AmigaDisk(bytearray(data))
         try:
-            disk = AmigaDisk(bytearray(data))
-            disk.read_file("/save/savgamA.dat")
-        except Exception:
-            continue
+            entry = disk.lookup("/save/savgamA.dat")
+        except AmigaDiskError:
+            continue  # another disk of the set, without the saved game
+        assert disk.read_file("/save/savgamA.dat"), entry
         image = tmp_path / "PoolOfRadiance-1.adf"
         image.write_bytes(bytes(data))
         break
