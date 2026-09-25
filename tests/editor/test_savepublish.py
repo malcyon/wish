@@ -19,6 +19,7 @@ through `automap/gamedisks.py`.
 """
 from __future__ import annotations
 
+import logging
 import os
 import pathlib
 import stat
@@ -2459,7 +2460,7 @@ def test_a_rehearsal_failure_keeps_the_editor_open_and_writes_nothing(
 
 
 def test_a_dos_party_past_the_c64_experience_ceiling_saves_as_c64_clamped(
-        tmp_path):
+        tmp_path, caplog):
     """The clamp is a conversion Donald ruled on, not a loss: Save As goes
     ahead and the C64 record holds the three-byte maximum."""
     import struct
@@ -2477,9 +2478,12 @@ def test_a_dos_party_past_the_c64_experience_ceiling_saves_as_c64_clamped(
     party = Party(str(folder))
     out = tmp_path / "out" / "clamped.d64"
 
-    plan = saveplan.prepare_save_as(
-        party, "c64", out, saveplan.Assets(game_files=files_for))
+    with caplog.at_level(logging.INFO):
+        plan = saveplan.prepare_save_as(
+            party, "c64", out, saveplan.Assets(game_files=files_for))
     saveplan.publish(plan, party, backups=tmp_path / "backups")
 
     written = {r.get("name"): r for r in saveplan.c64_slot_records(out)}
     assert written["HERO1"].get("experience") == 0xFFFFFF
+    assert any("16777216" in r.getMessage() and "16777215" in r.getMessage()
+               for r in caplog.records), "the clamp never reached the log"

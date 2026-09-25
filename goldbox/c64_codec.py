@@ -772,9 +772,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             # wider than the C64's three.  It is clamped to the field's
             # largest value rather than refused, so the character converts;
             # a negative value still reaches `rec.set` and is refused there.
-            # Donald ruled the clamp a conversion and not a loss, so the line
-            # goes on `warnings` only, the debug-log channel: on `losses` a
-            # Save As would refuse the whole party.
+            # The clamp is a conversion and not a loss, so the line goes on
+            # `warnings` only: on `losses` a Save As would refuse the whole
+            # party.  Warnings reach the debug log on Save As and the
+            # `--report` summary, and no text a player reads.
             rep.warnings.append(EXPERIENCE_CLAMPED.format(
                 port=port, value=int(value), size=dst.size, top=top))
             value, extra = top, f", clamped from {int(value)}"

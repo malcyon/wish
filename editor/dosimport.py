@@ -228,6 +228,10 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
     sg1 = SaveGame1(bytes(payload1), game) if payload1 else None
     disk = dos_codec.save_disk(bytes(payload0), bytes(payload1), game)
+    # Save As reads only `dropped` and `losses` off the report, so this is
+    # where a warning such as the experience clamp reaches the debug log.
+    if report.warnings:
+        _log.info("Conversion warnings: %s", "; ".join(report.warnings))
     return Conversion(disk, game, sg0, sg1, report,
                       pathlib.Path(folder), slot)
 

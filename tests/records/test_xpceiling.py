@@ -179,9 +179,8 @@ def test_one_past_the_c64_width_is_clamped_and_never_wrapped(key):
     """A wrap would quietly convert a rich character into a poor one.
 
     `goldbox.c64_codec.write` writes the field's largest value instead and
-    puts a line on `report.warnings`, which reaches the debug log and no
-    player-facing text.  It used to raise here; the experience is now
-    clamped so the character converts at all.
+    puts a line on `report.warnings`, which reaches the debug log on Save As
+    and the `--report` summary, and no player-facing text.
     """
     record = _record(key)
     for value in (xpceiling.C64_CEILING + 1, 0x7FFFFFFF):
