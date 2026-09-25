@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from goldbox.amiga_adf import AmigaDisk
 from tests.amiga.test_amigasecretsave import (
     FailedPostWriteGuest,
     _audio_proof,
@@ -211,3 +212,88 @@ def test_guarded_mode_without_a_guard_is_refused(tmp_path):
         amigasecretsave.run_recon(
             _prepared(tmp_path), guest=FailedPostWriteGuest(),
             holder="wish672-test", audio_proof=_audio_proof(tmp_path))
+
+
+class SlotBGuest(ScreenGuest):
+    """A key other than B that makes the guest write slot B without an error."""
+
+    def press(self, holder, key, timeout=None):
+        super().press(holder, key, timeout)
+        if key == "X":
+            disk = AmigaDisk(self.remote[self.drives[1]])
+            disk.write_file("/SAVE/savgamB.sav", b"engine wrote B")
+            self.remote[self.drives[1]] = disk.to_bytes()
+
+
+def _cleanup_ran(guest):
+    return [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
+        "stop", "get", "get", "release"]
+
+
+def test_measure_fails_when_slot_b_appears(tmp_path, clock):
+    guest = SlotBGuest(clock)
+    result = _measure(tmp_path, guest, route=(("RET", "version"), ("X", "items")))
+    assert result["route_changed"] is True
+    assert result["slot_b_sha256"] is not None
+    assert result["success"] is False
+
+
+def test_measure_never_presses_b_even_when_write_keys_replace_it(tmp_path, clock):
+    for keys in (("W",), ("",)):
+        (tmp_path / str(len(keys[0]))).mkdir()
+        guest = ScreenGuest(clock)
+        try:
+            _measure(tmp_path / str(len(keys[0])), guest,
+                     route=(("RET", "version"), ("B", "sheet")), write_keys=keys)
+        except amigasecretsave.RouteError:
+            pass  # an empty entry is refused before anything is pressed
+        assert "B" not in _keys(guest)
+
+
+def test_write_keys_reject_an_empty_entry():
+    assert amigasecretsave.parse_write_keys("b, w") == ("B", "W")
+    for text in ("", "B,", ",B"):
+        with pytest.raises(amigasecretsave.RouteError, match="empty"):
+            amigasecretsave.parse_write_keys(text)
+
+
+def test_measure_with_an_empty_route_is_refused(tmp_path, clock):
+    guest = ScreenGuest(clock)
+    with pytest.raises(amigasecretsave.RouteError, match="route step"):
+        _measure(tmp_path, guest, route=())
+    assert guest.calls == []
+
+
+def test_a_minimum_wait_that_does_not_fit_the_deadline_fails_instead_of_shrinking(
+        tmp_path, clock):
+    guest = ScreenGuest(clock)
+    result = _measure(tmp_path, guest, deadline_seconds=400,
+                      route=(("RET", "version"),), min_waits={"version": 100})
+    assert "minimum wait" in result["error"]
+    assert "unchanged" not in str(result["events"])
+    assert result.get("route_changed") is None
+    assert _cleanup_ran(guest)
+
+
+def test_a_tight_deadline_still_cleans_up(tmp_path, clock):
+    guest = ScreenGuest(clock)
+    result = _measure(tmp_path, guest, deadline_seconds=100)
+    assert "deadline" in result["error"]
+    assert _cleanup_ran(guest)
+
+
+def test_a_keyboard_interrupt_still_cleans_up(tmp_path, clock):
+    class Interrupted(ScreenGuest):
+        def press(self, holder, key, timeout=None):
+            raise KeyboardInterrupt
+
+    guest = Interrupted(clock)
+    result = _measure(tmp_path, guest)
+    assert "KeyboardInterrupt" in result["error"]
+    assert _cleanup_ran(guest)
+
+
+def test_parse_route_rejects_a_trailing_comma_and_an_empty_state():
+    for text in ("ESC:party_menu,", "ESC:", ":party_menu", ""):
+        with pytest.raises(amigasecretsave.RouteError):
+            amigasecretsave.parse_route(text)

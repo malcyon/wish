@@ -308,6 +308,14 @@ def parse_route(text: str) -> tuple[tuple[str, str], ...]:
     return tuple(steps)
 
 
+def parse_write_keys(text: str) -> tuple[str, ...]:
+    """Read `KEY,KEY` into upper-case write keys; an empty entry is an error."""
+    keys = tuple(k.strip().upper() for k in text.split(","))
+    if not all(keys):
+        raise RouteError(f"write keys {text!r} contain an empty entry")
+    return keys
+
+
 def _input(manifest: dict, name: str) -> pathlib.Path:
     entry = manifest[name]
     path = pathlib.Path(entry["path"])
@@ -333,6 +341,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         raise RouteError("a screen guard is required unless measuring")
     min_waits = min_waits or {}
     write_keys = tuple(k.upper() for k in write_keys)
+    if not all(write_keys):
+        raise RouteError("write keys must not contain an empty entry")
+    if measure:
+        if not route:
+            raise RouteError("measure mode needs at least one route step")
+        # Measuring never writes, whatever the caller listed as write keys.
+        write_keys = tuple(dict.fromkeys(write_keys + ("B",)))
     if not HOLDER.fullmatch(holder) or not HOLDER.fullmatch(attempt):
         raise RouteError("holder and attempt must use plain lane-safe names")
     if deadline_seconds <= 0:
@@ -401,7 +416,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
 
     def wait(seconds: float) -> None:
         if seconds > 0:
-            time.sleep(route_limit(seconds))
+            if route_end - time.monotonic() < seconds:
+                raise RouteError("reconnaissance deadline reached during a minimum wait")
+            time.sleep(seconds)
 
     def until_guard(state: str, name: str, first_wait: float,
                     poll: float, limit: float) -> None:
@@ -466,7 +483,6 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             result["route_changed"] = changed
             return_early = True
         else:
-            return_early = False
             until_guard("title", "title", 0, TITLE_POLL, TITLE_LIMIT)
             for n, (key, state) in enumerate(route, 1):
                 guest.press(holder, key, timeout=route_limit(30))
@@ -600,7 +616,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise RouteError("--guards is required unless --measure")
             guards = PixelGuards(args.guards) if args.guards else None
             route = parse_route(args.route) if args.route else ROUTE
-            write_keys = tuple(k.strip().upper() for k in args.write_keys.split(","))
+            write_keys = parse_write_keys(args.write_keys)
             holder = args.holder or f"wish672-{uuid.uuid4().hex[:12]}"
             result = run_recon(args.manifest, guest=WinGuest(), guard=guards,
                                holder=holder,
