@@ -84,6 +84,14 @@ ITEM_NODE_BASE = 0x02E
 #: holding 7, 4 and 6 scrolls. DOS keeps those scrolls as separate items, so
 #: :func:`unbundle` puts them in the case's place.
 SCROLL_TYPE_INDEX = 0x49
+#: The two item type numbers the ports give differently. The Amiga's `ITEMS.DAT`
+#: row 105 is the 16 bytes DOS's `ITEMS` holds at row 73 (the +3 long sword,
+#: template 213 in both games' item lists), and the Amiga's own row 73 is the
+#: scroll case DOS does not have. A swap, so the same table serves both
+#: directions and a round trip returns the original byte. Type 71 (the
+#: halberd) is left alone: it is one item on both ports and each game applies
+#: its own row to that number.
+ITEM_TYPE_SWAP = {0x69: 0x49, 0x49: 0x69}
 #: One effect node, the same ten bytes all three Amiga titles keep: the id at
 #: 0, one byte nobody has named at 1, the duration as a big-endian word at 2,
 #: DOS's two remaining payload bytes at 4 and 5, and the four-byte `next` at
@@ -822,7 +830,8 @@ class PodItem:
         `.pc` holds begins past it, and the buffer is the ITEMS screen's own
         cache on both ports rather than a source. Every `u16` is byte-swapped
         -- it is a 68000 -- and `next` is NULL, because on the Amiga it is a
-        live heap address and the DOS engine rebuilds the chain on load.
+        live heap address and the DOS engine rebuilds the chain on load. The
+        type number is translated through :data:`ITEM_TYPE_SWAP`.
         """
         out = bytearray(dos_port.ITEM_SIZE)
         for name, f in ITEM_FIELDS.items():
@@ -831,6 +840,8 @@ class PodItem:
             if f.kind in (Kind.U16LE, Kind.UINT_LE):
                 chunk = chunk[::-1]
             out[f.offset:f.offset + f.size] = chunk
+        type_at = ITEM_FIELDS["type_index"].offset
+        out[type_at] = ITEM_TYPE_SWAP.get(out[type_at], out[type_at])
         return bytes(out)
 
     @classmethod
@@ -841,7 +852,8 @@ class PodItem:
         rendered display line and the chain pointer, which no file carries and
         the game rebuilds, and every `u16` is byte-swapped back -- it is a
         68000. The three insertion bytes stay zero, which is what the game's
-        own item constructor leaves in them.
+        own item constructor leaves in them. The type number is translated
+        back through :data:`ITEM_TYPE_SWAP`.
         """
         if len(record) != dos_port.ITEM_SIZE:
             raise ValueError(
@@ -853,6 +865,8 @@ class PodItem:
             if f.kind in (Kind.U16LE, Kind.UINT_LE):
                 chunk = chunk[::-1]
             out[at:at + f.size] = chunk
+        type_at = ITEM_FIELD_AT["type_index"]
+        out[type_at] = ITEM_TYPE_SWAP.get(out[type_at], out[type_at])
         return cls(bytes(out))
 
 

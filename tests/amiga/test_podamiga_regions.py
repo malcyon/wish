@@ -193,7 +193,10 @@ def test_a_character_read_off_an_amiga_disk_arrives_in_dos_with_his_items():
                 f = dos_port.ITEM_FIELDS_BY_NAME[field]
                 got = int.from_bytes(written[f.offset:f.offset + f.size],
                                      "little", signed=f.kind.name == "I8")
-                assert got == item.get(field), (name, n, field, got)
+                want = item.get(field)
+                if field == "type_index":
+                    want = amiga_pod.ITEM_TYPE_SWAP.get(want, want)
+                assert got == want, (name, n, field, got)
             items += 1
         seen += 1
     assert seen >= 12, seen
@@ -419,3 +422,88 @@ def test_the_effect_walk_stops_where_the_chain_does():
     data = a_record([], nodes + [bytes(amiga_pod.EFFECT_FILE_SIZE)])
     char = amiga_pod.PodCharacter.from_bytes(data)
     assert [n[0] for n in char.effects] == [8, 105, 47]
+
+
+# --- the two item type numbers the ports give differently --------------------
+
+def a_dos_item(type_index: int) -> bytes:
+    raw = bytearray(dos_port.ITEM_SIZE)
+    raw[dos_port.ITEM_FIELDS_BY_NAME["type_index"].offset] = type_index
+    return bytes(raw)
+
+
+def test_the_amiga_long_sword_type_105_reaches_dos_as_73():
+    item = amiga_pod.PodItem.from_bytes(an_item(type_index=105))
+    dos = item.to_dos_bytes()
+    assert dos[dos_port.ITEM_FIELDS_BY_NAME["type_index"].offset] == 73
+
+
+def test_a_dos_type_73_sword_reaches_the_amiga_as_105_and_not_a_case():
+    item = amiga_pod.PodItem.from_dos_bytes(a_dos_item(73))
+    assert item.type_index == 105
+    assert not item.is_scroll
+
+
+def test_every_other_type_number_is_left_alone_and_every_one_round_trips():
+    at = dos_port.ITEM_FIELDS_BY_NAME["type_index"].offset
+    for n in range(256):
+        item = amiga_pod.PodItem.from_bytes(an_item(type_index=n))
+        want = {105: 73, 73: 105}.get(n, n)
+        assert item.to_dos_bytes()[at] == want, n
+        assert amiga_pod.PodItem.from_dos_bytes(a_dos_item(n)).type_index == want, n
+        assert amiga_pod.PodItem.from_dos_bytes(item.to_dos_bytes()) == item, n
+
+
+def game_item_tables():
+    """`(Amiga ITEM.DAT, Amiga ITEMS.DAT, DOS ITEM0.DAX block, DOS ITEMS)`,
+    read off the player's own disks; skips where any is missing."""
+    from goldbox import dos_savegame
+    from tools.amiga import podsavegame
+    from tools.dos import dospodtables
+
+    def one(pattern: str) -> bytes:
+        found = podsavegame.files(pattern)
+        if not found:
+            pytest.skip(f"no Amiga {pattern} on the player's disks")
+        (copies,) = found.values()
+        # The Curse and Silver Blades disk-1 images hold their own ITEMS.DAT.
+        copies = [c for c in copies if "Pools" in c[0]]
+        if len({blob for _label, blob in copies}) != 1:
+            pytest.skip(f"no single Pools of Darkness {pattern} on the disks")
+        return copies[0][1]
+
+    amiga_templates, amiga_rows = one(r"ITEM\.DAT"), one(r"ITEMS\.DAT")
+    try:
+        game = dospodtables.find_game()
+        dos_rows = next(p for p in game.iterdir() if p.name.upper() == "ITEMS")
+        daxes = [p for p in game.iterdir() if p.name.upper() == "ITEM0.DAX"]
+        if not daxes:
+            raise FileNotFoundError("ITEM0.DAX")
+        dax = daxes[0].read_bytes()
+        dos_templates = b"".join(
+            b for _id, b in dos_savegame.dax_blocks(dax, "ITEM0.DAX"))
+        return amiga_templates, amiga_rows, dos_templates, dos_rows.read_bytes()
+    except (FileNotFoundError, StopIteration):
+        pytest.skip("no DOS Pools of Darkness item tables")
+
+
+def test_every_amiga_item_template_is_the_dos_template_at_the_same_index():
+    """254 of 254, read off both games' own item lists. Record 213, the +3
+    long sword, differed in its type byte alone before the swap."""
+    templates, _rows, dos_templates, _dos_rows = game_item_tables()
+    size = amiga_pod.ITEM_FILE_SIZE
+    assert len(templates) == 254 * size
+    assert len(dos_templates) == 254 * 17
+    for n in range(254):
+        item = amiga_pod.PodItem.from_bytes(templates[n * size:(n + 1) * size])
+        assert item.to_dos_bytes()[0x2E:0x3F] == dos_templates[n * 17:(n + 1) * 17], n
+
+
+def test_each_amiga_items_row_is_its_mapped_dos_row_but_the_halberd_and_the_case():
+    _templates, amiga_rows, _dos_templates, dos_rows = game_item_tables()
+    assert len(amiga_rows) == len(dos_rows) == 128 * 16
+    for i in range(128):
+        if i in (71, 73):
+            continue
+        j = amiga_pod.ITEM_TYPE_SWAP.get(i, i)
+        assert amiga_rows[i * 16:(i + 1) * 16] == dos_rows[j * 16:(j + 1) * 16], i
