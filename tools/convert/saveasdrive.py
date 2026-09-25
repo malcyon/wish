@@ -1,10 +1,12 @@
 """Publish a conversion through the editor's Save As route, for the developer tools.
 
-Opens `source` as the editor does, then calls `saveplan.prepare_save_as` and
-`saveplan.publish` -- the two calls Save As makes -- so what the tool boots is
-the rehearsed bytes Save As publishes and not what `File > Convert...` writes.
-No dialog exists here, so a refusal is returned as `report["refused"]` with the
-exception's own words. Imports of `editor` are lazy so a caller can point
+Opens `source` as the editor does, resolves the destination's game data, then
+calls `saveplan.prepare_save_as` and `saveplan.publish`, so what the tool boots
+is the rehearsed bytes Save As publishes and not what `File > Convert...`
+writes. It does not call `refuse_alias`, flush edits or confirm a replacement:
+the destination is always a new dated folder under `folder`, so it can neither
+be the source nor replace a file. No dialog exists here, so a refusal is
+returned as `report["refused"]` with the exception's own words. Imports of `editor` are lazy so a caller can point
 `sys.path` at another checkout first.
 """
 from __future__ import annotations
@@ -19,8 +21,15 @@ IMAGE_NAMES = {"c64": "WISHSAVE.D64", "amiga": "POOLSAVE.ADF"}
 
 def destination_path(port: str, folder: pathlib.Path) -> pathlib.Path:
     """Where a tool's Save As lands: a dated folder under `folder`, holding
-    the image, or being the DOS save folder itself."""
-    dated = pathlib.Path(folder) / f"wish-{datetime.date.today().isoformat()}"
+    the image, or being the DOS save folder itself. A folder already there
+    from an earlier run is left alone and the next free `-2`, `-3`... is used,
+    so a re-run into the same `folder` never meets a non-empty target."""
+    stem = f"wish-{datetime.date.today().isoformat()}"
+    dated = pathlib.Path(folder) / stem
+    n = 1
+    while dated.exists():
+        n += 1
+        dated = pathlib.Path(folder) / f"{stem}-{n}"
     return dated if port == "dos" else dated / IMAGE_NAMES[port]
 
 
@@ -56,7 +65,7 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
         published = saveplan.publish(plan, party, assets=assets)
     except Exception as exc:
         report["refused"] = [type(exc).__name__, str(exc)]
-        report["error"] = str(exc)
+        report["error"] = f"{type(exc).__name__}: {exc}"
         return report
     report["slot"] = plan.destination.slot
     report["written"] = [str(p) for p in published.written]
