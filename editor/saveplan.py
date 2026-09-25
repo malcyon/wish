@@ -39,7 +39,7 @@ import pathlib
 import re
 import shutil
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from goldbox import (
@@ -583,7 +583,9 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
 # ---------------------------------------------------------------------------
 
 def rehearse(direction: Any, source: Any, assets: Assets,
-            names: "Mapping[str, str] | None" = None) -> tuple[Any, str]:
+            names: "Mapping[str, str] | None" = None,
+            leave: "Mapping[int, Collection[int]] | None" = None
+            ) -> tuple[Any, str]:
     """Run `direction` in memory, and say which slot it wrote.
 
     The slot is not always the source's: a C64 source has none of its own and
@@ -615,11 +617,15 @@ def rehearse(direction: Any, source: Any, assets: Assets,
         slot, options = source.slot or "A", assets.amiga_disk
     else:
         slot, options = "A", assets.dos_folder
+    # Sent only when the player chose something, so a direction that never
+    # has a pack to overflow is not handed an argument it has no use for.
+    chosen = {"leave": leave} if leave else {}
     if direction.source_port == "c64" and port in ("dos", "amiga"):
         return direction.rehearse(source, slot, options,
                                   icon_parts=assets.source_files.icon,
-                                  names=names), slot
-    return direction.rehearse(source, slot, options, names=names), slot
+                                  names=names, **chosen), slot
+    return direction.rehearse(source, slot, options, names=names,
+                              **chosen), slot
 
 
 def name_width(port: str, title_key: str) -> int:
@@ -1170,6 +1176,10 @@ class SavePlan:
     #: re-preparation (`StalePlan`) passes this straight back, so a player is
     #: not asked a second time for a name already chosen.
     names: "dict[str, str]" = dataclasses.field(default_factory=dict)
+    #: The pack positions the player chose to leave behind, keyed by member
+    #: index -- empty when nothing was chosen. A re-preparation passes it
+    #: back so the player is not asked twice.
+    leave: "dict[int, frozenset[int]]" = dataclasses.field(default_factory=dict)
 
     def invalidate(self) -> None:
         """Mark this output as no longer the answer, so `publish` refuses it."""
@@ -1410,7 +1420,9 @@ def native_files(snapshot: Snapshot) -> dict[str, bytes]:
 
 def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
                     assets: "Assets | None" = None,
-                    names: "Mapping[str, str] | None" = None) -> SavePlan:
+                    names: "Mapping[str, str] | None" = None,
+                    leave: "Mapping[int, Collection[int]] | None" = None
+                    ) -> SavePlan:
     """Everything a Save As would write, in memory and validated.
 
     The open party's own snapshot is the source on every port, so the edits
@@ -1463,7 +1475,7 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
         title = snapshot.title
     else:
         rehearsal, slot = rehearse(direction, source, assets or Assets(),
-                                   names=names)
+                                   names=names, leave=leave)
         files, report = dict(rehearsal.files), rehearsal.report
         title = direction.destination_game
     destination = Destination(port=port, path=pathlib.Path(path),
@@ -1508,7 +1520,8 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     return SavePlan(source=source, destination=destination, files=files,
                     report=report, assets=assets,
                     key=plan_key(snapshot, port, path, assets),
-                    names=dict(names) if names else {})
+                    names=dict(names) if names else {},
+                    leave={k: frozenset(v) for k, v in (leave or {}).items()})
 
 
 def validate(destination: Destination, files: dict[str, bytes],

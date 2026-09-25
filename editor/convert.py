@@ -121,7 +121,7 @@ import os
 import pathlib
 import re
 import tempfile
-from collections.abc import Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping
 from typing import Any
 
 from PyQt6.QtWidgets import (
@@ -556,7 +556,8 @@ class Direction:
     destination_game: Any
 
     def rehearse(self, source: Source, slot: str, options: Any,
-                names: "Mapping[str, str] | None" = None) -> Rehearsal:
+                names: "Mapping[str, str] | None" = None,
+                leave: "Mapping[int, Collection[int]] | None" = None) -> Rehearsal:
         raise NotImplementedError
 
     def write(self, rehearsal: Rehearsal,
@@ -622,7 +623,8 @@ class DosToC64(Direction):
 
     def rehearse(self, source: Source, slot: str,
                 options: "dosimport.GameFiles",
-                names: "Mapping[str, str] | None" = None) -> Rehearsal:
+                names: "Mapping[str, str] | None" = None,
+                leave: "Mapping[int, Collection[int]] | None" = None) -> Rehearsal:
         if names:
             # A DOS name is at most fifteen characters and the C64 field
             # holds eighteen (`goldbox.layout.NAME_SIZE`, #626), so this
@@ -630,7 +632,7 @@ class DosToC64(Direction):
             raise saveplan.SaveAsError(
                 f"{self.source_port} to c64 never needs a chosen name")
         with source.folder() as folder:
-            conversion = dosimport.rehearse(folder, slot, options)
+            conversion = dosimport.rehearse(folder, slot, options, leave=leave)
         name = self._name.format(slot=slot)
         return Rehearsal(conversion.report, {name: conversion.disk.to_bytes()})
 
@@ -673,7 +675,8 @@ class AmigaToC64(DosToC64):
 
     def rehearse(self, source: Source, slot: str,
                 options: "dosimport.GameFiles",
-                names: "Mapping[str, str] | None" = None) -> Rehearsal:
+                names: "Mapping[str, str] | None" = None,
+                leave: "Mapping[int, Collection[int]] | None" = None) -> Rehearsal:
         disk = source.amiga_disk()
         if self.shape is dos_port.POOL_OF_RADIANCE:
             party, savgam = amiga_savegame.read_por_slot(disk, slot)
@@ -687,6 +690,10 @@ class AmigaToC64(DosToC64):
                 raise saveplan.SaveAsError(
                     f"{self.source_port} to c64 never needs a chosen name "
                     f"for {self.shape.key}")
+            if leave:
+                raise saveplan.SaveAsError(
+                    f"{self.source_port} to c64 has no joined scroll to "
+                    f"leave anything of for {self.shape.key}")
             characters = party
             party_icons = None
         else:
@@ -704,11 +711,13 @@ class AmigaToC64(DosToC64):
         if party_icons is None:
             save0, save1, report = dos_codec.new_save_from(
                 state, characters, options.icon, options.animate,
-                portraits=options.portraits, game=self.destination_game)
+                portraits=options.portraits, game=self.destination_game,
+                leave=leave)
         else:
             save0, save1, report = dos_codec.new_save_from_neutral(
                 state, characters, party_icons, options.icon, options.animate,
-                game=self.destination_game)
+                game=self.destination_game, leave=leave)
+        dosimport.log_left_behind(report)
         image = dos_codec.save_disk(bytes(save0), bytes(save1),
                               self.destination_game)
         name = self._name.format(slot=slot)
@@ -758,8 +767,15 @@ class C64ToDos(Direction):
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
                 icon_parts: "Any | None" = None,
-                names: "Mapping[str, str] | None" = None
+                names: "Mapping[str, str] | None" = None,
+                leave: "Mapping[int, Collection[int]] | None" = None
                 ) -> "AmigaDosRehearsal":
+        if leave:
+            # Only a C64 record has a slot count a pack can overflow; a
+            # choice of what to leave behind means nothing to this port.
+            raise saveplan.SaveAsError(
+                f"{self.source_port} to {self.destination_port} has no "
+                f"pack to leave anything of")
         game_dir = pathlib.Path(options)
         c64 = dos_codec.c64_title(source.save0, self.title)
         state = world_state.from_c64(source.save0, game=c64)
@@ -840,8 +856,15 @@ class AmigaToDos(C64ToDos):
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
-                names: "Mapping[str, str] | None" = None
+                names: "Mapping[str, str] | None" = None,
+                leave: "Mapping[int, Collection[int]] | None" = None
                 ) -> AmigaDosRehearsal:
+        if leave:
+            # Only a C64 record has a slot count a pack can overflow; a
+            # choice of what to leave behind means nothing to this port.
+            raise saveplan.SaveAsError(
+                f"{self.source_port} to {self.destination_port} has no "
+                f"pack to leave anything of")
         if not source.slot:
             # Unreachable through `Source.detect`, whose `.adf` branch always
             # names the first slot the disk holds files for; only a caller
@@ -907,8 +930,15 @@ class PodAmigaToDos(Direction):
         self.source_key = self.shape.key
 
     def rehearse(self, source: Source, slot: str, options: Any,
-                names: "Mapping[str, str] | None" = None
+                names: "Mapping[str, str] | None" = None,
+                leave: "Mapping[int, Collection[int]] | None" = None
                 ) -> AmigaDosRehearsal:
+        if leave:
+            # Only a C64 record has a slot count a pack can overflow; a
+            # choice of what to leave behind means nothing to this port.
+            raise saveplan.SaveAsError(
+                f"{self.source_port} to {self.destination_port} has no "
+                f"pack to leave anything of")
         if not source.slot:
             # Unreachable through `Source.detect`, whose `.adf` branch
             # always names the first slot the disk holds files for; only a
@@ -1169,7 +1199,14 @@ class C64ToAmiga(Direction):
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
                 icon_parts: "Any | None" = None,
-                names: "Mapping[str, str] | None" = None) -> AmigaWriteRehearsal:
+                names: "Mapping[str, str] | None" = None,
+                leave: "Mapping[int, Collection[int]] | None" = None) -> AmigaWriteRehearsal:
+        if leave:
+            # Only a C64 record has a slot count a pack can overflow; a
+            # choice of what to leave behind means nothing to this port.
+            raise saveplan.SaveAsError(
+                f"{self.source_port} to {self.destination_port} has no "
+                f"pack to leave anything of")
         game_data = _amiga_destination_data(self.shape, options, source)
         party, icons = dos_codec.c64_party(source.save0, source.save1,
                                      game=self.title, icon_parts=icon_parts)
@@ -1216,7 +1253,14 @@ class DosToAmiga(Direction):
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
-                names: "Mapping[str, str] | None" = None) -> AmigaWriteRehearsal:
+                names: "Mapping[str, str] | None" = None,
+                leave: "Mapping[int, Collection[int]] | None" = None) -> AmigaWriteRehearsal:
+        if leave:
+            # Only a C64 record has a slot count a pack can overflow; a
+            # choice of what to leave behind means nothing to this port.
+            raise saveplan.SaveAsError(
+                f"{self.source_port} to {self.destination_port} has no "
+                f"pack to leave anything of")
         if not source.slot:
             # Unreachable through `Source.detect`, whose DOS branches always
             # name a slot; only a caller building a `Source` by hand can get

@@ -90,6 +90,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import pathlib
+from collections.abc import Collection, Mapping
 from typing import Any
 
 from goldbox import c64_port, dos_codec
@@ -187,7 +188,9 @@ class Conversion:
 
 
 def rehearse(folder: str | pathlib.Path, slot: str,
-             files: GameFiles) -> Conversion:
+             files: GameFiles,
+             leave: "Mapping[int, Collection[int]] | None" = None
+             ) -> Conversion:
     """Build the save and the disk in memory and report, writing nothing.
 
     The DOS files are read, the game files in `files` were read before this
@@ -221,10 +224,11 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     payload0, payload1, report = dos_codec.new_save(folder, slot,
                                               files.icon, files.animate,
                                               portraits=files.portraits,
-                                              game=game)
+                                              game=game, leave=leave)
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
     sg1 = SaveGame1(bytes(payload1), game) if payload1 else None
     disk = dos_codec.save_disk(bytes(payload0), bytes(payload1), game)
+    log_left_behind(report)
     return Conversion(disk, game, sg0, sg1, report,
                       pathlib.Path(folder), slot)
 
@@ -249,6 +253,14 @@ def pane_text(report: dos_codec.Report) -> str:
     halves = [list(getattr(report, "messages", ())),
               list(getattr(report, "losses", ()))]
     return "\n\n".join("\n".join(half) for half in halves if half)
+
+
+def log_left_behind(report: dos_codec.Report) -> None:
+    """Every `report.left_behind` line, to the debug log and nowhere a player
+    reads; they are the player's own choice and never a loss."""
+    left = list(report.left_behind)
+    if left:
+        _log.info("Left behind by the player's choice: %s", "; ".join(left))
 
 
 def log_unshown_losses(report: dos_codec.Report) -> None:
