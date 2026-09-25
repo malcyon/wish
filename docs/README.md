@@ -55,7 +55,7 @@ One row per write-up, saying what it establishes; a path beginning `cited/<name>
 | [113-world-map.md](113-world-map.md) | The overland travel map, which is the combat engine on other data |
 | [115-review-the-scripts.md](115-review-the-scripts.md) | The ECL script reading, closed undone: what the decode had reached, what a rebuilt decoder would have to match, and the one item on its list that needs no decoder |
 | [116-second-game.md](116-second-game.md) | Curse of the Azure Bonds: the same 580-byte record, what differs, and the import routine that proves it |
-| [117-save-conversion.md](117-save-conversion.md) | Converting characters between the DOS and C64 versions: the field tables, the converter, and `File > Convert…` as the only menu route |
+| [117-save-conversion.md](117-save-conversion.md) | Converting characters between the DOS and C64 versions: the field tables, the converter, and Save As as the route (Convert is flag-only for Pools of Darkness) |
 | [118-debug-mode.md](118-debug-mode.md) | `WISH_DEBUG=1`, Fast Travel, and what an area change actually is |
 | [119-test-party.md](119-test-party.md) | Getting a levelled, varied party for the specimens still wanted |
 | [120-curse-testing.md](120-curse-testing.md) | Testing the second game |

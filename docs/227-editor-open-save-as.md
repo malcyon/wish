@@ -1,6 +1,13 @@
 # Open and Save As in the Character Editor
 
-**Built; stage 4 is complete except for the flagged File > Convert route.** The Character Editor opens
+**Implementation built (stages 1 to 4); File > Convert remains behind
+`WISH_EXPERIMENTAL_POD_CONVERT`; no conversion has been loaded in its
+destination game through Save As yet, and Windows validation is pending.** Still
+open: no emulator run of any Save As output (`docs/235` plans the Save As matrix
+and it is unstarted); Windows validation; the verification matrix of
+conditional refusals is unrecorded; slot-picker and multi-save Amiga disk
+behaviour through Save As are unconfirmed; retiring Convert waits on a Pools of
+Darkness Save As route. The Character Editor opens
 C64, DOS and Amiga saves and saves to any supported platform through two split
 buttons. Each button has a main action and a separate menu arrow: Open opens a
 save file, while its arrow also offers a DOS folder picker; Save updates the
@@ -49,7 +56,7 @@ picker in this section: its source is the editor's current party and edits.
 
 No destination section is visible during ordinary editing. It closes on Cancel
 or successful Save As. It consumes the existing editor area rather than
-resizing the top-level window. Elide long source paths, give destination paths
+resizing the top-level window. Truncate long source paths, give destination paths
 shrinkable fields, and stack conditional controls vertically. Keep the roster
 and character sheet usable through the existing splitters and scrolling.
 
@@ -154,7 +161,7 @@ the actual title's supported directions plus its native-copy operation.
 | 1. Capture current edits | Reverse-engineering agent: new `editor/saveplan.py`, native assembly in `editor/window.py::_write_back`, source/rehearsal interfaces in `editor/convert.py`, focused new `tests/editor/test_saveplan.py` | An isolated snapshot combines original native data with all pending edits, including inventory and supported traits/effects. Preparing it writes neither source files nor live editor baselines. C64, DOS and Amiga conversions consume it. |
 | 2. Prepare and publish | Reverse-engineering agent: `editor/saveplan.py`, `editor/convert.py`, `editor/files.py`, relevant conversion/editor tests | Extract asset resolution, rehearsal and output preparation from `ConvertDialog`. Add native copies, validation, loss refusal, explicit output paths, backups and publication with recovery on failure. Return a destination descriptor and a validated party for adoption. |
 | 3. Wire split Open and Save buttons | Qt UI specialist: `wish/window.ui`, generated `wish/ui_window.py`, `wish/window.py`, `editor/window.py`, editor/preferences/layout tests | Implement split buttons and the conditional destination section in Designer; connect toolbar, menus and shortcuts to one controller. Adopt the prepared destination only after successful publication. |
-| 4. Establish parity and retire Convert (File > Convert is built only behind `WISH_EXPERIMENTAL_POD_CONVERT`, and its dialog refuses a reported loss except for Pools of Darkness; the dialog code goes with the flag) | Qt UI specialist after backend verification: obsolete conversion-dialog wiring/form, affected tests, `docs/97-editor.md`, `docs/117-save-conversion.md`, package inventory rows | Remove File > Convert and obsolete dialog code only when native copies and every previously available direction work from the editor. Retain the direction registry, codecs and conversion tests. |
+| 4. Establish parity and retire Convert (done except for Pools of Darkness: File > Convert survives only behind `WISH_EXPERIMENTAL_POD_CONVERT`, its dialog refuses a reported loss, and it is removed with the flag) | Qt UI specialist after backend verification: obsolete conversion-dialog wiring/form, affected tests, `docs/97-editor.md`, `docs/117-save-conversion.md`, package inventory rows | Partly done: native copies and every direction except Pools of Darkness work from Save As. Remove File > Convert and its dialog code when a Pools of Darkness Save As route exists. Retain the direction registry, codecs and conversion tests. |
 
 Stages are sequential; ownership transfers explicitly because they share files.
 Each implementation agent receives the approved scope and its own test files;
@@ -162,9 +169,10 @@ code review follows each stage that writes code. If a codec cannot preserve a
 field, stop that route, record the high-priority defect and route the missing
 byte work to the appropriate specialist. Do not substitute UI for the fix.
 
-The stage-1 regression is concrete: `Source.detect(path, party)` currently uses
-the open party for C64 but rereads DOS and Amiga sources from disk. The current
-conversion entry point can therefore omit unsaved native edits. A snapshot must
+The stage-1 regression was concrete: `Source.detect(path, party)` used the open
+party for C64 but reread DOS and Amiga sources from disk, so a conversion could
+omit unsaved native edits. It now takes the party branch for every port and
+`editor.saveplan.prepare` assembles the port's own bytes. A snapshot must
 retain the native data outside the C64-shaped editing model, not rebuild the
 whole save from the visible sheet alone. The native rewrite machinery in
 [The differential rewrite](223-the-differential-rewrite.md) is the starting point.
@@ -220,5 +228,6 @@ report an ordinary save failure; do not claim that nothing was written.
   evidence for changed conversion behavior under the emulator rules. Report
   exactly which titles and directions were exercised and what remains unproven.
 
-This document specifies the selected design. It does not claim implementation,
-Windows validation or a successful conversion run.
+This document specifies the design and records that it is built. It does not
+claim Windows validation, an emulator run of any Save As output, or a
+successful conversion loaded in its destination game.

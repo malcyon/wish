@@ -17,7 +17,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_c64thac0.py` | Checks that a converted character's THAC0 on the C64 sheet is computed from the C64's own tables rather than copied. |
 | `test_c64traitslots.py` | Checks which effects from both neutral effect lists reach the C64's ten trait slots. |
 | `test_convert.py` | Checks `editor.convert`'s registry: which directions the library can write whole, as round trips, and the dialog built on it. |
-| `test_convertmatrix.py` | Checks that the bytes `File ▸ Convert…` writes for each of the six DOS and C64 directions equal what the library's own entry point writes. |
+| `test_convertmatrix.py` | Checks that the bytes Save As writes for each of the six DOS and C64 directions equal what the library's own entry point writes. |
 | `test_convertrun.py` | Checks that `tools/convert/convertrun.py` writes the bytes Save As prepared and reports a refusal instead of writing. |
 | `test_saveasdrive.py` | Checks that `tools/convert/saveasdrive.py` can be re-run into one output folder and reports a real refusal by its class name. |
 | `test_curseconvert.py` | Checks a DOS Curse of the Azure Bonds save converting to a C64 one, both the record and the container. |

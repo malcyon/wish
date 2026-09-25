@@ -244,13 +244,12 @@ Four things cost time on the way.
   the lease.** `winuae.ps1 release -Holder <id>`, then `winvm release <tag>`;
   a lease left held is a lease nobody else can take.
 
-## 8. The dialog, and which disk it asks for
+## 8. Converting to the Amiga, and which disk it asks for
 
-**A player can convert to the Amiga through the editor's Save As**, and the
-result loads in the game. Driven twice on 2026-09-08, once from each source,
-through `EditorBinding.convert(source=…, destination="amiga", disk=…,
-folder=…)` -- the dialog's own path with every row filled in -- and then in
-WinUAE: the picker offered the written slot, the status line read the source's
+**The Save As route to the Amiga has not been run in WinUAE.** What was
+driven, twice on 2026-09-08 and once from each source, is
+`EditorBinding.convert(source=…, destination="amiga", disk=…, folder=…)` --
+the Convert dialog's own path with every row filled in -- and then in WinUAE: the picker offered the written slot, the status line read the source's
 own square and clock, `VIEW` matched the source record value for value, and
 `ENCAMP ▸ SAVE` wrote a second slot the game read back. `AmigaDisk.verify()`
 returned `[]` on both images afterwards. `#36 (Write an Amiga disk image, not
@@ -268,9 +267,9 @@ no figure dropped, but nobody has watched one on screen. And BRUTUS's panel
 armour class reads 9 at load and 10 after `VIEW`, both values his own record
 holds -- **which of the two the C64 itself draws is unmeasured.**
 
-`tools/amiga/toamigapor.py` remains the way to ask for a disk without the window.
+`tools/amiga/toamigapor.py` remains the way to ask for a disk without the editor.
 
-**The dialog asks for the player's Amiga disk 2**, not disk 1: since `#316 (Write the Amiga Pool of Radiance saved game from the source
+**The Convert dialog asks for the player's Amiga disk 2**, not disk 1: since `#316 (Write the Amiga Pool of Radiance saved game from the source
 save, so a converted party arrives where it was standing)` the saved game is
 built from the save being converted, and the only thing read off an Amiga disk
 is the area's script out of `ecl.dax`.
@@ -300,7 +299,7 @@ match is 23%, which is the background resemblance of one ECL script to another.
 `goldbox.amiga_savegame.por_area_script` refuses that area by name, so an area 30 source
 is an error rather than a party arriving somewhere else.
 
-**Which disks the dialog needs depends on what it writes.** A `POOLSAVE` save
+**Which disks a conversion needs depends on what it writes.** A `POOLSAVE` save
 disk -- `tools/amiga/toamigapor.py --save-disk`, and what a player is handed -- reads
 disk 2 and nothing else. Writing into a copy of the game disk's own `save`
 drawer -- `--out` -- reads disk 1 as the disk being copied and still needs

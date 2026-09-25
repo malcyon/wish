@@ -829,8 +829,9 @@ both ends of the party panel it is drawn in. Legible enough to act on, ugly.
 unpacked.** (`File ▸ Import` needed `WISH_EXPERIMENTAL_DOS_IMPORT=1` until
 2026-09-06, when it was built for everyone; `File ▸ Convert…` needed
 `WISH_EXPERIMENTAL_CONVERT=1` until 2026-09-14, when Donald lifted it and
-`File ▸ Import` was removed in the same commit. Convert is built for
-everyone now, and is the only route.) This is not a per-platform row
+`File ▸ Import` was removed in the same commit. Convert is now
+behind `WISH_EXPERIMENTAL_POD_CONVERT` and applies only to Pools of Darkness;
+Save As is the route.) This is not a per-platform row
 in the table below: it needs the archives, the C64 game disks and a working
 VICE, so it is a check somebody does once on the machine that has all three
 rather than once per package.
@@ -846,9 +847,8 @@ hole. What it cannot say is whether the *game* accepts the disk. That is the
 picker)` failure: a file written correctly that the game's own load screen does
 not list, and it passes every byte-level check there is.
 
-**D1.** Convert a DOS save to a `.d64`: `File ▸ Convert…`, choose the folder
-holding `SAVGAM?.DAT` as the source, choose the Commodore 64 destination,
-choose a slot, choose where the write goes, press **Convert**. Or, without
+**D1.** Convert a DOS save to a `.d64`: open the folder holding `SAVGAM?.DAT`,
+choose Save As Commodore 64, choose where the write goes and save. Or, without
 the GUI:
 
 ```sh
