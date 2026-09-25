@@ -212,7 +212,15 @@ ABILITIES_ALTERED_YES = "Yes"
 ABILITIES_ALTERED_TOOLTIP = (
     "Set when this character kept an ability or hit-point change at the "
     "trainer")
+ABILITIES_ALTERED_KEEP_TOOLTIP = (
+    "Set when this character left MODIFY CHARACTER by pressing KEEP, whether "
+    "or not anything was changed")
 ABILITIES_ALTERED_UNCONFIRMED_TOOLTIP = "Not recorded on this title"
+
+#: The later titles whose DOS and Amiga engines store 1 in the share byte when
+#: MODIFY CHARACTER is left by KEEP (`treasure_share`); their C64 ports do not.
+_KEEP_IN_SHARE_KEYS = (por_games.CURSE_OF_THE_AZURE_BONDS.key,
+                       por_games.SECRET_OF_THE_SILVER_BLADES.key)
 MORALE_ABOVE_RANGE_TOOLTIP = (
     "Stored above the normal 0-100 game range (a companion copied from a "
     "monster record); shown decoded, not editable")
@@ -1484,9 +1492,19 @@ class EditorBinding(QObject):
         if not is_npc:
             confirmed = (member.game is None
                         or member.game.key == por_games.POOL_OF_RADIANCE.key)
+            keep_in_share = (
+                member.game is not None
+                and member.game.key in _KEEP_IN_SHARE_KEYS
+                and getattr(self.party, "port", "c64") in ("dos", "amiga"))
             altered.blockSignals(True)
             altered.clear()
-            if confirmed:
+            if keep_in_share:
+                altered.addItem(ABILITIES_ALTERED_NO)
+                altered.addItem(ABILITIES_ALTERED_YES)
+                value = same and member.record.get("treasure_share") == 1
+                altered.setCurrentIndex(1 if value else 0)
+                altered.setToolTip(ABILITIES_ALTERED_KEEP_TOOLTIP)
+            elif confirmed:
                 altered.addItem(ABILITIES_ALTERED_NO)
                 altered.addItem(ABILITIES_ALTERED_YES)
                 value = same and bool(stored & 0x01)
@@ -2231,7 +2249,7 @@ class EditorBinding(QObject):
         return self.backups
 
     def preview_text(self) -> str:
-        """What a save would write, in the form `wish --dry-run` prints it."""
+        """What a save would write, as the Preview shows it."""
         if self.party is None:
             return "Nothing open"
         self._flush()
