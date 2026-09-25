@@ -178,6 +178,24 @@ Its WinUAE runs still need Windows playback mute readback; the Linux guest's
 silence evidence does not apply to it. Keep WinUAE's sound interrupts enabled
 and follow [the emulator rule](../.claude/rules/emulator.md).
 
+The host advisor verified Windows Core Audio mute and readback from both the
+host and `agent-vm`, using
+[`tools/amiga/winuaemute.ps1`](../tools/amiga/winuaemute.ps1). Install that
+helper as `C:\Amiga\winuaemute.ps1` with the existing `winvm` file transfer.
+Immediately before a WinUAE experiment, run this from `agent-vm`, redirecting
+its JSON into the experiment's cache evidence directory:
+
+```sh
+winvm ssh 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Amiga\winuaemute.ps1'
+```
+
+Require a successful exit and `muted: true`, `readback: true` in the JSON.
+Pass the captured file to the acceptance driver's `--audio-proof` option;
+the existing driver requires proof no older than five minutes at launch.
+Refresh it after lengthy preparation. The helper leaves the default playback
+endpoint muted; it does not disable the emulated sound device. Recheck the
+selected endpoint if the Windows audio configuration changes.
+
 ## References
 
 The installed `herdr --skill` and command help govern the installed version.
