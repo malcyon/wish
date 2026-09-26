@@ -29,7 +29,7 @@ from goldbox.c64_port import POOL_OF_RADIANCE
 from goldbox.d64 import D64, split_load_address
 from goldbox.items import ITEM_SIZE
 from goldbox.savegame import SaveGame0, SaveGame1
-from tools.c64 import c64acceptance as A
+from tools.c64 import acceptance as A
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "fixtures"
 
@@ -785,7 +785,7 @@ def test_curse_quit_control_completes_without_named_attack(tmp_path, monkeypatch
 
     source = _fixture_disk(tmp_path)
     slot = _Slot(tmp_path)
-    monkeypatch.setattr(A.SC, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.runlog, "catch_signals", lambda: None)
     monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: slot)
     monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [],
                                                     "magic_items": []})
@@ -857,7 +857,7 @@ def test_curse_attack_needs_both_status_lists_and_the_engine_save(
 
     source = _fixture_disk(tmp_path)
     slot = _Slot(tmp_path)
-    monkeypatch.setattr(A.SC, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.runlog, "catch_signals", lambda: None)
     monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: slot)
     monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [],
                                                     "magic_items": []})
@@ -1119,7 +1119,7 @@ def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=Non
     import types
     slot = slot or _Slot(tmp_path)
     _Pool.clock = [0.0]
-    monkeypatch.setattr(A.SC, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.runlog, "catch_signals", lambda: None)
     monkeypatch.setattr(A.S, "claim_slot", claim or (lambda *a, **k: slot))
     monkeypatch.setattr(A.S, "stage_disks", lambda *a, **k: "first")
     monkeypatch.setattr(A.S, "stage_writable",
@@ -1494,7 +1494,7 @@ def test_a_curse_run_with_cures_gives_the_slot_a_joystick_and_validates_them(
     template = tmp_path / "template"
     template.write_text("[C64SC]\nSound=0\n[Other]\nX=1\n", encoding="utf-8")
     _seeding(slot, template)
-    monkeypatch.setattr(A.SC, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.runlog, "catch_signals", lambda: None)
     monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: slot)
     monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [], "magic_items": []})
     monkeypatch.setattr(curserun, "stage", lambda *a, **k: slot.seed_vicerc() and "first")
@@ -2503,8 +2503,7 @@ def test_a_sheet_that_names_someone_else_is_not_taken_for_the_member_asked_for(
 # --- Silver Blades -----------------------------------------------------------------------
 
 def test_silver_blades_is_driven_and_its_run_is_a_later_title_run(tmp_path, monkeypatch):
-    from tools.c64 import curedrive
-    from tools.secret_of_the_silver_blades import ssbwarp
+    from tools.secret_of_the_silver_blades import ssbsession, ssbwarp
 
     built = []
 
@@ -2516,7 +2515,7 @@ def test_silver_blades_is_driven_and_its_run_is_a_later_title_run(tmp_path, monk
     monkeypatch.setattr(A, "SilverRun", _Silver)
     monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [], "magic_items": {}})
     monkeypatch.setattr(ssbwarp, "stage", lambda *a, **k: "first")
-    monkeypatch.setattr(curedrive, "_silver_session_class", lambda: _Sess)
+    monkeypatch.setattr(ssbsession, "silver_session_class", lambda: _Sess)
     rc, _, _ = _drive(tmp_path, monkeypatch, ["load"], 1e9, title="ssb")
     assert rc == 0 and len(built) == 1
 
@@ -2647,10 +2646,10 @@ def test_a_later_title_bump_is_pressed_twice_and_stays_blocked(tmp_path, monkeyp
 
 
 def test_the_silver_blades_session_reads_the_live_triple():
-    from tools.c64 import curedrive
     from tools.curse_of_the_azure_bonds import curserun
+    from tools.secret_of_the_silver_blades import ssbsession
 
-    assert (curedrive._silver_session_class().live_triple
+    assert (ssbsession.silver_session_class().live_triple
             is curserun.CurseSession.live_triple)
 
 
@@ -2855,8 +2854,8 @@ def _boot_session(base, tmp_path, clock, save_bar):
 
 
 def _both_drivers():
-    from tools.c64 import curedrive
-    return [pytest.param(curedrive._silver_session_class(), id="silver"),
+    from tools.secret_of_the_silver_blades import ssbsession
+    return [pytest.param(ssbsession.silver_session_class(), id="silver"),
             pytest.param(_curserun.CurseSession, id="curse")]
 
 
@@ -2917,3 +2916,93 @@ def test_to_world_bar_sends_no_return_in_the_gap_and_wait_bar_still_does_later(
     sess.since = clock.now + 1e6
     assert sess.to_world_bar(timeout=0.5) is False
     assert 0x0D in sess.kernal
+
+
+# --- the old name's entry point -------------------------------------------------------
+
+def _entry_points():
+    import sys
+    repo = pathlib.Path(A.__file__).resolve().parents[2]
+    return [[sys.executable, str(repo / "tools" / "c64" / "c64acceptance.py")],
+            [sys.executable, str(repo / "tools" / "c64" / "acceptance.py")],
+            [sys.executable, "-m", "tools.c64.c64acceptance"]], repo
+
+
+def _run_entry(cmd, repo, *args):
+    import subprocess
+    return subprocess.run(cmd + list(args), cwd=repo, capture_output=True, text=True,
+                          timeout=120)
+
+
+def test_the_old_name_is_only_an_entry_point_to_the_implementation():
+    import ast
+    import os
+
+    from tools.c64 import c64acceptance as old
+
+    assert old.main is A.main
+    defined = {n for n in vars(old) if not n.startswith("__")}
+    assert defined <= {"main", "pathlib", "sys", "annotations"}
+    path = pathlib.Path(old.__file__)
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    assert not [n for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
+    assert "subprocess" not in path.read_text(encoding="utf-8")
+    if os.name != "nt":
+        assert os.access(path, os.X_OK)
+
+
+def test_every_entry_point_stages_the_same_evidence(tmp_path):
+    cmds, repo = _entry_points()
+    seen = []
+    for i, cmd in enumerate(cmds):
+        out = tmp_path / f"out{i}"
+        got = _run_entry(cmd, repo, "--title", "pool", "--save",
+                         str(_fixture_disk(tmp_path)), "--stage-row", "63=05:FF:0A:03",
+                         "--stage-only", "--steps", "load", "--out", str(out))
+        assert got.returncode == 0, got.stderr
+        summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+        staged = {k: v for k, v in summary["staged"].items()
+                  if k not in ("source", "staged")}
+        seen.append((sorted(summary), staged))
+    assert seen[0] == seen[1] == seen[2]
+    assert seen[0][1]["effects"] == [[63, 5, 0xFF, 0x0A, 0x03]]
+
+
+def test_every_entry_point_refuses_a_bad_step_list_with_2(tmp_path):
+    cmds, repo = _entry_points()
+    for i, cmd in enumerate(cmds):
+        got = _run_entry(cmd, repo, "--title", "pool", "--save",
+                         str(_fixture_disk(tmp_path)), "--stage-only",
+                         "--steps", "nonsense", "--out", str(tmp_path / f"bad{i}"))
+        assert got.returncode == 2, got.stderr
+
+
+def test_every_entry_point_compares_two_runs_alike(tmp_path):
+    cmds, repo = _entry_points()
+    runs = []
+    for name in ("a", "b"):
+        out = tmp_path / name
+        got = _run_entry(cmds[1], repo, "--title", "pool", "--save",
+                         str(_fixture_disk(tmp_path)), "--stage-only",
+                         "--steps", "load", "--out", str(out))
+        assert got.returncode == 0, got.stderr
+        runs.append(str(out))
+    outputs = []
+    for cmd in cmds:
+        got = _run_entry(cmd, repo, "--compare", *runs)
+        assert got.returncode == 0, got.stderr
+        outputs.append(got.stdout)
+    assert outputs[0] == outputs[1] == outputs[2]
+
+
+def test_a_terminating_signal_mid_step_is_lost_and_releases_the_slot(tmp_path, monkeypatch):
+    class _Killed(_Pool):
+        def load(self):
+            raise A.runlog.Terminated("signal 15")
+
+    rc, slot, out = _drive(tmp_path, monkeypatch, ["load"], 1e9, pool=_Killed)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and not summary["completed"]
+    assert "Terminated" in summary["lost"]
+    assert slot.torn

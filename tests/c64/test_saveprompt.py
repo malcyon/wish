@@ -304,10 +304,10 @@ def _in_cooldown(sess, monkeypatch, module):
 def _silver_cure_session():
     """Silver Blades' session as the acceptance driver builds it, which
     borrows `wait_bar` and `to_world_bar` from `CurseSession`."""
-    from tools.c64 import curedrive
+    from tools.secret_of_the_silver_blades import ssbsession
 
     return type("FakeSilverCure", (_FakeDriverMixin,
-                                   curedrive._silver_session_class()), {})
+                                   ssbsession.silver_session_class()), {})
 
 
 def _camp_prompt_session(cls, tmp_path):

@@ -217,27 +217,6 @@ def _session_class():
     return curserun.CurseSession
 
 
-def _silver_session_class():
-    """`ssbwarp.SSBSession` with `CurseSession`'s bar helpers.
-
-    The camp, sheet and rest steps below wait for and press bars the same way
-    in both later titles; `curserun.CurseSession` holds those helpers and
-    Silver Blades' session does not, so they are borrowed rather than
-    copied.
-    """
-    from tools.curse_of_the_azure_bonds import curserun
-    from tools.secret_of_the_silver_blades import ssbwarp
-
-    class SilverCureSession(ssbwarp.SSBSession):
-        BLANK = curserun.CurseSession.BLANK
-        press_bar = curserun.CurseSession.press_bar
-        wait_bar = curserun.CurseSession.wait_bar
-        to_world_bar = curserun.CurseSession.to_world_bar
-        live_triple = curserun.CurseSession.live_triple
-
-    return SilverCureSession
-
-
 class Run:
     """One boot of a staged save, and the log of everything done to it."""
 
@@ -245,7 +224,7 @@ class Run:
                  disks: str, pool: int | None):
         from tools.c64 import session as por
         from tools.curse_of_the_azure_bonds import curserun
-        from tools.secret_of_the_silver_blades import ssbwarp
+        from tools.secret_of_the_silver_blades import ssbsession, ssbwarp
         self.out = out
         self.who = who
         self.disks = disks
@@ -260,7 +239,7 @@ class Run:
         first = stage_sides(self.slot, disks, str(save))
         self.save_disk = str(pathlib.Path(self.slot.dir) / "SIDE0.D64")
         os.chmod(self.save_disk, 0o644)
-        cls = _silver_session_class() if self.silver else _session_class()
+        cls = ssbsession.silver_session_class() if self.silver else _session_class()
         self.sess = cls(first, slot=self.slot)
         self.sess.save_disk = self.save_disk
         self.checkpoints: dict[str, int] = {}
