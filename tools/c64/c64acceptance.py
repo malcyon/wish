@@ -108,9 +108,6 @@ from tools.registry import scratch  # noqa: E402
 TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
           "ssb": "secret-of-the-silver-blades"}
 
-#: The titles this driver boots.  The others stage only.
-DRIVEN = frozenset({"pool", "curse", "ssb"})
-
 #: Ten trait slots per record; eight party slots in a save.
 TRAIT_SLOTS = 10
 PARTY_SLOTS = 8
@@ -1758,7 +1755,13 @@ def validate_walks(results: list[dict]) -> None:
     if got.get("place_changed") is None:
         raise StepFailed("a walk was asked and the staged disk has no place to compare")
     asked = sum(r["asked_forward"] for _, r in walks)
-    if asked and not got["place_changed"]:
+    # A route that ends where it began leaves the saved square unchanged
+    # though the party walked; it passes when the screen saw squares change
+    # and the game-written save agrees with the last reading.
+    seen_end = walks[-1][1]["position"][:2]
+    returned = (sum(r.get("squares_moved", 0) for _, r in walks) > 0
+                and seen_end == [got["place_after"]["x"], got["place_after"]["y"]])
+    if asked and not got["place_changed"] and not returned:
         blocked = [b for _, r in walks for b in r["blocked"]]
         raise StepFailed(f"did not move: {asked} forward move(s) asked, the saved "
                          f"square is still {got['place_after']['x']},"
@@ -2027,9 +2030,6 @@ def main(argv: list[str] | None = None) -> int:
         parse_checkpoints(args.checkpoint)
     except ValueError as e:
         ap.error(str(e))
-    if args.title not in DRIVEN and not args.stage_only:
-        ap.error(f"--title {args.title} stages but does not boot yet; "
-                 f"pass --stage-only, or drive Pool of Radiance, Curse or Silver Blades")
     if any(x.verb == "fight" for x in steps) and args.title == "ssb":
         ap.error("the fight step needs --title pool or curse")
     if args.attack_by and args.title != "curse":

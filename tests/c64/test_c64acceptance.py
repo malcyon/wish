@@ -104,15 +104,32 @@ def test_a_step_list_the_driver_cannot_run_is_refused(steps):
         A.parse_steps(steps)
 
 
-def test_a_title_the_driver_does_not_boot_is_refused_before_a_slot_is_claimed(
-        tmp_path, monkeypatch):
+def _refused_before_a_slot(tmp_path, monkeypatch, argv):
     def no_slot(*a, **k):
         raise AssertionError("a slot was claimed")
     monkeypatch.setattr(A.S, "claim_slot", no_slot)
     with pytest.raises(SystemExit) as info:
-        A.main(["--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
-                "--steps", "load", "camp-list", "--out", str(tmp_path / "out")])
+        A.main(argv + ["--out", str(tmp_path / "out")])
     assert info.value.code == 2
+
+
+def test_a_run_with_no_save_is_refused_before_a_slot_is_claimed(tmp_path, monkeypatch):
+    _refused_before_a_slot(tmp_path, monkeypatch, ["--title", "ssb",
+                           "--disks", str(tmp_path), "--steps", "load"])
+
+
+def test_a_run_with_no_game_disks_is_refused_before_a_slot_is_claimed(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "tool_disks", lambda: None)
+    _refused_before_a_slot(tmp_path, monkeypatch, [
+        "--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
+        "--steps", "load", "camp-list"])
+
+
+def test_a_bad_step_list_is_refused_before_a_slot_is_claimed(tmp_path, monkeypatch):
+    _refused_before_a_slot(tmp_path, monkeypatch, [
+        "--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
+        "--disks", str(tmp_path), "--steps", "camp-list"])
 
 
 # --- staging -----------------------------------------------------------------
@@ -1644,6 +1661,7 @@ def test_a_walk_of_anything_but_the_four_moves_is_refused(arg):
 
 def _walked(route, moved, position, blocked=()):
     return {"verb": "walk", "route": route, "asked_forward": route.count("I"),
+            "squares_moved": int(moved),
             "position": position, "blocked": list(blocked)}
 
 
@@ -1671,6 +1689,15 @@ def test_the_turn_control_passes_when_the_square_is_the_same_and_fails_when_it_i
     with pytest.raises(A.StepFailed, match="only turns were asked"):
         A.validate_walks([_walked("K", False, [5, 5, 1]),
                           _saved(P, {**turned, "y": 4})])
+
+
+def test_a_route_that_returns_to_its_start_passes_when_the_save_agrees():
+    A.validate_walks([_walked("IMI", True, [5, 5, 0]), _saved(P, P)])
+
+
+def test_a_route_that_returns_to_its_start_fails_when_the_save_differs():
+    with pytest.raises(A.StepFailed, match="the screen showed"):
+        A.validate_walks([_walked("IMI", True, [5, 5, 0]), _saved(P, {**P, "y": 3})])
 
 
 def test_the_saved_place_must_be_the_one_the_screen_showed():
@@ -1799,6 +1826,25 @@ def test_a_curse_save_that_never_shows_saving_game_is_lost_before_any_copy(
         run.log.close()
 
 
+def test_a_curse_save_with_saving_game_still_up_at_the_camp_bar_is_lost_before_any_copy(
+        tmp_path, monkeypatch):
+    class Lingering(SaveFake):
+        def screen(self):
+            s = super().screen()
+            if self.state == "back":
+                return FakeScreen(_window({10: "SAVING GAME..."}, self.bar_now()))
+            return s
+
+    run = _save_run(tmp_path, Lingering())
+    monkeypatch.setattr(A.S, "copy_closed_disk",
+                        lambda *a, **k: pytest.fail("a disk was copied"))
+    try:
+        with pytest.raises(A.StepFailed, match="still up when the camp bar returned"):
+            run.write_save()
+    finally:
+        run.log.close()
+
+
 # --- deadline inside a wait ----------------------------------------------------------
 
 class _Clock:
@@ -1892,7 +1938,6 @@ def test_silver_blades_is_driven_and_its_run_is_a_later_title_run(tmp_path, monk
     from tools.c64 import curedrive
     from tools.secret_of_the_silver_blades import ssbwarp
 
-    assert "ssb" in A.DRIVEN
     built = []
 
     class _Silver(_Pool):
@@ -1910,9 +1955,9 @@ def test_silver_blades_is_driven_and_its_run_is_a_later_title_run(tmp_path, monk
 
 def test_a_silver_blades_run_names_the_party_in_slot_order(tmp_path, monkeypatch):
     monkeypatch.setattr(A, "saved_characters", lambda path: {
-        "GUY": {"owner": 1, "memorised": []}, "ANNA": {"owner": 0, "memorised": []}})
+        "ANNA": {"owner": 1, "memorised": []}, "ZED": {"owner": 0, "memorised": []}})
     run = A.SilverRun(None, None, tmp_path, POOL_OF_RADIANCE, {}, "d", "s.D64")
-    assert run.names == ["ANNA", "GUY"]
+    assert run.names == ["ZED", "ANNA"]
     assert run.attack_by == "" and run.deadline is None
 
 
