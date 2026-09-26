@@ -31,11 +31,12 @@ bytes with what it replaced.
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/effectdrive.py`'s rest) |
+| `walk MOVES` | I forward, J left, K right, M about, each judged by `position()` before and after (the status line holds the clock): `blocked` when a forward move left x,y alone, and a turn must leave the square and change the facing by its amount |
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
 | `cast CASTER:SPELL>TARGET` | Curse only: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
-| `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded |
+| `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`) |
 
 WHO is a name as the party panel draws it, or a number counting from 1 at
 the top of the panel.  After every step the live effect rows, the clock and
@@ -54,10 +55,19 @@ whose bonus byte is not zero when `$6DD9` is set, and choosing ITEMS sets
 owner `$FF` and so matches only a row owned by the whole party.  Its hit is
 `$408F`, the checkpoint in the example above.
 
-Only Pool of Radiance is driven so far.  The later titles stage and
-`--stage-only` works for them; booting one is refused until their load, camp
-and fight are ported from `tools/c64/curedrive.py` and
-`tools/c64/laterbattle.py`.
+Pool of Radiance, Curse and Silver Blades are driven; Silver Blades has no
+`fight`.  Curse and Silver Blades `view` and `save` take the routes
+`tools/c64/curedrive.py` measured: the sheet is `VIEW` from camp with `EXIT` on
+row 24 and the member's name on row 1, and a save waits for `SAVING GAME` to
+come up and go and the camp bar to return.  Pool's save keeps
+`Session.save_game`'s fixed wait, because its own progress text is not
+measured.
+
+A run with a `walk` fails, exit 1, unless a `save` after it shows the asked
+result: a forward move changed the saved square from the staged one, turns
+alone did not, and the saved square and facing are the ones the screen showed.
+Every wait ends at the run's own deadline (`--max-seconds`), with the screen
+kept; only the boot and load, inside `Session`, cannot be cut short.
 
 `--compare A B` reads two runs' `summary.json` and lists the item rows and
 camp lists that differ, saying whether an item row differs only by the mark.
@@ -86,7 +96,7 @@ REPO = TOOLS.parent
 sys.path.insert(0, str(REPO))
 
 from automap.paths import tool_disks  # noqa: E402
-from goldbox import c64_port, c64_save, effects  # noqa: E402
+from goldbox import c64_port, c64_save, effects, world_state  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER  # noqa: E402
 from tools.c64 import effectdrive, inventorycheck, traitdrive  # noqa: E402
@@ -99,7 +109,7 @@ TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
           "ssb": "secret-of-the-silver-blades"}
 
 #: The titles this driver boots.  The others stage only.
-DRIVEN = frozenset({"pool", "curse"})
+DRIVEN = frozenset({"pool", "curse", "ssb"})
 
 #: Ten trait slots per record; eight party slots in a save.
 TRAIT_SLOTS = 10
@@ -217,7 +227,11 @@ class Step:
 #: Each step and whether it takes an argument: never, optionally, always.
 VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "rest": "must", "fight": "may", "peek": "must", "save": "never",
-         "cast": "must", "cure": "must"}
+         "cast": "must", "cure": "must", "walk": "must"}
+
+#: The moves `walk` takes, the game's own letters: forward, left, right, about.
+#: Each turn's change to the facing, which the C64 counts N 0, E 1, S 2, W 3.
+TURNS = {"I": 0, "J": -1, "K": 1, "M": 2}
 
 
 def parse_rest(arg: str) -> tuple[int, int]:
@@ -241,6 +255,15 @@ def parse_peek(arg: str) -> tuple[int, int]:
     if not (0 <= addr <= 0xFFFF and 1 <= n <= 0x1000 and addr + n <= 0x10000):
         raise ValueError(f"peek {arg!r}: out of range")
     return addr, n
+
+
+def parse_walk(arg: str) -> str:
+    """`I`, `K`, `IIK`: the moves in order, upper-cased."""
+    route = arg.strip().upper()
+    if not route or any(c not in TURNS for c in route):
+        raise ValueError(f"walk {arg!r}: the moves are I forward, J left, "
+                         f"K right, M about")
+    return route
 
 
 def parse_cast(arg: str) -> tuple[str, str, str]:
@@ -280,6 +303,8 @@ def parse_steps(texts) -> list[Step]:
             parse_rest(arg)
         elif verb == "peek":
             parse_peek(arg)
+        elif verb == "walk":
+            parse_walk(arg)
         elif verb == "cast":
             parse_cast(arg)
         elif verb == "cure":
@@ -377,11 +402,36 @@ def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
     image.save(str(dest))
     took["effects"] = _effect_list(payload)
     took["magic_items"] = magic_items(payload, box)
+    took["place"] = place_of(payload, game)
     return took
 
 
+def place_of(payload: bytes, game) -> dict:
+    """The area, the square and the facing (0 to 3) a save payload holds,
+    through the reader every conversion uses."""
+    state = world_state.from_c64(bytes(payload), game)
+    return {"area": state.area, "x": state.x, "y": state.y,
+            "facing": state.facing}
+
+
+def place_verdict(before: dict | None, after: dict) -> dict:
+    """Whether the square, the area or the facing differs between two places.
+
+    `place_changed` is the square and the area only: a turn changes the
+    facing and leaves the party where it stood, and that is the control a
+    walk is judged against.
+    """
+    if before is None:
+        return {"place_before": None, "place_after": after,
+                "place_changed": None, "facing_changed": None}
+    return {"place_before": before, "place_after": after,
+            "place_changed": (before["area"], before["x"], before["y"])
+            != (after["area"], after["x"], after["y"]),
+            "facing_changed": before["facing"] != after["facing"]}
+
+
 def decode_save(path: pathlib.Path, staged: dict) -> dict:
-    """The effect rows, the magic items and every staged byte, off a disk."""
+    """The effect rows, the place, the magic items and every staged byte, off a disk."""
     image = D64.open(str(path))
     game = c64_port.detect(image)
     box = c64_save.CONTAINERS[game.key]
@@ -390,6 +440,7 @@ def decode_save(path: pathlib.Path, staged: dict) -> dict:
     return {
         "effects": _effect_list(payload),
         "clock": clock,
+        **place_verdict(staged.get("place"), place_of(payload, game)),
         "magic_items": magic_items(payload, box),
         "traits": [{**t, "saved": payload[t["offset"]]} for t in staged["traits"]],
         "items": [{**i, "saved": payload[i["offset"]]} for i in staged["items"]],
@@ -521,6 +572,12 @@ class Log(SC.Log):
 class PoolRun:
     """One booted Pool of Radiance session and the steps run on it."""
 
+    #: The run's own deadline on `clock`, and the clock; `run` sets both.  A
+    #: wait that would outlast the deadline ends there, with the screen kept,
+    #: rather than at whatever moment an outer `timeout` kills the process.
+    deadline: float | None = None
+    clock = staticmethod(time.monotonic)
+
     def __init__(self, sess, log: Log, out: pathlib.Path, game, points: dict):
         self.sess = sess
         self.log = log
@@ -553,22 +610,42 @@ class PoolRun:
                       rows=[r.rstrip() for r in rows if r.strip()])
         return rows
 
-    def wait_rows(self, ok, timeout: float) -> list[str] | None:
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+    def spent(self) -> bool:
+        return self.deadline is not None and self.clock() >= self.deadline
+
+    def budget(self, timeout: float, what: str) -> float:
+        """TIMEOUT, or what is left of the run when that is less; none left
+        is a lost step, so a long wait is never begun past the deadline."""
+        if self.deadline is None:
+            return timeout
+        left = self.deadline - self.clock()
+        if left <= 0:
+            raise self.fail("deadline", f"before {what}")
+        return min(timeout, left)
+
+    def wait_rows(self, ok, timeout: float, what: str = "a screen") -> list[str] | None:
+        limit = self.clock() + timeout
+        while self.clock() < limit:
+            if self.spent():
+                raise self.fail("deadline", f"waiting for {what}")
             rows = self.rows()
             if rows and ok(rows):
                 return rows
             self.sess.handle_prompt()
             time.sleep(0.4)
+        if self.spent():
+            raise self.fail("deadline", f"waiting for {what}")
         return None
 
     def fail(self, tag: str, why: str) -> StepFailed:
+        if self.spent():
+            why = f"the run's seconds were spent, {why}"
+            tag = "deadline"
         self.capture(f"lost-{tag}")
         return StepFailed(why)
 
     def choose_bar(self, word: str, timeout: float) -> bool:
-        return self.sess.select_bar(word, timeout=timeout)
+        return self.sess.select_bar(word, timeout=self.budget(timeout, word))
 
     # -- where the party is ------------------------------------------------------
     @staticmethod
@@ -768,6 +845,51 @@ class PoolRun:
         return {"walked": taken, "acted": result.acted,
                 **dataclasses.asdict(result)}
 
+    def walk(self, arg: str) -> dict:
+        """The moves in ARG, each judged by the square before and after.
+
+        The status line holds the clock, so `Session.walk_one`'s answer is
+        recorded and never believed: a bump advances the clock and the line
+        still changes.  A forward move is blocked when x,y did not change; a
+        turn is right when the facing is the one it asks for and the square
+        did not change, which is the control that a walk is not a turn.
+        """
+        route = parse_walk(arg)
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        start = list(self.sess.position())
+        facing = start[2]
+        moves = []
+        for move in route:
+            self.budget(1, f"walk {route}")
+            before = list(self.sess.position())
+            status_moved = self.sess.walk_one(move)
+            refused = getattr(self.sess, "walk_refused", None)
+            if refused:
+                raise self.fail("walk", f"walk {route}: {refused}")
+            self.sess.handle_prompt()
+            self.sess.settle(2)
+            after = list(self.sess.position())
+            if facing is not None:
+                facing = (facing + TURNS[move]) % 4
+            moves.append({"move": move, "before": before, "after": after,
+                          "blocked": move == "I" and before[:2] == after[:2],
+                          "moved": before[:2] != after[:2],
+                          "status_moved": status_moved})
+        end = list(self.sess.position())
+        self.capture(f"walked-{route}")
+        if "I" not in route and end[:2] != start[:2]:
+            raise self.fail("walk", f"walk {route} has no forward move and the "
+                                    f"square went from {start[:2]} to {end[:2]}")
+        if facing is not None and end[2] is not None and end[2] != facing:
+            raise self.fail("walk", f"walk {route} should leave the party facing "
+                                    f"{facing}, it faces {end[2]}")
+        return {"route": route, "start": start, "position": end, "moves": moves,
+                "asked_forward": route.count("I"),
+                "squares_moved": sum(m["moved"] for m in moves),
+                "blocked": [i for i, m in enumerate(moves) if m["blocked"]],
+                "expected_facing": facing}
+
     def peek(self, arg: str) -> dict:
         addr, n = parse_peek(arg)
         with self.sess.mon(10) as m:
@@ -775,21 +897,29 @@ class PoolRun:
             m.resume()
         return {"address": f"${addr:04X}", "bytes": data.hex(" ")}
 
+    def write_save(self) -> list[str]:
+        """Pool's `ENCAMP > SAVE`, and the screen it ends on.
+
+        `Session.save_game` gives the write a fixed fourteen seconds, which a
+        slow pooled slot can overrun, and Pool's own progress text is not
+        measured here (`SAVING GAME` is, in Curse and Silver Blades: see
+        `CurseRun.write_save`).  A bar coming back can precede the end of the
+        write, so this wait does not prove it finished: `copy_closed_disk` is
+        what guards the copy, by refusing a disk whose directory is open.
+        """
+        if not self.sess.save_game():
+            raise self.fail("save", "ENCAMP > SAVE did not complete")
+        back = self.wait_rows(
+            lambda r: any(w in r[24] for w in (CAMP_BAR, SAVE_BAR, SAVE_ERROR))
+            or self.at_world(r[24]), SAVE_WAIT, "a bar after SAVE GAME")
+        if back is None:
+            raise self.fail("save", "no bar came back after SAVE GAME")
+        return back
+
     def save(self, staged: dict) -> dict:
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
-        if not self.sess.save_game():
-            raise self.fail("save", "ENCAMP > SAVE did not complete")
-        # `save_game` gives the write a fixed fourteen seconds, which a slow
-        # pooled slot can overrun.  A bar coming back can precede the end of
-        # the write (the world bar shows early), so this wait does not prove
-        # the write finished: `copy_closed_disk` below is what guards the
-        # copy, by refusing a disk whose directory is still open.
-        back = self.wait_rows(
-            lambda r: any(w in r[24] for w in (CAMP_BAR, SAVE_BAR, SAVE_ERROR))
-            or self.at_world(r[24]), SAVE_WAIT)
-        if back is None:
-            raise self.fail("save", "no bar came back after SAVE GAME")
+        back = self.write_save()
         if SAVE_ERROR in back[24]:
             raise self.fail("save", f"the game could not save: {back[24].strip()}")
         self.capture("saved")
@@ -888,7 +1018,67 @@ class CurseRun(PoolRun):
         return False
 
     def choose_bar(self, word: str, timeout: float) -> bool:
-        return self.sess.press_bar(word, timeout=timeout)
+        return self.sess.press_bar(word, timeout=self.budget(timeout, word))
+
+    # -- the sheet and the save, on the routes `curedrive.py` measured ---------------
+    def open_sheet(self, who: str) -> list[str]:
+        """`VIEW` from camp, waited for as `EXIT` on row 24 with the member's
+        name on row 1: Curse's and Silver Blades' sheet bar is not Pool's."""
+        if not self.to_camp():
+            raise self.fail("camp", "ENCAMP never put up the camp bar")
+        index = self.panel_index(who)
+        if not self.sess.select_party(index):
+            raise self.fail("panel", f"the panel highlight would not go onto {who}")
+        if not self.choose_bar("VIEW", timeout=20):
+            raise self.fail("view", "VIEW could not be chosen")
+        name = self.names[index] if 0 <= index < len(self.names) else ""
+        rows = self.wait_rows(
+            lambda r: "EXIT" in r[24] and CAMP_BAR not in r[24]
+            and name in r[1].upper() and bool(r[1].strip()),
+            self.budget(30, "the sheet"), f"{name or who}'s sheet")
+        if rows is None:
+            raise self.fail("view", f"no sheet naming {name or who} came up")
+        self.sess.settle(0.8)
+        return self.capture(f"sheet-{who}")
+
+    def close_sheet(self) -> None:
+        bar = self.bar()
+        if "EXIT" in bar and CAMP_BAR not in bar:
+            self.choose_bar("EXIT", timeout=15)
+        if not self.sess.wait_bar(CAMP_BAR, self.budget(20, "the camp bar")):
+            raise self.fail("view-exit", "the camp bar never came back after the sheet")
+
+    def view(self, who: str) -> dict:
+        rows = self.open_sheet(who)
+        self.close_sheet()
+        self.to_world()
+        return {"who": who, "sheet": [r.rstrip() for r in rows if r.strip()]}
+
+    SAVING = "SAVING GAME"
+
+    def write_save(self) -> list[str]:
+        """`SAVE`, `SAVE GAME`, then the write itself: `SAVING GAME` seen, gone,
+        and the camp bar back.  A copy taken while it is still up finds the
+        save file unclosed, which `copy_closed_disk` refuses; waiting for the
+        bar is what keeps the run from having no save at all."""
+        if not self.to_camp():
+            raise self.fail("camp", "ENCAMP never put up the camp bar")
+        for word in ("SAVE", "SAVE GAME"):
+            if not self.sess.wait_bar(word, self.budget(45, word)):
+                raise self.fail("save", f"{word} never appeared on row 24")
+            if word == "SAVE GAME":
+                self.sess.attach(self.sess.save_disk)
+            if not self.choose_bar(word, timeout=30):
+                raise self.fail("save", f"{word} could not be chosen")
+        if self.sess.wait_text(self.SAVING, self.budget(30, self.SAVING))[0] is None:
+            raise self.fail("save", f"{self.SAVING} never came up")
+        if not self.sess.wait_bar(CAMP_BAR, self.budget(SAVE_WAIT, "the write")):
+            raise self.fail("save", "the camp bar never came back after the write")
+        self.sess.settle(4)
+        back = self.rows()
+        if _has(back, self.SAVING):
+            raise self.fail("save", f"{self.SAVING} was still up when the camp bar returned")
+        return back
 
     # -- the camp cures ------------------------------------------------------------
     #: Whether the run gave VICE a numpad joystick, so that KP_0 is fire.
@@ -1333,6 +1523,58 @@ class CurseRun(PoolRun):
                 **dataclasses.asdict(result)}
 
 
+class SilverRun(CurseRun):
+    """Silver Blades on `ssbwarp.SSBSession`: Curse's camp, sheet and save routes,
+    its own load, and no fight (its route to a fight is Curse's tavern)."""
+
+    def __init__(self, sess, log, out, game, points, disks, staged_disk):
+        PoolRun.__init__(self, sess, log, out, game, points)
+        party = saved_characters(staged_disk)
+        self.names = [n for n, _ in sorted(party.items(),
+                                           key=lambda kv: kv[1]["owner"])]
+        self.attack_by = ""
+        self.attack_owner = None
+        self.attack_evidence = self.quit_evidence = None
+        self.first_effect_loss = self.last_effect_row = None
+        self.quit_nonattacking = False
+        self.disks = disks
+        self.staged_disk = staged_disk
+
+    def load(self) -> dict:
+        from tools.secret_of_the_silver_blades import ssbwarp
+
+        if not self.sess.boot():
+            raise StepFailed(self.sess.boot_failure or "boot failed")
+        if not ssbwarp.load_party(self.sess):
+            raise self.fail("load", "the game did not load the party")
+        addr = ssbwarp.Addresses(self.sess.game, self.disks)
+        if not ssbwarp.enter_world(self.sess, addr, timeout=240):
+            raise self.fail("world", "Silver Blades never reached the world")
+        ssbwarp.clear_messages(self.sess)
+        # A loaded party can arrive on the starting-treasure bar or a sheet it
+        # opens, and `to_world_bar` answers neither (`curedrive._enter_silver`).
+        for _ in range(12):
+            bar = self.bar()
+            if "ENCAMP" in bar:
+                break
+            if "LEAVE TREASURE" in bar:
+                self.sess.press_bar("LEAVE TREASURE")
+            elif "EXIT" in bar.split():
+                self.sess.press_bar("EXIT")
+            elif not self.sess.to_world_bar(timeout=20):
+                continue
+            time.sleep(1.5)
+        else:
+            raise self.fail("world-bar", f"the world bar never came back: {self.bar()!r}")
+        with self.sess.mon(10) as m:
+            for name, point in self.points.items():
+                self.armed[name] = m.checkpoint_set(point, exec_=True, stop=False)
+            m.resume()
+        self.capture("world")
+        return {"position": list(self.sess.position()),
+                "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
+
+
 # --- the run ---------------------------------------------------------------------
 
 def git_state() -> dict:
@@ -1496,6 +1738,47 @@ def validate_curse_cures(results: list[dict], saved_path,
                              f"{CAMP_SPELL_IDS[act['spell']]} memorised in the saved game")
 
 
+def validate_walks(results: list[dict]) -> None:
+    """Require the game-written save to agree with the walks asked.
+
+    A forward move asked must have changed the saved square from the staged
+    one; walks of turns alone must not have; and the saved square and facing
+    must be the ones the screen showed after the last walk, unless a fight
+    moved the party since.  The screen's answer alone is never enough: the
+    status line holds the clock.
+    """
+    walks = [(i, r) for i, r in enumerate(results) if r["verb"] == "walk"]
+    if not walks:
+        return
+    last = walks[-1][0]
+    saved = [r for r in results[last + 1:] if r["verb"] == "save"]
+    if not saved:
+        raise StepFailed("a walk was asked and no save was read after it")
+    got = saved[-1]
+    if got.get("place_changed") is None:
+        raise StepFailed("a walk was asked and the staged disk has no place to compare")
+    asked = sum(r["asked_forward"] for _, r in walks)
+    if asked and not got["place_changed"]:
+        blocked = [b for _, r in walks for b in r["blocked"]]
+        raise StepFailed(f"did not move: {asked} forward move(s) asked, the saved "
+                         f"square is still {got['place_after']['x']},"
+                         f"{got['place_after']['y']} (blocked at moves {blocked})")
+    if not asked and got["place_changed"]:
+        raise StepFailed("only turns were asked and the saved square changed from "
+                         f"{got['place_before']} to {got['place_after']}")
+    if any(r["verb"] == "fight" for r in results[last + 1:]):
+        return
+    seen = walks[-1][1]["position"]
+    after = got["place_after"]
+    if seen[2] is None:
+        if seen[:2] != [after["x"], after["y"]]:
+            raise StepFailed(f"the screen showed {seen[:2]}, the game-written save "
+                             f"holds {[after['x'], after['y']]}")
+    elif seen != [after["x"], after["y"], after["facing"]]:
+        raise StepFailed(f"the screen showed {seen}, the game-written save holds "
+                         f"{[after['x'], after['y'], after['facing']]}")
+
+
 def give_joystick(vicerc: pathlib.Path) -> None:
     """Set `JoyDevice2=1` inside the `[C64SC]` section of the slot's vicerc.
 
@@ -1587,6 +1870,13 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 give_joystick(pathlib.Path(slot.vicerc))
             sess = curserun.CurseSession(first, slot=slot)
             sess.save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
+        elif args.title == "ssb":
+            from tools.c64 import curedrive
+            from tools.secret_of_the_silver_blades import ssbwarp
+
+            first = ssbwarp.stage(slot, args.disks, str(staged_disk))
+            sess = curedrive._silver_session_class()(first, slot=slot)
+            sess.save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
         else:
             first = S.stage_disks(slot, args.disks)
             S.stage_writable(staged_disk, pathlib.Path(slot.dir) / "SIDE0.D64")
@@ -1595,7 +1885,10 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         pool = (CurseRun(sess, log, out, game, points, args.disks, staged_disk,
                          getattr(args, "attack_by", ""),
                          getattr(args, "quit_nonattacking", False)) if args.title == "curse"
+                else SilverRun(sess, log, out, game, points, args.disks, staged_disk)
+                if args.title == "ssb"
                 else PoolRun(sess, log, out, game, points))
+        pool.deadline, pool.clock = deadline, clock
         if args.title == "curse":
             pool.probe_step = getattr(args, "probe_step", False)
             pool.joy = getattr(args, "joy", False)
@@ -1615,6 +1908,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.view(step.arg)
             elif step.verb == "rest":
                 got = pool.rest(step.arg)
+            elif step.verb == "walk":
+                got = pool.walk(step.arg)
             elif step.verb == "fight":
                 got = pool.fight(step.arg, args.walk, args.walk_steps)
             elif step.verb == "peek":
@@ -1643,6 +1938,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                     raise StepFailed("id 25 first disappeared at "
                                      + pool.first_effect_loss["phase"])
                 validate_curse_attack(summary["results"], attack, args.attack_by)
+        validate_walks(summary["results"])
         if any(s.verb in ("cast", "cure") for s in steps):
             kept = next((r["kept"] for r in reversed(summary["results"])
                          if r["verb"] == "save"), None)
@@ -1687,7 +1983,7 @@ def main(argv: list[str] | None = None) -> int:
                     metavar="SLOT:ITEM:OFFSET=VALUE")
     ap.add_argument("--steps", nargs="*", default=[],
                     help="load, camp-list [WHO], 'items WHO', 'view WHO', "
-                         "'rest 8h', 'fight [SECONDS]', 'peek ADDR N', "
+                         "'rest 8h', 'walk I', 'fight [SECONDS]', 'peek ADDR N', "
                          "'cast CASTER:SPELL>TARGET', 'cure PALADIN>TARGET', save")
     ap.add_argument("--checkpoint", action="append", default=[],
                     metavar="ADDR[=NAME]",
@@ -1733,7 +2029,9 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(str(e))
     if args.title not in DRIVEN and not args.stage_only:
         ap.error(f"--title {args.title} stages but does not boot yet; "
-                 f"pass --stage-only, or drive Pool of Radiance or Curse")
+                 f"pass --stage-only, or drive Pool of Radiance, Curse or Silver Blades")
+    if any(x.verb == "fight" for x in steps) and args.title == "ssb":
+        ap.error("the fight step needs --title pool or curse")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
     if any(x.verb in ("cast", "cure") for x in steps) and args.title != "curse":

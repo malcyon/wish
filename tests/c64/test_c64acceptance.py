@@ -1097,7 +1097,8 @@ class _Pool:
         pass
 
 
-def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=None):
+def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=None,
+           pool=_Pool, title="pool"):
     import types
     slot = slot or _Slot(tmp_path)
     _Pool.clock = [0.0]
@@ -1107,9 +1108,9 @@ def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=Non
     monkeypatch.setattr(A.S, "stage_writable",
                         lambda src, dest: __import__("shutil").copyfile(src, dest))
     monkeypatch.setattr(A.S, "Session", _Sess)
-    monkeypatch.setattr(A, "PoolRun", _Pool)
+    monkeypatch.setattr(A, "PoolRun", pool)
     args = types.SimpleNamespace(
-        title="pool", stage_row=[], stage_trait=[], stage_item=[],
+        title=title, stage_row=[], stage_trait=[], stage_item=[],
         stage_only=False, checkpoint=[], pool=None, issue="i", run="r",
         disks=None, walk="I", walk_steps=1, max_seconds=max_seconds)
     out = tmp_path / "out"
@@ -1521,3 +1522,403 @@ def test_a_curse_run_with_cures_gives_the_slot_a_joystick_and_validates_them(
                  _fixture_disk(tmp_path)) == 0
     assert seen == ["joystick at build: 1",
                     ("save", "saved.D64")]
+
+
+# --- the place a save holds, the walk judged by it, and the save's wait ---------------
+
+def _moved_copy(tmp_path, src, dx=0, turn=0):
+    """A copy of `src` with the party's square and facing moved in the payload,
+    as the game's own resave after a walk would hold them."""
+    image = D64.open(str(src))
+    addr, body = split_load_address(image.read_file(POOL_OF_RADIANCE.save_file))
+    body = bytearray(body)
+    at = c64_save.CONTAINERS[POOL_OF_RADIANCE.key].position
+    body[at] += dx
+    body[at + 2] = (body[at + 2] + turn) % 4
+    image.write_file_inplace(POOL_OF_RADIANCE.save_file,
+                             addr.to_bytes(2, "little") + bytes(body))
+    dest = tmp_path / f"moved-{dx}-{turn}.d64"
+    image.save(str(dest))
+    return dest
+
+
+def _staged_fixture(tmp_path):
+    src = _fixture_disk(tmp_path)
+    return src, A.stage(src, tmp_path / "staged.d64", "pool-of-radiance")
+
+
+def test_the_staged_place_is_kept_beside_the_bytes_written(tmp_path):
+    _, staged = _staged_fixture(tmp_path)
+    assert set(staged["place"]) == {"area", "x", "y", "facing"}
+
+
+def test_a_save_read_reports_whether_the_place_changed(tmp_path):
+    _, staged = _staged_fixture(tmp_path)
+    same = A.decode_save(tmp_path / "staged.d64", staged)
+    assert same["place_changed"] is False and same["facing_changed"] is False
+    assert same["place_before"] == same["place_after"] == staged["place"]
+
+    stepped = A.decode_save(_moved_copy(tmp_path, tmp_path / "staged.d64", dx=1), staged)
+    assert stepped["place_changed"] is True
+    assert stepped["place_after"]["x"] == staged["place"]["x"] + 1
+
+
+def test_a_turn_changes_the_facing_and_not_the_place(tmp_path):
+    _, staged = _staged_fixture(tmp_path)
+    turned = A.decode_save(_moved_copy(tmp_path, tmp_path / "staged.d64", turn=1), staged)
+    assert turned["place_changed"] is False and turned["facing_changed"] is True
+    assert turned["place_after"]["facing"] == (staged["place"]["facing"] + 1) % 4
+
+
+class WalkSession(FakeSession):
+    """A party on a grid whose every move advances the clock, so the status
+    line changes on a bump and `walk_one` answers True for all of them."""
+
+    def __init__(self, x=5, y=5, facing=0, walls=()):
+        super().__init__({"world": _window({}, WORLD_BAR)}, {}, "world")
+        self.x, self.y, self.facing, self.walls = x, y, facing, set(walls)
+        self.clock = 0
+        self.walk_refused = None
+        self.pressed = []
+        self.drift = 0
+
+    def position(self):
+        return self.x, self.y, self.facing
+
+    def walk_one(self, move, *a, **k):
+        self.pressed.append(move)
+        self.clock += 1
+        if move == "I":
+            dx, dy = ((0, -1), (1, 0), (0, 1), (-1, 0))[self.facing]
+            if (self.x + dx, self.y + dy) not in self.walls:
+                self.x, self.y = self.x + dx, self.y + dy
+        else:
+            self.facing = (self.facing + {"J": -1, "K": 1, "M": 2}[move]) % 4
+        self.facing = (self.facing + self.drift) % 4
+        return True
+
+
+def test_walk_one_step_moves_one_square_judged_by_the_square(tmp_path):
+    sess = WalkSession()
+    run, log = _pool_run(tmp_path, sess)
+    got = run.walk("I")
+    log.close()
+    assert got["position"] == [5, 4, 0] and got["squares_moved"] == 1
+    assert got["blocked"] == [] and got["asked_forward"] == 1
+
+
+def test_a_bump_that_ticks_the_clock_is_blocked_and_not_a_step(tmp_path):
+    sess = WalkSession(walls={(5, 4)})
+    run, log = _pool_run(tmp_path, sess)
+    got = run.walk("I")
+    log.close()
+    assert sess.pressed == ["I"]
+    assert got["moves"][0]["status_moved"] is True
+    assert got["blocked"] == [0] and got["squares_moved"] == 0
+    assert got["position"] == [5, 5, 0]
+
+
+def test_walk_k_is_the_control_it_turns_and_stays_on_the_square(tmp_path):
+    sess = WalkSession()
+    run, log = _pool_run(tmp_path, sess)
+    got = run.walk("K")
+    log.close()
+    assert got["position"] == [5, 5, 1] and got["squares_moved"] == 0
+    assert got["asked_forward"] == 0 and got["expected_facing"] == 1
+
+
+def test_a_turn_that_leaves_the_wrong_facing_is_lost(tmp_path):
+    sess = WalkSession()
+    sess.drift = 1
+    run, log = _pool_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="should leave the party facing 1"):
+        run.walk("K")
+    log.close()
+
+
+@pytest.mark.parametrize("arg", ["", "X", "IQ", "walk"])
+def test_a_walk_of_anything_but_the_four_moves_is_refused(arg):
+    with pytest.raises(ValueError):
+        A.parse_steps(["load", f"walk {arg}".strip()])
+
+
+def _walked(route, moved, position, blocked=()):
+    return {"verb": "walk", "route": route, "asked_forward": route.count("I"),
+            "position": position, "blocked": list(blocked)}
+
+
+def _saved(before, after):
+    return {"verb": "save", **A.place_verdict(before, after)}
+
+
+P = {"area": 0, "x": 5, "y": 5, "facing": 0}
+
+
+def test_a_forward_walk_whose_saved_square_is_the_staged_one_is_lost():
+    results = [_walked("I", False, [5, 5, 0], blocked=[0]), _saved(P, P)]
+    with pytest.raises(A.StepFailed, match="did not move.*blocked at moves \\[0\\]"):
+        A.validate_walks(results)
+
+
+def test_a_forward_walk_and_a_saved_square_one_on_pass():
+    after = {**P, "y": 4}
+    A.validate_walks([_walked("I", True, [5, 4, 0]), _saved(P, after)])
+
+
+def test_the_turn_control_passes_when_the_square_is_the_same_and_fails_when_it_is_not():
+    turned = {**P, "facing": 1}
+    A.validate_walks([_walked("K", False, [5, 5, 1]), _saved(P, turned)])
+    with pytest.raises(A.StepFailed, match="only turns were asked"):
+        A.validate_walks([_walked("K", False, [5, 5, 1]),
+                          _saved(P, {**turned, "y": 4})])
+
+
+def test_the_saved_place_must_be_the_one_the_screen_showed():
+    with pytest.raises(A.StepFailed, match="the screen showed"):
+        A.validate_walks([_walked("I", True, [5, 4, 0]), _saved(P, {**P, "y": 3})])
+
+
+def test_a_walk_with_no_save_after_it_is_lost():
+    with pytest.raises(A.StepFailed, match="no save was read"):
+        A.validate_walks([_walked("I", True, [5, 4, 0])])
+
+
+class _WalkedPool(_Pool):
+    def walk(self, arg):
+        return _walked("I", False, [5, 5, 0], blocked=[0])
+
+    def save(self, staged):
+        return {"kept": "x", **A.place_verdict(P, P)}
+
+
+def test_a_run_whose_walk_did_not_move_the_saved_party_exits_one(tmp_path, monkeypatch):
+    rc, _, out = _drive(tmp_path, monkeypatch, ["load", "walk I", "save"], 1e9,
+                        pool=_WalkedPool)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and not summary["completed"]
+    assert summary["lost"].startswith("did not move")
+
+
+# --- the save's wait ---------------------------------------------------------------
+
+class SaveFake(FakeSession):
+    """Curse's camp with a write that shows `SAVING GAME` for a while."""
+
+    def __init__(self, writing_polls=4):
+        super().__init__({}, {}, "camp")
+        self.polls = writing_polls
+        self.log = []
+        self.save_disk = "SIDE0.D64"
+
+    def save_game(self, *a):
+        raise AssertionError("the fixed-sleep save_game was used")
+
+    def bar_now(self):
+        return {"camp": "ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT",
+                "save": "SAVE GAME  EXIT", "writing": "",
+                "back": "ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT"}[self.state]
+
+    def screen(self):
+        if self.state == "writing":
+            self.polls -= 1
+            if self.polls <= 0:
+                self.state = "back"
+        rows = _window({10: "SAVING GAME..."} if self.state == "writing" else {},
+                       self.bar_now())
+        return FakeScreen(rows)
+
+    def wait_bar(self, word, timeout=0):
+        for _ in range(50):
+            if word in self.screen().row(24):
+                return True
+        return False
+
+    def wait_text(self, needle, timeout=0):
+        for _ in range(50):
+            s = self.screen()
+            if any(needle in s.row(r) for r in range(25)):
+                return needle, s
+        return None, None
+
+    def press_bar(self, label, row=24, timeout=0):
+        self.log.append(("press", label))
+        self.state = {"SAVE": "save", "SAVE GAME": "writing"}.get(label, self.state)
+        return True
+
+    def attach(self, path):
+        self.log.append(("attach", path))
+
+
+def _save_run(tmp_path, sess):
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess = sess
+    run.out = tmp_path
+    run.log = A.Log(tmp_path)
+    run.shots = 0
+    run.game = POOL_OF_RADIANCE
+    run.to_world = lambda tries=10: True
+    return run
+
+
+def test_a_curse_save_copies_only_after_saving_game_is_gone_and_the_camp_bar_is_back(
+        tmp_path, monkeypatch):
+    _, staged = _staged_fixture(tmp_path)
+    sess = SaveFake()
+    run = _save_run(tmp_path, sess)
+    seen = []
+
+    def copy(src, dest, **kw):
+        s = sess.screen()
+        seen.append((s.row(24).strip(), any("SAVING GAME" in s.row(r) for r in range(25)), kw))
+        dest.write_bytes((tmp_path / "staged.d64").read_bytes())
+        return "copied"
+
+    monkeypatch.setattr(A.S, "copy_closed_disk", copy)
+    try:
+        got = run.save(staged)
+    finally:
+        run.log.close()
+    assert seen == [("ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT", False,
+                     {"attempts": 30, "backoff": 1.0})]
+    assert sess.log == [("press", "SAVE"), ("attach", "SIDE0.D64"),
+                        ("press", "SAVE GAME")]
+    assert got["place_changed"] is False
+
+
+def test_a_curse_save_that_never_shows_saving_game_is_lost_before_any_copy(
+        tmp_path, monkeypatch):
+    sess = SaveFake()
+    sess.wait_text = lambda needle, timeout=0: (None, None)
+    run = _save_run(tmp_path, sess)
+    monkeypatch.setattr(A.S, "copy_closed_disk",
+                        lambda *a, **k: pytest.fail("a disk was copied"))
+    try:
+        with pytest.raises(A.StepFailed, match="SAVING GAME never came up"):
+            run.write_save()
+    finally:
+        run.log.close()
+
+
+# --- deadline inside a wait ----------------------------------------------------------
+
+class _Clock:
+    def __init__(self, monkeypatch):
+        self.now = 0.0
+        monkeypatch.setattr(A.time, "sleep", lambda s: self.advance(s))
+
+    def advance(self, seconds):
+        self.now += seconds
+
+    def __call__(self):
+        return self.now
+
+
+def test_a_wait_that_would_outlast_the_run_ends_at_the_deadline_with_the_screen_kept(
+        tmp_path, monkeypatch):
+    clock = _Clock(monkeypatch)
+    run, log = _pool_run(tmp_path, FakeSession({"w": _window({}, "NOTHING")}, {}, "w"))
+    run.clock, run.deadline = clock, 5.0
+    with pytest.raises(A.StepFailed, match="seconds were spent.*waiting for the bar"):
+        run.wait_rows(lambda r: False, 1000, "the bar")
+    log.close()
+    assert 5.0 <= clock.now < 6.0
+    assert len(list(tmp_path.glob("*-lost-deadline.txt"))) == 1
+
+
+def test_a_bar_wait_is_never_given_more_than_the_run_has_left(tmp_path, monkeypatch):
+    clock = _Clock(monkeypatch)
+    clock.now = 100.0
+    sess = FakeSession({"w": _window({}, WORLD_BAR)}, {}, "w")
+    asked = []
+    sess.select_bar = lambda label, row=24, timeout=0: asked.append(timeout) or True
+    run, log = _pool_run(tmp_path, sess)
+    run.clock, run.deadline = clock, 103.0
+    assert run.choose_bar("ENCAMP", timeout=20) is True
+    assert asked == [3.0]
+    clock.now = 103.0
+    with pytest.raises(A.StepFailed, match="seconds were spent, before ENCAMP"):
+        run.choose_bar("ENCAMP", timeout=20)
+    log.close()
+    assert asked == [3.0]
+
+
+# --- the sheet on the later titles ------------------------------------------------------
+
+class SheetFake(_CurseFake):
+    def wait_bar(self, word, timeout=0):
+        return word in self.screen().row(24)
+
+
+def _sheet_screens(named):
+    return {"camp": _window({}, "ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT"),
+            "sheet": _window({1: named}, "EXIT")}
+
+
+def _sheet_run(tmp_path, named, monkeypatch):
+    sess = SheetFake(_sheet_screens(named),
+                     {("camp", ("party", 1)): "camp", ("camp", ("bar", "VIEW")): "sheet",
+                      ("sheet", ("bar", "EXIT")): "camp"}, "camp")
+    run = _curse_run(tmp_path, sess)
+    run.panel_index = lambda who: int(who) - 1
+    run.to_world = lambda tries=10: True
+    run.clock = _Clock(monkeypatch)
+    return run, sess
+
+
+def test_a_curse_view_waits_for_exit_and_the_members_name_and_returns_to_camp(
+        tmp_path, monkeypatch):
+    run, sess = _sheet_run(tmp_path, "SHARA  FEMALE ELF", monkeypatch)
+    try:
+        got = run.view("2")
+    finally:
+        run.log.close()
+    assert got["who"] == "2" and any("SHARA" in r for r in got["sheet"])
+    assert sess.state == "camp"
+
+
+def test_a_sheet_that_names_someone_else_is_not_taken_for_the_member_asked_for(
+        tmp_path, monkeypatch):
+    run, sess = _sheet_run(tmp_path, "PHILIPPE  MALE HUMAN", monkeypatch)
+    try:
+        with pytest.raises(A.StepFailed, match="no sheet naming SHARA"):
+            run.view("2")
+    finally:
+        run.log.close()
+
+
+# --- Silver Blades -----------------------------------------------------------------------
+
+def test_silver_blades_is_driven_and_its_run_is_a_later_title_run(tmp_path, monkeypatch):
+    from tools.c64 import curedrive
+    from tools.secret_of_the_silver_blades import ssbwarp
+
+    assert "ssb" in A.DRIVEN
+    built = []
+
+    class _Silver(_Pool):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            built.append(a[-2:])
+
+    monkeypatch.setattr(A, "SilverRun", _Silver)
+    monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [], "magic_items": {}})
+    monkeypatch.setattr(ssbwarp, "stage", lambda *a, **k: "first")
+    monkeypatch.setattr(curedrive, "_silver_session_class", lambda: _Sess)
+    rc, _, _ = _drive(tmp_path, monkeypatch, ["load"], 1e9, title="ssb")
+    assert rc == 0 and len(built) == 1
+
+
+def test_a_silver_blades_run_names_the_party_in_slot_order(tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "saved_characters", lambda path: {
+        "GUY": {"owner": 1, "memorised": []}, "ANNA": {"owner": 0, "memorised": []}})
+    run = A.SilverRun(None, None, tmp_path, POOL_OF_RADIANCE, {}, "d", "s.D64")
+    assert run.names == ["ANNA", "GUY"]
+    assert run.attack_by == "" and run.deadline is None
+
+
+def test_the_fight_step_is_refused_for_silver_blades(tmp_path):
+    with pytest.raises(SystemExit) as info:
+        A.main(["--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
+                "--disks", str(tmp_path), "--steps", "load", "fight",
+                "--out", str(tmp_path / "out")])
+    assert info.value.code == 2
