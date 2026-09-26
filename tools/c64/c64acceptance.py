@@ -565,6 +565,10 @@ class StepFailed(RuntimeError):
     pass
 
 
+class _SavingChosen(Exception):
+    """`SAVING GAME` was on row 24 while `write_save` waited for `SAVE GAME`."""
+
+
 class Log(SC.Log):
     def __init__(self, out: pathlib.Path):
         super().__init__(out / "run.jsonl")
@@ -1174,6 +1178,10 @@ class CurseRun(PoolRun):
 
     SAVING = "SAVING GAME"
 
+    #: While `write_save` waits for `SAVE GAME`, a `SAVING GAME` on row 24 is
+    #: the game having chosen the save itself, so the watch ends the wait.
+    _saving_is_proof = False
+
     @contextlib.contextmanager
     def _watching_save(self):
         """Record row 18 and row 24 on every change, and every key and attach,
@@ -1184,7 +1192,7 @@ class CurseRun(PoolRun):
         orig_kernal, orig_attach = sess.press_kernal, sess.attach
         state = {"n": 0, "last": None, "busy": False}
 
-        def screen(*a, **k):
+        def watch(*a, **k):
             s = orig_screen(*a, **k)
             if s is None or state["busy"]:
                 return s
@@ -1203,6 +1211,14 @@ class CurseRun(PoolRun):
                               png_ms=round((self.clock() - began) * 1000))
             finally:
                 state["busy"] = False
+            return s
+
+        def screen(*a, **k):
+            s = watch(*a, **k)
+            if (s is not None and self._saving_is_proof
+                    and self.SAVING in s.row(24)):
+                self._saving_is_proof = False
+                raise _SavingChosen()
             return s
 
         def key(name, *a, **k):
@@ -1255,7 +1271,17 @@ class CurseRun(PoolRun):
             raise self.fail("camp", "ENCAMP never put up the camp bar")
         with self._watching_save():
             for word in ("SAVE", "SAVE GAME"):
-                if not self.sess.wait_bar(word, self.budget(45, word)):
+                self._saving_is_proof = word == "SAVE GAME"
+                try:
+                    found = self.sess.wait_bar(word, self.budget(45, word))
+                except _SavingChosen:
+                    # Silver Blades' write can start with no `SAVE GAME` bar
+                    # drawn, or with one this driver never saw.
+                    self.log.emit("save-chosen-by-game")
+                    break
+                finally:
+                    self._saving_is_proof = False
+                if not found:
                     if word == "SAVE GAME":
                         self._watch_lost_write()
                     raise self.fail("save", f"{word} never appeared on row 24")

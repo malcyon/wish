@@ -67,6 +67,18 @@ RE_CURSE_SIDE = re.compile(
 LOADER_SAVE_PROMPT = "CURSE SAVE DISK"
 
 
+def _answered_recently(sess) -> bool:
+    """Whether `handle_prompt` answered a disk prompt within `PROMPT_HOLD`.
+
+    A disk prompt's own `PRESS ANY KEY TO CONTINUE` can stay on row 24 for a
+    moment after the answer, with row 18 already blank; a Return sent into
+    that gap is read by whatever screen the game draws next, and the game
+    chooses its own bar with it.
+    """
+    at = sess._disk_answered
+    return at is not None and time.time() - at < sess.PROMPT_HOLD
+
+
 def save_disk_wanted(text: str) -> bool:
     """Whether *text* is either of Curse's two save-disk prompts."""
     return por.SAVE_PROMPT in text or LOADER_SAVE_PROMPT in text
@@ -166,6 +178,10 @@ DISK_PROMPT_ORIGINAL = {0x459A: b"\xD0\xA9", 0x459F: b"\xD0\xA4"}
 
 class CurseSession(por.Session):
     """Pool of Radiance's driver with Curse's disk prompt, boot and keys."""
+
+    #: When `handle_prompt` last answered a disk prompt, on `time.time()`;
+    #: `wait_bar` and `to_world_bar` press no Return for `PROMPT_HOLD` after.
+    _disk_answered: float | None = None
 
     #: What makes `Session.indoors()` and `Session.square_and_world()` answer
     #: Curse's question rather than Pool of Radiance's.  Curse has no travel
@@ -374,7 +390,8 @@ class CurseSession(por.Session):
                 # chooses the bar that comes up next.
                 time.sleep(0.6)
                 continue
-            if "PRESS" in row or "CONTINUE" in row or "MORE" in row:
+            if ("PRESS" in row or "CONTINUE" in row or "MORE" in row) \
+                    and not _answered_recently(self):
                 self.press_kernal(0x0D)
             time.sleep(0.6)
         return False
@@ -411,7 +428,8 @@ class CurseSession(por.Session):
             elif "YES" in row and "NO" in row:
                 self.press_bar("NO", timeout=8)
             elif "PRESS" in row or "CONTINUE" in row or "MORE" in row:
-                self.press_kernal(0x0D)
+                if not _answered_recently(self):
+                    self.press_kernal(0x0D)
             elif not row.strip():
                 # **A blank row 24 is a screen nobody has read, so nothing is
                 # pressed at it straight away** -- that is how a run ends up
@@ -555,6 +573,7 @@ class CurseSession(por.Session):
         self._last_want = want
         self.press_kernal(0x20)
         self._last_prompt = time.time()
+        self._disk_answered = self._last_prompt
         return True
 
     def boot(self) -> bool:

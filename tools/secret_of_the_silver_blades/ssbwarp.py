@@ -270,6 +270,10 @@ def stage(slot, disks: str, save: str = "") -> str:
 class SSBSession(por.Session):
     """Pool of Radiance's driver with this title's prompts and boot."""
 
+    #: When `handle_prompt` last answered a disk prompt, on `time.time()`;
+    #: `wait_bar` and `to_world_bar` press no Return for `PROMPT_HOLD` after.
+    _disk_answered: float | None = None
+
     #: What makes `Session.indoors()` and `Session.square_and_world()` answer
     #: this title's question rather than Pool of Radiance's.  Silver Blades
     #: has no travel grid, and `$49E6` in a running Silver Blades is
@@ -342,6 +346,7 @@ class SSBSession(por.Session):
             self.attach(want)
         self.kbd.key("space")
         self._last_prompt = time.time()
+        self._disk_answered = self._last_prompt
         return True
 
     #: What to press at a screen nothing recognises, in turn. **This rip opens

@@ -2715,3 +2715,186 @@ def test_a_curse_run_on_the_specimen_panel_is_the_marching_order(tmp_path):
     run = A.CurseRun(None, None, tmp_path, CURSE_OF_THE_AZURE_BONDS, {}, "d", disk)
     assert run.panel == A.marching_names(disk) == [
         "MALE ELF MAGE", "FEMALE MAGE", "CLERIC", "F/T", "RANGER", "PALADIN"]
+
+
+# --- the save's gap after a disk prompt -----------------------------------------
+
+from automap.screen import Screen  # noqa: E402
+from tools.curse_of_the_azure_bonds import curserun as _curserun  # noqa: E402
+from tools.secret_of_the_silver_blades import ssbwarp as _ssbwarp  # noqa: E402
+
+_CAMP = "SAVE VIEW MAGIC REST ALTER FIX EXIT"
+_PRESS = "PRESS ANY KEY TO CONTINUE"
+
+
+def _text_screen(row18: str, row24: str) -> Screen:
+    codes = bytearray(0x20 for _ in range(1000))
+    for row, text in ((18, row18), (24, row24)):
+        for i, ch in enumerate(text.upper()):
+            codes[row * 40 + i] = ord(ch) - 0x40 if "A" <= ch <= "Z" else ord(ch)
+    return Screen(bytes(codes), bytes(1000), 0xCC00)
+
+
+class _StepClock:
+    """A clock that only `sleep` moves."""
+
+    def __init__(self):
+        self.now = 1000.0
+
+    def time(self):
+        return self.now
+
+    monotonic = time
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+class _GapKeys:
+    def __init__(self, sess):
+        self.sess = sess
+
+    def key(self, name, *timing):
+        if name == "space":
+            self.sess.answer()
+
+    def screenshot(self, path):
+        pathlib.Path(path).write_bytes(b"")
+
+
+def _boot_session(base, tmp_path, clock, save_bar):
+    """A real driver's `wait_bar`, `handle_prompt` and `to_world_bar` in front of
+    the screens Silver Blades drew on the C64 boot of #679: camp, the save-disk
+    prompt, a gap of 0.9 s with row 18 blank and `PRESS ANY KEY` still up,
+    then (SAVE_BAR) `SAVE GAME  EXIT` or straight to `SAVING GAME...`, 33 s of
+    writing, the game-disk prompt, the camp bar."""
+    for name in ("SIDE0.D64", "SIDE1.D64", "SIDE10.D64"):
+        (tmp_path / name).touch()
+
+    class Scripted(base):
+        def __init__(self):
+            self.save_disk = str(tmp_path / "SIDE0.D64")
+            self.here = str(tmp_path)
+            self.attached = ""
+            self._last_prompt = 0.0
+            self._last_want = None
+            self.kbd = _GapKeys(self)
+            self.state, self.since = "camp", 0.0
+            self.kernal, self.pressed = [], []
+
+        def answer(self):
+            if self.state == "prompt":
+                self.state, self.since = "gap", clock.now
+            elif self.state == "gameprompt":
+                self.state = "back"
+
+        def log(self, *a):
+            pass
+
+        def attach(self, path, unit=8, settle=None):
+            self.attached = path
+
+        def press_kernal(self, code):
+            self.kernal.append(code)
+            if code == 0x20:
+                self.answer()
+
+        def press_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+            self.pressed.append(label)
+            self.state, self.since = {"SAVE": ("prompt", 0.0),
+                                      "SAVE GAME": ("saving", clock.now)}[label]
+            return True
+
+        def settle(self, seconds=0):
+            clock.sleep(seconds)
+
+        def wait_text(self, needle, timeout=0):
+            for _ in range(50):
+                s = self.screen()
+                if any(needle in s.row(r) for r in range(25)):
+                    return needle, s
+                clock.sleep(0.6)
+            return None, None
+
+        def screen(self):
+            age = clock.now - self.since
+            if self.state == "gap" and age >= 0.9:
+                self.state, self.since = ("savebar", clock.now) if save_bar \
+                    else ("saving", clock.now)
+            if self.state == "saving" and age >= 33:
+                self.state = "gameprompt"
+            return {"camp": _text_screen("YOU SET UP CAMP...", _CAMP),
+                    "back": _text_screen("", _CAMP),
+                    "prompt": _text_screen("INSERT YOUR SAVE GAME DISK", _PRESS),
+                    "gap": _text_screen("", _PRESS),
+                    "savebar": _text_screen("", "SAVE GAME  EXIT"),
+                    "saving": _text_screen("", "SAVING GAME..."),
+                    "gameprompt": _text_screen("INSERT YOUR GAME DISK A", _PRESS),
+                    }[self.state]
+
+    return Scripted()
+
+
+def _both_drivers():
+    from tools.c64 import curedrive
+    return [pytest.param(curedrive._silver_session_class(), id="silver"),
+            pytest.param(_curserun.CurseSession, id="curse")]
+
+
+def _fake_time(monkeypatch):
+    clock = _StepClock()
+    for module in (_curserun, _ssbwarp):
+        monkeypatch.setattr(module, "time", clock)
+    return clock
+
+
+def _boot_save(tmp_path, monkeypatch, base, save_bar):
+    clock = _fake_time(monkeypatch)
+    sess = _boot_session(base, tmp_path, clock, save_bar)
+    run = _save_run(tmp_path, sess)
+    run.clock = clock.time
+    copied = []
+
+    def copy(src, dest, **kw):
+        copied.append(dest.name)
+        dest.write_bytes(b"")
+
+    monkeypatch.setattr(A.S, "copy_closed_disk", copy)
+    try:
+        run.write_save()
+    finally:
+        run.log.close()
+    return sess, copied
+
+
+@pytest.mark.parametrize("base", _both_drivers())
+def test_no_return_is_sent_in_the_gap_after_the_save_disk_is_answered(
+        tmp_path, monkeypatch, base):
+    sess, _ = _boot_save(tmp_path, monkeypatch, base, save_bar=False)
+    assert 0x0D not in sess.kernal
+    assert sess.pressed == ["SAVE"]
+    assert sess.state == "back"
+
+
+@pytest.mark.parametrize("base", _both_drivers())
+def test_a_save_bar_drawn_after_the_gap_is_pressed_once(tmp_path, monkeypatch, base):
+    sess, _ = _boot_save(tmp_path, monkeypatch, base, save_bar=True)
+    assert 0x0D not in sess.kernal
+    assert sess.pressed == ["SAVE", "SAVE GAME"]
+    assert sess.state == "back"
+
+
+@pytest.mark.parametrize("base", _both_drivers())
+def test_to_world_bar_sends_no_return_in_the_gap_and_wait_bar_still_does_later(
+        tmp_path, monkeypatch, base):
+    clock = _fake_time(monkeypatch)
+    sess = _boot_session(base, tmp_path, clock, save_bar=False)
+    sess.state, sess.since = "gap", clock.now
+    sess._disk_answered = clock.now
+    assert sess.to_world_bar(timeout=0.5) is False
+    assert 0x0D not in sess.kernal
+    # No disk prompt answered lately: the same row gets its Return.
+    sess.state, sess._disk_answered = "gap", None
+    sess.since = clock.now + 1e6
+    assert sess.to_world_bar(timeout=0.5) is False
+    assert 0x0D in sess.kernal
