@@ -2546,3 +2546,37 @@ def test_a_view_waits_for_a_mixed_case_name_as_the_c64_draws_it(tmp_path, monkey
     finally:
         run.log.close()
     assert got["who"] == "1"
+
+
+def _fake_disk(monkeypatch, marching):
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    monkeypatch.setattr(A, "marching_names", lambda path: list(marching))
+    monkeypatch.setattr(A.D64, "open", staticmethod(lambda path: None))
+    monkeypatch.setattr(A, "_payload", lambda image, game: (0, bytearray()))
+    monkeypatch.setattr(cursethac0, "slot_names", lambda body: ["ANNA", "ZED", "MAE"])
+
+
+def test_a_curse_run_takes_its_panel_from_the_marching_order(tmp_path, monkeypatch):
+    _fake_disk(monkeypatch, ["MAE", "ANNA", "ZED"])
+    run = A.CurseRun(None, None, tmp_path, POOL_OF_RADIANCE, {}, "d", "s.D64")
+    assert run.panel == ["MAE", "ANNA", "ZED"] and run.names == ["ANNA", "ZED", "MAE"]
+
+
+def test_a_silver_blades_run_takes_its_panel_from_the_marching_order(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "marching_names", lambda path: ["Zed", "Anna"])
+    monkeypatch.setattr(A, "saved_characters", lambda path: {
+        "ANNA": {"owner": 0, "memorised": []}, "ZED": {"owner": 1, "memorised": []}})
+    run = A.SilverRun(None, None, tmp_path, POOL_OF_RADIANCE, {}, "d", "s.D64")
+    assert run.panel == ["Zed", "Anna"] and run.panel != run.names
+
+
+def test_a_curse_run_on_the_specimen_panel_is_the_marching_order(tmp_path):
+    from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS
+    from tests.c64.test_c64nametable import specimen_disk
+
+    disk = specimen_disk("curse-party-with-items")
+    run = A.CurseRun(None, None, tmp_path, CURSE_OF_THE_AZURE_BONDS, {}, "d", disk)
+    assert run.panel == A.marching_names(disk) == [
+        "MALE ELF MAGE", "FEMALE MAGE", "CLERIC", "F/T", "RANGER", "PALADIN"]

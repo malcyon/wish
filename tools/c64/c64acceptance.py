@@ -878,6 +878,10 @@ class PoolRun:
         square, or the walk fails as an exit or a teleport.  A move `walk_one`
         made on the travel grid is not re-sent.
 
+        A bump is retried like any unread key: a wall leaves the triple
+        unchanged, so the key goes twice, each press polled by `walk_one` for
+        up to 12 s, and the walk still fails as blocked (about 12 s extra).
+
         Curse and Silver Blades are judged by the live triple `$C04B`-`$C04D`
         because their status line stays a step behind; their one retry is
         judged by it as well, since move mode changes row 24 on any first key.
@@ -1140,7 +1144,9 @@ class CurseRun(PoolRun):
             raise self.fail("panel", f"the panel highlight would not go onto {who}")
         if not self.choose_bar("VIEW", timeout=20):
             raise self.fail("view", "VIEW could not be chosen")
-        name = (inventorycheck.as_drawn(self.panel[index]).upper()
+        # `as_drawn` yields only glyphs (a lower-case letter becomes a symbol
+        # below `@`), so it never needs upper-casing to match row 1.
+        name = (inventorycheck.as_drawn(self.panel[index])
                 if 0 <= index < len(self.panel) else "")
         rows = self.wait_rows(
             lambda r: "EXIT" in r[24] and CAMP_BAR not in r[24]
@@ -1194,7 +1200,9 @@ class CurseRun(PoolRun):
     #: Whether the run gave VICE a numpad joystick, so that KP_0 is fire.
     joy = False
     names: list[str] = []
-    #: The party in the order the panel draws it, highest save slot first.
+    #: The party in the order the panel draws it, taken from the save's
+    #: marching order.  Whether the C64 panel follows marching order after a
+    #: party is reordered in the game has not been measured.
     panel: list[str] = []
     #: Seconds each wait may take: a pick key's effect, the bar a cure is
     #: offered on, and the target question after CURE.
