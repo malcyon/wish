@@ -545,3 +545,121 @@ def test_darkness_prepare_writes_the_place_and_leaves_every_registered_image_unc
              for label, data in foundation.amigasaves.images()}
     assert after == before
     assert drive._title_inputs(manifest, foundation.DARKNESS)[2] == "B"
+
+
+# What each title's interstitials do and where: a screen guard that matches only the crop of one
+# named wait shows the run answering it there, up to its limit, and staying silent in every other wait.
+def _on(*stems):
+    return lambda path: path.stem in stems
+
+
+def _never(_path):
+    return False
+
+
+def _dark_guard(screen, when, **closed):
+    on = {**DARK_FIRST_SCREEN, screen: _on(*when), **{s: _never for s in closed}}
+    return MapGuard(states=(*DARK_STATES, screen), on=on)
+
+
+def test_darkness_answers_yes_no_with_n_once_and_only_while_waiting_for_the_world(
+        tmp_path, clock):
+    guest, _ = _dark_run(tmp_path, clock, guard=_dark_guard("yes_no", ["09-world"], world=1))
+    assert _keys(guest).count("N") == 1 and "Y" not in _keys(guest)
+    other = tmp_path / "other"
+    other.mkdir()
+    guest, _ = _dark_run(other, clock, guard=_dark_guard("yes_no", ["01-play"], play=1))
+    assert "N" not in _keys(guest) and "Y" not in _keys(guest)
+
+
+def test_darkness_presses_return_at_a_continue_page_three_times_at_most_and_only_for_the_world(
+        tmp_path, clock):
+    guest, _ = _dark_run(tmp_path, clock, guard=_dark_guard("continue", ["09-world"], world=1))
+    assert _keys(guest).count("RET") == 3
+    other = tmp_path / "other"
+    other.mkdir()
+    guest, _ = _dark_run(other, clock, guard=_dark_guard("continue", ["01-play"], play=1))
+    assert "RET" not in _keys(guest)
+
+
+def _curse_guard(screen, when, **closed):
+    on = {**CURSE_FIRST_SCREEN, screen: _on(*when), **{s: _never for s in closed}}
+    return MapGuard(states=(*CURSE_STATES, screen, "front_end"), on=on)
+
+
+def test_curse_leaves_the_front_end_with_escape_four_times_at_most_and_only_for_the_title(
+        tmp_path, clock):
+    guard = MapGuard(states=CURSE_STATES, on={"title": _never, "front_end": _on("title")})
+    guest, result = _curse_run(tmp_path, clock, guard=guard)
+    assert _keys(guest) == ["ESC"] * 4 and "title screen was not recognized" in result["error"]
+    other = tmp_path / "other"
+    other.mkdir()
+    guard = MapGuard(states=CURSE_STATES, on={
+        **CURSE_FIRST_SCREEN, "load_picker": _never,
+        "front_end": lambda path: (path.stem == "title" and path.read_bytes() in _FRONT
+                                   or path.stem == "01-load_picker")})
+    guest, _ = _curse_run(other, clock, guard=guard)
+    assert _keys(guest).count("ESC") == 2  # the two the title wait needed, none at load_picker
+
+
+@pytest.mark.parametrize("screen,state", [("07-world", "world"), ("12-exit_game", "exit_game")])
+def test_curse_presses_return_at_a_continue_page_three_times_at_most(
+        tmp_path, clock, screen, state):
+    guest, _ = _curse_run(tmp_path, clock, guard=_curse_guard("continue", [screen],
+                                                              **{state: 1}))
+    assert _keys(guest).count("RET") == 3
+
+
+def test_curse_presses_no_return_at_a_continue_page_while_waiting_for_another_state(
+        tmp_path, clock):
+    guest, _ = _curse_run(tmp_path, clock, guard=_curse_guard("continue", ["01-load_picker"],
+                                                              load_picker=1))
+    assert "RET" not in _keys(guest)
+
+
+def _pool_guard(screen, when, **closed):
+    on = {**FIRST_SCREEN, screen: _on(*when), **{s: _never for s in closed}}
+    return MapGuard(states=(*STATES, screen), on=on)
+
+
+def test_pool_presses_return_at_the_wheel_once_and_only_while_waiting_for_the_title(
+        tmp_path, clock):
+    guard = MapGuard(states=STATES, on={"title": _never, "wheel": _on("title")})
+    guest, _ = _run(tmp_path, clock, guard=guard)
+    assert _keys(guest) == ["RET"]
+    other = tmp_path / "other"
+    other.mkdir()
+    guest, _ = _run(other, clock, guard=_pool_guard("wheel", ["title", "01-party_menu"],
+                                                    party_menu=1))
+    assert _keys(guest) == ["RET", "RET"]  # the wheel's, then the route's first; none at party_menu
+
+
+def test_pool_answers_the_path_prompt_once_at_the_camp_save_picker_and_nowhere_else(
+        tmp_path, clock):
+    guest, _ = _run(tmp_path, clock, guard=_pool_guard(
+        "save_path", ["08-camp_save_picker"], camp_save_picker=1))
+    assert _keys(guest).count("RET") == 4  # wheel, two route RETs, and the one prompt answer
+    other = tmp_path / "other"
+    other.mkdir()
+    guest, _ = _run(other, clock, guard=_pool_guard("save_path", ["05-sheet"], sheet=1))
+    assert _keys(guest).count("RET") == 3
+
+
+@pytest.mark.parametrize("title,key,prefix,at_least", [
+    ("darkness", "B", "09-world", 45.0),   # BEGIN loads the dungeon, so the wait is long
+    ("curse", "B", "07-world", 20.0),
+    ("pool", "A", "04-world", 20.0),
+])
+def test_the_world_is_not_looked_at_before_its_minimum_wait_has_passed(
+        tmp_path, clock, title, key, prefix, at_least):
+    log = []
+    guest = {"darkness": DarkGuest, "curse": CurseGuest, "pool": TitleGuest}[title](
+        clock, save_key={"darkness": "disk3", "curse": "save", "pool": "save"}[title])
+    press = guest.press
+    guest.press = lambda holder, k, timeout=None: (log.append((k, clock.now)),
+                                                    press(holder, k, timeout))[1]
+    run = {"darkness": _dark_run, "curse": _curse_run, "pool": _run}[title]
+    run(tmp_path, clock, guest=guest)
+    pressed = [t for k, t in log if k == key][-1]  # the last B is BEGIN, which reaches the world
+    grabbed = next(t for name, t in guest.at if name.startswith(prefix))
+    assert grabbed - pressed >= at_least
