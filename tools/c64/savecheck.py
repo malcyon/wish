@@ -52,7 +52,10 @@ from automap import combat as C  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 
-# Kept for callers that still import these names from here.
+# Re-exported for `tools/c64/c64acceptance.py` (its `Log` subclass and
+# `catch_signals` call) and the savecheck tests that use `savecheck.Log`
+# (`test_savecheck_walk_routing.py`, `test_savecheck_move_subbar.py`); it goes
+# once those callers import `runlog` themselves.
 from tools.c64.runlog import (  # noqa: E402,F401
     Log,
     Terminated,

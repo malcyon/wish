@@ -349,8 +349,8 @@ def sheet_of(sess, r: Run, name: str, walk) -> list[str] | None:
 
     `walk` is the title's own way of pressing Return on a **vertical list**:
     Curse reads it from the KERNAL buffer on this front end
-    (`tools/curse_of_the_azure_bonds/curseload.py:walk_menu`) and Silver Blades from XTEST
-    (`Session.select_row`), and neither answers the other's.  The sheet's own
+    (`tools/curse_of_the_azure_bonds/curseload.py:walk_menu`) and Silver Blades
+    from XTEST (`Session.select_row`), and neither answers the other's.  The sheet's own
     `EXIT` is not a list row and is left to `leave_sheet`.
     """
     s = sess.screen()

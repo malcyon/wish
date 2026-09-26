@@ -270,8 +270,10 @@ def test_a_save_disk_prompt_still_up_after_the_key_is_not_answered_again(monkeyp
 class Menu:
     """A party menu with a highlight, and a keyboard that records."""
 
-    def __init__(self, rows: dict[int, str], hot: int, column: int = 5):
+    def __init__(self, rows: dict[int, str], hot: int, column: int = 5,
+                 also_hot: tuple[int, ...] = ()):
         self.rows, self.hot, self.column = rows, hot, column
+        self.also_hot = also_hot
         self.xtest: list[str] = []
         self.kernal: list[int] = []
         self.prompts = 0
@@ -288,7 +290,7 @@ class Menu:
 
     def colours(self, r):
         cols = [5] * 40
-        cols[self.column] = 1 if r == self.hot else 5
+        cols[self.column] = 1 if r == self.hot or r in self.also_hot else 5
         return cols
 
     def key(self, name, hold=0.1, gap=0.14):
@@ -340,3 +342,26 @@ def test_the_dual_class_tool_shares_the_walker():
     from tools.c64 import dualclassagain
     assert dualclassagain.walk_menu is curseload.walk_menu
     assert dualclassagain.highlighted is curseload.highlighted
+
+
+def test_walk_menu_counts_the_arrows_from_the_nearest_highlighted_row():
+    """Border rows are white too, so the walk trusts the highlight nearest the label."""
+    menu = Menu({10: "     GO"}, hot=2, also_hot=(11,))
+    seen = []
+    menu.key = lambda name, hold=0.1, gap=0.14: (
+        seen.append(name), setattr(menu, "hot", 10), setattr(menu, "also_hot", ()))
+    assert curseload.walk_menu(menu, "GO") is True
+    assert seen == ["Up"]
+    assert menu.kernal == [0x0D]
+
+
+def test_walk_menu_gives_up_after_forty_seconds_and_not_before(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(curseload.time, "time", lambda: now[0])
+    monkeypatch.setattr(curseload.time, "sleep",
+                        lambda s: now.__setitem__(0, now[0] + s))
+    menu = Menu({}, hot=1)
+    assert curseload.walk_menu(menu, "GO") is False
+    # The absent-label loop sleeps 0.3 s per pass, so the call ends within one
+    # pass of the deadline.
+    assert 40.0 <= now[0] <= 40.0 + 0.3 + 1e-6, now[0]

@@ -26,7 +26,7 @@ def catch_signals() -> None:
     it goes -- `tools/registry/instance.py` says so; what outlives the process is the
     emulator it started.)  Raising instead means the run stops
     through its own `except`, writes what went wrong, and tears its slot
-    down.  `#380` is the ticket where a lost traceback cost a repeat run.
+    down, and the traceback survives.
 
     Best effort: `signal.signal` only works on the main thread, and a caller
     that is not on one gets the old behaviour rather than an error.
@@ -41,15 +41,11 @@ def catch_signals() -> None:
 def keep_old_log(out: pathlib.Path) -> pathlib.Path | None:
     """Move an existing log out of the way, and say where it went.
 
-    **A second run on the same disk used to truncate the first one's log.**
-    `--out` defaults to `<disk stem>.jsonl` in the `savecheck` scratch directory, which does not
-    have `--tag` in it, so two runs of the same `.d64` share one path however
-    differently they are tagged.  On 2026-09-07 a failure worth diagnosing was
-    photographed, logged, and then erased by the immediate retry that was
-    trying to reproduce it -- the retry opens its log before it boots, so the
-    evidence went minutes before the second run reached the same point
-    (`#380`).  The old file is stamped with its own last-written time, so the
-    name says which run it was.
+    **Opening the log for writing truncates it**, so a second run given the
+    same path would erase the first one's evidence: the retry that tries to
+    reproduce a failure opens its log before it boots, minutes before it
+    reaches the same point.  This renames whatever is at `out` to a sibling
+    stamped with its own last-written time, so the name says which run it was.
 
     **Preserving the old log must never cost the new one.**  The file can
     vanish between the check and the stat, and the directory can be
@@ -77,17 +73,10 @@ def keep_old_log(out: pathlib.Path) -> pathlib.Path | None:
 class Log:
     """Everything the run saw, to the terminal and to a `.jsonl` beside it.
 
-    Nine other driven-run tools -- `tools/pool_of_radiance/fightrun.py`, `tools/pool_of_radiance/outdoorstep.py`,
-    `tools/c64/c64restinterrupt.py`, `tools/pool_of_radiance/defeatdrive.py`, `tools/c64/statusdrive.py`,
-    `tools/c64/hallmenu.py`, `tools/c64/turndrive.py`, `tools/c64/traitsave.py` and
-    `tools/c64/traitdrive.py` -- had their own copy of this class, none of them
-    hardened the way `#380 (The session driver sometimes fails BEGIN
-    ADVENTURING within 0.2s of the picker loading, well inside its own 30s
-    wait)` hardened this one. `#442 (Nine driven-run tools lose their log when
-    the console goes, and two truncate the previous run's)` moved them onto
-    this class -- either directly, or as the base of a small subclass that
-    adds a `quiet` flag or a `self.dir`-relative filename of its own -- rather
-    than leaving nine near-identical copies for a tenth tool to diverge from.
+    A driven-run tool uses this class directly, or as the base of a small
+    subclass that adds a `quiet` flag or a `self.dir`-relative filename, so
+    that the hardening below (a log that survives a closed console, and one
+    that does not truncate the previous run's) lives in one place.
     """
 
     def __init__(self, out: pathlib.Path, append: bool = False):
@@ -124,9 +113,9 @@ class Log:
         A driven run is usually started as `... | head -40` or through a
         harness that stops reading, and `print` to a pipe nobody is reading
         any more raises `BrokenPipeError`.  Raised out of the failure handler
-        it takes the rest of the handler with it, which leaves behind exactly
-        what `#380` left behind: the screenshot, the `"failure_screen"` entry
-        that comes before the first `say`, and no `"failed"` entry at all.
+        it takes the rest of the handler with it, which leaves behind the
+        screenshot, the `"failure_screen"` entry that comes before the first
+        `say`, and no `"failed"` entry at all.
         The `.jsonl` is the record; the console is a convenience, and a
         convenience that has gone away is not a reason to lose the record.
         """

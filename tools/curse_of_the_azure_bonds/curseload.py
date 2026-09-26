@@ -155,7 +155,7 @@ def probe(sess) -> dict:
 def highlighted(sess, column: int) -> list[int]:
     """Rows whose colour RAM reads white at `column`, which is the highlight.
 
-    Measured on 2026-09-05 with the party-formation menu up: the highlighted
+    Measured with the party-formation menu up: the highlighted
     line's text is colour 1 and the other lines' is colour 5, over identical
     screen codes -- there is no inverse video anywhere on this screen, so
     reading bit 7 finds nothing.  The column matters because every border row
@@ -169,8 +169,9 @@ def walk_menu(sess, label: str, timeout: float = 40.0) -> bool:
     """Move the menu highlight onto `label` and press Return.
 
     Return goes through the KERNAL buffer: this front end does not read an
-    XTEST Return, which is the same finding `tools/curse_of_the_azure_bonds/cursewarp.py` records for
-    the `LOAD SAVED GAME ? YES NO` bar.  The arrows *are* read from XTEST.
+    XTEST Return, which is the same finding
+    `tools/curse_of_the_azure_bonds/cursewarp.py` records for the
+    `LOAD SAVED GAME ? YES NO` bar.  The arrows *are* read from XTEST.
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
