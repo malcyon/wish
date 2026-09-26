@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import dataclasses
 import functools
 import hashlib
 import json
@@ -18,6 +19,7 @@ import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -221,13 +223,24 @@ class WinGuest:
     def put(self, local: pathlib.Path, remote: str, timeout: float) -> str:
         return self._run("put", str(local), remote, timeout=timeout)
 
-    def start(self, holder: str, df0: str, df1: str, timeout: float) -> str:
-        df0 = df0.replace("/", "\\")
-        df1 = df1.replace("/", "\\")
-        command = (f"start -f {BOOT_CONFIG} -s floppy0={df0} "
-                   f"-s floppy1={df1} -s joyport1=none "
-                   f"-s sound_output=interrupts")
-        return self._lane(holder, command, timeout)
+    def start(self, holder: str, *drives: str | None, timeout: float,
+              options: tuple[str, ...] = ()) -> str:
+        """Start WinUAE with `drives` in DF0 upward; None ejects a drive the template fills."""
+        settings = [f"-s floppy{n}=" + ("" if path is None else path.replace("/", "\\"))
+                    for n, path in enumerate(drives)]
+        settings += [f"-s {option}" for option in options]
+        settings += ["-s joyport1=none", "-s sound_output=interrupts"]
+        return self._lane(holder, f"start -f {BOOT_CONFIG} {' '.join(settings)}", timeout)
+
+    def insert(self, holder: str, drive: int, remote: str, timeout: float) -> str:
+        """Put the disk at `remote` in `drive` of the running game, over WinUAE's own pipe.
+
+        The lane script has no such command, so the pipe carries it; the caller holds
+        the lane claim and `remote` carries its own holder's name.
+        """
+        from automap.amiga import WinuaePipe  # noqa: PLC0415
+
+        return WinuaePipe(timeout=timeout).insert_floppy(drive, remote.replace("/", "\\"))
 
     def capture(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
                 timeout: float) -> None:
@@ -471,9 +484,25 @@ def _slot_reading(fetched: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
     return reading
 
 
+def _silver_blades_problems(reading: dict[str, Any], slot: str) -> list[str]:
+    """Guy's 13 items and one stack of 35 arrows, the joined party Silver Blades' run prepares."""
+    if reading["inventory"]["joined_inventory_expected"]:
+        return []
+    return [f"{slot} is not Guy with 13 items and one +1 arrow stack of 35"]
+
+
+def _no_problems(reading: dict[str, Any], slot: str) -> list[str]:
+    return []
+
+
 def menu_save_problems(manifest: dict, reading: dict[str, Any], *, letter: str = "B",
-                       check_place: bool = True) -> list[str]:
-    """What a save left different from the prepared party; empty means it matches."""
+                       check_place: bool = True, names: list[str] | None = None,
+                       extra_problems: Any = _silver_blades_problems) -> list[str]:
+    """What a save left different from the prepared party; empty means it matches.
+
+    `names` replaces the inventory's member names as what the save must hold, and
+    `extra_problems(reading, slot)` adds a title's own checks.
+    """
     slot = f"slot {letter}"
     if reading.get("missing"):
         return [f"{slot} was not written"]
@@ -483,11 +512,11 @@ def menu_save_problems(manifest: dict, reading: dict[str, Any], *, letter: str =
     if check_place and reading["place"] != manifest["state_a"]:
         problems.append(
             f"{slot} place {reading['place']} differs from {manifest['state_a']}")
-    wanted = [member["name"] for member in manifest["inventory_a"]["members"]]
+    wanted = names if names is not None else [
+        member["name"] for member in manifest["inventory_a"]["members"]]
     if reading["names"] != wanted:
         problems.append(f"{slot} members {reading['names']} differ from {wanted}")
-    if not reading["inventory"]["joined_inventory_expected"]:
-        problems.append(f"{slot} is not Guy with 13 items and one +1 arrow stack of 35")
+    problems += extra_problems(reading, slot)
     return problems
 
 
@@ -505,45 +534,57 @@ def _unreadable(letter: str, reading: dict[str, Any]) -> str:
 
 
 def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
-                 squares: int) -> dict[str, Any]:
-    """Judge the two saves: B, saved before the walk, must be `before`; D must be `squares` on.
+                 squares: int, *, control: str = "B", after: str = "D",
+                 turn: str | None = None) -> dict[str, Any]:
+    """Judge the two saves: `control`, saved before the walk, must be `before`; `after` must be `squares` on.
 
-    The step routine wraps at 0 and 15, so D is compared modulo 16 along B's
-    facing. The screen never judges movement.
+    The step routine wraps at 0 and 15, so `after` is compared modulo 16 along the
+    control's facing, or along the opposite facing when `turn` is "about". The
+    screen never judges movement.
     """
     verdicts: list[str] = []
     b_place, d_place = b.get("place"), d.get("place")
     b_ok = d_ok = False
     if b_place is None:
-        verdicts.append(_unreadable("B", b))
+        verdicts.append(_unreadable(control, b))
     elif b_place == before:
         b_ok = True
-        verdicts.append("slot B: did not move")
+        verdicts.append(f"slot {control}: did not move")
     else:
-        verdicts.append(f"slot B: moved from {_span(before, b_place)}, expected the prepared place")
+        verdicts.append(f"slot {control}: moved from {_span(before, b_place)}, "
+                        f"expected the prepared place")
     base = b_place or before
     squares_moved = None
     if d_place is None:
-        verdicts.append(_unreadable("D", d))
+        verdicts.append(_unreadable(after, d))
     else:
-        dx, dy = geo.STEP[base["facing"]]
-        expected = dict(base, x=(base["x"] + dx * squares) % 16,
+        facing = geo.OPPOSITE[base["facing"]] if turn == "about" else base["facing"]
+        dx, dy = geo.STEP[facing]
+        expected = dict(base, facing=facing, x=(base["x"] + dx * squares) % 16,
                         y=(base["y"] + dy * squares) % 16)
-        if d_place["area"] == base["area"] and d_place["facing"] == base["facing"]:
+        if d_place["area"] == base["area"] and d_place["facing"] == facing:
             along = (d_place["x"] - base["x"]) * dx + (d_place["y"] - base["y"]) * dy
             across = (d_place["x"] - base["x"]) * dy + (d_place["y"] - base["y"]) * dx
             # A wrapped step and a full lap cannot be told apart on 16 squares.
             if across == 0 or (across % 16 == 0):
                 squares_moved = along % 16
-        if d_place == base:
-            d_ok = squares == 0
-            verdicts.append("slot D: did not move")
+        same_square = (d_place["area"], d_place["x"], d_place["y"]) == (
+            base["area"], base["x"], base["y"])
+        if turn == "about" and d_place == expected:
+            d_ok = True
+            unit = "square" if squares == 1 else "squares"
+            verdicts.append(f"slot {after}: moved {squares} {unit} from "
+                            f"{_span(base, d_place)}")
+        elif d_place == base or (turn == "about" and same_square):
+            d_ok = squares == 0 and turn is None
+            verdicts.append(f"slot {after}: did not move")
         elif d_place == expected:
             d_ok = True
             unit = "square" if squares == 1 else "squares"
-            verdicts.append(f"slot D: moved {squares} {unit} from {_span(base, d_place)}")
+            verdicts.append(f"slot {after}: moved {squares} {unit} from "
+                            f"{_span(base, d_place)}")
         else:
-            verdicts.append(f"slot D: moved from {_span(base, d_place)}, "
+            verdicts.append(f"slot {after}: moved from {_span(base, d_place)}, "
                             f"expected {expected['x']},{expected['y']}")
     return {"verdicts": verdicts, "b_ok": b_ok, "d_ok": d_ok,
             "place_changed": None if d_place is None else d_place != base,
@@ -602,6 +643,144 @@ def terminating():
         signal.signal(signal.SIGTERM, previous)
 
 
+# (screen, action, waiting_for, limit): on a known screen that is not the wanted one,
+# do `action` once per wait, `limit` times at most, while waiting for one of the
+# states in `waiting_for` (None: any). `credits` is left with ESC, `continue` takes
+# RETURN, and the journal challenge goes to the answerer; the last two only when accepting.
+SILVER_BLADES_INTERSTITIALS = (
+    ("credits", ("keys", "ESC"), frozenset({"title"}), 1),
+    ("continue", ("keys", "RET"), None, 1),
+    ("journal", ("answer",), frozenset({"exit_game"}), 1),
+)
+_ACCEPT_ONLY = frozenset({"continue", "journal"})
+_STEP_KINDS = frozenset({"key", "write", "move", "turn", "answer", "insert"})
+_LETTER = re.compile(r"[A-Z]")
+_OPTION = re.compile(r"[A-Za-z0-9_]+=[A-Za-z0-9_.]*")
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class AmigaTitle:
+    """What `run_recon` needs to know about one Amiga title; Silver Blades is the default without one.
+
+    `mounted` lists manifest disk keys in drive order (None: an empty drive) and
+    `spares` the keys put on the VM and not mounted. A route step is
+    `(key, state, kind)`; an `insert` step's key is `(drive, disk_key, key)`, and
+    `write` steps may press only `control_letter` or `after_letter`. `strict` names
+    the states whose guard must match or the run stops; any other state falls back to a
+    settled capture and marks the run as measuring.
+    """
+
+    issue: str
+    mounted: tuple[str | None, ...]
+    save_disk: str
+    read_slot: Callable[[amiga_adf.AmigaDisk, str], dict[str, Any]]
+    slot_letters: Callable[[amiga_adf.AmigaDisk], list[str]]
+    slot_files: Callable[[amiga_adf.AmigaDisk, str], dict[str, bytes]]
+    route: tuple[tuple[Any, str, str], ...]
+    measure_route: tuple[tuple[Any, str, str], ...]
+    boot_span: float
+    control_letter: str
+    after_letter: str
+    spares: tuple[str, ...] = ()
+    options: tuple[str, ...] = ()
+    strict: frozenset[str] = frozenset()
+    min_waits: Mapping[str, float] = dataclasses.field(default_factory=dict)
+    title_limit: float = TITLE_LIMIT
+    interstitials: tuple[tuple[str, tuple, Any, int], ...] = ()
+    kept_letters: tuple[str, ...] = ()
+    turn: str | None = None
+
+    @property
+    def disk_keys(self) -> tuple[str, ...]:
+        return (*(k for k in self.mounted if k is not None), *self.spares)
+
+    def __post_init__(self) -> None:
+        def refuse(why: str) -> None:
+            raise RouteError(f"title description: {why}")
+
+        keys = self.disk_keys
+        if not re.fullmatch(r"[0-9]+", str(self.issue)):
+            refuse(f"issue {self.issue!r} is not a number")
+        if not self.mounted or len(self.mounted) > 4 or self.mounted[0] is None:
+            refuse("DF0 must hold a disk and there are at most four drives")
+        if len(set(keys)) != len(keys) or not all(HOLDER.fullmatch(str(k)) for k in keys):
+            refuse(f"disk keys {keys} must be distinct, lane-safe names")
+        if self.save_disk not in keys:
+            refuse(f"save disk {self.save_disk!r} is not one of {keys}")
+        if not all(_OPTION.fullmatch(o) for o in self.options):
+            refuse(f"options {self.options} must each be name=value")
+        letters = (self.control_letter, self.after_letter, *self.kept_letters)
+        if not all(_LETTER.fullmatch(str(c)) for c in letters) or len(set(letters)) != len(letters):
+            refuse(f"save letters {letters} must be distinct capitals")
+        if self.turn not in (None, "about"):
+            refuse(f"turn {self.turn!r} is neither None nor 'about'")
+        if self.title_limit <= 0 or self.boot_span <= 0:
+            refuse("the title limit and the boot span must be positive")
+        if any(w < 0 for w in self.min_waits.values()):
+            refuse("a minimum wait is negative")
+        for name, route in (("route", self.route), ("measure_route", self.measure_route)):
+            if not route:
+                refuse(f"{name} is empty")
+            for step in route:
+                self._check_step(name, step, keys, refuse)
+        for row in self.interstitials:
+            self._check_row(row, keys, refuse)
+
+    def _check_step(self, name, step, keys, refuse) -> None:
+        if not isinstance(step, tuple) or len(step) != 3 or step[2] not in _STEP_KINDS:
+            refuse(f"{name} step {step!r} is not (key, state, kind) with a known kind")
+        key, state, kind = step
+        if not state or not isinstance(state, str):
+            refuse(f"{name} step {step!r} names no state")
+        if kind == "answer":
+            if key is not None:
+                refuse(f"{name} answer step {step!r} takes no key")
+            return
+        if kind == "insert":
+            if not (isinstance(key, tuple) and len(key) == 3 and key[0] in range(4)
+                    and key[1] in keys):
+                refuse(f"{name} insert step {step!r} needs (drive 0-3, a disk key, a key)")
+            key = key[2]
+        if not isinstance(key, str) or key.upper() not in amigadrive.KEYS:
+            refuse(f"{name} step {step!r} presses a key with no WinUAE code")
+        if kind == "write" and key.upper() not in (self.control_letter, self.after_letter):
+            refuse(f"{name} write step {step!r} is not the control or after letter")
+
+    def _check_row(self, row, keys, refuse) -> None:
+        if not (isinstance(row, tuple) and len(row) == 4 and isinstance(row[3], int)
+                and row[3] >= 1 and isinstance(row[1], tuple) and row[1]):
+            refuse(f"interstitial {row!r} is not (screen, action, waiting_for, limit)")
+        action = row[1]
+        if action[0] == "keys":
+            names = (action[1],) if isinstance(action[1], str) else tuple(action[1])
+            if len(action) != 2 or not names or not all(
+                    isinstance(k, str) and k.upper() in amigadrive.KEYS for k in names):
+                refuse(f"interstitial {row!r} presses a key with no WinUAE code")
+        elif action[0] == "insert":
+            if not (len(action) == 4 and action[1] in range(4) and action[2] in keys
+                    and isinstance(action[3], str) and action[3].upper() in amigadrive.KEYS):
+                refuse(f"interstitial {row!r} needs (insert, drive, disk key, key)")
+        elif action != ("answer",):
+            refuse(f"interstitial {row!r} has an unknown action")
+
+
+def _title_inputs(manifest: dict, title: AmigaTitle) -> tuple[dict, dict, str]:
+    """The manifest's disks and registered images, each checked, and its loaded letter."""
+    try:
+        disks = {key: _input(manifest["disks"], key) for key in title.disk_keys}
+        registered = {key: _input(manifest["registered"], key) for key in manifest["registered"]}
+        loaded = manifest["loaded_letter"]
+        manifest["state_a"], manifest["names_a"]  # noqa: B018
+    except KeyError as exc:
+        raise RouteError(f"the manifest lacks {exc.args[0]!r}") from exc
+    if len({p.resolve() for p in (*disks.values(), *registered.values())}) != (
+            len(disks) + len(registered)):
+        raise RouteError("the manifest's disks and registered images must be separate files")
+    if loaded in (title.control_letter, title.after_letter):
+        raise RouteError(f"save letter {loaded} would overwrite the prepared slot")
+    return disks, registered, loaded
+
+
 def menu_save_verdict(result: dict[str, Any], originals: tuple[str, ...]) -> bool:
     """A guarded run passes when the game wrote slot B as prepared and touched nothing else."""
     return bool(
@@ -614,6 +793,90 @@ def menu_save_verdict(result: dict[str, Any], originals: tuple[str, ...]) -> boo
         and result.get("df0_unchanged") is False)
 
 
+def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
+                out: pathlib.Path, disks: dict[str, pathlib.Path],
+                registered: dict[str, pathlib.Path], kept_before: dict[str, dict],
+                loaded: str, accept: bool, measure: bool, steps: tuple) -> None:
+    """Compare the fetched disks with the manifest, read the two saves and set `success`."""
+    result["registered_unchanged"] = {
+        key: sha256(path) == manifest["registered"][key]["sha256"]
+        for key, path in registered.items()}
+    result["working_unchanged"] = {
+        key: sha256(path) == manifest["disks"][key]["sha256"] for key, path in disks.items()}
+    result["disks_unchanged"] = {
+        key: entry["sha256"] == manifest["disks"][key]["sha256"]
+        for key, entry in result["fetched"].items()}
+    if title.save_disk in result["fetched"]:
+        try:
+            fetched = _verified_disk(out / f"fetched-{title.save_disk}.adf")
+            control = title.read_slot(fetched, title.control_letter)
+            result["control_sha256"] = control.get("sha256")
+            if not measure:
+                result["menu_save_problems"] = menu_save_problems(
+                    manifest, control, letter=title.control_letter,
+                    names=manifest["names_a"], extra_problems=_no_problems)
+            if accept:
+                after = title.read_slot(fetched, title.after_letter)
+                result["after_sha256"] = after.get("sha256")
+                result["camp_save_problems"] = menu_save_problems(
+                    manifest, after, letter=title.after_letter, check_place=False,
+                    names=manifest["names_a"], extra_problems=_no_problems)
+                squares = sum(1 for *_, kind in steps if kind == "move")
+                walk = walk_verdict(manifest["state_a"], control, after, squares,
+                                    control=title.control_letter, after=title.after_letter,
+                                    turn=title.turn)
+                verdicts = list(walk["verdicts"])
+                expected = manifest.get("expected_after")
+                result["expected_after_matches"] = None
+                if expected is not None:
+                    matches = after.get("place") == expected
+                    result["expected_after_matches"] = matches
+                    verdicts.append(
+                        f"slot {title.after_letter} "
+                        f"{'matches' if matches else 'differs from'} "
+                        f"the game's own save after the same walk")
+                result["walk"] = walk
+                result["read"] = {
+                    "place_before": manifest["state_a"], "menu_save": control.get("place"),
+                    "place_after": after.get("place"),
+                    "place_changed": walk["place_changed"],
+                    "squares_moved": walk["squares_moved"], "verdicts": verdicts}
+                result["kept_unchanged"] = {
+                    c: title.slot_files(fetched, c) == before
+                    for c, before in kept_before.items()}
+                allowed = {*kept_before, title.control_letter, title.after_letter}
+                result["extra_saves"] = sorted(set(title.slot_letters(fetched)) - allowed)
+        except BaseException as exc:
+            result["fetched_save_error"] = f"{type(exc).__name__}: {exc}"
+    every_disk_fetched = set(result["fetched"]) == set(title.disk_keys)
+    if measure:
+        result["success"] = bool(
+            result.get("route_changed") and not result["error"] and every_disk_fetched
+            and all(result["disks_unchanged"].values())
+            and result.get("control_sha256", "absent") is None)
+        return
+    result.setdefault("menu_save_problems",
+                      [f"slot {title.control_letter} was not read from the fetched save disk"])
+    result.setdefault("read", {"verdicts": [
+        f"slots {title.control_letter} and {title.after_letter} were not read from the "
+        f"fetched save disk"]})
+    others = [k for k in title.disk_keys if k != title.save_disk]
+    result["success"] = bool(
+        not result["error"] and result["completed"] and not result["unguarded"]
+        and every_disk_fetched and all(result["registered_unchanged"].values())
+        and all(result["working_unchanged"].values())
+        # The game writes to the save disk, and to nothing else.
+        and result["disks_unchanged"].get(title.save_disk) is False
+        and all(result["disks_unchanged"].get(k) for k in others)
+        and result["menu_save_problems"] == []
+        and result.get("camp_save_problems") == []
+        and result.get("walk", {}).get("b_ok") and result.get("walk", {}).get("d_ok")
+        and result.get("expected_after_matches") is not False
+        and bool(result.get("kept_unchanged")) == bool(kept_before)
+        and all(result.get("kept_unchanged", {}).values())
+        and result.get("extra_saves") == [])
+
+
 def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               holder: str, audio_proof: pathlib.Path, attempt: str = "recon1",
               deadline_seconds: float = 1800,
@@ -622,7 +885,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               min_waits: dict[str, float] | None = None,
               measure: bool = False, accept: bool = False,
               identity: Any = None, journal_python: str | None = None,
-              answer: Any = None, preflight: Any = None) -> dict[str, Any]:
+              answer: Any = None, preflight: Any = None,
+              title: AmigaTitle | None = None) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -639,34 +903,51 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     measuring one; the route states never fall back. It reads slots B and D
     back, and `answer(journal_python, holder, adf, timeout)` stands in for the
     answerer's subprocess.
+
+    With a `title`, the route, the disks, the interstitials and the readings come
+    from its description, and the run is either `accept` or `measure`; without
+    one every line is Silver Blades'. The manifest of a title is
+    `{"disks": {key: {path, sha256}}, "registered": {key: {path, sha256}},
+    "loaded_letter", "state_a", "names_a"}` and optionally `"expected_after"`.
     """
     if guard is None and not measure:
         raise RouteError("a screen guard is required unless measuring")
+    if title is not None:
+        if not isinstance(title, AmigaTitle):
+            raise RouteError("title must be an AmigaTitle")
+        if accept == measure:
+            raise RouteError("a title run is either accept or measure")
+        if route != ROUTE or write_keys != ("B",):
+            raise RouteError("a title brings its own route and write keys")
     if accept:
         if measure:
             raise RouteError("accept and measure are separate modes")
-        if route != ROUTE:
-            raise RouteError("accept walks its own route")
-        for letter in (MENU_SAVE_LETTER, CAMP_SAVE_LETTER):
-            if letter in (SLOT_LETTER, "A"):
-                raise RouteError(f"save letter {letter} would overwrite the prepared slot")
-        if identity is None or not all(_has_rule(identity, s)
-                                       for s in IDENTITY_MESSAGES):
-            raise RouteError(f"identity map lacks {sorted(IDENTITY_MESSAGES)}")
-        if not journal_python and answer is None:
+        if title is None:
+            if route != ROUTE:
+                raise RouteError("accept walks its own route")
+            for letter in (MENU_SAVE_LETTER, CAMP_SAVE_LETTER):
+                if letter in (SLOT_LETTER, "A"):
+                    raise RouteError(f"save letter {letter} would overwrite the prepared slot")
+        identity_states = (IDENTITY_MESSAGES if title is None else
+                           [s for s in IDENTITY_MESSAGES
+                            if s in {state for _, state, _ in title.route}])
+        if identity is None or not all(_has_rule(identity, s) for s in identity_states):
+            raise RouteError(f"identity map lacks {sorted(identity_states)}")
+        if title is None and not journal_python and answer is None:
             raise RouteError("accept needs a journal interpreter")
     if not measure:
-        missing = [s for s in dict.fromkeys(("title", *(s for _, s in route)))
-                   if not _guards(guard, s)]
+        needed = (("title", *(s for _, s in route)) if title is None
+                  else ("title", *sorted(title.strict)))
+        missing = [s for s in dict.fromkeys(needed) if not _guards(guard, s)]
         if missing:
             raise RouteError(f"screen guard map lacks {missing}")
-    if accept and journal_python is not None:
+    if accept and journal_python is not None and title is None:
         (preflight or journal_preflight)(journal_python)
-    min_waits = min_waits or {}
+    min_waits = {**(title.min_waits if title else {}), **(min_waits or {})}
     write_keys = tuple(k.upper() for k in write_keys)
     if not all(write_keys):
         raise RouteError("write keys must not contain an empty entry")
-    if measure:
+    if measure and title is None:
         if not route:
             raise RouteError("measure mode needs at least one route step")
         # Measuring never writes, whatever the caller listed as write keys.
@@ -680,44 +961,72 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         raise RouteError("the Windows VM audio mute has not been verified")
     manifest_path = pathlib.Path(manifest_path)
     manifest = json.loads(manifest_path.read_text())
-    originals = {name: _input(manifest, name)
-                 for name in ("source", "boot_source", "disk_b_source")
-                 if name in manifest}
-    if accept and "boot_source" not in originals:
-        raise RouteError("the manifest names no boot_source for the journal answerer")
-    df0 = _input(manifest, "df0")
-    published = _input(manifest, "published_df1")
-    df1 = _input(manifest, "df1")
-    if len({df0.resolve(), published.resolve(), df1.resolve()}) != 3:
-        raise RouteError("DF0, published DF1 and working DF1 must be separate files")
-    letter = manifest["slot_letter"]
-    slot = _verified_disk(published).read_file("/SAVE/savgamA.sav")
-    if hashlib.sha256(slot).hexdigest() != manifest["slot_sha256"]:
-        raise RouteError("the published slot differs from the manifest")
-    df0_disk = _verified_disk(df0)
-    if df0_disk.read_file(f"/SAVE/savgam{letter}.sav") != slot:
-        raise RouteError(f"DF0 /SAVE/savgam{letter}.sav is not Wish's published slot")
-    df1_disk = _verified_disk(df1)
-    if df1_disk.volume_name != "Secret 2":
-        raise RouteError("working DF1 is not disk B, volume 'Secret 2'")
-    if sha256(df1) != manifest["disk_b_source"]["sha256"]:
-        raise RouteError("working DF1 differs from the registered disk B")
+    if title is not None:
+        disks, registered, letter = _title_inputs(manifest, title)
+        originals: dict[str, pathlib.Path] = {}
+        save_before = _verified_disk(disks[title.save_disk])
+        present = title.slot_letters(save_before)
+        if letter not in present:
+            raise RouteError(f"the save disk holds no slot {letter} to load")
+        for taken in (title.control_letter, title.after_letter):
+            if taken in present:
+                raise RouteError(f"slot {taken} already exists on the save disk")
+        kept_before = {c: title.slot_files(save_before, c)
+                       for c in (*title.kept_letters, letter)}
+    else:
+        originals = {name: _input(manifest, name)
+                     for name in ("source", "boot_source", "disk_b_source")
+                     if name in manifest}
+        if accept and "boot_source" not in originals:
+            raise RouteError("the manifest names no boot_source for the journal answerer")
+        df0 = _input(manifest, "df0")
+        published = _input(manifest, "published_df1")
+        df1 = _input(manifest, "df1")
+        if len({df0.resolve(), published.resolve(), df1.resolve()}) != 3:
+            raise RouteError("DF0, published DF1 and working DF1 must be separate files")
+        letter = manifest["slot_letter"]
+        slot = _verified_disk(published).read_file("/SAVE/savgamA.sav")
+        if hashlib.sha256(slot).hexdigest() != manifest["slot_sha256"]:
+            raise RouteError("the published slot differs from the manifest")
+        df0_disk = _verified_disk(df0)
+        if df0_disk.read_file(f"/SAVE/savgam{letter}.sav") != slot:
+            raise RouteError(f"DF0 /SAVE/savgam{letter}.sav is not Wish's published slot")
+        df1_disk = _verified_disk(df1)
+        if df1_disk.volume_name != "Secret 2":
+            raise RouteError("working DF1 is not disk B, volume 'Secret 2'")
+        if sha256(df1) != manifest["disk_b_source"]["sha256"]:
+            raise RouteError("working DF1 differs from the registered disk B")
     out = manifest_path.parent / attempt
     out.mkdir(parents=False, exist_ok=False)
     shots = scratch.ensure(out / "shots")
     runlog = (out / "run.jsonl").open("a", encoding="utf-8")
-    remote0 = f"C:/Amiga/Disks/wish672-{holder}-df0.adf"
-    remote1 = f"C:/Amiga/Disks/wish672-{holder}-df1.adf"
+    if title is None:
+        remotes = {"df0": f"C:/Amiga/Disks/wish672-{holder}-df0.adf",
+                   "df1": f"C:/Amiga/Disks/wish672-{holder}-df1.adf"}
+        local_disks = {"df0": df0, "df1": df1}
+    else:
+        remotes = {key: f"C:/Amiga/Disks/wish{title.issue}-{holder}-{key}.adf"
+                   for key in title.disk_keys}
+        local_disks = disks
     result: dict[str, Any] = {
         "success": False, "holder": holder, "input": str(manifest_path),
-        "remote_df0": remote0, "remote_df1": remote1,
         "events": [], "error": "", "fetched": {},
         "deadline_seconds": deadline_seconds, "measure": measure,
         "accept": accept, "completed": False, "lost": None, "unguarded": [],
     }
-    steps = ACCEPT_ROUTE if accept else (
-        *((k, s, "key") for k, s in route), (write_keys[0], "loaded_menu", "write"))
-    strict_states = {"title", *(s for _, s in ROUTE)}
+    if title is not None:
+        result["remotes"] = remotes
+        steps = title.route
+        strict_states = {"title", *title.strict}
+        table = title.interstitials
+    else:
+        result["remote_df0"], result["remote_df1"] = remotes["df0"], remotes["df1"]
+        steps = ACCEPT_ROUTE if accept else (
+            *((k, s, "key") for k, s in route), (write_keys[0], "loaded_menu", "write"))
+        strict_states = {"title", *(s for _, s in ROUTE)}
+        table = SILVER_BLADES_INTERSTITIALS
+    title_limit = title.title_limit if title else TITLE_LIMIT
+    boot_span = title.boot_span if title else MEASURE_TITLE_SPAN
     landed: dict[str, Any] = {"state": None}
     if accept and answer is None:
         answer = functools.partial(run_journal_answer, journal_python)
@@ -779,8 +1088,27 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if identity is not None and _has_rule(identity, state) and not identity(state, crop):
             raise RouteError(IDENTITY_MESSAGES[state])
 
+    def run_title_answer() -> None:
+        """Answer a challenge screen with X and RET while its guard matches, three rounds at most."""
+        if not _has_rule(guard, "journal"):
+            raise RouteError("screen guard map lacks ['journal']")
+        for round_ in range(4):
+            name = f"journal-{round_}"
+            if not capture(name, check=False, settle=False) or not guard(
+                    "journal", shots / f"{name}.png"):
+                return
+            if round_ == 3:
+                raise RouteError("the journal challenge is still on screen after three answers")
+            for key in ("X", "RET"):
+                guest.press(holder, key, timeout=route_limit(30))
+                result["events"].append({"answer_key": key, "round": round_ + 1})
+                log("answer", key=key, round=round_ + 1)
+            wait(GUARD_POLL)
+
     def run_answer() -> None:
         """Run the journal answerer, again while it sees no challenge, until GUARD_LIMIT."""
+        if title is not None:
+            return run_title_answer()
         started = time.monotonic()
         adf = originals["boot_source"]
         while True:
@@ -795,32 +1123,42 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 raise RouteError(f"no journal challenge on screen within {GUARD_LIMIT:.0f}s")
             wait(GUARD_POLL)
 
-    def interstitial(state: str, crop: pathlib.Path, done: set[str]) -> bool:
-        """Act once per wait on a known screen that is not the wanted one."""
-        def press(screen: str, key: str) -> None:
-            done.add(screen)
-            guest.press(holder, key, timeout=route_limit(30))
-            result["events"].append({"interstitial": screen, "key": key})
-            log("interstitial", screen=screen, key=key)
-
-        if (state == "title" and "credits" not in done and _has_rule(guard, "credits")
-                and guard("credits", crop)):
-            press("credits", "ESC")
-            return True
-        if not accept:
-            return False
-        if ("continue" not in done and _has_rule(guard, "continue")
-                and guard("continue", crop)):
-            press("continue", "RET")
-            return True
-        if (state == "exit_game" and "journal" not in done and _has_rule(guard, "journal")
-                and guard("journal", crop)):
-            done.add("journal")
-            result["events"].append({"interstitial": "journal"})
-            log("interstitial", screen="journal", key=None)
-            run_answer()
+    def interstitial(state: str, crop: pathlib.Path, done: dict[str, int]) -> bool:
+        """Act on a known screen that is not the wanted one, by the title's table."""
+        for screen, action, waiting_for, limit in table:
+            if (title is None and not accept and screen in _ACCEPT_ONLY) or (
+                    title is not None and measure and action[0] == "answer"):
+                continue
+            if (done.get(screen, 0) >= limit or not _has_rule(guard, screen)
+                    or (waiting_for is not None and state not in waiting_for)
+                    or not guard(screen, crop)):
+                continue
+            done[screen] = done.get(screen, 0) + 1
+            if action[0] == "answer":
+                result["events"].append({"interstitial": screen})
+                log("interstitial", screen=screen, key=None)
+                run_answer()
+            elif action[0] == "insert":
+                _, drive, disk_key, key = action
+                insert(drive, disk_key, screen)
+                press_key(screen, key)
+            else:
+                names = (action[1],) if isinstance(action[1], str) else action[1]
+                for key in names:
+                    press_key(screen, key)
             return True
         return False
+
+    def press_key(screen: str, key: str) -> None:
+        guest.press(holder, key, timeout=route_limit(30))
+        result["events"].append({"interstitial": screen, "key": key})
+        log("interstitial", screen=screen, key=key)
+
+    def insert(drive: int, disk_key: str, why: Any) -> None:
+        receipt = guest.insert(holder, drive, remotes[disk_key], timeout=route_limit(60))
+        result["events"].append({"insert": disk_key, "drive": drive, "for": why,
+                                 "receipt": receipt})
+        log("insert", disk=disk_key, drive=drive, receipt=receipt)
 
     def settle_unguarded(state: str, name: str) -> str:
         """One settled capture of a state nobody has measured, marked as such."""
@@ -838,7 +1176,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         """
         wait(first_wait)
         started = time.monotonic()
-        done: set[str] = set()
+        done: dict[str, int] = {}
         crop = shots / f"{name}.png"
         while True:
             digest = capture(name, check=False, settle=False)
@@ -866,7 +1204,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             return until_guard(state, name, first_wait, GUARD_POLL, GUARD_LIMIT,
                                strict=strict)
         wait(first_wait)
-        done: set[str] = set()
+        done: dict[str, int] = {}
         digest = settle_unguarded(state, name)
         for again in range(1, 4):
             if not interstitial(state, shots / f"{name}.png", done):
@@ -874,6 +1212,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             wait(first_wait)
             digest = settle_unguarded(state, f"{name}-after-{again}")
         return digest
+
+    def perform(key: Any, kind: str, state: str, n: int) -> None:
+        """Press one route step's key, after putting a disk in the drive when it is an `insert`."""
+        if kind == "insert":
+            drive, disk_key, key = key
+            insert(drive, disk_key, n)
+        guest.press(holder, key, timeout=route_limit(30))
+        result["events"].append({"key": key, "step": n})
+        log("write" if kind == "write" else "key", key=key, step=n, state=state)
 
     def measure_boot() -> str:
         """Capture the boot, keeping each distinct frame, until the title or a fixed span.
@@ -897,10 +1244,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             elif digest:
                 last, n = digest, n + 1
             elapsed = time.monotonic() - started
-            if title and elapsed >= TITLE_LIMIT:
+            if title and elapsed >= title_limit:
                 raise RouteError(
-                    f"title screen was not recognized within {TITLE_LIMIT:.0f}s")
-            if not title and elapsed >= MEASURE_TITLE_SPAN:
+                    f"title screen was not recognized within {title_limit:.0f}s")
+            if not title and elapsed >= boot_span:
                 return last
             wait(TITLE_POLL if title else MEASURE_BOOT_POLL)
 
@@ -911,25 +1258,39 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         result["claim"] = receipt
         log("claim", receipt=receipt)
         claimed = True
-        guest.put(df0, remote0, timeout=route_limit(90))
-        guest.put(df1, remote1, timeout=route_limit(90))
+        for name, local in local_disks.items():
+            guest.put(local, remotes[name], timeout=route_limit(90))
         copied = True
         if not _mute_proof(audio_proof):
             raise RouteError("the Windows VM audio mute proof expired before WinUAE start")
         start_attempted = True
-        result["start"] = guest.start(holder, remote0, remote1,
-                                      timeout=route_limit(60))
+        if title is None:
+            result["start"] = guest.start(holder, remotes["df0"], remotes["df1"],
+                                          timeout=route_limit(60))
+        else:
+            result["start"] = guest.start(
+                holder, *(None if key is None else remotes[key] for key in title.mounted),
+                timeout=route_limit(60), options=title.options)
         log("start", receipt=result["start"])
         if measure:
             previous = measure_boot()
             changed = True
-            for n, (key, state) in enumerate(route, 1):
-                if key.upper() in write_keys:
-                    result["events"].append({"skipped_write_key": key, "step": n})
-                    changed = False
-                    break
-                guest.press(holder, key, timeout=route_limit(30))
-                result["events"].append({"key": key, "step": n})
+            for n, step in enumerate(route if title is None else title.measure_route, 1):
+                if title is None:
+                    (key, state), kind = step, "key"
+                    if key.upper() in write_keys:
+                        result["events"].append({"skipped_write_key": key, "step": n})
+                        changed = False
+                        break
+                    guest.press(holder, key, timeout=route_limit(30))
+                    result["events"].append({"key": key, "step": n})
+                else:
+                    key, state, kind = step
+                    if kind in ("write", "answer"):
+                        # The measured route ends where the run would first write or answer.
+                        result["events"].append({"skipped_write_key": key, "step": n})
+                        break
+                    perform(key, kind, state, n)
                 name = f"{n:02d}-{state}"
                 if _guards(guard, state):
                     digest = until_guard(state, name, min_waits.get(state, 0),
@@ -944,7 +1305,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 previous = digest
             result["route_changed"] = changed
         else:
-            until_guard("title", "title", 0, TITLE_POLL, TITLE_LIMIT)
+            until_guard("title", "title", 0, TITLE_POLL, title_limit)
             # Leaving the credits with ESC can land on the party menu, which `P` opens.
             skip_first = landed["state"] == "party_menu" and steps[0][1] == "party_menu"
             previous_world = ""
@@ -955,9 +1316,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 if kind == "answer":
                     run_answer()
                 else:
-                    guest.press(holder, key, timeout=route_limit(30))
-                    result["events"].append({"key": key, "step": n})
-                    log("write" if kind == "write" else "key", key=key, step=n, state=state)
+                    perform(key, kind, state, n)
                 name = (f"{n:02d}-post_write" if kind == "write" and state == "loaded_menu"
                         else f"{n:02d}-{state}")
                 if kind == "move":
@@ -993,7 +1352,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             except BaseException as exc:
                 result["stop_error"] = f"{type(exc).__name__}: {exc}"
         if copied:
-            for name, remote in (("df0", remote0), ("df1", remote1)):
+            for name, remote in remotes.items():
                 local = out / f"fetched-{name}.adf"
                 try:
                     guest.get(remote, local, timeout=cleanup_limit(60))
@@ -1008,79 +1367,83 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 log("release", receipt=result["release"])
             except BaseException as exc:
                 result["release_error"] = f"{type(exc).__name__}: {exc}"
-        result["published_unchanged"] = sha256(published) == manifest[
-            "published_df1"]["sha256"]
-        result["working_unchanged"] = sha256(df1) == manifest["df1"]["sha256"]
-        for name, path in originals.items():
-            result[f"{name}_unchanged"] = sha256(path) == manifest[name]["sha256"]
-        if "df0" in result["fetched"]:
-            result["df0_unchanged"] = result["fetched"]["df0"]["sha256"] == manifest[
-                "df0"]["sha256"]
-        if "df1" in result["fetched"]:
-            result["df1_unchanged"] = result["fetched"]["df1"]["sha256"] == manifest[
-                "df1"]["sha256"]
-        if "df0" in result["fetched"]:
-            # The game saves to the boot disk it found its SAVE drawer on.
-            try:
-                fetched = _verified_disk(out / "fetched-df0.adf")
-                result["slot_unchanged"] = (
-                    fetched.read_file(f"/SAVE/savgam{letter}.sav") == slot)
-                result["slot_a_unchanged"] = (
-                    fetched.read_file("/SAVE/savgamA.sav")
-                    == df0_disk.read_file("/SAVE/savgamA.sav"))
-                reading = _slot_reading(fetched, "B")
-                result["slot_b_sha256"] = reading.get("sha256")
-                if "decode_error" in reading:
-                    result["slot_b_decode_error"] = reading["decode_error"]
-                elif "inventory" in reading:
-                    result["slot_b"] = {"inventory": reading["inventory"],
-                                        "state": reading["place"]}
-                if not measure:
-                    result["menu_save_problems"] = menu_save_problems(
-                        manifest, reading)
+        if title is None:
+            result["published_unchanged"] = sha256(published) == manifest[
+                "published_df1"]["sha256"]
+            result["working_unchanged"] = sha256(df1) == manifest["df1"]["sha256"]
+            for name, path in originals.items():
+                result[f"{name}_unchanged"] = sha256(path) == manifest[name]["sha256"]
+            if "df0" in result["fetched"]:
+                result["df0_unchanged"] = result["fetched"]["df0"]["sha256"] == manifest[
+                    "df0"]["sha256"]
+            if "df1" in result["fetched"]:
+                result["df1_unchanged"] = result["fetched"]["df1"]["sha256"] == manifest[
+                    "df1"]["sha256"]
+            if "df0" in result["fetched"]:
+                # The game saves to the boot disk it found its SAVE drawer on.
+                try:
+                    fetched = _verified_disk(out / "fetched-df0.adf")
+                    result["slot_unchanged"] = (
+                        fetched.read_file(f"/SAVE/savgam{letter}.sav") == slot)
+                    result["slot_a_unchanged"] = (
+                        fetched.read_file("/SAVE/savgamA.sav")
+                        == df0_disk.read_file("/SAVE/savgamA.sav"))
+                    reading = _slot_reading(fetched, "B")
+                    result["slot_b_sha256"] = reading.get("sha256")
+                    if "decode_error" in reading:
+                        result["slot_b_decode_error"] = reading["decode_error"]
+                    elif "inventory" in reading:
+                        result["slot_b"] = {"inventory": reading["inventory"],
+                                            "state": reading["place"]}
+                    if not measure:
+                        result["menu_save_problems"] = menu_save_problems(
+                            manifest, reading)
+                    if accept:
+                        slot_d = _slot_reading(fetched, CAMP_SAVE_LETTER)
+                        result["slot_d_sha256"] = slot_d.get("sha256")
+                        result["camp_save_problems"] = menu_save_problems(
+                            manifest, slot_d, letter=CAMP_SAVE_LETTER, check_place=False)
+                        squares = sum(1 for *_, kind in steps if kind == "move")
+                        walk = walk_verdict(manifest["state_a"], reading, slot_d, squares)
+                        result["walk"] = walk
+                        result["read"] = {
+                            "place_before": manifest["state_a"],
+                            "menu_save": reading.get("place"),
+                            "place_after": slot_d.get("place"),
+                            "place_changed": walk["place_changed"],
+                            "squares_moved": walk["squares_moved"],
+                            "verdicts": walk["verdicts"],
+                        }
+                        log("read", **result["read"])
+                        allowed = {f"savgam{c}.sav".lower()
+                                   for c in ("A", letter, MENU_SAVE_LETTER, CAMP_SAVE_LETTER)}
+                        result["extra_saves"] = sorted(
+                            e.name for e in fetched.entries(fetched.lookup("/SAVE").block)
+                            if e.name.lower().startswith("savgam")
+                            and e.name.lower() not in allowed)
+                except BaseException as exc:
+                    result["fetched_df0_error"] = f"{type(exc).__name__}: {exc}"
+            if not measure:
+                result.setdefault("menu_save_problems",
+                                  ["slot B was not read from the fetched boot disk"])
+                result["success"] = menu_save_verdict(result, tuple(originals))
                 if accept:
-                    slot_d = _slot_reading(fetched, CAMP_SAVE_LETTER)
-                    result["slot_d_sha256"] = slot_d.get("sha256")
-                    result["camp_save_problems"] = menu_save_problems(
-                        manifest, slot_d, letter=CAMP_SAVE_LETTER, check_place=False)
-                    squares = sum(1 for *_, kind in steps if kind == "move")
-                    walk = walk_verdict(manifest["state_a"], reading, slot_d, squares)
-                    result["walk"] = walk
-                    result["read"] = {
-                        "place_before": manifest["state_a"],
-                        "menu_save": reading.get("place"),
-                        "place_after": slot_d.get("place"),
-                        "place_changed": walk["place_changed"],
-                        "squares_moved": walk["squares_moved"],
-                        "verdicts": walk["verdicts"],
-                    }
-                    log("read", **result["read"])
-                    allowed = {f"savgam{c}.sav".lower()
-                               for c in ("A", letter, MENU_SAVE_LETTER, CAMP_SAVE_LETTER)}
-                    result["extra_saves"] = sorted(
-                        e.name for e in fetched.entries(fetched.lookup("/SAVE").block)
-                        if e.name.lower().startswith("savgam")
-                        and e.name.lower() not in allowed)
-            except BaseException as exc:
-                result["fetched_df0_error"] = f"{type(exc).__name__}: {exc}"
-        if not measure:
-            result.setdefault("menu_save_problems",
-                              ["slot B was not read from the fetched boot disk"])
-            result["success"] = menu_save_verdict(result, tuple(originals))
-            if accept:
-                result["read"] = result.get("read") or {
-                    "verdicts": ["slots B and D were not read from the fetched boot disk"]}
+                    result["read"] = result.get("read") or {
+                        "verdicts": ["slots B and D were not read from the fetched boot disk"]}
+                    result["success"] = bool(
+                        result["success"] and result["completed"] and not result["unguarded"]
+                        and result.get("walk", {}).get("b_ok")
+                        and result.get("walk", {}).get("d_ok")
+                        and result.get("camp_save_problems") == []
+                        and result.get("extra_saves") == [])
+            else:
                 result["success"] = bool(
-                    result["success"] and result["completed"] and not result["unguarded"]
-                    and result.get("walk", {}).get("b_ok")
-                    and result.get("walk", {}).get("d_ok")
-                    and result.get("camp_save_problems") == []
-                    and result.get("extra_saves") == [])
+                    result.get("route_changed") and not result["error"]
+                    and result.get("df0_unchanged") and result.get("df1_unchanged")
+                    and result.get("slot_b_sha256", "absent") is None)
         else:
-            result["success"] = bool(
-                result.get("route_changed") and not result["error"]
-                and result.get("df0_unchanged") and result.get("df1_unchanged")
-                and result.get("slot_b_sha256", "absent") is None)
+            _read_title(title, manifest, result, out, disks, registered,
+                        kept_before, letter, accept, measure, steps)
         result["elapsed_seconds"] = time.monotonic() - begun
         (out / "summary.json").write_text(json.dumps(result, indent=2,
                                                      sort_keys=True) + "\n")
