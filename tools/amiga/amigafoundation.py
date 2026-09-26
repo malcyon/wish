@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import pathlib
@@ -126,7 +127,94 @@ POOL = AmigaTitle(
     ),
 )
 
-TITLES: dict[str, AmigaTitle] = {"pool": POOL}
+
+
+CURSE_DISK_B_SHA256 = "a6f94bb42664ab94b673bf0c7390420d94bec257ae09fea488a53504b6e1fca3"
+CURSE_SPECIMEN_SHA256 = "752ed821e94cbedb96b7f8e8d4df09cd61e0c1a63c40ff2aab07d2c5203bcd71"
+CURSE_SPECIMEN = ("coab-amiga", "WISH-SPEC-curse-c64toamiga-slotb-walked-saved-c",
+                  "curseA-slotB-resave-C.adf")
+CURSE_VOLUME = "CurseA"
+CURSE_LOADED = "B"
+# The specimen's own camp save, made after the same two steps north.
+CURSE_LATER = "C"
+CURSE_KEY = "curse-of-the-azure-bonds"
+
+_CURSE_SAVED_GAME = re.compile(r"savgam([A-Z])\.dat", re.IGNORECASE)
+
+
+def _curse_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
+    """One Curse save slot in `/SAVE` of a fetched boot disk: `missing`, `decode_error`, or place and names."""
+    try:
+        raw = disk.read_file(f"/SAVE/savgam{letter}.dat")
+    except amiga_adf.AmigaDiskError:
+        return {"missing": True, "sha256": None}
+    reading: dict[str, Any] = {"sha256": hashlib.sha256(raw).hexdigest()}
+    try:
+        saved = amiga_savegame.read_slot(disk, letter, CURSE_KEY)
+        state = amiga_savegame.state_from_savegame(saved)
+        reading["names"] = [member.name for member in saved.characters]
+        reading["place"] = {"area": state.area, "x": state.x, "y": state.y,
+                            "facing": state.facing}
+    except Exception as exc:  # noqa: BLE001 - every reader failure is the verdict's `decode_error`
+        reading.pop("names", None)
+        reading["decode_error"] = f"{type(exc).__name__}: {exc}"
+    return reading
+
+
+def _curse_saves(disk: amiga_adf.AmigaDisk) -> list:
+    return [e for e in disk.entries(disk.lookup("/SAVE").block) if not e.is_dir]
+
+
+def _curse_slot_letters(disk: amiga_adf.AmigaDisk) -> list[str]:
+    found = (_CURSE_SAVED_GAME.fullmatch(e.name) for e in _curse_saves(disk))
+    return sorted(m.group(1).upper() for m in found if m)
+
+
+def _curse_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, bytes]:
+    """The slot's saved game and `spindisk`, which a later save must leave alone."""
+    return {e.name: disk.read_file(f"/SAVE/{e.name}") for e in _curse_saves(disk)
+            if e.name.lower() in (f"savgam{letter}.dat".lower(), "spindisk")}
+
+
+# The save picker offers ten letters, so F is free beside the specimen's A, B and C. The
+# after slot is F because E is the game's own exit key on the sheet and at camp, and a
+# save letter equal to a plain key cannot be told from it by the description.
+CURSE = AmigaTitle(
+    issue=ISSUE,
+    mounted=("save", "diskb"),
+    save_disk="save",
+    read_slot=_curse_read_slot, slot_letters=_curse_slot_letters,
+    slot_files=_curse_slot_files,
+    route=(
+        ("L", "load_picker", "key"), ("B", "loaded_menu", "key"), ("V", "sheet", "key"),
+        ("E", "loaded_menu", "key"), ("S", "save_picker", "key"),
+        ("D", "loaded_menu", "write"), ("B", "world", "key"),
+        ("NP8", "world", "move"), ("NP8", "world", "move"),
+        ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
+        ("F", "exit_game", "write"), ("N", "camp", "key"),
+    ),
+    # The four ESCs are the count recorded for this disk; the run ends cleanly at the
+    # first key that leaves the screen unchanged. Stops before D.
+    measure_route=(
+        ("ESC", "front_end", "key"), ("ESC", "front_end", "key"), ("ESC", "front_end", "key"),
+        ("ESC", "title", "key"), ("L", "load_picker", "key"), ("B", "loaded_menu", "key"),
+        ("V", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"),
+    ),
+    boot_span=120.0,
+    control_letter="D", after_letter="F", kept_letters=("A", "C"),
+    strict=frozenset({"load_picker", "loaded_menu", "sheet", "save_picker",
+                      "camp_save_picker"}),
+    title_limit=300.0,
+    min_waits={"load_picker": 10.0, "loaded_menu": 20.0, "sheet": 5.0, "save_picker": 10.0,
+               "world": 20.0, "world_after_move": 5.0, "camp": 10.0,
+               "camp_save_picker": 10.0, "exit_game": 20.0},
+    interstitials=(
+        ("front_end", ("keys", "ESC"), frozenset({"title"}), 4),
+        ("continue", ("keys", "RET"), frozenset({"world", "exit_game"}), 3),
+    ),
+)
+
+TITLES: dict[str, AmigaTitle] = {"pool": POOL, "curse": CURSE}
 
 
 def _find_images(wanted: dict[str, str]) -> dict[str, tuple[str, bytes]]:
@@ -143,25 +231,41 @@ def _find_images(wanted: dict[str, str]) -> dict[str, tuple[str, bytes]]:
     return found
 
 
-def _prepare_pool(run: pathlib.Path, specimen: pathlib.Path | None) -> dict[str, Any]:
-    specimen = pathlib.Path(specimen) if specimen else specimens.tree_root().joinpath(*POOL_SPECIMEN)
+@dataclasses.dataclass(frozen=True)
+class _Sources:
+    """The registered specimen and disks a title's run starts from."""
+
+    name: str
+    title: AmigaTitle
+    specimen: tuple[str, ...]
+    specimen_sha256: str
+    volume: str
+    loaded: str
+    later: str
+    images: dict[str, str]
+
+
+def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | None
+                  ) -> dict[str, Any]:
+    title = src.title
+    specimen = (pathlib.Path(specimen) if specimen
+                else specimens.tree_root().joinpath(*src.specimen))
     if not specimen.is_file():
         raise RouteError(f"the specimen {specimen} is missing")
-    if sha256(specimen) != POOL_SPECIMEN_SHA256:
+    if sha256(specimen) != src.specimen_sha256:
         raise RouteError(f"the specimen SHA-256 differs: {sha256(specimen)}")
     save = amiga_adf.AmigaDisk.open(specimen)
-    if save.verify() or save.volume_name != POOL_VOLUME:
-        raise RouteError(f"{specimen} is not a verified {POOL_VOLUME} disk")
-    present = POOL.slot_letters(save)
-    for taken in (POOL.control_letter, POOL.after_letter):
+    if save.verify() or save.volume_name != src.volume:
+        raise RouteError(f"{specimen} is not a verified {src.volume} disk")
+    present = title.slot_letters(save)
+    for taken in (title.control_letter, title.after_letter):
         if taken in present:
             raise RouteError(f"slot {taken} already exists on the specimen")
-    loaded, later = POOL.read_slot(save, POOL_LOADED), POOL.read_slot(save, POOL_LATER)
-    for letter, reading in ((POOL_LOADED, loaded), (POOL_LATER, later)):
+    loaded, later = title.read_slot(save, src.loaded), title.read_slot(save, src.later)
+    for letter, reading in ((src.loaded, loaded), (src.later, later)):
         if "place" not in reading:
             raise RouteError(f"specimen slot {letter} does not decode: {reading}")
-    wanted = {"disk1": POOL_DISK1_SHA256, "disk2": POOL_DISK2_SHA256}
-    images = _find_images(wanted)
+    images = _find_images(src.images)
     scratch.ensure(run)
     disks: dict[str, dict[str, str]] = {}
     for key, (_label, data) in images.items():
@@ -171,30 +275,45 @@ def _prepare_pool(run: pathlib.Path, specimen: pathlib.Path | None) -> dict[str,
     working = run / "save.adf"
     shutil.copyfile(specimen, working)
     disks["save"] = {"path": str(working), "sha256": sha256(working)}
-    if any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()):
+    if any(disks[key]["sha256"] != pinned for key, pinned in src.images.items()):
         raise RouteError("a working copy differs from the pinned disk")
-    if disks["save"]["sha256"] != POOL_SPECIMEN_SHA256:
+    if disks["save"]["sha256"] != src.specimen_sha256:
         raise RouteError("the working save disk differs from the specimen")
     # A registered image inside a zip has no file of its own, so `registered` holds the
     # specimen and `sources` names each image by where it was found.
     manifest = {
-        "title": "pool", "disks": disks,
+        "title": src.name, "disks": disks,
         "registered": {"specimen": {"path": str(specimen), "sha256": sha256(specimen)}},
-        "sources": {key: {"label": label, "sha256": wanted[key]}
+        "sources": {key: {"label": label, "sha256": src.images[key]}
                     for key, (label, _data) in images.items()},
-        "loaded_letter": POOL_LOADED,
+        "loaded_letter": src.loaded,
         "state_a": loaded["place"], "names_a": loaded["names"],
         "expected_after": later["place"],
     }
-    after = _find_images(wanted)
-    if (sha256(specimen) != POOL_SPECIMEN_SHA256
+    after = _find_images(src.images)
+    if (sha256(specimen) != src.specimen_sha256
             or any(hashlib.sha256(after[key][1]).hexdigest() != pinned
-                   for key, pinned in wanted.items())):
+                   for key, pinned in src.images.items())):
         raise RouteError("a registered image changed during preparation")
     return manifest
 
 
-_PREPARE = {"pool": _prepare_pool}
+POOL_SOURCES = _Sources("pool", POOL, POOL_SPECIMEN, POOL_SPECIMEN_SHA256, POOL_VOLUME,
+                        POOL_LOADED, POOL_LATER,
+                        {"disk1": POOL_DISK1_SHA256, "disk2": POOL_DISK2_SHA256})
+CURSE_SOURCES = _Sources("curse", CURSE, CURSE_SPECIMEN, CURSE_SPECIMEN_SHA256, CURSE_VOLUME,
+                         CURSE_LOADED, CURSE_LATER, {"diskb": CURSE_DISK_B_SHA256})
+
+
+def _prepare_pool(run: pathlib.Path, specimen: pathlib.Path | None) -> dict[str, Any]:
+    return _prepare_from(POOL_SOURCES, run, specimen)
+
+
+def _prepare_curse(run: pathlib.Path, specimen: pathlib.Path | None) -> dict[str, Any]:
+    return _prepare_from(CURSE_SOURCES, run, specimen)
+
+
+_PREPARE = {"pool": _prepare_pool, "curse": _prepare_curse}
 
 
 def _name(title: AmigaTitle) -> str:
