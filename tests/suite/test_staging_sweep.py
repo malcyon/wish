@@ -85,8 +85,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "tools"
 
 #: The only file allowed to call `shutil.copy` on one of these destinations
-#: directly: it is `stage_writable`'s own implementation.
-EXEMPT = {"session.py"}
+#: directly, as a path relative to `tools/`: it is `stage_writable`'s own
+#: implementation.  A path and not a base name, so a `session.py` on another
+#: platform is still scanned.
+EXEMPT = {"c64/session.py"}
 
 #: The three calls that carry the source's mode onto the copy.  See the
 #: module docstring for the measurement that leaves `copyfile` and
@@ -119,100 +121,100 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     # -- a screenshot the run's own emulator took, seconds earlier.  `shot()`
     # writes the PNG through `import` into the instance's `shots/`, so it
     # arrives with the default mode and nothing downstream reads it as a save.
-    ("amigacampsave.py", "preserved"):
+    ("amiga/amigacampsave.py", "preserved"):
         "the save-attempt screenshot `settle_fn` just wrote to the same "
         "run's own output directory, renamed to flag it as the challenge",
-    ("convertrun.py", 'out / "items.png"'): "the inventory screen this run shot",
-    ("convertrun.py", 'out / "loaded.png"'): "the load screen this run shot",
-    ("convertrun.py", 'out / "sheet.png"'): "the character sheet this run shot",
-    ("convertrun.py", 'out / "stuck.png"'): "the screen this run was stuck on",
-    ("convertrun.py", 'out / "walked.png"'): "the world after this run walked",
-    ("cursememorize.py", "shots / png.name"):
+    ("convert/convertrun.py", 'out / "items.png"'): "the inventory screen this run shot",
+    ("convert/convertrun.py", 'out / "loaded.png"'): "the load screen this run shot",
+    ("convert/convertrun.py", 'out / "sheet.png"'): "the character sheet this run shot",
+    ("convert/convertrun.py", 'out / "stuck.png"'): "the screen this run was stuck on",
+    ("convert/convertrun.py", 'out / "walked.png"'): "the world after this run walked",
+    ("curse_of_the_azure_bonds/cursememorize.py", "shots / png.name"):
         "this run's own shots directory, emptied of *.png files once the slot "
         "was claimed; the *.png files already in `out/shots` are removed first",
-    ("curseregain.py", "shots / png.name"): "this run's own shots directory",
-    ("dosencsave.py", "shots / png.name"): "this run's own shots directory",
-    ("dosfightrun.py", 'out / f"{name}.png"'): "this run's own shots directory",
-    ("dosfightwatch.py", 'out / "encounter.png"'): "the encounter this run shot",
-    ("dosfightwatch.py", 'out / "engine-encounter.png"'):
+    ("curse_of_the_azure_bonds/curseregain.py", "shots / png.name"): "this run's own shots directory",
+    ("dos/dosencsave.py", "shots / png.name"): "this run's own shots directory",
+    ("dos/dosfightrun.py", 'out / f"{name}.png"'): "this run's own shots directory",
+    ("dos/dosfightwatch.py", 'out / "encounter.png"'): "the encounter this run shot",
+    ("dos/dosfightwatch.py", 'out / "engine-encounter.png"'):
         "the engine-slot encounter this run shot",
-    ("dosfightwatch.py", 'out / "engine-loaded.png"'):
+    ("dos/dosfightwatch.py", 'out / "engine-loaded.png"'):
         "the engine-slot load screen this run shot",
-    ("dosfightwatch.py", 'out / "loaded.png"'): "the load screen this run shot",
-    ("dosgnome.py", "out / png.name"): "this run's own shots directory",
-    ("dositemcap.py", "out / png.name"): "this run's own shots directory",
-    ("dosacceptance.py", "kept / png.name"): "this run's own shots directory",
-    ("dosladder.py", "shots / png.name"): "this run's own shots directory",
-    ("dosnewsave.py", 'out / "items.png"'): "the inventory screen this run shot",
-    ("dosnewsave.py", 'out / "loaded.png"'): "the load screen this run shot",
-    ("dosnewsave.py", 'out / "sheet.png"'): "the character sheet this run shot",
-    ("dosnewsave.py", 'out / "stuck.png"'): "the screen this run was stuck on",
-    ("dosnewsave.py", 'out / "walked.png"'): "the world after this run walked",
-    ("dosoutdoor.py", 'out / "loaded.png"'): "the load screen this run shot",
-    ("dosoutdoor.py", 'out / "walked.png"'): "the world after this run walked",
-    ("dosoutdoorprobe.py", 'out / "loaded.png"'): "the load screen this run shot",
-    ("dosoutdoorprobe.py", 'out / f"{letter}.png"'):
+    ("dos/dosfightwatch.py", 'out / "loaded.png"'): "the load screen this run shot",
+    ("dos/dosgnome.py", "out / png.name"): "this run's own shots directory",
+    ("dos/dositemcap.py", "out / png.name"): "this run's own shots directory",
+    ("dos/dosacceptance.py", "kept / png.name"): "this run's own shots directory",
+    ("dos/dosladder.py", "shots / png.name"): "this run's own shots directory",
+    ("dos/dosnewsave.py", 'out / "items.png"'): "the inventory screen this run shot",
+    ("dos/dosnewsave.py", 'out / "loaded.png"'): "the load screen this run shot",
+    ("dos/dosnewsave.py", 'out / "sheet.png"'): "the character sheet this run shot",
+    ("dos/dosnewsave.py", 'out / "stuck.png"'): "the screen this run was stuck on",
+    ("dos/dosnewsave.py", 'out / "walked.png"'): "the world after this run walked",
+    ("dos/dosoutdoor.py", 'out / "loaded.png"'): "the load screen this run shot",
+    ("dos/dosoutdoor.py", 'out / "walked.png"'): "the world after this run walked",
+    ("dos/dosoutdoorprobe.py", 'out / "loaded.png"'): "the load screen this run shot",
+    ("dos/dosoutdoorprobe.py", 'out / f"{letter}.png"'):
         "one probe slot's load screen this run shot",
-    ("dosparty.py", "shots / png.name"): "this run's own shots directory",
-    ("dosportraitparty.py", 'out / "seq-0.png"'): "the first sheet this run shot",
-    ("dosportraitparty.py", 'out / f"probe-{n}-{key}.png"'):
+    ("dos/dosparty.py", "shots / png.name"): "this run's own shots directory",
+    ("icons/dosportraitparty.py", 'out / "seq-0.png"'): "the first sheet this run shot",
+    ("icons/dosportraitparty.py", 'out / f"probe-{n}-{key}.png"'):
         "the sheet after one keypress this run made",
-    ("dosportraitparty.py", 'out / f"seq-{n}-{key}.png"'):
+    ("icons/dosportraitparty.py", 'out / f"seq-{n}-{key}.png"'):
         "the sheet after one keypress this run made",
-    ("dosportraitparty.py", 'out / f"sheet-{index}.png"'):
+    ("icons/dosportraitparty.py", 'out / f"sheet-{index}.png"'):
         "one character's sheet this run shot",
-    ("dossheetread.py", "shots / png.name"): "this run's own shots directory",
-    ("dosshop.py", "shots / png.name"): "this run's own shots directory",
-    ("dostrain.py", "shots / png.name"): "this run's own shots directory",
-    ("dostrainprobe.py", "shots / png.name"): "this run's own shots directory",
-    ("dualclassagain.py", "shots / png.name"): "this run's own shots directory",
-    ("ssbimport.py", "shots / png.name"):
+    ("dos/dossheetread.py", "shots / png.name"): "this run's own shots directory",
+    ("dos/dosshop.py", "shots / png.name"): "this run's own shots directory",
+    ("dos/dostrain.py", "shots / png.name"): "this run's own shots directory",
+    ("dos/dostrainprobe.py", "shots / png.name"): "this run's own shots directory",
+    ("c64/dualclassagain.py", "shots / png.name"): "this run's own shots directory",
+    ("dos/ssbimport.py", "shots / png.name"):
         "this run's own shots directory, emptied of *.png files once the slot "
         "was claimed; the *.png files already in `out/shots` are removed first",
-    ("portraitshot.py", 'out / "portrait.png"'): "the portrait this run shot",
-    ("portraitshot.py", 'out / "sheet.png"'): "the character sheet this run shot",
-    ("portraitshot.py", 'out / f"key{n}-{key}.png"'):
+    ("icons/portraitshot.py", 'out / "portrait.png"'): "the portrait this run shot",
+    ("icons/portraitshot.py", 'out / "sheet.png"'): "the character sheet this run shot",
+    ("icons/portraitshot.py", 'out / f"key{n}-{key}.png"'):
         "the sheet after one keypress this run made",
 
     # -- a save the run's own game wrote, kept as evidence.  The staged disk
     # and the staged `SAVE` tree are both writable before the game is booted
     # -- `tools/c64/session.py`'s `_restage` and `dosbox.Session.stage` see to
     # that -- so what the game leaves behind is writable too.
-    ("convertrun.py", "out / p.name"):
+    ("convert/convertrun.py", "out / p.name"):
         "the CHRDAT records the game wrote in this run's staged tree",
-    ("convertrun.py", "s.save_dir / p.name"):
+    ("convert/convertrun.py", "s.save_dir / p.name"):
         "the .d64 and .SAV files Wish's own writer built for this run, into a "
         "tree Session.stage(fresh=True) has just rebuilt",
-    ("cursememorize.py", "saves / f.name"):
+    ("curse_of_the_azure_bonds/cursememorize.py", "saves / f.name"):
         "the save files the game wrote in this run's staged tree; the CHRDAT* "
         "and SAVGAM* files already in `out/saves` are removed first, so no "
         "leftover of an earlier run survives",
-    ("curseregain.py", "d / p.name"):
+    ("curse_of_the_azure_bonds/curseregain.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
-    ("dosacceptance.py", "installed"):
+    ("dos/dosacceptance.py", "installed"):
         "the staged SAVE tree as booted, whose files `install` wrote with "
         "`write_bytes`; the destination is rmtree'd first, so no leftover survives",
-    ("dosacceptance.py", "resave"):
+    ("dos/dosacceptance.py", "resave"):
         "the staged SAVE tree after the game resaved it; the destination is "
         "rmtree'd first, so no leftover survives",
-    ("dosencsave.py", "d / p.name"):
+    ("dos/dosencsave.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
-    ("dosladder.py", "d / p.name"):
+    ("dos/dosladder.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
-    ("dosnewsave.py", "out / p.name"):
+    ("dos/dosnewsave.py", "out / p.name"):
         "the CHRDAT records the game wrote in this run's staged tree",
-    ("dosoutdoor.py", "out / p.name"):
+    ("dos/dosoutdoor.py", "out / p.name"):
         "the CHRDAT records the game wrote in this run's staged tree",
-    ("dosoutdoorprobe.py", "out / p.name"):
+    ("dos/dosoutdoorprobe.py", "out / p.name"):
         "the save and CHRDAT records the game wrote in this run's staged tree",
-    ("dosparty.py", "save / p.name"):
+    ("dos/dosparty.py", "save / p.name"):
         "the save files the game wrote in this run's staged tree",
-    ("dostrain.py", "d / p.name"):
+    ("dos/dostrain.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
-    ("dossheetread.py", "dest"):
+    ("dos/dossheetread.py", "dest"):
         "the whole staged SAVE tree after the game resaved it; the destination "
         "is rmtree'd first, so no leftover survives either",
-    ("portraitshot.py", "keep"):
+    ("icons/portraitshot.py", "keep"):
         "the staged SAVE tree kept as a template; rmtree'd first",
 
     # -- copied from outside the run, and the site restores the write bit
@@ -222,14 +224,14 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     # the next `shutil.copy` cannot open.  Routing them through
     # `stage_writable` would close that, and none of them is the silent
     # failure this sweep is for.
-    ("cursethac0.py", "out"): "a --base save disk, chmod 0o644 on the next line",
-    ("dositemcap.py", "dest"):
+    ("curse_of_the_azure_bonds/cursethac0.py", "out"): "a --base save disk, chmod 0o644 on the next line",
+    ("dos/dositemcap.py", "dest"):
         "a $WISH_SPECIMENS save tree, chmod 0o644 on the next line",
-    ("inventorycheck.py", "dest"):
+    ("c64/inventorycheck.py", "dest"):
         "a --base save disk, chmod 0o644 on the next line",
-    ("pursecheck.py", "dest"):
+    ("c64/pursecheck.py", "dest"):
         "a --base save disk, chmod 0o644 on the next line",
-    ("ssbedit.py", "dest"):
+    ("secret_of_the_silver_blades/ssbedit.py", "dest"):
         "a --base save disk, chmod 0o644 on the next line",
 }
 
@@ -322,7 +324,7 @@ def _seeded_parameters(node) -> set[str]:
 def reused_destination_copies(root: pathlib.Path = TOOLS) -> dict:
     """Every mode-carrying copy in `root` landing in a reused directory.
 
-    Keyed by `(filename, destination expression)` and valued with the lines
+    Keyed by `(path relative to root, destination expression)` and valued with the lines
     it was found on.  The key is what the two lists above are written
     against: a line number moves whenever anything above it is edited, and a
     list keyed on one would go stale without anybody's copy having changed.
@@ -333,7 +335,8 @@ def reused_destination_copies(root: pathlib.Path = TOOLS) -> dict:
     """
     found: dict[tuple[str, str], set[int]] = {}
     for path in sorted(root.rglob("*.py")):
-        if path.name in EXEMPT:
+        rel = path.relative_to(root).as_posix()
+        if rel in EXEMPT:
             continue
         # `encoding="utf-8"` and not the platform default: Windows reads as
         # cp1252, and several tools here carry a byte it has no character
@@ -370,7 +373,7 @@ def reused_destination_copies(root: pathlib.Path = TOOLS) -> dict:
                         or any(isinstance(n, ast.Name) and n.id in names
                                for n in ast.walk(dest))):
                     continue
-                found.setdefault((path.name, text), set()).add(call.lineno)
+                found.setdefault((rel, text), set()).add(call.lineno)
     return found
 
 
@@ -520,8 +523,8 @@ def test_the_sweep_names_all_eight_pre_fix_sites_together(tmp_path):
 #: defect list, or the sweep is a nuisance and the next reader learns to
 #: ignore it.
 OWN_RESULT = (
-    ("convertrun.py", 'out / "loaded.png"'),      # a screenshot it just took
-    ("dosladder.py", "d / p.name"),               # the staged tree's own records
+    ("convert/convertrun.py", 'out / "loaded.png"'),      # a screenshot it just took
+    ("dos/dosladder.py", "d / p.name"),               # the staged tree's own records
 )
 
 
@@ -681,3 +684,42 @@ def test_the_sweep_catches_copy2_and_copytree(tmp_path):
     assert reused_destination_copies(tmp_path) == {
         ("toolstub.py", "out / 'SIDE0.D64'"): {6},
         ("toolstub.py", "out / 'SAVE'"): {7}}
+
+
+# -- keys are paths, not base names -------------------------------------------
+
+_BARE_COPY = ("import shutil\n"
+              "\n"
+              "def stage(slot, save):\n"
+              "    shutil.copy(save, slot.dir)\n")
+
+
+def test_a_session_py_outside_c64_is_still_scanned(tmp_path):
+    """Only `c64/session.py` is exempt; the same file name on another platform
+    is an ordinary tool."""
+    (tmp_path / "amiga").mkdir()
+    (tmp_path / "amiga" / "session.py").write_text(_BARE_COPY)
+
+    assert reused_destination_copies(tmp_path) == {
+        ("amiga/session.py", "slot.dir"): {4}}
+
+
+def test_the_exempt_file_is_skipped_by_its_path(tmp_path):
+    (tmp_path / "c64").mkdir()
+    (tmp_path / "c64" / "session.py").write_text(_BARE_COPY)
+
+    assert reused_destination_copies(tmp_path) == {}
+
+
+def test_two_files_with_one_base_name_are_keyed_separately(tmp_path):
+    """An allowlist entry for one platform's file must not cover another's."""
+    for platform in ("c64", "dos"):
+        (tmp_path / platform).mkdir()
+        (tmp_path / platform / "backstab.py").write_text(_BARE_COPY)
+
+    found = reused_destination_copies(tmp_path)
+
+    assert set(found) == {("c64/backstab.py", "slot.dir"),
+                          ("dos/backstab.py", "slot.dir")}
+    allowed = {("dos/backstab.py", "slot.dir")}
+    assert set(found) - allowed == {("c64/backstab.py", "slot.dir")}
