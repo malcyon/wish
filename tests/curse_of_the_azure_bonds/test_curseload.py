@@ -265,3 +265,78 @@ def test_a_save_disk_prompt_still_up_after_the_key_is_not_answered_again(monkeyp
     now[0] += 1.0
     assert curseload.answer_prompt(sess) is True
     assert sess.kernal == [0x20, 0x20]
+
+
+class Menu:
+    """A party menu with a highlight, and a keyboard that records."""
+
+    def __init__(self, rows: dict[int, str], hot: int, column: int = 5):
+        self.rows, self.hot, self.column = rows, hot, column
+        self.xtest: list[str] = []
+        self.kernal: list[int] = []
+        self.prompts = 0
+        self.kbd = self
+
+    def screen(self):
+        return self
+
+    def find(self, label):
+        for r, text in self.rows.items():
+            if label in text:
+                return (r, text.index(label))
+        return None
+
+    def colours(self, r):
+        cols = [5] * 40
+        cols[self.column] = 1 if r == self.hot else 5
+        return cols
+
+    def key(self, name, hold=0.1, gap=0.14):
+        self.xtest.append(name)
+
+    def press_kernal(self, code):
+        self.kernal.append(code)
+
+    def handle_prompt(self, s):
+        self.prompts += 1
+
+
+def test_highlighted_returns_only_rows_white_at_the_column():
+    menu = Menu({}, hot=7, column=5)
+    assert curseload.highlighted(menu, 5) == [7]
+    assert curseload.highlighted(menu, 6) == []
+
+
+def test_walk_menu_moves_down_then_presses_return_through_the_kernal():
+    menu = Menu({9: "     GO"}, hot=7)
+    seen = []
+    menu.key = lambda name, hold=0.1, gap=0.14: (
+        seen.append(name), setattr(menu, "hot", menu.hot + 1))
+    assert curseload.walk_menu(menu, "GO") is True
+    assert seen == ["Down", "Down"]
+    assert menu.kernal == [0x0D]
+
+
+def test_walk_menu_moves_up_to_a_label_above_the_highlight():
+    menu = Menu({5: "     GO"}, hot=6)
+    seen = []
+    menu.key = lambda name, hold=0.1, gap=0.14: (
+        seen.append(name), setattr(menu, "hot", menu.hot - 1))
+    assert curseload.walk_menu(menu, "GO") is True
+    assert seen == ["Up"]
+    assert menu.kernal == [0x0D]
+
+
+def test_walk_menu_answers_a_prompt_when_the_label_is_absent(monkeypatch):
+    clock = iter([0.0, 1.0, 2.0, 100.0, 100.0, 100.0])
+    monkeypatch.setattr(curseload.time, "time", lambda: next(clock))
+    menu = Menu({}, hot=1)
+    assert curseload.walk_menu(menu, "GO") is False
+    assert menu.prompts == 2
+    assert menu.kernal == [] and menu.xtest == []
+
+
+def test_the_dual_class_tool_shares_the_walker():
+    from tools.c64 import dualclassagain
+    assert dualclassagain.walk_menu is curseload.walk_menu
+    assert dualclassagain.highlighted is curseload.highlighted

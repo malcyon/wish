@@ -349,7 +349,7 @@ def sheet_of(sess, r: Run, name: str, walk) -> list[str] | None:
 
     `walk` is the title's own way of pressing Return on a **vertical list**:
     Curse reads it from the KERNAL buffer on this front end
-    (`tools/c64/dualclassagain.py:walk_menu`) and Silver Blades from XTEST
+    (`tools/curse_of_the_azure_bonds/curseload.py:walk_menu`) and Silver Blades from XTEST
     (`Session.select_row`), and neither answers the other's.  The sheet's own
     `EXIT` is not a list row and is left to `leave_sheet`.
     """
@@ -469,8 +469,8 @@ def ssb_boot(slot, r: Run, save: str, where: str, wait: float):
 
 
 def curse_walk(sess, label: str) -> bool:
-    from tools.c64 import dualclassagain
-    return dualclassagain.walk_menu(sess, label)
+    from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
+    return curseload.walk_menu(sess, label)
 
 
 def ssb_walk(sess, label: str) -> bool:

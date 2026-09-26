@@ -187,7 +187,6 @@ def read_header(sess) -> dict:
 
 
 def run(args) -> int:
-    from tools.c64 import dualclassagain  # noqa: PLC0415
     from tools.c64 import session as por  # noqa: PLC0415
     from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: PLC0415
 
@@ -260,7 +259,7 @@ def run(args) -> int:
             here = pathlib.Path(slot.dir) / f"SIDE{args.side}.D64"
             sess.attach(str(here))
             note(event="attached-side", side=args.side)
-        if not dualclassagain.walk_menu(sess, "BEGIN ADVENTURING"):
+        if not curseload.walk_menu(sess, "BEGIN ADVENTURING"):
             note(event="begin-miss")
             shot("02-begin-miss")
             return 1

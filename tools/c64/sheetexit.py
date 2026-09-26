@@ -479,8 +479,8 @@ def ssb_boot(slot, log: Log, save: str, where: str, wait: float):
 
 
 def curse_walk(sess, label: str) -> bool:
-    from tools.c64 import dualclassagain
-    return dualclassagain.walk_menu(sess, label)
+    from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
+    return curseload.walk_menu(sess, label)
 
 
 def ssb_walk(sess, label: str) -> bool:

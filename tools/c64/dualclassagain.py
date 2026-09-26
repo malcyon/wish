@@ -81,6 +81,10 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
 from automap import gamedisks  # noqa: E402
+from tools.curse_of_the_azure_bonds.curseload import (  # noqa: E402
+    highlighted,  # noqa: F401  (re-exported for callers of this module)
+    walk_menu,
+)
 from tools.registry import scratch  # noqa: E402
 
 #: Where each C64 title's refusal lives, read out of its own `GEN`.
@@ -102,50 +106,6 @@ C64_GATES = {
 #: The working character record the front end reads and writes.
 WORKING = 0x7C00
 DUAL_SLOT, DUAL_LEVEL, LEVEL, RACE = 0x0B9, 0x0BA, 0x0A0, 0x072
-
-
-def highlighted(sess, column: int) -> list[int]:
-    """Rows whose colour RAM reads white at `column`, which is the highlight.
-
-    Measured on 2026-09-05 with the party-formation menu up: the highlighted
-    line's text is colour 1 and the other lines' is colour 5, over identical
-    screen codes -- there is no inverse video anywhere on this screen, so
-    reading bit 7 finds nothing.  The column matters because every border row
-    is white too, and `Session.select_row`'s dominant-colour scan therefore
-    answers rows that are not menu lines at all.
-    """
-    return [r for r in range(25) if sess.colours(r)[column] == 1]
-
-
-def walk_menu(sess, label: str, timeout: float = 40.0) -> bool:
-    """Move the menu highlight onto `label` and press Return.
-
-    Return goes through the KERNAL buffer: this front end does not read an
-    XTEST Return, which is the same finding `tools/curse_of_the_azure_bonds/cursewarp.py` records for
-    the `LOAD SAVED GAME ? YES NO` bar.  The arrows *are* read from XTEST.
-    """
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        s = sess.screen()
-        if s is None:
-            time.sleep(0.3)
-            continue
-        hit = s.find(label)
-        if hit is None:
-            sess.handle_prompt(s)
-            time.sleep(0.3)
-            continue
-        hot = highlighted(sess, hit[1])
-        if not hot:
-            time.sleep(0.3)
-            continue
-        cur = min(hot, key=lambda r: abs(r - hit[0]))
-        if cur == hit[0]:
-            sess.press_kernal(0x0D)
-            return True
-        sess.kbd.key("Down" if cur < hit[0] else "Up")
-        time.sleep(0.2)
-    return False
 
 
 def answer_bar(sess, word: str) -> bool:

@@ -152,6 +152,50 @@ def probe(sess) -> dict:
     return out
 
 
+def highlighted(sess, column: int) -> list[int]:
+    """Rows whose colour RAM reads white at `column`, which is the highlight.
+
+    Measured on 2026-09-05 with the party-formation menu up: the highlighted
+    line's text is colour 1 and the other lines' is colour 5, over identical
+    screen codes -- there is no inverse video anywhere on this screen, so
+    reading bit 7 finds nothing.  The column matters because every border row
+    is white too, and `Session.select_row`'s dominant-colour scan therefore
+    answers rows that are not menu lines at all.
+    """
+    return [r for r in range(25) if sess.colours(r)[column] == 1]
+
+
+def walk_menu(sess, label: str, timeout: float = 40.0) -> bool:
+    """Move the menu highlight onto `label` and press Return.
+
+    Return goes through the KERNAL buffer: this front end does not read an
+    XTEST Return, which is the same finding `tools/curse_of_the_azure_bonds/cursewarp.py` records for
+    the `LOAD SAVED GAME ? YES NO` bar.  The arrows *are* read from XTEST.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        s = sess.screen()
+        if s is None:
+            time.sleep(0.3)
+            continue
+        hit = s.find(label)
+        if hit is None:
+            sess.handle_prompt(s)
+            time.sleep(0.3)
+            continue
+        hot = highlighted(sess, hit[1])
+        if not hot:
+            time.sleep(0.3)
+            continue
+        cur = min(hot, key=lambda r: abs(r - hit[0]))
+        if cur == hit[0]:
+            sess.press_kernal(0x0D)
+            return True
+        sess.kbd.key("Down" if cur < hit[0] else "Up")
+        time.sleep(0.2)
+    return False
+
+
 def answer_yes(sess, word: str = "YES", row: int = 24,
                timeout: float = 25.0) -> bool:
     """Put the bar highlight on `word` and answer with **one** key.
@@ -338,8 +382,6 @@ def load_saved_game(sess, *, note=None, shot=None, wait: float = 90.0,
     again with `retry=True` after a `failed`: the refusal leaves the question
     up rather than the menu, and this answers whichever of the two is there.
     """
-    from tools.c64 import dualclassagain  # noqa: PLC0415
-
     def say(**kw):
         if note:
             note(**kw)
@@ -354,7 +396,7 @@ def load_saved_game(sess, *, note=None, shot=None, wait: float = 90.0,
     # that is only the bar's own text never presses anything.
     if bar_up(sess, 25.0 if retry else 2.0):
         say(event="bar-already-up", attempt=tag)
-    elif not dualclassagain.walk_menu(sess, "LOAD SAVED GAME"):
+    elif not walk_menu(sess, "LOAD SAVED GAME"):
         say(event="menu-miss", attempt=tag)
         picture(f"{tag}-menu-miss")
         return "menu-miss"
