@@ -387,3 +387,59 @@ def test_a_semicolon_inside_quotes_is_not_a_second_command():
     p, guest = pipe()
     p.send(['S "dump;1" 0 10'])
     assert guest.scripts, "the command was refused and should not have been"
+
+
+# -- a floppy insert ----------------------------------------------------------
+
+DISK3 = "C:\\Amiga\\Disks\\wish679-h-disk3.adf"
+
+
+class CfgGuest:
+    """Records every message the script sends and answers each with a reply."""
+
+    def __init__(self, reply: str = "ok\n\x00"):
+        self.messages: list[str] = []
+        self.reply = reply
+
+    def __call__(self, argv, timeout):
+        script = base64.b64decode(argv[-1].split()[-1]).decode("utf-16-le")
+        found = PipeGuest.commands(script)
+        self.messages += found
+        out = ["<<connect_ms>> 5"]
+        out += ["<<reply>> 1.0 " + base64.b64encode(
+            self.reply.encode("latin-1")).decode("ascii") for _ in found]
+        out.append("<<end>>")
+        return "\r\n".join(out) + "\r\n"
+
+
+def test_a_floppy_insert_goes_down_as_one_cfg_line():
+    guest = CfgGuest()
+    p = amiga.WinuaePipe(runner=guest)
+    assert p.insert_floppy(1, DISK3) == "ok\n"
+    assert guest.messages == [f"CFG floppy1={DISK3}"]
+
+
+@pytest.mark.parametrize("drive", [-1, 4, True, "1", None])
+def test_a_floppy_insert_refuses_a_drive_outside_0_to_3(drive):
+    guest = CfgGuest()
+    with pytest.raises(ValueError):
+        amiga.WinuaePipe(runner=guest).insert_floppy(drive, DISK3)
+    assert guest.messages == []
+
+
+@pytest.mark.parametrize("path", [
+    DISK3 + ";q", 'C:\\Amiga\\Disks\\wish679-"x".adf',
+    "C:\\Amiga\\Disks\\wish679-x.adf\n", "C:\\Amiga\\Disks\\..\\wish1-x.adf",
+    "C:\\Amiga\\Disks\\wish679-x.zip", "C:\\Amiga\\Disks\\disk3.adf",
+    "D:\\Amiga\\Disks\\wish679-x.adf"])
+def test_a_floppy_insert_refuses_a_path_outside_the_disks_folder(path):
+    guest = CfgGuest()
+    with pytest.raises(ValueError):
+        amiga.WinuaePipe(runner=guest).insert_floppy(1, path)
+    assert guest.messages == []
+
+
+def test_a_debugger_command_still_goes_down_with_dbg_and_never_cfg():
+    guest = CfgGuest()
+    amiga.WinuaePipe(runner=guest).send(["m 0 1"])
+    assert guest.messages == ["DBG m 0 1"]

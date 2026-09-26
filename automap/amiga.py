@@ -549,9 +549,19 @@ class WinuaePipe:
         one absent dump must not lose the replies that say why.
         """
         _check_commands(commands)
+        return self._framed([f"DBG {c}" for c in commands], repeat, fetch)
+
+    def _framed(self, messages: list[str], repeat: int = 1,
+                fetch: list[tuple[str, str]] | None = None) -> str:
+        """The PowerShell for messages that already carry their prefix.
+
+        `script` prefixes `DBG ` after `_check_commands`, so a debugger command
+        can never go down as `CFG `; `insert_floppy` is the only `CFG` sender
+        and never passes through `script`.
+        """
         encoded = ",".join(
-            "'" + base64.b64encode(f"DBG {c}".encode("ascii")).decode("ascii")
-            + "'" for c in commands)
+            "'" + base64.b64encode(m.encode("ascii")).decode("ascii")
+            + "'" for m in messages)
         tail = []
         for name, path in (fetch or []):
             tail.append(f"Write-Output '<<{name}>>'")
@@ -624,6 +634,28 @@ Write-Output '<<end>>'
         out = self._execute(self.script(commands, repeat=repeat))
         replies, timings = self._replies(out, list(commands) * repeat)
         return (replies, timings) if with_timings else replies
+
+    #: What a floppy path may be: a file `WinGuest` staged in the disks folder
+    #: under its own holder's name. No `;`, quote, newline or `..` can match.
+    FLOPPY_PATH = re.compile(r"C:\\Amiga\\Disks\\wish[0-9]+-[A-Za-z0-9._-]+\.adf")
+
+    def insert_floppy(self, drive: int, path: str) -> str:
+        """Put an ADF into a drive of the running machine and give the reply.
+
+        Sends the one message `CFG floppy<drive>=<path>`, which `uaeipc.cpp`
+        hands to `cfgfile_modify`. Nothing is sent when either argument is
+        refused.
+        """
+        if isinstance(drive, bool) or drive not in (0, 1, 2, 3):
+            raise ValueError(f"floppy drive {drive!r} is not 0 to 3")
+        if not isinstance(path, str) or not self.FLOPPY_PATH.fullmatch(path):
+            raise ValueError(f"floppy path {path!r} is not a staged ADF in "
+                             "C:\\Amiga\\Disks")
+        message = f"CFG floppy{drive}={path}"
+        self.sent.append(message)
+        out = self._execute(self._framed([message]))
+        replies, _timings = self._replies(out, [message])
+        return replies[0][1]
 
     def batch(self, lines: list[str],
               fetch: list[tuple[str, str]] | None = None
