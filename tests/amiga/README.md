@@ -9,7 +9,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amiga_adf.py` | Checks that `goldbox.amiga_adf` reads every real disk clean and formats, writes and re-reads a blank one. |
 | `test_amiga_savegame.py` | Checks the later-title Amiga saved-game reader, writer and fresh disk. |
 | `test_amigaabilitypaircross.py` | Checks that a crossed Amiga Curse or Silver Blades ability pair keeps its permanent and in-force halves apart through `to_neutral_later`. |
-| `test_amigaacceptance.py` | Checks that a scratch Silver Blades boot ADF hides only its own save drawer, preserves every file, and refuses unsafe output paths or replacement, using synthetic and registered disks. |
+| `test_amigaacceptance.py` | Checks that a scratch Silver Blades boot ADF hides only its own save drawer or gains one slot file, preserves every file, and refuses unsafe output paths or replacement, using synthetic and registered disks. |
 | `test_amigabackstab.py` | Pins what `tools/amiga/amigabackstab.py` reads out of each Amiga title's own executable, and that erasing a step of the regain arithmetic is refused. |
 | `test_amigabladesjournal.py` | Checks how `tools/amiga/amigabladesjournal.py` fits the game's character grid inside a desktop capture and rescales it, on synthetic frames. |
 | `test_amigacontainercheck.py` | Checks the parts of `tools/amiga/amigacontainercheck.py` that decide what it says, on synthetic input, and that its two readers share no code. |
@@ -30,7 +30,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigaporspacewarning.py` | Checks that `write_por` warns a player when a character's name will lose its space on the Amiga's first save. |
 | `test_amigasavedisk.py` | Checks a `POOLSAVE` save disk formatted from nothing and the filename the game builds on it. |
 | `test_amigasavegame.py` | Checks the Amiga saved-game map in `goldbox.amiga_savegame`, on synthetic saves and on the player's own. |
-| `test_amigasecretsave.py` | Checks that a failed WinUAE save probe leaves the published disk unchanged and keeps both fetched ADFs and its last screen. |
+| `test_amigasecretsave.py` | Checks that a failed WinUAE save probe leaves the published disk unchanged, keeps both fetched ADFs and its last screen, and settles a capture on the emulator's crop. |
 | `test_amigasecretsavemeasure.py` | Checks the WinUAE probe's capture-only mode, per-state minimum waits, guard polling and configurable route with a fake clock and guest. |
 | `test_amigashots.py` | Checks that `tools/amiga/amigashots.py` finds the emulator's screen inside a grab of the whole guest desktop, on desktops built here. |
 | `test_amigasplit.py` | Checks that the Amiga codec is one module per title and that no title module reaches another at import time. |

@@ -22,6 +22,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import amiga_adf, amiga_savegame  # noqa: E402
 from tools.amiga import (  # noqa: E402
     amigaacceptance,
@@ -32,10 +33,15 @@ from tools.amiga import (  # noqa: E402
 )
 from tools.registry import scratch  # noqa: E402
 
+DISK_B_SHA256 = "d7caf68c3333b44a4ca2951b8d51f388e4bfd7a8bafa4fd8a7fca37aa639b468"
+# The slot letter the game is offered on its own boot disk; side A ships only A.
+SLOT_LETTER = "C"
 JOIN_SHA256 = "38c11440e578227c1a240b740f362b1b69943d9897f42dc35ac39b17508872dc"
 TITLE = "secret-of-the-silver-blades"
 BOOT_CONFIG = r"C:\Amiga\configs\goldbox-a500.uae"
 WINUAE_PS = r"powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1"
+# One `winvm shot` measured 5.6-7.8 s round trip; the capture script caps itself at 20 s.
+SHOT_SECONDS = 20.0
 HOLDER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
@@ -90,6 +96,17 @@ def _inventory(save: amiga_savegame.AmigaSavegame, *, require_joined: bool = Tru
             "joined_inventory_expected": joined_ok}
 
 
+def find_disk_b() -> pathlib.Path:
+    """The registered Silver Blades disk B, found by its pinned hash."""
+    for root in gamedisks.candidates("amiga"):
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("*.adf")):
+            if path.stat().st_size == 901120 and sha256(path) == DISK_B_SHA256:
+                return path
+    raise RouteError("registered Silver Blades disk B was not found by its SHA-256")
+
+
 def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
     """Publish the C64 JOIN party as an immutable ADF and stage a private DF0."""
     if not HOLDER.fullmatch(run_id):
@@ -101,9 +118,10 @@ def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
     if sha256(boot_source) != amigaacceptance.SOURCE_SHA256:
         raise RouteError("registered Silver Blades side A differs from the measured build")
     run = scratch.cache_dir("acceptance", "672", run_id)
-    df0 = scratch.cache_dir("amigaacceptance", run_id, "boot-no-save.adf")
+    df0 = scratch.cache_dir("amigaacceptance", run_id, "boot-with-slot.adf")
     if run.exists() or df0.exists():
         raise RouteError(f"run or staged DF0 already exists: {run}, {df0}")
+    disk_b_source = find_disk_b()
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from editor import roster, saveplan  # noqa: PLC0415
@@ -123,7 +141,6 @@ def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
     if plan.report is None or plan.report.dropped or plan.report.losses:
         raise RouteError("Save As reports dropped fields or losses")
 
-    stage = amigaacceptance.stage_boot_disk(boot_source, df0)
     scratch.ensure(run)
     saveplan.publish(plan, party)
     disk = _verified_disk(published)
@@ -135,21 +152,23 @@ def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
     save = amiga_savegame.read_slot(disk, "A", TITLE)
     inventory = _inventory(save)
     state = amiga_savegame.state_from_savegame(save)
-    working = run / "SECRETSAVE-working.adf"
-    with published.open("rb") as reader, working.open("xb") as writer:
+    slot = disk.read_file("/SAVE/savgamA.sav")
+    stage = amigaacceptance.stage_embedded_boot_disk(boot_source, slot, SLOT_LETTER, df0)
+    df1 = run / "disk-b-working.adf"
+    with disk_b_source.open("rb") as reader, df1.open("xb") as writer:
         shutil.copyfileobj(reader, writer)
     if sha256(source) != JOIN_SHA256:
         raise RouteError("JOIN source changed during preparation")
     if sha256(boot_source) != amigaacceptance.SOURCE_SHA256:
         raise RouteError("registered boot disk changed during preparation")
-    if sha256(working) != sha256(published):
-        raise RouteError("working DF1 differs from Wish's published output")
+    if sha256(df1) != DISK_B_SHA256 or sha256(disk_b_source) != DISK_B_SHA256:
+        raise RouteError("working DF1 differs from the pinned disk B")
     published.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
     manifest = {
         "source": _entry(source), "boot_source": _entry(boot_source),
         "df0": _entry(df0), "published_df1": _entry(published),
-        "working_df1": _entry(working), "slot_a_sha256": hashlib.sha256(
-            disk.read_file("/SAVE/savgamA.sav")).hexdigest(),
+        "disk_b_source": _entry(disk_b_source), "df1": _entry(df1),
+        "slot_letter": SLOT_LETTER, "slot_sha256": hashlib.sha256(slot).hexdigest(),
         "stage": stage, "inventory_a": inventory,
         "state_a": {"area": state.area, "x": state.x, "y": state.y,
                     "facing": state.facing},
@@ -199,36 +218,43 @@ class WinGuest:
     def start(self, holder: str, df0: str, df1: str, timeout: float) -> str:
         df0 = df0.replace("/", "\\")
         df1 = df1.replace("/", "\\")
-        command = (f"start -log -f {BOOT_CONFIG} -s floppy0={df0} "
+        command = (f"start -f {BOOT_CONFIG} -s floppy0={df0} "
                    f"-s floppy1={df1} -s joyport1=none "
                    f"-s sound_output=interrupts")
         return self._lane(holder, command, timeout)
 
     def capture(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
                 timeout: float) -> None:
-        started, previous = time.monotonic(), None
+        """Grab until two consecutive crops of the Amiga screen are identical."""
+        started, previous, made = time.monotonic(), None, False
         try:
             while True:
                 left = timeout - (time.monotonic() - started)
-                if left <= 0:
-                    raise RouteError(f"{state} did not settle inside {timeout:.1f}s")
-                self._run("shot", str(raw), "--timeout", str(max(1, int(min(20, left)))),
-                          timeout=left)
-                frame = raw.read_bytes()
-                if previous == frame:
-                    return
-                previous = frame
+                if left < SHOT_SECONDS:
+                    raise RouteError(f"{state} did not settle inside {timeout:.0f}s")
+                made = False
+                self._run("shot", str(raw), "--timeout", str(int(SHOT_SECONDS)),
+                          timeout=SHOT_SECONDS)
+                try:
+                    amigashots.crop(raw, cropped)
+                except LookupError:
+                    # The WinUAE window is not up yet; the desktop is not a screen.
+                    previous = None
+                else:
+                    made = True
+                    frame = cropped.read_bytes()
+                    if previous == frame:
+                        return
+                    previous = frame
                 left = timeout - (time.monotonic() - started)
                 if left > 0:
                     time.sleep(min(winvmsettle.INTERVAL, left))
         finally:
-            if raw.exists():
-                active_failure = sys.exc_info()[0] is not None
+            if not made and raw.exists() and sys.exc_info()[0] is not None:
                 try:
                     amigashots.crop(raw, cropped)
                 except Exception:
-                    if not active_failure:
-                        raise
+                    pass
 
     def press(self, holder: str, key: str, timeout: float) -> str:
         name = key.upper()
@@ -276,7 +302,7 @@ class PixelGuards:
 
 ROUTE = (
     ("RET", "version"), ("RET", "play"), ("P", "party_menu"),
-    ("L", "load_picker"), ("A", "loaded_menu"), ("V", "sheet"),
+    ("L", "load_picker"), (SLOT_LETTER, "loaded_menu"), ("V", "sheet"),
     ("I", "items"), ("E", "sheet"), ("E", "loaded_menu"),
     ("S", "save_picker"),
 )
@@ -358,19 +384,25 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     manifest_path = pathlib.Path(manifest_path)
     manifest = json.loads(manifest_path.read_text())
     originals = {name: _input(manifest, name)
-                 for name in ("source", "boot_source") if name in manifest}
+                 for name in ("source", "boot_source", "disk_b_source")
+                 if name in manifest}
     df0 = _input(manifest, "df0")
     published = _input(manifest, "published_df1")
-    working = _input(manifest, "working_df1")
-    if len({df0.resolve(), published.resolve(), working.resolve()}) != 3:
+    df1 = _input(manifest, "df1")
+    if len({df0.resolve(), published.resolve(), df1.resolve()}) != 3:
         raise RouteError("DF0, published DF1 and working DF1 must be separate files")
-    if sha256(published) != sha256(working):
-        raise RouteError("working DF1 differs from the exact published output")
-    _verified_disk(df0)
-    df1_disk = _verified_disk(working)
-    if df1_disk.volume_name != "SECRETSAVE" or [p for p, _ in df1_disk.walk()] != [
-            "/SAVE/savgamA.sav"]:
-        raise RouteError("working DF1 is not the standalone slot-A SECRETSAVE")
+    letter = manifest["slot_letter"]
+    slot = _verified_disk(published).read_file("/SAVE/savgamA.sav")
+    if hashlib.sha256(slot).hexdigest() != manifest["slot_sha256"]:
+        raise RouteError("the published slot differs from the manifest")
+    df0_disk = _verified_disk(df0)
+    if df0_disk.read_file(f"/SAVE/savgam{letter}.sav") != slot:
+        raise RouteError(f"DF0 /SAVE/savgam{letter}.sav is not Wish's published slot")
+    df1_disk = _verified_disk(df1)
+    if df1_disk.volume_name != "Secret 2":
+        raise RouteError("working DF1 is not disk B, volume 'Secret 2'")
+    if sha256(df1) != manifest["disk_b_source"]["sha256"]:
+        raise RouteError("working DF1 differs from the registered disk B")
     out = manifest_path.parent / attempt
     out.mkdir(parents=False, exist_ok=False)
     shots = scratch.ensure(out / "shots")
@@ -407,9 +439,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         raw, cropped = shots / f"{state}.raw.png", shots / f"{state}.png"
         limit = cleanup_limit(90) if cleanup else route_limit(120)
         guest.capture(state, raw, cropped, timeout=limit)
-        digest = sha256(raw)
+        digest = sha256(cropped)
         result["events"].append({"state": state, "raw": str(raw),
-                                 "crop": str(cropped), "sha256": digest})
+                                 "crop": str(cropped), "sha256": sha256(raw),
+                                 "crop_sha256": digest})
         if check and not guard(state, cropped):
             raise RouteError(f"{state} screen was not recognized; kept {raw}")
         return digest
@@ -456,7 +489,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         result["claim"] = receipt
         claimed = True
         guest.put(df0, remote0, timeout=route_limit(90))
-        guest.put(working, remote1, timeout=route_limit(90))
+        guest.put(df1, remote1, timeout=route_limit(90))
         copied = True
         if not _mute_proof(audio_proof):
             raise RouteError("the Windows VM audio mute proof expired before WinUAE start")
@@ -525,19 +558,24 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 result["release_error"] = f"{type(exc).__name__}: {exc}"
         result["published_unchanged"] = sha256(published) == manifest[
             "published_df1"]["sha256"]
-        result["working_unchanged"] = sha256(working) == manifest[
-            "working_df1"]["sha256"]
+        result["working_unchanged"] = sha256(df1) == manifest["df1"]["sha256"]
         for name, path in originals.items():
             result[f"{name}_unchanged"] = sha256(path) == manifest[name]["sha256"]
         if "df0" in result["fetched"]:
             result["df0_unchanged"] = result["fetched"]["df0"]["sha256"] == manifest[
                 "df0"]["sha256"]
         if "df1" in result["fetched"]:
+            result["df1_unchanged"] = result["fetched"]["df1"]["sha256"] == manifest[
+                "df1"]["sha256"]
+        if "df0" in result["fetched"]:
+            # The game saves to the boot disk it found its SAVE drawer on.
             try:
-                fetched = _verified_disk(out / "fetched-df1.adf")
+                fetched = _verified_disk(out / "fetched-df0.adf")
+                result["slot_unchanged"] = (
+                    fetched.read_file(f"/SAVE/savgam{letter}.sav") == slot)
                 result["slot_a_unchanged"] = (
                     fetched.read_file("/SAVE/savgamA.sav")
-                    == df1_disk.read_file("/SAVE/savgamA.sav"))
+                    == df0_disk.read_file("/SAVE/savgamA.sav"))
                 try:
                     b = fetched.read_file("/SAVE/savgamB.sav")
                 except amiga_adf.AmigaDiskError:
@@ -556,11 +594,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         result["slot_b_decode_error"] = (
                             f"{type(exc).__name__}: {exc}")
             except BaseException as exc:
-                result["fetched_df1_error"] = f"{type(exc).__name__}: {exc}"
+                result["fetched_df0_error"] = f"{type(exc).__name__}: {exc}"
         if measure:
             result["success"] = bool(
                 result.get("route_changed") and not result["error"]
-                and result.get("df0_unchanged") and result.get("slot_a_unchanged")
+                and result.get("df0_unchanged") and result.get("df1_unchanged")
                 and result.get("slot_b_sha256", "absent") is None)
         result["elapsed_seconds"] = time.monotonic() - begun
         (out / "summary.json").write_text(json.dumps(result, indent=2,
@@ -588,7 +626,7 @@ def _mute_proof(path: pathlib.Path) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    p = sub.add_parser("prepare", help="publish exact DF1 and stage private DF0")
+    p = sub.add_parser("prepare", help="publish Wish's slot, stage DF0 holding it and DF1 as disk B")
     p.add_argument("--source", required=True, type=pathlib.Path)
     p.add_argument("--run-id", required=True)
     r = sub.add_parser("recon", help="guarded first load and menu-save probe")

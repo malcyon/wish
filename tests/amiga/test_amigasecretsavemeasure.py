@@ -53,8 +53,11 @@ class ScreenGuest(FailedPostWriteGuest):
         shown = self.presses
         if self.same_after is not None and shown >= self.same_after:
             shown = self.same_after - 1
-        raw.write_bytes(f"frame {shown}".encode())
-        cropped.write_bytes(b"crop")
+        # The desktop around the emulator changes on every grab; only the crop
+        # is the Amiga screen, as `WinGuest.capture` leaves it.
+        self.grabs = getattr(self, "grabs", 0) + 1
+        raw.write_bytes(f"grab {self.grabs}".encode())
+        cropped.write_bytes(f"frame {shown}".encode())
 
 
 def _keys(guest):
@@ -220,9 +223,9 @@ class SlotBGuest(ScreenGuest):
     def press(self, holder, key, timeout=None):
         super().press(holder, key, timeout)
         if key == "X":
-            disk = AmigaDisk(self.remote[self.drives[1]])
+            disk = AmigaDisk(self.remote[self.drives[0]])
             disk.write_file("/SAVE/savgamB.sav", b"engine wrote B")
-            self.remote[self.drives[1]] = disk.to_bytes()
+            self.remote[self.drives[0]] = disk.to_bytes()
 
 
 def _cleanup_ran(guest):

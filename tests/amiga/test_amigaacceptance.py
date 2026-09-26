@@ -299,3 +299,62 @@ def test_registered_side_a_stage_keeps_the_original_read_only(tmp_path):
     assert staged.lookup("/SAVE_OFF_40").block == 919
     assert staged.read_file("/Secret") == AmigaDisk.open(source).read_file("/Secret")
     assert manifest["changed_blocks"] == [919]
+
+
+def _stage_embedded(source, slot, letter, out):
+    return amigaacceptance.stage_embedded_boot_disk(
+        source, slot, letter, out,
+        expected_source_sha256=sha256(source.read_bytes()).hexdigest(),
+        expected_secret_sha256=sha256(b"synthetic executable").hexdigest(),
+    )
+
+
+@POSIX_STAGING
+def test_embedded_stage_adds_only_the_slot_file_and_keeps_every_other_file(tmp_path):
+    source = _disk(tmp_path)
+    before = source.read_bytes()
+    out = _out("boot-with-slot.adf")
+
+    manifest = _stage_embedded(source, b"wish slot bytes", "C", out)
+
+    staged = AmigaDisk.open(out)
+    original = AmigaDisk.open(source)
+    assert source.read_bytes() == before
+    assert staged.verify() == []
+    assert staged.read_file("/SAVE/savgamC.sav") == b"wish slot bytes"
+    for path, _ in original.walk():
+        assert staged.read_file(path) == original.read_file(path)
+    assert before[:1024] == out.read_bytes()[:1024]
+    assert manifest["slot_sha256"] == sha256(b"wish slot bytes").hexdigest()
+    assert manifest["staged_sha256"] == sha256(out.read_bytes()).hexdigest()
+
+
+@POSIX_STAGING
+def test_embedded_stage_refuses_an_occupied_letter_without_writing(tmp_path):
+    source = _disk(tmp_path)
+    out = _out("must-not-exist.adf")
+
+    with pytest.raises(amigaacceptance.StageError, match="savgamA.sav"):
+        _stage_embedded(source, b"wish slot bytes", "A", out)
+
+    assert not out.exists()
+
+
+@POSIX_STAGING
+def test_registered_side_a_embedded_stage_keeps_the_original_read_only(tmp_path):
+    root = gamedisks.find("amiga")
+    if root is None:
+        pytest.skip("registered Amiga disks are unavailable")
+    source = root / "Secret_Of_The_Silver_Blades" / "SecretOfTheSilverBlades_A.adf"
+    if not source.is_file():
+        pytest.skip("registered Silver Blades Amiga side A is unavailable")
+    before = source.read_bytes()
+    out = _out("registered-embedded.adf")
+
+    amigaacceptance.stage_embedded_boot_disk(source, b"composed slot", "C", out)
+
+    staged = AmigaDisk.open(out)
+    assert source.read_bytes() == before
+    assert staged.verify() == []
+    assert staged.read_file("/SAVE/savgamC.sav") == b"composed slot"
+    assert staged.read_file("/Secret") == AmigaDisk.open(source).read_file("/Secret")

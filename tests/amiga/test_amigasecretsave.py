@@ -51,9 +51,10 @@ class FailedPostWriteGuest:
     def press(self, holder, key, timeout=None):
         self.calls.append(("press", holder, key))
         if key == "B":
-            disk = AmigaDisk(self.remote[self.drives[1]])
+            # The game saves to the boot disk whose SAVE drawer it found.
+            disk = AmigaDisk(self.remote[self.drives[0]])
             disk.write_file("/SAVE/savgamB.sav", b"engine wrote B")
-            self.remote[self.drives[1]] = disk.to_bytes()
+            self.remote[self.drives[0]] = disk.to_bytes()
             raise RuntimeError("save prompt after B")
 
     def stop(self, holder, timeout=None):
@@ -68,17 +69,26 @@ class FailedPostWriteGuest:
 
 
 def _prepared(tmp_path):
-    df0 = tmp_path / "boot.adf"
+    """A manifest for DF0 (Secret 1 with slots A and C) and DF1 (Secret 2)."""
+    df0, df1 = tmp_path / "boot.adf", tmp_path / "disk-b-working.adf"
     published = tmp_path / "SECRETSAVE-published.adf"
-    working = tmp_path / "SECRETSAVE-working.adf"
-    _disk(df0, "Secret 1")
+    disk_b = tmp_path / "disk-b-source.adf"
     _disk(published, "SECRETSAVE", "A")
-    working.write_bytes(published.read_bytes())
+    boot = AmigaDisk.blank("Secret 1")
+    boot.make_dir("/SAVE")
+    boot.write_file("/SAVE/savgamA.sav", b"shipped party")
+    boot.write_file("/SAVE/savgamC.sav", b"composed save")
+    boot.save(df0)
+    _disk(disk_b, "Secret 2")
+    df1.write_bytes(disk_b.read_bytes())
     manifest = tmp_path / "prepare.json"
     manifest.write_text(json.dumps({
         "df0": {"path": str(df0), "sha256": _sha(df0)},
         "published_df1": {"path": str(published), "sha256": _sha(published)},
-        "working_df1": {"path": str(working), "sha256": _sha(working)},
+        "disk_b_source": {"path": str(disk_b), "sha256": _sha(disk_b)},
+        "df1": {"path": str(df1), "sha256": _sha(df1)},
+        "slot_letter": "C",
+        "slot_sha256": hashlib.sha256(b"composed save").hexdigest(),
     }))
     return manifest
 
@@ -95,20 +105,11 @@ def _audio_proof(tmp_path):
 
 
 def test_exact_df1_is_preserved_and_failed_save_is_fetched(tmp_path):
-    df0 = tmp_path / "boot.adf"
+    manifest = _prepared(tmp_path)
+    df0, df1 = tmp_path / "boot.adf", tmp_path / "disk-b-working.adf"
     published = tmp_path / "SECRETSAVE-published.adf"
-    working = tmp_path / "SECRETSAVE-working.adf"
-    _disk(df0, "Secret 1")
-    _disk(published, "SECRETSAVE", "A")
-    working.write_bytes(published.read_bytes())
-    original_df0 = _sha(df0)
-    original_df1 = _sha(published)
-    manifest = tmp_path / "prepare.json"
-    manifest.write_text(json.dumps({
-        "df0": {"path": str(df0), "sha256": original_df0},
-        "published_df1": {"path": str(published), "sha256": original_df1},
-        "working_df1": {"path": str(working), "sha256": original_df1},
-    }))
+    original_df0, original_df1 = _sha(df0), _sha(df1)
+    original_published = _sha(published)
     guest = FailedPostWriteGuest()
 
     result = amigasecretsave.run_recon(
@@ -118,14 +119,14 @@ def test_exact_df1_is_preserved_and_failed_save_is_fetched(tmp_path):
 
     assert result["success"] is False
     assert "save prompt after B" in result["error"]
-    assert _sha(published) == original_df1
-    assert _sha(working) == original_df1
+    assert _sha(published) == original_published
+    assert _sha(df1) == original_df1
     assert _sha(df0) == original_df0
     attempt = tmp_path / "recon1"
-    assert (attempt / "fetched-df0.adf").read_bytes() == df0.read_bytes()
-    fetched_df1 = AmigaDisk.open(attempt / "fetched-df1.adf")
-    assert fetched_df1.read_file("/SAVE/savgamA.sav") == b"composed save"
-    assert fetched_df1.read_file("/SAVE/savgamB.sav") == b"engine wrote B"
+    fetched_df0 = AmigaDisk.open(attempt / "fetched-df0.adf")
+    assert fetched_df0.read_file("/SAVE/savgamC.sav") == b"composed save"
+    assert fetched_df0.read_file("/SAVE/savgamB.sav") == b"engine wrote B"
+    assert (attempt / "fetched-df1.adf").read_bytes() == df1.read_bytes()
     assert (attempt / "shots" / "failure.raw.png").read_bytes()
     assert (attempt / "shots" / "failure.png").read_bytes()
     starts = [call for call in guest.calls if call[0] == "start"]
@@ -329,3 +330,100 @@ def test_deadline_bounds_capture_and_cleanup_calls(tmp_path, monkeypatch):
 def test_accept_and_dependency_control_stay_unavailable():
     assert amigasecretsave.main(["accept"]) == 2
     assert amigasecretsave.main(["spindisk-control"]) == 2
+
+
+class _Desktop:
+    """A fake `winvm shot`: a desktop whose own corner changes on every grab."""
+
+    def __init__(self, monkeypatch, clock, *, client_colours, seconds=6.0,
+                 windowless=0):
+        self.clock, self.seconds = clock, seconds
+        self.colours = list(client_colours)
+        self.windowless = windowless
+        self.timeouts, self.shots = [], 0
+        monkeypatch.setattr(amigasecretsave.WinGuest, "_run",
+                            staticmethod(self._run))
+
+    def _run(self, *args, timeout):
+        assert args[0] == "shot"
+        self.timeouts.append(timeout)
+        if timeout < self.seconds:
+            raise amigasecretsave.RouteError(
+                f"winvm shot exceeded its {timeout:.1f}s limit")
+        from PIL import Image
+        self.shots += 1
+        self.clock.now += self.seconds
+        image = Image.new("RGB", (1024, 768), (30, 60, 90))
+        # One desktop pixel outside the client and its status bar: a clock.
+        image.putpixel((1000, 700), (self.shots % 256, 0, 0))
+        if self.shots > self.windowless:
+            colour = self.colours[min(self.shots - self.windowless, len(self.colours)) - 1]
+            image.paste(colour, (10, 27, 730, 595))
+            image.paste((240, 240, 240), (10, 595, 730, 617))
+        image.save(args[1])
+        return ""
+
+
+@pytest.fixture
+def desktop_clock(monkeypatch):
+    class Clock:
+        now = 500.0
+
+    clock = Clock()
+    monkeypatch.setattr(amigasecretsave.time, "monotonic", lambda: clock.now)
+
+    def sleep(seconds):
+        clock.now += seconds
+
+    monkeypatch.setattr(amigasecretsave.time, "sleep", sleep)
+    return clock
+
+
+def test_capture_settles_on_the_emulator_screen_while_the_desktop_changes(
+        tmp_path, monkeypatch, desktop_clock):
+    from PIL import Image
+
+    desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
+    raw, cropped = tmp_path / "s.raw.png", tmp_path / "s.png"
+
+    amigasecretsave.WinGuest().capture("boot", raw, cropped, timeout=60)
+
+    assert desktop.shots == 2
+    assert Image.open(cropped).size == (720, 568)
+    assert Image.open(cropped).getpixel((5, 5)) == (9, 9, 9)
+
+
+def test_capture_that_never_settles_says_so_without_a_cut_short_shot(
+        tmp_path, monkeypatch, desktop_clock):
+    desktop = _Desktop(monkeypatch, desktop_clock,
+                       client_colours=[(n, 9, 9) for n in range(1, 40)])
+
+    with pytest.raises(amigasecretsave.RouteError, match="did not settle inside 60s"):
+        amigasecretsave.WinGuest().capture(
+            "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=60)
+
+    assert desktop.shots >= 2
+    assert min(desktop.timeouts) >= amigasecretsave.SHOT_SECONDS
+    assert (tmp_path / "s.png").exists()
+
+
+def test_capture_waits_for_the_emulator_window(tmp_path, monkeypatch, desktop_clock):
+    desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)],
+                       windowless=1)
+
+    amigasecretsave.WinGuest().capture(
+        "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=60)
+
+    assert desktop.shots == 3
+
+
+def test_start_opens_no_log_console(monkeypatch):
+    sent = []
+    guest = amigasecretsave.WinGuest()
+    monkeypatch.setattr(guest, "_lane", lambda holder, command, timeout:
+                        sent.append(command) or "ok")
+
+    guest.start("h", "C:/A/df0.adf", "C:/A/df1.adf", timeout=60)
+
+    assert "-log" not in sent[0].split()
+    assert "floppy0=C:\\A\\df0.adf" in sent[0] and "floppy1=C:\\A\\df1.adf" in sent[0]
