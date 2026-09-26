@@ -390,12 +390,10 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
 # and J the after save, and E is the game's exit key though slot E is a kept slot.
 DARK_START = {"area": 2, "x": 1, "y": 2, "facing": geo.EAST}
 DARK_LATER = dict(DARK_START, x=2)
-DARK_STATES = ("title", "boot_prompt", "journal", "play", "party_menu", "load_picker",
+DARK_STATES = ("title", "journal", "play", "party_menu", "load_picker",
                "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker")
-_PROMPT = (b"frame 0",)
-DARK_FIRST_SCREEN = {"boot_prompt": lambda path: path.read_bytes() in _PROMPT,
-                     "title": lambda path: path.read_bytes() not in _PROMPT}
-DARK_KEYS = ["SPACE", "P", "P", "L", "B", "V", "E", "S", "I", "B", "NP8", "E", "S", "J"]
+DARK_FIRST_SCREEN = {}  # the title crop is recognised by its own name, and nothing precedes it
+DARK_KEYS = ["P", "P", "L", "B", "V", "E", "S", "I", "B", "NP8", "E", "S", "J"]
 
 
 class DarkGuest(TitleGuest):
@@ -450,7 +448,7 @@ def test_darkness_accept_presses_the_plans_keys_with_disk_3_mounted_in_df1_and_n
     assert result["error"] == "" and result["success"] is True, result["read"]
     keys = _keys(guest)
     assert keys == DARK_KEYS and "Y" not in keys
-    assert guest.inserted == [] and keys[0] == "SPACE"  # nothing is inserted; SPACE answers the prompt
+    assert guest.inserted == [] and keys[0] == "P"  # nothing is inserted; PLAY is the first key
     (drives, options), = guest.starts
     assert [d and d.rsplit("-", 1)[1] for d in drives] == ["disk1.adf", "disk3.adf"]
     assert options == ()
@@ -470,8 +468,7 @@ def test_darkness_fails_when_j_stays_or_is_on_another_map_or_two_squares_on(
 
 
 def test_darkness_answers_the_journal_at_most_three_times(tmp_path, clock):
-    guard = MapGuard(states=DARK_STATES, on={"boot_prompt": lambda p: p.read_bytes() == b"frame 0",
-                                             "title": lambda p: False,
+    guard = MapGuard(states=DARK_STATES, on={"title": lambda p: False,
                                              "journal": lambda p: True})
     guest, result = _dark_run(tmp_path, clock, guard=guard)
     keys = _keys(guest)
@@ -481,7 +478,7 @@ def test_darkness_answers_the_journal_at_most_three_times(tmp_path, clock):
 
 def test_darkness_measure_stops_before_the_first_save(tmp_path, clock):
     guest, result = _dark_run(tmp_path, clock, accept=False, measure=True)
-    assert _keys(guest) == "SPACE P P L B V E S".split()
+    assert _keys(guest) == "P P L B V E S".split()
     assert guest.inserted == [] and result["success"] is True
     assert result["control_sha256"] is None
     assert not {"I", "J", "Y"} & set(_keys(guest))
@@ -491,7 +488,7 @@ def test_darkness_names_where_e_is_the_exit_key_and_nowhere_else():
     darkness = foundation.DARKNESS
     assert darkness.plain_keys == (("E", "loaded_menu"), ("E", "camp"))
     assert darkness.kept_letters == ("A", "C", "D", "E")
-    assert darkness.title_limit == 420.0 and darkness.boot_span == 300.0
+    assert darkness.title_limit == 420.0 and darkness.boot_span == 225.0
     assert not any(step[2] == "insert" and step[0][0] != 1 for step in darkness.route)
     assert all(row[1][0] != "insert" or row[1][1] == 1 for row in darkness.interstitials)
     with pytest.raises(drive.RouteError, match="presses a save or kept slot letter"):
@@ -677,10 +674,10 @@ def test_darkness_keeps_disk_2_as_a_registered_spare_so_a_later_df0_insert_can_b
     assert "disk2" in foundation.DARKNESS.disk_keys
 
 
-def test_a_boot_prompt_that_keeps_showing_gets_one_space_and_no_second_one(tmp_path, clock):
-    # A second SPACE at the title screen could start the demo.
-    guard = MapGuard(states=DARK_STATES, on={"boot_prompt": lambda p: True,
-                                             "title": lambda p: False})
-    guest, result = _dark_run(tmp_path, clock, guard=guard)
-    assert _keys(guest) == ["SPACE"]
-    assert "title screen was not recognized" in result["error"]
+def test_darkness_has_no_disk_prompt_interstitial_and_its_boot_ends_before_the_demo_starts():
+    # With disk 3 mounted no prompt appeared; the first key must land after the title (about
+    # 247 s) and before the demo (about 300 s), and the driver's capture overhead is about 40 s.
+    assert [row[0] for row in foundation.DARKNESS.interstitials] == ["journal", "yes_no",
+                                                                     "continue"]
+    assert foundation.DARKNESS.boot_span == 225.0
+    assert foundation.DARKNESS.measure_route[0] == ("P", "play", "key")

@@ -258,9 +258,8 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
             if e.name.lower() == f"savgam{letter}.pty".lower()}
 
 
-# Disk 3 is the save disk and is mounted in DF1 from the start, and the boot's disk prompt is
-# answered with SPACE. Whether the game accepts a disk already present when it draws that prompt
-# is not established; a measuring boot settles it.
+# Disk 3 is the save disk and is mounted in DF1 from the start; with it there the boot showed
+# no disk 3 prompt, and the title screen is the first screen a key answers.
 # No step gives the game disk 2: whether a prompt for it appears is for the measuring boot
 # to show, and a DF0 insert is decided after that. A, C, D and E stay unchanged; E is also
 # the game's own exit key on the sheet and at camp, which `plain_keys` names.
@@ -280,11 +279,14 @@ DARKNESS = AmigaTitle(
     ),
     # Stops before I.
     measure_route=(
-        ("SPACE", "title", "key"), ("P", "play", "key"),
+        ("P", "play", "key"),
         ("P", "party_menu", "key"), ("L", "load_picker", "key"), ("B", "loaded_menu", "key"),
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"),
     ),
-    boot_span=300.0, title_limit=420.0,
+    # The title screen came up about 247 s into the measured boot, the first key lands about 40 s
+    # after `boot_span`, and the game drops into its demo 60 to 85 s after the title is up, so
+    # the key must land after about 247 s and before about 300 s.
+    boot_span=225.0, title_limit=420.0,
     control_letter="I", after_letter="J", kept_letters=("A", "C", "D", "E"),
     plain_keys=(("E", "loaded_menu"), ("E", "camp")),
     strict=frozenset({"party_menu", "load_picker", "loaded_menu", "sheet", "save_picker",
@@ -293,7 +295,6 @@ DARKNESS = AmigaTitle(
                "sheet": 5.0, "save_picker": 10.0, "world": 45.0, "world_after_move": 5.0,
                "camp": 10.0, "camp_save_picker": 10.0},
     interstitials=(
-        ("boot_prompt", ("keys", "SPACE"), frozenset({"title"}), 1),
         ("journal", ("answer",), None, 1),
         ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
         ("continue", ("keys", "RET"), frozenset({"world"}), 3),
