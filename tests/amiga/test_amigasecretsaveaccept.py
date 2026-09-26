@@ -477,8 +477,8 @@ def test_a_terminated_run_still_stops_fetches_and_releases(tmp_path, clock, read
         "stop", "get", "get", "release"]
     assert result["lost"].startswith("Terminated") and result["completed"] is False
     assert result["success"] is False
-    assert _events(tmp_path)[-1]["event"] == "read" or any(
-        e["event"] == "lost" for e in _events(tmp_path))
+    lost = [e for e in _events(tmp_path) if e["event"] == "lost"]
+    assert len(lost) == 1
     summary = json.loads((tmp_path / "recon1" / "summary.json").read_text())
     assert summary["lost"] == result["lost"]
 
@@ -550,3 +550,91 @@ def test_the_answerer_exit_code_and_a_timeout_are_reported(tmp_path):
     script.write_text("import time\ntime.sleep(60)\n")
     with pytest.raises(drive.RouteError, match="exceeded"):
         drive.run_journal_answer(sys.executable, "h", tmp_path / "a", 1, script=script)
+
+
+def _after(n, name):
+    """A rule that matches `name` from its n-th look on, so a wait polls n-1 times first."""
+    looks = []
+
+    def rule(path):
+        if path.name != name:
+            return False
+        looks.append(1)
+        return len(looks) >= n
+    return rule
+
+
+def _always(*names):
+    return lambda path: path.name in names
+
+
+def test_the_continue_screen_is_answered_at_most_once_per_wait(tmp_path, clock, readings):
+    guest = AcceptGuest(clock)
+    guard = MapGuard(on={"continue": _always("11-world.png"),
+                         "world": lambda p: "world" in p.name and (
+                             p.name != "11-world.png" or _wait11())})
+    seen = []
+    _wait11 = lambda: seen.append(1) or len(seen) >= 6  # noqa: E731
+    guard.states.add("continue")
+    _, result = _accept(tmp_path, clock, guest=guest, guard=guard)
+    assert len(seen) >= 6 and _keys(guest).count("RET") == 1
+    assert result["success"] is True
+
+
+def test_the_credits_are_left_at_most_once_per_wait(tmp_path, clock, readings):
+    guest = AcceptGuest(clock)
+    guard = MapGuard(on={"credits": _always("title.png"),
+                         "title": _after(6, "title.png")})
+    guard.states.add("credits")
+    _, result = _accept(tmp_path, clock, guest=guest, guard=guard)
+    assert _keys(guest).count("ESC") == 1 and result["success"] is True
+
+
+def test_the_journal_is_answered_at_most_once_per_wait(tmp_path, clock, readings):
+    guest = AcceptGuest(clock)
+    guest.answer = answer = Answer(guest)
+    guard = MapGuard(on={"journal": _always("10-journal.png", "16-exit_game.png"),
+                         "exit_game": _after(6, "16-exit_game.png")})
+    _, result = _accept(tmp_path, clock, guest=guest, guard=guard, answer=answer)
+    assert len(answer.calls) == 2 and result["success"] is True  # the route's and the question's
+
+
+def test_an_unguarded_state_acts_once_per_screen_whatever_the_guards_keep_saying(
+        tmp_path, clock, readings):
+    guest = AcceptGuest(clock)
+    guest.answer = answer = Answer(guest)
+    guard = MapGuard(set(MapGuard.ALL) - {"exit_game"},
+                     on={"continue": _always("16-exit_game.png"),
+                         "journal": _always("10-journal.png", "16-exit_game.png")})
+    guard.states.add("continue")
+    _, result = _accept(tmp_path, clock, guest=guest, guard=guard, answer=answer)
+    assert _keys(guest).count("RET") == 1 and len(answer.calls) == 2
+    assert result["unguarded"] == ["exit_game"]
+
+
+@pytest.mark.parametrize("facing", [0, 1, 2, 3])
+def test_two_squares_are_judged_along_every_facing(facing):
+    dx, dy = drive.geo.STEP[facing]
+    base = dict(BEFORE, x=5, y=5, facing=facing)
+
+    def at(squares, **over):
+        return _reading(x=(5 + dx * squares) % 16, y=(5 + dy * squares) % 16,
+                        facing=facing) | over
+
+    ok = drive.walk_verdict(base, at(0), at(2), 2)
+    assert ok["d_ok"] is True and ok["squares_moved"] == 2
+    for squares in (1, 3):
+        assert drive.walk_verdict(base, at(0), at(squares), 2)["d_ok"] is False
+    blocked = drive.walk_verdict(base, at(0), at(0), 2)
+    assert blocked["d_ok"] is False and blocked["verdicts"][1] == "slot D: did not move"
+    edge = dict(base, x=15 if dx else 5, y=15 if dy else 5)
+    wrapped = drive.walk_verdict(
+        edge, _reading(x=edge["x"], y=edge["y"], facing=facing),
+        _reading(x=(edge["x"] + dx * 2) % 16, y=(edge["y"] + dy * 2) % 16, facing=facing), 2)
+    assert wrapped["d_ok"] is True
+
+
+def test_an_injected_answerer_needs_no_journal_interpreter_for_the_preflight(
+        tmp_path, clock, readings):
+    guest, result = _accept(tmp_path, clock, journal_python=None, preflight=None)
+    assert result["success"] is True

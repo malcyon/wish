@@ -660,7 +660,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                    if not _guards(guard, s)]
         if missing:
             raise RouteError(f"screen guard map lacks {missing}")
-    if accept:
+    if accept and journal_python is not None:
         (preflight or journal_preflight)(journal_python)
     min_waits = min_waits or {}
     write_keys = tuple(k.upper() for k in write_keys)
