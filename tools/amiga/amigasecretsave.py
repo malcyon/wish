@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import functools
 import hashlib
 import json
 import os
@@ -23,7 +25,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from automap import gamedisks  # noqa: E402
-from goldbox import amiga_adf, amiga_savegame  # noqa: E402
+from goldbox import amiga_adf, amiga_savegame, geo  # noqa: E402
 from tools.amiga import (  # noqa: E402
     amigaacceptance,
     amigabladesjournal,
@@ -47,6 +49,10 @@ HOLDER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 class RouteError(RuntimeError):
     """A source, screen, lane action or fetched image failed its guard."""
+
+
+class Terminated(BaseException):
+    """The wrapper's `timeout` sent SIGTERM; a `BaseException` so a `finally` still runs."""
 
 
 def sha256(path: pathlib.Path) -> str:
@@ -377,6 +383,35 @@ GUARD_LIMIT = 120.0
 # after the write gets the same long first wait as the load picker.
 POST_WRITE_WAIT = 20.0
 
+# The two saves the accept route writes, on slots the game's own disk never ships.
+MENU_SAVE_LETTER = "B"
+CAMP_SAVE_LETTER = "D"
+
+# (key, state reached, kind). `write` saves, `answer` runs the journal answerer
+# instead of pressing a key, `move` is a movement key. Silver Blades takes no
+# RETURN after the camp save's letter, and RETURN at EXIT GAME is unmeasured, so
+# the route never presses either.
+ACCEPT_ROUTE = (
+    *((key, state, "key") for key, state in ROUTE),
+    (MENU_SAVE_LETTER, "loaded_menu", "write"),
+    ("B", "journal", "key"),
+    (None, "world", "answer"),
+    ("NP8", "world", "move"), ("NP8", "world", "move"),
+    ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
+    (CAMP_SAVE_LETTER, "exit_game", "write"),
+    ("N", "camp", "key"),
+)
+# The world bar is one state reached two ways, so its wait after a move has its own key.
+ACCEPT_MIN_WAITS = {
+    "loaded_menu": 20.0, "journal": 45.0, "world": 20.0, "world_after_move": 5.0,
+    "camp": 10.0, "camp_save_picker": 10.0, "exit_game": 20.0,
+}
+# A state the guard map has must match or the run stops; the rest are measured
+# by settling a capture and are marked unguarded.
+IDENTITY_MESSAGES = {"sheet": "sheet shows another member",
+                     "loaded_menu": "loaded_menu shows another party"}
+JOURNAL_SCRIPT = pathlib.Path(__file__).with_name("amigabladesjournal.py")
+
 
 def default_min_waits(route=ROUTE) -> dict[str, float]:
     """Minimum seconds to sit on each state before its screen is captured."""
@@ -436,22 +471,135 @@ def _slot_reading(fetched: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
     return reading
 
 
-def menu_save_problems(manifest: dict, reading: dict[str, Any]) -> list[str]:
-    """What the menu save left different from the prepared party; empty means it matches."""
+def menu_save_problems(manifest: dict, reading: dict[str, Any], *, letter: str = "B",
+                       check_place: bool = True) -> list[str]:
+    """What a save left different from the prepared party; empty means it matches."""
+    slot = f"slot {letter}"
     if reading.get("missing"):
-        return ["slot B was not written"]
+        return [f"{slot} was not written"]
     if "decode_error" in reading:
-        return [f"slot B does not decode: {reading['decode_error']}"]
+        return [f"{slot} does not decode: {reading['decode_error']}"]
     problems = []
-    if reading["place"] != manifest["state_a"]:
+    if check_place and reading["place"] != manifest["state_a"]:
         problems.append(
-            f"slot B place {reading['place']} differs from {manifest['state_a']}")
+            f"{slot} place {reading['place']} differs from {manifest['state_a']}")
     wanted = [member["name"] for member in manifest["inventory_a"]["members"]]
     if reading["names"] != wanted:
-        problems.append(f"slot B members {reading['names']} differ from {wanted}")
+        problems.append(f"{slot} members {reading['names']} differ from {wanted}")
     if not reading["inventory"]["joined_inventory_expected"]:
-        problems.append("slot B is not Guy with 13 items and one +1 arrow stack of 35")
+        problems.append(f"{slot} is not Guy with 13 items and one +1 arrow stack of 35")
     return problems
+
+
+def _span(a: dict, b: dict) -> str:
+    """`3,5 to 3,7`; the area and facing are named only when they differ."""
+    if a["area"] == b["area"] and a["facing"] == b["facing"]:
+        return f"{a['x']},{a['y']} to {b['x']},{b['y']}"
+    return (f"area {a['area']} {a['x']},{a['y']} facing {a['facing']} to "
+            f"area {b['area']} {b['x']},{b['y']} facing {b['facing']}")
+
+
+def _unreadable(letter: str, reading: dict[str, Any]) -> str:
+    return f"slot {letter}: " + ("was not written" if reading.get("missing")
+                                 else "does not decode")
+
+
+def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
+                 squares: int) -> dict[str, Any]:
+    """Judge the two saves: B, saved before the walk, must be `before`; D must be `squares` on.
+
+    The step routine wraps at 0 and 15, so D is compared modulo 16 along B's
+    facing. The screen never judges movement.
+    """
+    verdicts: list[str] = []
+    b_place, d_place = b.get("place"), d.get("place")
+    b_ok = d_ok = False
+    if b_place is None:
+        verdicts.append(_unreadable("B", b))
+    elif b_place == before:
+        b_ok = True
+        verdicts.append("slot B: did not move")
+    else:
+        verdicts.append(f"slot B: moved from {_span(before, b_place)}, expected the prepared place")
+    base = b_place or before
+    squares_moved = None
+    if d_place is None:
+        verdicts.append(_unreadable("D", d))
+    else:
+        dx, dy = geo.STEP[base["facing"]]
+        expected = dict(base, x=(base["x"] + dx * squares) % 16,
+                        y=(base["y"] + dy * squares) % 16)
+        if d_place["area"] == base["area"] and d_place["facing"] == base["facing"]:
+            along = (d_place["x"] - base["x"]) * dx + (d_place["y"] - base["y"]) * dy
+            across = (d_place["x"] - base["x"]) * dy + (d_place["y"] - base["y"]) * dx
+            # A wrapped step and a full lap cannot be told apart on 16 squares.
+            if across == 0 or (across % 16 == 0):
+                squares_moved = along % 16
+        if d_place == base:
+            d_ok = squares == 0
+            verdicts.append("slot D: did not move")
+        elif d_place == expected:
+            d_ok = True
+            unit = "square" if squares == 1 else "squares"
+            verdicts.append(f"slot D: moved {squares} {unit} from {_span(base, d_place)}")
+        else:
+            verdicts.append(f"slot D: moved from {_span(base, d_place)}, "
+                            f"expected {expected['x']},{expected['y']}")
+    return {"verdicts": verdicts, "b_ok": b_ok, "d_ok": d_ok,
+            "place_changed": None if d_place is None else d_place != base,
+            "squares_moved": squares_moved}
+
+
+def journal_preflight(journal_python: str) -> None:
+    """Refuse before the lane is claimed unless the private reader's imports and tables are there."""
+    try:
+        proc = subprocess.run([journal_python, "-c", "import numpy, PIL"],
+                              capture_output=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RouteError(f"the journal interpreter {journal_python!r} did not run: {exc}") from exc
+    if proc.returncode:
+        raise RouteError(f"the journal interpreter {journal_python!r} cannot import numpy and PIL")
+    analysis = amigabladesjournal.wheel_repo() / "ssb" / "analysis"
+    if not analysis.is_dir():
+        raise RouteError(f"{analysis} is not a directory, so the journal cannot be answered")
+
+
+def run_journal_answer(journal_python: str, holder: str, adf: pathlib.Path,
+                       timeout: float, script: pathlib.Path = JOURNAL_SCRIPT
+                       ) -> tuple[int, str]:
+    """Run the answerer in its own interpreter; its exit code and last line of stdout.
+
+    A subprocess, because numpy and Pillow live in `journal_python` and this
+    driver imports neither. Nothing else it prints is kept.
+    """
+    try:
+        proc = subprocess.run(
+            [journal_python, str(script), "--holder", holder, "--adf", str(adf)],
+            capture_output=True, text=True, timeout=timeout,
+            env=dict(os.environ, SSH_ASKPASS_REQUIRE="never"))
+    except subprocess.TimeoutExpired as exc:
+        raise RouteError(f"the journal answerer exceeded its {timeout:.0f}s limit") from exc
+    lines = proc.stdout.strip().splitlines()
+    return proc.returncode, lines[-1].strip() if lines else ""
+
+
+def _has_rule(guard: Any, state: str) -> bool:
+    """Whether a guard *map* holds `state`; a bare callable holds none, so no interstitial fires."""
+    return hasattr(guard, "__contains__") and state in guard
+
+
+def _terminate(signum, frame):
+    raise Terminated(f"signal {signum}")
+
+
+@contextlib.contextmanager
+def terminating():
+    """SIGTERM raises `Terminated`, so a wrapper's `timeout` still reaches `run_recon`'s `finally`."""
+    previous = signal.signal(signal.SIGTERM, _terminate)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 
 def menu_save_verdict(result: dict[str, Any], originals: tuple[str, ...]) -> bool:
@@ -472,7 +620,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               route: tuple[tuple[str, str], ...] = ROUTE,
               write_keys: tuple[str, ...] = ("B",),
               min_waits: dict[str, float] | None = None,
-              measure: bool = False) -> dict[str, Any]:
+              measure: bool = False, accept: bool = False,
+              identity: Any = None, journal_python: str | None = None,
+              answer: Any = None, preflight: Any = None) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -482,14 +632,36 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     screens it has none for, presses no write key and nothing after the route,
     and stops at the first unrecognised guarded state or at the first key that
     leaves the screen unchanged.
+
+    `accept` walks `ACCEPT_ROUTE` after the same guarded route: a menu save to
+    slot B, BEGIN, the journal answer, two squares, a camp save to slot D. A
+    state the guard map lacks is settled, marked unguarded and makes the run a
+    measuring one; the route states never fall back. It reads slots B and D
+    back, and `answer(journal_python, holder, adf, timeout)` stands in for the
+    answerer's subprocess.
     """
     if guard is None and not measure:
         raise RouteError("a screen guard is required unless measuring")
+    if accept:
+        if measure:
+            raise RouteError("accept and measure are separate modes")
+        if route != ROUTE:
+            raise RouteError("accept walks its own route")
+        for letter in (MENU_SAVE_LETTER, CAMP_SAVE_LETTER):
+            if letter in (SLOT_LETTER, "A"):
+                raise RouteError(f"save letter {letter} would overwrite the prepared slot")
+        if identity is None or not all(_has_rule(identity, s)
+                                       for s in IDENTITY_MESSAGES):
+            raise RouteError(f"identity map lacks {sorted(IDENTITY_MESSAGES)}")
+        if not journal_python and answer is None:
+            raise RouteError("accept needs a journal interpreter")
     if not measure:
         missing = [s for s in dict.fromkeys(("title", *(s for _, s in route)))
                    if not _guards(guard, s)]
         if missing:
             raise RouteError(f"screen guard map lacks {missing}")
+    if accept:
+        (preflight or journal_preflight)(journal_python)
     min_waits = min_waits or {}
     write_keys = tuple(k.upper() for k in write_keys)
     if not all(write_keys):
@@ -511,6 +683,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     originals = {name: _input(manifest, name)
                  for name in ("source", "boot_source", "disk_b_source")
                  if name in manifest}
+    if accept and "boot_source" not in originals:
+        raise RouteError("the manifest names no boot_source for the journal answerer")
     df0 = _input(manifest, "df0")
     published = _input(manifest, "published_df1")
     df1 = _input(manifest, "df1")
@@ -531,6 +705,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     out = manifest_path.parent / attempt
     out.mkdir(parents=False, exist_ok=False)
     shots = scratch.ensure(out / "shots")
+    runlog = (out / "run.jsonl").open("a", encoding="utf-8")
     remote0 = f"C:/Amiga/Disks/wish672-{holder}-df0.adf"
     remote1 = f"C:/Amiga/Disks/wish672-{holder}-df1.adf"
     result: dict[str, Any] = {
@@ -538,13 +713,25 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         "remote_df0": remote0, "remote_df1": remote1,
         "events": [], "error": "", "fetched": {},
         "deadline_seconds": deadline_seconds, "measure": measure,
+        "accept": accept, "completed": False, "lost": None, "unguarded": [],
     }
+    steps = ACCEPT_ROUTE if accept else (
+        *((k, s, "key") for k, s in route), (write_keys[0], "loaded_menu", "write"))
+    strict_states = {"title", *(s for _, s in ROUTE)}
+    landed: dict[str, Any] = {"state": None}
+    if accept and answer is None:
+        answer = functools.partial(run_journal_answer, journal_python)
     claimed = start_attempted = copied = stopped = False
     begun = time.monotonic()
     cleanup_window = min(300.0, deadline_seconds / 2)
     route_end = begun + deadline_seconds - cleanup_window
     total_end = begun + deadline_seconds
     cleanup_scale = cleanup_window / 300.0
+
+    def log(event: str, **fields: Any) -> None:
+        runlog.write(json.dumps({"event": event, "t": time.time(), **fields},
+                                sort_keys=True) + "\n")
+        runlog.flush()
 
     def route_limit(cap: float) -> float:
         left = route_end - time.monotonic()
@@ -570,11 +757,14 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             if not guest.grab(state, raw, cropped, timeout=route_limit(SHOT_SECONDS)):
                 result["events"].append({"state": state, "raw": str(raw),
                                          "sha256": sha256(raw), "crop": None})
+                log("grab", state=state, raw=str(raw), crop=None)
                 return ""
         digest = sha256(cropped)
         result["events"].append({"state": state, "raw": str(raw),
                                  "crop": str(cropped), "sha256": sha256(raw),
                                  "crop_sha256": digest})
+        log("settled" if settle else "grab", state=state, raw=str(raw),
+            crop=str(cropped), crop_sha256=digest)
         if check and not guard(state, cropped):
             raise RouteError(f"{state} screen was not recognized; kept {raw}")
         return digest
@@ -585,20 +775,105 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 raise RouteError("reconnaissance deadline reached during a minimum wait")
             time.sleep(seconds)
 
+    def check_identity(state: str, crop: pathlib.Path) -> None:
+        if identity is not None and _has_rule(identity, state) and not identity(state, crop):
+            raise RouteError(IDENTITY_MESSAGES[state])
+
+    def run_answer() -> None:
+        """Run the journal answerer, again while it sees no challenge, until GUARD_LIMIT."""
+        started = time.monotonic()
+        adf = originals["boot_source"]
+        while True:
+            code, line = answer(holder, adf, route_limit(180))
+            result["events"].append({"answer": line, "exit_code": code})
+            log("answer", exit_code=code, line=line)
+            if code == 0 and line == "answered":
+                return
+            if line != "no challenge on screen":
+                raise RouteError(f"the journal answerer ended {code}: {line!r}")
+            if time.monotonic() - started >= GUARD_LIMIT:
+                raise RouteError(f"no journal challenge on screen within {GUARD_LIMIT:.0f}s")
+            wait(GUARD_POLL)
+
+    def interstitial(state: str, crop: pathlib.Path, done: set[str]) -> bool:
+        """Act once per wait on a known screen that is not the wanted one."""
+        def press(screen: str, key: str) -> None:
+            done.add(screen)
+            guest.press(holder, key, timeout=route_limit(30))
+            result["events"].append({"interstitial": screen, "key": key})
+            log("interstitial", screen=screen, key=key)
+
+        if (state == "title" and "credits" not in done and _has_rule(guard, "credits")
+                and guard("credits", crop)):
+            press("credits", "ESC")
+            return True
+        if not accept:
+            return False
+        if ("continue" not in done and _has_rule(guard, "continue")
+                and guard("continue", crop)):
+            press("continue", "RET")
+            return True
+        if (state == "exit_game" and "journal" not in done and _has_rule(guard, "journal")
+                and guard("journal", crop)):
+            done.add("journal")
+            result["events"].append({"interstitial": "journal"})
+            log("interstitial", screen="journal", key=None)
+            run_answer()
+            return True
+        return False
+
+    def settle_unguarded(state: str, name: str) -> str:
+        """One settled capture of a state nobody has measured, marked as such."""
+        digest = capture(name, check=False)
+        result["events"][-1]["recognized"] = False
+        if state not in result["unguarded"]:
+            result["unguarded"].append(state)
+        return digest
+
     def until_guard(state: str, name: str, first_wait: float,
-                    poll: float, limit: float) -> str:
-        """Wait, then grab every `poll` seconds until the guard matches; keep the last crop."""
+                    poll: float, limit: float, *, strict: bool = True) -> str:
+        """Wait, then grab every `poll` seconds until the guard matches; keep the last crop.
+
+        A state that is not `strict` and never matches falls back to a settled capture.
+        """
         wait(first_wait)
         started = time.monotonic()
+        done: set[str] = set()
+        crop = shots / f"{name}.png"
         while True:
             digest = capture(name, check=False, settle=False)
-            if digest and guard(state, shots / f"{name}.png"):
-                result["events"][-1]["recognized"] = state
-                return digest
+            if digest:
+                wanted = [state]
+                if "credits" in done and _has_rule(guard, "party_menu"):
+                    wanted.append("party_menu")
+                hit = next((s for s in wanted if guard(s, crop)), None)
+                if hit:
+                    check_identity(hit, crop)
+                    landed["state"] = hit
+                    result["events"][-1]["recognized"] = hit
+                    log("recognized", state=hit, name=name)
+                    return digest
+                interstitial(state, crop, done)
             if time.monotonic() - started >= limit:
+                if not strict:
+                    return settle_unguarded(state, name)
                 raise RouteError(f"{state} screen was not recognized within {limit:.0f}s;"
-                                 f" kept {shots / f'{name}.png'}")
+                                 f" kept {crop}")
             wait(poll)
+
+    def reach(state: str, name: str, first_wait: float, *, strict: bool) -> str:
+        if _guards(guard, state):
+            return until_guard(state, name, first_wait, GUARD_POLL, GUARD_LIMIT,
+                               strict=strict)
+        wait(first_wait)
+        done: set[str] = set()
+        digest = settle_unguarded(state, name)
+        for again in range(1, 4):
+            if not interstitial(state, shots / f"{name}.png", done):
+                break
+            wait(first_wait)
+            digest = settle_unguarded(state, f"{name}-after-{again}")
+        return digest
 
     def measure_boot() -> str:
         """Capture the boot, keeping each distinct frame, until the title or a fixed span.
@@ -634,6 +909,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if receipt != f"ok claimed by {holder}":
             raise RouteError(f"claim was not new: {receipt!r}; already yours is not a lane grant")
         result["claim"] = receipt
+        log("claim", receipt=receipt)
         claimed = True
         guest.put(df0, remote0, timeout=route_limit(90))
         guest.put(df1, remote1, timeout=route_limit(90))
@@ -643,6 +919,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         start_attempted = True
         result["start"] = guest.start(holder, remote0, remote1,
                                       timeout=route_limit(60))
+        log("start", receipt=result["start"])
         if measure:
             previous = measure_boot()
             changed = True
@@ -668,18 +945,40 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             result["route_changed"] = changed
         else:
             until_guard("title", "title", 0, TITLE_POLL, TITLE_LIMIT)
-            for n, (key, state) in enumerate(route, 1):
-                guest.press(holder, key, timeout=route_limit(30))
-                result["events"].append({"key": key, "step": n})
-                until_guard(state, f"{n:02d}-{state}", min_waits.get(state, 0),
-                            GUARD_POLL, GUARD_LIMIT)
-            write = write_keys[0]
-            guest.press(holder, write, timeout=route_limit(30))
-            result["events"].append({"key": write, "step": len(route) + 1})
-            until_guard("loaded_menu", f"{len(route) + 1:02d}-post_write",
-                        POST_WRITE_WAIT, GUARD_POLL, GUARD_LIMIT)
+            # Leaving the credits with ESC can land on the party menu, which `P` opens.
+            skip_first = landed["state"] == "party_menu" and steps[0][1] == "party_menu"
+            previous_world = ""
+            for n, (key, state, kind) in enumerate(steps, 1):
+                if n == 1 and skip_first:
+                    result["events"].append({"skipped": key, "step": n})
+                    continue
+                if kind == "answer":
+                    run_answer()
+                else:
+                    guest.press(holder, key, timeout=route_limit(30))
+                    result["events"].append({"key": key, "step": n})
+                    log("write" if kind == "write" else "key", key=key, step=n, state=state)
+                name = (f"{n:02d}-post_write" if kind == "write" and state == "loaded_menu"
+                        else f"{n:02d}-{state}")
+                if kind == "move":
+                    first_wait = min_waits.get("world_after_move", 0)
+                elif kind == "write":
+                    first_wait = min_waits.get(state, POST_WRITE_WAIT)
+                else:
+                    first_wait = min_waits.get(state, 0)
+                digest = reach(state, name, first_wait,
+                               strict=not accept or state in strict_states)
+                if kind == "move":
+                    # Evidence only: the two saves judge the walk, never the picture.
+                    result["events"][-1]["crop_changed"] = digest != previous_world
+                if state == "world":
+                    previous_world = digest
+            result["completed"] = True
     except BaseException as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
+        if not isinstance(exc, (RouteError, OSError, ValueError)):
+            result["lost"] = result["error"]
+            log("lost", reason=result["lost"])
         if start_attempted:
             try:
                 capture("failure", check=False, cleanup=True)
@@ -690,6 +989,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             try:
                 result["stop"] = guest.stop(holder, timeout=cleanup_limit(30))
                 stopped = True
+                log("stop", receipt=result["stop"])
             except BaseException as exc:
                 result["stop_error"] = f"{type(exc).__name__}: {exc}"
         if copied:
@@ -698,12 +998,14 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 try:
                     guest.get(remote, local, timeout=cleanup_limit(60))
                     result["fetched"][name] = _entry(local)
+                    log("fetch", disk=name, **result["fetched"][name])
                 except BaseException as exc:
                     result[f"fetch_{name}_error"] = f"{type(exc).__name__}: {exc}"
         if claimed and (not start_attempted or stopped):
             try:
                 result["release"] = guest.release(
                     holder, timeout=cleanup_limit(30))
+                log("release", receipt=result["release"])
             except BaseException as exc:
                 result["release_error"] = f"{type(exc).__name__}: {exc}"
         result["published_unchanged"] = sha256(published) == manifest[
@@ -736,12 +1038,44 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 if not measure:
                     result["menu_save_problems"] = menu_save_problems(
                         manifest, reading)
+                if accept:
+                    slot_d = _slot_reading(fetched, CAMP_SAVE_LETTER)
+                    result["slot_d_sha256"] = slot_d.get("sha256")
+                    result["camp_save_problems"] = menu_save_problems(
+                        manifest, slot_d, letter=CAMP_SAVE_LETTER, check_place=False)
+                    squares = sum(1 for *_, kind in steps if kind == "move")
+                    walk = walk_verdict(manifest["state_a"], reading, slot_d, squares)
+                    result["walk"] = walk
+                    result["read"] = {
+                        "place_before": manifest["state_a"],
+                        "menu_save": reading.get("place"),
+                        "place_after": slot_d.get("place"),
+                        "place_changed": walk["place_changed"],
+                        "squares_moved": walk["squares_moved"],
+                        "verdicts": walk["verdicts"],
+                    }
+                    log("read", **result["read"])
+                    allowed = {f"savgam{c}.sav".lower()
+                               for c in ("A", letter, MENU_SAVE_LETTER, CAMP_SAVE_LETTER)}
+                    result["extra_saves"] = sorted(
+                        e.name for e in fetched.entries(fetched.lookup("/SAVE").block)
+                        if e.name.lower().startswith("savgam")
+                        and e.name.lower() not in allowed)
             except BaseException as exc:
                 result["fetched_df0_error"] = f"{type(exc).__name__}: {exc}"
         if not measure:
             result.setdefault("menu_save_problems",
                               ["slot B was not read from the fetched boot disk"])
             result["success"] = menu_save_verdict(result, tuple(originals))
+            if accept:
+                result["read"] = result.get("read") or {
+                    "verdicts": ["slots B and D were not read from the fetched boot disk"]}
+                result["success"] = bool(
+                    result["success"] and result["completed"] and not result["unguarded"]
+                    and result.get("walk", {}).get("b_ok")
+                    and result.get("walk", {}).get("d_ok")
+                    and result.get("camp_save_problems") == []
+                    and result.get("extra_saves") == [])
         else:
             result["success"] = bool(
                 result.get("route_changed") and not result["error"]
@@ -750,6 +1084,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         result["elapsed_seconds"] = time.monotonic() - begun
         (out / "summary.json").write_text(json.dumps(result, indent=2,
                                                      sort_keys=True) + "\n")
+        runlog.close()
     return result
 
 
@@ -801,7 +1136,17 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--out", required=True, type=pathlib.Path)
     g.add_argument("--replace", action="store_true",
                    help="overwrite the state's existing rule in --out")
-    sub.add_parser("accept", help="unavailable until the route is measured")
+    a = sub.add_parser("accept", help="guarded load, menu save, BEGIN, two squares, camp save "
+                                      "and the two-save readback")
+    a.add_argument("--manifest", required=True, type=pathlib.Path)
+    a.add_argument("--guards", required=True, type=pathlib.Path)
+    a.add_argument("--identity", required=True, type=pathlib.Path)
+    a.add_argument("--journal-python", required=True,
+                   help="an interpreter that can import numpy and PIL, for the journal answerer")
+    a.add_argument("--audio-proof", required=True, type=pathlib.Path)
+    a.add_argument("--attempt", default="accept1")
+    a.add_argument("--holder", default=None)
+    a.add_argument("--deadline", type=float, default=1800)
     sub.add_parser("spindisk-control", help="unavailable until the exact-output failure is measured")
     args = parser.parse_args(argv)
     try:
@@ -838,16 +1183,34 @@ def main(argv: list[str] | None = None) -> int:
             route = parse_route(args.route) if args.route else ROUTE
             write_keys = parse_write_keys(args.write_keys)
             holder = args.holder or f"wish672-{uuid.uuid4().hex[:12]}"
-            result = run_recon(args.manifest, guest=WinGuest(), guard=guards,
-                               holder=holder,
-                               audio_proof=args.audio_proof,
-                               attempt=args.attempt, route=route,
-                               write_keys=write_keys, measure=args.measure,
-                               min_waits=default_min_waits(route))
+            with terminating():
+                result = run_recon(args.manifest, guest=WinGuest(), guard=guards,
+                                   holder=holder,
+                                   audio_proof=args.audio_proof,
+                                   attempt=args.attempt, route=route,
+                                   write_keys=write_keys, measure=args.measure,
+                                   min_waits=default_min_waits(route))
             print(json.dumps({"success": result["success"],
                               "error": result["error"],
                               "summary": str(args.manifest.parent / args.attempt
                                              / "summary.json")}, sort_keys=True))
+            return 0 if result["success"] else 1
+        if args.command == "accept":
+            holder = args.holder or f"wish672-{uuid.uuid4().hex[:12]}"
+            with terminating():
+                result = run_recon(
+                    args.manifest, guest=WinGuest(), guard=PixelGuards(args.guards),
+                    identity=PixelGuards(args.identity), holder=holder,
+                    audio_proof=args.audio_proof, attempt=args.attempt,
+                    deadline_seconds=args.deadline, accept=True,
+                    journal_python=args.journal_python,
+                    min_waits={**default_min_waits(), **ACCEPT_MIN_WAITS})
+            print(json.dumps({"success": result["success"], "error": result["error"],
+                              "unguarded": result["unguarded"],
+                              "summary": str(args.manifest.parent / args.attempt
+                                             / "summary.json")}, sort_keys=True))
+            for line in result["read"]["verdicts"]:
+                print(line)
             return 0 if result["success"] else 1
         raise RouteError(f"{args.command} is unavailable until the measured route is reviewed")
     except (RouteError, OSError, ValueError) as exc:

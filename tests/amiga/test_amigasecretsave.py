@@ -333,8 +333,7 @@ def test_deadline_bounds_capture_and_cleanup_calls(tmp_path, monkeypatch):
     assert result["elapsed_seconds"] <= 300
 
 
-def test_accept_and_dependency_control_stay_unavailable():
-    assert amigasecretsave.main(["accept"]) == 2
+def test_the_dependency_control_stays_unavailable():
     assert amigasecretsave.main(["spindisk-control"]) == 2
 
 
