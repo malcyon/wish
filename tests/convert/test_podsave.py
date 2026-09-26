@@ -196,6 +196,26 @@ def test_new_pod_save_from_writes_every_played_amiga_slot(tmp_path):
     assert seen >= 8
 
 
+def test_a_converted_slot_weighs_what_the_amiga_computed(tmp_path):
+    """The Amiga's stored encumbrance is `money + sum(weight x quantity)`
+    with a scroll case counted as one item; DOS recounts from the scrolls
+    themselves, so the scrolls must weigh what their case did."""
+    seen = 0
+    for name, blob in _pod_amiga_slots():
+        characters, stored = [], []
+        for block in amiga_savegame.pod_parse(blob).blocks:
+            seen += 1
+            characters.append(amiga_pod.pod_to_neutral(block))
+            stored.append(amiga_pod.PodCharacter.from_bytes(block).encumbrance)
+        state = amiga_savegame.pod_from_amiga(blob, source=name)
+        out = tmp_path / f"slot{seen}"
+        dos_codec.new_pod_save_from(state, characters, out, "A")
+        got = [c.expected_encumbrance()
+               for c in dos_codec.read_party(out, "A")]
+        assert got == stored, name
+    assert seen > 0
+
+
 # ---------------------------------------------------------------------------
 # Detection
 # ---------------------------------------------------------------------------

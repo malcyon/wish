@@ -224,13 +224,21 @@ not read. To settle it, ready CLERIC's case in Amiga Pools of Darkness and
 node flag is ignored. CLERIC's case is not readied but two of its seven scrolls
 are, so his scrolls all arrive unreadied.
 
-**The weight changes and the engine accepts it.** The Amiga weighs a case as
+**Each scroll takes its case's `weight`.** DOS reads an item's weight from
+the item's own record, the word at `+0x37`, multiplied by `quantity` in the
+recount, and the Amiga weighs a case as `weight x quantity` and ignores the
+scrolls inside it, so `unbundle` copies the case's weight onto each scroll and
+the scrolls together weigh what the case did. The encumbrance DOS recounts,
+and the movement it sets, then equal the Amiga's. A scroll's own weight feeds
+only that encumbrance; DOS prints no item weight.
+
+**Without that rule the weight would change, and the engine accepts it.** The Amiga weighs a case as
 its own `weight x quantity` and ignores its scrolls: `money + sum(weight x
 max(quantity, 1))` over the head items balances exactly in 4 of 4 records
 (3 characters). DOS weighs each scroll. The DOS recount (`0x034D5D`) adds
 `weight`, multiplied by `quantity` when that is non-zero, which is
 `goldbox.dos_codec.write`'s formula. The loader reads neither `encumbrance`
-nor `item_count`. CLERIC goes from 1478 to 1604, HILDE from 1067 to 1055 and
+nor `item_count`. Weighing each scroll on its own takes CLERIC from 1478 to 1604, HILDE from 1067 to 1055 and
 INA from 424 to 442. **CLERIC's +126 takes his movement from 9 to 6,
 CONFIRMED** by the rule below, which reproduces the stored movement in 106 of
 106 game-written DOS records and 88 of 88 Amiga character blocks.

@@ -888,7 +888,11 @@ def unbundle(items: Sequence[PodItem],
     is not readied and lets any number be readied at once, and the Amiga
     gates a case by the case's own flag, so a readied case's scrolls arrive
     readied and an unreadied case's arrive unreadied, whatever their own
-    bytes held. A case of 0 holds nothing and becomes nothing.
+    bytes held. Each scroll also takes its case's `weight`: the Amiga weighs
+    a case as its `weight x quantity` and ignores the scrolls inside, and DOS
+    weighs every scroll from its own record, so the scrolls weigh what the
+    case did and the encumbrance, and the movement it sets, come out as the
+    Amiga's. A case of 0 holds nothing and becomes nothing.
     """
     out: list[PodItem] = []
     at = 0
@@ -899,6 +903,9 @@ def unbundle(items: Sequence[PodItem],
         for raw in nodes[at:at + item.quantity]:
             node = bytearray(raw)
             node[ITEM_FIELD_AT["readied"]] = int(item.readied)
+            at_w = ITEM_FIELD_AT["weight"]
+            size_w = ITEM_FIELDS["weight"].size
+            node[at_w:at_w + size_w] = item.raw[at_w:at_w + size_w]
             out.append(PodItem.from_bytes(node))
         at += item.quantity
     if at < len(nodes):

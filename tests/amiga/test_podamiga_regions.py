@@ -426,6 +426,30 @@ def test_an_unreadied_case_hands_dos_every_scroll_unreadied():
     assert _unbundled_readied(0, [1, 0, 1]) == [0, 0, 0, 1]
 
 
+def _unbundled_weights(case_weight: int, case_readied: int,
+                       node_readied: list[int]) -> list[int]:
+    """The weight word of each DOS item a case of scrolls arrives as."""
+    case = an_item(type_index=amiga_pod.SCROLL_TYPE_INDEX,
+                   quantity=len(node_readied), weight=case_weight,
+                   readied=case_readied)
+    nodes = [an_item(type_index=39 + i % 2, weight=1 + i, readied=r)
+             for i, r in enumerate(node_readied)]
+    sword = an_item(type_index=5, weight=50, readied=1)
+    out = amiga_pod.pod_to_neutral(a_record([case] + nodes + [sword], count=2))
+    items = [dos_codec.item_from_c64(bytes(i), dos_port.ITEM_SIZE)
+             for i in out.get("inventory")]
+    return [int.from_bytes(it[0x37:0x39], "little") for it in items]
+
+
+def test_each_scroll_weighs_what_its_case_did():
+    """The Amiga weighs a case as its weight times its quantity and ignores
+    the scrolls inside, and DOS weighs each scroll from its own record, so
+    each scroll takes the case's weight, readied or not, mixed or not."""
+    assert _unbundled_weights(300, 1, [0, 0, 0]) == [300, 300, 300, 50]
+    assert _unbundled_weights(7, 0, [1, 1]) == [7, 7, 50]
+    assert _unbundled_weights(300, 0, [0, 1, 0]) == [300, 300, 300, 50]
+
+
 def test_a_case_of_nothing_becomes_nothing_and_the_next_item_still_reads():
     """A case whose `quantity` is 0 has no nodes after it and no spells in
     it, and DOS has no empty case to hold, so :func:`amiga_pod.unbundle`
