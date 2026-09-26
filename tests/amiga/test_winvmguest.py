@@ -282,8 +282,8 @@ def test_a_token_that_cannot_be_compared_fails_closed():
                       WINUAE_PS1.index("function Get-LaneEmulator")]
     assert "$WantTokenGiven = $true" in WINUAE_PS1
     assert "if ($WantTokenGiven)" in body
-    assert "-not $WantToken -or $WantToken.StartsWith('-')" in body
-    assert body.index("StartsWith('-')") < body.index("$c['token']")
+    assert "-not $WantToken -or $WantToken.StartsWith('-', [StringComparison]::Ordinal)" in body
+    assert body.index("StartsWith('-'") < body.index("$c['token']")
 
 
 def test_the_lane_emulator_check_reuses_the_claim_and_receipt_functions():
@@ -373,3 +373,20 @@ def test_the_guest_regexes_accept_what_the_python_ones_accept():
     line = "DEBUG: drive 0 motor off cylinder  0 sel no rw mfmpos 0/12668"
     assert re.search(dump, line) and amiga.parse_drive_dump(line + "\nDEBUG: drive 1 motor  on "
                                                             "cylinder 12 sel yes ro mfmpos 5/9") == {0: "rw", 1: "ro"}
+
+
+def test_the_poll_stops_before_a_read_that_could_not_finish_and_a_wait_is_never_tiny():
+    loop = _at("Start-Sleep -Milliseconds $PollEveryMs")
+    assert _at("if (($until - $sw.ElapsedMilliseconds) -lt 500) { break }", loop) < _at("$seq++", loop)
+    assert "[Math]::Max(250, [Math]::Min(10000, $Until" in WINUAE_PS1
+
+
+def test_the_token_value_check_and_the_disk_pattern_are_exact():
+    assert "$WantToken.StartsWith('-', [StringComparison]::Ordinal)" in WINUAE_PS1
+    assert re.search(r"\$DiskPattern = '[^']*\.adf\\z'", WINUAE_PS1)
+
+
+def test_the_poll_compares_paths_and_modes_case_sensitively_and_the_pipe_is_disposed():
+    assert "$before.paths[$o] -ceq $path" in FLOPPY
+    assert "$now.paths[$o] -cne $before.paths[$o] -or $now.modes[$o] -cne $before.modes[$o]" in FLOPPY
+    assert re.search(r"finally \{\s*if \(\$pipe\) \{ \$pipe\.Dispose\(\) \}", FLOPPY)

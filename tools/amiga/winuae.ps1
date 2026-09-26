@@ -483,7 +483,7 @@ function Get-LaneDenial {
   if ($deny) { return $deny }
   if ($WantTokenGiven) {
     # A token that was asked for and cannot be compared fails closed.
-    if (-not $WantToken -or $WantToken.StartsWith('-')) { return "fail -Token needs the claim's token as its value" }
+    if (-not $WantToken -or $WantToken.StartsWith('-', [StringComparison]::Ordinal)) { return "fail -Token needs the claim's token as its value" }
     $c = Get-Claim
     if (-not $c -or $c['token'] -cne $WantToken) {
       return "fail the WinUAE lane's claim token is not the one $Holder took"
@@ -527,7 +527,7 @@ function Read-Drives($Pipe, $Sw, [int]$Seq, $Tags, [long]$Until = 0) {
   $out = @{}
   foreach ($item in @(@('q0', 'CFG floppy0'), @('q1', 'CFG floppy1'), @('dbg', 'DBG c'))) {
     # A read may not outlast the poll's own deadline.
-    $wait = if ($Until) { [int][Math]::Max(1, [Math]::Min(10000, $Until - $Sw.ElapsedMilliseconds)) } else { 10000 }
+    $wait = if ($Until) { [int][Math]::Max(250, [Math]::Min(10000, $Until - $Sw.ElapsedMilliseconds)) } else { 10000 }
     $bytes = Send-Pipe $Pipe $item[1] $wait
     $Tags.Add("<<r>> $Seq $($item[0]) $($Sw.ElapsedMilliseconds) $([Convert]::ToBase64String($bytes))") | Out-Null
     $out[$item[0]] = [Text.Encoding]::GetEncoding('iso-8859-1').GetString($bytes).TrimEnd([char]0)
@@ -604,6 +604,7 @@ function Invoke-Floppy([string]$Verb) {
         $o = 1 - $drive
         if ($before.paths[$o] -ceq $path) { $verdict = "fail $path is already in DF$o" }
         elseif ($before.paths[$drive] -ceq $path) {
+          # Nothing is sent on this branch, so the last look and the hash check do not apply: the drive already holds the path and no mutation follows.
           $verdict = if ($before.modes[$drive] -ceq 'rw') { "ok already drive=$drive" }
                      else { "fail DF$drive names $path but holds no disk" }
         }
@@ -630,6 +631,8 @@ function Invoke-Floppy([string]$Verb) {
       $seq = 0; $sawPath = $false; $sawRo = $false; $rwRun = 0; $applied = $false
       while ($sw.ElapsedMilliseconds -lt $until -and -not $verdict -and -not $applied) {
         Start-Sleep -Milliseconds $PollEveryMs
+        # A read that starts this close to the deadline would time out on a healthy pipe and name the wrong reason.
+        if (($until - $sw.ElapsedMilliseconds) -lt 500) { break }
         $seq++
         $now = Read-Drives $pipe $sw $seq $tags $until
         if ($now.paths[$o] -cne $before.paths[$o] -or $now.modes[$o] -cne $before.modes[$o]) {
