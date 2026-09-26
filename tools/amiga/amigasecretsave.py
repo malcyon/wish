@@ -373,6 +373,9 @@ MEASURE_BOOT_POLL = 10.0
 MEASURE_TITLE_SPAN = 120.0
 GUARD_POLL = 5.0
 GUARD_LIMIT = 120.0
+# A key pressed while the disk is being written is swallowed, so the screen
+# after the write gets the same long first wait as the load picker.
+POST_WRITE_WAIT = 20.0
 
 
 def default_min_waits(route=ROUTE) -> dict[str, float]:
@@ -406,6 +409,61 @@ def _input(manifest: dict, name: str) -> pathlib.Path:
     if not path.is_file() or sha256(path) != entry["sha256"]:
         raise RouteError(f"{name} is missing or changed from preparation")
     return path
+
+
+def _slot_reading(fetched: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
+    """Read one save slot off a fetched boot disk with the existing readers.
+
+    Returns `missing`, or `decode_error`, or the digest, place, member names and
+    inventory; `decode_error` still carries the digest.
+    """
+    try:
+        raw = fetched.read_file(f"/SAVE/savgam{letter}.sav")
+    except amiga_adf.AmigaDiskError:
+        return {"missing": True, "sha256": None}
+    reading: dict[str, Any] = {"sha256": hashlib.sha256(raw).hexdigest()}
+    try:
+        saved = amiga_savegame.read_slot(fetched, letter, TITLE)
+        state = amiga_savegame.state_from_savegame(saved)
+        inventory = _inventory(saved, require_joined=False)
+    except BaseException as exc:
+        reading["decode_error"] = f"{type(exc).__name__}: {exc}"
+        return reading
+    reading["place"] = {"area": state.area, "x": state.x, "y": state.y,
+                        "facing": state.facing}
+    reading["names"] = [member["name"] for member in inventory["members"]]
+    reading["inventory"] = inventory
+    return reading
+
+
+def menu_save_problems(manifest: dict, reading: dict[str, Any]) -> list[str]:
+    """What the menu save left different from the prepared party; empty means it matches."""
+    if reading.get("missing"):
+        return ["slot B was not written"]
+    if "decode_error" in reading:
+        return [f"slot B does not decode: {reading['decode_error']}"]
+    problems = []
+    if reading["place"] != manifest["state_a"]:
+        problems.append(
+            f"slot B place {reading['place']} differs from {manifest['state_a']}")
+    wanted = [member["name"] for member in manifest["inventory_a"]["members"]]
+    if reading["names"] != wanted:
+        problems.append(f"slot B members {reading['names']} differ from {wanted}")
+    if not reading["inventory"]["joined_inventory_expected"]:
+        problems.append("slot B is not Guy with 13 items and one +1 arrow stack of 35")
+    return problems
+
+
+def menu_save_verdict(result: dict[str, Any], originals: tuple[str, ...]) -> bool:
+    """A guarded run passes when the game wrote slot B as prepared and touched nothing else."""
+    return bool(
+        not result["error"] and not result["menu_save_problems"]
+        and result.get("slot_unchanged") and result.get("slot_a_unchanged")
+        and result.get("df1_unchanged") and result.get("published_unchanged")
+        and result.get("working_unchanged")
+        and all(result.get(f"{name}_unchanged") for name in originals)
+        # The write to slot B is the point of the run, so DF0 must have changed.
+        and result.get("df0_unchanged") is False)
 
 
 def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
@@ -482,7 +540,6 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         "deadline_seconds": deadline_seconds, "measure": measure,
     }
     claimed = start_attempted = copied = stopped = False
-    return_early = False
     begun = time.monotonic()
     cleanup_window = min(300.0, deadline_seconds / 2)
     route_end = begun + deadline_seconds - cleanup_window
@@ -609,7 +666,6 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     break
                 previous = digest
             result["route_changed"] = changed
-            return_early = True
         else:
             until_guard("title", "title", 0, TITLE_POLL, TITLE_LIMIT)
             for n, (key, state) in enumerate(route, 1):
@@ -620,9 +676,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             write = write_keys[0]
             guest.press(holder, write, timeout=route_limit(30))
             result["events"].append({"key": write, "step": len(route) + 1})
-            capture("post-write", check=False)
-        if not return_early:
-            result["error"] = "post-write screen needs measured classification"
+            until_guard("loaded_menu", f"{len(route) + 1:02d}-post_write",
+                        POST_WRITE_WAIT, GUARD_POLL, GUARD_LIMIT)
     except BaseException as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
         if start_attempted:
@@ -671,26 +726,23 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 result["slot_a_unchanged"] = (
                     fetched.read_file("/SAVE/savgamA.sav")
                     == df0_disk.read_file("/SAVE/savgamA.sav"))
-                try:
-                    b = fetched.read_file("/SAVE/savgamB.sav")
-                except amiga_adf.AmigaDiskError:
-                    result["slot_b_sha256"] = None
-                else:
-                    result["slot_b_sha256"] = hashlib.sha256(b).hexdigest()
-                    try:
-                        saved_b = amiga_savegame.read_slot(fetched, "B", TITLE)
-                        state_b = amiga_savegame.state_from_savegame(saved_b)
-                        result["slot_b"] = {
-                            "inventory": _inventory(saved_b, require_joined=False),
-                            "state": {"area": state_b.area, "x": state_b.x,
-                                      "y": state_b.y, "facing": state_b.facing},
-                        }
-                    except BaseException as exc:
-                        result["slot_b_decode_error"] = (
-                            f"{type(exc).__name__}: {exc}")
+                reading = _slot_reading(fetched, "B")
+                result["slot_b_sha256"] = reading.get("sha256")
+                if "decode_error" in reading:
+                    result["slot_b_decode_error"] = reading["decode_error"]
+                elif "inventory" in reading:
+                    result["slot_b"] = {"inventory": reading["inventory"],
+                                        "state": reading["place"]}
+                if not measure:
+                    result["menu_save_problems"] = menu_save_problems(
+                        manifest, reading)
             except BaseException as exc:
                 result["fetched_df0_error"] = f"{type(exc).__name__}: {exc}"
-        if measure:
+        if not measure:
+            result.setdefault("menu_save_problems",
+                              ["slot B was not read from the fetched boot disk"])
+            result["success"] = menu_save_verdict(result, tuple(originals))
+        else:
             result["success"] = bool(
                 result.get("route_changed") and not result["error"]
                 and result.get("df0_unchanged") and result.get("df1_unchanged")

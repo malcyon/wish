@@ -380,22 +380,143 @@ def test_guarded_route_states_are_grabbed_and_only_the_last_shot_is_settled(
         holder="wish672-test", audio_proof=_audio_proof(tmp_path))
     states = ["title"] + [f"{n:02d}-{s}" for n, (_, s) in
                           enumerate(amigasecretsave.ROUTE, 1)]
-    assert [c[1] for c in guest.calls if c[0] == "grab"] == states
-    assert [c[1] for c in guest.calls if c[0] == "capture"] == ["post-write"]
+    assert [c[1] for c in guest.calls if c[0] == "grab"] == states + [
+        f"{len(amigasecretsave.ROUTE) + 1:02d}-post_write"]
+    assert [c[1] for c in guest.calls if c[0] == "capture"] == []
 
 
-def test_post_write_capture_that_never_settles_is_reported(tmp_path, clock):
-    class NeverStill(ScreenGuest):
-        def capture(self, state, raw, cropped, timeout=None):
-            super().capture(state, raw, cropped, timeout)
-            raise amigasecretsave.RouteError(f"{state} did not settle inside 120s")
-
-    guest = NeverStill(clock)
+def test_a_post_write_screen_that_is_not_the_loaded_menu_is_reported(tmp_path, clock):
+    guest = ScreenGuest(clock)
     result = amigasecretsave.run_recon(
-        _prepared(tmp_path), guest=guest, guard=lambda s, p: True,
+        _prepared(tmp_path), guest=guest,
+        guard=lambda s, p: s != "loaded_menu" or "post_write" not in p.name,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path))
     assert _keys(guest) == [k for k, _ in amigasecretsave.ROUTE] + ["B"]
-    assert "post-write did not settle" in result["error"]
+    assert "loaded_menu screen was not recognized" in result["error"]
+    assert result["success"] is False
+
+
+def _menu_manifest(tmp_path):
+    manifest = _prepared(tmp_path)
+    data = json.loads(manifest.read_text())
+    data["state_a"] = {"area": 16, "x": 3, "y": 5, "facing": 2}
+    data["inventory_a"] = {"members": [{"name": "GUY"}, {"name": "PAINE"}]}
+    manifest.write_text(json.dumps(data))
+    return manifest
+
+
+GOOD_READING = {
+    "sha256": "0" * 64, "place": {"area": 16, "x": 3, "y": 5, "facing": 2},
+    "names": ["GUY", "PAINE"],
+    "inventory": {"members": [], "joined_inventory_expected": True},
+}
+
+
+class WritingGuest(ScreenGuest):
+    """A guest whose game writes slot B on `B`, then `spoil` may damage something else."""
+
+    def __init__(self, clock, spoil=None, writes=True):
+        super().__init__(clock)
+        self.spoil, self.writes = spoil, writes
+
+    def press(self, holder, key, timeout=None):
+        super().press(holder, key, timeout)
+        if key != "B":
+            return
+        if self.writes:
+            self._edit(0, lambda d: d.write_file("/SAVE/savgamB.sav", b"engine wrote B"))
+        if self.spoil:
+            self.spoil(self)
+
+    def _edit(self, drive, change):
+        remote = self.drives[drive]
+        disk = AmigaDisk(self.remote[remote])
+        change(disk)
+        self.remote[remote] = disk.to_bytes()
+
+
+def _menu_run(tmp_path, clock, monkeypatch, *, reading=GOOD_READING, guest=None,
+              guard=lambda s, p: True):
+    monkeypatch.setattr(amigasecretsave, "_slot_reading", lambda fetched, letter: reading)
+    guest = guest or WritingGuest(clock)
+    return amigasecretsave.run_recon(
+        _menu_manifest(tmp_path), guest=guest, guard=guard,
+        holder="wish672-test", audio_proof=_audio_proof(tmp_path))
+
+
+def test_the_screen_after_b_is_recognised_as_the_loaded_menu(tmp_path, clock, monkeypatch):
+    checked = []
+
+    def guard(state, path):
+        checked.append((state, path.name))
+        return True
+
+    result = _menu_run(tmp_path, clock, monkeypatch, guard=guard)
+    assert ("loaded_menu", f"{len(amigasecretsave.ROUTE) + 1:02d}-post_write.png") in checked
+    assert result["error"] == ""
+
+
+def test_guarded_mode_passes_when_slot_b_is_the_prepared_party(tmp_path, clock, monkeypatch):
+    result = _menu_run(tmp_path, clock, monkeypatch)
+    assert result["menu_save_problems"] == []
+    assert result["df0_unchanged"] is False
+    assert result["success"] is True
+
+
+@pytest.mark.parametrize("reading, why", [
+    ({"missing": True, "sha256": None}, "not written"),
+    ({"sha256": "0" * 64, "decode_error": "ValueError: bad"}, "does not decode"),
+    (dict(GOOD_READING, place={"area": 16, "x": 3, "y": 6, "facing": 2}), "place"),
+    (dict(GOOD_READING, names=["GUY"]), "members"),
+    (dict(GOOD_READING, names=["PAINE", "GUY"]), "members"),
+    (dict(GOOD_READING, inventory={"members": [], "joined_inventory_expected": False}),
+     "13 items"),
+])
+def test_guarded_mode_fails_on_each_wrong_slot_b_reading(
+        tmp_path, clock, monkeypatch, reading, why):
+    result = _menu_run(tmp_path, clock, monkeypatch, reading=reading)
+    assert why in " ".join(result["menu_save_problems"])
+    assert result["success"] is False
+
+
+def test_guarded_mode_fails_when_the_game_wrote_nothing(tmp_path, clock, monkeypatch):
+    result = _menu_run(tmp_path, clock, monkeypatch,
+                       guest=WritingGuest(clock, writes=False))
+    assert result["df0_unchanged"] is True
+    assert result["success"] is False
+
+
+def _rewrite(drive, path):
+    return lambda guest: guest._edit(drive, lambda d: d.write_file(path, b"changed"))
+
+
+@pytest.mark.parametrize("flag, spoil", [
+    ("slot_unchanged", _rewrite(0, "/SAVE/savgamC.sav")),
+    ("slot_a_unchanged", _rewrite(0, "/SAVE/savgamA.sav")),
+    ("df1_unchanged", lambda g: g._edit(1, lambda d: d.make_dir("/EXTRA"))),
+])
+def test_guarded_mode_fails_when_the_game_changed_another_disk_file(
+        tmp_path, clock, monkeypatch, flag, spoil):
+    result = _menu_run(tmp_path, clock, monkeypatch,
+                       guest=WritingGuest(clock, spoil=spoil))
+    assert result[flag] is False
+    assert result["success"] is False
+
+
+@pytest.mark.parametrize("flag, name", [
+    ("published_unchanged", "SECRETSAVE-published.adf"),
+    ("working_unchanged", "disk-b-working.adf"),
+    ("disk_b_source_unchanged", "disk-b-source.adf"),
+])
+def test_guarded_mode_fails_when_a_local_input_changed(
+        tmp_path, clock, monkeypatch, flag, name):
+    def spoil(guest):
+        (tmp_path / name).write_bytes((tmp_path / name).read_bytes() + b"x")
+
+    result = _menu_run(tmp_path, clock, monkeypatch,
+                       guest=WritingGuest(clock, spoil=spoil))
+    assert result[flag] is False
+    assert result["success"] is False
 
 
 def test_a_grab_with_no_window_is_polled_again_and_never_reaches_the_guard(
@@ -423,7 +544,8 @@ def test_a_grab_with_no_window_is_polled_again_and_never_reaches_the_guard(
     assert guest.calls.count(("grab", "title")) == 4
     assert "FileNotFoundError" not in result["error"]
     assert [e["state"] for e in result["events"]
-            if e.get("recognized")] == ["title", "01-version"]
+            if e.get("recognized")] == [
+        "title", "01-version", "02-post_write"]
     assert _keys(guest) == ["RET", "B"]
 
 
