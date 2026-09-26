@@ -45,6 +45,7 @@ conversion logged.
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1) highlighted with `Down`, `VIEW`, the sheet's name checked against line N's, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `view N` | Pools of Darkness, at the party menu: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`, the sheet checked as above, every `ITEMS` page, and `EXIT` back to the party menu |
+| `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs the map bar back |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below) |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
@@ -191,6 +192,14 @@ QUIT_NO = "n"
 # Pool's measured camp Magic and Display bars.
 POOL_MAGIC_BAR = "062aa229ea7afd11"
 POOL_DISPLAY_BAR = "98286ceaa33edc12"
+#: Pool's map command bar and its character sheet's bar `VIEW: TRADE DROP
+#: EXIT`, by `bar_signature`, measured on Pool DOS.  On the map `End` moves
+#: the roster highlight a member on and wraps; `v` opens the sheet, and
+#: `Escape` (never `d`, which the sheet's bar offers as DROP) returns to the
+#: map with the highlight where it was.
+POOL_MAP_BAR = "809e2e1cc9504b5b"
+POOL_SHEET_BAR = "33ad531ed78cfa70"
+POOL_ROSTER_NEXT = "End"
 # Names start at x=8; effect lines are indented to x=17. Count the left
 # character cell across the page, allowing row spacing to change by effect.
 POOL_DISPLAY_NAME_ROWS = range(32, 184, 8)
@@ -606,6 +615,9 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                                  f"{step.text!r}")
             if where != "map":
                 raise ValueError(f"walk needs the map: {step.text!r}")
+        elif k == "sheet" and title == "pool":
+            if where != "map":
+                raise ValueError(f"sheet needs the loaded map: {step.text!r}")
         elif k in ("sheet", "items"):
             if title != "darkness":
                 raise ValueError(f"{k} is driven in darkness only, not {title}")
@@ -1782,7 +1794,8 @@ class Driver:
         raise self.fail("walk-blocked", "no facing let the party step (the "
                         "settled status never changed after Up)")
 
-    def pick_line(self, line: int, where: str, label: str) -> dict:
+    def pick_line(self, line: int, where: str, label: str,
+                  next_key: str = POD_ROSTER_NEXT) -> dict:
         """Move Pools of Darkness' roster highlight onto line `line`, from 1.
 
         Read, never counted: the highlight is the white roster line
@@ -1803,7 +1816,7 @@ class Driver:
             if presses >= POD_PICK_ROUNDS * size:
                 raise self.fail(label, f"{presses} presses of {POD_ROSTER_NEXT} "
                                 f"never brought the highlight to line {line}")
-            self.s.key(POD_ROSTER_NEXT)
+            self.s.key(next_key)
             presses += 1
             was = here
             self.s.wait_for(lambda sc, was=was: roster_line(sc, where, size) != was,
@@ -1813,7 +1826,7 @@ class Driver:
                 raise self.fail(label, "the roster highlight went away")
             still = still + 1 if here == was else 0
             if still >= 2:
-                raise self.fail(label, f"{POD_ROSTER_NEXT} did not move the "
+                raise self.fail(label, f"{next_key} did not move the "
                                 f"roster highlight off line {here}")
         self.line = line
         return {"presses": presses}
@@ -1948,8 +1961,37 @@ class Driver:
             raise self.fail(label, f"the camp bar never came back after "
                             f"{tries} presses of Exit")
 
+    def pool_sheet(self, line: int) -> dict:
+        """Pool: roster line `line`'s sheet from the map, shot, and back on the
+        map bar.  Only `End`, `v` and `Escape` are pressed, and the highlight
+        is read on the map alone, where `roster_line` is right."""
+        if self.title.key != "pool" or self.where != "map":
+            raise StepFailed("sheet needs Pool's loaded map")
+        if bar_signature(self.s.capture()) != POOL_MAP_BAR:
+            raise self.fail(f"sheet-{line}-map", "the map bar is not showing")
+        moved = self.pick_line(line, "camp", f"sheet-{line}-select", POOL_ROSTER_NEXT)
+        want = roster_name(self.s.capture(), "camp", line)
+        self.s.key(VIEW)
+        if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_SHEET_BAR, 15.0):
+            raise self.fail(f"sheet-{line}-open", "VIEW did not open the sheet bar")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        checked = self.check_sheet(screen, line, want, f"sheet-{line}-name")
+        sheet = self.shot(f"sheet-{line}")
+        self.s.key("Escape")
+        if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAP_BAR, 15.0):
+            raise self.fail(f"sheet-{line}-back", "the map bar did not return "
+                            "after Escape")
+        back = self.s.capture()
+        if roster_line(back, "camp", self.party_size) != line:
+            raise self.fail(f"sheet-{line}-back", "the highlight is not on the "
+                            "member the sheet showed")
+        self.shot(f"sheet-{line}-back")
+        return {"line": line, **moved, "sheet": sheet, **checked}
+
     def sheet(self, line: int) -> dict:
         """Roster line `line`'s sheet from camp, shot, and back to camp."""
+        if self.title.key == "pool":
+            return self.pool_sheet(line)
         got = self.open_sheet(line)
         self.back_to_camp(f"sheet-{line}-back")
         return got

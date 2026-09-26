@@ -357,6 +357,64 @@ def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
     assert game.save_file("D").is_file()
 
 
+@pytest.mark.parametrize("failure", ("", "wrong_member", "repeated_page",
+                                     "unknown_return"))
+def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
+        tmp_path, monkeypatch, failure):
+    class SheetPool(FakePool):
+        BARS = {**FakePool.BARS, "sheet": b"\x15\x48\x7b", "wrong": b"\x16\x49\x7c"}
+
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.line = 1
+
+        def key(self, k, gap=0.0):
+            self.keys.append(k)
+            if self.mode == "map" and k == "End":
+                self.line = self.line % 6 + 1
+            elif self.mode == "map" and k == "v":
+                self.mode = "sheet"
+            elif self.mode == "sheet" and k == "Escape":
+                self.mode = "wrong" if failure == "unknown_return" else "map"
+
+        def capture(self):
+            frame = super().capture()
+            if self.mode == "map":
+                return _with_roster(frame, "camp", 6, self.line)
+            if self.mode == "sheet":
+                who = 1 if failure == "wrong_member" else self.line
+                return _with_roster(frame, "camp", 6, 0, sheet=who)
+            return frame
+
+    monkeypatch.setattr(da, "POOL_MAP_BAR", da.bar_signature(
+        _screen(SheetPool.BARS["map"], b"")))
+    monkeypatch.setattr(da, "POOL_SHEET_BAR", da.bar_signature(
+        _screen(SheetPool.BARS["sheet"], b"")))
+    game = SheetPool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A")
+    d.where = "map"
+    if failure == "repeated_page":
+        # The name check passes and the frame is the same one both times.
+        monkeypatch.setattr(da, "sheet_name", lambda screen: da.roster_name(
+            _with_roster(_screen(b"", b""), "camp", 6, 1), "camp", game.line))
+        monkeypatch.setattr(SheetPool, "capture", lambda self: (
+            _screen(self.BARS["sheet"], b"") if self.mode == "sheet"
+            else _with_roster(_screen(self.BARS[self.mode], b""), "camp", 6, self.line)))
+        d.sheet(2)
+        with pytest.raises(da.StepFailed, match="same frame"):
+            d.sheet(3)
+        assert not game.save_file("D").exists()
+        return
+    if failure:
+        with pytest.raises(da.StepFailed):
+            d.sheet(3)
+        assert not game.save_file("D").exists()
+        return
+    got = d.sheet(3)
+    assert game.keys == ["End", "End", "v", "Escape"]
+    assert got["line"] == 3 and game.mode == "map"
+
+
 # -- a random event ends the rest ------------------------------------------------
 
 
@@ -1370,7 +1428,7 @@ def test_orders_pools_of_darkness_allows(steps):
     ("darkness", ("load", "items 1"), "items needs camp first"),
     ("darkness", ("load", "begin", "camp", "display"), "pool only"),
     ("pool", ("load", "walk 1"), "walk MI"),
-    ("pool", ("load", "camp", "sheet 1"), "darkness only"),
+    ("pool", ("load", "camp", "sheet 1"), "loaded map"),
     ("curse", ("load", "begin", "camp", "items 2"), "darkness only"),
 ])
 def test_orders_pools_of_darkness_does_not_allow(title, steps, why):
