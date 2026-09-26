@@ -361,7 +361,7 @@ def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
 
 
 @pytest.mark.parametrize("failure", ("", "wrong_member", "repeated_page",
-                                     "unknown_return"))
+                                     "unknown_return", "moved_highlight"))
 def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
         tmp_path, monkeypatch, failure):
     class SheetPool(FakePool):
@@ -379,6 +379,8 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
                 self.mode = "sheet"
             elif self.mode == "sheet" and k == "Escape":
                 self.mode = "wrong" if failure == "unknown_return" else "map"
+                if failure == "moved_highlight":
+                    self.line = self.line % 6 + 1
 
         def capture(self):
             frame = super().capture()
@@ -409,9 +411,16 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
         assert not game.save_file("D").exists()
         return
     if failure:
-        with pytest.raises(da.StepFailed):
+        # Each names the guard it claims to reach, so a StepFailed from the
+        # darkness path or another guard cannot pass for it.
+        why = {"wrong_member": "name is not roster line",
+               "unknown_return": "map bar did not return",
+               "moved_highlight": "highlight is not on the member"}[failure]
+        with pytest.raises(da.StepFailed, match=why):
             d.sheet(3)
         assert not game.save_file("D").exists()
+        if failure == "moved_highlight":
+            assert game.keys[-1] == "Escape"     # stopped there, no SAVE
         return
     got = d.sheet(3)
     assert game.keys == ["End", "End", "v", "Escape"]
