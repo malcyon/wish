@@ -1507,7 +1507,7 @@ def test_a_silver_blades_load_that_draws_no_roster_is_lost_at_load(tmp_path):
     game.mode = "title"
 
     class Ssb:
-        def to_party_menu(self):
+        def to_party_menu(self, deadline=None):
             pass
 
         def menu(self, row, label):
@@ -1518,7 +1518,7 @@ def test_a_silver_blades_load_that_draws_no_roster_is_lost_at_load(tmp_path):
         def bar(self, screen=None):
             return "party_menu"
 
-        def wait_bar(self, want, timeout=45.0):
+        def wait_bar(self, want, timeout=45.0, deadline=None):
             return game.capture()
 
     d = da.Driver(game, lambda **k: None, "J", "ssb", party_size=game.size)
@@ -3839,12 +3839,153 @@ def test_a_cleanup_window_the_wrappers_margin_cannot_hold_is_refused():
 
 
 def test_no_numeric_timeout_literal_in_the_driver_outruns_the_margin():
-    # Sees only numeric `timeout=` literals, not computed or variable timeouts.
+    """Every `timeout=` literal and `timeout: float = N` default fits the
+    margin, in the driver and in each `ssb.<name>(` or `dospod.<name>(` it
+    calls, except in a function that takes a `deadline` parameter, which cuts
+    its waits to the route window.
+
+    Sees only numeric literals, not computed or variable timeouts.
+    """
+    import ast
     import re
-    source = pathlib.Path(da.__file__).read_text()
-    longest = max(float(n) for n in re.findall(r"timeout=(\d+(?:\.\d+)?)", source))
+    driver_source = pathlib.Path(da.__file__).read_text()
+    longest = 0.0
+    for module in (da, da.ssbimport, da.dospod):
+        tree = ast.parse(pathlib.Path(module.__file__).read_text())
+        prefix = "dospod" if module is da.dospod else "ssb"
+        called = set(re.findall(rf"\b{prefix}\.(\w+)\(", driver_source))
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if module is not da and fn.name not in called:
+                continue
+            args = fn.args
+            names = [a.arg for a in args.posonlyargs + args.args + args.kwonlyargs]
+            if "deadline" in names:
+                continue
+            defaults = dict(zip(reversed(args.posonlyargs + args.args),
+                                reversed(args.defaults)))
+            defaults.update({a: d for a, d in zip(args.kwonlyargs, args.kw_defaults)})
+            values = [d.value for a, d in defaults.items()
+                      if a.arg == "timeout" and isinstance(d, ast.Constant)]
+            values += [kw.value.value for n in ast.walk(fn) if isinstance(n, ast.Call)
+                       for kw in n.keywords if kw.arg == "timeout"
+                       and isinstance(kw.value, ast.Constant)]
+            longest = max([longest, *map(float, values)])
     assert longest <= da.LONGEST_UNBOUNDED_WAIT
     assert da.CLEANUP_SECONDS + da.LONGEST_UNBOUNDED_WAIT <= da.WRAPPER_MARGIN
+
+
+class _WaitingSession:
+    """A session whose every settle takes its whole timeout on the injected
+    clock, over screens that are never the one the route wants."""
+
+    def __init__(self, clock, error=None):
+        self.clock, self.error = clock, error
+        self.waits, self.keys, self.n = [], [], 0
+
+    def settle(self, quiet=0.5, timeout=30.0):
+        if self.error:
+            raise self.error
+        self.waits.append(timeout)
+        self.clock.t += timeout
+        self.n += 1
+        return _Unmoving(self.n)
+
+    def key(self, k, gap=0.0):
+        self.keys.append(k)
+
+
+class _Unmoving:
+    def __init__(self, n):
+        self.n = n
+
+    def glyphs(self, rect):
+        return b"never a known bar"
+
+    def digest(self, rect=None):
+        return str(self.n)
+
+
+def _ssb_waiting(monkeypatch, error=None):
+    monkeypatch.setattr(da.ssbimport.time, "sleep", lambda s: None)
+    monkeypatch.setattr(da.dospod.time, "sleep", lambda s: None)
+    clock = _Clock()
+    session = _WaitingSession(clock, error)
+    ssb = da.ssbimport.Driver(session, lambda **k: None)
+    ssb.shot = lambda label: label
+    return session, ssb, da.Deadline(clock, 900.0, 120.0)
+
+
+def test_a_silver_blades_title_that_never_shows_ends_at_the_deadline(monkeypatch):
+    session, ssb, deadline = _ssb_waiting(monkeypatch)
+    with pytest.raises(da.DeadlineReached, match="reaching the PLAY DEMO|reading the bar"):
+        ssb.to_party_menu(deadline=deadline)
+    assert deadline.left() < da.ACTION_SECONDS
+    assert max(session.waits) <= 30.0
+
+
+def test_a_silver_blades_intro_that_never_reaches_the_map_ends_at_the_deadline(
+        monkeypatch):
+    session, ssb, deadline = _ssb_waiting(monkeypatch)
+    monkeypatch.setitem(da.ssbimport.BARS, _Unmoving(0).glyphs(None), "continue")
+    with pytest.raises(da.DeadlineReached, match="intro"):
+        ssb.intro(deadline=deadline)
+    assert deadline.left() < da.ACTION_SECONDS
+
+
+def test_a_wait_for_a_bar_is_cut_to_the_route_time_left(monkeypatch):
+    session, ssb, deadline = _ssb_waiting(monkeypatch)
+    deadline.clock.t = deadline.route_end - 12.0
+    with pytest.raises(da.DeadlineReached):
+        ssb.wait_bar("party_menu", timeout=90.0, deadline=deadline)
+    assert session.waits[0] == pytest.approx(12.0)
+
+
+def test_a_pools_route_that_never_settles_ends_at_the_deadline(monkeypatch):
+    session, _ssb, _ = _ssb_waiting(monkeypatch)
+    deadline = da.Deadline(session.clock, 300.0, 120.0)
+    with pytest.raises(da.DeadlineReached, match="Escape"):
+        da.dospod.to_party_menu(session, deadline=deadline)
+    assert deadline.left() < da.ACTION_SECONDS
+    assert max(session.waits) <= 8.0
+
+
+def test_a_timeout_from_a_settle_is_not_what_a_passed_deadline_reports(monkeypatch):
+    """A deadline already over ends the step before any settle can time out."""
+    session, ssb, deadline = _ssb_waiting(monkeypatch, error=TimeoutError("settle"))
+    deadline.clock.t = deadline.route_end
+    with pytest.raises(da.DeadlineReached):
+        ssb.to_party_menu(deadline=deadline)
+    with pytest.raises(da.DeadlineReached):
+        ssb.intro(deadline=deadline)
+    with pytest.raises(da.DeadlineReached):
+        da.dospod.to_party_menu(session, deadline=deadline)
+
+
+def test_the_driver_gives_its_deadline_to_the_borrowed_route_calls(monkeypatch):
+    seen = {}
+    d = da.Driver.__new__(da.Driver)
+    d.deadline = object()
+    ssb = da.ssbimport.Driver(None, lambda **k: None)
+    d._ssb = ssb
+
+    def stop(name):
+        def f(*a, **k):
+            seen[name] = k.get("deadline")
+            raise da.StepFailed("stop")
+        return f
+
+    monkeypatch.setattr(ssb, "to_party_menu", stop("ssb"))
+    with pytest.raises(da.StepFailed):
+        d._load_ssb()
+    d.slot, d.s = "A", object()
+    monkeypatch.setattr(d, "save_path", lambda slot: pathlib.Path("/nonexistent"))
+    monkeypatch.setattr(da, "pod_menu_after", lambda data: {})
+    monkeypatch.setattr(da.dospod, "to_party_menu", stop("pod"))
+    with pytest.raises(da.StepFailed):
+        d._load_pod()
+    assert seen == {"ssb": d.deadline, "pod": d.deadline}
 
 
 def test_the_measured_curse_and_silver_blades_screens_read_as_recorded():

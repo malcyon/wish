@@ -282,29 +282,43 @@ class Driver:
         self.s.shot(name, allow_blank=True)
         return name
 
-    def bar(self, screen: dosbox.Screen | None = None) -> str:
-        screen = screen or self.s.settle(quiet=0.6, timeout=30.0)
+    def bar(self, screen: dosbox.Screen | None = None, deadline=None) -> str:
+        """The bar's kind; a `deadline` (`check`/`bound`) cuts the settle to the route time left."""
+        if screen is None:
+            wait = 30.0 if deadline is None else deadline.bound(30.0, "reading the bar")
+            screen = self.s.settle(quiet=0.6, timeout=wait)
         return BARS.get(screen.glyphs(dosbox.BAR), "?")
 
-    def wait_bar(self, want: str, timeout: float = 45.0) -> dosbox.Screen:
-        deadline = time.time() + timeout
+    def wait_bar(self, want: str, timeout: float = 45.0, deadline=None) -> dosbox.Screen:
+        """Wait for the `want` bar; a `deadline` (`check`/`bound`) ends the wait with the route window."""
+        label = f"waiting for the {want} bar"
+        if deadline is not None:
+            timeout = deadline.bound(timeout, label)
+        end = time.time() + timeout
         screen = self.s.settle(quiet=0.6, timeout=timeout)
-        while time.time() < deadline:
+        while time.time() < end:
             if BARS.get(screen.glyphs(dosbox.BAR)) == want:
                 return screen
             time.sleep(0.3)
-            screen = self.s.settle(quiet=0.6, timeout=max(1.0, deadline - time.time()))
+            wait = max(1.0, end - time.time())
+            if deadline is not None:
+                wait = deadline.bound(wait, label)
+            screen = self.s.settle(quiet=0.6, timeout=wait)
         name = self.shot(f"lost-waiting-for-{want}")
         raise RouteLost(f"expected the {want} bar, got {screen.glyphs(dosbox.BAR)} "
                         f"({BARS.get(screen.glyphs(dosbox.BAR), 'unknown')}); "
                         f"see {name}.png")
 
-    def press(self, key: str, want: str | None = None, label: str = "") -> None:
+    def press(self, key: str, want: str | None = None, label: str = "",
+              deadline=None) -> None:
+        if deadline is not None:
+            deadline.check(f"pressing {key}")
         self.s.key(key)
         if want:
-            self.wait_bar(want)
+            self.wait_bar(want, deadline=deadline)
         else:
-            self.s.settle(quiet=0.6, timeout=30.0)
+            wait = 30.0 if deadline is None else deadline.bound(30.0, f"pressing {key}")
+            self.s.settle(quiet=0.6, timeout=wait)
         if label:
             self.shot(label)
 
@@ -319,15 +333,17 @@ class Driver:
 
     # -- the steps ---------------------------------------------------------
 
-    def to_party_menu(self, timeout: float = 120.0) -> None:
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if self.bar() == "title":
+    def to_party_menu(self, timeout: float = 120.0, deadline=None) -> None:
+        end = time.time() + timeout
+        while time.time() < end:
+            if deadline is not None:
+                deadline.check("reaching the PLAY DEMO screen")
+            if self.bar(deadline=deadline) == "title":
                 break
             self.s.key("Return")
         else:
             raise RouteLost("never reached the PLAY DEMO screen")
-        self.press("p", "party_menu", "party-menu")
+        self.press("p", "party_menu", "party-menu", deadline=deadline)
 
     def import_curse(self) -> None:
         self.menu(MENU_BEFORE["add"], "add")
@@ -405,10 +421,16 @@ class Driver:
                 and screen.glyphs(dosbox.STATUS) == self.camp_status
                 and BARS.get(screen.glyphs(dosbox.BAR)) == "camp")
 
-    def intro(self, limit: int = 60) -> None:
-        """From BEGIN ADVENTURING to the map, answering what the intro shows."""
+    def intro(self, limit: int = 60, deadline=None) -> None:
+        """From BEGIN ADVENTURING to the map, answering what the intro shows.
+
+        A `deadline` (`check`/`bound`) is checked at each screen and cuts its wait.
+        """
         for i in range(limit):
-            screen = self.s.settle(quiet=1.0, timeout=40.0)
+            wait = 40.0
+            if deadline is not None:
+                wait = deadline.bound(wait, "the Silver Blades intro")
+            screen = self.s.settle(quiet=1.0, timeout=wait)
             kind = self.bar(screen)
             if kind == "map":
                 self.shot("map")

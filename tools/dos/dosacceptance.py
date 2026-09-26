@@ -1867,7 +1867,7 @@ class Driver:
                             "party menu draws no roster")
 
     def _load_ssb(self) -> dict:
-        self.ssb.to_party_menu()
+        self.ssb.to_party_menu(deadline=self.deadline)
         self.ssb.menu(SSB_LOAD_ROW, "load")
         if not self.s.wait_for(lambda sc: self.ssb.bar(sc) != "party_menu", 20.0):
             raise self.fail("load", f"row {SSB_LOAD_ROW} of the party menu did "
@@ -1876,7 +1876,7 @@ class Driver:
         self.shot("load-which")
         if not self.press_screen_changes(self.slot.lower(), tries=1, wait=30.0):
             raise self.fail("load", f"slot {self.slot} never loaded")
-        screen = self.ssb.wait_bar("party_menu", timeout=90.0)
+        screen = self.ssb.wait_bar("party_menu", timeout=90.0, deadline=self.deadline)
         self.check_party_drawn(screen)
         self.party_sig = bar_signature(screen)
         self.shot("loaded")
@@ -1889,7 +1889,7 @@ class Driver:
         30 seconds, so a key meant for one screen never lands on the next."""
         path = self.save_path(self.slot)
         self.pod_rows = pod_menu_after(path.read_bytes() if path.is_file() else None)
-        answered = dospod.to_party_menu(self.s)
+        answered = dospod.to_party_menu(self.s, deadline=self.deadline)
         self.shot("menu")
         self.pod_menu(POD_LOAD_ROW, "load")
         self.s.settle(quiet=0.6, timeout=20.0)
@@ -1913,7 +1913,7 @@ class Driver:
             raise StepFailed("begin needs the party menu")
         if self.title.key == "ssb":
             self.ssb.menu(ssbimport.MENU_AFTER["begin"], "begin")
-            self.ssb.intro()
+            self.ssb.intro(deadline=self.deadline)
         elif self.title.key == "darkness":
             self.pod_menu(self.pod_rows["begin"], "begin")
         elif not self.press_screen_changes(PARTY_BEGIN, tries=1, wait=30.0):

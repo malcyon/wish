@@ -83,7 +83,7 @@ def find_game(stem: str = STEM) -> pathlib.Path:
     raise FileNotFoundError(f"no DOS {stem} under {dosbox.ARCHIVES}")
 
 
-def to_main_menu(session: dosbox.Session, tries: int = 30) -> str:
+def to_main_menu(session: dosbox.Session, tries: int = 30, deadline=None) -> str:
     """Press Escape past the title screens until the screen stops changing.
 
     **Escape rather than Return**, because Return on the menu the title
@@ -92,12 +92,17 @@ def to_main_menu(session: dosbox.Session, tries: int = 30) -> str:
     Radiance driver does here.  Escape advances a title screen and does
     nothing on the menu, so "the screen stopped changing" and "we have
     arrived" become the same statement.
+
+    A `deadline` (`check`/`bound`) is checked at each press and cuts its settle.
     """
     seen: list[str] = []
     for _ in range(tries):
+        wait = 8.0
+        if deadline is not None:
+            wait = deadline.bound(wait, "pressing Escape past the titles")
         session.key("Escape")
         time.sleep(0.6)
-        seen.append(session.settle(quiet=0.5, timeout=8.0).digest())
+        seen.append(session.settle(quiet=0.5, timeout=wait).digest())
         if len(seen) >= 3 and seen[-1] == seen[-2] == seen[-3]:
             return seen[-1]
     raise TimeoutError("never reached a screen Escape does not change")
@@ -110,7 +115,7 @@ PROTECTION_PROBE = "1"
 
 
 def to_party_menu(session: dosbox.Session, presses: int = 30,
-                  questions: int = 2) -> list[str]:
+                  questions: int = 2, deadline=None) -> list[str]:
     """`to_main_menu`, answering any question that waits for typing on the way.
 
     A question waits for typing, so Escape stops changing the screen there as
@@ -123,10 +128,14 @@ def to_party_menu(session: dosbox.Session, presses: int = 30,
     The archives' build asks nothing before the party menu: its one journal
     question comes after `Begin Adventuring` (`answer_journal`), and run 0 of
     #650 reached the party menu with none answered here.
+
+    A `deadline` (`check`/`bound`) ends each pass with the route window.
     """
     answered: list[str] = []
     while True:
-        still = to_main_menu(session, presses)
+        if deadline is not None:
+            deadline.check("reaching the party menu")
+        still = to_main_menu(session, presses, deadline)
         session.key(PROTECTION_PROBE)
         if not session.wait_for(lambda sc: sc.digest() != still, 3.0):
             return answered
