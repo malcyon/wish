@@ -2104,12 +2104,16 @@ class Session:
                 self.walk_screens = (self._rows(s), None)
                 self.move_key(move, hold, gap)
                 sent = True
+            elif self._walk_expired():
+                break
             elif self.select_bar("MOVE", timeout=8, answer_prompts=answer_prompts):
                 if not answer_prompts and self._prompt_up(self.screen()):
                     return False
                 up = None
                 for look in range(self.MOVE_SUBBAR_LOOKS):
                     if look:
+                        if self._walk_expired():
+                            break
                         time.sleep(0.3)
                     s = self.screen()
                     if not answer_prompts and self._prompt_up(s):
@@ -2119,7 +2123,11 @@ class Session:
                         break
                 if up is None:
                     continue
+                if self._walk_expired():
+                    break
                 time.sleep(0.6)
+                if self._walk_expired():
+                    break
                 self.walk_screens = (self._rows(up), None)
                 self.move_key(move, hold, gap)
                 sent = True
@@ -2137,11 +2145,23 @@ class Session:
                 self._leave_move(answer_prompts)
                 return True
         self._leave_move(answer_prompts)
-        if not sent:
+        if not sent and self._walk_expired():
+            self.walk_refused = (
+                f"the driver pressed nothing for {move}: the caller's time "
+                f"ran out while it waited for {MOVE_SUBBAR}")
+        elif not sent:
             self.walk_refused = (
                 f"the driver pressed nothing for {move}: taking MOVE never "
                 f"brought up {MOVE_SUBBAR}; this is a driver error, not a wall")
         return False
+
+    #: A caller's "time is up" test, consulted before each wait and before the
+    #: key in `walk_one`; a wait that finds it true presses nothing. Set as an
+    #: attribute so a subclass's own `walk_one` signature is untouched.
+    walk_expired = None
+
+    def _walk_expired(self) -> bool:
+        return bool(self.walk_expired is not None and self.walk_expired())
 
     #: Reads of the screen, 0.3 s apart, that `walk_one` gives `MOVE` to bring
     #: up its sub-bar: about 8 s, a limit and not a measurement.

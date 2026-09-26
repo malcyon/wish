@@ -885,6 +885,14 @@ class PoolRun:
         the text rows the game showed at the key and whether a key was sent.
         """
         route = parse_walk(arg)
+        # `Session.walk_one` stops waiting for the sub-bar at the run's deadline.
+        self.sess.walk_expired = self.spent
+        try:
+            return self._walk(route)
+        finally:
+            self.sess.walk_expired = None
+
+    def _walk(self, route: str) -> dict:
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
         start = list(self.sess.position())
@@ -921,6 +929,9 @@ class PoolRun:
                 screens = getattr(self.sess, "walk_screens", None)
             refused = getattr(self.sess, "walk_refused", None)
             if refused:
+                self.log.emit("move", move=move, n=n, before=before,
+                              after=list(self.sess.position()), resent=resent,
+                              row24=self.bar().strip(), text=None, keyed=False)
                 raise self.fail("walk", f"walk {route}: {refused}")
             # A square's event may put up a disk prompt after the key has been
             # read; answering it would carry the walk into another area.
@@ -937,7 +948,7 @@ class PoolRun:
                     [r.strip() for r in key_rows[17:23]])
             self.log.emit("move", move=move, n=n, before=before, after=after,
                           resent=resent, row24=self.bar().strip(), text=text,
-                          keyed=refused is None)
+                          keyed=True)
             if (move == "I" and after[:2] != before[:2]
                     and before[2] is not None):
                 dx, dy = STEP[before[2]]

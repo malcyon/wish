@@ -1841,8 +1841,11 @@ class ScriptedMoveWalk(RealWalk):
     TEXT = "YOU ARE BY THE GATEWAY TO THE"
     DX = {0: (0, -1), 1: (1, 0), 2: (0, 1), 3: (-1, 0)}
 
-    def __init__(self, clock, drop_next=0, **kw):
+    def __init__(self, clock, drop_next=0, taken_clears_text=False,
+                 tickless=False, **kw):
         super().__init__(clock, prompt_after=None, **kw)
+        self.taken_clears_text = taken_clears_text
+        self.tickless = tickless
         self.subbar_at = None
         self.text_up = False
         self.drop_next = drop_next
@@ -1861,6 +1864,10 @@ class ScriptedMoveWalk(RealWalk):
                         if ready:
                             self.drop_next -= 1
                         self.lost.append(name)
+                        return
+                    if self.taken_clears_text:
+                        self.text_up = False
+                    if self.tickless:
                         return
                     self.ticks += 1
                     if name == "k":
@@ -1923,6 +1930,44 @@ def test_a_key_lost_at_the_subbar_is_resent_although_move_put_up_text(
     log.close()
     assert got["moves"][0]["resent"] is True
     assert got["position"][2] == 0
+    assert sess.lost == ["k"] and sess.keys.count("k") == 2
+
+
+def test_a_key_the_game_took_is_not_resent_when_only_the_text_box_changed(
+        tmp_path, monkeypatch):
+    # The key was read (the text cleared) but the status line did not move.
+    # Judged by the whole move's screen, as before, this would be resent.
+    sess, run, log = _scripted_walk(tmp_path, monkeypatch,
+                                    taken_clears_text=True, tickless=True)
+    with pytest.raises(A.StepFailed, match="should leave the party facing"):
+        run.walk("K")
+    log.close()
+    assert _move_records(tmp_path)[0]["resent"] is False
+    assert sess.keys.count("k") == 1 and sess.lost == []
+
+
+def test_a_walk_that_hits_the_deadline_while_waiting_for_the_subbar_presses_nothing(
+        tmp_path, monkeypatch):
+    sess, run, log = _scripted_walk(tmp_path, monkeypatch)
+    sess.select_bar = lambda *a, **k: (setattr(sess, "text_up", True),
+                                       setattr(sess, "subbar_at", 1000.0), True)[2]
+    run.deadline = 3.0
+    with pytest.raises(A.StepFailed, match="seconds were spent"):
+        run.walk("I")
+    log.close()
+    assert "i" not in sess.keys
+    assert run.clock() < 5.0, "the wait ran on past the run's deadline"
+
+
+def test_a_refused_walk_writes_its_move_record_with_keyed_false(
+        tmp_path, monkeypatch):
+    sess, run, log = _scripted_walk(tmp_path, monkeypatch)
+    sess.select_bar = lambda *a, **k: (setattr(sess, "subbar_at", 1000.0), True)[1]
+    with pytest.raises(A.StepFailed, match="pressed nothing"):
+        run.walk("I")
+    log.close()
+    recs = _move_records(tmp_path)
+    assert [r["keyed"] for r in recs] == [False]
 
 
 def test_the_move_record_keeps_the_text_the_game_showed_at_the_key(

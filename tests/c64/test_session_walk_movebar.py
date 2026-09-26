@@ -94,3 +94,69 @@ def test_walk_one_sends_no_direction_key_before_the_move_subbar(monkeypatch):
     assert sess.walk_one("K", tries=1) is False
     assert "k" not in sess.kbd.sent
     assert "pressed nothing" in sess.walk_refused
+
+
+class _Clocked(FakeSession):
+    """`select_bar` succeeds; row 24 shows the world bar for `subbar_after`
+    reads and `I,J,K,M` after, on a clock only `sleep` moves."""
+
+    def __init__(self, monkeypatch, subbar_after=3, prompt_at=None):
+        super().__init__(row24="MOVE VIEW CAST AREA ENCAMP SEARCH LOOK")
+        self.now = 0.0
+        monkeypatch.setattr(S.time, "sleep", lambda s: setattr(self, "now", self.now + s))
+        self.selected = False
+        self.reads = 0
+        self.subbar_after = subbar_after
+        self.prompt_at = prompt_at
+        self.seen_at = None
+        self.keyed_at = None
+        self.attached = []
+        self.kbd.key = self._key
+        self._statuses = iter([(1, 100, 5, 5), (1, 100, 5, 4)])
+
+    def _key(self, name, hold=0.0, gap=0.0):
+        self.kbd.sent.append(name)
+        self.keyed_at = self.now
+
+    def wanted_disk(self, s):
+        return "SIDE2" if "INSERT SIDE" in s.row(24) else None
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        self.selected = True
+        return True
+
+    def screen(self):
+        if not self.selected:
+            return FakeScreen(self._row24)
+        self.reads += 1
+        if self.prompt_at is not None and self.reads >= self.prompt_at:
+            return FakeScreen("INSERT SIDE # 2, AND PRESS ANY KEY.")
+        if self.reads > self.subbar_after:
+            if self.seen_at is None:
+                self.seen_at = self.now
+            return FakeScreen(MOVE_SUBBAR)
+        return FakeScreen(self._row24)
+
+
+def test_a_disk_prompt_that_opens_while_waiting_for_the_subbar_presses_and_answers_nothing(
+        monkeypatch):
+    sess = _Clocked(monkeypatch, subbar_after=10, prompt_at=4)
+    assert sess.walk_one("I", tries=1, answer_prompts=False) is False
+    assert sess.kbd.sent == [] and sess.attached == []
+    assert sess.walk_prompt == "INSERT SIDE # 2, AND PRESS ANY KEY."
+    assert sess.leave_move_calls == 0
+
+
+def test_the_direction_key_waits_0_6_seconds_after_the_subbar_is_seen(monkeypatch):
+    sess = _Clocked(monkeypatch)
+    sess.walk_one("I", tries=1)
+    assert sess.kbd.sent == ["i"]
+    assert sess.keyed_at - sess.seen_at >= 0.6
+
+
+def test_a_wait_past_the_callers_deadline_presses_nothing_and_says_why(monkeypatch):
+    sess = _Clocked(monkeypatch, subbar_after=1000)
+    sess.walk_expired = lambda: sess.now >= 1.0
+    assert sess.walk_one("I", tries=1) is False
+    assert sess.kbd.sent == [] and sess.now < 2.0
+    assert "time ran out" in sess.walk_refused
