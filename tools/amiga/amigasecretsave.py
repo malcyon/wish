@@ -295,8 +295,8 @@ class WinGuest:
         return self._lane(holder, "release", timeout)
 
 
-def _box_digest(image_path: pathlib.Path, box, state: str) -> str:
-    """SHA-256 of the RGB pixels inside `box` of a cropped Amiga screen."""
+def _box_pixels(image_path: pathlib.Path, box, state: str) -> bytes:
+    """The RGB pixels inside `box` of a cropped Amiga screen."""
     from PIL import Image  # noqa: PLC0415
 
     with Image.open(image_path) as image:
@@ -304,8 +304,18 @@ def _box_digest(image_path: pathlib.Path, box, state: str) -> str:
                 or box[3] > image.height or box[0] >= box[2]
                 or box[1] >= box[3]):
             raise RouteError(f"invalid crop box for {state}")
-        pixels = image.convert("RGB").crop(tuple(box)).tobytes()
-    return hashlib.sha256(pixels).hexdigest()
+        return image.convert("RGB").crop(tuple(box)).tobytes()
+
+
+def _box_digest(image_path: pathlib.Path, box, state: str) -> str:
+    """SHA-256 of the RGB pixels inside `box` of a cropped Amiga screen."""
+    return hashlib.sha256(_box_pixels(image_path, box, state)).hexdigest()
+
+
+def _box_is_uniform(image_path: pathlib.Path, box, state: str) -> bool:
+    """Whether every pixel in `box` is one colour, so the box matches any screen showing it."""
+    pixels = _box_pixels(image_path, box, state)
+    return len({pixels[i:i + 3] for i in range(0, len(pixels), 3)}) == 1
 
 
 def guard_rule(image_path: pathlib.Path, box, state: str = "guard") -> dict[str, Any]:
@@ -737,6 +747,8 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--unlike", type=pathlib.Path, action="append", default=[],
                    help="a crop of a neighbouring state the box must not match")
     g.add_argument("--out", required=True, type=pathlib.Path)
+    g.add_argument("--replace", action="store_true",
+                   help="overwrite the state's existing rule in --out")
     sub.add_parser("accept", help="unavailable until the route is measured")
     sub.add_parser("spindisk-control", help="unavailable until the exact-output failure is measured")
     args = parser.parse_args(argv)
@@ -750,9 +762,18 @@ def main(argv: list[str] | None = None) -> int:
             for other in args.unlike:
                 if _box_digest(other, box, args.state) == rule["sha256"]:
                     raise RouteError(f"{args.state} box {box} also matches {other}")
+            if _box_is_uniform(args.crop, box, args.state):
+                raise RouteError(f"{args.state} box {box} is one colour and would match "
+                                 f"any screen showing it")
             rules = json.loads(args.out.read_text()) if args.out.exists() else {}
+            if args.state in rules and not args.replace:
+                raise RouteError(f"{args.out} already has a rule for {args.state}; "
+                                 f"pass --replace to overwrite it")
             rules[args.state] = rule
-            args.out.write_text(json.dumps(rules, indent=2, sort_keys=True) + "\n")
+            # Rename over the file so an interrupted write never leaves half a map.
+            temp = args.out.with_name(args.out.name + ".tmp")
+            temp.write_text(json.dumps(rules, indent=2, sort_keys=True) + "\n")
+            os.replace(temp, args.out)
             print(json.dumps({args.state: rule}, sort_keys=True))
             return 0
         if args.command == "recon":

@@ -372,7 +372,19 @@ def test_the_route_leaves_the_play_bar_by_its_letter():
     assert "RET" not in keys and "B" not in keys
 
 
-def test_guard_polling_never_waits_for_a_settled_screen(tmp_path, clock):
+def test_guarded_route_states_are_grabbed_and_only_the_last_shot_is_settled(
+        tmp_path, clock):
+    guest = ScreenGuest(clock)
+    amigasecretsave.run_recon(
+        _prepared(tmp_path), guest=guest, guard=lambda s, p: True,
+        holder="wish672-test", audio_proof=_audio_proof(tmp_path))
+    states = ["title"] + [f"{n:02d}-{s}" for n, (_, s) in
+                          enumerate(amigasecretsave.ROUTE, 1)]
+    assert [c[1] for c in guest.calls if c[0] == "grab"] == states
+    assert [c[1] for c in guest.calls if c[0] == "capture"] == ["post-write"]
+
+
+def test_post_write_capture_that_never_settles_is_reported(tmp_path, clock):
     class NeverStill(ScreenGuest):
         def capture(self, state, raw, cropped, timeout=None):
             super().capture(state, raw, cropped, timeout)
@@ -384,6 +396,35 @@ def test_guard_polling_never_waits_for_a_settled_screen(tmp_path, clock):
         holder="wish672-test", audio_proof=_audio_proof(tmp_path))
     assert _keys(guest) == [k for k, _ in amigasecretsave.ROUTE] + ["B"]
     assert "post-write did not settle" in result["error"]
+
+
+def test_a_grab_with_no_window_is_polled_again_and_never_reaches_the_guard(
+        tmp_path, clock):
+    class WindowLate(ScreenGuest):
+        blind = 3
+
+        def grab(self, state, raw, cropped, timeout=None):
+            if state == "title" and self.blind:
+                self.blind -= 1
+                self.calls.append(("grab", state))
+                raw.write_bytes(b"desktop")
+                return False
+            return super().grab(state, raw, cropped, timeout)
+
+    def guard(state, path):
+        # A missing crop raises FileNotFoundError, as the real guard does.
+        path.read_bytes()
+        return True
+
+    guest = WindowLate(clock)
+    result = amigasecretsave.run_recon(
+        _prepared(tmp_path), guest=guest, guard=guard, holder="wish672-test",
+        audio_proof=_audio_proof(tmp_path), route=(("RET", "version"),))
+    assert guest.calls.count(("grab", "title")) == 4
+    assert "FileNotFoundError" not in result["error"]
+    assert [e["state"] for e in result["events"]
+            if e.get("recognized")] == ["title", "01-version"]
+    assert _keys(guest) == ["RET", "B"]
 
 
 def test_a_grab_is_bounded_by_one_shot_and_the_deadline(tmp_path, clock):
@@ -499,7 +540,88 @@ def test_the_guard_command_refuses_a_box_that_matches_a_neighbour(tmp_path, caps
         common + ["--box", "0,0,40,40", "--unlike", str(story)]) == 2
     assert "also matches" in capsys.readouterr().err and not out.exists()
     assert amigasecretsave.main(
-        common + ["--box", "60,400,300,430", "--unlike", str(story)]) == 0
+        common + ["--box", "50,400,300,430", "--unlike", str(story)]) == 0
     written = json.loads(out.read_text())
-    assert written["title"]["box"] == [60, 400, 300, 430]
+    assert written["title"]["box"] == [50, 400, 300, 430]
     assert amigasecretsave.PixelGuards(out)("title", title)
+
+
+def test_a_custom_route_with_b_never_presses_it_in_measure_mode(tmp_path, clock):
+    guest = ScreenGuest(clock)
+    route = (("P", "party_menu"), ("B", "save_picker"), ("X", "items"))
+    result = _measure(tmp_path, guest, route=route, write_keys=("W",))
+    assert _keys(guest) == ["P"]
+    assert {"skipped_write_key": "B", "step": 2} in result["events"]
+    assert result["route_changed"] is False and result["success"] is False
+
+
+def test_the_built_in_route_contains_no_b():
+    assert "B" not in [key for key, _ in amigasecretsave.ROUTE]
+
+
+def _rules(tmp_path, rule):
+    path = tmp_path / "bad.json"
+    path.write_text(json.dumps({"title": rule}))
+    return path
+
+
+@pytest.mark.parametrize("rule", [
+    {"box": [0, 0, 8, 8], "sha256": "ab" * 31},
+    {"box": [0, 0, 8, 8], "sha256": "AB" * 32},
+    {"box": "0,0,8,8", "sha256": "ab" * 32},
+    {"sha256": "ab" * 32},
+    ["box"],
+])
+def test_a_malformed_guard_rule_is_refused_on_load(tmp_path, rule):
+    with pytest.raises(amigasecretsave.RouteError, match="title"):
+        amigasecretsave.PixelGuards(_rules(tmp_path, rule))
+
+
+@pytest.mark.parametrize("box", [[0, 0, 8], [0, 0, 8, 8, 9], [0, 0, 721, 8],
+                                 [0, 0, 8, 569], [8, 0, 8, 8], [-1, 0, 8, 8]])
+def test_a_guard_box_with_the_wrong_numbers_or_outside_the_image_is_refused(
+        tmp_path, box):
+    shot = _image(tmp_path / "shot.png", (0, 51, 102))
+    with pytest.raises(amigasecretsave.RouteError, match="invalid crop box"):
+        amigasecretsave.guard_rule(shot, box)
+
+
+def _guard_args(tmp_path, *extra, box="50,400,300,430"):
+    bar = ((60, 400, 300, 430), (238, 238, 238))
+    title = _image(tmp_path / "title.png", (0, 51, 102), bar)
+    out = tmp_path / "guards.json"
+    return ["guard", "--state", "title", "--crop", str(title), "--out", str(out),
+            "--box", box, *extra], out
+
+
+def test_the_guard_command_refuses_a_one_colour_box(tmp_path, capsys):
+    args, out = _guard_args(tmp_path, box="0,0,40,40")
+    assert amigasecretsave.main(args) == 2
+    assert "one colour" in capsys.readouterr().err and not out.exists()
+
+
+def test_the_guard_command_will_not_replace_a_rule_unless_asked(tmp_path, capsys):
+    args, out = _guard_args(tmp_path)
+    assert amigasecretsave.main(args) == 0
+    before = out.read_text()
+    other = _image(tmp_path / "other.png", (0, 51, 102),
+                   ((60, 400, 300, 430), (200, 10, 10)))
+    again = ["guard", "--state", "title", "--crop", str(other), "--out", str(out),
+             "--box", "50,400,300,430"]
+    assert amigasecretsave.main(again) == 2
+    assert "--replace" in capsys.readouterr().err and out.read_text() == before
+    assert amigasecretsave.main(again + ["--replace"]) == 0
+    assert out.read_text() != before
+
+
+def test_the_guard_command_writes_atomically(tmp_path, monkeypatch):
+    args, out = _guard_args(tmp_path)
+    assert amigasecretsave.main(args) == 0
+    before = out.read_text()
+
+    def boom(src, dst):
+        raise OSError("disk gone")
+
+    monkeypatch.setattr(amigasecretsave.os, "replace", boom)
+    assert amigasecretsave.main(args + ["--replace"]) == 2
+    assert out.read_text() == before
