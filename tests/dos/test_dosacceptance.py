@@ -559,7 +559,7 @@ def test_rows_and_expectations_parse():
 # -- staging and reading ---------------------------------------------------------
 
 
-def test_install_keeps_only_the_one_slot_and_renames_it(tmp_path):
+def test_install_keeps_only_the_one_slot_under_its_own_letter(tmp_path):
     # Distinct names: "save" and "SAVE" are one directory on Windows.
     save, dest = tmp_path / "staged", tmp_path / "play"
     save.mkdir()
@@ -568,11 +568,11 @@ def test_install_keeps_only_the_one_slot_and_renames_it(tmp_path):
     for name in ("savgama.dat", "CHRDATA1.SAV", "chrdata1.spc", "NOTES.TXT"):
         (save / name).write_bytes(name.encode())
     (dest / "SAVGAMJ.DAT").write_bytes(b"someone else's")
-    took = da.install(save, dest, "d")
+    took = da.install(save, dest, "a")
     assert sorted(p.name for p in dest.iterdir()) == [
-        "CHRDATD1.SAV", "CHRDATD1.SPC", "SAVGAMD.DAT"]
-    assert (dest / "CHRDATD1.SPC").read_bytes() == b"chrdata1.spc"
-    assert took["from_slot"] == "A" and took["as_slot"] == "D"
+        "CHRDATA1.SAV", "CHRDATA1.SPC", "SAVGAMA.DAT"]
+    assert (dest / "CHRDATA1.SPC").read_bytes() == b"chrdata1.spc"
+    assert took["from_slot"] == "A" and took["as_slot"] == "A"
 
 
 def test_the_clock_difference_crosses_midnight():
@@ -1244,9 +1244,9 @@ def test_silver_blades_is_installed_under_its_own_letter(tmp_path):
     for name in ("SAVGAMA.DAT", "CHRDATA1.SAV"):
         (save / name).write_bytes(b"x")
     with pytest.raises(ValueError, match="install A as A"):
-        da.install(save, dest, "D", same_letter=True)
+        da.install(save, dest, "D")
     assert list(dest.iterdir()) == []
-    assert da.install(save, dest, "a", same_letter=True)["as_slot"] == "A"
+    assert da.install(save, dest, "a")["as_slot"] == "A"
 
 
 def test_a_folder_of_two_slots_needs_the_one_named(tmp_path):
@@ -1259,10 +1259,42 @@ def test_a_folder_of_two_slots_needs_the_one_named(tmp_path):
         da.source_slot(tmp_path, "C")
     dest = tmp_path / "play"
     dest.mkdir()
-    took = da.install(tmp_path, dest, "J", "B")
-    assert sorted(p.name for p in dest.iterdir()) == ["CHRDATJ1.SAV", "SAVGAMJ.DAT"]
-    assert (dest / "CHRDATJ1.SAV").read_bytes() == b"CHRDATB1.SAV"
+    took = da.install(tmp_path, dest, "B", "B")
+    assert sorted(p.name for p in dest.iterdir()) == ["CHRDATB1.SAV", "SAVGAMB.DAT"]
+    assert (dest / "CHRDATB1.SAV").read_bytes() == b"CHRDATB1.SAV"
     assert took["from_slot"] == "B"
+
+
+def test_install_refuses_a_letter_the_container_does_not_name(tmp_path):
+    """The engine loads by the saved game's own file list, so a slot renamed
+    from J to A loaded no party in the Curse boot that tried it."""
+    save, dest = tmp_path / "staged", tmp_path / "play"
+    save.mkdir()
+    dest.mkdir()
+    for name in ("SAVGAMJ.DAT", "CHRDATJ1.SAV"):
+        (save / name).write_bytes(b"x")
+    (dest / "KEEP.ME").write_bytes(b"untouched")
+    with pytest.raises(ValueError, match="install J as J"):
+        da.install(save, dest, "A")
+    assert [p.name for p in dest.iterdir()] == ["KEEP.ME"]
+
+
+def test_a_run_asked_for_another_letter_is_refused_before_a_slot_is_claimed(
+        tmp_path, monkeypatch, capsys):
+    save = tmp_path / "staged"
+    save.mkdir()
+    for name in ("SAVGAMJ.DAT", "CHRDATJ1.SAV"):
+        (save / name).write_bytes(b"x")
+
+    def claimed(*a, **k):
+        raise AssertionError("an emulator slot was claimed")
+
+    monkeypatch.setattr(da.dosbox, "claim", claimed)
+    # `main` turns the refusal into a usage error.
+    with pytest.raises(SystemExit):
+        da.main(["--title", "curse", "--save", str(save), "--slot", "A",
+                 "--steps", "load", "--out", str(tmp_path / "out")])
+    assert "pass --slot J" in capsys.readouterr().err
 
 
 def _curse_record(name: bytes = b"MATHEW") -> bytes:
@@ -1325,9 +1357,13 @@ class FakeCurseMenu(FakePool):
             "party": b"\x04\x05\x06", "offer": b"\x07", "learn": b"\x08\x09",
             "psave": b"\x0a", "pquit": b"\x0b\x0c"}
 
-    def __init__(self, tmp, trainable=(1,), learns=1, asks_quit=False, size=6):
+    def __init__(self, tmp, trainable=(1,), learns=1, asks_quit=False, size=6,
+                 loads=True):
         super().__init__(tmp, keys=TITLE_KEYS["curse"])
         self.mode, self.line, self.size = "title", 1, size
+        # A slot the engine cannot load leaves the empty menu, which draws no
+        # roster.
+        self.loads = self.drawn = loads
         self.trainable, self.learns, self.asks_quit = set(trainable), learns, asks_quit
         self.trained: list[int] = []
         self.left = 0
@@ -1339,6 +1375,7 @@ class FakeCurseMenu(FakePool):
             self.mode = "which"
         elif m == "which" and k.upper() in "ABCDEFGHIJ":
             self.mode = "party"
+            self.drawn = self.loads
         elif m == "party" and k == "End":
             self.line = self.line % self.size + 1
         elif m == "party" and k == "t" and self.line in self.trainable:
@@ -1367,7 +1404,10 @@ class FakeCurseMenu(FakePool):
         if self.mode in FakePool.BARS:
             return super().capture()
         text = bytes((self.line,)) if self.mode == "party" else b""
-        return _screen(self.BARS[self.mode], text)
+        frame = _screen(self.BARS[self.mode], text)
+        if self.mode == "party" and self.drawn:
+            return _with_roster(frame, "party", self.size, self.line)
+        return frame
 
     def press_until_change(self, key, tries=5, gap=0.8):
         before = self.capture().digest()
@@ -1390,6 +1430,42 @@ def _curse_loaded(tmp_path, **kw):
 def test_curse_loads_to_the_party_menu_pressing_the_letter_once(tmp_path):
     game, d = _curse_loaded(tmp_path)
     assert game.keys == ["l", "j"]
+
+
+def test_a_curse_load_that_draws_no_roster_is_lost_at_load(tmp_path):
+    game = FakeCurseMenu(tmp_path, loads=False)
+    d = da.Driver(game, lambda **k: None, "J", "curse", party_size=game.size)
+    d.game.to_main_menu = lambda timeout=120.0: None
+    with pytest.raises(da.StepFailed, match="loaded no party"):
+        d.load()
+    assert d.party_sig is None and game.keys == ["l", "j"]
+
+
+def test_a_silver_blades_load_that_draws_no_roster_is_lost_at_load(tmp_path):
+    game = FakeCurseMenu(tmp_path, loads=False)
+    game.mode = "title"
+
+    class Ssb:
+        def to_party_menu(self):
+            pass
+
+        def menu(self, row, label):
+            game.key("l")
+            game.key("j")
+            game.mode = "party"
+
+        def bar(self, screen=None):
+            return "party_menu"
+
+        def wait_bar(self, want, timeout=45.0):
+            return game.capture()
+
+    d = da.Driver(game, lambda **k: None, "J", "ssb", party_size=game.size)
+    d._ssb = Ssb()
+    d.s.wait_for = lambda pred, timeout=0.0: True
+    with pytest.raises(da.StepFailed, match="loaded no party"):
+        d.load()
+    assert d.party_sig is None
 
 
 def test_curse_trains_the_line_asked_for_and_learns_its_spell(tmp_path):
@@ -1701,11 +1777,11 @@ def test_a_pools_of_darkness_slot_installs_its_container_vault_and_records(
     dest = tmp_path / "play"
     dest.mkdir()
     (dest / "SAVGAMB.PTY").write_bytes(b"the archives' own")
-    took = da.install(out / "source", dest, "A", same_letter=True)
+    took = da.install(out / "source", dest, "A")
     assert sorted(took["files"]) == sorted(p.name for p in dest.iterdir()) == [
         "CHRDATA1.SAV", "CHRDATA1.THG", "CHRDATA2.SAV", "SAVGAMA.PTY", "VAULTA.DAT"]
     with pytest.raises(ValueError, match="install A as A"):
-        da.install(out / "source", dest, "D", same_letter=da.TITLES["darkness"].same_letter)
+        da.install(out / "source", dest, "D")
 
 
 def test_the_read_step_sets_each_members_skills_and_items_side_by_side(

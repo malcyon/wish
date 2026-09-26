@@ -197,3 +197,26 @@ def test_an_engine_save_that_wrote_the_file_and_left_camp_is_saved(monkeypatch, 
     got, _ = _engine_save(monkeypatch, tmp_path, save_game)
     assert got["engine_saved_to"] == "D"
     assert "left_in_camp" not in got
+
+
+# -- a renamed slot loads no party --------------------------------------------------
+
+
+def test_both_installs_refuse_to_rename_a_slot(tmp_path):
+    """The engine loads by the saved game's own file list, so J installed as A
+    loads nothing."""
+    import pytest
+
+    from tools.dos import dossheetread
+    save, records, dest = tmp_path / "save", tmp_path / "records", tmp_path / "play"
+    for folder in (save, records, dest):
+        folder.mkdir()
+    (save / "SAVGAMJ.DAT").write_bytes(b"x")
+    (save / "CHRDATJ1.SAV").write_bytes(b"x")
+    (records / "CHRDATJ1.SAV").write_bytes(b"x")
+    with pytest.raises(ValueError, match="install J as J"):
+        dossheetread.install_whole(save, dest, "A", "J")
+    with pytest.raises(ValueError, match="install J as J"):
+        dossheetread.install(save, records, dest, "A", "J", None)
+    assert list(dest.iterdir()) == []
+    assert dossheetread.install_whole(save, dest, "J", "J")["container"]

@@ -61,6 +61,12 @@ from tools.registry import scratch  # noqa: E402
 TRAIN_LEVEL = 0xD51
 
 
+def _refuse_rename(letter: str, source: str) -> None:
+    if letter != source:
+        raise ValueError(f"the saved game names its own files and the engine "
+                         f"loads those; install {source} as {source}, not {letter}")
+
+
 def install_whole(save: pathlib.Path, save_dir: pathlib.Path,
                   letter: str, source: str) -> dict:
     """Put a whole save this project wrote into a clean `SAVE` (#299).
@@ -68,11 +74,12 @@ def install_whole(save: pathlib.Path, save_dir: pathlib.Path,
     The other half of :func:`install`: here the container is **ours too**,
     built from nothing by `goldbox.dos_codec.new_dos_save`, so every file of the
     slot comes from `save` and nothing is borrowed from a specimen.  The
-    slot letter is kept as written unless `letter` differs from `source`,
-    and Silver Blades refuses a save installed under a different letter from
-    the one it was written as, so pass the same letter for it.
+    slot letter is kept as written: the saved game names its own `CHRDAT`
+    files and the engine loads those, so a renamed slot loads no party in any
+    title and `letter` must equal `source`.
     """
     letter, source = letter.upper(), source.upper()
+    _refuse_rename(letter, source)
     took = {"container": None, "records": []}
     for path in sorted(save.iterdir()):
         name = path.name.upper()
@@ -101,6 +108,7 @@ def install(container: pathlib.Path, records: pathlib.Path,
     never be read as one of ours.
     """
     letter, source = letter.upper(), source.upper()
+    _refuse_rename(letter, source)
     took = {"container": None, "records": []}
     src = container / f"SAVGAM{source}.DAT"
     data = bytearray(src.read_bytes())

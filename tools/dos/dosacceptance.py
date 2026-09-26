@@ -511,9 +511,6 @@ class Title:
     loads_to: str
     #: Pool's city watch `GO STAY` event can end a rest.
     watch: bool
-    #: Silver Blades will not load a save installed under a letter other than
-    #: the one it was written as (`tools/c64/dualclassagain.py`, twice of two).
-    same_letter: bool
     #: `train N` is driven; Silver Blades' training keys are unread.
     trains: bool
     #: What the DOSBox autoexec runs.
@@ -536,16 +533,16 @@ class Title:
 
 
 TITLES = {
-    "pool": Title("pool", "POOLRAD", "map", True, False, False),
-    "curse": Title("curse", "CURSE", "party", False, False, True),
-    "ssb": Title("ssb", "SECRET", "party", False, True, False),
+    "pool": Title("pool", "POOLRAD", "map", True, False),
+    "curse": Title("curse", "CURSE", "party", False, True),
+    "ssb": Title("ssb", "SECRET", "party", False, False),
     # `Load Saved Game` is a party-menu entry here as in Curse and Silver
     # Blades, and both leave the party at that menu after a load, so this
     # title's `loads_to` is `party`: PROBABLE, not yet captured.  The
     # container names its own `CHRDAT` files and the engine loads those, not
     # the letter picked (`docs/141-dos-savegame.md`, 12809-13136), so a
     # renamed slot would load nothing.
-    "darkness": Title("darkness", "DARKNESS", "party", False, True, False,
+    "darkness": Title("darkness", "DARKNESS", "party", False, False,
                       exe="START.BAT", suffix=".PTY"),
 }
 
@@ -1133,21 +1130,22 @@ def source_slot(save: pathlib.Path, wanted: str | None = None) -> str:
 
 
 def install(save: pathlib.Path, save_dir: pathlib.Path, letter: str,
-            source: str | None = None, same_letter: bool = False) -> dict:
+            source: str | None = None) -> dict:
     """Empty `save_dir` and put slot `source` of `save` into it as `letter`.
 
     The staged tree's own `SAVE` is the archives' copy, which is the edited
     play directory (`.claude/rules/testing.md`), so none of it is kept.
-    `same_letter` refuses a rename, which Silver Blades will not load.  A
+    A rename is refused: the saved game names its own `CHRDAT` files and the
+    engine loads those, so a slot under another letter loads no party.  A
     Pools of Darkness slot is its `SAVGAM<slot>.PTY`, its `VAULT<slot>.DAT`
     and its `CHRDAT` files, which is what `dos_codec.new_pod_save_from` writes.
     """
     source = source_slot(save, source)
     suffix = containers_in(save)[source]
     letter = letter.upper()
-    if same_letter and source != letter:
-        raise ValueError(f"this title loads a slot only under the letter it was "
-                         f"written as; install {source} as {source}, not {letter}")
+    if source != letter:
+        raise ValueError(f"the saved game names its own files and the engine "
+                         f"loads those; install {source} as {source}, not {letter}")
     for old in save_dir.glob("*"):
         if old.is_file():
             old.unlink()
@@ -1833,10 +1831,19 @@ class Driver:
         if not self.press_screen_changes(self.slot.lower(), tries=1, wait=30.0):
             raise self.fail("load", f"slot {self.slot} never loaded")
         screen = self.s.settle(quiet=1.0, timeout=90.0)
+        self.check_party_drawn(screen)
         self.party_sig = bar_signature(screen)
         self.shot("loaded")
         self.where = "party"
         return {"slot": self.slot, "party_menu": self.party_sig}
+
+    def check_party_drawn(self, screen: dosbox.Screen) -> None:
+        """A loaded party menu draws a highlighted name at the roster; the empty
+        menu draws none, though its command bar is the same."""
+        if (roster_line(screen, "party", self.party_size) is None
+                or roster_name(screen, "party", 1) == BLANK_NAME):
+            raise self.fail("load", f"slot {self.slot} loaded no party: the "
+                            "party menu draws no roster")
 
     def _load_ssb(self) -> dict:
         self.ssb.to_party_menu()
@@ -1849,6 +1856,7 @@ class Driver:
         if not self.press_screen_changes(self.slot.lower(), tries=1, wait=30.0):
             raise self.fail("load", f"slot {self.slot} never loaded")
         screen = self.ssb.wait_bar("party_menu", timeout=90.0)
+        self.check_party_drawn(screen)
         self.party_sig = bar_signature(screen)
         self.shot("loaded")
         self.where = "party"
@@ -2824,9 +2832,9 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
     letter = args.slot.upper()
     from_slot = (source_slot(save, getattr(args, "from_slot", None))
                  if save is not None else None)
-    if title.same_letter and from_slot not in (None, letter):
-        raise ValueError(f"{args.title} loads a slot only under the letter it was "
-                         f"written as: pass --slot {from_slot}")
+    if from_slot not in (None, letter):
+        raise ValueError(f"{args.title} loads the party its SAVGAM{from_slot} "
+                         f"names: pass --slot {from_slot}")
     if save is not None and containers_in(save)[from_slot] != title.suffix:
         raise ValueError(f"{save} holds SAVGAM{from_slot}"
                          f"{containers_in(save)[from_slot]}, not the "
@@ -2871,8 +2879,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             shots = session.dir / "shots"
             shutil.rmtree(shots, ignore_errors=True)
             shots.mkdir(parents=True)
-            took = install(save, session.save_dir, letter, from_slot,
-                           title.same_letter)
+            took = install(save, session.save_dir, letter, from_slot)
             staged = stage(session.save_dir, letter, args)
             installed = out / "installed"
             shutil.rmtree(installed, ignore_errors=True)
