@@ -52,7 +52,7 @@ conversion logged.
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
-| `walk MI`, `walk 1` | Pool: turn around and step one square.  Pools of Darkness: step one square, turning right past a wall |
+| `walk MI`, `walk 1` | Pool: turn around and step one square.  Pools of Darkness: press MOVE, step one square turning right past a wall, and press EXIT back to the map bar |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement and items |
 
 **Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
@@ -329,6 +329,16 @@ ITEMS_PAGES = 6
 #: returns; the menu routine (0x3A422) returns an arrow as its scancode, and
 #: `2` and `8` as 0x50 and 0x48 through the table at `DS:0x5364`.
 POD_ROSTER_NEXT = "Down"
+#: The map bar's first word, `Move`, keyed by its capital as every Pools of
+#: Darkness bar is.  Until it is pressed the arrows go to the roster
+#: selector; pressed, the bar is `EXIT` alone and the arrows move the party.
+#: Silver Blades' `dossheetread.walk` does the same; unmeasured in this title.
+POD_MOVE = "m"
+#: What leaves move mode, `dossheetread`'s `--move-exit` default.
+POD_MOVE_EXIT = "Escape"
+#: Text column 17, where the status line's text starts; the cell at x 128 is
+#: the viewport's frame.
+STATUS_TEXT_X = 136
 #: `Select`, the only word of the `PICK CHARACTER` prompt (`GAME.EXE` data
 #: `DS:0x2859` over `DS:0x2B8D`), keyed by its first letter.  The prompt then
 #: views the character the roster highlight is on (`AA:39`, 0x2452E).
@@ -363,6 +373,24 @@ def name_signature(screen: dosbox.Screen, x: int, y: int) -> str:
     for i in range(POD_NAME_CELLS):
         sha.update(screen.glyphs((x + CELL * i, y, CELL, POD_NAME_ROWS)).encode())
     return sha.hexdigest()[:16]
+
+
+def status_square(screen: dosbox.Screen) -> str | None:
+    """The `x,y` token that opens the status line, or None while it is blank.
+
+    Read cell by cell from `STATUS_TEXT_X` up to the first blank cell, so the
+    facing letter and the clock after it never enter the value.
+    """
+    x0, y, w, h = dosbox.STATUS
+    sha = hashlib.sha1()
+    cells = 0
+    for x in range(STATUS_TEXT_X, x0 + w, CELL):
+        cell = (x, y, CELL, h)
+        if screen.flat(cell):
+            break
+        sha.update(screen.glyphs(cell).encode())
+        cells += 1
+    return sha.hexdigest()[:16] if cells else None
 
 
 def roster_name(screen: dosbox.Screen, where: str, line: int) -> str:
@@ -1772,27 +1800,86 @@ class Driver:
                 "screens": screens}
 
     def _walk_one(self) -> dict:
-        """One square forward; past a wall, turn right and try again, at most
-        once per facing.  The step is believed when the settled status line
-        changes, which the square and facing on it make it do."""
+        """Press MOVE, step one square forward, and press EXIT back to the map.
+
+        The party is already facing as it was saved, so the first try is
+        `Up`; past a wall it turns right and tries again, three turns at most.
+        A step is believed only when the `x,y` on the status line changes,
+        and a key that moved the roster highlight instead stops the run.
+        """
         screens: list[dict] = []
-        before = first = self.map_status("walk-before", screens)
-        for turns in range(4):
-            if not self.game.step():
-                raise self.fail(f"walk-step-{turns + 1}", "the map bar did not "
-                                "return after the step (combat or an unknown "
-                                "screen)")
-            after = self.map_status(f"walk-step-{turns + 1}", screens)
-            if after != before:
-                return {"route": "1", "map_bar": self.world_sig, "turns": turns,
-                        "status_before": first, "status_after": after,
-                        "screens": screens}
-            if not self.game.turn_right():
-                raise self.fail(f"walk-turn-{turns + 1}", "the map bar did not "
-                                "return after turning")
-            before = self.map_status(f"walk-turn-{turns + 1}", screens)
-        raise self.fail("walk-blocked", "no facing let the party step (the "
-                        "settled status never changed after Up)")
+        map_screen = self.s.capture()
+        if not self.on_world(map_screen):
+            raise self.fail("walk-before", "the map bar is not showing")
+        line = roster_line(map_screen, "camp", self.party_size)
+        map_bar = self.world_sig
+        try:
+            self.s.key(POD_MOVE)
+            if not self.s.wait_while_ink(dosbox.BAR, self.world_ink, 15.0):
+                raise self.fail("walk-move", f"the map bar did not change after "
+                                f"{POD_MOVE} (no move mode)")
+            settled = self.s.settle(quiet=0.6, timeout=30.0)
+            if bar_signature(settled) == self.world_sig:
+                raise self.fail("walk-move", f"the map bar did not change after "
+                                f"{POD_MOVE} (no move mode)")
+            move_bar = bar_signature(settled)
+            self.game.record_map(settled)
+            origin = status_square(settled)
+            screens.append({"shot": self.shot("walk-move"), "bar": move_bar,
+                            "square": origin})
+            if origin is None:
+                raise self.fail("walk-status", "no status line to compare a "
+                                "step with")
+
+            def settle(label: str) -> str | None:
+                screen = self.s.settle(quiet=0.6, timeout=30.0)
+                if bar_signature(screen) != move_bar:
+                    raise self.fail(label, "the move bar did not return (combat "
+                                    "or an unknown screen)")
+                if roster_line(screen, "camp", self.party_size) != line:
+                    raise self.fail("walk-roster", "the roster highlight moved: "
+                                    "the key went to the roster selector")
+                square = status_square(screen)
+                screens.append({"shot": self.shot(label), "bar": move_bar,
+                                "square": square})
+                return square
+
+            turns = 0
+            for attempt in range(4):
+                label = f"walk-step-{attempt + 1}"
+                if not self.game.step():
+                    raise self.fail(label, "the move bar did not return after "
+                                    "the step (combat or an unknown screen)")
+                square = settle(label)
+                if square is not None and square != origin:
+                    break
+                if attempt == 3:
+                    raise self.fail("walk-blocked", "no facing let the party "
+                                    "step (the square never changed)")
+                label = f"walk-turn-{attempt + 1}"
+                if not self.game.turn_right():
+                    raise self.fail(label, "the move bar did not return after "
+                                    "turning")
+                if settle(label) != origin:
+                    raise self.fail(label, "the square changed on a turn")
+                turns += 1
+            if bar_signature(self.s.capture()) != move_bar:
+                raise self.fail("walk-back", "not at the move bar to leave it")
+            self.s.key(POD_MOVE_EXIT)
+            if not self.s.wait_until_ink(dosbox.BAR, self.world_ink, 15.0):
+                raise self.fail("walk-back", f"{POD_MOVE_EXIT} did not return "
+                                "to the map bar")
+            back = self.s.settle(quiet=0.6, timeout=30.0)
+            screens.append({"shot": self.shot("walk-back"),
+                            "bar": bar_signature(back)})
+            return {"route": "1", "map_bar": map_bar, "move_bar": move_bar,
+                    "turns": turns, "square_before": origin,
+                    "square_after": square,
+                    "status_before": map_screen.ink(dosbox.STATUS),
+                    "status_after": back.ink(dosbox.STATUS),
+                    "roster_line": line, "screens": screens}
+        finally:
+            self.game.record_map(map_screen)
 
     def pick_line(self, line: int, where: str, label: str,
                   next_key: str = POD_ROSTER_NEXT) -> dict:
@@ -2406,6 +2493,13 @@ def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
     return done
 
 
+def place_changed(before: dict, after: dict) -> bool:
+    """Whether the square or the map differs between two slots' places."""
+    a, b = before.get("place") or {}, after.get("place") or {}
+    keys = ("x", "y", "area") if "area" in a else ("x", "y", "dungeon_map")
+    return any(a.get(k) != b.get(k) for k in keys)
+
+
 def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
               saved: list[str], steps: list[Step], expects: list[Expect]) -> dict:
     """Copy `SAVE/` out and decode the installed slot against each saved one."""
@@ -2426,6 +2520,8 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
             "experience": compare_experience(before, after),
             "members": compare_members(before, after),
         }
+        if any(st.kind == "walk" for st in steps):
+            result["slots"][x]["place_changed"] = place_changed(before, after)
         previous = after
     if saved and expects:
         result["verdicts"] = [judge(e, result["slots"][saved[-1]]) for e in expects]
@@ -2443,6 +2539,11 @@ def describe(result: dict) -> list[str]:
                      f"{s.get('clock_since_previous', s['clock_advanced'])} since "
                      "the save before it")
         place = s.get("place") or {}
+        if "place_changed" in s:
+            was = (result.get("installed") or {}).get("place") or {}
+            lines.append(f"  moved from {was.get('x')},{was.get('y')} to "
+                         f"{place.get('x')},{place.get('y')}"
+                         if s["place_changed"] else "  did not move")
         if "area" in place:
             lines.append(f"  area {place['area']} at {place['x']},{place['y']} "
                          f"facing {place['facing']}, set out {place['set_out']}")

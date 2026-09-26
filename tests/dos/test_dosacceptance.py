@@ -223,6 +223,9 @@ class FakePool:
     def wait_while_ink(self, rect, same, timeout: float = 30.0) -> bool:
         return self.capture().ink(rect) != same
 
+    def wait_until_ink(self, rect, want, timeout: float = 30.0) -> bool:
+        return self.capture().ink(rect) == want
+
     def shot(self, name: str, allow_blank: bool = False) -> pathlib.Path:
         return self.save_dir.parent / f"{name}.png"
 
@@ -2031,12 +2034,12 @@ def test_the_name_signature_is_blind_to_the_highlight_colour():
     assert len({da.roster_name(white, "camp", n) for n in range(1, 7)}) == 6
 
 
-def _capture(run: str, name: str) -> dosbox.Screen:
+def _capture(run: str, name: str, issue: str = "650") -> dosbox.Screen:
     import shutil
     import subprocess
 
     from tools.registry.scratch import cache_dir
-    shot = cache_dir("acceptance", "650", run, "shots", f"{name}.png")
+    shot = cache_dir("acceptance", issue, run, "shots", f"{name}.png")
     if not shot.exists() or shutil.which("convert") is None:
         pytest.skip(f"the captured screen {run}/{name} is not on this machine")
     ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
@@ -2070,61 +2073,135 @@ def test_run_one_s_end_never_moved_the_highlight(shot):
     assert da.roster_line(_capture("88eac43064-run1-cleric", shot), "camp", 6) == 1
 
 
-@pytest.mark.parametrize("walls", [0, 2])
-def test_pools_of_darkness_walks_one_square_turning_past_walls(tmp_path, walls):
-    game = FakePool(tmp_path)
-    d = da.Driver(game, lambda **k: None, "A", "darkness")
+class FakeDungeon(FakePod):
+    """Pools of Darkness' dungeon map: `Up` and `Down` at the map bar go to
+    the roster selector, `m` enters a move mode whose bar is `EXIT` alone,
+    where `Up` steps (unless `walls` say otherwise), `Right` turns and
+    `Escape` leaves.  The status line is `x,y`, a blank cell, the facing.
+
+    `ignore_m` makes `m` do nothing; `up_roster` sends move mode's `Up` to the
+    roster; `blank_status` leaves the status line blank until a key other
+    than `m` is pressed, as run 3's map bar did."""
+
+    MOVE_BAR = b"\x41"
+
+    def __init__(self, tmp, walls=0, ignore_m=False, up_roster=False,
+                 blank_status=False, **kw):
+        super().__init__(tmp, **kw)
+        self.mode = "dmap"
+        self.x, self.facing, self.walls = 1, 1, walls
+        self.ignore_m, self.up_roster = ignore_m, up_roster
+        self.status_on = not blank_status
+
+    def key(self, k, gap=0.0):
+        self.keys.append(k)
+        if k != "m":
+            self.status_on = True
+        if self.mode == "dmap":
+            if k == "m" and not self.ignore_m:
+                self.mode = "move"
+            elif k in ("Up", "Down"):
+                self._roster(k)
+        elif self.mode == "move":
+            if k == "Up" and self.up_roster:
+                self._roster(k)
+            elif k == "Up" and self.walls:
+                self.walls -= 1
+            elif k == "Up":
+                self.x += 1
+            elif k == "Right":
+                self.facing = (self.facing + 1) % 4
+            elif k == "Escape":
+                self.mode = "dmap"
+
+    def capture(self):
+        bar = self.MOVE_BAR if self.mode == "move" else FakePool.BARS["map"]
+        frame = _with_roster(_screen(bar, b""), "camp", self.size, self.line)
+        if not self.status_on:
+            return frame
+        px = bytearray(frame.px)
+        x, y = da.STATUS_TEXT_X, dosbox.STATUS[1]
+        token = bytes(((1 << self.x % 8) | 0x80, 0x18, 0x21))
+        _draw_name(px, x, y, token, _WHITE)
+        _draw_name(px, x + da.CELL * 4, y, bytes(((1 << self.facing) | 0x40,)), _WHITE)
+        return dosbox.Screen(W, H, bytes(px))
+
+
+def _dungeon_driver(tmp_path, **kw):
+    game = FakeDungeon(tmp_path, **kw)
+    d = da.Driver(game, lambda **k: None, "A", "darkness", party_size=game.size)
     d.where = "map"
     d.world_ink = game.capture().ink(dosbox.BAR)
+    d.world_sig = da.bar_signature(game.capture())
+    return game, d
 
-    class Movement:
-        def __init__(self):
-            self.facing, self.x, self.keys, self.walls = 0, 0, [], walls
 
-        def status(self):
-            return f"{self.x},{self.facing}"
-
-        def turn_right(self):
-            self.keys.append("Right")
-            self.facing = (self.facing + 1) % 4
-            return True
-
-        def step(self):
-            self.keys.append("Up")
-            if self.walls:
-                self.walls -= 1
-            else:
-                self.x += 1
-            return True
-
-    d.game = Movement()
+@pytest.mark.parametrize("walls", [0, 2])
+def test_pools_of_darkness_walks_one_square_turning_past_walls(tmp_path, walls):
+    game, d = _dungeon_driver(tmp_path, walls=walls)
+    map_ink = d.world_ink
     got = d.walk("1")
-    assert d.game.keys == ["Up", "Right"] * walls + ["Up"]
-    assert got["turns"] == walls and got["status_after"] == f"1,{walls}"
+    assert game.keys == ["m"] + ["Up", "Right"] * walls + ["Up", "Escape"]
+    assert got["turns"] == walls and game.x == 2 and game.line == 1
+    assert got["square_before"] != got["square_after"]
+    assert game.mode == "dmap" and d.game.world_bar == map_ink
 
 
 def test_pools_of_darkness_stops_when_every_facing_is_a_wall(tmp_path):
-    game = FakePool(tmp_path)
-    d = da.Driver(game, lambda **k: None, "A", "darkness")
-    d.where = "map"
-    d.world_ink = game.capture().ink(dosbox.BAR)
-
-    class Walls:
-        facing = 0
-
-        def status(self):
-            return f"0,{self.facing}"
-
-        def turn_right(self):
-            self.facing = (self.facing + 1) % 4
-            return True
-
-        def step(self):
-            return True
-
-    d.game = Walls()
+    game, d = _dungeon_driver(tmp_path, walls=99)
     with pytest.raises(da.StepFailed, match="no facing"):
         d.walk("1")
+    assert game.keys == ["m"] + ["Up", "Right"] * 3 + ["Up"]
+
+
+def test_a_blank_status_line_is_never_the_walk_baseline(tmp_path):
+    game, d = _dungeon_driver(tmp_path, blank_status=True)
+    with pytest.raises(da.StepFailed, match="status line"):
+        d.walk("1")
+    assert game.keys == ["m"]
+
+
+def test_an_up_that_moves_the_roster_stops_the_walk(tmp_path):
+    game, d = _dungeon_driver(tmp_path, up_roster=True)
+    with pytest.raises(da.StepFailed, match="roster"):
+        d.walk("1")
+    assert game.keys == ["m", "Up"]
+
+
+def test_a_move_key_that_changes_nothing_stops_before_any_arrow(tmp_path):
+    game, d = _dungeon_driver(tmp_path, ignore_m=True)
+    with pytest.raises(da.StepFailed):
+        d.walk("1")
+    assert game.keys == ["m"]
+
+
+def test_status_square_reads_the_coordinates_and_nothing_else():
+    before = _capture("591c0bf9ce-run3-walk", "012-walk-before", issue="678")
+    step = _capture("591c0bf9ce-run3-walk", "013-walk-step-1", issue="678")
+    camp = _capture("591c0bf9ce-run3-walk", "014-camp", issue="678")
+    other = _capture("840311866e-run0-control", "009-map")
+    assert da.status_square(before) is None
+    assert da.status_square(step) == da.status_square(camp) is not None
+    assert da.status_square(other) not in (None, da.status_square(step))
+    assert da.roster_line(before, "camp", 6) == 4
+    assert da.roster_line(step, "camp", 6) == 3
+
+
+def test_describe_says_whether_the_party_moved():
+    here = {"place": {"x": 1, "y": 2, "dungeon_map": 2, "facing": 1,
+                      "in_dungeon": True}}
+    slot = {**here, "clock_advanced": 0, "compare": [], "experience": [],
+            "members": []}
+    same = describe_result(here, {**slot, "place_changed": False})
+    assert "  did not move" in same
+    moved_to = {"place": {**here["place"], "x": 2}}
+    got = describe_result(here, {**slot, **moved_to, "place_changed": True})
+    assert "  moved from 1,2 to 2,2" in got
+
+
+def describe_result(installed, slot):
+    return da.describe({"installed": installed, "rested_minutes": 0,
+                        "slots": {"D": slot}})
 
 
 def test_the_run_boots_start_bat_from_the_title_own_directory(monkeypatch, pod_source):
