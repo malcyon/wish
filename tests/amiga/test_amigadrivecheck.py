@@ -130,7 +130,7 @@ class FakePipe:
         self.guest.drives[drive] = path
         return Receipt(self.guest.drives, labels=("q0", "q1", "dbg", "set"))
 
-    def lane_verb(self, verb, holder, token, args):
+    def refused_verb(self, verb, holder, args):
         self.guest._do("lane_verb", holder, args[1])
         if holder != HOLDER:
             raise amiga.FloppyError(f"The guest refused the floppy change: the WinUAE lane is "
@@ -273,19 +273,20 @@ def test_a_failed_change_stops_the_probe_and_still_cleans_up(tmp_path, clock, pr
 
 def test_a_control_that_is_accepted_fails_the_probe(tmp_path, clock, proof):
     class Lax(FakePipe):
-        def lane_verb(self, verb, holder, token, args):
-            return ("ok", 0.0)
+        def refused_verb(self, verb, holder, args):
+            return "ok inserted drive=0"
 
     guest, result = run(tmp_path, clock, proof, pipe=Lax)
     assert result["passed"] is False
     assert "the request was accepted" in result["error"]
+    assert result["steps"][-2]["observed"] == "ok inserted drive=0"
     assert result["steps"][-2]["verdict"] == "fail"
     assert "release" in [c[0] for c in guest.calls]
 
 
 def test_a_control_refused_for_the_wrong_reason_fails_the_probe(tmp_path, clock, proof):
     class Wrong(FakePipe):
-        def lane_verb(self, verb, holder, token, args):
+        def refused_verb(self, verb, holder, args):
             raise amiga.FloppyError("The guest refused the floppy change: something else")
 
     _, result = run(tmp_path, clock, proof, pipe=Wrong)
@@ -306,9 +307,9 @@ def test_df1_changing_during_a_step_fails_the_probe(tmp_path, clock, proof):
 
 def test_a_refused_control_leaves_both_drives_checked(tmp_path, clock, proof):
     class Disturbing(FakePipe):
-        def lane_verb(self, verb, holder, token, args):
+        def refused_verb(self, verb, holder, args):
             self.guest.drives[0] = "C:\\Amiga\\Disks\\somewhere-else.adf"
-            return super().lane_verb(verb, holder, token, args)
+            return super().refused_verb(verb, holder, args)
 
     _, result = run(tmp_path, clock, proof, pipe=Disturbing)
     assert result["passed"] is False
@@ -474,3 +475,44 @@ def test_winguest_insert_refuses_a_disk_it_did_not_stage_before_anything_is_sent
     with pytest.raises(ValueError, match="is not a disk this run staged for h"):
         guest.insert("h", 0, "C:/Amiga/Disks/wish679-h-disk2.adf", 30, "ab" * 32)
     assert ran == []
+
+
+class LateRefusal(FakePipe):
+    """The missing-file control is answered by the real verb reader with a canned output."""
+
+    output = "fail C:\\x\\probeZ.adf does not exist\r\n<<end>>\r\n"
+
+    def refused_verb(self, verb, holder, args):
+        if "probeZ" in args[1]:
+            self.guest._do("lane_verb", holder, args[1])
+            return amiga.WinuaePipe(runner=lambda argv, t: self.output).refused_verb(
+                verb, holder, args)
+        return super().refused_verb(verb, holder, args)
+
+
+def test_a_refusal_the_guest_makes_after_the_pipe_is_open_passes_the_control(tmp_path, clock, proof):
+    _, result = run(tmp_path, clock, proof, pipe=LateRefusal)
+    step = next(s for s in result["steps"] if s["step"] == "control: a file never staged, refused in the guest")
+    assert step["verdict"] == "pass" and "does not exist" in step["refusal"]
+    assert result["passed"] is True
+
+
+def test_a_guest_that_answers_ok_to_a_control_fails_it_and_records_what_it_said(tmp_path, clock, proof):
+    class Accepting(LateRefusal):
+        output = "ok inserted drive=0 polls=1\r\n<<end>>\r\n"
+
+    _, result = run(tmp_path, clock, proof, pipe=Accepting)
+    assert result["passed"] is False
+    step = result["steps"][-2]
+    assert step["verdict"] == "fail" and step["observed"] == "ok inserted drive=0 polls=1"
+
+
+def test_the_deployed_read_ignores_progress_text_and_silences_progress():
+    clixml = '#< CLIXML\n<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">'
+    reply = "\n".join([clixml, "winuae64_sha256=AB", "winuae64_version=6.0.3.0",
+                       "winuae_ps1_sha256=CD", "junk=1", '<Objs Version=x'])
+    guest = check.ProbeGuest()
+    guest._run = lambda *a, **k: reply
+    assert guest.deployed(5) == {"winuae64_sha256": "AB", "winuae64_version": "6.0.3.0",
+                                 "winuae_ps1_sha256": "CD"}
+    assert "$ProgressPreference = 'SilentlyContinue'" in check.READ_DEPLOYED

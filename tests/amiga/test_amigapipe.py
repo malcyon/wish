@@ -831,3 +831,19 @@ def test_a_debugger_command_still_goes_down_with_dbg_and_never_cfg():
     guest = CfgGuest()
     amiga.WinuaePipe(runner=guest).send(["m 0 1"])
     assert guest.messages == ["DBG m 0 1"]
+
+
+def test_a_verb_the_guest_refuses_after_the_pipe_is_open_still_raises_with_its_text():
+    guest = LaneGuest("fail C:\\x.adf does not exist\r\n<<end>>\r\n")
+    with pytest.raises(amiga.FloppyError, match="C:.x.adf does not exist"):
+        amiga.WinuaePipe(runner=guest).refused_verb("insert", HOLDER, ["0", DISK_B, SHA_B])
+
+
+def test_a_verb_the_guest_accepts_returns_its_first_line_and_a_refusal_before_the_pipe_raises():
+    said = amiga.WinuaePipe(runner=LaneGuest("ok inserted drive=0\r\n<<end>>\r\n")).refused_verb(
+        "insert", HOLDER, ["0", DISK_B, SHA_B])
+    assert said == "ok inserted drive=0"
+    with pytest.raises(amiga.FloppyError, match="claimed by other"):
+        amiga.WinuaePipe(runner=LaneGuest(error=amiga.GuestError(
+            "winvm ssh failed: fail the WinUAE lane is claimed by other"))).refused_verb(
+                "insert", HOLDER, ["0", DISK_B, SHA_B])

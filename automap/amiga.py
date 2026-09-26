@@ -1019,6 +1019,22 @@ Write-Output '<<end>>'
                 "The guest refused the floppy change: "
                 + (text[at + 5:] if at >= 0 else text), {"output": text}) from exc
 
+    def refused_verb(self, verb: str, holder: str, args: list[str]) -> str:
+        """Run a lane verb that a control expects the guest to refuse; give its first line.
+
+        A `fail` first line raises `FloppyError` with the guest's text, whether the
+        guest exited 1 before opening the pipe or 0 after it, exactly as
+        `insert_floppy` reads a verdict. Any other first line is returned so the
+        caller can record what the guest said instead.
+        """
+        out, _seconds = self.lane_verb(verb, holder, None, args)
+        lines = [line.strip() for line in out.splitlines() if line.strip()]
+        status = lines[0] if lines else ""
+        if status.startswith("fail"):
+            raise FloppyError("The guest refused the floppy change: " + status[5:],
+                              {"output": out})
+        return status
+
     def batch(self, lines: list[str],
               fetch: list[tuple[str, str]] | None = None
               ) -> tuple[str, dict[str, bytes | None]]:

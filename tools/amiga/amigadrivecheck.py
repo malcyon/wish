@@ -48,6 +48,7 @@ READY_SECONDS = 30.0
 INTRUDER = f"wish{ISSUE}-intruder"
 
 READ_DEPLOYED = f"""$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $exe = '{DESKTOP_EXE}'
 'winuae64_sha256=' + (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash
 'winuae64_version=' + (Get-Item -LiteralPath $exe).VersionInfo.FileVersion
@@ -70,12 +71,13 @@ class ProbeGuest(WinGuest):
         script = base64.b64encode(READ_DEPLOYED.encode("utf-16-le")).decode("ascii")
         text = self._run("ssh", f"powershell -NoProfile -EncodedCommand {script}",
                          timeout=timeout)
+        wanted = ("winuae64_sha256", "winuae64_version", "winuae_ps1_sha256")
         found = {}
         for line in text.splitlines():
             key, _, value = line.strip().partition("=")
-            if key and value:
+            if key in wanted and value:
                 found[key] = value
-        for key in ("winuae64_sha256", "winuae64_version", "winuae_ps1_sha256"):
+        for key in wanted:
             if key not in found:
                 raise RouteError(f"The guest did not report {key}: {text[-300:]!r}")
         return found
@@ -197,7 +199,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
     def refused(name: str, call: Callable[[], Any], error: type, needle: str) -> str:
         """Run a request that must be refused and pin the reason it gives."""
         try:
-            call()
+            said = call()
         except error as exc:
             text = str(exc)
             if needle not in text:
@@ -205,8 +207,8 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
                 raise RouteError(f"{name}: refused, but not for the expected reason: {text}") from exc
             step(name, "pass", refusal=text)
             return text
-        step(name, "fail", expected=needle, observed="accepted")
-        raise RouteError(f"{name}: the request was accepted")
+        step(name, "fail", expected=needle, observed=said or "accepted")
+        raise RouteError(f"{name}: the request was accepted: {said}")
 
     claimed = copied = start_attempted = stopped = False
     try:
@@ -240,8 +242,8 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
         change("restore DF0 to A", 0, "A", both)
 
         def wrong_holder():
-            pipe_factory(limit(30)).lane_verb(
-                "insert", INTRUDER, None, ["0", windows["B"], generated["B"]["sha256"]])
+            return pipe_factory(limit(30)).refused_verb(
+                "insert", INTRUDER, ["0", windows["B"], generated["B"]["sha256"]])
 
         refused("control: another holder's claim", wrong_holder, amiga.FloppyError,
                 f"claimed by {holder}")
@@ -251,8 +253,8 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
                 lambda: guest_insert(0, foreign, generated["B"]["sha256"]),
                 ValueError, "belongs to another holder")
         refused("control: another holder's path, refused in the guest",
-                lambda: pipe_factory(limit(30)).lane_verb(
-                    "insert", holder, None, ["0", foreign, generated["B"]["sha256"]]),
+                lambda: pipe_factory(limit(30)).refused_verb(
+                    "insert", holder, ["0", foreign, generated["B"]["sha256"]]),
                 amiga.FloppyError, f"is not staged for {holder}")
         read_drives("control: another holder's path leaves both drives", both)
 
@@ -260,8 +262,8 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
                 lambda: guest_insert(0, never, generated["B"]["sha256"]),
                 ValueError, "is not a disk this run staged")
         refused("control: a file never staged, refused in the guest",
-                lambda: pipe_factory(limit(30)).lane_verb(
-                    "insert", holder, None, ["0", never, generated["B"]["sha256"]]),
+                lambda: pipe_factory(limit(30)).refused_verb(
+                    "insert", holder, ["0", never, generated["B"]["sha256"]]),
                 amiga.FloppyError, "does not exist")
         read_drives("control: a file never staged leaves both drives", both)
 
