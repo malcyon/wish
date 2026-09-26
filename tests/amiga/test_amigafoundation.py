@@ -390,10 +390,10 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
 # and J the after save, and E is the game's exit key though slot E is a kept slot.
 DARK_START = {"area": 2, "x": 1, "y": 2, "facing": geo.EAST}
 DARK_LATER = dict(DARK_START, x=2)
-DARK_STATES = ("title", "journal", "party_menu", "load_picker",
+DARK_STATES = ("title", "journal", "party_menu", "load_from", "load_picker",
                "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker")
 DARK_FIRST_SCREEN = {}  # the title crop is recognised by its own name, and nothing precedes it
-DARK_KEYS = ["P", "L", "B", "V", "E", "S", "I", "B", "NP8", "E", "S", "J"]
+DARK_KEYS = ["P", "L", "P", "B", "V", "E", "S", "I", "B", "NP8", "E", "S", "J"]
 
 
 class DarkGuest(TitleGuest):
@@ -478,7 +478,7 @@ def test_darkness_answers_the_journal_at_most_three_times(tmp_path, clock):
 
 def test_darkness_measure_stops_before_the_first_save(tmp_path, clock):
     guest, result = _dark_run(tmp_path, clock, accept=False, measure=True)
-    assert _keys(guest) == "P L B V E S".split()
+    assert _keys(guest) == "P L P B V E S".split()
     assert guest.inserted == [] and result["success"] is True
     assert result["control_sha256"] is None
     assert not {"I", "J", "Y"} & set(_keys(guest))
@@ -559,7 +559,7 @@ def _dark_guard(screen, when, **closed):
 
 def test_darkness_answers_yes_no_with_n_once_and_only_while_waiting_for_the_world(
         tmp_path, clock):
-    guest, _ = _dark_run(tmp_path, clock, guard=_dark_guard("yes_no", ["09-world"], world=1))
+    guest, _ = _dark_run(tmp_path, clock, guard=_dark_guard("yes_no", ["10-world"], world=1))
     assert _keys(guest).count("N") == 1 and "Y" not in _keys(guest)
     other = tmp_path / "other"
     other.mkdir()
@@ -569,7 +569,7 @@ def test_darkness_answers_yes_no_with_n_once_and_only_while_waiting_for_the_worl
 
 def test_darkness_presses_return_at_a_continue_page_three_times_at_most_and_only_for_the_world(
         tmp_path, clock):
-    guest, _ = _dark_run(tmp_path, clock, guard=_dark_guard("continue", ["09-world"], world=1))
+    guest, _ = _dark_run(tmp_path, clock, guard=_dark_guard("continue", ["10-world"], world=1))
     assert _keys(guest).count("RET") == 3
     other = tmp_path / "other"
     other.mkdir()
@@ -641,7 +641,7 @@ def test_pool_answers_the_path_prompt_once_at_the_camp_save_picker_and_nowhere_e
 
 
 @pytest.mark.parametrize("title,key,prefix,at_least", [
-    ("darkness", "B", "09-world", 45.0),   # BEGIN loads the dungeon, so the wait is long
+    ("darkness", "B", "10-world", 45.0),   # BEGIN loads the dungeon, so the wait is long
     ("curse", "B", "07-world", 20.0),
     ("pool", "A", "04-world", 20.0),
 ])
@@ -680,10 +680,13 @@ def test_darkness_has_no_disk_prompt_interstitial_and_pins_its_boot_span_as_a_gu
     assert [row[0] for row in foundation.DARKNESS.interstitials] == ["journal", "yes_no",
                                                                      "continue"]
     assert foundation.DARKNESS.boot_span == 225.0
-    assert foundation.DARKNESS.measure_route[:2] == (("P", "party_menu", "key"),
-                                                     ("L", "load_picker", "key"))
-    assert foundation.DARKNESS.route[:2] == (("P", "party_menu", "key"),
-                                             ("L", "load_picker", "key"))
+    first_four = (("P", "party_menu", "key"), ("L", "load_from", "key"),
+                  ("P", "load_picker", "key"), ("B", "loaded_menu", "key"))
+    assert foundation.DARKNESS.measure_route[:4] == first_four
+    assert foundation.DARKNESS.route[:4] == first_four
+    # The load-from prompt offers POOLS, SECRET and EXIT; only POOLS (P) is ever chosen.
+    assert "load_from" in foundation.DARKNESS.strict
+    assert foundation.DARKNESS.min_waits["load_from"] == 20.0
 
 
 def test_curse_leaves_the_intro_with_one_escape_and_only_while_waiting_for_the_title(

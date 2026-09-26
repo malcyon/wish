@@ -272,8 +272,10 @@ DARKNESS = AmigaTitle(
     save_disk="disk3",
     read_slot=_darkness_read_slot, slot_letters=_darkness_slot_letters,
     slot_files=_darkness_slot_files,
+    # `L` opens a prompt asking where to load from, with three choices; `P` picks this title's
+    # own saves. The slot list after it has not been seen yet, so `load_picker` is a name only.
     route=(
-        ("P", "party_menu", "key"), ("L", "load_picker", "key"),
+        ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
         ("B", "loaded_menu", "key"), ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
         ("S", "save_picker", "key"), ("I", "loaded_menu", "write"), ("B", "world", "key"),
         ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
@@ -281,8 +283,9 @@ DARKNESS = AmigaTitle(
     ),
     # Stops before I.
     measure_route=(
-        ("P", "party_menu", "key"), ("L", "load_picker", "key"), ("B", "loaded_menu", "key"),
-        ("V", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"),
+        ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
+        ("B", "loaded_menu", "key"), ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
+        ("S", "save_picker", "key"),
     ),
     # In the measured boot the settled captures ended at 27, 99, 153 (loading screens), 247 (the
     # first showing the title), 271, 297 (the same title) and 331 s (the demo) after the claim,
@@ -293,9 +296,9 @@ DARKNESS = AmigaTitle(
     boot_span=225.0, title_limit=420.0,
     control_letter="I", after_letter="J", kept_letters=("A", "C", "D", "E"),
     plain_keys=(("E", "loaded_menu"), ("E", "camp")),
-    strict=frozenset({"party_menu", "load_picker", "loaded_menu", "sheet", "save_picker",
-                      "camp_save_picker"}),
-    min_waits={"party_menu": 20.0, "load_picker": 10.0, "loaded_menu": 20.0,
+    strict=frozenset({"party_menu", "load_from", "load_picker", "loaded_menu", "sheet",
+                      "save_picker", "camp_save_picker"}),
+    min_waits={"party_menu": 20.0, "load_from": 20.0, "load_picker": 10.0, "loaded_menu": 20.0,
                "sheet": 5.0, "save_picker": 10.0, "world": 45.0, "world_after_move": 5.0,
                "camp": 10.0, "camp_save_picker": 10.0},
     interstitials=(
