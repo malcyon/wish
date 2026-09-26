@@ -270,3 +270,83 @@ def test_ssb_select_bar_answers_its_loader_save_prompt_with_the_disk(
     _assert_disk_goes_in_and_nothing_is_pressed(sess, save_disk)
     assert sess.kbd.sent == ["space"]
     assert sess.kernal == []
+
+
+# -- wait_bar and to_world_bar at a disk prompt -----------------------------
+#
+# The camp prompt carries `PRESS ANY KEY TO CONTINUE`.  While `handle_prompt`
+# is inside its cooldown, a Return pressed at it queues behind the space and
+# chooses the `SAVE GAME` bar that comes up next.
+
+
+class _FakeClock:
+    """Real time plus whatever `sleep` has been asked for, so a wait ends
+    without waiting and `handle_prompt`'s cooldown still reads a real stamp."""
+
+    def __init__(self):
+        import time as real
+        self._real = real
+        self.offset = 0.0
+
+    def time(self):
+        return self._real.time() + self.offset
+
+    def sleep(self, seconds):
+        self.offset += seconds
+
+
+def _in_cooldown(sess, monkeypatch, module):
+    monkeypatch.setattr(module, "time", _FakeClock())
+    sess._last_prompt = module.time.time()
+    sess._last_want = None
+
+
+def _silver_cure_session():
+    """Silver Blades' session as the acceptance driver builds it, which
+    borrows `wait_bar` and `to_world_bar` from `CurseSession`."""
+    from tools.c64 import curedrive
+
+    return type("FakeSilverCure", (_FakeDriverMixin,
+                                   curedrive._silver_session_class()), {})
+
+
+def _camp_prompt_session(cls, tmp_path):
+    save_disk = tmp_path / "SIDE0.D64"
+    save_disk.touch()
+    return cls(str(save_disk), str(tmp_path),
+               screen_of({18: CAMP_PROMPT_TOP, 24: CAMP_PROMPT_BOTTOM}))
+
+
+def test_ssb_wait_bar_presses_nothing_at_the_camp_save_prompt(
+        tmp_path, monkeypatch):
+    sess = _camp_prompt_session(_silver_cure_session(), tmp_path)
+    _in_cooldown(sess, monkeypatch, CURSE)
+    assert sess.wait_bar("SAVE GAME", timeout=1.0) is False
+    assert 0x0D not in sess.kernal
+
+
+def test_curse_wait_bar_presses_nothing_at_the_camp_save_prompt(
+        tmp_path, monkeypatch):
+    sess = _camp_prompt_session(FakeCurseSession, tmp_path)
+    _in_cooldown(sess, monkeypatch, CURSE)
+    assert sess.wait_bar("SAVE GAME", timeout=1.0) is False
+    assert 0x0D not in sess.kernal
+
+
+def test_ssb_to_world_bar_presses_nothing_at_the_camp_save_prompt(
+        tmp_path, monkeypatch):
+    sess = _camp_prompt_session(_silver_cure_session(), tmp_path)
+    _in_cooldown(sess, monkeypatch, CURSE)
+    assert sess.to_world_bar(timeout=1.0) is False
+    assert 0x0D not in sess.kernal
+
+
+def test_wait_bar_still_presses_return_at_press_any_key_with_no_disk_prompt(
+        tmp_path, monkeypatch):
+    save_disk = tmp_path / "SIDE0.D64"
+    save_disk.touch()
+    sess = _silver_cure_session()(str(save_disk), str(tmp_path),
+                                  screen_of({24: CAMP_PROMPT_BOTTOM}))
+    _in_cooldown(sess, monkeypatch, CURSE)
+    assert sess.wait_bar("SAVE GAME", timeout=1.0) is False
+    assert 0x0D in sess.kernal

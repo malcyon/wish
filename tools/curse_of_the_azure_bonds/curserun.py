@@ -368,6 +368,12 @@ class CurseSession(por.Session):
                 return True
             if self.handle_prompt(s):
                 continue
+            if self.wanted_disk(s) is not None:
+                # A disk prompt also carries `PRESS ANY KEY`; `handle_prompt`
+                # alone answers it, and a Return queued behind its space
+                # chooses the bar that comes up next.
+                time.sleep(0.6)
+                continue
             if "PRESS" in row or "CONTINUE" in row or "MORE" in row:
                 self.press_kernal(0x0D)
             time.sleep(0.6)
@@ -395,6 +401,10 @@ class CurseSession(por.Session):
                 return True
             if self.handle_prompt(s):
                 blank_since = None
+                continue
+            if self.wanted_disk(s) is not None:
+                blank_since = None
+                time.sleep(0.6)
                 continue
             if por.MOVE_SUBBAR in row:
                 self.leave_move(2)
