@@ -412,44 +412,402 @@ class CfgGuest:
         return "\r\n".join(out) + "\r\n"
 
 
-def test_a_floppy_insert_goes_down_as_one_cfg_line():
-    guest = CfgGuest()
-    p = amiga.WinuaePipe(runner=guest)
-    assert p.insert_floppy(1, DISK3) == "ok\n"
-    assert guest.messages == [f"CFG floppy1={DISK3}"]
+# -- a floppy change, through the lane script's guest verbs -------------------
+
+HOLDER = "wish679-abc123def456"
+DISK_A = f"C:\\Amiga\\Disks\\wish679-{HOLDER}-probeA.adf"
+DISK_B = f"C:\\Amiga\\Disks\\wish679-{HOLDER}-probeB.adf"
+DISK_C = f"C:\\Amiga\\Disks\\wish679-{HOLDER}-probeC.adf"
+SHA_B = "b" * 64
 
 
-@pytest.mark.parametrize("drive", [0, 2, 3, 4, -1, True, "1", None])
-def test_a_floppy_insert_refuses_every_drive_but_df1(drive):
-    guest = CfgGuest()
+def nul(text: str) -> bytes:
+    return text.encode("latin-1") + b"\0"
+
+
+def query(path: str) -> bytes:
+    return nul("200 \n" + path) if path else nul("404")
+
+
+def dump(mode0: str, mode1: str) -> bytes:
+    lines = [f"DEBUG: drive {n} motor off cylinder  0 sel no {mode} mfmpos 0/12668"
+             for n, mode in ((0, mode0), (1, mode1))]
+    return nul("\n".join(["DEBUG: cia dump"] + lines))
+
+
+def read_lines(seq, ms, path0, path1, mode0, mode1, **raw):
+    """The three `<<r>>` lines of one read of both drives."""
+    raws = {"q0": query(path0), "q1": query(path1), "dbg": dump(mode0, mode1)}
+    raws.update(raw)
+    return [f"<<r>> {seq} {label} {ms + i} " + base64.b64encode(blob).decode("ascii")
+            for i, (label, blob) in enumerate(raws.items())]
+
+
+def guest_output(status, reads=(), setter=b"404\0", tags=True):
+    lines = [status]
+    if tags:
+        lines += ["<<connect_ms>> 70", "<<pid>> 4242",
+                  "<<started>> 2026-09-26T10:00:00.0000000+00:00",
+                  "<<exe>> C:\\Program Files\\WinUAE\\winuae64.exe",
+                  "<<server_pid>> 4242"]
+    for seq, ms, kwargs in reads:
+        lines += read_lines(seq, ms, **kwargs)
+        if seq == 0 and setter is not None:
+            lines.append(f"<<r>> 0 set {ms + 10} "
+                         + base64.b64encode(setter).decode("ascii"))
+    lines.append("<<end>>")
+    return "\r\n".join(lines) + "\r\n"
+
+
+def state(path0=DISK_A, path1=DISK_C, mode0="rw", mode1="rw"):
+    return {"path0": path0, "path1": path1, "mode0": mode0, "mode1": mode1}
+
+
+def swap_reads(target=DISK_B, other_before=DISK_C):
+    """DF0 swapped from A to B as the source predicts it: named, empty, then loaded twice."""
+    steps = [
+        (0, 100, state()),
+        (1, 400, state(path0=target, mode0="ro")),
+        (2, 650, state(path0=target, mode0="ro")),
+        (3, 900, state(path0=target, mode0="rw")),
+        (4, 1150, state(path0=target, mode0="rw")),
+    ]
+    return steps
+
+
+class LaneGuest:
+    """Answers a `winuae.ps1` verb with a canned output and records every argv."""
+
+    def __init__(self, output="", error=None):
+        self.output = output
+        self.error = error
+        self.calls: list[list[str]] = []
+
+    def __call__(self, argv, timeout):
+        self.calls.append(argv)
+        if self.error:
+            raise self.error
+        return self.output
+
+
+def insert(guest, drive=0, path=DISK_B, sha=SHA_B, holder=HOLDER, **kw):
+    return amiga.WinuaePipe(runner=guest, **kw).insert_floppy(drive, path, holder, sha)
+
+
+def test_a_floppy_change_runs_the_lane_verb_with_the_holder_drive_path_and_hash():
+    guest = LaneGuest(guest_output("ok inserted drive=0 polls=4", swap_reads()))
+    insert(guest)
+    assert guest.calls == [[
+        "winvm", "ssh", "powershell -NoProfile -ExecutionPolicy Bypass -File "
+        f"C:\\Amiga\\winuae.ps1 insert -Holder {HOLDER} 0 {DISK_B} {SHA_B}"]]
+
+
+def test_a_local_floppy_change_runs_powershell_without_ssh():
+    guest = LaneGuest(guest_output("ok inserted drive=0 polls=4", swap_reads()))
+    insert(guest, connection="local")
+    assert guest.calls[0][:6] == ["powershell", "-NoProfile", "-ExecutionPolicy",
+                                  "Bypass", "-File", "C:\\Amiga\\winuae.ps1"]
+    assert guest.calls[0][6:] == ["insert", "-Holder", HOLDER, "0", DISK_B, SHA_B]
+
+
+def test_a_claim_token_goes_down_as_its_own_argument():
+    guest = LaneGuest(guest_output("ok inserted drive=0 polls=4", swap_reads()))
+    amiga.WinuaePipe(runner=guest).insert_floppy(0, DISK_B, HOLDER, SHA_B, token="0123456789ab")
+    assert "-Token 0123456789ab" in guest.calls[0][2]
+
+
+def test_a_swap_is_proved_by_the_poll_and_keeps_every_raw_reply():
+    guest = LaneGuest(guest_output("ok inserted drive=0 polls=4", swap_reads()))
+    receipt = insert(guest)
+    assert receipt.polls == 4 and receipt.applied_ms == 1152 - 110
+    assert (receipt.pid, receipt.server_pid) == ("4242", "4242")
+    assert receipt.exe.endswith("winuae64.exe")
+    body = receipt.as_dict()
+    assert len(body["replies"]) == 3 * 5 + 1
+    setter = next(r for r in body["replies"] if r["label"] == "set")
+    assert base64.b64decode(setter["raw"]) == b"404\0"
+    assert body["before"]["paths"] == {"DF0": DISK_A, "DF1": DISK_C}
+
+
+def test_the_lower_drive_is_changed_with_the_other_drive_left_alone():
+    reads = [(0, 100, state(path1=DISK_A)),
+             (1, 400, state(path0=DISK_B, mode0="ro", path1=DISK_A)),
+             (2, 650, state(path0=DISK_B, mode0="rw", path1=DISK_A)),
+             (3, 900, state(path0=DISK_B, mode0="rw", path1=DISK_A))]
+    receipt = insert(LaneGuest(guest_output("ok inserted drive=0 polls=3", reads)))
+    assert receipt.polls == 3
+
+
+def test_df1_may_be_changed_too():
+    reads = [(0, 100, state()),
+             (1, 400, state(path1=DISK_B, mode1="ro")),
+             (2, 650, state(path1=DISK_B, mode1="rw")),
+             (3, 900, state(path1=DISK_B, mode1="rw"))]
+    assert insert(LaneGuest(guest_output("ok inserted drive=1 polls=3", reads)),
+                  drive=1).polls == 3
+
+
+def test_a_setter_reply_of_404_is_expected_and_proves_nothing_alone():
+    reads = [(0, 100, state()), (1, 400, state())]
+    with pytest.raises(amiga.FloppyError, match="never took"):
+        insert(LaneGuest(guest_output("ok inserted drive=0 polls=1", reads)))
+
+
+@pytest.mark.parametrize("setter", [b"501\0", b"200 \nx\0", b"200\n\0"])
+def test_a_setter_reply_other_than_404_is_an_error(setter):
+    guest = LaneGuest(guest_output("ok inserted drive=0", swap_reads(), setter=setter))
+    with pytest.raises(amiga.FloppyError, match="a setter answers 404"):
+        insert(guest)
+
+
+@pytest.mark.parametrize("blob", [b"404", b"404\0\0", b"40\x004\0", b""])
+def test_a_reply_that_is_not_one_nul_terminated_string_is_an_error(blob):
+    reads = swap_reads()
+    reads[2] = (2, 650, {**state(path0=DISK_B, mode0="ro"), "q0": blob})
+    with pytest.raises(amiga.FloppyError, match="is not one NUL-terminated string"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+@pytest.mark.parametrize("blob", [nul("200 \nA\nB"), nul("200 A"), nul("201 \nA"), nul("501")])
+def test_a_query_that_is_neither_404_nor_one_200_line_is_an_error(blob):
+    reads = swap_reads()
+    reads[1] = (1, 400, {**state(path0=DISK_B, mode0="ro"), "q1": blob})
+    with pytest.raises(amiga.FloppyError, match="neither 404 nor one 200 line"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+@pytest.mark.parametrize("first", ["404", "501"])
+def test_a_pipe_that_does_not_answer_queries_stops_before_anything_is_sent(first):
+    reads = [(0, 100, {**state(), "q0": nul(first)})]
+    with pytest.raises(amiga.FloppyError,
+                       match=r"not answering configuration queries \(" + first):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads, setter=None)))
+
+
+def test_a_dump_without_a_line_for_a_drive_is_an_error():
+    reads = swap_reads()
+    reads[3] = (3, 900, {**state(path0=DISK_B), "dbg": nul("DEBUG: drive 0 motor off "
+                "cylinder  0 sel no rw mfmpos 0/12668")})
+    with pytest.raises(amiga.FloppyError, match="no line for DF1"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+def test_a_stale_readback_is_an_error():
+    reads = [(0, 100, state())] + [(n, 100 + 250 * n, state(path0=DISK_A)) for n in range(1, 5)]
+    with pytest.raises(amiga.FloppyError, match=r"DF0 never took .*probeB.adf in 10 s; it reads .*probeA"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+def test_a_drive_never_seen_empty_may_still_hold_the_old_disk():
+    reads = [(0, 100, state())] + [(n, 100 + 250 * n, state(path0=DISK_B, mode0="rw"))
+                                   for n in range(1, 5)]
+    with pytest.raises(amiga.FloppyError, match="never seen empty, so the old disk may still be in it"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+def test_a_poll_that_never_turns_rw_is_an_error():
+    reads = [(0, 100, state())] + [(n, 100 + 250 * n, state(path0=DISK_B, mode0="ro"))
+                                   for n in range(1, 41)]
+    with pytest.raises(amiga.FloppyError, match="names .*probeB.adf but holds no disk after 10 s"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+def test_one_rw_poll_is_not_enough():
+    reads = swap_reads()[:4]
+    with pytest.raises(amiga.FloppyError, match="holds no disk after"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+def test_an_rw_run_broken_by_an_ro_poll_starts_again():
+    reads = [(0, 100, state()),
+             (1, 400, state(path0=DISK_B, mode0="ro")),
+             (2, 650, state(path0=DISK_B, mode0="rw")),
+             (3, 900, state(path0=DISK_B, mode0="ro")),
+             (4, 1150, state(path0=DISK_B, mode0="rw"))]
+    with pytest.raises(amiga.FloppyError, match="holds no disk after"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+@pytest.mark.parametrize("bad", [
+    {"path1": DISK_B}, {"mode1": "ro"}, {"path1": ""}])
+def test_the_other_drive_changing_at_any_poll_is_an_error(bad):
+    reads = swap_reads()
+    reads[2] = (2, 650, {**state(path0=DISK_B, mode0="ro"), **bad})
+    with pytest.raises(amiga.FloppyError, match="DF1 changed from .* while DF0 was being changed"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+def test_a_poll_missing_a_reply_is_an_error():
+    output = guest_output("ok inserted drive=0", swap_reads())
+    output = "\r\n".join(ln for ln in output.split("\r\n") if not ln.startswith("<<r>> 3 dbg"))
+    with pytest.raises(amiga.FloppyError, match="no dbg reply for read 3"):
+        insert(LaneGuest(output))
+
+
+def test_a_malformed_reply_line_is_an_error():
+    output = guest_output("ok inserted drive=0", swap_reads()).replace("<<r>> 1 q0 ", "<<r>> one q0 ")
+    with pytest.raises(amiga.FloppyError, match="malformed reply line"):
+        insert(LaneGuest(output))
+
+
+def test_a_guest_refusal_is_an_error_that_keeps_what_it_printed():
+    output = guest_output("fail DF0 was not seen holding it", swap_reads()[:2])
+    with pytest.raises(amiga.FloppyError, match="was not seen holding it") as caught:
+        insert(LaneGuest(output))
+    assert len(caught.value.receipt["replies"]) == 7
+
+
+def test_a_guest_that_never_reaches_its_end_marker_is_an_error():
+    output = guest_output("ok inserted drive=0", swap_reads()).replace("<<end>>", "")
+    with pytest.raises(amiga.FloppyError, match="did not finish"):
+        insert(LaneGuest(output))
+
+
+def test_a_status_that_is_neither_ok_nor_fail_is_an_error():
+    with pytest.raises(amiga.FloppyError, match="neither ok nor fail"):
+        insert(LaneGuest(guest_output("maybe", swap_reads())))
+
+
+def test_a_refusal_before_the_pipe_opens_arrives_as_the_guests_own_text():
+    error = amiga.GuestError("winvm ssh failed: fail the WinUAE lane is claimed by other "
+                             "since 10:00, not by " + HOLDER)
+    with pytest.raises(amiga.FloppyError, match="is claimed by other since 10:00"):
+        insert(LaneGuest(error=error))
+
+
+def test_a_timeout_is_an_error_not_a_success():
+    error = amiga.GuestError("winvm ssh did not answer in 60s")
+    with pytest.raises(amiga.FloppyError, match="did not answer in 60s"):
+        insert(LaneGuest(error=error))
+
+
+def test_a_path_already_in_the_target_drive_sends_nothing_and_is_ok_when_rw():
+    reads = [(0, 100, state(path0=DISK_B))]
+    receipt = insert(LaneGuest(guest_output("ok already drive=0", reads, setter=None)))
+    assert receipt.already is True and receipt.polls == 0
+    assert not any(r["label"] == "set" for r in receipt.as_dict()["replies"])
+
+
+def test_a_path_already_named_by_an_empty_target_drive_is_an_error():
+    reads = [(0, 100, state(path0=DISK_B, mode0="ro"))]
+    with pytest.raises(amiga.FloppyError, match="names .*probeB.adf but holds no disk"):
+        insert(LaneGuest(guest_output("ok already drive=0", reads, setter=None)))
+
+
+def test_a_setter_sent_for_a_path_already_in_the_drive_is_an_error():
+    reads = [(0, 100, state(path0=DISK_B))]
+    with pytest.raises(amiga.FloppyError, match="already named"):
+        insert(LaneGuest(guest_output("ok already drive=0", reads)))
+
+
+def test_a_path_already_in_the_other_drive_is_an_error():
+    reads = [(0, 100, state(path1=DISK_B))]
+    with pytest.raises(amiga.FloppyError, match="probeB.adf is already in DF1"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads, setter=None)))
+
+
+def test_the_drives_verb_reads_both_drives_and_changes_nothing():
+    guest = LaneGuest(guest_output("ok drives pid=4242", [(0, 100, state())], setter=None))
+    receipt = amiga.WinuaePipe(runner=guest).drives(HOLDER)
+    assert guest.calls[0][2].endswith(f"winuae.ps1 drives -Holder {HOLDER}")
+    assert {r["label"] for r in receipt.as_dict()["replies"]} == {"q0", "q1", "dbg"}
+    assert receipt.status == "ok drives pid=4242"
+
+
+def test_the_drives_verb_refuses_a_pipe_that_answers_no_queries():
+    reads = [(0, 100, {**state(), "q0": nul("404")})]
+    with pytest.raises(amiga.FloppyError, match="not answering configuration queries"):
+        amiga.WinuaePipe(runner=LaneGuest(guest_output("ok drives pid=1", reads, setter=None))).drives(HOLDER)
+
+
+@pytest.mark.parametrize("drive", [2, 3, 4, -1, True, False, "0", None, 0.0, 1.0])
+def test_a_floppy_change_refuses_every_drive_but_df0_and_df1(drive):
+    guest = LaneGuest()
+    with pytest.raises(ValueError, match="only DF0 and DF1 may be changed"):
+        insert(guest, drive=drive)
+    assert guest.calls == []
+
+
+@pytest.mark.parametrize("path,text", [
+    (None, "is not a disk this run staged"), (3, "is not a disk this run staged"),
+    (b"x", "is not a disk this run staged"),
+    (DISK_B + ";q", "is refused"), (DISK_B.replace("probeB", "pr obeB"), "is refused"),
+    (DISK_B.replace("probeB", 'pr"obeB'), "is refused"),
+    (DISK_B.replace("probeB", "pr'obeB"), "is refused"),
+    (DISK_B.replace("probeB", "pr=obeB"), "is refused"),
+    (DISK_B.replace("probeB", "pr%obeB"), "is refused"),
+    (DISK_B.replace(".adf", ".adf\n"), "is refused"),
+    (DISK_B.replace("probeB", "pr\tobeB"), "is refused"),
+    (DISK_B.replace("probeB", "pr\u00e9obeB"), "is refused"),
+    ("C:\\Amiga\\Disks\\..\\wish679-x.adf", "is refused"),
+    (DISK_B.replace("probeB", "pro..beB"), "is refused"),
+    ("\\\\server\\share\\wish679-x.adf", "is refused"),
+    ("\\\\?\\C:\\Amiga\\Disks\\wish679-x.adf", "is refused"),
+    ("C:\\Amiga\\Disks\\wish679-x.zip", "is refused"),
+    ("D:\\Amiga\\Disks\\wish679-x.adf", "is refused"),
+    ("C:\\Amiga\\Disks\\sub\\wish679-x.adf", "is refused"),
+    ("C:\\Amiga\\Disks\\wish679-" + "x" * 200 + ".adf", "longer than 200"),
+    (DISK_B.replace(HOLDER, "wish679-other000000"), "belongs to another holder"),
+    (f"C:\\Amiga\\Disks\\wish679-{HOLDER}-.adf", "belongs to another holder"),
+    (f"C:\\Amiga\\Disks\\wish679-{HOLDER[:-1]}-probeB.adf", "belongs to another holder"),
+])
+def test_a_floppy_change_refuses_a_bad_path_before_anything_is_sent(path, text):
+    guest = LaneGuest()
+    with pytest.raises(ValueError, match=text):
+        insert(guest, path=path)
+    assert guest.calls == []
+
+
+@pytest.mark.parametrize("sha", [None, "", "b" * 63, "b" * 65, "g" * 64, " " + "b" * 63])
+def test_a_floppy_change_refuses_a_hash_that_is_not_a_sha256(sha):
+    guest = LaneGuest()
+    with pytest.raises(ValueError, match="is not 64 hexadecimal digits"):
+        insert(guest, sha=sha)
+    assert guest.calls == []
+
+
+@pytest.mark.parametrize("holder", ["", "a b", "x;y", "a" * 65, None, "a/b"])
+def test_a_floppy_change_refuses_a_holder_that_is_not_lane_safe(holder):
+    guest = LaneGuest()
+    with pytest.raises(ValueError, match="not a lane-safe name"):
+        insert(guest, holder=holder)
+    assert guest.calls == []
+
+
+def test_a_floppy_change_refuses_a_token_that_is_not_the_claims():
+    guest = LaneGuest()
+    with pytest.raises(ValueError, match="twelve hexadecimal digits"):
+        amiga.WinuaePipe(runner=guest).insert_floppy(0, DISK_B, HOLDER, SHA_B, token="x; dbg")
+    assert guest.calls == []
+
+
+def test_a_floppy_change_refuses_a_pipe_that_is_not_winuaes_own():
+    guest = LaneGuest()
+    with pytest.raises(ValueError, match="WinUAE's own pipe only"):
+        insert(guest, pipe="WinUAE_1")
+    assert guest.calls == []
+
+
+def test_a_floppy_change_never_goes_through_the_debugger_script(monkeypatch):
+    def refuse(*a, **k):
+        raise AssertionError("a floppy change went through script()")
+
+    monkeypatch.setattr(amiga.WinuaePipe, "script", refuse)
+    monkeypatch.setattr(amiga.WinuaePipe, "_framed", refuse)
+    guest = LaneGuest(guest_output("ok inserted drive=0 polls=4", swap_reads()))
+    insert(guest)
+
+
+@pytest.mark.parametrize("command", ["CFG floppy0 x dbg g", "ipc_quit", "g", "IPC_QUIT"])
+def test_the_debugger_route_still_refuses_what_could_open_a_console(command):
+    guest = LaneGuest()
+    if command.startswith("CFG"):
+        # The debugger prefix goes on in front, so a CFG text is a debugger word, not a setter.
+        assert amiga.WinuaePipe(runner=guest).script([command]).count("CFG floppy0") == 0
+        return
     with pytest.raises(ValueError):
-        amiga.WinuaePipe(runner=guest).insert_floppy(drive, DISK3)
-    assert guest.messages == []
-
-
-@pytest.mark.parametrize("path", [
-    DISK3 + ";q", 'C:\\Amiga\\Disks\\wish679-"x".adf',
-    "C:\\Amiga\\Disks\\wish679-x.adf\n", "C:\\Amiga\\Disks\\..\\wish1-x.adf",
-    "C:\\Amiga\\Disks\\wish679-x.zip", "C:\\Amiga\\Disks\\disk3.adf",
-    "D:\\Amiga\\Disks\\wish679-x.adf", "C:\\Amiga\\Disks\\wish-x.adf"])
-def test_a_floppy_insert_refuses_a_path_outside_the_disks_folder(path):
-    guest = CfgGuest()
-    with pytest.raises(ValueError):
-        amiga.WinuaePipe(runner=guest).insert_floppy(1, path)
-    assert guest.messages == []
-
-
-@pytest.mark.parametrize("path", [None, 3, b"x", ["a"]])
-def test_a_floppy_insert_refuses_a_non_string_path_with_value_error(path):
-    guest = CfgGuest()
-    with pytest.raises(ValueError):
-        amiga.WinuaePipe(runner=guest).insert_floppy(1, path)
-    assert guest.messages == []
-
-
-def test_a_floppy_insert_returns_the_raw_reply_unchanged():
-    p = amiga.WinuaePipe(runner=CfgGuest(reply="cannot open disk\n\x00"))
-    assert p.insert_floppy(1, DISK3) == "cannot open disk\n"
+        amiga.WinuaePipe(runner=guest).script([command])
+    assert guest.calls == []
 
 
 def test_a_debugger_command_still_goes_down_with_dbg_and_never_cfg():

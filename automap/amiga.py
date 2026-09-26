@@ -87,6 +87,7 @@ import struct
 import subprocess
 import time
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass, field
 
 from goldbox.geo import GEO_SIZE, Geo
@@ -468,6 +469,303 @@ def _check_commands(commands: list[str]) -> None:
                     "sends reading commands only")
 
 
+#: What a staged floppy path looks like: a file `WinGuest` copied into the disks
+#: folder, named for an issue, its holder and a disk key. Dots only sit between
+#: non-empty segments, so `..` cannot match.
+FLOPPY_PATH = re.compile(
+    r"C:\\Amiga\\Disks\\wish[0-9]+-[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.adf")
+FLOPPY_PATH_MAX = 200
+_HOLDER = re.compile(r"[A-Za-z0-9._-]{1,64}")
+_SHA256 = re.compile(r"[0-9A-Fa-f]{64}")
+_TOKEN = re.compile(r"[0-9A-Fa-f]{12}")
+_FLOPPY_PREFIX = re.compile(r"C:\\Amiga\\Disks\\wish[0-9]+-")
+_DRIVE_LINE = re.compile(
+    r"^DEBUG: drive ([0-3]) motor (?:off| on) cylinder\s*\d+ sel (?:yes|no) "
+    r"(ro|rw) mfmpos \d+/\d+$", re.M)
+
+#: How long the guest polls a drive after the setter, and how far apart.
+FLOPPY_POLL_SECONDS = 10.0
+
+
+class FloppyError(GuestError):
+    """A floppy change was refused, unanswered or not proved.
+
+    `receipt` holds whatever the guest returned, so the raw replies survive a
+    failure; the caller must not press a key on after one.
+    """
+
+    def __init__(self, message: str, receipt: dict | None = None):
+        super().__init__(message)
+        self.receipt = receipt or {}
+
+
+@dataclass
+class FloppyReceipt:
+    """What one `drives` or `insert` verb did, with every raw reply kept."""
+
+    verb: str
+    holder: str
+    drive: int | None
+    path: str | None
+    sha256: str | None
+    status: str = ""
+    output: str = ""
+    seconds: float = 0.0
+    pid: str | None = None
+    started: str | None = None
+    exe: str | None = None
+    server_pid: str | None = None
+    connect_ms: float | None = None
+    #: `(seq, label)` -> `(guest milliseconds, raw reply bytes)`. Sequence 0 is
+    #: the read before the setter (and the setter's own reply, label `set`);
+    #: 1 upwards are the polls.
+    replies: dict = field(default_factory=dict)
+    #: The path was already in the target drive, so nothing was sent.
+    already: bool = False
+    #: Milliseconds from the setter's reply to the second `rw` poll.
+    applied_ms: float | None = None
+    #: Polls taken after the setter.
+    polls: int = 0
+    #: Each drive's path and `ro`/`rw` before the setter.
+    before: dict = field(default_factory=dict)
+
+    def as_dict(self) -> dict:
+        """A form a run log can hold: raw replies as base64, one entry each."""
+        return {
+            "verb": self.verb, "holder": self.holder, "drive": self.drive,
+            "path": self.path, "sha256": self.sha256, "status": self.status,
+            "seconds": round(self.seconds, 3), "pid": self.pid,
+            "started": self.started, "exe": self.exe,
+            "server_pid": self.server_pid, "connect_ms": self.connect_ms,
+            "already": self.already, "applied_ms": self.applied_ms,
+            "polls": self.polls, "before": self.before,
+            "replies": [
+                {"seq": seq, "label": label, "ms": ms,
+                 "raw": base64.b64encode(raw).decode("ascii")}
+                for (seq, label), (ms, raw) in sorted(self.replies.items())],
+        }
+
+    def drive_state(self) -> dict:
+        """Each drive's path and `ro`/`rw` at the read before any setter, parsed."""
+        return _state_of(self, 0)
+
+    def __str__(self) -> str:
+        return self.status
+
+
+def refuse_floppy_change(drive, path, holder, sha256) -> tuple[int, str, str, str]:
+    """The request as it may be sent, or a `ValueError` before anything leaves.
+
+    Only DF0 and DF1 may change, the path must be one file staged for `holder`
+    in the disks folder, and nothing that could carry a second token, a
+    directory climb or a network path gets through.
+    """
+    if isinstance(drive, bool) or not isinstance(drive, int) or drive not in (0, 1):
+        raise ValueError(f"Floppy drive {drive!r} is refused: only DF0 and DF1 "
+                         "may be changed")
+    holder = _floppy_holder(holder)
+    if not isinstance(path, str):
+        raise ValueError(f"Floppy path {path!r} is not a disk this run staged "
+                         f"for {holder}")
+    reason = None
+    if len(path) > FLOPPY_PATH_MAX:
+        reason = f"it is longer than {FLOPPY_PATH_MAX} characters"
+    elif any(ord(ch) < 32 or ord(ch) > 126 for ch in path):
+        reason = "it holds a control or non-ASCII character"
+    elif any(ch in ' "\';=%' for ch in path):
+        reason = "it holds a space, quote, semicolon, equals sign or percent sign"
+    elif ".." in path:
+        reason = "it holds .."
+    elif not FLOPPY_PATH.fullmatch(path):
+        reason = "it is not a staged ADF under C:\\Amiga\\Disks"
+    if reason:
+        raise ValueError(f"Floppy path {path!r} is refused: {reason}")
+    prefix = _FLOPPY_PREFIX.match(path)
+    if not path[prefix.end():].startswith(holder + "-") \
+            or len(path) == prefix.end() + len(holder) + 1 + len(".adf"):
+        raise ValueError(f"Floppy path {path!r} belongs to another holder")
+    if not isinstance(sha256, str) or not _SHA256.fullmatch(sha256):
+        raise ValueError(f"SHA-256 {sha256!r} is refused: it is not 64 "
+                         "hexadecimal digits")
+    return drive, path, holder, sha256.lower()
+
+
+def _floppy_holder(holder) -> str:
+    if not isinstance(holder, str) or not _HOLDER.fullmatch(holder):
+        raise ValueError(f"Holder {holder!r} is refused: it is not a lane-safe name")
+    return holder
+
+
+def _nul_text(raw: bytes, message: str, encoding: str) -> str:
+    """One reply as text: exactly one NUL, at the end, and decodable."""
+    if raw.count(b"\0") != 1 or not raw.endswith(b"\0"):
+        raise FloppyError(f"Reply to {message} is not one NUL-terminated "
+                          f"string: {raw.hex()}")
+    try:
+        return raw[:-1].decode(encoding)
+    except UnicodeDecodeError as exc:
+        raise FloppyError(f"Reply to {message} is not {encoding} text: "
+                          f"{raw.hex()}") from exc
+
+
+def _query_value(text: str, drive: int) -> str:
+    """The value a `CFG floppy<N>` query read: `404` is an empty drive."""
+    if text == "404":
+        return ""
+    if text.startswith("200 \n") and "\n" not in text[5:]:
+        return text[5:]
+    raise FloppyError(f"WinUAE answered CFG floppy{drive} with {text!r}, which "
+                      "is neither 404 nor one 200 line")
+
+
+def parse_drive_dump(text: str) -> dict[int, str]:
+    """`ro` or `rw` for DF0 and DF1 out of a `DBG c` reply, one line each."""
+    lines = [line.rstrip("\r") for line in text.split("\n")]
+    found: dict[int, list[str]] = {0: [], 1: []}
+    for line in lines:
+        m = _DRIVE_LINE.match(line)
+        if m and int(m.group(1)) in found:
+            found[int(m.group(1))].append(m.group(2))
+    for drive, modes in found.items():
+        if len(modes) != 1:
+            raise FloppyError(f"The drive dump has {'no' if not modes else 'more than one'}"
+                              f" line for DF{drive}")
+    return {drive: modes[0] for drive, modes in found.items()}
+
+
+def _read_guest(out: str, verb: str, holder: str, drive, path, sha256,
+                seconds: float) -> FloppyReceipt:
+    """The guest's `<<tag>>` lines as a receipt; nothing is judged yet."""
+    receipt = FloppyReceipt(verb, holder, drive, path, sha256, output=out,
+                            seconds=seconds)
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
+    if lines:
+        receipt.status = lines[0]
+    ended = False
+    for line in lines[1:]:
+        if line == "<<end>>":
+            ended = True
+            continue
+        if line.startswith("<<r>> "):
+            bits = line.split(" ", 4)
+            if len(bits) == 4:
+                # An empty reply prints no payload, and the line loses its trailing space.
+                bits.append("")
+            try:
+                _tag, seq, label, ms, payload = bits
+                receipt.replies[(int(seq), label)] = (
+                    float(ms), base64.b64decode(payload, validate=True))
+            except (ValueError, base64.binascii.Error) as exc:
+                raise FloppyError(f"The guest printed a malformed reply line: "
+                                  f"{line[:120]}", receipt.as_dict()) from exc
+            continue
+        for tag in ("pid", "started", "exe", "server_pid", "connect_ms"):
+            if line.startswith(f"<<{tag}>> "):
+                value = line.split(" ", 1)[1]
+                setattr(receipt, tag,
+                        float(value) if tag == "connect_ms" else value)
+    if not receipt.status.startswith("fail") and not ended:
+        raise FloppyError("The guest script did not finish; its output ended: "
+                          f"{out.strip()[-400:]}", receipt.as_dict())
+    return receipt
+
+
+def _check_status(receipt: FloppyReceipt) -> None:
+    """Stop on the guest's own refusal; anything but `ok` or `fail` is an error."""
+    status = receipt.status
+    if status.startswith("fail"):
+        raise FloppyError("The guest refused the floppy change: "
+                          + status[5:], receipt.as_dict())
+    if not status.startswith("ok"):
+        raise FloppyError(f"The guest answered {status!r}, which is neither ok "
+                          "nor fail", receipt.as_dict())
+
+
+def _state_of(receipt: FloppyReceipt, seq: int, gate: bool = False) -> dict:
+    """Each drive's path and `ro`/`rw` at one read, parsed from its raw replies."""
+    try:
+        got = {label: receipt.replies[(seq, label)][1]
+               for label in ("q0", "q1", "dbg")}
+    except KeyError as exc:
+        raise FloppyError(f"The guest reported no {exc.args[0][1]} reply for "
+                          f"read {seq}", receipt.as_dict()) from exc
+    try:
+        first = _nul_text(got["q0"], "CFG floppy0", "ascii")
+        if gate and first in ("404", "501"):
+            raise FloppyError("The WinUAE pipe is not answering configuration "
+                              f"queries ({first}); nothing was sent")
+        paths = {0: _query_value(first, 0),
+                 1: _query_value(_nul_text(got["q1"], "CFG floppy1", "ascii"), 1)}
+        modes = parse_drive_dump(_nul_text(got["dbg"], "DBG c", "latin-1"))
+    except FloppyError as exc:
+        exc.receipt = receipt.as_dict()
+        raise
+    return {"paths": paths, "modes": modes}
+
+
+def _judge_insert(receipt: FloppyReceipt) -> None:
+    """Decide from the raw replies alone whether the disk went in."""
+    d, path = receipt.drive, receipt.path
+    o = 1 - d
+
+    def fail(text: str):
+        raise FloppyError(text, receipt.as_dict())
+
+    before = _state_of(receipt, 0, gate=True)
+    receipt.before = {"paths": {f"DF{n}": v for n, v in before["paths"].items()},
+                      "modes": {f"DF{n}": v for n, v in before["modes"].items()}}
+    setter = receipt.replies.get((0, "set"))
+    if before["paths"][o] == path:
+        fail(f"{path} is already in DF{o}")
+    if before["paths"][d] == path:
+        if setter is not None:
+            fail(f"The guest sent a setter although DF{d} already named {path}")
+        if before["modes"][d] != "rw":
+            fail(f"DF{d} names {path} but holds no disk")
+        receipt.already = True
+        return
+    if setter is None:
+        fail("The guest sent no setter and reported no reply to one")
+    said = _nul_text(setter[1], f"the DF{d} change", "ascii")
+    if said != "404":
+        fail(f"WinUAE answered the DF{d} change with {said}; a setter answers 404")
+    seqs = sorted({seq for seq, _ in receipt.replies if seq > 0})
+    if not seqs:
+        fail(f"DF{d} was never read after the change")
+    seen_path = seen_ro = False
+    run = 0
+    last = ""
+    for seq in seqs:
+        now = _state_of(receipt, seq)
+        last = now["paths"][d]
+        if now["paths"][o] != before["paths"][o] or now["modes"][o] != before["modes"][o]:
+            fail(f"DF{o} changed from {before['paths'][o] or '(empty)'} "
+                 f"{before['modes'][o]} to {now['paths'][o] or '(empty)'} "
+                 f"{now['modes'][o]} while DF{d} was being changed")
+        if not seen_path and now["paths"][d] == path:
+            seen_path = True
+        if seen_path and not seen_ro:
+            if now["modes"][d] == "ro":
+                seen_ro = True
+        elif seen_ro and receipt.applied_ms is None:
+            if now["modes"][d] == "rw" and now["paths"][d] == path:
+                run += 1
+                if run == 2:
+                    receipt.applied_ms = receipt.replies[(seq, "dbg")][0] - setter[0]
+            else:
+                run = 0
+    receipt.polls = len(seqs)
+    if not seen_path:
+        fail(f"DF{d} never took {path} in {FLOPPY_POLL_SECONDS:.0f} s; it reads "
+             f"{last or '(empty)'}")
+    if not seen_ro:
+        fail(f"DF{d} took {path} but was never seen empty, so the old disk may "
+             "still be in it")
+    if receipt.applied_ms is None:
+        fail(f"DF{d} names {path} but holds no disk after "
+             f"{FLOPPY_POLL_SECONDS:.0f} s")
+
+
 class WinuaePipe:
     """The transport that does not touch the console: WinUAE's own named pipe.
 
@@ -556,8 +854,8 @@ class WinuaePipe:
         """The PowerShell for messages that already carry their prefix.
 
         `script` prefixes `DBG ` after `_check_commands`, so a debugger command
-        can never go down as `CFG `; `insert_floppy` is the only `CFG` sender
-        and never passes through `script`.
+        can never go down as `CFG `. The one `CFG` message this project sends
+        is built in `winuae.ps1`, never here.
         """
         encoded = ",".join(
             "'" + base64.b64encode(m.encode("ascii")).decode("ascii")
@@ -635,38 +933,91 @@ Write-Output '<<end>>'
         replies, timings = self._replies(out, list(commands) * repeat)
         return (replies, timings) if with_timings else replies
 
-    #: What a floppy path may be: a file `WinGuest` staged in the disks folder
-    #: under its own holder's name. No `;`, quote, newline or `..` can match.
-    FLOPPY_PATH = re.compile(r"C:\\Amiga\\Disks\\wish[0-9]+-[A-Za-z0-9._-]+\.adf")
+    FLOPPY_PATH = FLOPPY_PATH
 
-    def insert_floppy(self, drive: int, path: str) -> str:
-        """Put an ADF into a drive of the running machine and give the reply.
+    #: The lane script that owns the ownership checks and the pipe for a floppy
+    #: change, as it is deployed on the guest.
+    LANE_SCRIPT = "C:\\Amiga\\winuae.ps1"
 
-        Sends the one message `CFG floppy<drive>=<path>`, which `uaeipc.cpp`
-        hands to `cfgfile_modify`. Nothing is sent when either argument is
-        refused. Only DF1 may be changed while the game runs: DF0 holds the
-        boot disk and any other drive is configured statically at start.
+    def drives(self, holder: str, token: str | None = None) -> FloppyReceipt:
+        """Read what each drive holds: the path WinUAE accepted and `ro` or `rw`.
 
-        `path` is the Windows form with backslashes, so a caller holding a
-        forward-slash path converts it first.
-
-        The reply is returned raw. Whether a `cfgfile_modify` complaint reads
-        differently from success is not measured, so a caller must not treat
-        the reply as proof the disk went in; the first Pools of Darkness
-        measuring boot records the real success and failure texts, and a later
-        change may compare against them.
+        The guest checks the lane claim, the run receipt, the executable and the
+        pipe's server process before it reads, in the one process that holds the
+        pipe. Nothing is changed.
         """
-        if isinstance(drive, bool) or drive != 1:
-            raise ValueError(f"floppy drive {drive!r} is refused: only DF1 may "
-                             "be changed while the game runs")
-        if not isinstance(path, str) or not self.FLOPPY_PATH.fullmatch(path):
-            raise ValueError(f"floppy path {path!r} is not a staged ADF in "
-                             "C:\\Amiga\\Disks")
-        message = f"CFG floppy{drive}={path}"
-        self.sent.append(message)
-        out = self._execute(self._framed([message]))
-        replies, _timings = self._replies(out, [message])
-        return replies[0][1]
+        holder = _floppy_holder(holder)
+        out, seconds = self.lane_verb("drives", holder, token, [])
+        receipt = _read_guest(out, "drives", holder, None, None, None, seconds)
+        _check_status(receipt)
+        _state_of(receipt, 0, gate=True)
+        return receipt
+
+    def insert_floppy(self, drive: int, path: str, holder: str, sha256: str,
+                      token: str | None = None,
+                      staged: Collection[str] | None = None) -> FloppyReceipt:
+        """Put a staged ADF into DF0 or DF1 of the running machine, and prove it went in.
+
+        The setter is `CFG floppy<N> <path>`; it answers `404` whether it worked
+        or not, and the query `CFG floppy<N>` only shows the name WinUAE
+        accepted. So success is a poll over one connection: the query shows the
+        path, the drive reads `ro`, then two consecutive polls read `rw` with
+        the path unchanged, and the other drive never moves. The guest does the
+        connecting, the ownership checks, the send and the poll; this refuses a
+        bad request before anything leaves and judges the raw replies afterwards.
+
+        A drive is 0 or 1 (an `int`, never a `bool`); `path` is the Windows form
+        of a disk staged for `holder`; `sha256` is the staged file's hash, which
+        the guest compares before it sends anything. A path already in the
+        target drive sends nothing. When `staged` is given, `path` must be one of
+        the paths this run copied to the guest. Any failure raises `FloppyError`,
+        whose `receipt` keeps every reply, and the caller must not press a key on.
+        """
+        drive, path, holder, sha256 = refuse_floppy_change(
+            drive, path, holder, sha256)
+        if staged is not None and path not in staged:
+            raise ValueError(f"Floppy path {path!r} is not a disk this run staged "
+                             f"for {holder}")
+        out, seconds = self.lane_verb("insert", holder, token,
+                                  [str(drive), path, sha256])
+        receipt = _read_guest(out, "insert", holder, drive, path, sha256, seconds)
+        _check_status(receipt)
+        _judge_insert(receipt)
+        return receipt
+
+    def lane_verb(self, verb: str, holder: str, token: str | None,
+                  args: list[str]) -> tuple[str, float]:
+        """Run one `winuae.ps1` verb on the guest: its output and the seconds it took.
+
+        `insert_floppy` and `drives` are the callers; a control that must reach the
+        guest's own checks with a request Python would refuse calls this directly.
+        """
+        if self.pipe != "WinUAE":
+            raise ValueError(f"The pipe {self.pipe!r} is refused: the lane script "
+                             "reaches WinUAE's own pipe only")
+        words = [verb, "-Holder", holder]
+        if token is not None:
+            if not _TOKEN.fullmatch(token):
+                raise ValueError(f"Claim token {token!r} is refused: it is not "
+                                 "twelve hexadecimal digits")
+            words += ["-Token", token]
+        words += args
+        if self.connection == "local":
+            argv = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                    "-File", self.LANE_SCRIPT, *words]
+        else:
+            argv = ["winvm", "ssh", "powershell -NoProfile -ExecutionPolicy Bypass "
+                    f"-File {self.LANE_SCRIPT} " + " ".join(words)]
+        begun = time.monotonic()
+        try:
+            return self._run(argv, self.timeout), time.monotonic() - begun
+        except GuestError as exc:
+            # The lane script exits 1 on a refusal made before it opened the pipe.
+            text = str(exc)
+            at = text.find("fail ")
+            raise FloppyError(
+                "The guest refused the floppy change: "
+                + (text[at + 5:] if at >= 0 else text), {"output": text}) from exc
 
     def batch(self, lines: list[str],
               fetch: list[tuple[str, str]] | None = None

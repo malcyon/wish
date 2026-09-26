@@ -21,6 +21,8 @@
 #   winvm ssh "$ps send '-File C:\Amiga\cmds.txt' -Holder por-run"
 #   winvm ssh "$ps send '-DumpOnly -Tail 40' -Holder por-run"
 #   winvm ssh "$ps front -Holder por-run"
+#   winvm ssh "$ps drives -Holder por-run"      # what DF0 and DF1 hold, read over WinUAE's pipe
+#   winvm ssh "$ps insert -Holder por-run 0 C:\Amiga\Disks\wish679-por-run-disk2.adf <sha256>"
 #   winvm ssh "$ps status"
 #   winvm ssh "$ps stop -Holder por-run"        # before clean, always
 #   winvm ssh "$ps release -Holder por-run"     # let the next lane in
@@ -64,7 +66,7 @@
 
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('start','stop','front','status','send','key','roms','clean','claim','release')][string]$Cmd,
+  [ValidateSet('start','stop','front','status','send','key','roms','clean','claim','release','drives','insert')][string]$Cmd,
   [Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest
 )
 
@@ -83,6 +85,10 @@ param(
 # and `-s` belong to WinUAE.
 $Holder   = ''
 $Override = $false
+# `-Token` is the claim's own token, an optional second proof of the holder. It is
+# not called $Token because PowerShell variable names ignore case and `claim`
+# and `send` assign a local $token of their own.
+$WantToken = ''
 # `key -Extended` sets KEYEVENTF_EXTENDEDKEY, which is what separates the four
 # cursor keys from the four numeric-keypad keys: without it keybd_event turns
 # VK_UP into scancode 0x48, and 0x48 with no E0 prefix is DIK_NUMPAD8. Every
@@ -97,6 +103,7 @@ for ($i = 0; $i -lt $given.Count; $i++) {
   $a = $given[$i]
   if ($a -eq '-Holder') { $i++; if ($i -lt $given.Count) { $Holder = $given[$i] } }
   elseif ($a -eq '-Override') { $Override = $true }
+  elseif ($a -eq '-Token') { $i++; if ($i -lt $given.Count) { $WantToken = $given[$i] } }
   elseif ($a -eq '-Extended') { $Extended = $true }
   else { [void]$passthru.Add($a) }
 }
@@ -444,6 +451,193 @@ $RaiseAndCheck = @'
 Start-Sleep -Milliseconds 300
 $fg = ([W]::GetForegroundWindow() -eq $h)
 '@
+
+# -- `drives` and `insert`: WinUAE's own pipe, from one process ----------------
+#
+# A floppy change goes down `\\.\pipe\WinUAE` as `CFG floppy<N> <path>`, and the
+# only safe place to send it is a process that has just proved the pipe is the
+# lane's own emulator's. So the ownership checks, the connection and every
+# message are one PowerShell process: a separate successful `status` call would
+# prove nothing about the pipe a later call reaches.
+#
+# Output. The first line is the verdict, `ok ...` or `fail ...`. Then one
+# `<<tag>> value` line each for pid, started, exe, server_pid and connect_ms,
+# and `<<r>> <seq> <label> <ms> <base64>` for every raw reply: seq 0 is the read
+# before the setter (labels q0, q1 for `CFG floppy0` and `CFG floppy1`, dbg for
+# `DBG c`) and the setter's own reply (label set); seq 1 upwards are the polls.
+# `<<end>>` closes the block. A refusal made before the pipe is opened exits 1
+# with the reason. Once the pipe is open the exit code is 0 whatever the verdict,
+# so the raw replies of a failure reach the caller; the verdict line is the answer.
+# The caller judges the replies itself; the checks here only decide what may be sent.
+$DiskPattern = '^C:\\Amiga\\Disks\\wish[0-9]+-[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.adf\z'
+$DriveLine   = 'DEBUG: drive ([0-3]) motor (?:off| on) cylinder\s*\d+ sel (?:yes|no) (ro|rw) mfmpos \d+/\d+'
+$PollBoundMs = 10000
+$PollEveryMs = 250
+
+# The one winuae64 this lane started, or why the caller must not touch the one
+# that is there: the claim, the optional token, the run receipt, and the
+# executable, all before anything is opened.
+function Get-LaneEmulator {
+  $deny = Claim-Denial
+  if ($deny) { return @{ err = $deny } }
+  if ($WantToken) {
+    $c = Get-Claim
+    if (-not $c -or $c['token'] -ne $WantToken) {
+      return @{ err = "fail the WinUAE lane's claim token is not the one $Holder took" }
+    }
+  }
+  $mine = Resolve-MyEmulator
+  if ($mine.err) { return @{ err = $mine.err } }
+  $cim = Get-CimInstance Win32_Process -Filter "ProcessId=$($mine.proc.Id)" -ErrorAction SilentlyContinue
+  $path = if ($cim) { $cim.ExecutablePath } else { $null }
+  if ($path -ne $Exe) { return @{ err = "fail winuae64 pid=$($mine.proc.Id) runs $path, not $Exe" } }
+  @{ proc = $mine.proc; run = $mine.run; exe = $path }
+}
+
+# One message out, one reply back, both NUL-terminated as `uaeipc.cpp` wants: a
+# request without its NUL picks up bytes of a longer earlier one.
+function Send-Pipe($Pipe, [string]$Text) {
+  $b = [Text.Encoding]::ASCII.GetBytes($Text)
+  $msg = New-Object byte[] ($b.Length + 1)
+  [Array]::Copy($b, $msg, $b.Length)
+  $Pipe.Write($msg, 0, $msg.Length)
+  $Pipe.Flush()
+  $buf = New-Object byte[] 65536
+  $ms = New-Object IO.MemoryStream
+  do {
+    $task = $Pipe.ReadAsync($buf, 0, $buf.Length)
+    if (-not $task.Wait(10000)) { throw "the pipe accepted a message and never replied in 10000 ms" }
+    $n = $task.Result
+    if ($n -gt 0) { $ms.Write($buf, 0, $n) }
+    if ($n -eq 0) { break }
+  } while (-not $Pipe.IsMessageComplete)
+  ,$ms.ToArray()
+}
+
+function Read-Drives($Pipe, $Sw, [int]$Seq, $Tags) {
+  $out = @{}
+  foreach ($item in @(@('q0', 'CFG floppy0'), @('q1', 'CFG floppy1'), @('dbg', 'DBG c'))) {
+    $bytes = Send-Pipe $Pipe $item[1]
+    $Tags.Add("<<r>> $Seq $($item[0]) $($Sw.ElapsedMilliseconds) $([Convert]::ToBase64String($bytes))") | Out-Null
+    $out[$item[0]] = [Text.Encoding]::GetEncoding('iso-8859-1').GetString($bytes).TrimEnd([char]0)
+  }
+  # A path is the text after the status line, or empty for `404`.
+  $paths = @{}
+  foreach ($n in 0, 1) {
+    $t = $out["q$n"]
+    $paths[$n] = if ($t.StartsWith("200 `n")) { $t.Substring(5) } else { '' }
+  }
+  $modes = @{}
+  foreach ($m in [regex]::Matches($out['dbg'], $DriveLine)) { $modes[[int]$m.Groups[1].Value] = $m.Groups[2].Value }
+  @{ q0 = $out['q0']; paths = $paths; modes = $modes }
+}
+
+function Invoke-Floppy([string]$Verb) {
+  $write = ($Verb -eq 'insert')
+  if ($write) {
+    # Refused before the claim is even read: nothing about the request can be right.
+    $deny = Claim-Denial
+    if ($deny) { $deny; exit 1 }
+    if ($Rest.Count -ne 3) { 'fail insert needs <drive> <path> <sha256>'; exit 1 }
+    $drive = $Rest[0]; $path = $Rest[1]; $want = $Rest[2]
+    if ($drive -cnotmatch '^[01]$') { "fail '$drive' is not DF0 or DF1"; exit 1 }
+    if ($path.Length -gt 200 -or $path.Contains('..') -or $path -cnotmatch $DiskPattern) {
+      "fail $path is not a staged ADF under C:\Amiga\Disks"; exit 1
+    }
+    $prefix = [regex]::Match($path, '^C:\\Amiga\\Disks\\wish[0-9]+-').Value
+    if (-not $path.Substring($prefix.Length).StartsWith("$Holder-", [StringComparison]::Ordinal)) {
+      "fail $path is not staged for $Holder"; exit 1
+    }
+    if ($want -cnotmatch '^[0-9A-Fa-f]{64}$') { "fail '$want' is not a SHA-256"; exit 1 }
+    $drive = [int]$drive
+  }
+  $lane = Get-LaneEmulator
+  if ($lane.err) { $lane.err; exit 1 }
+  if ($write) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { "fail $path does not exist"; exit 1 }
+    $got = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    if ($got -ne $want.ToUpper()) { "fail $path hashes $($got.ToLower()), not $($want.ToLower())"; exit 1 }
+  }
+  $tags = New-Object System.Collections.ArrayList
+  $verdict = $null
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  $pipe = $null
+  try {
+    Add-Type -Namespace Wish -Name PipeInfo -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
+    $pipe = New-Object IO.Pipes.NamedPipeClientStream '.', 'WinUAE', 'InOut'
+    $pipe.Connect(5000)
+    $pipe.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
+    $tags.Add("<<connect_ms>> $($sw.ElapsedMilliseconds)") | Out-Null
+    $tags.Add("<<pid>> $($lane.proc.Id)") | Out-Null
+    $tags.Add("<<started>> $($lane.proc.StartTime.ToString('o'))") | Out-Null
+    $tags.Add("<<exe>> $($lane.exe)") | Out-Null
+    [uint32]$server = 0
+    if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($pipe.SafePipeHandle.DangerousGetHandle(), [ref]$server)) {
+      throw "GetNamedPipeServerProcessId failed, error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+    }
+    $tags.Add("<<server_pid>> $server") | Out-Null
+    if ($server -ne $lane.proc.Id) {
+      $verdict = "fail \\.\pipe\WinUAE is served by pid=$server, not by this lane's winuae64 pid=$($lane.proc.Id)"
+    }
+    if (-not $verdict) {
+      # The claim can be stolen with -Override while the pipe was opening; ask again.
+      $again = Get-LaneEmulator
+      if ($again.err) { $verdict = $again.err }
+      elseif ($again.proc.Id -ne $lane.proc.Id) { $verdict = "fail winuae64 pid=$($again.proc.Id) is not the pid=$($lane.proc.Id) this lane started" }
+    }
+    if (-not $verdict) {
+      $before = Read-Drives $pipe $sw 0 $tags
+      if (-not $before.q0.StartsWith("200 `n")) {
+        $verdict = "fail The WinUAE pipe is not answering configuration queries ($($before.q0)); nothing was sent"
+      }
+      elseif (-not $write) { $verdict = "ok drives pid=$($lane.proc.Id)" }
+      else {
+        $o = 1 - $drive
+        if ($before.paths[$o] -eq $path) { $verdict = "fail $path is already in DF$o" }
+        elseif ($before.paths[$drive] -eq $path) {
+          $verdict = if ($before.modes[$drive] -eq 'rw') { "ok already drive=$drive" }
+                     else { "fail DF$drive names $path but holds no disk" }
+        }
+      }
+    }
+    if (-not $verdict -and $write) {
+      # The last look before the one mutation.
+      $last = Claim-Denial
+      if ($last) { $verdict = $last }
+    }
+    if (-not $verdict -and $write) {
+      $bytes = Send-Pipe $pipe "CFG floppy$drive $path"
+      $tags.Add("<<r>> 0 set $($sw.ElapsedMilliseconds) $([Convert]::ToBase64String($bytes))") | Out-Null
+      $setAt = $sw.ElapsedMilliseconds
+      $seq = 0; $sawPath = $false; $sawRo = $false; $rwRun = 0; $applied = $false
+      while (($sw.ElapsedMilliseconds - $setAt) -lt $PollBoundMs -and -not $verdict -and -not $applied) {
+        Start-Sleep -Milliseconds $PollEveryMs
+        $seq++
+        $now = Read-Drives $pipe $sw $seq $tags
+        if ($now.paths[$o] -ne $before.paths[$o] -or $now.modes[$o] -ne $before.modes[$o]) {
+          $verdict = "fail DF$o changed while DF$drive was being changed"
+        }
+        if ($now.paths[$drive] -eq $path) { $sawPath = $true }
+        if ($sawPath -and -not $sawRo) { if ($now.modes[$drive] -eq 'ro') { $sawRo = $true } }
+        elseif ($sawRo) {
+          if ($now.modes[$drive] -eq 'rw' -and $now.paths[$drive] -eq $path) { $rwRun++ } else { $rwRun = 0 }
+          if ($rwRun -ge 2) { $applied = $true }
+        }
+      }
+      if (-not $verdict) {
+        $verdict = if ($applied) { "ok inserted drive=$drive polls=$seq" }
+                   else { "fail DF$drive was not seen holding $path within $($PollBoundMs / 1000) s" }
+      }
+    }
+  } catch {
+    $verdict = "fail $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+  } finally {
+    if ($pipe) { $pipe.Dispose() }
+  }
+  $verdict
+  $tags
+  '<<end>>'
+}
 
 switch ($Cmd) {
 
@@ -911,6 +1105,19 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     }
     Remove-Item $Receipt, $SendLog, $RunFile, $ClaimFile, "$Root\console.txt" -ErrorAction SilentlyContinue
     'ok cleaned'
+  }
+
+  'drives' {
+    # Read-only: what DF0 and DF1 name and whether each holds a disk. See the
+    # notes above Invoke-Floppy for the output.
+    Invoke-Floppy 'drives'
+  }
+
+  'insert' {
+    # insert <drive 0|1> <path> <sha256>: the one mutation this script makes over
+    # WinUAE's pipe. The path must be a disk staged for -Holder under
+    # C:\Amiga\Disks and the file must hash to <sha256> before anything is sent.
+    Invoke-Floppy 'insert'
   }
 
   'status' {

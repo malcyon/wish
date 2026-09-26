@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import pathlib
+import re
 import sys
 import types
 
@@ -231,3 +232,109 @@ def test_the_lifecycle_commands_are_refused_without_running_anything(
 def test_a_lease_points_at_the_winuae_lane_instead():
     assert "winuae.ps1 claim" in w.REFUSED["acquire"]
     assert "winuae.ps1 release" in w.REFUSED["release"]
+
+
+# -- the lane script's `drives` and `insert` verbs ---------------------------------
+#
+# There is no PowerShell here, so these pin the structure of the script text: what
+# is checked, in what order, and the exact messages that go down the pipe. What the
+# script does on the guest is measured by the drive-check probe.
+
+WINUAE_PS1 = (pathlib.Path(__file__).resolve().parents[2] / "tools" / "amiga"
+              / "winuae.ps1").read_text()
+FLOPPY = WINUAE_PS1[WINUAE_PS1.index("function Invoke-Floppy"):
+                    WINUAE_PS1.index("switch ($Cmd) {")]
+
+
+def _at(needle: str, start: int = 0) -> int:
+    at = FLOPPY.find(needle, start)
+    assert at >= 0, needle
+    return at
+
+
+def test_the_lane_script_accepts_the_two_new_verbs():
+    valid = re.search(r"ValidateSet\(([^)]*)\)", WINUAE_PS1).group(1)
+    assert "'drives'" in valid and "'insert'" in valid
+    assert "'drives' {" in WINUAE_PS1 and "'insert' {" in WINUAE_PS1
+
+
+def test_ownership_is_checked_before_the_pipe_is_opened_and_twice_more_after():
+    opened = _at("New-Object IO.Pipes.NamedPipeClientStream")
+    assert FLOPPY.count("Get-LaneEmulator") == 2
+    assert _at("Get-LaneEmulator") < opened < _at("Get-LaneEmulator", opened)
+    setter = _at('Send-Pipe $pipe "CFG floppy$drive $path"')
+    assert opened < _at("Claim-Denial", opened) < setter
+    assert _at("Claim-Denial") < opened
+
+
+def test_the_lane_emulator_check_reuses_the_claim_and_receipt_functions():
+    body = WINUAE_PS1[WINUAE_PS1.index("function Get-LaneEmulator"):
+                      WINUAE_PS1.index("function Send-Pipe")]
+    assert body.index("Claim-Denial") < body.index("Resolve-MyEmulator") < body.index("ExecutablePath")
+    assert "$path -ne $Exe" in body
+    assert "claim token is not the one" in body
+
+
+def test_the_pipe_is_bound_to_the_lanes_own_process():
+    assert "GetNamedPipeServerProcessId" in FLOPPY
+    assert _at("GetNamedPipeServerProcessId") < _at("$server -ne $lane.proc.Id")
+    assert _at("$server -ne $lane.proc.Id") < _at('Send-Pipe $pipe "CFG floppy$drive $path"')
+
+
+def test_the_file_and_its_hash_are_checked_before_the_pipe_is_opened():
+    opened = _at("New-Object IO.Pipes.NamedPipeClientStream")
+    assert _at("Test-Path -LiteralPath $path -PathType Leaf") < opened
+    assert _at("Get-FileHash -LiteralPath $path") < opened
+    assert "does not exist" in FLOPPY
+    assert re.search(r"if \(\$got -ne \$want\.ToUpper\(\)\) \{ \"fail \$path hashes[^}]*exit 1 \}", FLOPPY)
+
+
+def test_the_drive_path_and_holder_are_validated_in_the_guest_too():
+    assert "'^[01]$'" in FLOPPY
+    assert "$path.Length -gt 200" in FLOPPY and "$path.Contains('..')" in FLOPPY
+    assert "StartsWith(\"$Holder-\", [StringComparison]::Ordinal)" in FLOPPY
+    assert "is not staged for $Holder" in FLOPPY
+    assert "'^[0-9A-Fa-f]{64}$'" in FLOPPY
+
+
+def test_the_guest_sends_exactly_one_setter_of_exactly_two_tokens():
+    assert FLOPPY.count("CFG floppy$drive $path") == 1
+    assert re.findall(r'Send-Pipe \$pipe "([^"]*)"', FLOPPY) == ["CFG floppy$drive $path"]
+    reads = WINUAE_PS1[WINUAE_PS1.index("function Read-Drives"):WINUAE_PS1.index("function Invoke-Floppy")]
+    assert re.findall(r"@\('(\w+)', '([^']*)'\)", reads) == [
+        ("q0", "CFG floppy0"), ("q1", "CFG floppy1"), ("dbg", "DBG c")]
+    assert "ipc_" not in WINUAE_PS1.lower()
+
+
+def test_the_setter_is_reachable_only_when_writing_and_only_once_the_pre_read_allows_it():
+    setter = _at('Send-Pipe $pipe "CFG floppy$drive $path"')
+    guard = FLOPPY.rindex("if (-not $verdict -and $write)", 0, setter)
+    assert guard > _at("$before = Read-Drives")
+    assert FLOPPY.count("Send-Pipe $pipe") == 1
+    assert "is already in DF$o" in FLOPPY and "ok already drive=$drive" in FLOPPY
+
+
+def test_a_message_goes_down_with_its_terminating_nul_and_one_poll_is_bounded():
+    send = WINUAE_PS1[WINUAE_PS1.index("function Send-Pipe"):WINUAE_PS1.index("function Read-Drives")]
+    assert "New-Object byte[] ($b.Length + 1)" in send and "ASCII.GetBytes" in send
+    assert "$PollBoundMs = 10000" in WINUAE_PS1 and "$PollEveryMs = 250" in WINUAE_PS1
+
+
+def test_the_guest_regexes_accept_what_the_python_ones_accept():
+    from automap import amiga
+
+    staged = re.search(r"\$DiskPattern = '([^']*)'", WINUAE_PS1).group(1).replace(r"\z", r"\Z")
+    cases = [
+        r"C:\Amiga\Disks\wish679-h-probeA.adf", r"C:\Amiga\Disks\wish679-h.x-a.b.adf",
+        r"C:\Amiga\Disks\wish679-h-.adf", r"C:\Amiga\Disks\wish679-h-a..b.adf",
+        r"C:\Amiga\Disks\wish-x.adf", r"C:\Amiga\Disks\wish679-x.zip",
+        "C:\\Amiga\\Disks\\wish679-x.adf\n", r"C:\Amiga\Disks\..\wish1-x.adf",
+        r"D:\Amiga\Disks\wish679-x.adf", r"\\server\Disks\wish679-x.adf",
+        r"C:\Amiga\Disks\wish679-a b.adf", r"C:\Amiga\Disks\wish679-a=b.adf",
+    ]
+    for path in cases:
+        assert bool(re.fullmatch(staged, path)) == bool(amiga.FLOPPY_PATH.fullmatch(path)), path
+    dump = re.search(r"\$DriveLine\s*= '([^']*)'", WINUAE_PS1).group(1)
+    line = "DEBUG: drive 0 motor off cylinder  0 sel no rw mfmpos 0/12668"
+    assert re.search(dump, line) and amiga.parse_drive_dump(line + "\nDEBUG: drive 1 motor  on "
+                                                            "cylinder 12 sel yes ro mfmpos 5/9") == {0: "rw", 1: "ro"}

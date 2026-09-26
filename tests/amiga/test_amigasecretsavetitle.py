@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import pathlib
 import signal
 
 import pytest
@@ -115,7 +116,7 @@ class TitleGuest(ScreenGuest):
         self.mounted = list(drives)
         return "ok pid=1"
 
-    def insert(self, holder, drive_number, remote, timeout=None):
+    def insert(self, holder, drive_number, remote, timeout=None, sha256=None):
         self.calls.append(("insert", drive_number, remote))
         self.inserted.append((drive_number, remote))
         self.mounted[drive_number] = remote
@@ -192,22 +193,44 @@ def test_two_drives_and_no_options_give_todays_start_line(monkeypatch):
         f"-s joyport1=none -s sound_output=interrupts")
 
 
-def test_winguest_insert_hands_the_windows_path_to_the_pipe(monkeypatch):
+class _CopyingPopen:
+    """A `winvm put` that succeeds."""
+
+    returncode = 0
+
+    def __init__(self, *a, **k):
+        pass
+
+    def communicate(self, timeout=None):
+        return "", ""
+
+
+def test_winguest_insert_hands_the_windows_path_holder_and_hash_to_the_pipe(monkeypatch):
     import automap.amiga as amiga
 
     seen = {}
+
+    class Receipt:
+        def as_dict(self):
+            return {"status": "ok inserted drive=1"}
 
     class Pipe:
         def __init__(self, timeout=None, **kw):
             seen["timeout"] = timeout
 
-        def insert_floppy(self, number, path):
-            seen["call"] = (number, path)
-            return "ok"
+        def insert_floppy(self, number, path, holder, sha256, staged=None):
+            seen["call"] = (number, path, holder, sha256)
+            seen["staged"] = staged
+            return Receipt()
 
     monkeypatch.setattr(amiga, "WinuaePipe", Pipe)
-    assert drive.WinGuest().insert("h", 1, "C:/Amiga/Disks/wish679-h-disk3.adf", 30) == "ok"
-    assert seen["call"] == (1, "C:\\Amiga\\Disks\\wish679-h-disk3.adf")
+    guest = drive.WinGuest()
+    monkeypatch.setattr(drive.subprocess, "Popen", _CopyingPopen)
+    guest.put(pathlib.Path("disk3.adf"), "C:/Amiga/Disks/wish679-h-disk3.adf", 30)
+    receipt = guest.insert("h", 1, "C:/Amiga/Disks/wish679-h-disk3.adf", 30, "ab" * 32)
+    assert seen["staged"] == {"C:\\Amiga\\Disks\\wish679-h-disk3.adf"}
+    assert receipt == {"status": "ok inserted drive=1"}
+    assert seen["call"] == (1, "C:\\Amiga\\Disks\\wish679-h-disk3.adf", "h", "ab" * 32)
 
 
 def test_a_title_run_passes_and_starts_with_its_drives_and_options(tmp_path, clock):

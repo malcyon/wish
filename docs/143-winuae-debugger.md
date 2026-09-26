@@ -473,7 +473,8 @@ Five things constrain what may go down it:
   on the list above.
 
 `CFG <line>` on the same pipe reaches `cfgfile_modify`, which is the host-side
-equivalent of the Amiga-side `uae-configuration` program; nothing here uses it.
+equivalent of the Amiga-side `uae-configuration` program. The floppy change in
+§4.2 is the only thing this project sends through it.
 
 **`automap.amiga.WinuaePipe` is the transport and `tools/amiga/winuaepipe.py` the
 command line.** `AmigaTarget` takes either transport and asks it one question,
@@ -488,6 +489,63 @@ test rig, and it is where the ~470 ms round trip and the ~170 ms of PowerShell
 startup come from. A local poll would be about 260 ms shelling out to
 PowerShell, and about 16 ms if the client opened the pipe itself; the second is
 PROBABLE and untested, because it needs a Windows host to run Python on.
+
+### 4.2 Changing a floppy in the running machine
+
+**The command contract.** A drive is DF0 or DF1. Three messages go down the
+pipe, each ASCII with one trailing NUL, and only `winuae.ps1`'s `insert` and
+`drives` verbs send them:
+
+| purpose | message | reply |
+|---|---|---|
+| setter | `CFG floppy<N> <path>`, exactly two tokens | always `404`, whether or not it worked |
+| query | `CFG floppy<N>` | `404` for an empty value, else `200 ` and a newline and the path |
+| drive state | `DBG c` | one line per drive, `DEBUG: drive <n> motor <off\| on> cylinder <c> sel <yes\|no> <ro\|rw> mfmpos <a>/<b>` |
+
+A third token would reach `dbg` or `shellexec` inside `CFG`, so the setter is
+built in the guest script from a validated drive and path and never passes
+through `WinuaePipe.script`. `CFG floppy<N>=<path>` is one token: a query for an
+option of that name, answered `404`, changing nothing.
+
+**A change is proved by a poll, never by a reply.** The query shows the name
+WinUAE accepted, before the image is opened and even if it never opens, and the
+setter's `404` says nothing. After the setter the guest reads both queries and
+`DBG c` every 250 ms for at most 10 s, over the one connection, and the change is
+applied only when, in order: a poll's query for the drive equals the path; that
+drive then reads `ro` (the old disk is out); and two consecutive later polls
+read `rw` with the path unchanged. The other drive's query and `ro`/`rw` word
+must equal their values before the setter at every poll. `WinuaePipe.insert_floppy`
+judges the raw replies itself and returns a receipt that keeps every one as base64;
+a malformed reply (not exactly one NUL, at the end), a query that is neither `404`
+nor one `200` line, a missing drive line, a wrong-drive or stale readback, or a
+poll that ends without the sequence is a `FloppyError` and the caller presses no
+continuation key.
+
+**What is refused before anything is sent.** A drive other than the integers 0 and
+1 (a `bool` too); a path that is not one file staged for the caller's holder
+under `C:\Amiga\Disks` and named `wish<issue>-<holder>-<key>.adf`, longer than 200
+characters, or holding `..`, a space, a quote, `;`, `=`, `%`, a control character or
+a non-ASCII character, and so any UNC or `\\?\` path; another holder's disk; a
+hash that is not 64 hexadecimal digits. In the guest, before the pipe is opened,
+the file must exist and hash to the staged SHA-256. A path already in the other
+drive is refused, and a path already in the target drive sends nothing: it is
+reported as loaded only if that drive reads `rw`. A setter for a missing file
+ejects the disk the drive held and leaves it empty, which is why the file is
+checked first.
+
+**Ownership is checked in the process that holds the pipe.** `drives` and
+`insert` read the claim (`Claim-Denial`, and the claim's token when one is given),
+the run receipt (`Resolve-MyEmulator`) and the executable path of the one
+`winuae64` before opening `\\.\pipe\WinUAE`, then compare the pipe's server
+process (`GetNamedPipeServerProcessId`) with the lane's process, read the claim
+again, and once more immediately before the setter. A refusal made before the pipe
+is open exits 1 with the reason; after it, the exit code is 0 and the first line
+of output is `ok ...` or `fail ...`, so the raw replies of a failure still reach
+the caller. The deployed `C:\Amiga\winuae.ps1` must be this repository's copy.
+
+**The probe** is `tools/amiga/amigadrivecheck.py`: three generated blank disks, DF0
+swapped to a second disk and back with DF1 checked at every step, and four
+controls that must leave both drives unchanged.
 
 ## 5. Starting a game unattended
 

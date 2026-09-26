@@ -190,6 +190,10 @@ def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
 class WinGuest:
     """One holder's WinUAE commands through the agent guest's `winvm`."""
 
+    def __init__(self) -> None:
+        #: The Windows paths this instance copied to the guest; a floppy change may name only these.
+        self.staged: set[str] = set()
+
     @staticmethod
     def _run(*args: str, timeout: float) -> str:
         proc = subprocess.Popen(
@@ -221,7 +225,9 @@ class WinGuest:
         return self._lane(holder, "claim", timeout)
 
     def put(self, local: pathlib.Path, remote: str, timeout: float) -> str:
-        return self._run("put", str(local), remote, timeout=timeout)
+        receipt = self._run("put", str(local), remote, timeout=timeout)
+        self.staged.add(remote.replace("/", "\\"))
+        return receipt
 
     def start(self, holder: str, *drives: str | None, timeout: float,
               options: tuple[str, ...] = ()) -> str:
@@ -232,15 +238,25 @@ class WinGuest:
         settings += ["-s joyport1=none", "-s sound_output=interrupts"]
         return self._lane(holder, f"start -f {BOOT_CONFIG} {' '.join(settings)}", timeout)
 
-    def insert(self, holder: str, drive: int, remote: str, timeout: float) -> str:
-        """Put the disk at `remote` in `drive` of the running game, over WinUAE's own pipe.
+    def insert(self, holder: str, drive: int, remote: str, timeout: float,
+               sha256: str) -> dict[str, Any]:
+        """Put the staged disk at `remote` in DF0 or DF1 of the running game and prove it went in.
 
-        The lane script has no such command, so the pipe carries it; the caller holds
-        the lane claim and `remote` carries its own holder's name.
+        The pipe's guest verb checks this holder's claim and emulator before it sends, and
+        `sha256` is the staged file's hash from the manifest. A refusal or an unproved
+        change raises `RouteError` carrying the raw replies as `.receipt`; the caller sends
+        no key after one.
         """
-        from automap.amiga import WinuaePipe  # noqa: PLC0415
+        from automap.amiga import FloppyError, WinuaePipe  # noqa: PLC0415
 
-        return WinuaePipe(timeout=timeout).insert_floppy(drive, remote.replace("/", "\\"))
+        try:
+            return WinuaePipe(timeout=timeout).insert_floppy(
+                drive, remote.replace("/", "\\"), holder, sha256,
+                staged=self.staged).as_dict()
+        except FloppyError as exc:
+            error = RouteError(str(exc))
+            error.receipt = exc.receipt
+            raise error from exc
 
     def capture(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
                 timeout: float) -> None:
@@ -1274,7 +1290,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         log("interstitial", screen=screen, key=key)
 
     def insert(drive: int, disk_key: str, why: Any) -> None:
-        receipt = guest.insert(holder, drive, remotes[disk_key], timeout=route_limit(60))
+        entry = (manifest if title is None else manifest["disks"])[disk_key]
+        try:
+            receipt = guest.insert(holder, drive, remotes[disk_key], timeout=route_limit(60),
+                                   sha256=entry["sha256"])
+        except BaseException as exc:
+            result["events"].append({"insert": disk_key, "drive": drive, "for": why,
+                                     "error": str(exc),
+                                     "receipt": getattr(exc, "receipt", None)})
+            raise
         result["events"].append({"insert": disk_key, "drive": drive, "for": why,
                                  "receipt": receipt})
         log("insert", disk=disk_key, drive=drive, receipt=receipt)
