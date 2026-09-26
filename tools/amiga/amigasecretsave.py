@@ -684,7 +684,11 @@ class AmigaTitle:
     `mounted` lists manifest disk keys in drive order (None: an empty drive) and
     `spares` the keys put on the VM and not mounted. A route step is
     `(key, state, kind)`; an `insert` step's key is `(drive, disk_key, key)`, and
-    `write` steps may press only `control_letter` or `after_letter`, and no other step may press those or a kept letter, an `insert` may name drive 1 only, and a `write` or `insert` step follows a `strict` state. `strict` names
+    `write` steps may press only `control_letter` or `after_letter`, and no other step may press
+    those. A kept letter is never written, so a non-write step may press one only where
+    `plain_keys` names its `(key, state)`: the game's own key that happens to be a slot's letter.
+    Every entry must be a kept letter that some non-write step presses in that state. An `insert`
+    may name drive 1 only, and a `write` or `insert` step follows a `strict` state. `strict` names
     the states whose guard must match or the run stops; any other state falls back to a
     settled capture and marks the run as measuring.
     """
@@ -708,6 +712,7 @@ class AmigaTitle:
     interstitials: tuple[tuple[str, tuple, Any, int], ...] = ()
     kept_letters: tuple[str, ...] = ()
     turn: str | None = None
+    plain_keys: tuple[tuple[str, str], ...] = ()
 
     @property
     def disk_keys(self) -> tuple[str, ...]:
@@ -737,11 +742,24 @@ class AmigaTitle:
             refuse("the title limit and the boot span must be positive")
         if any(w < 0 for w in self.min_waits.values()):
             refuse("a minimum wait is negative")
+        plain = self.plain_keys
+        if not (isinstance(plain, tuple) and all(
+                isinstance(e, tuple) and len(e) == 2 and all(isinstance(x, str) for x in e)
+                for e in plain)):
+            refuse(f"plain keys {plain!r} must be (key, state) pairs")
+        if len(set(plain)) != len(plain):
+            refuse(f"plain keys {plain!r} repeat an entry")
+        for entry in plain:
+            if entry[0] not in self.kept_letters:
+                refuse(f"plain key {entry!r} is not a kept letter, so it cannot be pressed as a plain key")
+        used: set[tuple[str, str]] = set()
         for name, route in (("route", self.route), ("measure_route", self.measure_route)):
             if not route:
                 refuse(f"{name} is empty")
             for at, step in enumerate(route):
-                self._check_step(name, step, keys, refuse)
+                allowed = self._check_step(name, step, keys, refuse)
+                if allowed:
+                    used.add(allowed)
                 if step[2] in ("write", "insert"):
                     # The key goes out on the screen the step before it reached, so that
                     # screen's guard must stop the run when it does not match.
@@ -749,6 +767,9 @@ class AmigaTitle:
                     if before != "title" and before not in self.strict:
                         refuse(f"{name} {step[2]} step {step!r} follows {before!r}, which is "
                                f"not a strict state")
+        for entry in plain:
+            if entry not in used:
+                refuse(f"plain key {entry!r} is pressed by no step in that state")
         for row in self.interstitials:
             self._check_row(row, keys, refuse)
 
@@ -756,7 +777,8 @@ class AmigaTitle:
         """The letters that save, or belong to a slot that must not change."""
         return frozenset((self.control_letter, self.after_letter, *self.kept_letters))
 
-    def _check_step(self, name, step, keys, refuse) -> None:
+    def _check_step(self, name, step, keys, refuse) -> tuple[str, str] | None:
+        """Refuse a bad step; return the `plain_keys` entry that lets it press a kept letter, if any."""
         if not isinstance(step, tuple) or len(step) != 3 or step[2] not in _STEP_KINDS:
             refuse(f"{name} step {step!r} is not (key, state, kind) with a known kind")
         key, state, kind = step
@@ -765,7 +787,7 @@ class AmigaTitle:
         if kind == "answer":
             if key is not None:
                 refuse(f"{name} answer step {step!r} takes no key")
-            return
+            return None
         if kind == "insert":
             if not (isinstance(key, tuple) and len(key) == 3 and type(key[0]) is int
                     and key[0] == 1 and key[1] in keys):
@@ -777,7 +799,11 @@ class AmigaTitle:
         if kind == "write" and key.upper() not in (self.control_letter, self.after_letter):
             refuse(f"{name} write step {step!r} is not the control or after letter")
         if kind != "write" and key.upper() in self._write_letters():
+            entry = (key.upper(), state)
+            if key.upper() in self.kept_letters and entry in self.plain_keys:
+                return entry
             refuse(f"{name} {kind} step {step!r} presses a save or kept slot letter")
+        return None
 
     def _check_row(self, row, keys, refuse) -> None:
         if not (isinstance(row, tuple) and len(row) == 4 and isinstance(row[3], int)

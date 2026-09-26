@@ -739,3 +739,67 @@ def test_a_terminated_title_run_still_stops_fetches_and_releases(tmp_path, clock
     assert names == ["stop", "get", "get", "get", "release"]
     summary = json.loads((tmp_path / "recon1" / "summary.json").read_text())
     assert summary["lost"] == result["lost"]
+
+
+# A kept letter is never written, so the game's own key may be one when the description says where.
+PLAIN = (("E", "camp"),)
+
+
+def test_a_kept_letter_key_step_without_a_plain_keys_entry_is_refused():
+    with pytest.raises(drive.RouteError, match="presses a save or kept slot letter"):
+        make_title(kept_letters=("B", "E"))
+
+
+def test_a_kept_letter_key_step_with_its_plain_keys_entry_is_accepted():
+    title = make_title(kept_letters=("B", "E"), plain_keys=PLAIN)
+    assert title.plain_keys == PLAIN
+
+
+def test_a_plain_keys_entry_for_another_state_does_not_let_the_step_through():
+    with pytest.raises(drive.RouteError, match="presses a save or kept slot letter"):
+        make_title(kept_letters=("B", "E"), plain_keys=(("E", "world"),))
+
+
+@pytest.mark.parametrize("letter,state", [("C", "loaded_menu"), ("D", "camp")])
+def test_the_control_and_after_letters_are_refused_even_when_listed(letter, state):
+    with pytest.raises(drive.RouteError, match="not a kept letter"):
+        make_title(plain_keys=((letter, state),))
+    # A step pressing one of them as a plain key stays refused with the entry present.
+    route = _swap(ROUTE, 7, (letter, "camp", "key"))
+    with pytest.raises(drive.RouteError, match="presses a save or kept slot letter"):
+        make_title(route=route, measure_route=route, kept_letters=("B", "E"),
+                   plain_keys=PLAIN)
+
+
+def test_a_plain_keys_entry_whose_key_is_not_a_kept_letter_is_refused():
+    with pytest.raises(drive.RouteError, match="not a kept letter"):
+        make_title(plain_keys=(("S", "camp_picker"),))
+
+
+def test_a_plain_keys_entry_no_step_uses_is_refused():
+    with pytest.raises(drive.RouteError, match="pressed by no step in that state"):
+        make_title(kept_letters=("B", "E"), plain_keys=(*PLAIN, ("E", "world")))
+
+
+def test_a_repeated_plain_keys_entry_is_refused():
+    with pytest.raises(drive.RouteError, match="repeat an entry"):
+        make_title(kept_letters=("B", "E"), plain_keys=(*PLAIN, *PLAIN))
+
+
+def test_a_run_with_a_plain_kept_e_still_fails_when_slot_e_changed(tmp_path, clock):
+    title = make_title(kept_letters=("B", "E"), plain_keys=PLAIN)
+    manifest = manifest_for(tmp_path, extra_slot=("E", b"the exit slot"))
+    guest, good = _run(tmp_path, clock, title=title, manifest=manifest)
+    assert good["success"] is True and "E" in _keys(guest)
+
+    def spoil(guest):
+        remote = next(r for r in guest.mounted if r.endswith("-boot.adf"))
+        disk = AmigaDisk(guest.remote[remote])
+        disk.write_file("/SAVE/savgamE.sav", b"the game rewrote it")
+        guest.remote[remote] = disk.to_bytes()
+
+    other = tmp_path / "other"
+    other.mkdir()
+    _, bad = _run(other, clock, title=title, guest=TitleGuest(clock, spoil=spoil),
+                  manifest=manifest_for(other, extra_slot=("E", b"the exit slot")))
+    assert bad["kept_unchanged"]["E"] is False and bad["success"] is False
