@@ -45,8 +45,6 @@ PROBE_SECONDS = 180.0
 CLEANUP_SECONDS = 60.0
 #: How long the emulator may take before the pipe first answers.
 READY_SECONDS = 30.0
-#: How long the optional missing-file measurement watches DF1.
-MISSING_WATCH_SECONDS = 4.0
 INTRUDER = f"wish{ISSUE}-intruder"
 
 READ_DEPLOYED = f"""$ErrorActionPreference = 'Stop'
@@ -85,22 +83,6 @@ class ProbeGuest(WinGuest):
     def lane_is_free(self, timeout: float) -> str:
         return self._run("lane", "--expect", "free", timeout=timeout)
 
-    def shot(self, local: pathlib.Path, timeout: float) -> None:
-        self._run("shot", str(local), "--timeout", str(max(1, int(timeout))),
-                  timeout=timeout + 5)
-
-
-def _raw_config(message: str, timeout: float) -> tuple[str, str]:
-    """One `CFG` message sent straight to the pipe: the reply text and the guest's output.
-
-    Only the optional missing-file measurement uses it, because a request the
-    verbs would refuse is the point of that measurement.
-    """
-    pipe = amiga.WinuaePipe(timeout=timeout)
-    out = pipe._execute(pipe._framed([message]))
-    replies, _ = pipe._replies(out, [message])
-    return replies[0][1], out
-
 
 def _git(repo: pathlib.Path, *args: str) -> str:
     try:
@@ -113,9 +95,8 @@ def _git(repo: pathlib.Path, *args: str) -> str:
 
 def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
                    audio_proof: pathlib.Path, repo: pathlib.Path | None = None,
-                   script: pathlib.Path = REPO_SCRIPT, missing_df1: bool = False,
+                   script: pathlib.Path = REPO_SCRIPT,
                    pipe_factory: Callable[[float], Any] | None = None,
-                   raw_config: Callable[[str, float], tuple[str, str]] = _raw_config,
                    clock: Callable[[], float] = time.monotonic,
                    sleep: Callable[[float], None] = time.sleep,
                    argv: list[str] | None = None) -> dict[str, Any]:
@@ -161,7 +142,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
         "dirty": bool(_git(repo, "status", "--porcelain")),
         "deployed": deployed, "repository_winuae_ps1_sha256": want,
         "generated": generated, "steps": [], "passed": False, "error": "",
-        "missing_df1": missing_df1, "fetched": {}, "unchanged": {},
+        "fetched": {}, "unchanged": {},
     }
 
     def log(event: str, **fields: Any) -> None:
@@ -226,40 +207,6 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
             return text
         step(name, "fail", expected=needle, observed="accepted")
         raise RouteError(f"{name}: the request was accepted")
-
-    def missing_measurement(both: dict[int, str]) -> None:
-        """Optional: name a file that does not exist in DF1 and watch what the drive does.
-
-        The source predicts DF1 then reads the missing path and holds no disk, with no
-        dialog. The disk that was in it is gone either way, so DF1 is restored to C and
-        the ordinary poll must pass.
-        """
-        amiga.refuse_floppy_change(1, never, holder, "0" * 64)
-        message = f"CFG floppy1 {never}"
-        reply, out = raw_config(message, limit(30))
-        observed = []
-        watch_until = clock() + MISSING_WATCH_SECONDS
-        while True:
-            receipt = pipe_factory(limit(30)).drives(holder)
-            state = receipt.drive_state()
-            observed.append({"paths": {f"DF{n}": v for n, v in state["paths"].items()},
-                             "modes": [state["modes"][0], state["modes"][1]],
-                             "receipt": receipt.as_dict()})
-            if clock() >= watch_until:
-                break
-            sleep(1.0)
-        shot = run_dir / "missing-df1.png"
-        try:
-            guest.shot(shot, limit(20))
-            shot_note = str(shot)
-        except BaseException as exc:
-            shot_note = f"{type(exc).__name__}: {exc}"
-        last = observed[-1]
-        refuted = last["modes"][1] == "rw" and last["paths"]["DF1"] == both[1]
-        step("measurement: a missing file in DF1", "info", refuted=refuted,
-             message=message, reply=reply, guest_output=out, observed=observed,
-             screenshot=shot_note)
-        change("restore DF1 to C", 1, "C", both)
 
     claimed = copied = start_attempted = stopped = False
     try:
@@ -327,8 +274,6 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
             raise RouteError("The same path twice sent a setter or was not reported as already loaded")
         read_drives("control: the same path leaves both drives", both)
 
-        if missing_df1:
-            missing_measurement(both)
         result["passed"] = all(s["verdict"] in ("pass", "info") for s in result["steps"])
     except BaseException as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
@@ -388,8 +333,6 @@ def main(argv: list[str] | None = None) -> int:
                         help="a Windows VM audio mute readback no older than five minutes")
     parser.add_argument("--holder", default=None,
                         help="the lane holder name (default: a fresh wish679-<random>)")
-    parser.add_argument("--df1-missing-file", action="store_true",
-                        help="also name a file that does not exist in DF1 and watch the drive")
     args = parser.parse_args(argv)
     holder = args.holder or f"wish{ISSUE}-{uuid.uuid4().hex[:12]}"
     repo = pathlib.Path(__file__).resolve().parents[2]
@@ -399,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
         with terminating():
             result = run_drivecheck(
                 guest=ProbeGuest(), run_dir=run_dir, holder=holder,
-                audio_proof=args.audio_proof, missing_df1=args.df1_missing_file,
+                audio_proof=args.audio_proof,
                 argv=list(sys.argv[1:] if argv is None else argv))
     except Terminated as exc:
         print(f"Amigadrivecheck: {exc}", file=sys.stderr)

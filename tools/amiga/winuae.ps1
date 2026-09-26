@@ -89,6 +89,7 @@ $Override = $false
 # not called $Token because PowerShell variable names ignore case and `claim`
 # and `send` assign a local $token of their own.
 $WantToken = ''
+$WantTokenGiven = $false
 # `key -Extended` sets KEYEVENTF_EXTENDEDKEY, which is what separates the four
 # cursor keys from the four numeric-keypad keys: without it keybd_event turns
 # VK_UP into scancode 0x48, and 0x48 with no E0 prefix is DIK_NUMPAD8. Every
@@ -103,7 +104,7 @@ for ($i = 0; $i -lt $given.Count; $i++) {
   $a = $given[$i]
   if ($a -eq '-Holder') { $i++; if ($i -lt $given.Count) { $Holder = $given[$i] } }
   elseif ($a -eq '-Override') { $Override = $true }
-  elseif ($a -eq '-Token') { $i++; if ($i -lt $given.Count) { $WantToken = $given[$i] } }
+  elseif ($a -eq '-Token') { $WantTokenGiven = $true; $i++; if ($i -lt $given.Count) { $WantToken = $given[$i] } }
   elseif ($a -eq '-Extended') { $Extended = $true }
   else { [void]$passthru.Add($a) }
 }
@@ -461,11 +462,11 @@ $fg = ([W]::GetForegroundWindow() -eq $h)
 # prove nothing about the pipe a later call reaches.
 #
 # Output. The first line is the verdict, `ok ...` or `fail ...`. Then one
-# `<<tag>> value` line each for pid, started, exe, server_pid and connect_ms,
+# `<<tag>> value` line each for connect_ms, pid, started, exe and server_pid (in that order; the caller keys on the tag),
 # and `<<r>> <seq> <label> <ms> <base64>` for every raw reply: seq 0 is the read
 # before the setter (labels q0, q1 for `CFG floppy0` and `CFG floppy1`, dbg for
 # `DBG c`) and the setter's own reply (label set); seq 1 upwards are the polls.
-# `<<end>>` closes the block. A refusal made before the pipe is opened exits 1
+# `<<end>>` closes the block. A refusal or failure made before the pipe is open exits 1
 # with the reason. Once the pipe is open the exit code is 0 whatever the verdict,
 # so the raw replies of a failure reach the caller; the verdict line is the answer.
 # The caller judges the replies itself; the checks here only decide what may be sent.
@@ -477,15 +478,23 @@ $PollEveryMs = 250
 # The one winuae64 this lane started, or why the caller must not touch the one
 # that is there: the claim, the optional token, the run receipt, and the
 # executable, all before anything is opened.
-function Get-LaneEmulator {
+function Get-LaneDenial {
   $deny = Claim-Denial
-  if ($deny) { return @{ err = $deny } }
-  if ($WantToken) {
+  if ($deny) { return $deny }
+  if ($WantTokenGiven) {
+    # A token that was asked for and cannot be compared fails closed.
+    if (-not $WantToken -or $WantToken.StartsWith('-')) { return "fail -Token needs the claim's token as its value" }
     $c = Get-Claim
-    if (-not $c -or $c['token'] -ne $WantToken) {
-      return @{ err = "fail the WinUAE lane's claim token is not the one $Holder took" }
+    if (-not $c -or $c['token'] -cne $WantToken) {
+      return "fail the WinUAE lane's claim token is not the one $Holder took"
     }
   }
+  $null
+}
+
+function Get-LaneEmulator {
+  $deny = Get-LaneDenial
+  if ($deny) { return @{ err = $deny } }
   $mine = Resolve-MyEmulator
   if ($mine.err) { return @{ err = $mine.err } }
   $cim = Get-CimInstance Win32_Process -Filter "ProcessId=$($mine.proc.Id)" -ErrorAction SilentlyContinue
@@ -496,7 +505,7 @@ function Get-LaneEmulator {
 
 # One message out, one reply back, both NUL-terminated as `uaeipc.cpp` wants: a
 # request without its NUL picks up bytes of a longer earlier one.
-function Send-Pipe($Pipe, [string]$Text) {
+function Send-Pipe($Pipe, [string]$Text, [int]$WaitMs = 10000) {
   $b = [Text.Encoding]::ASCII.GetBytes($Text)
   $msg = New-Object byte[] ($b.Length + 1)
   [Array]::Copy($b, $msg, $b.Length)
@@ -506,7 +515,7 @@ function Send-Pipe($Pipe, [string]$Text) {
   $ms = New-Object IO.MemoryStream
   do {
     $task = $Pipe.ReadAsync($buf, 0, $buf.Length)
-    if (-not $task.Wait(10000)) { throw "the pipe accepted a message and never replied in 10000 ms" }
+    if (-not $task.Wait($WaitMs)) { throw "the pipe accepted a message and never replied in $WaitMs ms" }
     $n = $task.Result
     if ($n -gt 0) { $ms.Write($buf, 0, $n) }
     if ($n -eq 0) { break }
@@ -514,10 +523,12 @@ function Send-Pipe($Pipe, [string]$Text) {
   ,$ms.ToArray()
 }
 
-function Read-Drives($Pipe, $Sw, [int]$Seq, $Tags) {
+function Read-Drives($Pipe, $Sw, [int]$Seq, $Tags, [long]$Until = 0) {
   $out = @{}
   foreach ($item in @(@('q0', 'CFG floppy0'), @('q1', 'CFG floppy1'), @('dbg', 'DBG c'))) {
-    $bytes = Send-Pipe $Pipe $item[1]
+    # A read may not outlast the poll's own deadline.
+    $wait = if ($Until) { [int][Math]::Max(1, [Math]::Min(10000, $Until - $Sw.ElapsedMilliseconds)) } else { 10000 }
+    $bytes = Send-Pipe $Pipe $item[1] $wait
     $Tags.Add("<<r>> $Seq $($item[0]) $($Sw.ElapsedMilliseconds) $([Convert]::ToBase64String($bytes))") | Out-Null
     $out[$item[0]] = [Text.Encoding]::GetEncoding('iso-8859-1').GetString($bytes).TrimEnd([char]0)
   }
@@ -525,7 +536,7 @@ function Read-Drives($Pipe, $Sw, [int]$Seq, $Tags) {
   $paths = @{}
   foreach ($n in 0, 1) {
     $t = $out["q$n"]
-    $paths[$n] = if ($t.StartsWith("200 `n")) { $t.Substring(5) } else { '' }
+    $paths[$n] = if ($t.StartsWith("200 `n", [StringComparison]::Ordinal)) { $t.Substring(5) } else { '' }
   }
   $modes = @{}
   foreach ($m in [regex]::Matches($out['dbg'], $DriveLine)) { $modes[[int]$m.Groups[1].Value] = $m.Groups[2].Value }
@@ -540,7 +551,7 @@ function Invoke-Floppy([string]$Verb) {
     if ($deny) { $deny; exit 1 }
     if ($Rest.Count -ne 3) { 'fail insert needs <drive> <path> <sha256>'; exit 1 }
     $drive = $Rest[0]; $path = $Rest[1]; $want = $Rest[2]
-    if ($drive -cnotmatch '^[01]$') { "fail '$drive' is not DF0 or DF1"; exit 1 }
+    if ($drive -cnotmatch '^[01]\z') { "fail '$drive' is not DF0 or DF1"; exit 1 }
     if ($path.Length -gt 200 -or $path.Contains('..') -or $path -cnotmatch $DiskPattern) {
       "fail $path is not a staged ADF under C:\Amiga\Disks"; exit 1
     }
@@ -548,25 +559,23 @@ function Invoke-Floppy([string]$Verb) {
     if (-not $path.Substring($prefix.Length).StartsWith("$Holder-", [StringComparison]::Ordinal)) {
       "fail $path is not staged for $Holder"; exit 1
     }
-    if ($want -cnotmatch '^[0-9A-Fa-f]{64}$') { "fail '$want' is not a SHA-256"; exit 1 }
+    if ($want -cnotmatch '^[0-9A-Fa-f]{64}\z') { "fail '$want' is not a SHA-256"; exit 1 }
     $drive = [int]$drive
   }
   $lane = Get-LaneEmulator
   if ($lane.err) { $lane.err; exit 1 }
-  if ($write) {
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { "fail $path does not exist"; exit 1 }
-    $got = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
-    if ($got -ne $want.ToUpper()) { "fail $path hashes $($got.ToLower()), not $($want.ToLower())"; exit 1 }
-  }
   $tags = New-Object System.Collections.ArrayList
   $verdict = $null
-  $sw = [Diagnostics.Stopwatch]::StartNew()
+  $sw = $null
   $pipe = $null
+  $open = $false
   try {
     Add-Type -Namespace Wish -Name PipeInfo -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
+    $sw = [Diagnostics.Stopwatch]::StartNew()
     $pipe = New-Object IO.Pipes.NamedPipeClientStream '.', 'WinUAE', 'InOut'
     $pipe.Connect(5000)
     $pipe.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
+    $open = $true
     $tags.Add("<<connect_ms>> $($sw.ElapsedMilliseconds)") | Out-Null
     $tags.Add("<<pid>> $($lane.proc.Id)") | Out-Null
     $tags.Add("<<started>> $($lane.proc.StartTime.ToString('o'))") | Out-Null
@@ -587,40 +596,49 @@ function Invoke-Floppy([string]$Verb) {
     }
     if (-not $verdict) {
       $before = Read-Drives $pipe $sw 0 $tags
-      if (-not $before.q0.StartsWith("200 `n")) {
+      if (-not $before.q0.StartsWith("200 `n", [StringComparison]::Ordinal)) {
         $verdict = "fail The WinUAE pipe is not answering configuration queries ($($before.q0)); nothing was sent"
       }
       elseif (-not $write) { $verdict = "ok drives pid=$($lane.proc.Id)" }
       else {
         $o = 1 - $drive
-        if ($before.paths[$o] -eq $path) { $verdict = "fail $path is already in DF$o" }
-        elseif ($before.paths[$drive] -eq $path) {
-          $verdict = if ($before.modes[$drive] -eq 'rw') { "ok already drive=$drive" }
+        if ($before.paths[$o] -ceq $path) { $verdict = "fail $path is already in DF$o" }
+        elseif ($before.paths[$drive] -ceq $path) {
+          $verdict = if ($before.modes[$drive] -ceq 'rw') { "ok already drive=$drive" }
                      else { "fail DF$drive names $path but holds no disk" }
         }
       }
     }
     if (-not $verdict -and $write) {
-      # The last look before the one mutation.
-      $last = Claim-Denial
+      # The last look before the one mutation, then the file: it is read as late as
+      # it can be, so the hash describes what WinUAE will open.
+      $last = Get-LaneDenial
       if ($last) { $verdict = $last }
+    }
+    if (-not $verdict -and $write) {
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $verdict = "fail $path does not exist" }
+      else {
+        $got = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+        if ($got -ne $want.ToUpper()) { $verdict = "fail $path hashes $($got.ToLower()), not $($want.ToLower())" }
+      }
     }
     if (-not $verdict -and $write) {
       $bytes = Send-Pipe $pipe "CFG floppy$drive $path"
       $tags.Add("<<r>> 0 set $($sw.ElapsedMilliseconds) $([Convert]::ToBase64String($bytes))") | Out-Null
       $setAt = $sw.ElapsedMilliseconds
+      $until = $setAt + $PollBoundMs
       $seq = 0; $sawPath = $false; $sawRo = $false; $rwRun = 0; $applied = $false
-      while (($sw.ElapsedMilliseconds - $setAt) -lt $PollBoundMs -and -not $verdict -and -not $applied) {
+      while ($sw.ElapsedMilliseconds -lt $until -and -not $verdict -and -not $applied) {
         Start-Sleep -Milliseconds $PollEveryMs
         $seq++
-        $now = Read-Drives $pipe $sw $seq $tags
-        if ($now.paths[$o] -ne $before.paths[$o] -or $now.modes[$o] -ne $before.modes[$o]) {
+        $now = Read-Drives $pipe $sw $seq $tags $until
+        if ($now.paths[$o] -cne $before.paths[$o] -or $now.modes[$o] -cne $before.modes[$o]) {
           $verdict = "fail DF$o changed while DF$drive was being changed"
         }
-        if ($now.paths[$drive] -eq $path) { $sawPath = $true }
-        if ($sawPath -and -not $sawRo) { if ($now.modes[$drive] -eq 'ro') { $sawRo = $true } }
+        if ($now.paths[$drive] -ceq $path) { $sawPath = $true }
+        if ($sawPath -and -not $sawRo) { if ($now.modes[$drive] -ceq 'ro') { $sawRo = $true } }
         elseif ($sawRo) {
-          if ($now.modes[$drive] -eq 'rw' -and $now.paths[$drive] -eq $path) { $rwRun++ } else { $rwRun = 0 }
+          if ($now.modes[$drive] -ceq 'rw' -and $now.paths[$drive] -ceq $path) { $rwRun++ } else { $rwRun = 0 }
           if ($rwRun -ge 2) { $applied = $true }
         }
       }
@@ -634,6 +652,8 @@ function Invoke-Floppy([string]$Verb) {
   } finally {
     if ($pipe) { $pipe.Dispose() }
   }
+  # Nothing was sent and there are no replies to keep: a failure before the pipe is open is a refusal.
+  if (-not $open) { $verdict; exit 1 }
   $verdict
   $tags
   '<<end>>'

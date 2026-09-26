@@ -560,7 +560,7 @@ def test_a_setter_reply_other_than_404_is_an_error(setter):
         insert(guest)
 
 
-@pytest.mark.parametrize("blob", [b"404", b"404\0\0", b"40\x004\0", b""])
+@pytest.mark.parametrize("blob", [b"404", b"404\0\0", b"40\x004\0", b"40\x004", b"\x00404", b""])
 def test_a_reply_that_is_not_one_nul_terminated_string_is_an_error(blob):
     reads = swap_reads()
     reads[2] = (2, 650, {**state(path0=DISK_B, mode0="ro"), "q0": blob})
@@ -590,6 +590,23 @@ def test_a_dump_without_a_line_for_a_drive_is_an_error():
                 "cylinder  0 sel no rw mfmpos 0/12668")})
     with pytest.raises(amiga.FloppyError, match="no line for DF1"):
         insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+def test_a_dump_with_two_lines_for_one_drive_is_an_error():
+    line = "DEBUG: drive 0 motor off cylinder  0 sel no rw mfmpos 0/12668"
+    reads = swap_reads()
+    reads[3] = (3, 900, {**state(path0=DISK_B), "dbg": nul("\n".join([line, line, line.replace("drive 0", "drive 1")]))})
+    with pytest.raises(amiga.FloppyError, match="more than one line for DF0"):
+        insert(LaneGuest(guest_output("ok inserted drive=0", reads)))
+
+
+def test_the_guests_tags_are_read_by_name_not_by_position():
+    lines = guest_output("ok inserted drive=0 polls=4", swap_reads()).split("\r\n")
+    tags = [ln for ln in lines if ln.startswith("<<") and not ln.startswith(("<<r>>", "<<end>>"))]
+    rest = [ln for ln in lines if ln not in tags]
+    shuffled = "\r\n".join([rest[0], *reversed(tags), *rest[1:]])
+    receipt = insert(LaneGuest(shuffled))
+    assert (receipt.pid, receipt.server_pid, receipt.connect_ms) == ("4242", "4242", 70.0)
 
 
 def test_a_stale_readback_is_an_error():

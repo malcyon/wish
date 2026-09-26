@@ -258,43 +258,78 @@ def test_the_lane_script_accepts_the_two_new_verbs():
     assert "'drives' {" in WINUAE_PS1 and "'insert' {" in WINUAE_PS1
 
 
-def test_ownership_is_checked_before_the_pipe_is_opened_and_twice_more_after():
+SETTER = 'Send-Pipe $pipe "CFG floppy$drive $path"'
+
+
+def test_ownership_is_checked_before_the_pipe_is_opened_and_again_after():
     opened = _at("New-Object IO.Pipes.NamedPipeClientStream")
     assert FLOPPY.count("Get-LaneEmulator") == 2
-    assert _at("Get-LaneEmulator") < opened < _at("Get-LaneEmulator", opened)
-    setter = _at('Send-Pipe $pipe "CFG floppy$drive $path"')
-    assert opened < _at("Claim-Denial", opened) < setter
-    assert _at("Claim-Denial") < opened
+    assert _at("Get-LaneEmulator") < opened < _at("Get-LaneEmulator", opened) < _at(SETTER)
+
+
+def test_the_last_look_before_the_setter_compares_the_claim_and_its_token():
+    last = _at("$last = Get-LaneDenial")
+    assert _at("Get-LaneEmulator", _at("Get-LaneEmulator") + 1) < last < _at(SETTER)
+    body = WINUAE_PS1[WINUAE_PS1.index("function Get-LaneDenial"):
+                      WINUAE_PS1.index("function Get-LaneEmulator")]
+    assert body.index("Claim-Denial") < body.index("$c['token'] -cne $WantToken")
+    assert "Get-LaneDenial" in WINUAE_PS1[WINUAE_PS1.index("function Get-LaneEmulator"):
+                                          WINUAE_PS1.index("function Send-Pipe")]
+
+
+def test_a_token_that_cannot_be_compared_fails_closed():
+    body = WINUAE_PS1[WINUAE_PS1.index("function Get-LaneDenial"):
+                      WINUAE_PS1.index("function Get-LaneEmulator")]
+    assert "$WantTokenGiven = $true" in WINUAE_PS1
+    assert "if ($WantTokenGiven)" in body
+    assert "-not $WantToken -or $WantToken.StartsWith('-')" in body
+    assert body.index("StartsWith('-')") < body.index("$c['token']")
 
 
 def test_the_lane_emulator_check_reuses_the_claim_and_receipt_functions():
     body = WINUAE_PS1[WINUAE_PS1.index("function Get-LaneEmulator"):
                       WINUAE_PS1.index("function Send-Pipe")]
-    assert body.index("Claim-Denial") < body.index("Resolve-MyEmulator") < body.index("ExecutablePath")
+    assert body.index("Get-LaneDenial") < body.index("Resolve-MyEmulator") < body.index("ExecutablePath")
     assert "$path -ne $Exe" in body
-    assert "claim token is not the one" in body
+    assert "claim token is not the one" in WINUAE_PS1
 
 
 def test_the_pipe_is_bound_to_the_lanes_own_process():
-    assert "GetNamedPipeServerProcessId" in FLOPPY
-    assert _at("GetNamedPipeServerProcessId") < _at("$server -ne $lane.proc.Id")
-    assert _at("$server -ne $lane.proc.Id") < _at('Send-Pipe $pipe "CFG floppy$drive $path"')
+    call = _at("[Wish.PipeInfo]::GetNamedPipeServerProcessId(")
+    assert _at("New-Object IO.Pipes.NamedPipeClientStream") < call
+    assert call < _at("if ($server -ne $lane.proc.Id)") < _at(SETTER)
 
 
-def test_the_file_and_its_hash_are_checked_before_the_pipe_is_opened():
-    opened = _at("New-Object IO.Pipes.NamedPipeClientStream")
-    assert _at("Test-Path -LiteralPath $path -PathType Leaf") < opened
-    assert _at("Get-FileHash -LiteralPath $path") < opened
+def test_the_file_and_its_hash_are_checked_after_the_last_claim_look_and_before_the_setter():
+    assert _at("$last = Get-LaneDenial") < _at("Test-Path -LiteralPath $path -PathType Leaf")
+    assert _at("Get-FileHash -LiteralPath $path") < _at(SETTER)
     assert "does not exist" in FLOPPY
-    assert re.search(r"if \(\$got -ne \$want\.ToUpper\(\)\) \{ \"fail \$path hashes[^}]*exit 1 \}", FLOPPY)
+    assert re.search(r'if \(\$got -ne \$want\.ToUpper\(\)\) \{ \$verdict = "fail \$path hashes', FLOPPY)
+
+
+def test_the_stopwatch_starts_after_the_compile_and_a_read_never_outlasts_the_poll():
+    assert _at("Add-Type -Namespace") < _at("$sw = [Diagnostics.Stopwatch]::StartNew()") < _at("Connect(5000)")
+    send = WINUAE_PS1[WINUAE_PS1.index("function Send-Pipe"):WINUAE_PS1.index("function Read-Drives")]
+    assert "$task.Wait($WaitMs)" in send
+    reads = WINUAE_PS1[WINUAE_PS1.index("function Read-Drives"):WINUAE_PS1.index("function Invoke-Floppy")]
+    assert "Send-Pipe $Pipe $item[1] $wait" in reads and "[Math]::Min(10000, $Until" in reads
+    assert "Read-Drives $pipe $sw $seq $tags $until" in FLOPPY
+    assert "while ($sw.ElapsedMilliseconds -lt $until" in FLOPPY
+
+
+def test_a_failure_before_the_pipe_is_open_exits_one_and_after_it_the_exit_is_zero():
+    assert _at("$open = $true") > _at("Connect(5000)")
+    assert re.search(r"if \(-not \$open\) \{ \$verdict; exit 1 \}", FLOPPY)
+    assert _at("if (-not $open)") > _at("finally")
+    assert FLOPPY.rstrip().endswith("'<<end>>'\n}")
 
 
 def test_the_drive_path_and_holder_are_validated_in_the_guest_too():
-    assert "'^[01]$'" in FLOPPY
+    assert "'^[01]\\z'" in FLOPPY
     assert "$path.Length -gt 200" in FLOPPY and "$path.Contains('..')" in FLOPPY
     assert "StartsWith(\"$Holder-\", [StringComparison]::Ordinal)" in FLOPPY
     assert "is not staged for $Holder" in FLOPPY
-    assert "'^[0-9A-Fa-f]{64}$'" in FLOPPY
+    assert "'^[0-9A-Fa-f]{64}\\z'" in FLOPPY
 
 
 def test_the_guest_sends_exactly_one_setter_of_exactly_two_tokens():
