@@ -1249,6 +1249,7 @@ def _curse_run(tmp_path, sess, rows=(), joy=False):
     run.log = A.Log(tmp_path)
     run.shots = 0
     run.names = ["PHILIPPE", "SHARA", "LEDERA", "TRAVIS", "MARK", "MATHEW"]
+    run.panel = list(reversed(run.names))
     run.joy = joy
     run.pick_wait = run.bar_wait = run.whom_wait = 0.3
     run.panel_index = lambda who: {"SHARA": 1, "MARK": 4}[who]
@@ -2334,7 +2335,7 @@ def _sheet_screens(named):
 
 def _sheet_run(tmp_path, named, monkeypatch):
     sess = SheetFake(_sheet_screens(named),
-                     {("camp", ("party", 1)): "camp", ("camp", ("bar", "VIEW")): "sheet",
+                     {("camp", ("party", 4)): "camp", ("camp", ("bar", "VIEW")): "sheet",
                       ("sheet", ("bar", "EXIT")): "camp"}, "camp")
     run = _curse_run(tmp_path, sess)
     run.panel_index = lambda who: int(who) - 1
@@ -2347,10 +2348,10 @@ def test_a_curse_view_waits_for_exit_and_the_members_name_and_returns_to_camp(
         tmp_path, monkeypatch):
     run, sess = _sheet_run(tmp_path, "SHARA  FEMALE ELF", monkeypatch)
     try:
-        got = run.view("2")
+        got = run.view("5")
     finally:
         run.log.close()
-    assert got["who"] == "2" and any("SHARA" in r for r in got["sheet"])
+    assert got["who"] == "5" and any("SHARA" in r for r in got["sheet"])
     assert sess.state == "camp"
 
 
@@ -2359,7 +2360,7 @@ def test_a_sheet_that_names_someone_else_is_not_taken_for_the_member_asked_for(
     run, sess = _sheet_run(tmp_path, "PHILIPPE  MALE HUMAN", monkeypatch)
     try:
         with pytest.raises(A.StepFailed, match="no sheet naming SHARA"):
-            run.view("2")
+            run.view("5")
     finally:
         run.log.close()
 
@@ -2386,6 +2387,7 @@ def test_silver_blades_is_driven_and_its_run_is_a_later_title_run(tmp_path, monk
 
 
 def test_a_silver_blades_run_names_the_party_in_slot_order(tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "marching_names", lambda path: ["ANNA", "ZED"])
     monkeypatch.setattr(A, "saved_characters", lambda path: {
         "ANNA": {"owner": 1, "memorised": []}, "ZED": {"owner": 0, "memorised": []}})
     run = A.SilverRun(None, None, tmp_path, POOL_OF_RADIANCE, {}, "d", "s.D64")
@@ -2427,3 +2429,120 @@ def test_the_one_retry_does_not_answer_a_prompt_the_key_raised(
     # The first press ends by leaving move mode; the retry's key is the last
     # thing sent, because a Return after it would land on the prompt.
     assert sess.keys == ["i", "Return", "i"], sess.keys
+
+
+# --- the later titles' walk, judged by the live triple ------------------------------------
+
+MOVE_BAR = "I,J,K,M, RETURN OR BUTTON"
+
+
+class LaterWalkSession(WalkSession):
+    """Curse's walk: the live triple is the truth, the status line shows the
+    triple as it stood before the latest move, the first key changes row 24,
+    and a bump costs nothing."""
+
+    def __init__(self, walls=(), lose=0, **kw):
+        super().__init__(walls=walls, **kw)
+        self.lose = lose
+        self.lagged = (self.x, self.y, self.facing)
+        self.moving = False
+
+    def screen(self):
+        return FakeScreen(_window({}, MOVE_BAR if self.moving else WORLD_BAR))
+
+    def position(self):
+        return self.lagged
+
+    def live_triple(self):
+        return (self.x, self.y, self.facing)
+
+    def walk_one(self, move, *a, **k):
+        self.pressed.append(move)
+        self.moving = True
+        if self.lose:
+            self.lose -= 1
+            return False
+        before = self.live_triple()
+        if move == "I":
+            dx, dy = ((0, -1), (1, 0), (0, 1), (-1, 0))[self.facing]
+            if (self.x + dx, self.y + dy) not in self.walls:
+                self.x, self.y = self.x + dx, self.y + dy
+        else:
+            self.facing = (self.facing + {"J": -1, "K": 1, "M": 2}[move]) % 4
+        self.lagged = before
+        return self.live_triple() != before
+
+
+def _later_run(tmp_path, sess, monkeypatch):
+    log = A.Log(tmp_path)
+    run = A.CurseRun.__new__(A.CurseRun)
+    A.PoolRun.__init__(run, sess, log, tmp_path, POOL_OF_RADIANCE, {})
+    run.clock = _Clock(monkeypatch)
+    return run, log
+
+
+def test_a_curse_walk_is_judged_by_the_live_triple_while_the_status_line_lags(
+        tmp_path, monkeypatch):
+    sess = LaterWalkSession(x=4, y=4)
+    run, log = _later_run(tmp_path, sess, monkeypatch)
+    got = run.walk("JI")
+    log.close()
+    assert got["position"] == [3, 4, 3] and got["squares_moved"] == 1
+    assert got["blocked"] == []
+
+
+def test_a_later_title_key_the_game_did_not_take_is_resent_though_move_mode_changed_the_screen(
+        tmp_path, monkeypatch):
+    sess = LaterWalkSession(x=4, y=4, lose=1)
+    run, log = _later_run(tmp_path, sess, monkeypatch)
+    got = run.walk("JI")
+    log.close()
+    assert sess.pressed == ["J", "J", "I"]
+    assert got["moves"][0]["resent"] is True
+    assert got["position"] == [3, 4, 3]
+
+
+def test_a_later_title_bump_is_pressed_twice_and_stays_blocked(tmp_path, monkeypatch):
+    sess = LaterWalkSession(x=4, y=4, walls={(3, 4)})
+    run, log = _later_run(tmp_path, sess, monkeypatch)
+    got = run.walk("JI")
+    log.close()
+    assert sess.pressed == ["J", "I", "I"]
+    assert got["blocked"] == [1] and got["moves"][1]["resent"] is True
+
+
+def test_the_silver_blades_session_reads_the_live_triple():
+    from tools.c64 import curedrive
+    from tools.curse_of_the_azure_bonds import curserun
+
+    assert (curedrive._silver_session_class().live_triple
+            is curserun.CurseSession.live_triple)
+
+
+def test_marching_names_lists_the_party_as_the_panel_draws_it():
+    from tests.c64.test_c64nametable import specimen_disk
+
+    assert A.marching_names(specimen_disk("curse-party-with-items")) == [
+        "MALE ELF MAGE", "FEMALE MAGE", "CLERIC", "F/T", "RANGER", "PALADIN"]
+
+
+def test_a_curse_view_of_panel_row_1_waits_for_the_highest_slot(tmp_path, monkeypatch):
+    run, sess = _sheet_run(tmp_path, "MATHEW  MALE HUMAN", monkeypatch)
+    sess.moves[("camp", ("party", 0))] = "camp"
+    run.panel = ["MATHEW", "MARK", "TRAVIS", "LEDERA", "SHARA", "PHILIPPE"]
+    try:
+        got = run.view("1")
+    finally:
+        run.log.close()
+    assert any("MATHEW" in r for r in got["sheet"])
+
+
+def test_a_view_waits_for_a_mixed_case_name_as_the_c64_draws_it(tmp_path, monkeypatch):
+    run, sess = _sheet_run(tmp_path, "G59 $% V!,/)3      STATUS OK", monkeypatch)
+    sess.moves[("camp", ("party", 0))] = "camp"
+    run.panel = ["Guy de Valois", "PAINE"]
+    try:
+        got = run.view("1")
+    finally:
+        run.log.close()
+    assert got["who"] == "1"

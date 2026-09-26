@@ -31,7 +31,7 @@ bytes with what it replaced.
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/effectdrive.py`'s rest) |
-| `walk MOVES` | I forward, J left, K right, M about, each judged by `position()` before and after (the status line holds the clock): `blocked` when a forward move left x,y alone, and a turn must leave the square and change the facing by its amount; a move that brings up a disk prompt, or lands anywhere but one square ahead, fails the walk |
+| `walk MOVES` | I forward, J left, K right, M about, each judged by `position()` before and after (Pool's status line holds the clock; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, and a turn must leave the square and change the facing by its amount; a move that brings up a disk prompt, or lands anywhere but one square ahead, fails the walk |
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
 | `cast CASTER:SPELL>TARGET` | Curse only: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
@@ -720,7 +720,7 @@ class PoolRun:
                 self.armed[name] = m.checkpoint_set(addr, exec_=True, stop=False)
             m.resume()
         self.capture("world")
-        return {"position": list(self.sess.position()),
+        return {"position": self.position(),
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
 
     def camp_list(self, who: str) -> dict:
@@ -878,6 +878,10 @@ class PoolRun:
         square, or the walk fails as an exit or a teleport.  A move `walk_one`
         made on the travel grid is not re-sent.
 
+        Curse and Silver Blades are judged by the live triple `$C04B`-`$C04D`
+        because their status line stays a step behind; their one retry is
+        judged by it as well, since move mode changes row 24 on any first key.
+
         The one retry is judged by the screen just before the key against the
         screen 1.2 s after it (`Session.walk_screens`), resent only when they
         are identical, since text that `MOVE` put up changes the whole move's
@@ -892,10 +896,22 @@ class PoolRun:
         finally:
             self.sess.walk_expired = None
 
+    def position(self) -> list:
+        """Where the party stands: the status line's x, y and facing."""
+        return list(self.sess.position())
+
+    def took_nothing(self, before, before_rows, screens) -> bool:
+        """Whether the key just sent was not read by the game."""
+        if screens is not None and screens[1] is not None:
+            # Judge the key's own window: a text `MOVE` put up before the
+            # key changes the whole move's screen, not the key's.
+            return screens[0] == screens[1]
+        return self.rows() == before_rows
+
     def _walk(self, route: str) -> dict:
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
-        start = list(self.sess.position())
+        start = self.position()
         facing = start[2]
         moves = []
         last = None
@@ -904,7 +920,7 @@ class PoolRun:
             # A prompt that opened after the previous move's look would be
             # answered by this move's `select_bar`, so it is looked for first.
             self.refuse_prompt(route, last, "was up before the next move")
-            before = list(self.sess.position())
+            before = self.position()
             last = (n, move, before)
             before_rows = self.rows()
             status_moved = self.sess.walk_one(move, tries=1, answer_prompts=False)
@@ -913,13 +929,7 @@ class PoolRun:
             # Out on the travel grid a move is pressed once and never re-sent:
             # the status line lags and a turn does not exist there.
             screens = getattr(self.sess, "walk_screens", None)
-            if screens is not None and screens[1] is not None:
-                # Judge the key's own window: a text `MOVE` put up before the
-                # key changes the whole move's screen, not the key's.
-                took_nothing = screens[0] == screens[1]
-            else:
-                took_nothing = self.rows() == before_rows
-            if (not status_moved and took_nothing
+            if (not status_moved and self.took_nothing(before, before_rows, screens)
                     and not getattr(self.sess, "walked_outdoors", False)):
                 # The one retry the contract allows: the game took nothing.
                 resent = True
@@ -930,7 +940,7 @@ class PoolRun:
             refused = getattr(self.sess, "walk_refused", None)
             if refused:
                 self.log.emit("move", move=move, n=n, before=before,
-                              after=list(self.sess.position()), resent=resent,
+                              after=self.position(), resent=resent,
                               row24=self.bar().strip(), text=None, keyed=False)
                 raise self.fail("walk", f"walk {route}: {refused}")
             # A square's event may put up a disk prompt after the key has been
@@ -942,7 +952,7 @@ class PoolRun:
                 if self.clock() >= look_until:
                     break
                 time.sleep(0.3)
-            after = list(self.sess.position())
+            after = self.position()
             key_rows = screens[0] if screens else None
             text = (None if key_rows is None else
                     [r.strip() for r in key_rows[17:23]])
@@ -964,7 +974,7 @@ class PoolRun:
                           "moved": before[:2] != after[:2],
                           "status_moved": status_moved, "resent": resent})
         self.refuse_prompt(route, last, "ran the square's event")
-        end = list(self.sess.position())
+        end = self.position()
         self.capture(f"walked-{route}")
         if "I" not in route and end[:2] != start[:2]:
             raise self.fail("walk", f"walk {route} has no forward move and the "
@@ -1032,6 +1042,7 @@ class CurseRun(PoolRun):
         _, payload = _payload(D64.open(str(staged_disk)), game)
         names = cursethac0.slot_names(payload)
         self.names = [n.upper() for n in names]
+        self.panel = marching_names(staged_disk)
         self.attack_by = attack_by.upper()
         self.attack_owner = next((i for i, name in enumerate(names)
                                   if name.upper() == self.attack_by), None)
@@ -1066,9 +1077,19 @@ class CurseRun(PoolRun):
             self.observe_curse("world")
         else:
             self.capture("world")
-        return {"position": list(self.sess.position()),
+        return {"position": self.position(),
                 "attack_by": self.attack_by, "attack_owner": self.attack_owner,
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
+
+    def position(self) -> list:
+        """The live triple `$C04B`-`$C04D`: the status line of these titles
+        stays a step behind the party until the next move."""
+        return list(self.sess.live_triple())
+
+    def took_nothing(self, before, before_rows, screens) -> bool:
+        """Move mode changes row 24 on the first key whether or not it was
+        read, so only the party's own square says the key was lost."""
+        return self.position() == before
 
     def to_world(self, tries: int = 10) -> bool:
         for _ in range(tries):
@@ -1119,7 +1140,8 @@ class CurseRun(PoolRun):
             raise self.fail("panel", f"the panel highlight would not go onto {who}")
         if not self.choose_bar("VIEW", timeout=20):
             raise self.fail("view", "VIEW could not be chosen")
-        name = self.names[index] if 0 <= index < len(self.names) else ""
+        name = (inventorycheck.as_drawn(self.panel[index]).upper()
+                if 0 <= index < len(self.panel) else "")
         rows = self.wait_rows(
             lambda r: "EXIT" in r[24] and CAMP_BAR not in r[24]
             and name in r[1].upper() and bool(r[1].strip()),
@@ -1172,6 +1194,8 @@ class CurseRun(PoolRun):
     #: Whether the run gave VICE a numpad joystick, so that KP_0 is fire.
     joy = False
     names: list[str] = []
+    #: The party in the order the panel draws it, highest save slot first.
+    panel: list[str] = []
     #: Seconds each wait may take: a pick key's effect, the bar a cure is
     #: offered on, and the target question after CURE.
     pick_wait = 15
@@ -1620,6 +1644,7 @@ class SilverRun(CurseRun):
         party = saved_characters(staged_disk)
         self.names = [n for n, _ in sorted(party.items(),
                                            key=lambda kv: kv[1]["owner"])]
+        self.panel = marching_names(staged_disk)
         self.attack_by = ""
         self.attack_owner = None
         self.attack_evidence = self.quit_evidence = None
@@ -1659,7 +1684,7 @@ class SilverRun(CurseRun):
                 self.armed[name] = m.checkpoint_set(point, exec_=True, stop=False)
             m.resume()
         self.capture("world")
-        return {"position": list(self.sess.position()),
+        return {"position": self.position(),
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
 
 
@@ -1727,6 +1752,14 @@ def validate_curse_quit(control: dict | None, who: str) -> None:
         raise StepFailed(f"id 25 was absent before {who} quit")
     if control["after"] is None:
         raise StepFailed(f"id 25 was absent after {who} quit")
+
+
+def marching_names(path) -> list[str]:
+    """The party's names in the order the C64 panel lists them, case kept."""
+    from goldbox.savegame import load_save
+
+    _, sg0, _ = load_save(D64.open(str(path)))
+    return [slot.record.name for slot in sg0.marching_order]
 
 
 def saved_characters(path: pathlib.Path) -> dict[str, dict]:

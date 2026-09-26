@@ -233,6 +233,7 @@ def _silver_session_class():
         press_bar = curserun.CurseSession.press_bar
         wait_bar = curserun.CurseSession.wait_bar
         to_world_bar = curserun.CurseSession.to_world_bar
+        live_triple = curserun.CurseSession.live_triple
 
     return SilverCureSession
 
