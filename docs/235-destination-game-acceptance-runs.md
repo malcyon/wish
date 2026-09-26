@@ -85,9 +85,12 @@ never reads a standalone save disk (`SECRETSAVE`, or Curse's `AZURESAVE`) while
 its own disk A is in DF0, which is the defect of #677 (Save As to the Amiga
 puts a Curse or Silver Blades party on a separate save disk that the game never
 reads while its own disk A is in DF0). Pools of Darkness has disk 3 in DF1 from the first frame
-because WinUAE's pipe answered a runtime floppy insert
+because the route was written before a runtime floppy insert
 (`WinuaePipe.insert_floppy`, which `run_recon` still offers as an `insert`
-step) with `404`. Pool of Radiance's `POOLSAVE` in DF2 is unchanged.
+step) could be told from a refused one: WinUAE's pipe answers `404` to every
+`CFG floppy<N> <path>` setter whether it applied or not, so the earlier `404`
+receipt proved nothing (`docs/143-winuae-debugger.md` section 4.2). Pool of
+Radiance's `POOLSAVE` in DF2 is unchanged.
 
 The first keys are per title. The Silver Blades version screen's `PLAY DEMO
 QUIT` bar takes `P`; one `RET` at it was followed by the story intro and the
@@ -457,6 +460,18 @@ pinned C64 JOIN party `WISH-SPEC-ssb-joined-arrow-c64-672` published through
 Save As Amiga. All of it is read-only, and each run's disks are hash-checked
 before and after.
 
+DOS Silver Blades was run again after the run's deadline began bounding the
+route helpers it borrows. At `6e377388d6b230e6c8c585d3a93fa1fac5cf1cea` the
+command in the table, with `--deadline 420` under `timeout -k 30 720`, moved
+the party from 3,3 to 3,4, area 16 facing 2, in 33 s; the control (`'turn 4'`
+in place of `'walk 1'`) did not move, area 16 at 3,3, in 39 s. Every step
+reported done and the deadline was named in neither output. The specimen is
+`WISH-SPEC-ssb-299-whole-engine-resave` under `/mnt/specimens/por-dos/`.
+Evidence is `~/.cache/wish/acceptance/683/6e377388d6-run` (the control's
+summary; the walk run's own summary was overwritten by the control in the same
+directory) and `~/.cache/wish/acceptance/683/6e377388d6-console/` (`walk.log`,
+`control.log`).
+
 **What differs per title** is in sections 2 and 3: the status token column and
 move modes (DOS), the walk letters, panel order and save sequence (C64), and
 the disks and first keys (Amiga). Three Amiga save details belong here. Curse's
@@ -474,7 +489,7 @@ and the driver refuses a readback older than five minutes.
 
 **Amiga Pools of Darkness is not yet proven.** Its route mounts disk 1 in DF0
 and disk 3 in DF1 from the first frame, with disk 2 as a spare, because the
-pipe answered a runtime floppy insert with `404`. Measuring boot 4 recognised
+route predates a working runtime insert. Measuring boot 4 recognised
 the title by its guard, reached the party menu with `P` and the load prompt
 with `L`, and stopped there: the prompt is `LOAD FROM WHERE?` over `POOLS`,
 `SECRET` and `EXIT`, and the slot letter pressed at it changed nothing, so no
@@ -483,6 +498,17 @@ party was loaded, no sheet opened and no save written (exit 1, empty error,
 before the slot letter, and no boot with that route is recorded. Its guard map
 holds the title screen and a disk 2 prompt only, so no state after the title has
 a guard, and no `accept` boot has run.
+
+A DF0 insert is now proven possible, so disk 2 in DF2 no longer has that
+reason, and the route change is pending. At
+`6e377388d6b230e6c8c585d3a93fa1fac5cf1cea`, `tools/amiga/amigadrivecheck.py` on
+generated disks (no game) swapped DF0 from A to B and back to A, each applied
+in about 2.4 s, confirmed by the `CFG floppy0` query and by `DBG c` polling the
+drive from `ro` to `rw`, with DF1 unchanged. The controls (another holder's
+claim, another holder's path, a file never staged, the same path twice) all
+left both drives unchanged. Evidence:
+`~/.cache/wish/acceptance/679/6e377388d6-amiga-drivecheck/summary.json`; the
+command contract is `docs/143-winuae-debugger.md` section 4.2.
 
 The foundation gate stays in front of every conversion ticket's boot on a
 platform: a run in section 4 boots only on a pair whose row above says Proven,
