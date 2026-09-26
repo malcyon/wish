@@ -644,10 +644,21 @@ Write-Output '<<end>>'
 
         Sends the one message `CFG floppy<drive>=<path>`, which `uaeipc.cpp`
         hands to `cfgfile_modify`. Nothing is sent when either argument is
-        refused.
+        refused. Only DF1 may be changed while the game runs: DF0 holds the
+        boot disk and any other drive is configured statically at start.
+
+        `path` is the Windows form with backslashes, so a caller holding a
+        forward-slash path converts it first.
+
+        The reply is returned raw. Whether a `cfgfile_modify` complaint reads
+        differently from success is not measured, so a caller must not treat
+        the reply as proof the disk went in; the first Pools of Darkness
+        measuring boot records the real success and failure texts, and a later
+        change may compare against them.
         """
-        if isinstance(drive, bool) or drive not in (0, 1, 2, 3):
-            raise ValueError(f"floppy drive {drive!r} is not 0 to 3")
+        if isinstance(drive, bool) or drive != 1:
+            raise ValueError(f"floppy drive {drive!r} is refused: only DF1 may "
+                             "be changed while the game runs")
         if not isinstance(path, str) or not self.FLOPPY_PATH.fullmatch(path):
             raise ValueError(f"floppy path {path!r} is not a staged ADF in "
                              "C:\\Amiga\\Disks")

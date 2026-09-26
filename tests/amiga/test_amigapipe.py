@@ -419,8 +419,8 @@ def test_a_floppy_insert_goes_down_as_one_cfg_line():
     assert guest.messages == [f"CFG floppy1={DISK3}"]
 
 
-@pytest.mark.parametrize("drive", [-1, 4, True, "1", None])
-def test_a_floppy_insert_refuses_a_drive_outside_0_to_3(drive):
+@pytest.mark.parametrize("drive", [0, 2, 3, 4, -1, True, "1", None])
+def test_a_floppy_insert_refuses_every_drive_but_df1(drive):
     guest = CfgGuest()
     with pytest.raises(ValueError):
         amiga.WinuaePipe(runner=guest).insert_floppy(drive, DISK3)
@@ -431,12 +431,25 @@ def test_a_floppy_insert_refuses_a_drive_outside_0_to_3(drive):
     DISK3 + ";q", 'C:\\Amiga\\Disks\\wish679-"x".adf',
     "C:\\Amiga\\Disks\\wish679-x.adf\n", "C:\\Amiga\\Disks\\..\\wish1-x.adf",
     "C:\\Amiga\\Disks\\wish679-x.zip", "C:\\Amiga\\Disks\\disk3.adf",
-    "D:\\Amiga\\Disks\\wish679-x.adf"])
+    "D:\\Amiga\\Disks\\wish679-x.adf", "C:\\Amiga\\Disks\\wish-x.adf"])
 def test_a_floppy_insert_refuses_a_path_outside_the_disks_folder(path):
     guest = CfgGuest()
     with pytest.raises(ValueError):
         amiga.WinuaePipe(runner=guest).insert_floppy(1, path)
     assert guest.messages == []
+
+
+@pytest.mark.parametrize("path", [None, 3, b"x", ["a"]])
+def test_a_floppy_insert_refuses_a_non_string_path_with_value_error(path):
+    guest = CfgGuest()
+    with pytest.raises(ValueError):
+        amiga.WinuaePipe(runner=guest).insert_floppy(1, path)
+    assert guest.messages == []
+
+
+def test_a_floppy_insert_returns_the_raw_reply_unchanged():
+    p = amiga.WinuaePipe(runner=CfgGuest(reply="cannot open disk\n\x00"))
+    assert p.insert_floppy(1, DISK3) == "cannot open disk\n"
 
 
 def test_a_debugger_command_still_goes_down_with_dbg_and_never_cfg():
