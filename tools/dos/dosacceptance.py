@@ -1830,9 +1830,6 @@ class Driver:
             origin = status_square(settled)
             screens.append({"shot": self.shot("walk-move"), "bar": move_bar,
                             "square": origin})
-            if origin is None:
-                raise self.fail("walk-status", "no status line to compare a "
-                                "step with")
 
             def settle(label: str) -> str | None:
                 screen = self.s.settle(quiet=0.6, timeout=30.0)
@@ -1846,6 +1843,23 @@ class Driver:
                 screens.append({"shot": self.shot(label), "bar": move_bar,
                                 "square": square})
                 return square
+
+            if origin is None:
+                # Move mode draws no status line on entry; the first turn
+                # does, and four turns bring the party back to its facing.
+                for n in range(1, 5):
+                    label = f"walk-circle-{n}"
+                    if not self.game.turn_right():
+                        raise self.fail(label, "the move bar did not return "
+                                        "after turning")
+                    square = settle(label)
+                    if square is None:
+                        raise self.fail("walk-status", "the status line stayed "
+                                        "blank after a turn")
+                    if origin is None:
+                        origin = square
+                    elif square != origin:
+                        raise self.fail(label, "the square changed on a turn")
 
             turns = 0
             for attempt in range(4):

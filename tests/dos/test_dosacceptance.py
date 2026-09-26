@@ -2090,24 +2090,27 @@ class FakeDungeon(FakePod):
 
     `ignore_m` makes `m` do nothing; `up_roster` sends move mode's `Up` to the
     roster; `blank_status` leaves the status line blank until a key other
-    than `m` is pressed, as run 3's map bar did; `blank_after_up` blanks it
+    than `m` is pressed, as the game's move mode does; `never_status` keeps it
+    blank whatever is pressed; `blank_after_up` blanks it
     once `Up` has been pressed in move mode; `no_highlight` draws the roster
     with no white line."""
 
     MOVE_BAR = b"\x41"
 
     def __init__(self, tmp, walls=0, ignore_m=False, up_roster=False,
-                 blank_status=False, blank_after_up=False, no_highlight=False, **kw):
+                 blank_status=False, blank_after_up=False, no_highlight=False,
+                 never_status=False, **kw):
         super().__init__(tmp, **kw)
         self.mode = "dmap"
         self.blank_after_up, self.no_highlight = blank_after_up, no_highlight
         self.x, self.facing, self.walls = 1, 1, walls
         self.ignore_m, self.up_roster = ignore_m, up_roster
         self.status_on = not blank_status
+        self.never_status = never_status
 
     def key(self, k, gap=0.0):
         self.keys.append(k)
-        if k != "m":
+        if k != "m" and not self.never_status:
             self.status_on = True
         if self.mode == "dmap":
             if k == "m" and not self.ignore_m:
@@ -2169,11 +2172,37 @@ def test_pools_of_darkness_stops_when_every_facing_is_a_wall(tmp_path):
     assert game.keys == ["m"] + ["Up", "Right"] * 3 + ["Up"]
 
 
-def test_a_blank_status_line_is_never_the_walk_baseline(tmp_path):
+def test_a_move_mode_with_no_status_line_takes_its_baseline_from_a_full_circle(tmp_path):
+    """The game draws no status line on entering move mode; the first turn
+    draws it, and four turns leave the party facing as it started."""
     game, d = _dungeon_driver(tmp_path, blank_status=True)
-    with pytest.raises(da.StepFailed, match="status line"):
+    got = d.walk("1")
+    assert game.keys == ["m"] + ["Right"] * 4 + ["Up", "Escape"]
+    assert game.facing == 1 and game.x == 2
+    assert got["square_before"] is not None
+    assert got["square_before"] != got["square_after"]
+    assert game.mode == "dmap"
+
+
+def test_a_status_line_that_stays_blank_after_a_turn_is_never_the_baseline(tmp_path):
+    game, d = _dungeon_driver(tmp_path, blank_status=True, never_status=True)
+    with pytest.raises(da.StepFailed, match="stayed blank after a turn"):
         d.walk("1")
-    assert game.keys == ["m"]
+    assert game.keys == ["m", "Right"]
+
+
+def test_a_square_that_changes_on_the_circle_stops_the_walk(tmp_path):
+    game, d = _dungeon_driver(tmp_path, blank_status=True)
+    real = game.key
+
+    def key(k, gap=0.0):
+        real(k, gap)
+        if k == "Right" and game.keys.count("Right") == 2:
+            game.x += 1
+
+    game.key = key
+    with pytest.raises(da.StepFailed, match="square changed on a turn"):
+        d.walk("1")
 
 
 def test_an_up_that_moves_the_roster_stops_the_walk(tmp_path):
