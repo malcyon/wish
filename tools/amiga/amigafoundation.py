@@ -283,9 +283,12 @@ DARKNESS = AmigaTitle(
         ("P", "party_menu", "key"), ("L", "load_picker", "key"), ("B", "loaded_menu", "key"),
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"),
     ),
-    # The title screen came up about 247 s into the measured boot, the first key lands about 40 s
-    # after `boot_span`, and the game drops into its demo 60 to 85 s after the title is up, so
-    # the key must land after about 247 s and before about 300 s.
+    # In the measured boot the settled captures ended at 27, 99, 153 (loading screens), 247 (the
+    # first showing the title), 271, 297 (the same title) and 331 s (the demo) after the claim,
+    # so the title appeared between 153 and 247 s and the demo began between 297 and 331 s: at
+    # least 50 s later. The first key goes out about 8 s after the first capture that ends at or
+    # after `boot_span` seconds from the start, so 225 puts it near 255 s, on the title; a title
+    # 30 s slower would put it on a loading screen. Without a title guard this is a guess.
     boot_span=225.0, title_limit=420.0,
     control_letter="I", after_letter="J", kept_letters=("A", "C", "D", "E"),
     plain_keys=(("E", "loaded_menu"), ("E", "camp")),

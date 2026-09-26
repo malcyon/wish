@@ -674,9 +674,9 @@ def test_darkness_keeps_disk_2_as_a_registered_spare_so_a_later_df0_insert_can_b
     assert "disk2" in foundation.DARKNESS.disk_keys
 
 
-def test_darkness_has_no_disk_prompt_interstitial_and_its_boot_ends_before_the_demo_starts():
-    # With disk 3 mounted no prompt appeared; the first key must land after the title (about
-    # 247 s) and before the demo (about 300 s), and the driver's capture overhead is about 40 s.
+def test_darkness_has_no_disk_prompt_interstitial_and_pins_its_boot_span_as_a_guess():
+    # With disk 3 mounted no prompt appeared. The 225 s span puts the first key near the title in
+    # the one measured boot; that timing is a guess until a title guard recognises the screen.
     assert [row[0] for row in foundation.DARKNESS.interstitials] == ["journal", "yes_no",
                                                                      "continue"]
     assert foundation.DARKNESS.boot_span == 225.0
