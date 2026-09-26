@@ -223,6 +223,11 @@ def _client_of(image):
         left, top = amigashots.find_client(image)
     except LookupError:
         return image
+    if (left < 0 or top < 0 or left + width > image.size[0]
+            or top + height > image.size[1]):
+        # A window partly off screen: `crop` would pad with black, and a fit on
+        # padding is a fit on something the screen never showed.
+        return image
     return image.crop((left, top, left + width, top + height))
 
 

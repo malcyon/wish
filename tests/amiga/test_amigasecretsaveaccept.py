@@ -285,7 +285,8 @@ def test_the_preflight_wants_the_imports_and_the_private_tables(tmp_path, monkey
 
     def run(argv, **kw):
         ran.append(argv)
-        return subprocess.CompletedProcess(argv, 0, b"", b"")
+        reader = argv[2] == drive.JOURNAL_READER_CHECK
+        return subprocess.CompletedProcess(argv, 0, b"ok\n" if reader else b"", b"")
 
     monkeypatch.setattr(drive.subprocess, "run", run)
     monkeypatch.setattr(drive.amigabladesjournal, "wheel_repo", lambda: tmp_path)

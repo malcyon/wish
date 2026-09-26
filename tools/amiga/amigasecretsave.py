@@ -606,10 +606,14 @@ def _journal_reader_failure(journal_python: str, analysis: pathlib.Path) -> str:
                               capture_output=True, text=True, errors="replace", timeout=60)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return f"the journal interpreter {journal_python!r} did not run the reader check: {exc}"
-    if proc.returncode == 0:
+    stdout, stderr = (part.decode(errors="replace") if isinstance(part, bytes) else part or ""
+                      for part in (proc.stdout, proc.stderr))
+    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+    if proc.returncode == 0 and lines[-1:] == ["ok"]:
         return ""
-    return (f"the private journal reader failed its template check (exit {proc.returncode})"
-            + (_stderr_tail(proc.stderr) or "; no stderr"))
+    what = f"exit {proc.returncode}" if proc.returncode else "exit 0 but no ok line"
+    return (f"the private journal reader failed its template check ({what})"
+            + (_stderr_tail(stderr) or "; no stderr"))
 
 
 def journal_preflight(journal_python: str) -> None:

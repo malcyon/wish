@@ -120,3 +120,70 @@ def test_a_client_size_grab_still_works(tmp_path):
     clean = _scale(_desktop(tmp_path), tmp_path / "clean.png")
     small = _scale(_desktop(tmp_path, name="c.png", crop=True), tmp_path / "small.png")
     assert small == clean
+
+
+def _bands_on(size, tops=(91, 123, 155), left=200):
+    Image = pytest.importorskip("PIL.Image")
+    image = Image.new("RGB", size, (0, 0, 34))
+    for top in tops:
+        image.paste(Image.new("RGB", (200, 12), journal.GREEN), (left, top))
+    return image
+
+
+def _whole_image_result(image, tmp_path, name):
+    """What fitting the untouched image gives, computed without `_client_of`."""
+    shot = tmp_path / f"{name}.png"
+    image.save(shot)
+    return _scale(shot, tmp_path / f"{name}-out.png")
+
+
+def test_a_desktop_with_no_window_is_fitted_whole(tmp_path, monkeypatch):
+    image = _bands_on((1024, 768))
+    with monkeypatch.context() as old:
+        old.setattr(journal, "_client_of", lambda im: im)
+        expected = _whole_image_result(image, tmp_path, "whole")
+    assert expected[0] is not None
+    assert _whole_image_result(image, tmp_path, "again") == expected
+
+
+def test_a_desktop_with_no_window_is_not_refused_by_the_crop(tmp_path):
+    image = _bands_on((1024, 768))
+    grid, _ = _whole_image_result(image, tmp_path, "nowindow")
+    assert grid == (32.0, 32.0, 32.0)
+
+
+def test_a_window_partly_off_screen_is_never_padded(tmp_path, monkeypatch):
+    image = _bands_on((1024, 768))
+    expected = _whole_image_result(image, tmp_path, "whole")
+    for offset in ((-10, 20), (20, -10)):
+        monkeypatch.setattr(amigashots, "find_client", lambda im, offset=offset: offset)
+        assert _whole_image_result(image, tmp_path, "off") == expected
+    monkeypatch.setattr(amigashots, "find_client", lambda im: (400, 400))
+    assert _whole_image_result(image, tmp_path, "past") == expected
+
+
+def _fake_reader_stdout(monkeypatch, tmp_path, stdout):
+    (tmp_path / "ssb" / "analysis").mkdir(parents=True)
+    monkeypatch.setenv(journal.ENV, str(tmp_path))
+
+    def run(argv, **kw):
+        return subprocess.CompletedProcess(argv, 0, "" if argv[2] == "import numpy, PIL" else stdout, "")
+
+    monkeypatch.setattr(drive.subprocess, "run", run)
+
+
+def test_exit_zero_with_an_error_and_no_ok_is_refused(tmp_path, monkeypatch):
+    _fake_reader_stdout(monkeypatch, tmp_path, "template missing\n")
+    with pytest.raises(drive.RouteError, match="no ok line"):
+        drive.journal_preflight("py")
+
+
+def test_noise_before_the_last_ok_line_passes(tmp_path, monkeypatch):
+    _fake_reader_stdout(monkeypatch, tmp_path, "chatter on import\n\nok\n\n")
+    drive.journal_preflight("py")
+
+
+def test_ok_that_is_not_the_last_line_is_refused(tmp_path, monkeypatch):
+    _fake_reader_stdout(monkeypatch, tmp_path, "ok\nerror\n")
+    with pytest.raises(drive.RouteError, match="no ok line"):
+        drive.journal_preflight("py")
