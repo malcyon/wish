@@ -300,3 +300,36 @@ def test_parse_route_rejects_a_trailing_comma_and_an_empty_state():
     for text in ("ESC:party_menu,", "ESC:", ":party_menu", ""):
         with pytest.raises(amigasecretsave.RouteError):
             amigasecretsave.parse_route(text)
+
+
+class AlteringGuest(ScreenGuest):
+    """The guest changes one drive on a key that is not a write key."""
+
+    def __init__(self, clock, drive, change):
+        super().__init__(clock)
+        self.drive, self.change = drive, change
+
+    def press(self, holder, key, timeout=None):
+        super().press(holder, key, timeout)
+        if key == "X":
+            remote = self.drives[self.drive]
+            disk = AmigaDisk(self.remote[remote])
+            self.change(disk)
+            self.remote[remote] = disk.to_bytes()
+
+
+def test_measure_fails_when_the_guest_alters_disk_b(tmp_path, clock):
+    guest = AlteringGuest(clock, 1, lambda d: d.make_dir("/EXTRA"))
+    result = _measure(tmp_path, guest, route=(("RET", "version"), ("X", "items")))
+    assert result["df1_unchanged"] is False and result["df0_unchanged"] is True
+    assert result["slot_b_sha256"] is None and result["route_changed"] is True
+    assert result["success"] is False
+
+
+def test_measure_fails_when_the_guest_alters_the_boot_disk(tmp_path, clock):
+    # A file other than savgamB.sav, so only the changed DF0 can fail the run.
+    guest = AlteringGuest(clock, 0, lambda d: d.write_file("/SAVE/other.sav", b"x"))
+    result = _measure(tmp_path, guest, route=(("RET", "version"), ("X", "items")))
+    assert result["df0_unchanged"] is False and result["df1_unchanged"] is True
+    assert result["slot_b_sha256"] is None and result["route_changed"] is True
+    assert result["success"] is False

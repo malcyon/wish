@@ -417,6 +417,80 @@ def test_capture_waits_for_the_emulator_window(tmp_path, monkeypatch, desktop_cl
     assert desktop.shots == 3
 
 
+def test_capture_with_little_time_left_still_takes_one_shot(
+        tmp_path, monkeypatch, desktop_clock):
+    desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
+
+    with pytest.raises(amigasecretsave.RouteError, match="did not settle inside 10s"):
+        amigasecretsave.WinGuest().capture(
+            "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=10)
+
+    assert desktop.shots == 1
+    assert desktop.timeouts == [10]
+    assert (tmp_path / "s.png").exists()
+
+
+def test_capture_with_no_time_left_takes_no_shot(tmp_path, monkeypatch, desktop_clock):
+    desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
+
+    with pytest.raises(amigasecretsave.RouteError, match="did not settle"):
+        amigasecretsave.WinGuest().capture(
+            "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=0)
+
+    assert desktop.shots == 0
+
+
+def _manifest_with(tmp_path, mutate):
+    path = _prepared(tmp_path)
+    manifest = json.loads(path.read_text())
+    mutate(manifest, tmp_path)
+    path.write_text(json.dumps(manifest))
+    return path
+
+
+def _refused(tmp_path, mutate, match):
+    path = _manifest_with(tmp_path, mutate)
+    guest = FailedPostWriteGuest()
+    with pytest.raises(amigasecretsave.RouteError, match=match):
+        amigasecretsave.run_recon(
+            path, guest=guest, guard=lambda s, p: True, holder="wish672-test",
+            audio_proof=_audio_proof(tmp_path))
+    assert guest.calls == []
+
+
+def test_recon_refuses_a_published_slot_that_differs_from_the_manifest(tmp_path):
+    _refused(tmp_path, lambda m, t: m.update(slot_sha256="0" * 64),
+             "published slot differs")
+
+
+def test_recon_refuses_a_boot_disk_slot_that_is_not_the_published_one(tmp_path):
+    def mutate(manifest, root):
+        boot = AmigaDisk.open(root / "boot.adf")
+        boot.write_file("/SAVE/savgamC.sav", b"another save")
+        boot.save(root / "boot.adf")
+        manifest["df0"]["sha256"] = _sha(root / "boot.adf")
+
+    _refused(tmp_path, mutate, "not Wish's published slot")
+
+
+def test_recon_refuses_a_working_df1_that_is_not_disk_b(tmp_path):
+    def mutate(manifest, root):
+        _disk(root / "disk-b-working.adf", "Other")
+        manifest["df1"]["sha256"] = _sha(root / "disk-b-working.adf")
+
+    _refused(tmp_path, mutate, "volume 'Secret 2'")
+
+
+def test_recon_refuses_a_working_df1_that_differs_from_the_registered_disk_b(tmp_path):
+    def mutate(manifest, root):
+        disk = AmigaDisk.open(root / "disk-b-working.adf")
+        disk.make_dir("/EXTRA")
+        disk.save(root / "disk-b-working.adf")
+        manifest["df1"]["sha256"] = _sha(root / "disk-b-working.adf")
+
+    _refused(tmp_path, mutate, "differs from the registered disk B")
+
+
 def test_start_opens_no_log_console(monkeypatch):
     sent = []
     guest = amigasecretsave.WinGuest()

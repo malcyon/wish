@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import pathlib
+import string
 import struct
 
 from goldbox import amiga_adf as adf
@@ -311,7 +312,7 @@ def stage_embedded_boot_disk(
         source, out, expected_source_sha256, expected_secret_sha256)
     name = f"savgam{letter}.sav"
     path = f"/{OLD_NAME}/{name}"
-    if len(letter) != 1 or not letter.isalpha():
+    if len(letter) != 1 or letter not in string.ascii_letters:
         raise StageError(f"slot letter {letter!r} is not one letter")
     try:
         try:

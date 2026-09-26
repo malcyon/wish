@@ -341,6 +341,18 @@ def test_embedded_stage_refuses_an_occupied_letter_without_writing(tmp_path):
 
 
 @POSIX_STAGING
+def test_embedded_stage_refuses_a_letter_the_game_cannot_build(tmp_path):
+    source = _disk(tmp_path)
+    out = _out("must-not-exist.adf")
+
+    for letter in ("\u00e9", "AB", ""):
+        with pytest.raises(amigaacceptance.StageError, match="one letter"):
+            _stage_embedded(source, b"wish slot bytes", letter, out)
+
+    assert not out.exists()
+
+
+@POSIX_STAGING
 def test_registered_side_a_embedded_stage_keeps_the_original_read_only(tmp_path):
     root = gamedisks.find("amiga")
     if root is None:

@@ -226,15 +226,19 @@ class WinGuest:
     def capture(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
                 timeout: float) -> None:
         """Grab until two consecutive crops of the Amiga screen are identical."""
-        started, previous, made = time.monotonic(), None, False
+        started, previous, made, shots = time.monotonic(), None, False, 0
         try:
             while True:
                 left = timeout - (time.monotonic() - started)
-                if left < SHOT_SECONDS:
+                # A short shot risks a timeout, so only the first one is allowed to be
+                # short: a failure capture with little time left must still leave a frame.
+                if left <= 0 or (left < SHOT_SECONDS and shots):
                     raise RouteError(f"{state} did not settle inside {timeout:.0f}s")
+                allowed = min(SHOT_SECONDS, left)
                 made = False
-                self._run("shot", str(raw), "--timeout", str(int(SHOT_SECONDS)),
-                          timeout=SHOT_SECONDS)
+                shots += 1
+                self._run("shot", str(raw), "--timeout", str(max(1, int(allowed))),
+                          timeout=allowed)
                 try:
                     amigashots.crop(raw, cropped)
                 except LookupError:
