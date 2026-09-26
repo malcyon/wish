@@ -75,3 +75,30 @@ def test_the_crop_is_the_emulator_screen_and_nothing_else(tmp_path):
     assert cut.size == amigashots.CLIENT
     assert cut.getpixel((0, 0)) == (0, 0, 34)
     assert cut.getpixel((0, amigashots.CLIENT[1] - 1)) == (255, 255, 255)
+
+
+def test_run_settles_on_the_crop_not_the_whole_desktop(monkeypatch, tmp_path):
+    import types
+
+    grabs = []
+    for tick in (1, 2, 3):
+        image = _desktop((255, 255, 255))
+        image.putpixel((1900, 1070), (tick, 0, 0))
+        grabs.append(image)
+    calls = []
+
+    def _shot(args, **kwargs):
+        image = grabs[min(len(calls), len(grabs) - 1)]
+        calls.append(args[-1])
+        image.save(args[-1], "PNG")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(amigashots.winvmsettle.subprocess, "run", _shot)
+    monkeypatch.setattr(amigashots.amigadrive, "press",
+                        lambda *args: None)
+    monkeypatch.setattr(amigashots.winvmsettle.time, "sleep",
+                        lambda seconds: None)
+    assert amigashots.run("h", ["A"], tmp_path, 30, None,
+                          amigashots.CLIENT, 0) == 0
+    assert len(calls) == 2
+    assert (tmp_path / "01-a.png").exists()

@@ -89,3 +89,41 @@ def test_the_directory_is_made_rather_than_demanded(monkeypatch, tmp_path):
     out = tmp_path / "run" / "shots" / "shot.png"
     assert winvmsettle.settle(out, limit=30, interval=0) is True
     assert out.exists()
+
+
+Image = pytest.importorskip("PIL.Image", reason="Pillow reads the grabs")
+
+
+def _png(clock: int = 0, screen: int = 0) -> bytes:
+    """A desktop with WinUAE's status bar under a screen; `clock` is outside it."""
+    import io
+
+    from tools.amiga import amigashots
+
+    width, height = amigashots.CLIENT
+    image = Image.new("RGB", (1920, 1080), (31, 98, 176))
+    image.paste(Image.new("RGB", (width, height), (0, 0, 34 + screen)),
+                (137, 43))
+    image.paste(Image.new("RGB", (width, 22), amigashots.STATUS_GREY),
+                (137, 43 + height + 1))
+    image.putpixel((1900, 1070), (clock, 0, 0))
+    buffer = io.BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def test_a_change_outside_the_emulator_screen_still_settles(monkeypatch,
+                                                            tmp_path):
+    # The taskbar clock ticks while the game holds still.
+    _grabs(monkeypatch, [_png(clock=1), _png(clock=2), _png(clock=3)])
+    out = tmp_path / "shot.png"
+    assert winvmsettle.settle(out, limit=30, interval=0) is True
+    assert out.read_bytes() == _png(clock=2)
+
+
+def test_a_change_inside_the_emulator_screen_never_settles(monkeypatch,
+                                                           tmp_path):
+    # Two screens alternating: no two consecutive grabs are ever alike.
+    _grabs(monkeypatch, [_png(screen=1), _png(screen=2)] * 500)
+    assert winvmsettle.settle(tmp_path / "shot.png", limit=0.05,
+                              interval=0) is False
