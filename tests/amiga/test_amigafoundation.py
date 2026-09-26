@@ -444,18 +444,15 @@ def _dark_run(tmp_path, clock, *, guest=None, guard=None, **kw):
     return guest, result
 
 
-def test_darkness_accept_presses_the_plans_keys_inserts_disk_3_first_and_never_y(
+def test_darkness_accept_presses_the_plans_keys_with_disk_3_mounted_in_df1_and_never_y(
         tmp_path, clock):
     guest, result = _dark_run(tmp_path, clock)
     assert result["error"] == "" and result["success"] is True, result["read"]
     keys = _keys(guest)
     assert keys == DARK_KEYS and "Y" not in keys
-    assert guest.inserted == [(1, "C:/Amiga/Disks/wish679-wish679-test-disk3.adf")]
-    order = [c[0] if c[0] == "insert" else c[2] for c in guest.calls
-             if c[0] in ("insert", "press")]
-    assert order[:2] == ["insert", "SPACE"]
+    assert guest.inserted == [] and keys[0] == "SPACE"  # nothing is inserted; SPACE answers the prompt
     (drives, options), = guest.starts
-    assert [d and d.rsplit("-", 1)[1] for d in drives] == ["disk1.adf", None]
+    assert [d and d.rsplit("-", 1)[1] for d in drives] == ["disk1.adf", "disk3.adf"]
     assert options == ()
     # E leaves the sheet once and never twice in a row at the party menu.
     assert keys[keys.index("L"):keys.index("S")].count("E") == 1
@@ -485,7 +482,8 @@ def test_darkness_answers_the_journal_at_most_three_times(tmp_path, clock):
 def test_darkness_measure_stops_before_the_first_save(tmp_path, clock):
     guest, result = _dark_run(tmp_path, clock, accept=False, measure=True)
     assert _keys(guest) == "SPACE P P L B V E S".split()
-    assert guest.inserted and result["success"] is True and result["control_sha256"] is None
+    assert guest.inserted == [] and result["success"] is True
+    assert result["control_sha256"] is None
     assert not {"I", "J", "Y"} & set(_keys(guest))
 
 

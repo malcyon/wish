@@ -258,14 +258,16 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
             if e.name.lower() == f"savgam{letter}.pty".lower()}
 
 
-# Disk 3 is the save disk and is put in DF1 when the boot asks for it, so DF1 starts empty.
+# Disk 3 is the save disk and is mounted in DF1 from the start, and the boot's disk prompt is
+# answered with SPACE. Whether the game accepts a disk already present when it draws that prompt
+# is not established; a measuring boot settles it.
 # No step gives the game disk 2: whether a prompt for it appears is for the measuring boot
 # to show, and a DF0 insert is decided after that. A, C, D and E stay unchanged; E is also
 # the game's own exit key on the sheet and at camp, which `plain_keys` names.
 DARKNESS = AmigaTitle(
     issue=ISSUE,
-    mounted=("disk1", None),
-    spares=("disk2", "disk3"),
+    mounted=("disk1", "disk3"),
+    spares=("disk2",),
     save_disk="disk3",
     read_slot=_darkness_read_slot, slot_letters=_darkness_slot_letters,
     slot_files=_darkness_slot_files,
@@ -278,7 +280,7 @@ DARKNESS = AmigaTitle(
     ),
     # Stops before I.
     measure_route=(
-        ((1, "disk3", "SPACE"), "title", "insert"), ("P", "play", "key"),
+        ("SPACE", "title", "key"), ("P", "play", "key"),
         ("P", "party_menu", "key"), ("L", "load_picker", "key"), ("B", "loaded_menu", "key"),
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"),
     ),
@@ -291,7 +293,7 @@ DARKNESS = AmigaTitle(
                "sheet": 5.0, "save_picker": 10.0, "world": 45.0, "world_after_move": 5.0,
                "camp": 10.0, "camp_save_picker": 10.0},
     interstitials=(
-        ("boot_prompt", ("insert", 1, "disk3", "SPACE"), frozenset({"title"}), 1),
+        ("boot_prompt", ("keys", "SPACE"), frozenset({"title"}), 1),
         ("journal", ("answer",), None, 1),
         ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
         ("continue", ("keys", "RET"), frozenset({"world"}), 3),
