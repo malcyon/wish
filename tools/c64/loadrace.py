@@ -38,7 +38,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import tool_disks  # noqa: E402
-from tools.c64 import savecheck as V  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -64,8 +64,8 @@ def loaded(rows: list[str]) -> bool:
     return "BEGIN ADVENTURING" in text and "LOAD SAVED GAME" not in text
 
 
-def run(args, log: V.Log) -> int:
-    V.catch_signals()
+def run(args, log: runlog.Log) -> int:
+    runlog.catch_signals()
     slot = S.claim_slot(args.slot, f"loadrace/{pathlib.Path(args.disk).name}")
     log.say(f"slot {slot.n} display {slot.display}")
     sess = None
@@ -166,7 +166,7 @@ def main(argv=None) -> int:
     out = pathlib.Path(args.out) if args.out else (
         scratch.scratch_dir("loadrace") / f"{args.tag}.jsonl")
     scratch.ensure(out.parent)
-    log = V.Log(out)
+    log = runlog.Log(out)
     try:
         return run(args, log)
     finally:

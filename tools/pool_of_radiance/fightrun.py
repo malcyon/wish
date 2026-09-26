@@ -40,7 +40,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import tool_disks  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -60,10 +60,10 @@ DISKS: pathlib.Path | None = tool_disks()
 claim_slot = S.claim_slot
 
 
-class Run(SC.Log):
+class Run(runlog.Log):
     """One booted session, and the log it writes.
 
-    `SC.Log` is `tools/c64/savecheck.py`'s -- it keeps a second run's log rather
+    `runlog.Log` is `tools/c64/runlog.py`'s -- it keeps a second run's log rather
     than truncating it, and a `say` that a dead console cannot take down with
     it (`#442`).  This class adds only what a fight run needs beyond that:
     `quiet`, and the turn-by-turn record `tactic` and `report` read back.
@@ -177,7 +177,7 @@ def main(argv=None) -> int:
         if DISKS is None:
             raise SystemExit("No game disks found. Set $POR_DISKS.")
         args.disks = str(DISKS)
-    SC.catch_signals()
+    runlog.catch_signals()
 
     disks = pathlib.Path(args.disks)
     out = pathlib.Path(args.out) if args.out else (

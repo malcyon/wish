@@ -60,7 +60,7 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -103,8 +103,8 @@ def wound(sess, index: int, to: int = 1) -> None:
         m.write(at, bytes([to & 0xFF, to >> 8]))
 
 
-class Log(SC.Log):
-    """`SC.Log` -- `tools/c64/savecheck.py`'s -- plus a run's own sample list.
+class Log(runlog.Log):
+    """`runlog.Log` -- `tools/c64/runlog.py`'s -- plus a run's own sample list.
 
     Keeps a second run's log rather than truncating it, and a `say` a dead
     console cannot take down with it (`#442`).
@@ -219,7 +219,7 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     if args.disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
-    SC.catch_signals()
+    runlog.catch_signals()
 
     disks = pathlib.Path(args.disks)
     save = args.save

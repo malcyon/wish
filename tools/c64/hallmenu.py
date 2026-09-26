@@ -41,7 +41,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import tool_disks  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
@@ -101,12 +101,12 @@ def kind(row24: str) -> str:
     return "none"
 
 
-class Log(SC.Log):
-    """`SC.Log` -- `tools/c64/savecheck.py`'s -- opened `append`.
+class Log(runlog.Log):
+    """`runlog.Log` -- `tools/c64/runlog.py`'s -- opened `append`.
 
     Nothing here ever truncated: `hallmenu.jsonl` was always opened `"a"`.
     What was missing was a `say` a dead console cannot take down with it
-    (`#442`) -- `SC.Log`'s emits a single `t`, rounded, rather than this
+    (`#442`) -- `runlog.Log`'s emits a single `t`, rounded, rather than this
     class's own un-rounded one, which is the one visible difference.
     """
 
@@ -160,7 +160,7 @@ def watch(sess, log: Log, tag: str, answer: str, seconds: float) -> str:
 
 
 def run(args, log: Log) -> int:
-    SC.catch_signals()
+    runlog.catch_signals()
     slot = S.claim_slot(args.slot, f"hallmenu/{pathlib.Path(args.disk).name}")
     log.say(f"slot {slot.n} display {slot.display}")
     sess = None

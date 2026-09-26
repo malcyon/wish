@@ -47,6 +47,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import tool_disks  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import savecheck as V  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -613,7 +614,7 @@ def main(argv=None) -> int:
     out = pathlib.Path(args.out or scratch.scratch_dir("iconswing") /
                        f"{args.tag}-swing.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
-    log = V.Log(out)
+    log = runlog.Log(out)
     started = time.time()
     try:
         rc = run(args, log)

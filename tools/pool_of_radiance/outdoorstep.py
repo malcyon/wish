@@ -40,6 +40,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import tool_disks  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -55,10 +56,10 @@ CLOCK_AT = 0x49C6
 CLOCK_BYTES = 6
 
 
-#: `SC.Log` -- it keeps a second run's log rather than truncating it, and a
+#: `runlog.Log` -- it keeps a second run's log rather than truncating it, and a
 #: `say` a dead console cannot take down with it (`#442`).  Nothing here adds
 #: anything beyond that, so the class is just the name this file already uses.
-Log = SC.Log
+Log = runlog.Log
 
 
 def reading(sess) -> dict:
@@ -183,7 +184,7 @@ def step(sess, log: Log, move: str, tag: str, patience: float = 20.0,
 
 
 def run(args, log: Log) -> int:
-    SC.catch_signals()
+    runlog.catch_signals()
     slot = S.claim_slot(args.slot, f"outdoorstep/{pathlib.Path(args.disk).name}")
     log.say(f"slot {slot.n} display {slot.display}")
     sess = None

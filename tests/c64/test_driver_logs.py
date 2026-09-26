@@ -362,7 +362,7 @@ def test_hallmenu_sigterm_mid_boot_tears_the_slot_down(
     disk = tmp_path / "PORSAVEB.D64"
     disk.write_bytes(b"\0" * 16)
     out = tmp_path / "run"
-    with pytest.raises(hallmenu.SC.Terminated):
+    with pytest.raises(hallmenu.runlog.Terminated):
         hallmenu.main(["--disk", str(disk), "--disks", str(tmp_path),
                        "--out", str(out)])
     assert slot.torn and slot.released

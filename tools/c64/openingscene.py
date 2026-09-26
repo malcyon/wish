@@ -289,11 +289,11 @@ def shut_down(sess, slot, write_summary) -> None:
 def run(args) -> int:
     from automap import gamedisks  # noqa: PLC0415
     from goldbox import c64_save  # noqa: PLC0415
-    from tools.c64 import savecheck  # noqa: PLC0415
+    from tools.c64 import runlog  # noqa: PLC0415
     from tools.c64 import session as por  # noqa: PLC0415
     from tools.curse_of_the_azure_bonds import curseareazero  # noqa: PLC0415
 
-    savecheck.catch_signals()
+    runlog.catch_signals()
     os.environ.setdefault("POR_HEADLESS", "1")
 
     # Only `close_splat` (a file operation) is used from here, for both

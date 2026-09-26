@@ -48,7 +48,7 @@ from automap import gamedisks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.c64.c64nametable import character_files, from_bar, load_party  # noqa: E402
 from tools.curse_of_the_azure_bonds import curserun  # noqa: E402
@@ -157,7 +157,7 @@ def main(argv=None) -> int:
 
     # A signal has to unwind through the `finally` below rather than kill the
     # run where it stands, or the slot's emulator outlives it (#442).
-    SC.catch_signals()
+    runlog.catch_signals()
     out = pathlib.Path(args.out)
     shots = [0]
     found = args.disks or gamedisks.find("curse-of-the-azure-bonds")

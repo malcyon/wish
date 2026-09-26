@@ -24,6 +24,8 @@ import threading
 import pytest
 from conftest import load_tools_module
 
+from tools.c64 import runlog  # noqa: E402
+
 savecheck = load_tools_module("savecheck")
 
 #: `os.kill(pid, SIGTERM)` on Windows is `TerminateProcess`: there is no
@@ -44,11 +46,11 @@ def test_a_retry_on_the_same_disk_keeps_the_failed_runs_log(tmp_path):
     one opens its log before it boots -- so the first run's evidence goes
     minutes before the retry reaches the point it is trying to reproduce."""
     out = tmp_path / "PORSAVEB.jsonl"
-    first = savecheck.Log(out)
+    first = runlog.Log(out)
     first.emit("failed", error="RuntimeError('the one nobody read')")
     first.close()
 
-    second = savecheck.Log(out)
+    second = runlog.Log(out)
     second.emit("picker", listed=True)
     second.close()
 
@@ -63,7 +65,7 @@ def test_two_logs_kept_in_the_same_second_do_not_overwrite_each_other(tmp_path):
     third run inside one second would otherwise collide with it."""
     out = tmp_path / "NEWJ.jsonl"
     for n in range(3):
-        log = savecheck.Log(out)
+        log = runlog.Log(out)
         log.emit("run", n=n)
         log.close()
     kept = sorted(tmp_path.glob("NEWJ-*.jsonl"))
@@ -209,8 +211,8 @@ def test_the_signal_handler_raises_rather_than_killing_the_process():
         pytest.skip("signal handlers only install on the main thread")
     old = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT)}
     try:
-        savecheck.catch_signals()
-        with pytest.raises(savecheck.Terminated):
+        runlog.catch_signals()
+        with pytest.raises(runlog.Terminated):
             os.kill(os.getpid(), signal.SIGTERM)
     finally:
         for sig, handler in old.items():
@@ -299,7 +301,7 @@ def test_a_log_that_cannot_be_kept_still_lets_the_new_run_write(
         raise OSError(2, "No such file or directory")
 
     monkeypatch.setattr(pathlib.Path, "rename", gone)
-    log = savecheck.Log(out)
+    log = runlog.Log(out)
     log.emit("picker", listed=["BEGIN ADVENTURING"])
     log.close()
     assert [e["kind"] for e in entries(out)] == ["picker"]
@@ -315,7 +317,7 @@ def test_the_record_going_does_not_raise_out_of_the_failure_handler(
     which is the shape of the loss #380 is about.
     """
     out = tmp_path / "PORSAVEB.jsonl"
-    log = savecheck.Log(out)
+    log = runlog.Log(out)
 
     def dead(*a, **kw):
         raise OSError(32, "Broken pipe")
@@ -324,3 +326,10 @@ def test_the_record_going_does_not_raise_out_of_the_failure_handler(
     log.emit = dead                        # the record has gone too
     log.say("the line nobody hears")       # must not raise
     assert log.talking is False
+
+
+@pytest.mark.parametrize("name", ["Log", "catch_signals", "Terminated",
+                                  "keep_old_log"])
+def test_savecheck_re_exports_the_runlog_names_unchanged(name):
+    """Callers that still import these from `savecheck` get the one object."""
+    assert getattr(savecheck, name) is getattr(runlog, name)

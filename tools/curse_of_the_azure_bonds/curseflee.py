@@ -164,8 +164,8 @@ def main(argv=None) -> int:
             print("no Curse disks found; pass --disks")
             return 2
         args.disks = str(found)
-    from tools.c64 import savecheck as SC
-    SC.catch_signals()
+    from tools.c64 import runlog
+    runlog.catch_signals()
     return run(args)
 
 

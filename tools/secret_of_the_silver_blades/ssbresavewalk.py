@@ -33,7 +33,8 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.c64 import session as S  # noqa: E402
-from tools.c64.savecheck import Log, answer_bars, panel, walk_step_routed  # noqa: E402
+from tools.c64.runlog import Log  # noqa: E402
+from tools.c64.savecheck import answer_bars, panel, walk_step_routed  # noqa: E402
 from tools.secret_of_the_silver_blades import ssbwarp  # noqa: E402
 
 

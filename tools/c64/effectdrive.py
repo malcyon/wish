@@ -46,7 +46,7 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import effects  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -166,7 +166,7 @@ def checkpoint_hits(mon, number: int) -> int:
     return struct.unpack("<I", body[13:17])[0]
 
 
-class Log(SC.Log):
+class Log(runlog.Log):
     def __init__(self, out: pathlib.Path, quiet: bool = False):
         self.quiet = quiet
         super().__init__(out / "effects.jsonl")
@@ -269,7 +269,7 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     if args.disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
-    SC.catch_signals()
+    runlog.catch_signals()
 
     disks = pathlib.Path(args.disks)
     out = pathlib.Path(args.out) if args.out else scratch.scratch_dir(

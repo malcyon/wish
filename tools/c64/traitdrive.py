@@ -51,7 +51,7 @@ from automap import gamedisks  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import c64_port, traits  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.absrefsweep import files  # noqa: E402
 from tools.c64.traitquery import TRAIT_SLOT, find_predicate, staging  # noqa: E402
@@ -160,12 +160,12 @@ def checkpoint_hits(mon, number: int) -> int:
     return struct.unpack("<I", body[13:17])[0]
 
 
-class Log(SC.Log):
-    """`SC.Log` -- `tools/c64/savecheck.py`'s.
+class Log(runlog.Log):
+    """`runlog.Log` -- `tools/c64/runlog.py`'s.
 
     A run that is killed on its budget never reaches its own summary, so
     anything worth reporting is written at the moment it is measured -- and
-    `SC.Log` is what keeps a second run's log rather than truncating it, and
+    `runlog.Log` is what keeps a second run's log rather than truncating it, and
     a `say` a dead console cannot take down with it (`#442`).
     """
 
@@ -199,7 +199,7 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     if args.disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
-    SC.catch_signals()
+    runlog.catch_signals()
 
     disks = pathlib.Path(args.disks)
     tag = "staged" if args.stage else "control"

@@ -45,7 +45,7 @@ from automap.paths import tool_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.layout import FIELDS_BY_NAME  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -111,8 +111,8 @@ def parse_stage(text: str) -> dict[int, int]:
     return out
 
 
-class Log(SC.Log):
-    """`SC.Log` -- `tools/c64/savecheck.py`'s -- plus a run's own bar list.
+class Log(runlog.Log):
+    """`runlog.Log` -- `tools/c64/runlog.py`'s -- plus a run's own bar list.
 
     Keeps a second run's log rather than truncating it, and a `say` a dead
     console cannot take down with it (`#442`).
@@ -152,7 +152,7 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     if args.disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
-    SC.catch_signals()
+    runlog.catch_signals()
 
     disks = pathlib.Path(args.disks)
     out = pathlib.Path(args.out) if args.out else (

@@ -59,7 +59,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import tool_disks  # noqa: E402
 from automap.vice import CMD_CHECKPOINT_GET  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 DISKS: pathlib.Path | None = tool_disks()
@@ -263,8 +263,8 @@ def script_matches(sess, name: str, root: str) -> dict:
     return {"entry2": target, "matches": bool(block) and block == want}
 
 
-class Log(SC.Log):
-    """`SC.Log` -- `tools/c64/savecheck.py`'s -- plus a run's own trial list.
+class Log(runlog.Log):
+    """`runlog.Log` -- `tools/c64/runlog.py`'s -- plus a run's own trial list.
 
     Keeps a second run's log rather than truncating it, and a `say` a dead
     console cannot take down with it (`#442`).
@@ -454,7 +454,7 @@ def phase(sess, log: Log, name: str, rests: int, hours: int,
 def drive(args) -> int:
     from tools.c64 import session as S
 
-    SC.catch_signals()
+    runlog.catch_signals()
     out = pathlib.Path(args.out) if args.out else scratch.scratch_dir("c64restinterrupt", "run")
     log = Log(out, args.quiet)
     slot = S.claim_slot(args.slot, f"c64restinterrupt/{args.save}")

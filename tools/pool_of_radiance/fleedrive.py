@@ -71,7 +71,7 @@ from automap import actions as A  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -273,8 +273,8 @@ def read_code(roots: dict[str, str]) -> int:
 # -- driving --------------------------------------------------------------
 
 
-class Log(SC.Log):
-    """`tools/c64/savecheck.py`'s log, with a `quiet` flag."""
+class Log(runlog.Log):
+    """`tools/c64/runlog.py`'s log, with a `quiet` flag."""
 
     def __init__(self, out: pathlib.Path, quiet: bool = False):
         self.quiet = quiet
@@ -926,7 +926,7 @@ def main(argv=None) -> int:
         if DISKS is None:
             raise SystemExit("No game disks found. Set $POR_DISKS.")
         args.disks = str(DISKS)
-    SC.catch_signals()
+    runlog.catch_signals()
     return run(args)
 
 

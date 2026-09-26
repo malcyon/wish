@@ -63,7 +63,7 @@ sys.path.insert(0, str(ROOT))
 from automap import actions as A  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -122,8 +122,8 @@ def describe(value: int) -> str:
         " (down)" if value & 0x80 else "")
 
 
-class Log(SC.Log):
-    """`SC.Log` -- `tools/c64/savecheck.py`'s.
+class Log(runlog.Log):
+    """`runlog.Log` -- `tools/c64/runlog.py`'s.
 
     Keeps a second run's log rather than truncating it, and a `say` a dead
     console cannot take down with it (`#442`).  `--out` defaults to
@@ -368,7 +368,7 @@ def main(argv=None) -> int:
         if DISKS is None:
             raise SystemExit("No game disks found. Set $POR_DISKS.")
         args.disks = str(DISKS)
-    SC.catch_signals()
+    runlog.catch_signals()
 
     disks = pathlib.Path(args.disks)
     out = pathlib.Path(args.out) if args.out else (

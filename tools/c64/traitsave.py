@@ -60,7 +60,7 @@ os.environ.pop("XDG_SESSION_TYPE", None)
 from automap import gamedisks  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools.c64 import savecheck as SC  # noqa: E402
+from tools.c64 import runlog  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: `SAVEDGAME0` loads at `$4900`; the twelve character slots start at `$4D00`.
@@ -127,14 +127,14 @@ def body_diff(before: bytes, after: bytes) -> list[dict]:
     return out
 
 
-class Log(SC.Log):
-    """`SC.Log` -- `tools/c64/savecheck.py`'s -- opened `append`.
+class Log(runlog.Log):
+    """`runlog.Log` -- `tools/c64/runlog.py`'s -- opened `append`.
 
     A run killed on its budget never reaches its own summary, so anything
     measured is written at the moment it is measured.  `write` and `boot` are
     two separate invocations that deliberately share one growing
     `traitsave.jsonl` at the same default `--out`, so `append=True` -- rather
-    than `SC.Log`'s ordinary keep-the-old-one-and-start-fresh -- is what keeps
+    than `runlog.Log`'s ordinary keep-the-old-one-and-start-fresh -- is what keeps
     that.  What was still missing was a `say` a dead console cannot take down
     with it (`#442`).
     """
@@ -186,7 +186,7 @@ def write(args) -> int:
     """Add a trait through the buttons and save through the File menu."""
     from tools.c64 import session as S
 
-    SC.catch_signals()
+    runlog.catch_signals()
     out = pathlib.Path(args.out)
     log = Log(out, args.quiet)
     disks = disks_dir(args.disks)
@@ -365,7 +365,7 @@ def boot(args) -> int:
     """Load the disk in the emulator and read the slots back."""
     from tools.c64 import session as S
 
-    SC.catch_signals()
+    runlog.catch_signals()
     out = pathlib.Path(args.out)
     log = Log(out, args.quiet)
     disks = disks_dir(args.disks)
