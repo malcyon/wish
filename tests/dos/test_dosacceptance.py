@@ -13,11 +13,17 @@ disks.
 from __future__ import annotations
 
 import pathlib
+import signal as _signal
+import threading
 
 import pytest
 
 from tools.dos import dosacceptance as da
 from tools.dos import dosbox, dospod
+
+# Sending SIGTERM to the test process ends it on Windows, which has no POSIX signals.
+posix_signals = pytest.mark.skipif(
+    not hasattr(_signal, "pthread_sigmask"), reason="POSIX signals")
 
 W, H = 320, 200
 BAR_Y = dosbox.BAR[1]
@@ -897,6 +903,7 @@ def test_the_run_takes_its_deadline_from_the_argument(monkeypatch, tmp_path):
     assert seen == [400.0 - da.CLEANUP_SECONDS]
 
 
+@posix_signals
 def test_a_termination_signal_still_writes_lost_and_the_shots(monkeypatch, tmp_path):
     import os
     import signal
@@ -3269,15 +3276,17 @@ def test_a_sigterm_inside_the_failure_capture_is_not_swallowed(tmp_path):
     assert d.capture_error is None
 
 
+@posix_signals
 def test_a_sigterm_right_after_the_lease_still_releases_the_slot(monkeypatch, tmp_path):
-    import os
     import signal
     log = _fake_run(monkeypatch, tmp_path)
     before = signal.getsignal(signal.SIGTERM)
 
     def claim(note=""):
         log.append("claim")
-        os.kill(os.getpid(), signal.SIGTERM)
+        # Thread-directed: a process-directed kill can land on another thread,
+        # which does not block SIGTERM, and then races the deferral under xdist.
+        signal.pthread_kill(threading.get_ident(), signal.SIGTERM)
         return _Slot(log)
 
     monkeypatch.setattr(dosbox, "claim", claim)
@@ -3286,6 +3295,18 @@ def test_a_sigterm_right_after_the_lease_still_releases_the_slot(monkeypatch, tm
     assert log == ["claim", "release"]
     assert signal.getsignal(signal.SIGTERM) == before
     assert signal.pthread_sigmask(signal.SIG_BLOCK, set()) & {signal.SIGTERM} == set()
+
+
+@posix_signals
+def test_deferred_sigterm_restores_the_callers_mask():
+    import signal
+    signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+    try:
+        with da.deferred_sigterm():
+            pass
+        assert signal.SIGTERM in signal.pthread_sigmask(signal.SIG_BLOCK, set())
+    finally:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
 
 
 def test_the_deadline_help_names_the_kill_escalation(capsys):
@@ -3315,7 +3336,8 @@ def test_a_cleanup_window_the_wrappers_margin_cannot_hold_is_refused():
         da.Deadline(_Clock(), 900.0, cleanup=da.WRAPPER_MARGIN)
 
 
-def test_no_wait_in_the_driver_outruns_the_margin_the_constant_allows():
+def test_no_numeric_timeout_literal_in_the_driver_outruns_the_margin():
+    # Sees only numeric `timeout=` literals, not computed or variable timeouts.
     import re
     source = pathlib.Path(da.__file__).read_text()
     longest = max(float(n) for n in re.findall(r"timeout=(\d+(?:\.\d+)?)", source))

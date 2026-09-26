@@ -2576,11 +2576,11 @@ def deferred_sigterm():
     if not hasattr(signal, "pthread_sigmask"):
         yield
         return
-    signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+    old = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
     try:
         yield
     finally:
-        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
+        signal.pthread_sigmask(signal.SIG_SETMASK, old)
 
 
 def run(args, clock=time.monotonic) -> int:
