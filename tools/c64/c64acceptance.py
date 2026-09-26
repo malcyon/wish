@@ -1243,8 +1243,8 @@ class CurseRun(PoolRun):
         try:
             S.copy_closed_disk(pathlib.Path(self.sess.save_disk),
                                self.out / "lost-saved.D64", attempts=30, backoff=1.0)
-        except RuntimeError as e:
-            self.log.emit("lost-copy", why=str(e))
+        except (RuntimeError, OSError) as e:
+            self.log.emit("lost-copy", error=type(e).__name__, why=str(e))
 
     def write_save(self) -> list[str]:
         """`SAVE`, `SAVE GAME`, then the write itself: `SAVING GAME` seen, gone,

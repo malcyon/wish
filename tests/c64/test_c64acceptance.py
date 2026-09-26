@@ -2333,6 +2333,29 @@ def test_a_curse_save_records_every_key_and_attach_and_restores_the_session(tmp_
     assert "key" not in vars(sess.kbd)
 
 
+@pytest.mark.parametrize("exc", [RuntimeError("drive still open"),
+                                 OSError("disk unreadable")])
+def test_a_lost_save_whose_disk_copy_fails_is_still_lost_the_same_way(
+        tmp_path, monkeypatch, exc):
+    class NoBar(SaveFake):
+        def press_bar(self, label, row=24, timeout=0):
+            self.state = "writing"
+            return True
+
+    def copy(src, dest, **kw):
+        raise exc
+
+    monkeypatch.setattr(A.S, "copy_closed_disk", copy)
+    run = _save_run(tmp_path, NoBar())
+    try:
+        with pytest.raises(A.StepFailed, match="SAVE GAME never appeared on row 24"):
+            run.write_save()
+    finally:
+        run.log.close()
+    (lost,) = _events(tmp_path, "lost-copy")
+    assert lost["error"] == type(exc).__name__ and lost["why"] == str(exc)
+
+
 def test_a_change_of_row_18_alone_is_recorded(tmp_path):
     class Prompting(SaveFake):
         seen = 0
