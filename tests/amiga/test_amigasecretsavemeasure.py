@@ -614,14 +614,29 @@ def test_the_guard_command_will_not_replace_a_rule_unless_asked(tmp_path, capsys
     assert out.read_text() != before
 
 
-def test_the_guard_command_writes_atomically(tmp_path, monkeypatch):
+def _failing_replace(tmp_path, monkeypatch):
     args, out = _guard_args(tmp_path)
     assert amigasecretsave.main(args) == 0
-    before = out.read_text()
+    other = _image(tmp_path / "other.png", (0, 51, 102),
+                   ((60, 400, 300, 430), (200, 10, 10)))
+    again = ["guard", "--state", "title", "--crop", str(other), "--out", str(out),
+             "--box", "50,400,300,430", "--replace"]
 
     def boom(src, dst):
         raise OSError("disk gone")
 
     monkeypatch.setattr(amigasecretsave.os, "replace", boom)
-    assert amigasecretsave.main(args + ["--replace"]) == 2
+    return again, out
+
+
+def test_the_guard_command_writes_atomically(tmp_path, monkeypatch):
+    again, out = _failing_replace(tmp_path, monkeypatch)
+    before = out.read_text()
+    assert amigasecretsave.main(again) == 2
     assert out.read_text() == before
+
+
+def test_a_failed_guard_write_leaves_no_temp_file(tmp_path, monkeypatch):
+    again, out = _failing_replace(tmp_path, monkeypatch)
+    assert amigasecretsave.main(again) == 2
+    assert not out.with_name(out.name + ".tmp").exists()

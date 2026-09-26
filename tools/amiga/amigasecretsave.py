@@ -772,8 +772,11 @@ def main(argv: list[str] | None = None) -> int:
             rules[args.state] = rule
             # Rename over the file so an interrupted write never leaves half a map.
             temp = args.out.with_name(args.out.name + ".tmp")
-            temp.write_text(json.dumps(rules, indent=2, sort_keys=True) + "\n")
-            os.replace(temp, args.out)
+            try:
+                temp.write_text(json.dumps(rules, indent=2, sort_keys=True) + "\n")
+                os.replace(temp, args.out)
+            finally:
+                temp.unlink(missing_ok=True)
             print(json.dumps({args.state: rule}, sort_keys=True))
             return 0
         if args.command == "recon":
