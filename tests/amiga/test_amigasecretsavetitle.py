@@ -803,3 +803,40 @@ def test_a_run_with_a_plain_kept_e_still_fails_when_slot_e_changed(tmp_path, clo
     _, bad = _run(other, clock, title=title, guest=TitleGuest(clock, spoil=spoil),
                   manifest=manifest_for(other, extra_slot=("E", b"the exit slot")))
     assert bad["kept_unchanged"]["E"] is False and bad["success"] is False
+
+
+def _with_kept_e(route, **over):
+    return make_title(route=route, measure_route=route, kept_letters=("B", "E"),
+                      strict=frozenset({*make_title().strict, "camp"}), **over)
+
+
+def test_a_kept_letter_pressed_on_a_save_picker_is_refused_even_as_a_plain_key():
+    route = ROUTE[:-1] + (("B", "camp", "key"),) + ROUTE[-1:]  # B right after camp_picker
+    with pytest.raises(drive.RouteError, match="kept letter B as a plain key on 'camp_picker'"):
+        _with_kept_e(route, plain_keys=(("E", "camp"), ("B", "camp")))
+
+
+def test_a_plain_key_on_a_picker_is_refused_even_when_no_write_step_presses_there():
+    route = _swap(ROUTE, 2, ("E", "loaded_menu", "key"))  # pressed on load_picker
+    with pytest.raises(drive.RouteError, match="on 'load_picker', where a picker screen"):
+        _with_kept_e(route, plain_keys=(("E", "loaded_menu"), ("E", "camp")))
+
+
+def test_a_plain_key_on_the_screen_a_write_step_presses_on_is_refused():
+    # C is pressed on `world` once the insert's screen is followed by a world step.
+    route = _swap(ROUTE, INSERT_AT, ((1, "disk3", "SPACE"), "world", "insert"))
+    with pytest.raises(drive.RouteError, match="on 'world', where a route step presses a save"):
+        make_title(route=route, measure_route=route, kept_letters=("B", "E"),
+                   strict=frozenset({*make_title().strict, "world"}), plain_keys=PLAIN)
+
+
+def test_the_same_plain_key_on_an_ordinary_screen_is_accepted_in_either_case():
+    assert _with_kept_e(ROUTE, plain_keys=PLAIN).plain_keys == PLAIN
+    route = _swap(ROUTE, 7, ("e", "camp", "key"))
+    assert _with_kept_e(route, plain_keys=PLAIN).plain_keys == PLAIN
+
+
+@pytest.mark.parametrize("entry", [("E",), ("E", 1), "E camp", ["E", "camp"]])
+def test_a_plain_keys_entry_that_is_not_a_pair_of_strings_is_refused(entry):
+    with pytest.raises(drive.RouteError, match=r"must be \(key, state\) pairs"):
+        make_title(kept_letters=("B", "E"), plain_keys=(entry,))

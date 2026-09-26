@@ -753,6 +753,11 @@ class AmigaTitle:
             if entry[0] not in self.kept_letters:
                 refuse(f"plain key {entry!r} is not a kept letter, so it cannot be pressed as a plain key")
         used: set[tuple[str, str]] = set()
+        # A kept letter pressed where a save letter goes out, or on a picker, could write a slot.
+        save_screens = {"title" if at == 0 else route[at - 1][1]
+                        for route in (self.route, self.measure_route)
+                        for at, step in enumerate(route)
+                        if isinstance(step, tuple) and len(step) == 3 and step[2] == "write"}
         for name, route in (("route", self.route), ("measure_route", self.measure_route)):
             if not route:
                 refuse(f"{name} is empty")
@@ -760,6 +765,12 @@ class AmigaTitle:
                 allowed = self._check_step(name, step, keys, refuse)
                 if allowed:
                     used.add(allowed)
+                    on = "title" if at == 0 else route[at - 1][1]
+                    if on in save_screens or "picker" in on.lower():
+                        why = ("a route step presses a save letter there" if on in save_screens
+                               else "a picker screen takes a slot letter as a save")
+                        refuse(f"{name} step {step!r} presses kept letter {allowed[0]} as a "
+                               f"plain key on {on!r}, where {why}")
                 if step[2] in ("write", "insert"):
                     # The key goes out on the screen the step before it reached, so that
                     # screen's guard must stop the run when it does not match.
