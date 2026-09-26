@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import signal
 
 import pytest
 
@@ -11,7 +13,11 @@ from goldbox import geo
 from goldbox.amiga_adf import AmigaDisk
 from tests.amiga import test_amigasecretsavemeasure as measure
 from tests.amiga.test_amigasecretsave import _audio_proof
-from tests.amiga.test_amigasecretsaveaccept import MapGuard, _IdentityMap
+from tests.amiga.test_amigasecretsaveaccept import (
+    MapGuard,
+    _IdentityMap,
+    needs_posix_signals,
+)
 from tests.amiga.test_amigasecretsavemeasure import ScreenGuest
 from tools.amiga import amigasecretsave as drive
 
@@ -61,7 +67,8 @@ def make_title(**over):
         read_slot=_read_slot, slot_letters=_letters, slot_files=_files,
         route=ROUTE, measure_route=ROUTE, boot_span=30.0,
         control_letter="C", after_letter="D", kept_letters=("B",), turn="about",
-        strict=frozenset({"party_menu", "load_picker", "loaded_menu"}),
+        strict=frozenset({"party_menu", "load_picker", "loaded_menu", "disk_wait",
+                          "camp_picker"}),
         min_waits={"world": 5.0})
     fields.update(over)
     return drive.AmigaTitle(**fields)
@@ -442,3 +449,293 @@ def test_the_silver_blades_defaults_are_the_ones_a_title_run_leaves_alone(tmp_pa
                       drive.MEASURE_TITLE_SPAN)
     assert [row[0] for row in drive.SILVER_BLADES_INTERSTITIALS] == [
         "credits", "continue", "journal"]
+
+
+def _swap(route, at, step):
+    return route[:at] + (step,) + route[at + 1:]
+
+
+INSERT_AT = 3
+KEYED = ROUTE[INSERT_AT + 1]  # the control save: `C` at loaded_menu
+
+
+@pytest.mark.parametrize("drive_number", [0, 2, 3, True])
+def test_an_insert_step_may_change_only_drive_1(drive_number):
+    route = _swap(ROUTE, INSERT_AT, ((drive_number, "disk3", "SPACE"), "disk_wait", "insert"))
+    with pytest.raises(drive.RouteError, match="only DF1"):
+        make_title(route=route, measure_route=ROUTE)
+    with pytest.raises(drive.RouteError, match="only DF1"):
+        make_title(route=ROUTE, measure_route=route)
+
+
+@pytest.mark.parametrize("drive_number", [0, 2, 3])
+def test_an_interstitial_insert_may_change_only_drive_1(drive_number):
+    rows = (("disk_request", ("insert", drive_number, "disk3", "SPACE"), None, 1),)
+    with pytest.raises(drive.RouteError, match="only DF1"):
+        make_title(interstitials=rows)
+    make_title(interstitials=(("disk_request", ("insert", 1, "disk3", "SPACE"), None, 1),))
+
+
+@pytest.mark.parametrize("letter", ["C", "D", "B", "c"])
+@pytest.mark.parametrize("kind", ["key", "move", "turn"])
+def test_a_step_that_is_not_a_write_may_not_press_a_save_or_kept_letter(letter, kind):
+    route = _swap(ROUTE, 0, (letter, "party_menu", kind))
+    with pytest.raises(drive.RouteError, match="slot letter"):
+        make_title(route=route, measure_route=ROUTE)
+    # A measure run reaches the same key, so its route is checked as well.
+    with pytest.raises(drive.RouteError, match="slot letter"):
+        make_title(route=ROUTE, measure_route=route)
+
+
+@pytest.mark.parametrize("action", [
+    ("keys", "C"), ("keys", ("ESC", "D")), ("keys", "b"), ("insert", 1, "disk3", "C"),
+])
+def test_an_interstitial_may_not_press_a_save_or_kept_letter(action):
+    with pytest.raises(drive.RouteError, match="slot letter"):
+        make_title(interstitials=(("disk_request", action, None, 1),))
+
+
+def test_an_interstitial_may_still_press_other_keys_and_answer():
+    make_title(interstitials=(("a", ("keys", ("ESC", "RET")), None, 1),
+                              ("b", ("answer",), None, 1)))
+
+
+STRICT = frozenset({"party_menu", "load_picker", "loaded_menu", "disk_wait", "camp_picker"})
+
+
+@pytest.mark.parametrize("missing", ["loaded_menu", "disk_wait", "camp_picker"])
+def test_a_write_or_insert_after_a_state_that_is_not_strict_is_refused(missing):
+    with pytest.raises(drive.RouteError, match="not a strict state"):
+        make_title(strict=STRICT - {missing})
+
+
+def test_a_title_with_no_strict_states_is_refused():
+    with pytest.raises(drive.RouteError, match="not a strict state"):
+        make_title(strict=frozenset())
+
+
+def test_a_write_straight_after_the_title_needs_no_strict_state():
+    route = (("C", "loaded_menu", "write"),) + ROUTE[5:]
+    make_title(route=route, measure_route=route, strict=frozenset({"camp_picker"}))
+
+
+def test_a_non_strict_state_between_the_keys_is_allowed_when_no_write_or_insert_follows(
+        tmp_path, clock):
+    # `world` is never strict, and the walk after it is not a write.
+    guest, result = _run(tmp_path, clock, guard=MapGuard(
+        states=("title", *STATES), on={"world": lambda path: False}))
+    assert result["error"] == "" and result["unguarded"] == ["world"]
+    assert result["success"] is False and result["completed"] is True
+    assert _keys(guest) == "P L A SPACE C NP2 NP8 E S D".split()
+
+
+def test_a_strict_state_that_never_matches_stops_the_run_before_the_next_key(tmp_path, clock):
+    # `disk_wait` is not in Silver Blades' route states, so this fails only if the title's own
+    # strict set is the one consulted.
+    guest, result = _run(tmp_path, clock, guard=MapGuard(
+        states=("title", *STATES), on={"disk_wait": lambda path: False}))
+    assert "disk_wait screen was not recognized" in result["error"]
+    assert _keys(guest) == "P L A SPACE".split()
+    assert result["success"] is False
+
+
+def test_an_unguarded_state_makes_the_run_a_measuring_one(tmp_path, clock):
+    guard = MapGuard(states=tuple(s for s in ("title", *STATES) if s not in ("world", "camp")))
+    _, result = _run(tmp_path, clock, guard=guard)
+    assert result["error"] == "" and result["completed"] is True
+    assert result["unguarded"] == ["world", "camp"] and result["success"] is False
+    # Everything else about the run was as good as a passing one.
+    assert result["walk"]["d_ok"] and result["menu_save_problems"] == []
+
+
+class Hooked(TitleGuest):
+    """A guest that runs `hooks[key](guest)` after that key is pressed, and can fail a fetch."""
+
+    def __init__(self, clock, hooks=None, fail_get=(), **kw):
+        super().__init__(clock, **kw)
+        self.hooks, self.fail_get = dict(hooks or {}), tuple(fail_get)
+
+    def press(self, holder, key, timeout=None):
+        super().press(holder, key, timeout)
+        if key in self.hooks:
+            self.hooks[key](self)
+
+    def get(self, remote, local, timeout=None):
+        if any(remote.endswith(f"-{k}.adf") for k in self.fail_get):
+            self.calls.append(("get", remote, str(local)))
+            raise OSError("no such file on the guest")
+        super().get(remote, local, timeout)
+
+
+def _remote(guest, key):
+    return next(r for r in guest.remote if r.endswith(f"-{key}.adf"))
+
+
+def _touch_remote(key):
+    def hook(guest):
+        remote = _remote(guest, key)
+        disk = AmigaDisk(guest.remote[remote])
+        disk.write_file("/SAVE/stray.txt", b"the game wrote here")
+        guest.remote[remote] = disk.to_bytes()
+    return hook
+
+
+def test_a_registered_image_that_changes_fails_the_run(tmp_path, clock):
+    hook = lambda guest: (tmp_path / "registered.adf").write_bytes(b"changed")  # noqa: E731
+    _, result = _run(tmp_path, clock, guest=Hooked(clock, {"E": hook}))
+    assert result["registered_unchanged"] == {"reg": False} and result["success"] is False
+
+
+def test_a_working_copy_that_changes_fails_the_run(tmp_path, clock):
+    hook = lambda guest: (tmp_path / "spare.adf").write_bytes(b"changed")  # noqa: E731
+    _, result = _run(tmp_path, clock, guest=Hooked(clock, {"E": hook}))
+    assert result["working_unchanged"]["spare"] is False and result["success"] is False
+
+
+def test_a_disk_other_than_the_save_disk_that_changes_fails_the_run(tmp_path, clock):
+    _, result = _run(tmp_path, clock, guest=Hooked(clock, {"NP8": _touch_remote("disk3")}))
+    assert result["disks_unchanged"]["disk3"] is False and result["success"] is False
+
+
+def test_a_save_disk_the_game_never_wrote_fails_even_when_the_saves_read_right(
+        tmp_path, clock):
+    """Readers that report both saves whatever the disk holds leave only the unchanged disk to fail."""
+    def read_slot(disk, letter):
+        place = {"C": START, "D": dict(START, y=14, facing=geo.SOUTH)}.get(letter)
+        if place is None:
+            return _read_slot(disk, letter)
+        return {"sha256": "0" * 64, "place": place, "names": NAMES}
+
+    guest = TitleGuest(clock)
+    guest._write = lambda letter, place: None
+    _, result = _run(tmp_path, clock, title=make_title(read_slot=read_slot), guest=guest)
+    assert result["disks_unchanged"]["boot"] is True
+    assert result["menu_save_problems"] == [] and result["walk"]["d_ok"] is True
+    assert result["success"] is False
+
+
+def test_a_disk_that_could_not_be_fetched_fails_a_measure_run(tmp_path, clock):
+    _, result = _run(tmp_path, clock, accept=False, measure=True, guard=MapGuard(states=STATES),
+                     guest=Hooked(clock, fail_get=("spare",)))
+    assert sorted(result["fetched"]) == ["boot", "disk3"] and "fetch_spare_error" in result
+    assert all(result["disks_unchanged"].values()) and result["route_changed"] is True
+    assert result["success"] is False
+
+
+def test_a_disk_that_could_not_be_fetched_fails_an_accept_run(tmp_path, clock):
+    _, result = _run(tmp_path, clock, guest=Hooked(clock, fail_get=("spare",)))
+    assert "fetch_spare_error" in result and result["success"] is False
+
+
+def test_a_measure_run_fails_when_a_disk_changed(tmp_path, clock):
+    _, result = _run(tmp_path, clock, accept=False, measure=True, guard=MapGuard(states=STATES),
+                     guest=Hooked(clock, {"SPACE": _touch_remote("disk3")}))
+    assert result["route_changed"] is True and result["error"] == ""
+    assert result["disks_unchanged"]["disk3"] is False and result["success"] is False
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"route": (("P", "party_menu"),)}, {"write_keys": ("C",)},
+])
+def test_a_title_run_refuses_a_route_or_write_keys_of_its_own(tmp_path, clock, kwargs):
+    guest = TitleGuest(clock)
+    with pytest.raises(drive.RouteError, match="brings its own route and write keys"):
+        _run(tmp_path, clock, guest=guest, **kwargs)
+    assert guest.calls == []
+
+
+def test_the_title_limit_bounds_the_wait_for_the_title_screen(tmp_path, clock):
+    never = MapGuard(states=("title", *STATES), on={"title": lambda path: False})
+    _, accepted = _run(tmp_path, clock, title=make_title(title_limit=20.0), guard=never)
+    assert "title screen was not recognized within 20s" in accepted["error"]
+    other = tmp_path / "measure"
+    other.mkdir()
+    _, measured = _run(other, clock, accept=False, measure=True, guard=never,
+                       title=make_title(title_limit=20.0),
+                       manifest=manifest_for(other))
+    assert "title screen was not recognized within 20s" in measured["error"]
+    assert measured["success"] is False
+
+
+def _sleeps_of(tmp_path, clock, title, **kw):
+    clock.sleeps.clear()
+    _run(tmp_path, clock, title=title, **kw)
+    return set(clock.sleeps)
+
+
+def test_the_titles_minimum_waits_are_used_and_the_callers_win(tmp_path, clock):
+    title = make_title(min_waits={"world": 7.0})
+    assert 7.0 in _sleeps_of(tmp_path, clock, title)
+    other = tmp_path / "override"
+    other.mkdir()
+    sleeps = _sleeps_of(other, clock, title, min_waits={"world": 9.0},
+                        manifest=manifest_for(other))
+    assert 9.0 in sleeps and 7.0 not in sleeps
+
+
+def test_an_issue_that_is_not_all_digits_is_refused():
+    for issue in ("", "67x", "../679", "6 9"):
+        with pytest.raises(drive.RouteError, match="is not a number"):
+            make_title(issue=issue)
+
+
+@pytest.mark.parametrize("bad", [
+    {"spares": ("bad key",)}, {"spares": ("a/b",)}, {"spares": ("x" * 65,)},
+    {"spares": ("boot",)},
+])
+def test_a_disk_key_must_be_distinct_and_lane_safe(bad):
+    with pytest.raises(drive.RouteError, match="lane-safe"):
+        make_title(**bad)
+
+
+def test_the_identity_map_is_needed_only_when_the_route_uses_an_identity_state(
+        tmp_path, clock):
+    def renamed(step):
+        key, state, kind = step
+        return (key, "menu_two" if state == "loaded_menu" else state, kind)
+
+    route = tuple(renamed(s) for s in ROUTE)
+    title = make_title(route=route, measure_route=route, strict=frozenset(
+        {"party_menu", "load_picker", "menu_two", "disk_wait", "camp_picker"}))
+    guard = MapGuard(states=("title", *STATES, "menu_two"),
+                     on={"menu_two": lambda path: True})
+    guest = TitleGuest(clock)
+    result = drive.run_recon(
+        manifest_for(tmp_path), guest=guest, guard=guard, identity=None, title=title,
+        holder="wish679-test", audio_proof=_audio_proof(tmp_path), accept=True)
+    assert result["error"] == "" and guest.calls
+    # The same run, whose route does reach `loaded_menu`, still needs the map.
+    other = tmp_path / "needed"
+    other.mkdir()
+    with pytest.raises(drive.RouteError, match="identity map lacks"):
+        drive.run_recon(
+            manifest_for(other), guest=TitleGuest(clock), guard=MapGuard(
+                states=("title", *STATES)), identity=None, title=make_title(),
+            holder="wish679-test", audio_proof=_audio_proof(other), accept=True)
+
+
+def test_a_deadline_that_a_minimum_wait_cannot_meet_still_stops_fetches_and_releases(
+        tmp_path, clock):
+    title = make_title(min_waits={"world": 60.0})
+    guest, result = _run(tmp_path, clock, title=title, deadline_seconds=100)
+    assert "deadline" in result["error"] and result["success"] is False
+    names = [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")]
+    assert names == ["stop", "get", "get", "get", "release"]
+    assert sorted(result["fetched"]) == ["boot", "disk3", "spare"]
+    assert result["completed"] is False
+
+
+@needs_posix_signals
+def test_a_terminated_title_run_still_stops_fetches_and_releases(tmp_path, clock):
+    def term(guest):
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    guest = Hooked(clock, {"E": term})
+    with drive.terminating():
+        guest, result = _run(tmp_path, clock, guest=guest)
+    assert result["lost"].startswith("Terminated") and result["completed"] is False
+    assert result["success"] is False
+    names = [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")]
+    assert names == ["stop", "get", "get", "get", "release"]
+    summary = json.loads((tmp_path / "recon1" / "summary.json").read_text())
+    assert summary["lost"] == result["lost"]

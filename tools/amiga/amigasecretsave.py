@@ -665,7 +665,7 @@ class AmigaTitle:
     `mounted` lists manifest disk keys in drive order (None: an empty drive) and
     `spares` the keys put on the VM and not mounted. A route step is
     `(key, state, kind)`; an `insert` step's key is `(drive, disk_key, key)`, and
-    `write` steps may press only `control_letter` or `after_letter`. `strict` names
+    `write` steps may press only `control_letter` or `after_letter`, and no other step may press those or a kept letter, an `insert` may name drive 1 only, and a `write` or `insert` step follows a `strict` state. `strict` names
     the states whose guard must match or the run stops; any other state falls back to a
     settled capture and marks the run as measuring.
     """
@@ -721,10 +721,21 @@ class AmigaTitle:
         for name, route in (("route", self.route), ("measure_route", self.measure_route)):
             if not route:
                 refuse(f"{name} is empty")
-            for step in route:
+            for at, step in enumerate(route):
                 self._check_step(name, step, keys, refuse)
+                if step[2] in ("write", "insert"):
+                    # The key goes out on the screen the step before it reached, so that
+                    # screen's guard must stop the run when it does not match.
+                    before = "title" if at == 0 else route[at - 1][1]
+                    if before != "title" and before not in self.strict:
+                        refuse(f"{name} {step[2]} step {step!r} follows {before!r}, which is "
+                               f"not a strict state")
         for row in self.interstitials:
             self._check_row(row, keys, refuse)
+
+    def _write_letters(self) -> frozenset[str]:
+        """The letters that save, or belong to a slot that must not change."""
+        return frozenset((self.control_letter, self.after_letter, *self.kept_letters))
 
     def _check_step(self, name, step, keys, refuse) -> None:
         if not isinstance(step, tuple) or len(step) != 3 or step[2] not in _STEP_KINDS:
@@ -737,14 +748,17 @@ class AmigaTitle:
                 refuse(f"{name} answer step {step!r} takes no key")
             return
         if kind == "insert":
-            if not (isinstance(key, tuple) and len(key) == 3 and key[0] in range(4)
-                    and key[1] in keys):
-                refuse(f"{name} insert step {step!r} needs (drive 0-3, a disk key, a key)")
+            if not (isinstance(key, tuple) and len(key) == 3 and type(key[0]) is int
+                    and key[0] == 1 and key[1] in keys):
+                refuse(f"{name} insert step {step!r} needs (drive 1, a disk key, a key): "
+                       f"only DF1 may change while the game runs")
             key = key[2]
         if not isinstance(key, str) or key.upper() not in amigadrive.KEYS:
             refuse(f"{name} step {step!r} presses a key with no WinUAE code")
         if kind == "write" and key.upper() not in (self.control_letter, self.after_letter):
             refuse(f"{name} write step {step!r} is not the control or after letter")
+        if kind != "write" and key.upper() in self._write_letters():
+            refuse(f"{name} {kind} step {step!r} presses a save or kept slot letter")
 
     def _check_row(self, row, keys, refuse) -> None:
         if not (isinstance(row, tuple) and len(row) == 4 and isinstance(row[3], int)
@@ -756,12 +770,20 @@ class AmigaTitle:
             if len(action) != 2 or not names or not all(
                     isinstance(k, str) and k.upper() in amigadrive.KEYS for k in names):
                 refuse(f"interstitial {row!r} presses a key with no WinUAE code")
+            pressed = names
         elif action[0] == "insert":
-            if not (len(action) == 4 and action[1] in range(4) and action[2] in keys
+            if not (len(action) == 4 and type(action[1]) is int and action[1] == 1
+                    and action[2] in keys
                     and isinstance(action[3], str) and action[3].upper() in amigadrive.KEYS):
-                refuse(f"interstitial {row!r} needs (insert, drive, disk key, key)")
-        elif action != ("answer",):
+                refuse(f"interstitial {row!r} needs (insert, drive 1, disk key, key): "
+                       f"only DF1 may change while the game runs")
+            pressed = (action[3],)
+        elif action == ("answer",):
+            return
+        else:
             refuse(f"interstitial {row!r} has an unknown action")
+        if any(k.upper() in self._write_letters() for k in pressed):
+            refuse(f"interstitial {row!r} presses a save or kept slot letter")
 
 
 def _title_inputs(manifest: dict, title: AmigaTitle) -> tuple[dict, dict, str]:
@@ -931,7 +953,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         identity_states = (IDENTITY_MESSAGES if title is None else
                            [s for s in IDENTITY_MESSAGES
                             if s in {state for _, state, _ in title.route}])
-        if identity is None or not all(_has_rule(identity, s) for s in identity_states):
+        if identity_states and (
+                identity is None or not all(_has_rule(identity, s) for s in identity_states)):
             raise RouteError(f"identity map lacks {sorted(identity_states)}")
         if title is None and not journal_python and answer is None:
             raise RouteError("accept needs a journal interpreter")
