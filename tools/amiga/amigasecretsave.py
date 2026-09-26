@@ -687,6 +687,8 @@ class AmigaTitle:
     `write` steps may press only `control_letter` or `after_letter`, and no other step may press
     those. A kept letter is never written, so a non-write step may press one only where
     `plain_keys` names its `(key, state)`: the game's own key that happens to be a slot's letter.
+    A plain key is refused on a screen where some step writes and on a state whose name contains
+    `picker`; the run's compare of every kept slot after the fetch is what proves none changed.
     Every entry must be a kept letter that some non-write step presses in that state. An `insert`
     may name drive 1 only, and a `write` or `insert` step follows a `strict` state. `strict` names
     the states whose guard must match or the run stops; any other state falls back to a

@@ -840,3 +840,22 @@ def test_the_same_plain_key_on_an_ordinary_screen_is_accepted_in_either_case():
 def test_a_plain_keys_entry_that_is_not_a_pair_of_strings_is_refused(entry):
     with pytest.raises(drive.RouteError, match=r"must be \(key, state\) pairs"):
         make_title(kept_letters=("B", "E"), plain_keys=(entry,))
+
+
+def test_a_first_step_plain_key_is_judged_on_the_title_screen():
+    writes_on_title = (("C", "loaded_menu", "write"), ("S", "camp_picker", "key"),
+                       ("D", "camp", "write"))
+    first = (("E", "camp", "key"), ("N", "world", "key"))
+    with pytest.raises(drive.RouteError, match="on 'title', where a route step presses a save"):
+        make_title(route=writes_on_title, measure_route=first, kept_letters=("B", "E"),
+                   plain_keys=PLAIN)
+    # Nothing writes on the title screen, and the last step's picker state is not where E goes out.
+    picker_last = (("E", "camp", "key"), ("S", "camp_picker", "key"))
+    assert make_title(route=ROUTE, measure_route=picker_last, kept_letters=("B", "E"),
+                      plain_keys=PLAIN).plain_keys == PLAIN
+
+
+def test_a_picker_screen_is_recognised_whatever_its_capitals():
+    route = (("P", "party_menu", "key"), ("S", "Camp_Picker", "key"), ("E", "camp", "key"))
+    with pytest.raises(drive.RouteError, match="on 'Camp_Picker', where a picker screen"):
+        make_title(route=route, measure_route=route, kept_letters=("B", "E"), plain_keys=PLAIN)
