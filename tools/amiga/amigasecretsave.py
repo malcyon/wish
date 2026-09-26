@@ -623,7 +623,7 @@ def run_journal_answer(journal_python: str, holder: str, adf: pathlib.Path,
     lines = proc.stdout.strip().splitlines()
     line = lines[-1].strip() if lines else ""
     if proc.returncode and line != "no challenge on screen":
-        raise RouteError(f"the journal answerer ended {proc.returncode}: {line!r}"
+        raise RouteError(f"the journal answerer ended {proc.returncode}: {line[:STDERR_LINE_CHARS]!r}"
                          + _stderr_tail(proc.stderr))
     return proc.returncode, line
 
@@ -1154,7 +1154,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         started = time.monotonic()
         adf = originals["boot_source"]
         while True:
-            code, line = answer(holder, adf, route_limit(180))
+            try:
+                code, line = answer(holder, adf, route_limit(180))
+            except RouteError as exc:
+                result["events"].append({"answer_failed": str(exc)})
+                log("answer", error=str(exc))
+                raise
             result["events"].append({"answer": line, "exit_code": code})
             log("answer", exit_code=code, line=line)
             if code == 0 and line == "answered":
