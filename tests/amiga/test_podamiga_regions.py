@@ -392,6 +392,40 @@ def test_a_scroll_carries_its_chained_nodes_and_the_next_item_still_reads():
     assert out.dropped == []
 
 
+def _unbundled_readied(case_readied: int, node_readied: list[int]) -> list[int]:
+    """The `readied` byte of each DOS item a case of scrolls arrives as."""
+    case = an_item(type_index=amiga_pod.SCROLL_TYPE_INDEX,
+                   quantity=len(node_readied), weight=len(node_readied),
+                   readied=case_readied)
+    nodes = [an_item(type_index=39 + i % 2, charges=i + 1, effect=i + 2,
+                     power=i + 3, weight=1 + i, readied=r)
+             for i, r in enumerate(node_readied)]
+    sword = an_item(type_index=5, weight=50, readied=1)
+    data = a_record([case] + nodes + [sword], count=2)
+    out = amiga_pod.pod_to_neutral(data)
+    items = [dos_codec.item_from_c64(bytes(i), dos_port.ITEM_SIZE)
+             for i in out.get("inventory")]
+    assert [it[0x2E] for it in items[:-1]] == [
+        39 + i % 2 for i in range(len(node_readied))]
+    assert items[-1][0x2E] == 5
+    return [it[0x34] for it in items]
+
+
+def test_a_readied_case_hands_dos_every_scroll_readied():
+    """DOS will not read a scroll that is not readied, and the Amiga gates a
+    case by the case's own flag, so a readied case's scrolls arrive readied
+    whatever their own bytes hold; the item after them is untouched."""
+    assert _unbundled_readied(1, [0, 0, 0]) == [1, 1, 1, 1]
+    assert _unbundled_readied(1, [0, 1, 0]) == [1, 1, 1, 1]
+
+
+def test_an_unreadied_case_hands_dos_every_scroll_unreadied():
+    """A case that is not readied cannot be read on the Amiga, so even a
+    scroll whose own byte is set arrives unreadied."""
+    assert _unbundled_readied(0, [0, 0]) == [0, 0, 1]
+    assert _unbundled_readied(0, [1, 0, 1]) == [0, 0, 0, 1]
+
+
 def test_a_case_of_nothing_becomes_nothing_and_the_next_item_still_reads():
     """A case whose `quantity` is 0 has no nodes after it and no spells in
     it, and DOS has no empty case to hold, so :func:`amiga_pod.unbundle`

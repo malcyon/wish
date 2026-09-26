@@ -206,10 +206,23 @@ three spell ids, weight and `readied`, and `quantity` 0. The case head's own
 spell bytes are zero and its `weight` equals its `quantity`.
 `goldbox.amiga_pod.unbundle` therefore puts a case's scrolls in its place, and
 the DOS item is written from the scrolls. HILDE's and INA's cases are
-readied, and their scrolls are not. **What readying a case does on the Amiga
-is UNKNOWN**, and with the case gone that flag has no DOS item to go on. To
-settle it: un-ready HILDE's case in the Amiga game, then compare her sheet and
-`SavGamB.pty` before and after.
+readied, and their scrolls are not.
+
+**Each scroll takes its case's `readied`, CONFIRMED from both executables.**
+DOS refuses `USE` on an item that is not readied and prints `Must be readied`
+(`0x24BF6`); the combat `Use` reaches the same routine. `READY` (`0x250D6`)
+checks hands, a slot for locations 0-9 and the class mask, and the `ITEMS`
+rows give type 39 and 40 no hands and locations `0x0B` and `0x0C`, so any
+number of scrolls can be readied at once. A readied scroll changes no
+statistic, because both recount routines skip a row whose `+6` is 0. The
+Amiga tests the case's own `readied` (`0x21BC6`) before it opens the scroll
+chooser, so a case that is not readied cannot be read. **Whether the Amiga
+also looks at a scroll's own `readied` inside a case is SPECULATIVE.** The
+case walker at `0x35904` tests none, and the spell chooser's list kind 7 was
+not read. To settle it, ready CLERIC's case in Amiga Pools of Darkness and
+`USE` it: spells 104, 103 and 101 (the unreadied node 16) in the list mean the
+node flag is ignored. CLERIC's case is not readied but two of its seven scrolls
+are, so his scrolls all arrive unreadied.
 
 **The weight changes and the engine accepts it.** The Amiga weighs a case as
 its own `weight x quantity` and ignores its scrolls: `money + sum(weight x
@@ -218,9 +231,34 @@ max(quantity, 1))` over the head items balances exactly in 4 of 4 records
 `weight`, multiplied by `quantity` when that is non-zero, which is
 `goldbox.dos_codec.write`'s formula. The loader reads neither `encumbrance`
 nor `item_count`. CLERIC goes from 1478 to 1604, HILDE from 1067 to 1055 and
-INA from 424 to 442. **Whether CLERIC's +126 changes his movement is
-UNKNOWN.** Load the converted save and read his movement, then drop six
-scrolls (under 1478) and read it again.
+INA from 424 to 442. **CLERIC's +126 takes his movement from 9 to 6,
+CONFIRMED** by the rule below, which reproduces the stored movement in 106 of
+106 game-written DOS records and 88 of 88 Amiga character blocks.
+
+The DOS recount (`0x34D5D`) calls `0x35184` at `0x350F2` and stores the result
+in `movement_current` (`0x1FD`):
+
+1. Start from base movement (`0x137`).
+2. Readied body armour (`0x340C4`, `ITEMS` location 2) sets it by weight: up
+   to 150 gives the base, 151-399 gives 9, 400 or more gives 6. A non-zero
+   plus then adds 3 when the result is 9 or less.
+3. The encumbrance cap (`0x34280`): `over` is `encumbrance` (`0x1E1`) less the
+   strength allowance (`0x3562B`), counted as 0 when negative. Up to 512 there
+   is no cap, 513-768 caps at 9, 769-1,024 at 6 and above that at 3. Movement
+   is the smaller of the two. The strength index is `0x35480`, and the
+   allowance table is the one `goldbox.dos_codec.dos_weight_allowance` holds.
+4. Effects: `0x27` doubles movement, `0x2A` halves it, `0x4A` doubles it.
+
+CLERIC has strength 18 with exceptional strength 0 (allowance 750) and readied
+type-36 armour of weight 450 at +3, so his armour gives 9. At 1,478 (over by
+728) the cap is 9; at 1,604 (over by 854) it is 6. The 126 is 7 x 25 for the
+scrolls less the case's own 7 x 7. He is back to 9 at 1,518 or less: dropping
+four scrolls (1,504) does it and three (1,529) do not.
+
+**DOS has `JOIN`, and it merges only stacks that have a quantity.** `0x25495`
+merges items equal in type, name bytes, both pluses, `hidden`, `cursed` and
+`weight` whose `quantity` is above 0 and `charges` below 2. No scroll has a
+quantity on DOS, so it never joins two scrolls and makes no case.
 
 **CLERIC arrives holding 21 items, and the file allows it.** DOS Pools of
 Darkness compares `item_count` with 15 or 16 only where a character gains an

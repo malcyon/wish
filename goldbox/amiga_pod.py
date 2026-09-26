@@ -884,7 +884,11 @@ def unbundle(items: Sequence[PodItem],
     its `GAME.OVR` stores type `0x49` into an item, so separate scrolls are how
     it holds the same spells
     (docs/215-the-dos-experience-award-and-the-scroll-bundle.md, section 3).
-    A case of 0 holds nothing and becomes nothing.
+    Each scroll takes its case's `readied`: DOS refuses to read a scroll that
+    is not readied and lets any number be readied at once, and the Amiga
+    gates a case by the case's own flag, so a readied case's scrolls arrive
+    readied and an unreadied case's arrive unreadied, whatever their own
+    bytes held. A case of 0 holds nothing and becomes nothing.
     """
     out: list[PodItem] = []
     at = 0
@@ -893,7 +897,9 @@ def unbundle(items: Sequence[PodItem],
             out.append(item)
             continue
         for raw in nodes[at:at + item.quantity]:
-            out.append(PodItem.from_bytes(raw))
+            node = bytearray(raw)
+            node[ITEM_FIELD_AT["readied"]] = int(item.readied)
+            out.append(PodItem.from_bytes(node))
         at += item.quantity
     if at < len(nodes):
         raise ValueError(
