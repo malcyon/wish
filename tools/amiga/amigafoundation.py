@@ -262,16 +262,16 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
 
 # Disk 3 is the save disk and is mounted in DF1 from the start; with it there the boot showed
 # no disk 3 prompt, and the title screen is the first screen a key answers.
-# No step gives the game disk 2: whether a prompt for it appears is for the measuring boot
-# to show, and a DF0 insert is decided after that. A, C, D and E stay unchanged; E is also
-# the game's own exit key on the sheet and at camp, which `plain_keys` names.
+# Disk 1 is in DF0 from the start. The game asks for disk 2 right after the slot letter and
+# accepts it only in DF0, so disk 2 is staged as a spare and the route inserts it there at that
+# prompt. A, C, D and E stay unchanged; E is also the game's own exit key on the sheet and at
+# camp, which `plain_keys` names.
+# The key that answers `INSERT DISK 2 AND PRESS A KEY` is a guess for the measuring boot to confirm.
+DISK2_INSERT = ((0, "disk2", "SPACE"), "loaded_menu", "insert")
+
 DARKNESS = AmigaTitle(
     issue=ISSUE,
-    # Disk 2 is mounted in DF2 because the runtime floppy insert is refused by the pipe. The game
-    # asked for disk 2 right after a slot letter when it was not mounted; whether it accepts the
-    # mounted disk is not yet measured.
-    mounted=("disk1", "disk3", "disk2"),
-    options=("nr_floppies=3", "floppy2type=0"),
+    mounted=("disk1", "disk3"), spares=("disk2",),
     save_disk="disk3",
     read_slot=_darkness_read_slot, slot_letters=_darkness_slot_letters,
     slot_files=_darkness_slot_files,
@@ -279,7 +279,8 @@ DARKNESS = AmigaTitle(
     # own saves. The slot list after it has not been seen yet, so `load_picker` is a name only.
     route=(
         ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
-        ("B", "loaded_menu", "key"), ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
+        ("B", "disk2_prompt", "key"), DISK2_INSERT,
+        ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
         ("S", "save_picker", "key"), ("I", "loaded_menu", "write"), ("B", "world", "key"),
         ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
         ("J", "camp", "write"),
@@ -287,7 +288,8 @@ DARKNESS = AmigaTitle(
     # Stops before I.
     measure_route=(
         ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
-        ("B", "loaded_menu", "key"), ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
+        ("B", "disk2_prompt", "key"), DISK2_INSERT,
+        ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
         ("S", "save_picker", "key"),
     ),
     # In the measured boot the settled captures ended at 27, 99, 153 (loading screens), 247 (the
@@ -299,9 +301,12 @@ DARKNESS = AmigaTitle(
     boot_span=225.0, title_limit=420.0,
     control_letter="I", after_letter="J", kept_letters=("A", "C", "D", "E"),
     plain_keys=(("E", "loaded_menu"), ("E", "camp")),
-    strict=frozenset({"party_menu", "load_from", "load_picker", "loaded_menu", "sheet",
-                      "save_picker", "camp_save_picker"}),
-    min_waits={"party_menu": 20.0, "load_from": 20.0, "load_picker": 10.0, "loaded_menu": 20.0,
+    strict=frozenset({"party_menu", "load_from", "load_picker", "disk2_prompt", "loaded_menu",
+                      "sheet", "save_picker", "camp_save_picker"}),
+    disk_prompts=frozenset({"disk2_prompt"}),
+    # The `disk2_prompt` wait of 10 s is a guess until the measuring boot times the prompt.
+    min_waits={"party_menu": 20.0, "load_from": 20.0, "load_picker": 10.0,
+               "disk2_prompt": 10.0, "loaded_menu": 20.0,
                "sheet": 5.0, "save_picker": 10.0, "world": 45.0, "world_after_move": 5.0,
                "camp": 10.0, "camp_save_picker": 10.0},
     interstitials=(

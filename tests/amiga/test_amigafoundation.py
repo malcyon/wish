@@ -391,9 +391,9 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
 DARK_START = {"area": 2, "x": 1, "y": 2, "facing": geo.EAST}
 DARK_LATER = dict(DARK_START, x=2)
 DARK_STATES = ("title", "journal", "party_menu", "load_from", "load_picker",
-               "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker")
+               "disk2_prompt", "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker")
 DARK_FIRST_SCREEN = {}  # the title crop is recognised by its own name, and nothing precedes it
-DARK_KEYS = ["P", "L", "P", "B", "V", "E", "S", "I", "B", "NP8", "E", "S", "J"]
+DARK_KEYS = ["P", "L", "P", "B", "SPACE", "V", "E", "S", "I", "B", "NP8", "E", "S", "J"]
 
 
 class DarkGuest(TitleGuest):
@@ -448,10 +448,14 @@ def test_darkness_accept_presses_the_plans_keys_with_disk_3_mounted_in_df1_and_n
     assert result["error"] == "" and result["success"] is True, result["read"]
     keys = _keys(guest)
     assert keys == DARK_KEYS and "Y" not in keys
-    assert guest.inserted == [] and keys[0] == "P"  # nothing is inserted; PLAY is the first key
+    assert guest.inserted == [(0, "C:/Amiga/Disks/wish679-wish679-test-disk2.adf")]
+    assert keys[0] == "P"
     (drives, options), = guest.starts
-    assert [d and d.rsplit("-", 1)[1] for d in drives] == ["disk1.adf", "disk3.adf", "disk2.adf"]
-    assert options == foundation.POOL.options == ("nr_floppies=3", "floppy2type=0")
+    assert [d and d.rsplit("-", 1)[1] for d in drives] == ["disk1.adf", "disk3.adf"]
+    assert options == ()
+    order = [c[2] if c[0] == "press" else "insert" for c in guest.calls
+             if c[0] in ("press", "insert")]
+    assert order[3:6] == ["B", "insert", "SPACE"] and order[6] == "V"
     # E leaves the sheet once and never twice in a row at the party menu.
     assert keys[keys.index("L"):keys.index("S")].count("E") == 1
     assert result["read"]["verdicts"][0] == "slot I: did not move"
@@ -478,8 +482,8 @@ def test_darkness_answers_the_journal_at_most_three_times(tmp_path, clock):
 
 def test_darkness_measure_stops_before_the_first_save(tmp_path, clock):
     guest, result = _dark_run(tmp_path, clock, accept=False, measure=True)
-    assert _keys(guest) == "P L P B V E S".split()
-    assert guest.inserted == [] and result["success"] is True
+    assert _keys(guest) == "P L P B SPACE V E S".split()
+    assert [d for d, _ in guest.inserted] == [0] and result["success"] is True
     assert result["control_sha256"] is None
     assert not {"I", "J", "Y"} & set(_keys(guest))
 
@@ -489,7 +493,7 @@ def test_darkness_names_where_e_is_the_exit_key_and_nowhere_else():
     assert darkness.plain_keys == (("E", "loaded_menu"), ("E", "camp"))
     assert darkness.kept_letters == ("A", "C", "D", "E")
     assert darkness.title_limit == 420.0 and darkness.boot_span == 225.0
-    assert not any(step[2] == "insert" and step[0][0] != 1 for step in darkness.route)
+    assert [s[0][0] for s in darkness.route if s[2] == "insert"] == [0]
     assert all(row[1][0] != "insert" or row[1][1] == 1 for row in darkness.interstitials)
     with pytest.raises(drive.RouteError, match="presses a save or kept slot letter"):
         dataclasses.replace(darkness, plain_keys=(("E", "camp"),))
@@ -669,11 +673,22 @@ def test_the_curse_measure_route_reaches_the_party_menu_before_l():
     assert foundation.CURSE.interstitials[0][2] == frozenset({"title"})
 
 
-def test_darkness_mounts_disk_2_in_df2_because_the_pipe_refuses_a_runtime_insert():
+def test_darkness_mounts_disks_1_and_3_and_stages_disk_2_as_a_spare_for_the_df0_insert():
     darkness = foundation.DARKNESS
-    assert darkness.mounted == ("disk1", "disk3", "disk2") and darkness.spares == ()
-    assert darkness.options == ("nr_floppies=3", "floppy2type=0")
+    assert darkness.mounted == ("disk1", "disk3") and darkness.spares == ("disk2",)
+    assert darkness.options == ()
     assert set(darkness.disk_keys) == {"disk1", "disk2", "disk3"}
+    assert darkness.disk_prompts == frozenset({"disk2_prompt"})
+    assert "disk2_prompt" in darkness.strict and darkness.min_waits["disk2_prompt"] == 10.0
+
+
+def test_darkness_inserts_disk_2_into_df0_at_the_prompt_after_the_slot_letter():
+    insert = ((0, "disk2", "SPACE"), "loaded_menu", "insert")
+    head = (("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
+            ("B", "disk2_prompt", "key"), insert)
+    tail = (("V", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"))
+    assert foundation.DARKNESS.route[:8] == head + tail
+    assert foundation.DARKNESS.measure_route == head + tail
 
 
 def test_darkness_has_no_disk_prompt_interstitial_and_pins_its_boot_span_as_a_guess():
@@ -683,7 +698,7 @@ def test_darkness_has_no_disk_prompt_interstitial_and_pins_its_boot_span_as_a_gu
                                                                      "continue"]
     assert foundation.DARKNESS.boot_span == 225.0
     first_four = (("P", "party_menu", "key"), ("L", "load_from", "key"),
-                  ("P", "load_picker", "key"), ("B", "loaded_menu", "key"))
+                  ("P", "load_picker", "key"), ("B", "disk2_prompt", "key"))
     assert foundation.DARKNESS.measure_route[:4] == first_four
     assert foundation.DARKNESS.route[:4] == first_four
     # The load-from prompt offers POOLS, SECRET and EXIT; only POOLS (P) is ever chosen.
@@ -768,3 +783,41 @@ def test_darkness_prepare_copies_disk_2_as_a_working_copy_never_the_registered_i
     assert entry["sha256"] == foundation.DARKNESS_DISK2_SHA256
     assert pathlib.Path(entry["path"]).is_relative_to(tmp_path)
     assert manifest["sources"]["disk2"]["sha256"] == foundation.DARKNESS_DISK2_SHA256
+
+
+def test_darkness_never_presses_the_continuation_key_when_the_df0_insert_fails(tmp_path, clock):
+    class Refused(DarkGuest):
+        def insert(self, holder, drive_number, remote, timeout=None, sha256=None):
+            self.calls.append(("insert", drive_number, remote))
+            exc = RuntimeError("drive 0 refused")
+            exc.receipt = {"status": "refused"}
+            raise exc
+
+    guest, result = _dark_run(tmp_path, clock, guest=Refused(clock, save_key="disk3"))
+    assert result["success"] is False and _keys(guest) == ["P", "L", "P", "B"]
+    event = next(e for e in result["events"] if "insert" in e)
+    assert event["drive"] == 0 and event["insert"] == "disk2"
+    assert event["error"] == "drive 0 refused" and event["receipt"] == {"status": "refused"}
+
+
+def test_darkness_insert_carries_the_disk_2_hash(tmp_path, clock):
+    seen = []
+
+    class Watching(DarkGuest):
+        def insert(self, holder, drive_number, remote, timeout=None, sha256=None):
+            seen.append((drive_number, remote.rsplit("-", 1)[1], sha256))
+            return super().insert(holder, drive_number, remote, timeout, sha256)
+
+    _dark_run(tmp_path, clock, guest=Watching(clock, save_key="disk3"))
+    sha = hashlib.sha256((tmp_path / "disk2.adf").read_bytes()).hexdigest()
+    assert seen == [(0, "disk2.adf", sha)]
+
+
+def test_darkness_measure_without_a_guard_captures_the_prompt_before_the_insert_and_goes_on(
+        tmp_path, clock):
+    guest, result = _dark_run(tmp_path, clock, accept=False, measure=True)
+    events = result["events"]
+    prompt = next(i for i, e in enumerate(events) if "04-disk2_prompt" in str(e))
+    inserted = next(i for i, e in enumerate(events) if "insert" in e)
+    assert prompt < inserted and result["success"] is True
+    assert _keys(guest)[-3:] == ["V", "E", "S"]

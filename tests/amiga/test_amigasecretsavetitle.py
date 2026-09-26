@@ -910,3 +910,79 @@ def test_the_named_identity_messages_are_unchanged(tmp_path, clock):
                                        "loaded_menu": "loaded_menu shows another party"}
     _, result = _run(tmp_path, clock, identity=_IdentityMap(fail={"loaded_menu"}))
     assert result["error"] == "RouteError: loaded_menu shows another party"
+
+
+DF0_ROUTE = (
+    ("P", "party_menu", "key"), ("A", "disk_ask", "key"),
+    ((0, "spare", "SPACE"), "loaded_menu", "insert"), ("C", "loaded_menu", "write"),
+    ("NP2", "world", "turn"), ("NP8", "world", "move"), ("E", "camp", "key"),
+    ("S", "camp_picker", "key"), ("D", "camp", "write"),
+)
+DF0_STRICT = frozenset({"party_menu", "disk_ask", "loaded_menu", "camp_picker"})
+
+
+def _df0_title(route=DF0_ROUTE, **over):
+    fields = dict(disk_prompts=frozenset({"disk_ask"}), strict=DF0_STRICT,
+                  route=route, measure_route=DF0_ROUTE)
+    fields.update(over)
+    return make_title(**fields)
+
+
+def test_a_df0_insert_after_a_strict_disk_prompt_is_accepted():
+    _df0_title()
+
+
+def test_a_df0_insert_is_refused_as_the_first_step():
+    route = (((0, "spare", "SPACE"), "loaded_menu", "insert"), *DF0_ROUTE[3:])
+    with pytest.raises(drive.RouteError, match="DF0 insert.*first"):
+        _df0_title(route)
+
+
+def test_a_df0_insert_after_a_state_that_is_not_a_disk_prompt_is_refused():
+    with pytest.raises(drive.RouteError, match="DF0 insert.*disk prompt"):
+        _df0_title(disk_prompts=frozenset())
+    with pytest.raises(drive.RouteError, match="DF0 insert.*disk prompt"):
+        _df0_title(disk_prompts=frozenset({"party_menu"}))
+
+
+def test_a_df0_disk_prompt_must_be_strict():
+    with pytest.raises(drive.RouteError, match="strict"):
+        _df0_title(strict=DF0_STRICT - {"disk_ask"})
+
+
+def test_a_df0_insert_of_the_disk_already_in_df0_is_refused():
+    route = _swap(DF0_ROUTE, 2, ((0, "boot", "SPACE"), "loaded_menu", "insert"))
+    with pytest.raises(drive.RouteError, match="already in DF0"):
+        _df0_title(route)
+
+
+@pytest.mark.parametrize("drive_number", [True, 2])
+def test_a_df0_prompt_does_not_widen_the_other_drives(drive_number):
+    route = _swap(DF0_ROUTE, 2, ((drive_number, "spare", "SPACE"), "loaded_menu", "insert"))
+    with pytest.raises(drive.RouteError, match="only DF1"):
+        _df0_title(route)
+
+
+def test_an_interstitial_insert_into_df0_is_refused_even_with_disk_prompts():
+    rows = (("disk_request", ("insert", 0, "spare", "SPACE"), None, 1),)
+    with pytest.raises(drive.RouteError, match="only DF1"):
+        _df0_title(interstitials=rows)
+
+
+def test_a_df0_insert_run_stops_before_its_key_when_the_insert_fails(tmp_path, clock):
+    class Refused(TitleGuest):
+        def insert(self, holder, drive_number, remote, timeout=None, sha256=None):
+            self.calls.append(("insert", drive_number, remote))
+            exc = RuntimeError("drive 0 did not read it back")
+            exc.receipt = {"status": "refused"}
+            raise exc
+
+    guest = Refused(clock)
+    guard = MapGuard(states=("title", *STATES, "disk_ask"))
+    _, result = _run(tmp_path, clock, guest=guest, guard=guard, title=_df0_title())
+    assert result["success"] is False
+    keys = [c[2] for c in guest.calls if c[0] == "press"]
+    assert keys == ["P", "A"]
+    event = next(e for e in result["events"] if "insert" in e)
+    assert event["drive"] == 0 and event["insert"] == "spare"
+    assert "did not read it back" in event["error"] and event["receipt"] == {"status": "refused"}

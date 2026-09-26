@@ -738,7 +738,9 @@ class AmigaTitle:
     A plain key is refused on a screen where some step writes and on a state whose name contains
     `picker`; the run's compare of every kept slot after the fetch is what proves none changed.
     Every entry must be a kept letter that some non-write step presses in that state. An `insert`
-    may name drive 1 only, and a `write` or `insert` step follows a `strict` state. `strict` names
+    may name drive 1, or drive 0 when the step before it is in `disk_prompts` (states where the
+    game itself asks for a disk) and `strict`, naming a disk other than the one in DF0; an
+    interstitial insert names drive 1 only. A `write` or `insert` step follows a `strict` state. `strict` names
     the states whose guard must match or the run stops; any other state falls back to a
     settled capture and marks the run as measuring.
     """
@@ -757,6 +759,7 @@ class AmigaTitle:
     spares: tuple[str, ...] = ()
     options: tuple[str, ...] = ()
     strict: frozenset[str] = frozenset()
+    disk_prompts: frozenset[str] = frozenset()
     min_waits: Mapping[str, float] = dataclasses.field(default_factory=dict)
     title_limit: float = TITLE_LIMIT
     interstitials: tuple[tuple[str, tuple, Any, int], ...] = ()
@@ -812,7 +815,8 @@ class AmigaTitle:
             if not route:
                 refuse(f"{name} is empty")
             for at, step in enumerate(route):
-                allowed = self._check_step(name, step, keys, refuse)
+                allowed = self._check_step(name, step, keys, refuse,
+                                           None if at == 0 else route[at - 1][1], at == 0)
                 if allowed:
                     used.add(allowed)
                     on = "title" if at == 0 else route[at - 1][1]
@@ -838,7 +842,8 @@ class AmigaTitle:
         """The letters that save, or belong to a slot that must not change."""
         return frozenset((self.control_letter, self.after_letter, *self.kept_letters))
 
-    def _check_step(self, name, step, keys, refuse) -> tuple[str, str] | None:
+    def _check_step(self, name, step, keys, refuse, before=None, first=False
+                    ) -> tuple[str, str] | None:
         """Refuse a bad step; return the `plain_keys` entry that lets it press a kept letter, if any."""
         if not isinstance(step, tuple) or len(step) != 3 or step[2] not in _STEP_KINDS:
             refuse(f"{name} step {step!r} is not (key, state, kind) with a known kind")
@@ -851,9 +856,21 @@ class AmigaTitle:
             return None
         if kind == "insert":
             if not (isinstance(key, tuple) and len(key) == 3 and type(key[0]) is int
-                    and key[0] == 1 and key[1] in keys):
-                refuse(f"{name} insert step {step!r} needs (drive 1, a disk key, a key): "
-                       f"only DF1 may change while the game runs")
+                    and key[0] in (0, 1) and key[1] in keys):
+                refuse(f"{name} insert step {step!r} needs (drive, a disk key, a key): "
+                       f"only DF1 may change while the game runs, or DF0 after a disk prompt")
+            if key[0] == 0:
+                if first:
+                    refuse(f"{name} DF0 insert step {step!r} is the first step; only DF1 may "
+                           f"change unless a disk prompt precedes it")
+                if before not in self.disk_prompts:
+                    refuse(f"{name} DF0 insert step {step!r} follows {before!r}, which is not "
+                           f"a disk prompt; only DF1 may change there")
+                if before not in self.strict:
+                    refuse(f"{name} DF0 insert step {step!r} follows disk prompt {before!r}, "
+                           f"which is not a strict state")
+                if key[1] == self.mounted[0]:
+                    refuse(f"{name} DF0 insert step {step!r} names the disk already in DF0")
             key = key[2]
         if not isinstance(key, str) or key.upper() not in amigadrive.KEYS:
             refuse(f"{name} step {step!r} presses a key with no WinUAE code")
