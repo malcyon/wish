@@ -877,6 +877,12 @@ class PoolRun:
         answer one itself.  A forward move must also land on exactly the next
         square, or the walk fails as an exit or a teleport.  A move `walk_one`
         made on the travel grid is not re-sent.
+
+        The one retry is judged by the screen just before the key against the
+        screen 1.2 s after it (`Session.walk_screens`), resent only when they
+        are identical, since text that `MOVE` put up changes the whole move's
+        screen without the key having been read.  Each `move` record keeps
+        the text rows the game showed at the key and whether a key was sent.
         """
         route = parse_walk(arg)
         if not self.to_world():
@@ -898,13 +904,21 @@ class PoolRun:
             self.refuse_prompt(route, last, "ran the square's event")
             # Out on the travel grid a move is pressed once and never re-sent:
             # the status line lags and a turn does not exist there.
-            if (not status_moved and self.rows() == before_rows
+            screens = getattr(self.sess, "walk_screens", None)
+            if screens is not None and screens[1] is not None:
+                # Judge the key's own window: a text `MOVE` put up before the
+                # key changes the whole move's screen, not the key's.
+                took_nothing = screens[0] == screens[1]
+            else:
+                took_nothing = self.rows() == before_rows
+            if (not status_moved and took_nothing
                     and not getattr(self.sess, "walked_outdoors", False)):
                 # The one retry the contract allows: the game took nothing.
                 resent = True
                 status_moved = self.sess.walk_one(move, tries=1,
                                                   answer_prompts=False)
                 self.refuse_prompt(route, last, "ran the square's event")
+                screens = getattr(self.sess, "walk_screens", None)
             refused = getattr(self.sess, "walk_refused", None)
             if refused:
                 raise self.fail("walk", f"walk {route}: {refused}")
@@ -918,8 +932,12 @@ class PoolRun:
                     break
                 time.sleep(0.3)
             after = list(self.sess.position())
+            key_rows = screens[0] if screens else None
+            text = (None if key_rows is None else
+                    [r.strip() for r in key_rows[17:23]])
             self.log.emit("move", move=move, n=n, before=before, after=after,
-                          resent=resent, row24=self.bar().strip())
+                          resent=resent, row24=self.bar().strip(), text=text,
+                          keyed=refused is None)
             if (move == "I" and after[:2] != before[:2]
                     and before[2] is not None):
                 dx, dy = STEP[before[2]]

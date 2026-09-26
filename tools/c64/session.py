@@ -785,6 +785,9 @@ class Session:
     walk_prompt: str | None = None
     #: True when the last `walk_one` went through `walk_outdoors`.
     walked_outdoors = False
+    #: The screen rows just before the last `walk_one`'s direction key and
+    #: 1.2 s after it, or None when no key was sent or it went outdoors.
+    walk_screens: tuple | None = None
 
     #: What to answer a boat landing's `TAKE BOAT STAY` when a walk runs into
     #: one -- `"STAY"`, `"TAKE"`, or None to stop and say so.  See
@@ -2076,39 +2079,78 @@ class Session:
         move key, ends the call with `False` and `walk_prompt` set to row 24;
         no key is pressed at it and no disk is attached.  `walk_prompt` is
         None otherwise.
+
+        **Taking `MOVE` can run the square's own text first**, and a key sent
+        before `I,J,K,M` is up is lost, so the direction key waits for that
+        bar (`MOVE_SUBBAR_LOOKS` reads, 0.3 s apart) and is not sent at all
+        if it never appears; `walk_refused` says so.  `walk_screens` holds
+        the rows just before the key and 1.2 s after it.
         """
         self.walk_refused = None
         self.walk_prompt = None
         self.walked_outdoors = False
+        self.walk_screens = None
         if self.indoors() is False:
             self.walked_outdoors = True
             return self.walk_outdoors(move, hold, gap)
         before = self.status()
+        sent = False
         for _ in range(tries):
             s = self.screen()
             if not answer_prompts and self._prompt_up(s):
                 return False
             row = "" if s is None else s.row(24)
             if MOVE_SUBBAR in row:
+                self.walk_screens = (self._rows(s), None)
                 self.move_key(move, hold, gap)
+                sent = True
             elif self.select_bar("MOVE", timeout=8, answer_prompts=answer_prompts):
                 if not answer_prompts and self._prompt_up(self.screen()):
                     return False
+                up = None
+                for look in range(self.MOVE_SUBBAR_LOOKS):
+                    if look:
+                        time.sleep(0.3)
+                    s = self.screen()
+                    if not answer_prompts and self._prompt_up(s):
+                        return False
+                    if s is not None and MOVE_SUBBAR in s.row(24):
+                        up = s
+                        break
+                if up is None:
+                    continue
                 time.sleep(0.6)
+                self.walk_screens = (self._rows(up), None)
                 self.move_key(move, hold, gap)
+                sent = True
             else:
                 if not answer_prompts and self._prompt_up(self.screen()):
                     return False
                 self._leave_move(answer_prompts, 2)
                 continue
             time.sleep(1.2)
-            if not answer_prompts and self._prompt_up(self.screen()):
+            after = self.screen()
+            if not answer_prompts and self._prompt_up(after):
                 return False
+            self.walk_screens = (self.walk_screens[0], self._rows(after))
             if self.status() != before:
                 self._leave_move(answer_prompts)
                 return True
         self._leave_move(answer_prompts)
+        if not sent:
+            self.walk_refused = (
+                f"the driver pressed nothing for {move}: taking MOVE never "
+                f"brought up {MOVE_SUBBAR}; this is a driver error, not a wall")
         return False
+
+    #: Reads of the screen, 0.3 s apart, that `walk_one` gives `MOVE` to bring
+    #: up its sub-bar: about 8 s, a limit and not a measurement.
+    MOVE_SUBBAR_LOOKS = 27
+
+    @staticmethod
+    def _rows(s):
+        """The 25 rows of screen `s`, or None when there is no screen."""
+        return None if s is None else tuple(s.row(r) for r in range(25))
 
     def _leave_move(self, answer_prompts: bool, *tries) -> bool:
         """`leave_move`, passing `answer_prompts` only when it is False, so a

@@ -1833,6 +1833,107 @@ class RealWalk(A.S.Session):
         pass
 
 
+class ScriptedMoveWalk(RealWalk):
+    """Taking `MOVE` prints the square's text at once and brings up `I,J,K,M`
+    1.5 s later; a direction key before then is lost, as `drop_next` more are
+    even at the sub-bar."""
+
+    TEXT = "YOU ARE BY THE GATEWAY TO THE"
+    DX = {0: (0, -1), 1: (1, 0), 2: (0, 1), 3: (-1, 0)}
+
+    def __init__(self, clock, drop_next=0, **kw):
+        super().__init__(clock, prompt_after=None, **kw)
+        self.subbar_at = None
+        self.text_up = False
+        self.drop_next = drop_next
+        self.lost = []
+
+        class Kbd:
+            def key(kself, name, *timing):
+                self.keys.append(name)
+                if name == "Return":
+                    self.subbar_at, self.text_up = None, False
+                    self.returned_at = self.clock.now
+                elif name in ("i", "j", "k", "m"):
+                    ready = (self.subbar_at is not None
+                             and self.clock.now >= self.subbar_at)
+                    if not ready or self.drop_next:
+                        if ready:
+                            self.drop_next -= 1
+                        self.lost.append(name)
+                        return
+                    self.ticks += 1
+                    if name == "k":
+                        self.facing = (self.facing + 1) % 4
+                    elif name == "i":
+                        dx, dy = self.DX[self.facing]
+                        self.x, self.y = self.x + dx, self.y + dy
+
+            def screenshot(kself, path):
+                pathlib.Path(path).write_bytes(b"")
+                return True
+
+        self.kbd = Kbd()
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        self.text_up = True
+        self.subbar_at = self.clock.now + 1.5
+        return True
+
+    def screen(self):
+        up = self.subbar_at is not None and self.clock.now >= self.subbar_at
+        return _Text(_window({17: self.TEXT} if self.text_up else {},
+                             A.S.MOVE_SUBBAR if up else WORLD_BAR))
+
+    def status(self):
+        return self.ticks, self.facing
+
+    def position(self):
+        return self.x, self.y, self.facing
+
+
+def _scripted_walk(tmp_path, monkeypatch, **kw):
+    clock = _Clock(monkeypatch)
+    sess = ScriptedMoveWalk(clock, x=0, y=4, facing=3, **kw)
+    run, log = _walk_run(tmp_path, sess, clock)
+    return sess, run, log
+
+
+def _move_records(tmp_path):
+    rows = [json.loads(line) for line in
+            (tmp_path / "run.jsonl").read_text().splitlines()]
+    return [r for r in rows if r.get("kind") == "move"]
+
+
+def test_a_turn_on_a_square_whose_text_comes_up_with_move_is_pressed_at_the_subbar(
+        tmp_path, monkeypatch):
+    sess, run, log = _scripted_walk(tmp_path, monkeypatch)
+    got = run.walk("KI")
+    log.close()
+    assert got["position"] == [0, 3, 0]
+    assert _move_records(tmp_path)[0]["after"] == [0, 4, 0]
+    assert sess.keys == ["k", "Return", "i", "Return"] and sess.lost == []
+    assert not any(m["resent"] for m in got["moves"])
+
+
+def test_a_key_lost_at_the_subbar_is_resent_although_move_put_up_text(
+        tmp_path, monkeypatch):
+    sess, run, log = _scripted_walk(tmp_path, monkeypatch, drop_next=1)
+    got = run.walk("K")
+    log.close()
+    assert got["moves"][0]["resent"] is True
+    assert got["position"][2] == 0
+
+
+def test_the_move_record_keeps_the_text_the_game_showed_at_the_key(
+        tmp_path, monkeypatch):
+    sess, run, log = _scripted_walk(tmp_path, monkeypatch)
+    run.walk("K")
+    log.close()
+    rec = _move_records(tmp_path)[0]
+    assert ScriptedMoveWalk.TEXT in " ".join(rec["text"]) and rec["keyed"] is True
+
+
 def _real_walk(tmp_path, monkeypatch, **kw):
     clock = _Clock(monkeypatch)
     sess = RealWalk(clock, **kw)

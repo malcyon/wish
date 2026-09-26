@@ -76,3 +76,21 @@ def test_the_move_key_goes_straight_at_an_already_selected_move_bar():
     assert moved is True
     assert sess.kbd.sent == ["i"]
     assert sess.select_bar_calls == 0
+
+
+class NeverSubbarSession(FakeSession):
+    """`select_bar` reports `MOVE` taken while row 24 stays the world's bar."""
+
+    def __init__(self):
+        super().__init__(row24="MOVE VIEW CAST AREA ENCAMP SEARCH LOOK")
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        return True
+
+
+def test_walk_one_sends_no_direction_key_before_the_move_subbar(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda s: None)
+    sess = NeverSubbarSession()
+    assert sess.walk_one("K", tries=1) is False
+    assert "k" not in sess.kbd.sent
+    assert "pressed nothing" in sess.walk_refused
