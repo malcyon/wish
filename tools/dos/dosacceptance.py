@@ -52,7 +52,7 @@ conversion logged.
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
-| `walk MI`, `walk 1` | Pool: turn around and step one square.  Pools of Darkness: press MOVE, step one square turning right past a wall, and press EXIT back to the map bar |
+| `walk MI`, `walk 1` | Pool: turn around and step one square.  Pools of Darkness: press MOVE, step one square turning right past a wall, and press EXIT back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement and items |
 
 **Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
@@ -171,9 +171,11 @@ import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
+import traceback
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
@@ -518,6 +520,56 @@ EFFECT_SUFFIXES = (".SPC", ".FX", ".SFX")
 
 class StepFailed(RuntimeError):
     """A step did not reach the screen or the file it waits for."""
+
+
+class DeadlineReached(TimeoutError):
+    """The run's route window is over; what is left belongs to the cleanup."""
+
+
+class Terminated(RuntimeError):
+    """The wrapper's `timeout` sent SIGTERM."""
+
+
+#: The run's whole budget, and the part of it kept for the cleanup (the
+#: failure capture, the shots and the resave copied out, the emulator stopped).
+#: The wrapper's own `timeout` is a backstop at least `WRAPPER_MARGIN` seconds
+#: longer than the deadline, so the driver, not the wrapper, ends the run.
+DEADLINE_SECONDS = 900.0
+CLEANUP_SECONDS = 120.0
+WRAPPER_MARGIN = 300.0
+#: The longest one capture or key press takes, with room to spare: a wait with
+#: less than this left does not start another.
+ACTION_SECONDS = 5.0
+
+
+class Deadline:
+    """The route window of a run: `seconds` from the start less `cleanup`.
+
+    The cleanup is never more than half the budget.  `clock` is injectable so
+    a test can pass the deadline without waiting.
+    """
+
+    def __init__(self, clock, seconds: float, cleanup: float = CLEANUP_SECONDS):
+        self.clock, self.seconds = clock, float(seconds)
+        self.cleanup = min(float(cleanup), self.seconds / 2)
+        self.begun = clock()
+        self.route_end = self.begun + self.seconds - self.cleanup
+
+    def left(self) -> float:
+        return self.route_end - self.clock()
+
+    def check(self, label: str) -> None:
+        """Stop the route when less than one action's time is left."""
+        if self.left() < ACTION_SECONDS:
+            raise DeadlineReached(
+                f"the route window of {self.seconds - self.cleanup:.0f} s is over "
+                f"during {label} (the deadline is {self.seconds:.0f} s, "
+                f"{self.cleanup:.0f} s of it for the cleanup)")
+
+    def bound(self, wait: float, label: str) -> float:
+        """`wait`, cut to the route time left; never a remainder shorter than an action."""
+        self.check(label)
+        return min(wait, self.left())
 
 
 # --------------------------------------------------------------------------
@@ -1286,8 +1338,12 @@ class Driver:
     """
 
     def __init__(self, session, note, slot: str, title: str = "pool",
-                 party_size: int = 6):
+                 party_size: int = 6, deadline: Deadline | None = None):
         self.s = session
+        #: The run's route window, or None: nothing then limits a wait.
+        self.deadline = deadline
+        #: Why the last failure capture failed, or None.
+        self.capture_error: str | None = None
         self.note = note
         self.slot = slot
         self.title = TITLES[title]
@@ -1326,8 +1382,32 @@ class Driver:
         return name
 
     def fail(self, label: str, why: str) -> StepFailed:
-        name = self.shot(f"lost-{label}")
+        """The failure `why`, with a shot of the screen it happened at.
+
+        The capture cannot raise: one that fails is recorded beside the reason
+        and never replaces it.
+        """
+        try:
+            name = self.shot(f"lost-{label}")
+        except Exception as e:  # noqa: BLE001 -- the reason is what must survive
+            self.capture_error = f"{type(e).__name__}: {e}"
+            try:
+                self.note(event="failure_capture_error", label=label,
+                          error=self.capture_error)
+            except Exception:  # noqa: BLE001
+                pass
+            return StepFailed(f"{why}; no failure capture ({self.capture_error})")
         return StepFailed(f"{why}; see {name}.png")
+
+    def check_deadline(self, label: str) -> None:
+        if self.deadline is not None:
+            self.deadline.check(label)
+
+    def bounded(self, wait: float, label: str) -> float:
+        """`wait`, cut to what the route window has left."""
+        if self.deadline is None:
+            return wait
+        return self.deadline.bound(wait, label)
 
     # -- helpers -----------------------------------------------------------
 
@@ -1405,6 +1485,7 @@ class Driver:
         """Wait for the camp bar, and for it to still be there `hold` later."""
         deadline = time.time() + timeout
         while time.time() < deadline:
+            self.check_deadline("wait-camp")
             if self.in_camp():
                 time.sleep(hold)
                 if self.in_camp():
@@ -1421,8 +1502,10 @@ class Driver:
         while not (path.is_file() and path.read_bytes() != was):
             if time.time() > deadline:
                 raise self.fail(label, f"{path.name} never changed")
+            self.check_deadline(label)
             time.sleep(0.3)
-        dosbox.settle_files(self.s.save_dir, quiet=1.0, timeout=30.0)
+        dosbox.settle_files(self.s.save_dir, quiet=1.0,
+                            timeout=self.bounded(30.0, label))
 
     def after_rest(self, timeout: float, in_step: str) -> None:
         """Wait out a rest: the camp bar, or Pool's `GO STAY` answered with GO.
@@ -1434,10 +1517,11 @@ class Driver:
         """
         answered = 0
         while True:
-            deadline = time.time() + timeout
+            deadline = time.time() + self.bounded(timeout, "rest-end")
             screen = None
             last_text, changed = None, time.time()
             while time.time() < deadline:
+                self.check_deadline("rest-end")
                 screen = self.s.capture()
                 if answered == 0 and self.in_camp(screen):
                     time.sleep(1.0)
@@ -1758,20 +1842,27 @@ class Driver:
         self.shot("camp")
         return {"camp_bar": self.camp_sig}
 
-    def map_status(self, label: str, screens: list[dict]) -> str:
-        """The settled map's status line, with a shot, appended to `screens`;
-        a screen that is not the map stops the run."""
+    def map_status(self, label: str, screens: list[dict]) -> tuple[str, str | None]:
+        """The settled map's status line and its `x,y` square, with a shot,
+        appended to `screens`; a screen that is not the map stops the run."""
         screen = self.s.settle(quiet=0.6, timeout=30.0)
         if not self.on_world(screen):
             raise self.fail(label, "the map bar did not return (combat or "
                             "an unknown screen)")
         status = self.game.status()
+        square = status_square(screen)
         screens.append({"shot": self.shot(label), "bar": bar_signature(screen),
-                        "status": status})
-        return status
+                        "status": status, "square": square})
+        return status, square
 
     def walk(self, route: str) -> dict:
-        """From the loaded Pool map, turn around and step one square."""
+        """From the loaded Pool map, turn around and step one square.
+
+        A step is believed only when the `x,y` on the status line changes:
+        the clock on the same line ticks on a wall's bump, and a line drawn
+        for the first time differs from a blank one, so the whole strip says
+        nothing about a step.  A blank line is never the starting reading.
+        """
         if self.title.key == "darkness" and self.where == "map" and route == "1":
             return self._walk_one()
         if self.title.key != "pool" or self.where != "map" or route != "MI":
@@ -1779,24 +1870,35 @@ class Driver:
 
         screens: list[dict] = []
 
-        def record(label: str) -> str:
+        def record(label: str) -> tuple[str, str | None]:
             return self.map_status(label, screens)
 
-        before = record("walk-before")
+        before, origin = record("walk-before")
+        if origin is None:
+            raise self.fail("walk-status", "the status line is blank on the map, "
+                            "so there is no starting square (a shop or an "
+                            "arrival draws it later)")
         for n in (1, 2):
             if not self.game.turn_right():
                 raise self.fail(f"walk-turn-{n}", "the map bar did not return "
                                 "after turning (combat or an unknown screen)")
-            turned = record(f"walk-turn-{n}")
+            _, square = record(f"walk-turn-{n}")
+            if square != origin:
+                raise self.fail(f"walk-turn-{n}", "the square changed on a turn "
+                                "(or the status line went blank)")
         if not self.game.step():
             raise self.fail("walk-step", "the map bar did not return after the "
                             "step (combat or an unknown screen)")
-        after = record("walk-step")
-        if after == turned:
+        after, square = record("walk-step")
+        if square is None:
+            raise self.fail("walk-status", "the status line was blank after the step")
+        if square == origin:
             raise self.fail("walk-blocked", "the settled status did not change "
-                            "after Up (a blocked step)")
+                            "after Up: the x,y square is the same (a blocked "
+                            "step; a clock tick is not a step)")
         return {"route": route, "map_bar": self.world_sig,
                 "status_before": before, "status_after": after,
+                "square_before": origin, "square_after": square,
                 "screens": screens}
 
     def _walk_one(self) -> dict:
@@ -2303,13 +2405,32 @@ class Driver:
         raise self.fail("train-back", "the party menu never came back after training")
 
 
-def run(args) -> int:
-    """`_run`, with the evidence log closed on every way out, including an early raise."""
-    with contextlib.ExitStack() as outer:
-        return _run(args, outer)
+def run(args, clock=time.monotonic) -> int:
+    """`_run`, with the evidence log closed on every way out, including an early raise.
+
+    The wrapper's SIGTERM is turned into `Terminated` for the length of the
+    run, so the evidence is kept where the default action would end the
+    process without it.  A second signal is ignored: the cleanup is what the
+    first one asked for.
+    """
+    def on_term(signum, frame):
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        raise Terminated(f"signal {signum}")
+
+    try:
+        previous = signal.signal(signal.SIGTERM, on_term)
+    except ValueError:      # not the main thread: nothing to install
+        previous = None
+    try:
+        with contextlib.ExitStack() as outer:
+            return _run(args, outer, clock)
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
 
 
-def _run(args, outer: contextlib.ExitStack) -> int:
+def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
+    deadline = Deadline(clock, getattr(args, "deadline", None) or DEADLINE_SECONDS)
     git = git_state()
     title = TITLES[args.title]
     out = pathlib.Path(args.out) if args.out else default_out(args.issue, args.run,
@@ -2330,6 +2451,7 @@ def _run(args, outer: contextlib.ExitStack) -> int:
     note(event="start", out=str(out), **summary)
 
     def write_summary():
+        summary["elapsed_seconds"] = round(clock() - deadline.begun, 1)
         (out / "summary.json").write_text(json.dumps(summary, indent=2))
 
     save = pathlib.Path(args.save) if args.save else None
@@ -2417,10 +2539,12 @@ def _run(args, outer: contextlib.ExitStack) -> int:
             note(event="staged", **took, stages=staged)
             session.boot(fresh=False)
             size = sum(1 for f in took.get("files", []) if f.endswith(".SAV")) or 6
-            d = Driver(session, note, letter, args.title, party_size=size)
+            d = Driver(session, note, letter, args.title, party_size=size,
+                       deadline=deadline)
             summary["events"] = getattr(d, "events", [])
             results = []
             for step in steps:
+                deadline.check(step.text)
                 note(event="step", step=step.text)
                 # Before every step but a capture of what `press` left.
                 if d.where != "pressed":
@@ -2461,19 +2585,33 @@ def _run(args, outer: contextlib.ExitStack) -> int:
                 note(event="done", step=step.text,
                      **{k: v for k, v in r.items() if k != "slots"})
             summary["results"] = results
-            summary["completed"] = True
+            unproved = walk_verdict(steps, summary.get("read"))
+            if unproved:
+                summary["lost"] = unproved
+                note(event="lost", why=unproved)
+            else:
+                summary["completed"] = True
         except (StepFailed, ssbimport.RouteLost) as e:
             summary["lost"] = str(e)
             note(event="lost", why=str(e))
-        except (TimeoutError, dosbox.DosboxUnavailable, dosbox.BlankCapture) as e:
+        except (TimeoutError, dosbox.DosboxUnavailable, dosbox.BlankCapture,
+                Terminated) as e:
             why = f"{type(e).__name__}: {e}"
+            if isinstance(e, Terminated):
+                why = f"Terminated({str(e)!r})"
             if d is not None:
-                try:
-                    why = str(d.fail("timeout", why))
-                except Exception:  # noqa: BLE001 -- the capture may be what failed
-                    pass
+                why = str(d.fail("timeout", why))
             summary["lost"] = why
             note(event="lost", why=why)
+        except Exception as e:  # noqa: BLE001 -- a harness crash still ends with `lost`
+            traceback.print_exc()
+            why = f"{type(e).__name__}: {e}"
+            if d is not None:
+                why = str(d.fail("error", why))
+            summary["lost"] = why
+            note(event="lost", why=why)
+        if d is not None and getattr(d, "capture_error", None):
+            summary["failure_capture_error"] = d.capture_error
     return 0 if summary["completed"] else 1
 
 
@@ -2520,6 +2658,33 @@ def place_changed(before: dict, after: dict) -> bool:
     return any(a.get(k) != b.get(k) for k in keys)
 
 
+def walk_verdict(steps: list[Step], read: dict | None) -> str | None:
+    """Why a run that asked for a walk has not shown one, or None.
+
+    The proof is the place decoded from the game-written save, the same in
+    every title: the last save the run made must not be at the square the
+    installed one was.  A place that was not computed proves nothing.
+    """
+    if not any(s.kind == "walk" for s in steps):
+        return None
+    if read is None:
+        return ("a walk was asked and no read step decoded a saved place, so "
+                "nothing shows the party moved")
+    slots = read.get("slots") or {}
+    order = [x for x in read.get("saved") or [] if x in slots] or list(slots)
+    if not order:
+        return "a walk was asked and no saved slot was read, so nothing shows the party moved"
+    last = order[-1]
+    slot = slots[last]
+    if "place_changed" not in slot or "x" not in (slot.get("place") or {}):
+        return (f"a walk was asked and slot {last}'s place was not computed "
+                f"({(slot.get('place') or {}).get('error', 'no place read')})")
+    if not slot["place_changed"]:
+        return (f"the walk did not move the party: the game-written slot {last} "
+                "is at the square the installed slot was")
+    return None
+
+
 def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
               saved: list[str], steps: list[Step], expects: list[Expect]) -> dict:
     """Copy `SAVE/` out and decode the installed slot against each saved one."""
@@ -2528,7 +2693,8 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
     shutil.copytree(save_dir, resave)
     before = read_slot(out / "installed", letter)
     asked = sum(s.minutes for s in steps if s.kind == "rest")
-    result: dict = {"installed": before, "rested_minutes": asked, "slots": {}}
+    result: dict = {"installed": before, "rested_minutes": asked, "slots": {},
+                    "saved": list(saved)}
     previous = before
     for x in saved:
         after = read_slot(resave, x)
@@ -2644,6 +2810,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="evidence directory (default ~/.cache/wish/acceptance/"
                          "<issue>/<sha>-<run>)")
     ap.add_argument("--note", default="dosacceptance")
+    ap.add_argument("--deadline", type=float, default=DEADLINE_SECONDS,
+                    help=f"seconds the whole run may take, {CLEANUP_SECONDS:.0f} "
+                         "of them kept for the cleanup; wrap the command in "
+                         f"`timeout` at least {WRAPPER_MARGIN:.0f} s longer")
     args = ap.parse_args(argv)
     try:
         for s in args.steps:

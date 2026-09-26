@@ -202,14 +202,25 @@ def walk(session, steps: int, note, begin: str = "b",
         # menu is not Pool of Radiance's and `leave_camp` times out at it --
         # after the file is written.  Losing the run's whole evidence to a
         # menu the party has finished with is the wrong trade, so the way
-        # out is reported and the files are kept.
+        # out is reported and the files are kept.  But a timeout can equally
+        # come before the write, so the slot is named as saved only when its
+        # file is seen to have changed here.
+        path = session.save_file(engine_save)
+        was = path.read_bytes() if path.is_file() else None
+        timed_out = ""
         try:
             por.save_game(engine_save)
-            out["engine_saved_to"] = engine_save
         except TimeoutError as e:
+            timed_out = str(e)
+        if path.is_file() and path.read_bytes() != was:
             out["engine_saved_to"] = engine_save
-            out["left_in_camp"] = str(e)
-            note(event="left_in_camp", why=str(e))
+            if timed_out:
+                out["left_in_camp"] = timed_out
+                note(event="left_in_camp", why=timed_out)
+        else:
+            out["engine_save_failed"] = (timed_out
+                                         or f"{path.name} did not change")
+            note(event="engine_save_failed", why=out["engine_save_failed"])
         session.shot("6-walk-99-saved", allow_blank=True)
     return out
 

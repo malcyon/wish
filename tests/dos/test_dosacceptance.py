@@ -744,6 +744,268 @@ def test_a_bad_step_order_is_refused_before_a_slot_is_claimed(monkeypatch, tmp_p
     assert "needs camp first" in capsys.readouterr().err
 
 
+# -- a walk that did not happen never passes -----------------------------------
+
+
+def _walk_run(monkeypatch, tmp_path, read):
+    """`_fake_run`'s driver made to take every step of a walk run, and
+    `read_step` to return `read` (None: the read step is not in the list)."""
+    log = _fake_run(monkeypatch, tmp_path)
+    for name, fn in (("load", lambda self: {}), ("camp", lambda self: {}),
+                     ("walk", lambda self, key: {"route": key}),
+                     ("save", lambda self, letter: {})):
+        monkeypatch.setattr(da.Driver, name, fn, raising=False)
+    monkeypatch.setattr(da, "read_step", lambda *a, **k: read)
+    return log
+
+
+def _summary(tmp_path):
+    import json
+    return json.loads((tmp_path / "out" / "summary.json").read_text())
+
+
+_WALK_STEPS = ["load", "walk MI", "camp", "save D", "read"]
+
+
+def _read(changed=True, **slot):
+    place = {"x": 1, "y": 2, "area": 0}
+    return {"slots": {"D": {"place": place, "place_changed": changed, **slot}},
+            "saved": ["D"]}
+
+
+def test_a_walk_whose_saved_place_is_the_installed_one_fails_the_run(monkeypatch, tmp_path):
+    _walk_run(monkeypatch, tmp_path, _read(changed=False))
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    got = _summary(tmp_path)
+    assert got["completed"] is False
+    assert "did not move" in got["lost"]
+    assert got["read"]["slots"]["D"]["place_changed"] is False
+
+
+def test_a_walk_with_no_computed_place_change_fails_the_run(monkeypatch, tmp_path):
+    read = _read()
+    del read["slots"]["D"]["place_changed"]
+    _walk_run(monkeypatch, tmp_path, read)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    assert "not computed" in _summary(tmp_path)["lost"]
+
+
+def test_a_walk_whose_save_place_could_not_be_decoded_fails_the_run(monkeypatch, tmp_path):
+    read = _read()
+    read["slots"]["D"]["place"] = {"error": "ValueError: short"}
+    _walk_run(monkeypatch, tmp_path, read)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    assert "not computed" in _summary(tmp_path)["lost"]
+
+
+def test_a_walk_judged_on_a_save_taken_before_it_fails_the_run(monkeypatch, tmp_path):
+    read = {"slots": {"D": _read()["slots"]["D"], "B": _read(False)["slots"]["D"]},
+            "saved": ["D", "B"]}
+    _walk_run(monkeypatch, tmp_path, read)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    assert "slot B" in _summary(tmp_path)["lost"]
+
+
+def test_a_walk_with_no_read_step_fails_the_run(monkeypatch, tmp_path):
+    _walk_run(monkeypatch, tmp_path, None)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS[:-1])) == 1
+    assert "no read step" in _summary(tmp_path)["lost"]
+
+
+def test_a_walk_that_moved_the_party_passes(monkeypatch, tmp_path):
+    _walk_run(monkeypatch, tmp_path, _read(changed=True))
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 0
+    assert _summary(tmp_path)["completed"] is True
+
+
+def test_a_run_with_no_walk_is_not_failed_for_an_unchanged_place(monkeypatch, tmp_path):
+    _walk_run(monkeypatch, tmp_path, _read(changed=False))
+    assert da.run(_run_args(tmp_path, ["load", "camp", "save D", "read"])) == 0
+
+
+# -- the deadline, the failure capture and the wrapper's signal ----------------
+
+
+class _Clock:
+    """A clock the test moves, or that moves `step` seconds per reading."""
+
+    def __init__(self, step=0.0):
+        self.t, self.step = 0.0, step
+
+    def __call__(self):
+        self.t += self.step
+        return self.t
+
+
+def test_a_deadline_leaves_the_route_window_and_keeps_the_cleanup_window():
+    clock = _Clock()
+    deadline = da.Deadline(clock, 900.0, 120.0)
+    assert deadline.left() == 780.0
+    clock.t = 780.0 - da.ACTION_SECONDS
+    deadline.check("walk")
+    clock.t += 0.5
+    with pytest.raises(da.DeadlineReached, match="walk"):
+        deadline.check("walk")
+
+
+def test_a_deadline_never_gives_the_cleanup_more_than_half_of_it():
+    assert da.Deadline(_Clock(), 100.0, 120.0).left() == 50.0
+
+
+def test_a_clock_past_the_deadline_between_steps_still_writes_lost_and_the_shots(
+        monkeypatch, tmp_path):
+    clock = _Clock()
+    _walk_run(monkeypatch, tmp_path, _read())
+
+    def load(self):
+        clock.t = 10_000.0
+        return {}
+
+    monkeypatch.setattr(da.Driver, "load", load)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS), clock=clock) == 1
+    got = _summary(tmp_path)
+    assert got["completed"] is False and "deadline" in got["lost"]
+    assert (tmp_path / "out" / "shots" / "lost-timeout.png").is_file()
+
+
+def test_a_deadline_reached_inside_a_step_still_writes_lost_and_the_shots(
+        monkeypatch, tmp_path):
+    _walk_run(monkeypatch, tmp_path, _read())
+
+    def load(self):
+        raise da.DeadlineReached("the run's deadline is reached during load")
+
+    monkeypatch.setattr(da.Driver, "load", load)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    assert "deadline is reached during load" in _summary(tmp_path)["lost"]
+    assert (tmp_path / "out" / "shots" / "lost-timeout.png").is_file()
+
+
+def test_the_run_takes_its_deadline_from_the_argument(monkeypatch, tmp_path):
+    _walk_run(monkeypatch, tmp_path, _read())
+    seen = []
+    real = da.Driver.__init__
+
+    def init(self, *a, **kw):
+        seen.append(kw["deadline"].left())
+        real(self, *a, **kw)
+
+    monkeypatch.setattr(da.Driver, "__init__", init)
+    args = _run_args(tmp_path, _WALK_STEPS)
+    args.deadline = 400.0
+    da.run(args, clock=_Clock())
+    assert seen == [400.0 - da.CLEANUP_SECONDS]
+
+
+def test_a_termination_signal_still_writes_lost_and_the_shots(monkeypatch, tmp_path):
+    import os
+    import signal
+    _walk_run(monkeypatch, tmp_path, _read())
+    before = signal.getsignal(signal.SIGTERM)
+
+    def load(self):
+        os.kill(os.getpid(), signal.SIGTERM)
+        return {}
+
+    monkeypatch.setattr(da.Driver, "load", load)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    assert "signal 15" in _summary(tmp_path)["lost"]
+    assert (tmp_path / "out" / "shots" / "lost-timeout.png").is_file()
+    assert signal.getsignal(signal.SIGTERM) == before
+
+
+def test_a_step_that_raises_something_else_still_ends_with_lost(monkeypatch, tmp_path):
+    import subprocess
+    _walk_run(monkeypatch, tmp_path, _read())
+
+    def load(self):
+        raise subprocess.CalledProcessError(1, "import")
+
+    monkeypatch.setattr(da.Driver, "load", load)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    assert "CalledProcessError" in _summary(tmp_path)["lost"]
+
+
+def test_a_failing_failure_capture_leaves_the_original_reason(tmp_path):
+    import subprocess
+    game = FakePool(tmp_path)
+    notes = []
+    d = da.Driver(game, lambda **k: notes.append(k), "A")
+
+    def broken(name, allow_blank=False):
+        raise subprocess.CalledProcessError(1, "import")
+
+    game.shot = broken
+    error = d.fail("walk", "the map bar did not return")
+    assert isinstance(error, da.StepFailed)
+    assert str(error).startswith("the map bar did not return")
+    assert "CalledProcessError" in d.capture_error
+    assert any(n.get("event") == "failure_capture_error" for n in notes)
+
+
+def test_a_failing_failure_capture_is_recorded_beside_lost(monkeypatch, tmp_path):
+    _walk_run(monkeypatch, tmp_path, _read())
+
+    def load(self):
+        self.capture_error = "CalledProcessError: import"
+        raise da.StepFailed("the map bar did not return")
+
+    monkeypatch.setattr(da.Driver, "load", load)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    got = _summary(tmp_path)
+    assert got["lost"] == "the map bar did not return"
+    assert got["failure_capture_error"] == "CalledProcessError: import"
+
+
+def _bounded(tmp_path, left, title="curse", **kw):
+    """A camped driver whose route window has `left` seconds in it."""
+    game, d = _camped(tmp_path, title, **kw)
+    clock = _Clock()
+    d.deadline = da.Deadline(clock, 900.0, 120.0)
+    clock.t = 780.0 - left
+    return game, d, clock
+
+
+def test_wait_file_hands_no_short_remainder_to_the_file_settle(tmp_path, monkeypatch):
+    game, d, _ = _bounded(tmp_path, left=da.ACTION_SECONDS - 1)
+    calls = []
+    monkeypatch.setattr(dosbox, "settle_files", lambda *a, **k: calls.append(k))
+    path = game.save_dir / "SAVGAMD.DAT"
+    path.write_bytes(b"new")
+    with pytest.raises(da.DeadlineReached):
+        d.wait_file(path, b"old", "save-file")
+    assert calls == []
+
+
+def test_wait_file_limits_the_file_settle_to_the_time_left(tmp_path, monkeypatch):
+    game, d, _ = _bounded(tmp_path, left=12.0)
+    calls = []
+    monkeypatch.setattr(dosbox, "settle_files", lambda *a, **k: calls.append(k))
+    path = game.save_dir / "SAVGAMD.DAT"
+    path.write_bytes(b"new")
+    d.wait_file(path, b"old", "save-file")
+    assert calls == [{"quiet": 1.0, "timeout": 12.0}]
+
+
+def test_wait_file_stops_at_the_deadline_while_the_file_stays_the_same(tmp_path):
+    game, d, clock = _bounded(tmp_path, left=30.0)
+    clock.step = 10.0
+    path = game.save_dir / "SAVGAMD.DAT"
+    path.write_bytes(b"old")
+    with pytest.raises(da.DeadlineReached, match="save-file"):
+        d.wait_file(path, b"old", "save-file")
+
+
+def test_a_rest_stops_at_the_deadline_and_presses_nothing_more(tmp_path):
+    game, d, clock = _bounded(tmp_path, left=60.0)
+    game.mode = "fight"
+    clock.step = 20.0
+    pressed = len(game.keys)
+    with pytest.raises(da.DeadlineReached):
+        d.after_rest(600.0, "rest")
+    assert len(game.keys) == pressed
+
+
 # -- the later titles: keys, order, staging ----------------------------------------
 
 
@@ -800,103 +1062,141 @@ def test_orders_the_game_allows(title, steps):
     da.validate_steps(_steps(*steps), title)
 
 
-def test_pool_walk_mi_turns_twice_then_steps_and_records_each_map_state(tmp_path):
-    game = FakePool(tmp_path)
+class PoolMap(FakePool):
+    """Pool's map with the `x,y` token, the facing and the clock on the status
+    line, as `status_square` reads them.  `status_on=False` leaves the line
+    blank, as a shop or an arrival does."""
+
+    def __init__(self, tmp, status_on=True, **kw):
+        super().__init__(tmp, **kw)
+        self.x, self.facing, self.clock_ticks = 0, 3, 0
+        self.status_on = status_on
+
+    def capture(self):
+        frame = super().capture()
+        if not self.status_on or self.mode != "map":
+            return frame
+        px = bytearray(frame.px)
+        y = dosbox.STATUS[1]
+        token = bytes(((1 << self.x % 8) | 0x80, 0x18, 0x21))
+        _draw_name(px, da.STATUS_TEXT_X, y, token, _WHITE)
+        _draw_name(px, da.STATUS_TEXT_X + da.CELL * 4, y,
+                   bytes(((1 << self.facing) | 0x40,)), _WHITE)
+        _draw_name(px, da.STATUS_TEXT_X + da.CELL * 6, y,
+                   bytes(((1 << self.clock_ticks % 8) | 0x20,)), _WHITE)
+        return dosbox.Screen(W, H, bytes(px))
+
+
+class PoolMovement:
+    """Stands in for `PoolOfRadiance`'s movement on a `PoolMap`: a turn changes
+    the facing, a step changes x unless `blocked`, and every step ticks the
+    clock, a wall's bump included."""
+
+    def __init__(self, game, blocked=False, tick_on_turn=False):
+        self.game, self.blocked, self.tick_on_turn = game, blocked, tick_on_turn
+        self.keys = []
+
+    def status(self):
+        return self.game.capture().ink(dosbox.STATUS)
+
+    def turn_right(self):
+        self.keys.append("Right")
+        self.game.facing = (self.game.facing + 1) % 4
+        if self.tick_on_turn:
+            self.game.clock_ticks += 1
+        return True
+
+    def step(self):
+        self.keys.append("Up")
+        self.game.clock_ticks += 1
+        if not self.blocked:
+            self.game.x += 1
+        return True
+
+
+def _pool_walker(tmp_path, blocked=False, tick_on_turn=False, **kw):
+    game = PoolMap(tmp_path, **kw)
     d = da.Driver(game, lambda **k: None, "A")
     d.where = "map"
     d.world_ink = game.capture().ink(dosbox.BAR)
     d.world_sig = da.bar_signature(game.capture())
+    d.game = PoolMovement(game, blocked, tick_on_turn)
+    return game, d
 
-    class Movement:
-        world_bar = d.world_ink
 
-        def __init__(self):
-            self.facing = 3
-            self.x = 0
-            self.keys = []
-
-        def status(self):
-            return f"{self.x},{self.facing}"
-
-        def turn_right(self):
-            self.keys.append("Right")
-            self.facing = (self.facing + 1) % 4
-            return True
-
-        def step(self):
-            self.keys.append("Up")
-            self.x += 1
-            return True
-
-    move = Movement()
-    d.game = move
+def test_pool_walk_mi_turns_twice_then_steps_and_records_each_map_state(tmp_path):
+    game, d = _pool_walker(tmp_path)
     got = d.walk("MI")
-    assert move.keys == ["Right", "Right", "Up"]
-    assert got["status_before"] == "0,3"
-    assert got["status_after"] == "1,1"
+    assert d.game.keys == ["Right", "Right", "Up"]
+    assert got["square_before"] is not None
+    assert got["square_before"] != got["square_after"]
+    assert got["status_before"] != got["status_after"]
     assert len(got["screens"]) == 4
     assert d.where == "map"
 
 
 def test_pool_walk_mi_stops_before_camp_when_step_enters_combat(tmp_path):
-    game = FakePool(tmp_path)
-    d = da.Driver(game, lambda **k: None, "A")
-    d.where = "map"
-    d.world_ink = game.capture().ink(dosbox.BAR)
+    game, d = _pool_walker(tmp_path)
+    real = d.game.step
 
-    class Movement:
-        def __init__(self):
-            self.keys = []
+    def step():
+        real()
+        game.mode = "fight"
+        return True
 
-        def status(self):
-            return "map-status"
-
-        def turn_right(self):
-            self.keys.append("Right")
-            return True
-
-        def step(self):
-            self.keys.append("Up")
-            game.mode = "fight"
-            return True
-
-    move = Movement()
-    d.game = move
+    d.game.step = step
     with pytest.raises(da.StepFailed, match="map bar did not return"):
         d.walk("MI")
-    assert move.keys == ["Right", "Right", "Up"]
+    assert d.game.keys == ["Right", "Right", "Up"]
     assert d.where == "map"
 
 
 def test_pool_walk_mi_stops_before_camp_when_step_hits_a_wall(tmp_path):
-    game = FakePool(tmp_path)
-    d = da.Driver(game, lambda **k: None, "A")
-    d.where = "map"
-    d.world_ink = game.capture().ink(dosbox.BAR)
-
-    class Movement:
-        def __init__(self):
-            self.facing = 3
-            self.keys = []
-
-        def status(self):
-            return f"0,{self.facing}"
-
-        def turn_right(self):
-            self.keys.append("Right")
-            self.facing = (self.facing + 1) % 4
-            return True
-
-        def step(self):
-            self.keys.append("Up")
-            return True
-
-    move = Movement()
-    d.game = move
-    with pytest.raises(da.StepFailed, match="status did not change"):
+    game, d = _pool_walker(tmp_path, blocked=True)
+    with pytest.raises(da.StepFailed, match="did not change") as raised:
         d.walk("MI")
-    assert move.keys == ["Right", "Right", "Up"]
+    assert "lost-walk-blocked" in str(raised.value)
+    assert d.game.keys == ["Right", "Right", "Up"]
     assert d.where == "map"
+
+
+def test_a_bump_that_ticks_the_clock_is_not_a_pool_step(tmp_path):
+    """The step against a wall advances the clock, so the whole status strip
+    differs from before it and the square does not."""
+    game, d = _pool_walker(tmp_path, blocked=True)
+    before = d.game.status()
+    d.game.step()
+    assert d.game.status() != before
+    with pytest.raises(da.StepFailed, match="did not change"):
+        d.walk("MI")
+
+
+def test_a_clock_tick_on_a_turn_is_not_a_changed_square(tmp_path):
+    game, d = _pool_walker(tmp_path, tick_on_turn=True)
+    got = d.walk("MI")
+    assert got["square_before"] != got["square_after"]
+
+
+def test_a_square_that_changes_on_a_pool_turn_stops_the_walk(tmp_path):
+    game, d = _pool_walker(tmp_path)
+    real = d.game.turn_right
+
+    def turn_right():
+        real()
+        game.x += 1
+        return True
+
+    d.game.turn_right = turn_right
+    with pytest.raises(da.StepFailed, match="square changed on a turn"):
+        d.walk("MI")
+    assert d.game.keys == ["Right"]
+
+
+def test_a_blank_status_line_is_never_the_pool_walk_baseline(tmp_path):
+    game, d = _pool_walker(tmp_path, status_on=False)
+    with pytest.raises(da.StepFailed, match="blank"):
+        d.walk("MI")
+    assert d.game.keys == []
 
 
 @pytest.mark.parametrize("title,steps,why", [
@@ -2201,8 +2501,18 @@ def test_a_square_that_changes_on_the_circle_stops_the_walk(tmp_path):
             game.x += 1
 
     game.key = key
-    with pytest.raises(da.StepFailed, match="square changed on a turn"):
+    with pytest.raises(da.StepFailed, match="square changed on a turn") as raised:
         d.walk("1")
+    assert "lost-walk-circle-2.png" in str(raised.value)
+    assert "Up" not in game.keys
+
+
+def test_walls_on_every_side_after_a_blank_baseline_stop_the_walk_blocked(tmp_path):
+    game, d = _dungeon_driver(tmp_path, blank_status=True, walls=99)
+    with pytest.raises(da.StepFailed, match="no facing") as raised:
+        d.walk("1")
+    assert game.keys == ["m"] + ["Right"] * 4 + ["Up", "Right"] * 3 + ["Up"]
+    assert "lost-walk-blocked.png" in str(raised.value)
 
 
 def test_an_up_that_moves_the_roster_stops_the_walk(tmp_path):
