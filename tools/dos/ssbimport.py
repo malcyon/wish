@@ -421,7 +421,8 @@ class Driver:
             elif kind == "treasure_left":
                 self.s.key("n")
             elif kind == "move_mode":
-                self.s.key("Escape")
+                # `Escape` leaves it showing (#672's first run); `e` is PROBABLE.
+                self.s.key("e")
             else:
                 name = self.shot("lost-intro")
                 raise RouteLost(f"intro showed bar {screen.glyphs(dosbox.BAR)}; "

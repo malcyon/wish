@@ -45,7 +45,7 @@ conversion logged.
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1) highlighted with `Down`, `VIEW`, the sheet's name checked against line N's, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp |
-| `view N` | Pools of Darkness, at the party menu: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`, the sheet checked as above, every `ITEMS` page, and `EXIT` back to the party menu |
+| `view N` | At the party menu, before `begin`.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar), `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs the map bar back |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below) |
@@ -53,8 +53,8 @@ conversion logged.
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
-| `walk MI`, `walk 1` | Pool: turn around and step one square.  Pools of Darkness: press MOVE, step one square turning right past a wall, and press EXIT back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
-| `turn N` | Pool and Pools of Darkness, N from 1 to 4: the walk's control.  Pools of Darkness presses MOVE first and EXIT after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move").  Curse is refused: its status column is unmeasured |
+| `walk MI`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
+| `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement and items |
 
 **Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
@@ -369,15 +369,33 @@ POD_ROSTER_NEXT = "Down"
 POD_MOVE = "m"
 #: What leaves move mode, `dossheetread`'s `--move-exit` default.
 POD_MOVE_EXIT = "Escape"
+#: The keys that enter and leave move mode, by title key.  Silver Blades'
+#: `m` is CONFIRMED (bar `EXIT` alone, ink `e61c9acccfc048ae`, three runs); its
+#: `e` is PROBABLE: one run (#672 retry2, `--move-exit e`) came back to the
+#: map bar and ink, and the first run's `Escape` is refuted, since it left the
+#: move bar showing.  Curse has no move mode: `Up` steps at the map bar.
+#: Pools of Darkness keeps `m` and `Escape`.
+MOVE_KEYS = {"darkness": (POD_MOVE, POD_MOVE_EXIT), "ssb": ("m", "e")}
+#: Curse's party-menu `bar_signature`, the loaded menu and the empty one alike:
+#: CONFIRMED on 12 shots of 4 boots.  It does not tell a loaded menu from an
+#: empty one, so `check_party_drawn` still reads the roster.
+CURSE_PARTY_BAR = "31286bfc4a3695fc"
+#: Silver Blades' `bar_signature` after `PICK CHARACTER`'s select key is the
+#: sheet's own bar, and it depends on the member (`SPELLS EXIT` on a ranger,
+#: PAINE, `ae25da8be0427b42`; `ssbimport.BARS` lists the `HEAL` sheets), so a
+#: Silver Blades sheet is judged by its name and never by a bar.  Unmeasured:
+#: the bar of any other member's sheet.
 #: Text column 17, where the status line's text starts; the cell at x 128 is
 #: the viewport's frame.
 STATUS_TEXT_X = 136
 #: Where each title's status line starts its `x,y` token, by title key.  Pool
-#: of Radiance, Silver Blades and Pools of Darkness share 136 (104 captures);
-#: Curse of the Azure Bonds is absent because no DOS capture of it has been
-#: measured, and `status_column` refuses it rather than guess.
-STATUS_COLUMNS = {"pool": STATUS_TEXT_X, "ssb": STATUS_TEXT_X,
-                  "darkness": STATUS_TEXT_X}
+#: of Radiance, Silver Blades and Pools of Darkness share 136 (104 captures).
+#: Curse of the Azure Bonds is 136 too, CONFIRMED on its own 12 captures over 2
+#: boots and 4 squares (`3,12`, `2,12`, `5,13`, `6,13`); every one is a
+#: four-character token, so a three- or five-character Curse token is
+#: unmeasured (`status_square` stops at the first blank cell either way).
+STATUS_COLUMNS = {"pool": STATUS_TEXT_X, "curse": STATUS_TEXT_X,
+                  "ssb": STATUS_TEXT_X, "darkness": STATUS_TEXT_X}
 #: `Select`, the only word of the `PICK CHARACTER` prompt (`GAME.EXE` data
 #: `DS:0x2859` over `DS:0x2B8D`), keyed by its first letter.  The prompt then
 #: views the character the roster highlight is on (`AA:39`, 0x2452E).
@@ -466,10 +484,13 @@ def sheet_name(screen: dosbox.Screen) -> str:
 BLANK_NAME = hashlib.sha1(
     dosbox.Screen(CELL, POD_NAME_ROWS, bytes(CELL * POD_NAME_ROWS * 3)).glyphs().encode()
     * POD_NAME_CELLS).hexdigest()[:16]
-#: The walk each title drives: Pool's turn-around, Pools of Darkness' step.
-WALKS = {"pool": "MI", "darkness": "1"}
+#: The walk each title drives: `MI`, two turns and a step at the map bar (Pool,
+#: Curse); `1`, a step in move mode (Silver Blades, Pools of Darkness).
+WALKS = {"pool": "MI", "curse": "MI", "ssb": "1", "darkness": "1"}
 #: The titles whose `turn N` control is driven: those with a walk to check.
 TURNS = frozenset(WALKS)
+#: The titles whose party menu `view N` opens a sheet from.
+VIEWS = frozenset({"curse", "ssb", "darkness"})
 
 
 def pod_menu_after(savgam: bytes | None) -> dict[str, int]:
@@ -762,20 +783,15 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             where = "camp"
         elif k == "walk":
             if title not in WALKS:
-                raise ValueError(f"walk MI is driven in pool only and walk 1 in "
-                                 f"darkness only, not {title}")
+                raise ValueError(f"walk is not driven in {title}")
             if step.key != WALKS[title]:
                 raise ValueError(f"{title}'s walk is 'walk {WALKS[title]}', not "
                                  f"{step.text!r}")
             if where != "map":
                 raise ValueError(f"walk needs the map: {step.text!r}")
         elif k == "turn":
-            if title == "curse":
-                raise ValueError("turn is refused in curse: its status-line column "
-                                 "is unmeasured (#679 package 7 measures it)")
             if title not in TURNS:
-                raise ValueError(f"turn is driven in pool and darkness only, not "
-                                 f"{title}: its move mode is not driven here")
+                raise ValueError(f"turn is not driven in {title}")
             if where != "map":
                 raise ValueError(f"turn needs the map: {step.text!r}")
         elif k == "sheet" and title == "pool":
@@ -787,8 +803,8 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             if where != "camp":
                 raise ValueError(f"{k} needs camp first: {step.text!r}")
         elif k == "view":
-            if title != "darkness":
-                raise ValueError(f"view is driven in darkness only, not {title}")
+            if title not in VIEWS:
+                raise ValueError("view is driven in curse, ssb and darkness only")
             if where != "party":
                 raise ValueError(f"view needs the party menu, before begin: "
                                  f"{step.text!r}")
@@ -1831,6 +1847,11 @@ class Driver:
         if not self.press_screen_changes(self.slot.lower(), tries=1, wait=30.0):
             raise self.fail("load", f"slot {self.slot} never loaded")
         screen = self.s.settle(quiet=1.0, timeout=90.0)
+        if bar_signature(screen) != CURSE_PARTY_BAR:
+            self.shot("lost-load")
+            raise self.fail("load", f"slot {self.slot} did not leave the party "
+                            f"menu's bar ({CURSE_PARTY_BAR}) showing: "
+                            f"{bar_signature(screen)}")
         self.check_party_drawn(screen)
         self.party_sig = bar_signature(screen)
         self.shot("loaded")
@@ -1983,17 +2004,18 @@ class Driver:
         return status, square
 
     def walk(self, route: str) -> dict:
-        """From the loaded Pool map, turn around and step one square.
+        """From the loaded Pool or Curse map, turn around and step one square.
 
         A step is believed only when the `x,y` on the status line changes:
         the clock on the same line ticks on a wall's bump, and a line drawn
         for the first time differs from a blank one, so the whole strip says
         nothing about a step.  A blank line is never the starting reading.
         """
-        if self.title.key == "darkness" and self.where == "map" and route == "1":
+        if self.title.key in MOVE_KEYS and self.where == "map" and route == "1":
             return self._walk_one()
-        if self.title.key != "pool" or self.where != "map" or route != "MI":
-            raise StepFailed("walk MI needs Pool's loaded map")
+        if self.title.key not in ("pool", "curse") or self.where != "map" \
+                or route != "MI":
+            raise StepFailed("walk MI needs Pool's or Curse's map")
 
         screens: list[dict] = []
 
@@ -2031,6 +2053,9 @@ class Driver:
     def _walk_one(self) -> dict:
         """Press MOVE, step one square forward, and press EXIT back to the map.
 
+        The keys are `MOVE_KEYS`' for the title: Silver Blades leaves move mode
+        with `e`, Pools of Darkness with `Escape`.
+
         The party is already facing as it was saved, so the first try is
         `Up`; past a wall it turns right and tries again, three turns at most.
         A step is believed only when the `x,y` on the status line changes,
@@ -2038,6 +2063,7 @@ class Driver:
         """
         screens: list[dict] = []
         column = status_column(self.title.key)
+        enter, leave = MOVE_KEYS[self.title.key]
         map_screen = self.s.capture()
         if not self.on_world(map_screen):
             raise self.fail("walk-before", "the map bar is not showing")
@@ -2047,14 +2073,14 @@ class Driver:
                             "map to tell a roster move from a step")
         map_bar = self.world_sig
         try:
-            self.s.key(POD_MOVE)
+            self.s.key(enter)
             if not self.s.wait_while_ink(dosbox.BAR, self.world_ink, 15.0):
                 raise self.fail("walk-move", f"the map bar did not change after "
-                                f"{POD_MOVE} (no move mode)")
+                                f"{enter} (no move mode)")
             settled = self.s.settle(quiet=0.6, timeout=30.0)
             if bar_signature(settled) == self.world_sig:
                 raise self.fail("walk-move", f"the map bar did not change after "
-                                f"{POD_MOVE} (no move mode)")
+                                f"{enter} (no move mode)")
             move_bar = bar_signature(settled)
             self.game.record_map(settled)
             origin = status_square(settled, column)
@@ -2115,9 +2141,9 @@ class Driver:
                 turns += 1
             if bar_signature(self.s.capture()) != move_bar:
                 raise self.fail("walk-back", "not at the move bar to leave it")
-            self.s.key(POD_MOVE_EXIT)
+            self.s.key(leave)
             if not self.s.wait_until_ink(dosbox.BAR, self.world_ink, 15.0):
-                raise self.fail("walk-back", f"{POD_MOVE_EXIT} did not return "
+                raise self.fail("walk-back", f"{leave} did not return "
                                 "to the map bar")
             back = self.s.settle(quiet=0.6, timeout=30.0)
             screens.append({"shot": self.shot("walk-back"),
@@ -2141,13 +2167,11 @@ class Driver:
         """
         if self.where != "map":
             raise StepFailed("turn needs the loaded map")
-        if self.title.key == "pool":
+        if self.title.key in ("pool", "curse"):
             return self._turn_pool(presses)
-        status_column(self.title.key)       # Curse: refused as unmeasured
-        if self.title.key == "darkness":
+        if self.title.key in MOVE_KEYS:
             return self._turn_move(presses)
-        raise StepFailed(f"turn is driven in pool and darkness only: {self.title.key}'s "
-                         "move mode is not driven by this harness")
+        raise StepFailed(f"turn is not driven in {self.title.key}")
 
     def _turn_pool(self, presses: int) -> dict:
         screens: list[dict] = []
@@ -2171,7 +2195,7 @@ class Driver:
                 "screens": screens}
 
     def _turn_move(self, presses: int) -> dict:
-        """Pools of Darkness: press MOVE, turn `presses` times, press EXIT.
+        """Press MOVE, turn `presses` times, press EXIT (`MOVE_KEYS`' for the title).
 
         Move mode draws no status line on entry, so when it is blank the first
         turn's reading is the baseline and only the turns after it are
@@ -2179,6 +2203,7 @@ class Driver:
         """
         screens: list[dict] = []
         column = status_column(self.title.key)
+        enter, leave = MOVE_KEYS[self.title.key]
         map_screen = self.s.capture()
         if not self.on_world(map_screen):
             raise self.fail("walk-before", "the map bar is not showing")
@@ -2188,14 +2213,14 @@ class Driver:
                             "map to tell a roster move from a turn")
         map_bar = self.world_sig
         try:
-            self.s.key(POD_MOVE)
+            self.s.key(enter)
             if not self.s.wait_while_ink(dosbox.BAR, self.world_ink, 15.0):
                 raise self.fail("walk-move", f"the map bar did not change after "
-                                f"{POD_MOVE} (no move mode)")
+                                f"{enter} (no move mode)")
             settled = self.s.settle(quiet=0.6, timeout=30.0)
             if bar_signature(settled) == self.world_sig:
                 raise self.fail("walk-move", f"the map bar did not change after "
-                                f"{POD_MOVE} (no move mode)")
+                                f"{enter} (no move mode)")
             move_bar = bar_signature(settled)
             self.game.record_map(settled)
             origin = status_square(settled, column)
@@ -2234,9 +2259,9 @@ class Driver:
                                 "two turns or more")
             if bar_signature(self.s.capture()) != move_bar:
                 raise self.fail("walk-back", "not at the move bar to leave it")
-            self.s.key(POD_MOVE_EXIT)
+            self.s.key(leave)
             if not self.s.wait_until_ink(dosbox.BAR, self.world_ink, 15.0):
-                raise self.fail("walk-back", f"{POD_MOVE_EXIT} did not return "
+                raise self.fail("walk-back", f"{leave} did not return "
                                 "to the map bar")
             back = self.s.settle(quiet=0.6, timeout=30.0)
             screens.append({"shot": self.shot("walk-back"),
@@ -2268,7 +2293,7 @@ class Driver:
         presses = still = 0
         while here != line:
             if presses >= POD_PICK_ROUNDS * size:
-                raise self.fail(label, f"{presses} presses of {POD_ROSTER_NEXT} "
+                raise self.fail(label, f"{presses} presses of {next_key} "
                                 f"never brought the highlight to line {line}")
             self.s.key(next_key)
             presses += 1
@@ -2362,18 +2387,67 @@ class Driver:
                             f"{tries} presses of Exit")
 
     def view(self, line: int) -> dict:
-        """Party menu `View Character`, roster line `line`, its sheet and its
-        `ITEMS` pages, and back to the party menu.
+        """Party menu, roster line `line`'s sheet, and back to the party menu.
 
-        `View` opens `PICK CHARACTER` over the roster (`GAME.OVR` 0x14536 via
-        0x26E25); `Down` moves the highlight a member on and `S` views that
-        character (0x2452E), whose `Exit` returns to the party menu.  Nothing
-        else is pressed, and nothing here writes a file.
+        Pools of Darkness and Silver Blades open `PICK CHARACTER` first (`View
+        Character`, then `Down` to the member and the select key); Curse picks
+        with `End` on the party menu itself and `v` views.  Pools of Darkness
+        pages `ITEMS`; neither of the others does, as neither's `ITEMS` key is
+        measured in this driver.  Nothing here writes a file.
         """
-        if self.title.key != "darkness" or self.where != "party":
-            raise StepFailed("view is Pools of Darkness' party-menu command")
+        if self.where != "party" or self.title.key not in VIEWS:
+            raise StepFailed("view is the party-menu command of Curse, Silver "
+                             "Blades and Pools of Darkness")
         if self.party_sig is None:
             raise StepFailed("view needs the party menu learnt by load")
+        if self.title.key == "curse":
+            return self._view_curse(line)
+        if self.title.key == "ssb":
+            return self._view_ssb(line)
+        return self._view_pod(line)
+
+    def _view_curse(self, line: int) -> dict:
+        """No menu first: `End` moves the party menu's highlight (PROBABLE, one
+        press in one boot) and `v` opens the sheet (PROBABLE, one press).  The
+        key back, `e`, is `dossheetread`'s default and unmeasured here."""
+        moved = self.pick_line(line, "party", f"view-{line}-select", ROSTER_NEXT)
+        want = roster_name(self.s.capture(), "party", line)
+        self.shot(f"view-line-{line}")
+        if not self.press_screen_changes(VIEW, tries=1, wait=15.0):
+            raise self.fail(f"view-{line}", "VIEW changed nothing on the party menu")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        checked = self.check_sheet(screen, line, want, f"view-{line}-name")
+        sheet = self.shot(f"view-{line}-sheet")
+        self.back_to_party(f"view-{line}-back")
+        self.shot(f"view-{line}-back")
+        return {"line": line, **moved, "sheet": sheet, **checked, "pages": []}
+
+    def _view_ssb(self, line: int) -> dict:
+        """Row 3 `VIEW CHARACTER`, `PICK CHARACTER` (`Down` moves its highlight,
+        PROBABLE), then `s` (PROBABLE; `Return` also opens the sheet).  The
+        sheet is judged by its name: its bar is not in `ssbimport.BARS`, so
+        nothing here waits for a sheet bar."""
+        self.ssb.menu(ssbimport.MENU_AFTER["view"], f"view-{line}")
+        self.ssb.wait_bar("pick_character", 20.0)
+        pick = self.shot(f"pick-{line}")
+        moved = self.pick_line(line, "party", f"pick-{line}-select", POD_ROSTER_NEXT)
+        want = roster_name(self.s.capture(), "party", line)
+        self.shot(f"view-line-{line}")
+        if not self.press_screen_changes(POD_PICK, tries=2, wait=15.0):
+            raise self.fail(f"view-{line}", "SELECT at PICK CHARACTER changed nothing")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        checked = self.check_sheet(screen, line, want, f"view-{line}-name")
+        sheet = self.shot(f"view-{line}-sheet")
+        self.back_to_party(f"view-{line}-back")
+        self.shot(f"view-{line}-back")
+        return {"line": line, "pick": pick, **moved, "sheet": sheet, **checked,
+                "pages": []}
+
+    def _view_pod(self, line: int) -> dict:
+        """Pools of Darkness: `View Character`, `PICK CHARACTER` over the roster
+        (`GAME.OVR` 0x14536 via 0x26E25); `Down` moves the highlight a member on
+        and `S` views that character (0x2452E), whose `Exit` returns to the
+        party menu."""
         self.pod_menu(self.pod_rows["view"], f"view-{line}")
         screen = self.s.settle(quiet=0.6, timeout=20.0)
         if self.on_party_menu(screen):

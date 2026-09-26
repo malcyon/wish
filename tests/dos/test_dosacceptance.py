@@ -1072,6 +1072,10 @@ def _steps(*texts):
     ("ssb", ("load", "begin", "camp", "rest 5m", "save D", "read")),
     ("ssb", ("load", "shot party", "begin", "camp", "save B", "read")),
     ("ssb", ("load", "press Down", "press Return", "shot menu", "press t", "read")),
+    ("curse", ("load", "view 2", "begin", "walk MI", "camp", "save D", "read")),
+    ("curse", ("load", "view 2", "begin", "turn 2", "camp", "save D", "read")),
+    ("ssb", ("load", "view 2", "begin", "walk 1", "camp", "save E", "read")),
+    ("ssb", ("load", "view 2", "begin", "turn 4", "camp", "save E", "read")),
 ])
 def test_orders_the_game_allows(title, steps):
     da.validate_steps(_steps(*steps), title)
@@ -1129,9 +1133,9 @@ class PoolMovement:
         return True
 
 
-def _pool_walker(tmp_path, blocked=False, tick_on_turn=False, **kw):
+def _pool_walker(tmp_path, blocked=False, tick_on_turn=False, title="pool", **kw):
     game = PoolMap(tmp_path, **kw)
-    d = da.Driver(game, lambda **k: None, "A")
+    d = da.Driver(game, lambda **k: None, "A", title)
     d.where = "map"
     d.world_ink = game.capture().ink(dosbox.BAR)
     d.world_sig = da.bar_signature(game.capture())
@@ -1149,6 +1153,27 @@ def test_pool_walk_mi_turns_twice_then_steps_and_records_each_map_state(tmp_path
     assert got["status_before"] != got["status_after"]
     assert len(got["screens"]) == 4
     assert d.where == "map"
+
+
+def test_curse_walk_mi_turns_twice_then_steps_on_the_map(tmp_path):
+    game, d = _pool_walker(tmp_path, title="curse")
+    got = d.walk("MI")
+    assert d.game.keys == ["Right", "Right", "Up"]
+    assert got["square_before"] != got["square_after"]
+    assert d.where == "map"
+
+
+def test_a_curse_step_that_hits_a_wall_fails_the_walk(tmp_path):
+    game, d = _pool_walker(tmp_path, title="curse", blocked=True)
+    with pytest.raises(da.StepFailed, match="walk-blocked"):
+        d.walk("MI")
+
+
+def test_a_curse_walk_with_a_blank_status_line_has_no_baseline(tmp_path):
+    game, d = _pool_walker(tmp_path, title="curse", status_on=False)
+    with pytest.raises(da.StepFailed, match="blank"):
+        d.walk("MI")
+    assert d.game.keys == []
 
 
 def test_pool_walk_mi_stops_before_camp_when_step_enters_combat(tmp_path):
@@ -1222,7 +1247,8 @@ def test_a_blank_status_line_is_never_the_pool_walk_baseline(tmp_path):
     ("pool", ("load", "camp", "walk MI"), "walk needs the map"),
     ("pool", ("load", "display"), "display needs camp first"),
     ("curse", ("load", "display"), "pool only"),
-    ("curse", ("load", "begin", "walk MI"), "pool only"),
+    ("curse", ("load", "begin", "walk 1"), "walk MI"),
+    ("ssb", ("load", "begin", "walk MI"), "walk 1"),
     ("curse", ("load", "camp"), "needs begin first"),
     ("curse", ("load", "begin", "train 1"), "party menu"),
     ("curse", ("camp",), "needs load first"),
@@ -1355,11 +1381,14 @@ class FakeCurseMenu(FakePool):
 
     BARS = {**FakePool.BARS, "title": b"\x01", "which": b"\x02\x03",
             "party": b"\x04\x05\x06", "offer": b"\x07", "learn": b"\x08\x09",
-            "psave": b"\x0a", "pquit": b"\x0b\x0c"}
+            "psave": b"\x0a", "pquit": b"\x0b\x0c", "sheet": b"\x0d\x0e",
+            "pick": b"\x0f\x10"}
 
     def __init__(self, tmp, trainable=(1,), learns=1, asks_quit=False, size=6,
-                 loads=True):
+                 loads=True, sheet_shows=None):
         super().__init__(tmp, keys=TITLE_KEYS["curse"])
+        #: The line a sheet draws the name of, when it is not the highlighted one.
+        self.sheet_shows = sheet_shows
         self.mode, self.line, self.size = "title", 1, size
         # A slot the engine cannot load leaves the empty menu, which draws no
         # roster.
@@ -1397,15 +1426,26 @@ class FakeCurseMenu(FakePool):
             self.mode = "party"
         elif m == "party" and k == "b":
             self.mode = "map"
+        elif m == "party" and k == "v":
+            self.mode = "sheet"
+        elif m == "pick" and k == "Down":
+            self.line = self.line % self.size + 1
+        elif m == "pick" and k == "s":
+            self.mode = "sheet"
+        elif m == "sheet" and k == "e":
+            self.mode = "party"
         else:
             super().key(k, gap)
 
     def capture(self):
         if self.mode in FakePool.BARS:
             return super().capture()
-        text = bytes((self.line,)) if self.mode == "party" else b""
+        text = bytes((self.line,)) if self.mode in ("party", "pick") else b""
         frame = _screen(self.BARS[self.mode], text)
-        if self.mode == "party" and self.drawn:
+        if self.mode == "sheet":
+            return _with_roster(frame, "party", self.size, self.line,
+                                sheet=self.sheet_shows or self.line)
+        if self.mode in ("party", "pick") and self.drawn:
             return _with_roster(frame, "party", self.size, self.line)
         return frame
 
@@ -1416,6 +1456,17 @@ class FakeCurseMenu(FakePool):
             if self.capture().digest() != before:
                 return True
         return False
+
+
+_MEASURED_CURSE_PARTY_BAR = da.CURSE_PARTY_BAR
+
+
+@pytest.fixture(autouse=True)
+def _curse_party_bar_measured(monkeypatch):
+    """The fake's party bar stands in for Curse's measured `CURSE_PARTY_BAR`,
+    which a capture test checks."""
+    monkeypatch.setattr(da, "CURSE_PARTY_BAR", da.bar_signature(
+        _screen(FakeCurseMenu.BARS["party"], b"")))
 
 
 def _curse_loaded(tmp_path, **kw):
@@ -1430,6 +1481,16 @@ def _curse_loaded(tmp_path, **kw):
 def test_curse_loads_to_the_party_menu_pressing_the_letter_once(tmp_path):
     game, d = _curse_loaded(tmp_path)
     assert game.keys == ["l", "j"]
+
+
+def test_a_curse_load_that_shows_another_bar_is_lost_at_load(tmp_path, monkeypatch):
+    monkeypatch.setattr(da, "CURSE_PARTY_BAR", "0" * 16)
+    game = FakeCurseMenu(tmp_path)
+    d = da.Driver(game, lambda **k: None, "J", "curse", party_size=game.size)
+    d.game.to_main_menu = lambda timeout=120.0: None
+    with pytest.raises(da.StepFailed, match="did not leave the party menu's bar"):
+        d.load()
+    assert d.party_sig is None
 
 
 def test_a_curse_load_that_draws_no_roster_is_lost_at_load(tmp_path):
@@ -1468,6 +1529,31 @@ def test_a_silver_blades_load_that_draws_no_roster_is_lost_at_load(tmp_path):
     assert d.party_sig is None
 
 
+def test_curse_view_picks_with_end_views_with_v_and_leaves_with_e(tmp_path):
+    game, d = _curse_loaded(tmp_path)
+    got = d.view(2)
+    assert game.keys[2:] == ["End", "v", "e"]
+    assert got["name"] == da.roster_name(game.capture(), "party", 2)
+    assert got["pages"] == [] and got["line"] == 2
+    assert d.where == "party" and game.mode == "party" and d.on_party_menu()
+
+
+def test_a_curse_sheet_of_another_member_stops_the_view(tmp_path):
+    game, d = _curse_loaded(tmp_path, sheet_shows=3)
+    with pytest.raises(da.StepFailed, match="not roster line 2"):
+        d.view(2)
+    assert "e" not in game.keys
+
+
+def test_a_curse_pick_that_never_lands_names_the_key_it_pressed(tmp_path):
+    """`End` moving two lines at a time from line 1 never reaches line 2."""
+    game, d = _curse_loaded(tmp_path)
+    game.key = lambda k, gap=0.0: (game.keys.append(k),
+                                   setattr(game, "line", (game.line + 1) % 6 + 1))
+    with pytest.raises(da.StepFailed, match="presses of End never brought"):
+        d.view(2)
+
+
 def test_curse_trains_the_line_asked_for_and_learns_its_spell(tmp_path):
     game, d = _curse_loaded(tmp_path, trainable=(3,), learns=2)
     got = d.train(3)
@@ -1493,6 +1579,64 @@ def test_the_party_menu_save_is_believed_by_the_file(tmp_path, asks_quit):
     assert (game.save_dir / "SAVGAMB.DAT").is_file() and game.mode == "party"
     assert got["at"] == "party menu"
     assert (da.QUIT_NO in game.keys) is asks_quit
+
+
+def _ssb_view_driver(tmp_path):
+    game = FakeCurseMenu(tmp_path)
+    game.mode = "party"
+    asked = []
+
+    class Ssb:
+        def menu(self, row, label):
+            asked.append(row)
+            game.mode = "pick"
+
+        def wait_bar(self, want, timeout=45.0):
+            asked.append(want)
+            return game.capture()
+
+    d = da.Driver(game, lambda **k: None, "J", "ssb", party_size=game.size)
+    d._ssb = Ssb()
+    d.where = "party"
+    d.party_sig = da.bar_signature(game.capture())
+    return game, d, asked
+
+
+def test_silver_blades_view_selects_at_pick_character(tmp_path):
+    game, d, asked = _ssb_view_driver(tmp_path)
+    got = d.view(2)
+    assert asked == [da.ssbimport.MENU_AFTER["view"], "pick_character"]
+    assert game.keys == ["Down", "s", "e"]
+    assert got["name"] == da.roster_name(game.capture(), "party", 2)
+    assert got["pages"] == [] and d.where == "party" and game.mode == "party"
+
+
+def test_a_silver_blades_sheet_of_another_member_stops_the_view(tmp_path):
+    game, d, _ = _ssb_view_driver(tmp_path)
+    game.sheet_shows = 4
+    with pytest.raises(da.StepFailed, match="not roster line 2"):
+        d.view(2)
+
+
+def test_ssb_intro_leaves_move_mode_with_e_not_escape(monkeypatch):
+    keys = []
+    frames = iter([_screen(b"\x01", b""), _screen(b"\x02", b"")])
+
+    class Session:
+        def settle(self, quiet=1.0, timeout=40.0):
+            return next(frames)
+
+        def key(self, k, gap=0.0):
+            keys.append(k)
+
+    move_glyphs = _screen(b"\x01", b"").glyphs(dosbox.BAR)
+    map_glyphs = _screen(b"\x02", b"").glyphs(dosbox.BAR)
+    ssb = da.ssbimport.Driver(Session(), lambda **k: None)
+    ssb.shot = lambda label: label
+    monkeypatch.setitem(da.ssbimport.BARS, move_glyphs, "move_mode")
+    monkeypatch.setitem(da.ssbimport.BARS, map_glyphs, "map")
+    ssb.intro()
+    assert keys == ["e"]
 
 
 def test_curse_begins_and_camps(tmp_path):
@@ -2454,7 +2598,7 @@ def test_orders_with_view_allowed(steps):
     ("darkness", ("load", "begin", "view 1"), "view needs the party menu"),
     ("darkness", ("load", "begin", "camp", "view 1"), "view needs the party menu"),
     ("darkness", ("view 1",), "needs load first"),
-    ("curse", ("load", "view 1"), "darkness only"),
+    ("pool", ("load", "view 1"), "curse, ssb and darkness only"),
 ])
 def test_orders_with_view_refused(title, steps, why):
     with pytest.raises(ValueError, match=why):
@@ -2745,9 +2889,10 @@ class FakeDungeon(FakePod):
 
     def __init__(self, tmp, walls=0, ignore_m=False, up_roster=False,
                  blank_status=False, blank_after_up=False, no_highlight=False,
-                 never_status=False, **kw):
+                 never_status=False, exit_key="Escape", **kw):
         super().__init__(tmp, **kw)
         self.mode = "dmap"
+        self.exit_key = exit_key
         self.blank_after_up, self.no_highlight = blank_after_up, no_highlight
         self.x, self.facing, self.walls = 1, 1, walls
         self.ignore_m, self.up_roster = ignore_m, up_roster
@@ -2772,7 +2917,7 @@ class FakeDungeon(FakePod):
                 self.x += 1
             elif k == "Right":
                 self.facing = (self.facing + 1) % 4
-            elif k == "Escape":
+            elif k == self.exit_key:
                 self.mode = "dmap"
             if k == "Up" and self.blank_after_up:
                 self.status_on = False
@@ -2791,9 +2936,9 @@ class FakeDungeon(FakePod):
         return dosbox.Screen(W, H, bytes(px))
 
 
-def _dungeon_driver(tmp_path, **kw):
+def _dungeon_driver(tmp_path, title="darkness", **kw):
     game = FakeDungeon(tmp_path, **kw)
-    d = da.Driver(game, lambda **k: None, "A", "darkness", party_size=game.size)
+    d = da.Driver(game, lambda **k: None, "A", title, party_size=game.size)
     d.where = "map"
     d.world_ink = game.capture().ink(dosbox.BAR)
     d.world_sig = da.bar_signature(game.capture())
@@ -2809,6 +2954,25 @@ def test_pools_of_darkness_walks_one_square_turning_past_walls(tmp_path, walls):
     assert got["turns"] == walls and game.x == 2 and game.line == 1
     assert got["square_before"] != got["square_after"]
     assert game.mode == "dmap" and d.game.world_bar == map_ink
+
+
+def test_silver_blades_walks_in_move_mode_and_leaves_it_with_e(tmp_path):
+    game, d = _dungeon_driver(tmp_path, title="ssb", exit_key="e")
+    map_ink = d.world_ink
+    got = d.walk("1")
+    assert game.keys == ["m", "Up", "e"]
+    assert got["square_before"] != got["square_after"]
+    assert game.mode == "dmap" and d.game.world_bar == map_ink
+
+
+def test_silver_blades_move_mode_is_not_left_with_escape(tmp_path, monkeypatch):
+    """The game ignores `Escape` there (#672's first run), so a driver that
+    pressed it would find the move bar still showing."""
+    game, d = _dungeon_driver(tmp_path, title="ssb", exit_key="e")
+    monkeypatch.setitem(da.MOVE_KEYS, "ssb", ("m", "Escape"))
+    with pytest.raises(da.StepFailed, match="did not return to the map bar"):
+        d.walk("1")
+    assert game.keys[-1] == "Escape" and game.mode == "move"
 
 
 def test_pools_of_darkness_stops_when_every_facing_is_a_wall(tmp_path):
@@ -3509,21 +3673,21 @@ def test_a_darkness_turn_whose_key_moves_the_roster_stops(tmp_path):
         d.turn(4)
 
 
-def test_curse_is_refused_a_turn_as_its_status_column_is_unmeasured(tmp_path):
-    with pytest.raises(ValueError, match="unmeasured"):
-        da.validate_steps(_steps("load", "begin", "turn 4"), "curse")
-    game = PoolMap(tmp_path)
-    d = da.Driver(game, lambda **k: None, "A", "curse")
-    d.where = "map"
-    with pytest.raises(da.StepFailed, match="unmeasured"):
-        d.turn(4)
-    with pytest.raises(da.StepFailed, match="unmeasured"):
-        da.status_column("curse")
+def test_a_curse_turn_control_keeps_the_square(tmp_path):
+    game, d = _pool_walker(tmp_path, title="curse")
+    got = d.turn(2)
+    assert d.game.keys == ["Right", "Right"]
+    assert got["square_before"] == got["square_after"] is not None
+    da.validate_steps(_steps("load", "begin", "turn 2"), "curse")
 
 
-def test_silver_blades_is_refused_a_turn_its_move_keys_are_not_driven(tmp_path):
-    with pytest.raises(ValueError, match="not driven"):
-        da.validate_steps(_steps("load", "begin", "turn 4"), "ssb")
+def test_a_silver_blades_turn_control_uses_m_and_e(tmp_path):
+    game, d = _dungeon_driver(tmp_path, title="ssb", exit_key="e")
+    got = d.turn(4)
+    assert game.keys == ["m"] + ["Right"] * 4 + ["e"]
+    assert game.x == 1 and game.mode == "dmap"
+    assert got["square_before"] == got["square_after"] is not None
+    da.validate_steps(_steps("load", "begin", "turn 4"), "ssb")
 
 
 @pytest.mark.parametrize("text", ["turn", "turn 0", "turn 5", "turn x", "turn 1 2"])
@@ -3541,8 +3705,8 @@ def test_orders_a_turn_control_allows():
 
 
 def test_the_measured_titles_share_one_status_column_and_status_square_takes_it(tmp_path):
-    assert {t: da.status_column(t) for t in ("pool", "ssb", "darkness")} == {
-        "pool": 136, "ssb": 136, "darkness": 136}
+    assert {t: da.status_column(t) for t in ("pool", "curse", "ssb", "darkness")} == {
+        "pool": 136, "curse": 136, "ssb": 136, "darkness": 136}
     game = PoolMap(tmp_path)
     frame = game.capture()
     assert da.status_square(frame, 136) == da.status_square(frame) == "0bcb75efaa7a593d"
@@ -3681,3 +3845,19 @@ def test_no_numeric_timeout_literal_in_the_driver_outruns_the_margin():
     longest = max(float(n) for n in re.findall(r"timeout=(\d+(?:\.\d+)?)", source))
     assert longest <= da.LONGEST_UNBOUNDED_WAIT
     assert da.CLEANUP_SECONDS + da.LONGEST_UNBOUNDED_WAIT <= da.WRAPPER_MARGIN
+
+
+def test_the_measured_curse_and_silver_blades_screens_read_as_recorded():
+    """Values read off the player's own #679 boots (skipped without them)."""
+    run = "b0a2c904ad-curse-measure-walk"
+    party = _capture("b0a2c904ad-curse-measure-sheet", "003-loaded", issue="679")
+    assert da.bar_signature(party) == _MEASURED_CURSE_PARTY_BAR == "31286bfc4a3695fc"
+    assert da.roster_line(party, "party", 6) == 1
+    before = _capture(run, "005-map", issue="679")
+    after = _capture(run, "009-press-Up", issue="679")
+    assert da.status_square(before, da.status_column("curse")) == "370bef4cdc05b677"
+    assert da.status_square(after, da.status_column("curse")) == "8702eeb23e8a764b"
+    ssb = _capture("b0a2c904ad-ssb-measure-walk", "005-map", issue="679")
+    assert da.status_square(ssb, da.status_column("ssb")) == "ee4e8a47d7175485"
+    sheet = _capture("b0a2c904ad-ssb-measure-sheet", "008-press-s", issue="679")
+    assert da.sheet_name(sheet) == "55a6494e457686aa"
