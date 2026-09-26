@@ -209,7 +209,8 @@ CURSE = AmigaTitle(
                "world": 20.0, "world_after_move": 5.0, "camp": 10.0,
                "camp_save_picker": 10.0, "exit_game": 20.0},
     interstitials=(
-        # A cap: accept mode stops pressing once `title` is reached.
+        # Caps: accept mode stops pressing once `title` is reached, but the two rows together
+        # allow up to five ESCs while it waits.
         ("front_end", ("keys", "ESC"), frozenset({"title"}), 4),
         ("intro", ("keys", "ESC"), frozenset({"title"}), 1),
         ("continue", ("keys", "RET"), frozenset({"world", "exit_game"}), 3),
@@ -272,7 +273,7 @@ DARKNESS = AmigaTitle(
     read_slot=_darkness_read_slot, slot_letters=_darkness_slot_letters,
     slot_files=_darkness_slot_files,
     route=(
-        ("P", "play", "key"), ("P", "party_menu", "key"), ("L", "load_picker", "key"),
+        ("P", "party_menu", "key"), ("L", "load_picker", "key"),
         ("B", "loaded_menu", "key"), ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
         ("S", "save_picker", "key"), ("I", "loaded_menu", "write"), ("B", "world", "key"),
         ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
@@ -280,7 +281,6 @@ DARKNESS = AmigaTitle(
     ),
     # Stops before I.
     measure_route=(
-        ("P", "play", "key"),
         ("P", "party_menu", "key"), ("L", "load_picker", "key"), ("B", "loaded_menu", "key"),
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"),
     ),
@@ -295,7 +295,7 @@ DARKNESS = AmigaTitle(
     plain_keys=(("E", "loaded_menu"), ("E", "camp")),
     strict=frozenset({"party_menu", "load_picker", "loaded_menu", "sheet", "save_picker",
                       "camp_save_picker"}),
-    min_waits={"play": 5.0, "party_menu": 20.0, "load_picker": 10.0, "loaded_menu": 20.0,
+    min_waits={"party_menu": 20.0, "load_picker": 10.0, "loaded_menu": 20.0,
                "sheet": 5.0, "save_picker": 10.0, "world": 45.0, "world_after_move": 5.0,
                "camp": 10.0, "camp_save_picker": 10.0},
     interstitials=(
