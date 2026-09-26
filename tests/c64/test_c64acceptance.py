@@ -2253,3 +2253,31 @@ def test_the_fight_step_is_refused_for_silver_blades(tmp_path):
                 "--disks", str(tmp_path), "--steps", "load", "fight",
                 "--out", str(tmp_path / "out")])
     assert info.value.code == 2
+
+
+def test_the_one_retry_does_not_answer_a_prompt_the_key_raised(
+        tmp_path, monkeypatch):
+    # The first press changes nothing; the prompt opens only once the retry's
+    # key has gone, so the retry's `enter_move`/`walk_one` is what sees it.
+    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=None)
+    real_key = sess.kbd.key
+    presses = []
+
+    def key(name, *timing):
+        real_key(name, *timing)
+        if name == "i":
+            presses.append(name)
+            sess.y += 1          # the game took nothing: status and place hold
+            sess.ticks -= 1
+            if len(presses) == 2:
+                sess.prompt_after = 0.0
+
+    sess.kbd.key = key
+    with pytest.raises(A.StepFailed, match="ran the square's event"):
+        run.walk("I")
+    log.close()
+    assert presses == ["i", "i"]
+    assert sess.kernal == [] and sess.attaches == []
+    # The first press ends by leaving move mode; the retry's key is the last
+    # thing sent, because a Return after it would land on the prompt.
+    assert sess.keys == ["i", "Return", "i"], sess.keys

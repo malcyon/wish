@@ -243,3 +243,10 @@ def test_select_bar_that_may_not_answer_stops_at_a_prompt_and_presses_nothing():
     sess = FakeSession([screen_of(SIDE_PROMPT)])
     assert sess.select_bar("MOVE", timeout=5.0, answer_prompts=False) is False
     assert sess.keys == [] and sess.kernal == [] and sess.attaches == []
+
+
+def test_the_leave_move_forward_keeps_the_no_answer_promise():
+    sess = FakeSession([screen_of(SIDE_PROMPT)])
+    assert sess._leave_move(False, 2) is False
+    assert sess.keys == [] and sess.kernal == [] and sess.attaches == []
+    assert sess.walk_prompt == SIDE_PROMPT

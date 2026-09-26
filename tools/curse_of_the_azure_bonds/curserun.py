@@ -280,7 +280,7 @@ class CurseSession(por.Session):
         return after != before
 
     def press_bar(self, label: str, row: int = 24,
-                  timeout: float = 30.0) -> bool:
+                  timeout: float = 30.0, answer_prompts: bool = True) -> bool:
         """Choose a word on a command bar, whichever Return this screen reads.
 
         Curse reads Return from the KERNAL buffer on some screens and from
@@ -302,7 +302,8 @@ class CurseSession(por.Session):
         stays because every caller in `tools/` names it, and because the
         name says what it does where `select_bar` says only half of it.
         """
-        return self.select_bar(label, row=row, timeout=timeout)
+        return self.select_bar(label, row=row, timeout=timeout,
+                               answer_prompts=answer_prompts)
 
     def save_game(self, to: str | None = None) -> bool:
         """`ENCAMP ▸ SAVE`, in Curse's own words.
@@ -455,7 +456,8 @@ class CurseSession(por.Session):
             if self.handle_prompt(s):
                 continue
             if "ENCAMP" in row:
-                if self.select_bar("MOVE", timeout=10):
+                if self.select_bar("MOVE", timeout=10,
+                                   answer_prompts=answer_prompts):
                     time.sleep(0.8)
                     continue
             elif "YES" in row and "NO" in row:
@@ -466,7 +468,7 @@ class CurseSession(por.Session):
                 # will watch.  `NO` is the answer that leaves the party where
                 # it is with nothing else changed.
                 self.log(f"  answering NO to |{row.strip()}|")
-                self.press_bar("NO", timeout=8)
+                self.press_bar("NO", timeout=8, answer_prompts=answer_prompts)
             elif "PRESS" in row or "CONTINUE" in row or "MORE" in row:
                 self.press_kernal(0x0D)
             time.sleep(0.6)
@@ -534,11 +536,13 @@ class CurseSession(por.Session):
         if (want == self._last_want
                 and time.time() - self._last_prompt < self.PROMPT_HOLD):
             return False
-        self._last_want = want
         self._last_prompt = time.time()
         if os.path.abspath(want) != self.attached:
             self.log(f"  prompt -> {os.path.basename(want)}")
             self.attach(want)
+        # Only after the disk is in: an `attach` that raised must not hold off
+        # the retry for the same disk.
+        self._last_want = want
         self.press_kernal(0x20)
         self._last_prompt = time.time()
         return True

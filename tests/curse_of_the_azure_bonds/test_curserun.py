@@ -230,3 +230,92 @@ def test_walk_one_that_may_not_answer_leaves_a_disk_prompt_alone():
     assert session.walk_prompt == "INSERT SIDE # 2, AND PRESS ANY KEY."
     assert session.walk_refused is None
     assert session.events == []
+
+
+SIDE_PROMPT = "INSERT SIDE # 2, AND PRESS ANY KEY."
+MOVE_BAR = C.por.MOVE_SUBBAR
+
+
+def _screen(row24: str):
+    return SimpleNamespace(text=lambda: row24, row=lambda r: row24,
+                           contains=lambda needle: needle in row24)
+
+
+class BarSession(FakeSession):
+    """`select_bar` honours its contract: a disk prompt that opens inside it
+    is answered unless the caller passed `answer_prompts=False`."""
+
+    def __init__(self, rows, side=2):
+        super().__init__(side)
+        self.rows = list(rows)
+        self.bar_calls: list[tuple] = []
+        self.opens_prompt = True
+
+    def screen(self):
+        return _screen(self.rows.pop(0) if len(self.rows) > 1 else self.rows[0])
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        self.bar_calls.append((label, answer_prompts))
+        if self.opens_prompt:
+            self.rows = [SIDE_PROMPT]
+            if answer_prompts:
+                self.handle_prompt(_screen(SIDE_PROMPT))
+        return False
+
+
+def test_a_prompt_opening_inside_the_move_bar_is_not_answered(monkeypatch):
+    monkeypatch.setattr(C.time, "sleep", lambda s: None)
+    session = BarSession(["MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"])
+    assert session.enter_move(timeout=5, answer_prompts=False) is False
+    assert session.bar_calls == [("MOVE", False)]
+    assert session.walk_prompt == SIDE_PROMPT
+    assert session.events == []
+
+
+def test_a_prompt_opening_inside_the_no_answer_is_not_answered(monkeypatch):
+    monkeypatch.setattr(C.time, "sleep", lambda s: None)
+    session = BarSession(["INTERESTED?  YES   NO"])
+    assert session.enter_move(timeout=5, answer_prompts=False) is False
+    assert session.bar_calls == [("NO", False)]
+    assert session.walk_prompt == SIDE_PROMPT
+    assert [e for e in session.events if e[0] in ("attach", "kernal")] == []
+
+
+def test_press_bar_forwards_whether_a_prompt_may_be_answered():
+    session = BarSession(["X"])
+    session.opens_prompt = False
+    session.press_bar("NO", answer_prompts=False)
+    session.press_bar("NO")
+    assert session.bar_calls == [("NO", False), ("NO", True)]
+
+
+def test_a_prompt_that_appears_while_polling_the_move_ends_the_walk(monkeypatch):
+    monkeypatch.setattr(C.time, "sleep", lambda s: None)
+    clock = iter(range(1000))
+    monkeypatch.setattr(C.time, "time", lambda: float(next(clock)))
+    session = BarSession([MOVE_BAR, MOVE_BAR, SIDE_PROMPT])
+    session.move_key = lambda *a, **k: session.events.append(("move", 0))
+    session.live_triple = lambda: (5, 5, 0)
+    assert session.walk_one("I", patience=500, answer_prompts=False) is False
+    assert session.walk_prompt == SIDE_PROMPT
+    assert session.walk_refused is None
+    assert [e for e in session.events if e[0] in ("attach", "kernal")] == []
+
+
+def test_a_failed_attach_does_not_hold_off_the_retry_for_the_same_disk(
+        monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(C.time, "time", lambda: now[0])
+    session = FakeSession(side=2)
+    real_attach = session.attach
+
+    def broken(path):
+        session.attach = real_attach
+        raise RuntimeError("the drive would not take it")
+
+    session.attach = broken
+    screen = SimpleNamespace(text=lambda: SIDE_PROMPT)
+    with pytest.raises(RuntimeError):
+        session.handle_prompt(screen)
+    now[0] += 2.5
+    assert session.handle_prompt(screen) is True
