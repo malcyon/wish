@@ -912,7 +912,11 @@ class CurseRun(PoolRun):
 
     @staticmethod
     def _list_bar(bar: str) -> bool:
-        return "EXIT" in bar and any(w in bar for w in ("SPELL", "NEXT", "PREV"))
+        # A list of one spell has no NEXT or PREV, and its bar is exactly
+        # `CAST EXIT`; it is matched whole because the MAGIC bar also holds
+        # both words.
+        return bar.strip() == "CAST EXIT" or (
+            "EXIT" in bar and any(w in bar for w in ("SPELL", "NEXT", "PREV")))
 
     def _send_pick(self, key: str) -> None:
         if key == "xtest-return":

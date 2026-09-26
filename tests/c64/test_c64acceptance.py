@@ -1267,6 +1267,25 @@ def test_curse_cast_records_the_targets_row_transition(tmp_path):
                          ("key", "Return"), ("key", 0x0D)]
 
 
+def test_curse_cast_recognises_a_one_spell_list_and_selects_cast(tmp_path):
+    one = "CAST EXIT"
+    screens = {**CAST_SCREENS,
+               "list": _window({1: "SHARA'S MEMORIZED SPELLS", 3: "3RD LEVEL",
+                                4: "  CURE BLINDNESS"}, one),
+               "picking": _window({1: "PICK A SPELL", 3: "CURE BLINDNESS"}, one)}
+    blind, disease = [62, 33, 0, 0, 5], [61, 34, 2, 0, 0x85]
+    sess = _CurseFake(screens, _cast_moves({("picking", ("key", "Return")): "whom"}),
+                      "camp")
+    run = _curse_run(tmp_path, sess, [[blind, disease], [disease]])
+    try:
+        got = run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    finally:
+        run.log.close()
+    assert got["row_after"] is None
+    # CAST is highlighted when the list opens, so the bar walk sends one Return.
+    assert sess.sent[2:5] == [("bar", "CAST"), ("bar", "CAST"), ("key", "Return")]
+
+
 def test_curse_cast_tries_the_kernal_key_when_the_first_did_nothing(tmp_path):
     run, sess = _cast(tmp_path, {("picking", ("key", "Return")): "picking",
                                  ("picking", ("key", 0x0D)): "whom"})
