@@ -2090,14 +2090,17 @@ class FakeDungeon(FakePod):
 
     `ignore_m` makes `m` do nothing; `up_roster` sends move mode's `Up` to the
     roster; `blank_status` leaves the status line blank until a key other
-    than `m` is pressed, as run 3's map bar did."""
+    than `m` is pressed, as run 3's map bar did; `blank_after_up` blanks it
+    once `Up` has been pressed in move mode; `no_highlight` draws the roster
+    with no white line."""
 
     MOVE_BAR = b"\x41"
 
     def __init__(self, tmp, walls=0, ignore_m=False, up_roster=False,
-                 blank_status=False, **kw):
+                 blank_status=False, blank_after_up=False, no_highlight=False, **kw):
         super().__init__(tmp, **kw)
         self.mode = "dmap"
+        self.blank_after_up, self.no_highlight = blank_after_up, no_highlight
         self.x, self.facing, self.walls = 1, 1, walls
         self.ignore_m, self.up_roster = ignore_m, up_roster
         self.status_on = not blank_status
@@ -2122,10 +2125,13 @@ class FakeDungeon(FakePod):
                 self.facing = (self.facing + 1) % 4
             elif k == "Escape":
                 self.mode = "dmap"
+            if k == "Up" and self.blank_after_up:
+                self.status_on = False
 
     def capture(self):
         bar = self.MOVE_BAR if self.mode == "move" else FakePool.BARS["map"]
-        frame = _with_roster(_screen(bar, b""), "camp", self.size, self.line)
+        frame = _with_roster(_screen(bar, b""), "camp", self.size,
+                             0 if self.no_highlight else self.line)
         if not self.status_on:
             return frame
         px = bytearray(frame.px)
@@ -2175,6 +2181,28 @@ def test_an_up_that_moves_the_roster_stops_the_walk(tmp_path):
     with pytest.raises(da.StepFailed, match="roster"):
         d.walk("1")
     assert game.keys == ["m", "Up"]
+
+
+def test_a_blank_status_after_a_step_is_reported_as_that_and_turns_nothing(tmp_path):
+    game, d = _dungeon_driver(tmp_path, blank_after_up=True)
+    with pytest.raises(da.StepFailed, match="blank after the step"):
+        d.walk("1")
+    assert game.keys == ["m", "Up"]
+
+
+def test_a_map_with_no_highlighted_roster_line_stops_before_any_step(tmp_path):
+    game, d = _dungeon_driver(tmp_path, no_highlight=True)
+    with pytest.raises(da.StepFailed, match="roster"):
+        d.walk("1")
+    assert game.keys == []
+
+
+def test_a_failed_walk_still_puts_the_map_bar_back(tmp_path):
+    game, d = _dungeon_driver(tmp_path, up_roster=True)
+    map_ink = d.world_ink
+    with pytest.raises(da.StepFailed, match="roster"):
+        d.walk("1")
+    assert d.game.world_bar == map_ink
 
 
 def test_a_move_key_that_changes_nothing_stops_before_any_arrow(tmp_path):

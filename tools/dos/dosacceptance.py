@@ -1812,6 +1812,9 @@ class Driver:
         if not self.on_world(map_screen):
             raise self.fail("walk-before", "the map bar is not showing")
         line = roster_line(map_screen, "camp", self.party_size)
+        if line is None:
+            raise self.fail("walk-roster", "no highlighted roster line on the "
+                            "map to tell a roster move from a step")
         map_bar = self.world_sig
         try:
             self.s.key(POD_MOVE)
@@ -1851,7 +1854,10 @@ class Driver:
                     raise self.fail(label, "the move bar did not return after "
                                     "the step (combat or an unknown screen)")
                 square = settle(label)
-                if square is not None and square != origin:
+                if square is None:
+                    raise self.fail("walk-status", "the status line was blank "
+                                    "after the step")
+                if square != origin:
                     break
                 if attempt == 3:
                     raise self.fail("walk-blocked", "no facing let the party "
