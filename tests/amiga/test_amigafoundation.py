@@ -450,8 +450,8 @@ def test_darkness_accept_presses_the_plans_keys_with_disk_3_mounted_in_df1_and_n
     assert keys == DARK_KEYS and "Y" not in keys
     assert guest.inserted == [] and keys[0] == "P"  # nothing is inserted; PLAY is the first key
     (drives, options), = guest.starts
-    assert [d and d.rsplit("-", 1)[1] for d in drives] == ["disk1.adf", "disk3.adf"]
-    assert options == ()
+    assert [d and d.rsplit("-", 1)[1] for d in drives] == ["disk1.adf", "disk3.adf", "disk2.adf"]
+    assert options == foundation.POOL.options == ("nr_floppies=3", "floppy2type=0")
     # E leaves the sheet once and never twice in a row at the party menu.
     assert keys[keys.index("L"):keys.index("S")].count("E") == 1
     assert result["read"]["verdicts"][0] == "slot I: did not move"
@@ -669,9 +669,11 @@ def test_the_curse_measure_route_reaches_the_party_menu_before_l():
     assert foundation.CURSE.interstitials[0][2] == frozenset({"title"})
 
 
-def test_darkness_keeps_disk_2_as_a_registered_spare_so_a_later_df0_insert_can_be_decided():
-    assert foundation.DARKNESS.spares == ("disk2",)
-    assert "disk2" in foundation.DARKNESS.disk_keys
+def test_darkness_mounts_disk_2_in_df2_because_the_pipe_refuses_a_runtime_insert():
+    darkness = foundation.DARKNESS
+    assert darkness.mounted == ("disk1", "disk3", "disk2") and darkness.spares == ()
+    assert darkness.options == ("nr_floppies=3", "floppy2type=0")
+    assert set(darkness.disk_keys) == {"disk1", "disk2", "disk3"}
 
 
 def test_darkness_has_no_disk_prompt_interstitial_and_pins_its_boot_span_as_a_guess():
@@ -754,3 +756,15 @@ def test_accept_still_passes_its_guard_and_identity_files(tmp_path, monkeypatch)
     assert foundation.main(args) == 0
     assert called.calls[-1]["guard"] == ("guards", "g.json")
     assert called.calls[-1]["identity"] == ("guards", "i.json")
+
+
+def test_darkness_prepare_copies_disk_2_as_a_working_copy_never_the_registered_image(
+        tmp_path, monkeypatch):
+    _darkness_registered()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    manifest = json.loads(foundation.prepare(foundation.DARKNESS, "disk2-run").read_text())
+    entry = manifest["disks"]["disk2"]
+    assert entry["sha256"] == foundation.DARKNESS_DISK2_SHA256
+    assert pathlib.Path(entry["path"]).is_relative_to(tmp_path)
+    assert manifest["sources"]["disk2"]["sha256"] == foundation.DARKNESS_DISK2_SHA256

@@ -267,8 +267,11 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
 # the game's own exit key on the sheet and at camp, which `plain_keys` names.
 DARKNESS = AmigaTitle(
     issue=ISSUE,
-    mounted=("disk1", "disk3"),
-    spares=("disk2",),
+    # Disk 2 is mounted in DF2 because the runtime floppy insert is refused by the pipe. The game
+    # asked for disk 2 right after a slot letter when it was not mounted; whether it accepts the
+    # mounted disk is not yet measured.
+    mounted=("disk1", "disk3", "disk2"),
+    options=("nr_floppies=3", "floppy2type=0"),
     save_disk="disk3",
     read_slot=_darkness_read_slot, slot_letters=_darkness_slot_letters,
     slot_files=_darkness_slot_files,
