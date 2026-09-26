@@ -670,3 +670,17 @@ def test_the_curse_measure_route_reaches_the_party_menu_before_l():
     # The accept route starts at that menu, and the interstitial waits for the same state.
     assert foundation.CURSE.route[0][0] == "L"
     assert foundation.CURSE.interstitials[0][2] == frozenset({"title"})
+
+
+def test_darkness_keeps_disk_2_as_a_registered_spare_so_a_later_df0_insert_can_be_decided():
+    assert foundation.DARKNESS.spares == ("disk2",)
+    assert "disk2" in foundation.DARKNESS.disk_keys
+
+
+def test_a_boot_prompt_that_keeps_showing_gets_one_space_and_no_second_one(tmp_path, clock):
+    # A second SPACE at the title screen could start the demo.
+    guard = MapGuard(states=DARK_STATES, on={"boot_prompt": lambda p: True,
+                                             "title": lambda p: False})
+    guest, result = _dark_run(tmp_path, clock, guard=guard)
+    assert _keys(guest) == ["SPACE"]
+    assert "title screen was not recognized" in result["error"]
