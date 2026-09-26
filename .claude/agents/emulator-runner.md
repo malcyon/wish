@@ -109,10 +109,12 @@ slot or VM lane nobody is using.
 4. A bare `sleep N` with N of 30 or more is refused by the harness, and the
    refusal suggests `Monitor` or `run_in_background: true` — neither is useful
    here: subagents have no `Monitor` tool, and `run_in_background` followed by
-   ending the turn is the failure itself, not an escape from it. For a WinUAE
-   boot's 45–55 second waits, use `tools/amiga/winvmsettle.py <shot.png> --limit 150`
-   in the foreground instead; for anything else, an
-   `until <condition>; do sleep 5; done` loop with `timeout: 600000`.
+   ending the turn is the failure itself, not an escape from it. Wait with an
+   `until <condition>; do sleep 5; done` loop with `timeout: 600000`. A WinUAE
+   run's own waits (a boot's 45 to 55 seconds, a load) belong to its driver,
+   `tools/amiga/amigafoundation.py` or `tools/amiga/amigasecretsave.py`, which
+   waits for each state on the emulator's own crop, so no wait of yours goes
+   between its keys.
 
 ## Codex
 

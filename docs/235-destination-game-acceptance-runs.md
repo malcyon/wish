@@ -4,10 +4,11 @@ A conversion ticket closes only when a save that used to fail converts on the
 reviewed, pushed SHA with CI green, loads in the destination game, and the
 state the ticket is about is read back out of that game with the player's
 behaviour preserved. Nine open tickets have pushed code and no such run. This
-page is the plan for those runs: the three drivers they share, what each
-platform can already read, the order that unblocks the most tickets, who
-builds what, and how the evidence is kept. Each ticket's runs are named once
-here and by that name afterwards.
+page is the plan for those runs: the three drivers they share (three
+platforms, eleven title routes), what each platform can already read, the
+foundation run that comes before any ticket's boot, who builds what, and how
+the evidence is kept. Each ticket's runs are named once here and by that name
+afterwards.
 
 | run name | ticket |
 |---|---|
@@ -31,11 +32,16 @@ acceptance evidence.
    (`.claude/rules/testing.md`, "Poke a field before the boot"). A stage is
    named in bytes in the run's log.
 2. **The conversion, through the editor's own route at the SHA under test.**
-   `editor.saveplan.prepare_save_as` and `publish` (Save As), or
-   `tools/convert/convertrun.py --no-play` for File > Convert. The output
-   bytes, the SHA, and the conversion's `dropped` and `losses` lists (both
-   empty) go in the log. A run made from output that was not produced this
-   way tests the writer, not the program.
+   `editor.saveplan.prepare_save_as` and `publish` (Save As), which
+   `tools/convert/saveasdrive.py` calls for the developer tools:
+   `tools/convert/convertrun.py` (`--no-play` writes the conversion and stops
+   before the emulator) and `dosacceptance.py --fixture-row` both go through
+   it. File > Convert exists only behind `WISH_EXPERIMENTAL_POD_CONVERT` and is
+   the route of the Pools of Darkness Amiga-to-DOS conversion alone
+   (`dosacceptance.py --amiga-slot`). The output bytes, the SHA, and the
+   conversion's `dropped` and `losses` lists (both empty) go in the log. A run
+   made from output that was not produced this way tests the writer, not the
+   program.
 3. **The load, in the destination game, on a pooled slot, headless and
    silent.** One boot per run. A second boot that ends at the same step is
    the end of the run (`.claude/agents/emulator-runner.md`).
@@ -58,106 +64,137 @@ after `gh issue view N --json state`.
 
 | platform | emulator and pool | keys | screen | memory | files the engine writes | title protocols in the tree |
 |---|---|---|---|---|---|---|
-| C64 | VICE through `tools/registry/instance.py` (`claim`, displays `:10`-`:25`) | `Session.select_bar`, `select_row`, KERNAL buffer | **text**, `Session.screen_text()` and `screen()` row by row | binary monitor: peeks, non-stopping exec checkpoints (`tools/c64/effectdrive.py checkpoint_hits`), watchpoints (`livewatch.py`) | the save disk, copied out closed (`por.copy_closed_disk`) or repaired (`curseload.close_splat`) | Pool `Session` (load, walk, fight, `save_game`); Curse `curserun.CurseSession` + `curseload`, `cursecheck.py`, `laterbattle.py`; Silver Blades `ssbwarp.SSBSession`, `ssbresavewalk.py`, `laterbattle.py` |
-| DOS | DOSBox 0.74 through `tools/dos/dosbox.py` (`claim`, displays `:50`-`:65`) | `xdotool` keysyms | **pixels only**: 320x200 PNG, `Screen.digest`/`ink`/`glyphs` for equality, `highlight_row`; no text | none | `SAVE/` after `ENCAMP > SAVE`: records, `.ITM`/`.STF`, `.SPC`/`.FX`/`.SFX`, `SAVGAM<slot>.DAT` | Pool `PoolOfRadiance` (menu, load, move, camp save, fight); Curse `dossheetread.py` (load, sheets, walk, engine save), `Camp.memorize`, `curseregain.py` (train, camp save); Silver Blades `ssbimport.py Driver` (party menu, intro, encamp, rest by days, camp save, sheet), `dossheetread.py --move-mode` |
-| DOS, debugger | DOSBox-X debug build through `tools/dos/dosboxx.py` (`claim`, displays `:90`-`:105`); `dosboxx.unavailable()` is `None` on this machine | the same | the same, halved from 640x400 | `read`/`write` any linear address, `watch` (one byte, on change), `brk` (fires silently, `wait_halt` probes), `regs` through `EV`; `dosspcexpiry.read_party` reads Pool's effect chains node by node off the heap | the same | `PoolOfRadiance` runs unchanged on `XSession`; the later titles' chain heads (Curse record `0x0F2`, Silver Blades `0x0FB`) are read but no tool follows them yet |
-| Amiga | WinUAE in the Windows VM, one lane (`winuae.ps1 claim -Holder`), reachable from this VM (`winvm status`) | `tools/amiga/amigadrive.py keys`, `winvmsettle.py` between keys | **pixels**: `winvm shot`, `amigashots.py` crop | `winuaepipe.py` / `automap.amiga.WinuaePipe`: `m` and `S`-to-file reads while the machine runs; `automap/amiga.py` locates the data hunk and the party | the `.adf`, copied back with `winvm get`, read by `amiga_savegame`, `porslotdiff.py`, `amigalaterproof.py diff` | Pool `docs/182` §7 (twenty keys); Curse and Silver Blades `docs/203` "Reproducing it", with `amigacursewheel.py` and `amigabladesjournal.py` (both under `/usr/bin/python3`); `amigacampsave.py` (repeated camp saves, Silver Blades) |
-| Amiga, FS-UAE | stock `fs-uae` in a VICE-pool slot (`instance.py claim --game amiga-por`), `tools/amiga/fsuaepor.py serve` | `fsuaepor.py keys` | pixels, `fsuaepor.py shot` | none; the GDB build `installfsuae.py` fetches is not installed here | the staged `.adf` in the run directory, `fsuaepor.py names` | Pool of Radiance and Pools of Darkness only: Curse stops at the code wheel, Silver Blades has never been driven |
+| C64 | VICE through `tools/registry/instance.py` (`claim`, displays `:10`-`:25`) | `Session.select_bar`, `select_row`, KERNAL buffer | **text**, `Session.screen_text()` and `screen()` row by row | binary monitor: peeks, non-stopping exec checkpoints (`tools/c64/effectdrive.py checkpoint_hits`), watchpoints (`livewatch.py`) | the save disk, copied out closed (`por.copy_closed_disk`) or repaired (`curseload.close_splat`) | Pool `Session` (load, walk, fight, `save_game`); Curse `curserun.CurseSession` + `curseload`, `cursecheck.py`, `laterbattle.py`; Silver Blades `ssbwarp.SSBSession`, `ssbresavewalk.py`, `laterbattle.py`; all three run under `tools/c64/c64acceptance.py` |
+| DOS | DOSBox 0.74 through `tools/dos/dosbox.py` (`claim`, displays `:50`-`:65`) | `xdotool` keysyms | **pixels only**: 320x200 PNG, `Screen.digest`/`ink`/`glyphs` for equality, `highlight_row`; no text; the status line's `x,y` token, read cell by cell from x 136 (`dosacceptance.status_square`) | none | `SAVE/` after `ENCAMP > SAVE`: records, `.ITM`/`.STF`, `.SPC`/`.FX`/`.SFX`, `SAVGAM<slot>.DAT` (Pools of Darkness `SAVGAM<slot>.PTY` with `VAULT<slot>.DAT`) | Pool `PoolOfRadiance` (menu, load, move, camp save, fight); Curse `dossheetread.py` (load, sheets, walk, engine save), `Camp.memorize`, `curseregain.py` (train, camp save); Silver Blades `ssbimport.py Driver` (party menu, intro, encamp, rest by days, camp save, sheet), `dossheetread.py --move-mode`; Pools of Darkness `dospod.py` (its journal answer and party-menu knowledge); all four run under `tools/dos/dosacceptance.py` |
+| DOS, debugger | DOSBox-X debug build through `tools/dos/dosboxx.py` (`claim`, displays `:90`-`:105`); `dosboxx.unavailable()` is `None` on this machine | the same | the same, halved from 640x400 | `read`/`write` any linear address, `watch` (one byte, on change), `brk` (fires silently, `wait_halt` probes), `regs` through `EV`; `dosspcexpiry.read_party` reads Pool's effect chains node by node off the heap | the same | `PoolOfRadiance` runs unchanged on `XSession`; the later titles' chain heads (Curse record `0x0F2`, Silver Blades `0x0FB`) are read but no tool reads their nodes yet |
+| Amiga | WinUAE in the Windows VM, one lane (`winuae.ps1 claim -Holder`), reachable from this VM (`winvm status`) | `tools/amiga/amigadrive.py keys`; the foundation drivers press a key once the previous screen has matched its guard, and `winvmsettle.py` waits between keys by hand | **pixels**: `winvm shot` cropped to the emulator window by `amigashots.py`; a state is one static pixel box (`PixelGuards`) and a sheet's or menu's identity is a name box | `winuaepipe.py` / `automap.amiga.WinuaePipe`: `m` and `S`-to-file reads while the machine runs; `automap/amiga.py` locates the data hunk and the party | the `.adf`, copied back with `winvm get` and read by `amiga_savegame` (`read_por_slot`, `read_slot`, `pod_read_slot`) | Pool `amigafoundation.py --title pool` (by hand: `docs/182` §7, twenty keys); Curse `--title curse` (by hand: `docs/203` "Reproducing it"); Silver Blades `amigasecretsave.py accept`, its journal answered by `amigabladesjournal.py` under `/usr/bin/python3`; Pools of Darkness `--title darkness`, not yet proven (section 5); `amigacampsave.py` (repeated camp saves, Silver Blades) |
+| Amiga, FS-UAE | stock `fs-uae` in a VICE-pool slot (`instance.py claim --game amiga-por`), `tools/amiga/fsuaepor.py serve` | `fsuaepor.py keys` | pixels, `fsuaepor.py shot` | none; the GDB build `installfsuae.py` fetches is not installed here | the staged `.adf` in the run directory, `fsuaepor.py names` | Pool of Radiance and Pools of Darkness only. Under it Pools of Darkness reached the party panel and `ADD CHARACTER > POOLS` (`docs/124` §2.4) and never loaded a saved game, and a disk changes at runtime only through its F12 menu, by hand. Curse stops at the code wheel and Silver Blades has never been driven |
 
-Three consequences for the plan:
+Each Amiga run mounts its own disks, and the game reads its saves from only
+some of them:
 
-* **DOS has no screen text, so a DOS reading is a file or a memory read, and
-  a screenshot is corroboration.** The file reader is the strongest: the
-  engine's own `ENCAMP > SAVE` writes the effect nodes, the item chain, the
-  clock and the record, and every one of those has a decoder in `goldbox/`
-  or `tools/dos/` (`dos_codec.read_party` and `to_neutral`,
-  `ssbimport.effect_nodes`, `dosscrollbundle.walk`,
-  `world_state.from_dos` for the clock). The DOSBox-X memory read is needed
-  only where the ticket asks what happens *during* play: a handler firing
-  in a fight, a chain ageing between two saves. A screenshot of the ITEMS
-  list or Magic > Display is read by the agent that took it (the Read tool
-  shows a PNG) and reported as an observation, with the PNG kept.
-* **The C64 reads everything**, and its gap is coverage: `effectdrive.py`
-  stages rows and rests in Pool only, no driver reads the camp list of
-  spells in effect, and the later titles' fights are `laterbattle.py`'s.
-* **The Amiga's driver of record is WinUAE**, because it runs all three
-  titles, answers both copy-protection prompts, and reads memory through
-  the pipe. FS-UAE is a second seat for Pool of Radiance only. Two things
-  no Amiga tool can do yet: reach a second party member's sheet in Pool of
-  Radiance (`docs/182` §6), and open Magic > Display; both are screen
+| title | DF0 | DF1 | DF2 | save letters |
+|---|---|---|---|---|
+| Pool of Radiance | Disk 1 | Disk 2 | The specimen's `POOLSAVE` disk (`nr_floppies=3`, `floppy2type=0`) | Loaded A; control C; after D; B kept |
+| Curse | A working copy of the specimen, a whole disk A with slots A, B and C in `/SAVE` | Disk B | None | Loaded B; control D, saved at the party menu before `BEGIN ADVENTURING`; after F, saved from camp; A and C kept |
+| Silver Blades | A copy of disk 1 carrying the prepared slot C (`amigaacceptance.stage_embedded_boot_disk`) | Disk B, the game's second disk | None | Control B, saved at the party menu before `BEGIN ADVENTURING`; after D, saved from camp; A and C kept |
+| Pools of Darkness | Disk 1 | Disk 3, the save disk, mounted from the start | None; disk 2 is put on the VM and not mounted | Loaded B; control I; after J; A, C, D and E kept |
+
+Silver Blades boots from a copy of disk 1 carrying the slot because the game
+never reads a standalone save disk (`SECRETSAVE`, or Curse's `AZURESAVE`) while
+its own disk A is in DF0, which is the defect of #677 (Save As to the Amiga
+puts a Curse or Silver Blades party on a separate save disk that the game never
+reads while its own disk A is in DF0). Pools of Darkness has disk 3 in DF1 from the first frame
+because WinUAE's pipe answered a runtime floppy insert
+(`WinuaePipe.insert_floppy`, which `run_recon` still offers as an `insert`
+step) with `404`. Pool of Radiance's `POOLSAVE` in DF2 is unchanged.
+
+The first keys are per title. The Silver Blades version screen's `PLAY DEMO
+QUIT` bar takes `P`; one `RET` at it was followed by the story intro and the
+credits, an attract loop that never holds still, so no route presses `RET`
+there, and the credits are left with `ESC`. Curse's cracker intro is left with
+`ESC`, the first reaching the copy-protection screen and the second backing
+out of it to the party menu, with nothing typed. Pool of Radiance's first
+screen takes `RET`. Pools of Darkness gets `P` at its title screen, which the
+game leaves for its demo if nobody answers.
+
+Consequences for the plan:
+
+* **DOS has no screen text, so a DOS reading is a file, a status token or a
+  memory read, and a screenshot is corroboration.** The file reader is the
+  strongest: the engine's own `ENCAMP > SAVE` writes the effect nodes, the item
+  chain, the clock and the record, and every one of those has a decoder in
+  `goldbox/` or `tools/dos/` (`dos_codec.read_party` and `to_neutral`,
+  `ssbimport.effect_nodes`, `dosscrollbundle.walk`, `world_state.from_dos` for
+  the clock). The DOSBox-X memory read is needed only where the ticket asks
+  what happens *during* play: a handler firing in a fight, a chain ageing
+  between two saves. A screenshot of the ITEMS list or Magic > Display is read
+  by the agent that took it (the Read tool shows a PNG) and reported as an
+  observation, with the PNG kept.
+* **The status token judges a step in DOS.** The `x,y` square that opens the
+  status line is read from x 136 up to the first blank cell, so the clock and
+  the facing letter after it never enter the value; a picture digest cannot
+  judge a step, because the clock ticks on a bump and a line drawn for the
+  first time differs from a blank one. All four titles start the token at x 136
+  (`STATUS_COLUMNS`). Silver Blades and Pools of Darkness walk in a move mode
+  (`m` enters it, `e` leaves it in Silver Blades and `Escape` in Pools of
+  Darkness); Pool and Curse step at the map bar and have none.
+* **The C64 reads everything**, and its gap is coverage by title:
+  `c64acceptance.py` runs on Pool, Curse and Silver Blades, but `fight` is not
+  driven in Silver Blades and `cast` and `cure` are Curse's alone.
+* **The Amiga's driver of record is WinUAE**, because it runs three titles end
+  to end (Pools of Darkness has not passed), leaves Curse's code wheel with
+  `ESC`, answers Silver Blades' journal question through a private helper, and
+  reads memory through the pipe. FS-UAE is a second seat for Pool of Radiance,
+  and for Pools of Darkness up to its party panel. Four things no Amiga tool does yet: reach a second party member's sheet
+  in Pool of Radiance (`docs/182` §6), open Magic > Display, judge a step while
+  the game runs (a move is judged only from the game-written saves, control slot
+  against after slot, read from the fetched image), and read the party's square
+  through the pipe on a driver's path (`automap.amiga`'s `party_x` layout field
+  is used by `amigatarget.py fix` and by no driver). The first two are screen
   sequences to be read before a run needs them.
 
-## 3. The three drivers, and the one fix that comes first
+## 3. The three drivers, as built
 
-Each ticket's check is a source, a boot, a step list and a reading. The
-sources, boots and readings already exist per platform; what does not exist
-is one driver per platform that takes a Wish-written save, a title, and a
-step list, and prints what it read. Building four drivers per ticket is how
-the opening-scene runs spent three rounds; one per platform is the shared
-harness.
+Each ticket's check is a source, a boot, a step list and a reading. One driver
+per platform takes a Wish-written save and a title and prints what it read;
+building four drivers per ticket is how the opening-scene runs spent three
+rounds. The three platforms give eleven title routes: four titles under
+DOSBox, three under VICE and four under WinUAE. The DOS and C64 drivers take a
+step list. The Amiga drivers take a route with pixel guards, because a key
+pressed while a disk loads is swallowed with no sign, so each key waits for a
+screen the guard map recognises.
 
-### D0. `tools/c64/openingscene.py` answers the Silver Blades treasure bar (`junior-dev`, first)
+### D0. `tools/c64/openingscene.py` answers the Silver Blades treasure bar
 
-The opening-scene runs stall at `GO BACK LEAVE TREASURE`, the prompt the
-game puts up after `EXIT` at `VIEW TAKE POOL SHARE EXIT`, because
-`opening_step` has no case for it (three runs, all ending there). Add the
-case: row 24 holding both `GO BACK` and `LEAVE TREASURE` gives `leave`, and
-`answer_bar` calls `sess.select_bar("LEAVE TREASURE")`, with the same
-unchanged-row-24 fallback the `exit` case has. One test row in
-`test_opening_step_reads_each_bar`, seen red first. Leaving the treasure is
-what `ssbwarp.enter_world` also does, and it forgoes the starting equipment
-and money a player would take; the run compares experience, which the
-treasure does not touch, and both the game's own save and Wish's get the
-same treatment. Owns `tools/c64/openingscene.py` and
-`tests/c64/test_openingscene.py`; runs those tests, `ruff` and
-`genui.py --check`.
+The opening-scene runs used to stall at `GO BACK LEAVE TREASURE`, the prompt
+the game puts up after `EXIT` at `VIEW TAKE POOL SHARE EXIT`, because
+`opening_step` had no case for it. It now reads row 24 holding both `GO BACK`
+and `LEAVE TREASURE` as `leave`, and `answer_bar` selects `LEAVE TREASURE`,
+with the same unchanged-row-24 fallback the `exit` case has. Leaving the treasure is what `ssbwarp.enter_world` also does, and it
+forgoes the starting equipment and money a player would take; the run compares
+experience, which the treasure does not touch, and both the game's own save and
+Wish's get the same treatment.
 
-### D1. `tools/dos/dosacceptance.py`: load a Wish-written DOS save and read it back (`reverse-engineering` builds, `junior-dev` extends)
+### D1. `tools/dos/dosacceptance.py`: load a Wish-written DOS save and read it back
 
-One entry point over `tools/dos/dosbox.py` and, with `--debug`,
-`tools/dos/dosboxx.py`:
+One entry point over `tools/dos/dosbox.py` for four titles, Pools of Darkness
+included (its journal question and party-menu knowledge are `dospod.py`'s):
 
-    dosacceptance.py --title pool|curse|ssb --save DIR --slot A \
-        --steps load sheets 'rest 5m' 'save D' read --out DIR
+    dosacceptance.py --title curse --save DIR --from-slot B --slot B \
+        --steps load 'view 2' begin 'walk MI' camp 'save D' read \
+        --issue N --run NAME
 
 It stages the whole save the way `dossheetread.install_whole` does, boots,
 and runs the steps in order, writing `run.jsonl`, a PNG per step and
-`summary.json`. Steps, and where each comes from:
+`summary.json`. `--fixture-row` builds the source through Save As DOS instead
+of taking `--save`, and `--amiga-slot` does the same for a Pools of Darkness
+Amiga slot. There is no `--debug` and no DOSBox-X step. Steps, and the titles
+each is built for:
 
-| step | does | exists in |
+| step | does | titles |
 |---|---|---|
-| `load` | title menu, `LOAD SAVED GAME`, the slot | `PoolOfRadiance.to_main_menu`, `load_game`; `dossheetread --load-keys` |
-| `sheets`, `sheet N` | `VIEW` every member or member N, one PNG each | `dossheetread` (all three titles, `--pick-*` for Silver Blades) |
-| `items N` | member N's ITEMS list, one PNG | new: the key from the sheet is read from the sheet's own bar |
-| `begin` | `BEGIN ADVENTURING` through the intro to the world bar | `ssbimport.Driver.intro` (Silver Blades); Pool and Curse need their intro bars digested |
-| `walk N` | N steps, turning at walls | `dossheetread.walk` |
-| `camp` | `ENCAMP` | `PoolOfRadiance.save_game`'s first half; `ssbimport.Driver.encamp` |
-| `rest 5m`, `rest 8h`, `rest 8d` | camp `REST` for minutes, hours or days | `ssbimport.Driver.rest` (days, Silver Blades); Pool's and Curse's rest menus have no digests yet |
-| `display` | camp `MAGIC > DISPLAY`, one PNG per page | new: the Magic menu is `Cast Memorize Scribe Display Rest Exit` (Part D read (d) of the Detect Magic runs' ticket); `Camp.memorize` reaches `MAGIC` in Curse |
-| `train N` | the hall's `TRAIN CHARACTER` for roster line N | `dostrain.py` (Pool, steps the party into the hall), `curseregain.py` (Curse, `0xD51` poked, trains at the party menu); Silver Blades is gated on the same word and needs its keys read |
-| `save X` | camp `SAVE` to slot X, believed when the file changes | `PoolOfRadiance.save_game`, `ssbimport.Driver.camp_save`, `curseregain` |
-| `read` | copy `SAVE/` out; decode records, items, effect nodes and the clock into `summary.json` | `dos_codec.read_party` + `to_neutral`, `dosscrollbundle.walk`, `ssbimport.effect_nodes`, `world_state.from_dos` |
-| `chain` (`--debug`) | each member's effect chain off the heap, with the clock | `dosspcexpiry.read_party` (Pool head `0x07F`); Curse `0x0F2` and Silver Blades `0x0FB` to add |
-| `break ADDR NAME` (`--debug`) | a code breakpoint at a `GAME.OVR` file offset, located in memory by its bytes; on each halt, log the registers, run on | `dosboxx.brk`, `wait_halt`, `regs`, `locate` |
-| `fight 1` | one round: `QUICK` per member, answering the fight's bars | `dosfightrun.fight` (Pool); the later titles' fight bars are undigested |
+| `load` | title menu, `LOAD SAVED GAME`, the slot; Pool lands on the map and the others at the party menu; Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P` | All four |
+| `begin` | `BEGIN ADVENTURING` through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars to the map | Curse, Silver Blades, Pools of Darkness |
+| `view N` | At the party menu before `begin`: roster line N's sheet, believed only by its name against the roster line, then back to the party menu; Pools of Darkness also pages `ITEMS` | Curse, Silver Blades, Pools of Darkness |
+| `sheet N` | Member N's sheet: from the map in Pool, from camp with the roster line highlighted by `Down` in Pools of Darkness | Pool, Pools of Darkness |
+| `items N` | Member N's `ITEMS` list, page by page with `NEXT`, from camp | Pools of Darkness |
+| `halve N I`, `join N I` | `ITEMS` row I of member N, `h` or `j` pressed once, the rows counted before and after | Pools of Darkness |
+| `walk MI`, `walk 1` | One square, judged by the status token and never by the clock beside it or a picture digest, and by the place decoded from the game-written save. `MI` is two turns and a step at the map bar; `1` presses `m`, steps turning past a wall, and leaves move mode | `MI` in Pool and Curse; `1` in Silver Blades and Pools of Darkness |
+| `turn N` | The control: N right turns (1 to 4), each reading the square, which a turn must leave alone; a run with `turn` and no `walk` fails unless `read` shows the saved place unchanged and prints "did not move" | All four |
+| `camp` | `ENCAMP`; records the camp bar | All four |
+| `rest 5m`, `rest 1h30m`, `rest 8d` | Camp `REST` for that long; Pools of Darkness' rest menu is read from `GAME.EXE` and is PROBABLE until a run reaches it | All four |
+| `display` | Camp `MAGIC > DISPLAY`, six member rows | Pool |
+| `train N` | The party menu's `TRAIN CHARACTER` for roster line N | Curse |
+| `save X` | Camp `SAVE` to slot X and decline the quit, or `SAVE CURRENT GAME` at the party menu; believed when the file changes | All four |
+| `read` | Copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one | All four |
+| `shot NAME`, `press KEY` | One PNG, or one key and a PNG; only `press`, `shot` and `read` may come after a `press` | All four |
 
-**The smallest first driver** is D1 for Pool of Radiance with `load`, `camp`,
-`rest Nm`, `save X` and `read`, and no `--debug`. It is the Bless runs' DOS
-run whole. Pool's camp bar and save are already digested, so the only new
-screen is `REST`'s minutes entry. Then the same five steps for Curse and
-Silver Blades (rest and save; `ssbimport` has Silver Blades' rest by days
-and its save), which is the cure-disease runs' two clock runs and the Bless
-runs' later-title runs. `items`, `display` and `--debug` come third.
+**Not built:** the DOSBox-X steps `chain`, `break ADDR NAME` and `--debug`, and
+`fight`. `docs/149-driving-a-dos-fight.md` is the method for the fight, and
+the Prayer runs' DOS runs 1 and 1b wait on `--debug`, `break` and `fight`.
 
-The first build goes to `reverse-engineering` because every new step is a
-screen nobody has digested and the digest is read off the game's own
-capture; `docs/149-driving-a-dos-fight.md` is the method. Each later step is
-one `junior-dev` change with a test on composed digests, once its screens
-are read. The builder owns `tools/dos/dosacceptance.py`,
-`tests/dos/test_dosacceptance.py` and one row in `tools/dos/README.md`, and
-changes nothing in the modules it imports.
-
-### D2. `c64acceptance.py`, a planned driver in the C64 subdirectory of the tools directory: stage, boot, read the screen and the machine (`reverse-engineering` builds, `junior-dev` extends)
+### D2. `tools/c64/c64acceptance.py`: stage, boot, read the screen and the machine
 
     c64acceptance.py --title pool|curse|ssb --save X.D64 \
         --stage-row 63=05:FF:0A:03 --stage-trait 0:9=38 \
@@ -171,43 +208,55 @@ bytes a test stages. The session is the title's own (`Session`,
 `CurseSession`, `SSBSession`), the load its own loader
 (`Session.load_save`, `curseload.load_saved_game`, `ssbwarp.load_party`).
 
-| step | does | exists in |
+| step | does | titles |
 |---|---|---|
-| `load` | boot and load, header logged | the three sessions; `openingscene.py` does this for the later titles |
-| `camp-list` | `ENCAMP`, the list of spells in effect for each member, as screen text | new: `CAMP $16C3` (Pool) prints it; the keys are read off the camp bar |
-| `view N`, `items N` | the sheet and ITEMS list of member N, as screen text | `savecheck.sheets` (Pool), `cursecheck.py`, `ssbresavewalk.py` |
-| `ready N ITEM` | `VIEW > ITEMS > READY` on one item, then the ten trait slots read from `$6BAD` / `$7CAD` | new; the addresses are in the trait-slot runs' Stage 3b read |
-| `rest 5m` | `ENCAMP > REST` | `effectdrive.rest` (Pool); the later titles' rest menus to read |
-| `fight 1` | walk into a fight, one round, with non-stopping checkpoints armed at `--checkpoint ADDR` and their counts logged | `Session.fight` and the Slums ambush (Pool), `laterbattle.py` (Curse at Tilverton's tavern, Silver Blades by waiting), `effectdrive.checkpoint_hits` |
-| `peek ADDR N` | N bytes of memory | `Session.mon` |
-| `save` | `ENCAMP > SAVE`, the disk copied out closed or repaired, the payload decoded | `Session.save_game`, `por.copy_closed_disk`, `curseload.close_splat`, `goldbox.savegame` |
+| `load` | Boot and load, header logged; arms every `--checkpoint` | Pool, Curse, Silver Blades |
+| `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, the spells each name is affected by, as screen text | Measured in Pool; the later titles carry the same strings |
+| `view WHO` | The sheet as text, opened in the order the panel draws the party (the save's marching order; whether a reorder made in the game changes the panel's order is unmeasured); Curse and Silver Blades believe it by the member's name on row 1 | Pool, Curse, Silver Blades |
+| `items WHO` | The sheet and the ITEMS list as text with each item's Detect Magic mark | Measured in Pool; Curse and Silver Blades inherit its routine |
+| `rest 5m` | `ENCAMP > REST` | Measured in Pool (`effectdrive.rest`); Curse and Silver Blades inherit its routine |
+| `walk MOVES` | I forward, J left, K right, M about; each move judged by the square before and after, which is the status line in Pool and the live triple `$C04B`-`$C04D` in Curse and Silver Blades, whose status line lags a step. A run with a walk fails unless a `save` after it shows the asked result | Pool, Curse, Silver Blades |
+| `fight` | Walk into a fight and fight it for a number of seconds, with non-stopping checkpoints counted after every step | Pool, Curse |
+| `cast`, `cure` | `ENCAMP > MAGIC > CAST` and `ENCAMP > VIEW > CURE`, the target's row before and after | Curse |
+| `peek ADDR N` | N bytes of memory | All three |
+| `save` | The game's own `ENCAMP > SAVE`, the disk copied out closed and decoded, and the place read through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`) | All three |
 
-The first build is the Pool of Radiance half with `load`, `camp-list`,
-`items N` and `save`, which is the Detect Magic runs' C64 run; `fight 1`
-with checkpoints is the Prayer runs' Curse run and comes second, on
-`laterbattle.py`. `reverse-engineering` builds it for the same reason as D1
-(the camp list and the later titles' camp bars are unread screens); it owns
-`c64acceptance.py` (planned, not yet built, in the C64 subdirectory of the tools directory), `tests/c64/test_c64acceptance.py` and a
-README row.
+The `save` step has two rules in Curse and Silver Blades: a `SAVING GAME` on
+row 24 while the driver waits for the `SAVE GAME` bar is the game having chosen
+the save, and neither session presses Return for `PROMPT_HOLD` (eight seconds)
+after answering a disk prompt, because a Return in the half second after the
+prompt chooses the `SAVE GAME` bar.
 
-### D3. `amigaacceptance.py`, a planned driver in the Amiga subdirectory of the tools directory: WinUAE, from the converted `.adf` to the engine's resave (`reverse-engineering` builds)
+### D3. `tools/amiga/amigasecretsave.py` and `tools/amiga/amigafoundation.py`: WinUAE, from prepared disks to the game's two saves
 
-    amigaacceptance.py --holder wish661 --title pool|curse|ssb --adf X.adf \
-        --slot B --steps load 'view 1' 'items 1' display 'save D' fetch read
+The design is a route with pixel guards and a manifest. A title is described
+once as an `AmigaTitle` (`amigasecretsave.py`): the disks per drive, the keys
+and the state each must reach, which steps write a save (a control letter
+before the walk and an after letter) and which letters must stay untouched,
+the interstitial screens to answer while waiting, and each state's minimum
+wait. `run_recon` claims the lane, starts WinUAE with `goldbox-a500.uae` and
+the described drives, presses one key, and waits until the guard map's pixel
+box for the expected state matches the emulator crop. An unknown screen, a
+failed capture or a spent deadline stops the run with a failed verdict; a state
+with no guard is settled by two equal captures, listed as `unguarded`, and the
+run does not pass. It fetches the disks back, refuses if a registered disk or a
+kept slot changed, decodes the control and after slots, and prints one verdict
+line for each ("slot C: did not move", "slot D: moved 1 square from area 0
+9,13 facing 0 to area 0 9,14 facing 2"). The lane is claimed by the run and
+released in `finally`. Before the claim and again before the emulator starts,
+the run refuses unless the `winuaemute.ps1` readback passed as `--audio-proof`
+is under five minutes old.
 
-It copies the `.adf` to the guest (`winvm scp`), starts WinUAE with
-`goldbox-a500.uae` and the disk in `floppy0`, answers the code wheel or the
-journal, loads the slot, runs the steps with `winvmsettle.py` between keys
-and `amigashots.py`'s crop on every capture, has the engine save to another
-slot, fetches the image back and decodes it (`amiga_savegame`,
-`porslotdiff.py`, `amigalaterproof.py diff`). A `mem` step reads the party's
-effect chains through the pipe once `automap/amiga.py`'s machine table has
-the chain head for the title. The lane is claimed by the run and released in
-`finally`; the VM's own audio is muted rather than the emulator's
-(`.claude/rules/emulator.md`). Two screen reads come before any run needs
-them: how Pool of Radiance reaches a second member's sheet, and the Magic >
-Display keys per title. Owns `amigaacceptance.py` (planned, not yet built, in the Amiga subdirectory of the tools directory), its test file
-and a README row.
+| title | driver | what its `prepare` does |
+|---|---|---|
+| Silver Blades | `amigasecretsave.py prepare`, `recon --measure`, `recon`, `accept` | Publishes the pinned C64 JOIN party through Save As Amiga, stages DF0 as a copy of disk 1 carrying that slot and DF1 as a copy of disk B, and writes `prepare.json` with every input's SHA-256. `accept` needs `--guards`, `--identity` and `--journal-python /usr/bin/python3`, and its preflight loads the private reader's digit templates before the lane is claimed |
+| Pool, Curse, Pools of Darkness | `amigafoundation.py prepare\|measure\|accept --title pool\|curse\|darkness` | Copies the title's registered disks and specimen into a run folder, refusing on any hash difference or a save letter the run writes that already exists (Pools of Darkness has no specimen: disk 3 is the save disk) |
+
+The file `amigaacceptance.py` is a DF0 staging helper (`stage_boot_disk` hides
+a boot disk's `SAVE` drawer; `stage_embedded_boot_disk` writes a slot into it),
+not a driver. Section 4's Amiga steps (`display`, `fight 1`, `items`, `mem`) name
+what a run must read; neither Amiga driver has them, and each needs its screen
+read first (section 7).
 
 ## 4. The runs, per ticket
 
@@ -291,83 +340,183 @@ at the pushed SHA the closing comment will name. The C64 fixture party is
 ### The Save As matrix
 
 The design's acceptance asks for one load of each Save As output in its own
-game. The runs above already load a Save As output in every cell:
+game. There are twenty directed same-title routes: three titles with six
+directions each, and Pools of Darkness between DOS and the Amiga. Each route's
+proof is one run of its destination pair's foundation command (section 5) on
+the Save As output of the named source specimen, at a pushed SHA with CI green,
+through `editor.saveplan.prepare_save_as` and `publish` or
+`tools/convert/saveasdrive.py`. Two controls apply to every route. The move
+control is the pair's own (section 5). The identity control names a field that
+differs between the converted party and any party the destination could have
+loaded instead (the bundled slot on an Amiga disk 1, the shipped `SAVGAMA` of
+the archives, the specimen's own earlier slot), read from the game-written
+save, so a run that loaded the wrong slot fails it. The open ticket that owns
+each route's proof is named in the coverage plan on #679 (Make one repeatable
+load, inspect, move, save and verify run reliable on each destination
+platform, so conversion tickets reuse it).
 
-| destination | Pool of Radiance | Curse | Silver Blades |
+| # | route | conversion in Wish | proof supplied by | source specimen |
+|---|---|---|---|---|
+| 1 | Pool, C64 to DOS | `C64ToDos`; Save As DOS | DOS Pool | The committed fixture `tests/fixtures/savedgame0.bin` and `savedgame1.bin` as a disk, or `WISH-SPEC-por-52-dialog-converted-resave` |
+| 2 | Pool, C64 to Amiga | `C64ToAmiga`; Save As Amiga with disk 2 | Amiga Pool | `WISH-SPEC-por-52-dialog-converted-resave` |
+| 3 | Pool, DOS to C64 | `DosToC64`; Save As C64 with the player's `POOL` sides | C64 Pool | `WISH-SPEC-por-party-l1-intown` slot E |
+| 4 | Pool, DOS to Amiga | `DosToAmiga`; Save As Amiga with disk 2 | Amiga Pool | `WISH-SPEC-por-party-l1-intown` slot E |
+| 5 | Pool, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Pool | `WISH-SPEC-por-amiga-slums-resave` |
+| 6 | Pool, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Pool | `WISH-SPEC-por-amiga-slums-resave` |
+| 7 | Curse, C64 to DOS | `C64ToDos`; Save As DOS | DOS Curse | `WISH-SPEC-curse-h-engine-resave` |
+| 8 | Curse, C64 to Amiga | `C64ToAmiga`; Save As Amiga | Amiga Curse | `WISH-SPEC-curse-party-with-items` |
+| 9 | Curse, DOS to C64 | `DosToC64`; Save As C64 | C64 Curse | `WISH-SPEC-curse-131-dualclassed-in-area-1` |
+| 10 | Curse, DOS to Amiga | `DosToAmiga`; Save As Amiga | Amiga Curse | `WISH-SPEC-curse-234-party-dualclassed` slot D |
+| 11 | Curse, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Curse | `WISH-SPEC-coab-amiga-resave` |
+| 12 | Curse, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Curse | `WISH-SPEC-coab-amiga-resave` |
+| 13 | Silver Blades, C64 to DOS | `C64ToDos`; Save As DOS | DOS Silver Blades | `WISH-SPEC-ssb-joined-arrow-c64-672` |
+| 14 | Silver Blades, C64 to Amiga | `C64ToAmiga`; Save As Amiga | Amiga Silver Blades | `WISH-SPEC-ssb-joined-arrow-c64-672` |
+| 15 | Silver Blades, DOS to C64 | `DosToC64`; Save As C64 | C64 Silver Blades | `WISH-SPEC-ssb-299-whole-engine-resave`, or `WISH-SPEC-ssb-joined-arrow-dos-672` slot D |
+| 16 | Silver Blades, DOS to Amiga | `DosToAmiga`; Save As Amiga | Amiga Silver Blades | `WISH-SPEC-ssb-joined-arrow-dos-672` slot D |
+| 17 | Silver Blades, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Silver Blades | `WISH-SPEC-ssb-amiga-moved` |
+| 18 | Silver Blades, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Silver Blades | `WISH-SPEC-ssb-amiga-moved` |
+| 19 | Pools of Darkness, Amiga to DOS | `PodAmigaToDos` behind `WISH_EXPERIMENTAL_POD_CONVERT`: File > Convert, or `dosacceptance.py --amiga-slot` | DOS Pools of Darkness | `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`, a played save found on a disk image, so an input and not a measurement |
+| 20 | Pools of Darkness, DOS to Amiga | None: the `.pc` writer (`amiga_pod.write_pod`) exists, and the saved-game writer, its detection and the direction do not | Amiga Pools of Darkness, not yet proven | `WISH-SPEC-p175-diff1` once a route exists |
+
+Routes 8, 10, 14 and 16 (Curse and Silver Blades to the Amiga) wait behind
+#677 (Save As to the Amiga puts a Curse or Silver Blades party on a separate
+save disk that the game never reads while its own disk A is in DF0); section 8
+says on what.
+
+## 5. Order: the foundation runs, then the conversion runs
+
+A platform's foundation run comes first. A conversion ticket's boot runs only
+on a pair whose foundation run has passed with its control, and `docs/236`
+("Foundation gate") lists what the platform needs before conversion work
+depends on it. The foundation runs load a party, open a sheet, move it, save
+through the game's own controls and read the game-written save back; they do
+not reload that save or connect the live automapper, which the gate also
+requires, so "proven" below means those five steps with a control. D0 is
+built, and the developer tools publish through Save As
+(`tools/convert/saveasdrive.py`).
+
+### The proof rule
+
+A pair is proven when two consecutive boots at one clean pushed SHA, with CI
+green for that SHA, print identical verdict lines and a control reports that
+the party did not move. Both boots use the same specimen and command, and each
+control exits 0 with its own verdict line; a boot lost to a wandering monster or a white title screen is rerun at
+the same SHA, and the two passing boots must still be consecutive.
+
+| platform | the walk | the control |
+|---|---|---|
+| DOS | `walk MI` (Pool, Curse) or `walk 1` (Silver Blades, Pools of Darkness), judged by the status token and by the place in the game-written save | `turn N` in place of the walk: `read` prints "did not move" |
+| C64 | `walk KI` (Pool) or `walk JI` (Curse, Silver Blades): a turn, then a step; the place is decoded from the game's own resave | `walk K` or `walk J` alone: the party turns, the saved square is unchanged (`place_changed` false) |
+| Amiga | The route's two saves around a walk: the control slot before it, the after slot after it, both decoded from the fetched disk | The control slot: "did not move" |
+
+### The eleven pairs
+
+Evidence is under `~/.cache/wish/acceptance/679/` (Amiga Silver Blades'
+under `672/`), each run named `<sha>-<run>`. Ten pairs are proven, each at a
+SHA whose lint and test jobs passed; the eleventh is not.
+
+| pair | status | SHA | runs | specimen registered from the game's save |
+|---|---|---|---|---|
+| DOS Pool of Radiance | Proven | `5b586acc35` | `found-dospool-a`, `-b`, `-control` | None |
+| DOS Curse of the Azure Bonds | Proven | `5f3b09ec77` | `found-curse-a`, `-b`, `-control` | `WISH-SPEC-dos-curse-foundation-walked` |
+| DOS Secret of the Silver Blades | Proven | `5f3b09ec77` | `found-ssb-a`, `-b`, `-control` | `WISH-SPEC-dos-ssb-foundation-walked` |
+| DOS Pools of Darkness | Proven | `79aa61820e` | `found-pod-a`, `-b2`, `-control` | None |
+| C64 Pool of Radiance | Proven | `a0b1be90f1` | `found-por-a`, `-b`, `-control` | `WISH-SPEC-por-679-c64-walked-resave` |
+| C64 Curse of the Azure Bonds | Proven | `14c1ee21a4` | `found-curse-a`, `-b`, `-control` | `WISH-SPEC-curse-party-with-items-walked` |
+| C64 Secret of the Silver Blades | Proven | `f9008e1592` | `found-ssb-a`, `-b`, `-control` | `WISH-SPEC-ssb-d-engine-resave-walked-foundation` |
+| Amiga Pool of Radiance | Proven | `5fcbfccc65` | `amiga-pool-accept2b`, `-accept3b` | `WISH-SPEC-amiga-pool-foundation-walked` |
+| Amiga Curse of the Azure Bonds | Proven | `400d2381cd` | `amiga-curse-accept2`, `-accept3` | `WISH-SPEC-amiga-curse-foundation-walked` |
+| Amiga Secret of the Silver Blades | Proven | `400d2381cd` | `amiga-accept2`, `-accept3` | `WISH-SPEC-amiga-ssb-foundation-walked` |
+| Amiga Pools of Darkness | **Not yet proven** | `f92e8c2963` (last boot) | `amiga-darkness-measure4` | None |
+
+The commands and what they printed, the same in both boots of each pair:
+
+| pair | command | verdict lines | control |
 |---|---|---|---|
-| C64 | the Detect Magic runs | the Prayer runs, run 2 | the joined-scroll runs |
-| DOS | the Bless runs | the cure-disease runs, run 1 | the joined-scroll runs |
-| Amiga | the Prayer runs, run 3 | the opening-scene runs | the joined-scroll runs |
+| DOS Pool | `dosacceptance.py --title pool --fixture-row 3F=01:00:2F:01 --slot A --steps load 'sheet 1' 'walk MI' camp 'save D' read --issue 679 --deadline 420` | Moved from 0,4 to 1,4, area 0 facing 1; the effect on BRUTUS 47 to 46 minutes | `'turn 2'`: did not move, area 0 at 0,4 |
+| DOS Curse | `--title curse --save WISH-SPEC-curse-632-wish-converted-resave --from-slot B --slot B --steps load 'view 2' begin 'walk MI' camp 'save D' read` | Moved from 5,13 to 6,13, area 1 facing 1; six characters, no node lost | `'turn 2'`: did not move, area 1 at 5,13 |
+| DOS Silver Blades | `--title ssb --save WISH-SPEC-ssb-299-whole-engine-resave --from-slot D --slot D --steps load 'view 2' begin 'walk 1' camp 'save E' read` | Moved from 3,3 to 3,4, area 16 facing 2 | `'turn 4'`: did not move, area 16 at 3,3 |
+| DOS Pools of Darkness | `--title darkness --amiga-disk '(SSI)(Disk 3 of 3)[a].adf' --amiga-slot SavGamB.pty --steps load 'view 4' begin 'walk 1' camp 'save D' 'items 4' read --deadline 360` | Moved from 1,2 to 2,2, map 2 facing 1; the sheet names DONALD DUCK | `'turn 4'`: did not move, map 2 at 1,2 |
+| C64 Pool | `c64acceptance.py --title pool --save WISH-SPEC-por-52-dialog-converted-resave.D64 --steps load 'view 1' 'walk KI' 'view 1' save --max-seconds 1500` | Facing 3 to 0, then 0,4 to 0,3; `place_changed` true | `'walk K'`: 0,4 facing 0, `place_changed` false |
+| C64 Curse | `--title curse --steps load 'view 1' 'walk JI' 'view 1' save` on `WISH-SPEC-curse-party-with-items.D64` | 4,4 facing 0 to 4,4 facing 3, then 3,4; `place_changed` true | `'walk J'`: 4,4 facing 3, `place_changed` false |
+| C64 Silver Blades | `--title ssb --steps load 'view 2' 'walk JI' 'view 2' save` on `WISH-SPEC-ssb-d-engine-resave-walked.D64` | 3,5 facing 2 to 3,5 facing 1, then 4,5; `place_changed` true | `'walk J'`: 3,5 facing 1, `place_changed` false |
+| Amiga Pool | `amigafoundation.py accept --title pool --manifest … --guards … --identity … --audio-proof … --attempt …` | Slot D moved 1 square from area 0 9,13 facing 0 to 9,14 facing 2, and matches the game's own save after the same walk | Slot C: did not move |
+| Amiga Curse | `amigafoundation.py accept --title curse`, the same arguments | Slot F moved 2 squares from 4,4 to 4,2, and matches the game's own save after the same walk | Slot D: did not move |
+| Amiga Silver Blades | `amigasecretsave.py accept --manifest … --guards … --identity … --journal-python /usr/bin/python3 --audio-proof …` | Slot D moved 2 squares from 3,5 to 3,7, facing 2 | Slot B: did not move |
 
-So the matrix's runs are these, plus a `walk 2` and engine save in each D1
-and D3 run, which every row already includes. The one build it needs first
-is B5 from the stage 4 plan on its ticket: `tools/convert/convertrun.py`
-calling `saveplan.prepare_save_as` and `publish` instead of
-`EditorBinding.convert`, so that the disks these runs boot are Save As's
-rehearsed bytes and not a second run of the writer. `junior-dev`, tests in
-`tests/convert/test_convertrun.py`.
+The sources: DOS Pool boots the committed C64 fixture party converted by Save
+As DOS with one staged Bless row. DOS Curse and Silver Blades boot the
+registered engine-written and converted DOS saves named above, and DOS Pools
+of Darkness boots `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`
+converted through the Convert window's route, a played save found on a disk
+image, so an input and not a measurement. The C64 titles boot registered C64
+saves. The Amiga runs boot the registered specimen (Pool
+`WISH-SPEC-por-52-c64toamiga-walk-resave`, Curse
+`WISH-SPEC-curse-c64toamiga-slotb-walked-saved-c`) or, for Silver Blades, the
+pinned C64 JOIN party `WISH-SPEC-ssb-joined-arrow-c64-672` published through
+Save As Amiga. All of it is read-only, and each run's disks are hash-checked
+before and after.
 
-## 5. Order
+**What differs per title** is in sections 2 and 3: the status token column and
+move modes (DOS), the walk letters, panel order and save sequence (C64), and
+the disks and first keys (Amiga). Three Amiga save details belong here. Curse's
+after slot is F because E is the game's own exit key on the sheet and at camp,
+and its save presses no Return after the letter and answers `N` at `EXIT GAME`.
+Pool's save asks `QUIT TO WORKBENCH YES NO` (`quit_prompt`) after each letter,
+answered `N`. Silver Blades takes no Return after the camp save's letter,
+answers `N` at `EXIT GAME`, and answers its journal question through the
+private helper under `/usr/bin/python3`.
 
-1. **D0**, then the opening-scene runs' Silver Blades run. One classifier
-   row and one boot; it closes the C64 half of a ticket that has had three
-   rounds.
-2. **D1 Pool: load, camp, rest, save, read.** Then the Bless runs' DOS run.
-3. **D1 Curse and Silver Blades: rest, save, train.** Then the cure-disease
-   runs' two clock runs and crash run, the Bless runs' later-title runs, and
-   the opening-scene runs' DOS runs.
-4. **D1 `items`, `display`, `--debug`.** Then the Detect Magic runs' DOS
-   runs and the Prayer runs 1 and 1b.
-5. **B5**, so the disks the remaining runs boot come from Save As.
-6. **D2 Pool: load, camp-list, items, save; then fight with checkpoints.**
-   Then the Detect Magic runs' C64 runs, the Prayer runs' run 2, and the
-   trait-slot runs.
-7. **D1 `join`, D2 Silver Blades items.** Then the joined-scroll specimen
-   and its C64 half.
-8. **D3.** Then the joined-scroll runs' Amiga half, the opening-scene runs'
-   Amiga runs, the Prayer runs' run 3, the Bless runs' Amiga run, and the
-   Save As matrix is complete.
+**The Amiga silence proof.** Only one WinUAE lane exists, so no two Amiga runs
+overlap. Each run passes `--audio-proof`, the JSON `winuaemute.ps1` prints
+after muting the guest's default playback endpoint and reading the mute back,
+and the driver refuses a readback older than five minutes.
 
-Steps 2 and 6 can run in parallel: D1 and D2 share no file and use different
-pools. D3 starts after the two Amiga screen reads it needs, which can run
-alongside step 2.
+**Amiga Pools of Darkness is not yet proven.** Its route mounts disk 1 in DF0
+and disk 3 in DF1 from the first frame, with disk 2 as a spare, because the
+pipe answered a runtime floppy insert with `404`. Measuring boot 4 recognised
+the title by its guard, reached the party menu with `P` and the load prompt
+with `L`, and stopped there: the prompt is `LOAD FROM WHERE?` over `POOLS`,
+`SECRET` and `EXIT`, and the slot letter pressed at it changed nothing, so no
+party was loaded, no sheet opened and no save written (exit 1, empty error,
+351 s, all three disks unchanged). The route since presses `P` at that prompt
+before the slot letter, and no boot with that route is recorded. Its guard map
+holds the title screen and a disk 2 prompt only, so no state after the title has
+a guard, and no `accept` boot has run.
+
+The foundation gate stays in front of every conversion ticket's boot on a
+platform: a run in section 4 boots only on a pair whose row above says Proven,
+and a run on Amiga Pools of Darkness waits for its pair.
 
 ## 6. Slots and evidence
 
 | pool | claim | one agent, one slot |
 |---|---|---|
-| VICE, and FS-UAE | `tools/registry/instance.py claim --game <por\|curse\|ssb\|amiga-por> --note <issue>`; the drivers claim their own | sixteen slots, `:10`-`:25`; `status` shows all sixteen clean at the time of writing |
+| VICE, and FS-UAE | `tools/registry/instance.py claim --game <por\|curse\|ssb\|amiga-por> --note <issue>`; the drivers claim their own | sixteen slots, `:10`-`:25` |
 | DOSBox | `tools.dos.dosbox.claim(note)` inside the driver | sixteen, `:50`-`:65` |
 | DOSBox-X | `tools.dos.dosboxx.claim(note)` | sixteen, `:90`-`:105` |
 | WinUAE | `winuae.ps1 claim -Holder <issue-run>` through `winvm ssh`; released in `finally` | one lane for the whole project; no two Amiga runs at once |
 
-Every emulator is headless and silent (`POR_HEADLESS=1`, `porlaunch.sh`'s
-`+sound`; the VM's audio device muted for WinUAE). `pactl` is not installed
-on the agent VM, so the silence check there is that the VM's own device is
-muted, checked through `winvm ssh` before the boot.
-
-Evidence goes under `~/.cache/wish/acceptance/<issue>/<sha>-<run>/` through
-`tools/registry/scratch.cache_dir("acceptance", issue, run)`: `run.jsonl`,
-`summary.json`, the converted save as booted, every PNG, and the engine's
-resave. The scratchpad and the temp directory are not used, because the
-flatpak VICE cannot read the temp directory and the scratchpad does not
-outlive the session. An engine-written save a test will read goes to
-`$WISH_SPECIMENS` with `specimens.py add` and its provenance before
-teardown. Nothing under `~/.cache/wish` is committed, and no game bytes are
-quoted in the closing comment beyond the node or field values the reading
-names.
+Every emulator is headless and silent, and the evidence differs by platform.
+VICE (`POR_HEADLESS=1`, `porlaunch.sh`'s `+sound`) and DOSBox (the pooled
+configuration disables the mixer, Sound Blaster and PC speaker) rest on the
+host's `virsh dumpxml agent-vm`: no sound device and an audio backend of `none`
+(`docs/233`), so a missing guest `pactl` blocks nothing. WinUAE's is the JSON
+readback `winuaemute.ps1` prints after muting the guest's default playback
+endpoint, taken through `winvm ssh` immediately before the boot and passed as
+`--audio-proof`; the driver refuses one older than five minutes
+(`.claude/rules/emulator.md`).
 
 ## 7. Who does what
 
 | work | agent | why |
 |---|---|---|
-| D0 | `junior-dev` | one classifier row named above, with its test |
-| D1, D2, D3 first builds | `reverse-engineering` | each has screens nobody has digested or read, and the digest comes off the game's own capture |
-| each later step of D1, D2, D3 | `junior-dev` | the screen is read by then; the step is a port of a named routine |
-| B5 | `junior-dev` | named on the Save As matrix's ticket |
-| every run in section 4 | `emulator-runner` | a finished driver, a step list, a named reading, one boot, a budget; it reports observations and interprets nothing |
-| the two Amiga screen reads (a second member's sheet in Pool, Magic > Display keys) and the DOS `items`, `display`, `rest` and `join` bars | `reverse-engineering` | screens read for a driver, not measurements |
-| reading a run's result against a ticket and closing it | the root, after the finding is on the issue | the ticket's own plan says what accepts |
+| The unbuilt steps of D1 (`fight`, `chain`, `break`, `--debug`) and the first build of each later D2 step | `reverse-engineering` | Each has screens or breakpoints nobody has digested, and the digest comes off the game's own capture |
+| Each later step of D1 and D2 | `junior-dev` | The screen is read by then; the step is a port of a named routine |
+| A route repair, or the guards and identity map for a new Amiga title or state | `reverse-engineering` | A screen the route does not match is read off the crops of a measuring boot, with no boot of its own |
+| The two Amiga screen reads (a second member's sheet in Pool, Magic > Display keys) | `reverse-engineering` | Screens read for a driver, not measurements |
+| The foundation runs (section 5) and every run in section 4 | `emulator-runner` | A finished driver command, a named reading, one boot per attempt and a budget; it reports observations and interprets nothing |
+| Reading a run's result against a ticket and closing it | The root, after the finding is on the issue | The ticket's own plan says what accepts |
 
 An `emulator-runner` handed a driver that cannot do a step hands the run back
 with the evidence so far and what the driver would have to do; that is the
@@ -375,8 +524,15 @@ escape hatch, and it is where a new step gets its screen read.
 
 ## 8. For Donald
 
-Nothing here waits on a decision of his. Three things he will be told once
-the runs have been made, each in player terms and none a choice:
+One decision waits on him: the label and picker title of Save As's new
+disk 1 row (#677 (Save As to the Amiga puts a Curse or Silver Blades party on a
+separate save disk that the game never reads while its own disk A is in DF0)).
+The Amiga Curse and Silver Blades runs on Wish's own output wait behind it. The
+embedded-slot staging in `amigasecretsave.py prepare` proves the
+slot bytes meanwhile, not the published container.
+
+Three things he will be told once the runs have been made, each in player
+terms and none a choice:
 
 * the DOS range on Prayer's penalty to monsters, once the Prayer runs' run
   1b is in;

@@ -838,9 +838,9 @@ reader refuse a genuine disk:
 
 ### 1.11 Amiga Curse, read on screen (#55 (Decode the Amiga Curse and Silver Blades records), #28 (Decode an Amiga saved game, not just a character file), #108 (Amiga Curse asks its code wheel, so the title cannot be driven unattended))
 
-The Curse rip still asks its code wheel, so this title could not be driven
-unattended at all until the challenge was answered from Donald's separate
-copy-protection repository. **Nothing about that is recorded here**, per
+The Curse rip asks its code wheel, so an unattended run either answers the
+challenge from Donald's separate copy-protection repository or backs out of it
+with ESC (below). **Nothing about the answering is recorded here**, per
 `.claude/rules/documentation.md`; what matters is that the game now boots,
 loads and draws, and that one answer computed from the C64 tables was accepted
 on the Amiga — CONFIRMED, one challenge.
@@ -848,10 +848,16 @@ on the Amiga — CONFIRMED, one challenge.
 **The route in**: title art takes RETURN; the `PLAY / DEMO / TRANSFER / QUIT`
 bar **does not respond to RETURN** and has to be picked by first letter, `P` —
 a second RETURN falls into the attract-mode combat demo, which looks exactly
-like a wedge; then the challenge, one character and RETURN. The party menu
-picks by first letter throughout, and `LOAD WHICH GAME:` wants the letter with
-no path prompt. **Movement did not respond to the number keys that work in
-Pool of Radiance**, nor to the arrow keys.
+like a wedge; then the challenge, one character and RETURN. **The challenge can
+also be backed out of**: on the measured disk one ESC at the cracker's intro
+reaches the copy-protection screen and a second reaches the empty party menu,
+with nothing typed, which is how `tools/amiga/amigafoundation.py` starts every
+Curse run (two consecutive boots). The party menu picks by first letter
+throughout, and `LOAD WHICH GAME:` wants the letter with no path prompt.
+**Movement is the numeric keypad**: this section first found none, because
+`tools/amiga/goldbox-a500.uae` gave Amiga port 2 the keypad as a joystick
+(§1.11a), and with `joyport1=none` keypad `8` walked the party from 4,4 to 4,2
+in two presses in each of two consecutive foundation boots.
 
 **GALAIN's whole sheet, against the record** — the block at `0x3219` of
 `SAVE/savgamA.dat`:
@@ -892,10 +898,10 @@ found in the `SAVE` drawer** -- `A B C D` on a disk carrying four -- where
 `SAVE WHICH GAME:` offers ten regardless; `BEGIN ADVENTURING` is `B`; the
 adventuring bar is `AREA CAST VIEW ENCAMP SEARCH LOOK`, so `V` opens the first
 character's sheet, `I` his items, and `E` backs out of each; `ENCAMP` is the
-same `E` from the bar, then `SAVE`, the slot letter, RETURN, and finally
-`EXIT GAME  YES  NO`, answered **`N`**. **Movement was still not found** -- the
-`4`/`6`/`8` that work in Pool of Radiance do nothing, and neither do the arrow
-keys -- and nothing in that run needed a step.
+same `E` from the bar, then `SAVE` and the slot letter, and `EXIT GAME  YES  NO`
+comes straight after, answered **`N`** -- no RETURN after the letter: the
+foundation route presses none and the game asks the exit question in two
+consecutive boots. Nothing in that run needed a step.
 
 ### 1.11a Amiga Silver Blades, read on screen (#28 (Decode an Amiga saved game, not just a character file), #331 (Amiga Silver Blades asks a journal word before it will adventure, so the title cannot be driven past its party menu))
 
