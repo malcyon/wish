@@ -234,3 +234,28 @@ def test_nothing_here_writes_outside_the_slot(tmp_path, monkeypatch):
         sess.attach(str(outside))
     with contextlib.suppress(AssertionError):
         sess.attach(str(outside))
+
+
+def test_a_save_disk_prompt_still_up_after_the_key_is_not_answered_again(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(curseload.time, "time", lambda: now[0])
+
+    class Session(por.Session):
+        def __init__(self):
+            self.save_disk = "/slot/SIDE0.D64"
+            self.attached = "/slot/SIDE1.D64"
+            self._last_prompt = 0.0
+            self.kernal = []
+
+        def attach(self, path, *a, **k):
+            now[0] += 3.5
+            self.attached = path
+
+        def press_kernal(self, code, *a, **k):
+            self.kernal.append(code)
+
+    sess = Session()
+    assert curseload.answer_prompt(sess) is True
+    now[0] += 0.35
+    assert curseload.answer_prompt(sess) is False
+    assert sess.kernal == [0x20]

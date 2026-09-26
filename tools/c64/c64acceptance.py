@@ -31,7 +31,7 @@ bytes with what it replaced.
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/effectdrive.py`'s rest) |
-| `walk MOVES` | I forward, J left, K right, M about, each judged by `position()` before and after (the status line holds the clock): `blocked` when a forward move left x,y alone, and a turn must leave the square and change the facing by its amount |
+| `walk MOVES` | I forward, J left, K right, M about, each judged by `position()` before and after (the status line holds the clock): `blocked` when a forward move left x,y alone, and a turn must leave the square and change the facing by its amount; a move that brings up a disk prompt, or lands anywhere but one square ahead, fails the walk |
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
 | `cast CASTER:SPELL>TARGET` | Curse only: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
@@ -98,6 +98,7 @@ sys.path.insert(0, str(REPO))
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import c64_port, c64_save, effects, world_state  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
+from goldbox.geo import STEP  # noqa: E402
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER  # noqa: E402
 from tools.c64 import effectdrive, inventorycheck, traitdrive  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
@@ -857,22 +858,50 @@ class PoolRun:
         start = list(self.sess.position())
         facing = start[2]
         moves = []
-        for move in route:
+        for n, move in enumerate(route):
             self.budget(1, f"walk {route}")
             before = list(self.sess.position())
-            status_moved = self.sess.walk_one(move)
+            before_rows = self.rows()
+            status_moved = self.sess.walk_one(move, tries=1)
+            resent = False
+            if not status_moved and self.rows() == before_rows:
+                # The one retry the contract allows: the game took nothing.
+                resent = True
+                status_moved = self.sess.walk_one(move, tries=1)
             refused = getattr(self.sess, "walk_refused", None)
             if refused:
                 raise self.fail("walk", f"walk {route}: {refused}")
-            self.sess.handle_prompt()
-            self.sess.settle(2)
+            # A square's event may put up a disk prompt; answering it would
+            # carry the walk into another area, so the walk ends here.
+            look_until = self.clock() + 2.0
+            while True:
+                self.budget(1, f"walk {route}")
+                screen = self.sess.screen()
+                if screen is not None and self.sess.wanted_disk(screen):
+                    raise self.fail(
+                        "walk", f"walk {route}: move {n} ({move}) from "
+                                f"{before} ran the square's event, not a "
+                                f"step: {screen.row(24).strip()}")
+                if self.clock() >= look_until:
+                    break
+                time.sleep(0.3)
             after = list(self.sess.position())
+            self.log.emit("move", move=move, n=n, before=before, after=after,
+                          resent=resent, row24=self.bar().strip())
+            if (move == "I" and after[:2] != before[:2]
+                    and before[2] is not None):
+                dx, dy = STEP[before[2]]
+                if after[:2] != [before[0] + dx, before[1] + dy]:
+                    raise self.fail(
+                        "walk", f"walk {route}: move {n} moved from {before} "
+                                f"to {after}, not one square ahead: an exit "
+                                f"or a teleport")
             if facing is not None:
                 facing = (facing + TURNS[move]) % 4
             moves.append({"move": move, "before": before, "after": after,
                           "blocked": move == "I" and before[:2] == after[:2],
                           "moved": before[:2] != after[:2],
-                          "status_moved": status_moved})
+                          "status_moved": status_moved, "resent": resent})
         end = list(self.sess.position())
         self.capture(f"walked-{route}")
         if "I" not in route and end[:2] != start[:2]:

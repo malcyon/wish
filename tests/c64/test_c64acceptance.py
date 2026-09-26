@@ -1598,9 +1598,21 @@ class WalkSession(FakeSession):
         self.walk_refused = None
         self.pressed = []
         self.drift = 0
+        self.prompts = 0
+        self.settles = 0
 
     def position(self):
         return self.x, self.y, self.facing
+
+    def handle_prompt(self, s=None):
+        self.prompts += 1
+        return False
+
+    def settle(self, seconds=0):
+        self.settles += 1
+
+    def wanted_disk(self, s):
+        return "SIDE2.D64" if "INSERT SIDE" in s.row(24) else None
 
     def walk_one(self, move, *a, **k):
         self.pressed.append(move)
@@ -1615,18 +1627,24 @@ class WalkSession(FakeSession):
         return True
 
 
-def test_walk_one_step_moves_one_square_judged_by_the_square(tmp_path):
-    sess = WalkSession()
+def _walk_run(tmp_path, sess, clock):
     run, log = _pool_run(tmp_path, sess)
+    run.clock = clock
+    return run, log
+
+
+def test_walk_one_step_moves_one_square_judged_by_the_square(tmp_path, monkeypatch):
+    sess = WalkSession()
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
     got = run.walk("I")
     log.close()
     assert got["position"] == [5, 4, 0] and got["squares_moved"] == 1
     assert got["blocked"] == [] and got["asked_forward"] == 1
 
 
-def test_a_bump_that_ticks_the_clock_is_blocked_and_not_a_step(tmp_path):
+def test_a_bump_that_ticks_the_clock_is_blocked_and_not_a_step(tmp_path, monkeypatch):
     sess = WalkSession(walls={(5, 4)})
-    run, log = _pool_run(tmp_path, sess)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
     got = run.walk("I")
     log.close()
     assert sess.pressed == ["I"]
@@ -1635,22 +1653,113 @@ def test_a_bump_that_ticks_the_clock_is_blocked_and_not_a_step(tmp_path):
     assert got["position"] == [5, 5, 0]
 
 
-def test_walk_k_is_the_control_it_turns_and_stays_on_the_square(tmp_path):
+def test_walk_k_is_the_control_it_turns_and_stays_on_the_square(tmp_path, monkeypatch):
     sess = WalkSession()
-    run, log = _pool_run(tmp_path, sess)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
     got = run.walk("K")
     log.close()
     assert got["position"] == [5, 5, 1] and got["squares_moved"] == 0
     assert got["asked_forward"] == 0 and got["expected_facing"] == 1
 
 
-def test_a_turn_that_leaves_the_wrong_facing_is_lost(tmp_path):
+def test_a_turn_that_leaves_the_wrong_facing_is_lost(tmp_path, monkeypatch):
     sess = WalkSession()
     sess.drift = 1
-    run, log = _pool_run(tmp_path, sess)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
     with pytest.raises(A.StepFailed, match="should leave the party facing 1"):
         run.walk("K")
     log.close()
+
+
+class PressSession(WalkSession):
+    """A `walk_one` that honours `tries` as the base does: it presses again
+    while nothing changed, and `script` says what each press does."""
+
+    def __init__(self, script, **kw):
+        super().__init__(**kw)
+        self.script = list(script)
+
+    def walk_one(self, move, *a, tries=4, **k):
+        for _ in range(tries):
+            self.pressed.append(move)
+            changed = self.script.pop(0)(self)
+            if changed:
+                return True
+        return False
+
+
+def _gateway_text(sess):
+    sess.screens["world"] = _window({17: "THE WEST GATEWAY OPENS"}, WORLD_BAR)
+    return False
+
+
+def _step_off_the_map(sess):
+    sess.x, sess.y = 15, 4
+    return True
+
+
+def _nothing(sess):
+    return False
+
+
+def _step(sess):
+    sess.y -= 1
+    sess.clock += 1
+    return True
+
+
+def test_a_move_that_puts_up_text_is_pressed_once(tmp_path, monkeypatch):
+    sess = PressSession([_gateway_text, _step_off_the_map], x=0, y=4, facing=3)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    got = run.walk("I")
+    log.close()
+    assert sess.pressed == ["I"]
+    assert got["blocked"] == [0] and got["position"] == [0, 4, 3]
+
+
+def test_a_key_the_game_did_not_take_is_sent_once_more(tmp_path, monkeypatch):
+    sess = PressSession([_nothing, _step], x=5, y=5, facing=0)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    got = run.walk("I")
+    log.close()
+    assert sess.pressed == ["I", "I"]
+    assert got["moves"][0]["resent"] is True and got["squares_moved"] == 1
+
+
+def test_a_move_that_brings_up_a_disk_prompt_fails_the_walk_and_answers_nothing(
+        tmp_path, monkeypatch):
+    def prompt(sess):
+        sess.screens["world"] = _window({}, "INSERT SIDE # 2, AND PRESS ANY KEY.")
+        return True
+
+    sess = PressSession([prompt], x=0, y=4, facing=3)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="ran the square's event"):
+        run.walk("I")
+    log.close()
+    assert sess.prompts == 0 and sess.settles == 0
+    assert sess.pressed == ["I"]
+
+
+def test_a_forward_move_that_lands_off_the_next_square_fails_the_walk(
+        tmp_path, monkeypatch):
+    sess = PressSession([_step_off_the_map], x=0, y=4, facing=3)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="not one square ahead"):
+        run.walk("I")
+    log.close()
+
+
+def test_every_key_is_logged_with_its_time(tmp_path, monkeypatch):
+    sess = WalkSession()
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.walk("KI")
+    log.close()
+    moves = [json.loads(line) for line in
+             (tmp_path / "run.jsonl").read_text().splitlines()]
+    moves = [m for m in moves if m["kind"] == "move"]
+    assert [m["move"] for m in moves] == ["K", "I"]
+    assert all(m["t"] > 0 and "row24" in m for m in moves)
 
 
 @pytest.mark.parametrize("arg", ["", "X", "IQ", "walk"])

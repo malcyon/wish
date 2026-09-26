@@ -283,6 +283,11 @@ def answer_prompt(sess, how: str = "attach", note=None) -> bool:
         return False
     if time.time() - sess._last_prompt < 2.0:
         return False
+    last_want = getattr(sess, "_last_want", None)
+    if (last_want == sess.save_disk
+            and time.time() - sess._last_prompt < sess.PROMPT_HOLD):
+        return False
+    sess._last_want = sess.save_disk
     sess._last_prompt = time.time()
     if how == "attach":
         sess.attach(sess.save_disk)      # and `Session.attach` settles
@@ -290,6 +295,7 @@ def answer_prompt(sess, how: str = "attach", note=None) -> bool:
         note(event="save-disk-prompt", how=how,
              attached=os.path.basename(sess.attached))
     sess.press_kernal(0x20)
+    sess._last_prompt = time.time()
     return True
 
 

@@ -155,3 +155,57 @@ def test_a_prompt_the_driver_cannot_read_is_not_answered_as_a_bar():
     assert sess.wait_for_world(timeout=5.0, interval=0.0) is True
     assert sess.attaches == []
     assert sess.kernal == []
+
+
+# -- the cooldown starts at the key, not before the disk goes in --------------
+
+
+class _Time:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+def _timed_session(monkeypatch, prompt=SIDE_PROMPT):
+    """A session whose `attach` takes 3.5 s of a clock the test owns."""
+    clock = _Time()
+    monkeypatch.setattr(S.time, "time", clock)
+    sess = FakeSession([screen_of(prompt)])
+    real_attach = sess.attach
+
+    def slow_attach(path, unit: int = 8, settle=None):
+        real_attach(path)
+        clock.now += 3.5
+
+    sess.attach = slow_attach
+    sess._last_prompt = 0.0
+    return sess, clock
+
+
+def test_a_prompt_still_up_after_the_key_is_not_answered_again(monkeypatch):
+    sess, clock = _timed_session(monkeypatch)
+    assert sess.handle_prompt() is True
+    clock.now += 0.35
+    assert sess.handle_prompt() is False
+    clock.now += 2.15
+    assert sess.handle_prompt() is False
+    assert sess.keys == ["space"]
+
+
+def test_the_same_prompt_is_answered_again_once_the_hold_has_passed(monkeypatch):
+    sess, clock = _timed_session(monkeypatch)
+    assert sess.handle_prompt() is True
+    clock.now += 8.5
+    assert sess.handle_prompt() is True
+    assert sess.keys == ["space", "space"]
+    assert len(sess.attaches) == 1
+
+
+def test_a_different_disk_is_answered_after_two_seconds(monkeypatch):
+    sess, clock = _timed_session(monkeypatch)
+    assert sess.handle_prompt() is True
+    clock.now += 2.5
+    assert sess.handle_prompt(screen_of("INSERT SIDE # 2, AND PRESS ANY KEY.")) is True
+    assert sess.keys == ["space", "space"]

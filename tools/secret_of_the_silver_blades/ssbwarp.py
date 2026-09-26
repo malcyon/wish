@@ -332,11 +332,16 @@ class SSBSession(por.Session):
             self.log(f"  prompt names {os.path.basename(want)}, which is not "
                      f"staged -- not attaching")
             return False
+        if (want == self._last_want
+                and time.time() - self._last_prompt < self.PROMPT_HOLD):
+            return False
+        self._last_want = want
         self._last_prompt = time.time()
         if os.path.abspath(want) != self.attached:
             self.log(f"  prompt -> {os.path.basename(want)}")
             self.attach(want)
         self.kbd.key("space")
+        self._last_prompt = time.time()
         return True
 
     #: What to press at a screen nothing recognises, in turn. **This rip opens

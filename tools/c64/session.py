@@ -745,6 +745,12 @@ class Session:
     two sessions able to run at once.
     """
 
+    #: The disk the last prompt answer asked for, and how long a repeat of
+    #: that same disk is held off after the key (seconds); test fakes that
+    #: skip `__init__` rely on the class attribute.
+    _last_want = None
+    PROMPT_HOLD = 8.0
+
     #: Which title this driver is driving, and the only thing in this class
     #: that is per-title.  Everything below the title screen is shared -- the
     #: monitor, the keyboard, the screen reader, the menu walker -- but the
@@ -1125,6 +1131,12 @@ class Session:
         want = self.wanted_disk(s)
         if want is None:
             return False
+        # The prompt outlives the key: the game reads the directory first.  A
+        # repeat of the same disk inside `PROMPT_HOLD` is that, not a new ask.
+        if (want == self._last_want
+                and time.time() - self._last_prompt < self.PROMPT_HOLD):
+            return False
+        self._last_want = want
         self._last_prompt = time.time()
         swapped = os.path.abspath(want) != self.attached
         if swapped:
@@ -1142,6 +1154,9 @@ class Session:
                  f"  answered the prompt with space again, with "
                  f"{os.path.basename(want)} already in the drive")
         self.kbd.key("space")
+        # Measured from the key, not the start: `attach` takes 3.5 s, longer
+        # than the cooldown, so a stamp before it never held anything off.
+        self._last_prompt = time.time()
         return True
 
     def wait_text(self, needle, timeout=180.0, interval=0.35):

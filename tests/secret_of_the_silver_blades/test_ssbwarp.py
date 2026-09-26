@@ -176,3 +176,32 @@ def test_enter_world_escapes_once_the_pc_is_genuinely_idle(monkeypatch):
                          stop_at_idle=False)
     assert ok is False
     assert "Escape" in sent
+
+
+def test_a_prompt_still_up_after_the_key_is_not_answered_again(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(SSB.time, "time", lambda: now[0])
+    keys = []
+
+    class Session(SSB.SSBSession):
+        def __init__(self):
+            self.here = "/slot"
+            self.attached = "/slot/SIDE1.D64"
+            self.save_disk = "/slot/SIDE0.D64"
+            self._last_prompt = 0.0
+            self.kbd = type("Kbd", (), {"key": lambda k, name: keys.append(name)})()
+
+        def attach(self, path, *a, **k):
+            now[0] += 3.5
+            self.attached = path
+
+        def log(self, *a):
+            pass
+
+    sess = Session()
+    monkeypatch.setattr(SSB.os.path, "exists", lambda p: True)
+    screen = FakeScreen("INSERT SIDE # 2, AND PRESS ANY KEY.")
+    assert sess.handle_prompt(screen)
+    now[0] += 0.35
+    assert not sess.handle_prompt(screen)
+    assert keys == ["space"]

@@ -517,11 +517,16 @@ class CurseSession(por.Session):
         want = self.wanted_disk(s)
         if want is None:
             return False
+        if (want == self._last_want
+                and time.time() - self._last_prompt < self.PROMPT_HOLD):
+            return False
+        self._last_want = want
         self._last_prompt = time.time()
         if os.path.abspath(want) != self.attached:
             self.log(f"  prompt -> {os.path.basename(want)}")
             self.attach(want)
         self.press_kernal(0x20)
+        self._last_prompt = time.time()
         return True
 
     def boot(self) -> bool:

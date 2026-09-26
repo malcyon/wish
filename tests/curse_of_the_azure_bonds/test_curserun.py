@@ -201,3 +201,18 @@ def test_boot_resends_a_fastloader_answer_a_vice_dialog_swallowed(monkeypatch):
 
     assert game.sent == ["y", "y"]
     assert order == ["dialog-check", "send", "dialog-check", "send"]
+
+
+def test_a_prompt_still_up_after_the_key_is_not_answered_again(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(C.time, "time", lambda: now[0])
+    session = FakeSession(side=2)
+    session.attach = lambda path: now.__setitem__(0, now[0] + 3.5)
+    screen = SimpleNamespace(text=lambda: "INSERT SIDE # 2, AND PRESS ANY KEY.")
+
+    assert session.handle_prompt(screen)
+    now[0] += 0.35
+    assert not session.handle_prompt(screen)
+    now[0] += 8.5
+    assert session.handle_prompt(screen)
+    assert [e for e in session.events if e[0] == "kernal"] == [("kernal", 0x20)] * 2
