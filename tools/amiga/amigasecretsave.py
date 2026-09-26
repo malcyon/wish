@@ -1167,7 +1167,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
 
     def check_identity(state: str, crop: pathlib.Path) -> None:
         if identity is not None and _has_rule(identity, state) and not identity(state, crop):
-            raise RouteError(IDENTITY_MESSAGES[state])
+            raise RouteError(IDENTITY_MESSAGES.get(
+                state, f"{state} shows a party other than the prepared party"))
 
     def run_title_answer() -> None:
         """Answer a challenge screen with X and RET while its guard matches, three rounds at most."""

@@ -859,3 +859,31 @@ def test_a_picker_screen_is_recognised_whatever_its_capitals():
     route = (("P", "party_menu", "key"), ("S", "Camp_Picker", "key"), ("E", "camp", "key"))
     with pytest.raises(drive.RouteError, match="on 'Camp_Picker', where a picker screen"):
         make_title(route=route, measure_route=route, kept_letters=("B", "E"), plain_keys=PLAIN)
+
+
+class _WorldIdentity:
+    """An identity map with a rule for `world` as well as the two the driver requires."""
+
+    def __init__(self, fail=()):
+        self.fail = set(fail)
+
+    def __contains__(self, state):
+        return state in ("sheet", "loaded_menu", "world")
+
+    def __call__(self, state, path):
+        return state not in self.fail
+
+
+def test_a_world_screen_showing_another_party_stops_the_run_with_a_readable_error(
+        tmp_path, clock):
+    _, result = _run(tmp_path, clock, identity=_WorldIdentity(fail={"world"}))
+    assert result["success"] is False
+    assert result["error"] == ("RouteError: world shows a party other than the prepared party")
+    assert result["lost"] is None  # a refusal, not a run that was lost to a KeyError
+
+
+def test_the_named_identity_messages_are_unchanged(tmp_path, clock):
+    assert drive.IDENTITY_MESSAGES == {"sheet": "sheet shows another member",
+                                       "loaded_menu": "loaded_menu shows another party"}
+    _, result = _run(tmp_path, clock, identity=_IdentityMap(fail={"loaded_menu"}))
+    assert result["error"] == "RouteError: loaded_menu shows another party"
