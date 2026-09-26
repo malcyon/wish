@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pathlib
 
 import pytest
 
@@ -454,6 +455,35 @@ def test_the_screen_after_b_is_recognised_as_the_loaded_menu(tmp_path, clock, mo
     result = _menu_run(tmp_path, clock, monkeypatch, guard=guard)
     assert ("loaded_menu", f"{len(amigasecretsave.ROUTE) + 1:02d}-post_write.png") in checked
     assert result["error"] == ""
+
+
+def test_an_unrecognised_post_write_screen_fails_a_run_whose_slot_b_is_correct(
+        tmp_path, clock, monkeypatch):
+    # Slot B is right and nothing else moved, so only the error clause can fail it.
+    result = _menu_run(
+        tmp_path, clock, monkeypatch,
+        guard=lambda s, p: s != "loaded_menu" or "post_write" not in p.name)
+    assert result["menu_save_problems"] == []
+    assert result["df0_unchanged"] is False
+    assert "loaded_menu screen was not recognized" in result["error"]
+    assert result["success"] is False
+
+
+GUARDED_BOOT_DF0 = pathlib.Path.home() / (
+    ".cache/wish/acceptance/672/79aa61820e-amiga-guarded1/guarded1/fetched-df0.adf")
+
+
+def test_the_real_slot_reader_reads_the_party_the_game_saved():
+    # Specimen: the boot disk fetched from a guarded run in which the game itself wrote slot B.
+    if not GUARDED_BOOT_DF0.exists():
+        pytest.skip(f"the guarded boot 1 disk is not cached at {GUARDED_BOOT_DF0}")
+    fetched = AmigaDisk(GUARDED_BOOT_DF0.read_bytes())
+    reading = amigasecretsave._slot_reading(fetched, "B")
+    assert reading["sha256"].startswith("78f2a16b")
+    assert reading["place"] == {"area": 16, "x": 3, "y": 5, "facing": 2}
+    assert reading["names"] == [
+        "Guy de Valois", "PAINE", "EPONA", "MALACHITE", "DOMINIC", "MORGAINE"]
+    assert "members" in reading["inventory"]
 
 
 def test_guarded_mode_passes_when_slot_b_is_the_prepared_party(tmp_path, clock, monkeypatch):
