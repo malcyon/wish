@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from goldbox.amiga_adf import AmigaDisk
@@ -58,6 +60,14 @@ class ScreenGuest(FailedPostWriteGuest):
         self.grabs = getattr(self, "grabs", 0) + 1
         raw.write_bytes(f"grab {self.grabs}".encode())
         cropped.write_bytes(f"frame {shown}".encode())
+
+    def grab(self, state, raw, cropped, timeout=None):
+        self.calls.append(("grab", state))
+        self.at.append((state, self.clock.now))
+        self.grabs = getattr(self, "grabs", 0) + 1
+        raw.write_bytes(f"grab {self.grabs}".encode())
+        cropped.write_bytes(f"frame {self.presses}".encode())
+        return True
 
 
 def _keys(guest):
@@ -159,8 +169,11 @@ def test_the_minimum_wait_is_spent_before_each_capture(tmp_path, clock):
 
 def test_default_waits_follow_the_measured_timings():
     waits = amigasecretsave.default_min_waits()
-    assert waits["version"] == 50 and waits["load_picker"] == 20
+    assert waits["party_menu"] == 15 and waits["load_picker"] == 20
     assert waits["loaded_menu"] == 20 and waits["items"] == 15
+    # Boot 2 measured the version line and the bar on one screen, so the
+    # route has no separate version state to wait 50 s for.
+    assert "version" not in waits
 
 
 def test_a_guard_that_matches_late_is_polled_for(tmp_path, clock):
@@ -177,7 +190,7 @@ def test_a_guard_that_matches_late_is_polled_for(tmp_path, clock):
         _prepared(tmp_path), guest=guest, guard=guard, holder="wish672-test",
         audio_proof=_audio_proof(tmp_path), route=(("RET", "version"),))
     assert seen["n"] == 4
-    assert [c for c in guest.calls if c[0] == "capture"].count(("capture", "01-version")) == 4
+    assert guest.calls.count(("grab", "01-version")) == 4
     assert clock.sleeps.count(amigasecretsave.GUARD_POLL) == 3
 
 
@@ -333,3 +346,160 @@ def test_measure_fails_when_the_guest_alters_the_boot_disk(tmp_path, clock):
     assert result["df0_unchanged"] is False and result["df1_unchanged"] is True
     assert result["slot_b_sha256"] is None and result["route_changed"] is True
     assert result["success"] is False
+
+
+class PartialGuards:
+    """A guard map holding only some states, each recognised on its nth grab."""
+
+    def __init__(self, after):
+        self.after, self.seen = dict(after), {}
+
+    def __contains__(self, state):
+        return state in self.after
+
+    def __call__(self, state, path):
+        assert state in self.after, f"{state} has no guard and must not be checked"
+        self.seen[state] = self.seen.get(state, 0) + 1
+        need = self.after[state]
+        return need is not None and self.seen[state] >= need
+
+
+def test_the_route_leaves_the_play_bar_by_its_letter():
+    keys = [key for key, _ in amigasecretsave.ROUTE]
+    assert amigasecretsave.ROUTE[:3] == (
+        ("P", "party_menu"), ("L", "load_picker"),
+        (amigasecretsave.SLOT_LETTER, "loaded_menu"))
+    assert "RET" not in keys and "B" not in keys
+
+
+def test_guard_polling_never_waits_for_a_settled_screen(tmp_path, clock):
+    class NeverStill(ScreenGuest):
+        def capture(self, state, raw, cropped, timeout=None):
+            super().capture(state, raw, cropped, timeout)
+            raise amigasecretsave.RouteError(f"{state} did not settle inside 120s")
+
+    guest = NeverStill(clock)
+    result = amigasecretsave.run_recon(
+        _prepared(tmp_path), guest=guest, guard=lambda s, p: True,
+        holder="wish672-test", audio_proof=_audio_proof(tmp_path))
+    assert _keys(guest) == [k for k, _ in amigasecretsave.ROUTE] + ["B"]
+    assert "post-write did not settle" in result["error"]
+
+
+def test_a_grab_is_bounded_by_one_shot_and_the_deadline(tmp_path, clock):
+    class Timed(ScreenGuest):
+        timeouts: list = []
+
+        def grab(self, state, raw, cropped, timeout=None):
+            self.timeouts.append(timeout)
+            return super().grab(state, raw, cropped, timeout)
+
+    guest = Timed(clock)
+    guest.timeouts = []
+    amigasecretsave.run_recon(
+        _prepared(tmp_path), guest=guest, guard=lambda s, p: True,
+        holder="wish672-test", audio_proof=_audio_proof(tmp_path))
+    assert guest.timeouts
+    assert all(0 < t <= amigasecretsave.SHOT_SECONDS for t in guest.timeouts)
+
+
+def test_measure_waits_for_the_title_guard_before_the_first_key(tmp_path, clock):
+    guest = ScreenGuest(clock)
+    guards = PartialGuards({"title": 3})
+    result = _measure(tmp_path, guest, guard=guards)
+    first = next(i for i, c in enumerate(guest.calls) if c[0] == "press")
+    assert [c for c in guest.calls[:first] if c[0] in ("grab", "capture")] == [
+        ("grab", "00-boot-00"), ("grab", "00-boot-01"), ("grab", "00-boot-01")]
+    assert clock.sleeps[:2] == [amigasecretsave.TITLE_POLL] * 2
+    recognized = [e for e in result["events"] if e.get("recognized") == "title"]
+    assert len(recognized) == 1
+    assert (tmp_path / "recon1" / "shots" / "00-boot-01.png").exists()
+    assert _keys(guest) == [k for k, _ in amigasecretsave.ROUTE]
+    assert result["success"] is True
+
+
+def test_measure_presses_nothing_when_the_title_is_never_recognized(tmp_path, clock):
+    guest = ScreenGuest(clock)
+    result = _measure(tmp_path, guest, guard=PartialGuards({"title": None}))
+    assert "title screen was not recognized within 180s" in result["error"]
+    assert _keys(guest) == []
+    assert result["success"] is False
+    assert _cleanup_ran(guest)
+
+
+def test_measure_stops_at_a_guarded_state_it_never_recognizes(tmp_path, clock):
+    guest = ScreenGuest(clock)
+    result = _measure(tmp_path, guest,
+                      guard=PartialGuards({"title": 1, "party_menu": None}))
+    assert "party_menu screen was not recognized" in result["error"]
+    assert _keys(guest) == ["P"]
+    assert (tmp_path / "recon1" / "shots" / "01-party_menu.png").exists()
+    assert result["success"] is False
+    assert _cleanup_ran(guest)
+
+
+def _image(path, colour, patch=None):
+    from PIL import Image
+
+    image = Image.new("RGB", (720, 568), colour)
+    if patch:
+        image.paste(patch[1], patch[0])
+    image.save(path)
+    return path
+
+
+def _full_map(tmp_path, drop=()):
+    shot = _image(tmp_path / "shot.png", (0, 51, 102))
+    rule = amigasecretsave.guard_rule(shot, (0, 0, 8, 8))
+    states = {"title", *(s for _, s in amigasecretsave.ROUTE)} - set(drop)
+    path = tmp_path / "guards.json"
+    path.write_text(json.dumps({s: rule for s in states}))
+    return path
+
+
+def test_a_guard_map_for_the_measured_route_loads(tmp_path):
+    guards = amigasecretsave.PixelGuards(_full_map(tmp_path))
+    assert "title" in guards and "party_menu" in guards
+    assert "version" not in guards
+
+
+def test_guarded_mode_refuses_a_guard_map_missing_a_route_state(tmp_path):
+    guards = amigasecretsave.PixelGuards(_full_map(tmp_path, drop=("items",)))
+    guest = FailedPostWriteGuest()
+    with pytest.raises(amigasecretsave.RouteError, match="lacks.*items"):
+        amigasecretsave.run_recon(
+            _prepared(tmp_path), guest=guest, guard=guards,
+            holder="wish672-test", audio_proof=_audio_proof(tmp_path))
+    assert guest.calls == []
+
+
+def test_a_guard_rule_matches_its_own_box_and_not_a_neighbour(tmp_path):
+    bar = ((60, 400, 300, 430), (238, 238, 238))
+    title = _image(tmp_path / "title.png", (0, 51, 102), bar)
+    story = _image(tmp_path / "story.png", (0, 51, 102))
+    moved = _image(tmp_path / "moved.png", (0, 51, 102),
+                   ((60, 401, 300, 431), (238, 238, 238)))
+    rule = amigasecretsave.guard_rule(title, (60, 400, 300, 430))
+    path = tmp_path / "guards.json"
+    path.write_text(json.dumps({"title": rule}))
+    guards = amigasecretsave.PixelGuards(path)
+    assert guards("title", title)
+    assert not guards("title", story) and not guards("title", moved)
+    assert not guards("credits", title)
+
+
+def test_the_guard_command_refuses_a_box_that_matches_a_neighbour(tmp_path, capsys):
+    bar = ((60, 400, 300, 430), (238, 238, 238))
+    title = _image(tmp_path / "title.png", (0, 51, 102), bar)
+    story = _image(tmp_path / "story.png", (0, 51, 102))
+    out = tmp_path / "guards.json"
+    common = ["guard", "--state", "title", "--crop", str(title), "--out", str(out)]
+    # The blue corner is the same on both screens, so it cannot tell them apart.
+    assert amigasecretsave.main(
+        common + ["--box", "0,0,40,40", "--unlike", str(story)]) == 2
+    assert "also matches" in capsys.readouterr().err and not out.exists()
+    assert amigasecretsave.main(
+        common + ["--box", "60,400,300,430", "--unlike", str(story)]) == 0
+    written = json.loads(out.read_text())
+    assert written["title"]["box"] == [60, 400, 300, 430]
+    assert amigasecretsave.PixelGuards(out)("title", title)

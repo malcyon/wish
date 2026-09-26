@@ -48,6 +48,12 @@ class FailedPostWriteGuest:
         raw.write_bytes(b"raw " + state.encode())
         cropped.write_bytes(b"crop " + state.encode())
 
+    def grab(self, state, raw, cropped, timeout=None):
+        self.calls.append(("grab", state))
+        raw.write_bytes(b"raw " + state.encode())
+        cropped.write_bytes(b"crop " + state.encode())
+        return True
+
     def press(self, holder, key, timeout=None):
         self.calls.append(("press", holder, key))
         if key == "B":
@@ -436,6 +442,46 @@ def test_capture_with_no_time_left_takes_no_shot(tmp_path, monkeypatch, desktop_
     with pytest.raises(amigasecretsave.RouteError, match="did not settle"):
         amigasecretsave.WinGuest().capture(
             "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=0)
+
+    assert desktop.shots == 0
+
+
+def test_grab_takes_one_shot_of_a_screen_that_never_holds_still(
+        tmp_path, monkeypatch, desktop_clock):
+    from PIL import Image
+
+    # The intro's story text changes between every two grabs, as it did on boot 2.
+    desktop = _Desktop(monkeypatch, desktop_clock,
+                       client_colours=[(n, 9, 9) for n in range(1, 40)])
+
+    made = amigasecretsave.WinGuest().grab(
+        "title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=120)
+
+    assert made is True
+    assert desktop.shots == 1
+    assert desktop.timeouts == [amigasecretsave.SHOT_SECONDS]
+    assert Image.open(tmp_path / "s.png").getpixel((5, 5)) == (1, 9, 9)
+
+
+def test_grab_without_the_emulator_window_makes_no_crop(
+        tmp_path, monkeypatch, desktop_clock):
+    desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)],
+                       windowless=1)
+
+    made = amigasecretsave.WinGuest().grab(
+        "title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=120)
+
+    assert made is False
+    assert desktop.shots == 1
+    assert (tmp_path / "s.raw.png").exists() and not (tmp_path / "s.png").exists()
+
+
+def test_grab_with_no_time_left_takes_no_shot(tmp_path, monkeypatch, desktop_clock):
+    desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
+
+    with pytest.raises(amigasecretsave.RouteError, match="no time left"):
+        amigasecretsave.WinGuest().grab(
+            "title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=0)
 
     assert desktop.shots == 0
 

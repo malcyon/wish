@@ -260,6 +260,23 @@ class WinGuest:
                 except Exception:
                     pass
 
+    def grab(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
+             timeout: float) -> bool:
+        """One grab, cropped to the Amiga screen; False when WinUAE's window is not up.
+
+        A guard reads a static box, so an animated screen needs no settling.
+        """
+        if timeout <= 0:
+            raise RouteError(f"no time left to grab {state}")
+        allowed = min(SHOT_SECONDS, timeout)
+        self._run("shot", str(raw), "--timeout", str(max(1, int(allowed))),
+                  timeout=allowed)
+        try:
+            amigashots.crop(raw, cropped)
+        except LookupError:
+            return False
+        return True
+
     def press(self, holder: str, key: str, timeout: float) -> str:
         name = key.upper()
         code = amigadrive.KEYS.get(name)
@@ -278,44 +295,71 @@ class WinGuest:
         return self._lane(holder, "release", timeout)
 
 
+def _box_digest(image_path: pathlib.Path, box, state: str) -> str:
+    """SHA-256 of the RGB pixels inside `box` of a cropped Amiga screen."""
+    from PIL import Image  # noqa: PLC0415
+
+    with Image.open(image_path) as image:
+        if (len(box) != 4 or min(box) < 0 or box[2] > image.width
+                or box[3] > image.height or box[0] >= box[2]
+                or box[1] >= box[3]):
+            raise RouteError(f"invalid crop box for {state}")
+        pixels = image.convert("RGB").crop(tuple(box)).tobytes()
+    return hashlib.sha256(pixels).hexdigest()
+
+
+def guard_rule(image_path: pathlib.Path, box, state: str = "guard") -> dict[str, Any]:
+    """The `PixelGuards` rule that recognises `box` exactly as this crop shows it."""
+    box = [int(n) for n in box]
+    return {"box": box, "sha256": _box_digest(pathlib.Path(image_path), box, state)}
+
+
 class PixelGuards:
     """Exact static regions from measured captures; an unknown screen fails closed."""
 
     def __init__(self, path: pathlib.Path):
-        self.rules = json.loads(path.read_text())
-        required = {"title", "version", "play", "party_menu", "load_picker",
-                    "loaded_menu", "sheet", "items", "save_picker"}
-        if not required.issubset(self.rules):
-            raise RouteError(f"screen guard map lacks {sorted(required - self.rules.keys())}")
+        self.rules = json.loads(pathlib.Path(path).read_text())
+        for state, rule in self.rules.items():
+            if (not isinstance(rule, dict) or not isinstance(rule.get("box"), list)
+                    or not re.fullmatch(r"[0-9a-f]{64}", str(rule.get("sha256")))):
+                raise RouteError(f"screen guard for {state} needs a box and a sha256")
+
+    def __contains__(self, state: str) -> bool:
+        return state in self.rules
 
     def __call__(self, state: str, image_path: pathlib.Path) -> bool:
-        from PIL import Image  # noqa: PLC0415
-
         rule = self.rules.get(state)
         if rule is None:
             return False
-        with Image.open(image_path) as image:
-            box = rule["box"]
-            if (len(box) != 4 or min(box) < 0 or box[2] > image.width
-                    or box[3] > image.height or box[0] >= box[2]
-                    or box[1] >= box[3]):
-                raise RouteError(f"invalid crop box for {state}")
-            pixels = image.convert("RGB").crop(tuple(box)).tobytes()
-        return hashlib.sha256(pixels).hexdigest() == rule["sha256"]
+        return _box_digest(image_path, rule["box"], state) == rule["sha256"]
 
 
+def _guards(guard: Any, state: str) -> bool:
+    """Whether `guard` has a rule for `state`; a bare callable guards every state."""
+    if guard is None:
+        return False
+    try:
+        return state in guard
+    except TypeError:
+        return True
+
+
+# `title` is the screen the route starts from: the version line over the
+# PLAY / DEMO / QUIT bar, which takes `P` and ignores RETURN. Left alone, the
+# attract loop moves on from it to the story intro and the credits.
 ROUTE = (
-    ("RET", "version"), ("RET", "play"), ("P", "party_menu"),
-    ("L", "load_picker"), (SLOT_LETTER, "loaded_menu"), ("V", "sheet"),
-    ("I", "items"), ("E", "sheet"), ("E", "loaded_menu"),
+    ("P", "party_menu"), ("L", "load_picker"), (SLOT_LETTER, "loaded_menu"),
+    ("V", "sheet"), ("I", "items"), ("E", "sheet"), ("E", "loaded_menu"),
     ("S", "save_picker"),
 )
 
 
-MIN_WAIT_OVERRIDES = {"version": 50.0, "load_picker": 20.0, "loaded_menu": 20.0}
+MIN_WAIT_OVERRIDES = {"load_picker": 20.0, "loaded_menu": 20.0}
 DEFAULT_MIN_WAIT = 15.0
-TITLE_POLL = 10.0
+# Single grabs every ~8-10 s in all against a bar that held still for at least 24 s.
+TITLE_POLL = 2.0
 TITLE_LIMIT = 180.0
+MEASURE_BOOT_POLL = 10.0
 MEASURE_TITLE_SPAN = 120.0
 GUARD_POLL = 5.0
 GUARD_LIMIT = 120.0
@@ -363,12 +407,21 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               measure: bool = False) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
-    Guarded mode presses the first write key after the route. Measure mode needs
-    no guards, presses no write key and nothing after the route, and stops at the
-    first key that leaves the settled screen unchanged.
+    A guarded state is found by polling single grabs until its static box
+    matches, so an animated screen needs no settling. Guarded mode needs a
+    guard for `title` and every route state, and presses the first write key
+    after the route. Measure mode takes any subset of guards, settles the
+    screens it has none for, presses no write key and nothing after the route,
+    and stops at the first unrecognised guarded state or at the first key that
+    leaves the screen unchanged.
     """
     if guard is None and not measure:
         raise RouteError("a screen guard is required unless measuring")
+    if not measure:
+        missing = [s for s in dict.fromkeys(("title", *(s for _, s in route)))
+                   if not _guards(guard, s)]
+        if missing:
+            raise RouteError(f"screen guard map lacks {missing}")
     min_waits = min_waits or {}
     write_keys = tuple(k.upper() for k in write_keys)
     if not all(write_keys):
@@ -439,10 +492,18 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         return min(cap * cleanup_scale, left)
 
     def capture(state: str, *, check: bool = True,
-                cleanup: bool = False) -> str:
+                cleanup: bool = False, settle: bool = True) -> str:
+        """Capture `state` and return its crop's hash; "" when a grab found no window."""
         raw, cropped = shots / f"{state}.raw.png", shots / f"{state}.png"
-        limit = cleanup_limit(90) if cleanup else route_limit(120)
-        guest.capture(state, raw, cropped, timeout=limit)
+        if settle:
+            limit = cleanup_limit(90) if cleanup else route_limit(120)
+            guest.capture(state, raw, cropped, timeout=limit)
+        else:
+            cropped.unlink(missing_ok=True)
+            if not guest.grab(state, raw, cropped, timeout=route_limit(SHOT_SECONDS)):
+                result["events"].append({"state": state, "raw": str(raw),
+                                         "sha256": sha256(raw), "crop": None})
+                return ""
         digest = sha256(cropped)
         result["events"].append({"state": state, "raw": str(raw),
                                  "crop": str(cropped), "sha256": sha256(raw),
@@ -458,33 +519,48 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             time.sleep(seconds)
 
     def until_guard(state: str, name: str, first_wait: float,
-                    poll: float, limit: float) -> None:
-        """Wait, capture, and re-capture every `poll` seconds until the guard matches."""
+                    poll: float, limit: float) -> str:
+        """Wait, then grab every `poll` seconds until the guard matches; keep the last crop."""
         wait(first_wait)
         started = time.monotonic()
         while True:
-            capture(name, check=False)
-            if guard(state, shots / f"{name}.png"):
-                return
+            digest = capture(name, check=False, settle=False)
+            if digest and guard(state, shots / f"{name}.png"):
+                result["events"][-1]["recognized"] = state
+                return digest
             if time.monotonic() - started >= limit:
-                raise RouteError(f"{state} screen was not recognized within {limit:.0f}s")
+                raise RouteError(f"{state} screen was not recognized within {limit:.0f}s;"
+                                 f" kept {shots / f'{name}.png'}")
             wait(poll)
 
     def measure_boot() -> str:
-        """Capture the boot every TITLE_POLL seconds, keeping each distinct frame."""
+        """Capture the boot, keeping each distinct frame, until the title or a fixed span.
+
+        With a `title` guard, single grabs every TITLE_POLL seconds end at the
+        first recognised title, or fail after TITLE_LIMIT. Without one, settled
+        captures every MEASURE_BOOT_POLL seconds end after MEASURE_TITLE_SPAN.
+        """
+        title = _guards(guard, "title")
         started, last, n = time.monotonic(), "", 0
         while True:
             name = f"00-boot-{n:02d}"
-            digest = capture(name, check=False)
-            if digest == last:
+            digest = capture(name, check=False, settle=not title)
+            if title and digest and guard("title", shots / f"{name}.png"):
+                result["events"][-1]["recognized"] = "title"
+                return digest
+            if digest and digest == last:
                 for path in (shots / f"{name}.raw.png", shots / f"{name}.png"):
                     path.unlink(missing_ok=True)
                 result["events"][-1]["kept"] = False
-            else:
+            elif digest:
                 last, n = digest, n + 1
-            if time.monotonic() - started >= MEASURE_TITLE_SPAN:
+            elapsed = time.monotonic() - started
+            if title and elapsed >= TITLE_LIMIT:
+                raise RouteError(
+                    f"title screen was not recognized within {TITLE_LIMIT:.0f}s")
+            if not title and elapsed >= MEASURE_TITLE_SPAN:
                 return last
-            wait(TITLE_POLL)
+            wait(TITLE_POLL if title else MEASURE_BOOT_POLL)
 
     try:
         receipt = guest.claim(holder, timeout=route_limit(30))
@@ -510,8 +586,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     break
                 guest.press(holder, key, timeout=route_limit(30))
                 result["events"].append({"key": key, "step": n})
-                wait(min_waits.get(state, 0))
-                digest = capture(f"{n:02d}-{state}", check=False)
+                name = f"{n:02d}-{state}"
+                if _guards(guard, state):
+                    digest = until_guard(state, name, min_waits.get(state, 0),
+                                         GUARD_POLL, GUARD_LIMIT)
+                else:
+                    wait(min_waits.get(state, 0))
+                    digest = capture(name, check=False)
                 if digest == previous:
                     result["events"].append({"unchanged": key, "step": n})
                     changed = False
@@ -636,9 +717,10 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("recon", help="guarded first load and menu-save probe")
     r.add_argument("--manifest", required=True, type=pathlib.Path)
     r.add_argument("--guards", type=pathlib.Path,
-                   help="screen guard JSON; required unless --measure")
+                   help="screen guard JSON; required unless --measure, which "
+                        "checks the states it names and settles the rest")
     r.add_argument("--measure", action="store_true",
-                   help="capture only: no guards, never presses a write key")
+                   help="capture and record; never presses a write key")
     r.add_argument("--route", default=None,
                    help="KEY:state,KEY:state; default is the built-in route")
     r.add_argument("--write-keys", default="B",
@@ -646,12 +728,32 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--audio-proof", required=True, type=pathlib.Path)
     r.add_argument("--attempt", default="recon1")
     r.add_argument("--holder", default=None)
+    g = sub.add_parser("guard", help="add one state's static box from a measured crop "
+                                     "to a guard JSON, refusing a box a neighbour shares")
+    g.add_argument("--state", required=True)
+    g.add_argument("--crop", required=True, type=pathlib.Path,
+                   help="a 720x568 crop of the state, as recon saved it")
+    g.add_argument("--box", required=True, help="X0,Y0,X1,Y1 inside the crop")
+    g.add_argument("--unlike", type=pathlib.Path, action="append", default=[],
+                   help="a crop of a neighbouring state the box must not match")
+    g.add_argument("--out", required=True, type=pathlib.Path)
     sub.add_parser("accept", help="unavailable until the route is measured")
     sub.add_parser("spindisk-control", help="unavailable until the exact-output failure is measured")
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare":
             print(prepare(args.source, args.run_id))
+            return 0
+        if args.command == "guard":
+            box = [int(n) for n in args.box.split(",")]
+            rule = guard_rule(args.crop, box, args.state)
+            for other in args.unlike:
+                if _box_digest(other, box, args.state) == rule["sha256"]:
+                    raise RouteError(f"{args.state} box {box} also matches {other}")
+            rules = json.loads(args.out.read_text()) if args.out.exists() else {}
+            rules[args.state] = rule
+            args.out.write_text(json.dumps(rules, indent=2, sort_keys=True) + "\n")
+            print(json.dumps({args.state: rule}, sort_keys=True))
             return 0
         if args.command == "recon":
             if args.guards is None and not args.measure:
