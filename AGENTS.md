@@ -23,6 +23,14 @@ trigger below describes a situation, including discussion before an edit.
 | Write, change or run a test, or touch `tests/` | `testing.md` |
 | Drive an emulator, or touch `automap/`, `tools/c64/session.py` or `tools/registry/instance.py` | `emulator.md` |
 
+## Adding a platform
+
+Before planning or implementing support for another game platform, read
+[Requirements for Adding a New Platform](docs/236-requirements-for-adding-a-new-platform.md).
+Complete its emulator harness foundation gate across all four games before
+starting conversion work that depends on the new platform. Keep the title
+matrix and evidence explicit; an unavailable dependency is unfinished work.
+
 ## Name every issue you cite
 
 In every reply to Donald, issue comment and document, name **every** cited

@@ -5,6 +5,13 @@ paths:
 
 # Testing a conversion
 
+## Establish a new platform's harness first
+
+Before starting conversion work that depends on a new platform, complete the
+foundation gate in [Requirements for Adding a New Platform](../../docs/236-requirements-for-adding-a-new-platform.md).
+That gate covers all four games and proves the harness with existing game
+saves before it is used to judge converted saves.
+
 ## Refusing a save is not a fix
 
 Refusing a valid save is a conversion bug, not a solution to one. Missing
