@@ -1128,8 +1128,9 @@ def test_pool_walk_mi_turns_twice_then_steps_and_records_each_map_state(tmp_path
     game, d = _pool_walker(tmp_path)
     got = d.walk("MI")
     assert d.game.keys == ["Right", "Right", "Up"]
-    assert got["square_before"] is not None
-    assert got["square_before"] != got["square_after"]
+    # `status_square` of the tokens `PoolMap` draws for x = 0 and x = 1.
+    assert got["square_before"] == "0bcb75efaa7a593d"
+    assert got["square_after"] == "11c0be6f8ad8d9fc"
     assert got["status_before"] != got["status_after"]
     assert len(got["screens"]) == 4
     assert d.where == "map"
@@ -3070,3 +3071,253 @@ def test_an_unknown_bar_is_not_taken_for_the_town(tmp_path, pod_yes_no):
     with pytest.raises(da.StepFailed, match="lost-begin-screen"):
         d.begin()
     assert game.into_town == []
+
+
+# -- turn N: the control of a walk ---------------------------------------------
+
+
+def test_a_pool_turn_presses_right_n_times_and_leaves_the_square_alone(tmp_path):
+    game, d = _pool_walker(tmp_path)
+    got = d.turn(4)
+    assert d.game.keys == ["Right"] * 4
+    assert got["square_before"] == got["square_after"] == "0bcb75efaa7a593d"
+    assert got["turns"] == 4 and len(got["screens"]) == 5
+    assert d.where == "map" and game.x == 0
+
+
+def test_a_pool_turn_that_changes_the_square_fails_as_lost_walk_turn(tmp_path):
+    game, d = _pool_walker(tmp_path)
+    real = d.game.turn_right
+
+    def turn_right():
+        real()
+        if len(d.game.keys) == 3:
+            game.x += 1
+        return True
+
+    d.game.turn_right = turn_right
+    with pytest.raises(da.StepFailed, match="square changed on a turn") as raised:
+        d.turn(4)
+    assert "lost-walk-turn-3" in str(raised.value)
+    assert d.game.keys == ["Right"] * 3
+
+
+def test_a_pool_turn_with_a_blank_status_line_has_no_baseline(tmp_path):
+    game, d = _pool_walker(tmp_path, status_on=False)
+    with pytest.raises(da.StepFailed, match="blank"):
+        d.turn(4)
+    assert d.game.keys == []
+
+
+def test_pools_of_darkness_turns_in_move_mode_and_leaves_it(tmp_path):
+    game, d = _dungeon_driver(tmp_path)
+    map_ink = d.world_ink
+    got = d.turn(4)
+    assert game.keys == ["m"] + ["Right"] * 4 + ["Escape"]
+    assert game.x == 1 and game.mode == "dmap" and game.line == 1
+    assert got["square_before"] == got["square_after"] is not None
+    assert d.where == "map" and d.game.world_bar == map_ink
+
+
+def test_a_blank_move_mode_takes_its_baseline_from_the_first_turn(tmp_path):
+    game, d = _dungeon_driver(tmp_path, blank_status=True)
+    got = d.turn(4)
+    assert game.keys == ["m"] + ["Right"] * 4 + ["Escape"]
+    assert got["square_before"] is not None and got["square_after"] == got["square_before"]
+
+
+def test_one_turn_from_a_blank_move_mode_compares_nothing_and_stops(tmp_path):
+    game, d = _dungeon_driver(tmp_path, blank_status=True)
+    with pytest.raises(da.StepFailed, match="nothing to compare"):
+        d.turn(1)
+    assert d.game.world_bar == d.world_ink
+
+
+def test_a_darkness_turn_that_changes_the_square_fails_as_lost_walk_turn(tmp_path):
+    game, d = _dungeon_driver(tmp_path)
+    real = game.key
+
+    def key(k, gap=0.0):
+        real(k, gap)
+        if k == "Right" and game.keys.count("Right") == 2:
+            game.x += 1
+
+    game.key = key
+    with pytest.raises(da.StepFailed, match="square changed on a turn") as raised:
+        d.turn(4)
+    assert "lost-walk-turn-2" in str(raised.value)
+    assert game.keys == ["m", "Right", "Right"]
+    assert d.game.world_bar == d.world_ink
+
+
+def test_a_darkness_turn_whose_key_moves_the_roster_stops(tmp_path):
+    game, d = _dungeon_driver(tmp_path)
+    real = game.key
+
+    def key(k, gap=0.0):
+        real(k, gap)
+        if k == "Right":
+            game._roster("Down")
+
+    game.key = key
+    with pytest.raises(da.StepFailed, match="roster"):
+        d.turn(4)
+
+
+def test_curse_is_refused_a_turn_as_its_status_column_is_unmeasured(tmp_path):
+    with pytest.raises(ValueError, match="unmeasured"):
+        da.validate_steps(_steps("load", "begin", "turn 4"), "curse")
+    game = PoolMap(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "curse")
+    d.where = "map"
+    with pytest.raises(da.StepFailed, match="unmeasured"):
+        d.turn(4)
+    with pytest.raises(da.StepFailed, match="unmeasured"):
+        da.status_column("curse")
+
+
+def test_silver_blades_is_refused_a_turn_its_move_keys_are_not_driven(tmp_path):
+    with pytest.raises(ValueError, match="not driven"):
+        da.validate_steps(_steps("load", "begin", "turn 4"), "ssb")
+
+
+@pytest.mark.parametrize("text", ["turn", "turn 0", "turn 5", "turn x", "turn 1 2"])
+def test_a_turn_takes_one_to_four(text):
+    with pytest.raises(ValueError):
+        da.parse_step(text)
+
+
+def test_orders_a_turn_control_allows():
+    da.validate_steps(_steps("load", "turn 4", "camp", "save D", "read"), "pool")
+    da.validate_steps(_steps("load", "begin", "turn 4", "camp", "save D", "read"),
+                      "darkness")
+    with pytest.raises(ValueError, match="turn needs the map"):
+        da.validate_steps(_steps("load", "turn 4"), "darkness")
+
+
+def test_the_measured_titles_share_one_status_column_and_status_square_takes_it(tmp_path):
+    assert {t: da.status_column(t) for t in ("pool", "ssb", "darkness")} == {
+        "pool": 136, "ssb": 136, "darkness": 136}
+    game = PoolMap(tmp_path)
+    frame = game.capture()
+    assert da.status_square(frame, 136) == da.status_square(frame) == "0bcb75efaa7a593d"
+    assert da.status_square(frame, 144) != da.status_square(frame, 136)
+
+
+_TURN_STEPS = ["load", "turn 4", "camp", "save D", "read"]
+
+
+def _turn_run(monkeypatch, tmp_path, read):
+    _walk_run(monkeypatch, tmp_path, read)
+    monkeypatch.setattr(da.Driver, "turn", lambda self, n: {"route": "turn"},
+                        raising=False)
+
+
+def test_a_turn_control_whose_saved_place_is_unchanged_passes(monkeypatch, tmp_path):
+    _turn_run(monkeypatch, tmp_path, _read(changed=False))
+    assert da.run(_run_args(tmp_path, _TURN_STEPS)) == 0
+    assert _summary(tmp_path)["completed"] is True
+
+
+def test_a_turn_control_whose_saved_place_moved_fails(monkeypatch, tmp_path):
+    _turn_run(monkeypatch, tmp_path, _read(changed=True))
+    assert da.run(_run_args(tmp_path, _TURN_STEPS)) == 1
+    assert "the turn moved the party" in _summary(tmp_path)["lost"]
+
+
+def test_a_turn_control_with_no_read_or_no_computed_place_fails(monkeypatch, tmp_path):
+    _turn_run(monkeypatch, tmp_path, None)
+    assert da.run(_run_args(tmp_path, _TURN_STEPS[:-1])) == 1
+    assert "no read step" in _summary(tmp_path)["lost"]
+
+
+def test_a_walk_with_turns_that_did_not_move_still_fails_the_run(monkeypatch, tmp_path):
+    _turn_run(monkeypatch, tmp_path, _read(changed=False))
+    steps = ["load", "turn 4", "walk MI", "camp", "save D", "read"]
+    assert da.run(_run_args(tmp_path, steps)) == 1
+    assert "did not move the party" in _summary(tmp_path)["lost"]
+
+
+def test_read_reports_did_not_move_after_turns_only(monkeypatch, tmp_path, capsys):
+    (tmp_path / "save").mkdir()
+    slot = {"slot": "D", "clock": [0] * 6, "clock_minutes": 0, "characters": [],
+            "place": {"x": 1, "y": 2, "area": 0, "facing": 1, "set_out": True}}
+    monkeypatch.setattr(da, "read_slot", lambda folder, letter: dict(slot))
+    got = da.read_step(tmp_path / "save", tmp_path / "out", "A", ["D"],
+                       _steps("turn 4"), [])
+    assert got["slots"]["D"]["place_changed"] is False
+    assert "did not move" in capsys.readouterr().out
+
+
+# -- the signal, the interrupt and the wrapper's margin --------------------------
+
+
+def test_terminated_is_not_an_exception_so_no_handler_swallows_it():
+    assert not issubclass(da.Terminated, Exception)
+
+
+def test_a_sigterm_inside_the_failure_capture_is_not_swallowed(tmp_path):
+    game = FakePool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A")
+
+    def broken(name, allow_blank=False):
+        raise da.Terminated("signal 15")
+
+    game.shot = broken
+    with pytest.raises(da.Terminated):
+        d.fail("walk", "the map bar did not return")
+    assert d.capture_error is None
+
+
+def test_a_sigterm_right_after_the_lease_still_releases_the_slot(monkeypatch, tmp_path):
+    import os
+    import signal
+    log = _fake_run(monkeypatch, tmp_path)
+    before = signal.getsignal(signal.SIGTERM)
+
+    def claim(note=""):
+        log.append("claim")
+        os.kill(os.getpid(), signal.SIGTERM)
+        return _Slot(log)
+
+    monkeypatch.setattr(dosbox, "claim", claim)
+    with pytest.raises(da.Terminated):
+        da.run(_run_args(tmp_path, ["load"]))
+    assert log == ["claim", "release"]
+    assert signal.getsignal(signal.SIGTERM) == before
+    assert signal.pthread_sigmask(signal.SIG_BLOCK, set()) & {signal.SIGTERM} == set()
+
+
+def test_the_deadline_help_names_the_kill_escalation(capsys):
+    with pytest.raises(SystemExit):
+        da.main(["--help"])
+    assert "timeout -k" in " ".join(capsys.readouterr().out.split())
+
+
+@pytest.mark.parametrize("error", [KeyboardInterrupt(), SystemExit(3)])
+def test_an_interrupt_or_exit_is_recorded_as_lost_and_still_raised(
+        monkeypatch, tmp_path, error):
+    _walk_run(monkeypatch, tmp_path, _read())
+
+    def load(self):
+        raise error
+
+    monkeypatch.setattr(da.Driver, "load", load)
+    with pytest.raises(type(error)):
+        da.run(_run_args(tmp_path, _WALK_STEPS))
+    got = _summary(tmp_path)
+    assert got["completed"] is False and type(error).__name__ in got["lost"]
+
+
+def test_a_cleanup_window_the_wrappers_margin_cannot_hold_is_refused():
+    da.Deadline(_Clock(), 900.0)
+    with pytest.raises(ValueError, match="wrapper"):
+        da.Deadline(_Clock(), 900.0, cleanup=da.WRAPPER_MARGIN)
+
+
+def test_no_wait_in_the_driver_outruns_the_margin_the_constant_allows():
+    import re
+    source = pathlib.Path(da.__file__).read_text()
+    longest = max(float(n) for n in re.findall(r"timeout=(\d+(?:\.\d+)?)", source))
+    assert longest <= da.LONGEST_UNBOUNDED_WAIT
+    assert da.CLEANUP_SECONDS + da.LONGEST_UNBOUNDED_WAIT <= da.WRAPPER_MARGIN

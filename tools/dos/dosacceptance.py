@@ -53,6 +53,7 @@ conversion logged.
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk 1` | Pool: turn around and step one square.  Pools of Darkness: press MOVE, step one square turning right past a wall, and press EXIT back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
+| `turn N` | Pool and Pools of Darkness, N from 1 to 4: the walk's control.  Pools of Darkness presses MOVE first and EXIT after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move").  Curse is refused: its status column is unmeasured |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement and items |
 
 **Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
@@ -341,6 +342,12 @@ POD_MOVE_EXIT = "Escape"
 #: Text column 17, where the status line's text starts; the cell at x 128 is
 #: the viewport's frame.
 STATUS_TEXT_X = 136
+#: Where each title's status line starts its `x,y` token, by title key.  Pool
+#: of Radiance, Silver Blades and Pools of Darkness share 136 (104 captures);
+#: Curse of the Azure Bonds is absent because no DOS capture of it has been
+#: measured, and `status_column` refuses it rather than guess.
+STATUS_COLUMNS = {"pool": STATUS_TEXT_X, "ssb": STATUS_TEXT_X,
+                  "darkness": STATUS_TEXT_X}
 #: `Select`, the only word of the `PICK CHARACTER` prompt (`GAME.EXE` data
 #: `DS:0x2859` over `DS:0x2B8D`), keyed by its first letter.  The prompt then
 #: views the character the roster highlight is on (`AA:39`, 0x2452E).
@@ -377,16 +384,28 @@ def name_signature(screen: dosbox.Screen, x: int, y: int) -> str:
     return sha.hexdigest()[:16]
 
 
-def status_square(screen: dosbox.Screen) -> str | None:
+def status_column(title: str) -> int:
+    """The pixel column `title`'s status token starts at, or a refusal."""
+    try:
+        return STATUS_COLUMNS[title]
+    except KeyError:
+        raise StepFailed(
+            f"{title}'s status-line column is unmeasured (no DOS capture of it "
+            "has been read), so its square cannot be read; the measuring boot "
+            "of #679 package 7 supplies it") from None
+
+
+def status_square(screen: dosbox.Screen, column: int = STATUS_TEXT_X) -> str | None:
     """The `x,y` token that opens the status line, or None while it is blank.
 
-    Read cell by cell from `STATUS_TEXT_X` up to the first blank cell, so the
-    facing letter and the clock after it never enter the value.
+    Read cell by cell from `column` (`status_column` gives a title's) up to
+    the first blank cell, so the facing letter and the clock after it never
+    enter the value.
     """
     x0, y, w, h = dosbox.STATUS
     sha = hashlib.sha1()
     cells = 0
-    for x in range(STATUS_TEXT_X, x0 + w, CELL):
+    for x in range(column, x0 + w, CELL):
         cell = (x, y, CELL, h)
         if screen.flat(cell):
             break
@@ -419,6 +438,8 @@ BLANK_NAME = hashlib.sha1(
     * POD_NAME_CELLS).hexdigest()[:16]
 #: The walk each title drives: Pool's turn-around, Pools of Darkness' step.
 WALKS = {"pool": "MI", "darkness": "1"}
+#: The titles whose `turn N` control is driven: those with a walk to check.
+TURNS = frozenset(WALKS)
 
 
 def pod_menu_after(savgam: bytes | None) -> dict[str, int]:
@@ -526,8 +547,13 @@ class DeadlineReached(TimeoutError):
     """The run's route window is over; what is left belongs to the cleanup."""
 
 
-class Terminated(RuntimeError):
-    """The wrapper's `timeout` sent SIGTERM."""
+class Terminated(BaseException):
+    """The wrapper's `timeout` sent SIGTERM.
+
+    A `BaseException`, so that no `except Exception` on the way -- the failure
+    capture's, a step's -- can swallow it and leave the run going with the
+    signal already ignored.
+    """
 
 
 #: The run's whole budget, and the part of it kept for the cleanup (the
@@ -537,6 +563,11 @@ class Terminated(RuntimeError):
 DEADLINE_SECONDS = 900.0
 CLEANUP_SECONDS = 120.0
 WRAPPER_MARGIN = 300.0
+#: The longest single wait that is not cut to the route window: a settle's
+#: `timeout=90.0`.  The cleanup and one such wait, begun just inside the route
+#: window, must both fit in `WRAPPER_MARGIN`, or the wrapper's `timeout` ends the
+#: run before the driver has written its summary.
+LONGEST_UNBOUNDED_WAIT = 90.0
 #: The longest one capture or key press takes, with room to spare: a wait with
 #: less than this left does not start another.
 ACTION_SECONDS = 5.0
@@ -552,6 +583,11 @@ class Deadline:
     def __init__(self, clock, seconds: float, cleanup: float = CLEANUP_SECONDS):
         self.clock, self.seconds = clock, float(seconds)
         self.cleanup = min(float(cleanup), self.seconds / 2)
+        if self.cleanup + LONGEST_UNBOUNDED_WAIT > WRAPPER_MARGIN:
+            raise ValueError(
+                f"a cleanup window of {self.cleanup:.0f} s and an unbounded wait "
+                f"of {LONGEST_UNBOUNDED_WAIT:.0f} s exceed the {WRAPPER_MARGIN:.0f} s "
+                "the wrapper's `timeout` is given beyond the deadline")
         self.begun = clock()
         self.route_end = self.begun + self.seconds - self.cleanup
 
@@ -613,7 +649,7 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
     return days, hours, mins // REST_STEP
 
 
-STEP_HELP = ("load, begin, 'walk MI', 'walk 1', camp, display, 'rest 5m', 'save D', "
+STEP_HELP = ("load, begin, 'walk MI', 'walk 1', 'turn 4', camp, display, 'rest 5m', 'save D', "
              "'train 1', 'sheet 1', 'items 1', 'view 1', 'shot NAME', 'press KEY', "
              "read")
 
@@ -636,6 +672,8 @@ def parse_step(text: str) -> Step:
         return Step(kind, text, line=int(words[1]))
     if kind == "walk" and len(words) == 2 and words[1].upper() in WALKS.values():
         return Step(kind, text, key=words[1].upper())
+    if kind == "turn" and len(words) == 2 and re.fullmatch(r"[1-4]", words[1]):
+        return Step(kind, text, line=int(words[1]))
     if kind == "shot" and len(words) == 2 and re.fullmatch(r"[\w-]+", words[1]):
         return Step(kind, text, name=words[1])
     if kind == "press" and len(words) == 2 and re.fullmatch(r"\w+", words[1]):
@@ -695,6 +733,15 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                                  f"{step.text!r}")
             if where != "map":
                 raise ValueError(f"walk needs the map: {step.text!r}")
+        elif k == "turn":
+            if title == "curse":
+                raise ValueError("turn is refused in curse: its status-line column "
+                                 "is unmeasured (#679 package 7 measures it)")
+            if title not in TURNS:
+                raise ValueError(f"turn is driven in pool and darkness only, not "
+                                 f"{title}: its move mode is not driven here")
+            if where != "map":
+                raise ValueError(f"turn needs the map: {step.text!r}")
         elif k == "sheet" and title == "pool":
             if where != "map":
                 raise ValueError(f"sheet needs the loaded map: {step.text!r}")
@@ -1850,7 +1897,7 @@ class Driver:
             raise self.fail(label, "the map bar did not return (combat or "
                             "an unknown screen)")
         status = self.game.status()
-        square = status_square(screen)
+        square = status_square(screen, status_column(self.title.key))
         screens.append({"shot": self.shot(label), "bar": bar_signature(screen),
                         "status": status, "square": square})
         return status, square
@@ -1910,6 +1957,7 @@ class Driver:
         and a key that moved the roster highlight instead stops the run.
         """
         screens: list[dict] = []
+        column = status_column(self.title.key)
         map_screen = self.s.capture()
         if not self.on_world(map_screen):
             raise self.fail("walk-before", "the map bar is not showing")
@@ -1929,7 +1977,7 @@ class Driver:
                                 f"{POD_MOVE} (no move mode)")
             move_bar = bar_signature(settled)
             self.game.record_map(settled)
-            origin = status_square(settled)
+            origin = status_square(settled, column)
             screens.append({"shot": self.shot("walk-move"), "bar": move_bar,
                             "square": origin})
 
@@ -1941,7 +1989,7 @@ class Driver:
                 if roster_line(screen, "camp", self.party_size) != line:
                     raise self.fail("walk-roster", "the roster highlight moved: "
                                     "the key went to the roster selector")
-                square = status_square(screen)
+                square = status_square(screen, column)
                 screens.append({"shot": self.shot(label), "bar": move_bar,
                                 "square": square})
                 return square
@@ -2000,6 +2048,123 @@ class Driver:
                     "status_before": map_screen.ink(dosbox.STATUS),
                     "status_after": back.ink(dosbox.STATUS),
                     "roster_line": line, "screens": screens}
+        finally:
+            self.game.record_map(map_screen)
+
+    def turn(self, presses: int) -> dict:
+        """Turn right `presses` times on the map and prove no square changed.
+
+        The control of a walk: a turn moves the facing and never the square,
+        so a run whose `read` then shows the saved place unchanged has shown
+        that the walk's change was the step.  The party is left on the map, so
+        `camp`, `save` and `read` may follow.
+        """
+        if self.where != "map":
+            raise StepFailed("turn needs the loaded map")
+        if self.title.key == "pool":
+            return self._turn_pool(presses)
+        status_column(self.title.key)       # Curse: refused as unmeasured
+        if self.title.key == "darkness":
+            return self._turn_move(presses)
+        raise StepFailed(f"turn is driven in pool and darkness only: {self.title.key}'s "
+                         "move mode is not driven by this harness")
+
+    def _turn_pool(self, presses: int) -> dict:
+        screens: list[dict] = []
+        _, origin = self.map_status("turn-before", screens)
+        if origin is None:
+            raise self.fail("walk-status", "the status line is blank on the map, "
+                            "so there is no starting square (a shop or an "
+                            "arrival draws it later)")
+        for n in range(1, presses + 1):
+            label = f"walk-turn-{n}"
+            self.check_deadline(label)
+            if not self.game.turn_right():
+                raise self.fail(label, "the map bar did not return after "
+                                "turning (combat or an unknown screen)")
+            _, square = self.map_status(label, screens)
+            if square != origin:
+                raise self.fail(label, "the square changed on a turn (or the "
+                                "status line went blank)")
+        return {"route": "turn", "turns": presses, "map_bar": self.world_sig,
+                "square_before": origin, "square_after": origin,
+                "screens": screens}
+
+    def _turn_move(self, presses: int) -> dict:
+        """Pools of Darkness: press MOVE, turn `presses` times, press EXIT.
+
+        Move mode draws no status line on entry, so when it is blank the first
+        turn's reading is the baseline and only the turns after it are
+        compared; one turn alone then proves nothing and stops the run.
+        """
+        screens: list[dict] = []
+        column = status_column(self.title.key)
+        map_screen = self.s.capture()
+        if not self.on_world(map_screen):
+            raise self.fail("walk-before", "the map bar is not showing")
+        line = roster_line(map_screen, "camp", self.party_size)
+        if line is None:
+            raise self.fail("walk-roster", "no highlighted roster line on the "
+                            "map to tell a roster move from a turn")
+        map_bar = self.world_sig
+        try:
+            self.s.key(POD_MOVE)
+            if not self.s.wait_while_ink(dosbox.BAR, self.world_ink, 15.0):
+                raise self.fail("walk-move", f"the map bar did not change after "
+                                f"{POD_MOVE} (no move mode)")
+            settled = self.s.settle(quiet=0.6, timeout=30.0)
+            if bar_signature(settled) == self.world_sig:
+                raise self.fail("walk-move", f"the map bar did not change after "
+                                f"{POD_MOVE} (no move mode)")
+            move_bar = bar_signature(settled)
+            self.game.record_map(settled)
+            origin = status_square(settled, column)
+            screens.append({"shot": self.shot("walk-move"), "bar": move_bar,
+                            "square": origin})
+            compared = 0
+            for n in range(1, presses + 1):
+                label = f"walk-turn-{n}"
+                self.check_deadline(label)
+                if not self.game.turn_right():
+                    raise self.fail(label, "the move bar did not return after "
+                                    "turning")
+                screen = self.s.settle(quiet=0.6, timeout=30.0)
+                if bar_signature(screen) != move_bar:
+                    raise self.fail(label, "the move bar did not return (combat "
+                                    "or an unknown screen)")
+                if roster_line(screen, "camp", self.party_size) != line:
+                    raise self.fail("walk-roster", "the roster highlight moved: "
+                                    "the key went to the roster selector")
+                square = status_square(screen, column)
+                screens.append({"shot": self.shot(label), "bar": move_bar,
+                                "square": square})
+                if square is None:
+                    raise self.fail("walk-status", "the status line was blank "
+                                    "after a turn")
+                if origin is None:
+                    origin = square
+                elif square != origin:
+                    raise self.fail(label, "the square changed on a turn")
+                else:
+                    compared += 1
+            if not compared:
+                raise self.fail("walk-status", "the status line was blank on "
+                                "entering move mode, so one turn gives a starting "
+                                "square and nothing to compare it with; ask for "
+                                "two turns or more")
+            if bar_signature(self.s.capture()) != move_bar:
+                raise self.fail("walk-back", "not at the move bar to leave it")
+            self.s.key(POD_MOVE_EXIT)
+            if not self.s.wait_until_ink(dosbox.BAR, self.world_ink, 15.0):
+                raise self.fail("walk-back", f"{POD_MOVE_EXIT} did not return "
+                                "to the map bar")
+            back = self.s.settle(quiet=0.6, timeout=30.0)
+            screens.append({"shot": self.shot("walk-back"),
+                            "bar": bar_signature(back)})
+            return {"route": "turn", "turns": presses, "map_bar": map_bar,
+                    "move_bar": move_bar, "square_before": origin,
+                    "square_after": origin, "roster_line": line,
+                    "screens": screens}
         finally:
             self.game.record_map(map_screen)
 
@@ -2405,6 +2570,19 @@ class Driver:
         raise self.fail("train-back", "the party menu never came back after training")
 
 
+@contextlib.contextmanager
+def deferred_sigterm():
+    """Hold SIGTERM back for the body; a signal that arrived is delivered after it."""
+    if not hasattr(signal, "pthread_sigmask"):
+        yield
+        return
+    signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+    try:
+        yield
+    finally:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
+
+
 def run(args, clock=time.monotonic) -> int:
     """`_run`, with the evidence log closed on every way out, including an early raise.
 
@@ -2498,8 +2676,11 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         # Every callback runs even when an earlier one raises: a failed close
         # must not leave a slot leased.
         game = title.find_game()
-        slot = dosbox.claim(args.note)
-        stack.callback(slot.release)
+        # A SIGTERM between the lease and its release callback would leave the
+        # slot leased: hold it back until the callback is registered.
+        with deferred_sigterm():
+            slot = dosbox.claim(args.note)
+            stack.callback(slot.release)
         # `START.EXE` is `Session`'s own default, so only another launcher
         # is named.
         session = (dosbox.Session(slot, game) if title.exe == "START.EXE"
@@ -2559,6 +2740,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.camp()
                 elif step.kind == "walk":
                     r = d.walk(step.key)
+                elif step.kind == "turn":
+                    r = d.turn(step.line)
                 elif step.kind == "rest":
                     r = d.rest(step.minutes)
                 elif step.kind == "display":
@@ -2594,6 +2777,12 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         except (StepFailed, ssbimport.RouteLost) as e:
             summary["lost"] = str(e)
             note(event="lost", why=str(e))
+        except (KeyboardInterrupt, SystemExit) as e:
+            # Recorded and passed on: the ExitStack still writes the summary.
+            why = f"{type(e).__name__}({str(e)!r})"
+            summary["lost"] = why
+            note(event="lost", why=why)
+            raise
         except (TimeoutError, dosbox.DosboxUnavailable, dosbox.BlankCapture,
                 Terminated) as e:
             why = f"{type(e).__name__}: {e}"
@@ -2659,29 +2848,36 @@ def place_changed(before: dict, after: dict) -> bool:
 
 
 def walk_verdict(steps: list[Step], read: dict | None) -> str | None:
-    """Why a run that asked for a walk has not shown one, or None.
+    """Why a run that asked for a walk or a turn has not shown it, or None.
 
     The proof is the place decoded from the game-written save, the same in
-    every title: the last save the run made must not be at the square the
-    installed one was.  A place that was not computed proves nothing.
+    every title: after a walk the last save the run made must not be at the
+    square the installed one was; after `turn` steps alone, the control, it
+    must be.  A place that was not computed proves nothing.
     """
-    if not any(s.kind == "walk" for s in steps):
+    walked = any(s.kind == "walk" for s in steps)
+    if not walked and not any(s.kind == "turn" for s in steps):
         return None
+    asked = "a walk" if walked else "a turn"
     if read is None:
-        return ("a walk was asked and no read step decoded a saved place, so "
-                "nothing shows the party moved")
+        return (f"{asked} was asked and no read step decoded a saved place, so "
+                "nothing shows " + ("the party moved" if walked else "it did not move"))
     slots = read.get("slots") or {}
     order = [x for x in read.get("saved") or [] if x in slots] or list(slots)
     if not order:
-        return "a walk was asked and no saved slot was read, so nothing shows the party moved"
+        return (f"{asked} was asked and no saved slot was read, so nothing shows "
+                + ("the party moved" if walked else "it did not move"))
     last = order[-1]
     slot = slots[last]
     if "place_changed" not in slot or "x" not in (slot.get("place") or {}):
-        return (f"a walk was asked and slot {last}'s place was not computed "
+        return (f"{asked} was asked and slot {last}'s place was not computed "
                 f"({(slot.get('place') or {}).get('error', 'no place read')})")
-    if not slot["place_changed"]:
+    if walked and not slot["place_changed"]:
         return (f"the walk did not move the party: the game-written slot {last} "
                 "is at the square the installed slot was")
+    if not walked and slot["place_changed"]:
+        return (f"the turn moved the party: the game-written slot {last} is not "
+                "at the square the installed slot was")
     return None
 
 
@@ -2706,7 +2902,7 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
             "experience": compare_experience(before, after),
             "members": compare_members(before, after),
         }
-        if any(st.kind == "walk" for st in steps):
+        if any(st.kind in ("walk", "turn") for st in steps):
             result["slots"][x]["place_changed"] = place_changed(before, after)
         previous = after
     if saved and expects:
@@ -2813,7 +3009,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--deadline", type=float, default=DEADLINE_SECONDS,
                     help=f"seconds the whole run may take, {CLEANUP_SECONDS:.0f} "
                          "of them kept for the cleanup; wrap the command in "
-                         f"`timeout` at least {WRAPPER_MARGIN:.0f} s longer")
+                         f"`timeout -k 30` (a plain `timeout` sends SIGTERM only) "
+                         f"set at least {WRAPPER_MARGIN:.0f} s longer")
     args = ap.parse_args(argv)
     try:
         for s in args.steps:
