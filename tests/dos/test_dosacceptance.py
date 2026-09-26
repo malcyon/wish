@@ -2556,6 +2556,26 @@ def test_halve_that_moves_the_highlight_stops_the_run(tmp_path, monkeypatch):
         d.halve(1, 1)
 
 
+def test_halve_on_a_full_list_is_refused_before_h(tmp_path):
+    game, d = _itemed(tmp_path)
+    game.keys.clear()
+    with pytest.raises(da.StepFailed, match="already draws 18 rows.*not measured"):
+        d.halve(4, 15)
+    assert "h" not in game.keys and len(game.item_lists[4]) == 21
+    assert game.mode == "items"
+
+
+def test_pick_item_refuses_a_highlight_already_past_the_row(tmp_path):
+    game, d = _itemed(tmp_path)
+    d.open_sheet(1)
+    game.key("i")
+    game.item_row = 3
+    game.keys.clear()
+    with pytest.raises(da.StepFailed, match="highlight is on row 4, past row 2"):
+        d.pick_item(2, "x")
+    assert game.keys == []
+
+
 def test_the_item_readers_read_only_an_items_list():
     """A sheet reads as a one-row list with its highlight on band 12."""
     list_frame = _screen(b"\x2b\x2c", b"")

@@ -2510,6 +2510,10 @@ class Driver:
         self.shot(f"{label}-before")
         rows_before = item_rows(self.s.capture())
         highlight_before = item_highlight(self.s.capture())
+        if grow and rows_before == ITEM_ROWS:
+            raise self.fail(f"{label}-rows", f"the list already draws {ITEM_ROWS} "
+                            f"rows, and what {verb} does to a full list is not "
+                            f"measured, so {key} is not pressed")
         self.s.key(key)
         screen = self.s.settle(quiet=0.8, timeout=30.0)
         rows_after, highlight_after = item_rows(screen), item_highlight(screen)
@@ -2531,7 +2535,12 @@ class Driver:
         return self._item_command(line, row, ITEM_HALVE, "halve", grow=1)
 
     def join(self, line: int, row: int) -> dict:
-        """`JOIN` member `line`'s item `row`; the row counts are recorded."""
+        """`JOIN` member `line`'s item `row`; the row counts are recorded.
+
+        Measured: JOIN acts at once with no prompt, and the row counts before
+        and after.  Not measured: which row JOIN merges the item with, so this
+        does not check the pair; the live run records it.
+        """
         return self._item_command(line, row, ITEM_JOIN, "join", grow=0)
 
     def zero_rest_time(self, limit: int = 120) -> int:
