@@ -214,7 +214,90 @@ CURSE = AmigaTitle(
     ),
 )
 
-TITLES: dict[str, AmigaTitle] = {"pool": POOL, "curse": CURSE}
+DARKNESS_DISK1_SHA256 = "9d38338ecb44434331485a908b0d6c204f9b0a8a6e509baa2a8e1b24e892b3ee"
+DARKNESS_DISK2_SHA256 = "f7819b475e4071c36d349003277e9516abfee8f9c294830d8423e98a9e6c7b71"
+DARKNESS_DISK3_SHA256 = "bba0945c39e54fee75e4453e552a54534a584a395f9796ca570c655bf02f2fdd"
+DARKNESS_VOLUME = "POD 3"
+DARKNESS_LOADED = "B"
+
+_DARKNESS_SAVED_GAME = re.compile(r"savgam([A-Z])\.pty", re.IGNORECASE)
+
+
+def _darkness_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
+    """One Pools of Darkness slot in `/Save` of disk 3: `missing`, `decode_error`, or place and names."""
+    try:
+        raw = disk.read_file(amiga_savegame.pod_slot_path(letter))
+    except amiga_adf.AmigaDiskError:
+        return {"missing": True, "sha256": None}
+    reading: dict[str, Any] = {"sha256": hashlib.sha256(raw).hexdigest()}
+    try:
+        data = amiga_savegame.pod_read_slot(disk, letter)
+        state = amiga_savegame.pod_from_amiga(data)
+        reading["names"] = [member.name.strip()
+                            for member in amiga_savegame.pod_parse(data).characters]
+        reading["place"] = {"area": state.dungeon_map, "x": state.x, "y": state.y,
+                            "facing": state.facing}
+    except Exception as exc:  # noqa: BLE001 - every reader failure is the verdict's `decode_error`
+        reading.pop("names", None)
+        reading["decode_error"] = f"{type(exc).__name__}: {exc}"
+    return reading
+
+
+def _darkness_saves(disk: amiga_adf.AmigaDisk) -> list:
+    return [e for e in disk.entries(disk.lookup("/SAVE").block) if not e.is_dir]
+
+
+def _darkness_slot_letters(disk: amiga_adf.AmigaDisk) -> list[str]:
+    found = (_DARKNESS_SAVED_GAME.fullmatch(e.name) for e in _darkness_saves(disk))
+    return sorted(m.group(1).upper() for m in found if m)
+
+
+def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, bytes]:
+    return {e.name: disk.read_file(f"/SAVE/{e.name}") for e in _darkness_saves(disk)
+            if e.name.lower() == f"savgam{letter}.pty".lower()}
+
+
+# Disk 3 is the save disk and is put in DF1 when the boot asks for it, so DF1 starts empty.
+# No step gives the game disk 2: whether a prompt for it appears is for the measuring boot
+# to show, and a DF0 insert is decided after that. A, C, D and E stay unchanged; E is also
+# the game's own exit key on the sheet and at camp, which `plain_keys` names.
+DARKNESS = AmigaTitle(
+    issue=ISSUE,
+    mounted=("disk1", None),
+    spares=("disk2", "disk3"),
+    save_disk="disk3",
+    read_slot=_darkness_read_slot, slot_letters=_darkness_slot_letters,
+    slot_files=_darkness_slot_files,
+    route=(
+        ("P", "play", "key"), ("P", "party_menu", "key"), ("L", "load_picker", "key"),
+        ("B", "loaded_menu", "key"), ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
+        ("S", "save_picker", "key"), ("I", "loaded_menu", "write"), ("B", "world", "key"),
+        ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
+        ("J", "camp", "write"),
+    ),
+    # Stops before I.
+    measure_route=(
+        ((1, "disk3", "SPACE"), "title", "insert"), ("P", "play", "key"),
+        ("P", "party_menu", "key"), ("L", "load_picker", "key"), ("B", "loaded_menu", "key"),
+        ("V", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"),
+    ),
+    boot_span=300.0, title_limit=420.0,
+    control_letter="I", after_letter="J", kept_letters=("A", "C", "D", "E"),
+    plain_keys=(("E", "loaded_menu"), ("E", "camp")),
+    strict=frozenset({"party_menu", "load_picker", "loaded_menu", "sheet", "save_picker",
+                      "camp_save_picker"}),
+    min_waits={"play": 5.0, "party_menu": 20.0, "load_picker": 10.0, "loaded_menu": 20.0,
+               "sheet": 5.0, "save_picker": 10.0, "world": 45.0, "world_after_move": 5.0,
+               "camp": 10.0, "camp_save_picker": 10.0},
+    interstitials=(
+        ("boot_prompt", ("insert", 1, "disk3", "SPACE"), frozenset({"title"}), 1),
+        ("journal", ("answer",), None, 1),
+        ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
+        ("continue", ("keys", "RET"), frozenset({"world"}), 3),
+    ),
+)
+
+TITLES: dict[str, AmigaTitle] = {"pool": POOL, "curse": CURSE, "darkness": DARKNESS}
 
 
 def _find_images(wanted: dict[str, str]) -> dict[str, tuple[str, bytes]]:
@@ -313,7 +396,51 @@ def _prepare_curse(run: pathlib.Path, specimen: pathlib.Path | None) -> dict[str
     return _prepare_from(CURSE_SOURCES, run, specimen)
 
 
-_PREPARE = {"pool": _prepare_pool, "curse": _prepare_curse}
+def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None) -> dict[str, Any]:
+    """Disk 3 is itself the registered save disk, so `override` stands in for it and no specimen file exists."""
+    wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256,
+              "disk3": DARKNESS_DISK3_SHA256}
+    if override is not None:
+        override = pathlib.Path(override)
+        if not override.is_file():
+            raise RouteError(f"the disk {override} is missing")
+        if sha256(override) != DARKNESS_DISK3_SHA256:
+            raise RouteError(f"the specimen SHA-256 differs: {sha256(override)}")
+    images = _find_images({k: v for k, v in wanted.items() if override is None or k != "disk3"})
+    if override is not None:
+        images["disk3"] = (str(override), override.read_bytes())
+    save = amiga_adf.AmigaDisk(images["disk3"][1])
+    if save.verify() or save.volume_name != DARKNESS_VOLUME:
+        raise RouteError(f"disk 3 is not a verified {DARKNESS_VOLUME} disk")
+    present = DARKNESS.slot_letters(save)
+    for taken in (DARKNESS.control_letter, DARKNESS.after_letter):
+        if taken in present:
+            raise RouteError(f"slot {taken} already exists on disk 3")
+    loaded = DARKNESS.read_slot(save, DARKNESS_LOADED)
+    if "place" not in loaded:
+        raise RouteError(f"slot {DARKNESS_LOADED} does not decode: {loaded}")
+    scratch.ensure(run)
+    disks: dict[str, dict[str, str]] = {}
+    for key, (_label, data) in images.items():
+        path = run / f"{key}.adf"
+        path.write_bytes(data)
+        disks[key] = {"path": str(path), "sha256": sha256(path)}
+    if any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()):
+        raise RouteError("a working copy differs from the pinned disk")
+    manifest = {
+        "title": "darkness", "disks": disks, "registered": {},
+        "sources": {key: {"label": label, "sha256": wanted[key]}
+                    for key, (label, _data) in images.items()},
+        "loaded_letter": DARKNESS_LOADED,
+        "state_a": loaded["place"], "names_a": loaded["names"],
+    }
+    after = _find_images({k: v for k, v in wanted.items() if override is None or k != "disk3"})
+    if any(hashlib.sha256(after[key][1]).hexdigest() != wanted[key] for key in after):
+        raise RouteError("a registered image changed during preparation")
+    return manifest
+
+
+_PREPARE = {"pool": _prepare_pool, "curse": _prepare_curse, "darkness": _prepare_darkness}
 
 
 def _name(title: AmigaTitle) -> str:
