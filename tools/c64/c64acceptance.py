@@ -36,7 +36,7 @@ bytes with what it replaced.
 | `cast CASTER:SPELL>TARGET` | Curse only: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
-| `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`) |
+| `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
 WHO is a name as the party panel draws it, or a number counting from 1 at
 the top of the panel.  After every step the live effect rows, the clock and
@@ -598,11 +598,13 @@ class PoolRun:
         rows = self.rows()
         return rows[24] if rows else ""
 
-    def capture(self, tag: str) -> list[str]:
-        """The text screen and a PNG of it, both kept, named in order."""
+    def capture(self, tag: str, rows: list[str] | None = None) -> list[str]:
+        """The text screen and a PNG of it, both kept, named in order.  ROWS,
+        when the caller already has them, are written without reading again."""
         self.shots += 1
         stem = f"{self.shots:02d}-{re.sub(r'[^A-Za-z0-9]+', '-', tag).strip('-')}"
-        rows = self.rows()
+        if rows is None:
+            rows = self.rows()
         (self.out / f"{stem}.txt").write_text(
             "\n".join(r.rstrip() for r in rows) + "\n" if rows else "(bitmap)\n",
             encoding="utf-8")
@@ -1172,6 +1174,78 @@ class CurseRun(PoolRun):
 
     SAVING = "SAVING GAME"
 
+    @contextlib.contextmanager
+    def _watching_save(self):
+        """Record row 18 and row 24 on every change, and every key and attach,
+        for as long as the save step runs; observes only, and puts the
+        session's own methods back afterwards."""
+        sess, kbd = self.sess, self.sess.kbd
+        orig_screen, orig_key = sess.screen, kbd.key
+        orig_kernal, orig_attach = sess.press_kernal, sess.attach
+        state = {"n": 0, "last": None, "busy": False}
+
+        def screen(*a, **k):
+            s = orig_screen(*a, **k)
+            if s is None or state["busy"]:
+                return s
+            pair = (s.row(18).rstrip(), s.row(24).rstrip())
+            if pair == state["last"]:
+                return s
+            state["last"] = pair
+            state["busy"] = True
+            try:
+                state["n"] += 1
+                began = self.clock()
+                self.capture(f"save-watch-{state['n']}",
+                             rows=[s.row(r) for r in range(25)])
+                self.log.emit("save-watch", n=state["n"], row18=pair[0],
+                              row24=pair[1], stem=f"{self.shots:02d}",
+                              png_ms=round((self.clock() - began) * 1000))
+            finally:
+                state["busy"] = False
+            return s
+
+        def key(name, *a, **k):
+            self.log.emit("save-key", via="xtest", key=str(name))
+            return orig_key(name, *a, **k)
+
+        def press_kernal(code, *a, **k):
+            self.log.emit("save-key", via="kernal", key=f"${code:02X}")
+            return orig_kernal(code, *a, **k)
+
+        def attach(path, *a, **k):
+            self.log.emit("save-attach", image=pathlib.PurePath(str(path)).name)
+            return orig_attach(path, *a, **k)
+
+        wrapped = [(sess, "screen", screen), (kbd, "key", key),
+                   (sess, "press_kernal", press_kernal), (sess, "attach", attach)]
+        saved = [(o, n, n in vars(o), vars(o).get(n)) for o, n, _ in wrapped]
+        try:
+            for o, n, f in wrapped:
+                setattr(o, n, f)
+            yield
+        finally:
+            for o, n, had, prev in saved:
+                if had:
+                    setattr(o, n, prev)
+                else:
+                    vars(o).pop(n, None)
+
+    def _watch_lost_write(self) -> None:
+        """No `SAVE GAME` bar was seen: keep watching to the camp bar, and keep
+        the disk if it comes back, before the step is lost as it always was."""
+        try:
+            back = self.sess.wait_bar(CAMP_BAR, self.budget(SAVE_WAIT, "the write"))
+        except StepFailed:
+            return
+        if not back:
+            return
+        try:
+            S.copy_closed_disk(pathlib.Path(self.sess.save_disk),
+                               self.out / "lost-saved.D64", attempts=30, backoff=1.0)
+        except RuntimeError as e:
+            self.log.emit("lost-copy", why=str(e))
+
     def write_save(self) -> list[str]:
         """`SAVE`, `SAVE GAME`, then the write itself: `SAVING GAME` seen, gone,
         and the camp bar back.  A copy taken while it is still up finds the
@@ -1179,21 +1253,24 @@ class CurseRun(PoolRun):
         bar is what keeps the run from having no save at all."""
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
-        for word in ("SAVE", "SAVE GAME"):
-            if not self.sess.wait_bar(word, self.budget(45, word)):
-                raise self.fail("save", f"{word} never appeared on row 24")
-            if word == "SAVE GAME":
-                self.sess.attach(self.sess.save_disk)
-            if not self.choose_bar(word, timeout=30):
-                raise self.fail("save", f"{word} could not be chosen")
-        if self.sess.wait_text(self.SAVING, self.budget(30, self.SAVING))[0] is None:
-            raise self.fail("save", f"{self.SAVING} never came up")
-        if not self.sess.wait_bar(CAMP_BAR, self.budget(SAVE_WAIT, "the write")):
-            raise self.fail("save", "the camp bar never came back after the write")
-        self.sess.settle(4)
-        back = self.rows()
-        if _has(back, self.SAVING):
-            raise self.fail("save", f"{self.SAVING} was still up when the camp bar returned")
+        with self._watching_save():
+            for word in ("SAVE", "SAVE GAME"):
+                if not self.sess.wait_bar(word, self.budget(45, word)):
+                    if word == "SAVE GAME":
+                        self._watch_lost_write()
+                    raise self.fail("save", f"{word} never appeared on row 24")
+                if word == "SAVE GAME":
+                    self.sess.attach(self.sess.save_disk)
+                if not self.choose_bar(word, timeout=30):
+                    raise self.fail("save", f"{word} could not be chosen")
+            if self.sess.wait_text(self.SAVING, self.budget(30, self.SAVING))[0] is None:
+                raise self.fail("save", f"{self.SAVING} never came up")
+            if not self.sess.wait_bar(CAMP_BAR, self.budget(SAVE_WAIT, "the write")):
+                raise self.fail("save", "the camp bar never came back after the write")
+            self.sess.settle(4)
+            back = self.rows()
+            if _has(back, self.SAVING):
+                raise self.fail("save", f"{self.SAVING} was still up when the camp bar returned")
         return back
 
     # -- the camp cures ------------------------------------------------------------

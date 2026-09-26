@@ -2278,6 +2278,118 @@ def test_a_curse_save_with_saving_game_still_up_at_the_camp_bar_is_lost_before_a
         run.log.close()
 
 
+def _events(tmp_path, *kinds):
+    events = [json.loads(line) for line in
+              (tmp_path / "run.jsonl").read_text(encoding="utf-8").splitlines()]
+    return [e for e in events if e["kind"] in kinds]
+
+
+def test_a_curse_save_records_rows_18_and_24_on_every_change(tmp_path):
+    run = _save_run(tmp_path, SaveFake())
+    try:
+        run.write_save()
+    finally:
+        run.log.close()
+    watch = _events(tmp_path, "save-watch")
+    assert [w["row24"] for w in watch] == [
+        "ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT", "SAVE GAME  EXIT", "",
+        "ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT"]
+    for w in watch:
+        assert "t" in w and "png_ms" in w and "row18" in w
+        assert list(tmp_path.glob(f"{w['stem']}-save-watch-{w['n']}.txt"))
+        assert list(tmp_path.glob(f"{w['stem']}-save-watch-{w['n']}.png"))
+
+
+def test_a_curse_save_records_every_key_and_attach_and_restores_the_session(tmp_path):
+    class Keying(SaveFake):
+        def press_bar(self, label, row=24, timeout=0):
+            self.kbd.key("Return")
+            return super().press_bar(label, row, timeout)
+
+    class Keys:
+        def __init__(self):
+            self.sent = []
+
+        def key(self, name, *timing):
+            self.sent.append(name)
+
+        def screenshot(self, path):
+            pathlib.Path(path).write_bytes(b"")
+
+    sess = Keying()
+    sess.kbd = Keys()
+    run = _save_run(tmp_path, sess)
+    try:
+        run.write_save()
+    finally:
+        run.log.close()
+    order = [(e["kind"], e.get("key") or e.get("image"))
+             for e in _events(tmp_path, "save-key", "save-attach")]
+    assert order == [("save-key", "Return"), ("save-attach", "SIDE0.D64"),
+                     ("save-key", "Return")]
+    assert sess.kbd.sent == ["Return", "Return"]
+    for name in ("screen", "press_kernal", "attach"):
+        assert name not in vars(sess)
+    assert "key" not in vars(sess.kbd)
+
+
+def test_a_change_of_row_18_alone_is_recorded(tmp_path):
+    class Prompting(SaveFake):
+        seen = 0
+
+        def screen(self):
+            s = super().screen()
+            self.seen += 1
+            if self.state == "camp" and self.seen == 2:
+                return FakeScreen(_window({18: "INSERT YOUR SAVE GAME DISK"},
+                                          self.bar_now()))
+            return s
+
+    run = _save_run(tmp_path, Prompting())
+    try:
+        run.write_save()
+    finally:
+        run.log.close()
+    watch = _events(tmp_path, "save-watch")
+    assert "INSERT YOUR SAVE GAME DISK" in watch[0]["row18"]
+    assert watch[0]["row24"] == "ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT"
+
+
+def test_the_watch_is_undone_when_the_save_raises(tmp_path):
+    sess = SaveFake()
+    sess.wait_text = lambda needle, timeout=0: (None, None)
+    run = _save_run(tmp_path, sess)
+    try:
+        with pytest.raises(A.StepFailed):
+            run.write_save()
+    finally:
+        run.log.close()
+    assert "screen" not in vars(sess) and "attach" not in vars(sess)
+
+
+def test_a_save_whose_bar_never_comes_keeps_watching_to_the_camp_bar_then_is_lost(
+        tmp_path, monkeypatch):
+    class NoBar(SaveFake):
+        def press_bar(self, label, row=24, timeout=0):
+            self.log.append(("press", label))
+            self.state = "writing"
+            return True
+
+    copied = []
+    monkeypatch.setattr(A.S, "copy_closed_disk",
+                        lambda src, dest, **kw: copied.append(dest.name))
+    run = _save_run(tmp_path, NoBar())
+    try:
+        with pytest.raises(A.StepFailed, match="SAVE GAME never appeared on row 24"):
+            run.write_save()
+    finally:
+        run.log.close()
+    assert copied == ["lost-saved.D64"]
+    watch = _events(tmp_path, "save-watch")
+    assert watch[-1]["row24"] == "ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT"
+    assert "SAVE GAME  EXIT" not in [w["row24"] for w in watch]
+
+
 # --- deadline inside a wait ----------------------------------------------------------
 
 class _Clock:
