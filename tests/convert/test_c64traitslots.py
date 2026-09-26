@@ -150,6 +150,24 @@ def _permanent_ids(char: dos_codec.DosCharacter) -> list[int]:
             if int.from_bytes(e[1:3], "little") == 0]
 
 
+def _has_c64_port(char: dos_codec.DosCharacter) -> bool:
+    """Whether the C64 writer has record deltas for this record's title.
+    Pools of Darkness has DOS and Amiga versions only, so `c64_codec.write`
+    raises `KeyError` for it rather than inventing a geometry."""
+    return char.deltas.key in c64_codec.DELTAS_BY_KEY
+
+
+def test_the_scan_skips_a_title_with_no_c64_port_and_keeps_the_others():
+    """A Pools of Darkness record is outside the census, and the three titles
+    the C64 has are all still inside it, so the scan cannot go blind."""
+    pod = _dos_record(dos_port.POOLS_OF_DARKNESS, [])
+    assert not _has_c64_port(pod)
+    with pytest.raises(KeyError):
+        c64_codec.write(dos_codec.to_neutral(pod))
+    for shape in (POOL, CURSE, dos_port.SECRET_OF_THE_SILVER_BLADES):
+        assert _has_c64_port(_dos_record(shape, []))
+
+
 @needs_specimens
 def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
     """The census #394 asks for, over every DOS save we watched being
@@ -198,6 +216,8 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
                 name_len = char.get("name_length")
                 if 0xFF in char.raw("name_text")[:name_len]:
                     ff_in_name.append(f"{folder.name}/{path.name}")
+            if not _has_c64_port(char):
+                continue
             neutral_char = dos_codec.to_neutral(char)
             rec, _ = c64_codec.write(neutral_char)
             slots = _slots(rec)
