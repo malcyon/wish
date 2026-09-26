@@ -42,6 +42,9 @@ agent_guest_apt_packages:
   - python3.12
   - python3.12-venv
   - python3-pip
+  # The Amiga journal reader runs under the system interpreter.
+  - python3-numpy
+  - python3-pil
   - libegl1
   - libgl1
   - libxkbcommon-x11-0
