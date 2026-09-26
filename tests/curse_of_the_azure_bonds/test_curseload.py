@@ -10,6 +10,7 @@ proved without an emulator, plus the disk repair.
 from __future__ import annotations
 
 import contextlib
+import os
 import sys
 import time
 
@@ -249,7 +250,7 @@ def test_a_save_disk_prompt_still_up_after_the_key_is_not_answered_again(monkeyp
 
         def attach(self, path, *a, **k):
             now[0] += 3.5
-            self.attached = path
+            self.attached = os.path.abspath(path)
 
         def press_kernal(self, code, *a, **k):
             self.kernal.append(code)

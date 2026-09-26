@@ -18,6 +18,7 @@ key when it says the machine is idle.
 
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 
 from conftest import load_tools_module
@@ -193,7 +194,7 @@ def test_a_prompt_still_up_after_the_key_is_not_answered_again(monkeypatch):
 
         def attach(self, path, *a, **k):
             now[0] += 3.5
-            self.attached = path
+            self.attached = os.path.abspath(path)
 
         def log(self, *a):
             pass

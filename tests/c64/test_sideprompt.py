@@ -74,7 +74,9 @@ class FakeSession(S.Session):
 
     def attach(self, path, unit: int = 8, settle=None) -> None:
         self.attaches.append(path)
-        self.attached = path
+        # The real `attach` records `os.path.abspath(path)`; on Windows that
+        # differs from the raw posix string, so the fake must do the same.
+        self.attached = os.path.abspath(path)
 
     def press_kernal(self, code: int) -> None:
         self.kernal.append(code)
