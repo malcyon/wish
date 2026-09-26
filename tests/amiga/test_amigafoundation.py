@@ -681,3 +681,70 @@ def test_darkness_has_no_disk_prompt_interstitial_and_pins_its_boot_span_as_a_gu
                                                                      "continue"]
     assert foundation.DARKNESS.boot_span == 225.0
     assert foundation.DARKNESS.measure_route[0] == ("P", "play", "key")
+
+
+def test_curse_leaves_the_intro_with_one_escape_and_only_while_waiting_for_the_title(
+        tmp_path, clock):
+    states = (*CURSE_STATES, "intro")
+    guard = MapGuard(states=states, on={"title": _never, "intro": _on("title")})
+    guest, result = _curse_run(tmp_path, clock, guard=guard)
+    assert _keys(guest) == ["ESC"] and "title screen was not recognized" in result["error"]
+    other = tmp_path / "other"
+    other.mkdir()
+    guard = MapGuard(states=states, on={"title": lambda p: True, "load_picker": _never,
+                                        "intro": _on("01-load_picker")})
+    guest, _ = _curse_run(other, clock, guard=guard)
+    assert "ESC" not in _keys(guest)
+
+
+class _Called:
+    """A stand-in `run_recon` that records its keywords and reports a passing run."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, manifest, **kw):
+        self.calls.append(kw)
+        return {"success": True, "error": "", "unguarded": [], "read": {"verdicts": []}}
+
+
+def _measure_args(tmp_path, *extra):
+    return ["measure", "--title", "pool", "--manifest", str(tmp_path / "prepare.json"),
+            "--audio-proof", str(tmp_path / "mute.json"), "--attempt", "measure1", *extra]
+
+
+def test_measure_passes_the_guard_file_it_is_given_and_none_without_one(tmp_path, monkeypatch):
+    called = _Called()
+    monkeypatch.setattr(foundation, "run_recon", called)
+    monkeypatch.setattr(foundation, "WinGuest", lambda: object())
+    monkeypatch.setattr(foundation, "PixelGuards", lambda path: ("guards", str(path)))
+    assert foundation.main(_measure_args(tmp_path)) == 0
+    assert called.calls[-1]["guard"] is None and called.calls[-1]["measure"] is True
+    assert foundation.main(_measure_args(tmp_path, "--guards", "g.json")) == 0
+    assert called.calls[-1]["guard"] == ("guards", "g.json")
+
+
+def test_measure_refuses_an_unreadable_guards_file_before_any_run_starts(tmp_path, monkeypatch,
+                                                                         capsys):
+    called = _Called()
+    monkeypatch.setattr(foundation, "run_recon", called)
+    monkeypatch.setattr(foundation, "WinGuest", lambda: object())
+    missing = tmp_path / "missing.json"
+    assert foundation.main(_measure_args(tmp_path, "--guards", str(missing))) == 2
+    assert called.calls == [] and "amigafoundation:" in capsys.readouterr().err
+    unreadable = tmp_path / "bad.json"
+    unreadable.write_text("not json")
+    assert foundation.main(_measure_args(tmp_path, "--guards", str(unreadable))) == 2
+    assert called.calls == []
+
+
+def test_accept_still_passes_its_guard_and_identity_files(tmp_path, monkeypatch):
+    called = _Called()
+    monkeypatch.setattr(foundation, "run_recon", called)
+    monkeypatch.setattr(foundation, "WinGuest", lambda: object())
+    monkeypatch.setattr(foundation, "PixelGuards", lambda path: ("guards", str(path)))
+    args = _measure_args(tmp_path, "--guards", "g.json", "--identity", "i.json")
+    args[0] = "accept"
+    assert foundation.main(args) == 0
+    assert called.calls[-1]["guard"] == ("guards", "g.json")
+    assert called.calls[-1]["identity"] == ("guards", "i.json")

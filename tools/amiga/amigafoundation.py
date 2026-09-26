@@ -211,6 +211,7 @@ CURSE = AmigaTitle(
     interstitials=(
         # A cap: accept mode stops pressing once `title` is reached.
         ("front_end", ("keys", "ESC"), frozenset({"title"}), 4),
+        ("intro", ("keys", "ESC"), frozenset({"title"}), 1),
         ("continue", ("keys", "RET"), frozenset({"world", "exit_game"}), 3),
     ),
 )
@@ -499,7 +500,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("prepare", help="copy the registered images and the specimen into a run folder")
     p.add_argument("--title", required=True, choices=choices)
     p.add_argument("--run-id", required=True)
-    common(sub.add_parser("measure", help="boot and press the route up to the first save; writes nothing"))
+    m = sub.add_parser("measure", help="boot and press the route up to the first save; writes nothing")
+    common(m)
+    m.add_argument("--guards", type=pathlib.Path, default=None,
+                   help="screen guard JSON; a route state it holds must match, and the boot waits for its title")
     a = sub.add_parser("accept", help="guarded load, sheet, two saves around a walk and the read-back")
     common(a)
     a.add_argument("--guards", required=True, type=pathlib.Path)
@@ -516,6 +520,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = run_recon(
                     args.manifest, guest=WinGuest(), holder=holder,
                     audio_proof=args.audio_proof, attempt=args.attempt,
+                    guard=PixelGuards(args.guards) if args.guards else None,
                     deadline_seconds=args.deadline, measure=True, title=title)
             else:
                 result = run_recon(
