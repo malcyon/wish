@@ -227,6 +227,9 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "rest": "must", "fight": "may", "peek": "must", "save": "never",
          "cast": "must", "cure": "must", "walk": "must"}
 
+#: How long a walk keeps watching for a disk prompt after a move (seconds).
+LOOK_SECONDS = 2.0
+
 #: The moves `walk` takes, the game's own letters: forward, left, right, about.
 #: Each turn's change to the facing, which the C64 counts N 0, E 1, S 2, W 3.
 TURNS = {"I": 0, "J": -1, "K": 1, "M": 2}
@@ -843,6 +846,20 @@ class PoolRun:
         return {"walked": taken, "acted": result.acted,
                 **dataclasses.asdict(result)}
 
+    def refuse_prompt(self, route: str, last, why: str) -> None:
+        """Fail the walk when a disk prompt is on the screen, answering nothing."""
+        screen = self.sess.screen()
+        if screen is None or not self.sess.wanted_disk(screen):
+            return
+        row = screen.row(24).strip()
+        if last is None:
+            raise self.fail("walk", f"walk {route}: a disk prompt was up "
+                                    f"before the first move: {row}")
+        n, move, before = last
+        raise self.fail(
+            "walk", f"walk {route}: move {n} ({move}) from {before} {why}, "
+                    f"not a step: {row}")
+
     def walk(self, arg: str) -> dict:
         """The moves in ARG, each judged by the square before and after.
 
@@ -851,6 +868,15 @@ class PoolRun:
         still changes.  A forward move is blocked when x,y did not change; a
         turn is right when the facing is the one it asks for and the square
         did not change, which is the control that a walk is not a turn.
+
+        A disk prompt on the screen fails the walk and is never answered: a
+        square's event asks for another disk, and answering would carry the
+        walk into another area.  It is looked for before each move, after
+        each key, for two seconds after each move and before the end is read,
+        and `Session.walk_one` runs with `answer_prompts=False` so it does not
+        answer one itself.  A forward move must also land on exactly the next
+        square, or the walk fails as an exit or a teleport.  A move `walk_one`
+        made on the travel grid is not re-sent.
         """
         route = parse_walk(arg)
         if not self.to_world():
@@ -858,30 +884,36 @@ class PoolRun:
         start = list(self.sess.position())
         facing = start[2]
         moves = []
+        last = None
         for n, move in enumerate(route):
             self.budget(1, f"walk {route}")
+            # A prompt that opened after the previous move's look would be
+            # answered by this move's `select_bar`, so it is looked for first.
+            self.refuse_prompt(route, last, "was up before the next move")
             before = list(self.sess.position())
+            last = (n, move, before)
             before_rows = self.rows()
-            status_moved = self.sess.walk_one(move, tries=1)
+            status_moved = self.sess.walk_one(move, tries=1, answer_prompts=False)
             resent = False
-            if not status_moved and self.rows() == before_rows:
+            self.refuse_prompt(route, last, "ran the square's event")
+            # Out on the travel grid a move is pressed once and never re-sent:
+            # the status line lags and a turn does not exist there.
+            if (not status_moved and self.rows() == before_rows
+                    and not getattr(self.sess, "walked_outdoors", False)):
                 # The one retry the contract allows: the game took nothing.
                 resent = True
-                status_moved = self.sess.walk_one(move, tries=1)
+                status_moved = self.sess.walk_one(move, tries=1,
+                                                  answer_prompts=False)
+                self.refuse_prompt(route, last, "ran the square's event")
             refused = getattr(self.sess, "walk_refused", None)
             if refused:
                 raise self.fail("walk", f"walk {route}: {refused}")
-            # A square's event may put up a disk prompt; answering it would
-            # carry the walk into another area, so the walk ends here.
-            look_until = self.clock() + 2.0
+            # A square's event may put up a disk prompt after the key has been
+            # read; answering it would carry the walk into another area.
+            look_until = self.clock() + LOOK_SECONDS
             while True:
                 self.budget(1, f"walk {route}")
-                screen = self.sess.screen()
-                if screen is not None and self.sess.wanted_disk(screen):
-                    raise self.fail(
-                        "walk", f"walk {route}: move {n} ({move}) from "
-                                f"{before} ran the square's event, not a "
-                                f"step: {screen.row(24).strip()}")
+                self.refuse_prompt(route, last, "ran the square's event")
                 if self.clock() >= look_until:
                     break
                 time.sleep(0.3)
@@ -902,6 +934,7 @@ class PoolRun:
                           "blocked": move == "I" and before[:2] == after[:2],
                           "moved": before[:2] != after[:2],
                           "status_moved": status_moved, "resent": resent})
+        self.refuse_prompt(route, last, "ran the square's event")
         end = list(self.sess.position())
         self.capture(f"walked-{route}")
         if "I" not in route and end[:2] != start[:2]:

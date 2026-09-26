@@ -211,8 +211,22 @@ def test_a_prompt_still_up_after_the_key_is_not_answered_again(monkeypatch):
     screen = SimpleNamespace(text=lambda: "INSERT SIDE # 2, AND PRESS ANY KEY.")
 
     assert session.handle_prompt(screen)
-    now[0] += 0.35
-    assert not session.handle_prompt(screen)
-    now[0] += 8.5
+    # 2.5 s is past the cooldown, 5 s pins the restamp after the key, 7.5 s
+    # pins the hold's length from inside and 8.5 s from outside.
+    for step in (0.35, 2.15, 2.5, 2.5):
+        now[0] += step
+        assert not session.handle_prompt(screen)
+    now[0] += 1.0
     assert session.handle_prompt(screen)
     assert [e for e in session.events if e[0] == "kernal"] == [("kernal", 0x20)] * 2
+
+
+def test_walk_one_that_may_not_answer_leaves_a_disk_prompt_alone():
+    session = FakeSession(side=2)
+    session.screen = lambda: SimpleNamespace(
+        text=lambda: "INSERT SIDE # 2, AND PRESS ANY KEY.",
+        row=lambda r: "INSERT SIDE # 2, AND PRESS ANY KEY.")
+    assert session.walk_one("I", answer_prompts=False) is False
+    assert session.walk_prompt == "INSERT SIDE # 2, AND PRESS ANY KEY."
+    assert session.walk_refused is None
+    assert session.events == []

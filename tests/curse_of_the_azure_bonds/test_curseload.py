@@ -256,6 +256,11 @@ def test_a_save_disk_prompt_still_up_after_the_key_is_not_answered_again(monkeyp
 
     sess = Session()
     assert curseload.answer_prompt(sess) is True
-    now[0] += 0.35
-    assert curseload.answer_prompt(sess) is False
-    assert sess.kernal == [0x20]
+    # Past the cooldown but inside the hold (2.5 s), 5 s after the key (pins
+    # the restamp), 7.5 s (pins the hold's length), then 8.5 s answers again.
+    for step in (0.35, 2.15, 2.5, 2.5):
+        now[0] += step
+        assert curseload.answer_prompt(sess) is False
+    now[0] += 1.0
+    assert curseload.answer_prompt(sess) is True
+    assert sess.kernal == [0x20, 0x20]

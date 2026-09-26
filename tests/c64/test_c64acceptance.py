@@ -1741,6 +1741,183 @@ def test_a_move_that_brings_up_a_disk_prompt_fails_the_walk_and_answers_nothing(
     assert sess.pressed == ["I"]
 
 
+class _Text:
+    """A screen of rows, with the reads `Session.walk_one` makes of one."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def row(self, r):
+        return self._rows[r]
+
+    def text(self):
+        return "\n".join(self._rows)
+
+    def contains(self, needle):
+        return needle in self.text()
+
+
+class RealWalk(A.S.Session):
+    """The real `Session.walk_one`, `leave_move` and `select_bar` over a screen
+    that the test's clock moves: `prompt_after` is how many seconds after the
+    move key the disk prompt goes up (None for never)."""
+
+    PROMPT = "INSERT SIDE # 2, AND PRESS ANY KEY."
+
+    def __init__(self, clock, prompt_after=0.0, x=5, y=5, facing=0):
+        self.clock = clock
+        self.prompt_after = prompt_after
+        self.x, self.y, self.facing = x, y, facing
+        self.keyed_at = None
+        self.returned_at = None
+        self.keys, self.kernal, self.attaches = [], [], []
+        self.here, self.attached = "/slot", "/slot/SIDE1.D64"
+        self.save_disk = "/slot/SIDE0.D64"
+        self._last_prompt = 0.0
+        self.bar = WORLD_BAR
+        self.ticks = 0
+        self.moved_by = 0.0     # how long `position` takes, as the clock sees it
+
+        class Kbd:
+            def key(kself, name, *timing):
+                self.keys.append(name)
+                if name in ("i", "j", "k", "m"):
+                    if self.keyed_at is None:
+                        self.keyed_at = self.clock.now
+                    self.ticks += 1
+                    if name == "i":
+                        self.y -= 1
+                elif name == "Return":
+                    self.bar = WORLD_BAR
+                    self.returned_at = self.clock.now
+
+            def screenshot(kself, path):
+                pathlib.Path(path).write_bytes(b"")
+                return True
+
+        self.kbd = Kbd()
+
+    def screen(self):
+        up = (self.prompt_after is not None and self.keyed_at is not None
+              and self.clock.now >= self.keyed_at + self.prompt_after)
+        return _Text(_window({}, self.PROMPT if up else self.bar))
+
+    def indoors(self):
+        return True
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        """`MOVE` chosen; the highlight walk itself is `test_sideprompt.py`'s."""
+        self.bar = A.S.MOVE_SUBBAR
+        return True
+
+    def status(self):
+        return self.ticks
+
+    def position(self):
+        self.clock.advance(self.moved_by)
+        return self.x, self.y, self.facing
+
+    def attach(self, path, unit=8, settle=None):
+        self.attaches.append(path)
+
+    def press_kernal(self, code, *a, **k):
+        self.kernal.append(code)
+
+    def await_change(self, text, timeout=6.0):
+        return False
+
+    def log(self, *a):
+        pass
+
+    def settle(self, seconds=0):
+        pass
+
+
+def _real_walk(tmp_path, monkeypatch, **kw):
+    clock = _Clock(monkeypatch)
+    sess = RealWalk(clock, **kw)
+    run, log = _walk_run(tmp_path, sess, clock)
+    return sess, run, log
+
+
+def test_the_real_walk_one_does_not_answer_a_prompt_the_move_raised(
+        tmp_path, monkeypatch):
+    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=0.0)
+    with pytest.raises(A.StepFailed, match="ran the square's event"):
+        run.walk("I")
+    log.close()
+    assert sess.keys == ["i"], "a Return or a space went to the prompt"
+    assert sess.kernal == [] and sess.attaches == []
+
+
+def test_a_prompt_that_opens_after_the_look_is_not_answered_by_the_next_move(
+        tmp_path, monkeypatch):
+    # The first move ends by leaving move mode; the prompt opens 4 s after
+    # its key, past the two-second look.
+    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=3.95)
+    sess.moved_by = 0.1
+    with pytest.raises(A.StepFailed, match="move 0 \\(I\\).*before the next move"):
+        run.walk("II")
+    log.close()
+    assert sess.keys == ["i", "Return"], sess.keys
+    assert sess.kernal == [] and sess.attaches == []
+
+
+def test_a_prompt_that_opens_while_the_end_is_read_fails_the_walk(
+        tmp_path, monkeypatch):
+    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=4.0)
+    sess.moved_by = 3.0
+    with pytest.raises(A.StepFailed, match="ran the square's event"):
+        run.walk("I")
+    log.close()
+    assert sess.kernal == [] and sess.attaches == []
+
+
+def _look_run(tmp_path, monkeypatch, after_return):
+    """A walk whose prompt opens `after_return` seconds after the key that
+    left move mode, which is when `walk_one` returns."""
+    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=None)
+    real_key = sess.kbd.key
+
+    def key(name, *timing):
+        real_key(name, *timing)
+        if name == "Return":
+            sess.prompt_after = None
+            sess.prompt_at = sess.clock.now + 0.6 + after_return
+
+    sess.kbd.key = key
+    real_screen = sess.screen
+
+    def screen():
+        at = getattr(sess, "prompt_at", None)
+        if at is not None and sess.clock.now >= at:
+            return _Text(_window({}, sess.PROMPT))
+        return real_screen()
+
+    sess.screen = screen
+    return sess, run, log
+
+
+def test_the_look_lasts_two_seconds_from_both_sides(tmp_path, monkeypatch):
+    sess, run, log = _look_run(tmp_path, monkeypatch, 1.7)
+    with pytest.raises(A.StepFailed, match="ran the square's event"):
+        run.walk("I")
+    log.close()
+    sess, run, log = _look_run(tmp_path, monkeypatch, 2.6)
+    assert run.walk("I")["squares_moved"] == 1
+    log.close()
+
+
+def test_a_move_on_the_travel_grid_is_not_re_sent(tmp_path, monkeypatch):
+    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=None)
+    sess.indoors = lambda: False
+    pressed = []
+    sess.walk_outdoors = lambda move, hold, gap: pressed.append(move) or False
+    run.walk("I")
+    log.close()
+    assert pressed == ["I"]
+
+
 def test_a_forward_move_that_lands_off_the_next_square_fails_the_walk(
         tmp_path, monkeypatch):
     sess = PressSession([_step_off_the_map], x=0, y=4, facing=3)

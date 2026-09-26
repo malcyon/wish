@@ -202,6 +202,11 @@ def test_a_prompt_still_up_after_the_key_is_not_answered_again(monkeypatch):
     monkeypatch.setattr(SSB.os.path, "exists", lambda p: True)
     screen = FakeScreen("INSERT SIDE # 2, AND PRESS ANY KEY.")
     assert sess.handle_prompt(screen)
-    now[0] += 0.35
-    assert not sess.handle_prompt(screen)
-    assert keys == ["space"]
+    # Each probe is inside the hold and past the two-second cooldown after
+    # the first, so the hold's length and the restamp after the key are pinned.
+    for step in (0.35, 2.15, 2.5, 2.5):
+        now[0] += step
+        assert not sess.handle_prompt(screen)
+    now[0] += 1.0
+    assert sess.handle_prompt(screen)
+    assert keys == ["space", "space"]

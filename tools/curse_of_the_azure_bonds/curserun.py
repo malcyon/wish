@@ -231,7 +231,7 @@ class CurseSession(por.Session):
             return tuple(m.read(self.machine.live_position, 3))
 
     def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4,
-                 patience: float = 12.0) -> bool:
+                 patience: float = 12.0, answer_prompts: bool = True) -> bool:
         """One move, pressed **once** and judged in memory rather than on the
         status line.
 
@@ -250,9 +250,15 @@ class CurseSession(por.Session):
         `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
         Radiance's alone?)`.  A wall is then a real reading: the party tried
         and the triple did not move.
+
+        `answer_prompts=False` is `Session.walk_one`'s: a disk prompt ends the
+        call with `False` and `walk_prompt` set, unanswered.
         """
         self.walk_refused = None
-        if not self.enter_move():
+        self.walk_prompt = None
+        if not self.enter_move(answer_prompts=answer_prompts):
+            if self.walk_prompt:
+                return False
             self.walk_refused = (
                 "the driver pressed nothing: it could not get the game to "
                 "the move sub-bar, so there was nothing to send a direction "
@@ -264,6 +270,8 @@ class CurseSession(por.Session):
         deadline = time.time() + patience
         after = before
         while time.time() < deadline:
+            if not answer_prompts and self._prompt_up(self.screen()):
+                return False
             now = self.live_triple()
             if now != before:
                 after = now
@@ -412,7 +420,8 @@ class CurseSession(por.Session):
             time.sleep(0.6)
         return False
 
-    def enter_move(self, timeout: float = 25.0) -> bool:
+    def enter_move(self, timeout: float = 25.0,
+                   answer_prompts: bool = True) -> bool:
         """Get the game as far as `I,J,K,M, RETURN OR BUTTON`, and stay there.
 
         **Move mode is not left between steps**, which is the opposite of
@@ -428,6 +437,9 @@ class CurseSession(por.Session):
         taken it away -- a disk prompt, a room description, a
         `PRESS <RETURN> OR BUTTON TO CONTINUE`.  The caller leaves it when it
         is finished walking; `ENCAMP` cannot be reached from inside it.
+
+        With `answer_prompts` False a disk prompt ends the call with `False`
+        and `walk_prompt` set, and nothing is pressed or attached.
         """
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -436,6 +448,8 @@ class CurseSession(por.Session):
                 time.sleep(0.4)
                 continue
             row = s.row(24)
+            if not answer_prompts and self._prompt_up(s):
+                return False
             if por.MOVE_SUBBAR in row:
                 return True
             if self.handle_prompt(s):

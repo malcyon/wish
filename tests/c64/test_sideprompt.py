@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 
+import pytest
 from conftest import load_tools_module
 
 S = load_tools_module("session")
@@ -187,10 +188,11 @@ def _timed_session(monkeypatch, prompt=SIDE_PROMPT):
 def test_a_prompt_still_up_after_the_key_is_not_answered_again(monkeypatch):
     sess, clock = _timed_session(monkeypatch)
     assert sess.handle_prompt() is True
-    clock.now += 0.35
-    assert sess.handle_prompt() is False
-    clock.now += 2.15
-    assert sess.handle_prompt() is False
+    # 2.5 s is past the cooldown, 5 s pins the restamp after the key, 7.5 s
+    # pins the hold's length from inside (the test below is 8.5 s outside).
+    for step in (0.35, 2.15, 2.5, 2.5):
+        clock.now += step
+        assert sess.handle_prompt() is False
     assert sess.keys == ["space"]
 
 
@@ -209,3 +211,35 @@ def test_a_different_disk_is_answered_after_two_seconds(monkeypatch):
     clock.now += 2.5
     assert sess.handle_prompt(screen_of("INSERT SIDE # 2, AND PRESS ANY KEY.")) is True
     assert sess.keys == ["space", "space"]
+
+
+# -- a prompt that `answer_prompts=False` must leave alone --------------------
+
+
+def test_a_failed_attach_does_not_hold_off_the_retry_for_the_same_disk(monkeypatch):
+    sess, clock = _timed_session(monkeypatch)
+    real_attach = sess.attach
+
+    def broken(path, unit: int = 8, settle=None):
+        sess.attach = real_attach
+        raise RuntimeError("the drive would not take it")
+
+    sess.attach = broken
+    with pytest.raises(RuntimeError):
+        sess.handle_prompt()
+    clock.now += 2.5   # past the cooldown, well inside the hold
+    assert sess.handle_prompt() is True
+    assert sess.keys == ["space"]
+
+
+def test_leave_move_that_may_not_answer_stops_at_a_prompt_before_any_key():
+    sess = FakeSession([screen_of(SIDE_PROMPT)])
+    assert sess.leave_move(answer_prompts=False) is False
+    assert sess.keys == [] and sess.kernal == [] and sess.attaches == []
+    assert sess.walk_prompt == SIDE_PROMPT
+
+
+def test_select_bar_that_may_not_answer_stops_at_a_prompt_and_presses_nothing():
+    sess = FakeSession([screen_of(SIDE_PROMPT)])
+    assert sess.select_bar("MOVE", timeout=5.0, answer_prompts=False) is False
+    assert sess.keys == [] and sess.kernal == [] and sess.attaches == []

@@ -781,6 +781,10 @@ class Session:
     #: See `__init__`; here as well so a `Session` built without it -- the
     #: fake ones in `tests/` -- still answers the attribute.
     walk_refused: str | None = None
+    #: Row 24 of the disk prompt `walk_one(answer_prompts=False)` stopped at.
+    walk_prompt: str | None = None
+    #: True when the last `walk_one` went through `walk_outdoors`.
+    walked_outdoors = False
 
     #: What to answer a boat landing's `TAKE BOAT STAY` when a walk runs into
     #: one -- `"STAY"`, `"TAKE"`, or None to stop and say so.  See
@@ -1136,12 +1140,14 @@ class Session:
         if (want == self._last_want
                 and time.time() - self._last_prompt < self.PROMPT_HOLD):
             return False
-        self._last_want = want
         self._last_prompt = time.time()
         swapped = os.path.abspath(want) != self.attached
         if swapped:
             self.log(f"  prompt -> {os.path.basename(want)}")
             self.attach(want)
+        # Only after the disk is in: an `attach` that raised must not hold off
+        # the retry for the same disk.
+        self._last_want = want
         # **Said out loud, because this keypress goes somewhere.**  A space
         # sent at a disk prompt is buffered by the KERNAL, and if the game
         # has moved on to a menu by the time it reads it, the space answers
@@ -1249,7 +1255,8 @@ class Session:
             self.log(f"  Could not walk the highlight onto {label.upper()}")
         return False
 
-    def select_bar(self, label: str, row: int = 24, timeout=30.0) -> bool:
+    def select_bar(self, label: str, row: int = 24, timeout=30.0,
+                   answer_prompts: bool = True) -> bool:
         """Horizontal command bar: the highlight is a run of cells, not a row.
 
         **The text and the highlight come from the same snapshot**, which is
@@ -1277,7 +1284,9 @@ class Session:
         **Clearing an acknowledgement is not selecting *label*.**  The loop
         goes round after it and answers `True` only from the highlight walk,
         so a caller asking for a bar that never appears gets `False`.  A
-        disk prompt is answered with `handle_prompt` rather than a Return.
+        disk prompt is answered with `handle_prompt` rather than a Return,
+        unless `answer_prompts` is False: then a prompt on screen ends the
+        call with `False`, and nothing is pressed or attached.
         """
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -1285,6 +1294,8 @@ class Session:
             if s is None:
                 time.sleep(0.3)
                 continue
+            if not answer_prompts and self.wanted_disk(s) is not None:
+                return False
             state = self.combat_state(s)
             if state.kind == BAR_PRESS:
                 if self.wanted_disk(s) is not None:
@@ -2023,7 +2034,8 @@ class Session:
         """
         self.kbd.key(move.lower(), hold, gap)
 
-    def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4) -> bool:
+    def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4,
+                 answer_prompts: bool = True) -> bool:
         """One move, verified -- by the status line indoors, by memory outdoors.
 
         Nothing here can be taken on trust.  Selecting `MOVE` succeeds against
@@ -2058,28 +2070,59 @@ class Session:
         measured.  `walk_refused` carries the second case: None after a move
         that was sent, and a sentence saying what the driver would not do
         after one that was not.
+
+        **`answer_prompts=False` is for a caller that must not be carried into
+        another area.**  A disk prompt on screen before a key, or after the
+        move key, ends the call with `False` and `walk_prompt` set to row 24;
+        no key is pressed at it and no disk is attached.  `walk_prompt` is
+        None otherwise.
         """
         self.walk_refused = None
+        self.walk_prompt = None
+        self.walked_outdoors = False
         if self.indoors() is False:
+            self.walked_outdoors = True
             return self.walk_outdoors(move, hold, gap)
         before = self.status()
         for _ in range(tries):
             s = self.screen()
+            if not answer_prompts and self._prompt_up(s):
+                return False
             row = "" if s is None else s.row(24)
             if MOVE_SUBBAR in row:
                 self.move_key(move, hold, gap)
-            elif self.select_bar("MOVE", timeout=8):
+            elif self.select_bar("MOVE", timeout=8, answer_prompts=answer_prompts):
+                if not answer_prompts and self._prompt_up(self.screen()):
+                    return False
                 time.sleep(0.6)
                 self.move_key(move, hold, gap)
             else:
-                self.leave_move(2)
+                if not answer_prompts and self._prompt_up(self.screen()):
+                    return False
+                self._leave_move(answer_prompts, 2)
                 continue
             time.sleep(1.2)
+            if not answer_prompts and self._prompt_up(self.screen()):
+                return False
             if self.status() != before:
-                self.leave_move()
+                self._leave_move(answer_prompts)
                 return True
-        self.leave_move()
+        self._leave_move(answer_prompts)
         return False
+
+    def _leave_move(self, answer_prompts: bool, *tries) -> bool:
+        """`leave_move`, passing `answer_prompts` only when it is False, so a
+        subclass or fake that overrides `leave_move` keeps its signature."""
+        if answer_prompts:
+            return self.leave_move(*tries)
+        return self.leave_move(*tries, answer_prompts=False)
+
+    def _prompt_up(self, s) -> bool:
+        """Whether a disk prompt is on `s`; records its row for `walk_one`."""
+        if s is None or self.wanted_disk(s) is None:
+            return False
+        self.walk_prompt = s.row(24).strip()
+        return True
 
     def walk_outdoors(self, move: str, hold=0.15, gap=0.30,
                       patience: float = 25.0) -> bool:
@@ -2268,14 +2311,20 @@ class Session:
             time.sleep(0.3)
         return None
 
-    def leave_move(self, tries: int = 8) -> bool:
+    def leave_move(self, tries: int = 8, answer_prompts: bool = True) -> bool:
         """Get out of move mode, and *check*.
 
         A single Return here is not enough: the game swallows input while it
         redraws the view, and the next thing the driver does is hunt for a
         command bar that is still showing `I,J,K,M`.
+
+        With `answer_prompts` False a disk prompt on screen is checked for
+        before every key and ends the call with `False`, so the Return never
+        lands on a prompt's `press any key`; `walk_prompt` records it.
         """
         for n in range(tries):
+            if not answer_prompts and self._prompt_up(self.screen()):
+                return False
             if n % 2:
                 # XTEST Return is not dependable here; the KERNAL buffer is.
                 self.press_kernal(0x0D)
@@ -2283,9 +2332,12 @@ class Session:
                 self.kbd.key("Return", 0.20, 0.30)
             time.sleep(0.6)
             s = self.screen()
+            if not answer_prompts and self._prompt_up(s):
+                return False
             if s is not None and not s.contains(MOVE_SUBBAR):
                 return True
-            self.handle_prompt(s)
+            if answer_prompts:
+                self.handle_prompt(s)
         return False
 
     def save_game(self, to: str | None = None) -> bool:
