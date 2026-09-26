@@ -44,6 +44,7 @@ conversion logged.
 | `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars (below), to the map; Pools of Darkness' map only by its measured bar |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1) highlighted with `Down`, `VIEW`, the sheet's name checked against line N's, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
+| `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp |
 | `view N` | Pools of Darkness, at the party menu: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`, the sheet checked as above, every `ITEMS` page, and `EXIT` back to the party menu |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs the map bar back |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
@@ -54,7 +55,7 @@ conversion logged.
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk 1` | Pool: turn around and step one square.  Pools of Darkness: press MOVE, step one square turning right past a wall, and press EXIT back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | Pool and Pools of Darkness, N from 1 to 4: the walk's control.  Pools of Darkness presses MOVE first and EXIT after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move").  Curse is refused: its status column is unmeasured |
-| `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement and items |
+| `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement and items |
 
 **Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
 capture.**  Its party menu holds Silver Blades' thirteen entries in the same
@@ -323,6 +324,35 @@ LEAVE = "e"
 ITEMS_NEXT = dosbox.LIST_PAGE_DOWN
 #: Pages of `ITEMS` captured before the run gives up on reaching the last.
 ITEMS_PAGES = 6
+#: The `ITEMS` list draws at most 18 rows, at y = 40 + 8k (all 37 Pools of
+#: Darkness `ITEMS` captures of #650's runs).  `Next` pages past them, which
+#: `halve` and `join` do not drive.
+ITEM_ROWS = 18
+#: The readied column, one 8-pixel band a row: a row is drawn when a pixel of
+#: its band has r+g+b above `ITEM_INK`.  Read right on 14 of 14 captures.
+ITEM_READIED_COLUMN = (16, 40, 24, 144)
+ITEM_INK = 60
+#: The list's rows, for `Screen.highlight_row`.  The highlighted row lights
+#: 629-1,114 near-white pixels and the mouse arrow at most 22, so a floor of
+#: 100 separates them (measured on 14 captures).
+ITEM_LIST_RECT = (16, 40, 288, 144)
+ITEM_HIGHLIGHT_PIXELS = 100
+#: `Down` moves the `ITEMS` highlight one row on (2 of 2 presses) and `Up` one
+#: back (1 of 1); `End` and `Home` did nothing (1 press each), so
+#: `dosbox.LIST_DOWN` is not this list's key.  Not measured: whether the
+#: highlight wraps.
+ITEM_NEXT_ROW = "Down"
+#: `HALVE` and `JOIN` act at once and ask nothing: 7 rows became 8 and back to
+#: 7, the highlight staying on row 1 (one press each, TURBO K's 50 arrows).
+#: Not measured: a stack of 1, a full list, a list of 18 rows.
+ITEM_HALVE = "h"
+ITEM_JOIN = "j"
+#: The first five cells of the `ITEMS` bar, its word `READY`, by
+#: `bar_signature`.  The rest of that bar changes with the item under the
+#: highlight, so only its head names the screen: the same value on 26 `ITEMS`
+#: captures of six characters, and never on a sheet, whose bar opens `ITEMS`.
+ITEMS_BAR_HEAD = "cdea54ada656e489"
+ITEMS_BAR_HEAD_CELLS = 5
 
 #: Pools of Darkness' roster selector (`GAME.OVR` 0x2680C, far entry `AA:4D`)
 #: moves the current character to the next member on scancode 0x50 and to
@@ -622,6 +652,7 @@ class Step:
     name: str = ""
     line: int = 0
     key: str = ""
+    row: int = 0
 
 
 _DURATION = re.compile(r"^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?$")
@@ -650,8 +681,8 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 
 
 STEP_HELP = ("load, begin, 'walk MI', 'walk 1', 'turn 4', camp, display, 'rest 5m', 'save D', "
-             "'train 1', 'sheet 1', 'items 1', 'view 1', 'shot NAME', 'press KEY', "
-             "read")
+             "'train 1', 'sheet 1', 'items 1', 'halve 1 1', 'join 4 15', 'view 1', "
+             "'shot NAME', 'press KEY', read")
 
 
 def parse_step(text: str) -> Step:
@@ -670,6 +701,14 @@ def parse_step(text: str) -> Step:
     if kind in ("train", "sheet", "items", "view") and len(words) == 2 and re.fullmatch(
             r"[1-8]", words[1]):
         return Step(kind, text, line=int(words[1]))
+    if kind in ("halve", "join") and len(words) == 3 and re.fullmatch(
+            r"[1-8]", words[1]) and re.fullmatch(r"\d+", words[2]):
+        row = int(words[2])
+        if not 1 <= row <= ITEM_ROWS:
+            raise ValueError(f"{kind} row {row} is refused: the list shows rows 1 to "
+                             f"{ITEM_ROWS} and the rows past them need Next, which "
+                             "is not driven here")
+        return Step(kind, text, line=int(words[1]), row=row)
     if kind == "walk" and len(words) == 2 and words[1].upper() in WALKS.values():
         return Step(kind, text, key=words[1].upper())
     if kind == "turn" and len(words) == 2 and re.fullmatch(r"[1-4]", words[1]):
@@ -745,7 +784,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "sheet" and title == "pool":
             if where != "map":
                 raise ValueError(f"sheet needs the loaded map: {step.text!r}")
-        elif k in ("sheet", "items"):
+        elif k in ("sheet", "items", "halve", "join"):
             if title != "darkness":
                 raise ValueError(f"{k} is driven in darkness only, not {title}")
             if where != "camp":
@@ -830,7 +869,7 @@ def parse_node(text: str) -> tuple[int, bytes]:
     return int(line), bytes((eid, minutes & 0xFF, minutes >> 8, data, flag))
 
 
-def bar_signature(screen: dosbox.Screen) -> str:
+def bar_signature(screen: dosbox.Screen, cells: int | None = None) -> str:
     """The command bar's words, blind to which word is highlighted.
 
     `Screen.glyphs` over the whole bar changes when the game moves its
@@ -841,9 +880,40 @@ def bar_signature(screen: dosbox.Screen) -> str:
     """
     x0, y, w, h = dosbox.BAR
     sha = hashlib.sha1()
-    for x in range(x0, x0 + w, CELL):
+    for x in range(x0, x0 + (w if cells is None else cells * CELL), CELL):
         sha.update(screen.glyphs((x, y, CELL, h)).encode())
     return sha.hexdigest()[:16]
+
+
+def on_items_list(screen: dosbox.Screen) -> bool:
+    """Whether `screen` is an `ITEMS` list.  A sheet reads as a one-row list
+    with its highlight on band 12, so the readers below ask this first."""
+    return bar_signature(screen, ITEMS_BAR_HEAD_CELLS) == ITEMS_BAR_HEAD
+
+
+def item_rows(screen: dosbox.Screen) -> int | None:
+    """How many rows the `ITEMS` list draws, or None off an `ITEMS` list: the
+    8-pixel bands of the readied column, from the top, that hold ink, up to
+    the first empty one."""
+    if not on_items_list(screen):
+        return None
+    x, y, w, h = ITEM_READIED_COLUMN
+    rows = 0
+    while rows < h // CELL:
+        band = screen.rows((x, y + rows * CELL, w, CELL))
+        if not any(band[i] + band[i + 1] + band[i + 2] > ITEM_INK
+                   for i in range(0, len(band), 3)):
+            break
+        rows += 1
+    return rows
+
+
+def item_highlight(screen: dosbox.Screen) -> int | None:
+    """The `ITEMS` row (from 0) drawn highlighted, or None off an `ITEMS` list
+    or with no row highlighted."""
+    if not on_items_list(screen):
+        return None
+    return screen.highlight_row(ITEM_LIST_RECT, floor=ITEM_HIGHLIGHT_PIXELS)
 
 
 def node_dict(node: bytes) -> dict:
@@ -909,6 +979,7 @@ def read_pod_slot(folder: pathlib.Path, letter: str) -> dict:
             "item_count": c.get("item_count"),
             "encumbrance": c.get("encumbrance"),
             "movement": c.get("movement"),
+            "movement_current": c.get("movement_current"),
             "items": [item_dict(i) for i in c.items]})
     return out
 
@@ -984,7 +1055,8 @@ def compare_experience(before: dict, after: dict) -> list[dict]:
 
 
 #: What `compare_members` sets side by side for each Pools of Darkness character.
-MEMBER_FIELDS = ("thief", "item_count", "encumbrance", "movement", "items")
+MEMBER_FIELDS = ("thief", "item_count", "encumbrance", "movement",
+                 "movement_current", "items")
 
 
 def compare_members(before: dict, after: dict) -> list[dict]:
@@ -2381,6 +2453,87 @@ class Driver:
         self.back_to_camp(f"items-{line}-back")
         return {**got, "pages": pages}
 
+    def pick_item(self, row: int, label: str) -> dict:
+        """Move the `ITEMS` highlight onto row `row` (from 1), from where it is.
+
+        Read, never counted, as `pick_line` does: `item_highlight` after every
+        `ITEM_NEXT_ROW`, and a press is believed only when it moves.  The
+        list opens on row 1 (37 of 37 captures).  Only forward is pressed:
+        whether the highlight wraps is unmeasured.  Two presses in a row that
+        leave it where it was, or more than `2 * ITEM_ROWS` presses, stop the
+        run.
+        """
+        rows = item_rows(self.s.capture())
+        here = item_highlight(self.s.capture())
+        if rows is None or here is None:
+            raise self.fail(label, "no ITEMS row is drawn highlighted")
+        if row > rows:
+            raise self.fail(label, f"row {row} is past the list's {rows} rows")
+        want = row - 1
+        if here > want:
+            raise self.fail(label, f"the highlight is on row {here + 1}, past "
+                            f"row {row}, and only {ITEM_NEXT_ROW} is pressed")
+        presses = still = 0
+        while here != want:
+            if presses >= 2 * ITEM_ROWS:
+                raise self.fail(label, f"{presses} presses of {ITEM_NEXT_ROW} "
+                                f"never brought the highlight to row {row}")
+            self.s.key(ITEM_NEXT_ROW)
+            presses += 1
+            was = here
+            self.s.wait_for(lambda sc, was=was: item_highlight(sc) != was, 5.0)
+            here = item_highlight(self.s.capture())
+            if here is None:
+                raise self.fail(label, "the ITEMS highlight went away")
+            still = still + 1 if here == was else 0
+            if still >= 2:
+                raise self.fail(label, f"{ITEM_NEXT_ROW} did not move the ITEMS "
+                                f"highlight off row {here + 1}")
+        return {"presses": presses}
+
+    def _item_command(self, line: int, row: int, key: str, verb: str,
+                      grow: int) -> dict:
+        """Member `line`'s `ITEMS`, row `row` highlighted, `key` pressed once,
+        and the rows counted before and after; back to camp.
+
+        With `grow` (`halve`), a list under `ITEM_ROWS` rows must gain a row
+        and keep its highlight, or the run stops on the `ITEMS` screen, before
+        any save.  `join` only records: whether a scroll joins is what the run
+        is for.
+        """
+        got = self.open_sheet(line)
+        label = f"{verb}-{line}-{row}"
+        if not self.press_screen_changes(SHEET_ITEMS, tries=1, wait=15.0):
+            raise self.fail(label, "ITEMS changed nothing on the sheet")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        moved = self.pick_item(row, f"{label}-select")
+        self.shot(f"{label}-before")
+        rows_before = item_rows(self.s.capture())
+        highlight_before = item_highlight(self.s.capture())
+        self.s.key(key)
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        rows_after, highlight_after = item_rows(screen), item_highlight(screen)
+        after = self.shot(f"{label}-after")
+        if grow and rows_before < ITEM_ROWS and (
+                rows_after != rows_before + grow
+                or highlight_after != highlight_before):
+            raise self.fail(f"{label}-rows", f"{verb} left {rows_after} rows with "
+                            f"the highlight on {highlight_after}, from {rows_before} "
+                            f"rows with it on {highlight_before}")
+        self.back_to_camp(f"{label}-back")
+        return {**got, "row": row, "presses": moved["presses"],
+                "rows_before": rows_before, "rows_after": rows_after,
+                "highlight_before": highlight_before,
+                "highlight_after": highlight_after, "after": after}
+
+    def halve(self, line: int, row: int) -> dict:
+        """`HALVE` member `line`'s item `row`; a new row must appear after it."""
+        return self._item_command(line, row, ITEM_HALVE, "halve", grow=1)
+
+    def join(self, line: int, row: int) -> dict:
+        """`JOIN` member `line`'s item `row`; the row counts are recorded."""
+        return self._item_command(line, row, ITEM_JOIN, "join", grow=0)
+
     def zero_rest_time(self, limit: int = 120) -> int:
         """Select days and press subtract until three presses change nothing.
 
@@ -2755,6 +2908,10 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.sheet(step.line)
                 elif step.kind == "items":
                     r = d.items(step.line)
+                elif step.kind == "halve":
+                    r = d.halve(step.line, step.row)
+                elif step.kind == "join":
+                    r = d.join(step.line, step.row)
                 elif step.kind == "view":
                     r = d.view(step.line)
                 elif step.kind == "shot":
@@ -2940,7 +3097,8 @@ def describe(result: dict) -> list[str]:
                 f"  {row['name']}: pick pockets {row['thief']['after']['thief_pick_pockets']}"
                 f", {row['item_count']['after']} items ({len(row['items']['after'])} "
                 f"read), encumbrance {row['encumbrance']['after']}, movement "
-                f"{row['movement']['after']}; "
+                f"{row['movement']['after']}, moving "
+                f"{row['movement_current']['after']}; "
                 + ("unchanged" if not row["changed"] else
                    "changed: " + ", ".join(row["changed"])))
         for row in s["compare"]:

@@ -246,6 +246,14 @@ def _no_waiting(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _items_bar_measured(monkeypatch):
+    """The fakes' `items` bar stands in for the measured `READY` head of
+    `ITEMS_BAR_HEAD`, whose real value a capture test checks."""
+    monkeypatch.setattr(da, "ITEMS_BAR_HEAD", da.bar_signature(
+        _screen(b"\x2b\x2c", b""), da.ITEMS_BAR_HEAD_CELLS))
+
+
+@pytest.fixture(autouse=True)
 def _pod_map_measured(monkeypatch):
     """The fakes' map bar stands in for the measured `dungeon` one of
     `POD_MAP_BARS`, whose real values the tests at the end check against
@@ -1750,6 +1758,11 @@ def test_orders_pools_of_darkness_allows(steps):
     ("pool", ("load", "walk 1"), "walk MI"),
     ("pool", ("load", "camp", "sheet 1"), "loaded map"),
     ("curse", ("load", "begin", "camp", "items 2"), "darkness only"),
+    ("darkness", ("load", "halve 1 1"), "halve needs camp first"),
+    ("darkness", ("load", "begin", "join 1 1"), "join needs camp first"),
+    ("darkness", ("load", "begin", "camp", "press v", "join 1 1"),
+     "only press, shot and read"),
+    ("pool", ("load", "camp", "halve 1 1"), "darkness only"),
 ])
 def test_orders_pools_of_darkness_does_not_allow(title, steps, why):
     with pytest.raises(ValueError, match=why):
@@ -1847,8 +1860,18 @@ class FakePod(FakePool):
                  continues=0, dead_return=False, late_return=False,
                  late_n=False, after_town="map", swallow_down=False,
                  dead_down=False, same_sheet=False, pick_opens=True,
-                 animated=False):
+                 animated=False, item_lists=None, dead_item_down=False,
+                 dead_halve=False):
         super().__init__(tmp, keys=TITLE_KEYS["darkness"])
+        #: Each member's `ITEMS` rows as quantities, when given: the list is
+        #: drawn (a readied-column mark and, on the current row, the white
+        #: band), `Down` moves the current row unless `dead_item_down`, `h`
+        #: halves a stack above 1 into a new row after it while the list is
+        #: under 16 items unless `dead_halve`, and `j` joins the current row
+        #: with another of the same quantity.
+        self.item_lists = item_lists
+        self.dead_item_down, self.dead_halve, self.item_row = (
+            dead_item_down, dead_halve, 0)
         #: The roster selector drops the first `Down` (`swallow_down`), or
         #: every one (`dead_down`); the sheet always draws member 1
         #: (`same_sheet`), the game not viewing whom the highlight is on;
@@ -1964,7 +1987,9 @@ class FakePod(FakePool):
         elif m == "camp" and k == "v":
             self.mode, self.view_from = "sheet", "camp"
         elif m == "sheet" and k == "i":
-            self.mode, self.page = "items", 1
+            self.mode, self.page, self.item_row = "items", 1, 0
+        elif m == "items" and self.item_lists is not None and k in ("Down", "h", "j"):
+            self._item_key(k)
         elif m == "sheet" and k == "e":
             self.mode = self.view_from
         elif m == "items" and k == "n" and self.page < self.pages:
@@ -1977,6 +2002,35 @@ class FakePod(FakePool):
         elif m in FakePool.BARS:
             self.keys.pop()     # `FakePool.key` records it again
             super().key(k, gap)
+
+    def _item_key(self, k: str) -> None:
+        rows = self.item_lists[self.line]
+        at = self.item_row
+        if k == "Down" and not self.dead_item_down:
+            self.item_row = min(at + 1, len(rows) - 1)
+        elif k == "h" and not self.dead_halve and rows[at] > 1 and len(rows) < 16:
+            rows[at:at + 1] = [rows[at] - rows[at] // 2, rows[at] // 2]
+        elif k == "j":
+            other = next((i for i, q in enumerate(rows) if i != at and q == rows[at]),
+                         None)
+            if other is not None:
+                rows[at] += rows[other]
+                del rows[other]
+                self.item_row = at - 1 if other < at else at
+
+    def _draw_items(self, frame: dosbox.Screen) -> dosbox.Screen:
+        """The member's rows, at most `ITEM_ROWS`, as the game draws them."""
+        px = bytearray(frame.px)
+        x, y, w, _ = da.ITEM_LIST_RECT
+        for k, _q in enumerate(self.item_lists[self.line][:da.ITEM_ROWS]):
+            top = y + k * da.CELL
+            at = ((top + 3) * W + x + 4) * 3
+            px[at:at + 3] = b"\xaa\xaa\xaa"
+            if k == self.item_row:
+                for dx in range(60, 60 + 200):
+                    at = ((top + 3) * W + x + dx) * 3
+                    px[at:at + 3] = b"\xff\xff\xff"
+        return dosbox.Screen(W, H, bytes(px))
 
     def _roster(self, k: str) -> None:
         """The selector: `Down` a member on, `Up` one back, both wrapping."""
@@ -2039,6 +2093,8 @@ class FakePod(FakePool):
         if self.mode == "sheet":
             return _with_roster(frame, "party", self.size, self.line,
                                 sheet=1 if self.same_sheet else self.line)
+        if self.mode == "items" and self.item_lists is not None:
+            return self._draw_items(frame)
         return frame
 
     def walk_highlight(self, rect, want, key="End", timeout=20.0):
@@ -2388,6 +2444,192 @@ def test_the_captured_sheets_are_roster_line_one_and_no_other(run, roster, where
 @pytest.mark.parametrize("shot", ["008-line-4", "010-line-4", "013-line-6"])
 def test_run_one_s_end_never_moved_the_highlight(shot):
     assert da.roster_line(_capture("88eac43064-run1-cleric", shot), "camp", 6) == 1
+
+
+# -- ITEMS: `halve` and `join` -----------------------------------------------
+
+
+def _seven():
+    """TURBO K's seven rows: 50 arrows first, as run `eafdbfabb0-m-itemskeys`."""
+    return [50, 1, 1, 1, 1, 1, 1]
+
+
+def _itemed(tmp_path, **kw):
+    lists = {1: _seven(), 4: list(range(1, 22))}
+    game, d = _camped_pod(tmp_path, item_lists=lists, **kw)
+    return game, d
+
+
+def test_the_item_steps_parse_with_a_line_and_a_row():
+    for kind in ("halve", "join"):
+        got = da.parse_step(f"{kind} 4 15")
+        assert (got.kind, got.line, got.row) == (kind, 4, 15)
+    assert da.parse_step("join 8 18").row == 18
+    for bad in ("join 4 19", "join 4 21", "halve 1 0", "join 9 1", "join 4",
+                "halve 1 1 1", "join 0 1"):
+        with pytest.raises(ValueError):
+            da.parse_step(bad)
+    with pytest.raises(ValueError, match="need Next"):
+        da.parse_step("join 4 19")
+
+
+def test_the_item_steps_are_allowed_in_camp_after_a_walk_and_before_a_save():
+    da.validate_steps(_steps("load", "begin", "camp", "halve 1 1", "save C",
+                             "join 1 1", "join 4 15", "sheet 4", "save D", "read"),
+                      "darkness")
+
+
+def test_halve_then_join_reads_seven_eight_seven_rows_and_ends_in_camp(tmp_path):
+    game, d = _itemed(tmp_path)
+    halved = d.halve(1, 1)
+    assert (halved["rows_before"], halved["rows_after"]) == (7, 8)
+    assert halved["highlight_before"] == halved["highlight_after"] == 0
+    assert game.item_lists[1] == [25, 25, 1, 1, 1, 1, 1, 1] and game.mode == "camp"
+    assert game.keys.count("h") == 1 and "j" not in game.keys
+    joined = d.join(1, 1)
+    assert (joined["rows_before"], joined["rows_after"]) == (8, 7)
+    assert game.item_lists[1] == _seven() and game.mode == "camp"
+    assert game.keys.count("j") == 1
+
+
+def test_join_on_row_fifteen_of_twenty_one_presses_down_fourteen_times(tmp_path):
+    game, d = _itemed(tmp_path)
+    game.keys.clear()
+    got = d.join(4, 15)
+    assert game.keys == ["Down"] * 3 + ["v", "i"] + ["Down"] * 14 + ["j", "e", "e"]
+    assert (got["rows_before"], got["rows_after"]) == (18, 18)
+    assert got["highlight_before"] == 14 and got["presses"] == 14
+    assert len(game.item_lists[4]) == 21 and game.mode == "camp"
+
+
+def test_pick_item_reads_the_highlight_after_every_press(tmp_path, monkeypatch):
+    game, d = _itemed(tmp_path)
+    d.open_sheet(1)
+    game.key("i")
+    reads = []
+    real = da.item_highlight
+    monkeypatch.setattr(da, "item_highlight",
+                        lambda sc: reads.append(1) or real(sc))
+    game.keys.clear()
+    d.pick_item(4, "x")
+    assert game.keys == ["Down"] * 3 and game.item_row == 3
+    assert len(reads) >= 1 + 3
+
+
+def test_a_row_past_the_list_is_refused_before_a_key(tmp_path):
+    game, d = _itemed(tmp_path)
+    d.open_sheet(1)
+    game.key("i")
+    game.keys.clear()
+    with pytest.raises(da.StepFailed, match="row 8 is past the list's 7 rows"):
+        d.pick_item(8, "x")
+    assert game.keys == []
+
+
+def test_a_dead_down_stops_join_at_the_highlight_before_any_j(tmp_path):
+    game, d = _itemed(tmp_path, dead_item_down=True)
+    with pytest.raises(da.StepFailed, match="did not move the ITEMS highlight off "
+                                            "row 1"):
+        d.join(1, 4)
+    assert "j" not in game.keys and game.mode == "items"
+
+
+def test_a_dead_halve_stops_the_run_on_the_items_screen_before_any_save(tmp_path):
+    game, d = _itemed(tmp_path, dead_halve=True)
+    with pytest.raises(da.StepFailed, match="halve left 7 rows.*from 7 rows"):
+        d.halve(1, 1)
+    assert game.mode == "items" and "e" not in game.keys[-1:]
+    assert not list(game.save_dir.glob("SAVGAM[B-J].PTY"))
+
+
+def test_halve_that_moves_the_highlight_stops_the_run(tmp_path, monkeypatch):
+    game, d = _itemed(tmp_path)
+    real = game._item_key
+
+    def moving(k):
+        real(k)
+        if k == "h":
+            game.item_row = 1
+    monkeypatch.setattr(game, "_item_key", moving)
+    with pytest.raises(da.StepFailed, match="halve left 8 rows with the highlight "
+                                            "on 1, from 7 rows with it on 0"):
+        d.halve(1, 1)
+
+
+def test_the_item_readers_read_only_an_items_list():
+    """A sheet reads as a one-row list with its highlight on band 12."""
+    list_frame = _screen(b"\x2b\x2c", b"")
+    px = bytearray(list_frame.px)
+    x, y, w, _ = da.ITEM_LIST_RECT
+    for band in (0, 1, 2, 4):            # band 3 is empty: the count stops there
+        at = ((y + band * 8 + 3) * W + x + 4) * 3
+        px[at:at + 3] = b"\xaa\xaa\xaa"
+    for dx in range(120):
+        at = ((y + 2 * 8 + 3) * W + x + 60 + dx) * 3
+        px[at:at + 3] = b"\xff\xff\xff"
+    for dx in range(22):                 # the mouse arrow: 22 near-white pixels
+        at = ((y + 6 * 8 + 3) * W + x + 150 + dx) * 3
+        px[at:at + 3] = b"\xff\xff\xff"
+    frame = dosbox.Screen(W, H, bytes(px))
+    assert da.item_rows(frame) == 3 and da.item_highlight(frame) == 2
+    sheet = _screen(b"\x29\x2a", b"")
+    sheet_px = bytearray(frame.px)
+    for i, b in enumerate(sheet.rows(dosbox.BAR)):
+        sheet_px[(dosbox.BAR[1] * W) * 3 + i] = b
+    off = dosbox.Screen(W, H, bytes(sheet_px))
+    assert da.item_rows(off) is None and da.item_highlight(off) is None
+    only_arrow = bytearray(list_frame.px)
+    for dx in range(22):
+        at = ((y + 3) * W + x + 150 + dx) * 3
+        only_arrow[at:at + 3] = b"\xff\xff\xff"
+    assert da.item_highlight(dosbox.Screen(W, H, bytes(only_arrow))) is None
+
+
+@pytest.mark.parametrize("run,shot,rows,highlight", [
+    ("eafdbfabb0-m-itemskeys", "010-items-1-1", 7, 0),
+    ("eafdbfabb0-m-itemskeys", "012-press-i", 7, 0),
+    ("eafdbfabb0-m-itemskeys", "013-press-h", 8, 0),
+    ("eafdbfabb0-m-itemskeys", "014-press-j", 7, 0),
+    ("eafdbfabb0-m-itemskeys", "015-press-Down", 7, 1),
+    ("eafdbfabb0-m-itemskeys", "016-press-Down", 7, 2),
+    ("eafdbfabb0-m-itemskeys", "017-press-Up", 7, 1),
+    ("eafdbfabb0-m-itemskeys", "018-press-End", 7, 1),
+    ("eafdbfabb0-m-itemskeys", "019-press-Home", 7, 1),
+    ("79aa61820e-p2-savgama", "008-view-4-items-1", 18, 0),
+    ("79aa61820e-p2-savgama", "009-view-4-items-2", 18, 0),
+    ("79aa61820e-p2-savgama", "014-view-6-items-1", 16, 0),
+    ("79aa61820e-p2-savgama", "021-items-4-1", 18, 0),
+    ("79aa61820e-p2-savgama", "022-items-4-2", 18, 0),
+])
+def test_the_captured_items_lists_read_as_the_screen_shows_them(run, shot, rows,
+                                                                highlight, monkeypatch):
+    """14 captures of two runs of #650 (this player's own, not committed)."""
+    monkeypatch.undo()
+    screen = _capture(run, shot)
+    assert (da.item_rows(screen), da.item_highlight(screen)) == (rows, highlight)
+
+
+@pytest.mark.parametrize("shot", ["009-sheet-1", "011-press-v"])
+def test_a_captured_sheet_is_not_read_as_an_items_list(shot, monkeypatch):
+    monkeypatch.undo()
+    screen = _capture("eafdbfabb0-m-itemskeys", shot)
+    assert da.item_rows(screen) is None and da.item_highlight(screen) is None
+
+
+def test_read_reports_the_current_movement_of_each_character(pod_source):
+    out, _ = pod_source
+    slot = da.read_slot(out / "source", "A")
+    assert all(isinstance(c["movement_current"], int) for c in slot["characters"])
+    assert "movement_current" in da.MEMBER_FIELDS
+
+
+def test_compare_members_lists_movement_current_when_it_differs():
+    base = {"name": "CLERIC", "thief": {}, "item_count": 21, "encumbrance": 1478,
+            "movement": 12, "movement_current": 9, "items": []}
+    before = {"characters": [base]}
+    after = {"characters": [{**base, "movement_current": 6}]}
+    assert da.compare_members(before, after)[0]["changed"] == ["movement_current"]
+    assert da.compare_members(before, before)[0]["changed"] == []
 
 
 class FakeDungeon(FakePod):
