@@ -310,7 +310,7 @@ def test_curse_fails_when_f_is_one_square_on(tmp_path, clock):
 
 def test_curse_measure_stops_before_the_first_save(tmp_path, clock):
     guest, result = _curse_run(tmp_path, clock, accept=False, measure=True)
-    assert _keys(guest) == "ESC ESC ESC ESC L B V E S".split()
+    assert _keys(guest) == "ESC ESC L B V E S".split()
     assert result["success"] is True and result["control_sha256"] is None
     assert not {"D", "F", "Y"} & set(_keys(guest))
 
@@ -663,3 +663,12 @@ def test_the_world_is_not_looked_at_before_its_minimum_wait_has_passed(
     pressed = [t for k, t in log if k == key][-1]  # the last B is BEGIN, which reaches the world
     grabbed = next(t for name, t in guest.at if name.startswith(prefix))
     assert grabbed - pressed >= at_least
+
+
+def test_the_curse_measure_route_reaches_the_party_menu_before_l():
+    states = [state for _key, state, _kind in foundation.CURSE.measure_route]
+    assert states[:2] == ["front_end", "title"]  # the copy-protection screen, then the party menu
+    assert states[2] == "load_picker"
+    # The accept route starts at that menu, and the interstitial waits for the same state.
+    assert foundation.CURSE.route[0][0] == "L"
+    assert foundation.CURSE.interstitials[0][2] == frozenset({"title"})

@@ -193,11 +193,11 @@ CURSE = AmigaTitle(
         ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
         ("F", "exit_game", "write"), ("N", "camp", "key"),
     ),
-    # The four ESCs are the count recorded for this disk; the run ends cleanly at the
-    # first key that leaves the screen unchanged. Stops before D.
+    # Up to four ESCs leave the front end; two do on the measured disk, the first reaching
+    # the copy-protection screen and the second the party menu, which is `title`. Stops before D.
     measure_route=(
-        ("ESC", "front_end", "key"), ("ESC", "front_end", "key"), ("ESC", "front_end", "key"),
-        ("ESC", "title", "key"), ("L", "load_picker", "key"), ("B", "loaded_menu", "key"),
+        ("ESC", "front_end", "key"), ("ESC", "title", "key"),
+        ("L", "load_picker", "key"), ("B", "loaded_menu", "key"),
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"),
     ),
     boot_span=120.0,
@@ -209,6 +209,7 @@ CURSE = AmigaTitle(
                "world": 20.0, "world_after_move": 5.0, "camp": 10.0,
                "camp_save_picker": 10.0, "exit_game": 20.0},
     interstitials=(
+        # A cap: accept mode stops pressing once `title` is reached.
         ("front_end", ("keys", "ESC"), frozenset({"title"}), 4),
         ("continue", ("keys", "RET"), frozenset({"world", "exit_game"}), 3),
     ),
