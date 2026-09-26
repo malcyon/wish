@@ -3838,14 +3838,29 @@ def test_a_cleanup_window_the_wrappers_margin_cannot_hold_is_refused():
         da.Deadline(_Clock(), 900.0, cleanup=da.WRAPPER_MARGIN)
 
 
-def _unrouted_waits(source, roots=None):
+def _passes_deadline(call):
+    """Whether an `ast.Call` hands a deadline on: a `deadline` keyword, a
+    `deadline` name or `.deadline` attribute argument, or `**kwargs`."""
+    import ast
+    args = [*call.args, *(k.value for k in call.keywords)]
+    return any(k.arg in (None, "deadline") for k in call.keywords) or any(
+        (isinstance(a, ast.Name) and a.id == "deadline")
+        or (isinstance(a, ast.Attribute) and a.attr == "deadline") for a in args)
+
+
+def _unrouted_waits(source, roots=None, bare=()):
     """The numeric `timeout=` literals and `timeout` defaults in `source`'s
     functions that are not routed through a deadline.
 
     `roots` names the functions to start from (all when `None`); calls to
     other functions of the same source, as `self.<name>(` or `<name>(`, are
     followed.  A function is routed when it takes a `deadline` parameter and
-    its body uses it beyond comparing it with `None`.  Numeric literals only, not computed timeouts.
+    its body uses it beyond comparing it with `None`; the `timeout=` literals
+    in its body are then bounded by it, and its own `timeout` default counts
+    only when a caller reachable from the roots (or named in `bare`) passes no
+    deadline, because that call runs on the default.  Numeric literals only,
+    not computed timeouts; calls through other receivers (`self.s.settle`, a
+    callable passed in, `getattr`) or into other modules are not followed.
     """
     import ast
     functions = {}
@@ -3853,7 +3868,7 @@ def _unrouted_waits(source, roots=None):
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             functions.setdefault(fn.name, []).append(fn)
     todo = list(functions if roots is None else roots)
-    seen, values = set(), []
+    seen, bare, values = set(), set(bare), []
     while todo:
         name = todo.pop()
         if name in seen:
@@ -3868,23 +3883,28 @@ def _unrouted_waits(source, roots=None):
                         f.id if isinstance(f, ast.Name) else None)
                     if callee in functions:
                         todo.append(callee)
+                        if not _passes_deadline(n):
+                            bare.add(callee)
+    for name in seen:
+        for fn in functions.get(name, []):
             args = fn.args
             params = args.posonlyargs + args.args + args.kwonlyargs
             compared = {id(n) for c in ast.walk(fn) if isinstance(c, ast.Compare)
                         for n in ast.walk(c)}
-            if any(a.arg == "deadline" for a in params) and any(
-                    isinstance(n, ast.Name) and n.id == "deadline"
-                    and isinstance(n.ctx, ast.Load) and id(n) not in compared
-                    for n in ast.walk(fn)):
-                continue
+            routed = any(a.arg == "deadline" for a in params) and any(
+                isinstance(n, ast.Name) and n.id == "deadline"
+                and isinstance(n.ctx, ast.Load) and id(n) not in compared
+                for n in ast.walk(fn))
             defaults = dict(zip(reversed(args.posonlyargs + args.args),
                                 reversed(args.defaults)))
             defaults.update({a: d for a, d in zip(args.kwonlyargs, args.kw_defaults)})
-            values += [d.value for a, d in defaults.items()
-                       if a.arg == "timeout" and isinstance(d, ast.Constant)]
-            values += [kw.value.value for n in ast.walk(fn) if isinstance(n, ast.Call)
-                       for kw in n.keywords if kw.arg == "timeout"
-                       and isinstance(kw.value, ast.Constant)]
+            if not routed or name in bare:
+                values += [d.value for a, d in defaults.items()
+                           if a.arg == "timeout" and isinstance(d, ast.Constant)]
+            if not routed:
+                values += [kw.value.value for n in ast.walk(fn) if isinstance(n, ast.Call)
+                           for kw in n.keywords if kw.arg == "timeout"
+                           and isinstance(kw.value, ast.Constant)]
     return [float(v) for v in values]
 
 
@@ -3892,6 +3912,25 @@ def _borrowed_roots(module):
     import re
     prefix = "dospod" if module is da.dospod else "ssb"
     return set(re.findall(rf"\b{prefix}\.(\w+)\(", pathlib.Path(da.__file__).read_text()))
+
+
+def _borrowed_bare(module):
+    """The `ssb.<name>(` / `dospod.<name>(` calls in the driver that pass no
+    deadline, by function name."""
+    import ast
+    prefix = "dospod" if module is da.dospod else "ssb"
+    names = set()
+    for n in ast.walk(ast.parse(pathlib.Path(da.__file__).read_text())):
+        f = n.func if isinstance(n, ast.Call) else None
+        if not isinstance(f, ast.Attribute):
+            continue
+        r = f.value
+        if (isinstance(r, ast.Name) and r.id == prefix) or (
+                isinstance(r, ast.Attribute) and r.attr == prefix
+                and isinstance(r.value, ast.Name) and r.value.id == "self"):
+            if not _passes_deadline(n):
+                names.add(f.attr)
+    return names
 
 
 def test_no_numeric_timeout_literal_in_the_driver_outruns_the_margin():
@@ -3903,7 +3942,7 @@ def test_no_numeric_timeout_literal_in_the_driver_outruns_the_margin():
         [*_unrouted_waits(pathlib.Path(da.__file__).read_text())]
         + [w for m in (da.ssbimport, da.dospod)
            for w in _unrouted_waits(pathlib.Path(m.__file__).read_text(),
-                                    _borrowed_roots(m))])
+                                    _borrowed_roots(m), _borrowed_bare(m))])
     assert longest <= da.LONGEST_UNBOUNDED_WAIT
     assert da.CLEANUP_SECONDS + da.LONGEST_UNBOUNDED_WAIT <= da.WRAPPER_MARGIN
 
@@ -3911,7 +3950,9 @@ def test_no_numeric_timeout_literal_in_the_driver_outruns_the_margin():
 def test_the_guard_sees_an_unused_deadline_parameter_and_a_helper_behind_a_helper():
     source = pathlib.Path(da.ssbimport.__file__).read_text()
     roots = _borrowed_roots(da.ssbimport)
-    assert max(_unrouted_waits(source, roots), default=0) <= da.LONGEST_UNBOUNDED_WAIT
+    bare = _borrowed_bare(da.ssbimport)
+    assert max(_unrouted_waits(source, roots, bare),
+               default=0) <= da.LONGEST_UNBOUNDED_WAIT
     behind = source.replace(
         "    def intro(self", "    def slow(self):\n"
         "        self.s.settle(quiet=0.6, timeout=120.0)\n\n    def intro(self").replace(
@@ -3925,6 +3966,23 @@ def test_the_guard_sees_an_unused_deadline_parameter_and_a_helper_behind_a_helpe
     ).replace("deadline.bound(timeout, label)", "timeout").replace(
         "deadline.bound(wait, label)", "wait").replace("deadline.check(label)", "None")
     assert 120.0 in _unrouted_waits(unread, roots)
+    assert "wait_bar" in bare
+    raised = source.replace("timeout: float = 45.0, deadline=None",
+                            "timeout: float = 120.0, deadline=None")
+    assert raised != source
+    assert 120.0 in _unrouted_waits(raised, roots, bare)
+    menu = source.replace("timeout: float = 120.0, deadline=None",
+                          "timeout: float = 121.0, deadline=None")
+    assert menu != source
+    assert 121.0 not in _unrouted_waits(menu, roots, bare)
+    called = menu.replace(
+        "    def intro(self", "    def again(self):\n"
+        "        self.to_party_menu()\n\n    def intro(self").replace(
+        "            kind = self.bar(screen)\n            if kind == \"map\"",
+        "            kind = self.bar(screen)\n            self.again()\n"
+        "            if kind == \"map\"")
+    assert called != menu
+    assert 121.0 in _unrouted_waits(called, roots, bare)
 
 
 class _WaitingSession:
