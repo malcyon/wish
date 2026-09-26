@@ -76,6 +76,8 @@ class ProbeGuest(WinGuest):
         for line in text.splitlines():
             key, _, value = line.strip().partition("=")
             if key in wanted and value:
+                if key in found:
+                    raise RouteError(f"The guest reported {key} twice: {text[-300:]!r}")
                 found[key] = value
         for key in wanted:
             if key not in found:
@@ -197,11 +199,18 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
             drive, path, holder, digest, staged=guest.staged)
 
     def refused(name: str, call: Callable[[], Any], error: type, needle: str) -> str:
-        """Run a request that must be refused and pin the reason it gives."""
+        """Run a request that must be refused and pin the reason it gives.
+
+        A guest refusal is matched on the guest's own `fail` line, so a transport
+        or PowerShell error can never stand in for one.
+        """
         try:
             said = call()
-        except error as exc:
-            text = str(exc)
+        except Exception as exc:
+            text = exc.line if isinstance(exc, amiga.GuestRefusal) else str(exc)
+            if not isinstance(exc, error):
+                step(name, "fail", expected=needle, observed=text)
+                raise RouteError(f"{name}: not refused as expected: {text}") from exc
             if needle not in text:
                 step(name, "fail", expected=needle, observed=text)
                 raise RouteError(f"{name}: refused, but not for the expected reason: {text}") from exc
@@ -245,7 +254,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
             return pipe_factory(limit(30)).refused_verb(
                 "insert", INTRUDER, ["0", windows["B"], generated["B"]["sha256"]])
 
-        refused("control: another holder's claim", wrong_holder, amiga.FloppyError,
+        refused("control: another holder's claim", wrong_holder, amiga.GuestRefusal,
                 f"claimed by {holder}")
         read_drives("control: another holder's claim leaves both drives", both)
 
@@ -255,7 +264,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
         refused("control: another holder's path, refused in the guest",
                 lambda: pipe_factory(limit(30)).refused_verb(
                     "insert", holder, ["0", foreign, generated["B"]["sha256"]]),
-                amiga.FloppyError, f"is not staged for {holder}")
+                amiga.GuestRefusal, f"is not staged for {holder}")
         read_drives("control: another holder's path leaves both drives", both)
 
         refused("control: a file never staged, refused in Python",
@@ -264,7 +273,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
         refused("control: a file never staged, refused in the guest",
                 lambda: pipe_factory(limit(30)).refused_verb(
                     "insert", holder, ["0", never, generated["B"]["sha256"]]),
-                amiga.FloppyError, "does not exist")
+                amiga.GuestRefusal, "does not exist")
         read_drives("control: a file never staged leaves both drives", both)
 
         again = guest_insert(0, windows["A"], generated["A"]["sha256"])

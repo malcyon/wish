@@ -499,6 +499,21 @@ class FloppyError(GuestError):
         self.receipt = receipt or {}
 
 
+class GuestRefusal(FloppyError):
+    """The lane script itself answered `fail ...`; `line` is that line, unchanged."""
+
+    def __init__(self, line: str, receipt: dict | None = None):
+        super().__init__("The guest refused the floppy change: " + line[5:], receipt)
+        self.line = line
+
+
+def _guest_fail_line(text: str) -> str | None:
+    """The `fail ...` first line of the output inside a failed run's error text, if it has one."""
+    _, sep, output = text.partition(" failed: ")
+    lines = [line.strip() for line in output.splitlines() if line.strip()] if sep else []
+    return lines[0] if lines and lines[0].startswith("fail ") else None
+
+
 @dataclass
 class FloppyReceipt:
     """What one `drives` or `insert` verb did, with every raw reply kept."""
@@ -1014,25 +1029,26 @@ Write-Output '<<end>>'
         except GuestError as exc:
             # The lane script exits 1 on a refusal made before it opened the pipe.
             text = str(exc)
-            at = text.find("fail ")
-            raise FloppyError(
-                "The guest refused the floppy change: "
-                + (text[at + 5:] if at >= 0 else text), {"output": text}) from exc
+            line = _guest_fail_line(text)
+            if line is not None:
+                raise GuestRefusal(line, {"output": text}) from exc
+            raise FloppyError(f"The guest could not be run: {text}",
+                              {"output": text}) from exc
 
     def refused_verb(self, verb: str, holder: str, args: list[str]) -> str:
         """Run a lane verb that a control expects the guest to refuse; give its first line.
 
-        A `fail` first line raises `FloppyError` with the guest's text, whether the
+        A `fail` first line raises `GuestRefusal` with the guest's line, whether the
         guest exited 1 before opening the pipe or 0 after it, exactly as
         `insert_floppy` reads a verdict. Any other first line is returned so the
-        caller can record what the guest said instead.
+        caller can record what the guest said instead. A transport or PowerShell
+        failure stays a plain `FloppyError`, never a refusal.
         """
         out, _seconds = self.lane_verb(verb, holder, None, args)
         lines = [line.strip() for line in out.splitlines() if line.strip()]
         status = lines[0] if lines else ""
-        if status.startswith("fail"):
-            raise FloppyError("The guest refused the floppy change: " + status[5:],
-                              {"output": out})
+        if status.startswith("fail "):
+            raise GuestRefusal(status, {"output": out})
         return status
 
     def batch(self, lines: list[str],

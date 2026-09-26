@@ -133,12 +133,11 @@ class FakePipe:
     def refused_verb(self, verb, holder, args):
         self.guest._do("lane_verb", holder, args[1])
         if holder != HOLDER:
-            raise amiga.FloppyError(f"The guest refused the floppy change: the WinUAE lane is "
-                                    f"claimed by {HOLDER} since t, not by {holder}")
+            raise amiga.GuestRefusal(f"fail the WinUAE lane is claimed by {HOLDER} since t, "
+                                     f"not by {holder}")
         if "intruder" in args[1]:
-            raise amiga.FloppyError(f"The guest refused the floppy change: {args[1]} is not "
-                                    f"staged for {holder}")
-        raise amiga.FloppyError(f"The guest refused the floppy change: {args[1]} does not exist")
+            raise amiga.GuestRefusal(f"fail {args[1]} is not staged for {holder}")
+        raise amiga.GuestRefusal(f"fail {args[1]} does not exist")
 
 
 @pytest.fixture
@@ -287,7 +286,7 @@ def test_a_control_that_is_accepted_fails_the_probe(tmp_path, clock, proof):
 def test_a_control_refused_for_the_wrong_reason_fails_the_probe(tmp_path, clock, proof):
     class Wrong(FakePipe):
         def refused_verb(self, verb, holder, args):
-            raise amiga.FloppyError("The guest refused the floppy change: something else")
+            raise amiga.GuestRefusal("fail something else")
 
     _, result = run(tmp_path, clock, proof, pipe=Wrong)
     assert result["passed"] is False and "not for the expected reason" in result["error"]
@@ -507,6 +506,59 @@ def test_a_guest_that_answers_ok_to_a_control_fails_it_and_records_what_it_said(
     assert step["verdict"] == "fail" and step["observed"] == "ok inserted drive=0 polls=1"
 
 
+# -- controls driven through the real refused_verb -------------------------------
+
+class RealVerbPipe(FakePipe):
+    """Every control's verb is read by the real `WinuaePipe.refused_verb`."""
+
+    def __init__(self, guest, timeout):
+        super().__init__(guest, timeout)
+        self.real = amiga.WinuaePipe(runner=self.runner)
+
+    def refused_verb(self, verb, holder, args):
+        self.guest._do("lane_verb", holder, args[1])
+        return self.real.refused_verb(verb, holder, args)
+
+    @staticmethod
+    def runner(argv, timeout):
+        words = argv[2]
+        if "-Holder wish679-intruder" in words:
+            raise amiga.GuestError("winvm ssh failed: fail the WinUAE lane is claimed by "
+                                   f"{HOLDER} since t, not by wish679-intruder\nIf x has gone")
+        if "wish679-wish679-intruder" in words:
+            raise amiga.GuestError("winvm ssh failed: fail C:\\x is not staged for " + HOLDER)
+        return "fail C:\\x\\probeZ.adf does not exist\r\n<<end>>\r\n"
+
+
+def test_the_wrong_holder_and_other_path_controls_pass_through_the_real_verb_reader(tmp_path, clock, proof):
+    _, result = run(tmp_path, clock, proof, pipe=RealVerbPipe)
+    assert result["passed"] is True
+    by = {s["step"]: s for s in result["steps"]}
+    assert by["control: another holder's claim"]["refusal"].startswith("fail the WinUAE lane is claimed by")
+    assert "is not staged for" in by["control: another holder's path, refused in the guest"]["refusal"]
+
+
+def test_a_transport_error_that_says_does_not_exist_does_not_pass_the_never_staged_control(tmp_path, clock, proof):
+    class Transport(RealVerbPipe):
+        @staticmethod
+        def runner(argv, timeout):
+            if "probeZ" in argv[2]:
+                raise amiga.GuestError("winvm ssh failed: Cannot find path 'C:\\x' because it does not exist.")
+            return RealVerbPipe.runner(argv, timeout)
+
+    _, result = run(tmp_path, clock, proof, pipe=Transport)
+    assert result["passed"] is False and "not refused as expected" in result["error"]
+    assert result["steps"][-2]["verdict"] == "fail"
+
+
+def test_a_powershell_error_after_a_failed_line_is_not_a_refusal_unless_the_fail_line_comes_first():
+    real = amiga.WinuaePipe(runner=lambda a, t: (_ for _ in ()).throw(
+        amiga.GuestError("winvm ssh failed: Exception: fail x does not exist")))
+    with pytest.raises(amiga.FloppyError) as caught:
+        real.refused_verb("insert", HOLDER, ["0", "p", "s"])
+    assert not isinstance(caught.value, amiga.GuestRefusal)
+
+
 def test_the_deployed_read_ignores_progress_text_and_silences_progress():
     clixml = '#< CLIXML\n<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">'
     reply = "\n".join([clixml, "winuae64_sha256=AB", "winuae64_version=6.0.3.0",
@@ -516,3 +568,32 @@ def test_the_deployed_read_ignores_progress_text_and_silences_progress():
     assert guest.deployed(5) == {"winuae64_sha256": "AB", "winuae64_version": "6.0.3.0",
                                  "winuae_ps1_sha256": "CD"}
     assert "$ProgressPreference = 'SilentlyContinue'" in check.READ_DEPLOYED
+
+
+def _deployed(reply):
+    guest = check.ProbeGuest()
+    guest._run = lambda *a, **k: reply
+    return guest.deployed(5)
+
+
+def test_the_deployed_read_refuses_a_key_reported_twice():
+    with pytest.raises(RouteError, match="winuae64_version twice"):
+        _deployed("winuae64_sha256=A\nwinuae64_version=1\nwinuae64_version=2\nwinuae_ps1_sha256=C")
+
+
+def test_the_deployed_read_accepts_crlf_lines():
+    got = _deployed("winuae64_sha256=A\r\nwinuae64_version=1\r\nwinuae_ps1_sha256=C\r\n")
+    assert got == {"winuae64_sha256": "A", "winuae64_version": "1", "winuae_ps1_sha256": "C"}
+
+
+@pytest.mark.parametrize("missing", ["winuae64_sha256", "winuae64_version", "winuae_ps1_sha256"])
+def test_the_deployed_read_refuses_a_missing_key_before_the_probe_runs(missing, tmp_path, clock, proof):
+    lines = {"winuae64_sha256": "A", "winuae64_version": "1", "winuae_ps1_sha256": "C"}
+    del lines[missing]
+    with pytest.raises(RouteError, match=f"did not report {missing}"):
+        _deployed("\n".join(f"{k}={v}" for k, v in lines.items()))
+
+
+def test_the_deployed_read_trims_the_spaces_around_a_line():
+    got = _deployed("  winuae64_sha256=A  \r\n\twinuae64_version=1\r\nwinuae_ps1_sha256=C")
+    assert got == {"winuae64_sha256": "A", "winuae64_version": "1", "winuae_ps1_sha256": "C"}

@@ -847,3 +847,14 @@ def test_a_verb_the_guest_accepts_returns_its_first_line_and_a_refusal_before_th
         amiga.WinuaePipe(runner=LaneGuest(error=amiga.GuestError(
             "winvm ssh failed: fail the WinUAE lane is claimed by other"))).refused_verb(
                 "insert", HOLDER, ["0", DISK_B, SHA_B])
+
+
+def test_a_fail_line_from_a_non_zero_exit_is_a_refusal_and_any_other_error_is_not():
+    err = amiga.GuestError("winvm ssh failed: fail the WinUAE lane is claimed by other since t\nIf x has gone")
+    with pytest.raises(amiga.GuestRefusal) as caught:
+        amiga.WinuaePipe(runner=LaneGuest(error=err)).refused_verb("insert", HOLDER, ["0", DISK_B, SHA_B])
+    assert caught.value.line == "fail the WinUAE lane is claimed by other since t"
+    other = amiga.GuestError("winvm ssh did not answer in 60s")
+    with pytest.raises(amiga.FloppyError) as caught:
+        amiga.WinuaePipe(runner=LaneGuest(error=other)).refused_verb("insert", HOLDER, ["0", DISK_B, SHA_B])
+    assert not isinstance(caught.value, amiga.GuestRefusal)
