@@ -591,8 +591,35 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
             "squares_moved": squares_moved}
 
 
+#: The private screen reader, imported the way `amigabladesjournal._blades_modules`
+#: does, then asked for its own template file.  It prints `ok` and nothing else, so
+#: no template content can reach a log.
+JOURNAL_READER_CHECK = (
+    "import sys; sys.path.insert(0, sys.argv[1]); "
+    "import amiga_tables, screen; screen.load_digits(); print('ok')")
+
+
+def _journal_reader_failure(journal_python: str, analysis: pathlib.Path) -> str:
+    """Why the private reader cannot load its template file, or "" when it can."""
+    try:
+        proc = subprocess.run([journal_python, "-c", JOURNAL_READER_CHECK, str(analysis)],
+                              capture_output=True, text=True, errors="replace", timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"the journal interpreter {journal_python!r} did not run the reader check: {exc}"
+    if proc.returncode == 0:
+        return ""
+    return (f"the private journal reader failed its template check (exit {proc.returncode})"
+            + (_stderr_tail(proc.stderr) or "; no stderr"))
+
+
 def journal_preflight(journal_python: str) -> None:
-    """Refuse before the lane is claimed unless the private reader's imports and tables are there."""
+    """Refuse before the lane is claimed unless the private reader's imports and template file load.
+
+    The reader check runs before the numpy check is judged so that a missing dependency, which
+    also fails the reader, is reported as itself.
+    """
+    analysis = amigabladesjournal.wheel_repo() / "ssb" / "analysis"
+    reader_failure = _journal_reader_failure(journal_python, analysis) if analysis.is_dir() else ""
     try:
         proc = subprocess.run([journal_python, "-c", "import numpy, PIL"],
                               capture_output=True, timeout=60)
@@ -600,9 +627,10 @@ def journal_preflight(journal_python: str) -> None:
         raise RouteError(f"the journal interpreter {journal_python!r} did not run: {exc}") from exc
     if proc.returncode:
         raise RouteError(f"the journal interpreter {journal_python!r} cannot import numpy and PIL")
-    analysis = amigabladesjournal.wheel_repo() / "ssb" / "analysis"
     if not analysis.is_dir():
         raise RouteError(f"{analysis} is not a directory, so the journal cannot be answered")
+    if reader_failure:
+        raise RouteError(reader_failure)
 
 
 def run_journal_answer(journal_python: str, holder: str, adf: pathlib.Path,

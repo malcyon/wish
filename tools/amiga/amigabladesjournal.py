@@ -208,6 +208,24 @@ def text_bands(image):
     return [tuple(band) for band in out]
 
 
+def _client_of(image):
+    """The emulator's client area cut out of a desktop grab, at a whole-pixel offset.
+
+    Text elsewhere on the desktop must not take part in the grid fit.  An image
+    that is no bigger than a client, or in which no client is found, is used as it is.
+    """
+    from tools.amiga import amigashots  # noqa: PLC0415
+
+    width, height = amigashots.CLIENT
+    if image.size[0] <= width and image.size[1] <= height:
+        return image
+    try:
+        left, top = amigashots.find_client(image)
+    except LookupError:
+        return image
+    return image.crop((left, top, left + width, top + height))
+
+
 def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
                     target_pitch: float | None = None):
     """Cut the game's screen out of the desktop, at a pitch the reader can use.
@@ -233,6 +251,10 @@ def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
     cropping one alike.  The pitch the reader is handed back is the one it
     must use, so `answer()` sets `screen.PITCH` from this return value.
 
+    The desktop is cropped to the emulator's client first, by a whole-pixel
+    offset that moves no sampling phase, so that green text outside the window
+    cannot enter the grid fit.
+
     Returns the `(X0, Y0, PITCH)` for `out`, or `None` when no character grid
     could be fitted.  `target_pitch` defaults to the pitch the private reader
     declares, and is an argument so that the arithmetic can be exercised
@@ -242,7 +264,7 @@ def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
 
     if target_pitch is None:
         target_pitch = _blades_modules()[0].PITCH
-    image = Image.open(shot).convert("RGB")
+    image = _client_of(Image.open(shot).convert("RGB"))
     grid = fit_grid(text_bands(image))
     if grid is None:
         return None

@@ -37,6 +37,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigasecretsavetitle.py` | Checks that the WinUAE probe runs a title description on synthetic ADFs and a fake guest, and refuses a description that could press a save key, swap DF0 or write after an unguarded screen. |
 | `test_amigasecretsavejournal.py` | Checks that a failing journal answerer subprocess puts its exit code and the last lines of its stderr, bounded, in the driver's `RouteError`. |
 | `test_amigashots.py` | Checks that `tools/amiga/amigashots.py` finds the emulator's screen inside a grab of the whole guest desktop, on desktops built here. |
+| `test_amigajournalgates.py` | Checks the Silver Blades journal preflight against a fake private reader and that the grid fit ignores green text outside the emulator window, on built images. |
 | `test_amigasplit.py` | Checks that the Amiga codec is one module per title and that no title module reaches another at import time. |
 | `test_amigatarget.py` | Checks `automap/amiga.py`'s WinUAE-backed `Target`, driven through a fake guest. |
 | `test_amigazerowords.py` | Checks that `tools/amiga/amigazerowords.py` runs without crashing against the player's specimens. |
