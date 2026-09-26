@@ -1047,15 +1047,16 @@ class CurseRun(PoolRun):
     def __init__(self, sess, log, out, game, points, disks, staged_disk,
                  attack_by="", quit_nonattacking=False):
         super().__init__(sess, log, out, game, points)
-        from tools.curse_of_the_azure_bonds import cursethac0
-
-        _, payload = _payload(D64.open(str(staged_disk)), game)
-        names = cursethac0.slot_names(payload)
-        self.names = [n.upper() for n in names]
+        # The save's name table is a scratch buffer, so the party comes from the
+        # records; `names[i]` is the character in slot i, empty for a gap.
+        party = saved_characters(staged_disk)
+        owners = {name: info["owner"] for name, info in party.items()}
+        self.names = [""] * (max(owners.values(), default=-1) + 1)
+        for name, owner in owners.items():
+            self.names[owner] = name.upper()
         self.panel = marching_names(staged_disk)
         self.attack_by = attack_by.upper()
-        self.attack_owner = next((i for i, name in enumerate(names)
-                                  if name.upper() == self.attack_by), None)
+        self.attack_owner = owners.get(self.attack_by)
         self.attack_evidence = None
         self.quit_evidence = None
         self.first_effect_loss = None

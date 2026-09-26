@@ -2684,12 +2684,10 @@ def test_a_view_waits_for_a_mixed_case_name_as_the_c64_draws_it(tmp_path, monkey
 
 
 def _fake_disk(monkeypatch, marching):
-    from tools.curse_of_the_azure_bonds import cursethac0
-
     monkeypatch.setattr(A, "marching_names", lambda path: list(marching))
-    monkeypatch.setattr(A.D64, "open", staticmethod(lambda path: None))
-    monkeypatch.setattr(A, "_payload", lambda image, game: (0, bytearray()))
-    monkeypatch.setattr(cursethac0, "slot_names", lambda body: ["ANNA", "ZED", "MAE"])
+    monkeypatch.setattr(A, "saved_characters", lambda path: {
+        "ANNA": {"owner": 0, "memorised": []}, "ZED": {"owner": 1, "memorised": []},
+        "MAE": {"owner": 2, "memorised": []}})
 
 
 def test_a_curse_run_takes_its_panel_from_the_marching_order(tmp_path, monkeypatch):
@@ -2705,6 +2703,27 @@ def test_a_silver_blades_run_takes_its_panel_from_the_marching_order(
         "ANNA": {"owner": 0, "memorised": []}, "ZED": {"owner": 1, "memorised": []}})
     run = A.SilverRun(None, None, tmp_path, POOL_OF_RADIANCE, {}, "d", "s.D64")
     assert run.panel == ["Zed", "Anna"] and run.panel != run.names
+
+
+def test_a_curse_run_keeps_slot_indices_across_an_empty_slot(tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "marching_names", lambda path: ["BAR PATRON"])
+    monkeypatch.setattr(A, "saved_characters", lambda path: {
+        "ANNA": {"owner": 0, "memorised": []}, "MAE": {"owner": 3, "memorised": []},
+        "ZED": {"owner": 2, "memorised": []}})
+    run = A.CurseRun(None, None, tmp_path, POOL_OF_RADIANCE, {}, "d", "s.D64",
+                     attack_by="zed")
+    assert run.names == ["ANNA", "", "ZED", "MAE"]
+    assert run.owner_of("zed") == 2 and run.attack_owner == 2
+
+
+def test_a_curse_run_names_the_party_of_a_save_whose_name_table_is_scratch(tmp_path):
+    from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS
+    from tests.c64.test_c64nametable import specimen_disk
+
+    disk = specimen_disk("curse-671-invisibility-removed-after-fight")
+    run = A.CurseRun(None, None, tmp_path, CURSE_OF_THE_AZURE_BONDS, {}, "d", disk)
+    assert run.names == ["PHILIPPE", "SHARA", "LEDERA", "TRAVIS", "MARK", "MATHEW"]
+    assert run.owner_of("PHILIPPE") == 0
 
 
 def test_a_curse_run_on_the_specimen_panel_is_the_marching_order(tmp_path):
