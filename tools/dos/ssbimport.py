@@ -304,6 +304,8 @@ class Driver:
             if deadline is not None:
                 wait = deadline.bound(wait, label)
             screen = self.s.settle(quiet=0.6, timeout=wait)
+        if deadline is not None:
+            deadline.check(label)
         name = self.shot(f"lost-waiting-for-{want}")
         raise RouteLost(f"expected the {want} bar, got {screen.glyphs(dosbox.BAR)} "
                         f"({BARS.get(screen.glyphs(dosbox.BAR), 'unknown')}); "
