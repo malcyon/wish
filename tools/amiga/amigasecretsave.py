@@ -616,12 +616,31 @@ def run_journal_answer(journal_python: str, holder: str, adf: pathlib.Path,
     try:
         proc = subprocess.run(
             [journal_python, str(script), "--holder", holder, "--adf", str(adf)],
-            capture_output=True, text=True, timeout=timeout,
+            capture_output=True, text=True, errors="replace", timeout=timeout,
             env=dict(os.environ, SSH_ASKPASS_REQUIRE="never"))
     except subprocess.TimeoutExpired as exc:
         raise RouteError(f"the journal answerer exceeded its {timeout:.0f}s limit") from exc
     lines = proc.stdout.strip().splitlines()
-    return proc.returncode, lines[-1].strip() if lines else ""
+    line = lines[-1].strip() if lines else ""
+    if proc.returncode and line != "no challenge on screen":
+        raise RouteError(f"the journal answerer ended {proc.returncode}: {line!r}"
+                         + _stderr_tail(proc.stderr))
+    return proc.returncode, line
+
+
+STDERR_LINES = 5
+STDERR_LINE_CHARS = 250
+
+
+def _stderr_tail(stderr: str) -> str:
+    """The answerer's last lines of stderr for an error message: at most 5 lines of 250 characters.
+
+    Without them the cause (a missing table, a failed import) is only in a log nobody opens.
+    """
+    lines = [line.strip() for line in stderr.strip().splitlines() if line.strip()]
+    if not lines:
+        return ""
+    return "; stderr: " + " | ".join(line[:STDERR_LINE_CHARS] for line in lines[-STDERR_LINES:])
 
 
 def _has_rule(guard: Any, state: str) -> bool:
