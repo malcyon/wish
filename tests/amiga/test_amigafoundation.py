@@ -1195,3 +1195,44 @@ def test_reload_command_runs_the_reload_and_prints_its_verdicts(tmp_path, monkey
     kw = called.calls[-1]
     assert kw["reload"] is True and "accept" not in kw and kw["title"] is foundation.DARKNESS_RELOAD
     assert kw["guard"] == ("guards", "g.json") and kw["identity"] == ("guards", "i.json")
+
+
+def _reload_manifest_without(tmp_path, edit):
+    path = _reload_manifest(tmp_path)
+    data = json.loads(path.read_text())
+    edit(data)
+    path.write_text(json.dumps(data))
+    return path
+
+
+@pytest.mark.parametrize("edit,match", [
+    (lambda d: d.pop("other_letter"), "manifest lacks 'other_letter'"),
+    (lambda d: d.pop("other_place"), "manifest lacks 'other_place'"),
+    (lambda d: d["state_a"].pop("x"), "manifest lacks 'x'"),
+    (lambda d: d["other_place"].pop("facing"), "manifest lacks 'facing'"),
+    (lambda d: d.update(other_place=7), "reload place is not a mapping"),
+    (lambda d: d.update(other_letter="H"), "holds no slot H to compare"),
+], ids=["other_letter", "other_place", "state_a x", "other_place facing", "not a mapping",
+        "other slot absent"])
+def test_reload_refuses_a_manifest_that_cannot_be_compared_before_the_claim(
+        tmp_path, clock, edit, match):
+    guest = ReloadGuest(clock)
+    path = _reload_manifest_without(tmp_path, edit)
+    with pytest.raises(drive.RouteError, match=match):
+        drive.run_recon(path, guest=guest, guard=_reload_guard(guest), identity=_IdentityMap(),
+                        holder="wish679-test", audio_proof=_audio_proof(tmp_path),
+                        title=_reload_title(), reload=True)
+    assert guest.calls == []
+
+
+@pytest.mark.parametrize("disk", ["disk1", "disk2"])
+def test_reload_fails_when_the_game_changes_disk_1_or_2(tmp_path, clock, disk):
+    def spoil(guest):
+        remote = next(r for r in guest.remote if r.endswith(f"-{disk}.adf"))
+        raw = bytearray(guest.remote[remote])
+        raw[-1] ^= 0xFF
+        guest.remote[remote] = bytes(raw)
+    guest = ReloadGuest(clock, spoil=spoil)
+    _, result = _reload_run(tmp_path, clock, guest=guest)
+    assert result["completed"] is True and result["reload"]["shown"] is True
+    assert result["disks_unchanged"][disk] is False and result["success"] is False

@@ -733,10 +733,11 @@ class AmigaTitle:
     `spares` the keys put on the VM and not mounted. A route step is
     `(key, state, kind)`; an `insert` step's key is `(drive, disk_key, key)`, and
     `write` steps may press only `control_letter` or `after_letter`, and no other step may press
-    those. A title that only loads has neither letter and no `write` step. A kept letter is never written, so a non-write step may press one only where
-    `plain_keys` names its `(key, state)`: the game's own key that happens to be a slot's letter.
-    A plain key is refused on a screen where some step writes and on a state whose name contains
-    `picker`; the run's compare of every kept slot after the fetch is what proves none changed.
+    those. A title that only loads has neither letter and no `write` step. A kept letter is never
+    written, so a non-write step may press one only where `plain_keys` names its `(key, state)`:
+    the game's own key that happens to be a slot's letter. A plain key is refused on a screen
+    where some step writes and on a state whose name contains `picker`; the run's compare of
+    every kept slot after the fetch is what proves none changed.
     Every entry must be a kept letter that some non-write step presses in that state. An `insert`
     may name drive 1, or drive 0 when the step before it is in `disk_prompts` (states where the
     game itself asks for a disk) and `strict`, naming a disk other than the one in DF0; an
@@ -1197,9 +1198,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if reload:
             try:
                 wanted = [place_state(manifest["state_a"]), place_state(manifest["other_place"])]
-                manifest["other_letter"]  # noqa: B018
-            except (KeyError, TypeError) as exc:
+                other = manifest["other_letter"]
+            except KeyError as exc:
                 raise RouteError(f"the manifest lacks {exc.args[0]!r}") from exc
+            except TypeError as exc:
+                raise RouteError("the manifest's reload place is not a mapping") from exc
+            if other not in present:
+                raise RouteError(f"the save disk holds no slot {other} to compare")
             missing = [k for k in wanted if not _guards(guard, k)]
             if missing:
                 raise RouteError(f"screen guard map lacks {missing}")
