@@ -40,7 +40,7 @@ bytes with what it replaced.
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
-| `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, toggle the item named LABEL (`tools/c64/traitask.py`'s `toggle_item`), and read every party record and the effect array before and after; `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
+| `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -105,7 +105,12 @@ from automap.paths import tool_disks  # noqa: E402
 from goldbox import c64_codec, c64_port, c64_save, effects, world_state  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.geo import STEP  # noqa: E402
-from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER  # noqa: E402
+from goldbox.items import (  # noqa: E402
+    ITEM_AREA_BASE,
+    ITEM_BLOCK_STRIDE,
+    ITEM_SIZE,
+    ITEMS_PER_CHARACTER,
+)
 from goldbox.record import RECORD_SIZE, CharacterRecord  # noqa: E402
 from goldbox.savegame import ROSTER_COMBAT_SIDE, ROSTER_HP_CURRENT  # noqa: E402
 from tools.c64 import (  # noqa: E402
@@ -1256,7 +1261,7 @@ class PoolRun:
 
     def ready(self, arg: str) -> dict:
         """`ready WHO>LABEL`: toggle one item and read every party record and
-        the effect array before and after, Pool of Radiance only.
+        the effect and item arrays before and after, Pool of Radiance only.
 
         Reaches the item list through camp, not the world's `VIEW`: a
         magical item's READY toggle (`LIBRARY $4630`) is refused with `NOT
@@ -1275,19 +1280,25 @@ class PoolRun:
             before_records = [bytes(traitask.live_record(m, slot))
                               for slot in range(PARTY_SLOTS)]
             before_effects = bytes(traitask.live_effects(m))
+            before_items = [bytes(m.read(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
+                                         ITEM_BLOCK_STRIDE))
+                            for slot in range(PARTY_SLOTS)]
             m.resume()
         if self.capture_ready:
             self.ready_captures = []
             self.ready_sample_errors = []
-            flipped = traitask.toggle_item(
+            screen_changed = traitask.toggle_item(
                 self.sess, self.log, label, "ready", sample=self.sample_ready)
         else:
-            flipped = traitask.toggle_item(self.sess, self.log, label, "ready")
+            screen_changed = traitask.toggle_item(self.sess, self.log, label, "ready")
         self.sess.settle(1)
         with self.sess.mon(8) as m:
             after_records = [bytes(traitask.live_record(m, slot))
                              for slot in range(PARTY_SLOTS)]
             after_effects = bytes(traitask.live_effects(m))
+            after_items = [bytes(m.read(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
+                                        ITEM_BLOCK_STRIDE))
+                           for slot in range(PARTY_SLOTS)]
             m.resume()
         record_diff = {
             slot: traitask.diff_bytes(
@@ -1296,10 +1307,20 @@ class PoolRun:
             for slot in range(PARTY_SLOTS)}
         effects_diff = traitask.diff_bytes(before_effects, after_effects,
                                            traitask.EFFECTS[0])
+        item_diff = {
+            slot: traitask.diff_bytes(
+                before_items[slot], after_items[slot],
+                ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE)
+            for slot in range(PARTY_SLOTS)}
+        memory_changed = (any(record_diff.values()) or bool(effects_diff)
+                          or any(item_diff.values()))
         traitask.leave_items(self.sess, self.log)
         self.to_world()
-        result = {"who": who, "label": label, "flipped": flipped,
-                  "record_diff": record_diff, "effects_diff": effects_diff}
+        result = {"who": who, "label": label,
+                  "screen_changed": screen_changed, "flipped": screen_changed,
+                  "memory_changed": memory_changed,
+                  "record_diff": record_diff, "effects_diff": effects_diff,
+                  "item_diff": item_diff}
         if self.capture_ready:
             result["ready_captures"] = self.ready_captures
             result["ready_sample_errors"] = self.ready_sample_errors

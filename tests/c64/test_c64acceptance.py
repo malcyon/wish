@@ -28,7 +28,7 @@ import pytest
 from goldbox import c64_save, dos_codec, effects
 from goldbox.c64_port import POOL_OF_RADIANCE
 from goldbox.d64 import D64, split_load_address
-from goldbox.items import ITEM_SIZE
+from goldbox.items import ITEM_AREA_BASE, ITEM_BLOCK_STRIDE, ITEM_SIZE
 from goldbox.savegame import SaveGame0, SaveGame1
 from tools.c64 import acceptance as A
 from tools.c64 import drive
@@ -1546,6 +1546,7 @@ def test_ready_step_reaches_the_list_through_camp_toggles_once_and_reads_around_
     slot_after = bytes([0x26]) + bytes(A.traitask.SLOT_STRIDE - 1)
     fx_before = bytes(A.traitask.EFFECTS[1])
     fx_after = bytes([0x26]) + bytes(A.traitask.EFFECTS[1] - 1)
+    item_block = bytes(ITEM_BLOCK_STRIDE)
 
     script = {}
     for slot in range(8):
@@ -1553,6 +1554,9 @@ def test_ready_step_reaches_the_list_through_camp_toggles_once_and_reads_around_
               A.traitask.SLOT_STRIDE)
         script[key] = [slot_before, slot_after if slot == 4 else slot_before]
     script[A.traitask.EFFECTS] = [fx_before, fx_after]
+    for slot in range(8):
+        key = (ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE, ITEM_BLOCK_STRIDE)
+        script[key] = [item_block, item_block]
     sess.mon = lambda timeout: _ReadyMonitor(script)
 
     calls = []
@@ -1579,15 +1583,118 @@ def test_ready_step_reaches_the_list_through_camp_toggles_once_and_reads_around_
         ("open_items", "BAKSHI", "GAUNTLETS OF OGRE POWER", "ready"),
         ("toggle_item", "GAUNTLETS OF OGRE POWER", "ready"),
         ("leave_items",)]
-    assert (got["who"], got["label"], got["flipped"]) == (
-        "BAKSHI", "GAUNTLETS OF OGRE POWER", True)
+    assert (got["who"], got["label"], got["screen_changed"], got["flipped"]) == (
+        "BAKSHI", "GAUNTLETS OF OGRE POWER", True, True)
     assert got["record_diff"][4] == A.traitask.diff_bytes(
         slot_before, slot_after,
         A.traitask.SLOT_BASE + 4 * A.traitask.SLOT_STRIDE)
     assert all(got["record_diff"][s] == [] for s in range(8) if s != 4)
     assert got["effects_diff"] == A.traitask.diff_bytes(
         fx_before, fx_after, A.traitask.EFFECTS[0])
+    assert set(got["item_diff"]) == set(range(8))
+    assert all(diff == [] for diff in got["item_diff"].values())
+    assert got["memory_changed"] is True
     assert sess.state == "world"
+
+
+def _ready_fake_reading(tmp_path, monkeypatch, *, screen_changed: bool,
+                        record_changed: bool, effect_changed: bool,
+                        item_changed: bool, second_item_changed: bool = False):
+    sess = FakeSession({"world": _window({}, WORLD_BAR)}, {}, "world")
+    script = {}
+    for slot in range(8):
+        record_before = bytearray(A.traitask.SLOT_STRIDE)
+        record_after = record_before.copy()
+        item_before = bytearray(ITEM_BLOCK_STRIDE)
+        item_after = item_before.copy()
+        if slot == 4:
+            record_before[0x1A] = 0x64
+            record_after[0x1A] = 0x5A if record_changed else 0x64
+            item_before[6] = 0x80
+            item_after[6] = 0 if item_changed else 0x80
+        if slot == 7 and second_item_changed:
+            item_before[0x0A] = 0x80
+        script[(A.traitask.SLOT_BASE + slot * A.traitask.SLOT_STRIDE,
+                A.traitask.SLOT_STRIDE)] = [bytes(record_before), bytes(record_after)]
+        script[(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
+                ITEM_BLOCK_STRIDE)] = [bytes(item_before), bytes(item_after)]
+    effect_before = bytearray(A.traitask.EFFECTS[1])
+    effect_after = effect_before.copy()
+    effect_before[0x3D] = 0x26
+    effect_after[0x3D] = 0 if effect_changed else 0x26
+    script[A.traitask.EFFECTS] = [bytes(effect_before), bytes(effect_after)]
+    sess.mon = lambda timeout: _ReadyMonitor(script)
+    monkeypatch.setattr(A.traitask, "open_items", lambda *a: True)
+    monkeypatch.setattr(A.traitask, "toggle_item", lambda *a: screen_changed)
+    monkeypatch.setattr(A.traitask, "leave_items", lambda *a: None)
+    run, log = _pool_run(tmp_path, sess)
+    try:
+        return run.ready("BAKSHI>GAUNTLETS OF OGRE POWER")
+    finally:
+        log.close()
+
+
+def test_ready_unchanged_yes_screen_still_reports_record_and_effect_changes(
+        tmp_path, monkeypatch):
+    got = _ready_fake_reading(tmp_path, monkeypatch, screen_changed=False,
+                              record_changed=True, effect_changed=True,
+                              item_changed=False)
+    assert got["screen_changed"] is False and got["flipped"] is False
+    assert got["memory_changed"] is True
+    assert got["record_diff"][4] == [{"addr": 0x511A, "was": 0x64, "now": 0x5A}]
+    assert got["effects_diff"] == [{"addr": 0x493D, "was": 0x26, "now": 0}]
+    assert set(got["item_diff"]) == set(range(8))
+    assert all(diff == [] for diff in got["item_diff"].values())
+
+
+def test_ready_effect_only_delta_sets_memory_changed(tmp_path, monkeypatch):
+    got = _ready_fake_reading(tmp_path, monkeypatch, screen_changed=False,
+                              record_changed=False, effect_changed=True,
+                              item_changed=False)
+    assert got["screen_changed"] is False
+    assert got["memory_changed"] is True
+    assert all(diff == [] for diff in got["record_diff"].values())
+    assert got["effects_diff"] == [{"addr": 0x493D, "was": 0x26, "now": 0}]
+    assert set(got["item_diff"]) == set(range(8))
+    assert all(diff == [] for diff in got["item_diff"].values())
+
+
+def test_ready_post_save_item_bit_change_reports_item_address(tmp_path, monkeypatch):
+    got = _ready_fake_reading(tmp_path, monkeypatch, screen_changed=True,
+                              record_changed=False, effect_changed=False,
+                              item_changed=True)
+    assert got["screen_changed"] is True and got["flipped"] is True
+    assert got["memory_changed"] is True
+    assert all(diff == [] for diff in got["record_diff"].values())
+    assert got["effects_diff"] == []
+    assert set(got["item_diff"]) == set(range(8))
+    assert got["item_diff"][4] == [{"addr": 0x5D06, "was": 0x80, "now": 0}]
+    assert all(diff == [] for slot, diff in got["item_diff"].items() if slot != 4)
+
+
+def test_ready_item_diff_uses_each_slots_absolute_address(tmp_path, monkeypatch):
+    got = _ready_fake_reading(tmp_path, monkeypatch, screen_changed=False,
+                              record_changed=False, effect_changed=False,
+                              item_changed=True, second_item_changed=True)
+    assert got["memory_changed"] is True
+    assert set(got["item_diff"]) == set(range(8))
+    assert got["item_diff"][4] == [{"addr": 0x5D06, "was": 0x80, "now": 0}]
+    assert got["item_diff"][7] == [{"addr": 0x600A, "was": 0x80, "now": 0}]
+    assert all(diff == [] for slot, diff in got["item_diff"].items()
+               if slot not in (4, 7))
+
+
+def test_ready_blank_redraw_with_no_memory_change_is_only_a_screen_change(
+        tmp_path, monkeypatch):
+    got = _ready_fake_reading(tmp_path, monkeypatch, screen_changed=True,
+                              record_changed=False, effect_changed=False,
+                              item_changed=False)
+    assert got["screen_changed"] is True and got["flipped"] is True
+    assert got["memory_changed"] is False
+    assert all(diff == [] for diff in got["record_diff"].values())
+    assert got["effects_diff"] == []
+    assert set(got["item_diff"]) == set(range(8))
+    assert all(diff == [] for diff in got["item_diff"].values())
 
 
 def test_ready_sample_keeps_screen_colour_png_and_live_ram_in_one_pause(

@@ -178,10 +178,13 @@ def test_ready_capture_keeps_the_first_blank_row_and_the_returned_list(monkeypat
             checkpoints.append((stage, screen.row(6), tuple(sess.keys)))
         return screen
 
+    log = FakeLog()
     flipped = traitask.toggle_item(
-        sess, FakeLog(), "GAUNTLETS", "ready", sample=sample)
+        sess, log, "GAUNTLETS", "ready", sample=sample)
 
     assert flipped is True  # Existing screen-change report; no state claim.
+    assert next(kw for kind, kw in log.emitted if kind == "screen"
+                and kw["tag"] == "ready-after")["screen_changed"] is True
     assert sess.keys == ["KP_0"]
     assert [(stage, row) for stage, row, _ in checkpoints] == [
         ("before", "YES GAUNTLETS OF OGRE POWER"),

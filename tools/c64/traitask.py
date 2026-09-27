@@ -570,7 +570,7 @@ def toggle_item(sess: S.Session, log: Log, label: str, tag: str,
                     continue
             was = s.row(want)
             press_select(sess)
-            flipped = False
+            screen_changed = False
             stable_candidate = None
             settled = False
             after_screen = None
@@ -578,7 +578,7 @@ def toggle_item(sess: S.Session, log: Log, label: str, tag: str,
                 time.sleep(0.3)
                 if sample is None:
                     s2 = sess.screen()
-                elif not flipped:
+                elif not screen_changed:
                     s2 = sample("change", lambda seen: (
                         seen is not None and seen.row(want) != was))
                 else:
@@ -587,10 +587,10 @@ def toggle_item(sess: S.Session, log: Log, label: str, tag: str,
                         and ready_list_signature(seen, label) == stable_candidate))
                 after_screen = s2
                 if s2 is not None and s2.row(want) != was:
-                    flipped = True
+                    screen_changed = True
                     if sample is None:
                         break
-                if sample is not None and flipped:
+                if sample is not None and screen_changed:
                     signature = ready_list_signature(s2, label)
                     if signature is not None and signature == stable_candidate:
                         settled = True
@@ -602,11 +602,12 @@ def toggle_item(sess: S.Session, log: Log, label: str, tag: str,
                           [] if after_screen is None else
                           [row.rstrip() for row in after_screen.rows()])
             log.emit("screen", tag=f"{tag}-after", rows=after_rows,
-                     flipped=flipped)
-            return flipped
+                     screen_changed=screen_changed, flipped=screen_changed)
+            return screen_changed
         sess.kbd.key("Down" if at < want else "Up", 0.15, 0.30)
     log.say(f"  could not put the highlight on {label}")
-    log.emit("screen", tag=f"{tag}-stuck", rows=sheet_rows(sess))
+    log.emit("screen", tag=f"{tag}-stuck", rows=sheet_rows(sess),
+             screen_changed=False)
     return False
 
 
