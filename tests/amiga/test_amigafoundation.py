@@ -395,7 +395,7 @@ DARK_STATES = ("title", "journal", "journal_answer", "party_menu", "load_from", 
 MEASURE_STATES = tuple(s for s in DARK_STATES if s != "title")  # boot crops are not named "title"
 DARK_FIRST_SCREEN = {}  # the title crop is recognised by its own name, and nothing precedes it
 DARK_KEYS = ["P", "L", "P", "B", "SPACE", "V", "E", "S", "F", "B", "X", "RET", "NP8", "E", "S", "G"]
-DARK_ACCEPT_STATES = ("journal", "world", "camp")
+DARK_ACCEPT_STATES = ("journal", "journal_answer", "world", "camp")
 
 
 class DarkGuest(TitleGuest):
@@ -449,6 +449,7 @@ def test_darkness_accept_presses_the_plans_keys_with_disk_3_mounted_in_df1_and_n
     guest, result = _dark_run(tmp_path, clock)
     assert result["error"] == "" and result["success"] is True, result["read"]
     keys = _keys(guest)
+    assert result["unguarded"] == []
     assert keys == DARK_KEYS and "Y" not in keys
     assert guest.inserted == [(0, "C:/Amiga/Disks/wish679-wish679-test-disk2.adf")]
     assert keys[0] == "P"
@@ -497,7 +498,7 @@ def test_darkness_accept_route_answers_the_journal_with_explicit_steps_and_asks_
         ("F", "loaded_menu", "write"), ("B", "journal", "key"),
         ("X", "journal_answer", "key"), ("RET", "world", "key"), ("NP8", "world", "move"),
         ("E", "camp", "key"), ("S", "camp_save_picker", "key"), ("G", "camp", "write"))
-    assert {"journal", "world", "camp"} <= darkness.strict
+    assert {"journal", "journal_answer", "world", "camp"} <= darkness.strict
     assert [row[0] for row in darkness.interstitials] == ["yes_no", "continue"]
     assert darkness.interstitials == (
         ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
@@ -524,7 +525,8 @@ def test_darkness_route_and_measure_route_are_pinned_and_write_only_f_and_g():
             ("V", "sheet", "key"), ("E", "loaded_menu", "key"))
     assert darkness.route == head + (
         ("S", "save_picker", "key"), ("F", "loaded_menu", "write"), ("B", "journal", "key"),
-        ("X", "journal_answer", "key"), ("RET", "world", "key"), ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
+        ("X", "journal_answer", "key"), ("RET", "world", "key"),
+        ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
         ("G", "camp", "write"))
     assert darkness.measure_route == head + (
         ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "world", "key"),

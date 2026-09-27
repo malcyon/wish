@@ -309,8 +309,8 @@ DARKNESS = AmigaTitle(
     control_letter="F", after_letter="G", kept_letters=("A", "C", "D", "E"),
     plain_keys=(("E", "loaded_menu"), ("E", "camp")),
     strict=frozenset({"party_menu", "load_from", "load_picker", "disk2_prompt", "loaded_menu",
-                      "sheet", "save_picker", "journal", "world", "camp",
-                      "camp_save_picker"}),
+                      "sheet", "save_picker", "journal", "journal_answer", "world",
+                      "camp", "camp_save_picker"}),
     disk_prompts=frozenset({"disk2_prompt"}),
     # The `disk2_prompt` wait of 10 s is a guess until the measuring boot times the prompt.
     min_waits={"party_menu": 20.0, "load_from": 20.0, "load_picker": 10.0,
