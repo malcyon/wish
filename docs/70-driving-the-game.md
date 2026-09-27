@@ -123,7 +123,7 @@ The order of operations, all of it in `tools/c64/session.py`:
 
 | step | what to do |
 |---|---|
-| `DISABLE FASTLOADER (Y/N)?` | `Y` (VICE runs JiffyDOS here) |
+| `DISABLE FASTLOADER (Y/N)?` | `N` — every machine this project's tooling drives has a stock kernal, not JiffyDOS (`docs/131-fastloader.md`) |
 | credits screen | row 24 is `PLAY GAME  DEMO`; take it at once — **left alone the screen starts the demo by itself** |
 | `INPUT THE CODE WORD:` | patch `$12D9` `D0 04` → `EA EA` (check the bytes first), type six letters, then inject `Return` through the KERNAL buffer |
 | `INSERT SIDE # 3` / `INSERT YOUR GAME DISK #3 (Replace the three class icons we drew with Font Awesome ones)` / `INSERT GAME DISK #3 (Replace the three class icons we drew with Font Awesome ones)` | attach that side, press a key with a 0.25 s hold — and re-attach even if that image is already in the drive. Three wordings, on row 24 **or** row 18 — match the text, not the row |
