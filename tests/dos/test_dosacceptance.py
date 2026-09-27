@@ -19,7 +19,7 @@ import threading
 import pytest
 
 from tools.dos import acceptance as da
-from tools.dos import dosbox, dospod, staging
+from tools.dos import dosbox, dospod, screens, staging
 
 # Sending SIGTERM to the test process ends it on Windows, which has no POSIX signals.
 posix_signals = pytest.mark.skipif(
@@ -46,12 +46,12 @@ def _screen(bar: bytes, text: bytes, block: tuple[int, int] | None = None) -> do
     for x, v in enumerate(text[:W]):
         at = (136 * W + x) * 3
         px[at:at + 3] = bytes((v, v, v))
-    for cell, pattern in enumerate(bar[:W // da.CELL]):
+    for cell, pattern in enumerate(bar[:W // screens.CELL]):
         inside = block is not None and block[0] <= cell < block[1]
         for dy in range(dosbox.BAR[3]):
-            for dx in range(da.CELL):
+            for dx in range(screens.CELL):
                 lit = bool(pattern >> ((dx + dy) % 8) & 1)
-                at = ((BAR_Y + dy) * W + cell * da.CELL + dx) * 3
+                at = ((BAR_Y + dy) * W + cell * screens.CELL + dx) * 3
                 if inside:
                     px[at:at + 3] = b"\x00\x00\x00" if lit else b"\xaa\x00\xaa"
                 else:
@@ -98,9 +98,9 @@ def test_the_bar_signature_ignores_which_word_is_highlighted():
         # The whole-bar digest `glyphs` is fooled by the block, and the
         # signature is not.
         assert lit.glyphs(dosbox.BAR) != plain.glyphs(dosbox.BAR)
-        assert da.bar_signature(lit) == da.bar_signature(plain)
-    assert da.bar_signature(_screen(bytes((0x18, 0x24, 0, 0x81, 0x05)), b"")) \
-        != da.bar_signature(plain)
+        assert screens.bar_signature(lit) == screens.bar_signature(plain)
+    assert screens.bar_signature(_screen(bytes((0x18, 0x24, 0, 0x81, 0x05)), b"")) \
+        != screens.bar_signature(plain)
 
 
 # -- a fake DOS Pool of Radiance camp ------------------------------------------
@@ -249,8 +249,8 @@ def _no_waiting(monkeypatch):
 def _items_bar_measured(monkeypatch):
     """The fakes' `items` bar stands in for the measured `READY` head of
     `ITEMS_BAR_HEAD`, whose real value a capture test checks."""
-    monkeypatch.setattr(da, "ITEMS_BAR_HEAD", da.bar_signature(
-        _screen(b"\x2b\x2c", b""), da.ITEMS_BAR_HEAD_CELLS))
+    monkeypatch.setattr(screens, "ITEMS_BAR_HEAD", screens.bar_signature(
+        _screen(b"\x2b\x2c", b""), screens.ITEMS_BAR_HEAD_CELLS))
 
 
 @pytest.fixture(autouse=True)
@@ -259,7 +259,7 @@ def _pod_map_measured(monkeypatch):
     `POD_MAP_BARS`, whose real values the tests at the end check against
     captures."""
     monkeypatch.setattr(da, "POD_MAP_BARS", {
-        "dungeon": da.bar_signature(_screen(FakePool.BARS["map"], b""))})
+        "dungeon": screens.bar_signature(_screen(FakePool.BARS["map"], b""))})
 
 
 def _camped(tmp_path, title="pool", **kw) -> tuple[FakePool, da.Driver]:
@@ -354,9 +354,9 @@ def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
                 px[at:at + 3] = b"\xff\xff\xff"
             return dosbox.Screen(W, H, bytes(px))
 
-    monkeypatch.setattr(da, "POOL_MAGIC_BAR", da.bar_signature(
+    monkeypatch.setattr(da, "POOL_MAGIC_BAR", screens.bar_signature(
         _screen(DisplayPool.BARS["magic"], b"")))
-    monkeypatch.setattr(da, "POOL_DISPLAY_BAR", da.bar_signature(
+    monkeypatch.setattr(da, "POOL_DISPLAY_BAR", screens.bar_signature(
         _screen(DisplayPool.BARS["display"], b"")))
     game = DisplayPool(tmp_path)
     d = da.Driver(game, lambda **k: None, "A")
@@ -405,16 +405,16 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
                 return _with_roster(frame, "camp", 6, 0, sheet=who)
             return frame
 
-    monkeypatch.setattr(da, "POOL_MAP_BAR", da.bar_signature(
+    monkeypatch.setattr(da, "POOL_MAP_BAR", screens.bar_signature(
         _screen(SheetPool.BARS["map"], b"")))
-    monkeypatch.setattr(da, "POOL_SHEET_BAR", da.bar_signature(
+    monkeypatch.setattr(da, "POOL_SHEET_BAR", screens.bar_signature(
         _screen(SheetPool.BARS["sheet"], b"")))
     game = SheetPool(tmp_path)
     d = da.Driver(game, lambda **k: None, "A")
     d.where = "map"
     if failure == "repeated_page":
         # The name check passes and the frame is the same one both times.
-        monkeypatch.setattr(da, "sheet_name", lambda screen: da.roster_name(
+        monkeypatch.setattr(da, "sheet_name", lambda screen: screens.roster_name(
             _with_roster(_screen(b"", b""), "camp", 6, 1), "camp", game.line))
         monkeypatch.setattr(SheetPool, "capture", lambda self: (
             _screen(self.BARS["sheet"], b"") if self.mode == "sheet"
@@ -447,7 +447,7 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
 @pytest.fixture
 def _watch_and_clock(monkeypatch):
     """The fake's watch bar stands in for the real one, and time moves per call."""
-    monkeypatch.setattr(da, "WATCH_BAR", da.bar_signature(
+    monkeypatch.setattr(da, "WATCH_BAR", screens.bar_signature(
         _screen(FakePool.BARS["watch"], b"")))
     now = [0.0]
 
@@ -1098,10 +1098,10 @@ class PoolMap(FakePool):
         px = bytearray(frame.px)
         y = dosbox.STATUS[1]
         token = bytes(((1 << self.x % 8) | 0x80, 0x18, 0x21))
-        _draw_name(px, da.STATUS_TEXT_X, y, token, _WHITE)
-        _draw_name(px, da.STATUS_TEXT_X + da.CELL * 4, y,
+        _draw_name(px, screens.STATUS_TEXT_X, y, token, _WHITE)
+        _draw_name(px, screens.STATUS_TEXT_X + screens.CELL * 4, y,
                    bytes(((1 << self.facing) | 0x40,)), _WHITE)
-        _draw_name(px, da.STATUS_TEXT_X + da.CELL * 6, y,
+        _draw_name(px, screens.STATUS_TEXT_X + screens.CELL * 6, y,
                    bytes(((1 << self.clock_ticks % 8) | 0x20,)), _WHITE)
         return dosbox.Screen(W, H, bytes(px))
 
@@ -1138,7 +1138,7 @@ def _pool_walker(tmp_path, blocked=False, tick_on_turn=False, title="pool", **kw
     d = da.Driver(game, lambda **k: None, "A", title)
     d.where = "map"
     d.world_ink = game.capture().ink(dosbox.BAR)
-    d.world_sig = da.bar_signature(game.capture())
+    d.world_sig = screens.bar_signature(game.capture())
     d.game = PoolMovement(game, blocked, tick_on_turn)
     return game, d
 
@@ -1465,7 +1465,7 @@ _MEASURED_CURSE_PARTY_BAR = da.CURSE_PARTY_BAR
 def _curse_party_bar_measured(monkeypatch):
     """The fake's party bar stands in for Curse's measured `CURSE_PARTY_BAR`,
     which a capture test checks."""
-    monkeypatch.setattr(da, "CURSE_PARTY_BAR", da.bar_signature(
+    monkeypatch.setattr(da, "CURSE_PARTY_BAR", screens.bar_signature(
         _screen(FakeCurseMenu.BARS["party"], b"")))
 
 
@@ -1533,7 +1533,7 @@ def test_curse_view_picks_with_end_views_with_v_and_leaves_with_e(tmp_path):
     game, d = _curse_loaded(tmp_path)
     got = d.view(2)
     assert game.keys[2:] == ["End", "v", "e"]
-    assert got["name"] == da.roster_name(game.capture(), "party", 2)
+    assert got["name"] == screens.roster_name(game.capture(), "party", 2)
     assert got["pages"] == [] and got["line"] == 2
     assert d.where == "party" and game.mode == "party" and d.on_party_menu()
 
@@ -1598,7 +1598,7 @@ def _ssb_view_driver(tmp_path):
     d = da.Driver(game, lambda **k: None, "J", "ssb", party_size=game.size)
     d._ssb = Ssb()
     d.where = "party"
-    d.party_sig = da.bar_signature(game.capture())
+    d.party_sig = screens.bar_signature(game.capture())
     return game, d, asked
 
 
@@ -1607,7 +1607,7 @@ def test_silver_blades_view_selects_at_pick_character(tmp_path):
     got = d.view(2)
     assert asked == [da.ssbimport.MENU_AFTER["view"], "pick_character"]
     assert game.keys == ["Down", "s", "e"]
-    assert got["name"] == da.roster_name(game.capture(), "party", 2)
+    assert got["name"] == screens.roster_name(game.capture(), "party", 2)
     assert got["pages"] == [] and d.where == "party" and game.mode == "party"
 
 
@@ -2030,10 +2030,10 @@ def _pod_name(n: int) -> bytes:
 
 def _draw_name(px: bytearray, x: int, y: int, name: bytes, colour: bytes) -> None:
     for cell, pattern in enumerate(name):
-        for dy in range(da.POD_NAME_ROWS):
-            for dx in range(da.CELL):
+        for dy in range(screens.POD_NAME_ROWS):
+            for dx in range(screens.CELL):
                 if pattern >> ((dx + dy) % 8) & 1:
-                    at = ((y + dy) * W + x + cell * da.CELL + dx) * 3
+                    at = ((y + dy) * W + x + cell * screens.CELL + dx) * 3
                     px[at:at + 3] = colour
 
 
@@ -2043,11 +2043,11 @@ def _with_roster(frame: dosbox.Screen, where: str, size: int, current: int,
     member white; or, with `sheet`, that member's name where a sheet has it."""
     px = bytearray(frame.px)
     if sheet is not None:
-        _draw_name(px, *da.POD_SHEET_NAME, _pod_name(sheet), _WHITE)
+        _draw_name(px, *screens.POD_SHEET_NAME, _pod_name(sheet), _WHITE)
     else:
-        x, y = da.POD_ROSTER[where]
+        x, y = screens.POD_ROSTER[where]
         for n in range(1, size + 1):
-            _draw_name(px, x, y + da.CELL * (n - 1), _pod_name(n),
+            _draw_name(px, x, y + screens.CELL * (n - 1), _pod_name(n),
                        _WHITE if n == current else _CYAN)
     return dosbox.Screen(W, H, bytes(px))
 
@@ -2241,9 +2241,9 @@ class FakePod(FakePool):
     def _draw_items(self, frame: dosbox.Screen) -> dosbox.Screen:
         """The member's rows, at most `ITEM_ROWS`, as the game draws them."""
         px = bytearray(frame.px)
-        x, y, w, _ = da.ITEM_LIST_RECT
+        x, y, w, _ = screens.ITEM_LIST_RECT
         for k, _q in enumerate(self.item_lists[self.line][:da.ITEM_ROWS]):
-            top = y + k * da.CELL
+            top = y + k * screens.CELL
             at = ((top + 3) * W + x + 4) * 3
             px[at:at + 3] = b"\xaa\xaa\xaa"
             if k == self.item_row:
@@ -2414,7 +2414,7 @@ def test_pools_of_darkness_begins_camps_views_and_saves(tmp_path):
     sheet = d.sheet(4)
     assert game.keys == ["Down"] * 3 + ["v", "e"] and game.mode == "camp"
     assert sheet["line"] == 4 and game.line == 4
-    assert sheet["name"] == da.roster_name(
+    assert sheet["name"] == screens.roster_name(
         _with_roster(_screen(b"", b""), "camp", 6, 1), "camp", 4)
     game.keys.clear()
     items = d.items(4)
@@ -2512,7 +2512,7 @@ def test_a_sheet_of_another_character_stops_the_run(tmp_path):
 def test_two_lines_showing_one_sheet_frame_stop_the_run(tmp_path, monkeypatch):
     """The second guard, with the name check made to pass."""
     game, d = _camped_pod(tmp_path, same_sheet=True)
-    monkeypatch.setattr(da, "sheet_name", lambda screen: da.roster_name(
+    monkeypatch.setattr(da, "sheet_name", lambda screen: screens.roster_name(
         _with_roster(_screen(b"", b""), "camp", 6, 1), "camp", d.line))
     d.sheet(2)
     with pytest.raises(da.StepFailed, match="line 5's sheet is the same frame as "
@@ -2539,7 +2539,7 @@ def test_view_opens_the_asked_character_from_the_party_menu_and_comes_back(
     assert game.into_pick == ["Down"] * (line - 1) + ["s"]
     assert game.mode == "party" and d.where == "party" and game.line == line
     assert got["line"] == line and len(got["pages"]) == 2
-    assert got["name"] == da.roster_name(
+    assert got["name"] == screens.roster_name(
         _with_roster(_screen(b"", b""), "party", 6, 1), "party", line)
 
 
@@ -2614,17 +2614,17 @@ def test_view_parses_and_a_bad_line_is_refused():
 
 def test_an_empty_line_has_the_blank_signature():
     empty = _screen(b"", b"")
-    assert da.roster_name(empty, "party", 1) == da.BLANK_NAME
-    assert da.sheet_name(empty) == da.BLANK_NAME
+    assert screens.roster_name(empty, "party", 1) == screens.BLANK_NAME
+    assert screens.sheet_name(empty) == screens.BLANK_NAME
 
 
 def test_the_name_signature_is_blind_to_the_highlight_colour():
     white = _with_roster(_screen(b"", b""), "camp", 6, 2)
     cyan = _with_roster(_screen(b"", b""), "camp", 6, 3)
-    assert da.roster_name(white, "camp", 2) == da.roster_name(cyan, "camp", 2)
-    assert da.roster_line(white, "camp", 6) == 2
-    assert da.roster_line(cyan, "camp", 6) == 3
-    assert len({da.roster_name(white, "camp", n) for n in range(1, 7)}) == 6
+    assert screens.roster_name(white, "camp", 2) == screens.roster_name(cyan, "camp", 2)
+    assert screens.roster_line(white, "camp", 6) == 2
+    assert screens.roster_line(cyan, "camp", 6) == 3
+    assert len({screens.roster_name(white, "camp", n) for n in range(1, 7)}) == 6
 
 
 def _capture(run: str, name: str, issue: str = "650") -> dosbox.Screen:
@@ -2653,17 +2653,17 @@ def test_the_captured_sheets_are_roster_line_one_and_no_other(run, roster, where
     """Every sheet those runs opened showed member 1, the highlighted line,
     whatever line the step asked for."""
     screen = _capture(run, roster)
-    assert da.roster_line(screen, where, 6) == 1
-    names = [da.roster_name(screen, where, n) for n in range(1, 7)]
-    assert len(set(names)) == 6 and da.BLANK_NAME not in names
+    assert screens.roster_line(screen, where, 6) == 1
+    names = [screens.roster_name(screen, where, n) for n in range(1, 7)]
+    assert len(set(names)) == 6 and screens.BLANK_NAME not in names
     for sheet in sheets:
         assert [n for n in range(1, 7)
-                if names[n - 1] == da.sheet_name(_capture(run, sheet))] == [1]
+                if names[n - 1] == screens.sheet_name(_capture(run, sheet))] == [1]
 
 
 @pytest.mark.parametrize("shot", ["008-line-4", "010-line-4", "013-line-6"])
 def test_run_one_s_end_never_moved_the_highlight(shot):
-    assert da.roster_line(_capture("88eac43064-run1-cleric", shot), "camp", 6) == 1
+    assert screens.roster_line(_capture("88eac43064-run1-cleric", shot), "camp", 6) == 1
 
 
 # -- ITEMS: `halve` and `join` -----------------------------------------------
@@ -2727,7 +2727,7 @@ def test_pick_item_reads_the_highlight_after_every_press(tmp_path, monkeypatch):
     d.open_sheet(1)
     game.key("i")
     reads = []
-    real = da.item_highlight
+    real = screens.item_highlight
     monkeypatch.setattr(da, "item_highlight",
                         lambda sc: reads.append(1) or real(sc))
     game.keys.clear()
@@ -2800,7 +2800,7 @@ def test_the_item_readers_read_only_an_items_list():
     """A sheet reads as a one-row list with its highlight on band 12."""
     list_frame = _screen(b"\x2b\x2c", b"")
     px = bytearray(list_frame.px)
-    x, y, w, _ = da.ITEM_LIST_RECT
+    x, y, w, _ = screens.ITEM_LIST_RECT
     for band in (0, 1, 2, 4):            # band 3 is empty: the count stops there
         at = ((y + band * 8 + 3) * W + x + 4) * 3
         px[at:at + 3] = b"\xaa\xaa\xaa"
@@ -2811,18 +2811,18 @@ def test_the_item_readers_read_only_an_items_list():
         at = ((y + 6 * 8 + 3) * W + x + 150 + dx) * 3
         px[at:at + 3] = b"\xff\xff\xff"
     frame = dosbox.Screen(W, H, bytes(px))
-    assert da.item_rows(frame) == 3 and da.item_highlight(frame) == 2
+    assert screens.item_rows(frame) == 3 and screens.item_highlight(frame) == 2
     sheet = _screen(b"\x29\x2a", b"")
     sheet_px = bytearray(frame.px)
     for i, b in enumerate(sheet.rows(dosbox.BAR)):
         sheet_px[(dosbox.BAR[1] * W) * 3 + i] = b
     off = dosbox.Screen(W, H, bytes(sheet_px))
-    assert da.item_rows(off) is None and da.item_highlight(off) is None
+    assert screens.item_rows(off) is None and screens.item_highlight(off) is None
     only_arrow = bytearray(list_frame.px)
     for dx in range(22):
         at = ((y + 3) * W + x + 150 + dx) * 3
         only_arrow[at:at + 3] = b"\xff\xff\xff"
-    assert da.item_highlight(dosbox.Screen(W, H, bytes(only_arrow))) is None
+    assert screens.item_highlight(dosbox.Screen(W, H, bytes(only_arrow))) is None
 
 
 @pytest.mark.parametrize("run,shot,rows,highlight", [
@@ -2846,14 +2846,14 @@ def test_the_captured_items_lists_read_as_the_screen_shows_them(run, shot, rows,
     """14 captures of two runs of #650 (this player's own, not committed)."""
     monkeypatch.undo()
     screen = _capture(run, shot)
-    assert (da.item_rows(screen), da.item_highlight(screen)) == (rows, highlight)
+    assert (screens.item_rows(screen), screens.item_highlight(screen)) == (rows, highlight)
 
 
 @pytest.mark.parametrize("shot", ["009-sheet-1", "011-press-v"])
 def test_a_captured_sheet_is_not_read_as_an_items_list(shot, monkeypatch):
     monkeypatch.undo()
     screen = _capture("eafdbfabb0-m-itemskeys", shot)
-    assert da.item_rows(screen) is None and da.item_highlight(screen) is None
+    assert screens.item_rows(screen) is None and screens.item_highlight(screen) is None
 
 
 def test_read_reports_the_current_movement_of_each_character(pod_source):
@@ -2929,10 +2929,10 @@ class FakeDungeon(FakePod):
         if not self.status_on:
             return frame
         px = bytearray(frame.px)
-        x, y = da.STATUS_TEXT_X, dosbox.STATUS[1]
+        x, y = screens.STATUS_TEXT_X, dosbox.STATUS[1]
         token = bytes(((1 << self.x % 8) | 0x80, 0x18, 0x21))
         _draw_name(px, x, y, token, _WHITE)
-        _draw_name(px, x + da.CELL * 4, y, bytes(((1 << self.facing) | 0x40,)), _WHITE)
+        _draw_name(px, x + screens.CELL * 4, y, bytes(((1 << self.facing) | 0x40,)), _WHITE)
         return dosbox.Screen(W, H, bytes(px))
 
 
@@ -2941,7 +2941,7 @@ def _dungeon_driver(tmp_path, title="darkness", **kw):
     d = da.Driver(game, lambda **k: None, "A", title, party_size=game.size)
     d.where = "map"
     d.world_ink = game.capture().ink(dosbox.BAR)
-    d.world_sig = da.bar_signature(game.capture())
+    d.world_sig = screens.bar_signature(game.capture())
     return game, d
 
 
@@ -3066,11 +3066,11 @@ def test_status_square_reads_the_coordinates_and_nothing_else():
     step = _capture("591c0bf9ce-run3-walk", "013-walk-step-1", issue="678")
     camp = _capture("591c0bf9ce-run3-walk", "014-camp", issue="678")
     other = _capture("840311866e-run0-control", "009-map")
-    assert da.status_square(before) is None
-    assert da.status_square(step) == da.status_square(camp) is not None
-    assert da.status_square(other) not in (None, da.status_square(step))
-    assert da.roster_line(before, "camp", 6) == 4
-    assert da.roster_line(step, "camp", 6) == 3
+    assert screens.status_square(before) is None
+    assert screens.status_square(step) == screens.status_square(camp) is not None
+    assert screens.status_square(other) not in (None, screens.status_square(step))
+    assert screens.roster_line(before, "camp", 6) == 4
+    assert screens.roster_line(step, "camp", 6) == 3
 
 
 def test_describe_says_whether_the_party_moved():
@@ -3207,7 +3207,7 @@ def pod_yes_no(monkeypatch):
     """The driver knows the fake's `YES NO` bar by its own signature, as it
     knows the real one by `POD_YES_NO_BAR`."""
     monkeypatch.setattr(da, "POD_YES_NO_BAR",
-                        da.bar_signature(_screen(FakePod.BARS["tour"], b"")))
+                        screens.bar_signature(_screen(FakePod.BARS["tour"], b"")))
 
 
 def test_the_arrival_question_after_begin_is_declined_and_the_steps_after_it_work(
@@ -3338,7 +3338,7 @@ def test_a_late_n_onto_another_yes_no_bar_is_declined_by_the_loop(tmp_path,
 def pod_continue(monkeypatch, pod_yes_no):
     """The driver knows the fake's continue bar by its own signature."""
     monkeypatch.setattr(da, "POD_CONTINUE_BAR",
-                        da.bar_signature(_screen(FakePod.BARS["cont"], b"")))
+                        screens.bar_signature(_screen(FakePod.BARS["cont"], b"")))
 
 
 def test_the_continue_bar_is_not_another_known_bar():
@@ -3459,8 +3459,8 @@ def two_map_bars(monkeypatch, pod_yes_no):
     """The fakes' dungeon map and overland bars stand in for the two
     measured ones."""
     monkeypatch.setattr(da, "POD_MAP_BARS", {
-        "dungeon": da.bar_signature(_screen(FakePool.BARS["map"], b"")),
-        "overland": da.bar_signature(_screen(FakePod.BARS["overland"], b""))})
+        "dungeon": screens.bar_signature(_screen(FakePool.BARS["map"], b"")),
+        "overland": screens.bar_signature(_screen(FakePod.BARS["overland"], b""))})
 
 
 @pytest.mark.parametrize("kind, after", [("dungeon", "map"), ("overland", "overland")])
@@ -3515,7 +3515,7 @@ def test_the_measured_pod_map_bar_matches_the_captured_map(monkeypatch):
     monkeypatch.undo()
     ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
                          check=True, capture_output=True).stdout
-    assert da.bar_signature(dosbox.Screen.from_ppm(ppm)) == da.POD_MAP_BARS["dungeon"]
+    assert screens.bar_signature(dosbox.Screen.from_ppm(ppm)) == da.POD_MAP_BARS["dungeon"]
 
 
 def test_the_measured_overland_bar_matches_the_captured_screen(monkeypatch):
@@ -3532,7 +3532,7 @@ def test_the_measured_overland_bar_matches_the_captured_screen(monkeypatch):
     monkeypatch.undo()
     ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
                          check=True, capture_output=True).stdout
-    assert da.bar_signature(dosbox.Screen.from_ppm(ppm)) == da.POD_MAP_BARS["overland"]
+    assert screens.bar_signature(dosbox.Screen.from_ppm(ppm)) == da.POD_MAP_BARS["overland"]
 
 
 # -- the town services screen ---------------------------------------------------
@@ -3542,7 +3542,7 @@ def test_the_measured_overland_bar_matches_the_captured_screen(monkeypatch):
 def pod_town(monkeypatch, pod_yes_no):
     """The driver knows the fake's town bar by its own signature."""
     monkeypatch.setattr(da, "POD_TOWN_BAR",
-                        da.bar_signature(_screen(FakePod.BARS["town"], b"")))
+                        screens.bar_signature(_screen(FakePod.BARS["town"], b"")))
 
 
 def test_the_measured_town_bar_is_sixteen_hex_digits_and_not_a_map():
@@ -3709,8 +3709,8 @@ def test_the_measured_titles_share_one_status_column_and_status_square_takes_it(
         "pool": 136, "curse": 136, "ssb": 136, "darkness": 136}
     game = PoolMap(tmp_path)
     frame = game.capture()
-    assert da.status_square(frame, 136) == da.status_square(frame) == "0bcb75efaa7a593d"
-    assert da.status_square(frame, 144) != da.status_square(frame, 136)
+    assert screens.status_square(frame, 136) == screens.status_square(frame) == "0bcb75efaa7a593d"
+    assert screens.status_square(frame, 144) != screens.status_square(frame, 136)
 
 
 _TURN_STEPS = ["load", "turn 4", "camp", "save D", "read"]
@@ -4179,16 +4179,16 @@ def test_the_measured_curse_and_silver_blades_screens_read_as_recorded():
     """Values read off the player's own #679 boots (skipped without them)."""
     run = "b0a2c904ad-curse-measure-walk"
     party = _capture("b0a2c904ad-curse-measure-sheet", "003-loaded", issue="679")
-    assert da.bar_signature(party) == _MEASURED_CURSE_PARTY_BAR == "31286bfc4a3695fc"
-    assert da.roster_line(party, "party", 6) == 1
+    assert screens.bar_signature(party) == _MEASURED_CURSE_PARTY_BAR == "31286bfc4a3695fc"
+    assert screens.roster_line(party, "party", 6) == 1
     before = _capture(run, "005-map", issue="679")
     after = _capture(run, "009-press-Up", issue="679")
-    assert da.status_square(before, da.status_column("curse")) == "370bef4cdc05b677"
-    assert da.status_square(after, da.status_column("curse")) == "8702eeb23e8a764b"
+    assert screens.status_square(before, da.status_column("curse")) == "370bef4cdc05b677"
+    assert screens.status_square(after, da.status_column("curse")) == "8702eeb23e8a764b"
     ssb = _capture("b0a2c904ad-ssb-measure-walk", "005-map", issue="679")
-    assert da.status_square(ssb, da.status_column("ssb")) == "ee4e8a47d7175485"
+    assert screens.status_square(ssb, da.status_column("ssb")) == "ee4e8a47d7175485"
     sheet = _capture("b0a2c904ad-ssb-measure-sheet", "008-press-s", issue="679")
-    assert da.sheet_name(sheet) == "55a6494e457686aa"
+    assert screens.sheet_name(sheet) == "55a6494e457686aa"
 
 
 # -- the command line -----------------------------------------------------------
