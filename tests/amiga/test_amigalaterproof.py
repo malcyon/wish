@@ -136,6 +136,48 @@ def test_the_derived_bytes_the_engine_recomputes_are_masked():
     assert got == want
 
 
+@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
+def test_the_control_and_share_bytes_are_not_masked(shape):
+    """`field_83_87` is on `WRITE_CONSTANTS` for the control byte the writer
+    patches over it, but the control and share bytes it now carries exactly
+    (#529) must reach a live diff -- masking the whole field would swallow
+    both silently."""
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
+    f83 = table["field_83_87"]
+    at = shape.offset(f83.offset)
+    control_index = 1 if f83.size == 5 else 0
+    mask = proof.declared_record_mask(shape)
+    assert at + control_index not in mask
+    assert at + control_index + 1 not in mask
+
+
+class _CharStub:
+    """Only `.deltas`, `.items` and `.effects` are read by `declared_block_mask`."""
+
+    def __init__(self, deltas) -> None:
+        self.deltas = deltas
+        self.items: list = []
+        self.effects: list = []
+
+
+@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
+def test_a_control_or_share_difference_is_caught_by_the_unmasked_diff(shape):
+    """Two records differing only in the control and share bytes: before this
+    fix, `declared_record_mask` covered the whole `field_83_87` run and a
+    live diff would have reported zero unexplained differences here."""
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
+    f83 = table["field_83_87"]
+    at = shape.offset(f83.offset)
+    control_index = 1 if f83.size == 5 else 0
+    a = bytearray(shape.record_size)
+    b = bytearray(shape.record_size)
+    b[at + control_index] = 0x80
+    b[at + control_index + 1] = 3
+    mask = proof.declared_block_mask(_CharStub(shape))
+    loose = [i for i in range(len(a)) if a[i] != b[i] and i not in mask]
+    assert loose == [at + control_index, at + control_index + 1]
+
+
 def test_silver_blades_has_no_derived_bytes_declared():
     """UNMEASURED, not confirmed absent (`#402`): Silver Blades' converted
     party happened to agree with the engine's resave, which proves nothing,

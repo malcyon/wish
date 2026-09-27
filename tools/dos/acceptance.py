@@ -210,6 +210,7 @@ from tools.dos.staging import (  # noqa: E402
     node_dict,
     slots_in,
     source_slot,
+    stage_control,
     stage_hall,
     stage_node,
     stage_xp,
@@ -919,6 +920,20 @@ def parse_xp(text: str) -> tuple[int, int]:
     return int(line), xp
 
 
+def parse_control(text: str) -> tuple[int, int, int | None]:
+    """`LINE=CONTROL[:SHARE]`, numbers decimal or `0x` hex: roster line 1-8's
+    field_83_87 control byte, and optionally the treasure-share byte after it."""
+    line, sep, rest = text.partition("=")
+    parts = rest.split(":")
+    if not sep or not re.fullmatch(r"[1-8]", line.strip()) or len(parts) not in (1, 2):
+        raise ValueError(f"not a control stage: {text!r} (LINE=CONTROL[:SHARE])")
+    control = int(parts[0], 0)
+    share = int(parts[1], 0) if len(parts) == 2 else None
+    if not 0 <= control <= 0xFF or (share is not None and not 0 <= share <= 0xFF):
+        raise ValueError(f"control or share out of range: {text!r}")
+    return int(line), control, share
+
+
 def parse_node(text: str) -> tuple[int, bytes]:
     """`LINE=ID:MINUTES:DATA:FLAG`, numbers decimal or `0x` hex: a node's five bytes."""
     line, sep, rest = text.partition("=")
@@ -1030,9 +1045,16 @@ def read_slot(folder: pathlib.Path, letter: str) -> dict:
         if not path.is_file():
             continue
         c = dos_codec.read_character(path)
+        control = treasure_share = None
+        if "field_83_87" in c.fields:
+            control_raw = c.raw("field_83_87")
+            control_index = 1 if len(control_raw) == 5 else 0
+            control = control_raw[control_index]
+            treasure_share = control_raw[control_index + 1]
         out["characters"].append({
             "name": c.name, "file": path.name,
             "experience": c.get("experience") if "experience" in c.fields else None,
+            "control": control, "treasure_share": treasure_share,
             "nodes": [node_dict(e) for e in c.effects]})
     return out
 
@@ -1102,6 +1124,28 @@ def compare_members(before: dict, after: dict) -> list[dict]:
             row[f] = {"before": c[f], "after": None if now is None else now.get(f)}
             if now is not None and now.get(f) != c[f]:
                 row["changed"].append(f)
+        rows.append(row)
+    return rows
+
+
+def compare_shares(before: dict, after: dict) -> list[dict]:
+    """Each character's `control` and `treasure_share` bytes in `before` and
+    `after`, matched by name.  A row with either byte unequal fails the run
+    (`read_step`/`describe`)."""
+    after_by = {c["name"]: c for c in after["characters"]}
+    rows = []
+    for c in before["characters"]:
+        if c.get("control") is None and c.get("treasure_share") is None:
+            continue
+        now = after_by.get(c["name"])
+        row = {"name": c["name"], "present": now is not None,
+               "control_before": c.get("control"),
+               "control_after": None if now is None else now.get("control"),
+               "share_before": c.get("treasure_share"),
+               "share_after": None if now is None else now.get("treasure_share")}
+        row["matches"] = (now is not None
+                          and row["control_before"] == row["control_after"]
+                          and row["share_before"] == row["share_after"])
         rows.append(row)
     return rows
 
@@ -3024,7 +3068,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                 note(event="done", step=step.text,
                      **{k: v for k, v in r.items() if k != "slots"})
             summary["results"] = results
-            unproved = walk_verdict(steps, summary.get("read"))
+            unproved = (walk_verdict(steps, summary.get("read"))
+                       or share_verdict(summary.get("read")))
             if unproved:
                 summary["lost"] = unproved
                 note(event="lost", why=unproved)
@@ -3077,7 +3122,8 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
                              f"short for the hall word at {HALL_WORD:#x}")
     names = {p.name.upper() for p in save.iterdir()}
     lines = ([parse_xp(t)[0] for t in getattr(args, "xp", []) or []]
-             + [parse_node(t)[0] for t in getattr(args, "add_node", []) or []])
+             + [parse_node(t)[0] for t in getattr(args, "add_node", []) or []]
+             + [parse_control(t)[0] for t in getattr(args, "stage_control", []) or []])
     for line in lines:
         want = f"CHRDAT{from_slot}{line}.SAV"
         if want not in names:
@@ -3085,7 +3131,7 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
 
 
 def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
-    """The `--hall`, `--xp` and `--add-node` stages, in that order."""
+    """The `--hall`, `--xp`, `--add-node` and `--stage-control` stages, in that order."""
     done = []
     if getattr(args, "hall", False):
         done.append(stage_hall(save_dir, letter))
@@ -3093,6 +3139,8 @@ def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
         done.append(stage_xp(save_dir, letter, *parse_xp(text)))
     for text in getattr(args, "add_node", []) or []:
         done.append(stage_node(save_dir, letter, *parse_node(text)))
+    for text in getattr(args, "stage_control", []) or []:
+        done.append(stage_control(save_dir, letter, *parse_control(text)))
     return done
 
 
@@ -3101,6 +3149,25 @@ def place_changed(before: dict, after: dict) -> bool:
     a, b = before.get("place") or {}, after.get("place") or {}
     keys = ("x", "y", "area") if "area" in a else ("x", "y", "dungeon_map")
     return any(a.get(k) != b.get(k) for k in keys)
+
+
+def share_verdict(read: dict | None) -> str | None:
+    """Why a saved character's control or treasure-share byte no longer
+    matches what was installed, or None.
+
+    `compare_shares` runs on every read step; this is what fails the run when
+    either byte drifted between the installed slot and the engine-written one.
+    """
+    if read is None:
+        return None
+    for x, slot in (read.get("slots") or {}).items():
+        for row in slot.get("shares", []):
+            if row["present"] and not row["matches"]:
+                return (f"{row['name']}'s control or treasure_share changed in "
+                        f"slot {x}: control {row['control_before']} -> "
+                        f"{row['control_after']}, share {row['share_before']} -> "
+                        f"{row['share_after']}")
+    return None
 
 
 def walk_verdict(steps: list[Step], read: dict | None) -> str | None:
@@ -3157,6 +3224,7 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
             "compare": compare_nodes(before, after),
             "experience": compare_experience(before, after),
             "members": compare_members(before, after),
+            "shares": compare_shares(before, after),
         }
         if any(st.kind in ("walk", "turn") for st in steps):
             result["slots"][x]["place_changed"] = place_changed(before, after)
@@ -3255,6 +3323,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--add-node", action="append", default=[],
                     metavar="LINE=ID:MINUTES:DATA:FLAG",
                     help="append an effect node to roster line LINE before the boot")
+    ap.add_argument("--stage-control", action="append", default=[],
+                    metavar="LINE=CONTROL[:SHARE]",
+                    help="stage roster line LINE's field_83_87 control byte, "
+                         "and optionally the treasure-share byte after it, "
+                         "before the boot")
     ap.add_argument("--expect", action="append", default=[],
                     metavar="NAME:ID:MINUTES[:DATA]",
                     help="a node the last saved slot must hold (repeatable)")

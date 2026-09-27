@@ -1366,6 +1366,101 @@ def test_a_bad_node_is_refused(bad):
         da.parse_node(bad)
 
 
+def test_a_stage_control_line_parses_control_alone_or_with_share():
+    assert da.parse_control("1=0xB1") == (1, 0xB1, None)
+    assert da.parse_control("2=0xB1:3") == (2, 0xB1, 3)
+    assert da.parse_control("3=177:1") == (3, 177, 1)
+
+
+@pytest.mark.parametrize("bad", ["0=1", "1=1:2:3", "1=256", "1=1:256", "x"])
+def test_a_bad_stage_control_line_is_refused(bad):
+    with pytest.raises(ValueError):
+        da.parse_control(bad)
+
+
+def test_read_slot_reports_the_control_and_treasure_share_bytes(tmp_path):
+    """`read_slot`'s control and share bytes are `field_83_87`, indexed the
+    way `goldbox.dos_codec.to_neutral` does: control at index 1 and share at
+    index 2 of Curse's five-byte field (#529)."""
+    (tmp_path / "SAVGAMJ.DAT").write_bytes(bytes(13149))
+    record = bytearray(_curse_record())
+    from goldbox import dos_port
+    f83 = dos_port.FIELDS_BY_NAME_FOR["curse-of-the-azure-bonds"]["field_83_87"]
+    record[f83.offset + 1] = 0xB1
+    record[f83.offset + 2] = 3
+    (tmp_path / "CHRDATJ1.SAV").write_bytes(bytes(record))
+    out = da.read_slot(tmp_path, "J")
+    mathew = out["characters"][0]
+    assert (mathew["control"], mathew["treasure_share"]) == (0xB1, 3)
+
+
+def test_compare_shares_flags_only_a_changed_control_or_share():
+    before = {"characters": [{"name": "MATHEW", "control": 0xB1, "treasure_share": 1},
+                             {"name": "GUY", "control": 0, "treasure_share": 0}]}
+    after = {"characters": [{"name": "MATHEW", "control": 0xB1, "treasure_share": 1},
+                            {"name": "GUY", "control": 0, "treasure_share": 5}]}
+    rows = {r["name"]: r for r in da.compare_shares(before, after)}
+    assert rows["MATHEW"]["matches"] is True
+    assert rows["GUY"]["matches"] is False
+    assert (rows["GUY"]["share_before"], rows["GUY"]["share_after"]) == (0, 5)
+
+
+def test_share_verdict_names_the_character_whose_byte_drifted():
+    read = {"slots": {"D": {"shares": [
+        {"name": "GUY", "present": True, "matches": False,
+         "control_before": 0, "control_after": 0,
+         "share_before": 0, "share_after": 5}]}}}
+    assert "GUY" in da.share_verdict(read)
+
+
+def test_share_verdict_is_none_when_every_share_matches():
+    read = {"slots": {"D": {"shares": [
+        {"name": "GUY", "present": True, "matches": True,
+         "control_before": 0, "control_after": 0,
+         "share_before": 0, "share_after": 0}]}}}
+    assert da.share_verdict(read) is None
+    assert da.share_verdict(None) is None
+
+
+def test_stage_control_writes_the_control_and_share_bytes(tmp_path):
+    (tmp_path / "CHRDATJ1.SAV").write_bytes(_curse_record())
+    got = staging.stage_control(tmp_path, "J", 1, 0xB1, 3)
+    from goldbox import dos_codec
+    c = dos_codec.read_character(tmp_path / "CHRDATJ1.SAV")
+    control_raw = c.raw("field_83_87")
+    assert (control_raw[1], control_raw[2]) == (0xB1, 3)
+    assert got["after"] == "b1" and got["share_after"] == "03"
+
+
+def test_stage_control_leaves_the_share_byte_alone_when_not_given(tmp_path):
+    (tmp_path / "CHRDATJ1.SAV").write_bytes(_curse_record())
+    got = staging.stage_control(tmp_path, "J", 1, 0xB1)
+    assert "share_after" not in got
+    from goldbox import dos_codec
+    c = dos_codec.read_character(tmp_path / "CHRDATJ1.SAV")
+    assert c.raw("field_83_87")[2] == 0
+
+
+def test_the_command_line_wires_stage_control_into_staging(tmp_path):
+    (tmp_path / "CHRDATJ1.SAV").write_bytes(_curse_record())
+    args = _run_args(tmp_path, [])
+    args.stage_control = ["1=0xB1:1"]
+    done = da.stage(tmp_path, "J", args)
+    assert len(done) == 1
+    assert done[0]["stage"] == "control"
+    assert (done[0]["after"], done[0]["share_after"]) == ("b1", "01")
+    from goldbox import dos_codec
+    control_raw = dos_codec.read_character(tmp_path / "CHRDATJ1.SAV").raw("field_83_87")
+    assert (control_raw[1], control_raw[2]) == (0xB1, 1)
+
+
+def test_check_staging_refuses_a_stage_control_line_with_no_chrdat(tmp_path):
+    args = _run_args(tmp_path, [])
+    args.stage_control = ["1=0xB1:1"]
+    with pytest.raises(ValueError, match="line 1"):
+        da.check_staging(args, tmp_path, "J")
+
+
 def test_experience_is_compared_by_name():
     before = {"characters": [{"name": "GUY", "experience": 200000},
                              {"name": "PAINE", "experience": None}]}

@@ -124,6 +124,31 @@ def stage_xp(save_dir: pathlib.Path, letter: str, line: int, xp: int) -> dict:
             "after": data[f.offset:f.offset + f.size].hex()}
 
 
+def stage_control(save_dir: pathlib.Path, letter: str, line: int, control: int,
+                   share: int | None = None) -> dict:
+    """Write `control` into roster line `line`'s `field_83_87` control byte,
+    and `share` into the byte after it when given, at the same index
+    `goldbox.dos_codec.to_neutral` reads them from."""
+    path = save_dir / f"CHRDAT{letter.upper()}{line}.SAV"
+    c = dos_codec.read_character(path)
+    f = c.fields["field_83_87"]
+    control_index = 1 if f.size == 5 else 0
+    offset = f.offset + control_index
+    data = bytearray(path.read_bytes())
+    result = {"stage": "control", "file": path.name, "name": c.name,
+              "offset": hex(offset), "before": bytes(data[offset:offset + 1]).hex()}
+    data[offset] = control & 0xFF
+    result["after"] = bytes(data[offset:offset + 1]).hex()
+    if share is not None:
+        share_offset = offset + 1
+        result["share_offset"] = hex(share_offset)
+        result["share_before"] = bytes(data[share_offset:share_offset + 1]).hex()
+        data[share_offset] = share & 0xFF
+        result["share_after"] = bytes(data[share_offset:share_offset + 1]).hex()
+    path.write_bytes(bytes(data))
+    return result
+
+
 def stage_node(save_dir: pathlib.Path, letter: str, line: int, node: bytes) -> dict:
     """Append one effect node, its five bytes and a NULL next pointer, to line `line`."""
     record = save_dir / f"CHRDAT{letter.upper()}{line}.SAV"

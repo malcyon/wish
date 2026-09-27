@@ -92,6 +92,22 @@ def declared_record_mask(shape: amiga_port.AmigaDeltas) -> set[int]:
         out.update(range(at, at + size))
     for at, size, _why in amiga_later.LATER_WRITE_DERIVED[shape.key]:
         out.update(range(at, at + size))
+    # `field_83_87` is on `WRITE_CONSTANTS` for the control byte the writer
+    # patches over it, but the control and share bytes it carries
+    # (`goldbox.dos_codec.to_neutral`'s `control_index`/`share_index`) are
+    # exact, sourced values now, not a constant -- take their offsets back out
+    # so an engine resave is actually compared at both (#529).
+    f83 = next((f for f in dos_port.layout_for(shape.dos)
+                if f.name == "field_83_87"), None)
+    if f83 is not None:
+        try:
+            f83_at = shape.offset(f83.offset)
+        except amiga_port.AmigaRecordError:
+            f83_at = None
+        if f83_at is not None:
+            control_index = 1 if f83.size == 5 else 0
+            out.discard(f83_at + control_index)
+            out.discard(f83_at + control_index + 1)
     return out
 
 
