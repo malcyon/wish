@@ -1,0 +1,132 @@
+"""The Silver Blades route accepts only effect-array derivatives of its JOIN disk."""
+
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import pytest
+
+from goldbox import d64, effects
+from goldbox.amiga_adf import AmigaDisk
+from tools.amiga import amigasecretsave
+from tools.amiga import route_silver_blades as route
+from tools.amiga.winuaesession import RouteError
+
+
+def _sources(tmp_path, monkeypatch):
+    original = d64.D64.blank()
+    payload = bytearray(0x300)
+    original.write_file("SAVEDGAME0", d64.attach_load_address(0x4900, payload))
+    original.write_file("OTHER", b"other file")
+    join = tmp_path / "join.d64"
+    original.save(join)
+    monkeypatch.setattr(route, "JOIN_SHA256", route.sha256(join))
+    return original, join
+
+
+def _stage(tmp_path, original, change):
+    staged = d64.D64.from_bytes(original.to_bytes())
+    change(staged)
+    source = tmp_path / "staged.d64"
+    staged.save(source)
+    return source
+
+
+def _effect(staged):
+    address, payload = d64.split_load_address(staged.read_file("SAVEDGAME0"))
+    body = bytearray(payload)
+    effects.write_effect(body, 63, 1, 0, 0x2F, 5)
+    staged.write_file_inplace("SAVEDGAME0", d64.attach_load_address(address, body))
+
+
+def test_staged_source_records_rows_in_prepare_manifest(tmp_path, monkeypatch):
+    original, join = _sources(tmp_path, monkeypatch)
+    source = _stage(tmp_path, original, _effect)
+    boot = tmp_path / "boot.adf"
+    disk_b = tmp_path / "disk-b.adf"
+    boot.write_bytes(b"boot")
+    disk_b.write_bytes(b"disk b")
+    monkeypatch.setattr(route.amigabladesjournal, "find_disk", lambda: boot)
+    monkeypatch.setattr(route.staging, "SOURCE_SHA256", route.sha256(boot))
+    monkeypatch.setattr(route, "find_disk_b", lambda: disk_b)
+    monkeypatch.setattr(route, "DISK_B_SHA256", route.sha256(disk_b))
+    monkeypatch.setattr(route.scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+
+    from editor import roster, saveplan
+    from editor.convert import Source
+
+    monkeypatch.setattr(roster, "Party", lambda path: object())
+    monkeypatch.setattr(saveplan, "prepare", lambda party: object())
+    monkeypatch.setattr(Source, "of_snapshot", lambda snapshot: object())
+    monkeypatch.setattr(saveplan, "resolve_assets", lambda *args, **kwargs: object())
+    plan = SimpleNamespace(destination=SimpleNamespace(slot="A"),
+                           report=SimpleNamespace(dropped=[], losses=[]))
+    monkeypatch.setattr(saveplan, "prepare_save_as", lambda *args: plan)
+
+    def publish(plan, party):
+        disk = AmigaDisk.blank("SECRETSAVE")
+        disk.make_dir("/SAVE")
+        disk.write_file("/SAVE/savgamA.sav", b"slot")
+        disk.save(tmp_path / "acceptance" / "661" / "run" / "SECRETSAVE-published.adf")
+
+    monkeypatch.setattr(saveplan, "publish", publish)
+    monkeypatch.setattr(route.amiga_savegame, "read_slot", lambda *args: object())
+    monkeypatch.setattr(route, "_inventory", lambda save: {"joined_inventory_expected": True})
+    monkeypatch.setattr(route.amiga_savegame, "state_from_savegame",
+                        lambda save: SimpleNamespace(area=16, x=3, y=5, facing=2))
+
+    def stage(boot_source, slot, letter, df0):
+        df0.parent.mkdir(parents=True, exist_ok=True)
+        df0.write_bytes(b"staged boot")
+        return {"letter": letter}
+
+    monkeypatch.setattr(route.staging, "stage_embedded_boot_disk", stage)
+    manifest_path = route.prepare(source, "run", staged_from=join, issue="661")
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest_path == tmp_path / "acceptance" / "661" / "run" / "prepare.json"
+    assert manifest["source"]["path"] == str(source)
+    assert manifest["staged_from"]["path"] == str(join)
+    assert manifest["active_rows"] == [[63, 1, 0, 0x2F, 5]]
+    assert manifest["inventory_a"]["joined_inventory_expected"] is True
+
+
+@pytest.mark.parametrize("target", ["SAVEDGAME0", "OTHER"])
+def test_staged_source_refuses_other_file_changes(tmp_path, monkeypatch, target):
+    original, join = _sources(tmp_path, monkeypatch)
+
+    def change(staged):
+        data = bytearray(staged.read_file(target))
+        data[-1] ^= 1
+        staged.write_file_inplace(target, data)
+
+    source = _stage(tmp_path, original, change)
+    with pytest.raises(RouteError, match=target):
+        route.prepare(source, "run", staged_from=join)
+
+
+def test_staged_from_must_be_join(tmp_path, monkeypatch):
+    original, join = _sources(tmp_path, monkeypatch)
+    source = _stage(tmp_path, original, _effect)
+    wrong = tmp_path / "wrong.d64"
+    wrong.write_bytes(source.read_bytes())
+    with pytest.raises(RouteError, match="staged-from SHA-256"):
+        route.prepare(source, "run", staged_from=wrong)
+
+
+def test_normal_prepare_still_requires_join(tmp_path, monkeypatch):
+    original, join = _sources(tmp_path, monkeypatch)
+    source = _stage(tmp_path, original, _effect)
+    with pytest.raises(RouteError, match="JOIN source SHA-256"):
+        route.prepare(source, "run")
+
+
+def test_prepare_cli_passes_staged_source_and_issue(tmp_path, monkeypatch, capsys):
+    seen = []
+    monkeypatch.setattr(amigasecretsave, "prepare", lambda *args, **kwargs:
+                        seen.append((args, kwargs)) or tmp_path / "prepare.json")
+    assert amigasecretsave.main(["prepare", "--source", "source.d64", "--run-id", "run",
+                                  "--staged-from", "join.d64", "--issue", "661"]) == 0
+    assert seen == [((tmp_path.__class__("source.d64"), "run"),
+                     {"staged_from": tmp_path.__class__("join.d64"), "issue": "661"})]
+    assert capsys.readouterr().out.strip() == str(tmp_path / "prepare.json")

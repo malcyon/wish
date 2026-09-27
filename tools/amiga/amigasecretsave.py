@@ -75,6 +75,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("prepare", help="publish Wish's slot, stage DF0 holding it and DF1 as disk B")
     p.add_argument("--source", required=True, type=pathlib.Path)
     p.add_argument("--run-id", required=True)
+    p.add_argument("--staged-from", type=pathlib.Path)
+    p.add_argument("--issue", default="672")
     r = sub.add_parser("recon", help="guarded first load and menu-save probe")
     r.add_argument("--manifest", required=True, type=pathlib.Path)
     r.add_argument("--guards", type=pathlib.Path,
@@ -117,7 +119,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare":
-            print(prepare(args.source, args.run_id))
+            print(prepare(args.source, args.run_id, staged_from=args.staged_from,
+                          issue=args.issue))
             return 0
         if args.command == "guard":
             box = [int(n) for n in args.box.split(",")]

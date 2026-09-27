@@ -415,9 +415,8 @@ def test_curse_prepare_threads_a_substitute_slot_through_to_the_manifest(
         "path": str(substitute), "sha256": staging.sha256(substitute), "letter": "Z"}
 
 
-@pytest.mark.parametrize("title", [foundation.POOL, foundation.DARKNESS])
 def test_prepare_refuses_a_substitute_on_a_title_that_is_not_substitutable(
-        tmp_path, title, monkeypatch):
+        tmp_path, monkeypatch):
     """`substitute` is only wired through `_SUBSTITUTABLE`; every other title
     refuses it before a run folder is ever created."""
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -425,7 +424,8 @@ def test_prepare_refuses_a_substitute_on_a_title_that_is_not_substitutable(
     run_root = scratch.cache_dir("acceptance", amiga_route.ISSUE)
     before = set(run_root.iterdir()) if run_root.exists() else set()
     with pytest.raises(winuaesession.RouteError, match="takes no substitute slot"):
-        foundation.prepare(title, "no-substitute-run", substitute=tmp_path / "x.adf")
+        foundation.prepare(foundation.DARKNESS, "no-substitute-run",
+                           substitute=tmp_path / "x.adf")
     after = set(run_root.iterdir()) if run_root.exists() else set()
     assert after == before
 

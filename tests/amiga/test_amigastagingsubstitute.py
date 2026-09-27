@@ -18,10 +18,12 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
+from support.amigarecords import sample, synthetic_savegame  # noqa: E402
 from support.amigasavegame import synthetic_curse  # noqa: E402
 
+from goldbox import amiga_savegame  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
-from tools.amiga import route_curse, staging  # noqa: E402
+from tools.amiga import route_curse, route_pool, staging  # noqa: E402
 from tools.amiga.staging import _Sources  # noqa: E402
 from tools.amiga.winuaesession import RouteError  # noqa: E402
 
@@ -139,3 +141,59 @@ def test_a_substitute_that_fails_adf_verification_is_refused(tmp_path, sources):
     AmigaDisk.open(substitute)
     with pytest.raises(RouteError, match=f"{re.escape(str(substitute))} fails ADF verification: "):
         staging._prepare_from(src, tmp_path / "run", specimen, substitute=substitute)
+
+
+def _pool_disk(tmp_path, name, letter, member):
+    disk = amiga_savegame.make_por_save_disk(
+        letter, [sample(name=member)], synthetic_savegame(letter))
+    path = tmp_path / name
+    disk.save(path)
+    return disk, path
+
+
+def test_pool_substitute_copies_slot_bytes_and_keeps_other_slots(tmp_path):
+    pinned, specimen = _pool_disk(tmp_path, "pool-pinned.adf", "A", "ALPHA")
+    other, _ = _pool_disk(tmp_path, "pool-other.adf", "B", "BETA")
+    for entry in other.entries():
+        if entry.name.upper() in {"SAVE", "CHARLIST.TXT"}:
+            continue
+        pinned.write_file(f"/{entry.name}", other.read_file(f"/{entry.name}"))
+    pinned.write_file("/CHRDATA1.itm", b"stale")
+    pinned.write_file("/save", amiga_savegame.slot_list_bytes(["A", "B"]))
+    pinned.save(specimen)
+    source, substitute = _pool_disk(tmp_path, "pool-substitute.adf", "E", "GAMMA")
+    src = _Sources("test-pool", route_pool.POOL, (), staging.sha256(specimen),
+                   "POOLSAVE", "A", "B", {}, route_pool.POOL_SOURCES.import_slot)
+
+    manifest = staging._prepare_from(
+        src, tmp_path / "run-pool", specimen, substitute=substitute,
+        substitute_letter="E")
+
+    result = AmigaDisk.open(manifest["disks"]["save"]["path"])
+    assert result.volume_name == "POOLSAVE"
+    assert manifest["names_a"] == ["GAMMA"]
+    assert manifest["expected_after"] is None
+    assert route_pool._pool_slot_files(result, "B") == route_pool._pool_slot_files(pinned, "B")
+    assert "/CHRDATA1.itm" not in [path for path, _ in result.walk()]
+    assert set(amiga_savegame.read_slot_list(result, "")) == {"A", "B"}
+    assert result.read_file("/CHRDATA1.sav") == source.read_file("/CHRDATE1.sav")
+    assert amiga_savegame.read_por_slot(result, "A", drawer="")[1] == (
+        amiga_savegame.retarget_savegame(source.read_file("/savgamE.dat"), "A"))
+    assert staging.sha256(specimen) == src.specimen_sha256
+    assert staging.sha256(substitute) == manifest["substitute"]["sha256"]
+
+
+def test_pool_substitute_refuses_missing_source_letter(tmp_path):
+    pinned, specimen = _pool_disk(tmp_path, "pool-pinned.adf", "A", "ALPHA")
+    other, _ = _pool_disk(tmp_path, "pool-other.adf", "B", "BETA")
+    for entry in other.entries():
+        if entry.name.upper() in {"SAVE", "CHARLIST.TXT"}:
+            continue
+        pinned.write_file(f"/{entry.name}", other.read_file(f"/{entry.name}"))
+    pinned.save(specimen)
+    _, substitute = _pool_disk(tmp_path, "pool-substitute.adf", "E", "GAMMA")
+    src = _Sources("test-pool", route_pool.POOL, (), staging.sha256(specimen),
+                   "POOLSAVE", "A", "B", {}, route_pool.POOL_SOURCES.import_slot)
+    with pytest.raises(RouteError, match="could not be imported"):
+        staging._prepare_from(src, tmp_path / "run-pool", specimen,
+                              substitute=substitute, substitute_letter="Z")

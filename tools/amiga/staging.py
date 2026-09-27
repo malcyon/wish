@@ -15,7 +15,7 @@ import pathlib
 import shutil
 import string
 import struct
-from typing import Any
+from typing import Any, Callable
 
 from goldbox import amiga_adf
 from goldbox import amiga_adf as adf
@@ -413,6 +413,8 @@ class _Sources:
     loaded: str
     later: str
     images: dict[str, str]
+    import_slot: Callable[[adf.AmigaDisk, str, adf.AmigaDisk, str], bytes] | None = (
+        amigalaterslot.import_slot)
 
 
 def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | None, *,
@@ -423,7 +425,7 @@ def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | Non
     `substitute`, when given, is a disk some other tool wrote a party onto --
     typically a Save As Amiga output. Its `substitute_letter` slot replaces
     `src.loaded` on a copy of the pinned specimen, through
-    `amigalaterslot.import_slot`; every other file on the copy, and the pin
+    `src.import_slot`; every other file on the copy, and the pin
     checks on the specimen and side disks, are unchanged. `state_a`/`names_a`
     then describe the substituted slot, not the pinned specimen's.
     """
@@ -461,6 +463,8 @@ def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | Non
         raise RouteError("the working save disk differs from the specimen")
     substituted: dict[str, str] | None = None
     if substitute is not None:
+        if src.import_slot is None:
+            raise RouteError(f"{src.name} takes no substitute slot")
         substitute = pathlib.Path(substitute)
         if not substitute.is_file():
             raise RouteError(f"the substitute {substitute} is missing")
@@ -470,8 +474,8 @@ def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | Non
             raise RouteError(f"{substitute} fails ADF verification: {source_problems}")
         working_disk = adf.AmigaDisk(bytearray(working.read_bytes()))
         try:
-            amigalaterslot.import_slot(working_disk, src.loaded, source_disk, substitute_letter)
-        except (adf.AmigaDiskError, SystemExit) as exc:
+            src.import_slot(working_disk, src.loaded, source_disk, substitute_letter)
+        except (adf.AmigaDiskError, ValueError, SystemExit) as exc:
             raise RouteError(f"the substitute slot could not be imported: {exc}") from exc
         problems = working_disk.verify()
         if problems:

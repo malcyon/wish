@@ -8,6 +8,7 @@ import re
 from typing import Any
 
 from goldbox import amiga_adf, amiga_savegame
+from tools.amiga import amigaporslot
 from tools.amiga.route import ISSUE, AmigaTitle, effect_fields
 from tools.amiga.staging import _prepare_from, _Sources
 
@@ -113,8 +114,12 @@ POOL = AmigaTitle(
 
 POOL_SOURCES = _Sources("pool", POOL, POOL_SPECIMEN, POOL_SPECIMEN_SHA256, POOL_VOLUME,
                         POOL_LOADED, POOL_LATER,
-                        {"disk1": POOL_DISK1_SHA256, "disk2": POOL_DISK2_SHA256})
+                        {"disk1": POOL_DISK1_SHA256, "disk2": POOL_DISK2_SHA256},
+                        amigaporslot.import_slot)
 
 
-def _prepare_pool(run: pathlib.Path, specimen: pathlib.Path | None) -> dict[str, Any]:
-    return _prepare_from(POOL_SOURCES, run, specimen)
+def _prepare_pool(run: pathlib.Path, specimen: pathlib.Path | None, *,
+                  substitute: pathlib.Path | None = None, substitute_letter: str = "A"
+                  ) -> dict[str, Any]:
+    return _prepare_from(POOL_SOURCES, run, specimen,
+                         substitute=substitute, substitute_letter=substitute_letter)

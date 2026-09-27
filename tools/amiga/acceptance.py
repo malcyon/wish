@@ -24,14 +24,14 @@ from tools.amiga.route import (  # noqa: E402
     check_expect,
     parse_expect,
 )
-from tools.amiga.route_curse import CURSE, _prepare_curse  # noqa: E402
+from tools.amiga.route_curse import CURSE, CURSE_SOURCES, _prepare_curse  # noqa: E402
 from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS,
     DARKNESS_RELOAD,
     _prepare_darkness,
     _prepare_darkness_reload,
 )
-from tools.amiga.route_pool import POOL, _prepare_pool  # noqa: E402
+from tools.amiga.route_pool import POOL, POOL_SOURCES, _prepare_pool  # noqa: E402
 from tools.amiga.route_silver_blades import (  # noqa: E402
     ACCEPT_ROUTE,
     CAMP_SAVE_LETTER,
@@ -1010,10 +1010,9 @@ def _name(title: AmigaTitle) -> str:
     raise RouteError("that is not one of this module's titles")
 
 
-#: Titles whose `_PREPARE` function accepts a substitute slot -- the ones
-#: routed through `staging._prepare_from`, whose party lives in one savegame
-#: file `amigalaterslot.import_slot` can graft onto a copy of the pinned disk.
-_SUBSTITUTABLE = frozenset({"curse"})
+#: Titles with a slot importer for their own save format.
+_SUBSTITUTABLE = frozenset(
+    source.name for source in (POOL_SOURCES, CURSE_SOURCES) if source.import_slot is not None)
 
 
 def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = None,

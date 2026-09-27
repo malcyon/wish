@@ -12,7 +12,7 @@ import subprocess
 from typing import Any
 
 from automap import gamedisks
-from goldbox import amiga_adf, amiga_savegame
+from goldbox import amiga_adf, amiga_savegame, d64, effects
 from tools.amiga import amigabladesjournal, staging
 from tools.amiga.route import effect_fields
 from tools.amiga.staging import _entry, _verified_disk, sha256
@@ -64,17 +64,47 @@ def find_disk_b() -> pathlib.Path:
     raise RouteError("registered Silver Blades disk B was not found by its SHA-256")
 
 
-def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
+def _staged_rows(source: pathlib.Path, staged_from: pathlib.Path) -> list[list[int]]:
+    """Accept only effect-array changes to the pinned JOIN save."""
+    if sha256(staged_from) != JOIN_SHA256:
+        raise RouteError(f"JOIN staged-from SHA-256 differs: {sha256(staged_from)}")
+    original = d64.D64.open(staged_from)
+    staged = d64.D64.open(source)
+    original_names = {entry.name for entry in original.directory()}
+    staged_names = {entry.name for entry in staged.directory()}
+    if original_names != staged_names:
+        names = sorted(original_names ^ staged_names)
+        raise RouteError(f"staged source file list differs: {names!r}")
+    for name in sorted(original_names):
+        before = original.read_file(name)
+        after = staged.read_file(name)
+        if name == b"SAVEDGAME0":
+            start = 2 + effects.EFFECT_ID_OFFSET
+            end = 2 + effects.EFFECT_MAGNITUDE_OFFSET + effects.EFFECT_SLOTS
+            if len(before) != len(after) or before[:start] != after[:start] or before[end:] != after[end:]:
+                raise RouteError("staged source differs outside effect arrays in SAVEDGAME0")
+        elif before != after:
+            raise RouteError(f"staged source file differs: {name.decode('ascii', errors='replace')}")
+    payload = d64.load_payload(staged, "SAVEDGAME0")
+    return [[row.slot, row.id, row.owner, row.duration, row.magnitude]
+            for row in effects.active_effects(payload)]
+
+
+def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | None = None,
+            issue: str = "672") -> pathlib.Path:
     """Publish the C64 JOIN party as an immutable ADF and stage a private DF0."""
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
     source = source.expanduser().resolve()
-    if sha256(source) != JOIN_SHA256:
-        raise RouteError(f"JOIN source SHA-256 differs: {sha256(source)}")
+    staged_from = staged_from.expanduser().resolve() if staged_from is not None else None
+    source_sha = sha256(source)
+    rows = (_staged_rows(source, staged_from) if staged_from is not None else None)
+    if staged_from is None and source_sha != JOIN_SHA256:
+        raise RouteError(f"JOIN source SHA-256 differs: {source_sha}")
     boot_source = amigabladesjournal.find_disk()
     if sha256(boot_source) != staging.SOURCE_SHA256:
         raise RouteError("registered Silver Blades side A differs from the measured build")
-    run = scratch.cache_dir("acceptance", "672", run_id)
+    run = scratch.cache_dir("acceptance", issue, run_id)
     df0 = scratch.cache_dir("amigaacceptance", run_id, "boot-with-slot.adf")
     if run.exists() or df0.exists():
         raise RouteError(f"run or staged DF0 already exists: {run}, {df0}")
@@ -114,8 +144,10 @@ def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
     df1 = run / "disk-b-working.adf"
     with disk_b_source.open("rb") as reader, df1.open("xb") as writer:
         shutil.copyfileobj(reader, writer)
-    if sha256(source) != JOIN_SHA256:
+    if sha256(source) != source_sha:
         raise RouteError("JOIN source changed during preparation")
+    if staged_from is not None and sha256(staged_from) != JOIN_SHA256:
+        raise RouteError("JOIN staged-from changed during preparation")
     if sha256(boot_source) != staging.SOURCE_SHA256:
         raise RouteError("registered boot disk changed during preparation")
     if sha256(df1) != DISK_B_SHA256 or sha256(disk_b_source) != DISK_B_SHA256:
@@ -131,6 +163,9 @@ def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
                     "facing": state.facing},
         "dropped": list(plan.report.dropped), "losses": list(plan.report.losses),
     }
+    if staged_from is not None:
+        manifest["staged_from"] = _entry(staged_from)
+        manifest["active_rows"] = rows
     manifest_path = run / "prepare.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest_path
