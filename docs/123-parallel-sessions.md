@@ -170,9 +170,11 @@ KernalName=".../JiffyDOS_C64_6.01.bin"
 DosName1541ii=".../JiffyDOS_1541-II_6.00.bin"
 ```
 
-and `Session.boot()` answers the fastloader prompt `Y` unconditionally
-(`tools/c64/session.py:300`). A stock kernal makes `Y` the wrong answer and the
-symptom looks like a corrupt disk image — the trap
+and `Session.boot()` defaults to answering the fastloader prompt `N`
+(`tools/c64/session.py`), which `docs/131-fastloader.md` measured as the
+faster answer on the stock kernal every machine here currently runs; the rc
+still carries the JiffyDOS paths for the day one does. A stock kernal
+answered `Y` is the wrong-answer trap
 [`00-overview.md`](00-overview.md) records under "How a session runs".
 
 The overrides:

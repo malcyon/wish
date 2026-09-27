@@ -127,7 +127,7 @@ class FakeBootDisplay:
 class FakeBootGame:
     """A C64 whose fastloader-answer keypress is swallowed once.
 
-    A VICE dialog that grabs the keyboard eats exactly the first `y`; the
+    A VICE dialog that grabs the keyboard eats exactly the first answer; the
     game only sees the second.  `screen()` stays on the fastloader prompt
     until a key is actually taken, then jumps straight to the party menu.
     """
@@ -199,7 +199,7 @@ def test_boot_resends_a_fastloader_answer_a_vice_dialog_swallowed(monkeypatch):
 
     assert sess.boot() is True
 
-    assert game.sent == ["y", "y"]
+    assert game.sent == ["n", "n"]
     assert order == ["dialog-check", "send", "dialog-check", "send"]
 
 

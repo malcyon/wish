@@ -99,6 +99,20 @@ def _session(tmp_path, monkeypatch, display, after_fastloader=None):
     return sess
 
 
+def test_the_fastloader_default_is_n_with_no_jiffydos_on_this_machine(monkeypatch):
+    """`#695 (The instance pool answers VICE's fastloader prompt Y by default,
+    though docs/131 measured N as faster with no JiffyDOS installed)`:
+    `docs/131-fastloader.md` measured `N` 39 s faster on a stock kernal, and
+    every machine this project currently drives is that case."""
+    monkeypatch.delenv("POR_FASTLOADER", raising=False)
+    assert session.Session().fastloader == "n"
+
+
+def test_por_fastloader_still_overrides_the_default(monkeypatch):
+    monkeypatch.setenv("POR_FASTLOADER", "y")
+    assert session.Session().fastloader == "y"
+
+
 def test_a_dialog_that_appears_during_the_wait_is_dismissed(tmp_path, monkeypatch):
     display = FakeDisplay(["VICE (C64SC)", "VICE Error"])
     sess = _session(tmp_path, monkeypatch, display)
@@ -107,7 +121,7 @@ def test_a_dialog_that_appears_during_the_wait_is_dismissed(tmp_path, monkeypatc
 
     assert display.keys == ["Return"]
     # the game got the answer and the menu's Return, and nothing else
-    assert sess.kbd.pressed == ["y", "Return"]
+    assert sess.kbd.pressed == ["n", "Return"]
     assert not [t for t in threading.enumerate() if t.name == "vice-dialogs"]
 
 
@@ -118,7 +132,7 @@ def test_no_key_is_pressed_into_the_game_when_no_dialog_is_up(tmp_path, monkeypa
     assert sess.boot() is True
 
     assert display.keys == []
-    assert sess.kbd.pressed == ["y", "Return"]
+    assert sess.kbd.pressed == ["n", "Return"]
 
 
 def test_the_watchdog_presses_return_once_per_dialog(monkeypatch):
@@ -246,7 +260,7 @@ def test_the_boot_closes_vices_dialog_before_it_answers_the_fastloader(tmp_path,
     # the boot pressed Return at the dialog itself rather than waiting for the
     # watchdog, so the very first `y` reached the game
     assert display.keys == ["Return"]
-    assert game.got[0] == "y"
+    assert game.got[0] == "n"
 
 
 def test_the_fastloader_answer_is_sent_again_when_the_game_did_not_take_it(
@@ -257,8 +271,8 @@ def test_the_fastloader_answer_is_sent_again_when_the_game_did_not_take_it(
 
     assert sess.boot() is True
 
-    assert game.sent[:2] == ["y", "y"], "the swallowed answer was never sent again"
-    assert game.got[0] == "y"
+    assert game.sent[:2] == ["n", "n"], "the swallowed answer was never sent again"
+    assert game.got[0] == "n"
 
 
 def test_an_answer_xtest_never_delivers_goes_through_the_kernal_buffer(tmp_path,
@@ -269,8 +283,8 @@ def test_an_answer_xtest_never_delivers_goes_through_the_kernal_buffer(tmp_path,
 
     assert sess.boot() is True
 
-    assert game.sent == ["y"] * (session.ANSWER_TRIES - 1) + ["Return"]
-    assert game.got[0] == "kernal:59"          # PETSCII `Y`
+    assert game.sent == ["n"] * (session.ANSWER_TRIES - 1) + ["Return"]
+    assert game.got[0] == "kernal:4E"          # PETSCII `N`
 
 
 def test_a_fastloader_prompt_that_takes_no_answer_at_all_is_reported(tmp_path,

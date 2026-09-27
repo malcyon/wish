@@ -816,13 +816,14 @@ class Session:
                  slot=None, fastloader: str | None = None):
         self.slot = slot
         # `DISABLE FASTLOADER (Y/N)?`.  A parameter, not a constant, because
-        # until P69 nobody could A/B it.  Measured, 5 boots a cell: on this
-        # machine's JiffyDOS `Y` reaches the main menu in 167.9 s against `N`'s
-        # 168.8; on a stock kernal the order reverses, 238.6 against 199.6.
-        # So the default stays `y` and a stock VICE wants `n`.
-        # `docs/131-fastloader.md`.
+        # until P69 nobody could A/B it.  Measured, 5 boots a cell: on a
+        # stock kernal -- what every machine this project currently drives
+        # has -- `N` reaches the main menu in 199.6 s against `Y`'s 238.6, a
+        # 39 s margin.  JiffyDOS erases the gap (167.8 vs 168.8), which is
+        # moot until a machine here has it installed.  So the default is
+        # `n`.  `docs/131-fastloader.md`.
         self.fastloader = (
-            fastloader or os.environ.get("POR_FASTLOADER") or "y"
+            fastloader or os.environ.get("POR_FASTLOADER") or "n"
         ).strip().lower()[:1]
         assert self.fastloader in ("y", "n"), \
             f"POR_FASTLOADER must be y or n, not {self.fastloader!r}"

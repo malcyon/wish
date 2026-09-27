@@ -1,9 +1,13 @@
 # Does the fastloader answer make any difference?
 
 **Status: closed (P69).** Donald: *"it basically is the same either way."*
-The measurement stands and the code keeps answering `Y`; no guidance is owed
-to a player. 24 boots, five per cell — the medians are in the segment table
-below.
+The measurement stands: on Donald's own JiffyDOS machine the answer makes no
+practical difference, and no guidance is owed to a player. `#695 (The
+instance pool answers VICE's fastloader prompt Y by default, though docs/131
+measured N as faster with no JiffyDOS installed)` changed the code's own
+default to `N`, since every machine this project currently drives is the
+stock-kernal case the measurement below found 39 s faster that way.
+24 boots, five per cell — the medians are in the segment table below.
 
 Donald: *"You have guidance on whether we should answer Y/N to the fastloader
 question, but in my experience, either option makes no difference at all. It
@@ -237,11 +241,11 @@ title sequence has already absorbed everything there was to absorb.
 
 ## What follows
 
-* **`tools/c64/session.py` keeps `y` as its default.** The margin on this machine,
-  1.0 s, does not exceed the within-cell range, 1.1 s, so there is no
-  measurement here that argues for changing it — and `Y` is the right answer
-  by 39 s on the stock-kernal configuration's mirror image. The docstring
-  carries the numbers.
+* **`tools/c64/session.py` now defaults to `n`.** Every machine this project
+  currently drives has a stock kernal, not JiffyDOS, and there `N` is the
+  right answer by 39 s. On this machine's JiffyDOS, the margin, 1.0 s, does
+  not exceed the within-cell range, 1.1 s, so nothing here argues against `N`
+  there either. The docstring carries the numbers.
 * **A stock VICE should answer `N`** — 199.6 s against 238.6 s.
   `docs/122-release-testing.md` §W3 already says this, and is the only place in
   the project that had it right.

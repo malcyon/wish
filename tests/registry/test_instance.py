@@ -1178,13 +1178,12 @@ def _seeded(pool_dir: Path, template_text: str = TEMPLATE, n: int = 3) -> dict[s
 
 
 def test_a_seeded_vicerc_keeps_the_jiffydos_paths(pool):
-    """`Session.boot()` answers the fastloader prompt `Y` unconditionally.
+    """The seeded rc keeps Donald's JiffyDOS paths even though `Session`
+    now defaults to answering the fastloader prompt `N`.
 
-    Under a stock kernal that answer is wrong and the symptom looks like a
-    corrupt disk image, which is why the rc is seeded by *copying* Donald's
-    rather than written fresh.  `docs/131-fastloader.md` is measuring whether
-    the answer matters at all; until it reports, the copy is what keeps the
-    seeded instance identical to the session everything was learned in.
+    Seeding by *copying* rather than writing fresh is what would let a
+    machine here pick `Y` back up once it actually has JiffyDOS installed;
+    `docs/131-fastloader.md` measured `N` as the faster default until then.
     """
     rc = _seeded(pool)
     assert "JiffyDOS_C64_6.01.bin" in rc["KernalName"]

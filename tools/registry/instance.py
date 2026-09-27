@@ -118,10 +118,11 @@ def pool_root() -> Path:
 def template_vicerc() -> Path:
     """Donald's `vicerc`, read as a template and never opened for writing.
 
-    It carries the JiffyDOS kernal paths, and `Session.boot()` answers the
-    fastloader prompt `Y` unconditionally -- under a stock kernal that answer is
-    wrong and the symptom looks like a corrupt disk image.  Seeding by *copying*
-    rather than writing fresh is what keeps those two lines.
+    It carries the JiffyDOS kernal paths, which every machine this project
+    currently drives lacks -- `Session.boot()` answers the fastloader prompt
+    `N` by default for exactly that reason (`docs/131-fastloader.md`).
+    Seeding by *copying* rather than writing fresh is what keeps those two
+    lines, for the day a machine here does have JiffyDOS.
     """
     return Path(os.environ.get("POR_VICERC_TEMPLATE") or DEFAULT_TEMPLATE)
 
@@ -816,9 +817,9 @@ def seed_vicerc(slot: Slot, template: Path | None = None) -> Path:
     The template is opened read-only; nothing in the pool ever writes to it.
 
     A missing template is not an error.  A machine with no VICE config yet still
-    gets a valid rc, it just has no JiffyDOS in it -- and then the fastloader
-    answer is the caller's problem, which is what `docs/131-fastloader.md` is
-    measuring.
+    gets a valid rc, it just has no JiffyDOS in it -- and `Session`'s own
+    default fastloader answer, `N`, is already the faster one for that case
+    (`docs/131-fastloader.md`).
     """
     src = Path(template) if template is not None else template_vicerc()
     lines = src.read_text(encoding="utf-8").splitlines() if src.is_file() else ["[C64SC]"]

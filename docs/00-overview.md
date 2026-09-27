@@ -58,14 +58,15 @@ Launched by `~/.local/bin/pool-of-radiance`, which runs the VICE Flatpak (`x64sc
 fliplist preloaded and autostarts `POOL1.D64`.
 
 **JiffyDOS:** this VICE install has JiffyDOS. The game asks at launch whether to disable its
-own fastloader — answer **`Y`**. JiffyDOS does the fast loading; leaving the game's loader on
-conflicts with it, and the failure mode looks like a bad disk image rather than a loader clash.
+own fastloader; either answer works here, since `docs/131-fastloader.md` measured the two
+within 1.0 s of each other on a JiffyDOS machine.
 
 Every scripted launch and every written repro step has to answer that prompt.
-`tools/c64/session.py` answers `Y` unconditionally, which is right on this machine and would be
-**wrong under a stock kernal** — where the game's own fastloader is the only one there is,
-and the same corrupt-looking symptom appears for the opposite reason. Any VICE configured
-for this project keeps the JiffyDOS ROMs; see
+`tools/c64/session.py` defaults to **`N`**, since every machine the project's own instance
+pool currently drives has a stock kernal, where the game's own fastloader is the only one
+there is and `docs/131-fastloader.md` measured `N` 39 s faster; answering `Y` there is
+**wrong** and its failure mode looks like a bad disk image rather than a loader clash. Any
+VICE configured for this project keeps the JiffyDOS ROMs regardless; see
 [123-parallel-sessions.md](123-parallel-sessions.md) §2.
 
 `POR_DEBUG=1` additionally enables VICE's binary monitor on `127.0.0.1:6502` and grants the
