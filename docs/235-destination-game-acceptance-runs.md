@@ -65,7 +65,7 @@ after `gh issue view N --json state`.
 | platform | emulator and pool | keys | screen | memory | files the engine writes | title protocols in the tree |
 |---|---|---|---|---|---|---|
 | C64 | VICE through `tools/registry/instance.py` (`claim`, displays `:10`-`:25`) | `Session.select_bar`, `select_row`, KERNAL buffer | **text**, `Session.screen_text()` and `screen()` row by row | binary monitor: peeks, non-stopping exec checkpoints (`tools/c64/effectdrive.py checkpoint_hits`), watchpoints (`livewatch.py`) | the save disk, copied out closed (`por.copy_closed_disk`) or repaired (`curseload.close_splat`) | Pool `Session` (load, walk, fight, `save_game`); Curse `curserun.CurseSession` + `curseload`, `cursecheck.py`, `laterbattle.py`; Silver Blades `ssbwarp.SSBSession`, `ssbresavewalk.py`, `laterbattle.py`; all three run under `tools/c64/acceptance.py` |
-| DOS | DOSBox 0.74 through `tools/dos/dosbox.py` (`claim`, displays `:50`-`:65`) | `xdotool` keysyms | **pixels only**: 320x200 PNG, `Screen.digest`/`ink`/`glyphs` for equality, `highlight_row`; no text; the status line's `x,y` token, read cell by cell from x 136 (`dosacceptance.status_square`) | none | `SAVE/` after `ENCAMP > SAVE`: records, `.ITM`/`.STF`, `.SPC`/`.FX`/`.SFX`, `SAVGAM<slot>.DAT` (Pools of Darkness `SAVGAM<slot>.PTY` with `VAULT<slot>.DAT`) | Pool `PoolOfRadiance` (menu, load, move, camp save, fight); Curse `dossheetread.py` (load, sheets, walk, engine save), `Camp.memorize`, `curseregain.py` (train, camp save); Silver Blades `ssbimport.py Driver` (party menu, intro, encamp, rest by days, camp save, sheet), `dossheetread.py --move-mode`; Pools of Darkness `dospod.py` (its journal answer and party-menu knowledge); all four run under `tools/dos/acceptance.py` |
+| DOS | DOSBox 0.74 through `tools/dos/dosbox.py` (`claim`, displays `:50`-`:65`) | `xdotool` keysyms | **pixels only**: 320x200 PNG, `Screen.digest`/`ink`/`glyphs` for equality, `highlight_row`; no text; the status line's `x,y` token, read cell by cell from x 136 (`screens.status_square`) | none | `SAVE/` after `ENCAMP > SAVE`: records, `.ITM`/`.STF`, `.SPC`/`.FX`/`.SFX`, `SAVGAM<slot>.DAT` (Pools of Darkness `SAVGAM<slot>.PTY` with `VAULT<slot>.DAT`) | Pool `PoolOfRadiance` (menu, load, move, camp save, fight); Curse `dossheetread.py` (load, sheets, walk, engine save), `Camp.memorize`, `curseregain.py` (train, camp save); Silver Blades `route_silver_blades.py Route` (party menu, intro) and `ssbimport.py Driver` (encamp, rest by days, camp save, sheet), `dossheetread.py --move-mode`; Pools of Darkness `dospod.py` (its journal answer and party-menu knowledge); all four run under `tools/dos/acceptance.py` |
 | DOS, debugger | DOSBox-X debug build through `tools/dos/dosboxx.py` (`claim`, displays `:90`-`:105`); `dosboxx.unavailable()` is `None` on this machine | the same | the same, halved from 640x400 | `read`/`write` any linear address, `watch` (one byte, on change), `brk` (fires silently, `wait_halt` probes), `regs` through `EV`; `dosspcexpiry.read_party` reads Pool's effect chains node by node off the heap | the same | `PoolOfRadiance` runs unchanged on `XSession`; the later titles' chain heads (Curse record `0x0F2`, Silver Blades `0x0FB`) are read but no tool reads their nodes yet |
 | Amiga | WinUAE in the Windows VM, one lane (`winuae.ps1 claim -Holder`), reachable from this VM (`winvm status`) | `tools/amiga/amigadrive.py keys`; the foundation drivers press a key once the previous screen has matched its guard, and `winvmsettle.py` waits between keys by hand | **pixels**: `winvm shot` cropped to the emulator window by `amigashots.py`; a state is one static pixel box (`PixelGuards`) and a sheet's or menu's identity is a name box | `winuaepipe.py` / `automap.amiga.WinuaePipe`: `m` and `S`-to-file reads while the machine runs; `automap/amiga.py` locates the data hunk and the party | the `.adf`, copied back with `winvm get` and read by `amiga_savegame` (`read_por_slot`, `read_slot`, `pod_read_slot`) | Pool `amigafoundation.py --title pool` (by hand: `docs/182` §7, twenty keys); Curse `--title curse` (by hand: `docs/203` "Reproducing it"); Silver Blades `amigasecretsave.py accept`, its journal answered by `amigabladesjournal.py` under `/usr/bin/python3`; Pools of Darkness `--title darkness`, not yet proven (section 5); `amigacampsave.py` (repeated camp saves, Silver Blades) |
 | Amiga, FS-UAE | stock `fs-uae` in a VICE-pool slot (`instance.py claim --game amiga-por`), `tools/amiga/fsuaepor.py serve` | `fsuaepor.py keys` | pixels, `fsuaepor.py shot` | none; the GDB build `installfsuae.py` fetches is not installed here | the staged `.adf` in the run directory, `fsuaepor.py names` | Pool of Radiance and Pools of Darkness only. Under it Pools of Darkness reached the party panel and `ADD CHARACTER > POOLS` (`docs/124` §2.4) and never loaded a saved game, and a disk changes at runtime only through its F12 menu, by hand. Curse stops at the code wheel and Silver Blades has never been driven |
@@ -78,7 +78,7 @@ some of them:
 | Pool of Radiance | Disk 1 | Disk 2 | The specimen's `POOLSAVE` disk (`nr_floppies=3`, `floppy2type=0`) | Loaded A; control C; after D; B kept |
 | Curse | A working copy of the specimen, a whole disk A with slots A, B and C in `/SAVE` | Disk B | None | Loaded B; control D, saved at the party menu before `BEGIN ADVENTURING`; after F, saved from camp; A and C kept |
 | Silver Blades | A copy of disk 1 carrying the prepared slot C (`amigaacceptance.stage_embedded_boot_disk`) | Disk B, the game's second disk | None | Control B, saved at the party menu before `BEGIN ADVENTURING`; after D, saved from camp; A and C kept |
-| Pools of Darkness | Disk 1 | Disk 3, the save disk, mounted from the start | None; disk 2 is put on the VM and not mounted | Loaded B; control I; after J; A, C, D and E kept |
+| Pools of Darkness | Disk 1 | Disk 3, the save disk, mounted from the start | None; disk 2 is staged on the VM as a spare and inserted into DF0 at the game's `INSERT DISK 2` prompt | Loaded B; control F; after G; A, C, D and E kept |
 
 Silver Blades boots from a copy of disk 1 carrying the slot because the game
 never reads a standalone save disk (`SECRETSAVE`, or Curse's `AZURESAVE`) while
@@ -490,19 +490,18 @@ after muting the guest's default playback endpoint and reading the mute back,
 and the driver refuses a readback older than five minutes.
 
 **Amiga Pools of Darkness is not yet proven.** Its route mounts disk 1 in DF0
-and disk 3 in DF1 from the first frame, with disk 2 as a spare, because the
-route predates a working runtime insert. Measuring boot 4 recognised
-the title by its guard, reached the party menu with `P` and the load prompt
-with `L`, and stopped there: the prompt is `LOAD FROM WHERE?` over `POOLS`,
-`SECRET` and `EXIT`, and the slot letter pressed at it changed nothing, so no
-party was loaded, no sheet opened and no save written (exit 1, empty error,
-351 s, all three disks unchanged). The route since presses `P` at that prompt
-before the slot letter, and no boot with that route is recorded. Its guard map
-holds the title screen and a disk 2 prompt only, so no state after the title has
-a guard, and no `accept` boot has run.
+and disk 3 in DF1 from the first frame, and after `B` inserts disk 2 into DF0
+and presses `SPACE`. Measuring boot 4 stopped at the load prompt, because the
+slot letter pressed there changed nothing; the route now presses `P` at that
+prompt first. One boot of the current route (measuring boot 7, evidence in
+`~/.cache/wish/acceptance/679/bf9b00fb99-amiga-darkness-measure7/`) reached the
+loaded party menu with six members, the sheet (SAINT ERIC, paladin level 27)
+and the save picker, with no write and all three disks unchanged. The guards
+for six screens were built from it (`~/.cache/wish/acceptance/679/amiga-darkness-guards-7/`,
+tables in its `guards.md`). The world, camp and camp save picker are not yet
+seen, and no `accept` boot has run.
 
-A DF0 insert is now proven possible, so disk 2 in DF2 no longer has that
-reason, and the route change is pending. At
+A DF0 insert is proven possible. At
 `6e377388d6b230e6c8c585d3a93fa1fac5cf1cea`, `tools/amiga/amigadrivecheck.py` on
 generated disks (no game) swapped DF0 from A to B and back to A, each applied
 in about 2.4 s, confirmed by the `CFG floppy0` query and by `DBG c` polling the

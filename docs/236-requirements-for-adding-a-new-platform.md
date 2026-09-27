@@ -90,8 +90,13 @@ The rules:
 | `highlighted`, `walk_menu` in `tools/c64/dualclassagain.py` | `tools/curse_of_the_azure_bonds/curseload.py` |
 | `dosacceptance.py` in `tools/dos/` | `tools/dos/acceptance.py` |
 | The `--note` default `dosacceptance` (a pool-lease label) | Unchanged. |
+| `_SAVGAM`, `containers_in`, `slots_in`, `source_slot`, `install`, `HALL_WORD`, `HALL_OPEN`, `HALL_TITLES`, `stage_hall`, `stage_xp`, `stage_node`, `node_dict` in `tools/dos/acceptance.py` | `tools/dos/staging.py` |
+| `bar_signature`, `name_signature`, `status_square`, `roster_name`, `roster_line`, `sheet_name`, `on_items_list`, `item_rows`, `item_highlight`, and the constants they read (`CELL`, `STATUS_TEXT_X`, `STATUS_COLUMNS`, `POD_ROSTER`, `POD_SHEET_NAME`, `POD_NAME_CELLS`, `POD_NAME_ROWS`, `ITEMS_BAR_HEAD`, `ITEMS_BAR_HEAD_CELLS`, `ITEM_READIED_COLUMN`, `ITEM_INK`, `ITEM_LIST_RECT`, `ITEM_HIGHLIGHT_PIXELS`, `BLANK_NAME`) in `tools/dos/acceptance.py` | `tools/dos/screens.py` |
+| `BARS`, `MENU_RECT`, `MENU_BEFORE`, `MENU_AFTER`, `RouteLost`, and the `Driver` methods `shot`, `bar`, `wait_bar`, `press`, `menu`, `to_party_menu`, `intro` in `tools/dos/ssbimport.py` | `tools/dos/route_silver_blades.py`, where the methods are on `Route` |
 | `_silver_session_class` in `tools/c64/curedrive.py` | `silver_session_class` in `tools/secret_of_the_silver_blades/ssbsession.py` |
 | The run's pool-lease owner label `c64acceptance/<issue>/<run>` | Unchanged. |
+
+What stayed: `status_column` and the measured digests and key constants in `tools/dos/acceptance.py`, and the import and CURE experiment in `tools/dos/ssbimport.py`.
 
 ## Conversion gate
 
