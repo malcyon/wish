@@ -35,7 +35,9 @@ from tools.amiga import (  # noqa: E402
     amigashots,
     winvmsettle,
 )
-from tools.registry import scratch  # noqa: E402
+from tools.registry import evidence, scratch  # noqa: E402
+
+REPO = pathlib.Path(__file__).resolve().parents[2]
 
 DISK_B_SHA256 = "d7caf68c3333b44a4ca2951b8d51f388e4bfd7a8bafa4fd8a7fca37aa639b468"
 # The slot letter the game is offered on its own boot disk; side A ships only A.
@@ -1246,6 +1248,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                    for key in title.disk_keys}
         local_disks = disks
     result: dict[str, Any] = {
+        **evidence.git_state(REPO), "argv": sys.argv[1:],
         "success": False, "holder": holder, "input": str(manifest_path),
         "events": [], "error": "", "fetched": {},
         "deadline_seconds": deadline_seconds, "measure": measure,

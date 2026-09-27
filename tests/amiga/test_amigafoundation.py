@@ -1236,3 +1236,58 @@ def test_reload_fails_when_the_game_changes_disk_1_or_2(tmp_path, clock, disk):
     _, result = _reload_run(tmp_path, clock, guest=guest)
     assert result["completed"] is True and result["reload"]["shown"] is True
     assert result["disks_unchanged"][disk] is False and result["success"] is False
+
+
+RECORDED = {"sha": "0123456789abcdef", "dirty": ["tools/amiga/example.py"]}
+
+
+def _record_state(monkeypatch):
+    monkeypatch.setattr(drive.evidence, "git_state", lambda repo: dict(RECORDED))
+    monkeypatch.setattr(drive.sys, "argv", ["amigasecretsave.py", "--issue", "679", "--run", "x"])
+
+
+def _summary(tmp_path):
+    return json.loads((tmp_path / "recon1" / "summary.json").read_text())
+
+
+def _assert_recorded(tmp_path, result):
+    assert result["sha"] == RECORDED["sha"] and result["dirty"] == RECORDED["dirty"]
+    assert result["argv"] == ["--issue", "679", "--run", "x"]
+    summary = _summary(tmp_path)
+    assert {k: summary[k] for k in ("sha", "dirty", "argv")} == {
+        "sha": RECORDED["sha"], "dirty": RECORDED["dirty"],
+        "argv": ["--issue", "679", "--run", "x"]}
+
+
+def test_an_accept_run_summary_records_the_repository_state_and_arguments(
+        tmp_path, clock, monkeypatch):
+    _record_state(monkeypatch)
+    _, result = _run(tmp_path, clock)
+    _assert_recorded(tmp_path, result)
+
+
+def test_a_measure_run_summary_records_the_repository_state_and_arguments(
+        tmp_path, clock, monkeypatch):
+    _record_state(monkeypatch)
+    _, result = _run(tmp_path, clock, accept=False, measure=True)
+    _assert_recorded(tmp_path, result)
+
+
+def test_a_reload_run_summary_records_the_repository_state_and_arguments(
+        tmp_path, clock, monkeypatch):
+    _record_state(monkeypatch)
+    _, result = _reload_run(tmp_path, clock)
+    _assert_recorded(tmp_path, result)
+
+
+def test_a_run_that_stops_early_still_records_the_repository_state_and_arguments(
+        tmp_path, clock, monkeypatch):
+    _record_state(monkeypatch)
+
+    class Stops(TitleGuest):
+        def press(self, holder, key, timeout=None):
+            raise RuntimeError("the guest stopped answering")
+
+    _, result = _run(tmp_path, clock, guest=Stops(clock, save_key="save"))
+    assert result["error"] and result["completed"] is False and result["success"] is False
+    _assert_recorded(tmp_path, result)
