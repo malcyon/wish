@@ -283,7 +283,7 @@ DARKNESS = AmigaTitle(
     read_slot=_darkness_read_slot, slot_letters=_darkness_slot_letters,
     slot_files=_darkness_slot_files,
     # `L` opens a prompt asking where to load from, with three choices; `P` picks this title's
-    # own saves. The slot list after it has not been seen yet, so `load_picker` is a name only.
+    # own saves. The slot list after it is the guarded state `load_picker`.
     route=(
         ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
         ("B", "disk2_prompt", "key"), DISK2_INSERT,

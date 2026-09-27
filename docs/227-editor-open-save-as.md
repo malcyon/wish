@@ -1,13 +1,14 @@
 # Open and Save As in the Character Editor
 
 **Implementation built (stages 1 to 4); File > Convert remains behind
-`WISH_EXPERIMENTAL_POD_CONVERT`; no conversion has been loaded in its
-destination game through Save As yet, and Windows validation is pending.** Still
-open: no emulator run of any Save As output (`docs/235` plans the Save As matrix
-and it is unstarted); Windows validation; the verification matrix of
-conditional refusals is unrecorded; slot-picker and multi-save Amiga disk
-behaviour through Save As are unconfirmed; retiring Convert waits on a Pools of
-Darkness Save As route. The Character Editor opens
+`WISH_EXPERIMENTAL_POD_CONVERT`; Windows validation is pending.** The emulator
+foundation runs of `docs/235` have booted some converted saves in their
+destination games (Save As output among them) to prove the harness; the
+per-route runs of its Save As matrix, each with its identity control, are not
+recorded, so no route is proven. Still open: Windows validation; the
+verification matrix of conditional refusals is unrecorded; slot-picker and
+multi-save Amiga disk behaviour through Save As are unconfirmed; retiring
+Convert waits on a Pools of Darkness Save As route. The Character Editor opens
 C64, DOS and Amiga saves and saves to any supported platform through two split
 buttons. Each button has a main action and a separate menu arrow: Open opens a
 save file, while its arrow also offers a DOS folder picker; Save updates the

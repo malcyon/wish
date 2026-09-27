@@ -432,10 +432,10 @@ SHA whose lint and test jobs passed.
 
 | pair | status | SHA | runs | specimen registered from the game's save |
 |---|---|---|---|---|
-| DOS Pool of Radiance | Proven | `5b586acc35` | `found-dospool-a`, `-b`, `-control` | None |
+| DOS Pool of Radiance | Proven | `5b586acc35` | `found-dospool-a`, `-b`, `-control` | `WISH-SPEC-dos-pool-foundation-walked` |
 | DOS Curse of the Azure Bonds | Proven | `5f3b09ec77` | `found-curse-a`, `-b`, `-control` | `WISH-SPEC-dos-curse-foundation-walked` |
 | DOS Secret of the Silver Blades | Proven | `5f3b09ec77` | `found-ssb-a`, `-b`, `-control` | `WISH-SPEC-dos-ssb-foundation-walked` |
-| DOS Pools of Darkness | Proven | `79aa61820e` | `found-pod-a`, `-b2`, `-control` | None |
+| DOS Pools of Darkness | Proven | `79aa61820e` | `found-pod-a`, `-b2`, `-control` | `WISH-SPEC-dos-pod-foundation-walked` |
 | C64 Pool of Radiance | Proven | `a0b1be90f1` | `found-por-a`, `-b`, `-control` | `WISH-SPEC-por-679-c64-walked-resave` |
 | C64 Curse of the Azure Bonds | Proven | `14c1ee21a4` | `found-curse-a`, `-b`, `-control` | `WISH-SPEC-curse-party-with-items-walked` |
 | C64 Secret of the Silver Blades | Proven | `f9008e1592` | `found-ssb-a`, `-b`, `-control` | `WISH-SPEC-ssb-d-engine-resave-walked-foundation` |
