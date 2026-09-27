@@ -516,6 +516,8 @@ def test_darkness_fails_when_g_stays_or_is_on_another_map_or_two_squares_on(
     guest = DarkGuest(clock, save_key="disk3", land=land)
     _, result = _dark_run(tmp_path, clock, guest=guest)
     assert result["success"] is False and result["walk"]["d_ok"] is False
+    # Darkness's manifest is pinned, not substituted, so the stall is never excused.
+    assert result["passed_except_walk"] is False
 
 
 def test_darkness_accept_order_puts_the_control_save_before_the_walk_and_the_after_save_after(

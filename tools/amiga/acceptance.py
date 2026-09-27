@@ -134,7 +134,7 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
     """
     verdicts: list[str] = []
     b_place, d_place = b.get("place"), d.get("place")
-    b_ok = d_ok = False
+    b_ok = d_ok = walk_blocked = False
     if b_place is None:
         verdicts.append(_unreadable(control, b))
     elif b_place == before:
@@ -167,6 +167,9 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
                             f"{_span(base, d_place)}")
         elif d_place == base or (turn == "about" and same_square):
             d_ok = squares == 0 and turn is None
+            # The party did not move although steps were asked for; a wall and an
+            # unregistered key press read identically here, so this is not proof of a wall.
+            walk_blocked = squares != 0
             verdicts.append(f"slot {after}: did not move")
         elif d_place == expected:
             d_ok = True
@@ -176,7 +179,7 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
         else:
             verdicts.append(f"slot {after}: moved from {_span(base, d_place)}, "
                             f"expected {expected['x']},{expected['y']}")
-    return {"verdicts": verdicts, "b_ok": b_ok, "d_ok": d_ok,
+    return {"verdicts": verdicts, "b_ok": b_ok, "d_ok": d_ok, "walk_blocked": walk_blocked,
             "place_changed": None if d_place is None else d_place != base,
             "squares_moved": squares_moved}
 
@@ -290,7 +293,7 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         f"slots {title.control_letter} and {title.after_letter} were not read from the "
         f"fetched save disk"]})
     others = [k for k in title.disk_keys if k != title.save_disk]
-    result["success"] = bool(
+    rest = bool(
         not result["error"] and result["completed"] and not result["unguarded"]
         and every_disk_fetched and all(result["registered_unchanged"].values())
         and all(result["working_unchanged"].values())
@@ -299,11 +302,21 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         and all(result["disks_unchanged"].get(k) for k in others)
         and result["menu_save_problems"] == []
         and result.get("camp_save_problems") == []
-        and result.get("walk", {}).get("b_ok") and result.get("walk", {}).get("d_ok")
+        and result.get("walk", {}).get("b_ok")
         and result.get("expected_after_matches") is not False
         and bool(result.get("kept_unchanged")) == bool(kept_before)
         and all(result.get("kept_unchanged", {}).values())
         and result.get("extra_saves") == [])
+    d_ok = bool(result.get("walk", {}).get("d_ok"))
+    result["success"] = rest and d_ok
+    result["substitute_walk_blocked"] = bool(
+        "substitute" in manifest and result.get("walk", {}).get("walk_blocked"))
+    result["passed_except_walk"] = bool(result["substitute_walk_blocked"] and rest)
+    if result["substitute_walk_blocked"] and result.get("read"):
+        clause = "; every other check passed" if result["passed_except_walk"] else ""
+        result["read"]["verdicts"].append(
+            f"slot {title.after_letter}: the substituted party did not move from its own "
+            f"square, which may face a wall{clause}")
 
 
 def _place_text(place: dict[str, Any]) -> str:

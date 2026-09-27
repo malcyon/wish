@@ -633,6 +633,8 @@ def test_two_squares_are_judged_along_every_facing(facing):
         assert acceptance.walk_verdict(base, at(0), at(squares), 2)["d_ok"] is False
     blocked = acceptance.walk_verdict(base, at(0), at(0), 2)
     assert blocked["d_ok"] is False and blocked["verdicts"][1] == "slot D: did not move"
+    assert blocked["walk_blocked"] is True
+    assert ok["walk_blocked"] is False  # moving as expected is never a wall block
     edge = dict(base, x=15 if dx else 5, y=15 if dy else 5)
     wrapped = acceptance.walk_verdict(
         edge, _reading(x=edge["x"], y=edge["y"], facing=facing),

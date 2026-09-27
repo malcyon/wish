@@ -85,7 +85,7 @@ def _adf(path, volume, slots=()):
 
 
 def manifest_for(tmp_path, *, expected_after=None, extra_slot=None, loaded="A",
-                 save_key="boot"):
+                 save_key="boot", substitute=None):
     slots = [("A", _slot()), ("B", b"kept slot")] + ([extra_slot] if extra_slot else [])
     disks = {"boot": _adf(tmp_path / "boot.adf", "BOOT", slots if save_key == "boot" else ()),
              "disk3": _adf(tmp_path / "disk3.adf", "THREE", slots if save_key == "disk3" else ()),
@@ -95,6 +95,8 @@ def manifest_for(tmp_path, *, expected_after=None, extra_slot=None, loaded="A",
             "state_a": START, "names_a": NAMES}
     if expected_after is not None:
         data["expected_after"] = expected_after
+    if substitute is not None:
+        data["substitute"] = substitute
     path = tmp_path / "prepare.json"
     path.write_text(json.dumps(data))
     return path
@@ -377,6 +379,50 @@ def test_a_walk_that_did_nothing_fails_the_run(tmp_path, clock):
     guest = TitleGuest(clock, land=dict(START))
     _, result = _run(tmp_path, clock, guest=guest)
     assert result["walk"]["d_ok"] is False and result["success"] is False
+    # The stall is also named as a distinct, wall-shaped outcome.
+    assert result["walk"]["walk_blocked"] is True
+    # A pinned run's own party has a measured open path, so a stall is not excused.
+    assert result["substitute_walk_blocked"] is False
+    assert result["passed_except_walk"] is False
+
+
+def test_a_substituted_stall_is_named_apart_from_a_real_failure(tmp_path, clock):
+    manifest = manifest_for(tmp_path, substitute={"path": "x.adf", "sha256": "0" * 64,
+                                                  "letter": "A"})
+    guest, result = _run(tmp_path, clock, guest=TitleGuest(clock, land=dict(START)),
+                         manifest=manifest)
+    assert result["success"] is False
+    assert result["substitute_walk_blocked"] is True
+    assert result["passed_except_walk"] is True
+    assert "the substituted party did not move" in result["read"]["verdicts"][-1]
+
+
+def test_a_substituted_stall_with_another_real_failure_is_not_passed_except_walk(
+        tmp_path, clock):
+    def spoil(guest):
+        remote = next(r for r in guest.mounted if r.endswith("-boot.adf"))
+        disk = AmigaDisk(guest.remote[remote])
+        disk.write_file("/SAVE/savgamB.sav", b"the game rewrote it")
+        guest.remote[remote] = disk.to_bytes()
+
+    manifest = manifest_for(tmp_path, substitute={"path": "x.adf", "sha256": "0" * 64,
+                                                  "letter": "A"})
+    guest, result = _run(tmp_path, clock,
+                         guest=TitleGuest(clock, land=dict(START), spoil=spoil),
+                         manifest=manifest)
+    assert result["kept_unchanged"]["B"] is False
+    assert result["substitute_walk_blocked"] is True
+    assert result["passed_except_walk"] is False
+    assert result["success"] is False
+
+
+def test_a_substituted_run_that_walks_normally_is_not_named_walk_blocked(tmp_path, clock):
+    manifest = manifest_for(tmp_path, substitute={"path": "x.adf", "sha256": "0" * 64,
+                                                  "letter": "A"})
+    guest, result = _run(tmp_path, clock, manifest=manifest)
+    assert result["success"] is True
+    assert result["substitute_walk_blocked"] is False
+    assert result["passed_except_walk"] is False
 
 
 def test_write_keys_are_pressed_only_at_their_named_steps(tmp_path, clock):
