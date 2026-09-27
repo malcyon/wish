@@ -64,8 +64,11 @@ order (`GAME.EXE` 0xAB4E-0xAC90 against Silver Blades' `START.EXE`
 `route_silver_blades`'s rows; the map bar is `Move Area Cast View Encamp Search Look`
 (0xBC79), the camp bar `Save View Magic Rest Alter Fix Exit` (0xBEBE), the
 rest menu Curse's (0xBB26), the sheet's bar `Items Spells Trade Deposit Drop
-Lay Cure Exit` (0xBB4F).  Each is PROBABLE until a run has reached it; a
-screen that does not answer its key stops the run with a `lost-*.png`.
+Lay Cure Exit` (0xBB4F).  The party menu, map bar, camp bar and sheet have
+answered their keys in three complete foundation boots (load, view, begin,
+walk, camp save, items); the rest menu has not been reached and stays
+PROBABLE.  A screen that does not answer its key stops the run with a
+`lost-*.png`.
 
 **The load route is read from the code.**  `LOAD SAVED GAME` (`GAME.OVR`
 0x12887) asks `load from where?` over `Pools Secret Exit`: `Pools` is this
@@ -276,13 +279,14 @@ AFTER_TRAIN = ("l", "l", "Return", "Escape")
 #: Silver Blades' party menu is a highlight list (`route_silver_blades.MENU_RECT`).
 #: With no party it is `Create New Character`, `Add Character to Party`,
 #: `Load Saved Game`, ...; `route_silver_blades.MENU_BEFORE` measured `Add` at row 1,
-#: and `Load Saved Game` comes after it in `START.EXE`'s list, so row 2 is
-#: PROBABLE and unread on a capture.
+#: and `Load Saved Game` comes after it in `START.EXE`'s list, so row 2; the
+#: foundation boots load a save through it.
 SSB_LOAD_ROW = 2
 
 #: Pools of Darkness' party menu, driven as Silver Blades' highlight list
 #: because `GAME.EXE` holds the same entries in the same order.  The rows are
-#: Silver Blades' and PROBABLE here until a capture of this title reads them.
+#: Silver Blades'; the load, view, save and begin rows have answered in three
+#: complete foundation boots of this title.
 POD_MENU_RECT = route_silver_blades.MENU_RECT
 POD_LOAD_ROW = SSB_LOAD_ROW
 POD_MENU_AFTER = route_silver_blades.MENU_AFTER
@@ -376,9 +380,8 @@ POD_MOVE = "m"
 POD_MOVE_EXIT = "Escape"
 #: The keys that enter and leave move mode, by title key.  Silver Blades'
 #: `m` is CONFIRMED (bar `EXIT` alone, ink `e61c9acccfc048ae`, three runs); its
-#: `e` is PROBABLE: one run (#672 retry2, `--move-exit e`) came back to the
-#: map bar and ink, and the first run's `Escape` is refuted, since it left the
-#: move bar showing.  Curse has no move mode: `Up` steps at the map bar.
+#: `e` leaves it: runs with `--move-exit e` and the foundation boots came back
+#: to the map bar, and `Escape` does not, since it leaves the move bar showing.  Curse has no move mode: `Up` steps at the map bar.
 #: Pools of Darkness keeps `m` and `Escape`.
 MOVE_KEYS = {"darkness": (POD_MOVE, POD_MOVE_EXIT), "ssb": ("m", "e")}
 #: Curse's party-menu `bar_signature`, the loaded menu and the empty one alike:
@@ -494,7 +497,7 @@ TITLES = {
     "ssb": Title("ssb", "SECRET", "party", False, False),
     # `Load Saved Game` is a party-menu entry here as in Curse and Silver
     # Blades, and both leave the party at that menu after a load, so this
-    # title's `loads_to` is `party`: PROBABLE, not yet captured.  The
+    # title's `loads_to` is `party`, as the foundation boots show.  The
     # container names its own `CHRDAT` files and the engine loads those, not
     # the letter picked (`docs/141-dos-savegame.md`, 12809-13136), so a
     # renamed slot would load nothing.
@@ -2166,8 +2169,8 @@ class Driver:
         return self._view_pod(line)
 
     def _view_curse(self, line: int) -> dict:
-        """No menu first: `End` moves the party menu's highlight (PROBABLE, one
-        press in one boot) and `v` opens the sheet (PROBABLE, one press).  The
+        """No menu first: `End` moves the party menu's highlight and `v` opens
+        the sheet, one press each, in three foundation boots.  The
         key back, `e`, is `dossheetread`'s default and unmeasured here."""
         moved = self.pick_line(line, "party", f"view-{line}-select", ROSTER_NEXT)
         want = roster_name(self.s.capture(), "party", line)
@@ -2182,8 +2185,9 @@ class Driver:
         return {"line": line, **moved, "sheet": sheet, **checked, "pages": []}
 
     def _view_ssb(self, line: int) -> dict:
-        """Row 3 `VIEW CHARACTER`, `PICK CHARACTER` (`Down` moves its highlight,
-        PROBABLE), then `s` (PROBABLE; `Return` also opens the sheet).  The
+        """Row 3 `VIEW CHARACTER`, `PICK CHARACTER` (`Down` moves its highlight),
+        then `s`, both answered in three foundation boots; `Return` also opens
+        the sheet, unmeasured.  The
         sheet is judged by its name: its bar is not in `route_silver_blades.BARS`, so
         nothing here waits for a sheet bar."""
         self.ssb.menu(route_silver_blades.MENU_AFTER["view"], f"view-{line}")

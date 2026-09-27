@@ -77,7 +77,7 @@ some of them:
 |---|---|---|---|---|
 | Pool of Radiance | Disk 1 | Disk 2 | The specimen's `POOLSAVE` disk (`nr_floppies=3`, `floppy2type=0`) | Loaded A; control C; after D; B kept |
 | Curse | A working copy of the specimen, a whole disk A with slots A, B and C in `/SAVE` | Disk B | None | Loaded B; control D, saved at the party menu before `BEGIN ADVENTURING`; after F, saved from camp; A and C kept |
-| Silver Blades | A copy of disk 1 carrying the prepared slot C (`amigaacceptance.stage_embedded_boot_disk`) | Disk B, the game's second disk | None | Control B, saved at the party menu before `BEGIN ADVENTURING`; after D, saved from camp; A and C kept |
+| Silver Blades | A copy of disk 1 carrying the prepared slot C (`staging.stage_embedded_boot_disk`) | Disk B, the game's second disk | None | Control B, saved at the party menu before `BEGIN ADVENTURING`; after D, saved from camp; A and C kept |
 | Pools of Darkness | Disk 1 | Disk 3, the save disk, mounted from the start | None; disk 2 is staged on the VM as a spare and inserted into DF0 at the game's `INSERT DISK 2` prompt | Loaded B; control F; after G; A, C, D and E kept |
 
 Silver Blades boots from a copy of disk 1 carrying the slot because the game
@@ -232,6 +232,14 @@ the save, and neither session presses Return for `PROMPT_HOLD` (eight seconds)
 after answering a disk prompt, because a Return in the half second after the
 prompt chooses the `SAVE GAME` bar.
 
+Pool's `save` has no such progress text to wait on: `Session.save_game` settles
+a fixed fourteen seconds for the write, and the game's `SAVING GAME` text has
+not been measured for Pool's camp save. The driver then waits for a camp or
+world bar, which can come back before the write ends, so the guard is
+`copy_closed_disk`, called with `attempts=30, backoff=1.0`: it copies the disk
+and fails closed unless every non-empty directory entry is closed. The three
+Pool foundation boots each produced a saved disk that this check accepted.
+
 ### D3. `tools/amiga/amigasecretsave.py` and `tools/amiga/amigafoundation.py`: WinUAE, from prepared disks to the game's two saves
 
 The design is a route with pixel guards and a manifest. A title is described
@@ -257,9 +265,10 @@ is under five minutes old.
 | Silver Blades | `amigasecretsave.py prepare`, `recon --measure`, `recon`, `accept` | Publishes the pinned C64 JOIN party through Save As Amiga, stages DF0 as a copy of disk 1 carrying that slot and DF1 as a copy of disk B, and writes `prepare.json` with every input's SHA-256. `accept` needs `--guards`, `--identity` and `--journal-python /usr/bin/python3`, and its preflight loads the private reader's digit templates before the lane is claimed |
 | Pool, Curse, Pools of Darkness | `amigafoundation.py prepare\|measure\|accept --title pool\|curse\|darkness` | Copies the title's registered disks and specimen into a run folder, refusing on any hash difference or a save letter the run writes that already exists (Pools of Darkness has no specimen: disk 3 is the save disk) |
 
-The file `amigaacceptance.py` is a DF0 staging helper (`stage_boot_disk` hides
+The file `tools/amiga/staging.py` is a DF0 staging helper (`stage_boot_disk` hides
 a boot disk's `SAVE` drawer; `stage_embedded_boot_disk` writes a slot into it),
-not a driver. Section 4's Amiga steps (`display`, `fight 1`, `items`, `mem`) name
+not a driver. `amigaacceptance.py` remains only as a temporary import shim for
+`amigasecretsave.py`. Section 4's Amiga steps (`display`, `fight 1`, `items`, `mem`) name
 what a run must read; neither Amiga driver has them, and each needs its screen
 read first (section 7).
 

@@ -150,7 +150,8 @@ class Route:
             elif kind == "treasure_left":
                 self.s.key("n")
             elif kind == "move_mode":
-                # `Escape` leaves it showing (#672's first run); `e` is PROBABLE.
+                # `Escape` leaves it showing; `e` leaves it in the walk and is
+                # unmeasured on this intro bar.
                 self.s.key("e")
             else:
                 name = self.shot("lost-intro")
