@@ -2478,7 +2478,7 @@ def test_a_dos_party_past_the_c64_experience_ceiling_saves_as_c64_clamped(
     party = Party(str(folder))
     out = tmp_path / "out" / "clamped.d64"
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger="wish"):
         plan = saveplan.prepare_save_as(
             party, "c64", out, saveplan.Assets(game_files=files_for))
     saveplan.publish(plan, party, backups=tmp_path / "backups")
