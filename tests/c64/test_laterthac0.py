@@ -63,8 +63,13 @@ DISAGREE = {
 #: slot B: his former paladin level 5 folds into `thac0_base` without his
 #: `class_levels` slot ever holding it, the same regained-class fold
 #: `docs/209-the-regained-dual-class-on-dos.md` describes for
-#: `WISH-SPEC-curse-408-regained-paladin`.
-RECORDS = {POOL: (202, 0), CURSE: (106, 16), SSB: (72, 2)}
+#: `WISH-SPEC-curse-408-regained-paladin`.  `WISH-SPEC-dos-curse-foundation-
+#: walked`'s MARK (`#679 (Make one repeatable load, inspect, move, save and
+#: verify run reliable on each destination platform, so conversion tickets
+#: reuse it)`) adds two more still, in its `CHRDATB2.SAV` and `CHRDATD2.SAV`:
+#: the same cleric 6, stored=16 against table=18, the same regained-class fold
+#: as the 632 specimen's MARK.
+RECORDS = {POOL: (202, 0), CURSE: (116, 18), SSB: (72, 2)}
 
 
 def _located(title: str):
