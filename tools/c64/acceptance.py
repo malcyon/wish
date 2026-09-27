@@ -20,7 +20,10 @@ Staging is an input, written before the boot and never after the load:
 * `--stage-trait SLOT:INDEX=ID`, the ten trait slots at record `0x0AD`, as
   `tools/c64/traitdrive.py` writes them;
 * `--stage-item SLOT:ITEM:OFFSET=VALUE`, one byte of one item record; `+4`
-  is the bonus byte Detect Magic marks an item by.
+  is the bonus byte Detect Magic marks an item by;
+* `--stage-record SLOT:OFFSET=VALUE`, one byte below `0x100` in a party record;
+* `--stage-status SLOT=BYTE`, the roster status byte in the roster file or
+  embedded roster, according to the title.
 
 SLOT is the save slot, 0 first.  Every option repeats, and each is logged in
 bytes with what it replaced.
@@ -33,7 +36,8 @@ bytes with what it replaced.
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/effectdrive.py`'s rest) |
 | `walk MOVES` | I forward, J left, K right, M about, each judged by `position()` before and after (Pool's status line holds the clock; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, and a turn must leave the square and change the facing by its amount; a move that brings up a disk prompt, or lands anywhere but one square ahead, fails the walk |
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
-| `cast CASTER:SPELL>TARGET` | Curse only: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
+| `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
+| `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, toggle the item named LABEL (`tools/c64/traitask.py`'s `toggle_item`), and read every party record and the effect array before and after |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
@@ -117,6 +121,7 @@ TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
 #: Ten trait slots per record; eight party slots in a save.
 TRAIT_SLOTS = 10
 PARTY_SLOTS = 8
+CREATURE_TYPE_OFFSET = 0x0D7
 
 #: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT` (Pool
 #: `CAMP $0899`), and the MAGIC bar, `CAST MEMORIZE SCRIBE DISPLAY REST EXIT`
@@ -138,6 +143,7 @@ CONTINUE = "PRESS ANY KEY TO CONTINUE"
 #: memorised list.  The paladin's `cure` removes disease, id 34.
 CAMP_CURES = {"CURE BLINDNESS": (33, "BLIND")}
 CAMP_SPELL_IDS = {"CURE BLINDNESS": 37}
+CAMP_PARTY_SPELLS = {"ANIMATE DEAD": 36}
 DISEASE_CURE = (34, "DISEASE")
 
 #: The paladin's cure timer that a `cure` starts, as the effect id of its row.
@@ -217,6 +223,38 @@ def parse_items(texts) -> list[tuple[int, int, int, int]]:
     return out
 
 
+def parse_record_bytes(texts) -> list[tuple[int, int, int]]:
+    """`SLOT:OFFSET=VALUE`, one record byte below `0x100` each."""
+    out = []
+    for text in texts:
+        for item in text.split(","):
+            where, sep, value = item.partition("=")
+            parts = where.split(":")
+            if not sep or len(parts) != 2 or not value:
+                raise ValueError(f"{item!r}: a record byte is SLOT:OFFSET=VALUE")
+            slot, offset = (int(p, 0) for p in parts)
+            if not 0 <= slot < PARTY_SLOTS or not 0 <= offset < 0x100:
+                raise ValueError(f"{item!r}: the slot is 0 to 7, "
+                                 "the offset 0 to 0xFF")
+            out.append((slot, offset, _byte(value, "the value")))
+    return out
+
+
+def parse_statuses(texts) -> list[tuple[int, int]]:
+    """`SLOT=BYTE`, one roster status per slot."""
+    out = []
+    for text in texts:
+        for item in text.split(","):
+            slot, sep, value = item.partition("=")
+            if not sep or not value:
+                raise ValueError(f"{item!r}: a roster status is SLOT=BYTE")
+            index = int(slot, 0)
+            if not 0 <= index < PARTY_SLOTS:
+                raise ValueError(f"{item!r}: the slot is 0 to 7")
+            out.append((index, _byte(value, "the status")))
+    return out
+
+
 @dataclasses.dataclass(frozen=True)
 class Step:
     verb: str
@@ -272,15 +310,21 @@ def parse_walk(arg: str) -> str:
     return route
 
 
-def parse_cast(arg: str) -> tuple[str, str, str]:
-    """`CASTER:SPELL>TARGET` as its three names, the spell one `CAMP_CURES` knows."""
-    m = re.fullmatch(r"([^:>]+):([^:>]+)>([^:>]+)", arg.strip())
+def parse_cast(arg: str) -> tuple[str, str, str | None]:
+    """A named target for a cure; no target for a whole-party spell."""
+    m = re.fullmatch(r"([^:>]+):([^:>]+)(?:>([^:>]+))?", arg.strip())
     if m is None:
-        raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL>TARGET")
-    caster, spell, target = (g.strip() for g in m.groups())
-    if spell.upper() not in CAMP_CURES:
-        raise ValueError(f"cast {arg!r}: the spells are " + ", ".join(CAMP_CURES))
-    return caster, spell.upper(), target
+        raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL[>TARGET]")
+    caster, spell, target = m.groups()
+    caster, spell = caster.strip(), spell.strip().upper()
+    target = target.strip() if target is not None else None
+    if not caster or not spell or target == "":
+        raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL[>TARGET]")
+    if target is None and spell not in CAMP_PARTY_SPELLS:
+        raise ValueError(f"cast {arg!r}: {spell} needs a target")
+    if target is not None and spell not in CAMP_CURES:
+        raise ValueError(f"cast {arg!r}: {spell} has no target prompt")
+    return caster, spell, target
 
 
 def parse_cure(arg: str) -> tuple[str, str]:
@@ -376,7 +420,7 @@ def _effect_list(payload: bytes) -> list[list[int]]:
 
 
 def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
-          rows=(), traits=(), items=()) -> dict:
+          rows=(), traits=(), items=(), record_bytes=(), statuses=()) -> dict:
     """Copy `src` to `dest` and write the named bytes into the copy's payload.
 
     Editing an input and then watching the engine compute from it is the
@@ -394,8 +438,14 @@ def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
                          f"{c64_port.by_key(title_key).title}")
     box = c64_save.CONTAINERS[game.key]
     addr, payload = _payload(image, game)
+    if box.roster_file is None:
+        roster_addr, roster = addr, payload
+    else:
+        roster_addr, body = split_load_address(image.read_file(box.roster_file))
+        roster = bytearray(body)
     took: dict = {"title": game.key, "source": str(src), "staged": str(dest),
-                  "rows": [], "traits": [], "items": []}
+                  "rows": [], "traits": [], "items": [],
+                  "record_bytes": [], "statuses": []}
     arrays = (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
               effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)
     for slot, eid, owner, duration, magnitude in rows:
@@ -413,13 +463,37 @@ def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
         took["items"].append({"slot": slot, "item": n, "byte": offset,
                               "offset": at, "was": payload[at], "now": value})
         payload[at] = value
+    for slot, offset, value in record_bytes:
+        at = box.slot(slot) + offset
+        took["record_bytes"].append({"slot": slot, "byte": offset,
+                                     "offset": at, "was": payload[at],
+                                     "now": value})
+        payload[at] = value
+    for slot, value in statuses:
+        at = box.roster_offset + slot * box.roster_stride
+        took["statuses"].append({"slot": slot,
+                                 "file": (box.roster_file or game.save_file).decode(
+                                     "latin1"),
+                                 "offset": at, "was": roster[at], "now": value})
+        roster[at] = value
     image.write_file_inplace(game.save_file,
                              addr.to_bytes(2, "little") + bytes(payload))
+    if box.roster_file is not None and statuses:
+        image.write_file_inplace(box.roster_file,
+                                 roster_addr.to_bytes(2, "little") + bytes(roster))
     image.save(str(dest))
     took["effects"] = _effect_list(payload)
     took["magic_items"] = magic_items(payload, box)
     took["place"] = place_of(payload, game)
     return took
+
+
+def _party_reading(records: list[bytes], roster: bytes, stride: int) -> list[dict]:
+    """The four bytes of evidence needed for a Pool zombie, for all eight slots."""
+    return [{"slot": slot, "status": roster[slot * stride],
+             "traits": list(record[TRAIT_SLOT:TRAIT_SLOT + TRAIT_SLOTS]),
+             "creature_type": record[CREATURE_TYPE_OFFSET]}
+            for slot, record in enumerate(records)]
 
 
 def place_of(payload: bytes, game) -> dict:
@@ -452,15 +526,29 @@ def decode_save(path: pathlib.Path, staged: dict) -> dict:
     game = c64_port.detect(image)
     box = c64_save.CONTAINERS[game.key]
     _, payload = _payload(image, game)
+    if box.roster_file is None:
+        roster = payload
+    else:
+        _, roster = split_load_address(image.read_file(box.roster_file))
     clock = list(payload[box.clock:box.clock + 6])
-    return {
+    out = {
         "effects": _effect_list(payload),
         "clock": clock,
         **place_verdict(staged.get("place"), place_of(payload, game)),
         "magic_items": magic_items(payload, box),
         "traits": [{**t, "saved": payload[t["offset"]]} for t in staged["traits"]],
         "items": [{**i, "saved": payload[i["offset"]]} for i in staged["items"]],
+        "record_bytes": [{**r, "saved": payload[r["offset"]]}
+                         for r in staged.get("record_bytes", [])],
+        "statuses": [{**s, "saved": roster[s["offset"]]}
+                     for s in staged.get("statuses", [])],
     }
+    if game.key == "pool-of-radiance":
+        records = [payload[box.slot(slot):box.slot(slot) + box.slot_stride]
+                   for slot in range(PARTY_SLOTS)]
+        out["party"] = _party_reading(records, roster[box.roster_offset:],
+                                      box.roster_stride)
+    return out
 
 
 # --- the screens ---------------------------------------------------------------
@@ -591,6 +679,11 @@ class Log(runlog.Log):
 
 class PoolRun:
     """One booted Pool of Radiance session and the steps run on it."""
+
+    #: Cast-list key probes and waits; Curse may enable joystick fire.
+    joy = False
+    pick_wait = 15
+    whom_wait = 120
 
     #: The run's own deadline on `clock`, and the clock; `run` sets both.  A
     #: wait that would outlast the deadline ends there, with the screen kept,
@@ -724,8 +817,16 @@ class PoolRun:
             clock = list(m.read(base + self.box.clock, 6))
             counts = {k: effectdrive.checkpoint_hits(m, v)
                       for k, v in self.armed.items()}
+            if self.game.key == "pool-of-radiance":
+                records = [bytes(traitask.live_record(m, slot))
+                           for slot in range(PARTY_SLOTS)]
+                roster = bytes(m.read(self.box.roster_base,
+                                      self.box.roster_stride * PARTY_SLOTS))
             m.resume()
-        return {"effects": _effect_list(head), "clock": clock, "counts": counts}
+        out = {"effects": _effect_list(head), "clock": clock, "counts": counts}
+        if self.game.key == "pool-of-radiance":
+            out["party"] = _party_reading(records, roster, self.box.roster_stride)
+        return out
 
     # -- the steps ---------------------------------------------------------------
     def load(self) -> dict:
@@ -743,6 +844,122 @@ class PoolRun:
         self.capture("world")
         return {"position": self.position(),
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
+
+    @staticmethod
+    def _list_bar(bar: str) -> bool:
+        # A list of one spell has no NEXT or PREV, and its bar is exactly
+        # `CAST EXIT`; the MAGIC bar also holds CAST and EXIT.
+        return bar.strip() == "CAST EXIT" or (
+            "EXIT" in bar and any(w in bar for w in ("SPELL", "NEXT", "PREV")))
+
+    def _send_pick(self, key: str) -> None:
+        if key == "xtest-return":
+            self.sess.kbd.key("Return")
+        elif key == "kernal-return":
+            self.sess.press_kernal(0x0D)
+        else:
+            self.sess.kbd.key("KP_0", 0.2, 0.30)
+
+    def _pick_spell(self, listed: list[str], *, needs_target: bool = True) -> str:
+        """Pick the spell under the cursor and wait past the list redraw.
+
+        A targeted Curse cure waits for its whom prompt. Pool's whole-party
+        Animate Dead row instead runs immediately after the pick.
+        """
+        keys = ["xtest-return", "kernal-return"] + (["joystick-fire"] if self.joy else [])
+        for key in keys:
+            self._send_pick(key)
+            rows = self.wait_rows(
+                lambda r: CAST_WHOM in r[24] or (
+                    r != listed and (needs_target or PICK_SPELL not in r[24])),
+                self.pick_wait)
+            if rows is None:
+                continue
+            if needs_target:
+                if CAST_WHOM not in rows[24]:
+                    rows = self.wait_rows(lambda r: CAST_WHOM in r[24],
+                                          self.whom_wait)
+                if rows is None:
+                    raise self.fail("pick-no-whom",
+                                    f"{key} changed the spell list but "
+                                    f"{CAST_WHOM} never came up")
+            elif CAST_WHOM in rows[24]:
+                raise self.fail("cast-whom-unexpected",
+                                f"{CAST_WHOM} came up for a whole-party spell")
+            return key
+        raise self.fail("pick", f"none of {', '.join(keys)} picked the spell")
+
+    def _acknowledge(self, limit: int = 4, *, label: str = "cure") -> list[list[str]]:
+        """Answer up to LIMIT continuation pages and keep their text."""
+        rows = self.wait_rows(lambda r: CAST_WHOM not in r[24], 60)
+        if rows is None:
+            raise self.fail("whom-stuck", "the target question never went away")
+        messages: list[list[str]] = []
+        for n in range(1, limit + 1):
+            if CONTINUE not in rows[24]:
+                return messages
+            self.sess.settle(0.6)
+            shown = self.capture(f"{label}-message-{n}")
+            messages.append([t for t in (_inner(r) for r in shown[:24])
+                             if t and not _is_frame(t)])
+            self.sess.press_kernal(0x0D)
+            rows = self.wait_rows(lambda r, was=shown: r != was, 30)
+            if rows is None:
+                raise self.fail("message", "the key at the end of a message did nothing")
+        if CONTINUE in rows[24]:
+            raise self.fail("message", f"more than {limit} pages after the cure")
+        return messages
+
+    def cast(self, arg: str) -> dict:
+        caster, spell, target = parse_cast(arg)
+        if target is not None:
+            cure_id, word = CAMP_CURES[spell]
+            self.owner_of(target)
+        if not self.to_camp():
+            raise self.fail("camp", "ENCAMP never put up the camp bar")
+        if not self.sess.select_party(self.panel_index(caster)):
+            raise self.fail("panel", f"the panel highlight would not go onto {caster}")
+        if not self.choose_bar("MAGIC", timeout=20) or self.wait_rows(
+                lambda r: MAGIC_BAR in r[24], 30) is None:
+            raise self.fail("magic", "MAGIC never put up its bar")
+        if not self.choose_bar("CAST", timeout=20):
+            raise self.fail("cast", "CAST could not be chosen")
+        if self.wait_rows(lambda r: self._list_bar(r[24]), 30) is None:
+            raise self.fail("cast-list", "the spell list never came up")
+        self.sess.settle(1)
+        self.capture("cast-list")
+        if not self.choose_bar("CAST", timeout=20):
+            raise self.fail("cast-again", "CAST could not be chosen on the spell list")
+        if self.wait_rows(lambda r: PICK_SPELL in r[24], 10) is None:
+            raise self.fail("pick-prompt", f"{PICK_SPELL} never came up")
+        # A key sent before the game polls its input routine is thrown away.
+        self.sess.settle(1)
+        listed = self.capture("pick-list")
+        before = self.reading() if target is None else None
+        key = self._pick_spell(listed, needs_target=target is not None)
+        if target is None:
+            self.capture("cast-result")
+            messages = self._acknowledge(label="cast")
+            if self._list_bar(self.bar()):
+                self.choose_bar("EXIT", timeout=15)
+            after = self.reading()
+            return {"caster": caster, "spell": spell,
+                    "spell_id": CAMP_PARTY_SPELLS[spell],
+                    "party_before": before["party"], "party_after": after["party"],
+                    "effects_before": before["effects"],
+                    "effects_after": after["effects"],
+                    "messages": messages, "key": key}
+
+        first = self.reading()
+        if not self.pick(target, CAST_WHOM):
+            raise self.fail("cast-whom", f"{target} could not be chosen")
+        messages = self._acknowledge()
+        # The cured row clears only after the spell list is exited.
+        if self._list_bar(self.bar()):
+            self.choose_bar("EXIT", timeout=15)
+        last = self._settle_row(cure_id, self.owner_of(target), self.reading())
+        return self._outcome("caster", caster, target, cure_id, word, first, last,
+                             spell=spell, messages=messages, key=key)
 
     def camp_list(self, who: str) -> dict:
         if not self.to_camp():
@@ -1362,8 +1579,6 @@ class CurseRun(PoolRun):
         return back
 
     # -- the camp cures ------------------------------------------------------------
-    #: Whether the run gave VICE a numpad joystick, so that KP_0 is fire.
-    joy = False
     names: list[str] = []
     #: The party in the order the panel draws it, taken from the save's
     #: marching order.  Whether the C64 panel follows marching order after a
@@ -1371,9 +1586,7 @@ class CurseRun(PoolRun):
     panel: list[str] = []
     #: Seconds each wait may take: a pick key's effect, the bar a cure is
     #: offered on, and the target question after CURE.
-    pick_wait = 15
     bar_wait = 30
-    whom_wait = 120
 
     def owner_of(self, name: str) -> int:
         """The party slot NAME holds, which is the owner its effect rows carry."""
@@ -1384,69 +1597,6 @@ class CurseRun(PoolRun):
         except ValueError:
             raise self.fail("owner", f"{name} is not in the save's party: "
                                      f"{self.names}") from None
-
-    @staticmethod
-    def _list_bar(bar: str) -> bool:
-        # A list of one spell has no NEXT or PREV, and its bar is exactly
-        # `CAST EXIT`; it is matched whole because the MAGIC bar also holds
-        # both words.
-        return bar.strip() == "CAST EXIT" or (
-            "EXIT" in bar and any(w in bar for w in ("SPELL", "NEXT", "PREV")))
-
-    def _send_pick(self, key: str) -> None:
-        if key == "xtest-return":
-            self.sess.kbd.key("Return")
-        elif key == "kernal-return":
-            self.sess.press_kernal(0x0D)
-        else:
-            self.sess.kbd.key("KP_0", 0.2, 0.30)
-
-    def _pick_spell(self, listed: list[str]) -> str:
-        """Pick the spell under the cursor, trying the keys one at a time and
-        sending the next only while the screen is exactly as the list left it.
-
-        Nothing is known of which key `LIBRARY $4A9A` takes off a list with a
-        cursor: Return is what the target menu takes, and fire is what picked
-        a combat spell in Pool.  Once the screen changes the key was taken, so
-        no further key is sent; the game redraws the camp before it asks
-        the target question, and that redraw is waited through.
-        """
-        keys = ["xtest-return", "kernal-return"] + (["joystick-fire"] if self.joy else [])
-        for key in keys:
-            self._send_pick(key)
-            rows = self.wait_rows(
-                lambda r: CAST_WHOM in r[24] or r != listed, self.pick_wait)
-            if rows is None:
-                continue
-            if CAST_WHOM not in rows[24]:
-                rows = self.wait_rows(lambda r: CAST_WHOM in r[24], self.whom_wait)
-            if rows is None:
-                raise self.fail("pick-no-whom",
-                                f"{key} changed the spell list but {CAST_WHOM} never came up")
-            return key
-        raise self.fail("pick", f"none of {', '.join(keys)} picked the spell")
-
-    def _acknowledge(self, limit: int = 4) -> list[list[str]]:
-        """Leave the question, then answer up to LIMIT `CONTINUE` pages, each
-        kept as the text it showed."""
-        rows = self.wait_rows(lambda r: CAST_WHOM not in r[24], 60)
-        if rows is None:
-            raise self.fail("whom-stuck", "the target question never went away")
-        messages: list[list[str]] = []
-        for n in range(1, limit + 1):
-            if CONTINUE not in rows[24]:
-                return messages
-            self.sess.settle(0.6)
-            shown = self.capture(f"cure-message-{n}")
-            messages.append([t for t in (_inner(r) for r in shown[:24])
-                             if t and not _is_frame(t)])
-            self.sess.press_kernal(0x0D)
-            rows = self.wait_rows(lambda r, was=shown: r != was, 30)
-            if rows is None:
-                raise self.fail("message", "the key at the end of a message did nothing")
-        if CONTINUE in rows[24]:
-            raise self.fail("message", f"more than {limit} pages after the cure")
-        return messages
 
     def _outcome(self, kind: str, who: str, target: str, cure_id: int, word: str,
                  first: dict, last: dict, **extra) -> dict:
@@ -1461,44 +1611,6 @@ class CurseRun(PoolRun):
                 "row_before": row(first), "row_after": row(last),
                 "effects_before": first["effects"], "effects_after": last["effects"],
                 **extra}
-
-    def cast(self, arg: str) -> dict:
-        caster, spell, target = parse_cast(arg)
-        cure_id, word = CAMP_CURES[spell]
-        self.owner_of(target)
-        if not self.to_camp():
-            raise self.fail("camp", "ENCAMP never put up the camp bar")
-        if not self.sess.select_party(self.panel_index(caster)):
-            raise self.fail("panel", f"the panel highlight would not go onto {caster}")
-        if not self.choose_bar("MAGIC", timeout=20) or self.wait_rows(
-                lambda r: MAGIC_BAR in r[24], 30) is None:
-            raise self.fail("magic", "MAGIC never put up its bar")
-        if not self.choose_bar("CAST", timeout=20):
-            raise self.fail("cast", "CAST could not be chosen")
-        if self.wait_rows(lambda r: self._list_bar(r[24]), 30) is None:
-            raise self.fail("cast-list", "the spell list never came up")
-        self.sess.settle(1)
-        self.capture("cast-list")
-        if not self.choose_bar("CAST", timeout=20):
-            raise self.fail("cast-again", "CAST could not be chosen on the spell list")
-        if self.wait_rows(lambda r: PICK_SPELL in r[24], 10) is None:
-            raise self.fail("pick-prompt", f"{PICK_SPELL} never came up")
-        # A key sent before the game polls its input routine is thrown away.
-        self.sess.settle(1)
-        listed = self.capture("pick-list")
-        key = self._pick_spell(listed)
-        first = self.reading()
-        if not self.pick(target, CAST_WHOM):
-            raise self.fail("cast-whom", f"{target} could not be chosen")
-        messages = self._acknowledge()
-        # The game's own effect row for a cured condition does not clear
-        # until the spell list is exited, so the row is read only after that
-        # exit -- otherwise `row_after` still shows the condition as active.
-        if self._list_bar(self.bar()):
-            self.choose_bar("EXIT", timeout=15)
-        last = self._settle_row(cure_id, self.owner_of(target), self.reading())
-        return self._outcome("caster", caster, target, cure_id, word, first, last,
-                             spell=spell, messages=messages, key=key)
 
     def _settle_row(self, cure_id: int, owner: int, reading: dict,
                      tries: int = 5, pause: float = 0.3, present: bool = False) -> dict:
@@ -2048,6 +2160,40 @@ def validate_curse_cures(results: list[dict], saved_path,
                              f"{CAMP_SPELL_IDS[act['spell']]} memorised in the saved game")
 
 
+def validate_pool_party_spells(results: list[dict]) -> None:
+    """Require a camp Animate Dead to change one dead member and reach a save."""
+    acts = [(i, r) for i, r in enumerate(results)
+            if r["verb"] == "cast" and r.get("spell") in CAMP_PARTY_SPELLS]
+    if not acts:
+        raise StepFailed("no Pool party spell cast was recorded")
+
+    def require_zombie(party: list[dict], slot: int, where: str) -> None:
+        member = next((p for p in party if p["slot"] == slot), None)
+        if member is None or member["status"] != 0x03:
+            raise StepFailed(f"{where}: slot {slot} has no animated status $03")
+        if 32 not in member["traits"]:
+            raise StepFailed(f"{where}: slot {slot} has no Animate Dead trait 32")
+        if member["creature_type"] != 4:
+            raise StepFailed(f"{where}: slot {slot} has creature type "
+                             f"{member['creature_type']}, not 4")
+
+    for at, act in acts:
+        before = act.get("party_before", [])
+        victims = [p for p in before if p["status"] == 0x83]
+        if len(victims) != 1:
+            raise StepFailed("Animate Dead needs exactly one dead victim "
+                             f"before the cast, found {len(victims)}")
+        victim = victims[0]
+        slot = victim["slot"]
+        if 32 in victim["traits"]:
+            raise StepFailed(f"slot {slot} already held trait 32 before the cast")
+        require_zombie(act.get("party_after", []), slot, "live after cast")
+        saved = next((r for r in results[at + 1:] if r["verb"] == "save"), None)
+        if saved is None:
+            raise StepFailed("no game-written save followed Animate Dead")
+        require_zombie(saved.get("party", []), slot, "game-written save")
+
+
 def validate_walks(results: list[dict]) -> None:
     """Require the game-written save to agree with the walks asked.
 
@@ -2147,7 +2293,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         staged = stage(source, staged_disk, title_key,
                        rows=parse_rows(args.stage_row),
                        traits=parse_traits(args.stage_trait),
-                       items=parse_items(args.stage_item))
+                       items=parse_items(args.stage_item),
+                       record_bytes=parse_record_bytes(getattr(args, "stage_record", [])),
+                       statuses=parse_statuses(getattr(args, "stage_status", [])))
     except ValueError as e:
         summary["lost"] = str(e)
         write_summary()
@@ -2256,7 +2404,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                                      + pool.first_effect_loss["phase"])
                 validate_curse_attack(summary["results"], attack, args.attack_by)
         validate_walks(summary["results"])
-        if any(s.verb in ("cast", "cure") for s in steps):
+        if args.title == "pool" and any(s.verb == "cast" for s in steps):
+            validate_pool_party_spells(summary["results"])
+        if args.title == "curse" and any(s.verb in ("cast", "cure") for s in steps):
             kept = next((r["kept"] for r in reversed(summary["results"])
                          if r["verb"] == "save"), None)
             validate_curse_cures(summary["results"], kept)
@@ -2298,10 +2448,14 @@ def main(argv: list[str] | None = None) -> int:
                     metavar="SLOT:INDEX=ID")
     ap.add_argument("--stage-item", action="append", default=[],
                     metavar="SLOT:ITEM:OFFSET=VALUE")
+    ap.add_argument("--stage-record", action="append", default=[],
+                    metavar="SLOT:OFFSET=VALUE")
+    ap.add_argument("--stage-status", action="append", default=[],
+                    metavar="SLOT=BYTE")
     ap.add_argument("--steps", nargs="*", default=[],
                     help="load, camp-list [WHO], 'items WHO', 'view WHO', "
                          "'rest 8h', 'walk I', 'fight [SECONDS]', 'peek ADDR N', "
-                         "'cast CASTER:SPELL>TARGET', 'cure PALADIN>TARGET', "
+                         "'cast CASTER:SPELL[>TARGET]', 'cure PALADIN>TARGET', "
                          "'ready WHO>LABEL' (Pool only), save")
     ap.add_argument("--checkpoint", action="append", default=[],
                     metavar="ADDR[=NAME]",
@@ -2342,6 +2496,8 @@ def main(argv: list[str] | None = None) -> int:
         parse_rows(args.stage_row)
         parse_traits(args.stage_trait)
         parse_items(args.stage_item)
+        parse_record_bytes(args.stage_record)
+        parse_statuses(args.stage_status)
         parse_checkpoints(args.checkpoint)
     except ValueError as e:
         ap.error(str(e))
@@ -2349,8 +2505,19 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("the fight step needs --title pool or curse")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
-    if any(x.verb in ("cast", "cure") for x in steps) and args.title != "curse":
-        ap.error("the cast and cure steps require --title curse")
+    if any(x.verb == "cure" for x in steps) and args.title != "curse":
+        ap.error("the cure step requires --title curse")
+    for step in (s for s in steps if s.verb == "cast"):
+        try:
+            _, spell, target = parse_cast(step.arg)
+        except ValueError as e:
+            ap.error(str(e))
+        if args.title == "pool" and (target is not None or spell not in CAMP_PARTY_SPELLS):
+            ap.error("Pool cast supports only CASTER:ANIMATE DEAD")
+        if args.title == "curse" and target is None:
+            ap.error("Curse cast requires CASTER:SPELL>TARGET")
+        if args.title == "ssb":
+            ap.error("the cast step requires --title pool or curse")
     if any(x.verb == "ready" for x in steps) and args.title != "pool":
         ap.error("the ready step requires --title pool")
     if args.quit_nonattacking and not args.attack_by:

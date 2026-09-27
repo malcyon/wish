@@ -1,11 +1,10 @@
 """The half of `tools/c64/acceptance.py` a machine with no emulator can check.
 
-The driver stages effect rows, trait slots and item bytes into a copy of a C64
-save, boots it and reads the camp list of spells in effect and a character's
-ITEMS list off the screen. What is asserted here is that the staging writes the
-bytes the step names and nothing else, that a step list the driver cannot run
-is refused before a slot is claimed, and that the two screen readers read the
-screens the game's own strings put up: the camp list (`CAMP $16C3`-`$1797`,
+The driver stages effect rows, trait slots, item bytes, record bytes and roster
+status into a copy of a C64 save, then reads the camp lists and a character's
+ITEMS list. These tests assert that staging changes only named bytes, that a
+bad step is refused before a slot is claimed, and that the screen readers use
+the game's own strings: the camp list (`CAMP $16C3`-`$1797`,
 " IS AFFECTED BY:" and "PRESS ANY KEY TO CONTINUE") and the item list, where
 Detect Magic prints a `*` before a magic item's name (`LIBRARY $39B7`-`$39C3`).
 
@@ -48,6 +47,11 @@ def _payload(path: pathlib.Path) -> bytes:
     return split_load_address(image.read_file(POOL_OF_RADIANCE.save_file))[1]
 
 
+def _roster(path: pathlib.Path) -> bytes:
+    image = D64.open(str(path))
+    return split_load_address(image.read_file(b"SAVEDGAME1"))[1]
+
+
 # --- parsing -----------------------------------------------------------------
 
 def test_a_row_stage_is_read_as_effectdrive_reads_it():
@@ -73,6 +77,18 @@ def test_trait_and_item_stages():
     for bad in ("1:16:4=1", "1:2:16=1", "1:2:4=256", "1:2=1"):
         with pytest.raises(ValueError):
             A.parse_items([bad])
+
+
+def test_record_and_status_stages_parse_one_byte_at_a_time():
+    assert A.parse_record_bytes(["0:0xCA=5", "1:0x20=36"]) == [
+        (0, 0xCA, 5), (1, 0x20, 36)]
+    assert A.parse_statuses(["2=0x83", "3=3"]) == [(2, 0x83), (3, 3)]
+    for bad in ("8:0=1", "0:0x100=1", "0:0=256", "0:0"):
+        with pytest.raises(ValueError):
+            A.parse_record_bytes([bad])
+    for bad in ("8=0x83", "0=256", "0"):
+        with pytest.raises(ValueError):
+            A.parse_statuses([bad])
 
 
 def test_the_steps_parse_and_keep_their_arguments():
@@ -139,11 +155,15 @@ def test_staging_writes_exactly_the_named_bytes(tmp_path):
     src = _fixture_disk(tmp_path)
     dest = tmp_path / "staged-copy.d64"
     before = _payload(src)
+    before_roster = _roster(src)
     took = A.stage(src, dest, "pool-of-radiance",
                    rows=[(63, 5, 0xFF, 0x0A, 0x03)],
                    traits=[(0, 9, 38)],
-                   items=[(0, 2, 4, 1)])
+                   items=[(0, 2, 4, 1)],
+                   record_bytes=[(0, 0xCA, 5), (0, 0x20, 36)],
+                   statuses=[(1, 0x83)])
     after = _payload(dest)
+    after_roster = _roster(dest)
     box = c64_save.CONTAINERS["pool-of-radiance"]
     wanted = {
         effects.EFFECT_ID_OFFSET + 63: 5,
@@ -152,12 +172,28 @@ def test_staging_writes_exactly_the_named_bytes(tmp_path):
         effects.EFFECT_MAGNITUDE_OFFSET + 63: 0x03,
         box.slot(0) + A.TRAIT_SLOT + 9: 38,
         box.items(0) + 2 * ITEM_SIZE + 4: 1,
+        box.slot(0) + 0xCA: 5,
+        box.slot(0) + 0x20: 36,
     }
     changed = {i: after[i] for i in range(len(after)) if after[i] != before[i]}
     assert changed == {i: v for i, v in wanted.items() if before[i] != v}
     assert all(after[i] == v for i, v in wanted.items())
     assert len(after) == len(before)
     assert _payload(src) == before, "the source was written"
+    roster_at = box.roster_offset + box.roster_stride
+    roster_changed = {i: after_roster[i] for i in range(len(after_roster))
+                      if after_roster[i] != before_roster[i]}
+    assert roster_changed == ({roster_at: 0x83}
+                              if before_roster[roster_at] != 0x83 else {})
+    assert _roster(src) == before_roster, "the source roster was written"
+    assert took["record_bytes"] == [
+        {"slot": 0, "byte": 0xCA, "offset": box.slot(0) + 0xCA,
+         "was": before[box.slot(0) + 0xCA], "now": 5},
+        {"slot": 0, "byte": 0x20, "offset": box.slot(0) + 0x20,
+         "was": before[box.slot(0) + 0x20], "now": 36}]
+    assert took["statuses"] == [{"slot": 1, "file": "SAVEDGAME1",
+                                   "offset": roster_at,
+                                   "was": before_roster[roster_at], "now": 0x83}]
     assert took["rows"] == [{"slot": 63, "was": [before[i + 63] for i in (
         effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
         effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)],
@@ -185,6 +221,26 @@ def test_stage_only_writes_the_evidence_and_claims_no_slot(tmp_path, monkeypatch
     assert summary["staged"]["effects"] == [[63, 5, 0xFF, 0x0A, 0x03]]
     assert summary["completed"] is True and summary["results"] == []
     assert (out / "staged.D64").is_file()
+
+
+def test_stage_only_accepts_the_pool_zombie_inputs_and_decodes_all_slots(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    out = tmp_path / "animate"
+    rc = A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                 "--stage-record", "0:0xCA=5", "--stage-record", "0:0x20=36",
+                 "--stage-record", "1:0xD7=4", "--stage-trait", "1:9=32",
+                 "--stage-status", "1=0x83", "--stage-only", "--steps", "load",
+                 "--out", str(out)])
+    assert rc == 0
+    staged = json.loads((out / "summary.json").read_text(encoding="utf-8"))["staged"]
+    saved = A.decode_save(out / "staged.D64", staged)
+    assert len(saved["party"]) == 8
+    assert saved["party"][1]["status"] == 0x83
+    assert saved["party"][1]["creature_type"] == 4
+    assert saved["party"][1]["traits"][9] == 32
+    assert saved["statuses"][0]["saved"] == 0x83
+    assert [item["saved"] for item in saved["record_bytes"]] == [5, 36, 4]
 
 
 def test_an_evidence_directory_is_never_reused(tmp_path):
@@ -1253,6 +1309,28 @@ def test_cast_and_cure_steps_keep_their_names_and_the_pool_refuses_them(tmp_path
     assert info.value.code == 2
 
 
+def test_pool_cast_accepts_animate_dead_without_a_target_and_refuses_other_forms(
+        tmp_path):
+    assert A.parse_cast("BRUTUS:animate dead") == ("BRUTUS", "ANIMATE DEAD", None)
+    steps = A.parse_steps(["load", "cast BRUTUS:ANIMATE DEAD", "save"])
+    assert steps[1].arg == "BRUTUS:ANIMATE DEAD"
+    for bad in ("BRUTUS:ANIMATE DEAD>BAKSHI", "BRUTUS:CURE BLINDNESS"):
+        with pytest.raises(ValueError):
+            A.parse_cast(bad)
+    assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                   "--stage-only", "--steps", "load", "cast BRUTUS:ANIMATE DEAD",
+                   "save", "--out", str(tmp_path / "cast")]) == 0
+
+
+def test_bad_cast_form_is_rejected_before_claiming_a_slot(tmp_path, monkeypatch):
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    with pytest.raises(SystemExit) as exc:
+        A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                "--steps", "load", "cast BRUTUS:ANIMATE DEAD>BRUTUS", "save",
+                "--out", str(tmp_path / "bad-cast")])
+    assert exc.value.code == 2
+
+
 def test_ready_step_keeps_its_name_and_curse_refuses_it(tmp_path):
     steps = A.parse_steps(["load", "ready BAKSHI>GAUNTLETS OF OGRE POWER"])
     assert A.parse_ready(steps[1].arg) == ("BAKSHI", "GAUNTLETS OF OGRE POWER")
@@ -1435,6 +1513,43 @@ def test_curse_cast_records_the_targets_row_transition(tmp_path):
     assert sess.sent == [("party", 1), ("bar", "MAGIC"), ("bar", "CAST"),
                          ("bar", "CAST"), ("key", "Return"), ("party", 0),
                          ("key", "Return"), ("key", 0x0D)]
+
+
+def _animate_party(status: int, *, animated: bool = False) -> list[dict]:
+    party = [{"slot": slot, "status": 0, "traits": [0] * 10,
+              "creature_type": 0} for slot in range(8)]
+    party[1]["status"] = status
+    if animated:
+        party[1]["traits"][9] = 32
+        party[1]["creature_type"] = 4
+    return party
+
+
+def test_pool_cast_reads_party_before_and_after_without_waiting_for_a_target(
+        tmp_path):
+    screens = {**CAST_SCREENS,
+               "list": _window({3: "ANIMATE DEAD"}, CAST_LIST),
+               "picking": _window({3: "ANIMATE DEAD"}, A.PICK_SPELL),
+               "msg": _window({2: "THE DEAD RISE"}, A.CONTINUE)}
+    moves = _cast_moves({("picking", ("key", "Return")): "msg"})
+    moves[("camp", ("party", 1))] = "camp"
+    moves[("msg", ("key", 0x0D))] = "magic"
+    sess = _CurseFake(screens, moves, "camp")
+    run, log = _pool_run(tmp_path, sess)
+    run.panel_index = lambda who: 1
+    before, after = _animate_party(0x83), _animate_party(0x03, animated=True)
+    run.reading = lambda: {"party": before if sess.state == "picking" else after,
+                           "effects": []}
+    try:
+        got = run.cast("BRUTUS:ANIMATE DEAD")
+    finally:
+        log.close()
+    assert got["spell"] == "ANIMATE DEAD"
+    assert got["party_before"] == before and got["party_after"] == after
+    assert got["messages"] == [["THE DEAD RISE"]]
+    assert sess.sent == [("party", 1), ("bar", "MAGIC"), ("bar", "CAST"),
+                         ("bar", "CAST"), ("key", "Return"), ("key", 0x0D)]
+    assert list(tmp_path.glob("*cast-result.txt"))
 
 
 def test_curse_cast_reads_row_after_only_once_the_spell_list_is_exited(tmp_path):
@@ -1797,6 +1912,63 @@ def test_curse_cures_need_every_piece_of_evidence(mutation, match):
 def test_curse_cures_need_the_spell_gone_from_the_saved_memorised_list():
     with pytest.raises(A.StepFailed, match="memorised"):
         A.validate_curse_cures(_evidence(), "saved.D64", _party((37, 0)))
+
+
+def _animate_evidence() -> list[dict]:
+    before, after = _animate_party(0x83), _animate_party(0x03, animated=True)
+    return [{"verb": "cast", "spell": "ANIMATE DEAD", "caster": "BRUTUS",
+             "party_before": before, "party_after": after},
+            {"verb": "save", "party": _animate_party(0x03, animated=True)}]
+
+
+def test_pool_animate_dead_accepts_only_the_game_written_zombie():
+    A.validate_pool_party_spells(_animate_evidence())
+    for field, value, message in (("status", 0x83, "status"),
+                                  ("creature_type", 0, "creature")):
+        results = _animate_evidence()
+        results[1]["party"][1][field] = value
+        with pytest.raises(A.StepFailed, match=message):
+            A.validate_pool_party_spells(results)
+    results = _animate_evidence()
+    results[1]["party"][1]["traits"][9] = 0
+    with pytest.raises(A.StepFailed, match="trait"):
+        A.validate_pool_party_spells(results)
+
+
+def test_pool_animate_dead_needs_one_dead_victim_and_a_later_save():
+    results = _animate_evidence()
+    results[0]["party_before"][1]["status"] = 0x01
+    with pytest.raises(A.StepFailed, match="dead victim"):
+        A.validate_pool_party_spells(results)
+    with pytest.raises(A.StepFailed, match="save"):
+        A.validate_pool_party_spells(_animate_evidence()[:1])
+
+
+def test_pool_cast_run_checks_the_saved_zombie_without_an_emulator(tmp_path, monkeypatch):
+    evidence = _animate_evidence()
+    checked = []
+
+    class Run(_Pool):
+        def cast(self, arg):
+            return {k: v for k, v in evidence[0].items() if k != "verb"}
+
+        def save(self, staged):
+            return {"kept": "saved.D64", **{
+                k: v for k, v in evidence[1].items() if k != "verb"}}
+
+    original = A.validate_pool_party_spells
+
+    def checked_validate(results):
+        checked.append([r["verb"] for r in results])
+        original(results)
+
+    monkeypatch.setattr(A, "validate_pool_party_spells", checked_validate)
+    rc, slot, out = _drive(tmp_path, monkeypatch,
+                           ["load", "cast BRUTUS:ANIMATE DEAD", "save"], pool=Run)
+    assert rc == 0 and slot.torn
+    assert checked == [["load", "cast", "save"]]
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert summary["completed"] is True
 
 
 def test_saved_characters_reads_each_name_slot_and_memorised_list(tmp_path):
