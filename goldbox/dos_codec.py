@@ -891,7 +891,15 @@ INNATE_EFFECTS_CURSE = INNATE_EFFECTS | {8, 134}
 #: dwarf, and #490 is where it got acted on: `RACE_COMBAT_EFFECTS_SILVER_BLADES`
 #: now carries 97 for the dwarf and the gnome too, CONFIRMED from the
 #: engine's own switch.
-INNATE_EFFECTS_SILVER_BLADES = INNATE_EFFECTS | {8, 105}
+#:
+#: **95 is the elf's racial id and 7 is one of the gnome's** two
+#: (`RACE_COMBAT_EFFECTS_SILVER_BLADES` above; the gnome's other id, 48, was
+#: already here via `INNATE_EFFECTS`).  Leaving them out made `read()`
+#: classify a Silver Blades elf's or gnome's own racial effect as a
+#: `granted_effects` item power instead of an `innate_effects` record (#691, A
+#: DOS-sourced Secret of the Silver Blades elf or gnome carries his own
+#: racial effect twice).
+INNATE_EFFECTS_SILVER_BLADES = INNATE_EFFECTS | {7, 8, 95, 105}
 
 #: Pools of Darkness' own set, and the three ids its `.EFX` files carry.
 #: **Six of the twelve shipped records have an effect file at all, each one a
@@ -5646,12 +5654,12 @@ def write(char: NeutralCharacter,
     # racial effect twice).  A C64 source never populates `granted_effects`,
     # so its derived ids are unaffected.  Most DOS sources have already
     # split their own race's ids into `innate_effects`, so this exclusion is
-    # a no-op for DOS-to-DOS -- but a Silver Blades elf or gnome is not one
-    # of them: `INNATE_EFFECTS_SILVER_BLADES` does not carry ids 95 or 7, so
-    # `read()` puts them in `granted_effects` instead, and this same
-    # exclusion also correctly deduplicates that case (#691, A DOS-sourced
-    # Secret of the Silver Blades elf or gnome carries his own racial effect
-    # twice), whose incompleteness fix belongs in that set, not here.
+    # a no-op for DOS-to-DOS -- a Silver Blades elf or gnome used to be the
+    # exception, because `INNATE_EFFECTS_SILVER_BLADES` did not carry ids 95
+    # or 7 and `read()` put them in `granted_effects` instead, but that set
+    # now carries both (#691, A DOS-sourced Secret of the Silver Blades elf
+    # or gnome carries his own racial effect twice), so this exclusion is a
+    # no-op for them too.
     already_written = set(converted)
     already_written.update(g[0] for g in grants)
     already_written.update(g[0] for g in running)

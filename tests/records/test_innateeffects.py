@@ -105,7 +105,13 @@ def test_a_title_not_listed_gets_pool_of_radiances_set():
 
 def test_the_two_later_titles_add_only_their_own_two_ids():
     assert dos_codec.INNATE_EFFECTS_CURSE - dos_codec.INNATE_EFFECTS == {8, 134}
-    assert dos_codec.INNATE_EFFECTS_SILVER_BLADES - dos_codec.INNATE_EFFECTS == {8, 105}
+    # Silver Blades adds its own paladin/ranger ids (8, 105) plus its own
+    # elf and gnome racial ids not already in `INNATE_EFFECTS` (95, 7); the
+    # gnome's other racial id, 48, was already in `INNATE_EFFECTS` (#691, A
+    # DOS-sourced Secret of the Silver Blades elf or gnome carries his own
+    # racial effect twice).
+    assert dos_codec.INNATE_EFFECTS_SILVER_BLADES - dos_codec.INNATE_EFFECTS == \
+        {7, 8, 95, 105}
     assert dos_codec._innate_effects(CURSE.key) == dos_codec.INNATE_EFFECTS_CURSE
     assert dos_codec._innate_effects(SSB.key) == dos_codec.INNATE_EFFECTS_SILVER_BLADES
 
@@ -914,18 +920,53 @@ def test_a_c64_dwarf_or_gnomes_racial_ids_still_reach_the_spc_file():
 
 
 def test_a_dos_silver_blades_elfs_racial_effect_is_written_once():
-    """`INNATE_EFFECTS_SILVER_BLADES` does not carry 95, the elf's own id in
-    `RACE_COMBAT_EFFECTS_SILVER_BLADES`, so a DOS-sourced elf's own effect
-    record reads into `granted_effects` rather than `innate_effects`
-    (`to_neutral`, mirrored by `test_pool_of_radiance_still_reads_the_
-    paladins_id_as_granted` above for the paladin's id in Pool of Radiance).
-    That is the same shape #690's exclusion was written to catch for an
-    Amiga source, and it also deduplicates this DOS-sourced case: without
-    it, `derived` would add 95 again beside the `granted_effects` record
-    already carrying it (#691, A DOS-sourced Secret of the Silver Blades elf
-    or gnome carries his own racial effect twice)."""
+    """`derived`'s exclusion against `granted_effects` (#690's fix) also
+    guards a `granted_effects` node that reaches the writer by some other
+    route than `to_neutral`'s own classification -- built directly here the
+    way an Amiga-sourced elf's node would arrive, since an Amiga source
+    still cannot tell an innate racial effect from an item grant
+    (`LATER_EFFECT_SPLIT_UNKNOWN`).  Without the exclusion, `derived` would
+    add 95 again beside the `granted_effects` record already carrying it
+    (#691, A DOS-sourced Secret of the Silver Blades elf or gnome carries
+    his own racial effect twice).
+
+    A DOS source no longer reaches this path at all: `INNATE_EFFECTS_
+    SILVER_BLADES` now carries 95, so `to_neutral` classifies a DOS-sourced
+    elf's own record as `innate_effects` from the start --
+    `test_a_silver_blades_elfs_racial_id_reads_as_innate` below is that
+    read-side fix's own regression test."""
     char = _neutral(SSB.key, name="TESTER", race=1,
                     granted_effects=[_innate_node(95)])
     _rec, _itm, spc, rep = dos_codec.write(char)
     assert spc == _innate_node(95)
     assert _innate_drops(rep) == []
+
+
+def test_a_silver_blades_elfs_racial_id_reads_as_innate():
+    """The read-side fix itself (#691, A DOS-sourced Secret of the Silver
+    Blades elf or gnome carries his own racial effect twice):
+    `INNATE_EFFECTS_SILVER_BLADES` now carries 95, the elf's own id in
+    `RACE_COMBAT_EFFECTS_SILVER_BLADES`, so a DOS-sourced elf's own `.SPC`
+    record reads into `innate_effects` rather than `granted_effects` --
+    mirroring `test_a_rangers_own_id_reads_as_innate` above, and the
+    opposite of `test_pool_of_radiance_still_reads_the_paladins_id_as_
+    granted`'s control, which the title this set was never wrong for keeps
+    unchanged.
+
+    Before the fix, `out.get("innate_effects")` came back `[]` and 95 sat
+    in `granted_effects` instead."""
+    char = _record(SSB, [_innate_node(95)])
+    out = dos_codec.to_neutral(char)
+    assert out.get("innate_effects") == [95]
+    assert "granted_effects" not in out
+
+
+def test_a_silver_blades_gnomes_racial_id_reads_as_innate():
+    """The gnome's own half of the same fix: 7 is one of his two racial ids
+    in `RACE_COMBAT_EFFECTS_SILVER_BLADES` (the other, 48, was already in
+    `INNATE_EFFECTS` and unaffected).  Before the fix, 7 read into
+    `granted_effects` the same way the elf's 95 did."""
+    char = _record(SSB, [_innate_node(7)])
+    out = dos_codec.to_neutral(char)
+    assert out.get("innate_effects") == [7]
+    assert "granted_effects" not in out
