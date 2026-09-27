@@ -811,6 +811,35 @@ def never_expiring_strength_record(title_key: str,
     return bytes((row.id, 0, 0, vv, flag)) + _RUNNING_EFFECT_NEXT
 
 
+def never_expiring_strength_row(title_key: str, node: bytes, *,
+                                strength_nodes: int = 1) -> tuple[int, int] | None:
+    """The C64 `(id, magnitude)` for a DOS granted strength record, or `None`.
+
+    The inverse of `never_expiring_strength_record`: readied Gauntlets of
+    Ogre Power write DOS's own strength node, id 38 at duration 0
+    (`0x2BFCE`'s encoder), and this converts it back to the same duration-0
+    array row `SPELLE04 $AE2D` writes -- `_value_row`'s Pool strength rule
+    (`data - 1 if data <= 101 else data`, restore bit set on the flag byte)
+    run on this record's data and flag bytes, so it round-trips with
+    `never_expiring_strength_record` (`#694`).
+
+    `strength_nodes` counts every strength-setting node (running or granted)
+    on this character, the same count `c64_row` takes for a running node:
+    C64 Pool restores one old score, so more than one source keeps this
+    record out of a trait slot rather than writing a second, conflicting row.
+    """
+    if not (title_key == "pool-of-radiance" and node[0] == 38
+            and node[1] == 0 and node[2] == 0):
+        return None
+    if strength_nodes > 1:
+        return None
+    data, flag = node[3], node[4]
+    if data == 0 or data & 0x80 or flag != 1:
+        return None
+    value = data - 1 if data <= 101 else data
+    return node[0], value | MAGNITUDE_RESTORE_FLAG
+
+
 def c64_party_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted:
     """The C64 id and magnitude for a DOS node that becomes a party-wide row.

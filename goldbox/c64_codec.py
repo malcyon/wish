@@ -1527,9 +1527,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 continue
             spell_row = effects.never_expiring_spell_row(
                 title_key, bytes(node))
-            if spell_row is not None and payload is not None:
-                # A spell's never-expiring effect is a row the character's
-                # slot owns on the C64, where attacks and cures look.
+            strength_row = (effects.never_expiring_strength_row(
+                title_key, bytes(node), strength_nodes=strength_nodes)
+                if spell_row is None else None)
+            array_row = spell_row if spell_row is not None else strength_row
+            if array_row is not None and payload is not None:
+                # A spell's never-expiring effect, or readied Gauntlets of
+                # Ogre Power's strength grant (#694), is a row the
+                # character's slot owns on the C64, where attacks, cures and
+                # un-readying the gauntlets look.
                 row_slot = effects.free_slot(payload)
                 if row_slot is None:
                     rep.lost(f"effect {node[0]}, which never expires: no "
@@ -1539,11 +1545,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     # character's party slot; the 0 is only a fallback for a
                     # hand-built call, and a test pins it.
                     effects.write_effect(
-                        payload, row_slot, spell_row[0],
+                        payload, row_slot, array_row[0],
                         party_slot if party_slot is not None else 0,
-                        0, spell_row[1])
+                        0, array_row[1])
                 continue
-            if spell_row is not None:
+            if array_row is not None:
                 rep.lost(f"effect {node[0]}, which never expires: with no "
                          "save payload to hold its row it takes a trait "
                          "slot instead")

@@ -1462,6 +1462,42 @@ def test_a_spell_with_no_payload_takes_a_trait_slot_and_says_so():
     assert len(lines) == 1
 
 
+# --- #694: a DOS strength node (readied Gauntlets of Ogre Power) converts to
+# a C64 array row too, the mirror of #621's C64 -> DOS direction. Round-trip
+# math: DOS vv 0x5C (92) <-> C64 magnitude 0x80 | (92 - 1) = 0xDB, the same
+# `_value_row`/`_value_node` pair `never_expiring_strength_record` uses.
+
+ADDERLY_STRENGTH_NODE = bytes((38, 0, 0, 0x5C, 1))
+
+
+def test_a_dos_strength_node_is_a_row_the_character_owns_not_a_trait_slot():
+    payload = bytearray(0x1C00)
+    char = _title_character(c64_port.POOL_OF_RADIANCE)
+    char.set("granted_effects", [ADDERLY_STRENGTH_NODE + NULL], "built here")
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    rows = _rows(payload)
+    assert rows.pop(63) == (38, 2, 0x00, 0xDB)
+    assert set(rows.values()) == {(0, 0, 0, 0)}
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    assert not [d for d in rep.dropped + rep.losses + rep.warnings
+                if "effect 38" in d]
+    back = _read(payload, 2, c64_port.POOL_OF_RADIANCE)
+    assert [bytes(r) for r in back.get("granted_effects")] \
+        == [ADDERLY_STRENGTH_NODE + NULL]
+    assert 38 not in (back.get("innate_effects") or ())
+    assert not _lines(back)
+
+
+def test_a_dos_strength_node_with_no_payload_takes_a_trait_slot_and_says_so():
+    char = _title_character(c64_port.POOL_OF_RADIANCE)
+    char.set("granted_effects", [ADDERLY_STRENGTH_NODE + NULL], "built here")
+    rec, rep = c64_codec.write(char)
+    assert bytes(rec.get_raw("item_effects"))[9] == 38
+    lines = [d for d in rep.losses if "effect 38, which never expires" in d]
+    assert len(lines) == 1
+
+
 def test_a_flagged_spell_row_of_the_wrong_kind_stays_an_innate_effect():
     p = bytearray(0x1C00)
     effects.write_effect(p, 63, 25, 2, 0x00, 0x85)
