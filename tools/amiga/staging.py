@@ -19,7 +19,7 @@ from typing import Any
 
 from goldbox import amiga_adf
 from goldbox import amiga_adf as adf
-from tools.amiga import amigasaves
+from tools.amiga import amigalaterslot, amigasaves
 from tools.amiga.route import AmigaTitle
 from tools.amiga.winuaesession import RouteError
 from tools.registry import scratch, specimens
@@ -415,8 +415,18 @@ class _Sources:
     images: dict[str, str]
 
 
-def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | None
+def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | None, *,
+                  substitute: pathlib.Path | None = None, substitute_letter: str = "A",
                   ) -> dict[str, Any]:
+    """Prepare the run folder from the pinned specimen, or from it with one slot swapped.
+
+    `substitute`, when given, is a disk some other tool wrote a party onto --
+    typically a Save As Amiga output. Its `substitute_letter` slot replaces
+    `src.loaded` on a copy of the pinned specimen, through
+    `amigalaterslot.import_slot`; every other file on the copy, and the pin
+    checks on the specimen and side disks, are unchanged. `state_a`/`names_a`
+    then describe the substituted slot, not the pinned specimen's.
+    """
     title = src.title
     specimen = (pathlib.Path(specimen) if specimen
                 else specimens.tree_root().joinpath(*src.specimen))
@@ -449,6 +459,32 @@ def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | Non
         raise RouteError("a working copy differs from the pinned disk")
     if disks["save"]["sha256"] != src.specimen_sha256:
         raise RouteError("the working save disk differs from the specimen")
+    substituted: dict[str, str] | None = None
+    if substitute is not None:
+        substitute = pathlib.Path(substitute)
+        if not substitute.is_file():
+            raise RouteError(f"the substitute {substitute} is missing")
+        source_disk = amiga_adf.AmigaDisk.open(substitute)
+        if source_disk.verify():
+            raise RouteError(f"{substitute} fails ADF verification")
+        working_disk = adf.AmigaDisk(bytearray(working.read_bytes()))
+        try:
+            amigalaterslot.import_slot(working_disk, src.loaded, source_disk, substitute_letter)
+        except (adf.AmigaDiskError, SystemExit) as exc:
+            raise RouteError(f"the substitute slot could not be imported: {exc}") from exc
+        problems = working_disk.verify()
+        if problems:
+            raise RouteError(f"the substituted working disk fails verification: {problems}")
+        working_disk.save(working)
+        disks["save"]["sha256"] = sha256(working)
+        save = amiga_adf.AmigaDisk.open(working)
+        if save.volume_name != src.volume:
+            raise RouteError(f"{working} is not a {src.volume} disk after substitution")
+        loaded = title.read_slot(save, src.loaded)
+        if "place" not in loaded:
+            raise RouteError(f"substituted slot {src.loaded} does not decode: {loaded}")
+        substituted = {"path": str(substitute), "sha256": sha256(substitute),
+                       "letter": substitute_letter}
     # A registered image inside a zip has no file of its own, so `registered` holds the
     # specimen and `sources` names each image by where it was found.
     manifest = {
@@ -460,6 +496,8 @@ def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | Non
         "state_a": loaded["place"], "names_a": loaded["names"],
         "expected_after": later["place"],
     }
+    if substituted is not None:
+        manifest["substitute"] = substituted
     after = _find_images(src.images)
     if (sha256(specimen) != src.specimen_sha256
             or any(hashlib.sha256(after[key][1]).hexdigest() != pinned

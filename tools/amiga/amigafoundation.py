@@ -52,8 +52,15 @@ def _name(title: AmigaTitle) -> str:
     raise RouteError("that is not one of this module's titles")
 
 
+#: Titles whose `_PREPARE` function accepts a substitute slot -- the ones
+#: routed through `staging._prepare_from`, whose party lives in one savegame
+#: file `amigalaterslot.import_slot` can graft onto a copy of the pinned disk.
+_SUBSTITUTABLE = frozenset({"curse"})
+
+
 def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = None,
-            specimen_sha256: str | None = None, accept_summary: pathlib.Path | None = None
+            specimen_sha256: str | None = None, accept_summary: pathlib.Path | None = None,
+            substitute: pathlib.Path | None = None, substitute_letter: str = "A",
             ) -> pathlib.Path:
     """Copy the title's registered images and specimen into a run folder, write `prepare.json`, and return it.
 
@@ -61,6 +68,9 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     save letter the run writes already exists. Nothing registered is written.
     `darkness-reload` prepares from a game-written disk 3, so it requires `specimen`,
     `specimen_sha256` and `accept_summary`, and the other titles refuse the last two.
+    `substitute`, only on a title in `_SUBSTITUTABLE`, replaces the route's
+    loaded slot with `substitute_letter`'s slot from that disk; every other
+    file, and the specimen's own pin, are unaffected.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -71,11 +81,18 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         raise RouteError("darkness-reload needs the disk 3, its SHA-256 and the accept summary")
     if not reload and (specimen_sha256 or accept_summary):
         raise RouteError(f"{name} takes no disk 3 hash or accept summary")
+    if substitute is not None and name not in _SUBSTITUTABLE:
+        raise RouteError(f"{name} takes no substitute slot")
     run = scratch.cache_dir("acceptance", ISSUE, run_id)
     if run.exists():
         raise RouteError(f"run folder already exists: {run}")
-    manifest = (_PREPARE[name](run, specimen, specimen_sha256, accept_summary) if reload
-                else _PREPARE[name](run, specimen))
+    if reload:
+        manifest = _PREPARE[name](run, specimen, specimen_sha256, accept_summary)
+    elif name in _SUBSTITUTABLE:
+        manifest = _PREPARE[name](run, specimen, substitute=substitute,
+                                  substitute_letter=substitute_letter)
+    else:
+        manifest = _PREPARE[name](run, specimen)
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return path
@@ -128,6 +145,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--disk3-sha256", default=None, help="darkness-reload only: that disk's SHA-256")
     p.add_argument("--accept-summary", type=pathlib.Path, default=None,
                    help="darkness-reload only: that accept run's summary.json")
+    p.add_argument("--substitute", type=pathlib.Path, default=None,
+                   help="a disk holding a party some other tool wrote, whose "
+                        "--substitute-letter slot replaces the route's loaded "
+                        "slot; only titles in _SUBSTITUTABLE accept this")
+    p.add_argument("--substitute-letter", default="A",
+                   help="the slot to read off --substitute (default A)")
     m = sub.add_parser("measure", help="boot and press the route up to the first save; writes nothing")
     common(m)
     m.add_argument("--guards", type=pathlib.Path, default=None,
@@ -152,7 +175,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "prepare":
                 print(prepare(TITLES[args.title], args.run_id, specimen=args.disk3,
                               specimen_sha256=args.disk3_sha256,
-                              accept_summary=args.accept_summary))
+                              accept_summary=args.accept_summary,
+                              substitute=args.substitute,
+                              substitute_letter=args.substitute_letter))
                 return 0
             title = TITLES[args.title]
             holder = args.holder or f"wish{ISSUE}-{uuid.uuid4().hex[:12]}"

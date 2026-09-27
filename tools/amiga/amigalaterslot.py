@@ -69,6 +69,34 @@ def slot_path(disk: AmigaDisk, letter: str) -> str:
         f"no /{SAVE_DRAWER}/savgam{letter}{{{'|'.join(SUFFIXES)}}} on the disk")
 
 
+def import_slot(dest: AmigaDisk, dest_letter: str, source: AmigaDisk, source_letter: str) -> bytes:
+    """Put `source_letter`'s saved game from `source` onto `dest` as `dest_letter`, in place.
+
+    Reads and rebuilds through `amiga_savegame`, the same round trip an edited
+    slot takes, and refuses if the rebuilt slot fails `amigasavecheck`. `dest`
+    and `source` are two already-open disks -- typically a copy of a pinned
+    game disk and a disk a different tool wrote a party onto -- so this is how
+    a party built elsewhere reaches the letter a route boots from. Returns the
+    bytes written.
+    """
+    path = slot_path(source, source_letter)
+    save = amiga_savegame.parse(source.read_file(path), source=path)
+    data = amiga_savegame.rebuild(save, list(save.characters))
+    out = amiga_savegame.parse(data, save.container, source="rebuilt")
+    bad = [claim for claim, ok, detail in amigasavecheck.check(out) if not ok]
+    if bad:
+        raise AmigaDiskError(f"the source slot fails its checks: {bad}")
+    target = f"/{SAVE_DRAWER}/savgam{dest_letter}{path[-4:]}"
+    try:
+        dest.lookup(target)
+    except AmigaDiskError:
+        pass
+    else:
+        dest.remove_file(target)
+    dest.write_file(target, data)
+    return data
+
+
 def rename(char: amiga_later.AmigaCharacter, name: str) -> amiga_later.AmigaCharacter:
     """The same character under a new name, NUL-padded to the sixteen bytes.
 

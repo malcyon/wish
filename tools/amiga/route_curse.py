@@ -108,5 +108,8 @@ CURSE_SOURCES = _Sources("curse", CURSE, CURSE_SPECIMEN, CURSE_SPECIMEN_SHA256, 
                          CURSE_LOADED, CURSE_LATER, {"diskb": CURSE_DISK_B_SHA256})
 
 
-def _prepare_curse(run: pathlib.Path, specimen: pathlib.Path | None) -> dict[str, Any]:
-    return _prepare_from(CURSE_SOURCES, run, specimen)
+def _prepare_curse(run: pathlib.Path, specimen: pathlib.Path | None, *,
+                   substitute: pathlib.Path | None = None, substitute_letter: str = "A"
+                   ) -> dict[str, Any]:
+    return _prepare_from(CURSE_SOURCES, run, specimen,
+                         substitute=substitute, substitute_letter=substitute_letter)
