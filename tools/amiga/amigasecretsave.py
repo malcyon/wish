@@ -25,9 +25,7 @@ from tools.amiga.route_silver_blades import (  # noqa: E402
 )
 from tools.amiga.screens import (  # noqa: E402
     PixelGuards,
-    _box_digest,
-    _box_is_uniform,
-    guard_rule,
+    checked_rule,
 )
 from tools.amiga.staging import _verified_disk  # noqa: E402
 from tools.amiga.winuaesession import RouteError, WinGuest, terminating  # noqa: E402
@@ -124,13 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "guard":
             box = [int(n) for n in args.box.split(",")]
-            rule = guard_rule(args.crop, box, args.state)
-            for other in args.unlike:
-                if _box_digest(other, box, args.state) == rule["sha256"]:
-                    raise RouteError(f"{args.state} box {box} also matches {other}")
-            if _box_is_uniform(args.crop, box, args.state):
-                raise RouteError(f"{args.state} box {box} is one colour and would match "
-                                 f"any screen showing it")
+            rule = checked_rule(args.crop, box, args.state, args.unlike)
             rules = json.loads(args.out.read_text()) if args.out.exists() else {}
             if args.state in rules and not args.replace:
                 raise RouteError(f"{args.out} already has a rule for {args.state}; "

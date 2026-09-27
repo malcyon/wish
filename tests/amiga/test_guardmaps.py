@@ -1,0 +1,193 @@
+"""Check guard-map ownership, export, and cross-title collisions on synthetic crops."""
+
+import json
+
+from PIL import Image
+
+from tools.amiga import guardmaps
+
+
+def _crop(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.new('RGB', (720, 568), 'black')
+    for x in range(10, 20):
+        for y in range(10, 20):
+            image.putpixel((x, y), (255, 0, 0) if x % 2 else (0, 0, 255))
+    image.save(path)
+
+
+def _run(root, issue, name, title, state, *, manifest=True):
+    run = root / issue / name
+    run.mkdir(parents=True, exist_ok=True)
+    if manifest:
+        (run / 'prepare.json').write_text(json.dumps({'title': title}))
+    shot = run / 'accept' / 'shots' / f'01-{state}.png'
+    _crop(shot)
+    (run / 'accept' / 'summary.json').write_text(json.dumps({'success': True, 'measure': False}))
+    return shot
+
+
+def test_manifest_ownership_and_cross_title_collision(tmp_path, capsys):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    pool = _run(root, '1', 'unusual-folder', 'pool', 'title')
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'add', '--title', 'pool',
+                           '--map', 'guards', '--state', 'title', '--crop', str(pool),
+                           '--box', '10,10,20,20']) == 0
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'check', '--title', 'pool']) == 0
+    _run(root, '2', 'another-folder', 'curse', 'title')
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'check', '--title', 'pool']) == 1
+    assert 'another-folder' in capsys.readouterr().out
+
+
+def test_missing_unreadable_manifest_and_aliases(tmp_path):
+    root = tmp_path / 'root'
+    missing = _run(root, '1', 'missing', 'curse', 'title', manifest=False)
+    broken = _run(root, '1', 'broken', 'curse', 'title')
+    (broken.parents[2] / 'prepare.json').write_text('{')
+    reload = _run(root, '1', 'reload', 'darkness-reload', 'title')
+    legacy = _run(root, '1', 'legacy', 'ssb', 'title')
+    (legacy.parents[2] / 'prepare.json').write_text(json.dumps({'published_df1': {}}))
+    crops = guardmaps.scan_crops(root)
+    owners = {crop.relative: crop.title for crop in crops}
+    assert owners[missing.relative_to(root).as_posix()] is None
+    assert owners[broken.relative_to(root).as_posix()] is None
+    assert owners[reload.relative_to(root).as_posix()] == 'darkness'
+    assert owners[legacy.relative_to(root).as_posix()] == 'ssb'
+
+
+def test_export_loads_as_pixel_guards(tmp_path):
+    from tools.amiga.screens import PixelGuards
+
+    out = tmp_path / 'export'
+    assert guardmaps.main(['export', '--title', 'pool', '--out', str(out)]) == 0
+    for kind in ('guards', 'identity'):
+        exported = json.loads((out / f'{kind}.json').read_text())
+        assert exported
+        assert all(set(rule) == {'box', 'sha256'} for rule in exported.values())
+        assert PixelGuards(out / f'{kind}.json').rules == exported
+    assert guardmaps.main(['export', '--title', 'pool', '--out', str(out)]) == 2
+
+
+def test_also_admits_a_trusted_state(tmp_path, capsys):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    crop = _run(root, '1', 'run', 'pool', 'journal')
+    spec = {'labels': {}, 'guards': {
+        'journal': {**guardmaps.screens.guard_rule(crop, [10, 10, 20, 20], 'journal'),
+                    'example': crop.relative_to(root).as_posix(), 'also': []}}, 'identity': {}}
+    (maps / 'guards_pool.json').write_text(json.dumps(spec))
+    _run(root, '1', 'run2', 'pool', 'journal_answer')
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'check', '--title', 'pool']) == 1
+    assert 'journal_answer' in capsys.readouterr().out
+    spec['guards']['journal']['also'] = ['journal_answer']
+    (maps / 'guards_pool.json').write_text(json.dumps(spec))
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'check', '--title', 'pool']) == 0
+
+
+def test_stale_example_fails_check(tmp_path, capsys):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    crop = _run(root, '1', 'run', 'pool', 'title')
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'add', '--title', 'pool',
+                           '--map', 'guards', '--state', 'title', '--crop', str(crop),
+                           '--box', '10,10,20,20']) == 0
+    Image.new('RGB', (720, 568), 'green').save(crop)
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'check', '--title', 'pool']) == 1
+    assert 'stale' in capsys.readouterr().out
+
+
+def test_untrusted_run_needs_a_label(tmp_path):
+    root = tmp_path / 'root'
+    shot = _run(root, '1', 'measure', 'pool', 'title')
+    summary = shot.parent.parent / 'summary.json'
+    summary.write_text(json.dumps({'success': True, 'measure': True}))
+    assert guardmaps.scan_crops(root)[0].states == ()
+    summary.write_text(json.dumps({'success': False, 'measure': False}))
+    assert guardmaps.scan_crops(root)[0].states == ()
+
+
+def test_committed_maps_cover_guarded_routes():
+    from tools.amiga import route_silver_blades
+    from tools.amiga.route_curse import CURSE
+    from tools.amiga.route_darkness import DARKNESS, DARKNESS_RELOAD
+    from tools.amiga.route_pool import POOL
+
+    for title, routes in {'pool': (POOL,), 'curse': (CURSE,),
+                          'darkness': (DARKNESS, DARKNESS_RELOAD)}.items():
+        spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, title)
+        required = {'title'}
+        for route in routes:
+            required.update(route.strict)
+            required.update(step[1] for step in route.route)
+        assert required <= spec['guards'].keys()
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    required = {'title'} | {step[1] for route in (route_silver_blades.ROUTE,
+                                                  route_silver_blades.ACCEPT_ROUTE)
+                            for step in route}
+    assert required <= spec['guards'].keys()
+
+
+def test_add_refusals_leave_map_unchanged(tmp_path, capsys):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    crop = _run(root, '1', 'pool-run', 'pool', 'title')
+    argv = ['--root', str(root), '--maps', str(maps), 'add', '--title', 'pool',
+            '--map', 'guards', '--state', 'title', '--crop', str(crop), '--box', '10,10,20,20']
+    assert guardmaps.main(argv) == 0
+    path = maps / 'guards_pool.json'
+    original = path.read_bytes()
+    assert guardmaps.main(argv) == 2
+    assert path.read_bytes() == original
+    outside = tmp_path / 'outside.png'
+    _crop(outside)
+    assert guardmaps.main(argv[:argv.index('--crop') + 1] + [str(outside)] + argv[argv.index('--box'):]) == 2
+    assert path.read_bytes() == original
+    other = _run(root, '2', 'curse-run', 'curse', 'title')
+    assert guardmaps.main(argv + ['--replace']) == 2
+    assert 'also matches' in capsys.readouterr().err
+    assert path.read_bytes() == original
+    with Image.open(other) as image:
+        image.paste('green', (0, 0, 10, 10))
+        image.save(other)
+    assert guardmaps.main(argv + ['--replace', '--box', '0,0,10,10']) == 2
+    assert 'one colour' in capsys.readouterr().err
+    assert path.read_bytes() == original
+
+
+def test_screens_digest_boxes_and_checked_rule(tmp_path):
+    import pytest
+
+    from tools.amiga import screens
+    from tools.amiga.winuaesession import RouteError
+
+    crop = tmp_path / 'crop.png'
+    other = tmp_path / 'other.png'
+    _crop(crop)
+    _crop(other)
+    box = [10, 10, 20, 20]
+    assert screens.box_digests(crop, [box])[tuple(box)] == screens._box_digest(crop, box, 'title')
+    with pytest.raises(RouteError, match='invalid crop box'):
+        screens.box_digests(crop, [[0, 0, 721, 568]])
+    with pytest.raises(RouteError, match='also matches'):
+        screens.checked_rule(crop, box, 'title', [other])
+    with pytest.raises(RouteError, match='one colour'):
+        screens.checked_rule(crop, [0, 0, 10, 10], 'title', [])
+
+
+def test_grabs_copy_crop_and_diff(tmp_path, capsys):
+    from tests.amiga.test_amigashots import _desktop
+
+    source = tmp_path / 'source'
+    (source / 'nested').mkdir(parents=True)
+    _crop(source / 'nested' / 'small.png')
+    _desktop((0, 0, 34)).save(source / 'desktop.png')
+    Image.new('RGB', (900, 700), 'black').save(source / 'no-band.png')
+    root = tmp_path / 'root'
+    assert guardmaps.main(['--root', str(root), 'grabs', str(source)]) == 0
+    assert 'copied 1 cropped 1 failed 1 kept 0' in capsys.readouterr().out
+    out = root / 'amiga-grab-crops'
+    assert (out / 'nested__small.png').exists()
+    assert Image.open(out / 'desktop.png').size == (720, 568)
+    assert guardmaps.main(['diff', str(out / 'desktop.png'), str(out / 'desktop.png')]) == 0
+    assert 'identical' in capsys.readouterr().out

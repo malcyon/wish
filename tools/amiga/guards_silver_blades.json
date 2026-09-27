@@ -1,0 +1,208 @@
+{
+  "guards": {
+    "camp": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/14-camp.png",
+      "sha256": "d964e617ef40099739794a7b686fc105cee35764db1d780930c196c1d3a17a20"
+    },
+    "camp_save_picker": {
+      "also": [],
+      "box": [
+        440,
+        292,
+        686,
+        426
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/15-camp_save_picker.png",
+      "sha256": "33c969795b8437c84e7944f0c6f6bc6e4a4b98fd44901ff427bc79c523f190df"
+    },
+    "continue": {
+      "also": [],
+      "box": [
+        186,
+        404,
+        586,
+        426
+      ],
+      "example": "amiga-grab-crops/331run__shots__07-after.png",
+      "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"
+    },
+    "credits": {
+      "also": [],
+      "box": [
+        88,
+        40,
+        668,
+        400
+      ],
+      "example": "672/4b89c97be2-amiga-measure2/measure2/shots/failure.png",
+      "sha256": "98657a39ec8c90bf93346b0a0a8006ce78683348e76c3a3967a2882f1f206ed0"
+    },
+    "exit_game": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/16-exit_game.png",
+      "sha256": "064bd9daefcf323f6930d88d56f03b24a92c6f020e1b17267d390ccd4f24b3de"
+    },
+    "items": {
+      "also": [],
+      "box": [
+        72,
+        76,
+        250,
+        98
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/05-items.png",
+      "sha256": "2ff03e2dca91fc1a4cad2b33af257f046eab43473620fcb7650c147e6dbbe717"
+    },
+    "journal": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        160,
+        426
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/10-journal.png",
+      "sha256": "379f4a7999d77e45f66e243c9df5df2f70683975de1a1efb576854ec1ac9e21d"
+    },
+    "load_picker": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        322,
+        426
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/02-load_picker.png",
+      "sha256": "bb56aef58bfa1dd1c198b86d7b9c385465427ddb901ec6b14e250a9f035e8a18"
+    },
+    "loaded_menu": {
+      "also": [],
+      "box": [
+        68,
+        290,
+        368,
+        344
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/03-loaded_menu.png",
+      "sha256": "b42348b9683f21c65444090b3e9d74d3ac0147fe09ecd68e1a0563245501b2d9"
+    },
+    "party_menu": {
+      "also": [],
+      "box": [
+        68,
+        290,
+        368,
+        344
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/01-party_menu.png",
+      "sha256": "e1e6258b84898170189e8f17531705699d8b50cb1beda9fadd706370b034f091"
+    },
+    "save_picker": {
+      "also": [],
+      "box": [
+        440,
+        292,
+        686,
+        426
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/08-save_picker.png",
+      "sha256": "19f7120a6acfdfb6049ed60ab0741a26c3714bc7a60c7b1051597f5d2cbed813"
+    },
+    "sheet": {
+      "also": [],
+      "box": [
+        376,
+        300,
+        566,
+        334
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/04-sheet.png",
+      "sha256": "052668e9683c890f968903178c9aaa35b126d38c741d476e6a9e9e508cc059cf"
+    },
+    "title": {
+      "also": [],
+      "box": [
+        62,
+        108,
+        606,
+        430
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/title.png",
+      "sha256": "9467a8fd861377797f5164c08e9889d9526539e159967e572401151f63950097"
+    },
+    "world": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        606,
+        426
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/11-world.png",
+      "sha256": "50cfbd7d2a3717965dc5c99b09138bee54b0634c64bfc0ddb256bfd7605f92b4"
+    }
+  },
+  "identity": {
+    "loaded_menu": {
+      "also": [],
+      "box": [
+        72,
+        94,
+        440,
+        194
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/03-loaded_menu.png",
+      "sha256": "43c4b5bd44e0e1b9a1d3161afaaf2d348684bdafb3bd626e584e015800e0b4e2"
+    },
+    "sheet": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        318,
+        62
+      ],
+      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/04-sheet.png",
+      "sha256": "3c036cfe6011db64c8153a3ac321ad24b06295a74f501d5d262680ed2d77440c"
+    }
+  },
+  "labels": {
+    "amiga-grab-crops/28ssb__shots__05-begin.png": [
+      "journal"
+    ],
+    "amiga-grab-crops/28ssb__shots__06-world.png": [
+      "world"
+    ],
+    "amiga-grab-crops/331run__shots__05-loaded.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/331run__shots__06-prompt.png": [
+      "journal"
+    ],
+    "amiga-grab-crops/331run__shots__07-after.png": [
+      "continue"
+    ],
+    "amiga-grab-crops/331run__shots__22-prompt2.png": [
+      "journal"
+    ],
+    "amiga-grab-crops/361run__shots__07-chal.png": [
+      "journal"
+    ],
+    "amiga-grab-crops/52__walk-c64toamiga-ssb-3__22-view.png": [
+      "sheet"
+    ]
+  }
+}

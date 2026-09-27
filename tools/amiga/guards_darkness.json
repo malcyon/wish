@@ -1,0 +1,240 @@
+{
+  "guards": {
+    "camp": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/14-camp.png",
+      "sha256": "1efef6bdda92e22190e75c1df73f3d7cdd12378931d405650ba07d8f59618d5d"
+    },
+    "camp_save_picker": {
+      "also": [],
+      "box": [
+        74,
+        316,
+        322,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/15-camp_save_picker.png",
+      "sha256": "efa81c223ca9a43ed344c4169b84bb2bc4491fdce3db31cb3ca58e697bad1670"
+    },
+    "disk2_prompt": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        540,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/04-disk2_prompt.png",
+      "sha256": "d27a9a57ec0044d5179669bbe44bfd49ed23a81c5fee4c92c85f95fc64d68377"
+    },
+    "exit_game": {
+      "also": [],
+      "box": [
+        74,
+        404,
+        360,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/16-camp.png",
+      "sha256": "cd8e839e2afa1fe0f8d1b838a43483a927c8e35e5766345b17571b4cb46bbedd"
+    },
+    "journal": {
+      "also": [
+        "journal_answer"
+      ],
+      "box": [
+        74,
+        404,
+        170,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/10-journal.png",
+      "sha256": "fd6386c6e091debcfb6d8dc8e89be25c7d3f149067a833e46bf6300094a34baa"
+    },
+    "journal_answer": {
+      "also": [],
+      "box": [
+        74,
+        404,
+        200,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/11-journal_answer.png",
+      "sha256": "eb9c4508496db1c9c5555dd37cc1c4c7e67afadcf2152430b61f35f90effbe7d"
+    },
+    "load_from": {
+      "also": [],
+      "box": [
+        74,
+        404,
+        624,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/02-load_from.png",
+      "sha256": "a11ccc9bdbc7940039b08bbfdcc1dee4b9cb840454fffcfb525033afacf018ac"
+    },
+    "load_picker": {
+      "also": [],
+      "box": [
+        74,
+        404,
+        322,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/03-load_picker.png",
+      "sha256": "29499ed9c27ee64aeba995399a06a669d5145cb1cb70ff17e3d985ba4f6d8100"
+    },
+    "loaded_menu": {
+      "also": [],
+      "box": [
+        58,
+        262,
+        698,
+        432
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/05-loaded_menu.png",
+      "sha256": "fac70aaea973b6350311b8066a59267a5ddeaeee03fce1aa3871b868181a60a3"
+    },
+    "party_menu": {
+      "also": [],
+      "box": [
+        58,
+        262,
+        698,
+        432
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/01-party_menu.png",
+      "sha256": "545733ddc54b86959e0e1fc71b163d9fff6820509fc172ebf6287be45eb91b4d"
+    },
+    "place_x1_y2_f1": {
+      "also": [],
+      "box": [
+        330,
+        268,
+        428,
+        292
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/12-world.png",
+      "sha256": "6726ce16e594872387b7ae3682646cdc1db90a801f59eda8b7f30bc15f5d00fe"
+    },
+    "place_x2_y2_f1": {
+      "also": [
+        "camp",
+        "camp_save_picker",
+        "exit_game"
+      ],
+      "box": [
+        330,
+        268,
+        428,
+        292
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/13-world.png",
+      "sha256": "7f7a66647d760ca8cdb99d4bf80142ada5459a13b263d659f3a14bb598543dbe"
+    },
+    "save_picker": {
+      "also": [
+        "camp_save_picker"
+      ],
+      "box": [
+        74,
+        404,
+        322,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/08-save_picker.png",
+      "sha256": "27301b4c59f31e160132ea379d29167b88251428a94892a8ab5a5a498b33b6a8"
+    },
+    "sheet": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
+      "sha256": "3c4726824c12aa0031f5072173912612b736595eab51f01514f41b93df4fe583"
+    },
+    "title": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        540,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/title.png",
+      "sha256": "3067b860a75e1b749371aeddd2c5ea3eb2f5537f6d63e1c39fbf0f3e5541b425"
+    },
+    "world": {
+      "also": [
+        "place"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/12-world.png",
+      "sha256": "8d2d010f78539968312ab2b1fbe3cc5156be453a65bd6b71f668325efa385386"
+    }
+  },
+  "identity": {
+    "loaded_menu": {
+      "also": [],
+      "box": [
+        74,
+        94,
+        690,
+        192
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/05-loaded_menu.png",
+      "sha256": "8c258092c0599b4f5bcb5bf0d7dd2c67ec9c97ba7628ad1ed96c8d0eb9741450"
+    },
+    "sheet": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
+      "sha256": "f20f85d3f3b407e1c3151a01f4f19fb4db49f70d7112afd8d5b5d1aa227ae22e"
+    }
+  },
+  "labels": {
+    "679/6b17ee420c-amiga-darkness-accept-A/acceptA/shots/12-world.png": [
+      "place_x1_y2_f1"
+    ],
+    "679/6b17ee420c-amiga-darkness-accept-A/acceptA/shots/13-world.png": [
+      "place_x2_y2_f1"
+    ],
+    "679/6b17ee420c-amiga-darkness-accept-B/acceptB/shots/12-world.png": [
+      "place_x1_y2_f1"
+    ],
+    "679/6b17ee420c-amiga-darkness-accept-B/acceptB/shots/13-world.png": [
+      "place_x2_y2_f1"
+    ],
+    "679/d2a23aa478-amiga-darkness-reload-A/reloadA/shots/10-world.png": [
+      "place_x2_y2_f1"
+    ],
+    "679/d2a23aa478-amiga-darkness-reload-A/reloadA/shots/11-place.png": [
+      "place_x2_y2_f1"
+    ],
+    "679/d2a23aa478-amiga-darkness-reload-B/reloadB/shots/10-world.png": [
+      "place_x2_y2_f1"
+    ],
+    "679/d2a23aa478-amiga-darkness-reload-B/reloadB/shots/11-place.png": [
+      "place_x2_y2_f1"
+    ]
+  }
+}

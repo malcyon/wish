@@ -1,0 +1,158 @@
+{
+  "guards": {
+    "camp": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/10-camp.png",
+      "sha256": "169811582eab25c33345bf896ba31c9a03f5ffd7d726090330a039ec271eb0e5"
+    },
+    "camp_save_picker": {
+      "also": [
+        "save_picker"
+      ],
+      "box": [
+        72,
+        404,
+        316,
+        424
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/05-save_picker.png",
+      "sha256": "414355e907580d48d105d448d0cf1d36d16dff85627d1ea7f92f53876304f0b2"
+    },
+    "exit_game": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/12-exit_game.png",
+      "sha256": "26a8d90bfc5d2ab8602a43f8e77ef143e99eef32c273aa310c1159480133c20d"
+    },
+    "front_end": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        582,
+        424
+      ],
+      "example": "679/a4c6f64a9b-amiga-curse-measure1/measure1/shots/01-front_end.png",
+      "sha256": "f3e4a60e010705758869b1356803a72167cb4fe981df5fc719b3cda4a792bd0c"
+    },
+    "intro": {
+      "also": [],
+      "box": [
+        66,
+        400,
+        466,
+        426
+      ],
+      "example": "679/a4c6f64a9b-amiga-curse-measure1/measure1/shots/00-boot-01.png",
+      "sha256": "8f2cb5fb9c7a532d90b024c8b46cf29dfd67c6ca8cc2274bf51ead38cbc8ac97"
+    },
+    "load_picker": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        316,
+        424
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/01-load_picker.png",
+      "sha256": "be7bf8d490b8f5f3c45f31dc555298cff6be58babdab6f90eebdfd64edc83bc8"
+    },
+    "loaded_menu": {
+      "also": [],
+      "box": [
+        60,
+        250,
+        700,
+        430
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/02-loaded_menu.png",
+      "sha256": "2cb5c70090cd61c67ff04fc8bfaa16a3bba1bea245c6afb812ede2a75ef1aff0"
+    },
+    "save_picker": {
+      "also": [
+        "camp_save_picker"
+      ],
+      "box": [
+        72,
+        404,
+        316,
+        424
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/05-save_picker.png",
+      "sha256": "414355e907580d48d105d448d0cf1d36d16dff85627d1ea7f92f53876304f0b2"
+    },
+    "sheet": {
+      "also": [],
+      "box": [
+        74,
+        144,
+        124,
+        238
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/03-sheet.png",
+      "sha256": "f46a0703486155b9bbdbef80f205e4388dbd2c6f3827d87f1dc56ae106b27b67"
+    },
+    "title": {
+      "also": [],
+      "box": [
+        60,
+        250,
+        700,
+        430
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/title.png",
+      "sha256": "c75675b42be04ed121aceb8f8cfc7363896630c8630cd0a1cfb548fc9dfc240d"
+    },
+    "world": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/07-world.png",
+      "sha256": "0f2f0883c8c4f4a7e2bc7096c22881891330a7c5ee32f6c3d88d7ff08cf45ea8"
+    }
+  },
+  "identity": {
+    "loaded_menu": {
+      "also": [],
+      "box": [
+        74,
+        94,
+        560,
+        192
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/02-loaded_menu.png",
+      "sha256": "832425340db648eb08540044936893742d2739cfd4c82b0d7a3ed391c8c67011"
+    },
+    "sheet": {
+      "also": [],
+      "box": [
+        74,
+        48,
+        330,
+        62
+      ],
+      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/03-sheet.png",
+      "sha256": "b4340bbd30b187dccdf666453da213210f2d3dc87a15dde86fd8175d1fd22f6d"
+    }
+  },
+  "labels": {
+    "amiga-grab-crops/37__pipe__07-second-boot.png": [
+      "intro"
+    ]
+  }
+}

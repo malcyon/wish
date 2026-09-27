@@ -1,0 +1,153 @@
+{
+  "guards": {
+    "camp": {
+      "also": [],
+      "box": [
+        60,
+        418,
+        650,
+        432
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/07-camp.png",
+      "sha256": "6ef80ecffc6013570eeda6c5bab63423056fc15f0b6e387b0a8fa4601b0120fd"
+    },
+    "camp_save_picker": {
+      "also": [],
+      "box": [
+        60,
+        418,
+        316,
+        432
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/08-camp_save_picker.png",
+      "sha256": "1fe574ec349643251e596530106ad79aa8faa8bac655168d46f20228f0112457"
+    },
+    "load_picker": {
+      "also": [],
+      "box": [
+        60,
+        224,
+        316,
+        432
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/03-load_picker.png",
+      "sha256": "f09788ea534c5c8bc49a97f372927701d16f76ac9597d17df2a736df49ea1450"
+    },
+    "party_menu": {
+      "also": [],
+      "box": [
+        60,
+        224,
+        442,
+        432
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/01-party_menu.png",
+      "sha256": "cde261c490a8142d50af97ce69eae958523cf86d70af2916a742248b02ef3adc"
+    },
+    "quit_prompt": {
+      "also": [],
+      "box": [
+        56,
+        418,
+        444,
+        432
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/09-quit_prompt.png",
+      "sha256": "46baa42774b9d5136f4ba893ee5597b393ab9d65179ad81b3d8852bf4b14f54f"
+    },
+    "save_path": {
+      "also": [],
+      "box": [
+        122,
+        404,
+        634,
+        418
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/02-save_path.png",
+      "sha256": "51f371774e0ba6685b2c0dd5015dffc1c9c7c06603124989ef802c50b00304d4"
+    },
+    "sheet": {
+      "also": [],
+      "box": [
+        70,
+        146,
+        124,
+        240
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/05-sheet.png",
+      "sha256": "fc25aaadb2454618b62603f367c1e648f20a867131c23f83765a8f9ccfcfaca2"
+    },
+    "title": {
+      "also": [],
+      "box": [
+        56,
+        418,
+        394,
+        432
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/title.png",
+      "sha256": "b7b1eb651960ac173796340c5f4acf1c5732f1e82090ae84f90fd850ed29fc9d"
+    },
+    "wheel": {
+      "also": [],
+      "box": [
+        208,
+        404,
+        548,
+        418
+      ],
+      "example": "679/876e528b66-amiga-pool-measure1/measure1/shots/00-boot-02.png",
+      "sha256": "2b5443741b10689cb3b357ebe2196378779f26a9bc24830b3327c1efeaa220b3"
+    },
+    "world": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        588,
+        432
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/04-world.png",
+      "sha256": "3de1346f22872481399c7e93608743019396c55a82c21064b32eb905970e0299"
+    }
+  },
+  "identity": {
+    "sheet": {
+      "also": [],
+      "box": [
+        70,
+        66,
+        330,
+        80
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/05-sheet.png",
+      "sha256": "40232757b2db93001158630d65981bd85578a35d4fc0559a88eb640e27f88b72"
+    },
+    "world": {
+      "also": [
+        "camp",
+        "camp_save_picker",
+        "quit_prompt"
+      ],
+      "box": [
+        326,
+        96,
+        578,
+        194
+      ],
+      "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/04-world.png",
+      "sha256": "2ff06f374e79a4ab1db6ad5f1e187294cffe29c93ed4ed8e8888a737a524ad40"
+    }
+  },
+  "labels": {
+    "amiga-grab-crops/3q__s01-boot.png": [
+      "wheel"
+    ],
+    "amiga-grab-crops/3q__s06-loaded-c.png": [
+      "world"
+    ],
+    "amiga-grab-crops/3q__s07-view-c.png": [
+      "sheet"
+    ]
+  }
+}

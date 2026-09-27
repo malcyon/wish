@@ -16,11 +16,28 @@ def _box_pixels(image_path: pathlib.Path, box, state: str) -> bytes:
     from PIL import Image  # noqa: PLC0415
 
     with Image.open(image_path) as image:
-        if (len(box) != 4 or min(box) < 0 or box[2] > image.width
-                or box[3] > image.height or box[0] >= box[2]
-                or box[1] >= box[3]):
-            raise RouteError(f"invalid crop box for {state}")
+        _check_box(box, image, state)
         return image.convert("RGB").crop(tuple(box)).tobytes()
+
+
+def _check_box(box, image, state: str) -> None:
+    if (len(box) != 4 or min(box) < 0 or box[2] > image.width
+            or box[3] > image.height or box[0] >= box[2]
+            or box[1] >= box[3]):
+        raise RouteError(f"invalid crop box for {state}")
+
+
+def box_digests(image_path: pathlib.Path, boxes, state: str = "guard") -> dict[tuple, str]:
+    """Hash each requested box while opening the crop once."""
+    from PIL import Image  # noqa: PLC0415
+
+    with Image.open(image_path) as image:
+        rgb = image.convert("RGB")
+        result = {}
+        for box in boxes:
+            _check_box(box, rgb, state)
+            result[tuple(box)] = hashlib.sha256(rgb.crop(tuple(box)).tobytes()).hexdigest()
+        return result
 
 
 def _box_digest(image_path: pathlib.Path, box, state: str) -> str:
@@ -38,6 +55,18 @@ def guard_rule(image_path: pathlib.Path, box, state: str = "guard") -> dict[str,
     """The `PixelGuards` rule that recognises `box` exactly as this crop shows it."""
     box = [int(n) for n in box]
     return {"box": box, "sha256": _box_digest(pathlib.Path(image_path), box, state)}
+
+
+def checked_rule(crop: pathlib.Path, box, state: str, unlike) -> dict[str, Any]:
+    """Refuse a uniform box or one that also recognises a neighbouring screen."""
+    rule = guard_rule(crop, box, state)
+    for other in unlike:
+        if _box_digest(other, box, state) == rule["sha256"]:
+            raise RouteError(f"{state} box {box} also matches {other}")
+    if _box_is_uniform(crop, box, state):
+        raise RouteError(f"{state} box {box} is one colour and would match "
+                         f"any screen showing it")
+    return rule
 
 
 class PixelGuards:
