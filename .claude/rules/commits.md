@@ -47,7 +47,7 @@ Work goes out in reviewed, coherent batches, and CI is the full-suite gate:
 4. **Push** the reviewed batch.
 5. **Check CI for the exact pushed SHA**, and fix what actually failed.
 6. **Close only completed issues under `.claude/rules/issues.md`**, with their
-   acceptance evidence, before taking more tickets. Unfinished work stays open.
+   acceptance evidence. Unfinished work stays open.
 
 **Nobody runs the whole suite locally in order to push.** CI runs it on every
 pushed commit. A concrete CI failure is fixed with focused tests and a
@@ -155,7 +155,8 @@ Both jobs, both named, both against that sha. A run whose `conclusion` is empty
 has not finished, however `completed` the list looks. Give it a minute or two
 -- a `pytest` job takes between five and ten minutes, Windows the slowest.
 
-**Do not take the next ticket until that CI result is in.** If it failed,
+**Do not close that batch's issues or push on top of it until that CI result
+is in.** Independent tickets on other files may start meanwhile. If it failed,
 `gh run view <id> --log-failed` says why, and **the fix goes to a subagent**:
 the failure is usually platform-specific, the diagnosis is reading, and
 neither belongs in the main window. The fix is checked with focused tests,

@@ -972,7 +972,10 @@ And the run duplicated CI, which runs the full suite on every pushed commit
 on both platforms. The workflow is now focused tests for the affected
 behaviour, including the relevant tests that read private game data (the one
 thing CI cannot run), `ruff` and `genui.py --check`, review, commit, push, and
-a check of CI for the exact pushed SHA before more tickets are taken.
+a check of CI for the exact pushed SHA before that batch's issues close or
+another batch is pushed on top of it. The gate once also held back every new
+ticket until CI finished, which kept a Codex orchestrator to one ticket at a
+time; it was narrowed so independent tickets start while CI runs.
 `suiterun.py` stays as a diagnostic for when somebody asks for a whole-suite
 run. The hook's file stays as a retired entry point that checks nothing, so a
 session with the old wiring cached does not fail on every command.

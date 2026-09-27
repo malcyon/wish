@@ -197,7 +197,8 @@ commit, run affected tests (including relevant private game-data tests),
 `.venv/bin/ruff check .` and
 `.venv/bin/python3 tools/generate/genui.py --check`. The root commits locally,
 gets required code review, fixes or rejects its findings, then pushes and
-**checks CI for the exact pushed SHA before taking more tickets**. Do not run
+**checks CI for the exact pushed SHA before closing that batch's issues or
+pushing on top of it**. Independent tickets may start meanwhile. Do not run
 the whole suite locally to push; `tools/suite/suiterun.py` is an explicitly
 requested diagnostic. A `test-runner` can take focused tests or CI checking.
 
