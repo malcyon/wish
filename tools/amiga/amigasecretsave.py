@@ -733,7 +733,7 @@ class AmigaTitle:
     `spares` the keys put on the VM and not mounted. A route step is
     `(key, state, kind)`; an `insert` step's key is `(drive, disk_key, key)`, and
     `write` steps may press only `control_letter` or `after_letter`, and no other step may press
-    those. A kept letter is never written, so a non-write step may press one only where
+    those. A title that only loads has neither letter and no `write` step. A kept letter is never written, so a non-write step may press one only where
     `plain_keys` names its `(key, state)`: the game's own key that happens to be a slot's letter.
     A plain key is refused on a screen where some step writes and on a state whose name contains
     `picker`; the run's compare of every kept slot after the fetch is what proves none changed.
@@ -754,8 +754,8 @@ class AmigaTitle:
     route: tuple[tuple[Any, str, str], ...]
     measure_route: tuple[tuple[Any, str, str], ...]
     boot_span: float
-    control_letter: str
-    after_letter: str
+    control_letter: str | None = None
+    after_letter: str | None = None
     spares: tuple[str, ...] = ()
     options: tuple[str, ...] = ()
     strict: frozenset[str] = frozenset()
@@ -786,7 +786,14 @@ class AmigaTitle:
             refuse(f"save disk {self.save_disk!r} is not one of {keys}")
         if not all(_OPTION.fullmatch(o) for o in self.options):
             refuse(f"options {self.options} must each be name=value")
-        letters = (self.control_letter, self.after_letter, *self.kept_letters)
+        if (self.control_letter is None) != (self.after_letter is None):
+            refuse("control and after letters are both given or both None")
+        if self.control_letter is None and any(
+                step[2] == "write" for route in (self.route, self.measure_route)
+                for step in route if isinstance(step, tuple) and len(step) == 3):
+            refuse("a title with no save letters has a write step")
+        letters = tuple(c for c in (self.control_letter, self.after_letter, *self.kept_letters)
+                        if c is not None)
         if not all(_LETTER.fullmatch(str(c)) for c in letters) or len(set(letters)) != len(letters):
             refuse(f"save letters {letters} must be distinct capitals")
         if self.turn not in (None, "about"):
@@ -840,7 +847,8 @@ class AmigaTitle:
 
     def _write_letters(self) -> frozenset[str]:
         """The letters that save, or belong to a slot that must not change."""
-        return frozenset((self.control_letter, self.after_letter, *self.kept_letters))
+        return frozenset(c for c in (self.control_letter, self.after_letter, *self.kept_letters)
+                         if c is not None)
 
     def _check_step(self, name, step, keys, refuse, before=None, first=False
                     ) -> tuple[str, str] | None:
@@ -909,6 +917,11 @@ class AmigaTitle:
             refuse(f"interstitial {row!r} presses a save or kept slot letter")
 
 
+def place_state(place: dict[str, Any]) -> str:
+    """The guard-map key for a decoded place; the area is left out because the screen does not show it."""
+    return f"place_x{place['x']}_y{place['y']}_f{place['facing']}"
+
+
 def _title_inputs(manifest: dict, title: AmigaTitle) -> tuple[dict, dict, str]:
     """The manifest's disks and registered images, each checked, and its loaded letter."""
     try:
@@ -941,8 +954,9 @@ def menu_save_verdict(result: dict[str, Any], originals: tuple[str, ...]) -> boo
 def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                 out: pathlib.Path, disks: dict[str, pathlib.Path],
                 registered: dict[str, pathlib.Path], kept_before: dict[str, dict],
-                loaded: str, accept: bool, measure: bool, steps: tuple) -> None:
-    """Compare the fetched disks with the manifest, read the two saves and set `success`."""
+                loaded: str, accept: bool, measure: bool, steps: tuple,
+                reload: bool = False) -> None:
+    """Compare the fetched disks with the manifest, read the saves and set `success`."""
     result["registered_unchanged"] = {
         key: sha256(path) == manifest["registered"][key]["sha256"]
         for key, path in registered.items()}
@@ -951,6 +965,9 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
     result["disks_unchanged"] = {
         key: entry["sha256"] == manifest["disks"][key]["sha256"]
         for key, entry in result["fetched"].items()}
+    if reload:
+        _read_reload(title, manifest, result, out, kept_before, loaded)
+        return
     if title.save_disk in result["fetched"]:
         try:
             fetched = _verified_disk(out / f"fetched-{title.save_disk}.adf")
@@ -1022,6 +1039,47 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         and result.get("extra_saves") == [])
 
 
+def _place_text(place: dict[str, Any]) -> str:
+    return f"area {place['area']} {place['x']},{place['y']} facing {place['facing']}"
+
+
+def _read_reload(title: AmigaTitle, manifest: dict, result: dict[str, Any],
+                 out: pathlib.Path, kept_before: dict[str, dict], loaded: str) -> None:
+    """Judge a run that only loads: no slot changed, and the screen shows the loaded slot's place and not the other's."""
+    place, other = manifest["state_a"], manifest["other_place"]
+    seen = result.get("reload", {})
+    if title.save_disk in result["fetched"]:
+        try:
+            fetched = _verified_disk(out / f"fetched-{title.save_disk}.adf")
+            result["kept_unchanged"] = {
+                c: title.slot_files(fetched, c) == before for c, before in kept_before.items()}
+            result["extra_saves"] = sorted(set(title.slot_letters(fetched)) - set(kept_before))
+        except BaseException as exc:
+            result["fetched_save_error"] = f"{type(exc).__name__}: {exc}"
+    verdicts = [
+        f"slot {loaded}: reloaded at {_place_text(place)}" if seen.get("shown") is True
+        else f"slot {loaded}: {_place_text(place)} is not on the screen"]
+    other_letter = manifest["other_letter"]
+    if seen.get("other_shown") is None:
+        verdicts.append(f"slot {other_letter}: {_place_text(other)} was not compared with the screen")
+    elif seen["other_shown"]:
+        verdicts.append(f"slot {other_letter}: {_place_text(other)} is also on the screen")
+    else:
+        verdicts.append(f"slot {other_letter}: {_place_text(other)} is not on the screen")
+    result["read"] = {"loaded_letter": loaded, "place_loaded": place, "other_place": other,
+                      "verdicts": verdicts}
+    result["success"] = bool(
+        not result["error"] and result["completed"] and not result["unguarded"]
+        and set(result["fetched"]) == set(title.disk_keys)
+        and all(result["registered_unchanged"].values())
+        and all(result["working_unchanged"].values())
+        # The reload writes nothing, so every disk, the save disk included, comes back as it went in.
+        and all(result["disks_unchanged"].get(k) for k in title.disk_keys)
+        and bool(result.get("kept_unchanged")) and all(result["kept_unchanged"].values())
+        and result.get("extra_saves") == []
+        and seen.get("shown") is True and seen.get("other_shown") is False)
+
+
 def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               holder: str, audio_proof: pathlib.Path, attempt: str = "recon1",
               deadline_seconds: float = 1800,
@@ -1031,7 +1089,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               measure: bool = False, accept: bool = False,
               identity: Any = None, journal_python: str | None = None,
               answer: Any = None, preflight: Any = None,
-              title: AmigaTitle | None = None) -> dict[str, Any]:
+              title: AmigaTitle | None = None, reload: bool = False) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -1049,9 +1107,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     back, and `answer(journal_python, holder, adf, timeout)` stands in for the
     answerer's subprocess.
 
+    `reload` runs a title with no save letters: it loads the manifest's `loaded_letter`, walks
+    the route, then waits for the screen to show that slot's place (`place_state` of `state_a`)
+    and not the other slot's (`other_place`), and writes nothing.
+
     With a `title`, the route, the disks, the interstitials and the readings come
-    from its description, and the run is either `accept` or `measure`; without
-    one every line is Silver Blades'. The manifest of a title is
+    from its description, and the run is exactly one of `accept`, `measure` and `reload`;
+    without one every line is Silver Blades'. The manifest of a title is
     `{"disks": {key: {path, sha256}}, "registered": {key: {path, sha256}},
     "loaded_letter", "state_a", "names_a"}` and optionally `"expected_after"`.
     """
@@ -1060,11 +1122,18 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     if title is not None:
         if not isinstance(title, AmigaTitle):
             raise RouteError("title must be an AmigaTitle")
-        if accept == measure:
+        if reload and (accept or measure):
+            raise RouteError("reload is a mode of its own, apart from accept and measure")
+        if not reload and accept == measure:
             raise RouteError("a title run is either accept or measure")
+        if reload != (title.control_letter is None):
+            raise RouteError("only a title with no save letters is reloaded, and it runs only "
+                             "as a reload")
         if route != ROUTE or write_keys != ("B",):
             raise RouteError("a title brings its own route and write keys")
-    if accept:
+    if reload and title is None:
+        raise RouteError("reload needs a title")
+    if accept or reload:
         if measure:
             raise RouteError("accept and measure are separate modes")
         if title is None:
@@ -1079,7 +1148,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if identity_states and (
                 identity is None or not all(_has_rule(identity, s) for s in identity_states)):
             raise RouteError(f"identity map lacks {sorted(identity_states)}")
-        if title is None and not journal_python and answer is None:
+        if accept and title is None and not journal_python and answer is None:
             raise RouteError("accept needs a journal interpreter")
     if not measure:
         needed = (("title", *(s for _, s in route)) if title is None
@@ -1123,8 +1192,17 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if letter not in present:
             raise RouteError(f"the save disk holds no slot {letter} to load")
         for taken in (title.control_letter, title.after_letter):
-            if taken in present:
+            if taken is not None and taken in present:
                 raise RouteError(f"slot {taken} already exists on the save disk")
+        if reload:
+            try:
+                wanted = [place_state(manifest["state_a"]), place_state(manifest["other_place"])]
+                manifest["other_letter"]  # noqa: B018
+            except (KeyError, TypeError) as exc:
+                raise RouteError(f"the manifest lacks {exc.args[0]!r}") from exc
+            missing = [k for k in wanted if not _guards(guard, k)]
+            if missing:
+                raise RouteError(f"screen guard map lacks {missing}")
         kept_before = {c: title.slot_files(save_before, c)
                        for c in (*title.kept_letters, letter)}
     else:
@@ -1500,6 +1578,19 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     result["events"][-1]["crop_changed"] = digest != previous_world
                 if state == "world":
                     previous_world = digest
+            if reload:
+                # The world bar matched before this point, so the place needs no first wait.
+                place, other = manifest["state_a"], manifest["other_place"]
+                name = f"{len(steps) + 1:02d}-place"
+                shown = result["reload"] = {
+                    "letter": letter, "place": place, "shown": False,
+                    "other_letter": manifest["other_letter"], "other_place": other,
+                    "other_shown": None}
+                digest = until_guard(place_state(place), name, 0, GUARD_POLL, GUARD_LIMIT)
+                crop = shots / f"{name}.png"
+                shown.update(shown=True, other_shown=bool(guard(place_state(other), crop)),
+                             crop=str(crop), crop_sha256=digest)
+                log("reload", **shown)
             result["completed"] = True
     except BaseException as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
@@ -1611,7 +1702,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     and result.get("slot_b_sha256", "absent") is None)
         else:
             _read_title(title, manifest, result, out, disks, registered,
-                        kept_before, letter, accept, measure, steps)
+                        kept_before, letter, accept, measure, steps, reload)
         result["elapsed_seconds"] = time.monotonic() - begun
         (out / "summary.json").write_text(json.dumps(result, indent=2,
                                                      sort_keys=True) + "\n")

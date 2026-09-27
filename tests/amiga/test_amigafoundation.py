@@ -898,3 +898,300 @@ def test_darkness_measure_starts_when_the_guard_map_has_the_prompt(tmp_path, clo
     guard = MapGuard(states=MEASURE_STATES)
     guest, result = _dark_run(tmp_path, clock, guard=guard, accept=False, measure=True)
     assert guest.starts and [d for d, _ in guest.inserted] == [0]
+
+
+# The reload title: load the game-written slot G, write nothing, and judge the place on the screen.
+RELOAD_KEYS = "P L P G SPACE V E B X RET".split()
+G_PLACE = DARK_LATER
+F_PLACE = DARK_START
+G_KEY, F_KEY = drive.place_state(G_PLACE), drive.place_state(F_PLACE)
+RELOAD_STATES = (*DARK_STATES, G_KEY, F_KEY)
+G_LINE = f"slot G: reloaded at area 2 2,2 facing {G_PLACE['facing']}"
+F_LINE = f"slot F: area 2 1,2 facing {F_PLACE['facing']} is not on the screen"
+
+
+class ReloadGuest(TitleGuest):
+    """The game shows `loads` after G is pressed at the load picker and writes only what `spoil` does."""
+
+    def __init__(self, clock, *, loads=G_PLACE, spoil=None):
+        super().__init__(clock, save_key="disk3", spoil=spoil)
+        self.loads = loads
+
+    def press(self, holder, key, timeout=None):
+        super(TitleGuest, self).press(holder, key, timeout)
+        if key == "G":
+            self.place = dict(self.loads)
+        elif key == "RET" and self.spoil:
+            self.spoil(self)
+
+    def write_file(self, path, raw):
+        remote = next(r for r in self.mounted if r and r.endswith("-disk3.adf"))
+        disk = AmigaDisk(self.remote[remote])
+        disk.write_file(path, raw)
+        self.remote[remote] = disk.to_bytes()
+
+
+def _reload_title():
+    return dataclasses.replace(foundation.DARKNESS_RELOAD, read_slot=_read_slot,
+                               slot_letters=_letters, slot_files=_files)
+
+
+def _reload_manifest(tmp_path):
+    slots = [(letter, _slot(F_PLACE if letter != "G" else G_PLACE)) for letter in "ABCDEFG"]
+    disks = {"disk1": _adf(tmp_path / "disk1.adf", "POD 1"),
+             "disk2": _adf(tmp_path / "disk2.adf", "POD 2"),
+             "disk3": _adf(tmp_path / "disk3.adf", "POD 3", slots)}
+    data = {"disks": disks,
+            "registered": {"accept_disk3": _adf(tmp_path / "accept3.adf", "POD 3", slots)},
+            "loaded_letter": "G", "state_a": G_PLACE, "names_a": NAMES,
+            "other_letter": "F", "other_place": F_PLACE}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def _reload_guard(guest, *, g=None, f=None, states=RELOAD_STATES):
+    """Each place key checks the fake's current place, unless `g` or `f` replaces its rule."""
+    on = {G_KEY: g or (lambda _p: guest.place == G_PLACE),
+          F_KEY: f or (lambda _p: guest.place == F_PLACE)}
+    return MapGuard(states=states, on=on)
+
+
+def _reload_run(tmp_path, clock, *, guest=None, guard=None, title=None, **kw):
+    guest = guest or ReloadGuest(clock)
+    kw.setdefault("reload", True)
+    kw.setdefault("identity", _IdentityMap())
+    result = drive.run_recon(
+        _reload_manifest(tmp_path), guest=guest, guard=guard or _reload_guard(guest),
+        holder="wish679-test", audio_proof=_audio_proof(tmp_path),
+        title=title or _reload_title(), **kw)
+    return guest, result
+
+
+def test_reload_presses_the_route_writes_nothing_and_judges_the_place_on_the_screen(
+        tmp_path, clock):
+    guest, result = _reload_run(tmp_path, clock)
+    assert result["error"] == "" and result["success"] is True, result["read"]
+    keys = _keys(guest)
+    assert keys == RELOAD_KEYS
+    assert not {"S", "F", "H", "N", "Y"} & set(keys)
+    assert guest.inserted == [(0, "C:/Amiga/Disks/wish679-wish679-test-disk2.adf")]
+    assert all(result["disks_unchanged"].values()) and len(result["disks_unchanged"]) == 3
+    assert result["read"]["verdicts"] == [G_LINE, F_LINE]
+    assert result["reload"]["shown"] is True and result["reload"]["other_shown"] is False
+    assert all(result["kept_unchanged"].values()) and result["extra_saves"] == []
+    assert result["read"]["loaded_letter"] == "G"
+
+
+def test_reload_fails_when_the_screen_shows_the_other_slots_place(tmp_path, clock):
+    guest = ReloadGuest(clock, loads=F_PLACE)
+    _, result = _reload_run(tmp_path, clock, guest=guest)
+    assert result["success"] is False
+    assert result["reload"]["shown"] is False
+    assert result["read"]["verdicts"][0] == (
+        f"slot G: area 2 2,2 facing {G_PLACE['facing']} is not on the screen")
+
+
+def test_reload_fails_when_the_place_guard_matches_both_places(tmp_path, clock):
+    guest = ReloadGuest(clock)
+    guard = _reload_guard(guest, f=lambda _p: True, g=lambda _p: True)
+    _, result = _reload_run(tmp_path, clock, guest=guest, guard=guard)
+    assert result["completed"] is True and result["reload"]["shown"] is True
+    assert result["reload"]["other_shown"] is True and result["success"] is False
+    assert result["read"]["verdicts"] == [
+        G_LINE, f"slot F: area 2 1,2 facing {F_PLACE['facing']} is also on the screen"]
+
+
+def test_reload_fails_when_the_place_guard_never_matches(tmp_path, clock):
+    guest = ReloadGuest(clock)
+    _, result = _reload_run(tmp_path, clock, guest=guest,
+                            guard=_reload_guard(guest, g=lambda _p: False))
+    assert result["success"] is False and "place screen was not recognized" in result[
+        "error"].replace("place_x2_y2_f1", "place")
+    assert result["reload"]["shown"] is False
+    assert result["read"]["verdicts"][0].endswith("is not on the screen")
+
+
+@pytest.mark.parametrize("spoil", [
+    lambda guest: guest.write_file("/SAVE/savgamH.sav", _slot(G_PLACE)),
+    lambda guest: guest.write_file("/SAVE/notes.dat", b"written by the game"),
+], ids=["a slot H", "a file that is no slot"])
+def test_reload_fails_when_the_game_writes_to_disk_3(tmp_path, clock, spoil):
+    guest = ReloadGuest(clock, spoil=spoil)
+    _, result = _reload_run(tmp_path, clock, guest=guest)
+    assert result["completed"] is True and result["reload"]["shown"] is True
+    assert result["disks_unchanged"]["disk3"] is False
+    assert result["success"] is False
+
+
+def test_reload_refuses_before_the_claim_when_a_guard_or_identity_rule_is_missing(
+        tmp_path, clock):
+    for missing in (G_KEY, F_KEY):
+        guest = ReloadGuest(clock)
+        states = tuple(s for s in RELOAD_STATES if s != missing)
+        with pytest.raises(drive.RouteError, match="screen guard map lacks"):
+            _reload_run(tmp_path, clock, guest=guest, guard=_reload_guard(guest, states=states))
+        assert guest.calls == []
+
+    class SheetOnly:
+        def __contains__(self, state):
+            return state == "sheet"
+
+        def __call__(self, state, path):
+            return True
+
+    for identity in (None, SheetOnly()):
+        guest = ReloadGuest(clock)
+        with pytest.raises(drive.RouteError, match="identity map lacks"):
+            _reload_run(tmp_path, clock, guest=guest, identity=identity)
+        assert guest.calls == []
+
+
+@pytest.mark.parametrize("title,mode", [
+    ("reload", {"accept": True}), ("reload", {"measure": True}),
+    ("darkness", {"reload": True}),
+])
+def test_a_title_with_no_save_letters_runs_only_as_a_reload(tmp_path, clock, title, mode):
+    guest = ReloadGuest(clock)
+    chosen = _reload_title() if title == "reload" else _dark_title()
+    with pytest.raises(drive.RouteError, match="reload"):
+        _reload_run(tmp_path, clock, guest=guest, title=chosen, **{"reload": False, **mode})
+    assert guest.calls == []
+
+
+def test_the_reload_description_is_pinned():
+    reload = foundation.DARKNESS_RELOAD
+    assert foundation.TITLES["darkness-reload"] is reload
+    assert foundation.DARKNESS_RELOAD_LOADED == "G"
+    assert reload.route == reload.measure_route == (
+        ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
+        ("G", "disk2_prompt", "key"), foundation.DISK2_INSERT,
+        ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
+        ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "world", "key"))
+    assert reload.route[3][0] == foundation.DARKNESS_RELOAD_LOADED
+    assert reload.control_letter is None and reload.after_letter is None
+    assert reload.kept_letters == ("A", "B", "C", "D", "E", "F")
+    assert reload.plain_keys == (("E", "loaded_menu"), ("B", "journal"))
+    assert reload.strict == {step[1] for step in reload.route}
+    assert not any(kind in ("write", "move") for _, _, kind in reload.route)
+    assert drive.place_state(dict(area=2, x=2, y=2, facing=geo.EAST)) == "place_x2_y2_f1"
+    assert foundation.DARKNESS.control_letter == "F"
+
+
+# Preparing a reload from a game-written disk 3, on synthetic disks.
+def _reload_registered(tmp_path, monkeypatch):
+    """A registered disk 3 with slots A to E, and the pins and image finder that point at it."""
+    slots = [(letter, _slot(DARK_START)) for letter in "ABCDE"]
+    files = {"disk1": _adf(tmp_path / "r1.adf", "POD 1"), "disk2": _adf(tmp_path / "r2.adf", "POD 2"),
+             "disk3": _adf(tmp_path / "r3.adf", "POD 3", slots)}
+    images = {key: pathlib.Path(entry["path"]).read_bytes() for key, entry in files.items()}
+    for key, entry in files.items():
+        monkeypatch.setattr(foundation, f"DARKNESS_{key.upper()}_SHA256", entry["sha256"])
+    monkeypatch.setattr(foundation, "_find_images",
+                        lambda wanted: {key: ("registered", images[key]) for key in wanted})
+    monkeypatch.setattr(foundation, "DARKNESS_RELOAD", _reload_title())
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    return images
+
+
+def _written_disk3(tmp_path, images, *, f=F_PLACE, g=G_PLACE, extra=(), names=NAMES,
+                   name="written3.adf", dropped=None):
+    disk = AmigaDisk(images["disk3"])
+    if dropped:
+        # No file can be deleted, so the disk is rebuilt without one registered slot.
+        disk = AmigaDisk.blank("POD 3")
+        disk.make_dir("/SAVE")
+        for letter in "ABCDE":
+            if letter != dropped:
+                disk.write_file(f"/SAVE/savgam{letter}.sav", _slot(DARK_START))
+    for letter, place in (("F", f), ("G", g)):
+        disk.write_file(f"/SAVE/savgam{letter}.sav", _slot(place, names))
+    for path, raw in extra:
+        disk.write_file(path, raw)
+    path = tmp_path / name
+    disk.save(path)
+    return path, hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _accept_summary(tmp_path, sha, *, success=True, accept=True, fetched=None):
+    path = tmp_path / "summary.json"
+    path.write_text(json.dumps({"success": success, "accept": accept,
+                                "fetched": {"disk3": {"sha256": fetched or sha}}}))
+    return path
+
+
+def _prepare_reload(tmp_path, disk, sha, summary, run_id="reload-run", **kw):
+    return foundation.prepare(foundation.TITLES["darkness-reload"], run_id, specimen=disk,
+                              specimen_sha256=sha, accept_summary=summary, **kw)
+
+
+def test_reload_prepare_writes_the_manifest_from_slots_g_and_f(tmp_path, monkeypatch):
+    images = _reload_registered(tmp_path, monkeypatch)
+    disk, sha = _written_disk3(tmp_path, images)
+    summary = _accept_summary(tmp_path, sha)
+    manifest = json.loads(_prepare_reload(tmp_path, disk, sha, summary).read_text())
+    assert manifest["title"] == "darkness-reload" and manifest["loaded_letter"] == "G"
+    assert manifest["state_a"] == G_PLACE and manifest["names_a"] == NAMES
+    assert manifest["other_letter"] == "F" and manifest["other_place"] == F_PLACE
+    assert manifest["registered"] == {"accept_disk3": {"path": str(disk), "sha256": sha}}
+    assert set(manifest["disks"]) == {"disk1", "disk2", "disk3"}
+    assert manifest["disks"]["disk3"]["sha256"] == sha
+    assert manifest["disks"]["disk3"]["path"] != str(disk)
+    assert set(manifest["slot_sha256"]) == {"F", "G"}
+    assert manifest["accept_summary"]["sha256"] == hashlib.sha256(summary.read_bytes()).hexdigest()
+    assert drive._title_inputs(manifest, _reload_title())[2] == "G"
+
+
+@pytest.mark.parametrize("what,match", [
+    ("hash", "disk 3 SHA-256 differs"),
+    ("failed", "not a successful accept run"),
+    ("not accept", "not a successful accept run"),
+    ("other hash", "another disk"),
+    ("extra file", "registered disk 3 plus slots F and G"),
+    ("changed file", "registered disk 3 plus slots F and G"),
+    ("missing file", "registered disk 3 plus slots F and G"),
+    ("other party", "names another party"),
+    ("one place", "at one place"),
+])
+def test_reload_prepare_refuses(tmp_path, monkeypatch, what, match):
+    images = _reload_registered(tmp_path, monkeypatch)
+    options = {"extra file": {"extra": [("/SAVE/notes.dat", b"x")]},
+               "missing file": {"dropped": "A"},
+               "other party": {"names": ["OTHER", "PARTY"]},
+               "one place": {"g": F_PLACE}}.get(what, {})
+    disk, sha = _written_disk3(tmp_path, images, **options)
+    if what == "changed file":
+        changed = AmigaDisk(disk.read_bytes())
+        changed.write_file("/SAVE/savgamA.sav", b"another byte string")
+        changed.save(disk)
+        sha = hashlib.sha256(disk.read_bytes()).hexdigest()
+    summary_args = {"failed": {"success": False}, "not accept": {"accept": False},
+                    "other hash": {"fetched": "0" * 64}}.get(what, {})
+    summary = _accept_summary(tmp_path, sha, **summary_args)
+    with pytest.raises(drive.RouteError, match=match):
+        _prepare_reload(tmp_path, disk, "1" * 64 if what == "hash" else sha, summary)
+    assert not (tmp_path / ".cache" / "wish" / "acceptance" / "679" / "reload-run").exists()
+
+
+def test_prepare_requires_the_reload_inputs_only_for_the_reload_title(tmp_path):
+    with pytest.raises(drive.RouteError, match="needs the disk 3"):
+        foundation.prepare(foundation.TITLES["darkness-reload"], "x", specimen=tmp_path / "a")
+    with pytest.raises(drive.RouteError, match="takes no disk 3 hash"):
+        foundation.prepare(foundation.DARKNESS, "x", specimen_sha256="0" * 64)
+    with pytest.raises(drive.RouteError, match="takes no disk 3 hash"):
+        foundation.prepare(foundation.POOL, "x", accept_summary=tmp_path / "s.json")
+
+
+def test_reload_command_runs_the_reload_and_prints_its_verdicts(tmp_path, monkeypatch, capsys):
+    called = _Called()
+    monkeypatch.setattr(foundation, "run_recon", called)
+    monkeypatch.setattr(foundation, "WinGuest", lambda: object())
+    monkeypatch.setattr(foundation, "PixelGuards", lambda path: ("guards", str(path)))
+    args = _measure_args(tmp_path, "--guards", "g.json", "--identity", "i.json")
+    args[0], args[2] = "reload", "darkness-reload"
+    args[args.index("--title") + 1] = "darkness-reload"
+    assert foundation.main(args) == 0
+    kw = called.calls[-1]
+    assert kw["reload"] is True and "accept" not in kw and kw["title"] is foundation.DARKNESS_RELOAD
+    assert kw["guard"] == ("guards", "g.json") and kw["identity"] == ("guards", "i.json")

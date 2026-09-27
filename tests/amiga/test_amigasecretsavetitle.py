@@ -1029,3 +1029,19 @@ def test_measure_refuses_a_measure_only_df0_insert_after_an_unguarded_state(tmp_
 def test_measure_ignores_a_route_only_df0_insert(tmp_path, clock):
     title = _df0_title(DF0_ROUTE, measure_route=PLAIN_ROUTE)
     assert _measure_without_guard(tmp_path, clock, title).starts
+
+
+@pytest.mark.parametrize("bad", [
+    {"control_letter": None},                       # only the after letter given
+    {"after_letter": None},                         # only the control letter given
+    {"control_letter": None, "after_letter": None},  # no letters, and the route still writes
+])
+def test_a_title_with_one_save_letter_or_a_write_step_and_no_letters_is_refused(bad):
+    with pytest.raises(drive.RouteError, match="title description"):
+        make_title(**bad)
+
+
+def test_a_title_with_no_save_letters_and_no_write_step_is_accepted():
+    route = tuple(step for step in ROUTE if step[2] != "write")
+    title = make_title(control_letter=None, after_letter=None, route=route, measure_route=route)
+    assert title.control_letter is None and title.after_letter is None
