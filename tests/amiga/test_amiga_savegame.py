@@ -436,3 +436,72 @@ def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_c64_s_own
     assert report.messages == []
     assert save0[:cont.icon_table] == shipped_c64[:cont.icon_table]
     assert world_state.from_c64(bytes(save0), game=game).set_out is False
+
+
+# ---------------------------------------------------------------------------
+# A saved game written onto a copy of the player's disk 1
+# ---------------------------------------------------------------------------
+
+def _files_of(disk):
+    return {path: disk.read_file(path) for path, entry in disk.walk()
+            if not entry.is_dir}
+
+
+@pytest.mark.parametrize("container,make", [
+    (amiga_savegame.CURSE, "synthetic_curse"),
+    (amiga_savegame.SILVER_BLADES, "synthetic_silver_blades"),
+], ids=lambda value: getattr(value, "key", value))
+def test_a_new_slot_on_disk_one_keeps_every_file_and_adds_the_slot(
+        container, make):
+    import support.amigasavegame as support
+
+    one = support.synthetic_disk_one(container.key)
+    before_bytes = one.to_bytes()
+    before = _files_of(one)
+    saved = getattr(support, make)(("OMEGA",))
+
+    out = amiga_savegame.slot_on_disk_one(one, container, "B", saved)
+
+    assert one.to_bytes() == before_bytes            # the input is never written
+    assert amiga_savegame.slots_present(out, container) == ["A", "B"]
+    assert out.verify() == []
+    after = _files_of(out)
+    added = amiga_savegame.slot_path(container, "B")
+    assert {p: d for p, d in after.items() if p != added} == before
+    assert after[added] == saved
+
+
+def test_slot_a_on_disk_one_replaces_slot_a_only():
+    import support.amigasavegame as support
+
+    container = amiga_savegame.CURSE
+    one = support.synthetic_disk_one(container.key, slots=("A", "C"))
+    before = _files_of(one)
+    saved = support.synthetic_curse(("OMEGA",))
+
+    out = amiga_savegame.slot_on_disk_one(one, container, "A", saved)
+
+    after = _files_of(out)
+    slot_a = amiga_savegame.slot_path(container, "A")
+    assert after[slot_a] == saved != before[slot_a]
+    assert {p: d for p, d in after.items() if p != slot_a} == {
+        p: d for p, d in before.items() if p != slot_a}
+    assert after["/SAVE/spindisk"] == before["/SAVE/spindisk"]
+
+
+def test_a_disk_that_is_not_that_titles_disk_one_is_a_disk_error():
+    import support.amigasavegame as support
+
+    from goldbox.amiga_adf import AmigaDiskError
+
+    curse = amiga_savegame.CURSE
+    saved = support.synthetic_curse(("OMEGA",))
+    silver_one = support.synthetic_disk_one(amiga_savegame.SILVER_BLADES.key)
+    no_spindisk = AmigaDisk.blank("Disk1")
+    no_spindisk.write_file("/Curse", b"x")
+    no_spindisk.make_dir("/SAVE")
+    disk_two = AmigaDisk.blank("Disk2")
+    disk_two.make_dir("/DISKB")
+    for wrong in (silver_one, no_spindisk, disk_two):
+        with pytest.raises(AmigaDiskError):
+            amiga_savegame.slot_on_disk_one(wrong, curse, "B", saved)

@@ -180,6 +180,25 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
             out[c64_port.SECRET_OF_THE_SILVER_BLADES.key] = path
         return out
 
+    def amiga_disks_one(scratch: pathlib.Path) -> dict:
+        """One read-only disk 1 per later Amiga destination title: the
+        registry image holding `/SAVE/spindisk` and the title's executable."""
+        from goldbox.amiga_savegame import DISK_ONE_EXECUTABLE
+        from tools.amiga import amigasaves
+        out: dict = {}
+        for _label, data in amigasaves.images():
+            for key, executable in DISK_ONE_EXECUTABLE.items():
+                try:
+                    disk = AmigaDisk(bytearray(data))
+                    disk.lookup("/SAVE/spindisk")
+                    disk.lookup(executable)
+                except Exception:
+                    continue
+                path = scratch / f"{key}-amiga-disk-one.adf"
+                path.write_bytes(data)
+                out[key] = path
+        return out
+
     def hashes(files: dict) -> dict:
         """`{name: sha256}`, an `.ADF` opened and hashed file by file."""
         out = {}
@@ -201,6 +220,7 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
     with tempfile.TemporaryDirectory(prefix="convertbytes-") as tmp:
         scratch = pathlib.Path(tmp)
         amiga_disks = amiga_game_disks(scratch)
+        disks_one = amiga_disks_one(scratch)
 
         def key(path: pathlib.Path) -> str:
             """A manifest key that survives the run's temporary directory.
@@ -243,6 +263,13 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
                 if options is None or not slot:
                     failed[label].append(f"{path.name}: no game files")
                     continue
+                # An older tree under `--tree` predates `disk_one=`, and its
+                # own writer needed none.
+                chosen = ({"disk_one": disks_one.get(
+                              direction.destination_game.key)}
+                          if direction.destination_port == "amiga"
+                          and hasattr(convert, "amiga_needs_disk_one")
+                          else {})
                 try:
                     if (direction.source_port == "c64"
                             and direction.destination_port in ("dos", "amiga")):
@@ -250,7 +277,8 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
                         try:
                             rehearsal = direction.rehearse(
                                 source, slot, options,
-                                icon_parts=files.icon if files else None)
+                                icon_parts=files.icon if files else None,
+                                **chosen)
                         except TypeError as exc:
                             # `icon_parts` reached `C64ToDos.rehearse` with
                             # #383 and `C64ToAmiga.rehearse` with #422; an
@@ -259,9 +287,10 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
                             if "icon_parts" not in str(exc):
                                 raise
                             rehearsal = direction.rehearse(source, slot,
-                                                           options)
+                                                           options, **chosen)
                     else:
-                        rehearsal = direction.rehearse(source, slot, options)
+                        rehearsal = direction.rehearse(source, slot, options,
+                                                       **chosen)
                 except Exception as exc:
                     failed[label].append(
                         f"{path.name}: {type(exc).__name__}: {exc}")

@@ -195,12 +195,23 @@ disk already had `A` on it.
   Silver Blades **import** route, beside `/Secret Drawer/SAVE` and
   `DF0:SAVE`.)
 
-  Curse of the Azure Bonds ships a separate save disk of its own, 1804 blocks
-  with fourteen `.cha` files (`docs/124-amiga-port.md` §1.6). It has not been
-  built or booted either, and nothing here says which of the two mechanisms it
-  uses.
+  **Curse of the Azure Bonds and Secret of the Silver Blades do not use a
+  separate save disk at all.** Both executables (`/Curse`, `/Secret`) look for a
+  `SAVE` drawer on the boot volume, then on `DF0:`, then on `DF1:`, and never
+  on `DF2:`, and try the next only when the drawer probe fails. The shipped
+  disk 1 of each has a `SAVE` drawer, so the first probe always succeeds and a
+  save disk in another drive is never read. A save the player is to load goes
+  into the `SAVE` drawer of a copy of their own disk 1 (`slot_on_disk_one`),
+  which also keeps `spindisk`, the file the engine opens on the save disk after
+  every write. Curse's own shipped save disk (`docs/124-amiga-port.md` §1.6)
+  is not searched either.
+  `make_save_disk` builds a disk that holds a saved game and nothing else and
+  serves only as a synthetic source for the readers.
 
 ## 7. Reproducing it
+
+This section is Pool of Radiance only; Curse and Silver Blades boot a copy of
+their own disk 1 instead (§6).
 
 ```sh
 export SSH_ASKPASS_REQUIRE=never

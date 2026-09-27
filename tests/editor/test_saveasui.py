@@ -128,7 +128,8 @@ def test_choosing_c64_shows_its_own_label_and_no_slot_or_asset_rows(
     assert (binding._child("label_destination_path").text()
             == ew.DESTINATION_PATH_LABEL["c64"])
     assert binding._child("box_destination_slot").isHidden()
-    for row in ("box_c64_disks", "box_dos_folder", "box_amiga_disk"):
+    for row in ("box_c64_disks", "box_dos_folder", "box_amiga_disk",
+                "box_amiga_disk_one"):
         assert binding._child(row).isHidden()
     assert binding._child("button_destination_save_as").isEnabled()
 
@@ -152,6 +153,7 @@ def test_choosing_dos_shows_its_own_label_and_the_dos_game_folder_row(
     # A DOS destination never needs the destination's own C64 disks.
     assert binding._child("box_c64_disks").isHidden()
     assert binding._child("box_amiga_disk").isHidden()
+    assert binding._child("box_amiga_disk_one").isHidden()
     assert not binding._child("button_destination_save_as").isEnabled()
     binding._child("destination_dos_folder").setText(str(tmp_path))
     assert binding._child("button_destination_save_as").isEnabled()
@@ -490,3 +492,41 @@ def test_opening_another_save_with_pending_edits_asks_before_discarding_them(
     assert seen["title"] == ew.UNSAVED_CHANGES_TITLE
     assert seen["text"] == ew.UNSAVED_BEFORE_OPEN
     assert binding.path.name == pathlib.Path(_path).name   # unchanged
+
+
+def _silver_blades_dos_binding(app, tmp_path):
+    folder = dos_folder(tmp_path / "save")
+    return EditorBinding(make_root(), str(folder))
+
+
+def test_a_silver_blades_amiga_save_as_shows_the_disk_one_row_and_not_disk_two(
+        app, tmp_path):
+    from support.amigasavegame import synthetic_disk_one
+
+    binding = _silver_blades_dos_binding(app, tmp_path)
+    binding.begin_save_as("amiga")
+    assert not binding._child("box_amiga_disk_one").isHidden()
+    assert binding._child("box_amiga_disk").isHidden()
+    assert not binding._child("button_destination_save_as").isEnabled()
+
+    one = tmp_path / "one.adf"
+    synthetic_disk_one(SILVER_BLADES.key).save(str(one))
+    binding._child("destination_amiga_disk_one").setText(str(one))
+    assert binding._child("box_amiga_disk_one").isHidden()
+    assert binding._child("button_destination_save_as").isEnabled()
+
+
+def test_a_disk_one_without_spindisk_shows_the_generic_sentence(
+        app, tmp_path, monkeypatch):
+    from goldbox.amiga_adf import AmigaDisk
+
+    binding = _silver_blades_dos_binding(app, tmp_path)
+    binding.begin_save_as("amiga")
+    not_disk_one = tmp_path / "not-disk-one.adf"
+    AmigaDisk.blank("Empty").save(str(not_disk_one))
+    binding._child("destination_amiga_disk_one").setText(str(not_disk_one))
+
+    said = _confirm(binding, monkeypatch, tmp_path / "fresh.adf")
+
+    assert said == [(ew.CANNOT_SAVE_TITLE, ew.SAVE_AS_FAILED)]
+    assert not (tmp_path / "fresh.adf").exists()

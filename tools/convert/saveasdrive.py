@@ -37,7 +37,8 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             folder: "str | pathlib.Path", *,
             c64_folder: "str | pathlib.Path | None" = None,
             dos_folder: "str | pathlib.Path | None" = None,
-            amiga_disk: "str | pathlib.Path | None" = None) -> dict:
+            amiga_disk: "str | pathlib.Path | None" = None,
+            amiga_disk_one: "str | pathlib.Path | None" = None) -> dict:
     """Open `source`, Save As it to `port` under `folder`, and say what landed.
 
     `window` is an `EditorBinding`, whose `game_files_for` finds the game data
@@ -58,7 +59,8 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
         assets = saveplan.resolve_assets(
             Source.of_snapshot(saveplan.prepare(party)), port,
             game_files=window.game_files_for, c64_folder=c64_folder,
-            dos_folder=dos_folder, amiga_disk=amiga_disk)
+            dos_folder=dos_folder, amiga_disk=amiga_disk,
+            amiga_disk_one=amiga_disk_one)
         plan = saveplan.prepare_save_as(party, port, path, assets)
         report["losses"] = saveplan.losses(plan.report) if plan.report else []
         report["dropped"] = list(getattr(plan.report, "dropped", []) or [])

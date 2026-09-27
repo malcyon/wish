@@ -180,6 +180,27 @@ def amiga_game_disks(scratch: pathlib.Path) -> dict[str, pathlib.Path]:
     return out
 
 
+def amiga_disks_one(scratch: pathlib.Path) -> dict[str, pathlib.Path]:
+    """One read-only disk 1 for each later Amiga destination title: the
+    registry image holding `/SAVE/spindisk` and that title's executable."""
+    from goldbox.amiga_adf import AmigaDisk
+    from goldbox.amiga_savegame import DISK_ONE_EXECUTABLE
+    from tools.amiga import amigasaves
+    out: dict[str, pathlib.Path] = {}
+    for _label, data in amigasaves.images():
+        for key, executable in DISK_ONE_EXECUTABLE.items():
+            try:
+                disk = AmigaDisk(bytearray(data))
+                disk.lookup("/SAVE/spindisk")
+                disk.lookup(executable)
+            except Exception:
+                continue
+            path = scratch / f"{key}-amiga-disk-one.adf"
+            path.write_bytes(data)
+            out[key] = path
+    return out
+
+
 def generalise(line: str) -> str:
     """A drop line with the character's own art id taken out, so the same
     loss on six characters counts as one line."""
@@ -195,6 +216,7 @@ def sweep() -> int:
     with tempfile.TemporaryDirectory(prefix="convertdrops-") as tmp:
         scratch = pathlib.Path(tmp)
         amiga_disks = amiga_game_disks(scratch)
+        amiga_disks_one_ = amiga_disks_one(scratch)
         for path in sources(root, scratch):
             try:
                 source = convert.Source.detect(path)
@@ -225,14 +247,19 @@ def sweep() -> int:
                         f"disk 2 for this direction")
                     continue
                 try:
+                    chosen = ({"disk_one": amiga_disks_one_.get(
+                                   direction.destination_game.key)}
+                              if direction.destination_port == "amiga" else {})
                     if (direction.source_port == "c64"
                             and direction.destination_port in ("dos", "amiga")):
                         files = game_files(direction.title)
                         rehearsal = direction.rehearse(
                             source, slot, options,
-                            icon_parts=files.icon if files else None)
+                            icon_parts=files.icon if files else None,
+                            **chosen)
                     else:
-                        rehearsal = direction.rehearse(source, slot, options)
+                        rehearsal = direction.rehearse(source, slot, options,
+                                                       **chosen)
                 except Exception as exc:
                     failed[label].append(
                         f"{path.name}: {type(exc).__name__}: {exc}")

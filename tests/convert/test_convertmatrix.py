@@ -444,6 +444,8 @@ def test_save_as_prepares_what_convert_writes_amiga_directions(
     elif direction.destination_port == "amiga":
         kwargs["amiga_disk"] = convertdrops.amiga_game_disks(scratch).get(
             direction.shape.key)
+        kwargs["amiga_disk_one"] = convertdrops.amiga_disks_one(scratch).get(
+            direction.shape.key)
 
     try:
         assets = saveplan.resolve_assets(source, direction.destination_port,

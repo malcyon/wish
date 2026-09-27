@@ -1086,14 +1086,29 @@ def _rehearse_later_savegame(state: Any, shape: dos_port.DosDeltas,
                              slot: str, party: list,
                              ecl_glb: bytes | None,
                              icons: "list | None" = None,
+                             disk_one: "str | pathlib.Path | None" = None,
                              ) -> AmigaWriteRehearsal:
-    """Build a fresh Curse or Silver Blades saved game and disk."""
+    """Build a fresh Curse or Silver Blades saved game on a copy of the
+    player's disk 1, the disk the game reads its `SAVE` drawer from."""
+    from goldbox.amiga_adf import AmigaDisk
+
+    if disk_one is None:
+        raise saveplan.MissingAssets((saveplan.AMIGA_DISK_ONE,))
     savegame, report = amiga_savegame.new_savegame(
         state, party, slot, ecl_glb=ecl_glb, icons=icons)
-    disk = amiga_savegame.make_save_disk(shape.key, slot, savegame)
+    disk = amiga_savegame.slot_on_disk_one(
+        AmigaDisk.open(str(disk_one)), shape.key, slot, savegame)
     return AmigaWriteRehearsal(
         report, {POOLSAVE_FILENAME: disk.to_bytes()}, party, state, slot,
         savegame)
+
+
+def amiga_needs_disk_one(shape: dos_port.DosDeltas) -> bool:
+    """Whether an Amiga destination of this title is a copy of the player's
+    own disk 1: Curse and Silver Blades read their saves from its `SAVE`
+    drawer and search no other disk."""
+    return shape in (dos_port.CURSE_OF_THE_AZURE_BONDS,
+                     dos_port.SECRET_OF_THE_SILVER_BLADES)
 
 
 def amiga_needs_game_disk(shape: dos_port.DosDeltas,
@@ -1103,7 +1118,7 @@ def amiga_needs_game_disk(shape: dos_port.DosDeltas,
 
     Pool of Radiance stages the area's own `ecl.dax` and Curse of the Azure
     Bonds its `ECL.GLB`; Secret of the Silver Blades stages neither and needs
-    no disk at all. A Curse party from a C64 or DOS `source` that has not set out
+    no disk 2. A Curse party from a C64 or DOS `source` that has not set out
     stages no script either. `editor.saveplan.requirements` asks this rather
     than demanding a disk for every Amiga destination alike.
     """
@@ -1164,6 +1179,7 @@ def _rehearse_amiga_savegame(state: Any, shape: dos_port.DosDeltas,
                              slot: str, party: list,
                              game_data: bytes | None,
                              icons: "list | None" = None,
+                             disk_one: "str | pathlib.Path | None" = None,
                              ) -> AmigaWriteRehearsal:
     if shape is dos_port.POOL_OF_RADIANCE:
         if game_data is None:
@@ -1171,16 +1187,18 @@ def _rehearse_amiga_savegame(state: Any, shape: dos_port.DosDeltas,
         return _rehearse_por_savegame(
             state, slot, party, game_data, icons=icons)
     return _rehearse_later_savegame(
-        state, shape, slot, party, game_data, icons=icons)
+        state, shape, slot, party, game_data, icons=icons,
+        disk_one=disk_one)
 
 
 class C64ToAmiga(Direction):
-    """A C64 save becomes an Amiga save disk, for any title in
+    """A C64 save becomes an Amiga disk holding the saved game, for any title in
     `goldbox.amiga_shared.WRITES` (#316, #36).
 
     One instance per entry of `WRITES` -- see `DIRECTIONS` below -- so a
     title joining that tuple needs no edit to this class. `options` is the
-    path to the player's own Amiga disk 2, never disk 1.
+    path to the player's own Amiga disk 2, never disk 1. Curse and Silver
+    Blades are written onto a copy of the player's disk 1, given as `disk_one`.
 
     A C64 source has no slot of its own, so the built saved game is always
     slot `A` -- the same rule `C64ToDos.rehearse` follows for a fresh DOS
@@ -1213,7 +1231,8 @@ class C64ToAmiga(Direction):
                 options: "str | pathlib.Path",
                 icon_parts: "Any | None" = None,
                 names: "Mapping[str, str] | None" = None,
-                leave: "Mapping[int, Collection[int]] | None" = None) -> AmigaWriteRehearsal:
+                leave: "Mapping[int, Collection[int]] | None" = None,
+                disk_one: "str | pathlib.Path | None" = None) -> AmigaWriteRehearsal:
         if leave:
             # Only a C64 record has a slot count a pack can overflow; a
             # choice of what to leave behind means nothing to this port.
@@ -1228,7 +1247,8 @@ class C64ToAmiga(Direction):
         state = world_state.from_c64(
             source.save0, game=self.title, source=str(source.path))
         return _rehearse_amiga_savegame(
-            state, self.shape, "A", party, game_data, icons=icons)
+            state, self.shape, "A", party, game_data, icons=icons,
+            disk_one=disk_one)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
              folder: str | pathlib.Path) -> list[pathlib.Path]:
@@ -1240,7 +1260,7 @@ class C64ToAmiga(Direction):
 
 
 class DosToAmiga(Direction):
-    """A DOS save becomes an Amiga save disk, for any title in
+    """A DOS save becomes an Amiga disk holding the saved game, for any title in
     `goldbox.amiga_shared.WRITES` (#316, #36).
 
     One instance per entry of `WRITES` -- see `DIRECTIONS` below. `options`
@@ -1267,7 +1287,8 @@ class DosToAmiga(Direction):
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
                 names: "Mapping[str, str] | None" = None,
-                leave: "Mapping[int, Collection[int]] | None" = None) -> AmigaWriteRehearsal:
+                leave: "Mapping[int, Collection[int]] | None" = None,
+                disk_one: "str | pathlib.Path | None" = None) -> AmigaWriteRehearsal:
         if leave:
             # Only a C64 record has a slot count a pack can overflow; a
             # choice of what to leave behind means nothing to this port.
@@ -1306,7 +1327,8 @@ class DosToAmiga(Direction):
             savgam, container,
             source=str(pathlib.Path(source.path) / savgam_path.name))
         return _rehearse_amiga_savegame(
-            state, self.shape, letter, party, game_data, icons=icons)
+            state, self.shape, letter, party, game_data, icons=icons,
+            disk_one=disk_one)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
              folder: str | pathlib.Path) -> list[pathlib.Path]:
@@ -1549,6 +1571,10 @@ GAME_TITLE = "Choose the DOS game folder"
 #: The Amiga disk row's own picker title, ruled the same night as
 #: `LABEL_DISK` and following its own wording.
 DISK_TITLE = "Choose Amiga game disk 2"
+
+#: The picker title for the player's disk 1, beside `DISK_TITLE` and worded
+#: like it.
+DISK_ONE_TITLE = "Choose Amiga game disk 1"
 FOLDER_TITLE = "Choose where to write"
 
 #: The save picker's filter: a `.d64` or the DOS save container itself, so
@@ -2032,7 +2058,11 @@ class ConvertDialog(QDialog):
         try:
             self.source = Source.detect(self._source_path, party=self.party,
                                         slot=self._wanted_slot)
-            options = destinations_for(self.source)
+            # This dialog has no row for the player's disk 1, which such a
+            # destination is a copy of; Save As is the route for those.
+            options = [d for d in destinations_for(self.source)
+                       if not (d.destination_port == "amiga"
+                               and amiga_needs_disk_one(d.shape))]
         except Exception:
             _log.exception("could not read %s", self._source_path)
             self._populate_destinations([])

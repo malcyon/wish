@@ -1062,7 +1062,9 @@ def test_a_curse_or_silver_blades_d64_lists_dos(tmp_path, game):
         assert dialog.source.key == game.key
         labels = [dialog.ui.convert_destination.itemData(i)
                  for i in range(dialog.ui.convert_destination.count())]
-        assert labels == ["dos", "amiga"]
+        # No Amiga: that output is a copy of the player's disk 1, which this
+        # dialog has no row for, so Save As is the route.
+        assert labels == ["dos"]
         assert dialog.ui.convert_destination.currentText() == \
             convert.DESTINATION_LABELS["dos"]
     finally:
@@ -1102,7 +1104,9 @@ def test_a_curse_or_silver_blades_savgam_file_lists_c64(tmp_path, shape):
     try:
         labels = [dialog.ui.convert_destination.itemData(i)
                  for i in range(dialog.ui.convert_destination.count())]
-        assert labels == ["c64", "amiga"]
+        # No Amiga: that output is a copy of the player's disk 1, which this
+        # dialog has no row for, so Save As is the route.
+        assert labels == ["c64"]
     finally:
         dialog.close()
 

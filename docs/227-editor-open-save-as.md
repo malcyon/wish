@@ -101,7 +101,7 @@ operation overwrite its source.
 |---|---|
 | C64 | A new `.d64` at the chosen filename. There is no destination save-letter control. |
 | DOS | A new save folder. Cross-platform writers currently create save A; a same-platform copy preserves the source folder's saves and selected letter. |
-| Amiga | A new `.adf` at the chosen filename. C64 conversion creates save A; DOS conversion retains its source letter. A same-platform copy preserves all saves and the selected letter. |
+| Amiga | A new `.adf` at the chosen filename. C64 conversion creates save A; DOS conversion retains its source letter. For Curse and Silver Blades the `.adf` is a copy of the player's disk 1 with the party in its `SAVE` drawer, the only disk those games load from. A same-platform copy preserves all saves and the selected letter. |
 
 The existing conversion writers publish into a fresh output folder. Adapt that
 publication layer so C64 and Amiga Save As can use a chosen image filename;
@@ -117,8 +117,8 @@ design and must not be implied by a destination dropdown.
 Asset requirements belong to each title and conversion direction. Reuse the
 configured game folders; source C64 combat figures can require C64 game disks,
 and the destination can require its own game data. Do not copy the old dialog's
-blanket Amiga game-disk requirement: the Silver Blades Amiga writer does not
-need it. Game assets remain read-only inputs, never save templates.
+blanket Amiga game-disk requirement: the Silver Blades Amiga writer needs
+disk 1 and not disk 2. Game assets remain read-only inputs, never save templates.
 
 ## Dropped fields are high-priority defects
 

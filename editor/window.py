@@ -2381,11 +2381,13 @@ class EditorBinding(QObject):
         box.setVisible(True)
 
     def _clear_destination_asset_fields(self) -> None:
-        for name in ("destination_c64_disks", "destination_dos_folder", "destination_amiga_disk"):
+        for name in ("destination_c64_disks", "destination_dos_folder", "destination_amiga_disk",
+                     "destination_amiga_disk_one"):
             field = self._child(name)
             if field is not None:
                 field.clear()
-        for name in ("box_c64_disks", "box_dos_folder", "box_amiga_disk"):
+        for name in ("box_c64_disks", "box_dos_folder", "box_amiga_disk",
+                     "box_amiga_disk_one"):
             box = self._child(name)
             if box is not None:
                 box.setVisible(False)
@@ -2403,12 +2405,15 @@ class EditorBinding(QObject):
         c64 = self._child("destination_c64_disks")
         dos = self._child("destination_dos_folder")
         amiga = self._child("destination_amiga_disk")
+        amiga_one = self._child("destination_amiga_disk_one")
         if c64 is not None and c64.text().strip():
             manual[saveplan.DESTINATION_DISKS] = c64.text().strip()
         if dos is not None and dos.text().strip():
             manual[saveplan.DOS_GAME_FOLDER] = dos.text().strip()
         if amiga is not None and amiga.text().strip():
             manual[saveplan.AMIGA_GAME_DISK] = amiga.text().strip()
+        if amiga_one is not None and amiga_one.text().strip():
+            manual[saveplan.AMIGA_DISK_ONE] = amiga_one.text().strip()
         return manual
 
     def _resolve_destination_assets(self) -> "saveplan.Assets | None":
@@ -2425,7 +2430,8 @@ class EditorBinding(QObject):
                 source, port, game_files=self.game_files_for,
                 c64_folder=manual.get(saveplan.DESTINATION_DISKS),
                 dos_folder=manual.get(saveplan.DOS_GAME_FOLDER),
-                amiga_disk=manual.get(saveplan.AMIGA_GAME_DISK))
+                amiga_disk=manual.get(saveplan.AMIGA_GAME_DISK),
+                amiga_disk_one=manual.get(saveplan.AMIGA_DISK_ONE))
         except saveplan.MissingAssets as exc:
             self._show_asset_rows(exc.missing)
             return None
@@ -2440,6 +2446,7 @@ class EditorBinding(QObject):
             "box_c64_disks": saveplan.DESTINATION_DISKS in missing,
             "box_dos_folder": saveplan.DOS_GAME_FOLDER in missing,
             "box_amiga_disk": saveplan.AMIGA_GAME_DISK in missing,
+            "box_amiga_disk_one": saveplan.AMIGA_DISK_ONE in missing,
         }
         for name, visible in rows.items():
             box = self._child(name)
@@ -2466,10 +2473,14 @@ class EditorBinding(QObject):
         self._connect(
             "button_amiga_disk_browse",
             lambda: self._destination_asset_browse(saveplan.AMIGA_GAME_DISK))
+        self._connect(
+            "button_amiga_disk_one_browse",
+            lambda: self._destination_asset_browse(saveplan.AMIGA_DISK_ONE))
         self._connect("button_destination_cancel", self.cancel_save_as)
         self._connect("button_destination_save_as", self.confirm_save_as)
         for name in ("destination_path", "destination_c64_disks",
-                     "destination_dos_folder", "destination_amiga_disk"):
+                     "destination_dos_folder", "destination_amiga_disk",
+                     "destination_amiga_disk_one"):
             field = self._child(name)
             if field is not None:
                 field.textChanged.connect(self._destination_field_edited)
@@ -2521,7 +2532,9 @@ class EditorBinding(QObject):
         titles and filter -- `#511` comment 5769421923, "already approved"."""
         field_name = {saveplan.DESTINATION_DISKS: "destination_c64_disks",
                       saveplan.DOS_GAME_FOLDER: "destination_dos_folder",
-                      saveplan.AMIGA_GAME_DISK: "destination_amiga_disk"}[requirement]
+                      saveplan.AMIGA_GAME_DISK: "destination_amiga_disk",
+                      saveplan.AMIGA_DISK_ONE: "destination_amiga_disk_one",
+                      }[requirement]
         field = self._child(field_name)
         if field is None:
             return
@@ -2531,6 +2544,10 @@ class EditorBinding(QObject):
         if requirement == saveplan.AMIGA_GAME_DISK:
             path, _ = QFileDialog.getOpenFileName(
                 self.root, convert_mod.DISK_TITLE, current,
+                convert_mod.DISK_FILTER)
+        elif requirement == saveplan.AMIGA_DISK_ONE:
+            path, _ = QFileDialog.getOpenFileName(
+                self.root, convert_mod.DISK_ONE_TITLE, current,
                 convert_mod.DISK_FILTER)
         elif requirement == saveplan.DOS_GAME_FOLDER:
             path = QFileDialog.getExistingDirectory(

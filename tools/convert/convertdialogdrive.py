@@ -20,7 +20,8 @@ is the C64 game-disks folder a C64 source needs (`--c64-game` looks it up in
 
     .venv/bin/python -m tools.convert.convertdialogdrive \\
         --specimen ~/wish-specimens/por-dos/WISH-SPEC-ssb-234-party-pair/SAVGAMC.DAT \\
-        --amiga-disk2 /path/to/SecretOfTheSilverBlades_B.adf
+        --amiga-disk2 /path/to/SecretOfTheSilverBlades_B.adf \\
+        --amiga-disk1 /path/to/SecretOfTheSilverBlades_A.adf
 
 Runs offscreen; nothing opens on the desktop.
 """
@@ -44,6 +45,9 @@ def main(argv=None) -> int:
                     help="the DOS SAVGAM file or C64 disk to convert")
     ap.add_argument("--amiga-disk2", required=True, type=pathlib.Path,
                     help="the title's Amiga disk 2, the one carrying ecl.dax")
+    ap.add_argument("--amiga-disk1", type=pathlib.Path,
+                    help="the title's Amiga disk 1, which a Curse or Silver "
+                         "Blades Amiga save is written onto a copy of")
     ap.add_argument("--out-dir", type=pathlib.Path,
                     default=None,
                     help="folder Convert writes its wish-<date> subfolder into "
@@ -92,6 +96,12 @@ def main(argv=None) -> int:
         ap.error(f"no such Amiga disk 2: {amiga_disk2}")
     report["amiga_disk2"] = str(amiga_disk2)
 
+    amiga_disk1 = args.amiga_disk1.expanduser() if args.amiga_disk1 else None
+    if amiga_disk1 is not None:
+        if not amiga_disk1.exists():
+            ap.error(f"no such Amiga disk 1: {amiga_disk1}")
+        report["amiga_disk1"] = str(amiga_disk1)
+
     c64_disks = args.disks
     if c64_disks is None and args.c64_game:
         c64_disks = gamedisks.find(args.c64_game)
@@ -106,7 +116,8 @@ def main(argv=None) -> int:
     scratch.ensure(out)
     try:
         result = saveasdrive.save_as(window, specimen, "amiga", out,
-                                     c64_folder=None, amiga_disk=amiga_disk2)
+                                     c64_folder=None, amiga_disk=amiga_disk2,
+                                     amiga_disk_one=amiga_disk1)
     finally:
         window.close()
 

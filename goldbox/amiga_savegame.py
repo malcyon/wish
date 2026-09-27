@@ -700,7 +700,12 @@ def new_savegame(state: world_state.WorldState,
 
 def make_save_disk(container: AmigaContainer | str, slot: str, savegame: bytes,
                    volume: str | None = None) -> AmigaDisk:
-    """A fresh OFS disk with one later-title save and no game bytes."""
+    """A fresh OFS disk with one later-title save and no game bytes.
+
+    Neither title's engine reads a save from such a disk while the player's own
+    disk 1 is in DF0; a save the player is to load comes from
+    `slot_on_disk_one`.
+    """
     container = container_for(container)
     parse(savegame, container, source="converted")
     disk = AmigaDisk.blank(volume or
@@ -712,6 +717,38 @@ def make_save_disk(container: AmigaContainer | str, slot: str, savegame: bytes,
         raise AmigaSaveError("the built Amiga save disk does not verify: "
                              + "; ".join(problems))
     return disk
+
+
+#: The executable each later title keeps at the root of its disk 1.
+DISK_ONE_EXECUTABLE = {CURSE.key: "/Curse", SILVER_BLADES.key: "/Secret"}
+
+
+def slot_on_disk_one(disk_one: AmigaDisk, container: AmigaContainer | str,
+                     slot: str, savegame: bytes) -> AmigaDisk:
+    """A copy of the player's disk 1 with `savegame` written into its `SAVE`
+    drawer as `slot`.
+
+    The engine searches the boot volume's `SAVE` drawer first, so this is the
+    disk it loads from, and it reads `spindisk` from it after every save.
+    Raises `AmigaDiskError` when `disk_one` is not that title's disk 1, and
+    never changes `disk_one`.
+    """
+    container = container_for(container)
+    parse(savegame, container, source="converted")
+    executable = DISK_ONE_EXECUTABLE[container.key]
+    for path, want_dir in ((f"/{SAVE_DRAWER}", True),
+                           (f"/{SAVE_DRAWER}/spindisk", False),
+                           (executable, False)):
+        entry = disk_one.lookup(path)
+        if entry.is_dir != want_dir:
+            raise AmigaDiskError(f"{path} is not the {container.key} disk 1's")
+    copy = AmigaDisk(disk_one.to_bytes())
+    copy.write_file(slot_path(container, slot), savegame)
+    problems = copy.verify()
+    if problems:
+        raise AmigaSaveError("the Amiga disk 1 with the save does not verify: "
+                             + "; ".join(problems))
+    return copy
 
 
 # Pool of Radiance keeps the party in sibling files.  These disk operations

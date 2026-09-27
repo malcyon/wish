@@ -570,11 +570,15 @@ def test_save_as_amiga_keeps_a_blessed_c64_character_blessed(
     amiga = convertdrops.amiga_game_disks(tmp_path).get(game.key)
     if amiga is None:
         pytest.skip(f"needs {game.key}'s own Amiga game disk")
+    disk_one = convertdrops.amiga_disks_one(tmp_path).get(game.key)
+    if title != "pool" and disk_one is None:
+        pytest.skip(f"needs {game.key}'s own Amiga disk 1")
     source = party.source or convert.Source.detect(party.path)
     try:
         assets = saveplan.resolve_assets(source, "amiga",
                                          game_files=convertdrops.game_files,
-                                         amiga_disk=amiga)
+                                         amiga_disk=amiga,
+                                         amiga_disk_one=disk_one)
     except saveplan.MissingAssets:
         pytest.skip(f"needs {game.key}'s own C64 disks")
 

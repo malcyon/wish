@@ -336,7 +336,7 @@ class MissingAssets(SaveAsError):
     """Game data this route needs and nobody has found yet.
 
     `missing` names each requirement -- `DESTINATION_DISKS`, `SOURCE_DISKS`,
-    `DOS_GAME_FOLDER`, `AMIGA_GAME_DISK` -- in the order the caller should
+    `DOS_GAME_FOLDER`, `AMIGA_GAME_DISK`, `AMIGA_DISK_ONE` -- in the order the caller should
     ask for them, so the caller chooses which of its own approved sentences
     fits rather than being handed one.
     """
@@ -408,8 +408,12 @@ SOURCE_DISKS = "source_disks"
 #: holds the area the party is standing in.
 DOS_GAME_FOLDER = "dos_game_folder"
 #: The player's own Amiga game disk 2, for an Amiga destination that stages a
-#: script off it. Silver Blades stages none and does not ask for this.
+#: script off it. Silver Blades stages none and does not ask for this; it asks
+#: for `AMIGA_DISK_ONE`.
 AMIGA_GAME_DISK = "amiga_game_disk"
+#: The player's own Amiga disk 1, for a Curse or Silver Blades destination:
+#: the output is a copy of it with the party in its `SAVE` drawer.
+AMIGA_DISK_ONE = "amiga_disk_one"
 
 
 # ---------------------------------------------------------------------------
@@ -454,7 +458,11 @@ def requirements(source: Any, port: str) -> tuple[str, ...]:
     Silver Blades save stages no area script, so it asks for no game disk at
     all where a Pool of Radiance or a Curse one does.
     """
-    from .convert import amiga_needs_game_disk, dos_needs_game_folder
+    from .convert import (
+        amiga_needs_disk_one,
+        amiga_needs_game_disk,
+        dos_needs_game_folder,
+    )
 
     direction = route(source, port)
     if direction is None:
@@ -465,8 +473,11 @@ def requirements(source: Any, port: str) -> tuple[str, ...]:
     elif port == "dos":
         if dos_needs_game_folder(direction.shape):
             needs.append(DOS_GAME_FOLDER)
-    elif amiga_needs_game_disk(direction.shape, source):
-        needs.append(AMIGA_GAME_DISK)
+    else:
+        if amiga_needs_disk_one(direction.shape):
+            needs.append(AMIGA_DISK_ONE)
+        if amiga_needs_game_disk(direction.shape, source):
+            needs.append(AMIGA_GAME_DISK)
     if source.port == "c64" and port in ("dos", "amiga"):
         needs.append(SOURCE_DISKS)
     return tuple(needs)
@@ -496,6 +507,7 @@ class Assets:
     source_files: Any = None
     dos_folder: pathlib.Path | None = None
     amiga_disk: pathlib.Path | None = None
+    amiga_disk_one: pathlib.Path | None = None
     c64_folder: pathlib.Path | None = None
     game_disks: tuple[pathlib.Path, ...] = ()
 
@@ -508,6 +520,8 @@ class Assets:
             return self.dos_folder is not None
         if requirement == AMIGA_GAME_DISK:
             return self.amiga_disk is not None
+        if requirement == AMIGA_DISK_ONE:
+            return self.amiga_disk_one is not None
         raise SaveAsError(f"{requirement} is not a known requirement")
 
     def token(self) -> tuple[str, ...]:
@@ -523,18 +537,22 @@ class Assets:
         answer a question about eight files.
         """
         return (str(self.dos_folder or ""), str(self.amiga_disk or ""),
+                str(self.amiga_disk_one or ""),
                 str(self.c64_folder or ""),
                 ",".join(str(disk) for disk in self.game_disks),
                 _files_token(self.game_files),
                 _files_token(self.source_files),
                 _file_digest(self.amiga_disk),
+                _file_digest(self.amiga_disk_one),
                 _script_digest(self.dos_folder))
 
 
 def resolve_assets(source: Any, port: str, *, game_files: Any = None,
                    c64_folder: "str | pathlib.Path | None" = None,
                    dos_folder: "str | pathlib.Path | None" = None,
-                   amiga_disk: "str | pathlib.Path | None" = None) -> Assets:
+                   amiga_disk: "str | pathlib.Path | None" = None,
+                   amiga_disk_one: "str | pathlib.Path | None" = None
+                   ) -> Assets:
     """Find everything `requirements` names, or say what is missing.
 
     `game_files` is a callable, title -> `GameFiles | None`, which is
@@ -552,6 +570,8 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
     resolved = Assets(
         dos_folder=pathlib.Path(dos_folder) if dos_folder else None,
         amiga_disk=pathlib.Path(amiga_disk) if amiga_disk else None,
+        amiga_disk_one=(pathlib.Path(amiga_disk_one)
+                        if amiga_disk_one else None),
         c64_folder=pathlib.Path(c64_folder) if c64_folder else None)
     if DESTINATION_DISKS in needs:
         disks: tuple[pathlib.Path, ...] = ()
@@ -620,6 +640,8 @@ def rehearse(direction: Any, source: Any, assets: Assets,
     # Sent only when the player chose something, so a direction that never
     # has a pack to overflow is not handed an argument it has no use for.
     chosen = {"leave": leave} if leave else {}
+    if port == "amiga":
+        chosen["disk_one"] = assets.amiga_disk_one
     if direction.source_port == "c64" and port in ("dos", "amiga"):
         return direction.rehearse(source, slot, options,
                                   icon_parts=assets.source_files.icon,
@@ -1381,6 +1403,7 @@ def refuse_alias(path: pathlib.Path, snapshot: Snapshot,
     reads: list[tuple[str, pathlib.Path]] = [
         ("game disk", disk) for disk in assets.game_disks]
     for what, where in (("game disk", assets.amiga_disk),
+                        ("game disk", assets.amiga_disk_one),
                         ("DOS game folder", assets.dos_folder),
                         ("C64 game folder", assets.c64_folder)):
         if where is not None:

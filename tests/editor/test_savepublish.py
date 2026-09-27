@@ -19,6 +19,7 @@ through `automap/gamedisks.py`.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import pathlib
@@ -31,8 +32,10 @@ from gamedata import specimen_root, synthetic_save
 from support.editorwindow import make_root
 from test_saveplan import (
     SILVER_BLADES,
+    _disk_one_path,
     amiga_disk,
     amiga_two_slot_disk,
+    disk_one_assets,
     dos_folder,
     files_under,
 )
@@ -120,7 +123,8 @@ def test_an_unsaved_dos_party_saved_as_amiga_arrives_with_both_edits(
     before = files_under(folder)
     out = tmp_path / "out" / "chosen.adf"
 
-    plan = saveplan.prepare_save_as(party, "amiga", out)
+    plan = saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party))
     assert plan.report.dropped == []
     assert not out.exists()                 # preparing writes nothing
 
@@ -142,7 +146,8 @@ def test_the_editor_adopts_the_published_save_and_points_at_it(app, tmp_path):
     Save would write there."""
     party, folder, quantity = edited_dos_party(tmp_path / "save")
     out = tmp_path / "chosen.adf"
-    published = saveplan.publish(saveplan.prepare_save_as(party, "amiga", out),
+    published = saveplan.publish(saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party)),
                                  party, backups=tmp_path / "backups")
 
     editor = EditorBinding(make_root())
@@ -195,7 +200,8 @@ def test_an_amiga_native_copy_keeps_a_second_saved_game(tmp_path):
     kept = slot_bytes(path, title, "B")
     out = tmp_path / "copy.adf"
 
-    published = saveplan.publish(saveplan.prepare_save_as(party, "amiga", out),
+    published = saveplan.publish(saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party)),
                                  party, backups=tmp_path / "backups")
 
     assert slot_bytes(out, title, "B") == kept
@@ -378,13 +384,18 @@ def test_a_save_as_over_the_save_it_reads_is_refused(tmp_path):
 # What a route needs off the player's own disks
 # ---------------------------------------------------------------------------
 
-def test_a_silver_blades_amiga_destination_asks_for_no_game_disk(tmp_path):
-    """Silver Blades stages no area script, so its Amiga writer needs no game
-    disk at all where a Pool of Radiance or a Curse one does."""
+def test_a_silver_blades_amiga_destination_asks_for_disk_one_and_no_disk_two(
+        tmp_path):
+    """Silver Blades stages no area script, so its Amiga writer needs no disk
+    2; the output is a copy of the player's disk 1, the disk the game reads
+    its `SAVE` drawer from."""
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
 
-    assert saveplan.requirements(party.source, "amiga") == ()
-    assert saveplan.resolve_assets(party.source, "amiga") == saveplan.Assets()
+    assert saveplan.requirements(party.source, "amiga") == (
+        saveplan.AMIGA_DISK_ONE,)
+    with pytest.raises(saveplan.MissingAssets) as caught:
+        saveplan.resolve_assets(party.source, "amiga")
+    assert caught.value.missing == (saveplan.AMIGA_DISK_ONE,)
 
 
 def test_a_curse_party_not_yet_set_out_asks_for_no_amiga_game_disk(
@@ -399,9 +410,11 @@ def test_a_curse_party_not_yet_set_out_asks_for_no_amiga_game_disk(
     source = convert.Source.detect(
         synthetic_save(tmp_path, game=convert.c64_port.by_key(CURSE_KEY)))
     assert source.key == CURSE_KEY
-    assert saveplan.requirements(source, "amiga") == (saveplan.SOURCE_DISKS,)
+    assert saveplan.requirements(source, "amiga") == (
+        saveplan.AMIGA_DISK_ONE, saveplan.SOURCE_DISKS)
     assets = saveplan.resolve_assets(source, "amiga",
-                                     game_files=lambda title: object())
+                                     game_files=lambda title: object(),
+                                     amiga_disk_one=tmp_path / "one.adf")
     assert assets.amiga_disk is None
     shape = dos_port.CURSE_OF_THE_AZURE_BONDS
     assert convert._amiga_destination_data(
@@ -414,10 +427,12 @@ def test_a_curse_party_not_yet_set_out_asks_for_no_amiga_game_disk(
 
     monkeypatch.setattr(world_state, "from_c64", in_the_world)
     assert saveplan.requirements(source, "amiga") == (
-        saveplan.AMIGA_GAME_DISK, saveplan.SOURCE_DISKS)
+        saveplan.AMIGA_DISK_ONE, saveplan.AMIGA_GAME_DISK,
+        saveplan.SOURCE_DISKS)
     with pytest.raises(saveplan.MissingAssets) as caught:
         saveplan.resolve_assets(source, "amiga",
-                                game_files=lambda title: object())
+                                game_files=lambda title: object(),
+                                amiga_disk_one=tmp_path / "one.adf")
     assert caught.value.missing == (saveplan.AMIGA_GAME_DISK,)
     with pytest.raises(FileNotFoundError):
         convert._amiga_destination_data(
@@ -442,7 +457,8 @@ def test_the_c64_to_amiga_rehearsal_hands_its_source_to_the_disk_check(
         patch.setattr(convert, "_amiga_destination_data", spy)
         try:
             direction.rehearse(source, "A", tmp_path / "no-such-disk.adf",
-                              names={"W" * 18: "Wren"})
+                              names={"W" * 18: "Wren"},
+                              disk_one=_disk_one_path(tmp_path, CURSE_KEY))
         except FileNotFoundError:
             pytest.fail("the rehearsal opened the Amiga disk")
     assert seen == [source]
@@ -521,13 +537,15 @@ def test_a_truncated_name_stops_a_save_as_and_is_on_no_list_at_all(
 
     source = convert.Source.of_snapshot(saveplan.prepare(party))
     direction = saveplan.route(source, "amiga")
-    rehearsal, _slot = saveplan.rehearse(direction, source, saveplan.Assets())
+    rehearsal, _slot = saveplan.rehearse(
+        direction, source, disk_one_assets(tmp_path, party))
     assert rehearsal.report.dropped == []
     assert rehearsal.report.losses == []
     assert saveplan.losses(rehearsal.report) == []
 
     with pytest.raises(saveplan.DroppedFields) as caught:
-        saveplan.prepare_save_as(party, "amiga", out)
+        saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party))
 
     assert caught.value.lost == [
         f"name: {probe_name!r} arrived as {probe_name[:15]!r}"]
@@ -779,9 +797,11 @@ def test_a_lower_case_c64_name_saves_as_dos_and_amiga_with_its_spelling(
     else:
         amiga_disk = convertdrops.amiga_game_disks(tmp_path).get(
             SILVER_BLADES.key)
-        if amiga_disk is None:
-            pytest.skip("needs an Amiga game disk")
-        assets = saveplan.Assets(amiga_disk=amiga_disk, source_files=files_for)
+        disk_one = convertdrops.amiga_disks_one(tmp_path).get(SILVER_BLADES.key)
+        if amiga_disk is None or disk_one is None:
+            pytest.skip("needs the Amiga Silver Blades disk 1")
+        assets = saveplan.Assets(amiga_disk=amiga_disk, source_files=files_for,
+                                 amiga_disk_one=disk_one)
         out = tmp_path / "copy.adf"
 
     party = Party(str(disk))
@@ -1114,7 +1134,8 @@ def test_a_dropped_field_stops_a_save_as_before_any_destination_write(
                field="ring of fire resistance")
 
     with pytest.raises(saveplan.DroppedFields) as caught:
-        saveplan.prepare_save_as(party, "amiga", out)
+        saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party))
 
     assert caught.value.lost == ["ring of fire resistance"]
     assert not out.exists()
@@ -1133,7 +1154,8 @@ def test_a_name_the_destination_could_not_hold_stops_it_too(
                loss="ALPHABETICAL: name truncated to 15 characters")
 
     with pytest.raises(saveplan.DroppedFields) as caught:
-        saveplan.prepare_save_as(party, "amiga", out)
+        saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party))
 
     assert caught.value.lost == ["ALPHABETICAL: name truncated to 15 characters"]
     assert not out.exists()
@@ -1156,7 +1178,8 @@ def test_output_that_cannot_be_read_back_is_refused_before_publication(
     monkeypatch.setattr(direction, "rehearse", rehearsed)
 
     with pytest.raises(saveplan.SaveAsError):
-        saveplan.prepare_save_as(party, "amiga", out)
+        saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party))
     assert not out.exists()
 
 
@@ -1178,7 +1201,8 @@ def test_an_image_destination_that_got_two_files_is_refused(
     monkeypatch.setattr(direction, "rehearse", rehearsed)
 
     with pytest.raises(saveplan.SaveAsError):
-        saveplan.prepare_save_as(party, "amiga", out)
+        saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party))
     assert not out.exists()
 
 
@@ -1195,7 +1219,8 @@ def test_replacing_an_image_backs_up_the_bytes_that_were_there(tmp_path):
     backups = tmp_path / "backups"
 
     published = saveplan.publish(
-        saveplan.prepare_save_as(party, "amiga", out), party, backups=backups)
+        saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party)), party, backups=backups)
 
     assert published.backup is not None
     assert published.backup.read_bytes() == was
@@ -1208,7 +1233,8 @@ def test_replacing_an_image_with_no_backup_folder_writes_nothing(tmp_path):
     was = out.read_bytes()
 
     with pytest.raises(files.NoBackupFolder):
-        saveplan.publish(saveplan.prepare_save_as(party, "amiga", out),
+        saveplan.publish(saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party)),
                          party, backups=None)
 
     assert out.read_bytes() == was
@@ -1221,7 +1247,8 @@ def test_a_failed_open_of_what_was_published_puts_the_old_image_back(
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = amiga_disk(tmp_path, name="target.adf")
     was = out.read_bytes()
-    plan = saveplan.prepare_save_as(party, "amiga", out)
+    plan = saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party))
     monkeypatch.setattr(saveplan, "open_destination",
                         lambda _d: (_ for _ in ()).throw(RuntimeError("no")))
 
@@ -1239,7 +1266,8 @@ def test_rolling_back_after_a_failed_adoption_restores_a_replaced_image(
     out = amiga_disk(tmp_path, name="target.adf")
     was = out.read_bytes()
     published = saveplan.publish(
-        saveplan.prepare_save_as(party, "amiga", out), party,
+        saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party)), party,
         backups=tmp_path / "backups")
     assert out.read_bytes() != was
 
@@ -1251,7 +1279,8 @@ def test_rolling_back_after_a_failed_adoption_restores_a_replaced_image(
 def test_rolling_back_a_new_output_removes_it(tmp_path):
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = tmp_path / "new.adf"
-    published = saveplan.publish(saveplan.prepare_save_as(party, "amiga", out),
+    published = saveplan.publish(saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party)),
                                  party, backups=tmp_path / "backups")
     assert out.exists()
 
@@ -1279,7 +1308,8 @@ def test_recovery_that_itself_fails_says_where_the_backup_is(
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = amiga_disk(tmp_path, name="target.adf")
     published = saveplan.publish(
-        saveplan.prepare_save_as(party, "amiga", out), party,
+        saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party)), party,
         backups=tmp_path / "backups")
     monkeypatch.setattr(files, "restore_file",
                         lambda *_a: (_ for _ in ()).throw(OSError("read-only")))
@@ -1298,7 +1328,8 @@ def test_rolling_back_a_new_output_removes_the_folders_it_made(tmp_path):
     kept = tmp_path / "somewhere"
     kept.mkdir()
     out = kept / "new" / "deeper" / "chosen.adf"
-    published = saveplan.publish(saveplan.prepare_save_as(party, "amiga", out),
+    published = saveplan.publish(saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party)),
                                  party, backups=tmp_path / "backups")
     assert out.exists()
 
@@ -1333,7 +1364,8 @@ def test_a_rollback_that_cannot_remove_a_new_output_says_so(
     itself rather than a claim that nothing was written."""
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = tmp_path / "new.adf"
-    published = saveplan.publish(saveplan.prepare_save_as(party, "amiga", out),
+    published = saveplan.publish(saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party)),
                                  party, backups=tmp_path / "backups")
     monkeypatch.setattr(
         pathlib.Path, "unlink",
@@ -1418,7 +1450,8 @@ def test_a_write_that_fails_takes_the_folders_it_made_away_again(
     kept = tmp_path / "somewhere"
     kept.mkdir()
     out = kept / "new" / "deeper" / "chosen.adf"
-    plan = saveplan.prepare_save_as(party, "amiga", out)
+    plan = saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party))
     monkeypatch.setattr(files.os, "fsync",
                         lambda _fd: (_ for _ in ()).throw(OSError("no room")))
 
@@ -1435,7 +1468,9 @@ def test_publishing_without_naming_the_assets_again_is_not_stale(tmp_path):
     published rather than a `StalePlan` for output that is current."""
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = tmp_path / "chosen.adf"
-    assets = saveplan.Assets(amiga_disk=tmp_path / "nothing-here.adf")
+    assets = dataclasses.replace(
+        disk_one_assets(tmp_path, party),
+        amiga_disk=tmp_path / "nothing-here.adf")
     plan = saveplan.prepare_save_as(party, "amiga", out, assets)
 
     published = saveplan.publish(plan, party, backups=tmp_path / "backups")
@@ -1613,34 +1648,39 @@ def test_a_failure_while_staging_never_reaches_a_new_destination(
 def test_an_edit_after_preparing_makes_the_prepared_output_stale(tmp_path):
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = tmp_path / "chosen.adf"
-    plan = saveplan.prepare_save_as(party, "amiga", out)
-    assert plan.is_current(party, "amiga", out)
+    assets = disk_one_assets(tmp_path, party)
+    plan = saveplan.prepare_save_as(party, "amiga", out, assets)
+    assert plan.is_current(party, "amiga", out, assets)
 
     party.members[0].record.set("gold", 4321)
 
-    assert not plan.is_current(party, "amiga", out)
+    assert not plan.is_current(party, "amiga", out, assets)
 
 
 def test_another_destination_or_asset_makes_it_stale(tmp_path):
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = tmp_path / "chosen.adf"
-    plan = saveplan.prepare_save_as(party, "amiga", out)
+    assets = disk_one_assets(tmp_path, party)
+    plan = saveplan.prepare_save_as(party, "amiga", out, assets)
 
-    assert not plan.is_current(party, "amiga", tmp_path / "elsewhere.adf")
-    assert not plan.is_current(party, "dos", out)
+    assert not plan.is_current(party, "amiga", tmp_path / "elsewhere.adf",
+                               assets)
+    assert not plan.is_current(party, "dos", out, assets)
     assert not plan.is_current(
         party, "amiga", out,
-        saveplan.Assets(amiga_disk=pathlib.Path("/elsewhere/disk2.adf")))
+        dataclasses.replace(
+            assets, amiga_disk=pathlib.Path("/elsewhere/disk2.adf")))
 
 
 def test_an_invalidated_plan_is_refused_rather_than_published(tmp_path):
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = tmp_path / "chosen.adf"
-    plan = saveplan.prepare_save_as(party, "amiga", out)
+    assets = disk_one_assets(tmp_path, party)
+    plan = saveplan.prepare_save_as(party, "amiga", out, assets)
 
     plan.invalidate()
 
-    assert not plan.is_current(party, "amiga", out)
+    assert not plan.is_current(party, "amiga", out, assets)
     with pytest.raises(saveplan.StalePlan):
         saveplan.publish(plan, party, backups=tmp_path / "backups")
     assert not out.exists()
@@ -1656,7 +1696,8 @@ def test_an_amiga_source_is_current_until_it_is_edited(tmp_path):
     """
     party = Party(str(amiga_disk(tmp_path, name="open.adf")))
     out = tmp_path / "chosen.adf"
-    plan = saveplan.prepare_save_as(party, "amiga", out)
+    plan = saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party))
 
     assert plan.is_current(party, "amiga", out)
 
@@ -1684,7 +1725,8 @@ def test_publishing_after_an_edit_is_refused_by_publish_itself(tmp_path):
     the player has edited past."""
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = tmp_path / "chosen.adf"
-    plan = saveplan.prepare_save_as(party, "amiga", out)
+    plan = saveplan.prepare_save_as(party, "amiga", out,
+                                       disk_one_assets(tmp_path, party))
 
     party.members[0].record.set("gold", 4321)
     assert not plan.stale                  # nobody told it anything changed
@@ -1732,12 +1774,14 @@ def test_a_destination_without_the_right_suffix_is_refused(tmp_path):
     for port, name in (("amiga", "MySave"), ("amiga", "chosen.d64"),
                        ("c64", "chosen.adf"), ("c64", "chosen")):
         with pytest.raises(saveplan.SaveAsError) as caught:
-            saveplan.prepare_save_as(party, port, tmp_path / name)
+            saveplan.prepare_save_as(party, port, tmp_path / name,
+                                     disk_one_assets(tmp_path, party))
         assert str(caught.value).startswith(f"a {port} destination is a")
         assert not (tmp_path / name).exists()
 
     # The suffix is the player's to spell how they like.
-    assert saveplan.prepare_save_as(party, "amiga", tmp_path / "SHOUTED.ADF")
+    assert saveplan.prepare_save_as(party, "amiga", tmp_path / "SHOUTED.ADF",
+                                    disk_one_assets(tmp_path, party))
 
 
 def test_a_destination_inside_the_open_save_is_refused(tmp_path):
@@ -1776,13 +1820,15 @@ def test_a_destination_that_is_the_conversions_own_game_data_is_refused(
     pool = game / "POOL1.D64"
     pool.write_bytes(b"not really a disk either")
 
-    with pytest.raises(saveplan.SaveAsError) as caught:
-        saveplan.prepare_save_as(party, "amiga", disk,
-                                 saveplan.Assets(amiga_disk=disk))
-    assert "this conversion reads" in str(caught.value)
+    one = _disk_one_path(tmp_path, party.source.key)
+    assets = saveplan.Assets(amiga_disk=disk, amiga_disk_one=one)
+    # Disk 1 is a game file too: the output is a copy of it, never it.
+    for target in (disk, one):
+        with pytest.raises(saveplan.SaveAsError) as caught:
+            saveplan.prepare_save_as(party, "amiga", target, assets)
+        assert "this conversion reads" in str(caught.value)
     # And a destination beside the game disks lands rather than being refused.
-    assert saveplan.prepare_save_as(party, "amiga", game / "mine.adf",
-                                    saveplan.Assets(amiga_disk=disk))
+    assert saveplan.prepare_save_as(party, "amiga", game / "mine.adf", assets)
 
     # The rest against the check itself, which runs before the route needs
     # any of the game data these assets stand for.
@@ -1911,7 +1957,8 @@ def test_the_silver_blades_dos_to_amiga_conversion_loses_nothing(tmp_path):
     lists a loss can be on are empty."""
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
 
-    plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "chosen.adf")
+    plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "chosen.adf",
+                                    disk_one_assets(tmp_path, party))
 
     assert saveplan.losses(plan.report) == []
     assert len(party.members) == 2
@@ -1931,7 +1978,7 @@ def test_a_dos_curse_party_not_yet_set_out_asks_for_no_amiga_game_disk(tmp_path)
     shutil.copytree(saves, folder)
     source = convert.Source.detect(folder)
     assert source.port == "dos"
-    assert saveplan.requirements(source, "amiga") == ()
+    assert saveplan.requirements(source, "amiga") == (saveplan.AMIGA_DISK_ONE,)
 
 
 def test_an_unreadable_dos_curse_save_still_asks_for_the_amiga_game_disk(
@@ -1949,7 +1996,8 @@ def test_an_unreadable_dos_curse_save_still_asks_for_the_amiga_game_disk(
     source = convert.Source(port="dos", title=shape, path=tmp_path, slot="A")
 
     assert convert.amiga_needs_game_disk(shape, source) is True
-    assert saveplan.requirements(source, "amiga") == (saveplan.AMIGA_GAME_DISK,)
+    assert saveplan.requirements(source, "amiga") == (
+        saveplan.AMIGA_DISK_ONE, saveplan.AMIGA_GAME_DISK)
 
 
 # ---------------------------------------------------------------------------
@@ -2245,7 +2293,8 @@ def test_a_dos_party_saved_as_amiga_keeps_the_slot_letter_it_was_opened_at(
     party = Party(str(folder))
     assert party.source.slot == "B"
 
-    plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "out.adf")
+    plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "out.adf",
+                                    disk_one_assets(tmp_path, party))
 
     assert plan.destination.slot == "B"
 
@@ -2487,3 +2536,30 @@ def test_a_dos_party_past_the_c64_experience_ceiling_saves_as_c64_clamped(
     assert written["HERO1"].get("experience") == 0xFFFFFF
     assert any("16777216" in r.getMessage() and "16777215" in r.getMessage()
                for r in caplog.records), "the clamp never reached the log"
+
+
+def test_a_silver_blades_dos_party_saved_as_amiga_is_a_copy_of_disk_one(
+        tmp_path):
+    """The output is the player's disk 1 with the party in its `SAVE` drawer:
+    the same volume, every other file byte for byte, `spindisk` still there,
+    and the slot the source's own letter."""
+    party, _folder, _quantity = edited_dos_party(
+        tmp_path / "save", slot="B", numbers=(1,))
+    assets = disk_one_assets(tmp_path, party, slots=("A",))
+    one = AmigaDisk.open(str(assets.amiga_disk_one))
+    out = tmp_path / "out" / "chosen.adf"
+
+    plan = saveplan.prepare_save_as(party, "amiga", out, assets)
+    saveplan.publish(plan, party, assets=assets, backups=tmp_path / "backups")
+
+    assert plan.destination.slot == "B"
+    written = AmigaDisk.open(str(out))
+    assert written.volume_name == one.volume_name
+    slot_b = amiga_savegame.slot_path(amiga_savegame.SILVER_BLADES, "B")
+    now = {p: written.read_file(p) for p, e in written.walk() if not e.is_dir}
+    was = {p: one.read_file(p) for p, e in one.walk() if not e.is_dir}
+    assert "/SAVE/spindisk" in now
+    assert slot_b in now
+    assert {p: d for p, d in now.items() if p != slot_b} == was
+    assert amiga_savegame.slots_present(
+        written, amiga_savegame.SILVER_BLADES) == ["A", "B"]

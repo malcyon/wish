@@ -110,8 +110,8 @@ CONVERTS: "tuple[dos_port.DosDeltas, ...]" = (
 #: standing)`): `new_por_savegame` and `make_por_save_disk` build the whole
 #: 13,141-byte `savgam<letter>.dat` and the disk around it with no template,
 #: proven in two WinUAE runs, one from a C64 source and one from a DOS one.
-#: `goldbox.amiga_savegame.new_savegame` and `make_save_disk` now do the same
-#: from zeroes for Curse and Silver Blades.
+#: `goldbox.amiga_savegame.new_savegame` builds the same from zeroes for Curse
+#: and Silver Blades, and `slot_on_disk_one` puts it on the disk the game reads.
 WRITES: "tuple[dos_port.DosDeltas, ...]" = CONVERTS
 
 #: Silver Blades' spellbook: 15 bytes of bitmask at `0x071`, **LSB first**

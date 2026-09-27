@@ -144,7 +144,9 @@ def test_an_unsaved_dos_edit_converts_and_leaves_the_save_folder_alone(
     member.inventory.set_quantity(0, quantity)
 
     source = convert.Source.detect(folder, party)
-    rehearsal = dos_to_amiga().rehearse(source, "A", options=None)
+    rehearsal = dos_to_amiga().rehearse(
+        source, "A", options=None,
+        disk_one=_disk_one_path(tmp_path, SILVER_BLADES.key))
 
     assert rehearsal.report.dropped == []
     written = AmigaDisk(rehearsal.files[convert.POOLSAVE_FILENAME])
@@ -334,10 +336,12 @@ def test_a_party_with_nothing_open_is_refused_rather_than_snapshotted(
 # Which save the open party is, and which slot a conversion asked for
 # ---------------------------------------------------------------------------
 
-def converted_gold(source):
+def converted_gold(source, tmp_path):
     """The gold of the first character a DOS -> Amiga conversion of `source`
     writes."""
-    rehearsal = dos_to_amiga().rehearse(source, source.slot, options=None)
+    rehearsal = dos_to_amiga().rehearse(
+        source, source.slot, options=None,
+        disk_one=_disk_one_path(tmp_path, SILVER_BLADES.key))
     written = AmigaDisk(rehearsal.files[convert.POOLSAVE_FILENAME])
     return amiga_savegame.read_slot(
         written, source.slot, SILVER_BLADES.key).characters[0].money["gold"]
@@ -356,7 +360,7 @@ def test_picking_the_save_file_of_the_open_dos_save_converts_its_edits(
 
     source = convert.Source.detect(folder / "SAVGAMA.DAT", party)
 
-    assert converted_gold(source) == 1234
+    assert converted_gold(source, tmp_path) == 1234
     assert source.slot == "A"
     assert source.path == folder        # a DOS source's path is its folder
     assert files_under(folder) == before
@@ -557,3 +561,24 @@ def test_a_dual_class_pair_no_pool_title_reads_is_expected_back_as_zero():
     native = _destination("dos", c64_port.POOL_OF_RADIANCE, native=True)
     assert any("dual_class_slot" in line
                for line in saveplan.compare([filled], [zeroed], native))
+
+
+def _disk_one_path(tmp_path, key, slots=("A",)):
+    from support.amigasavegame import synthetic_disk_one
+
+    # Beside `tmp_path`, which a test may be using as the save folder itself.
+    where = tmp_path.with_name(tmp_path.name + "-disk-one")
+    where.mkdir(exist_ok=True)
+    path = where / "disk-one.adf"
+    synthetic_disk_one(key, slots).save(str(path))
+    return path
+
+
+def disk_one_assets(tmp_path, party, slots=("A",)):
+    """`Assets` naming a synthetic disk 1 of the party's title, for the later
+    titles whose Amiga output is a copy of it; `None` for any other title."""
+    if saveplan.AMIGA_DISK_ONE not in saveplan.requirements(
+            party.source, "amiga"):
+        return None
+    return saveplan.Assets(
+        amiga_disk_one=_disk_one_path(tmp_path, party.source.key, slots))
